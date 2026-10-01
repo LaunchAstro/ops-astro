@@ -56,6 +56,7 @@ import {
   listOwnSessions,
   isCommandRefusal,
   isReadName,
+  boardReach,
   joinLiveBoard,
   shownInbox,
   refuseCommand,
@@ -93,11 +94,12 @@ import type {
   AdmissionAt,
 } from '../../packages/core-commands/src/index.ts';
 import type { Verifier } from './auth/supabase.ts';
-import type { LiveTopics } from './live.ts';
+import type { SSEStreamingApi } from 'hono/streaming';
+import type { LiveSignal, LiveTopics } from './live.ts';
 import { markOf, presenceAskOf, type LivePresence, type SeatAsk } from './live-presence.ts';
 import {
   BOARD,
-  follow,
+  follow as followTopics,
   RECHECK_MS,
   sharesOf,
   topicsOf,
@@ -275,11 +277,15 @@ async function admit(
   // verifier reads it (`auth/session.ts`).
   if (crossSiteSession(context.req)) return refuse(context, CROSS_SITE());
   const presented = await options.verify(context.req);
-  if (presented !== undefined && presented !== 'expired') context.set(PRESENTED, presented);
-  if (presented === undefined) {
+  if (typeof presented === 'object') context.set(PRESENTED, presented);
+  else clearNamedCookie(context);
+  if (presented === undefined || presented === 'absent') {
     // A tab that names no sign-in of its own reads nothing on the cookies of
     // others: not them, their business or their clients.
     if (unnamedSession(context.req)) return refuse(context, MISMATCH());
+    // No credential at all (a crawler, a probe) tried no sign-in: the same
+    // answer, and never counted as a failed one (security line 9).
+    if (presented === 'absent') context.set(NO_CREDENTIAL, true);
     return refuse(context, refuseCommand('AUTH_UNKNOWN_LOGIN', [], [SIGN_IN]));
   }
   // An expired bearer is its own answer on both paths. It is the re-login
@@ -301,6 +307,18 @@ async function admit(
   }
   if (businessId === undefined) return refuse(context, entry.unresolved());
   return { presented, businessId, body };
+}
+
+/**
+ * The page ends its session on `AUTH_SESSION_EXPIRED` and `AUTH_UNKNOWN_LOGIN`
+ * alike, and only the API can clear an `HttpOnly` cookie: a refused cookie
+ * left behind rides beside every later sign-in's until the headers are too
+ * large to answer. So the named sign-in's cookie goes with the refusal.
+ */
+function clearNamedCookie(context: Context): void {
+  const session = namedSession(context.req);
+  if (bearerOf(context.req) !== undefined || session === undefined) return;
+  deleteCookie(context, cookieNameFor(session), SESSION_COOKIE_OPTIONS);
 }
 
 export function createApi(options: ApiOptions): Hono {
@@ -352,7 +370,8 @@ export function createApi(options: ApiOptions): Hono {
         const response =
           admitted instanceof Response ? admitted : await run(context, declaration, admitted);
         const outcome = outcomeOf(context, declaration);
-        const signal = options.observe && signalOf(outcome);
+        const tried = (context as Context).get(NO_CREDENTIAL) !== true;
+        const signal = options.observe && tried && signalOf(outcome);
         if (signal) options.observe?.(signal);
         // Download volume (security line 9): the records each read handed out, per business and reader.
         const { business, person: who, items } = outcome;
@@ -447,8 +466,15 @@ export function createApi(options: ApiOptions): Hono {
       const [taskId] = await asks.atDoor([context.req.param('recordId')]);
       if (taskId === undefined) throw new Error('the door answered no topic');
       if (typeof taskId !== 'string') return refuse(context, taskId);
+      // Batch 1's dedicated task stream: its frames carry no identifier (REVB1ENDFIXAPID).
       return streamSSE(context, async (stream) => {
-        await follow(stream, live, [{ label: taskId, taskId }], asks);
+        await follow(
+          stream,
+          live,
+          admitted.businessId,
+          taskId,
+          async () => await asks.again(taskId),
+        );
       });
     });
 
@@ -495,7 +521,7 @@ export function createApi(options: ApiOptions): Hono {
         const forBoard = shares.shift();
         const seated = forTasks && (await seatOf(options, live, context, asks));
         await Promise.all([
-          forTasks && follow(forTasks, live, watched, asks, seated),
+          forTasks && followTopics(forTasks, live, watched, asks, seated),
           joined && forBoard && followBoardOn(forBoard, options, live, context, businessId, joined),
         ]);
       });
@@ -584,8 +610,7 @@ async function seatOf(
 ): Promise<Seated | undefined> {
   const { presence } = live;
   const presented = await options.verify(context.req);
-  if (presence === undefined || presented === undefined || presented === 'expired')
-    return undefined;
+  if (presence === undefined || typeof presented !== 'object') return undefined;
   const viewer = await (live.viewer ?? viewerOf)(options.database, asks.businessId, presented);
   if (isCommandRefusal(viewer)) return undefined;
   const { personId, name, staff } = viewer;
@@ -631,7 +656,7 @@ async function mayWatch(
   at: AdmissionAt,
 ): Promise<readonly (string | CommandRefusal)[] | CommandRefusal> {
   const presented = await options.verify(context.req);
-  if (presented === undefined || presented === 'expired') {
+  if (typeof presented !== 'object') {
     return refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED_FIXES);
   }
   const requests = taskIds.map((recordId) => ({ read: 'task.execution' as const, recordId }));
@@ -645,9 +670,9 @@ async function mayWatch(
 }
 
 /**
- * INB-1f: the board's one stream per tab, through the same door. Each task it
- * names is asked as a task's own stream asks it; the inbox topic is the
- * caller's own person, which the join resolves, asked again each batch.
+ * INB-1f: the board's one stream per tab, through the same door. It digests
+ * the reads of the person the join resolves, asked again on every run, and
+ * hears that person's inbox topic (`live-board.ts`).
  */
 async function boardStream(
   options: ApiOptions,
@@ -671,7 +696,6 @@ async function followBoardOn(
   businessId: string,
   joined: { readonly personId: string },
 ): Promise<void> {
-  const asks = watching(options, live, context, businessId);
   await followBoard(
     stream,
     live.topics,
@@ -681,7 +705,7 @@ async function followBoardOn(
         const again = await mayJoinBoard(options, context, businessId);
         return isCommandRefusal(again) ? undefined : again.personId;
       },
-      reads: async (taskId) => typeof (await asks.again(taskId)) === 'string',
+      reach: async (personId) => await mayReach(options, context, businessId, personId),
       shown: async (personId) => await mayShowInbox(options, context, businessId, personId),
     },
   );
@@ -694,10 +718,23 @@ async function mayJoinBoard(
   businessId: string,
 ): Promise<{ readonly personId: string } | CommandRefusal> {
   const presented = await options.verify(context.req);
-  if (presented === undefined || presented === 'expired') {
+  if (typeof presented !== 'object') {
     return refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED_FIXES);
   }
   return await joinLiveBoard(options.database, businessId, presented);
+}
+
+/** A digest of the tasks the stream's own person reads now, with the bearer verified again. */
+async function mayReach(
+  options: ApiOptions,
+  context: Context,
+  businessId: string,
+  personId: string,
+): Promise<string | undefined> {
+  const presented = await options.verify(context.req);
+  return typeof presented === 'object'
+    ? await boardReach(options.database, businessId, presented, personId)
+    : undefined;
 }
 
 /** What `inbox.read` shows the stream's own person now, asked with the bearer verified again. */
@@ -708,7 +745,7 @@ async function mayShowInbox(
   personId: string,
 ): Promise<string | undefined> {
   const presented = await options.verify(context.req);
-  if (presented === undefined || presented === 'expired') return undefined;
+  if (typeof presented !== 'object') return undefined;
   return await shownInbox(options.database, businessId, presented, personId);
 }
 
@@ -783,6 +820,66 @@ function mountFactorRoutes(api: Hono, options: ApiOptions, factors: FactorProvid
   api.route(`${PREFIX.person}:businessKey`, routes);
 }
 
+const noop = (): void => {};
+const RANK = { check: 0, invalidate: 1, resync: 2 } as const;
+
+/**
+ * One open stream: `resync` once subscribed, then each signal once the caller
+ * is asked again, and `closed` the first time the answer is no. Signals that
+ * arrive while one is pending merge into it, the strongest kept. Stopping it
+ * (the tab leaving, or the topics closing) lets go only once no question it
+ * asked is in flight.
+ */
+export async function follow(
+  stream: SSEStreamingApi,
+  live: { readonly topics: LiveTopics; readonly recheckMs?: number },
+  businessId: string,
+  taskId: string,
+  may: () => Promise<string | CommandRefusal>,
+): Promise<void> {
+  const ended = new Promise<void>((resolve) => {
+    stream.onAbort(resolve);
+  });
+  let pending: LiveSignal | 'check' | null = null;
+  let chain = Promise.resolve();
+  const send = async (): Promise<void> => {
+    const signal = pending;
+    pending = null;
+    if (signal === null || stream.aborted) return;
+    const allowed = typeof (await may()) === 'string';
+    // The tab may have left while the caller was asked: nothing is written after.
+    if (stream.aborted) return;
+    if (!allowed) {
+      await stream.writeSSE({ event: 'closed', data: '' });
+      stream.abort();
+    } else if (signal !== 'check') await stream.writeSSE({ event: signal, data: '' });
+  };
+  const want = (signal: LiveSignal | 'check'): void => {
+    if (pending === null) chain = chain.then(send).catch(() => stream.abort());
+    if (pending === null || RANK[signal] > RANK[pending]) pending = signal;
+  };
+  let finished = noop;
+  const done = new Promise<void>((resolve) => {
+    finished = resolve;
+  });
+  const stop = async (): Promise<void> => {
+    stream.abort();
+    await done;
+  };
+  const unsubscribe = live.topics.subscribe(businessId, taskId, want, stop);
+  const timer = setInterval(() => want('check'), live.recheckMs ?? RECHECK_MS);
+  try {
+    // Topics closing stop a stream as it subscribes: nothing is written after.
+    if (!stream.aborted) await stream.writeSSE({ event: 'resync', data: '' });
+    await ended;
+  } finally {
+    clearInterval(timer);
+    await chain;
+    unsubscribe();
+    finished();
+  }
+}
+
 /**
  * One way out for every refusal, so the ones the boundary raises itself go
  * through the register's constructor and the status table like any other,
@@ -806,6 +903,7 @@ function refuse(context: Context, refusal: CommandRefusal): Response {
 const PRESENTED = 'presented';
 const REFUSAL = 'refusal';
 const HANDED_OUT = 'handed-out';
+const NO_CREDENTIAL = 'no-credential';
 
 /** How many records a read handed out: a task is one, a list is its length. */
 function recordsIn(read: object): number {

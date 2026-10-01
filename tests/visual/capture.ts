@@ -15,6 +15,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import type { Browser, BrowserContext, BrowserContextOptions, Page, Route } from 'playwright';
+import { boot } from './boot.ts';
 import { routeRules, sourceOf } from './mockup-routes.ts';
 import { fontCache, readAssets, type Packet, type Theme } from './packet.ts';
 
@@ -228,10 +229,7 @@ export async function load(
   prep: { hide?: string[] | undefined; open?: string | undefined } = {},
 ): Promise<Page> {
   const hide = prep.hide ?? [];
-  const page = await side.context.newPage();
-  await page.clock.setFixedTime(new Date(packet.clock));
-  await page.goto(url, { waitUntil: 'load' });
-  await page.waitForFunction(() => document.querySelector('#app:empty') === null);
+  const page = await boot(await side.context.newPage(), url, packet.clock);
   await page.addStyleTag({ content: fontCss() });
   if (hide.length > 0)
     await page.addStyleTag({ content: `${hide.join(',')}{display:none!important}` });

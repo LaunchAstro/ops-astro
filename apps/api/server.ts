@@ -177,6 +177,8 @@ export interface ApiConfig {
   readonly admin: AdminConnection;
   /** The issuer and published key set bearers are checked against: public keys only. */
   readonly signIn: Omit<SupabaseVerifierOptions, 'onRefusal'>;
+  /** The provider's publishable key the page sends with a sign-in: public; '' or absent, none. */
+  readonly providerKey?: string;
   /** The signing key and delegation keyring `main` read, never put in `process.env`. */
   readonly keys: RuntimeKeys;
   /**
@@ -272,7 +274,10 @@ export function composeApi(config: ApiConfig): ComposedApi {
 
   // G3: the page reads its sign-in address here, so one web build serves every
   // environment. The issuer is public, and nothing is read to answer it.
-  server.get('/api/sign-in', (context) => context.json({ issuer: config.signIn.issuer }));
+  // The hosted provider also wants its publishable key, public too (S0-6).
+  const key = config.providerKey ?? '';
+  const signInAnswer = { issuer: config.signIn.issuer, ...(key === '' ? {} : { key }) };
+  server.get('/api/sign-in', (context) => context.json(signInAnswer));
 
   const { identity } = config;
   if (identity !== undefined) {

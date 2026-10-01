@@ -210,7 +210,7 @@ async function checkOperator(environment: Environment, operatingOnly: boolean): 
     header: (name: string) => (name.toLowerCase() === 'authorization' ? bearer : undefined),
   };
   const presented = await verify(request as unknown as Context['req']);
-  if (presented === undefined || presented === 'expired') {
+  if (typeof presented !== 'object') {
     return refused('the sign-in did not verify: missing, forged or expired');
   }
 

@@ -11,12 +11,23 @@
 // baked in; and the function in it is the entry, bundled and working.
 
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  cpSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildOutputProblems } from '../../scripts/ops/build-output.ts';
+import { artefactName } from '../../scripts/ops/promotion.ts';
 import { outputDigest, release } from '../../scripts/ops/release.ts';
+import { deployWeb } from '../../scripts/ops/web-deploy.ts';
+import { clean, fakeVercel, settings as webSettings } from './web-deploy.fixture.ts';
 
 const scratch = mkdtempSync(join(tmpdir(), 's0-6-release-'));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
@@ -73,6 +84,7 @@ describe('S0-6 the release step writes one build output', () => {
   digestCase();
   environmentCase();
   bundledCase();
+  deployableCase();
 });
 
 function outputCase() {
@@ -143,5 +155,19 @@ function bundledCase() {
       'status 421 private, no-store',
     );
     expect(callBundled(out, settings, 'ops.example.test')).toBe('status 503 private, no-store');
+  }, 60_000);
+}
+
+function deployableCase() {
+  it('the web deploy takes the real release output as stored, only the Vercel CLI faked', async () => {
+    const root = mkdtempSync(join(scratch, 'store-'));
+    cpSync(out, join(root, artefactName(STAMP)), { recursive: true });
+    const vercel = fakeVercel();
+    const outcome = await deployWeb(
+      { version: STAMP, store: root },
+      { env: webSettings(vercel.path), preflight: clean },
+    );
+    expect(outcome, JSON.stringify(outcome)).toMatchObject({ kind: 'deployed' });
+    expect(vercel.lines('argv')).toContain('deploy --prebuilt --prod');
   }, 60_000);
 }

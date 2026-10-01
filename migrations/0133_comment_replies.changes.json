@@ -1,0 +1,7 @@
+[
+  {
+    "table": "public.field_defs",
+    "columns": ["owning_operation"],
+    "where": "key = 'body' and origin = 'core' and record_type_id in (select id from public.record_types where key = 'task_comment')"
+  }
+]

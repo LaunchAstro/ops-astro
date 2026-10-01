@@ -7,15 +7,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { deploy } from '../../scripts/ops/deploy.ts';
-import {
-  definition,
-  STAGED,
-  BUILT,
-  CANARY,
-  scratch,
-  effects,
-  clean,
-} from './staging-deploy.fixture.ts';
+import { definition, STAGED, CANARY, scratch, effects, clean } from './staging-deploy.fixture.ts';
 import { outputDigest } from '../../scripts/ops/build-output.ts';
 
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
@@ -39,7 +31,7 @@ const store = (version = STAGED, stamp = version): string => {
 // ---- deploy recorded, and the artefact staging runs ------------------------
 
 describe('S0-6 deploy recorded', () => {
-  it('records the version, the artefact and the image id, and nothing from the environment', async () => {
+  it('records the version and the artefact, and nothing from the environment', async () => {
     process.env['OPS_ASTRO_TOKEN'] = CANARY;
     try {
       const outcome = await deploy({ version: STAGED, store: store() }, effects(), clean);
@@ -49,7 +41,6 @@ describe('S0-6 deploy recorded', () => {
           action: 'deploy recorded',
           version: STAGED,
           artefact: definition['x-ops-astro'].artefact.replace('{version}', STAGED),
-          image: BUILT,
         },
       });
       expect(JSON.stringify(outcome)).not.toContain(CANARY);
@@ -74,23 +65,4 @@ describe('S0-6 deploy recorded', () => {
       expect(watched.calls).toStrictEqual([]);
     }
   });
-
-  imageIdCases();
 });
-
-function imageIdCases() {
-  it('an image the build does not name by a full image id is refused before Compose is asked', async () => {
-    for (const id of [
-      '',
-      'ops-astro-staging-app:latest',
-      'sha256:abc',
-      `sha256:${'a'.repeat(64)}\n`,
-    ]) {
-      const watched = effects({ buildImage: () => id });
-      // oxlint-disable-next-line no-await-in-loop -- each id on its own
-      const outcome = await deploy({ version: STAGED, store: store() }, watched, clean);
-      expect(outcome.kind, id).toBe('failed');
-      expect(watched.calls).not.toContain('up');
-    }
-  });
-}

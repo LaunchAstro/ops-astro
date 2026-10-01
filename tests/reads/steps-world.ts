@@ -15,6 +15,7 @@ import {
   type FreshDatabase,
 } from '../support/fresh-database.ts';
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
+import { clientHere } from './client-rows.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
@@ -104,7 +105,7 @@ export const make = async (
       command: 'task.set_party',
       recordId,
       expectedRevision: await revisionOf(recordId),
-      fields: { client: placed.client },
+      fields: { client: await clientHere(seeded().admin, business, placed.client) },
     });
   }
   ids[name] = recordId;
