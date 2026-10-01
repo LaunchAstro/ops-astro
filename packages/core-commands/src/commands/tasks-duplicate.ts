@@ -182,12 +182,14 @@ async function refuseAuthority(
 /**
  * The old task's type and client, read under a share lock so it cannot be
  * purged while the link to it is written. Live only: a trashed task is
- * answered as a missing one.
+ * answered as a missing one. So is any task when the chosen client is not one
+ * of this business's, another business's and a made-up id alike.
  */
 async function readOld(
   tx: TenantQuery,
   taskTypeId: string,
   oldId: string,
+  chosen: string | null,
 ): Promise<{ readonly typeId: string; readonly client: string | null } | undefined> {
   const rows = await tx.query<{ readonly type_id: string; readonly client: string | null }>(
     `select record_type_id as type_id, uuid_7::text as client from public.records
@@ -196,7 +198,8 @@ async function readOld(
     [tx.businessId, taskTypeId, oldId],
   );
   const row = rows[0];
-  return row === undefined ? undefined : { typeId: row.type_id, client: row.client };
+  if (row === undefined || (chosen !== null && !(await isClientHere(tx, chosen)))) return undefined;
+  return { typeId: row.type_id, client: row.client };
 }
 
 /** The new top-level task: the shell's title, the chosen client, the server's placement. */
@@ -236,13 +239,8 @@ export async function duplicateTask(
   const oldId = request.recordId.toLowerCase();
   const unauthorised = await refuseAuthority(tx, context, oldId, shell.client);
   if (unauthorised !== undefined) return refused(unauthorised);
-  const old = await readOld(tx, context.spine.taskTypeId, oldId);
+  const old = await readOld(tx, context.spine.taskTypeId, oldId, shell.client);
   if (old === undefined) return refused(refuseNotFound());
-  // The chosen client is one of this business's: another business's and a
-  // made-up id are one NOT_FOUND, and nothing is written.
-  if (shell.client !== null && !(await isClientHere(tx, shell.client))) {
-    return refused(refuseNotFound());
-  }
 
   const naming = await namingFields(tx, old.client, shell);
   if (naming.length > 0 && request.confirmCarried !== true) {
