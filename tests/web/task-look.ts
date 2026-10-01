@@ -6,6 +6,7 @@
 // visual-match case here proves its element is among them, pinned everywhere.
 
 import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { TASK } from '../visual/look/task.ts';
 
 const PLACES = ['1480', '900', '390'].flatMap((width) =>
@@ -13,7 +14,7 @@ const PLACES = ['1480', '900', '390'].flatMap((width) =>
 );
 
 const pinned = JSON.parse(
-  readFileSync(new URL('../visual/look/task.mockup.json', import.meta.url), 'utf8'),
+  readFileSync(join(import.meta.dirname, '../visual/look/task.mockup.json'), 'utf8'),
 ) as { readonly probes: Readonly<Record<string, Readonly<Record<string, unknown>>>> };
 
 /** Each named probe at each place it is not held at; empty when every one is held at all six. */
