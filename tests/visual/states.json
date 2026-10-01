@@ -45,6 +45,65 @@
       "id": "reconciliation",
       "mockup": null,
       "reason": "no visual reference: the pinned mockup draws no reconciliation of a dropped run"
+    },
+    {
+      "id": "c31-keys",
+      "note": "Settings, Keys (C31): the business's named secrets, never a value",
+      "mockup": null,
+      "reason": "no visual reference: the pinned mockup draws no settings screen; the harness captures the panel on the app's settings page",
+      "appPath": "/settings",
+      "appRegions": { "keys": "[data-settings=\"key-rows\"]" }
+    },
+    {
+      "id": "c33-triggers",
+      "note": "Settings, Workflow triggers (C33): each definition and its activations",
+      "mockup": null,
+      "reason": "no visual reference: the pinned mockup draws no settings screen; the harness captures the panel on the app's settings page",
+      "appPath": "/settings",
+      "appRegions": { "triggers": "[data-settings=\"trigger-rows\"]" }
+    },
+    {
+      "id": "c52a-approvals",
+      "note": "an activation with the pinned version and the standing approval it names (C52-A)",
+      "mockup": null,
+      "reason": "no visual reference: the pinned mockup draws no settings screen; the harness captures the panel on the app's settings page",
+      "appPath": "/settings",
+      "appRegions": { "activation": "[data-activation]" }
+    },
+    {
+      "id": "mp-14-7a-fleet",
+      "note": "the fleet's tiles and the connector table with one row open",
+      "mockup": "/agency/connections-and-signal/",
+      "open": "#connRows .conn__row",
+      "regions": { "tiles": "#fleet", "table": "table:has(#connRows)" },
+      "appPath": "/connections/",
+      "appRegions": { "tiles": ".tiles", "table": "table.conn" },
+      "app": "MP-14-7a draws the fleet from the made-up connection.fleet"
+    },
+    {
+      "id": "mp-14-8-signal",
+      "note": "signal: grants, tripwires and the night round",
+      "mockup": "/agency/connections-and-signal/",
+      "regions": { "grants": "#grants", "tripwires": "#tripwires", "night-round": "#night-round" },
+      "appPath": "/connections/",
+      "app": "MP-14-8 draws the signal from the made-up connection.signal"
+    },
+    {
+      "id": "mp-14-9-costing",
+      "note": "skill costing, section 009",
+      "mockup": "/agency/connections-and-signal/",
+      "regions": { "costing": "#skill-costing" },
+      "appPath": "/connections/",
+      "appRegions": { "costing": "#costing" },
+      "app": "MP-14-9 draws skill costing from the made-up finance.skill_costs"
+    },
+    {
+      "id": "mp-14-10a-graduation",
+      "note": "graduation, the operations region's section 010",
+      "mockup": "/agency/connections-and-signal/",
+      "regions": { "graduation": "#graduation" },
+      "appPath": "/connections/",
+      "app": "MP-14-10a draws graduation from the made-up connection.graduation"
     }
   ]
 }

@@ -6,8 +6,18 @@ import { MADE_UP_READS, madeUpAnswer, TASKS } from './made-up-api.ts';
 
 // Reads no batch/1 screen draws at the harness's addresses: a receipt needs a
 // finished run, the preset plan is the command line's, and the unattended list
-// is the operations view's. Each is drawn "could not be read" if asked.
-const NOT_DRAWN = new Set(['task.receipt', 'preset.plan', 'inbox.unattended']);
+// is the operations view's. Each is drawn "could not be read" if asked. The
+// conversation list and read and the pending gates are SL11 and SL12's reads,
+// answered by their own UI pieces on their branches; on SL13's they draw
+// "could not be read".
+const NOT_DRAWN = new Set([
+  'task.receipt',
+  'preset.plan',
+  'inbox.unattended',
+  'conversation.list',
+  'conversation.read',
+  'gate.pending',
+]);
 
 describe('the made-up reads the width-and-theme harness draws from', () => {
   it('answers a read at the path the app asks it on, with the made-up rows', () => {
