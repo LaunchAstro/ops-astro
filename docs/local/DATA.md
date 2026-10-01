@@ -349,7 +349,22 @@ application group may not execute it. Only `ops_astro_broker` may, a
 not inherit it, so the broker takes it for the one statement with
 `set_config('role', ..., true)` and gives it back. The suites sort that role
 into a class of its own (`broker`). `tests/broker/aw-01-broker-fair-share.test.ts`
-proves the separation and the grants.
+proves the separation and the grants. `take_lease` (migration 0220, SL11-30) is
+the third, and the one way a lease is written. The application group holds no
+insert on `leases` and updates only `expires_at`, `state` and `released_at`, so
+it can neither rewrite a lease's holder nor forge a lease, and 0218's check
+that a reviewed output is its lease holder's work stands on the holder column.
+Pickup calls it after its own checks under the locks. It checks again inside, in
+`app_business_id()`'s business: the reservation is claimable, the approving
+person is the one named, the claimant's authority is live (a person's own write
+on the task, or an agent's own delegation for this lease from the approving
+person, judged as `EFFECTIVE` judges grants), and the expiry is within a lease's
+lifetime. It computes the fence itself. The application role still writes
+delegations, grants, gate decisions and actors, so a new lease is only as
+trustworthy as those rows; the delegation mint behind this path is the next step. It keeps row security on, its search
+path is `pg_catalog, pg_temp`, PUBLIC may not execute it, and a call naming
+nothing answers null. `tests/db/lease-pickup-path.test.ts` and
+`tests/db/lease-holder-guard.test.ts` prove it.
 
 `ops_astro_occurrence` (migration 0097, AW-01 J) follows the same pattern
 without a function: it holds `insert` on `planned_runs`, `select` on a task's

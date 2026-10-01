@@ -16,6 +16,7 @@ const COLUMN_UPDATES: Readonly<
   Record<string, { readonly from: string; readonly columns: readonly string[] }>
 > = {
   'public.planned_runs': { from: '0086', columns: ['state'] },
+  'public.leases': { from: '0220', columns: ['expires_at', 'released_at', 'state'] },
 };
 
 /** The `table.column` pairs the application group may update after `at`, or at the full schema. */

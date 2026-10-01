@@ -34,7 +34,7 @@ import { randomUUID } from 'node:crypto';
 import { mintDelegation, refuseCommand } from '../../core-records/src/index.ts';
 import type { TenantQuery, MintedDelegation, Subject } from '../../core-records/src/index.ts';
 import { lockedInstant } from './clock.ts';
-import { leaseReason, nextFence, personWriteLive } from './lease-ownership.ts';
+import { leaseReason, personWriteLive } from './lease-ownership.ts';
 import type { LockRequest, LockSet } from './locks.ts';
 import { only } from './only.ts';
 import { reserve } from './decide.ts';
@@ -648,8 +648,11 @@ interface NewLease {
 }
 
 /**
- * Write the lease at the task's next fence, bind the hold, attempt and run to
- * it once, and record the claim as the run's progress (T2a).
+ * Take the lease through the pickup path, bind the hold, attempt and run to it
+ * once, and record the claim as the run's progress (T2a). The application role
+ * inserts no lease: `take_lease` (migration 0220) checks the business, the
+ * reservation and the claimant's authority again as its definer, and writes
+ * the lease at the task's next fence.
  */
 async function writeLease(
   tx: TenantQuery,
@@ -660,27 +663,21 @@ async function writeLease(
   expiresAt: Date,
   locks: LockSet,
 ): Promise<NewLease> {
-  const fence = await nextFence(tx, found.task_id);
   const holderActorId = request.claimant === 'person' ? request.actorId : request.agentActorId;
   const leaseId = randomUUID();
-  await tx.query(
-    `insert into public.leases
-       (business_id, id, task_id, run_id, reservation_id, delegation_id, holder_actor_id,
-        authorised_by_person_id, fence, expires_at)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+  const taken = await tx.query<{ readonly fence: string }>(
+    `select public.take_lease($1, $2, $3, $4, $5, $6, $7)::text as fence`,
     [
-      tx.businessId,
       leaseId,
-      found.task_id,
-      found.run_id,
       claimed.reservationId,
       delegation?.delegation.id ?? null,
       holderActorId,
       request.authorisedByPersonId,
-      fence,
       expiresAt,
+      request.collection,
     ],
   );
+  const fence = Number(only(taken, 'pickup: the lease the pickup path took').fence);
   // Bound once. The reservation stays `held`; binding is a claim, not a spend.
   await tx.query(
     `update public.reservations set lease_id = $3
