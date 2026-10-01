@@ -67,6 +67,7 @@ describe.skipIf(serverUrl === undefined)('preference:write for a client user', (
   ownRows();
   personToPerson();
   realCrossings();
+  widthsBound();
 });
 
 function ownRows(): void {
@@ -143,5 +144,33 @@ function realCrossings(): void {
     expect(await rowsOf(cleo.personId)).toStrictEqual(cleoRows);
     expect((await dismiss({ ...TIP, version: 7 }, bo.token, { key: 'bravo' })).status).toBe(200);
     expect(await dismissedOf(cy.token)).toStrictEqual({ [tipKey(OTHER.page, OTHER.tip)]: 5 });
+  });
+}
+
+/** `n` column ids of `length` characters each, every one 100 pixels wide. */
+function columns(n: number, length: number): Record<string, number> {
+  return Object.fromEntries(
+    Array.from({ length: n }, (_, i) => [String(i).padStart(length, 'c'), 100]),
+  );
+}
+
+function widthsBound(): void {
+  it('preference:write for a client user: columns.widths holds at most 64 column ids of at most 64 characters', async () => {
+    const cleo = await clientUser(fixture.business, 'Cleo Columns');
+    const most = columns(64, 64);
+    const kept = await save('columns.widths', most, cleo.token);
+    expect(kept.status, JSON.stringify(kept.body)).toBe(200);
+    for (const [why, value] of [
+      ['65 column ids', columns(65, 8)],
+      ['a 65-character column id', columns(1, 65)],
+      ['50,000 column ids', columns(50_000, 6)],
+    ] as const) {
+      // oxlint-disable-next-line no-await-in-loop
+      const refused = await save('columns.widths', value, cleo.token);
+      expect(refused.status, why).toBe(422);
+      expect(refused.body['code'], why).toBe('FIELD_VALUE_INVALID');
+    }
+    const seen = await call('preference.read', {}, cleo.token);
+    expect(seen.body['preferences']).toStrictEqual({ 'columns.widths': most });
   });
 }
