@@ -18,6 +18,7 @@ import {
   RESET_SOURCE_LIMIT,
 } from '../../packages/core-commands/src/index.ts';
 import type { Broker } from '../../packages/core-custody/src/index.ts';
+import type { Database, TenantQuery } from '../../packages/core-records/src/index.ts';
 import { noDatabase, useInvitationWorld, w } from './c39-t-world.ts';
 import { mountAuthHook, postAuth } from './c39-t-hook-world.ts';
 import {
@@ -72,7 +73,7 @@ C40('C40 password reset, the ask: per source', () => {
     await requestPasswordReset(w.db.app, broker, { address: addressNo(100), source: two });
     expect(recovered).toHaveLength(RESET_SOURCE_LIMIT + 1);
     // The source is kept as its digest, a key and not a secret (an unsalted
-    // digest of an IPv4 is found by trying them all), and no address with it.
+    // digest of an IPv4 is found by trying them all), and the address as its digest only.
     const kept = await w.db.admin.execute<{ row: string }>(
       'select to_jsonb(a)::text as row from ops.password_reset_asks a',
     );
@@ -83,8 +84,36 @@ C40('C40 password reset, the ask: per source', () => {
   });
 });
 
-C40('C40 password reset, the ask: concurrent asks for one address', () => {
-  it('C40 reset per-address ask limit: concurrent asks reach the provider at most RESET_LIMIT times', async () => {
+/** `w.db.app`, but `then` runs once its first transaction (the ask's own row) has committed. */
+function afterOwnRow(then: () => void): Database {
+  let first = true;
+  return {
+    withBusiness: async (business: string, run: (tx: TenantQuery) => Promise<unknown>) => {
+      const done = await w.db.app.withBusiness(business, run);
+      if (first) {
+        first = false;
+        // After the ask's own count is queued on the one connection.
+        setImmediate(then);
+      }
+      return done;
+    },
+  } as unknown as Database;
+}
+
+C40('C40 password reset, the ask: asks for one address', () => {
+  it('C40 reset per-address ask limit: one at a time, exactly RESET_LIMIT asks reach the provider', async () => {
+    const { broker, recovered } = recoverCounted();
+    const address = addressNo(0);
+    for (let n = 0; n < RESET_LIMIT; n += 1) {
+      // oxlint-disable-next-line no-await-in-loop -- one ask at a time, each counted
+      await requestPasswordReset(w.db.app, broker, { address, source: freshSource() });
+    }
+    expect(recovered).toHaveLength(RESET_LIMIT);
+    await requestPasswordReset(w.db.app, broker, { address, source: freshSource() });
+    expect(recovered).toHaveLength(RESET_LIMIT);
+  });
+
+  it('C40 reset per-address ask limit: interleaved asks reach the provider RESET_LIMIT times, each mailed', async () => {
     mountAuthHook();
     w.provider.mode('accept');
     const login = await loginIn([w.alpha]);
@@ -95,19 +124,27 @@ C40('C40 password reset, the ask: concurrent asks for one address', () => {
       });
       await postAuth(recoveryFor(login));
     });
-    await Promise.all(
-      Array.from(
-        { length: RESET_LIMIT + 3 },
-        async () =>
-          await requestPasswordReset(w.db.app, broker, {
-            address: login.address,
-            source: freshSource(),
-          }),
-      ),
-    );
-    expect(recovered.length).toBeLessThanOrEqual(RESET_LIMIT);
+    // Each ask starts once the one before it has committed its own row.
+    const asks: Promise<void>[] = [];
+    await new Promise<void>((resolve) => {
+      const start = (n: number): void => {
+        if (n === RESET_LIMIT + 3) {
+          resolve();
+          return;
+        }
+        const database = afterOwnRow(() => {
+          start(n + 1);
+        });
+        asks.push(
+          requestPasswordReset(database, broker, { address: login.address, source: freshSource() }),
+        );
+      };
+      start(0);
+    });
+    await Promise.all(asks);
+    expect(recovered).toHaveLength(RESET_LIMIT);
     // Every token the provider minted was mailed: no mailed link was voided by a refused one.
-    expect(mailsTo(login.address)).toHaveLength(recovered.length);
+    expect(mailsTo(login.address)).toHaveLength(RESET_LIMIT);
   });
 });
 
