@@ -10,38 +10,48 @@
 //
 //   the plan's run  the run a bound record was accepted on, or a run of that
 //                   run's lineage proposed once it was bound: the plan itself;
-//   a work run      the newest bound record that existed when the run was
-//                   proposed (bound at or before the run's `created_at`, the
+//   a work run      the record stored with its step (0223): the bound
 //                   record `task.propose` checked the step key against under
-//                   the task lock), with the step key the proposal named;
+//                   the task lock, with the step key the proposal named;
 //   neither         no plan record: the run was proposed under no plan.
 //
 // A record bound later is newer than every run already proposed, so it adds
 // placements and changes none. The read carries the steps of every record a
 // run of the task is placed under, so a row resolves against its own plan.
 //
-// Both clocks are their transaction's start (`now()`), and the task lock
-// orders the two writes, not those clocks: an accept that began before a
-// proposal and took the lock after it reads here as bound first. A record id
-// written with the proposal would close that; it needs a column (planned_steps).
+// "Bound before" a run is the stored record and every record ordered below it
+// (`bound_at`, then id, the projection's own order), on the run's own task
+// only. A step written before 0223 stored none (`plan_record_written` false)
+// and keeps the placement by time: bound at or before the run's `created_at`.
+// Both clocks are their transaction's start, so for those rows alone an
+// accept that began before a proposal and took the task lock after it still
+// reads as bound first.
 
 import type { ProjectedPlan } from '../../../core-runtime/src/index.ts';
 
 /**
  * Each of the task's runs: its lineage, the plan step key its proposal named,
- * and the ids of the task's plan records bound at or before it was proposed,
- * newest first. `$1` the business, `$2` the task.
+ * and the ids of the task's plan records bound before it was proposed, newest
+ * first. `$1` the business, `$2` the task.
  */
 export const PLACEMENT_FACTS = `coalesce((select json_agg(json_build_object(
-    'runId', run.id, 'lineageId', run.lineage_id,
-    'planStepKey', (select st.plan_step_key from public.planned_steps st
-      where st.business_id = $1 and st.run_id = run.id and st.ordinal = 1),
+    'runId', run.id, 'lineageId', run.lineage_id, 'planStepKey', st.plan_step_key,
     'boundBefore', coalesce((select json_agg(pr.id order by pr.bound_at desc, pr.id desc)
       from public.plan_records pr
       join public.planned_runs prun on prun.business_id = pr.business_id and prun.id = pr.run_id
-      where pr.business_id = $1 and prun.task_id = $2 and pr.bound_at <= run.created_at), '[]'))
+      where pr.business_id = $1 and prun.task_id = $2
+        and case when st.plan_record_written
+          then (pr.bound_at, pr.id) <= (stored.bound_at, stored.id)
+          else pr.bound_at <= run.created_at end), '[]'))
   order by run.created_at, run.id)
   from public.planned_runs run
+  left join public.planned_steps st
+    on st.business_id = run.business_id and st.run_id = run.id and st.ordinal = 1
+  left join lateral (select own.bound_at, own.id from public.plan_records own
+      join public.planned_runs own_run
+        on own_run.business_id = own.business_id and own_run.id = own.run_id
+     where own.business_id = $1 and own.id = st.plan_record_id and own_run.task_id = $2) stored
+    on true
  where run.business_id = $1 and run.task_id = $2), '[]')`;
 
 /** The plan an event's run was proposed under, as recorded. */
