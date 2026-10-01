@@ -10,7 +10,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Hono } from 'hono';
 import { sign } from 'hono/jwt';
 import { authorised, createApiFixture, tokenFor, type ApiFixture } from './fixture.ts';
-import { ISSUER, SECRET } from './fixture.ts';
+import { ISSUER } from './fixture.ts';
+import { signBearer, signForged, testSignIn } from '../support/sign-in.ts';
 import { enrol, grantTo, installSpine } from '../commands/fixture.ts';
 import { insertActor, insertBusiness, insertLogin, insertMapping } from '../identity/fixture.ts';
 import { insertPerson } from '../identity/fixture.ts';
@@ -44,27 +45,31 @@ const claims = (over: object = {}) => ({ ...GOTRUE, iat: now(), exp: now() + 600
 const PAST = { exp: now() - 60 };
 
 async function swapped(): Promise<string> {
-  const [header, , signature] = (await sign(claims(PAST), SECRET)).split('.');
+  const [header, , signature] = (await signBearer(claims(PAST))).split('.');
   return `${header}.${b64(claims({ ...PAST, sub: 'eve' }))}.${signature}`;
 }
 
 const CASES: readonly (readonly [string, () => Promise<string>, string])[] = [
-  ['CQ-1 audience refused: another', () => sign(claims({ aud: 'anon' }), SECRET), NO],
-  ['CQ-1 issuer refused: another', () => sign(claims({ iss: `${ISSUER}/` }), SECRET), NO],
-  ['CQ-1 issuer refused: none', () => sign(claims({ iss: undefined }), SECRET), NO],
-  ['CQ-1 algorithm refused: none', async () => `${b64({ alg: 'none' })}.${b64(claims())}.`, NO],
-  ['CQ-1 algorithm refused: HS512', () => sign(claims(), SECRET, 'HS512'), NO],
-  ['CQ-1 future nbf refused', () => sign(claims({ nbf: now() + 600 }), SECRET), NO],
-  ['CQ-1 expired still expired', () => sign(claims(PAST), SECRET), 'AUTH_SESSION_EXPIRED'],
-  ['CQ-1 forged expired: another secret', () => sign(claims(PAST), 'another'), NO],
+  ['CQ-1 audience refused: another', () => signBearer(claims({ aud: 'anon' })), NO],
+  ['CQ-1 issuer refused: another', () => signBearer(claims({ iss: `${ISSUER}/` })), NO],
+  ['CQ-1 issuer refused: none', () => signBearer(claims({ iss: undefined })), NO],
+  [
+    'CQ-1 algorithm refused: none',
+    () => Promise.resolve(`${b64({ alg: 'none' })}.${b64(claims())}.`),
+    NO,
+  ],
+  ['CQ-1 algorithm refused: HS512', () => sign(claims(), 'a-shared-secret', 'HS512'), NO],
+  ['CQ-1 future nbf refused', () => signBearer(claims({ nbf: now() + 600 })), NO],
+  ['CQ-1 expired still expired', () => signBearer(claims(PAST)), 'AUTH_SESSION_EXPIRED'],
+  ['CQ-1 forged expired: another secret', () => signForged(claims(PAST)), NO],
   ['CQ-1 forged expired: payload swapped', swapped, NO],
-  ['CQ-1 forged expired: another issuer', () => sign(claims({ ...PAST, iss: 'x' }), SECRET), NO],
+  ['CQ-1 forged expired: another issuer', () => signBearer(claims({ ...PAST, iss: 'x' })), NO],
 ];
 
 /** A read that runs, then faults: the trace sink, the composed server's onError, sees it. */
 const fault: typeof executeRead = (...a) =>
   executeRead(...a).then(() => Promise.reject(new Error('a fault past the door')));
-const FAULTY = { secret: SECRET, issuer: ISSUER, executeRead: fault, keys: runtimeKeys({}) };
+const FAULTY = { signIn: testSignIn(ISSUER), executeRead: fault, keys: runtimeKeys({}) };
 
 async function send(api: Hono, path: string, body: string | ReadableStream, token: string) {
   const headers = { ...authorised(token), [DELEGATION_HEADER]: `probe-${randomUUID()}` };
@@ -92,15 +97,20 @@ async function party(fixture: ApiFixture, api: Hono, key: string): Promise<Party
   return { id, key, title, read, member: token, client: await tokenFor(subject) };
 }
 
-describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-1 sign-in and request body', () => {
-  let fixture: ApiFixture;
-  let api: Hono;
-  let bravo: Party;
-  let charlie: Party;
-  const token = { member: '', agent: '' };
-  const counts = async (business: string) =>
-    (await fixture.db.admin.execute<Counts>(COUNTS, [business]))[0] as Counts;
+let fixture: ApiFixture;
 
+let api: Hono;
+
+let bravo: Party;
+
+let charlie: Party;
+
+const token = { member: '', agent: '' };
+
+const counts = async (business: string) =>
+  (await fixture.db.admin.execute<Counts>(COUNTS, [business]))[0] as Counts;
+
+describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-1 sign-in and request body', () => {
   beforeAll(async () => {
     fixture = await createApiFixture('cq1');
     api = fixture.compose();
@@ -112,14 +122,20 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-1 sign-in and re
 
   afterAll(async () => await fixture?.drop());
 
-  for (const path of ['/api/b/alpha/task/create', '/api/a/b/alpha/task/queue']) {
-    for (const [name, bearer, code] of CASES) {
+  cq1SignCases1();
+  cq1SignCases2();
+  cq1SignCases3();
+});
+
+function cq1SignCases1() {
+  ['/api/b/alpha/task/create', '/api/a/b/alpha/task/queue'].forEach((path) => {
+    CASES.forEach(([name, bearer, code]) => {
       it(`${name} (${path})`, async () => {
         const answer = await send(api, path, '{}', await bearer());
         expect(JSON.parse(answer.text).code).toBe(code);
       });
-    }
-  }
+    });
+  });
 
   it('CQ-1 body limit boundary: exactly 1 MiB is accepted and runs', async () => {
     const body = padded(MIB, { operationId: randomUUID(), fields: { title: 'at-the-limit' } });
@@ -142,7 +158,9 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-1 sign-in and re
       });
     }
   }
+}
 
+function cq1SignCases2() {
   it('CQ-1 isolation: two businesses, two clients, one grant each; neither reaches the other', async () => {
     const both = [bravo, charlie];
     const sees = async (p: Party, who: string, body: string) => {
@@ -165,10 +183,12 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-1 sign-in and re
     const after = await Promise.all(watched.map((id) => counts(id)));
     expect(after).toStrictEqual(before.map((c, i) => (i < 2 ? plus(c, delta) : c)));
   });
+}
 
+function cq1SignCases3() {
   it('CQ-1 token canary: a planted token and secret reach no log, trace, refusal or stored row', async () => {
     const canary = `cq1-canary-${randomUUID()}`;
-    const planted = await sign(claims({ aud: 'anon', canary }), SECRET);
+    const planted = await signBearer(claims({ aud: 'anon', canary }));
     const lines: unknown[] = [];
     const levels = ['log', 'info', 'warn', 'error', 'debug', 'trace'] as const;
     const push = (...parts: unknown[]) => lines.push(...parts) > 0;
@@ -188,7 +208,7 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-1 sign-in and re
     const stored = await Promise.all(TABLES.map(dump));
     const seen = JSON.stringify([answers, lines.map(String), stored]);
     expect([answers[3]?.status, seen.includes('api: unhandled')]).toStrictEqual([503, true]);
-    for (const value of [canary, planted, token.member, SECRET]) expect(seen).not.toContain(value);
+    for (const value of [canary, planted, token.member]) expect(seen).not.toContain(value);
   });
 
   it('CQ-1 runtime deps: hono and @hono/node-server are runtime, pinned and recorded', () => {
@@ -206,4 +226,4 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-1 sign-in and re
     const found = advisories.map((a) => `${a['module_name']} ${a['severity']}`);
     expect(found.filter((l) => /hono.* (moderate|high|critical)$/u.test(l))).toStrictEqual([]);
   }, 120_000);
-});
+}

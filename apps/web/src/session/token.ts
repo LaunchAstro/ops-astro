@@ -1,13 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The signed-in session: a token, a business, and where they are kept.
+// The signed-in session: a business, an email, and where they are kept.
 //
-// **In memory first, session storage second, and never local storage.** The
-// token is the whole credential, so it lives for as long as the tab does and no
-// longer: `sessionStorage` is cleared when the tab closes, and that is the
-// behaviour wanted. A reload must not sign the person out — checklist B5 asks
-// for a hard reload of the task address — and a closed tab must not leave a
-// bearer token behind on a shared machine.
+// **No token**: the credential is the `HttpOnly` cookie the API set (S0-6c).
+// What the page shows and routes by is kept in `sessionStorage`, never
+// `localStorage`, so a reload keeps the person signed in (checklist B5).
 //
 // The storage is an interface rather than the global. That is what lets a test
 // drive the whole session without a browser, and it means this module is a
@@ -97,10 +94,11 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export interface Session {
-  readonly token: string;
   /** `alpha` or `bravo`. It becomes the path prefix, never a body field. */
   readonly businessKey: string;
   readonly email: string;
+  /** The id the API gave this tab's sign-in, sent on every call; absent, refused. */
+  readonly sessionId?: string;
 }
 
 const KEY = 'ops-astro.session';
@@ -131,12 +129,13 @@ const RETURN_KEY = 'ops-astro.return-to';
 /**
  * The grant key the read projections are keyed on.
  *
- * Token and business together: a different token is a different reader and a
- * different business is a different tenancy, and a projection may survive
- * neither change.
+ * Business, person and session generation: a projection survives no change
+ * of reader, tenancy or session.
  */
 export function grantKeyOf(session: Session | null): string {
-  return session === null ? 'anonymous' : `${session.businessKey}:${session.token}`;
+  return session === null
+    ? 'anonymous'
+    : `${session.businessKey}:${session.email}:${String(endings)}`;
 }
 
 /**
@@ -155,7 +154,7 @@ export function grantKeyOf(session: Session | null): string {
  * Bravo and a different one in Alpha, and an address remembered without its
  * business is a string that may resolve to somebody else's task. It is kept
  * here because it is not a credential -- it is the word in the URL prefix and
- * the word printed in the top bar -- and the token is emphatically not kept.
+ * the word printed in the top bar.
  */
 export interface Interruption {
   readonly address: string;
@@ -252,8 +251,8 @@ function isSession(value: unknown): value is Session {
   if (!isRecord(value)) return false;
   const body = value;
   return (
-    typeof body['token'] === 'string' &&
     typeof body['businessKey'] === 'string' &&
-    typeof body['email'] === 'string'
+    typeof body['email'] === 'string' &&
+    (body['sessionId'] === undefined || typeof body['sessionId'] === 'string')
   );
 }

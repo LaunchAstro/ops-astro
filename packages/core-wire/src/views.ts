@@ -13,7 +13,17 @@
 // convert their own `Date`s so the type the server builds is the type a
 // client parses.
 
-import type { Action, PresetPlan, SettingValueType } from '../../core-records/src/index.ts';
+import type {
+  Action,
+  DeliveryState,
+  InboxAccess,
+  InboxAlert,
+  InboxFactKind,
+  InboxReason,
+  InboxWorkState,
+  PresetPlan,
+  SettingValueType,
+} from '../../core-records/src/index.ts';
 
 /** The task state a task points at. The machine category is what a board groups on. */
 export interface TaskStateView {
@@ -91,6 +101,15 @@ export interface TaskDetail extends TaskSummary {
   readonly envelope: TaskEnvelope | null;
   /** The task's alerts, newest first (T2h). The detail is the team's, and so are they. */
   readonly alerts: readonly TaskAlert[];
+  /**
+   * The task's token ledger (MP-6-5): each envelope's allowance, what it was
+   * built from, and what is held and spent against it. The per-run rows are the
+   * proposals' reservations, each naming its envelope. Read inside the task
+   * read, so a reader who may not read the task is told nothing of it. Null
+   * for an agent: it names the business's cap, which a delegate on one task is
+   * not shown (I09).
+   */
+  readonly ledger: TaskLedgerView | null;
 }
 
 /** One alert as `task.read` and `task.queue` carry it (`core-runtime/src/alerts.ts`). */
@@ -111,6 +130,62 @@ export interface TaskEnvelope {
   readonly maximumMinor: number;
   readonly heldMinor: number;
   readonly actualMinor: number;
+}
+
+export interface TaskLedgerView {
+  /** Open one first, then the closed ones, newest first. Empty before any approval. */
+  readonly envelopes: readonly EnvelopeView[];
+  /** AW-05's stops on the task's runs, by run, oldest ask first. Empty before any stop. */
+  readonly stops: readonly BudgetStopView[];
+  /** MP-6-2's state revision lists: each kept version of the task's runs, newest first. */
+  readonly states: readonly RunStateView[];
+}
+
+/** One kept version of a run's state (MP-6-2, CS-16.4): the writer's text, shown as text. */
+export interface RunStateView {
+  readonly runId: string;
+  readonly version: number;
+  readonly knowledge: readonly string[];
+  readonly unknowns: readonly string[];
+  /** The person, or the agent inside its delegation, who revised it. */
+  readonly revisedBy: { readonly actorId: string };
+  readonly revisedAt: string;
+}
+
+/** One stop at a run's approved ceiling: the ask a person answers (AW-05, MP-6-5, C54). */
+export interface BudgetStopView {
+  readonly askId: string;
+  readonly runId: string;
+  /** 1 to 3; a run asks three times at most. */
+  readonly number: number;
+  /** The third is the one consolidated decision. */
+  readonly kind: 'stop' | 'consolidated';
+  readonly ceilingMinor: number;
+  /** The spend to date when it stopped. */
+  readonly spentMinor: number;
+  readonly currency: string;
+  readonly raisedAt: string;
+  /** A person's answer, or null while the ask waits. */
+  readonly answer: 'top_up' | 'end' | null;
+  /** A first top-up above the four-eyes band, waiting for a second person, or null. */
+  readonly awaitingSecond: { readonly amountMinor: number } | null;
+}
+
+export interface EnvelopeView {
+  readonly id: string;
+  readonly state: 'open' | 'closed';
+  /** The allowance. */
+  readonly maximumMinor: number;
+  readonly heldMinor: number;
+  /** Spent. */
+  readonly actualMinor: number;
+  readonly currency: string;
+  readonly openedAt: string;
+  readonly closedAt: string | null;
+  /** The approval whose reservation opened it: its first reservation's version. */
+  readonly openedBy: { readonly versionId: string } | null;
+  /** The cap it draws on. */
+  readonly cap: { readonly key: string; readonly limitMinor: number; readonly currency: string };
 }
 
 /**
@@ -196,6 +271,10 @@ export interface DecisionLink {
 
 export interface ReservationView {
   readonly id: string;
+  /** The task envelope it holds against (MP-6-5): the per-run rows add up to it. */
+  readonly envelopeId: string;
+  /** The run it holds for: one per-run row of the token panel (MP-6-5). */
+  readonly runId: string;
   readonly state: string;
   readonly heldMinor: number;
   readonly actualMinor: number | null;
@@ -251,8 +330,92 @@ export interface ProposalVersionView {
   readonly payload: unknown;
   readonly supersededAt: string | null;
   readonly runId: string | null;
+  /** The run's first claim, or null before one (MP-6-2's hero time). */
+  readonly startedAt: string | null;
+  /** A hand-back with no claim after it, or null while the run is out or never ran. */
+  readonly endedAt: string | null;
+  /** The token units the run's model calls recorded, or null for none (MP-6-2's hero tokens). */
+  readonly tokenUnits: number | null;
+  /** What the run was given at its start (AW-02's pin slot, 0192); empty with no pin (MP-6-2). */
+  readonly pins: readonly RunPinView[];
+  /** Each instruction file the run read, in its order (the read ledger, 0192). */
+  readonly reads: readonly RunReadView[];
   readonly evidence: EvidenceView | null;
   readonly gate: GateView | null;
+  /** The checks the run performed on this version, oldest first (MP-6-1, CS-16.3). */
+  readonly checks: readonly CheckView[];
+}
+
+/**
+ * The run's pinned definition reference, as stored: a bootstrap file by path,
+ * read at pin time, or a definition version by id. The digest and size are
+ * the identity; the path is provenance only.
+ */
+export interface RunPinView {
+  readonly kind: string;
+  readonly path: string | null;
+  readonly digest: string;
+  readonly size: number;
+  readonly readAt: string | null;
+  readonly definitionVersionId: string | null;
+  readonly pinnedAt: string;
+}
+
+/** One pinned read the run made, as its ledger row records it. */
+export interface RunReadView {
+  readonly sequence: number;
+  readonly path: string;
+  readonly digest: string;
+  readonly size: number;
+  readonly readAt: string;
+  readonly isEntry: boolean;
+}
+
+/** One check a run recorded under its worker lease, against the version it ran on. */
+export interface CheckView {
+  readonly id: string;
+  readonly name: string;
+  readonly outcome: string;
+  readonly note: string | null;
+  /** The lease holder that performed it: the provenance is the lease, not a claim. */
+  readonly performedByActorId: string;
+  readonly recordedAt: string;
+}
+
+/** One grant a delegation draws on, for the link to it in the access ledger (R71). */
+export interface CoveringGrantView {
+  readonly id: string;
+  readonly collection: string;
+  readonly action: string;
+  /** `business`, or `record` for a grant on this task alone. */
+  readonly scopeKind: string;
+}
+
+/**
+ * What a run was allowed to touch (MP-6-4, CS-6.1), set by the broker when the
+ * lease was taken and read-only here: the lease's own delegation, never the
+ * task's fields. A lease a person holds carries no delegation.
+ */
+export interface RunScopeView {
+  readonly leaseId: string;
+  /** When the lease was taken: the moment the run's context was pinned. */
+  readonly acquiredAt: string;
+  readonly delegation: {
+    readonly id: string;
+    readonly purpose: string;
+    /** The one resource the delegation was minted for (the one-task ceiling). */
+    readonly scope: { readonly kind: string; readonly id: string };
+    readonly collections: readonly string[];
+    readonly actions: readonly string[];
+    readonly grantedAt: string;
+    readonly expiresAt: string;
+    /** `live`, or why it no longer is: `expired`, `revoked` or `settled`. */
+    readonly state: string;
+    /** The person whose live grants are its ceiling. */
+    readonly delegatePersonId: string;
+    /** That person's live grants it draws on now; empty when they hold none. */
+    readonly grants: readonly CoveringGrantView[];
+  } | null;
 }
 
 export interface ProposalView {
@@ -262,6 +425,8 @@ export interface ProposalView {
   readonly versions: readonly ProposalVersionView[];
   readonly decisions: readonly DecisionLink[];
   readonly reservations: readonly ReservationView[];
+  /** The scope of each lease the lineage's runs took, oldest first (MP-6-4). */
+  readonly scopes: readonly RunScopeView[];
 }
 
 export interface QueuedWork {
@@ -359,6 +524,26 @@ export interface PersonListResult {
   readonly persons: readonly PersonView[];
 }
 
+/** One gate waiting on a person: `gate.pending`'s row (MP-6-1). */
+export interface AwaitingReviewView {
+  readonly gateId: string;
+  readonly versionId: string;
+  readonly version: number;
+  readonly lineageId: string;
+  readonly taskId: string;
+  readonly taskTitle: string;
+  readonly purpose: string;
+  readonly maximumMinor: number;
+  readonly currency: string;
+  readonly round: number;
+  readonly expiresAt: string;
+}
+
+export interface AwaitingReviewResult {
+  readonly ok: true;
+  readonly awaiting: readonly AwaitingReviewView[];
+}
+
 /**
  * `task.queue`'s answer. An empty queue is `[]` beside `ok`, never a refusal.
  * `alerts` are the team's (T2h), and so are `outages` (T3e2); a reader outside
@@ -444,6 +629,43 @@ export interface TaskExecution {
   readonly complete: boolean;
   /** The cursor for the rest, or null when nothing was left out. */
   readonly next: number | null;
+  /** Planned and observed per run (AW-06); every reader who may see the task gets the same one. */
+  readonly graph: ExecutionGraph;
+}
+
+/**
+ * One run's node (AW-06). `planned` stays null until AW-04's bound plan record
+ * is read, and `plan` says `unbound` meanwhile, so no node is called unplanned
+ * against a plan nobody read. The observed layer is the run's own record.
+ */
+export interface ExecutionGraph {
+  readonly plan: 'unbound';
+  readonly sourceRevision: number;
+  readonly complete: boolean;
+  readonly nodes: readonly ExecutionNode[];
+}
+
+export interface ExecutionNode {
+  readonly nodeId: string;
+  readonly condition: 'not_started' | 'in_progress' | 'settled' | 'superseded' | 'unrecognised';
+  readonly planned: null;
+  readonly observed: {
+    readonly condition: ExecutionNode['condition'];
+    readonly runState: string;
+    readonly attemptId: string | null;
+    readonly whoseMove: {
+      readonly kind: 'agent' | 'person';
+      readonly actorId: string | null;
+    } | null;
+    readonly outcome: string | null;
+    readonly fault: string | null;
+    readonly lease: { readonly state: string; readonly expiresAt: string } | null;
+    readonly effectObserved: boolean;
+    /** Null when nothing is held or spent: absent money is never 0. */
+    readonly heldMinor: number | null;
+    readonly spentMinor: number | null;
+    readonly currency: string;
+  };
 }
 
 /** `task.receipt`: what an observed effect came from, and what it cost (T2c2, T2d). */
@@ -462,4 +684,124 @@ export interface ReceiptResult {
         }
       | { readonly state: string; readonly heldMinor: number };
   };
+}
+
+/** A pointer a wrap-up holds: what it names and the address that opens it (AW-03). */
+export interface ConversationPointerView {
+  readonly kind: 'task' | 'run' | 'gate' | 'conversation';
+  readonly id: string;
+  readonly address: string;
+  /** The item's state when the wrap-up was written, where it has one. */
+  readonly state?: string;
+}
+
+/** One of a wrap-up's seven pointer-and-fact contents. */
+export interface WrapUpItemView {
+  readonly key: string;
+  readonly fact: string;
+  readonly pointers: readonly ConversationPointerView[];
+}
+
+export interface WrapUpView {
+  readonly version: number;
+  readonly writtenAt: string;
+  readonly writtenBy: { readonly operation: string; readonly codeRevision: string };
+  readonly definitionVersion: string | null;
+  /** The request, as a marked quotation: the first message, never a transcript. */
+  readonly request: { readonly quotation: string };
+  readonly items: readonly WrapUpItemView[];
+  /** Item 8, what was left open. Empty is "nothing left open". */
+  readonly leftOpen: readonly ConversationPointerView[];
+  readonly leftOpenText: string;
+}
+
+export interface ConversationMessageView {
+  readonly id: string;
+  readonly role: 'person' | 'agent';
+  readonly body: string;
+  readonly createdAt: string;
+}
+
+/** One of the caller's own conversations, as the assistant panel's tab row draws it (MP-7-11). */
+export interface ConversationTabView {
+  readonly id: string;
+  readonly address: string;
+  readonly title: string;
+  readonly lastActivityAt: string;
+  readonly bodyPurged: boolean;
+}
+
+/** The caller's own conversations, newest activity first; nobody else's. */
+export interface ConversationListResult {
+  readonly ok: true;
+  readonly conversations: readonly ConversationTabView[];
+}
+
+export interface ConversationReadResult {
+  readonly ok: true;
+  readonly conversation: {
+    readonly id: string;
+    readonly address: string;
+    readonly title: string;
+    readonly subject: string | null;
+    readonly scope: { readonly kind: 'task'; readonly id: string } | null;
+    /** The page added to its context (MP-7-11): one slot, a second replaces it. */
+    readonly page: { readonly address: string; readonly shows: string } | null;
+    readonly createdAt: string;
+    readonly lastActivityAt: string;
+    readonly bodyPurgedAt: string | null;
+  };
+  /** The body, or null once it has purged: the address then answers the wrap-up. */
+  readonly messages: readonly ConversationMessageView[] | null;
+  /** The current wrap-up version, or null before the first quiet. */
+  readonly wrapUp: WrapUpView | null;
+  /** Every version, newest first. */
+  readonly wrapUpHistory: readonly { readonly version: number; readonly writtenAt: string }[];
+}
+
+/**
+ * One of the caller's own inbox items (INB-1d). The pointers, the task's key
+ * and title, and the decider's name are present only while the caller can
+ * read the task: a gone entry keeps its own identity and axes and names
+ * nothing of the task or the fact it points at (INB-1g reads them at the same
+ * read, so the item stays a pointer and never a copy).
+ */
+export interface InboxEntry {
+  readonly id: string;
+  readonly reason: InboxReason;
+  readonly workState: InboxWorkState;
+  readonly access: InboxAccess;
+  readonly owed: boolean;
+  /** Open, owed and readable now: exactly what the count counts. */
+  readonly counted: boolean;
+  readonly raisedAt: string;
+  readonly closedAt: string | null;
+  readonly seenAt: string | null;
+  /** The last delivery attempt's state; asked, accepted and delivered are three words. */
+  readonly lastDelivery: DeliveryState | null;
+  readonly subjectRecordId?: string;
+  readonly factKind?: InboxFactKind;
+  readonly factId?: string;
+  readonly closedByPersonId?: string | null;
+  /** The task the item is about, for its link and its name. */
+  readonly task?: { readonly key: string; readonly title: string | null };
+  /** Who closed it, by name: a cleared decision names who decided. */
+  readonly closedBy?: PersonView | null;
+  /**
+   * T2h's alert on the run a readable item points at: the same record the task
+   * page and the queue read show (INB-1, the alert's third and last place).
+   */
+  readonly alert?: InboxAlert;
+}
+
+/** `inbox.read`'s answer: the caller's open items and newest page of closed ones, oldest raised first. */
+export interface InboxReadResult {
+  readonly ok: true;
+  readonly inbox: readonly InboxEntry[];
+}
+
+/** `inbox.count`'s answer: the list's counted entries, under the same rule. */
+export interface InboxCountResult {
+  readonly ok: true;
+  readonly owed: number;
 }

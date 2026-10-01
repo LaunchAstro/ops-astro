@@ -24,7 +24,6 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { createControls, detailOf, type Controls } from '../api/controls-fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
-
 const COMMON_KEYS = [
   'attemptId',
   'authorisedByPersonId',
@@ -181,7 +180,9 @@ describe.skipIf(serverUrl === undefined)('W02 (a): the pickup payload, field by 
       'task.read',
       'task.comment',
       'task.heartbeat',
+      'task.check',
       'task.handback',
+      'model.call',
     ]);
     const excluded = detail['excludedOperations'] as { operation: string; reason: string }[];
     expect(excluded.map((entry) => entry.operation)).toStrictEqual([

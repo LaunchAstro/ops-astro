@@ -226,6 +226,43 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
           );
           continue;
         }
+        if (declaration.authorisedOn === 'self' && grants !== undefined) {
+          // The caller's own inbox (INB-1d). The stamp is `preference:write`,
+          // self-scoped and held by every signed-in person, so nobody is R2
+          // for it; another person's item is NOT_FOUND (INB-1 seen
+          // self-scoped). The reads, like `session.capabilities`, refuse a
+          // caller holding no live grant and answer one holding any.
+          if (declaration.kind === 'write') {
+            except(
+              caller.name,
+              'e-no-grant',
+              declaration.name,
+              declaration.name === 'notifications.set_channel'
+                ? 'not applicable: self-scoped preference:write; the setting is only ever ' +
+                    'the caller’s own, refused by its rule in tests/commands/inbox-unattended.test.ts'
+                : 'not applicable: self-scoped preference:write; another person’s item ' +
+                    'is NOT_FOUND in tests/reads/inbox.test.ts',
+            );
+            continue;
+          }
+          // eslint-disable-next-line no-await-in-loop
+          const own = await call(
+            harness.world.api,
+            personPath('alpha', pathOf(declaration.name)),
+            harness.probeBody(declaration),
+            bearer(caller.token),
+          );
+          const none = grants.size === 0;
+          observe(
+            caller.name,
+            'e-no-grant',
+            declaration.name,
+            own,
+            none ? refusal('SCOPE_NOT_GRANTED') : SUCCESS,
+          );
+          expect(own.body['refused'] === true, `${caller.name}/${declaration.name}`).toBe(none);
+          continue;
+        }
         if (declaration.name === 'session.capabilities' && grants !== undefined) {
           // The read with no collection of its own: it reports the caller's
           // grants, so the grant it takes is holding one at all. `noah`, a
@@ -302,6 +339,7 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       'task.heartbeat',
       'task.dispatch',
       'task.observe',
+      'task.check',
       'task.handback',
     ]);
     const drivenFor = new Set<string>();
@@ -357,6 +395,15 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
         const seen = await harness.asPerson('task.observe', { ...own, attemptId }, 'alpha', caller);
         observe(caller.name, 'e-member-positive', 'task.observe', seen, SUCCESS);
       }
+      if (grants.has(pairOf('task.check'))) {
+        const checked = await harness.asPerson(
+          'task.check',
+          { ...own, name: 'the member checks', outcome: 'passed' },
+          'alpha',
+          caller,
+        );
+        observe(caller.name, 'e-member-positive', 'task.check', checked, SUCCESS);
+      }
       if (grants.has(pairOf('task.handback'))) {
         const settled = await harness.asPerson(
           'task.handback',
@@ -379,6 +426,13 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
         }
         // eslint-disable-next-line no-await-in-loop
         const prepared = await harness.positiveBody(declaration);
+        if ('exception' in prepared && declaration.name === 'model.call') {
+          // A person's write grant carries no model call: the person prefix
+          // refuses it (tests/broker/aw-01-model-call.test.ts), and the agent
+          // makes it in case (h).
+          except(caller.name, 'e-member-positive', declaration.name, prepared.exception);
+          continue;
+        }
         if ('exception' in prepared) throw new Error(`matrix: ${declaration.name} has no body`);
         // eslint-disable-next-line no-await-in-loop
         const answer = await harness.asPerson(declaration.name, prepared.body, 'alpha', caller);
@@ -543,11 +597,14 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
         // EX-35 (root ruling 5): the current intersection of the pickup's
         // purpose and the delegating person's effective grants on the task,
         // never the pre-pickup pair and never a pair outside the purpose. The
-        // person here holds what the purpose carries, so it is all of it.
+        // person here holds what the purpose carries, so it is all of it:
+        // the harness admin holds run:write, so the mint reached run, and
+        // write alone on it (MP-6-2, ORCH34).
         const reported = (after['grants'] as readonly { collection: string; action: string }[])
           .map((one) => `${one.collection}:${one.action}`)
           .toSorted();
         expect(reported, declaration.name).toStrictEqual([
+          'run:write',
           'task:comment',
           'task:read',
           'task:write',
@@ -594,12 +651,17 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       // eslint-disable-next-line no-await-in-loop
       const answer = await harness.asAgent(
         declaration.name,
-        ['task.heartbeat', 'task.dispatch', 'task.observe'].includes(declaration.name)
-          ? // A heartbeat, a dispatch or an observe, like a handback, names its task through the lease
-            // and never through a stray `recordId` (final review R1 #23), so
+        ['task.heartbeat', 'task.dispatch', 'task.observe', 'task.check', 'model.call'].includes(
+          declaration.name,
+        )
+          ? // A heartbeat, a dispatch, an observe, a check or a model call, like a handback, names its task
+            // through the lease and never through a stray `recordId` (final review R1 #23), so
             // the sibling is reached by its own lease.
             {
               ...harness.probeBody(declaration),
+              ...(declaration.name === 'task.check'
+                ? { name: 'a check on the sibling', outcome: 'passed' }
+                : {}),
               leaseId: siblingLease['leaseId'],
               fence: siblingLease['fence'],
               ...(declaration.name === 'task.observe'
@@ -610,6 +672,14 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
         credential,
       );
       observe('agent-after-pickup', table, declaration.name, answer, expected);
+      if (declaration.name === 'model.call') {
+        // eslint-disable-next-line no-await-in-loop
+        const held = await harness.world.db.admin.execute<{ readonly n: string }>(
+          `select count(*)::text as n from public.model_calls where lease_id = $1`,
+          [siblingLease['leaseId']],
+        );
+        expect(held[0]?.n, 'no call held on a lease outside the purpose').toBe('0');
+      }
     }
 
     // (k) The operations the admin's positive control could not reach from the
@@ -723,6 +793,19 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       stale,
       refusal('LEASE_NOT_OWNED'),
     );
+    // A check recorded under its own lease (MP-6-1): the system write the
+    // lease authorises, naming the agent as the actor that performed it.
+    const checked = await harness.asAgent(
+      'task.check',
+      {
+        leaseId: picked['leaseId'],
+        fence: picked['fence'],
+        name: 'the agent checks',
+        outcome: 'passed',
+      },
+      credential,
+    );
+    observe('agent-after-pickup', table, 'task.check (own lease)', checked, SUCCESS);
 
     // (j) I07, on one live gate. The decision is excluded from every
     // delegation and checked first in the order, so it is never reported as

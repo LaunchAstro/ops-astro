@@ -12,27 +12,86 @@
 // contract does not name fails rather than being skipped. Nothing here asserts.
 
 import { type AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
+import { applicationSelectsAt } from './restricted-calls-column-grants.ts';
+
+export { catalogueColumnGrants, columnUpdatesAt } from './restricted-calls-column-grants.ts';
 
 export const WORKER_ROLE = 'ops_astro_worker';
+/** The broker's role (AW-01): it executes the fair share's one count, and holds nothing else. */
+export const BROKER_ROLE = 'ops_astro_broker';
+export const OCCURRENCE_ROLE = 'ops_astro_occurrence';
 
 /**
- * The contract: what 0001-0020 grant the application group, table by table,
+ * The contract: what 0001-0048 grant the application group, table by table,
  * as `s` select, `i` insert, `u` update, `d` delete. Read from the `grant`
  * lines of the migrations, not from the catalogue this suite then checks.
  */
 const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['', 'ops.schema_migrations'],
+  // 0045: the installation's operating business; the application reads it only.
+  ['s', 'ops.operating_business'],
+  // 0047: the API's outbox; the application inserts its four columns, and reads nothing.
+  ['i', 'ops.api_events'],
+  // 0048: the forwarder's kept alerts; the application holds nothing on them.
+  ['', 'ops.api_alerts'],
   ['s', 'ops.slots'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],
   ['si', 'alerts handback_reports operations run_events'],
+  // A run's checks, append only as handback_reports is (MP-6-1).
+  ['si', 'run_checks'],
+  // 0201 (MP-6-2): a run's state, each revision a version, never rewritten.
+  ['si', 'run_states'],
+  // 0198 (AW-03): a conversation, its body (deleted only by the purge, never
+  // edited) and its wrap-ups (append only, never purged).
+  ['siu', 'conversations'],
+  ['sid', 'conversation_messages'],
+  ['si', 'conversation_wrap_ups'],
+  // AW-01: the model-call ledger, and the copy register, which is append only.
+  ['siu', 'model_calls'],
+  ['si', 'copy_registrations'],
+  // AW-02: the pin and the read ledger are never rewritten; the audit copy is
+  // kept and never read back by a run role.
+  ['si', 'bootstrap_reads run_definition_pins'],
+  ['i', 'bootstrap_bytes'],
+  // AW-05: a budget ask is the persisted count and is never rewritten.
+  ['si', 'budget_asks'],
+  // AW-05: an answer and its approvals are never rewritten.
+  ['si', 'budget_answers budget_approvals'],
+  // AW-13: the export's cursor moves; its gaps are facts and never rewritten.
+  ['siu', 'trace_export_cursors'],
+  ['si', 'trace_export_gaps'],
+  // 0042: an attempt and a seen stamp are observations, never rewritten (INB-1a).
+  ['si', 'inbox_attention inbox_delivery_attempts'],
+  ['siu', 'inbox_items'],
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
-  ['siu', 'leases planned_runs planned_steps proposal_lineages proposal_versions'],
+  ['siu', 'leases planned_steps proposal_lineages proposal_versions'],
+  // AW-02: a historical run is never rewritten; the application moves its
+  // state alone, by the column grant in `restricted-calls-columns.ts`.
+  ['si', 'planned_runs'],
   ['siu', 'outage_reports outage_runs reservations task_envelopes'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
   // 0028 revokes delete on these two: identity history is kept (0002).
   ['siu', 'person_logins person_merges'],
   ['siud', 'record_links record_types record_unique_values'],
   ['siud', 'records'],
+  // 0251: custody's select is a column grant without the sealed columns (C31,
+  // proved by name in `tests/custody/c31-credentials.test.ts`).
+  ['siu', 'custody_secrets'],
+  // 0252: the fleet is written elsewhere; a repair is written once (MP-14-7a).
+  ['s', 'connection_clients connections'],
+  ['si', 'connection_repairs'],
+  // 0253: tripwires and night round steps are only read here (MP-14-8).
+  ['s', 'night_round_steps tripwires'],
+  // 0254: column-granted updates; a mandate is never deleted (MP-14-10a).
+  ['su', 'graduation_classes'],
+  ['siu', 'standing_mandates'],
+  // 0255: written once, but an activation's column-granted setting (C33).
+  ['si', 'activation_occurrences automation_definitions definition_versions'],
+  ['siu', 'activations'],
+  // 0256: written once; the activation names its adoption by column grant (C52-A).
+  ['si', 'occurrence_dispatches standing_approval_revocations standing_approvals'],
+  // 0257: an onboarding and its steps move by column grants, never deleted (C41-A).
+  ['siu', 'onboarding_steps onboardings'],
 ];
 
 export const APPLICATION_GRANTS: Readonly<Record<string, string>> = Object.fromEntries(
@@ -49,7 +108,37 @@ export const APPLICATION_GRANTS: Readonly<Record<string, string>> = Object.fromE
 const REVOKED: Readonly<Record<string, { readonly from: string; readonly letters: string }>> = {
   'public.person_logins': { from: '0028', letters: 'd' },
   'public.person_merges': { from: '0028', letters: 'd' },
+  // 0192 takes back update on the whole run and grants it on `state` alone.
+  'public.planned_runs': { from: '0192', letters: 'u' },
 };
+
+/**
+ * Every other column grant, from the migration that made it: the occurrence role reads a
+ * task's revision for 0032's trigger (AW-01 J, 0203), the application writes the outbox's
+ * four columns alone (S0-2, 0047), and the lookup reads a business's id and key (G2, 0046).
+ */
+const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: string }[] = [
+  ...['business_id', 'id', 'revision'].map((column) => ({
+    from: '0203',
+    line: `${OCCURRENCE_ROLE} SELECT public.records.${column}`,
+  })),
+  ...['event', 'kind', 'scope', 'weight'].map((column) => ({
+    from: '0047',
+    line: `ops_astro_app INSERT ops.api_events.${column}`,
+  })),
+  { from: '0046', line: 'ops_astro_lookup SELECT public.businesses.id' },
+  { from: '0046', line: 'ops_astro_lookup SELECT public.businesses.key' },
+];
+
+/** Every column grant but the application's updates; with C31's custody select (0251). */
+export function roleColumnGrantsAt(at?: string): readonly string[] {
+  return [
+    ...ROLE_COLUMN_GRANTS.filter((grant) => at === undefined || at.slice(0, 4) >= grant.from).map(
+      (grant) => grant.line,
+    ),
+    ...applicationSelectsAt(at),
+  ].toSorted();
+}
 
 /**
  * What the application group holds on a table after the migration `at` (its

@@ -39,6 +39,53 @@ if (serverUrl === undefined) {
   console.warn('command surface: DATABASE_URL is unset, so nothing below ran, nothing is proved.');
 }
 
+// Every path is a collection and an operation. `person.list` was the first
+// row whose collection is not `task` and there are now five prefixes, so
+// the shape is what is asserted rather than the one prefix that happened
+// to be true of the writes. `session` is the fifth and the odd one: it is
+// the only collection nothing is stored in, because the read under it is
+// about the caller rather than about the business's records. `grant` and
+// `delegation` are the revocation controls': the path names the row a
+// revocation writes, and the authority it asks is still on tasks.
+// `secret` is custody's (C31): the path names the row, the grant is
+// `custody:manage`. `record` and `onboarding` are C41-A's: the client
+// record and the onboarding laid out on it. `model` is AW-01's call through
+// the broker, asked of the lease's task. `run` is AW-05's two answers at the
+// budget stop, asked of the run's task. `gate` is the awaiting-review
+// read's (MP-6-1): the gates waiting on a decision, asked with `decide` on
+// tasks. `conversation` is a person's conversation with the agent (AW-03),
+// its writes and its read at its address. `finance` is what agent runs cost
+// (U39): skill costing and the agents' cost log, each `finance:read`. `inbox`
+// and `notifications` are the person's inbox and delivery channel (SL12).
+const PATH_SHAPE =
+  /^\/(?:task|person|preset|settings|session|grant|delegation|budget|secret|connection|connector|mandate|graduation|automation|activation|definition|approval|record|onboarding|gate|conversation|model|run|finance|inbox|notifications)\/[a-z_]+$/u;
+
+/** Every read the surface declares, sorted. */
+const DECLARED_READS = [
+  'automation.registry',
+  'connection.fleet',
+  'connection.graduation',
+  'connection.signal',
+  'conversation.list',
+  'conversation.read',
+  'finance.agent_costs',
+  'finance.skill_costs',
+  'gate.pending',
+  'inbox.count',
+  'inbox.read',
+  'inbox.unattended',
+  'person.list',
+  'preset.plan',
+  'secret.list',
+  'session.capabilities',
+  'settings.read',
+  'task.board',
+  'task.execution',
+  'task.queue',
+  'task.read',
+  'task.receipt',
+];
+
 describe('the surface as a table', () => {
   it('carries the contract’s nine, named', () => {
     expect([...CONTRACT_NINE].toSorted()).toStrictEqual([
@@ -67,35 +114,14 @@ describe('the surface as a table', () => {
   it('gives every command a path nothing else has', () => {
     const paths = COMMAND_SURFACE.map((command) => pathOf(command.name));
     expect(new Set(paths).size).toBe(paths.length);
-    // Every path is a collection and an operation. `person.list` was the first
-    // row whose collection is not `task` and there are now five prefixes, so
-    // the shape is what is asserted rather than the one prefix that happened
-    // to be true of the writes. `session` is the fifth and the odd one: it is
-    // the only collection nothing is stored in, because the read under it is
-    // about the caller rather than about the business's records. `grant` and
-    // `delegation` are the revocation controls': the path names the row a
-    // revocation writes, and the authority it asks is still on tasks.
-    expect(
-      paths.every((path) =>
-        /^\/(?:task|person|preset|settings|session|grant|delegation|budget)\/[a-z_]+$/u.test(path),
-      ),
-    ).toBe(true);
+    expect(paths.every((path) => PATH_SHAPE.test(path))).toBe(true);
   });
 });
 
+// eslint-disable-next-line max-lines-per-function -- one table, read top to bottom
 describe('the surface as a table', () => {
-  it('declares the nine reads as reads, and everything else as a write', () => {
-    expect([...READS].toSorted()).toStrictEqual([
-      'person.list',
-      'preset.plan',
-      'session.capabilities',
-      'settings.read',
-      'task.board',
-      'task.execution',
-      'task.queue',
-      'task.read',
-      'task.receipt',
-    ]);
+  it('declares the nineteen reads as reads, and everything else as a write', () => {
+    expect([...READS].toSorted()).toStrictEqual(DECLARED_READS);
     for (const command of COMMAND_SURFACE) {
       expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));
       // A read has nothing to be stale against. It does not always take the
@@ -131,6 +157,30 @@ describe('the surface as a table', () => {
     for (const command of COMMAND_SURFACE) {
       expect(command.collection, command.name).toMatch(/^[a-z][a-z_]*$/u);
     }
+  });
+});
+
+describe("AW-05's answers at the budget stop", () => {
+  it('asks decide on billing for a top-up and on gate for the end', () => {
+    // A top-up is money, the end is a gate, and both decide.
+    expect(declarationOf('run.top_up').collection).toBe('billing');
+    expect(declarationOf('run.end_at_budget_stop').collection).toBe('gate');
+    expect(declarationOf('run.top_up').action).toBe('decide');
+    expect(declarationOf('run.end_at_budget_stop').action).toBe('decide');
+  });
+});
+
+describe("MP-6-2's state revised", () => {
+  it('asks write on run of the named task, and an agent reaches it only under its delegation', () => {
+    // run:write alone (ORCH33): no read, decide, share or manage on run.
+    const row = declarationOf('run.revise_state');
+    expect([row.collection, row.action, row.authorisedOn, row.agent]).toStrictEqual([
+      'run',
+      'write',
+      'record',
+      'delegated',
+    ]);
+    expect(row.targetsExistingRecord).toBe(false);
   });
 });
 

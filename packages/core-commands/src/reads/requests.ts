@@ -25,18 +25,32 @@
 // the bug would live in the client.
 
 import type { PresetField } from '../../../core-records/src/index.ts';
+import type { CostPeriodOperands } from './agent-costs.ts';
 import type {
   CapabilitiesResult,
+  InboxCountResult,
+  InboxReadResult,
   PersonListResult,
   PresetPlanResult,
   QueueResult,
+  AwaitingReviewResult,
+  ConversationListResult,
+  ConversationReadResult,
   SettingsReadResult,
+  SecretListResult,
+  ConnectionFleetResult,
+  ConnectionSignalResult,
+  ConnectionGraduationResult,
+  AutomationRegistryResult,
+  AgentCostsResult,
+  SkillCostsResult,
   SharedTaskRead,
   TaskBoardResult,
   TaskDetail,
 } from '../../../core-wire/src/index.ts';
 import type { TaskExecution } from './execution.ts';
 import type { Receipt } from '../../../core-runtime/src/index.ts';
+import type { UnattendedEntry } from './inbox.ts';
 
 // The result types live in `views.ts`, which the clients import; the server's
 // own modules keep importing them from here.
@@ -63,6 +77,8 @@ export interface ReadOperands {
   readonly 'person.list': NoOperands;
   /** Approved, held and unpicked. A projection; reading it claims nothing. */
   readonly 'task.queue': NoOperands;
+  /** The pending gates the caller may decide, filtered by their `decide` in the query. */
+  readonly 'gate.pending': NoOperands;
   /**
    * The task's runs and their progress events after `cursor`, a position the
    * caller already holds (0 for the start). See `reads/execution.ts`.
@@ -94,6 +110,20 @@ export interface ReadOperands {
    * write sends back as `expectedRevision`. See `reads/settings.ts`.
    */
   readonly 'settings.read': NoOperands;
+  /** Custody's rows at the scopes the caller holds `custody:manage` (C31). */
+  readonly 'secret.list': NoOperands;
+  /** The connections at the scopes the caller holds `connection:read` (MP-14-7a). */
+  readonly 'connection.fleet': NoOperands;
+  /** Grants, tripwires and the night round at the same scopes (MP-14-8). */
+  readonly 'connection.signal': NoOperands;
+  /** Graduation rows and standing mandates per client, same scopes (MP-14-10a). */
+  readonly 'connection.graduation': NoOperands;
+  /** Settings ▸ Workflow triggers: definitions, versions, activations (C33). */
+  readonly 'automation.registry': NoOperands;
+  /** Skill costing at the scopes the caller holds `finance:read` (MP-14-9). */
+  readonly 'finance.skill_costs': NoOperands;
+  /** The agents' cost log for a period, same scopes (MP-14-6). */
+  readonly 'finance.agent_costs': CostPeriodOperands;
   /**
    * What the caller may do here. The one read whose answer is about the caller
    * rather than about the business, and the one that takes no grant: every
@@ -102,6 +132,19 @@ export interface ReadOperands {
   readonly 'session.capabilities': NoOperands;
   /** What an observed effect came from, asked on its attempt (T2c2). */
   readonly 'task.receipt': { readonly attemptId: string };
+  /**
+   * A conversation at its address (AW-03): the owner's, or a holder of the
+   * read-any grant's. After the body purges it answers the wrap-up.
+   */
+  readonly 'conversation.read': { readonly conversationId: unknown };
+  /** The caller's own conversations, for the assistant panel's tab row (MP-7-11). */
+  readonly 'conversation.list': NoOperands;
+  /** The caller's own inbox items, each with its access derived now (INB-1d). */
+  readonly 'inbox.read': NoOperands;
+  /** The caller's owed count: the counted entries of `inbox.read`. */
+  readonly 'inbox.count': NoOperands;
+  /** The business's items no path reaches, for `operations:read` (INB-1e). */
+  readonly 'inbox.unattended': NoOperands;
 }
 
 /** A read about the business as a whole, which takes nothing. */
@@ -123,8 +166,21 @@ export type ReadResult =
   | TaskBoardResult
   | PersonListResult
   | QueueResult
+  | AwaitingReviewResult
   | PresetPlanResult
   | SettingsReadResult
   | { readonly ok: true; readonly execution: TaskExecution }
   | { readonly ok: true; readonly receipt: Receipt }
-  | CapabilitiesResult;
+  | SecretListResult
+  | ConnectionFleetResult
+  | ConnectionSignalResult
+  | ConnectionGraduationResult
+  | AutomationRegistryResult
+  | SkillCostsResult
+  | AgentCostsResult
+  | CapabilitiesResult
+  | ConversationReadResult
+  | ConversationListResult
+  | InboxReadResult
+  | InboxCountResult
+  | { readonly ok: true; readonly unattended: readonly UnattendedEntry[] };

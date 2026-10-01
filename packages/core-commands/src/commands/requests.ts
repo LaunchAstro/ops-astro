@@ -24,6 +24,11 @@
 
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import { OPERATION_ID } from './register-store.ts';
+import type { SetupRequest } from './requests-setup.ts';
+import type { CheckRequest } from './requests-check.ts';
+import type { ConversationRequest } from './requests-conversation.ts';
+import type { RunRequest } from './requests-run.ts';
+import type { Envelope } from './request-envelope.ts';
 
 export type FieldValues = Readonly<Record<string, unknown>>;
 
@@ -54,11 +59,6 @@ export function hasIdentity(request: UncheckedRequest): request is IdentifiedReq
 
 // Type aliases rather than interfaces, so each member of the union is also an
 // `UncheckedRequest`: a parsed request is still the body it was parsed from.
-type Envelope = {
-  /** The repeat-request identity. Required on every command in the surface. */
-  readonly operationId: string;
-};
-
 type Targeted = Envelope & {
   readonly recordId: string;
   readonly expectedRevision?: number;
@@ -72,6 +72,7 @@ export type CommandRequest =
       readonly board?: string | null;
       readonly boardSection?: string | null;
       readonly stateKey?: string;
+      readonly conversationId?: string | null;
     } & Envelope)
   | ({ readonly command: 'task.update'; readonly fields: FieldValues } & Targeted)
   | ({ readonly command: 'task.complete' } & Targeted)
@@ -85,6 +86,8 @@ export type CommandRequest =
       readonly audience: string;
       /** `note`, `client` or `system`. A person writing a comment writes a note. */
       readonly commentType?: string;
+      /** The people the comment names, by person id. */
+      readonly mentions?: unknown;
     } & Targeted)
   // A proposal is a record beside the task and targets it, so it names the
   // revision it was written against like every other targeted command. What it
@@ -206,6 +209,8 @@ export type CommandRequest =
       readonly value: boolean;
       readonly expectedRevision?: number;
     } & Envelope)
+  // Custody and connections, workflow triggers and onboarding (U33, U36, U38).
+  | SetupRequest<Envelope>
   // The support controls. Revocation names the row it revokes; the time is the
   // server's. Cancel and restart name the task and the lineage on it, so the
   // task is where the work-control authority is asked and the lineage is
@@ -264,6 +269,20 @@ export type CommandRequest =
       readonly attemptId: unknown;
       readonly amountMinor: unknown;
       readonly reason: unknown;
+    } & Envelope)
+  | CheckRequest
+  | ConversationRequest
+  // Read by its own parser (`model-call.ts`), never by a person handler.
+  | ({ readonly command: 'model.call' } & Envelope)
+  | RunRequest
+  // The recipient opening their own inbox item (INB-1d).
+  | ({ readonly command: 'inbox.seen'; readonly itemId: string } & Envelope)
+  // The caller's own notification setting on one channel (INB-1e).
+  | ({
+      readonly command: 'notifications.set_channel';
+      readonly channel: string;
+      readonly mode: string;
+      readonly category?: string;
     } & Envelope);
 
 /**

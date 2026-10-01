@@ -31,6 +31,8 @@ import {
   isLive,
   isRecordsRefusal,
   mergeFieldValues,
+  raiseAssignment,
+  reparkStepMove,
   setTaskState,
 } from '../../../core-records/src/index.ts';
 import type {
@@ -292,7 +294,8 @@ export async function writeOwnedFields(
 
   // Stored in the spelling the uuid cast answers, so the task names the
   // person in the one form every read and join compares against.
-  const merged = mergeFieldValues(target.data, canonicalPersonLinks(fields));
+  const links = canonicalPersonLinks(fields);
+  const merged = mergeFieldValues(target.data, links);
   const rows = await tx.query<{ readonly revision: string }>(
     `update records set data = $3 where business_id = $1 and id = $2 and deleted_at is null
      returning revision::text as revision`,
@@ -302,6 +305,13 @@ export async function writeOwnedFields(
   if (written === undefined) {
     return refuse('NOT_FOUND', [], ['No live task carries that identifier here.']);
   }
+  // INB-1: the assignment is raised by the write that makes it (CS-16.8).
+  if ('assignee' in links) {
+    const assignee = typeof links['assignee'] === 'string' ? links['assignee'] : null;
+    await raiseAssignment(tx, { taskId: target.id, assignee, by: context.session.personId });
+  }
+  // C41-A: an onboarding step's move follows its assignee and its client.
+  if ('assignee' in links || 'client' in links) await reparkStepMove(tx, target.id);
   return applied(target.id, Number(written.revision), { changed: keys });
 }
 

@@ -16,6 +16,7 @@
 // what this adds is the identities each case needs and the setup a real
 // deployment already has. It substitutes nothing below the boundary.
 
+import { seedBrokenConnection, seedReadyClass } from '../connections/fixture.ts';
 import { randomUUID } from 'node:crypto';
 import {
   COMMAND_SURFACE,
@@ -181,8 +182,16 @@ export async function createHarness(part: string): Promise<Harness> {
       ...(targeted ? { expectedRevision: alphaTask.revision } : {}),
       ...(declaration.name === 'task.board' ? { board: null } : {}),
       ...(declaration.name === 'task.receipt' ? { attemptId: randomUUID() } : {}),
+      ...(declaration.name === 'finance.agent_costs'
+        ? { from: '2026-01-01T00:00:00Z', to: '2100-01-01T00:00:00Z' }
+        : {}),
       ...(declaration.name === 'preset.plan'
         ? { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] }
+        : {}),
+      // Well formed, so what answers is authority: the call's operands are
+      // read by type before the delegation, as a handback's are.
+      ...(declaration.name === 'model.call'
+        ? { leaseId: randomUUID(), fence: 1, operation: 'model.replay_compose', fields: [] }
         : {}),
     };
   }
@@ -196,11 +205,7 @@ export async function createHarness(part: string): Promise<Harness> {
    * well: without the sibling, "the agent is refused" and "there is nothing
    * else there" look the same.
    */
-  async function approvedReservation(): Promise<{
-    subject: Task;
-    sibling: Task;
-    decided: Answer;
-  }> {
+  async function approvedReservation(): Promise<{ subject: Task; sibling: Task; decided: Answer }> {
     const subject = await freshTask('the one task this delegation is for');
     const sibling = await freshTask('a sibling the agent may not reach');
     const decided = await reserve(subject, PROPOSAL.purpose);
@@ -277,7 +282,10 @@ export async function createHarness(part: string): Promise<Harness> {
       alphaTaskId: alphaTask.id,
       assigneePersonId: world.mia.personId as string,
       asPerson: async (name, body) => await asPerson(name, body),
+      asAgent,
       freshTask,
+      brokenConnection: async () => await seedBrokenConnection(world.db.admin, world.alpha),
+      readyClass: async () => await seedReadyClass(world.db.admin, world.alpha),
     }),
     approvedReservation,
     reserve,

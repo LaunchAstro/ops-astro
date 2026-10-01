@@ -314,7 +314,7 @@ describe('a credential file this machine cannot change is never read as refused'
     api.seen.length = 0;
     api.handle = (_request, _raw, response) => {
       response.setHeader('content-type', 'application/json');
-      response.end(JSON.stringify({ access_token: 'a-bearer-from-the-stand-in' }));
+      response.end(JSON.stringify({ access_token: 'ops-astro-test-only-bearer' }));
     };
     try {
       const run = await runCli(
@@ -335,7 +335,7 @@ describe('a credential file this machine cannot change is never read as refused'
     api.handle = (_request, _raw, response) => {
       chmodSync(dir, 0o500);
       response.setHeader('content-type', 'application/json');
-      response.end(JSON.stringify({ access_token: 'a-bearer-from-the-stand-in' }));
+      response.end(JSON.stringify({ access_token: 'ops-astro-test-only-bearer' }));
     };
     const run = await runCli(
       ['login', '--email', 'a@example.test'],
@@ -345,7 +345,7 @@ describe('a credential file this machine cannot change is never read as refused'
     expect(run.code, run.stderr).toBe(4);
     expect(run.stderr).toContain(`could not be saved to ${join(dir, 'token')}`);
     expect(run.stderr).not.toMatch(NO_STACK);
-    expect(`${run.stdout}${run.stderr}`).not.toContain('a-bearer-from-the-stand-in');
+    expect(`${run.stdout}${run.stderr}`).not.toContain('ops-astro-test-only-bearer');
   }, 30_000);
 
   it('logout that cannot remove a credential file is exit 4 and names it', async () => {

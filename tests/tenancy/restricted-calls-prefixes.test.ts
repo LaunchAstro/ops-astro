@@ -29,7 +29,7 @@
 // not exist it is not called, and the tally says which.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { readdirSync } from 'node:fs';
 import {
   createEmptyDatabase,
@@ -40,7 +40,11 @@ import { describePrefix, proveEachPrefix } from '../support/prefix-harness.ts';
 import { readMigrations } from '../../packages/core-records/src/tenancy/migrate.ts';
 import type { AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
 import { createWorld } from '../acceptance/world.ts';
-import { walkTheJourney, walkTheOtherLineages } from '../acceptance/restart-harness.ts';
+import {
+  callModelOnTheJourney,
+  walkTheJourney,
+  walkTheOtherLineages,
+} from '../acceptance/restart-harness.ts';
 import {
   APPLICATION_EXECUTES,
   WORKER_ROLE,
@@ -65,9 +69,13 @@ import {
   type CallerName,
   type Callers,
 } from './restricted-calls-callers.ts';
+import { columnUpdateFindings } from './restricted-calls-columns.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 const onDisk = readMigrations('migrations');
+
+/** SHA-256 of the four bytes `seed`, so the audit copy's own check holds. */
+const SEED_DIGEST = createHash('sha256').update('seed').digest('hex');
 
 /** Rows for the tables the journey leaves empty; foreign keys are off when they are written. */
 const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
@@ -98,6 +106,231 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     task_id: randomUUID(),
     reactivated: false,
   },
+  // A cleared secret, whole with no sealed value (C31, 0251).
+  'public.custody_secrets': {
+    name: 'restricted-calls.seed',
+    scope_kind: 'business',
+    scope_id: null,
+  },
+  // The connector fleet (MP-14-7a, 0252): nothing the journey does writes one.
+  'public.connections': {
+    connector_key: 'restricted-calls',
+    label: 'restricted calls',
+    status: 'active',
+  },
+  'public.connection_clients': {
+    connection_id: randomUUID(),
+    client_id: randomUUID(),
+    client_label: 'restricted calls client',
+  },
+  'public.connection_repairs': {
+    connection_id: randomUUID(),
+    connection_revision: 1,
+    started_by_actor_id: randomUUID(),
+  },
+  // Grants, tripwires and the night round (MP-14-8, 0253): nothing the journey
+  // does writes a tripwire or a step.
+  'public.tripwires': {
+    what: 'restricted calls',
+    rule: 'restricted calls rule',
+    watching: 'restricted calls',
+    state: 'armed',
+  },
+  'public.night_round_steps': {
+    round_on: '2026-09-29',
+    at: '2026-09-28T23:00:00Z',
+    tone: 'plain',
+    what: 'restricted calls',
+    who: 'restricted calls',
+    say: 'restricted calls',
+  },
+  // Graduation and standing mandates (MP-14-10a, 0254): the journey files none.
+  'public.graduation_classes': {
+    client_id: randomUUID(),
+    client_label: 'restricted calls client',
+    action_class: 'restricted.calls',
+    class_label: 'restricted calls',
+    earned: 'ready',
+  },
+  'public.standing_mandates': {
+    client_id: randomUUID(),
+    classes: ['*'],
+    refuses: true,
+    expires_at: '2099-01-01T00:00:00Z',
+    label: 'restricted calls',
+    authored_by_actor_id: randomUUID(),
+  },
+  // Automations (C33, 0255): the journey releases and fires none.
+  'public.automation_definitions': {
+    kind: 'automation',
+    name: 'restricted calls',
+    created_by_actor_id: randomUUID(),
+  },
+  'public.definition_versions': {
+    definition_id: randomUUID(),
+    number: 1,
+    content_digest: 'a'.repeat(64),
+    content_size: 0,
+    inputs: [],
+    operations: [],
+    modes: ['manual'],
+    released_by_actor_id: randomUUID(),
+  },
+  'public.activations': {
+    definition_id: randomUUID(),
+    version_id: randomUUID(),
+    mode: 'manual',
+    changed_by_actor_id: randomUUID(),
+  },
+  'public.activation_occurrences': {
+    activation_id: randomUUID(),
+    version_id: randomUUID(),
+    due_at: '2026-09-29T00:00:00Z',
+    outcome: 'activation_off',
+  },
+  // Standing approvals (C52-A, 0256): the journey adopts, revokes and dispatches none.
+  'public.standing_approvals': {
+    activation_id: randomUUID(),
+    definition_id: randomUUID(),
+    version_id: randomUUID(),
+    previous_version_id: randomUUID(),
+    act: 'adopted',
+    sequence: 2,
+    decided_by_actor_id: randomUUID(),
+  },
+  'public.standing_approval_revocations': {
+    approval_id: randomUUID(),
+    revoked_by_actor_id: randomUUID(),
+  },
+  'public.occurrence_dispatches': {
+    occurrence_id: randomUUID(),
+    outcome: 'activation_off',
+  },
+  // New client onboarding (C41-A, 0257): the journey starts none.
+  'public.onboardings': {
+    client_id: randomUUID(),
+    template_key: 'restricted-calls',
+    template_version: 1,
+    started_by_actor_id: randomUUID(),
+  },
+  'public.onboarding_steps': {
+    onboarding_id: randomUUID(),
+    step_key: 'restricted-calls',
+    task_id: randomUUID(),
+    position: 0,
+    phase: 'restricted calls',
+    kind: 'agent',
+    state: 'ready',
+  },
+  // The journey records no check (MP-6-1); the row is written with foreign
+  // keys off, as every reference row is.
+  // The journey revises no run's state (MP-6-2).
+  'public.run_states': {
+    run_id: randomUUID(),
+    task_id: randomUUID(),
+    version: 1,
+    knowledge: [],
+    unknowns: [],
+    revised_by_actor_id: randomUUID(),
+  },
+  'public.run_checks': {
+    task_id: randomUUID(),
+    run_id: randomUUID(),
+    version_id: randomUUID(),
+    lease_id: randomUUID(),
+    attempt_id: randomUUID(),
+    actor_id: randomUUID(),
+    fence: 1,
+    name: 'restricted calls seed',
+    outcome: 'passed',
+  },
+  // The journey holds no conversation (AW-03).
+  'public.conversations': {
+    owner_actor_id: randomUUID(),
+    owner_person_id: randomUUID(),
+    title: 'restricted calls seed',
+  },
+  'public.conversation_messages': {
+    conversation_id: randomUUID(),
+    role: 'person',
+    author_actor_id: randomUUID(),
+    body: 'restricted calls seed',
+  },
+  'public.conversation_wrap_ups': {
+    conversation_id: randomUUID(),
+    version: 1,
+    written_by_operation: 'conversation.wrap_up',
+    code_revision: 'seed',
+    request_quotation: 'restricted calls seed',
+    items: [{}, {}, {}, {}, {}, {}, {}],
+    left_open: [],
+    activity_through: new Date(),
+  },
+  // AW-02: nothing writes a pin before AW-04's plan accept.
+  'public.run_definition_pins': {
+    run_id: randomUUID(),
+    ref_kind: 'bootstrap_file',
+    path: 'skills/seed.md',
+    content_digest: SEED_DIGEST,
+    content_size: 4,
+    read_at: '2026-09-30T00:00:00Z',
+    manifest: [],
+    manifest_digest: SEED_DIGEST,
+    pinned_by_actor_id: randomUUID(),
+  },
+  'public.bootstrap_reads': {
+    run_id: randomUUID(),
+    sequence: 1,
+    path: 'skills/seed.md',
+    content_digest: SEED_DIGEST,
+    content_size: 4,
+    is_entry: true,
+  },
+  // AW-05: nothing raises an ask before a run reaches its ceiling.
+  'public.budget_asks': {
+    run_id: randomUUID(),
+    reservation_id: randomUUID(),
+    lease_id: randomUUID(),
+    decision_id: randomUUID(),
+    ask_number: 1,
+    kind: 'stop',
+    ceiling_minor: 400,
+    spent_minor: 0,
+    currency: 'AUD',
+  },
+  // AW-05: nothing answers a stop that was never raised.
+  'public.budget_approvals': {
+    ask_id: randomUUID(),
+    run_id: randomUUID(),
+    person_id: randomUUID(),
+    actor_id: randomUUID(),
+    amount_minor: 300,
+    currency: 'AUD',
+  },
+  'public.budget_answers': {
+    ask_id: randomUUID(),
+    run_id: randomUUID(),
+    kind: 'end',
+    first_person_id: randomUUID(),
+  },
+  // AW-13: nothing starts the exporter on the journey.
+  'public.trace_export_cursors': {},
+  'public.trace_export_gaps': { code: 'target_unreachable', events: 1 },
+  'public.bootstrap_bytes': {
+    content_digest: SEED_DIGEST,
+    content_size: 4,
+    bytes: '\\x73656564',
+  },
+  // 0042: nothing in the journey raises an inbox item yet (INB-1b does).
+  'public.inbox_items': {
+    recipient_person_id: randomUUID(),
+    subject_record_id: randomUUID(),
+    reason: 'assignment',
+    fact_kind: 'record',
+    fact_id: randomUUID(),
+  },
+  'public.inbox_attention': { item_id: randomUUID(), person_id: randomUUID() },
+  'public.inbox_delivery_attempts': { item_id: randomUUID(), channel: 'in_app', state: 'asked' },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;
@@ -111,7 +344,7 @@ async function referenceRows(): Promise<Reference> {
   const world = await createWorld('rcpw');
   try {
     await walkTheOtherLineages(world);
-    await walkTheJourney(world);
+    await callModelOnTheJourney(world, await walkTheJourney(world));
     const rows = new Map(Object.entries(UNREACHED).map(([name, row]) => [name, [row]]));
     for (const table of await catalogueTables(world.db.admin)) {
       if (!table.tenant || table.qualified === 'public.businesses') continue;
@@ -275,6 +508,16 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at every pre
       const tables = await catalogueTables(db.admin);
       const functions = await catalogueFunctions(db.admin);
       const wrong: string[] = [...(await seedPrefix(db.admin, tables, reference, [alpha, bravo]))];
+      // The seed's ids are fresh per row, so each activation is pointed at its
+      // own business's version: 0255's mode check runs on a column update.
+      if (tables.some((table) => table.qualified === 'public.activations')) {
+        await asOwner(
+          db.admin,
+          `update public.activations a set version_id = v.id
+             from public.definition_versions v where v.business_id = a.business_id`,
+          [],
+        );
+      }
       let calls = 0;
       let populated = 0;
 
@@ -315,6 +558,10 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at every pre
           if (before !== after) wrong.push(`${line}, the table changed`);
         }
       }
+
+      wrong.push(
+        ...(await columnUpdateFindings(db.admin, callers, activeCallers, alpha, migration.version)),
+      );
 
       for (const fn of functions) {
         for (const caller of [...activeCallers, 'owner'] as const) {

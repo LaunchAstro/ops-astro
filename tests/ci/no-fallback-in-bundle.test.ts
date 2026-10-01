@@ -11,6 +11,7 @@ import { spawnSync } from 'node:child_process';
 import {
   appendFileSync,
   cpSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -18,9 +19,9 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { scanBundle } from './fixture-bundle.ts';
+import { fixtureSelectors, scanBundle } from './fixture-bundle.ts';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 const DIST = join(ROOT, 'apps/web/dist');
@@ -33,6 +34,10 @@ function copyOfBundle(name: string): string {
   return copy;
 }
 
+afterAll(() => {
+  rmSync(scratch, { recursive: true, force: true });
+});
+
 describe('no_fallback_in_bundle', () => {
   beforeAll(() => {
     const built = spawnSync(process.execPath, ['scripts/build.mjs'], {
@@ -41,10 +46,6 @@ describe('no_fallback_in_bundle', () => {
     });
     expect(built.status, `${built.stdout}${built.stderr}`).toBe(0);
   }, 180_000);
-
-  afterAll(() => {
-    rmSync(scratch, { recursive: true, force: true });
-  });
 
   it('the shipped bundle carries no fixture selector and no module from tests/', () => {
     expect(scanBundle(DIST)).toStrictEqual([]);
@@ -80,5 +81,42 @@ describe('no_fallback_in_bundle', () => {
     cpSync(join(ROOT, 'tests/support/declining-reporter.ts'), join(copy, 'declining-reporter.ts'));
     cpSync(join(ROOT, 'tests/fixture/snapshot/snapshot.ts'), join(copy, 'snapshot.ts'));
     expect(scanBundle(copy).length).toBeGreaterThan(0);
+  });
+});
+
+describe('no_fallback_in_bundle: the selectors', () => {
+  /** A repository with one test-only module and, optionally, a shipped one of the same stem. */
+  function repository(name: string, shipped: readonly string[]): string {
+    const root = join(scratch, name);
+    for (const file of [
+      'tests/fixture/snapshot.ts',
+      'tests/support/sign-in.ts',
+      'tests/support/declining-reporter.ts',
+      ...shipped,
+    ]) {
+      mkdirSync(dirname(join(root, file)), { recursive: true });
+      writeFileSync(join(root, file), '');
+    }
+    return root;
+  }
+
+  it('a test-only stem that a shipped module also has is no selector; its path still is', () => {
+    const selectors = fixtureSelectors(
+      repository('shared-stem', ['apps/web/src/session/sign-in.ts']),
+    );
+    expect(selectors).not.toContain('sign-in');
+    expect(selectors).toContain('tests/support/sign-in.ts');
+    expect(selectors).toContain('declining-reporter');
+    expect(selectors).toContain('fixture');
+  });
+
+  it('a stem only a module under node_modules or a build output has stays a selector', () => {
+    const selectors = fixtureSelectors(
+      repository('outside-source', [
+        'apps/web/node_modules/pkg/sign-in.js',
+        'apps/web/dist/assets/sign-in.js',
+      ]),
+    );
+    expect(selectors).toContain('sign-in');
   });
 });

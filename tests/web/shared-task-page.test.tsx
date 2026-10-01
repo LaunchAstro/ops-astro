@@ -55,12 +55,12 @@ const REFUSED = {
 function server(first: unknown) {
   const calls: string[] = [];
   let answer: { readonly body: unknown; readonly status: number } = { body: first, status: 200 };
-  const fetch = (async (url: string | URL) => {
+  const fetch = ((url: string | URL) => {
     const at = String(url);
     calls.push(at.slice(at.lastIndexOf('/b/alpha/') + 9));
-    if (at.endsWith('/task/read')) return json(answer.body, answer.status);
-    if (at.endsWith('/person/list')) return json({ ok: true, persons: [] });
-    throw new Error(`unrouted ${at}`);
+    if (at.endsWith('/task/read')) return Promise.resolve(json(answer.body, answer.status));
+    if (at.endsWith('/person/list')) return Promise.resolve(json({ ok: true, persons: [] }));
+    return Promise.reject(new Error(`unrouted ${at}`));
   }) as unknown as typeof globalThis.fetch;
   return {
     fetch,
@@ -73,7 +73,7 @@ function server(first: unknown) {
 
 const screen = (fetch: typeof globalThis.fetch) => (
   <TaskDetailScreen
-    client={new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch })}
+    client={new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch })}
     grantKey="alpha:ext"
     taskKey={TASK_ID}
   />

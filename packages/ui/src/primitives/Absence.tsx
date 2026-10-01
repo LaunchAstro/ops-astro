@@ -21,40 +21,42 @@ export interface EmptyProps {
   /** What is not here. One line. */
   readonly title: string;
   /** Why, or what would change it. Optional, because not every absence has one. */
-  readonly description?: string;
+  readonly description?: string | undefined;
   /** The third tier, for a hint that is not the reason. */
-  readonly hint?: string;
+  readonly hint?: string | undefined;
   readonly action?: ReactNode;
+  /**
+   * DS-PRIM-28's three looks, the one empty state for the mockup's eighteen
+   * dialects: `block` for a whole board, table or page; `inline` for a panel,
+   * a list or a thread; `row` for nothing to act on inside a row or card.
+   */
+  readonly look?: 'block' | 'inline' | 'row' | undefined;
+  /** A filter emptied a list that is not empty: say so, and offer the clear. */
+  readonly onClearFilters?: (() => void) | undefined;
 }
 
-/** Voice one: no rows. */
+/** Voice one: no rows. The one empty state (DS-PRIM-28, MP-1-3). */
 export function Empty(props: EmptyProps): ReactElement {
   const voice: AbsenceVoice = 'no-rows';
+  const filtered = props.onClearFilters !== undefined;
   return (
-    <div className="empty" data-voice={voice}>
+    <div
+      className={`empty empty--${props.look ?? 'block'}${filtered ? ' empty--filtered' : ''}`}
+      data-voice={voice}
+    >
       <p className="empty__title">{props.title}</p>
       {props.description === undefined ? null : <p className="empty__desc">{props.description}</p>}
       {props.hint === undefined ? null : <p className="empty__hint">{props.hint}</p>}
-      {props.action === undefined ? null : <div className="empty__action">{props.action}</div>}
+      {filtered ? (
+        <div className="empty__action">
+          <button type="button" className="btn btn--text" onClick={props.onClearFilters}>
+            Clear the filters
+          </button>
+        </div>
+      ) : props.action === undefined ? null : (
+        <div className="empty__action">{props.action}</div>
+      )}
     </div>
-  );
-}
-
-/**
- * The mockup's own in-pane absence: words and nothing else.
- *
- * It is kept beside `Empty` rather than replaced by it because precedence
- * governs the drawn surface, and on the ported task surfaces the mockup draws
- * `.sbempty` — one paragraph, no icon, no title, no action. Using the tiered
- * `Empty` there would be the port changing an appearance rather than carrying
- * one.
- */
-export function PaneEmpty(props: { readonly say: string }): ReactElement {
-  const voice: AbsenceVoice = 'no-rows';
-  return (
-    <p className="sbempty" data-voice={voice}>
-      {props.say}
-    </p>
   );
 }
 

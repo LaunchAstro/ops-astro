@@ -1,16 +1,11 @@
 /* SPDX-License-Identifier: AGPL-3.0-only
    ============================================================================
-   Layer 2 of 3: the primitive set the first slice actually uses.
-
-   Drawn from the candidate's own list — task layout, actions, fields, menus,
-   status indicators, empty and error states — resolved against the pinned
-   sources [ui-reference CONTRACT.md:179]. It is deliberately NOT a bulk import
-   of a component estate to build one screen [docs/design-system.md].
-
-   TWO DIALECT TRANSLATIONS the transfer has to perform, from the snapshot's own
-   convention map, because carrying either across untranslated produces a
-   silently wrong control: a bare outlined `.btn` becomes `.btn--secondary`,
-   and the mockup's `.chip` becomes the Hub's `.u-pill`.
+   Layer 2 of 3: the component kit (MP-1-3), built once from the catalogue
+   (`docs/design-system/catalogue/PRIMITIVES.md` in the roadmap) and shown on
+   the component gallery. Values are the catalogue's measurements; where the
+   mockup drew one thing several ways, the catalogue's ruling (a DR id) picks
+   the one built here. The chip is `.chip` (DS-PRIM-11), and a bare `.btn` is
+   the secondary button (DS-PRIM-1).
 
    THREE ABSENCE VOICES, and they must stay distinct. `.empty` says no rows;
    `[aria-invalid]` plus `.field__error` says this input is wrong; `.in-dev`
@@ -19,107 +14,99 @@
    ships populated demonstration data — so it is adopted as the starting point
    for new work with its own acceptance, not as an inherited authority
    [ui-reference CONTRACT.md:176].
+
+   The layer is two sheets, loaded in this order: 2-controls-and-marks.css
+   (actions to the icon), then this one (blocks, the MP-1-6 treatments, the
+   charts and the gallery page).
    ============================================================================ */
 
-/* -- Actions ------------------------------------------------------------- */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--s-2);
-  height: 32px;
-  padding: 0 0.9rem;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  font-family: var(--font-sans);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
+/* -- Blocks (DS-PRIM-20 to DS-PRIM-24, DS-PRIM-28 to DS-PRIM-33, DS-COMP-7,
+      DS-COMP-8, DS-COMP-13, DS-COMP-26; MP-1-3). ------------------------- */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
   white-space: nowrap;
-  cursor: pointer;
-  background: transparent;
-  transition:
-    background var(--dur) var(--ease),
-    border-color var(--dur) var(--ease),
-    color var(--dur) var(--ease);
 }
-.btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
+.tablewrap {
+  display: grid;
+  gap: var(--s-2);
+  overflow-x: auto;
 }
-.btn--sm {
-  height: 27px;
-  padding: 0 0.7rem;
-  font-size: var(--text-label);
-}
-.btn--primary {
-  background: var(--btn-fill);
-  color: var(--btn-text);
-}
-.btn--primary:hover:not(:disabled) {
-  background: var(--btn-hover);
-  color: var(--btn-hover-text);
-}
-/* A solid button disables to a deep mid-grey, not a faded black: dark enough
-   to read as a real, deliberately-off control. */
-.btn--primary:disabled {
-  background: var(--text-dim);
-  color: var(--surface);
-  opacity: 1;
-}
-.btn--secondary {
-  border-color: var(--btn-outline);
-  color: var(--text);
-}
-.btn--secondary:hover:not(:disabled) {
-  border-color: var(--hover-accent);
-  color: var(--hover-accent);
-}
-.btn--ghost {
-  color: var(--text-muted);
-}
-.btn--ghost:hover:not(:disabled) {
-  background: var(--surface-2);
-  color: var(--hover-accent);
-}
-
-/* -- Tabs. Anchors and buttons wear the same dress, so a tab can be opened
-      in a new tab with a modifier click and pick up no browser link dress. -- */
-.tabs {
-  position: relative;
+.table__tools {
   display: flex;
-  gap: var(--s-5);
-  border-bottom: 1px solid var(--border);
-  flex-wrap: wrap;
+  justify-content: flex-end;
 }
-.tab {
-  display: inline-flex;
-  align-items: baseline;
-  gap: var(--s-2);
-  padding: 0 0 0.65rem;
-  margin-bottom: -1px;
-  border: 0;
-  border-bottom: 2px solid transparent;
-  background: none;
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+}
+/* The one table head style: the mockup's two dialects become this. */
+.table th {
+  position: relative;
+  padding: 8.8px 16px;
+  border-bottom: 1px solid var(--rule);
   color: var(--text-muted);
-  font-family: var(--font-sans);
-  font-size: var(--text-body);
-  font-weight: var(--weight-medium);
-  text-decoration: none;
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
+  text-align: left;
   white-space: nowrap;
+}
+.table td {
+  padding: 0.65rem 16px;
+  border-bottom: 1px solid var(--border);
+}
+.table tbody tr {
+  transition: background var(--dur-fast) var(--ease);
+}
+.table tbody tr:hover {
+  background: var(--surface-2);
+}
+.table--dense td {
+  padding: 0.4rem 16px;
+}
+.table .r {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.table .c {
+  text-align: center;
+}
+.table__sort {
+  display: inline-flex;
+  gap: var(--s-1);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
   cursor: pointer;
-  transition:
-    color var(--dur) var(--ease),
-    border-color var(--dur) var(--ease);
 }
-.tab:hover {
+.table__sort:hover {
+  color: var(--text);
+  text-decoration: underline;
+}
+.table th[aria-sort='ascending'],
+.table th[aria-sort='descending'] {
   color: var(--text);
 }
-.tab[aria-selected='true'] {
-  color: var(--text);
-  border-bottom-color: var(--accent);
+.table th[aria-sort='ascending'] .table__arrow,
+.table th[aria-sort='descending'] .table__arrow {
+  color: var(--accent);
 }
-
-/* -- Containers ---------------------------------------------------------- */
+@media (width <= 640px) {
+  .table {
+    min-width: 44rem;
+  }
+}
 .card {
   display: flex;
   flex-direction: column;
@@ -128,9 +115,18 @@
   padding: var(--s-5);
   border: 1px solid var(--border);
   background: var(--surface);
+  box-shadow: var(--shadow-sm);
+  transition: border-color var(--dur-1) var(--ease);
 }
 .card > * {
   min-width: 0;
+}
+.card--flush {
+  padding: 0;
+}
+.card--current {
+  border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 .card__head {
   display: flex;
@@ -139,47 +135,153 @@
   gap: var(--s-4);
   flex-wrap: wrap;
 }
+.card--flush .card__head {
+  padding: var(--s-5) var(--s-5) 0;
+}
 .card__title {
-  font-family: var(--font-sans);
-  font-size: 0.9375rem;
-  font-weight: var(--weight-semibold);
-  line-height: 1.2;
   margin: 0;
+  font: var(--type-card-title);
+  letter-spacing: var(--type-card-title-tracking);
+  text-transform: var(--type-card-title-case);
 }
 .card__sub {
+  margin: 0;
   color: var(--text-muted);
-  font-size: var(--text-sm);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
-.card__body {
+.doorcard {
+  display: grid;
+  gap: var(--s-1);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+  transition:
+    border-color var(--dur-1) var(--ease),
+    background var(--dur-fast) var(--ease);
+}
+.doorcard--card {
+  padding: var(--s-5);
+}
+.doorcard--card:hover {
+  border-color: var(--accent);
+}
+.doorcard--row {
+  padding: 16px 24px;
+  border-width: 1px 0 0;
+  background: transparent;
+}
+.doorcard--row:hover {
+  background: var(--surface-2);
+}
+.doorcard--cta {
+  padding: var(--s-4) var(--s-5);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.doorcard--cta:hover {
+  border-color: var(--accent);
+}
+.doorcard__title {
+  font: var(--type-card-title);
+  letter-spacing: var(--type-card-title-tracking);
+  text-transform: var(--type-card-title-case);
+}
+.doorcard__sub {
+  color: var(--text-muted);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+.lrow {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 24px;
+  border-top: 1px solid var(--border);
+  list-style: none;
+  transition: background var(--dur-fast) var(--ease);
+}
+.lrow:hover {
+  background: var(--surface-2);
+}
+.lrow__lead:empty {
+  display: none;
+}
+.lrow__main {
+  display: grid;
+  min-width: 0;
+  grid-column: 2;
+}
+.lrow__title {
+  color: var(--text);
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+}
+.lrow__meta {
+  color: var(--text-muted);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+.lrow__trail {
+  grid-column: 3;
+}
+.lrow--panel {
+  padding: 9px 20px;
+}
+.lrow--notice {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.lrow--record {
+  grid-template-columns: minmax(8rem, 1fr) minmax(0, 2fr);
+}
+.lrow[data-state='selected'] {
+  background: var(--surface-2);
+}
+.lrow[data-state='done'] .lrow__title {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+.lrow[data-state='archived'] .lrow__title {
   color: var(--text-2);
 }
-.sec {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-4);
+@media (width <= 390px) {
+  .lrow[data-state='gate'] .lrow__trail {
+    grid-column: 1 / -1;
+  }
 }
-.sec__head {
-  margin: 0;
-  font-family: var(--font-display);
-  font-weight: var(--weight-medium);
-  font-size: var(--fs-title);
-  line-height: var(--lh-title);
-  letter-spacing: var(--tracking-tight);
-}
-.stack {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-4);
-}
-.grid {
+.form {
   display: grid;
   gap: var(--s-4);
+  padding: var(--s-4);
+  background: var(--surface-2);
 }
-.g3 {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+.form__grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--s-4);
+}
+.form__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--s-2);
+}
+@media (width <= 1279px) {
+  .form__grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+@media (width <= 900px) {
+  .form__grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 @media (width <= 640px) {
-  .g3 {
+  .form__grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }
@@ -187,169 +289,703 @@
   display: flex;
   align-items: flex-start;
   gap: var(--s-4);
-  padding: var(--s-3) var(--s-4);
+  padding: 12px 16px;
   border: 1px solid var(--border);
   border-left: 2px solid var(--warning);
-  font-size: var(--text-body);
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+}
+.banner__body {
+  flex: 1;
+  margin: 0;
+}
+.banner--bad {
+  border-left-color: var(--danger);
 }
 .banner--info {
   border-left-color: var(--info);
 }
-
-/* -- Status. An outline, a number or a line, never a fill. ---------------- */
-/* The pinned mockup has NO base .spill rule: it is five colour declarations
-   and nothing else, which is the anti-fill law drawn rather than described. */
-.spill[data-tone='wait'] {
-  color: var(--text-muted);
+@media print {
+  .banner--info {
+    display: none;
+  }
 }
-.spill[data-tone='run'] {
-  color: var(--info);
+.meter {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 6px;
+  background: var(--surface-3);
 }
-.spill[data-tone='gate'] {
-  color: var(--warning);
+.meter__fill {
+  display: block;
+  height: 100%;
+  background: var(--text);
 }
-.spill[data-tone='done'] {
-  color: var(--success);
+.meter.is-ok .meter__fill {
+  background: var(--success);
 }
-.spill[data-tone='bad'] {
-  color: var(--danger);
+.meter.is-warn .meter__fill {
+  background: var(--warning);
 }
-.u-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5em;
-  padding: 0.4em 0.9em;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-pill);
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-size: var(--text-overline);
-  font-weight: var(--weight-medium);
-  letter-spacing: 0.06em;
-  line-height: 1;
-  text-transform: uppercase;
-  white-space: nowrap;
+.meter.is-bad .meter__fill,
+.meter.is-over .meter__fill {
+  background: var(--danger);
 }
-.marker {
-  font-family: var(--font-mono);
-  font-weight: 300;
-  font-size: var(--fs-mono);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-label);
+.meter.is-info .meter__fill {
+  background: var(--info);
 }
-.u-mono {
-  font-family: var(--font-mono);
-  font-weight: 300;
-  font-size: var(--fs-mono);
-  letter-spacing: var(--tracking-label);
-  line-height: 1.4;
+.meter.is-idle .meter__fill {
+  background: var(--text-muted);
 }
-/* The count badge is absence-honest at its call site: zero renders nothing at
-   all rather than a zero, because a badge saying 0 is a badge saying look. */
-.cbadge {
-  display: inline-grid;
-  place-items: center;
-  min-width: 1rem;
-  height: 1rem;
-  padding: 0 0.15rem;
+.meter--stat {
+  height: 3px;
+  background: var(--border);
+}
+.meter--stat .meter__fill,
+.meter--time .meter__fill {
   background: var(--accent);
-  color: var(--accent-ink);
-  font-family: var(--font-mono);
-  font-size: 0.625rem;
-  line-height: 1;
 }
-.cbadge--plain {
-  background: none;
-  color: inherit;
+.meter--time {
+  height: 4px;
+  background: var(--border);
 }
-.segmented {
-  display: inline-flex;
-  border: 1px solid var(--border-strong);
+.meter__target {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 1px;
+  background: var(--text);
 }
-.segmented button {
-  padding: 0.35rem 0.7rem;
-  border: 0;
-  border-right: 1px solid var(--border);
-  background: transparent;
-  color: var(--text-2);
-  font-family: var(--font-mono);
-  font-weight: 300;
-  font-size: var(--fs-mono-sm);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-label);
-  cursor: pointer;
+.stat {
+  display: grid;
+  gap: 8px;
+  padding: 16px 24px 16px 0;
 }
-.segmented button:last-child {
-  border-right: 0;
+.stat__label {
+  color: var(--text-muted);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
 }
-.segmented button[aria-pressed='true'] {
-  background: var(--ink);
-  color: var(--paper);
+.stat__num {
+  font: var(--type-num-lg);
+  letter-spacing: var(--type-num-lg-tracking);
+  text-transform: var(--type-num-lg-case);
+  font-variant-numeric: tabular-nums;
 }
-
-/* -- Voice one: no rows. ------------------------------------------------- */
+.stat__of {
+  color: var(--text-muted);
+  font: var(--type-badge);
+  letter-spacing: var(--type-badge-tracking);
+  text-transform: var(--type-badge-case);
+}
+.stat__foot {
+  color: var(--text-muted);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+/* The one empty state (DS-PRIM-28): no icon, no fill, in three looks. */
 .empty {
   display: grid;
-  justify-items: center;
   gap: 6px;
-  padding: 30px 20px;
+  color: var(--text-muted);
+}
+.empty > p {
+  margin: 0;
+}
+.empty--block {
+  justify-items: center;
+  padding: 48px 24px;
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
   text-align: center;
 }
-.empty__title {
-  font-size: var(--text-body);
-  font-weight: var(--weight-semibold);
-  color: var(--text);
+.empty--inline {
+  max-width: 60ch;
+  padding-block: 16px;
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
-.empty__desc {
-  max-width: 340px;
-  font-size: var(--text-sm);
+.empty--row {
+  padding: 0;
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
+.empty__title {
   color: var(--text-muted);
 }
+.empty__desc,
 .empty__hint {
   max-width: 340px;
-  font-size: var(--text-label);
-  color: var(--text-muted);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
 }
 .empty__action {
   margin-top: 8px;
 }
-/* The mockup's own in-pane absence is words and nothing else, and on the ported
-   surfaces it stays that way: precedence governs the drawn surface. */
-.sbempty {
+/* DS-PRIM-29 (DR-37): a skeleton at the size of what it stands for. A slow
+   pulse, and none at all under reduced motion. */
+.skel {
+  display: block;
+  background: var(--surface-2);
+  animation: skel-pulse var(--dur-2) ease-in-out infinite alternate;
+}
+.skel--field {
+  width: 100%;
+  height: 38px;
+}
+.skel--line {
+  width: 60%;
+  height: 0.9em;
+}
+.skel--tile {
+  width: 10rem;
+  height: 5rem;
+}
+@keyframes skel-pulse {
+  to {
+    opacity: 0.55;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skel {
+    animation: none;
+  }
+}
+.rownote {
   margin: 0;
-  font-size: var(--text-sm);
+  color: var(--text-2);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+/* DS-PRIM-32: sample data only. The edge is inset so the mark never moves
+   layout, and a marked region inside another keeps only its edge. */
+.is-mock {
+  background: var(--mock-tint);
+  box-shadow: inset 0 0 0 1px var(--mock-edge);
+}
+.is-mock--nested,
+.is-mock .is-mock {
+  background: none;
+}
+.mocktag {
+  padding: 0 0.3rem;
+  border: 1px solid var(--border);
   color: var(--text-muted);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
+}
+/* DS-PRIM-33: one accent ring pulse where a link landed. */
+.flash-target {
+  animation: locate-flash var(--dur-flash) var(--ease) 1;
+}
+@keyframes locate-flash {
+  from {
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 75%, transparent);
+  }
+  to {
+    box-shadow: 0 0 0 3px transparent;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .flash-target {
+    animation: none;
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--accent) 75%, transparent);
+  }
+}
+.popover {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 4px);
+  right: 0;
+  display: grid;
+  gap: 12px;
+  width: 352px;
+  max-width: calc(100vw - 32px);
+  padding: 12px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg);
+  box-shadow: var(--shadow-overlay);
 }
 
-/* -- Voice two: this input is wrong. Red is legitimate status here, because
-      the field IS in an error state. ------------------------------------- */
-[aria-invalid='true'] {
-  border-color: color-mix(in srgb, var(--danger) 55%, var(--border));
+/* -- Not connected, unavailable and freshness (MP-1-6). No hatch and no pink
+      here: pink is for sample data on a demo install only (R56). -- */
+.notconn {
+  display: grid;
+  gap: var(--s-2);
+  padding: var(--s-5);
+  border: 1px dashed var(--border-strong);
+  color: var(--text-2);
 }
-.field__error {
+.notconn > p {
+  margin: 0;
+}
+.notconn__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-3);
+}
+.notconn__word {
+  color: var(--text);
+  font: var(--type-small-strong);
+  letter-spacing: var(--type-small-strong-tracking);
+  text-transform: var(--type-small-strong-case);
+}
+.notconn__source {
+  color: var(--text-muted);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
+}
+.notconn__reason {
+  max-width: 60ch;
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+.unavail {
+  display: inline-flex;
+  border-bottom: 0;
+  cursor: not-allowed;
+}
+.freshrow {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  font-size: var(--text-label);
-  color: var(--danger);
+  gap: var(--s-3);
 }
-.field__hint {
-  font-size: var(--text-label);
+/* An indicator: the bordered mono look in its one state, no hover, no press. */
+.fresh {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1-5);
+  padding: 4px 8px;
+  border: 1px solid var(--border);
   color: var(--text-muted);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
+  cursor: default;
+}
+.fresh__live {
+  width: 6px;
+  height: 6px;
+  border: 1px solid var(--success);
+}
+.fresh--offline,
+.fresh--source-behind {
+  color: var(--warning);
 }
 
-/* -- Voice three: the product has not built this yet. --------------------
-   ZERO SPECIFICITY ON PURPOSE. :where() makes this a DEFAULT rather than a
-   fight, so a surface that already owns an absence voice keeps it with a plain
-   class and only a surface with no voice of its own falls back to here. The
-   token is --text-2 rather than --text-dim: --text-dim is documented as
-   non-essential metadata only and measures about 2.07:1 on paper, which fails
-   WCAG 1.4.3 outright, and a low-vision reader would see a blank cell — the
-   broken reading this voice exists to prevent. No colour, no decoration: it
-   states a fact about the product, it is not a status. */
-:where(.in-dev) {
-  color: var(--text-2);
+/* -- The stamp (DS-PRIM-25): a timestamp or provenance line. ------------- */
+.stamp {
+  color: var(--text-muted);
+  font: var(--type-chip);
+  letter-spacing: var(--type-chip-tracking);
+  text-transform: var(--type-chip-case);
 }
-.empty--in-dev .empty__title {
-  color: var(--text-2);
+
+/* -- Charts (MP-1-5: DS-COMP-27, 28, 29 and 40). Hand-drawn SVG. Colour
+      comes from a tone through currentColor, so no chart names a colour and
+      every one follows the theme; text is set by the type scale. ---------- */
+.chart {
+  min-width: 0;
+  margin: 0;
+  color: var(--text);
+}
+.chart__frame {
+  position: relative;
+  width: 100%;
+}
+.chart--radial .chart__frame {
+  width: max-content;
+}
+.chart svg,
+.spark {
+  display: block;
+  overflow: visible;
+}
+[data-tone='accent'] {
+  color: var(--accent);
+}
+[data-tone='ink'] {
+  color: var(--text);
+}
+[data-tone='muted'] {
+  color: var(--text-muted);
+}
+[data-tone='info'] {
+  color: var(--info);
+}
+[data-tone='ok'] {
+  color: var(--success);
+}
+[data-tone='warn'] {
+  color: var(--warning);
+}
+[data-tone='bad'] {
+  color: var(--danger);
+}
+.chart__plot {
+  fill: none;
+}
+.chart__grid {
+  stroke: currentColor;
+  opacity: 0.09;
+}
+/* Axis labels in mono 10 at 45%. */
+.chart__axis {
+  fill: currentColor;
+  font: var(--type-badge);
+  letter-spacing: var(--type-badge-tracking);
+  text-transform: var(--type-badge-case);
+  opacity: 0.45;
+}
+.chart__axis-title {
+  fill: currentColor;
+  font: var(--type-badge);
+  letter-spacing: var(--type-badge-tracking);
+  text-transform: var(--type-badge-case);
+  opacity: 0.7;
+}
+.chart__line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.spark .chart__line {
+  stroke-width: 1.5;
+}
+.chart__area {
+  fill: currentColor;
+  opacity: 0.1;
+}
+.spark .chart__area {
+  opacity: 0.09;
+}
+.chart__dot,
+.chart__end {
+  fill: currentColor;
+}
+.chart__bar {
+  fill: currentColor;
+  opacity: 0.9;
+}
+.is-active > .chart__bar {
+  opacity: 1;
+}
+.chart__cursor {
+  stroke: currentColor;
+  stroke-dasharray: 2 3;
+  opacity: 0.35;
+}
+/* The hover and focus targets: invisible, with a ring when the keyboard is on one. */
+.chart__hit {
+  fill: transparent;
+  outline: none;
+}
+/* The keyboard's ring is the cursor line, drawn solid while a point has focus. */
+.chart__frame:has(.chart__hit:focus-visible) .chart__cursor {
+  stroke: var(--accent);
+  stroke-dasharray: none;
+  stroke-width: 1.5;
+  opacity: 1;
+}
+/* The donut's slices by index, in the mockup's chart paint order. */
+[data-paint='ink'] {
+  color: var(--ink);
+}
+[data-paint='accent'] {
+  color: var(--accent);
+}
+[data-paint='lilac'] {
+  color: var(--lilac);
+}
+[data-paint='deep'] {
+  color: var(--lilac-deep);
+}
+[data-paint='muted'] {
+  color: var(--ink-muted);
+}
+[data-paint='faint'] {
+  color: var(--ink-faint);
+}
+.chart__slice {
+  fill: currentColor;
+  opacity: 0.92;
+  outline: none;
+}
+.chart__slice:hover,
+.chart__slice:focus-visible {
+  opacity: 1;
+  stroke: var(--text);
+  stroke-width: 1.5;
+}
+.chart__tip {
+  position: absolute;
+  z-index: 40;
+  display: grid;
+  gap: 2px;
+  width: max-content;
+  max-width: 260px;
+  padding: 0.5rem 0.7rem;
+  transform: translate(-50%, calc(-100% - 8px));
+  background: var(--void);
+  color: var(--on-dark);
+  pointer-events: none;
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
+}
+.chart__tip-title {
+  color: var(--on-dark-muted);
+}
+.chart__tip-value {
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
+.chart__centre {
+  fill: currentColor;
+  font: var(--type-heading);
+  letter-spacing: var(--type-heading-tracking);
+  text-transform: var(--type-heading-case);
+}
+.chart__centre-label {
+  fill: currentColor;
+  opacity: 0.5;
+  font: var(--type-badge);
+  letter-spacing: var(--type-badge-tracking);
+  text-transform: var(--type-badge-case);
+}
+.chart__track {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 9;
+  opacity: 0.12;
+}
+.chart__arc {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 9;
+}
+.chart__target {
+  stroke: currentColor;
+  stroke-width: 1.5;
+}
+.chart__value {
+  fill: currentColor;
+  font: var(--type-heading);
+  letter-spacing: var(--type-heading-tracking);
+  text-transform: var(--type-heading-case);
+}
+.dials {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-5) var(--s-6);
+}
+/* The score dial: the ring takes the band's colour (0 to 49, 50 to 89, 90 up). */
+.dial {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+}
+.dial.is-ok {
+  color: var(--success);
+}
+.dial.is-warn {
+  color: var(--warning);
+}
+.dial.is-bad {
+  color: var(--danger);
+}
+.dial .chart__track {
+  stroke-width: 6;
+  opacity: 0.15;
+}
+.chart__ring {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 6;
+}
+.dial__score {
+  fill: currentColor;
+  font: var(--type-num-md);
+  letter-spacing: var(--type-num-md-tracking);
+  text-transform: var(--type-num-md-case);
+  /* type-exception DS-COMP-28: the score dial's number at the medium weight, as the mockup's scoreDial draws it */
+  font-weight: var(--weight-medium);
+}
+.dial__label {
+  color: var(--text-muted);
+  text-align: center;
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
+}
+/* The funnel (DS-COMP-40), to true scale: each stage as wide as its count. */
+.funnel {
+  display: grid;
+}
+.funnel__step {
+  display: grid;
+  grid-template-columns: 8.5rem minmax(0, 1fr) 16rem;
+  gap: var(--s-4);
+  align-items: center;
+  min-height: 3rem;
+  padding: 0 var(--s-4);
+}
+.funnel__label {
+  font: var(--type-small-strong);
+  letter-spacing: var(--type-small-strong-tracking);
+  text-transform: var(--type-small-strong-case);
+}
+.funnel__shape {
+  align-self: stretch;
+  display: flex;
+}
+.funnel__bg {
+  width: var(--w);
+  background: var(--accent);
+  opacity: var(--depth);
+}
+/* The shape look fuses the stages: a centred trapezoid from this width to the next. */
+.funnel--shape .funnel__bg {
+  width: 100%;
+  clip-path: polygon(
+    calc(50% - var(--w) / 2) 0,
+    calc(50% + var(--w) / 2) 0,
+    calc(50% + var(--next) / 2) 100%,
+    calc(50% - var(--next) / 2) 100%
+  );
+}
+.funnel__val {
+  display: flex;
+  gap: var(--s-3);
+  align-items: baseline;
+  font-variant-numeric: tabular-nums;
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+}
+.funnel__pct,
+.funnel__foot {
+  color: var(--text-muted);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
+.funnel__foot {
+  margin: var(--s-3) 0 0;
+  padding: 0 var(--s-4);
+}
+/* At phone width a stage takes two rows: its label and value, then its
+   true-scale shape across the full width, never hidden. */
+@media (width <= 640px) {
+  .funnel__step {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'label val'
+      'shape shape';
+    row-gap: var(--s-1);
+    padding-block: var(--s-2);
+  }
+  .funnel__label {
+    grid-area: label;
+  }
+  .funnel__val {
+    grid-area: val;
+  }
+  .funnel__shape {
+    grid-area: shape;
+    min-height: 1.5rem;
+  }
+}
+
+/* -- The component gallery page (MP-1-3). -------------------------------- */
+.gallery {
+  display: grid;
+  gap: var(--s-6);
+  padding: var(--s-5) var(--pad-x);
+}
+.gallery__title {
+  margin: 0;
+  font: var(--type-title);
+  letter-spacing: var(--type-title-tracking);
+  text-transform: var(--type-title-case);
+}
+.gallery__entry {
+  display: grid;
+  gap: var(--s-3);
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--rule);
+}
+.gallery__name {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  margin: 0;
+  font: var(--type-card-title);
+  letter-spacing: var(--type-card-title-tracking);
+  text-transform: var(--type-card-title-case);
+}
+.gallery__states {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--s-4) var(--s-5);
+  /* A wide table or chart scrolls or fits inside its state; it never widens the page. */
+  min-width: 0;
+}
+/* A state lays its component out in flow, as a page does: an inline control
+   (a button, a chip) keeps its own width and a block fills the state. */
+.gallery__state {
+  display: flow-root;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+}
+.gallery__state > figcaption {
+  margin-bottom: var(--s-2);
+}
+/* An axis chart or the funnel takes its width from its host and has none of
+   its own, so its state is given a basis rather than shrinking to fit. */
+.gallery__state:has(> .chart:not(.chart--radial), > .funnel) {
+  flex: 1 1 min(100%, 36rem);
+}
+.gallery__host {
+  position: relative;
+  display: inline-flex;
+}
+.gallery__icons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-3);
+  max-width: 40rem;
+}
+.gallery__host--popover {
+  min-height: 9rem;
+  min-width: min(352px, 100%);
+}
+.gallery__list {
+  margin: 0;
+  padding: 0;
+  min-width: min(30rem, 100%);
+}
+.gallery__stack,
+.gallery__flash {
+  display: grid;
+  gap: var(--s-3);
 }

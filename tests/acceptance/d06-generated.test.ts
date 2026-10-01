@@ -6,8 +6,9 @@
 // Two recipes are added here beside `role-case-positive-body.ts`'s, for the two
 // controls that recipe file leaves to other cases: `grant.revoke` revokes a
 // grant minted for this cell, and `delegation.revoke` revokes the delegation a
-// fresh agent pickup just opened. With those, every exported operation has a
-// positive control in this file. That includes the person's own lease work
+// fresh agent pickup just opened. With those, every operation a person
+// surface serves has a positive control in this file; `model.call`, the
+// agent's alone, runs its cells in `d06-agent.test.ts`. That includes the person's own lease work
 // (EX-01, `handlers.ts`): `task.pickup` claims a fresh approved reservation,
 // and `task.heartbeat` and `task.handback` name a lease the person's own
 // pickup of fresh approved work just took (`role-case-bodies.ts` `ownLease`).
@@ -158,7 +159,14 @@ describe.skipIf(serverUrl === undefined)('D06: every operation, field and surfac
       for (const cell of TOP_LEVEL_CELLS) {
         if (cell.key !== SYSTEM_OWNED_FIELDS[0] || cell.surface !== 'api') continue;
         // A plan's `fields` is not a record's, and the two revokes are this file's own recipes.
-        if (['preset.plan', 'grant.revoke', 'delegation.revoke'].includes(cell.operation)) continue;
+        // A client record's `fields` (C41-A) has no system-derived field to probe: its type holds
+        // `name` alone, and `record.create` refuses any other key and writes nothing.
+        if (
+          ['preset.plan', 'grant.revoke', 'delegation.revoke', 'record.create'].includes(
+            cell.operation,
+          )
+        )
+          continue;
         // eslint-disable-next-line no-await-in-loop -- one recipe at a time, as a person would
         const body = await positive(cell.operation);
         const fields = body['fields'];

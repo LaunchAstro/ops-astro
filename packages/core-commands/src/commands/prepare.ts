@@ -57,8 +57,12 @@ export const REVISION_FIXES: readonly string[] = [
   'A write against a stale revision is refused, never merged.',
 ];
 
-/** The one write an external party (R4) may reach, and then only in the client audience. */
-const EXTERNAL_WRITES: ReadonlySet<string> = new Set(['task.comment']);
+/**
+ * The writes an external party (R4) may reach: a comment, only in the client
+ * audience, and opening their own inbox item (`inbox.seen`, a `self` row whose
+ * handler stamps the caller's own item on a task they can read, and nothing else).
+ */
+const EXTERNAL_WRITES: ReadonlySet<string> = new Set(['task.comment', 'inbox.seen']);
 
 const EXTERNAL_FIXES: readonly string[] = [
   'A person without a membership may read what was shared with them and nothing more.',
@@ -397,6 +401,24 @@ const TARGET_LOOKUPS: Readonly<Record<string, ScopeLookup>> = {
       return rows[0] === undefined ? undefined : { kind: 'record', id: rows[0].id };
     },
   ],
+  // C41-A: an onboarding step's result is asked at the task's own client (its
+  // party slot), and only while that is still the onboarding's client, so a
+  // holder scoped to one client writes that client's steps and no other's. A
+  // task that is no step, or one moved to another client, falls back to the
+  // business, as a fabricated id does.
+  'onboarding.step_result': [
+    'recordId',
+    (tx, id) =>
+      firstRow(
+        tx,
+        `select 'party' as kind, r.uuid_7 as id
+           from public.onboarding_steps s
+           join public.onboardings o on o.business_id = s.business_id and o.id = s.onboarding_id
+           join public.records r on r.business_id = s.business_id and r.id = s.task_id
+          where s.business_id = $1 and s.task_id = $2 and r.uuid_7 = o.client_id`,
+        id,
+      ),
+  ],
   'delegation.revoke': [
     'delegationId',
     (tx, id) =>
@@ -462,13 +484,14 @@ const CLAIM_LOOKUPS: readonly ScopeLookup[] = [
  *   its gate is on (the runtime asks decide again). A grant is asked about at the
  *   scope it was issued on and a delegation at its purpose scope, so a manager
  *   whose `manage` covers exactly that scope reaches the handler, which then
- *   asks the full ceiling (`authority-controls.ts`).
+ *   asks the full ceiling (`authority-controls.ts`). An onboarding step's
+ *   result is asked at its client's scope.
  * - `claim`: the task the body's reservation or lease belongs to, asked at
  *   record scope as the runtime asks it under its locks.
  */
 const SCOPE_OF: Readonly<
   Record<
-    CommandDeclaration['authorisedOn'],
+    Exclude<CommandDeclaration['authorisedOn'], 'self'>,
     (tx: TenantQuery, request: UncheckedRequest, declaration: CommandDeclaration) => Promise<Scope>
   >
 > = {
@@ -513,18 +536,21 @@ export async function prepareCommand(
   const recordId = typeof request['recordId'] === 'string' ? request['recordId'] : undefined;
   // R4 before any grant row. A session with no membership stands on a read
   // share, and whatever else a row may say it holds, it writes nothing but a
-  // client-audience comment (minimum contract 8.1 R4; the audience is
-  // `tasks-comment.ts`'s to narrow).
+  // client-audience comment and the seen stamp on its own inbox item (minimum
+  // contract 8.1 R4; the audience is `tasks-comment.ts`'s to narrow).
   if (session.roleKey === null && !EXTERNAL_WRITES.has(declaration.name)) {
     return refused(refuseCommand('SCOPE_NOT_GRANTED', [], EXTERNAL_FIXES));
   }
-  const authorised = await checkAuthority(tx, subjectsOf(session), {
-    // From the declaration, never written in here: see `CommandDeclaration`.
-    collection: declaration.collection,
-    action: declaration.action,
-    scope: await SCOPE_OF[declaration.authorisedOn](tx, request, declaration),
-  });
-  if (!authorised.ok) return refused(authorised.refusal);
+  // A `self` row asks no grant: its handler reaches the caller's own rows only.
+  if (declaration.authorisedOn !== 'self') {
+    const authorised = await checkAuthority(tx, subjectsOf(session), {
+      // From the declaration, never written in here: see `CommandDeclaration`.
+      collection: declaration.collection,
+      action: declaration.action,
+      scope: await SCOPE_OF[declaration.authorisedOn](tx, request, declaration),
+    });
+    if (!authorised.ok) return refused(authorised.refusal);
+  }
   // A field the row does not describe, after authority as on the agent prefix:
   // a caller without the right is told that first (R4, `external-party`).
   // Against the row itself: a replay prepares with the target left out, and

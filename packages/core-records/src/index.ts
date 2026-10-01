@@ -35,7 +35,9 @@ export {
 } from './authority/delegations.ts';
 export {
   checkAuthority,
+  EFFECTIVE as EFFECTIVE_GRANTS,
   effectiveGrants,
+  OPERATIONS_MANAGE,
   revokeGrant,
   subjectsOf,
   type Action,
@@ -46,6 +48,8 @@ export {
   type ScopeRequest,
   type Subject,
 } from './authority/grants.ts';
+export { grantedScopes } from './authority/scopes.ts';
+export { coveredScopes } from './authority/covered-scopes.ts';
 export {
   EXPIRED_FIXES,
   NO_AGENT_FIXES,
@@ -55,10 +59,43 @@ export {
 export { recordBodyRefusal } from './identity/authentication-attempts.ts';
 export {
   NO_MEMBERSHIP_FIXES,
+  resolveLogin,
   withSession,
   type Session,
   type VerifiedSubject,
 } from './identity/login-resolution.ts';
+export {
+  readInboxItems,
+  countOwedItems,
+  INBOX_HISTORY_PAGE,
+  INBOX_HISTORY_SCAN,
+} from './inbox/read.ts';
+export {
+  owes,
+  raiseInboxItem,
+  stampSeen,
+  recordDeliveryAttempt,
+  type DeliveryChannel,
+  type DeliveryState,
+  type InboxAccess,
+  type InboxFactKind,
+  type InboxItem,
+  type InboxAlert,
+  type InboxReason,
+  type InboxWorkState,
+  type RaiseInboxItem,
+} from './inbox/items.ts';
+export { taskAccess } from './inbox/access.ts';
+export {
+  raiseAssignment,
+  raiseDecision,
+  raiseEscalation,
+  raiseIncident,
+  raiseRunSettled,
+} from './inbox/raise.ts';
+export { raiseMentions, readMentions, type Mentioned } from './inbox/mentions.ts';
+export { clearDecision, withdrawEndedGates } from './inbox/clear.ts';
+export { readUnattended, type UnattendedItem } from './inbox/unattended.ts';
 export {
   isSettingRevisionStale,
   readBusinessSetting,
@@ -123,3 +160,141 @@ export {
   type TenantQuery,
 } from './tenancy/database.ts';
 export { isUuid } from './tenancy/ids.ts';
+export {
+  clearSecret,
+  isSecretStale,
+  listSecrets,
+  markSecretUsed,
+  readSecret,
+  setSecret,
+  type SecretRow,
+  type SecretScope,
+  type SecretStale,
+  type SecretWritten,
+  generateSealingPair,
+  loadSealingKey,
+  seal,
+  type Sealed,
+  type SealingKey,
+} from './custody/index.ts';
+export {
+  isRepairRefusal,
+  listConnections,
+  startRepair,
+  type ConnectionClient,
+  type ConnectionRow,
+  type ConnectionStatus,
+  type RepairRefusal,
+  type RepairStarted,
+} from './connections/fleet.ts';
+export { listRunCosts, type CostPeriod, type RunCostRow } from './costs/run-costs.ts';
+export {
+  listAgents,
+  listGrants,
+  listTripwires,
+  readNightRound,
+  type AgentRow,
+  type GrantRow,
+  type GrantState,
+  type NightRound,
+  type NightStepRow,
+  type TripwireRow,
+} from './connections/signal.ts';
+export {
+  ALL_CLASSES,
+  classMatches,
+  clientClasses,
+  deriveGraduation,
+  listGraduation,
+  lockClientMandates,
+  mandateIsLive,
+  scopeChoices,
+  type Derived,
+  type Earned,
+  type GraduationClassRow,
+  type GraduationState,
+  type MandateRow,
+} from './mandates/mandates.ts';
+export {
+  bumpGraduationClass,
+  insertMandate,
+  lockGraduationClass,
+  lockMandate,
+  revokeMandate,
+  type MandateFiling,
+} from './mandates/writes.ts';
+export {
+  changeActivation,
+  insertActivation,
+  insertDefinition,
+  readActivation,
+  readVersion,
+  releaseVersion,
+  type ActivationMode,
+  type ActivationRow,
+  type ActivationSetting,
+  type DefinitionKind,
+  type DefinitionVersionRow,
+  type VersionRelease,
+} from './automations/automations.ts';
+export {
+  claimOccurrence,
+  FIRING_LIMITS,
+  type OccurrenceCause,
+  type OccurrenceClaim,
+  type OccurrenceOutcome,
+  type OccurrenceRow,
+  waitingOccurrences,
+} from './automations/occurrences.ts';
+export {
+  adoptVersion,
+  listApprovals,
+  previousVersion,
+  readStandingApproval,
+  revokeApproval,
+  turnOffActivation,
+  type AdoptionAct,
+  type AdoptionResult,
+  type RevokeResult,
+  type StandingApprovalRow,
+  type TurnOffResult,
+} from './automations/approvals.ts';
+export {
+  dispatchOccurrence,
+  readOccurrenceFacts,
+  type Dispatch,
+  type DispatchOutcome,
+  type DispatchRow,
+  type OccurrenceFacts,
+  type RunRefused,
+  type RunRequest,
+  type RunStarter,
+} from './automations/dispatch.ts';
+export {
+  listRegistry,
+  type Registry,
+  type RegistryActivation,
+  type RegistryDefinition,
+  type RegistryVersion,
+} from './automations/registry.ts';
+export { CLIENT_TYPE_KEY, installClientType } from './tasks/install.ts';
+export {
+  ONBOARDING_TEMPLATES,
+  stepTaskTitle,
+  type OnboardingTemplate,
+  type StepKind,
+  type TemplateStep,
+} from './onboarding/template.ts';
+export {
+  closeStep,
+  failStep,
+  insertOnboarding,
+  insertStepTask,
+  lockStepOfTask,
+  onboardingOfClient,
+  type OnboardingStepRow,
+  type StepState,
+} from './onboarding/onboardings.ts';
+export { closeStepMove, raiseStepMoves, reparkStepMove } from './onboarding/moves.ts';
+export { hasRoom, type DurableLimit } from './tenancy/limit.ts';
+export { connectOutbox, type ApiEvent, type Outbox } from './tenancy/outbox.ts';

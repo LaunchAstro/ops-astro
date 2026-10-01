@@ -21,8 +21,10 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { READS } from '../../packages/core-wire/src/surface.ts';
+import { grantTo, type Member } from '../commands/fixture.ts';
 import { PROPOSAL } from './role-case-bodies.ts';
 import { CASE, TARGET_FREE } from './cd-alternatives.ts';
+import { foreignConversation } from './foreign-conversation.ts';
 import { serverUrl, type AgentIdentity, type Caller } from './world.ts';
 import { createIdentWorld, type IdentWorld, type RawAnswer } from './ident-audit-cases.ts';
 import { auditMark, auditSince, domainState, expectAudited } from './ident-audit-rows.ts';
@@ -46,6 +48,14 @@ interface Cell {
 
 const NOBODY = 'text nobody should find in an audit row';
 
+/** An AW-05 answer's body: the task and the run on it, and a top-up's amount. */
+const runOf = (recordId: string, runId: string, op: CommandName): Body =>
+  op === 'run.top_up'
+    ? { recordId, runId, amountMinor: 100, currency: 'AUD' }
+    : op === 'run.revise_state'
+      ? { recordId, runId, expectedVersion: 0, knowledge: [NOBODY], unknowns: [] }
+      : { recordId, runId };
+
 /** An operand in its foreign and fabricated forms. */
 const pair = (
   operand: string,
@@ -56,8 +66,76 @@ const pair = (
   forms: { foreign: body(foreignId), fabricated: body(randomUUID()) },
 });
 
+/** C33's three identifier cells: a foreign version, activation and definition; then C52-A's. */
+function automationCells(w: IdentWorld): [CommandName, ReturnType<typeof pair>][] {
+  const f = w.foreign.automation;
+  return [
+    [
+      'activation.change',
+      pair('versionId', f.versionId, (versionId) => ({ versionId, ...MANUAL })),
+    ],
+    [
+      'activation.change',
+      pair('activationId', f.activationId, (activationId) => ({
+        activationId,
+        versionId: w.ownAutomation.versionId,
+        ...MANUAL,
+        expectedRevision: 1,
+      })),
+    ],
+    [
+      'definition.release',
+      pair('definitionId', f.definitionId, (definitionId) => ({ definitionId, ...RELEASE })),
+    ],
+    ...approvalCells(w),
+  ];
+}
+
+const at = (activationId: string): Body => ({ activationId, expectedRevision: 1 });
+
+/** C52-A's identifier cells: a foreign activation, version and approval. */
+function approvalCells(w: IdentWorld): [CommandName, ReturnType<typeof pair>][] {
+  const f = w.foreign.automation;
+  const own = w.ownAutomation;
+  return [
+    [
+      'activation.adopt',
+      pair('activationId', f.activationId, (activationId) => ({
+        ...at(activationId),
+        versionId: own.versionId,
+      })),
+    ],
+    [
+      'activation.adopt',
+      pair('versionId', f.versionId, (versionId) => ({ ...at(own.activationId), versionId })),
+    ],
+    ['activation.roll_back', pair('activationId', f.activationId, at)],
+    ['activation.turn_off', pair('activationId', f.activationId, at)],
+    ['approval.revoke', pair('approvalId', f.approvalId, (approvalId) => ({ approvalId }))],
+  ];
+}
+
 const actorOf = (by: Presenter): string =>
   by.kind === 'person' ? (by.caller.actorId as string) : by.identity.actorId;
+
+// A standing mandate's limits (MP-14-10a): the same bytes in both forms.
+const MANDATE_LIMITS = {
+  ceiling: { amountMinor: 100, currency: 'AUD' },
+  expiresAt: '2099-01-01T00:00:00.000Z',
+} as const;
+const MANDATE = { classes: ['*'], ...MANDATE_LIMITS, label: 'a mandate aimed abroad' } as const;
+// An activation's values and a version's (C33): the same bytes in both forms.
+const MANUAL = { mode: 'manual', enabled: false } as const;
+const RELEASE = {
+  contentDigest: 'e'.repeat(64),
+  contentSize: 1,
+  inputs: [],
+  operations: [],
+  modes: ['manual'],
+} as const;
+// An onboarding start and a step result (C41-A), aimed abroad.
+const START = (clientId: string): Body => ({ clientId, templateKey: 'standard' });
+const STEP = (recordId: string): Body => ({ recordId, outcome: 'done', result: 'aimed abroad' });
 
 describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () => {
   let w: IdentWorld;
@@ -67,6 +145,11 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
 
   beforeAll(async () => {
     w = await createIdentWorld('ident_negatives');
+    // MP-6-2's revision asks run:write, which the cast's admin holds on no
+    // run; on the whole business, so a foreign task is judged by the handler.
+    await w.h.world.db.app.withBusiness(w.h.world.alpha, async (tx) => {
+      await grantTo(tx, w.h.world.ada as Member, 'write', undefined, false, 'run');
+    });
     alpha = w.h.world.alpha;
     bravo = w.h.world.bravo;
     ada = { kind: 'person', caller: w.h.world.ada };
@@ -252,6 +335,11 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
       cells.push(
         ['task.restore', pair('batchId', f.batchId, (batchId) => ({ batchId }))],
         ['grant.revoke', pair('grantId', f.grantId, (grantId) => ({ grantId }))],
+        ['secret.clear', pair('secretId', f.secretId, (secretId) => ({ secretId }))],
+        [
+          'connector.repair',
+          pair('connectionId', f.connectionId, (connectionId) => ({ connectionId })),
+        ],
         [
           'delegation.revoke',
           pair('delegationId', f.picked.delegationId, (delegationId) => ({ delegationId })),
@@ -282,13 +370,61 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
             reason: 'identifier negatives',
           })),
         ],
+        ['mandate.file', pair('clientId', f.clientId, (clientId) => ({ clientId, ...MANDATE }))],
+        ['mandate.revoke', pair('mandateId', f.mandateId, (mandateId) => ({ mandateId }))],
+        [
+          'graduation.promote',
+          pair('classId', f.classId, (classId) => ({ classId, ...MANDATE_LIMITS })),
+        ],
+        ['graduation.demote', pair('classId', f.classId, (classId) => ({ classId }))],
+        ...automationCells(w),
+        ['onboarding.start', pair('clientId', f.onboardingClientId, (id) => START(id))],
+        ['onboarding.step_result', pair('recordId', f.stepTaskId, (id) => STEP(id))],
       );
+      // AW-05's answers name the task and the run on it. Bravo's run is the
+      // one its pickup claimed; alpha's task is named beside it, and then
+      // bravo's task beside it.
+      const [bravoRun] = await w.h.world.db.admin.execute<{ readonly run_id: string }>(
+        'select run_id from public.reservations where id = $1',
+        [f.picked.reservationId],
+      );
+      for (const op of ['run.top_up', 'run.end_at_budget_stop', 'run.revise_state'] as const) {
+        cells.push(
+          [op, pair('runId', String(bravoRun?.run_id), (id) => runOf(own.task.id, id, op))],
+          [
+            op,
+            pair('recordId', f.proposal.task.id, (id) => runOf(id, String(bravoRun?.run_id), op)),
+          ],
+        );
+      }
       for (const [op, { operand, forms }] of cells) {
         // eslint-disable-next-line no-await-in-loop
         await refuses(op, operand, ada, 'NOT_FOUND', forms);
       }
     },
     300_000,
+  );
+
+  it(
+    CASE.conversation,
+    async () => {
+      // AW-03: another business's conversation and a made-up id are one answer.
+      const foreign = await foreignConversation(w.h.world.db.admin, bravo);
+      const cells: readonly [CommandName, Body][] = [
+        ['conversation.read', {}],
+        ['conversation.message', { body: NOBODY }],
+        ['conversation.rename', { title: NOBODY }],
+        ['conversation.set_scope', { page: null }],
+      ];
+      for (const [op, extra] of cells) {
+        // eslint-disable-next-line no-await-in-loop -- each operation against its own before and after
+        await refuses(op, 'conversationId', ada, 'NOT_FOUND', {
+          foreign: { conversationId: foreign, ...extra },
+          fabricated: { conversationId: randomUUID(), ...extra },
+        });
+      }
+    },
+    120_000,
   );
 
   it(
@@ -355,6 +491,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         ['task.dispatch', {}],
         // The attempt token is one no form holds, so the lease is what is compared.
         ['task.observe', { attemptId: randomUUID() }],
+        ['task.check', { name: NOBODY, outcome: 'passed' }],
         ['task.handback', { outcome: 'completed', report: { wrote: NOBODY } }],
       ];
       for (const [op, extra] of byLease) {
@@ -391,7 +528,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
   it(
     CASE.targetFree,
     async () => {
-      // The nine that name no identifier (`cd-alternatives.ts`, where the matrix
+      // The twelve that name no identifier (`cd-alternatives.ts`, where the matrix
       // reads its not-applicable rows from): a positive request moves and shows
       // nothing of bravo's, and a target it would ignore is refused. The reading
       // is TRANSACTION-CONTRACT line 113, accepted by root ruling 3. Each aimed

@@ -16,6 +16,8 @@
 // Nothing below the boundary is substituted. Fixture grants go through
 // `issueGrant` via `grantTo`; every probe goes through `callRaw`.
 
+import { seedAutomation, type SeededAutomation } from '../automations/seed.ts';
+import { seedForeignRows, type ForeignRows } from './ident-audit-foreign.ts';
 import { randomUUID } from 'node:crypto';
 import { grantTo } from '../commands/fixture.ts';
 import type { Action } from '../../packages/core-records/src/authority/grants.ts';
@@ -77,7 +79,10 @@ export interface IdentWorld {
     picked: Picked;
     batchId: string;
     grantId: string;
-  }>;
+  }> &
+    Readonly<ForeignRows>;
+  /** An automation of alpha's own, so a foreign activation is aimed past its version (C33). */
+  readonly ownAutomation: SeededAutomation;
   /** The second alpha agent's live pickup. */
   readonly otherPicked: Picked;
   /** A member of alpha holding task grants on `rheaTask` and nothing else. */
@@ -247,6 +252,13 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
     }
   });
 
+  const foreignRows = await seedForeignRows(
+    world.db.admin,
+    world.bravo,
+    bravoAdmin.actorId as string,
+    async (name, body) => need(await person(bravoAdmin, name, body, 'bravo'), name),
+  );
+
   return {
     h,
     foreign: {
@@ -256,7 +268,9 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
       picked: bravoPicked,
       batchId: String(trashed['batchId']),
       grantId: String(bravoGrants[0]?.id),
+      ...foreignRows,
     },
+    ownAutomation: await seedAutomation(world.db.admin, world.alpha, world.ada.actorId as string),
     otherPicked,
     rhea,
     rheaTask,

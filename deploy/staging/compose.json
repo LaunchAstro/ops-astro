@@ -1,0 +1,247 @@
+{
+  "name": "ops-astro-staging",
+  "x-ops-astro": {
+    "ownPrefix": "ops-astro-staging",
+    "productionDatabaseMajor": 17,
+    "artefact": "ops-astro-{version}",
+    "madeUpDataOnly": true
+  },
+  "services": {
+    "backups": {
+      "container_name": "ops-astro-staging-backups",
+      "image": "postgres:17-alpine@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24",
+      "environment": {
+        "POSTGRES_DB": "ops_astro_staging_backups",
+        "POSTGRES_USER": "${STAGING_BACKUPS_ADMIN_USER:?set from the restore runbook}",
+        "POSTGRES_PASSWORD": "${STAGING_BACKUPS_ADMIN_PASSWORD:?set from the restore runbook}"
+      },
+      "command": [
+        "postgres",
+        "-c",
+        "ssl=on",
+        "-c",
+        "ssl_cert_file=/etc/ops-astro-tls/server.crt",
+        "-c",
+        "ssl_key_file=/etc/ops-astro-tls/server.key",
+        "-c",
+        "log_min_error_statement=panic"
+      ],
+      "volumes": [
+        "ops-astro-staging-backups-data:/var/lib/postgresql/data",
+        "ops-astro-staging-tls:/etc/ops-astro-tls:ro"
+      ],
+      "networks": ["staging"],
+      "restart": "unless-stopped",
+      "healthcheck": {
+        "test": ["CMD", "pg_isready", "-h", "127.0.0.1", "-d", "ops_astro_staging_backups"],
+        "interval": "5s",
+        "timeout": "5s",
+        "retries": 20
+      },
+      "user": "70:70",
+      "read_only": true,
+      "cap_drop": ["ALL"],
+      "security_opt": ["no-new-privileges:true"],
+      "tmpfs": [
+        "/var/run/postgresql:size=1m,uid=70,gid=70,mode=0775",
+        "/tmp:size=64m,uid=70,gid=70,mode=1777"
+      ],
+      "cpus": "0.5",
+      "mem_limit": "512m",
+      "memswap_limit": "512m",
+      "pids_limit": 100,
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "10m",
+          "max-file": "3"
+        }
+      }
+    },
+    "worker": {
+      "container_name": "ops-astro-staging-worker",
+      "image": "node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1",
+      "working_dir": "/app",
+      "command": ["node", "apps/worker/main.ts"],
+      "environment": {
+        "OPS_ASTRO_API_URL": "${STAGING_WEB_URL:?set from the staging runbook}",
+        "OPS_ASTRO_BUSINESS": "${STAGING_WORKER_BUSINESS:?set from the staging runbook}",
+        "OPS_ASTRO_TOKEN": "${STAGING_WORKER_TOKEN:?set from the staging runbook}",
+        "OPS_ASTRO_DELEGATION": "${STAGING_WORKER_DELEGATION:?set from the staging runbook}",
+        "OPS_WORKER_HEARTBEAT_URL": "${STAGING_WORKER_HEARTBEAT_URL:?set from the staging runbook}",
+        "OPS_EGRESS_HEARTBEAT_HOST": "${STAGING_EGRESS_HEARTBEAT_HOST:?set from the staging runbook}"
+      },
+      "volumes": ["ops-astro-staging-app:/app:ro"],
+      "networks": ["staging"],
+      "restart": "unless-stopped",
+      "user": "1000:1000",
+      "read_only": true,
+      "cap_drop": ["ALL"],
+      "security_opt": ["no-new-privileges:true"],
+      "tmpfs": ["/tmp:size=16m,uid=1000,gid=1000,mode=1777"],
+      "cpus": "0.5",
+      "mem_limit": "256m",
+      "memswap_limit": "256m",
+      "pids_limit": 100,
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "10m",
+          "max-file": "3"
+        }
+      }
+    },
+    "forwarder": {
+      "container_name": "ops-astro-staging-forwarder",
+      "image": "node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1",
+      "depends_on": {
+        "worker": {
+          "condition": "service_started"
+        }
+      },
+      "working_dir": "/app",
+      "command": ["node", "scripts/ops/forwarder.mjs"],
+      "environment": {
+        "DATABASE_FORWARDER_URL": "${STAGING_FORWARDER_DATABASE_URL:?set from the staging runbook}",
+        "OPS_ERROR_SINK_DSN": "${STAGING_ERROR_SINK_DSN:?set from the staging runbook}",
+        "OPS_ENVIRONMENT": "staging",
+        "OPS_RELEASE": "${STAGING_RELEASE:?set from the staging runbook}",
+        "OPS_FORWARDER_HEARTBEAT_URL": "${STAGING_FORWARDER_HEARTBEAT_URL:?set from the staging runbook}",
+        "OPS_SINK_HEARTBEAT_URL": "${STAGING_SINK_HEARTBEAT_URL:?set from the staging runbook}",
+        "OPS_EGRESS_POOLER_HOST": "${STAGING_EGRESS_POOLER_HOST:?set from the staging runbook}",
+        "OPS_EGRESS_POOLER_PORT": "${STAGING_EGRESS_POOLER_PORT:?set from the staging runbook}",
+        "OPS_EGRESS_HEARTBEAT_HOST": "${STAGING_EGRESS_HEARTBEAT_HOST:?set from the staging runbook}",
+        "OPS_EGRESS_SINK_HOST": "${STAGING_EGRESS_SINK_HOST:?set from the staging runbook}"
+      },
+      "volumes": ["ops-astro-staging-app:/app:ro"],
+      "networks": ["staging"],
+      "restart": "unless-stopped",
+      "user": "1000:1000",
+      "read_only": true,
+      "cap_drop": ["ALL"],
+      "security_opt": ["no-new-privileges:true"],
+      "tmpfs": ["/tmp:size=16m,uid=1000,gid=1000,mode=1777"],
+      "cpus": "0.5",
+      "mem_limit": "256m",
+      "memswap_limit": "256m",
+      "pids_limit": 100,
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "10m",
+          "max-file": "3"
+        }
+      }
+    },
+    "egress": {
+      "container_name": "ops-astro-staging-egress",
+      "image": "node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1",
+      "working_dir": "/app",
+      "command": ["node", "scripts/ops/egress.mjs", "relay"],
+      "environment": {
+        "STAGING_WEB_URL": "${STAGING_WEB_URL:?set from the staging runbook}",
+        "OPS_EGRESS_API_ALIAS": "${STAGING_EGRESS_API_HOST:?set from the staging runbook}",
+        "OPS_EGRESS_POOLER_HOST": "${STAGING_EGRESS_POOLER_HOST:?set from the staging runbook}",
+        "OPS_EGRESS_POOLER_PORT": "${STAGING_EGRESS_POOLER_PORT:?set from the staging runbook}",
+        "OPS_EGRESS_HEARTBEAT_HOST": "${STAGING_EGRESS_HEARTBEAT_HOST:?set from the staging runbook}",
+        "OPS_EGRESS_SINK_HOST": "${STAGING_EGRESS_SINK_HOST:?set from the staging runbook}",
+        "OPS_EGRESS_OUT": "egress-out"
+      },
+      "volumes": ["ops-astro-staging-app:/app:ro"],
+      "restart": "unless-stopped",
+      "user": "1000:1000",
+      "read_only": true,
+      "cap_drop": ["ALL"],
+      "security_opt": ["no-new-privileges:true"],
+      "tmpfs": ["/tmp:size=16m,uid=1000,gid=1000,mode=1777"],
+      "cpus": "0.5",
+      "mem_limit": "256m",
+      "memswap_limit": "256m",
+      "pids_limit": 100,
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "10m",
+          "max-file": "3"
+        }
+      },
+      "networks": {
+        "staging": {
+          "aliases": [
+            "${STAGING_EGRESS_API_HOST:?set from the staging runbook}",
+            "${STAGING_EGRESS_POOLER_HOST:?set from the staging runbook}",
+            "${STAGING_EGRESS_HEARTBEAT_HOST:?set from the staging runbook}",
+            "${STAGING_EGRESS_SINK_HOST:?set from the staging runbook}"
+          ]
+        },
+        "egress-link": {}
+      }
+    },
+    "egress-out": {
+      "container_name": "ops-astro-staging-egress-out",
+      "image": "node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1",
+      "working_dir": "/app",
+      "command": ["node", "scripts/ops/egress.mjs", "out"],
+      "environment": {
+        "STAGING_WEB_URL": "${STAGING_WEB_URL:?set from the staging runbook}",
+        "OPS_EGRESS_POOLER_HOST": "${STAGING_EGRESS_POOLER_HOST:?set from the staging runbook}",
+        "OPS_EGRESS_POOLER_PORT": "${STAGING_EGRESS_POOLER_PORT:?set from the staging runbook}",
+        "OPS_EGRESS_HEARTBEAT_HOST": "${STAGING_EGRESS_HEARTBEAT_HOST:?set from the staging runbook}",
+        "OPS_EGRESS_SINK_HOST": "${STAGING_EGRESS_SINK_HOST:?set from the staging runbook}"
+      },
+      "volumes": ["ops-astro-staging-app:/app:ro"],
+      "restart": "unless-stopped",
+      "user": "1000:1000",
+      "read_only": true,
+      "cap_drop": ["ALL"],
+      "security_opt": ["no-new-privileges:true"],
+      "tmpfs": ["/tmp:size=16m,uid=1000,gid=1000,mode=1777"],
+      "cpus": "0.5",
+      "mem_limit": "256m",
+      "memswap_limit": "256m",
+      "pids_limit": 100,
+      "logging": {
+        "driver": "json-file",
+        "options": {
+          "max-size": "10m",
+          "max-file": "3"
+        }
+      },
+      "networks": ["egress-link", "egress"]
+    }
+  },
+  "networks": {
+    "staging": {
+      "name": "ops-astro-staging",
+      "internal": true,
+      "enable_ipv6": false,
+      "driver_opts": {
+        "com.docker.network.bridge.gateway_mode_ipv4": "isolated"
+      }
+    },
+    "egress-link": {
+      "name": "ops-astro-staging-egress-link",
+      "internal": true,
+      "enable_ipv6": false,
+      "driver_opts": {
+        "com.docker.network.bridge.gateway_mode_ipv4": "isolated"
+      }
+    },
+    "egress": {
+      "name": "ops-astro-staging-egress",
+      "internal": false,
+      "enable_ipv6": false
+    }
+  },
+  "volumes": {
+    "ops-astro-staging-backups-data": {
+      "name": "ops-astro-staging-backups-data"
+    },
+    "ops-astro-staging-tls": {
+      "name": "ops-astro-staging-tls"
+    },
+    "ops-astro-staging-app": {
+      "name": "ops-astro-staging-app"
+    }
+  }
+}

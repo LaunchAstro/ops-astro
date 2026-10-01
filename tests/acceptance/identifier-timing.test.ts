@@ -22,9 +22,11 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { COMMAND_SURFACE } from '../../packages/core-wire/src/surface.ts';
+import { grantTo, type Member } from '../commands/fixture.ts';
 import { PROPOSAL } from './role-case-bodies.ts';
 import { targetKeyOf } from './role-case-harness.ts';
 import { TARGET_FREE as TARGET_FREE_BODIES } from './cd-alternatives.ts';
+import { foreignConversation } from './foreign-conversation.ts';
 import { serverUrl, type AgentIdentity, type Caller } from './world.ts';
 import { createIdentWorld, type IdentWorld, type RawAnswer } from './ident-audit-cases.ts';
 
@@ -141,6 +143,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
 
   beforeAll(async () => {
     w = await createIdentWorld('ident_timing');
+    // MP-6-2's revision asks run:write, which the cast's admin holds on no
+    // run; on the whole business, so a foreign task is judged by the handler.
+    await w.h.world.db.app.withBusiness(w.h.world.alpha, async (tx) => {
+      await grantTo(tx, w.h.world.ada as Member, 'write', undefined, false, 'run');
+    });
   }, 180_000);
   afterAll(async () => {
     await w?.close();
@@ -193,7 +200,7 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return { foreign, fabricated };
   }
 
-  /** The 26 cells: the 16 record-targeted operations, then the 10 with their own operand. */
+  /** The 57 cells: the record-targeted operations, then those with their own operand. */
   // eslint-disable-next-line max-lines-per-function -- one table, built in one place
   async function cells(): Promise<readonly Cell[]> {
     const ada: Presenter = { kind: 'person', caller: w.h.world.ada };
@@ -253,10 +260,81 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       fabricated: () => ({ gateId: randomUUID(), versionId: randomUUID(), ...decision }),
     });
     byAda('task.board', 'board', f.task.id, (board) => ({ board }));
+    const conversation = await foreignConversation(w.h.world.db.admin, w.h.world.bravo);
+    byAda('conversation.read', 'conversationId', conversation, (conversationId) => ({
+      conversationId,
+    }));
+    byAda('conversation.message', 'conversationId', conversation, (conversationId) => ({
+      conversationId,
+      body: NOBODY,
+    }));
+    byAda('conversation.rename', 'conversationId', conversation, (conversationId) => ({
+      conversationId,
+      title: NOBODY,
+    }));
+    byAda('conversation.set_scope', 'conversationId', conversation, (conversationId) => ({
+      conversationId,
+      page: null,
+    }));
     byAda('task.restore', 'batchId', f.batchId, (batchId) => ({ batchId }));
     byAda('grant.revoke', 'grantId', f.grantId, (grantId) => ({ grantId }));
+    byAda('secret.clear', 'secretId', f.secretId, (secretId) => ({ secretId }));
+    byAda('connector.repair', 'connectionId', f.connectionId, (connectionId) => ({
+      connectionId,
+    }));
     byAda('delegation.revoke', 'delegationId', f.picked.delegationId, (delegationId) => ({
       delegationId,
+    }));
+    const limits = {
+      ceiling: { amountMinor: 100, currency: 'AUD' },
+      expiresAt: '2099-01-01T00:00:00.000Z',
+    };
+    byAda('mandate.file', 'clientId', f.clientId, (clientId) => ({
+      clientId,
+      classes: ['*'],
+      ...limits,
+      label: 'a mandate aimed abroad',
+    }));
+    byAda('mandate.revoke', 'mandateId', f.mandateId, (mandateId) => ({ mandateId }));
+    byAda('graduation.promote', 'classId', f.classId, (classId) => ({ classId, ...limits }));
+    byAda('graduation.demote', 'classId', f.classId, (classId) => ({ classId }));
+    byAda('activation.change', 'versionId', f.automation.versionId, (versionId) => ({
+      versionId,
+      mode: 'manual',
+      enabled: false,
+    }));
+    byAda('definition.release', 'definitionId', f.automation.definitionId, (definitionId) => ({
+      definitionId,
+      contentDigest: 'e'.repeat(64),
+      contentSize: 1,
+      inputs: [],
+      operations: [],
+      modes: ['manual'],
+    }));
+    byAda('activation.adopt', 'activationId', f.automation.activationId, (activationId) => ({
+      activationId,
+      versionId: w.ownAutomation.versionId,
+      expectedRevision: 1,
+    }));
+    byAda('activation.roll_back', 'activationId', f.automation.activationId, (activationId) => ({
+      activationId,
+      expectedRevision: 1,
+    }));
+    byAda('activation.turn_off', 'activationId', f.automation.activationId, (activationId) => ({
+      activationId,
+      expectedRevision: 1,
+    }));
+    byAda('approval.revoke', 'approvalId', f.automation.approvalId, (approvalId) => ({
+      approvalId,
+    }));
+    byAda('onboarding.start', 'clientId', f.onboardingClientId, (clientId) => ({
+      clientId,
+      templateKey: 'standard',
+    }));
+    byAda('onboarding.step_result', 'recordId', f.stepTaskId, (recordId) => ({
+      recordId,
+      outcome: 'done',
+      result: 'a result aimed abroad',
     }));
     const own = await w.propose('a lineage the timing cells name');
     byAda('task.cancel', 'lineageId', f.proposal.lineageId, (lineageId) => ({
@@ -285,6 +363,37 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       amountMinor: 0,
       reason: 'identifier timing',
     }));
+    // AW-05's answers name the task and the run on it: bravo's run, the one
+    // its pickup claimed, beside alpha's own task.
+    const [bravoRun] = await w.h.world.db.admin.execute<{ readonly run_id: string }>(
+      'select run_id from public.reservations where id = $1',
+      [f.picked.reservationId],
+    );
+    byAda('run.top_up', 'runId', String(bravoRun?.run_id), (runId) => ({
+      recordId: own.task.id,
+      runId,
+      amountMinor: 100,
+      currency: 'AUD',
+    }));
+    byAda('run.end_at_budget_stop', 'runId', String(bravoRun?.run_id), (runId) => ({
+      recordId: own.task.id,
+      runId,
+    }));
+    byAda('run.revise_state', 'runId', String(bravoRun?.run_id), (runId) => ({
+      recordId: own.task.id,
+      runId,
+      expectedVersion: 0,
+      knowledge: [NOBODY],
+      unknowns: [],
+    }));
+    // Bravo's proposal raised its holders an inbox item (INB-1b); stamping it
+    // from alpha is the same NOT_FOUND as stamping an item that never existed.
+    const [bravoItem] = await w.h.world.db.admin.execute<{ id: string }>(
+      'select id from public.inbox_items where fact_id = $1 order by id limit 1',
+      [f.proposal.gateId],
+    );
+    if (bravoItem === undefined) throw new Error('bravo raised no inbox item to aim at');
+    byAda('inbox.seen', 'itemId', bravoItem.id, (itemId) => ({ itemId }));
     out.push({
       op: 'task.pickup',
       operand: 'reservationId',
@@ -303,7 +412,15 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       ['task.heartbeat', {}],
       ['task.dispatch', {}],
       ['task.observe', { attemptId: randomUUID() }],
+      ['task.check', { name: NOBODY, outcome: 'passed' }],
       ['task.handback', { outcome: 'completed', report: { wrote: NOBODY } }],
+      [
+        'model.call',
+        {
+          operation: 'model.replay_compose',
+          fields: [{ name: 'tone', source: 'business_internal', value: NOBODY }],
+        },
+      ],
     ];
     for (const [op, extra] of byLease) {
       out.push({
@@ -318,15 +435,15 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 33 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 57 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(33);
-    expect(names).toHaveLength(33);
+    expect(new Set(names).size, 'distinct operations').toBe(57);
+    expect(names).toHaveLength(57);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();
-    expect(names.toSorted(), 'every declaration outside the nine target-free ones').toStrictEqual(
+    expect(names.toSorted(), 'every declaration outside the twelve target-free ones').toStrictEqual(
       bearing,
     );
     const outside: string[] = [];

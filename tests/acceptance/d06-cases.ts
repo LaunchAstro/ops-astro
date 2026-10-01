@@ -51,6 +51,7 @@ import { TASK_STATE_FIELDS } from '../../packages/core-records/src/tasks/states.
 import { createCli } from '../../apps/cli/client.ts';
 import { OperationsClient, type ReadName } from '../../apps/web/src/operations/client.ts';
 import type { Harness } from './role-case-harness.ts';
+import { asBrowser } from '../support/sign-in.ts';
 
 export type Surface = 'api' | 'cli' | 'web';
 export const SURFACES: readonly Surface[] = ['api', 'cli', 'web'];
@@ -119,8 +120,17 @@ export interface TopCell {
   readonly surface: Surface;
 }
 
-/** Every declared operation, by every classified key, by every surface. */
-export const TOP_LEVEL_CELLS: readonly TopCell[] = COMMAND_SURFACE.flatMap((declaration) =>
+/**
+ * Served on the agent prefix only. The person surfaces refuse it by design,
+ * so it has no person positive control, and its D06 cells run on the agent
+ * prefix (`d06-agent.test.ts`).
+ */
+const AGENT_ONLY: ReadonlySet<CommandName> = new Set(['model.call']);
+
+/** Every operation a person surface serves, by every classified key, by every surface. */
+export const TOP_LEVEL_CELLS: readonly TopCell[] = COMMAND_SURFACE.filter(
+  (declaration) => !AGENT_ONLY.has(declaration.name),
+).flatMap((declaration) =>
   TOP_LEVEL_FIELDS.flatMap((key) =>
     SURFACES.map((surface) => ({ operation: declaration.name, key, surface })),
   ),
@@ -184,8 +194,11 @@ export function surfacesOf(
   const web = new OperationsClient({
     origin: 'http://api.test',
     businessKey: 'alpha',
-    token: world.ada.token,
-    fetch: async (url, init) => await world.api.fetch(new Request(url as string, init)),
+    signedIn: true,
+    fetch: asBrowser(
+      world.ada.token,
+      async (url, init) => await world.api.fetch(new Request(url, init)),
+    ),
   });
   return async (surface, name, body) => {
     if (surface === 'api') {

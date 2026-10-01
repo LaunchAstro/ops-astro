@@ -40,6 +40,31 @@ export const READ_NAMES = [
   'task.execution',
   // What an observed effect came from (T2c2); the task page draws it in T2g.
   'task.receipt',
+  // Custody's rows as set or not set (C31).
+  'secret.list',
+  // Connections & signal: the fleet (MP-14-7a), then grants, tripwires and the night round (MP-14-8),
+  // then graduation and standing mandates per client (MP-14-10a).
+  'connection.fleet',
+  'connection.signal',
+  'connection.graduation',
+  // The Workflow triggers registry (C33).
+  'automation.registry',
+  // What agent runs cost: skill costing (MP-14-9) and the agents' cost log (MP-14-6).
+  'finance.skill_costs',
+  'finance.agent_costs',
+  // The gates waiting on the caller's decision (MP-6-1).
+  'gate.pending',
+  // A conversation at its address (AW-03).
+  'conversation.read',
+  // The caller's own conversations, for the tab row (MP-7-11).
+  'conversation.list',
+  // The caller's own inbox and owed count (INB-1d), the same read the API and
+  // the command line serve; the working minimum draws them in INB-1g.
+  'inbox.read',
+  'inbox.count',
+  // Items no path reaches (INB-1e), for `operations:read`; the operations view
+  // (C55) draws them.
+  'inbox.unattended',
 ] as const;
 
 /**

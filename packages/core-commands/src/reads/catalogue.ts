@@ -30,9 +30,19 @@ import {
 import { listPeople } from './people.ts';
 import { readQueue } from './queue.ts';
 import { readTaskExecution } from './execution.ts';
+import { readAwaitingReview } from './awaiting-review.ts';
 import { readSettings } from './settings.ts';
+import { listCustodySecrets } from './custody.ts';
+import { readConnectionFleet } from './connections.ts';
+import { readConnectionSignal } from './signal.ts';
+import { readConnectionGraduation } from './graduation.ts';
+import { readAutomationRegistry } from './automations.ts';
+import { parseCostPeriod, readAgentCosts } from './agent-costs.ts';
+import { readSkillCosts } from './costs.ts';
 import { readCapabilities } from './capabilities.ts';
 import { parseReceipt, receiptSubject, serveReceipt } from './receipts.ts';
+import { listConversations, readConversation } from './conversation.ts';
+import { countOwed, readInbox, readUnattendedInbox } from './inbox.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
 
 export type ReadName = ReadRequest['read'];
@@ -72,8 +82,11 @@ interface RowBase<K extends ReadName> {
    * action, at the subject's record scope or the business's. A function: the
    * collection it names instead. `holds-any-grant`: no collection is asked;
    * the read refuses a caller holding nothing (see `session.capabilities`).
+   * `self`: no grant is asked; the read serves the caller's own rows only and
+   * derives access on each (the inbox).
    */
-  readonly authority: 'declared' | 'holds-any-grant' | ((operands: ReadOperands[K]) => string);
+  readonly authority:
+    'declared' | 'holds-any-grant' | 'self' | ((operands: ReadOperands[K]) => string);
   /**
    * Whether an external party refused by the grant check is told `NOT_FOUND`
    * rather than `SCOPE_NOT_GRANTED` (minimum contract 8.2 case 7: "Sibling
@@ -161,6 +174,34 @@ const NO_GRANT_AT_ALL = refuseCommand(
 );
 
 export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
+  // AW-03. No collection is asked at the door: the owner reads their own
+  // without the read-any grant, so the rule is the read's own
+  // (`reads/conversation.ts`), and a caller holding nothing is refused there.
+  'conversation.read': {
+    identifiers: ['conversationId'],
+    // Any body parses: a caller holding nothing is refused SCOPE_NOT_GRANTED
+    // before the identifier is looked at (the matrix's case (e)), so the
+    // read checks the identifier itself, after that.
+    parse: ({ conversationId }) => parsed({ conversationId }),
+    spine: false,
+    authority: 'holds-any-grant',
+    // The door asks no grant, so this flag has nothing to answer; the read
+    // itself tells a caller with no membership NOT_FOUND.
+    outsiderNotFound: false,
+    serve: async (tx, session, { conversationId }) =>
+      await readConversation(tx, session, conversationId),
+  },
+  // MP-7-11. The caller's own conversations; the rule is the read's own, as
+  // `conversation.read`'s is, because the owner lists without the read-any
+  // grant and the read-any grant lists nothing.
+  'conversation.list': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session) => await listConversations(tx, session),
+  },
   'task.read': {
     identifiers: ['recordId'],
     parse: ({ recordId }) =>
@@ -286,6 +327,20 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       return { ok: true, execution: await readTaskExecution(tx, recordId, operands.cursor) };
     },
   },
+  // No subject record, as the queue: the list is about the gates the caller
+  // may decide. The door asks for any grant; the rows are filtered by the
+  // caller's `decide` inside the query, and a caller holding none is refused.
+  'gate.pending': {
+    identifiers: [],
+    parse: NONE,
+    spine: true,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    async serve(tx, session, _operands, { spine }) {
+      const awaiting = await readAwaitingReview(tx, session, spine.taskTypeId, 'task');
+      return Array.isArray(awaiting) ? { ok: true, awaiting } : (awaiting as CommandRefusal);
+    },
+  },
   'preset.plan': {
     identifiers: [],
     parse({ recordTypeKey, presetKey, fields }) {
@@ -338,6 +393,74 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
   // No subject record, for the reason `task.queue` gives: the settings are
   // the business's own configuration rather than one record, and there is no
   // `settings` row in `records` to name in the column even if there were.
+  'secret.list': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session) => await listCustodySecrets(tx, session),
+  },
+  // Asked per row by the scopes the caller holds `connection:read` at, as
+  // `secret.list` is by `custody:manage`: a caller holding it nowhere is
+  // refused inside the read, never shown an empty fleet.
+  'connection.fleet': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session) => await readConnectionFleet(tx, session),
+  },
+  // Grants, tripwires and the night round, asked alike by the scopes the
+  // caller holds `connection:read` at (MP-14-8).
+  'connection.signal': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session) => await readConnectionSignal(tx, session),
+  },
+  // The per-client region, every client the caller's `connection:read` scopes
+  // reach at once, so the scope bar asks nothing (MP-14-10a).
+  'connection.graduation': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session) => await readConnectionGraduation(tx, session),
+  },
+  // The business's definitions, versions and activations (C33): asked like
+  // `settings.read`, at the business, since no row carries a client.
+  'automation.registry': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'declared',
+    outsiderNotFound: false,
+    serve: async (tx) => await readAutomationRegistry(tx),
+  },
+  // What agent runs cost (U39), asked per row by the scopes the caller holds
+  // `finance:read` at, as `connection.fleet` is by `connection:read`: a caller
+  // holding it nowhere is refused inside the read.
+  'finance.skill_costs': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session) => await readSkillCosts(tx, session),
+  },
+  'finance.agent_costs': {
+    identifiers: [],
+    parse: parseCostPeriod,
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session, period) => await readAgentCosts(tx, session, period),
+  },
   'settings.read': {
     identifiers: [],
     parse: NONE,
@@ -378,7 +501,51 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     outsiderNotFound: true,
     serve: serveReceipt,
   },
+  // The caller's own items: the query names the caller as recipient and each
+  // item's access is asked of their live grants, which is the permission
+  // check (INB-1d). The count is the same read, counted. A caller holding no
+  // live grant is refused, as `session.capabilities` refuses one, and never
+  // answered with a list of withheld items or a zero.
+  'inbox.read': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'self',
+    outsiderNotFound: false,
+    serve: async (tx, session) =>
+      (await holdsAnyGrant(tx, session))
+        ? { ok: true, inbox: await readInbox(tx, session.personId) }
+        : NO_GRANT_AT_ALL,
+  },
+  'inbox.count': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'self',
+    outsiderNotFound: false,
+    serve: async (tx, session) =>
+      (await holdsAnyGrant(tx, session))
+        ? { ok: true, owed: await countOwed(tx, session.personId) }
+        : NO_GRANT_AT_ALL,
+  },
+  // Every path to a person broken (INB-1e): `operations:read` on the business,
+  // declared, and within it only the items whose task the caller reads.
+  'inbox.unattended': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'declared',
+    outsiderNotFound: false,
+    serve: async (tx, session) => ({
+      ok: true,
+      unattended: await readUnattendedInbox(tx, session.personId),
+    }),
+  },
 };
+
+async function holdsAnyGrant(tx: TenantQuery, session: Session): Promise<boolean> {
+  return (await readCapabilities(tx, session)).grants.length > 0;
+}
 
 /** Whether `id` names a live task in the caller's business: `task.move`'s own check. */
 async function liveTask(tx: TenantQuery, taskTypeId: string, id: string): Promise<boolean> {

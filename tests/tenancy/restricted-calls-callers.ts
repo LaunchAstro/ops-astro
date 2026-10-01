@@ -103,10 +103,22 @@ export const OPERATIONS: readonly Operation[] = ['select', 'insert', 'update', '
  * are asked for rows that exist and must see none. Every statement returns one
  * row per row it touched, so the count is the server's.
  */
+/**
+ * Tables whose update is a column grant: the update is asked of a column the
+ * application role may write, so a refusal is the tenancy's, not the grant's.
+ */
+const UPDATE_COLUMN: Readonly<Record<string, string>> = {
+  'public.graduation_classes': 'revision',
+  'public.standing_mandates': 'revision',
+  'public.activations': 'revision',
+  'public.onboardings': 'revision',
+  'public.onboarding_steps': 'failures',
+};
+
 export function statementFor(table: CatalogueTable, operation: Operation): string {
   const t = table.qualified;
   const where = table.tenant ? ' where business_id = $1' : '';
-  const column = table.tenant ? 'business_id' : `"${table.firstColumn}"`;
+  const column = UPDATE_COLUMN[t] ?? (table.tenant ? 'business_id' : `"${table.firstColumn}"`);
   const statements: Readonly<Record<Operation, string>> = {
     select: `select 1 from ${t}${where}`,
     insert: table.tenant
@@ -187,7 +199,8 @@ export function expectedOutcome(
   const granted = applicationGrantsAt(table.qualified, at);
   if (granted === undefined) return `no contract for ${table.qualified}`;
   if (!granted.includes(GRANT_LETTER[operation])) return 'denied';
-  if (!table.tenant) return operation === 'select' ? `rows ${String(own)}` : 'no case';
+  // A table of no business (0047's outbox): a granted write passes privilege and meets its constraints.
+  if (!table.tenant) return operation === 'select' ? `rows ${String(own)}` : 'past tenancy';
   // The own tenant's writes pass privilege and tenancy and then meet the
   // table's own constraints or triggers; getting that far is the permitted path.
   if (caller === 'login in the wrapper, own tenant') {

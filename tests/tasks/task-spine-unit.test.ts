@@ -31,7 +31,10 @@ import {
   mergeFieldValues,
   RANK_GAP,
 } from '../../packages/core-records/src/tasks/placement.ts';
-import { RETENTION_CLASS_BY_TABLE } from '../../packages/core-records/src/tasks/trash.ts';
+import {
+  RETENTION_CLASS_BY_TABLE,
+  refusePurgeOfTable,
+} from '../../packages/core-records/src/tasks/trash.ts';
 
 describe('the spine declaration', () => {
   // Fixed slots 2.2, transcribed. If this list and that table disagree, the
@@ -224,5 +227,22 @@ describe('the retention register', () => {
       .map(([table]) => table)
       .toSorted();
     expect(work).toStrictEqual(['record_links', 'record_unique_values', 'records']);
+  });
+
+  // AW-02, skill-migration contract 4.4: the audit copy of a run's instruction
+  // bytes, with the pin and the read ledger it answers for, retains exactly as
+  // the run records it copies (#27 row 5) and a purge answers it as it answers
+  // them, so the copy never outlives the runs and never goes before them.
+  it("keeps the audit copy, the pin and the read ledger in the run records' class", () => {
+    for (const table of ['bootstrap_bytes', 'bootstrap_reads', 'run_definition_pins']) {
+      expect({ table, retention: RETENTION_CLASS_BY_TABLE[table] }).toStrictEqual({
+        table,
+        retention: RETENTION_CLASS_BY_TABLE['runs'],
+      });
+      expect(refusePurgeOfTable(table)?.names).toStrictEqual([
+        table,
+        refusePurgeOfTable('runs')?.names[1],
+      ]);
+    }
   });
 });

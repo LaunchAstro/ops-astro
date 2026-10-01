@@ -168,10 +168,10 @@ questions are the transport's. The questions here are the other half: whether
 a foreign read refuses, and whether a protected field stays put. A stub would
 make every one of them unfalsifiable.
 
-The suite signs the bearers with its own secret; GoTrue does not mint them.
-`createSupabaseVerifier` verifies an HS256 token against a deployment secret.
-A token signed with that same secret is the same token to every line of
-product code, and the subject it carries is a real row in `logins`. The cast
+The suite signs the bearers with its own test key; GoTrue does not mint them.
+`createSupabaseVerifier` verifies an ES256 token against a published key set,
+here a static one holding that key's public half. Such a token is the same
+token to every line of product code, and the subject it carries is a real row in `logins`. The cast
 is `scripts/local-seed.mjs`'s cast by name and by role: `ada` admin, `mia`
 member, `noah` member with no grant, `orphan` a verified login with no
 membership, and `bea` a member of the other business. The suite writes the
@@ -699,7 +699,7 @@ lane does not own.
 - **Closed: no seeded role could `task.decide`.** When this lane ran, the
   seed gave the admin no `decide` action, so against the live stack every
   decision and so every pickup was unreachable. The seed now gives the admin
-  `task:decide` (`scripts/local-seed.mjs:93`); a member still does not hold it.
+  `task:decide` (`scripts/local-seed.mjs:97`); a member still does not hold it.
 - **The fixture's member and the seed's member differ.** The seed's `member`
   holds `['task:read', 'task:write', 'task:assign', 'person:read', 'settings:read']`;
   the `MEMBER_ACTIONS` that `world.ts` grants (from `tests/acceptance/cast.ts`)

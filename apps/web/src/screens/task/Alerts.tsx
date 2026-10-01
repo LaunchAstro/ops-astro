@@ -5,7 +5,7 @@
 // the read sent them. A kind or reason this build does not know prints raw.
 
 import type { ReactElement } from 'react';
-import { PaneEmpty } from '@launchastro/ui';
+import { Empty } from '@launchastro/ui';
 import type { TaskAlert } from '../../../../../packages/core-wire/src/index.ts';
 
 const KINDS: Readonly<Record<string, string>> = {
@@ -21,7 +21,8 @@ const WAITING: Readonly<Record<string, string>> = {
   quarantined: 'The hold is kept. A person reconciles this attempt.',
 };
 
-function say(alert: TaskAlert): string {
+/** An alert in words, as the task page says it; the inbox row says it the same way. */
+export function say(alert: Pick<TaskAlert, 'kind' | 'waitingReason'>): string {
   if (alert.kind !== 'awaiting_person') return KINDS[alert.kind] ?? alert.kind;
   const reason = alert.waitingReason ?? '';
   return `Waiting on a person. ${WAITING[reason] ?? reason}`;
@@ -37,7 +38,7 @@ export function Alerts(props: {
         <span className="sb__k">Alerts</span>
       </div>
       {props.alerts.length === 0 ? (
-        <PaneEmpty say="No alert on this task." />
+        <Empty look="inline" title="No alert on this task." />
       ) : (
         <div className="sbact">
           {props.alerts.map((alert) => (

@@ -28,9 +28,12 @@ if (head === '') {
 // list would be guesswork; a path list is checkable and it is wrong in an
 // obvious way when it is wrong, which is the better failure.
 const SENSITIVE = [
-  /^packages\/core-custody\//u, // custody
-  /^packages\/core-connectors\//u, // tool execution and egress
-  /^packages\/core-runtime\//u, // the agent loop, gates, the audit chain
+  // Custody.
+  /^packages\/core-custody\//u,
+  // Tool execution and egress.
+  /^packages\/core-connectors\//u,
+  // The agent loop, gates, the audit chain.
+  /^packages\/core-runtime\//u,
   /^apps\/worker\//u, // tool execution
   /^\.husky\//u, // the hooks that enforce the gate
   /^\.github\/workflows\//u, // what runs with repository credentials
@@ -39,15 +42,24 @@ const SENSITIVE = [
   // that changed only this checker, or the database runner and its manifest,
   // or pins-check, passed with `not required`. A gate decides what merges; a
   // change to one is a change to that decision.
-  /^scripts\//u, // every checker CI and `pnpm check` run, and the runner itself
-  /^tests\/(?:agents|branding|ci|db|gate|licences)\//u, // their own cases, and the database suite manifest
-  /^package\.json$/u, // the scripts CI calls by name
-  /^pnpm-(?:lock|workspace)\.yaml$/u, // what installs, and which install scripts run
-  /^\.dependency-cruiser\.cjs$/u, // the dependency cruise's rules
-  /^commitlint\.config\.js$/u, // the commit-message gate's rules
-  /^\.gitleaks\.toml$/u, // the secrets scan's rules
-  /^vitest\.config\.ts$/u, // how the database gate's suites run
-  /^docs\/supply-chain-pins\.md$/u, // the record pins-check holds every pin to
+  // Every checker CI and `pnpm check` run, and the runner itself.
+  /^scripts\//u,
+  // Their own cases, and the database suite manifest.
+  /^tests\/(?:agents|branding|ci|db|gate|licences)\//u,
+  // The scripts CI calls by name.
+  /^package\.json$/u,
+  // What installs, and which install scripts run.
+  /^pnpm-(?:lock|workspace)\.yaml$/u,
+  // The dependency cruise's rules.
+  /^\.dependency-cruiser\.cjs$/u,
+  // The commit-message gate's rules.
+  /^commitlint\.config\.js$/u,
+  // The secrets scan's rules.
+  /^\.gitleaks\.toml$/u,
+  // How the database gate's suites run.
+  /^vitest\.config\.ts$/u,
+  // The record pins-check holds every pin to.
+  /^docs\/supply-chain-pins\.md$/u,
   /(^|\/)(auth|tenancy|egress|custody|audit)[^/]*\.(ts|tsx|mjs|js|py|sql)$/u,
 ];
 

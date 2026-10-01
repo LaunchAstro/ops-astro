@@ -19,12 +19,25 @@ import { setState, writeOwnedFields } from './tasks-state.ts';
 import { moveTask, rankTask, reparentTask } from './tasks-place.ts';
 import { purgeTasks, restoreTasks, trashTask } from './tasks-trash.ts';
 import { commentOnTask } from './tasks-comment.ts';
-import { setBusinessSetting } from './settings-write.ts';
+import { setBusinessSetting, setNotificationChannel } from './settings-write.ts';
+import { clearCustodySecret, setCustodySecret } from './custody-secrets.ts';
+import { startConnectorRepair } from './connector-repair.ts';
+import { demoteClass, fileMandate, promoteClass, revokeStandingMandate } from './mandates.ts';
+import { changeActivationAsPerson, releaseDefinitionVersion } from './automations.ts';
+import {
+  adoptActivationVersion,
+  revokeStandingApproval,
+  rollBackActivation,
+  turnOffActivationAsPerson,
+} from './automation-approvals.ts';
+import { recordStepResult, startOnboarding } from './onboarding.ts';
+import { createRecord } from './record-create.ts';
 import { decideOnGate } from './tasks-decide.ts';
 import { handbackOwnLease } from './tasks-handback.ts';
 import { heartbeatOwnLease } from './tasks-lease.ts';
 import { dispatchOwnLease } from './tasks-dispatch.ts';
 import { observeOwnLease } from './tasks-observe.ts';
+import { checkOwnLease } from './tasks-check.ts';
 import { pickupAsPerson } from './tasks-pickup.ts';
 import { proposeOnTask } from './tasks-propose.ts';
 import { revokeDelegationAsManager, revokeGrantAsManager } from './authority-controls.ts';
@@ -32,6 +45,12 @@ import { cancelOnTask, restartOnTask } from './tasks-controls.ts';
 import { topUpOnTask } from './budget-top-up.ts';
 import { recordOutcomeOnTask } from './budget-record-outcome.ts';
 import { writeOffOnTask } from './budget-write-off.ts';
+import { messageConversation, startConversation } from './conversations.ts';
+import { renameConversation, setConversationScope } from './conversation-tabs.ts';
+import { refuseModelCallAsPerson } from './model-call-person.ts';
+import { endOnRun, topUpOnRun } from './run-answers.ts';
+import { reviseStateOnRun } from './run-state.ts';
+import { stampOwnSeen } from './inbox-seen.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
@@ -78,6 +97,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
       request.body,
       request.audience,
       request.commentType,
+      request.mentions,
     ),
 
   // The revision travels with the rest of the envelope rather than as a
@@ -87,6 +107,24 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   // `any`).
   'settings.set_four_eyes_threshold': setting,
   'settings.set_client_sign_off': setting,
+
+  'secret.set': (tx, context, request) => setCustodySecret(tx, context, request),
+  'secret.clear': (tx, context, request) => clearCustodySecret(tx, context, request),
+  'connector.repair': (tx, context, request) => startConnectorRepair(tx, context, request),
+  'mandate.file': (tx, context, request) => fileMandate(tx, context, request),
+  'mandate.revoke': (tx, context, request) => revokeStandingMandate(tx, context, request),
+  'graduation.promote': (tx, context, request) => promoteClass(tx, context, request),
+  'graduation.demote': (tx, context, request) => demoteClass(tx, context, request),
+  'activation.change': (tx, context, request) => changeActivationAsPerson(tx, context, request),
+  'definition.release': (tx, context, request) => releaseDefinitionVersion(tx, context, request),
+  'activation.adopt': (tx, context, request) => adoptActivationVersion(tx, context, request),
+  'activation.roll_back': (tx, context, request) => rollBackActivation(tx, context, request),
+  'activation.turn_off': (tx, context, request) => turnOffActivationAsPerson(tx, context, request),
+  'approval.revoke': (tx, context, request) => revokeStandingApproval(tx, context, request),
+
+  'record.create': (tx, context, request) => createRecord(tx, context, request),
+  'onboarding.start': (tx, context, request) => startOnboarding(tx, context, request),
+  'onboarding.step_result': (tx, context, request) => recordStepResult(tx, context, request),
 
   'task.propose': proposeOnTask,
   'task.decide': decideOnGate,
@@ -106,6 +144,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.heartbeat': heartbeatOwnLease,
   'task.dispatch': dispatchOwnLease,
   'task.observe': observeOwnLease,
+  'task.check': checkOwnLease,
   'task.handback': handbackOwnLease,
 
   // T2e. A person's money decision; no agent route reaches it.
@@ -114,6 +153,23 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'budget.record_outcome': recordOutcomeOnTask,
   // T3c. A person closes an unknown hold at an amount; no agent route reaches it.
   'budget.write_off': writeOffOnTask,
+  // AW-03: the conversation's first message mints it; later ones are its owner's.
+  'conversation.start': startConversation,
+  'conversation.message': messageConversation,
+  // MP-7-11: the tab row's title and the page it is about, the owner's alone.
+  'conversation.rename': renameConversation,
+  'conversation.set_scope': setConversationScope,
+  // AW-01: the run's worker's, through the broker, on the agent prefix only.
+  'model.call': refuseModelCallAsPerson,
+
+  // AW-05: a person's answers to a run waiting at its approved ceiling.
+  'run.top_up': topUpOnRun,
+  'run.end_at_budget_stop': endOnRun,
+  // MP-6-2: a run's state revised, a person's under run:write; the agent's is
+  // served on its own prefix (`agent-operations.ts`).
+  'run.revise_state': reviseStateOnRun,
+  'inbox.seen': (tx, context, request) => stampOwnSeen(tx, context, request.itemId),
+  'notifications.set_channel': setNotificationChannel,
 };
 
 function writeOwned(

@@ -25,8 +25,21 @@ const OUTSIDER_NOT_FOUND = rows.filter(([, row]) => row.outsiderNotFound).map(([
 
 /** How each read reaches its answer: spine, a resolved subject, and how authority is asked. */
 const PINNED_SHAPE = {
+  'conversation.list': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'conversation.read': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'gate.pending': { spine: true, subject: false, authority: 'holds-any-grant' },
+  'inbox.count': { spine: false, subject: false, authority: 'self' },
+  'inbox.read': { spine: false, subject: false, authority: 'self' },
+  'inbox.unattended': { spine: false, subject: false, authority: 'declared' },
   'person.list': { spine: false, subject: false, authority: 'declared' },
   'preset.plan': { spine: false, subject: false, authority: 'from the request' },
+  'secret.list': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'connection.fleet': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'connection.signal': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'connection.graduation': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'automation.registry': { spine: false, subject: false, authority: 'declared' },
+  'finance.skill_costs': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'finance.agent_costs': { spine: false, subject: false, authority: 'holds-any-grant' },
   'session.capabilities': { spine: false, subject: false, authority: 'holds-any-grant' },
   'settings.read': { spine: false, subject: false, authority: 'declared' },
   'task.board': { spine: true, subject: false, authority: 'declared' },
@@ -37,8 +50,21 @@ const PINNED_SHAPE = {
 };
 
 const PINNED_IDENTIFIERS = {
+  'automation.registry': [],
+  'connection.fleet': [],
+  'connection.graduation': [],
+  'connection.signal': [],
+  'conversation.list': [],
+  'conversation.read': ['conversationId'],
+  'finance.agent_costs': [],
+  'finance.skill_costs': [],
+  'gate.pending': [],
+  'inbox.count': [],
+  'inbox.read': [],
+  'inbox.unattended': [],
   'person.list': [],
   'preset.plan': [],
+  'secret.list': [],
   'session.capabilities': [],
   'settings.read': [],
   'task.board': ['board'],
@@ -123,9 +149,27 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
     PLAN_FIELDS,
   ],
   'task.queue': BODIES.map(() => null),
+  'gate.pending': BODIES.map(() => null),
   'person.list': BODIES.map(() => null),
   'settings.read': BODIES.map(() => null),
+  'secret.list': BODIES.map(() => null),
+  'connection.fleet': BODIES.map(() => null),
+  'connection.signal': BODIES.map(() => null),
+  'connection.graduation': BODIES.map(() => null),
+  'automation.registry': BODIES.map(() => null),
+  'finance.skill_costs': BODIES.map(() => null),
+  // U39: the cost log's period, which none of these bodies carries.
+  'finance.agent_costs': BODIES.map(() => ({
+    code: 'FIELD_VALUE_INVALID',
+    names: ['from'],
+    fixes: ['Send from and to as ISO date-times, from before to.'],
+  })),
   'session.capabilities': BODIES.map(() => null),
+  'conversation.read': BODIES.map(() => null),
+  'conversation.list': BODIES.map(() => null),
+  'inbox.read': BODIES.map(() => null),
+  'inbox.count': BODIES.map(() => null),
+  'inbox.unattended': BODIES.map(() => null),
 };
 
 /** The refusal without its `refused` flag, or null. */
@@ -137,7 +181,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same nine reads', () => {
+  it('names the same nineteen reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 

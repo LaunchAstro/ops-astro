@@ -1,0 +1,751 @@
+{
+  "version": 1,
+  "sampleClient": "meridian-dental",
+  "policy": {
+    "canonical": "Root-level Hub sections, /clients/:client/ for the internal client workspace, and /portal/:client/ for the client-facing portal.",
+    "legacy": "/agency/ and /client-portal/ remain mockup source addresses and compatibility aliases only.",
+    "navigation": "The sidebar is one level. Children are projected into the established top tab row."
+  },
+  "hub": [
+    {
+      "id": "dashboard",
+      "section": "dashboard",
+      "label": "Dashboard",
+      "path": "/dashboard/",
+      "source": "/route-home/",
+      "description": "Agency-wide operating dashboard.",
+      "children": [
+        {
+          "id": "dashboard-home",
+          "label": "Dashboard",
+          "path": "/dashboard/",
+          "source": "/route-home/",
+          "state": "dashboard"
+        },
+        {
+          "id": "portfolio",
+          "label": "Portfolio",
+          "path": "/dashboard/portfolio/",
+          "source": "/agency/portfolio/",
+          "state": "portfolio"
+        },
+        {
+          "id": "executive",
+          "label": "Executive",
+          "path": "/dashboard/executive/",
+          "source": "/agency/executive/",
+          "state": "executive"
+        }
+      ]
+    },
+    {
+      "id": "inbox",
+      "label": "Inbox",
+      "path": "/inbox/",
+      "source": "/route-home/",
+      "description": "The agency-wide home for requests, approvals and operational messages."
+    },
+    {
+      "id": "projects",
+      "section": "projects-hub",
+      "label": "Projects",
+      "path": "/projects/",
+      "source": "/agency/projects/",
+      "children": [
+        {
+          "id": "projects-home",
+          "label": "Projects",
+          "path": "/projects/",
+          "source": "/agency/projects/",
+          "state": "projects"
+        },
+        {
+          "id": "reviews",
+          "label": "Reviews",
+          "path": "/projects/reviews/",
+          "source": "/route-home/",
+          "state": "reviews"
+        }
+      ]
+    },
+    {
+      "id": "clients",
+      "section": "clients-hub",
+      "label": "Clients",
+      "path": "/clients/",
+      "source": "/agency/clients/",
+      "children": [
+        {
+          "id": "clients-home",
+          "label": "Clients",
+          "path": "/clients/",
+          "source": "/agency/clients/",
+          "state": "clients"
+        },
+        {
+          "id": "forms",
+          "label": "Forms",
+          "path": "/clients/forms/",
+          "source": "/route-home/",
+          "state": "forms"
+        }
+      ]
+    },
+    {
+      "id": "connections",
+      "section": "connections-hub",
+      "label": "Connections & signal",
+      "path": "/connections/",
+      "source": "/agency/connections-and-signal/",
+      "children": [
+        {
+          "id": "connections-home",
+          "label": "Connections & signal",
+          "path": "/connections/",
+          "source": "/agency/connections-and-signal/",
+          "state": "connections"
+        },
+        {
+          "id": "site-health",
+          "label": "Site health",
+          "path": "/connections/site-health/",
+          "source": "/agency/site-health/",
+          "state": "site-health"
+        }
+      ]
+    },
+    {
+      "id": "docs",
+      "section": "docs-hub",
+      "label": "Docs",
+      "path": "/docs/",
+      "source": "/route-home/",
+      "children": [
+        {
+          "id": "docs-home",
+          "label": "Docs",
+          "path": "/docs/",
+          "source": "/route-home/",
+          "state": "docs"
+        },
+        {
+          "id": "snippets",
+          "label": "Snippets",
+          "path": "/docs/snippets/",
+          "source": "/route-home/",
+          "state": "snippets"
+        }
+      ]
+    },
+    {
+      "id": "settings",
+      "section": "settings-hub",
+      "label": "Settings",
+      "path": "/settings/",
+      "source": "/route-home/",
+      "children": [
+        {
+          "id": "general",
+          "label": "General",
+          "path": "/settings/",
+          "source": "/route-home/",
+          "state": "general"
+        },
+        {
+          "id": "keys",
+          "label": "Keys",
+          "path": "/settings/keys/",
+          "source": "/route-home/",
+          "state": "keys"
+        },
+        {
+          "id": "access",
+          "label": "Access",
+          "path": "/settings/access/",
+          "source": "/route-home/",
+          "state": "access"
+        },
+        {
+          "id": "emails",
+          "label": "Emails",
+          "path": "/settings/emails/",
+          "source": "/route-home/",
+          "state": "emails"
+        },
+        {
+          "id": "workflow-triggers",
+          "label": "Workflow triggers",
+          "path": "/settings/workflow-triggers/",
+          "source": "/route-home/",
+          "state": "workflow-triggers"
+        },
+        {
+          "id": "telemetry",
+          "label": "Telemetry",
+          "path": "/settings/telemetry/",
+          "source": "/route-home/",
+          "state": "telemetry"
+        },
+        {
+          "id": "cal",
+          "label": "Cal",
+          "path": "/settings/cal/",
+          "source": "/route-home/",
+          "state": "cal"
+        }
+      ]
+    }
+  ],
+  "clientWorkspace": [
+    {
+      "id": "overview",
+      "section": "reports-a",
+      "label": "Overview",
+      "path": "/clients/:client/",
+      "source": "/agency/brief/",
+      "children": [
+        {
+          "id": "brief",
+          "label": "Brief",
+          "path": "/clients/:client/",
+          "source": "/agency/brief/",
+          "state": "brief"
+        },
+        {
+          "id": "weekly-report",
+          "label": "Weekly report",
+          "path": "/clients/:client/reports/weekly/",
+          "source": "/client-portal/reports/weekly-report/",
+          "state": "weekly-report"
+        },
+        {
+          "id": "monthly-report",
+          "label": "Monthly report",
+          "path": "/clients/:client/reports/monthly/",
+          "source": "/client-portal/reports/monthly-report/",
+          "state": "monthly-report"
+        },
+        {
+          "id": "track-record",
+          "label": "Track record",
+          "path": "/clients/:client/reports/track-record/",
+          "source": "/client-portal/reports/track-record/",
+          "state": "track-record"
+        }
+      ]
+    },
+    {
+      "id": "projects",
+      "section": "projects-a",
+      "label": "Projects",
+      "path": "/clients/:client/projects/",
+      "source": "/client-portal/projects/",
+      "children": [
+        {
+          "id": "projects",
+          "label": "All projects",
+          "path": "/clients/:client/projects/",
+          "source": "/client-portal/projects/",
+          "state": "projects"
+        },
+        {
+          "id": "roadmap",
+          "label": "Growth roadmap",
+          "path": "/clients/:client/projects/roadmap/",
+          "source": "/client-portal/projects/",
+          "state": "roadmap",
+          "legacyHash": "#roadmap"
+        },
+        {
+          "id": "worklog",
+          "label": "Work log",
+          "path": "/clients/:client/projects/work-log/",
+          "source": "/client-portal/projects/",
+          "state": "worklog",
+          "legacyHash": "#worklog"
+        },
+        {
+          "id": "reviews",
+          "label": "Reviews",
+          "path": "/clients/:client/projects/reviews/",
+          "source": "/client-portal/projects/",
+          "state": "reviews",
+          "legacyHash": "#reviews"
+        }
+      ]
+    },
+    {
+      "id": "workbench",
+      "section": "workbench",
+      "label": "Channel workbench",
+      "path": "/clients/:client/workbench/",
+      "source": "/client-portal/channel-workbench/",
+      "children": [
+        {
+          "id": "connections",
+          "label": "Connections",
+          "path": "/clients/:client/workbench/",
+          "source": "/client-portal/channel-workbench/",
+          "state": "connections",
+          "legacyHash": "#connections"
+        },
+        {
+          "id": "site",
+          "label": "Traffic & landing",
+          "path": "/clients/:client/workbench/traffic-landing/",
+          "source": "/client-portal/channel-workbench/",
+          "state": "site",
+          "legacyHash": "#site"
+        },
+        {
+          "id": "clarity",
+          "label": "On-page behaviour",
+          "path": "/clients/:client/workbench/on-page-behaviour/",
+          "source": "/client-portal/channel-workbench/",
+          "state": "clarity",
+          "legacyHash": "#clarity"
+        },
+        {
+          "id": "search",
+          "label": "Search & SEO",
+          "path": "/clients/:client/workbench/search-seo/",
+          "source": "/client-portal/channel-workbench/",
+          "state": "search",
+          "legacyHash": "#search"
+        },
+        {
+          "id": "intent",
+          "label": "Search intent",
+          "path": "/clients/:client/workbench/search-intent/",
+          "source": "/client-portal/channel-workbench/",
+          "state": "intent",
+          "legacyHash": "#intent"
+        },
+        {
+          "id": "ads",
+          "label": "Google Ads",
+          "path": "/clients/:client/workbench/google-ads/",
+          "source": "/client-portal/channel-workbench/",
+          "state": "ads",
+          "legacyHash": "#ads"
+        },
+        {
+          "id": "meta",
+          "label": "Meta Ads",
+          "path": "/clients/:client/workbench/meta-ads/",
+          "source": "/client-portal/channel-workbench/",
+          "state": "meta",
+          "legacyHash": "#meta"
+        },
+        {
+          "id": "testing",
+          "label": "Testing",
+          "path": "/clients/:client/workbench/testing/",
+          "source": "/client-portal/channel-workbench/",
+          "state": "testing",
+          "legacyHash": "#testing"
+        },
+        {
+          "id": "local",
+          "label": "Local & reviews",
+          "path": "/clients/:client/workbench/local-reviews/",
+          "source": "/client-portal/channel-workbench/",
+          "state": "local",
+          "legacyHash": "#local"
+        },
+        {
+          "id": "calls",
+          "label": "Calls",
+          "path": "/clients/:client/workbench/calls/",
+          "source": "/client-portal/channel-workbench/",
+          "state": "calls",
+          "legacyHash": "#calls"
+        },
+        {
+          "id": "email",
+          "label": "Email marketing",
+          "path": "/clients/:client/workbench/email-marketing/",
+          "source": "/client-portal/channel-workbench/",
+          "state": "email",
+          "legacyHash": "#email"
+        },
+        {
+          "id": "funnel",
+          "label": "Funnel",
+          "path": "/clients/:client/workbench/funnel/",
+          "source": "/client-portal/channel-workbench/",
+          "state": "funnel",
+          "legacyHash": "#funnel"
+        },
+        {
+          "id": "revenue",
+          "label": "Revenue",
+          "path": "/clients/:client/workbench/revenue/",
+          "source": "/client-portal/channel-workbench/",
+          "state": "revenue",
+          "legacyHash": "#revenue"
+        },
+        {
+          "id": "perf",
+          "label": "Website performance",
+          "path": "/clients/:client/workbench/website-performance/",
+          "source": "/client-portal/channel-workbench/",
+          "state": "perf",
+          "legacyHash": "#perf"
+        }
+      ]
+    },
+    {
+      "id": "library",
+      "section": "library-a",
+      "label": "Library",
+      "path": "/clients/:client/library/brand/",
+      "source": "/client-portal/library/brand/",
+      "children": [
+        {
+          "id": "brand",
+          "label": "Brand",
+          "path": "/clients/:client/library/brand/",
+          "source": "/client-portal/library/brand/",
+          "state": "brand"
+        },
+        {
+          "id": "design-system",
+          "label": "Design system",
+          "path": "/clients/:client/library/design-system/",
+          "source": "/client-portal/library/design-system/",
+          "state": "design-system"
+        },
+        {
+          "id": "voice",
+          "label": "Voice",
+          "path": "/clients/:client/library/voice/",
+          "source": "/client-portal/library/voice/",
+          "state": "voice"
+        },
+        {
+          "id": "drive",
+          "label": "Drive",
+          "path": "/clients/:client/library/drive/",
+          "source": "/client-portal/library/drive/",
+          "state": "drive"
+        }
+      ]
+    },
+    {
+      "id": "docs",
+      "section": "docs-a",
+      "label": "Docs",
+      "path": "/clients/:client/docs/",
+      "source": "/route-home/",
+      "description": "Placeholder for this client's Docs workspace. The Hub's existing Docs engine fills this home during the port.",
+      "children": [
+        {
+          "id": "docs-home",
+          "label": "Docs",
+          "path": "/clients/:client/docs/",
+          "source": "/route-home/",
+          "state": "docs",
+          "description": "The client-scoped Docs home will be filled when the Docs engine is ported into this workspace."
+        },
+        {
+          "id": "docs-shared",
+          "label": "Shared with client",
+          "path": "/clients/:client/docs/shared/",
+          "source": "/route-home/",
+          "state": "shared",
+          "description": "Pages and assets shared with this client will land here during the port."
+        },
+        {
+          "id": "docs-favourites",
+          "label": "Favourites",
+          "path": "/clients/:client/docs/favourites/",
+          "source": "/route-home/",
+          "state": "favourites",
+          "description": "The client's pinned and frequently used pages will land here during the port."
+        },
+        {
+          "id": "docs-trash",
+          "label": "Trash",
+          "path": "/clients/:client/docs/trash/",
+          "source": "/route-home/",
+          "state": "trash",
+          "description": "The Hub's recoverable Docs trash view will land here during the port."
+        }
+      ]
+    },
+    {
+      "id": "forms",
+      "section": "forms-a",
+      "label": "Forms",
+      "path": "/clients/:client/forms/",
+      "source": "/route-home/",
+      "description": "Client-scoped forms live here, independently of Workbench source availability.",
+      "children": [
+        {
+          "id": "forms-home",
+          "label": "Forms",
+          "path": "/clients/:client/forms/",
+          "source": "/route-home/",
+          "state": "forms",
+          "description": "This client's forms and questionnaires will land here during the port."
+        },
+        {
+          "id": "form-submissions",
+          "label": "Submissions",
+          "path": "/clients/:client/forms/submissions/",
+          "source": "/route-home/",
+          "state": "submissions",
+          "description": "Form responses and recent submissions will land here during the port."
+        },
+        {
+          "id": "form-content",
+          "label": "Content editor",
+          "path": "/clients/:client/forms/content-editor/",
+          "source": "/route-home/",
+          "state": "content",
+          "description": "The form content and scoring editor will land here during the port."
+        },
+        {
+          "id": "form-preview",
+          "label": "Preview & embed",
+          "path": "/clients/:client/forms/preview-embed/",
+          "source": "/route-home/",
+          "state": "preview",
+          "description": "Form preview, public link and embed controls will land here during the port."
+        }
+      ]
+    },
+    {
+      "id": "account",
+      "section": "account-a",
+      "label": "Account",
+      "path": "/clients/:client/account/",
+      "source": "/client-portal/account/",
+      "children": [
+        {
+          "id": "invoices",
+          "label": "Invoices",
+          "path": "/clients/:client/account/",
+          "source": "/client-portal/account/",
+          "state": "invoices",
+          "legacyHash": "#invoices"
+        },
+        {
+          "id": "adhoc",
+          "label": "Ad hoc hours",
+          "path": "/clients/:client/account/ad-hoc-hours/",
+          "source": "/client-portal/account/",
+          "state": "adhoc",
+          "legacyHash": "#adhoc"
+        },
+        {
+          "id": "details",
+          "label": "Business details",
+          "path": "/clients/:client/account/business-details/",
+          "source": "/client-portal/account/",
+          "state": "details",
+          "legacyHash": "#details"
+        },
+        {
+          "id": "plan",
+          "label": "Your plan",
+          "path": "/clients/:client/account/plan/",
+          "source": "/client-portal/account/",
+          "state": "plan",
+          "legacyHash": "#plan"
+        },
+        {
+          "id": "settings",
+          "label": "Settings",
+          "path": "/clients/:client/account/settings/",
+          "source": "/client-portal/account/",
+          "state": "settings",
+          "legacyHash": "#settings"
+        }
+      ]
+    }
+  ],
+  "clientPortal": [
+    { "id": "home", "label": "Home", "path": "/portal/:client/", "source": "/client-portal/home/" },
+    {
+      "id": "reports",
+      "section": "reports",
+      "label": "Reports",
+      "path": "/portal/:client/reports/weekly/",
+      "source": "/client-portal/reports/weekly-report/",
+      "children": [
+        {
+          "id": "weekly-report",
+          "label": "Weekly report",
+          "path": "/portal/:client/reports/weekly/",
+          "source": "/client-portal/reports/weekly-report/",
+          "state": "weekly-report"
+        },
+        {
+          "id": "monthly-report",
+          "label": "Monthly report",
+          "path": "/portal/:client/reports/monthly/",
+          "source": "/client-portal/reports/monthly-report/",
+          "state": "monthly-report"
+        },
+        {
+          "id": "track-record",
+          "label": "Track record",
+          "path": "/portal/:client/reports/track-record/",
+          "source": "/client-portal/reports/track-record/",
+          "state": "track-record"
+        }
+      ]
+    },
+    {
+      "id": "projects",
+      "section": "projects",
+      "label": "Projects",
+      "path": "/portal/:client/projects/",
+      "source": "/client-portal/projects/",
+      "children": [
+        {
+          "id": "projects",
+          "label": "All projects",
+          "path": "/portal/:client/projects/",
+          "source": "/client-portal/projects/",
+          "state": "projects"
+        },
+        {
+          "id": "roadmap",
+          "label": "Growth roadmap",
+          "path": "/portal/:client/projects/roadmap/",
+          "source": "/client-portal/projects/",
+          "state": "roadmap",
+          "legacyHash": "#roadmap"
+        },
+        {
+          "id": "reviews",
+          "label": "Reviews",
+          "path": "/portal/:client/projects/reviews/",
+          "source": "/client-portal/projects/",
+          "state": "reviews",
+          "legacyHash": "#reviews"
+        }
+      ]
+    },
+    {
+      "id": "library",
+      "section": "library",
+      "label": "Library",
+      "path": "/portal/:client/library/brand/",
+      "source": "/client-portal/library/brand/",
+      "children": [
+        {
+          "id": "brand",
+          "label": "Brand",
+          "path": "/portal/:client/library/brand/",
+          "source": "/client-portal/library/brand/",
+          "state": "brand"
+        },
+        {
+          "id": "voice",
+          "label": "Voice",
+          "path": "/portal/:client/library/voice/",
+          "source": "/client-portal/library/voice/",
+          "state": "voice"
+        },
+        {
+          "id": "drive",
+          "label": "Drive",
+          "path": "/portal/:client/library/drive/",
+          "source": "/client-portal/library/drive/",
+          "state": "drive"
+        },
+        {
+          "id": "docs",
+          "label": "Docs",
+          "path": "/portal/:client/library/docs/",
+          "source": "/client-portal/library/docs/",
+          "state": "docs"
+        }
+      ]
+    },
+    {
+      "id": "account",
+      "section": "account",
+      "label": "Account",
+      "path": "/portal/:client/account/",
+      "source": "/client-portal/account/",
+      "children": [
+        {
+          "id": "invoices",
+          "label": "Invoices",
+          "path": "/portal/:client/account/",
+          "source": "/client-portal/account/",
+          "state": "invoices",
+          "legacyHash": "#invoices"
+        },
+        {
+          "id": "adhoc",
+          "label": "Ad hoc hours",
+          "path": "/portal/:client/account/ad-hoc-hours/",
+          "source": "/client-portal/account/",
+          "state": "adhoc",
+          "legacyHash": "#adhoc"
+        },
+        {
+          "id": "details",
+          "label": "Business details",
+          "path": "/portal/:client/account/business-details/",
+          "source": "/client-portal/account/",
+          "state": "details",
+          "legacyHash": "#details"
+        },
+        {
+          "id": "plan",
+          "label": "Your plan",
+          "path": "/portal/:client/account/plan/",
+          "source": "/client-portal/account/",
+          "state": "plan",
+          "legacyHash": "#plan"
+        },
+        {
+          "id": "connections",
+          "label": "Connections",
+          "path": "/portal/:client/account/connections/",
+          "source": "/client-portal/connections/",
+          "state": "connect"
+        },
+        {
+          "id": "settings",
+          "label": "Settings",
+          "path": "/portal/:client/account/settings/",
+          "source": "/client-portal/account/",
+          "state": "settings",
+          "legacyHash": "#settings"
+        }
+      ]
+    },
+    {
+      "id": "contact",
+      "label": "Contact",
+      "path": "/portal/:client/contact/",
+      "source": "/client-portal/contact/"
+    }
+  ],
+  "utilityRoutes": [
+    {
+      "id": "activation-map",
+      "namespace": "clientWorkspace",
+      "label": "Activation map",
+      "path": "/clients/:client/activation-map/",
+      "source": "/agency/activation-map/",
+      "navigation": false
+    },
+    {
+      "id": "book-meeting",
+      "namespace": "clientPortal",
+      "label": "Book a meeting",
+      "path": "/portal/:client/contact/book/",
+      "source": "/client-portal/contact/book/",
+      "navigation": false
+    }
+  ]
+}
