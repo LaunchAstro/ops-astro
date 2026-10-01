@@ -5,7 +5,7 @@
 // dock (its track, its width, the sheet below 900) is the shell's; these
 // probes hold what the panel draws inside it.
 
-import type { LookProbe, LookScreen } from './index.ts';
+import type { LookProbe, LookScreen } from './types.ts';
 
 // 1480 only: at 900 and below the mockup's dock strip sits under the page
 // (DS-SIDE-D9, D20), so its Agent tab cannot be pressed to open the panel.

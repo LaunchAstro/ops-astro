@@ -5,7 +5,7 @@
 // its own address, so its messages are held to the drawer's (DOCK AI-09):
 // one message look, not a second one for the page.
 
-import type { LookProbe, LookScreen } from './index.ts';
+import type { LookProbe, LookScreen } from './types.ts';
 
 // The mockup side is the drawer, which opens at 1480 only (agent-drawer.ts).
 const WIDTHS = [1480] as const;

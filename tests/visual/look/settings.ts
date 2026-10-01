@@ -2,7 +2,7 @@
 //
 // B5, settings (PAGE-MAP AGENCY, Settings).
 
-import type { LookScreen } from './index.ts';
+import type { LookScreen } from './types.ts';
 
 export const SETTINGS: LookScreen = {
   id: 'settings',
