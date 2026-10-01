@@ -81,11 +81,14 @@ export const CONNECTIONS: LookScreen = {
       '[data-section="002"] .facet[aria-pressed="true"]',
       ['border-top-color', 'color'],
     ),
-    probe('table-head', 'table.conn thead th', 'table.conn thead th', [
-      ...LABEL,
-      'padding-left',
-      'border-bottom-color',
-    ]),
+    probe(
+      'table-head',
+      'table.conn thead th',
+      'table.conn thead th',
+      [...LABEL, 'padding-left', 'border-bottom-color'],
+      // DR-10 folded the dark muted ink to 55 percent; the mockup drew 46.
+      { ruled: [{ at: 'color@dark', want: 'rgba(248,248,248,140)', why: 'DR-10' }] },
+    ),
     probe('table-cell', 'table.conn .conn__row td', 'table.conn .conn__row td', [
       'font-size',
       'padding-top',
