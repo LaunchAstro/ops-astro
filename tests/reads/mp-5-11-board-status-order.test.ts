@@ -27,6 +27,7 @@ import { executeCommand } from '../../packages/core-commands/src/commands/envelo
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import type { BusinessId } from '../../packages/core-records/src/index.ts';
+import { clientHere } from './client-rows.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -92,7 +93,14 @@ const make = async (
   const made = await command(business, by, { command: 'task.create', fields: { title } });
   const recordId = made.recordId ?? '';
   const steps: Body[] = [
-    ...(client === undefined ? [] : [{ command: 'task.set_party', fields: { client } }]),
+    ...(client === undefined
+      ? []
+      : [
+          {
+            command: 'task.set_party',
+            fields: { client: await clientHere(w.db.admin, business, client) },
+          },
+        ]),
     ...then.map((step) => ({ command: step })),
   ];
   for (const step of steps) {

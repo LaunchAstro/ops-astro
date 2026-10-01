@@ -26,6 +26,7 @@ import { executeCommand } from '../../packages/core-commands/src/commands/envelo
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import type { BusinessId } from '../../packages/core-records/src/index.ts';
+import { clientHere } from './client-rows.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -101,17 +102,18 @@ const make = async (
 ) => {
   const made = await command(business, by, { command: 'task.create', fields: { title } });
   const recordId = made.recordId ?? '';
+  // The client first: once the task holds content its client is locked (S0-5).
+  if (extra.client !== undefined) {
+    await change(business, by, recordId, {
+      command: 'task.set_party',
+      fields: { client: await clientHere(w.db.admin, business, extra.client) },
+    });
+  }
   const [impact, confidence, ease] = marks;
   await change(business, by, recordId, {
     command: 'task.set_scores',
     fields: { impact, confidence, ease },
   });
-  if (extra.client !== undefined) {
-    await change(business, by, recordId, {
-      command: 'task.set_party',
-      fields: { client: extra.client },
-    });
-  }
   if (extra.stage !== undefined) {
     await change(business, by, recordId, {
       command: 'task.set_stage',

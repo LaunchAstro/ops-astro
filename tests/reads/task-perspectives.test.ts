@@ -18,6 +18,7 @@ import type { BusinessId } from '../../packages/core-records/src/index.ts';
 import type { ProposalView } from '../../packages/core-wire/src/index.ts';
 import { perspectiveCounts } from '../../apps/web/src/screens/task/perspective-counts.ts';
 import { agentWorld, detailOf, type AgentWorld, type Decider } from '../commands/agent-fixture.ts';
+import { clientHere } from './client-rows.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -67,7 +68,7 @@ const make = async (title: string, client: string, gated: boolean): Promise<stri
     command: 'task.set_party',
     recordId,
     expectedRevision: await revision(recordId),
-    fields: { client },
+    fields: { client: await clientHere(world.db.admin, world.business, client) },
   });
   if (gated) {
     await person({
