@@ -64,6 +64,7 @@ const frameAnswer = (url: string): Response | undefined => {
   if (url.endsWith('/session/person')) return frameJson({ ok: true, person: {} });
   if (url.endsWith('/preference/read')) return frameJson({ ok: true, preferences: {} });
   if (url.endsWith('/inbox/count')) return frameJson({ ok: true, owed: 0 });
+  if (url.endsWith('/chat/conversations')) return frameJson({ ok: true, conversations: [] });
   if (url.includes('/live?')) return new Response(null, { status: 503 });
   return undefined;
 };
