@@ -1823,7 +1823,8 @@ neither the key nor the owner login, and the endings loop (`pnpm endings`,
 every owed step each `ACCESS_ENDING_RETRY_SECONDS` (60): it reads business ids
 and the shared check on the owner login only, and settles business by
 business on the application login under each one's tenancy
-(`retryAccessEndings`). It refuses to start without `DATABASE_URL`,
+(`retryAccessEndings`). `pnpm endings --once` runs one pass and exits 1 if it
+failed, so a scheduler sees the backlog. It refuses to start without `DATABASE_URL`,
 `DATABASE_ADMIN_URL`, `GOTRUE_URL` (https or loopback) and
 `SUPABASE_SERVICE_KEY`. A 30-second claim on the row stops two retries
 calling the provider at once, and a step done is stamped once and never asked
