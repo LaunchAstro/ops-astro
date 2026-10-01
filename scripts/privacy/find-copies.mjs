@@ -2,9 +2,10 @@
 //
 // The manual privacy runbook's copy finder (C81, docs/local/PRIVACY-RUNBOOK.md):
 // every row of one business that holds a person's text, in any table, in any
-// letter case, including the records' search column. It reads with the owner's
-// connection from DATABASE_ADMIN_URL, with row security off, so a table the
-// connection cannot read in full is an error rather than a silent gap. Every
+// letter case, including the records' search column, and every row naming a
+// person whose own row holds it by id (their memberships). It reads with the
+// owner's connection from DATABASE_ADMIN_URL, with row security off, so a table
+// the connection cannot read in full is an error rather than a silent gap. Every
 // query names the business, and a table with no business column is an error,
 // so no other business's row reaches the list or the export.
 //
@@ -63,6 +64,13 @@ async function scan(admin, business, needle, exportRows) {
     const [owner] = await execute(`select id from public.businesses where key = $1`, [business]);
     if (owner === undefined) return;
     hits = 0;
+    // A row naming the person by id alone (a membership) is a copy of them too.
+    const people = await execute(
+      `select t.id::text as id from public.people t
+        where t.business_id = $2 and lower(to_jsonb(t)::text) like $1`,
+      [containing(needle), owner.id],
+    );
+    const ids = people.map((person) => person.id);
     const tables = await execute(
       `select c.relname as name,
               exists (select 1 from pg_attribute a
@@ -79,13 +87,15 @@ async function scan(admin, business, needle, exportRows) {
       // oxlint-disable-next-line no-await-in-loop
       const rows = await execute(
         `select t.ctid::text as address, to_jsonb(t) as row from public."${name}" t
-          where t.business_id = $2 and lower(to_jsonb(t)::text) like $1`,
-        [containing(needle), owner.id],
+          where t.business_id = $2
+            and (lower(to_jsonb(t)::text) like $1 or to_jsonb(t)::text like any($3::text[]))`,
+        [containing(needle), owner.id, ids.map((id) => `%${id}%`)],
       );
       for (const { address, row } of rows) {
-        const columns = Object.keys(row).filter((column) =>
-          JSON.stringify(row[column]).toLowerCase().includes(needle),
-        );
+        const columns = Object.keys(row).filter((column) => {
+          const held = JSON.stringify(row[column]).toLowerCase();
+          return held.includes(needle) || ids.some((id) => held.includes(id));
+        });
         const found = { table: name, id: row.id ?? address, columns };
         if (exportRows) found.row = row;
         stdout.write(`${JSON.stringify(found)}\n`);
