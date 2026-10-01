@@ -17,6 +17,11 @@ const probe = (id: string, mockup: string, app: string, props: readonly string[]
   props,
 });
 
+// R53 (TOKENS.md census): each text snaps to its canonical type style, so
+// where the mockup drew off the scale the build holds the style's value.
+const snapped = (prop: string, want: string) =>
+  (['light', 'dark'] as const).map((theme) => ({ at: `${prop}@${theme}`, want, why: 'R53' }));
+
 export const CLIENTS: LookScreen = {
   id: 'clients',
   probes: [
@@ -38,16 +43,26 @@ export const CLIENTS: LookScreen = {
       ruled: [{ at: 'color@dark', want: 'rgba(248,248,248,140)', why: 'DR-10' }],
     },
     probe('item', '.cl__item', '.clbook__item', ['border-bottom-color', 'box.height']),
-    probe('tile', '.cl__av', '.clbook__tile', [
-      'box.width',
-      'box.height',
-      'font-family',
-      'font-size',
-      'font-weight',
-      'color',
-      'border-top-color',
-    ]),
-    probe('name', '.cl__nm', '.clbook__name', ['font-size', 'font-weight', 'color']),
-    probe('industry', '.cl__ind', '.clbook__industry', ['font-size', 'color']),
+    {
+      ...probe('tile', '.cl__av', '.clbook__tile', [
+        'box.width',
+        'box.height',
+        'font-family',
+        'font-size',
+        'font-weight',
+        'color',
+        'border-top-color',
+      ]),
+      // The badge style: 10px regular where the mockup drew 9px semibold.
+      ruled: [...snapped('font-size', '10px'), ...snapped('font-weight', '400')],
+    },
+    {
+      ...probe('name', '.cl__nm', '.clbook__name', ['font-size', 'font-weight', 'color']),
+      ruled: snapped('font-size', '13px'),
+    },
+    {
+      ...probe('industry', '.cl__ind', '.clbook__industry', ['font-size', 'color']),
+      ruled: snapped('font-size', '12px'),
+    },
   ],
 };
