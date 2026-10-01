@@ -86,6 +86,13 @@ export const PANELS: PanelRegistry = {
     route: 'agency:team',
     icon: 'comments',
   },
+  // The client book, made up until MP-10-1 (screens/Clients.tsx).
+  clients: {
+    label: 'Clients',
+    ariaLabel: 'Clients: the client book',
+    route: 'agency:clients',
+    icon: 'users',
+  },
   settings: {
     label: 'Settings',
     ariaLabel: 'Business settings',

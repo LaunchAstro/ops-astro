@@ -26,13 +26,17 @@ export const CLIENTS: LookScreen = {
       'border-top-color',
       'background-color',
     ]),
-    probe('count', '.cl__count', '.clbook__count', [
-      'font-family',
-      'font-size',
-      'text-transform',
-      'letter-spacing',
-      'color',
-    ]),
+    {
+      ...probe('count', '.cl__count', '.clbook__count', [
+        'font-family',
+        'font-size',
+        'text-transform',
+        'letter-spacing',
+        'color',
+      ]),
+      // DR-10 folded the dark muted ink to 55 percent; the mockup drew 46.
+      ruled: [{ at: 'color@dark', want: 'rgba(248,248,248,140)', why: 'DR-10' }],
+    },
     probe('item', '.cl__item', '.clbook__item', ['border-bottom-color', 'box.height']),
     probe('tile', '.cl__av', '.clbook__tile', [
       'box.width',
