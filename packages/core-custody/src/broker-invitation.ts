@@ -27,7 +27,8 @@ import {
   type TenantQuery,
 } from '../../core-records/src/index.ts';
 import type { ModelOperation } from '../../core-connectors/src/index.ts';
-import { emailObserved, emailRouted, type MailSettings } from './broker-email.ts';
+import { observed, routed } from './broker-email-route.ts';
+import type { MailSettings } from './broker-email.ts';
 import type { Broker } from './broker-types.ts';
 
 /** The acts an invitation's send answers, one email each. */
@@ -130,7 +131,7 @@ export async function sendInvitation(
   broker: Broker,
   mail: MailSettings,
 ): Promise<InvitationSendResult> {
-  const found = emailRouted(broker);
+  const found = routed(broker);
   if (found === undefined) return { ok: false, code: 'OPERATION_NOT_CATALOGUED' };
   const { operation, route, adapter } = found;
   const asked = await database.withBusiness(
@@ -148,7 +149,7 @@ export async function sendInvitation(
     timeoutMs: operation.timeoutMs,
     maxResponseBytes: operation.maxResponseBytes,
   });
-  const seen = emailObserved(outcome, operation);
+  const seen = observed(outcome, operation);
   const attemptId = await database.withBusiness(
     businessId,
     async (tx) => await recordAttempt(tx, asked, seen),

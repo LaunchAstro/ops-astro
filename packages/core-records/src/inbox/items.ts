@@ -85,6 +85,15 @@ export function owes(reason: InboxReason): boolean {
 }
 
 /**
+ * Told at once on every channel it reaches, never batched or switched off:
+ * a decision or an incident (owner answer 10, CS-16.9). The channel setting
+ * refuses to quiet one and the email send never batches one.
+ */
+export function toldAtOnce(reason: InboxReason): boolean {
+  return reason === 'decision' || reason === 'incident';
+}
+
+/**
  * Raise one item, or find the open one already raised for the same recipient,
  * subject, reason and fact, so a replayed transition raises nothing twice.
  */
