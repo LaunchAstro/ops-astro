@@ -629,6 +629,7 @@
     "tests/ci/restore-drill-keeps-staging-guards.test.ts",
     "tests/ci/s0-1-staging-logins-live.test.ts",
     "tests/api/review-3a-15-pending-undecidable.test.ts",
-    "tests/runtime/review-3a-16-expired-gate-node.test.ts"
+    "tests/runtime/review-3a-16-expired-gate-node.test.ts",
+    "tests/api/review-3a-18-pending-current-version.test.ts"
   ]
 }
