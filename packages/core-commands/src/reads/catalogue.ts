@@ -14,8 +14,8 @@
 // `COMMAND_SURFACE` row: that is what the route generator and the surface
 // inventory read. This row says only how the check is asked.
 
-import { planPresetSync, isUuid } from '../../../core-records/src/index.ts';
-import { readAlerts, readOutages } from '../../../core-runtime/src/index.ts';
+import { planPresetSync, isUuid, taskAccess } from '../../../core-records/src/index.ts';
+import { readAlerts, readOutages, readTaskTrace } from '../../../core-runtime/src/index.ts';
 import type { TenantQuery, Session, PresetField } from '../../../core-records/src/index.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
 import type { TaskSpine } from '../commands/context.ts';
@@ -493,6 +493,32 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       ok: true,
       unattended: await readUnattendedInbox(tx, session.personId),
     }),
+  },
+  // AW-13 readers: a task's runs' trace. `operations:read` (C55: the owner and
+  // administrators by install default, never a member, never an agent) at the
+  // task's record scope, then the task's own read, so another client's task is
+  // NOT_FOUND like one that is not there.
+  'trace.read': {
+    identifiers: ['recordId'],
+    parse: ({ recordId }) =>
+      typeof recordId === 'string'
+        ? parsed({ recordId })
+        : rejected('recordId', 'Send recordId as the task’s identifier or its key.'),
+    spine: true,
+    subject: (tx, spine, operands) => resolveTaskId(tx, spine.taskTypeId, operands.recordId),
+    authority: 'declared',
+    outsiderNotFound: true,
+    async serve(tx, session, _operands, { spine, recordId }) {
+      if (
+        recordId === undefined ||
+        !isInternalReader(session.roleKey) ||
+        !(await liveTask(tx, spine.taskTypeId, recordId)) ||
+        (await taskAccess(tx, session.personId, recordId)) !== 'readable'
+      ) {
+        return refuseNotFound();
+      }
+      return { ok: true, trace: { taskId: recordId, ...(await readTaskTrace(tx, recordId)) } };
+    },
   },
 };
 

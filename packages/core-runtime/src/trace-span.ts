@@ -49,24 +49,30 @@ export interface TraceSpan {
 const HEX32 = /^[0-9a-f]{32}$/u;
 const HEX16 = /^[0-9a-f]{16}$/u;
 
+/** A span's cells without its two ids: what a reader who does not hold the key is shown. */
+export type TraceCells = Omit<TraceSpan, 'traceId' | 'spanId'>;
+
 /** The allowlist: every field checked, a value outside it refused. */
 export function traceSpan(input: Readonly<Record<string, unknown>>): TraceSpan {
+  const { traceId, spanId, ...cells } = input;
+  if (typeof traceId !== 'string' || !HEX32.test(traceId)) throw new TraceRefused('traceId');
+  if (typeof spanId !== 'string' || !HEX16.test(spanId)) throw new TraceRefused('spanId');
+  return Object.freeze({ traceId, spanId, ...traceCells(cells) });
+}
+
+/** The same allowlist, less the ids (AW-13 readers, `trace.read`). */
+export function traceCells(input: Readonly<Record<string, unknown>>): TraceCells {
   const keys = Object.keys(input).toSorted();
   const allowed = [
     'durationMs',
     'errorCode',
     'sequence',
-    'spanId',
     'stage',
     'startedAtMs',
-    'traceId',
     'transformVersion',
   ];
   if (keys.join() !== allowed.join()) throw new TraceRefused('a field outside the allowlist');
-  const { traceId, spanId, stage, transformVersion, startedAtMs, durationMs, sequence, errorCode } =
-    input;
-  if (typeof traceId !== 'string' || !HEX32.test(traceId)) throw new TraceRefused('traceId');
-  if (typeof spanId !== 'string' || !HEX16.test(spanId)) throw new TraceRefused('spanId');
+  const { stage, transformVersion, startedAtMs, durationMs, sequence, errorCode } = input;
   if (!(TRACE_STAGES as readonly unknown[]).includes(stage)) throw new TraceRefused('stage');
   if (transformVersion !== TRANSFORM_VERSION) throw new TraceRefused('transformVersion');
   if (!whole(startedAtMs)) throw new TraceRefused('startedAtMs');
@@ -75,8 +81,6 @@ export function traceSpan(input: Readonly<Record<string, unknown>>): TraceSpan {
   if (errorCode !== null && !(TRACE_ERRORS as readonly unknown[]).includes(errorCode))
     throw new TraceRefused('errorCode');
   return Object.freeze({
-    traceId,
-    spanId,
     stage: stage as TraceStage,
     transformVersion,
     startedAtMs: startedAtMs as number,

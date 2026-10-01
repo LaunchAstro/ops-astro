@@ -82,9 +82,18 @@ it('AW-13 keyed ids: the same event under the same key is the same id, and anoth
   expect(one).toMatch(/^[0-9a-f]{16}$/u);
 });
 
-it('AW-13 no agent read: no operation on any surface returns a trace, and the agent reaches none', () => {
+it('AW-13 no agent read: one operation returns a trace, a person’s read, and the agent reaches none', () => {
   const traceLike = /trace|telemetry|span|export/iu;
-  expect(COMMAND_SURFACE.map((row) => row.name).filter((name) => traceLike.test(name))).toEqual([]);
+  // `trace.read` alone (AW-13 readers), behind `operations:read` and never an agent.
+  expect(
+    COMMAND_SURFACE.filter((row) => traceLike.test(row.name)).map((row) => [
+      row.name,
+      row.kind,
+      row.agent,
+    ]),
+  ).toEqual([['trace.read', 'read', 'never']]);
   expect([...AGENT_SURFACE].filter((name) => traceLike.test(name))).toEqual([]);
-  expect(Object.keys(READ_CATALOGUE).filter((name) => traceLike.test(name))).toEqual([]);
+  expect(Object.keys(READ_CATALOGUE).filter((name) => traceLike.test(name))).toEqual([
+    'trace.read',
+  ]);
 });

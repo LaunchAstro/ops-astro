@@ -15,6 +15,8 @@ const NOT_DRAWN = new Set([
   'inbox.unattended',
   'gate.pending',
   'definition.attribution',
+  // AW-13 readers: no screen draws a trace yet.
+  'trace.read',
 ]);
 
 describe('the made-up reads the width-and-theme harness draws from', () => {
