@@ -3,7 +3,8 @@
 // The dock task panel's field edits (MP-4-8): the name, the assignee, the due
 // date, the estimate and the stage; the project is `ProjectField.tsx`, the
 // category `CategoryField.tsx`, the status `StatusField.tsx`, the client and
-// its duplicate `ClientField.tsx` and the tags `TagField.tsx` (MP-4-11).
+// its duplicate `ClientField.tsx` (reads through `client-seam.ts`) and the tags
+// `TagField.tsx` (MP-4-11).
 //
 // **Each field through its own command, at the revision the panel read.** The
 // name, the due date and the estimate go out through `task.update`
@@ -12,9 +13,6 @@
 // host to count it (`onChanged`), so the panel and the page read the task
 // again and draw what the server holds; a refusal is quoted in the server's
 // words and nothing is drawn as changed.
-//
-// **Only the fields with an owner on the record.** The client's reads come
-// through seams (`client-seam.ts`).
 //
 // **A control's Escape is the control's.** The name edit's Escape ends the
 // edit; the picker marks its own handled (TR-A3-3).
