@@ -44,6 +44,8 @@ const OTHERS = [
   'POST /api/session/end',
 ];
 const SETTINGS = [
+  // API-2: the function's instance ceiling, a number that divides the agent limits.
+  'AGENT_QUOTA_INSTANCES',
   'ALERT_SCOPE_KEY',
   'DATABASE_LOOKUP_URL',
   'DATABASE_URL',
