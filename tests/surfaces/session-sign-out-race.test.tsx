@@ -62,7 +62,7 @@ describe('S0-6 session cookie', () => {
     }) as typeof globalThis.fetch;
 
     const page = await mount(<Page sessions={sessions} fetch={fetch} />);
-    await page.click('.topbar__who button');
+    await page.click('.appbar__signout');
     expect(finishOldSignOut).toBeDefined();
     expect(page.find('#signin-email')).not.toBeNull();
 

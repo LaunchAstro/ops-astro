@@ -20,6 +20,7 @@ import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, type Interruption, type Session, type SessionStore } from './session/token.ts';
 import { signOut } from './session/sign-in.ts';
 import { SignIn } from './screens/SignIn.tsx';
+import { SignedInAs, stepBack, stepForward } from './signed-in.tsx';
 import { drawScreen } from './screen-registry.tsx';
 
 export interface AppProps {
@@ -176,6 +177,10 @@ export function App(props: AppProps): ReactElement {
     props.navigate(address);
   };
 
+  // The rail's drawer at 900 and below: shut on every page, and shut by moving.
+  const [navOpen, setNavOpen] = useState(false);
+  useEffect(() => setNavOpen(false), [here]);
+
   const bare = here.split(/[?#]/u)[0] ?? here;
   const match = matchRoute(bare);
   const at = pageAt(bare);
@@ -247,16 +252,11 @@ export function App(props: AppProps): ReactElement {
       rail={rail}
       here={bare}
       title={refused ? 'Not available' : (match?.route.title ?? at?.page.label ?? 'Not found')}
-      meta={
-        session === null ? null : (
-          <span className="topbar__who">
-            {session.email} · {session.businessKey}
-            <button className="btn" type="button" onClick={onSignOut}>
-              Sign out
-            </button>
-          </span>
-        )
-      }
+      person={session === null ? undefined : <SignedInAs session={session} onSignOut={onSignOut} />}
+      navOpen={navOpen}
+      onNav={setNavOpen}
+      onBack={stepBack}
+      onForward={stepForward}
       // The panel registry is the dock. Each registration names the address
       // that draws its surface, and the tab navigates there rather than
       // opening a drawer over the page: the surface has a real address, and an

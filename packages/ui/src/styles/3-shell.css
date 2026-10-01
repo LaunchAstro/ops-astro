@@ -20,6 +20,9 @@
    ============================================================================ */
 
 .shell {
+  /* At rest the dock's track is empty: its rail floats over the page's right
+     gutter, as the mockup's does, and the content runs to the window's edge. */
+  --dock-w: 0px;
   display: grid;
   grid-template-columns: var(--rail-w) 1fr;
   min-height: 100vh;
@@ -120,14 +123,66 @@
   letter-spacing: var(--type-body-strong-tracking);
   text-transform: var(--type-body-strong-case);
 }
+/* The hamburger (DS-SIDE-17): three 14 px bars, shown at 900 and below only. */
+.navtoggle {
+  display: none;
+  flex: none;
+  order: -1;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+.navtoggle__bars,
+.navtoggle__bars::before,
+.navtoggle__bars::after {
+  display: block;
+  width: 14px;
+  height: 1.5px;
+  background: currentColor;
+}
+.navtoggle__bars {
+  position: relative;
+}
+.navtoggle__bars::before,
+.navtoggle__bars::after {
+  content: '';
+  position: absolute;
+  left: 0;
+}
+.navtoggle__bars::before {
+  top: -4.5px;
+}
+.navtoggle__bars::after {
+  top: 4.5px;
+}
+/* The drawer's backdrop (DS-SIDE-18), drawn only while the drawer is open. */
+.navbackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background: var(--scrim);
+}
+@media not all and (max-width: 900px) {
+  .navbackdrop {
+    display: none;
+  }
+}
 @media (width <= 900px) {
+  .navtoggle {
+    display: inline-flex;
+  }
   .rail {
     position: fixed;
     inset: 0 auto 0 0;
     z-index: 60;
     width: min(300px, 84vw);
     height: 100dvh;
-    background: var(--bg);
     transform: translateX(-100%);
     visibility: hidden;
     transition:
@@ -150,15 +205,162 @@
   flex-direction: column;
   min-width: 0;
 }
+/* The app strip and the page header travel together and stick as one above
+   900 (DS-COMP-1). The strip starts at the rail's edge, not the window's. */
+.chrome {
+  background: var(--bg);
+}
+@media not all and (max-width: 900px) {
+  .chrome {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+  }
+}
+
+/* -- The app strip (DS-COMP-1): dark in both themes. ---------------------- */
+.appbar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  padding: 0.4rem var(--s-4);
+  background: var(--app-chrome);
+  color: var(--on-dark);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+.appbar__nav {
+  display: flex;
+  flex: none;
+  gap: 0.15rem;
+}
+.appbar__nav button {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: color-mix(in oklch, var(--on-dark) 55%, transparent);
+  cursor: pointer;
+}
+.appbar__nav button:hover {
+  background: color-mix(in oklch, var(--on-dark) 10%, transparent);
+  color: var(--on-dark);
+}
+.appbar__search {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 90px;
+  height: 32px;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid color-mix(in oklch, var(--on-dark) 12%, transparent);
+  background: color-mix(in oklch, var(--on-dark) 7%, transparent);
+  color: color-mix(in oklch, var(--on-dark) 50%, transparent);
+  font: inherit;
+  text-align: left;
+  cursor: not-allowed;
+}
+.appbar__kbd {
+  margin-left: auto;
+  padding: 0 0.25rem;
+  border: 1px solid color-mix(in oklch, var(--on-dark) 20%, transparent);
+  font: var(--type-chip);
+  letter-spacing: var(--type-chip-tracking);
+  text-transform: var(--type-chip-case);
+}
+.appbar__r {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin-left: auto;
+}
+.appbar__who {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-2);
+  color: color-mix(in oklch, var(--on-dark) 70%, transparent);
+  white-space: nowrap;
+}
+.appbar__signout,
+.appbar__timer {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  height: 30px;
+  padding: 0.25rem 0.6rem;
+  border: 1px solid color-mix(in oklch, var(--on-dark) 22%, transparent);
+  background: none;
+  color: var(--on-dark);
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.appbar__signout:hover {
+  background: color-mix(in oklch, var(--on-dark) 10%, transparent);
+}
+/* Not built yet: the timer keeps its look and says so in its tooltip. */
+.appbar__timer:disabled {
+  cursor: not-allowed;
+}
+.appbar .segmented {
+  border-color: color-mix(in oklch, var(--on-dark) 22%, transparent);
+}
+.appbar .segmented__opt {
+  border-right-color: var(--border);
+  color: color-mix(in oklch, var(--on-dark) 60%, transparent);
+}
+.appbar .segmented__opt[aria-pressed='true'] {
+  background: var(--on-dark);
+  color: var(--app-chrome);
+}
+.appbar .segmented__opt:disabled {
+  cursor: not-allowed;
+}
+@media (width <= 900px) {
+  .appbar {
+    gap: var(--s-3);
+    padding-inline: var(--s-3);
+  }
+  .appbar__search {
+    display: none;
+  }
+  .appbar__r {
+    gap: var(--s-2);
+  }
+}
+@media (width <= 640px) {
+  .appbar__nav,
+  .appbar__whoname,
+  .appbar__timer span {
+    display: none;
+  }
+  .appbar__timer {
+    padding-inline: 0.45rem;
+  }
+}
+
+/* -- The page header (DS-COMP-3). ---------------------------------------- */
 .topbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--s-4);
   flex-wrap: wrap;
-  min-height: 2.9rem;
-  padding: var(--s-3) var(--s-6);
+  padding: var(--s-3) 56px var(--s-3) var(--s-6);
   border-bottom: 1px solid var(--border);
+}
+/* Above 900 the title's row is one small button tall whatever the page puts in
+   the meta slot, so late content never re-centres the title (DS-COMP-3). */
+@media not all and (max-width: 900px) {
+  .topbar {
+    min-height: calc(34px + 2 * var(--s-3) + 1px);
+    background: var(--bg);
+  }
 }
 .topbar__title {
   display: flex;
@@ -182,11 +384,13 @@
   flex-direction: column;
   gap: var(--s-6);
   flex: 1;
-  padding: var(--s-6);
+  /* The right gutter clears the dock's rail, which floats over it. */
+  padding: var(--s-6) 56px var(--s-6) var(--s-6);
 }
 @media (width <= 900px) {
   .topbar {
     justify-content: flex-start;
+    padding-inline: var(--s-6);
   }
   .topbar__meta {
     margin-left: auto;
@@ -208,9 +412,22 @@
   align-items: center;
   gap: 0.15rem;
   width: 40px;
-  padding: var(--s-3) 0;
-  border-left: 1px solid var(--border);
+  padding: var(--s-2) 0;
+  border: 1px solid var(--border);
+  border-right: 0;
   background: var(--rail-bg);
+}
+/* At rest above 900 the rail floats at the window's right edge, halfway down
+   (DS-SIDE-1): the dock itself, its panels and its seat, are slice SL06's. */
+@media not all and (max-width: 900px) {
+  .dock__rail {
+    position: fixed;
+    top: 50%;
+    right: 0;
+    z-index: 50;
+    box-shadow: var(--shadow-sm);
+    transform: translateY(-50%);
+  }
 }
 .dock__tab {
   position: relative;
@@ -288,7 +505,7 @@
     width: auto;
     height: 40px;
     padding: 0;
-    border-left: 0;
+    border: 0;
     border-top: 1px solid var(--border);
   }
   .dock__tab[aria-expanded='true']::before {
