@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // A factor the provider verified but this product refused to record
-// (`account-factor.ts`, FACTOR_ALREADY_ENROLLED): removed at the provider, so
-// the login holds one authenticator, not two. Split from `account-factor.ts`
+// (`account-factor.ts`, any refusal after the provider's yes): removed at the
+// provider, so the login holds one authenticator, not two. Split from `account-factor.ts`
 // to keep that file under the line limit (security review 2b2, finding 1).
 
 import { withSession } from '../../../core-records/src/index.ts';
@@ -28,10 +28,14 @@ export async function removeRefusedFactor(
     // oxlint-disable-next-line no-await-in-loop
     if ((await provider.remove(accessToken, providerFactorId)).ok) return;
   }
+  // Without the presented session: the refusal may be that the winning
+  // enrolment has just ended it (C58), and the orphan must still be written.
+  // Login, person and actor are still resolved and checked as on every call.
+  const { sessionId: _ended, ...login } = caller.presented;
   await withSession(
     caller.database,
     caller.businessId,
-    caller.presented,
+    login,
     async (tx, session) => {
       await writeAuditEvent(tx, {
         actorId: session.actorId,

@@ -163,8 +163,9 @@ export async function verifySecondFactor(
     await recordFactorVerified(tx, ownFactor(caller, session, live.id));
     return undefined;
   });
-  // Verified at the provider but refused here: removed there too, or recorded as orphaned.
-  if (recorded?.code === 'FACTOR_ALREADY_ENROLLED' && verified.ok)
+  // Verified at the provider but refused here, for any reason (a session the
+  // winning enrolment ended included): removed there too, or recorded as orphaned.
+  if (recorded !== undefined && verified.ok)
     await removeRefusedFactor(caller, provider, verified.value, target);
   if (recorded !== undefined || !verified.ok)
     return recorded ?? providerRefusal('malformed', 'answer');
