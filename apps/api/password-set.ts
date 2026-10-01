@@ -104,9 +104,10 @@ export function mountPasswordSet(
 /**
  * `POST /api/password/reset` (C40, the ask): `{ address }`, no sign-in. The
  * address goes to the login provider through custody (`requestPasswordReset`)
- * after the answer is given, so every request, for a known address, an
- * unknown one or none, is answered 200 `{}` at once, and its time says
- * nothing either. A failure is nobody's to hear, and nothing is logged.
+ * after the answer is given, unless the client address or the address is past
+ * its limit, so every request, for a known address, an unknown one or none,
+ * limited or not, is answered 200 `{}` at once, and its time says nothing
+ * either. A failure is nobody's to hear, and nothing is logged.
  */
 export function mountPasswordReset(server: Hono, database: Database, broker: Broker): void {
   const tooLarge = bodyLimit({
