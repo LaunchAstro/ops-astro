@@ -34,22 +34,30 @@ function task(fields: { readonly title: string | null; readonly capCurrency?: st
 
 function client(detail: ReturnType<typeof task>) {
   const proposed: Record<string, unknown>[] = [];
-  const fetch = (async (url: string | URL, init?: RequestInit) => {
+  const fetch = ((url: string | URL, init?: RequestInit) => {
     const at = String(url);
+    // The inbox the board screen mounts (INB-1g), answered empty.
+    if (at.endsWith('/inbox/read')) return Response.json({ ok: true, inbox: [] });
+    if (at.endsWith('/inbox/count')) return Response.json({ ok: true, owed: 0 });
     const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
-    if (at.endsWith('/task/board')) return Response.json({ ok: true, tasks: [detail] });
-    if (at.endsWith('/person/list')) return Response.json({ ok: true, persons: [] });
-    if (at.endsWith('/task/read')) return Response.json({ ok: true, task: detail });
+    if (at.endsWith('/task/board'))
+      return Promise.resolve(Response.json({ ok: true, tasks: [detail] }));
+    if (at.endsWith('/person/list'))
+      return Promise.resolve(Response.json({ ok: true, persons: [] }));
+    if (at.endsWith('/task/read'))
+      return Promise.resolve(Response.json({ ok: true, task: detail }));
     if (at.endsWith('/task/propose')) {
       proposed.push(body);
-      return Response.json({ recordId: TASK_ID, revision: 3, detail: { versionId: 'v-1' } });
+      return Promise.resolve(
+        Response.json({ recordId: TASK_ID, revision: 3, detail: { versionId: 'v-1' } }),
+      );
     }
-    return Response.json({ ok: true });
+    return Promise.resolve(Response.json({ ok: true }));
   }) as typeof globalThis.fetch;
   const operations = new OperationsClient({
     origin: '',
     businessKey: 'alpha',
-    token: 'a-token',
+    signedIn: true,
     fetch,
     newOperationId: () => 'operation-7',
   });
@@ -59,7 +67,9 @@ function client(detail: ReturnType<typeof task>) {
 describe('CQ-7 untitled placeholder', () => {
   it('draws a task with no title as "Untitled task" on the board', async () => {
     const { operations } = client(task({ title: null }));
-    const view = await mount(<Projects client={operations} grantKey="alpha:ada" />);
+    const view = await mount(
+      <Projects client={operations} grantKey="alpha:ada" navigate={() => {}} />,
+    );
     await settle();
     expect(view.text()).toContain('Untitled task');
     await view.unmount();

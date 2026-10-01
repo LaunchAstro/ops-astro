@@ -163,7 +163,10 @@ it('MP-1-6 CS-1.4 on a real client no pink ever shows', () => {
     .filter(({ path, text }) => /<MockRegion\b/u.test(text) && !path.endsWith('blocks.tsx'))
     .map((s) => s.path)
     .toSorted();
+  // An app screen draws the mark only over made-up values whose read is not
+  // served yet (MOCK-1PM point 3); served values are never marked.
   expect(users).toEqual([
+    'apps/web/src/screens/operations/held-sections.tsx',
     'packages/ui/src/kit/gallery-feedback.tsx',
     'packages/ui/src/kit/treatments.tsx',
   ]);

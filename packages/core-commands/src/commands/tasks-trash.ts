@@ -24,7 +24,7 @@ import {
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
-import { refusePurgeOperands, refuseRestoreOperands } from './operands.ts';
+import { refusePurgeOperands } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
 
@@ -101,8 +101,6 @@ export async function restoreTasks(
   _context: CommandContext,
   batchId: string,
 ): Promise<HandlerOutcome> {
-  const operands = refuseRestoreOperands(batchId);
-  if (operands !== undefined) return refused(operands);
   const restored = await restoreBatch(tx, { batchId });
   if (isRecordsRefusal(restored)) return refused(restored);
   // The ids go in the stored result: the event this command writes has one

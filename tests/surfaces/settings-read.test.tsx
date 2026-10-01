@@ -81,7 +81,10 @@ function server(
   } = {},
 ): Stub {
   const sent: { at: string; body: Record<string, unknown> }[] = [];
-  const grants = options.grants ?? [{ collection: 'settings', action: 'manage' }];
+  const grants = options.grants ?? [
+    { collection: 'settings', action: 'manage' },
+    { collection: 'spend', action: 'decide' },
+  ];
   const fetch = (async (url: string | URL, init?: RequestInit) => {
     const at = String(url);
     sent.push({ at, body: JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown> });
@@ -112,7 +115,7 @@ function server(
 
 const screen = (fetch: typeof globalThis.fetch) => (
   <SettingsScreen
-    client={new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch })}
+    client={new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch })}
     grantKey="alpha:ada"
     storage={window.sessionStorage}
   />

@@ -16,6 +16,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Hono } from 'hono';
 import { heldAddressOffer } from '../../apps/web/src/held-address.tsx';
+import { cookieNameFor, sessionIdOf } from '../../apps/api/auth/session.ts';
 import { authorised, post, tokenFor, type ApiFixture } from '../api/fixture.ts';
 import { agentPath, createControls } from '../api/controls-fixture.ts';
 import { grantTo, type Member } from '../commands/fixture.ts';
@@ -70,8 +71,9 @@ const through = ((url: string | URL, init?: RequestInit) =>
   api.fetch(new Request(`http://api.test${String(url)}`, init))) as typeof fetch;
 
 async function offer(subject: string, heldIn: string, signedInTo: string, held?: string) {
+  const token = await tokenFor(subject);
   // An agent's probe carries its live delegation on every call, as the agent's own client does.
-  const fetch = (
+  const carried = (
     held === undefined
       ? through
       : async (url: string | URL, init?: RequestInit) => {
@@ -80,9 +82,16 @@ async function offer(subject: string, heldIn: string, signedInTo: string, held?:
           return await through(url, { ...init, headers });
         }
   ) as typeof globalThis.fetch;
+  // The browser adds the new sign-in's cookie and nothing else (S0-6c): naming
+  // that sign-in on the call is the probe's own job.
+  const fetch = (async (url: string | URL, init?: RequestInit) => {
+    const headers = new Headers(init?.headers);
+    headers.set('cookie', `${cookieNameFor(sessionIdOf(token))}=${token}`);
+    return await carried(url, { ...init, headers });
+  }) as typeof globalThis.fetch;
   return await heldAddressOffer({
     held: { address: '/task/TSK-1', businessKey: heldIn, code: 'AUTH_SESSION_EXPIRED' },
-    next: { token: await tokenFor(subject), businessKey: signedInTo, email: 'x@example.test' },
+    next: { sessionId: sessionIdOf(token), businessKey: signedInTo, email: 'x@example.test' },
     apiOrigin: '',
     fetch,
   });

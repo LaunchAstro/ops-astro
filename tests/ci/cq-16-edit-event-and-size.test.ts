@@ -10,6 +10,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
+import { script, step, top } from './workflow-text.ts';
 
 const ROOT = join(import.meta.dirname, '../..');
 const read = (path: string) => readFileSync(join(ROOT, path), 'utf8');
@@ -17,11 +18,6 @@ const CI = '.github/workflows/ci.yml';
 // FU-93 moved the check here from ci.yml; it runs on code events and on an edit.
 const REVIEW = '.github/workflows/review-evidence.yml';
 const CHECK = 'review evidence for this revision';
-
-/** A top-level key's block, from `key:` to the next line that starts in column one. */
-function top(text: string, key: string): string {
-  return new RegExp(`^${key}:.*\\n(?:(?: .*)?\\n)*`, 'mu').exec(text)?.[0] ?? '';
-}
 
 /** Every job under `jobs:`, keyed by its id. */
 function jobs(text: string): Map<string, string> {
@@ -36,22 +32,7 @@ function job(text: string, name: string): string {
   return [...jobs(text).values()].find((b) => b.includes(`\n    name: ${name}\n`)) ?? '';
 }
 
-/** One step of a job, from its `- name:` line to the next step. */
-function step(block: string, name: string): string {
-  const start = block.indexOf(`      - name: ${name}\n`);
-  if (start === -1) return '';
-  const next = block.slice(start + 1).search(/^ {6}- /mu);
-  return block.slice(start, next === -1 ? undefined : start + 1 + next);
-}
-
-/** A step's `run: |` script, unindented. */
-function script(block: string): string {
-  const lines = block.split('\n');
-  const at = lines.findIndex((l) => /^ {8}run: \|$/u.test(l));
-  const body = lines.slice(at + 1).filter((l) => l === '' || l.startsWith('          '));
-  return at === -1 ? '' : body.map((l) => l.slice(10)).join('\n');
-}
-
+const LIST = 'The pull requests being judged';
 const FETCH = 'Read the description as it stands now';
 const CASES = "The checker's own cases";
 const BINDS = 'The review must cover the head being merged';
@@ -90,10 +71,13 @@ describe('CQ-16 edited runs review evidence only: what the edit run judges', () 
     // finishes after an edit's run must not judge the old one.
     expect(block).not.toContain('github.event.pull_request.body');
     expect(step(block, FETCH)).toContain('gh api "repos/${REPO}/pulls/${PR_NUMBER}"');
-    expect(step(block, BINDS)).toContain('PR_BODY="$(cat "${RUNNER_TEMP}/pr-body.md")"');
-    expect(step(block, BINDS)).toContain('node scripts/review-evidence-check.mjs');
+    // CI-QUEUE: the body each pull request's check reads is its record as fetched here.
+    expect(step(block, FETCH)).toContain('> "${RUNNER_TEMP}/pr-${PR_NUMBER}/pull.json"');
+    expect(step(block, BINDS)).toContain(
+      'node scripts/merge-group.mjs each --pulls "${RUNNER_TEMP}" node scripts/review-evidence-check.mjs',
+    );
     expect(step(block, CASES)).toContain('bash tests/ci/review-evidence-cases.sh');
-    const order = [CASES, FETCH, BINDS].map((n) => block.indexOf(`- name: ${n}\n`));
+    const order = [CASES, LIST, FETCH, BINDS].map((n) => block.indexOf(`- name: ${n}\n`));
     expect(order.every((at, i) => at > (order[i - 1] ?? -1))).toBe(true);
   });
 
@@ -338,11 +322,23 @@ describe('FU-93 one workflow owns review evidence', () => {
     expect(workflows().filter((p) => job(read(p), CHECK) !== '')).toEqual([REVIEW]);
   });
 
-  it('FU-93 one workflow owns review evidence: it runs when the head is opened, moved or reopened, and on an edit', () => {
+  it('FU-93 one workflow owns review evidence: it runs when the head is opened, moved or reopened, on an edit and on a label change', () => {
+    // Owner, 1 October 2026: the `needs-sol` label is half of the Sol-owed mark.
     expect(top(read(REVIEW), 'on')).toBe(
-      'on:\n  pull_request:\n    types: [opened, synchronize, reopened, edited]\n\n',
+      // CI-QUEUE: and on the merge queue's build of a group.
+      'on:\n  pull_request:\n    types: [opened, synchronize, reopened, edited, labeled, unlabeled]\n  merge_group:\n\n',
     );
     expect(read(REVIEW)).not.toContain('pull_request_target');
+  });
+
+  it('owed mark: the check reads the labels as they stand when it judges, not the event copy', () => {
+    const block = job(read(REVIEW), CHECK);
+    expect(block).not.toContain('github.event.pull_request.labels');
+    // CI-QUEUE: the labels come from the record fetched when it judges (scripts/merge-group.mjs).
+    expect(step(block, FETCH)).toContain(
+      `gh api "repos/\${REPO}/pulls/\${PR_NUMBER}" > "\${RUNNER_TEMP}/pr-\${PR_NUMBER}/pull.json"`,
+    );
+    expect(step(block, BINDS)).toContain('merge-group.mjs each --pulls "${RUNNER_TEMP}"');
   });
 
   it('FU-93 one workflow owns review evidence: a push runs every required check, and an edit runs this one alone', () => {

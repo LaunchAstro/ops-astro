@@ -25,7 +25,7 @@ import {
   databaseUrlFromEnvironment,
   type FreshDatabase,
 } from '../support/fresh-database.ts';
-import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
+import { enrol, freshSubject, grantTo, installSpine, type Member } from '../commands/fixture.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
@@ -120,6 +120,7 @@ describe.skipIf(serverUrl === undefined)('the new operations over HTTP', () => {
       // cases plan the `task` family, so that is the grant they need.
       await grantTo(tx, mia, 'manage', { kind: 'business', id: null }, false, 'task');
       await grantTo(tx, mia, 'manage', { kind: 'business', id: null }, false, 'settings');
+      await grantTo(tx, mia, 'decide', { kind: 'business', id: null }, false, 'spend');
     });
 
     api = createApi({
@@ -128,7 +129,7 @@ describe.skipIf(serverUrl === undefined)('the new operations over HTTP', () => {
       verify: async (request) => {
         const header = request.header('authorization') ?? '';
         const subject = header.replace(/^Bearer /u, '');
-        return subject === '' ? undefined : { provider: 'supabase', subject };
+        return subject === '' ? undefined : freshSubject(subject);
       },
       // eslint-disable-next-line @typescript-eslint/require-await -- the port is async
       resolveBusiness: async (key) => (key === BUSINESS_KEY ? alpha : undefined),

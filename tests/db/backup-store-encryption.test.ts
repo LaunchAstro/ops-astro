@@ -1,0 +1,184 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// S0-3c: the backup store's `S0-3 backup encryption` (the store's half).
+//
+// S0-3 (S0-3c, line C8). The shared fixture is backup-identity.fixture.ts.
+
+import { randomBytes } from 'node:crypto';
+import { mkdtempSync, rmSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import postgres from 'postgres';
+import { describe, expect, it } from 'vitest';
+import {
+  job,
+  serverUrl,
+  BACKUP,
+  RETENTION,
+  RESTORE,
+  keys,
+  drill,
+  seal,
+  asRole,
+  attempt,
+  store,
+  backupLogin,
+  retentionLogin,
+  restoreLogin,
+  operatorLogin,
+  OPERATING_BUSINESS,
+  receipts,
+  archiveIds,
+  backupStoreHooks,
+  hostReach,
+} from './backup-identity.fixture.ts';
+import { operator } from './backup-drill-records.fixture.ts';
+
+/** The appointed operator, as the gate hands them to the drill. */
+const WHO = { personId: operator, business: OPERATING_BUSINESS };
+const LATEST = 'select * from backups.read_latest($1, $2)';
+
+describe.skipIf(serverUrl === undefined)('the backup store', () => {
+  backupStoreHooks();
+
+  theBackupStoreCases6();
+});
+
+function theBackupStoreCases6() {
+  describe('S0-3 backup encryption', () => {
+    backupEncryptionCases1();
+    backupEncryptionCases2();
+    backupEncryptionCases3();
+  });
+}
+
+function backupEncryptionCases1() {
+  it('a read stays logged after the reader rolls back', async () => {
+    const { runBackup } = await job();
+    const recorded = await runBackup({
+      dump: async () => Buffer.from('PGDMP rollback proof'),
+      storeUrl: backupLogin.url,
+      reach: hostReach,
+      publicKey: keys.publicKey,
+    });
+    expect(recorded['outcome']).toBe('recorded');
+    const before = (await receipts()).length;
+    const reader = postgres(operatorLogin.url, { max: 1 });
+    try {
+      await expect(
+        reader.begin(async (tx) => {
+          await tx.unsafe(`set local role ${RESTORE}`);
+          const [archive] =
+            await tx`select sha256 from backups.read_latest(${operator}::uuid, ${OPERATING_BUSINESS})`;
+          expect(archive?.['sha256']).toMatch(/^[0-9a-f]{64}$/u);
+          throw new Error('rollback after access');
+        }),
+      ).rejects.toThrow('rollback after access');
+    } finally {
+      await reader.end();
+    }
+    expect((await receipts()).length).toBe(before + 1);
+  });
+}
+
+function backupEncryptionCases2() {
+  it('stores only the sealed artefact, and refuses to store a backup it cannot seal', async () => {
+    const { runBackup } = await job();
+    const dump = Buffer.from(`PGDMP made-up ${randomBytes(6).toString('hex')}`);
+    const ok = await runBackup({
+      dump: async () => dump,
+      storeUrl: backupLogin.url,
+      reach: hostReach,
+      publicKey: keys.publicKey,
+    });
+    expect(ok).toMatchObject({ outcome: 'recorded' });
+    const [row] = await store.admin.execute<{ body: Buffer }>(
+      `select string_agg(chunk, ''::bytea order by seq) as body from backups.archive_parts
+        where archive_id = (select id from backups.archives order by taken_at desc, id desc limit 1)`,
+    );
+    expect(row?.body.includes(dump)).toBe(false);
+    expect(row?.body.includes(Buffer.from('PGDMP'))).toBe(false);
+    expect(
+      (await seal()).openArchive(row?.body ?? Buffer.alloc(0), keys.privateKey).equals(dump),
+    ).toBe(true);
+
+    const before = await archiveIds();
+    const unsealed = await runBackup({
+      dump: async () => dump,
+      storeUrl: backupLogin.url,
+      reach: hostReach,
+    });
+    expect(unsealed).toMatchObject({ outcome: 'failed', stage: 'seal' });
+    expect(await archiveIds()).toStrictEqual(before);
+  });
+}
+
+/** The newest backup fetched as the drill fetches it, into a file of its own: its time. */
+async function fetchedTakenAt(): Promise<string> {
+  const { fetchLatest } = await drill();
+  const folder = mkdtempSync(join(tmpdir(), 's0-3c-'));
+  try {
+    const fetched = await fetchLatest(operatorLogin.url, join(folder, 'a'), hostReach, WHO);
+    expect(statSync(join(folder, 'a')).mode & 0o777).toBe(0o600);
+    return fetched.takenAt;
+  } finally {
+    rmSync(folder, { recursive: true, force: true });
+  }
+}
+
+/** The receipts written since the `before`th, as action and archive. */
+const readsSince = async (before: number): Promise<unknown[]> =>
+  (await receipts()).slice(before).map(({ action, archive_id }) => ({ action, archive_id }));
+/** `count` logged reads of the archive `id`. */
+const readsOf = (count: number, id: string | undefined): unknown[] =>
+  Array.from({ length: count }, () => ({ action: 'backup read', archive_id: id }));
+
+function backupEncryptionCases3() {
+  it('lets the restore identity read the newest backup only through the store, logging each read', async () => {
+    const [newest] = await store.admin.execute<{ id: string; taken_at: Date; parts: number }>(
+      'select id::text, taken_at, parts from backups.archives order by taken_at desc, id desc limit 1',
+    );
+    const before = (await receipts()).length;
+    expect(await fetchedTakenAt()).toBe(newest?.taken_at.toISOString());
+    // The header's read, then one for each part it handed out (REV158S2 criterion 12).
+    const reads = 1 + (newest?.parts ?? 0);
+    expect(await readsSince(before)).toStrictEqual(readsOf(reads, newest?.id));
+    const [actor] = await store.admin.execute<{ actor: string }>(
+      'select actor from backups.receipts order by id desc limit 1',
+    );
+    expect(actor?.actor).toBe(operatorLogin.name);
+
+    const reader = await asRole(restoreLogin.url, RESTORE);
+    try {
+      for (const text of [
+        'select chunk from backups.archive_parts',
+        'select id from backups.archives',
+        `select backups.add_part(0, '\\x01')`,
+        'delete from backups.archives',
+        'update backups.receipts set actor = actor',
+        'select * from backups.settings',
+      ]) {
+        // oxlint-disable-next-line no-await-in-loop
+        expect(await attempt(reader, text), text).toBe('42501');
+      }
+    } finally {
+      await reader.end();
+    }
+    for (const [login, role] of [
+      [backupLogin, BACKUP],
+      [retentionLogin, RETENTION],
+    ] as const) {
+      // oxlint-disable-next-line no-await-in-loop
+      const other = await asRole(login.url, role);
+      try {
+        // oxlint-disable-next-line no-await-in-loop
+        // oxlint-disable-next-line no-await-in-loop
+        expect(await attempt(other, LATEST, [operator, OPERATING_BUSINESS])).toBe('42501');
+      } finally {
+        // oxlint-disable-next-line no-await-in-loop
+        await other.end();
+      }
+    }
+    expect((await receipts()).length).toBe(before + reads);
+  });
+}

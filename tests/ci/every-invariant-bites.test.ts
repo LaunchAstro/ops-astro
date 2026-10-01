@@ -99,6 +99,25 @@ describe('every_invariant_bites: the catalogue', () => {
   }, 60_000);
 });
 
+describe('every_invariant_bites: an unwire at the head', () => {
+  it('unwires at the head only files the part changed, each call site there exactly once', () => {
+    for (const part of PARTS) {
+      for (const { file, remove } of part.unwire ?? []) {
+        const touched = part.commits.some((commit) =>
+          git(['show', '--no-renames', '--name-only', '--format=', commit])
+            .split('\n')
+            .includes(file),
+        );
+        expect(touched, `${part.id} never changed ${file}`).toBe(true);
+        const text = readFileSync(resolve(ROOT, file), 'utf8');
+        if (remove.length > 0) {
+          expect(text.split(`${remove.join('\n')}\n`).length - 1, `${part.id} ${file}`).toBe(1);
+        }
+      }
+    }
+  });
+});
+
 describe('every_invariant_bites: the verdict', () => {
   it('passes a part whose named invariant fails under its revert, saying so', () => {
     const line = classify('T4-N4 T2a', bites('T2a'));

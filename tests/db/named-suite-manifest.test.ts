@@ -40,6 +40,8 @@ const NOT_NAMED: Readonly<Record<string, string>> = {
   'tests/acceptance/runtime-proofs.test.tsx':
     'skips without L5_RUNTIME_PROOFS and L5_RESTART_API_PORT',
   'tests/acceptance/drop-proofs.test.ts': 'skips without L5_RUNTIME_PROOFS and L5_RESTART_API_PORT',
+  'tests/acceptance/inbox-worker-restart.test.ts':
+    'skips without L5_RUNTIME_PROOFS and L5_RESTART_API_PORT',
   'tests/acceptance/restart-declared.test.ts': 'pure: restart-harness refusals only',
   'tests/cli/cli-answers.test.ts': 'pure: the CLI against an HTTP stand-in',
   'tests/cli/cli-wire.test.ts': 'pure: the CLI against an HTTP stand-in',
@@ -47,6 +49,8 @@ const NOT_NAMED: Readonly<Record<string, string>> = {
   'tests/cli/operation-id-login-and-stdout.test.ts': 'pure: the CLI against stand-ins, counter 0',
   'tests/journey/budgets-bundle-and-person-crossing.test.ts':
     'pure: a stubbed fetch and a typed stand-in world, counter 0',
+  'tests/api/function-agent-quota.test.ts':
+    'pure: the function handler with no database, counter 0',
 };
 
 interface Manifest {

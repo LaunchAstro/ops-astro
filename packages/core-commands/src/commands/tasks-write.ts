@@ -41,7 +41,6 @@ import {
 import type { TenantQuery, TaskStateRow } from '../../../core-records/src/index.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { refuseWrongValueType } from './values.ts';
-import { refuseCreateOperands, refuseUpdateOperands } from './operands.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
 import type { CommandRequest, FieldValues } from './requests.ts';
@@ -114,9 +113,6 @@ export async function createTask(
   context: CommandContext,
   request: Extract<CommandRequest, { command: 'task.create' }>,
 ): Promise<HandlerOutcome> {
-  // First, because every check below reads `fields` as a map.
-  const operands = refuseCreateOperands(request.fields);
-  if (operands !== undefined) return refused(operands);
   const spoofed = refuseSpoof(request.fields, SPOOFABLE_ON_CREATE);
   if (spoofed !== undefined) return spoofed;
 
@@ -187,7 +183,11 @@ export async function createTask(
   const data: Record<string, unknown> = {
     ...request.fields,
     key: await nextTaskKey(tx, context.spine.taskTypeId),
-    source: deriveSource('person', context.entryPoint),
+    // An agent credential's create is the agent's (API-2), never its person's.
+    source: deriveSource(
+      context.session.credentialScope === undefined ? 'person' : 'agent',
+      context.entryPoint,
+    ),
     board_rank: placement.boardRank,
     ...(stateId === undefined ? {} : { state: stateId }),
     // From the placement alone: `fields` cannot carry either (refused above).
@@ -225,9 +225,6 @@ export async function updateTask(
   const target = context.target;
   if (target === undefined) throw new Error('updateTask: the envelope read no target');
 
-  // First, because every check below reads `fields` as a map.
-  const operands = refuseUpdateOperands(request.fields);
-  if (operands !== undefined) return refused(operands);
   const spoofed = refuseSpoof(request.fields, SPOOFABLE_ON_UPDATE);
   if (spoofed !== undefined) return spoofed;
 

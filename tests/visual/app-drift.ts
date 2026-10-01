@@ -14,7 +14,8 @@
 // is measured, and the page itself must not scroll sideways.
 
 import { writeFileSync } from 'node:fs';
-import { chromium, type Browser } from 'playwright';
+import type { Browser } from 'playwright';
+import { launchChromium } from '../support/chromium.ts';
 import { load, openSide, shoot, type Side } from './capture.ts';
 import { comparePng } from './compare.ts';
 import { proveDrift, scrollMetrics, type Say } from './drift.ts';
@@ -68,7 +69,7 @@ export async function appDrift(options: {
   const packet = readPacket();
   await fetchAssets(readAssets(), packet);
   checkAssets(packet);
-  const browser = await chromium.launch(MODE);
+  const browser = await launchChromium(MODE);
   const sides: Side[] = [];
   try {
     const live = liveRenderer(browser, MODE);

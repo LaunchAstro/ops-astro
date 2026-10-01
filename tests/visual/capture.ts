@@ -17,6 +17,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import type { Browser, BrowserContext, BrowserContextOptions, Page, Route } from 'playwright';
+import { boot, settled } from './boot.ts';
 import { routeRules, sourceOf } from './mockup-routes.ts';
 import { fontCache, readAssets, type Packet, type Theme } from './packet.ts';
 
@@ -171,6 +172,8 @@ function routeOf(packet: Packet, source: SideSource, side: Side): (route: Route)
       const body = known === 'bundled fonts' ? fontCss() : `/* ${known} */`;
       return route.fulfill({ body, contentType: 'text/css' });
     }
+    if ('app' in source && url.origin === source.app.origin && url.pathname === '/api/sign-in')
+      return route.fulfill({ json: { issuer: 'http://127.0.0.1:9/auth/v1' } });
     if ('app' in source && url.origin === source.app.origin) return route.continue();
     if ('mockupDir' in source && url.origin === MOCKUP_ORIGIN) {
       return serveMockup(route, url, source, blobs, side);
@@ -223,12 +226,10 @@ export async function load(
   side: Side,
   packet: Packet,
   url: string,
-  prep: { hide?: string[] | undefined; open?: string | undefined } = {},
+  prep: { hide?: string[] | undefined; open?: string | readonly string[] | undefined } = {},
 ): Promise<Page> {
   const hide = prep.hide ?? [];
-  const page = await side.context.newPage();
-  await page.clock.setFixedTime(new Date(packet.clock));
-  await page.goto(url, { waitUntil: 'load' });
+  const page = await boot(await side.context.newPage(), url, packet.clock);
   await page.addStyleTag({ content: fontCss() });
   if (hide.length > 0)
     await page.addStyleTag({ content: `${hide.join(',')}{display:none!important}` });
@@ -255,16 +256,18 @@ export async function load(
   if (drawn !== null && drawn !== side.theme) {
     throw new Error(`visual: ${url} drew in ${String(drawn)}, not ${side.theme}`);
   }
-  // A state behind a tab or a disclosure is opened the way a person would.
-  if (prep.open !== undefined) await page.locator(prep.open).first().click();
-  await page.evaluate(
-    () =>
-      new Promise((resolve) => {
-        requestAnimationFrame(() => requestAnimationFrame(resolve));
-      }),
-  );
+  // A tab is measured once it is the chosen one, not while the click lands.
+  // oxlint-disable-next-line no-await-in-loop -- opened as a person would, each control in turn
+  for (const control of [prep.open ?? []].flat()) await openOne(page.locator(control).first());
+  await settled(page);
   return page;
 }
+
+const openOne = async (target: ReturnType<Page['locator']>): Promise<void> => {
+  await target.click();
+  if ((await target.getAttribute('role')) === 'tab')
+    await target.and(target.page().locator('[aria-selected="true"]')).waitFor({ timeout: 5000 });
+};
 
 /** One PNG per region, content-masked; a region missing from the page refuses. */
 export async function shoot(

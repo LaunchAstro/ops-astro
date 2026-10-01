@@ -13,9 +13,7 @@ import { randomUUID } from 'node:crypto';
 import { availableParallelism, loadavg } from 'node:os';
 import { httpTransport, type Transport } from '../../apps/cli/client.ts';
 import { ProviderFault } from '../../apps/worker/usage.ts';
-import { createWorker } from '../../apps/worker/worker.ts';
-import { SYNTHETIC_USAGE } from '../../apps/worker/usage.ts';
-import { approve, delegate, personOn, type PassContext, type Person } from './passes.ts';
+import { approvedTask, personOn, revokePickup, type PassContext, type Person } from './passes.ts';
 
 export interface Budget {
   readonly operation: string;
@@ -125,7 +123,7 @@ async function agentBudgets(context: PassContext, person: Person): Promise<Budge
   const withId = async (name: Parameters<Person>[0], body: Record<string, unknown>) =>
     await person(name, { operationId: randomUUID(), ...body });
   // Whatever ran before (the live-update check) may leave its pickup's delegation live.
-  await revokePickup(context, withId);
+  await revokePickup(context.world, withId);
   for (let run = 0; run < RUNS; run += 1) {
     // eslint-disable-next-line no-await-in-loop -- each run is its own task, in order
     const taskId = await droppedRun(context, measuring, withId);
@@ -134,7 +132,7 @@ async function agentBudgets(context: PassContext, person: Person): Promise<Budge
     const ms = await timed(read);
     timings['execution']?.push(ms);
     // eslint-disable-next-line no-await-in-loop -- the pickup's delegation, ended as the passes end it
-    await revokePickup(context, withId);
+    await revokePickup(context.world, withId);
   }
   const load = loadSince(began);
   const payload: Budget = {
@@ -160,33 +158,13 @@ async function droppedRun(
   measuring: Transport,
   withId: Person,
 ): Promise<string> {
-  const { world } = context;
-  const taskId = String(
-    (await withId('task.create', { fields: { title: 'Pickup' } })).body['recordId'],
-  );
-  const worker = createWorker({
+  const { taskId, worker } = await approvedTask(context, withId, 'Pickup', {
     transport: measuring,
-    businessKey: 'alpha',
-    credential: world.agent.token,
-    delegation: await delegate(world, taskId),
-    reporter: SYNTHETIC_USAGE,
     provider: { call: async () => await Promise.reject(new ProviderFault('provider_unavailable')) },
   });
-  const proposed = await worker.proposeOnce();
-  if (!('proposed' in proposed)) throw new Error(`budget propose: ${JSON.stringify(proposed)}`);
-  await approve(withId, taskId, proposed.proposed.gateId);
   const dropped = await worker.applyOnce(taskId);
   if (!('dropped' in dropped)) throw new Error(`budget handback: ${JSON.stringify(dropped)}`);
   return taskId;
-}
-
-async function revokePickup(context: PassContext, withId: Person): Promise<void> {
-  const [held] = await context.world.db.admin.execute<{ id: string }>(
-    `select id from public.delegations where business_id = $1 and agent_actor_id = $2
-        and purpose = 'synthetic_comment' and revoked_at is null and settled_at is null`,
-    [context.world.alpha, context.world.agent.actorId],
-  );
-  if (held !== undefined) await withId('delegation.revoke', { delegationId: held.id });
 }
 
 function unrun(operation: string, budget: string, reason: string): Budget {

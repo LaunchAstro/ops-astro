@@ -1,0 +1,296 @@
+{
+  "about": "Mockup values for tests/visual/look/sign-in.ts, from look.ts --measure.",
+  "mockup": "7066bad7402c97b8a039447ad87f387cd719208c",
+  "probes": {
+    "sign-in.brand": {
+      "1480-light": {
+        "background-color": "rgba(0,0,0,255)",
+        "box.width": "175",
+        "box.height": "18"
+      },
+      "1480-dark": {
+        "background-color": "rgba(248,248,248,255)",
+        "box.width": "175",
+        "box.height": "18"
+      },
+      "900-light": {
+        "background-color": "rgba(0,0,0,255)",
+        "box.width": "176",
+        "box.height": "18"
+      },
+      "900-dark": {
+        "background-color": "rgba(248,248,248,255)",
+        "box.width": "176",
+        "box.height": "18"
+      },
+      "390-light": {
+        "background-color": "rgba(0,0,0,255)",
+        "box.width": "176",
+        "box.height": "18"
+      },
+      "390-dark": {
+        "background-color": "rgba(248,248,248,255)",
+        "box.width": "176",
+        "box.height": "18"
+      }
+    },
+    "sign-in.card": {
+      "1480-light": {
+        "background-color": "rgba(255,255,255,255)",
+        "border-top-color": "rgba(0,0,0,31)",
+        "border-top-width": "1px",
+        "padding-top": "24px",
+        "padding-left": "24px"
+      },
+      "1480-dark": {
+        "background-color": "rgba(15,15,18,255)",
+        "border-top-color": "rgba(245,245,245,26)",
+        "border-top-width": "1px",
+        "padding-top": "24px",
+        "padding-left": "24px"
+      },
+      "900-light": {
+        "background-color": "rgba(255,255,255,255)",
+        "border-top-color": "rgba(0,0,0,31)",
+        "border-top-width": "1px",
+        "padding-top": "24px",
+        "padding-left": "24px"
+      },
+      "900-dark": {
+        "background-color": "rgba(15,15,18,255)",
+        "border-top-color": "rgba(245,245,245,26)",
+        "border-top-width": "1px",
+        "padding-top": "24px",
+        "padding-left": "24px"
+      },
+      "390-light": {
+        "background-color": "rgba(255,255,255,255)",
+        "border-top-color": "rgba(0,0,0,31)",
+        "border-top-width": "1px",
+        "padding-top": "24px",
+        "padding-left": "24px"
+      },
+      "390-dark": {
+        "background-color": "rgba(15,15,18,255)",
+        "border-top-color": "rgba(245,245,245,26)",
+        "border-top-width": "1px",
+        "padding-top": "24px",
+        "padding-left": "24px"
+      }
+    },
+    "sign-in.title": {
+      "1480-light": {
+        "font-family": "Funnel Sans",
+        "font-size": "15px",
+        "font-weight": "600",
+        "line-height": "18px",
+        "color": "rgba(0,0,0,255)"
+      },
+      "1480-dark": {
+        "font-family": "Funnel Sans",
+        "font-size": "15px",
+        "font-weight": "600",
+        "line-height": "18px",
+        "color": "rgba(248,248,248,255)"
+      },
+      "900-light": {
+        "font-family": "Funnel Sans",
+        "font-size": "15px",
+        "font-weight": "600",
+        "line-height": "18px",
+        "color": "rgba(0,0,0,255)"
+      },
+      "900-dark": {
+        "font-family": "Funnel Sans",
+        "font-size": "15px",
+        "font-weight": "600",
+        "line-height": "18px",
+        "color": "rgba(248,248,248,255)"
+      },
+      "390-light": {
+        "font-family": "Funnel Sans",
+        "font-size": "15px",
+        "font-weight": "600",
+        "line-height": "18px",
+        "color": "rgba(0,0,0,255)"
+      },
+      "390-dark": {
+        "font-family": "Funnel Sans",
+        "font-size": "15px",
+        "font-weight": "600",
+        "line-height": "18px",
+        "color": "rgba(248,248,248,255)"
+      }
+    },
+    "sign-in.label": {
+      "1480-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "letter-spacing": "0.24px",
+        "text-transform": "uppercase",
+        "color": "rgba(140,133,127,255)"
+      },
+      "1480-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "letter-spacing": "0.24px",
+        "text-transform": "uppercase",
+        "color": "rgba(248,248,248,117)"
+      },
+      "900-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "letter-spacing": "0.24px",
+        "text-transform": "uppercase",
+        "color": "rgba(140,133,127,255)"
+      },
+      "900-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "letter-spacing": "0.24px",
+        "text-transform": "uppercase",
+        "color": "rgba(248,248,248,117)"
+      },
+      "390-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "letter-spacing": "0.24px",
+        "text-transform": "uppercase",
+        "color": "rgba(140,133,127,255)"
+      },
+      "390-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "letter-spacing": "0.24px",
+        "text-transform": "uppercase",
+        "color": "rgba(248,248,248,117)"
+      }
+    },
+    "sign-in.input": {
+      "1480-light": {
+        "font-family": "Funnel Sans",
+        "font-size": "14px",
+        "color": "rgba(0,0,0,255)",
+        "background-color": "rgba(255,255,255,255)",
+        "border-top-color": "rgba(0,0,0,31)",
+        "border-top-width": "1px",
+        "padding-left": "12px"
+      },
+      "1480-dark": {
+        "font-family": "Funnel Sans",
+        "font-size": "14px",
+        "color": "rgba(248,248,248,255)",
+        "background-color": "rgba(10,10,13,255)",
+        "border-top-color": "rgba(245,245,245,26)",
+        "border-top-width": "1px",
+        "padding-left": "12px"
+      },
+      "900-light": {
+        "font-family": "Funnel Sans",
+        "font-size": "14px",
+        "color": "rgba(0,0,0,255)",
+        "background-color": "rgba(255,255,255,255)",
+        "border-top-color": "rgba(0,0,0,31)",
+        "border-top-width": "1px",
+        "padding-left": "12px"
+      },
+      "900-dark": {
+        "font-family": "Funnel Sans",
+        "font-size": "14px",
+        "color": "rgba(248,248,248,255)",
+        "background-color": "rgba(10,10,13,255)",
+        "border-top-color": "rgba(245,245,245,26)",
+        "border-top-width": "1px",
+        "padding-left": "12px"
+      },
+      "390-light": {
+        "font-family": "Funnel Sans",
+        "font-size": "14px",
+        "color": "rgba(0,0,0,255)",
+        "background-color": "rgba(255,255,255,255)",
+        "border-top-color": "rgba(0,0,0,31)",
+        "border-top-width": "1px",
+        "padding-left": "12px"
+      },
+      "390-dark": {
+        "font-family": "Funnel Sans",
+        "font-size": "14px",
+        "color": "rgba(248,248,248,255)",
+        "background-color": "rgba(10,10,13,255)",
+        "border-top-color": "rgba(245,245,245,26)",
+        "border-top-width": "1px",
+        "padding-left": "12px"
+      }
+    },
+    "sign-in.button": {
+      "1480-light": {
+        "font-family": "Funnel Sans",
+        "font-size": "12px",
+        "font-weight": "500",
+        "padding-left": "11.4px",
+        "box.height": "27"
+      },
+      "1480-dark": {
+        "font-family": "Funnel Sans",
+        "font-size": "12px",
+        "font-weight": "500",
+        "padding-left": "11.4px",
+        "box.height": "27"
+      },
+      "900-light": {
+        "font-family": "Funnel Sans",
+        "font-size": "12px",
+        "font-weight": "500",
+        "padding-left": "11.4px",
+        "box.height": "27"
+      },
+      "900-dark": {
+        "font-family": "Funnel Sans",
+        "font-size": "12px",
+        "font-weight": "500",
+        "padding-left": "11.4px",
+        "box.height": "27"
+      },
+      "390-light": {
+        "font-family": "Funnel Sans",
+        "font-size": "12px",
+        "font-weight": "500",
+        "padding-left": "11.4px",
+        "box.height": "27"
+      },
+      "390-dark": {
+        "font-family": "Funnel Sans",
+        "font-size": "12px",
+        "font-weight": "500",
+        "padding-left": "11.4px",
+        "box.height": "27"
+      }
+    },
+    "sign-in.button-fill": {
+      "1480-light": {
+        "color": "rgba(255,255,255,255)",
+        "background-color": "rgba(0,0,0,255)"
+      },
+      "1480-dark": {
+        "color": "rgba(10,10,13,255)",
+        "background-color": "rgba(248,248,248,255)"
+      },
+      "900-light": {
+        "color": "rgba(255,255,255,255)",
+        "background-color": "rgba(0,0,0,255)"
+      },
+      "900-dark": {
+        "color": "rgba(10,10,13,255)",
+        "background-color": "rgba(248,248,248,255)"
+      },
+      "390-light": {
+        "color": "rgba(255,255,255,255)",
+        "background-color": "rgba(0,0,0,255)"
+      },
+      "390-dark": {
+        "color": "rgba(10,10,13,255)",
+        "background-color": "rgba(248,248,248,255)"
+      }
+    }
+  }
+}

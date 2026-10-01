@@ -55,12 +55,12 @@ const REFUSED = {
 function server(first: unknown) {
   const calls: string[] = [];
   let answer: { readonly body: unknown; readonly status: number } = { body: first, status: 200 };
-  const fetch = (async (url: string | URL) => {
+  const fetch = ((url: string | URL) => {
     const at = String(url);
     calls.push(at.slice(at.lastIndexOf('/b/alpha/') + 9));
-    if (at.endsWith('/task/read')) return json(answer.body, answer.status);
-    if (at.endsWith('/person/list')) return json({ ok: true, persons: [] });
-    throw new Error(`unrouted ${at}`);
+    if (at.endsWith('/task/read')) return Promise.resolve(json(answer.body, answer.status));
+    if (at.endsWith('/person/list')) return Promise.resolve(json({ ok: true, persons: [] }));
+    return Promise.reject(new Error(`unrouted ${at}`));
   }) as unknown as typeof globalThis.fetch;
   return {
     fetch,
@@ -73,7 +73,7 @@ function server(first: unknown) {
 
 const screen = (fetch: typeof globalThis.fetch) => (
   <TaskDetailScreen
-    client={new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch })}
+    client={new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch })}
     grantKey="alpha:ext"
     taskKey={TASK_ID}
   />
@@ -145,9 +145,9 @@ describe('the task page for a reader outside the business', () => {
     expect((region as HTMLElement | null)?.dataset['revision']).toBeUndefined();
     expect(page.text()).not.toContain('History');
     // The member page reads the people list for assignment. This one must not
-    // go looking for anything the projection did not carry. The live join
-    // (T2f) carries nothing: it says only that this task changed.
-    expect(api.calls).toEqual(['task/read', `live/task/${TASK_ID}`]);
+    // go looking for anything the projection did not carry, and joins no live
+    // stream: an external reader is never on the channel (T2f, C4).
+    expect(api.calls).toEqual(['task/read']);
     await page.unmount();
   });
 

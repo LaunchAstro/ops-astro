@@ -3,12 +3,9 @@
 # The pull request size report, against throwaway repositories.
 #
 # The size is reported, not limited (owner, 29 September 2026): the script
-# measures and prints its report, total, per file and moved lines, and exits
-# 0 whatever the size, so no size fails the required check 'pull request
-# size'. The cases that once expected a block now expect a pass and check the
-# report instead, so the measuring stays proven. Waiver labels change nothing.
-# A failure to measure still fails (Sol, review 1 on #143): report-only
-# covers the size, never a missing report.
+# exits 0 whatever the size. These cases prove moved lines and a failure to
+# measure, which still fails (Sol, review 1 on #143); plain sizes, waiver
+# labels and generated files are proven in cq-16-edit-event-and-size.test.ts.
 #
 # Usage: tests/ci/pr-size-cases.sh [path-to-script]
 
@@ -40,43 +37,14 @@ new_repo() {
   echo "$dir"
 }
 
-# add_lines <dir> <path> <count>
-add_lines() {
-  local dir="$1" path="$2" count="$3"
-  mkdir -p "$dir/$(dirname "$path")"
-  : > "$dir/$path"
-  local i=1
-  while [ "$i" -le "$count" ]; do printf 'line %s\n' "$i" >> "$dir/$path"; i=$((i + 1)); done
-  git -C "$dir" add "$path" >/dev/null
-  git -C "$dir" commit -qm "feat: $path"
-}
-
-# Measures from the seed commit. Sets STATUS and REPORT, like run_last_commit.
-run_sizer() {
-  local dir="$1" labels="$2"
-  REPORT="$(cd "$dir" && BASE_SHA="$(git rev-list --max-parents=0 HEAD)" HEAD_SHA="$(git rev-parse HEAD)" \
-      PR_LABELS="$labels" node "$SIZER" 2>&1)"
-  STATUS=$?
-}
-
 # reports <name> <text>: the last report holds the text, a fixed string.
 reports() {
   if printf '%s\n' "$REPORT" | grep -qF -- "$2"; then pass "$1"; else fail "$1" "report was: $REPORT"; fi
 }
 
-# A size is never a refusal: no error annotation, and the closing line says
-# the size is not limited.
-not_a_refusal() {
-  if printf '%s\n' "$REPORT" | grep -q '^::error::'; then
-    fail "$1" "the report carries an error annotation: $REPORT"
-  else
-    reports "$1" 'pr-size: the size is reported, not limited; no size fails this check.'
-  fi
-}
-
-# Moved lines. A pull request that only moves code starts from a base that
-# already holds it, so these cases measure the last commit alone and keep the
-# report for the per-file assertions.
+# A pull request that only moves code starts from a base that already holds
+# it, so these cases measure the last commit alone and keep the report for
+# the per-file assertions.
 # write_block <dir> <path> <from> <to> [indent]
 write_block() {
   local dir="$1" path="$2" from="$3" to="$4" indent="${5:-}"
@@ -101,52 +69,6 @@ run_last_commit() {
 echo "pr-size cases, against $SIZER"
 echo
 
-dir="$(new_repo)"; add_lines "$dir" "src/small.ts" 50
-run_sizer "$dir" ""; status="$STATUS"
-[ "$status" = "0" ] && pass "a small change passes (exit 0)" || fail "a small change passes" "expected 0, got $status: $REPORT"
-reports "a small change is reported" 'pr-size: 50 changed lines of non-test code across 1 file(s).'
-rm -rf "$dir"
-
-dir="$(new_repo)"; add_lines "$dir" "src/big.ts" 500
-run_sizer "$dir" ""; status="$STATUS"
-[ "$status" = "0" ] && pass "500 changed lines, once over the ceiling, pass (exit 0)" \
-  || fail "500 changed lines, once over the ceiling, pass" "expected 0, got $status: $REPORT"
-reports "500 changed lines are reported in full" 'pr-size: 500 changed lines of non-test code across 1 file(s).'
-not_a_refusal "500 changed lines draw no refusal"
-rm -rf "$dir"
-
-# Waiver labels no longer gate anything: the same change gives the same exit
-# and the same report with either label or none.
-dir="$(new_repo)"; add_lines "$dir" "src/a.ts" 200; add_lines "$dir" "src/b.ts" 250
-run_sizer "$dir" ""; bare_status="$STATUS"; bare_report="$REPORT"
-for label in size-waiver-coherence size-waiver-mechanical; do
-  run_sizer "$dir" "$label"
-  if [ "$STATUS" = "0" ] && [ "$bare_status" = "0" ] && [ "$REPORT" = "$bare_report" ]; then
-    pass "$label changes nothing (exit 0, same report)"
-  else
-    fail "$label changes nothing" "without it: $bare_status, $bare_report; with it: $STATUS, $REPORT"
-  fi
-done
-rm -rf "$dir"
-
-# The per-file cap no longer gates: a single hand-written file of 600 lines
-# passes, and the report still counts it.
-dir="$(new_repo)"; add_lines "$dir" "src/huge.ts" 600
-run_sizer "$dir" ""; status="$STATUS"
-[ "$status" = "0" ] && pass "one hand-written file of 600 lines passes (exit 0)" \
-  || fail "one hand-written file of 600 lines passes" "expected 0, got $status: $REPORT"
-reports "one hand-written file of 600 lines is reported per file" \
-  'pr-size:   src/huge.ts: 600 counted, 0 treated as moved (600 changed)'
-not_a_refusal "one hand-written file of 600 lines draws no refusal"
-rm -rf "$dir"
-
-dir="$(new_repo)"; add_lines "$dir" "pnpm-lock.yaml" 600
-run_sizer "$dir" ""; status="$STATUS"
-[ "$status" = "0" ] && pass "a generated file of 600 lines passes (exit 0)" \
-  || fail "a generated file of 600 lines passes" "expected 0, got $status: $REPORT"
-reports "a generated file still counts towards the total" 'pr-size: 600 changed lines of non-test code across 1 file(s).'
-rm -rf "$dir"
-
 # Moved lines are not counted (issue 110). A split of a large file into
 # smaller ones is read as a move by a reviewer, so it is measured as one: only
 # the lines git does not mark as moved (indentation changes allowed) count,
@@ -168,13 +90,6 @@ run_last_commit "$dir" ""; status="$STATUS"
 [ "$status" = "0" ] && pass "a pure move of 500 lines into two files passes (exit 0)" \
   || fail "a pure move of 500 lines into two files passes" "expected 0, got $status: $REPORT"
 reports "a pure move of 500 lines is reported as moved" 'pr-size: 1000 moved lines of non-test code, not counted.'
-rm -rf "$dir"
-
-dir="$(new_repo)"; add_lines "$dir" "src/hand.ts" 401
-run_sizer "$dir" ""; status="$STATUS"
-[ "$status" = "0" ] && pass "401 hand-written lines in one file pass (exit 0)" \
-  || fail "401 hand-written lines in one file pass" "expected 0, got $status: $REPORT"
-reports "401 hand-written lines in one file are reported" 'pr-size:   src/hand.ts: 401 counted, 0 treated as moved (401 changed)'
 rm -rf "$dir"
 
 dir="$(new_repo)"; write_block "$dir" "src/wrap.ts" 1 450; commit_all "$dir" "base"

@@ -21,6 +21,9 @@ import { COMMAND_SURFACE } from '../../packages/core-wire/src/surface.ts';
 import { createWorld, serverUrl, type World } from '../acceptance/world.ts';
 import { runCli, serveApi, type Run, type ServedApi } from './cli-process-harness.ts';
 
+/** A sign-in password typed at the prompt: marked, so no built file can carry it. */
+const PASSWORD = 'ops-astro-test-only-pw';
+
 const PROPOSAL = {
   purpose: 'draft_the_reply',
   maximumMinor: 3_000,
@@ -371,14 +374,14 @@ describe.skipIf(serverUrl === undefined)('the command line as a separate process
         OPS_ASTRO_GOTRUE_URL: `http://127.0.0.1:${String(port)}/auth/v1`,
       };
       delete env['OPS_ASTRO_TOKEN'];
-      const login = await runCli(['login', '--email', 'ada@example.test'], env, 'a-password\n');
+      const login = await runCli(['login', '--email', 'ada@example.test'], env, `${PASSWORD}\n`);
       expect(login.code, login.stderr).toBe(0);
       expect(seen?.url).toBe('/auth/v1/token?grant_type=password');
       expect(JSON.parse(seen?.body ?? '{}')).toStrictEqual({
         email: 'ada@example.test',
-        password: 'a-password',
+        password: PASSWORD,
       });
-      expectNoCredential(login, 'a-password');
+      expectNoCredential(login, PASSWORD);
 
       const people = await runCli(['person.list'], env);
       expect(people.code, people.stdout).toBe(0);

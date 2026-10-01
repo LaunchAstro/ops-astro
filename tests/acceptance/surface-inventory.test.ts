@@ -219,7 +219,7 @@ describe.skipIf(serverUrl === undefined)('the exported surface, enumerated from 
     const client = new OperationsClient({
       origin: '',
       businessKey: 'alpha',
-      token: null,
+      signedIn: false,
       fetch: ((url: string | URL | Request) => {
         requested.push(String(url));
         return Promise.resolve(Response.json({ ok: true }));

@@ -12,7 +12,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { chromium } from 'playwright';
+import { launchChromium } from '../support/chromium.ts';
 import { madeUpSession, serveApp } from './app-pages.ts';
 import { openSide, type Side } from './capture.ts';
 import { WIDTHS } from './gallery-views.ts';
@@ -52,7 +52,7 @@ export async function besideMockup(
   const packet = readPacket();
   const tree = checkMockupTree(mockupDir, packet.mockup);
   await fetchAssets(readAssets(), packet);
-  const browser = await chromium.launch(MODE);
+  const browser = await launchChromium(MODE);
   checkRenderer(packet, liveRenderer(browser, MODE));
   const { app, close } = await serveApp();
   const lines: string[] = [];

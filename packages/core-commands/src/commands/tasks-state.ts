@@ -27,10 +27,12 @@
 
 import {
   gatePending,
+  isClientHere,
   readFieldDefinitions,
   isLive,
   isRecordsRefusal,
   mergeFieldValues,
+  raiseAssignment,
   setTaskState,
 } from '../../../core-records/src/index.ts';
 import type {
@@ -42,7 +44,6 @@ import type {
 import { acquire } from '../../../core-runtime/src/index.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { refuseWrongValueType } from './values.ts';
-import { refuseUpdateOperands } from './operands.ts';
 import { applied, refused, type HandlerOutcome, type Refused } from './outcome.ts';
 import type { CommandContext } from './context.ts';
 import type { CommandName } from '../../../core-wire/src/index.ts';
@@ -53,8 +54,8 @@ import type { FieldValues } from './requests.ts';
  *
  * Named rather than derived, because nothing on a field definition says what a
  * uuid link points at, and a list here is a visible diff where a silent
- * derivation would not be. `client` is not in it: a party link resolves against
- * the party model, which this unit does not carry.
+ * derivation would not be. `client` is not in it: it names a client record,
+ * not a person, and `refuseClientNotHere` checks it.
  */
 const PERSON_LINK_FIELDS: readonly string[] = ['assignee', 'delegate'];
 
@@ -111,10 +112,36 @@ async function refusePersonNotHere(
   ]);
 }
 
-/** Person links lower-cased; `refusePersonNotHere` has already said each is a member here. */
+/**
+ * Refuse a client link that names no client of this business (C32). The link
+ * is the party a party-scoped grant resolves against, so a task pointing at
+ * another business's client, or at none, is a task whose audience nobody can
+ * read off it. `NOT_FOUND` for both, as for a person link.
+ */
+async function refuseClientNotHere(
+  tx: TenantQuery,
+  fields: FieldValues,
+): Promise<CommandRefusal | undefined> {
+  const client = fields['client'];
+  if (typeof client !== 'string') return undefined;
+  if (await isClientHere(tx, client.toLowerCase())) return undefined;
+  return refuseCommand(
+    'NOT_FOUND',
+    ['client'],
+    [
+      'No client of this business carries that identifier.',
+      'Read client.list for the clients this business has.',
+    ],
+  );
+}
+
+/**
+ * Person and client links lower-cased; `refusePersonNotHere` and
+ * `refuseClientNotHere` have already said each is here.
+ */
 function canonicalPersonLinks(fields: FieldValues): FieldValues {
   const out: Record<string, unknown> = { ...fields };
-  for (const key of PERSON_LINK_FIELDS) {
+  for (const key of [...PERSON_LINK_FIELDS, 'client']) {
     const value = out[key];
     if (typeof value === 'string') out[key] = value.toLowerCase();
   }
@@ -241,9 +268,6 @@ export async function writeOwnedFields(
 ): Promise<HandlerOutcome> {
   const target = context.target;
   if (target === undefined) throw new Error('writeOwnedFields: the envelope read no target');
-  // First, because every check below reads `fields` as a map.
-  const operands = refuseUpdateOperands(fields);
-  if (operands !== undefined) return refused(operands);
 
   const definitions = await readFieldDefinitions(tx, context.spine.taskTypeId);
   const live = new Map(definitions.filter((field) => isLive(field)).map((f) => [f.key, f]));
@@ -293,10 +317,13 @@ export async function writeOwnedFields(
 
   const absent = await refusePersonNotHere(tx, fields);
   if (absent !== undefined) return refused(absent);
+  const noClient = await refuseClientNotHere(tx, fields);
+  if (noClient !== undefined) return refused(noClient);
 
   // Stored in the spelling the uuid cast answers, so the task names the
   // person in the one form every read and join compares against.
-  const merged = mergeFieldValues(target.data, canonicalPersonLinks(fields));
+  const links = canonicalPersonLinks(fields);
+  const merged = mergeFieldValues(target.data, links);
   const rows = await tx.query<{ readonly revision: string }>(
     `update records set data = $3 where business_id = $1 and id = $2 and deleted_at is null
      returning revision::text as revision`,
@@ -305,6 +332,11 @@ export async function writeOwnedFields(
   const written = rows[0];
   if (written === undefined) {
     return refuse('NOT_FOUND', [], ['No live task carries that identifier here.']);
+  }
+  // INB-1: the assignment is raised by the write that makes it (CS-16.8).
+  if ('assignee' in links) {
+    const assignee = typeof links['assignee'] === 'string' ? links['assignee'] : null;
+    await raiseAssignment(tx, { taskId: target.id, assignee, by: context.session.personId });
   }
   return applied(target.id, Number(written.revision), { changed: keys });
 }

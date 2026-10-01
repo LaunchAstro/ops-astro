@@ -2,28 +2,24 @@
 //
 // Login resolution: verified subject to session, inside one transaction.
 //
-// The steps are the contract's (minimum contract, section 1.3). Step 1,
-// verifying the credential with the auth provider, is not here: the provider
-// question is open, and what arrives is a subject someone else has verified.
-// Steps 2 to 4 are the query below. Step 5 is `withBusiness`, which is T1a's,
-// and step 6 — deriving scope — is T1c's and happens in the same transaction
-// this one opens, which is what makes "re-evaluated on each call" mechanical
-// rather than a discipline.
+// The steps are the contract's (minimum contract, section 1.3). Step 1, verifying the credential
+// with the auth provider, is not here: the provider question is open, and what arrives is a
+// subject someone else has verified. Steps 2 to 4 are the query below. Step 5 is `withBusiness`,
+// which is T1a's, and step 6 — deriving scope — is T1c's and happens in the same transaction this
+// one opens, which is what makes "re-evaluated on each call" mechanical rather than a discipline.
 //
 // Two decisions worth seeing before the code.
 //
-// **The business is named, never discovered.** A caller says which business it
-// is acting in and the server verifies it against the mapping. Resolving the
-// business from the subject alone would mean reading `logins` across tenants,
-// and the only way to do that under forced row security is a definer-rights
-// function — a hole in the barrier, cut before anything in this part needs it.
-// The contract permits the convenience; it does not require it, and the sign-in
-// surface that wants it can arrive with its own proof.
+// **The business is named, never discovered.** A caller says which business it is acting in and
+// the server verifies it against the mapping. Resolving the business from the subject alone would
+// mean reading `logins` across tenants, and the only way to do that under forced row security is a
+// definer-rights function — a hole in the barrier, cut before anything in this part needs it. The
+// contract permits the convenience; it does not require it, and the sign-in surface that wants it
+// can arrive with its own proof.
 //
-// **A subject with no login row here is refused exactly as an unmapped one
-// is.** Telling the two apart tells the caller whether that subject exists in
-// this business, which is the same inference leak that makes a wrong-business
-// read return NOT_FOUND. One refusal, one message, one shape.
+// **A subject with no login row here is refused exactly as an unmapped one is.** Telling the two
+// apart tells the caller whether that subject exists in this business, which is the same inference
+// leak that makes a wrong-business read return NOT_FOUND. One refusal, one message, one shape.
 
 import type { BusinessId, Database, TenantQuery } from '../tenancy/database.ts';
 import { refuseCommand, type CommandRefusal } from '../register.ts';
@@ -35,7 +31,8 @@ type Refusal = CommandRefusal<IdentityRefusalCode>;
 const refuse = (code: IdentityRefusalCode, fixes: readonly string[]): Refusal =>
   refuseCommand(code, [], fixes);
 import { recordAuthenticationAttempt } from './authentication-attempts.ts';
-import type { VerifiedSubject } from './verified-subject.ts';
+import { loginHasVerifiedFactor } from './second-factor.ts';
+import { NO_ASSURANCE, type Assurance, type VerifiedSubject } from './verified-subject.ts';
 
 export type { VerifiedSubject } from './verified-subject.ts';
 
@@ -46,13 +43,28 @@ export interface Session {
   readonly personId: string;
   readonly actorId: string;
   /**
-   * The membership's role key, or null for an external party: a mapped person
-   * with no membership whose whole standing is the record- or party-scoped
-   * grants they hold (minimum contract 8.1, R4). Null rather than a word, so
-   * no role a preset names can be mistaken for one.
+   * The membership's role key, or null for an external party: a mapped person with no membership
+   * whose whole standing is the record- or party-scoped grants they hold (minimum contract 8.1,
+   * R4). Null rather than a word, so no role a preset names can be mistaken for one.
    */
   readonly roleKey: string | null;
+  /**
+   * How strongly the provider says this call signed in (C59): the level, and
+   * the times of the first sign-in and of the second factor. The money
+   * step-up reads it (`authority/step-up.ts`); nothing else grants on it.
+   */
+  readonly assurance: Assurance;
+  /** Agent credential calls only (API-2): its ticked `collection:action` keys, which every
+   *  grant check also asks within (`subjectsOf`); `actorId` is the agent, `personId` its person. */
+  readonly credentialScope?: readonly string[];
 }
+
+/**
+ * Whether a sign-in without the second factor is refused for a person who has
+ * one. `required` everywhere but the factor routes themselves, which serve the
+ * sign-in that has not yet given its code (C59: verifying is how it gets one).
+ */
+export type SecondFactorRule = 'required' | 'enrolling';
 
 interface ResolutionRow {
   readonly login_id: string;
@@ -60,6 +72,10 @@ interface ResolutionRow {
   readonly membership_id: string | null;
   readonly role_key: string | null;
   readonly actor_id: string | null;
+  /** 'true' once the person has a verified second factor; null before 0049. */
+  readonly second_factor_verified: string | null;
+  /** Whether the login's factors are kept by subject (0064), so every business reads them. */
+  readonly by_subject: boolean;
 }
 
 export const NO_MEMBERSHIP_FIXES = [
@@ -68,18 +84,25 @@ export const NO_MEMBERSHIP_FIXES = [
 ] as const;
 
 const INACTIVE_FIXES = ['ask an administrator of this business to reactivate this person'] as const;
+const ENDED_FIXES = ['sign in again: this session was signed out'] as const;
+const SECOND_FACTOR_FIXES = [
+  'enter the code from your authenticator app to finish signing in',
+] as const;
 
-// Left joins rather than four round trips, because the four facts are read
-// under one snapshot and one policy evaluation. Row security scopes every
-// table to the business the wrapper set, so no clause below names it; the
-// joins still carry business_id because a join that only works because a
-// policy is in place is a join that stops working the day one is not.
+// Left joins rather than four round trips, because the four facts are read under one snapshot and
+// one policy evaluation. Row security scopes every table to the business the wrapper set, so no
+// clause below names it; the joins still carry business_id because a join that only works because
+// a policy is in place is a join that stops working the day one is not.
 const RESOLUTION = `
   select l.id as login_id,
          pl.person_id,
          m.id as membership_id,
          m.role_key,
-         a.id as actor_id
+         a.id as actor_id,
+         -- Read through the row's json so this one query serves a database
+         -- from before 0049, which has no such column and so no factor.
+         to_jsonb(p) ->> 'second_factor_verified' as second_factor_verified,
+         to_regclass('ops.second_factor_subjects') is not null as by_subject
     from public.logins l
     left join public.person_logins pl
       on pl.business_id = l.business_id and pl.login_id = l.id and pl.active
@@ -88,6 +111,8 @@ const RESOLUTION = `
     left join public.actors a
       on a.business_id = pl.business_id and a.person_id = pl.person_id
      and a.kind = 'person' and a.active
+    left join public.people p
+      on p.business_id = pl.business_id and p.id = pl.person_id
    where l.provider = $1 and l.subject = $2`;
 
 /**
@@ -104,32 +129,79 @@ const RESOLUTION = `
 export async function resolveLogin(
   tx: TenantQuery,
   presented: VerifiedSubject,
+  rule: SecondFactorRule = 'required',
+): Promise<Session | Refusal> {
+  const standing = await standingOf(tx, presented, rule);
+  if ('refused' in standing) return await recordRefusal(tx, presented, standing);
+  await recordResolved(tx, presented, standing);
+  return standing;
+}
+
+/** Steps 2 to 4 as `resolveLogin` takes them, recording nothing (`standing.ts` asks it again). */
+export async function standingOf(
+  tx: TenantQuery,
+  presented: VerifiedSubject,
+  rule: SecondFactorRule,
 ): Promise<Session | Refusal> {
   const rows = await tx.query<ResolutionRow>(RESOLUTION, [presented.provider, presented.subject]);
   const found = rows[0];
 
   if (found === undefined || found.person_id === null) {
-    return await recordRefusal(tx, presented, refuse('AUTH_NO_MEMBERSHIP', NO_MEMBERSHIP_FIXES));
+    return refuse('AUTH_NO_MEMBERSHIP', NO_MEMBERSHIP_FIXES);
   }
   if (found.membership_id === null && !(await standsOnShares(tx, found.person_id))) {
-    return await recordRefusal(tx, presented, refuse('AUTH_NO_MEMBERSHIP', NO_MEMBERSHIP_FIXES));
+    return refuse('AUTH_NO_MEMBERSHIP', NO_MEMBERSHIP_FIXES);
   }
-  if (found.actor_id === null) {
-    return await recordRefusal(tx, presented, refuse('ACTOR_INACTIVE', INACTIVE_FIXES));
+  if (found.actor_id === null) return refuse('ACTOR_INACTIVE', INACTIVE_FIXES);
+
+  // A session the person has ended (C58: signed out, or ended from another
+  // session or by a factor change) is over from that commit, whatever the
+  // token's own expiry says. Before the factor, so an ended session is told
+  // to sign in again rather than to give a code.
+  if (await sessionEnded(tx, presented)) {
+    return refuse('AUTH_SESSION_EXPIRED', ENDED_FIXES);
   }
 
-  const session: Session = {
+  // After the person is known and active, and before anything is served: a
+  // sign-in that stopped at the password is not yet a sign-in for a login
+  // that verified a second factor, in any business (C59, LF-4).
+  const assurance = presented.assurance ?? NO_ASSURANCE;
+  const short = assurance.level !== 'aal2';
+  if (rule === 'required' && short && (await factorHeld(tx, presented.subject, found))) {
+    return await recordRefusal(
+      tx,
+      presented,
+      refuse('AUTH_SECOND_FACTOR_REQUIRED', SECOND_FACTOR_FIXES),
+    );
+  }
+
+  return {
     businessId: tx.businessId,
     loginId: found.login_id,
     personId: found.person_id,
     actorId: found.actor_id,
     roleKey: found.role_key,
+    assurance,
   };
-  // The attempt and what it resolved to commit together with whatever the
-  // caller goes on to do. I13 asks for every attempt, which includes the ones
-  // that succeeded and the ones whose transaction later rolled back — those
-  // roll back with it, and a recorded attempt for work that never happened
-  // would be the worse trail.
+}
+
+/** A factor verified through this business (the mirror) or, from 0064, any (C59, LF-4). */
+async function factorHeld(tx: TenantQuery, subject: string, found: ResolutionRow) {
+  if (found.second_factor_verified === 'true') return true;
+  return found.by_subject && (await loginHasVerifiedFactor(tx, subject));
+}
+
+/**
+ * The attempt and what it resolved to commit together with whatever the caller goes on to do. I13
+ * asks for every attempt, which includes the ones that succeeded and the ones whose transaction
+ * later rolled back — those roll back with it, and a recorded attempt for work that never happened
+ * would be the worse trail.
+ */
+async function recordResolved(
+  tx: TenantQuery,
+  presented: VerifiedSubject,
+  session: Session,
+): Promise<void> {
   await recordAuthenticationAttempt(tx, {
     owner: 'person_login',
     presented,
@@ -138,19 +210,16 @@ export async function resolveLogin(
     actorId: session.actorId,
     personId: session.personId,
   });
-  return session;
 }
 
-// An external party's standing, read under the same snapshot as the mapping.
-// A live share is a record- or party-scoped *read* grant to the person or to
-// their acting identity, which is what `shareRecord` issues and all R4 reaches.
-// A scoped `comment` or `write` grant is not a share and stands for nothing
-// here, so a row a share would never carry cannot turn a non-member into a
-// session. A live *business* grant disqualifies rather than helps: it
-// is a member's grant, and a person holding one without a membership is a
-// former member whose grants outlived them, who stays refused here exactly as
-// before. The per-call check in the serving transaction still decides what the
-// share reaches; this only decides whether there is anyone to ask about.
+// An external party's standing, read under the same snapshot as the mapping. A live share is a
+// record- or party-scoped *read* grant to the person or to their acting identity, which is what
+// `shareRecord` issues and all R4 reaches. A scoped `comment` or `write` grant is not a share and
+// stands for nothing here, so a row a share would never carry cannot turn a non-member into a
+// session. A live *business* grant disqualifies rather than helps: it is a member's grant, and a
+// person holding one without a membership is a former member whose grants outlived them, who stays
+// refused here exactly as before. The per-call check in the serving transaction still decides what
+// the share reaches; this only decides whether there is anyone to ask about.
 const STANDING = `
   select count(*) filter (where g.scope_kind <> 'business' and g.action = 'read')::int as shares,
          count(*) filter (where g.scope_kind = 'business')::int as business
@@ -162,12 +231,35 @@ const STANDING = `
      and ((g.subject_kind = 'person' and g.subject_id = $1)
           or (g.subject_kind = 'actor' and a.person_id = $1))`;
 
-async function standsOnShares(tx: TenantQuery, personId: string): Promise<boolean> {
+/** Exported so the Access preview (C32) asks the one rule sign-in asks. */
+export async function standsOnShares(tx: TenantQuery, personId: string): Promise<boolean> {
   const rows = await tx.query<{ readonly shares: number; readonly business: number }>(STANDING, [
     personId,
   ]);
   const row = rows[0];
   return row !== undefined && row.shares > 0 && row.business === 0;
+}
+
+/**
+ * Whether the session the token belongs to has ended (C58): signed out, in any
+ * business the login reaches (0061), or one of the login's other sessions
+ * ended from any business (0063): not the kept one, first signed in at or
+ * before that ending. A token naming no session has none to end.
+ */
+async function sessionEnded(tx: TenantQuery, presented: VerifiedSubject): Promise<boolean> {
+  if (presented.sessionId === undefined) return false;
+  const rows = await tx.query<{ readonly ended: boolean }>(
+    `select exists (
+       select 1 from ops.ended_provider_sessions where session_id = $1::uuid
+     ) or exists (
+       select 1 from ops.ended_subject_sessions s
+        where s.subject_digest = encode(sha256(convert_to($2, 'UTF8')), 'hex')
+          and s.kept_session is distinct from $1::uuid
+          and to_timestamp($3::bigint) <= s.ended_before
+     ) as ended`,
+    [presented.sessionId, presented.subject, presented.assurance?.signedInAt ?? null],
+  );
+  return rows[0]?.ended === true;
 }
 
 /** A refusal and its record commit together, so nobody is turned away unrecorded. */
@@ -198,9 +290,10 @@ export async function withSession<T>(
   businessId: BusinessId,
   presented: VerifiedSubject,
   run: (tx: TenantQuery, session: Session) => Promise<T>,
+  rule: SecondFactorRule = 'required',
 ): Promise<T | Refusal> {
   return await database.withBusiness(businessId, async (tx) => {
-    const resolved = await resolveLogin(tx, presented);
+    const resolved = await resolveLogin(tx, presented, rule);
     if ('refused' in resolved) return resolved;
     return await run(tx, resolved);
   });

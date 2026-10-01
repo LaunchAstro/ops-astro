@@ -20,10 +20,10 @@
 // make every case below unfalsifiable.
 //
 // **The tokens are minted here rather than by GoTrue.** `createSupabaseVerifier`
-// verifies an HS256 bearer against a deployment secret; a token this file signs
-// with that same secret is the same token as far as every line of product code
-// is concerned, and it keeps the suite in-process with no auth container to
-// depend on. The subject is what identity resolution reads, and the subject is
+// verifies an ES256 bearer against a published key set; a token this file
+// signs with the test key that set holds is the same token as far as every
+// line of product code is concerned, and it keeps the suite in-process with no
+// auth container to depend on. The subject is what identity resolution reads, and the subject is
 // a real row in `logins`.
 //
 // **The cast is `scripts/local-seed.mjs`'s cast**, by name and by role: `ada`,
@@ -50,7 +50,6 @@ import { installSpine } from '../commands/fixture.ts';
 import type { AgentIdentity, Caller } from './cast.ts';
 import {
   ACCEPTANCE_ISSUER,
-  ACCEPTANCE_SECRET,
   ADMIN_ACTIONS,
   ADMIN_COLLECTIONS,
   MEMBER_ACTIONS,
@@ -61,15 +60,17 @@ import {
 
 // Re-exported so every proof keeps one import for the fixture. The cast lives
 // next door so each file stays readable, not because it is a separate concern.
-export { ACCEPTANCE_ISSUER, ACCEPTANCE_SECRET, tokenFor } from './cast.ts';
+export { ACCEPTANCE_ISSUER, tokenFor } from './cast.ts';
 export type { AgentIdentity, Caller } from './cast.ts';
 export { agentPath, bearer, call, personPath } from './drive.ts';
 export type { Answer } from './drive.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
 import { createApi } from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
+import { testSignIn } from '../support/sign-in.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { executeAgentCommand } from '../../packages/core-commands/src/commands/agent-envelope.ts';
+import { executeCredentialCommand } from '../../packages/core-commands/src/commands/credential-envelope.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import type { BusinessId } from '../../packages/core-records/src/tenancy/database.ts';
@@ -107,6 +108,8 @@ export async function createWorld(part: string): Promise<World> {
   const db = await createFreshDatabase({ part });
   const alpha = (await insertBusiness(db.app, 'alpha')) as BusinessId;
   const bravo = (await insertBusiness(db.app, 'bravo')) as BusinessId;
+  // S0-5 (0059): alpha operates the installation, as provisioning sets it.
+  await db.admin.execute('update ops.installation set operator_business_id = $1', [alpha]);
   const spineAlpha = await installSpine(db.app, alpha);
   const spineBravo = await installSpine(db.app, bravo);
 
@@ -123,10 +126,13 @@ export async function createWorld(part: string): Promise<World> {
     });
   }
 
+  // The admin holds billing, so a money act of theirs needs a sign-in with the
+  // second factor inside C59's window: the cast signs them in with it.
   const ada = await enrolCaller(db, alpha, 'alpha', 'ada', {
     membership: true,
     actions: ADMIN_ACTIONS,
     collections: ADMIN_COLLECTIONS,
+    secondFactor: true,
   });
   const mia = await enrolCaller(db, alpha, 'alpha', 'mia', {
     membership: true,
@@ -166,14 +172,15 @@ export async function createWorld(part: string): Promise<World> {
   const byKey: Readonly<Record<string, BusinessId>> = { alpha, bravo };
   const api = createApi({
     database: db.app,
-    verify: createSupabaseVerifier({ secret: ACCEPTANCE_SECRET, issuer: ACCEPTANCE_ISSUER }),
+    verify: createSupabaseVerifier(testSignIn(ACCEPTANCE_ISSUER)),
     // The server resolves the key on the administrative connection because the
     // tenancy root is behind forced row security. Two keys are the whole map
     // here, and an unknown key answers nothing, exactly as the server's does.
-    resolveBusiness: async (key: string) => byKey[key],
+    resolveBusiness: (key: string) => Promise.resolve(byKey[key]),
     executeCommand,
     executeRead,
     executeAgentCommand,
+    executeCredentialCommand,
   });
 
   return {
@@ -216,11 +223,12 @@ export function rebuildApi(world: World): {
   return {
     api: createApi({
       database,
-      verify: createSupabaseVerifier({ secret: ACCEPTANCE_SECRET, issuer: ACCEPTANCE_ISSUER }),
-      resolveBusiness: async (key: string) => byKey[key],
+      verify: createSupabaseVerifier(testSignIn(ACCEPTANCE_ISSUER)),
+      resolveBusiness: (key: string) => Promise.resolve(byKey[key]),
       executeCommand,
       executeRead,
       executeAgentCommand,
+      executeCredentialCommand,
     }),
     close: async () => {
       await database.close();

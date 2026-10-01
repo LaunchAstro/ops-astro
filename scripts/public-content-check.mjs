@@ -51,21 +51,26 @@ const provenanceIdentities = [
 // security address this project documents, and the reserved documentation
 // domains of RFC 2606 and RFC 6761, which can never reach a mailbox.
 //
-// The last five are the local slice's synthetic logins, one entry each and no
-// wildcard: docs/local/README.md lists them as the whole set, and a sixth
-// invented one should be a finding until that file and this list both say so.
+// The last six are the local slice's five synthetic logins and the staging
+// reset's made-up operator, one entry each and no wildcard: docs/local/README.md
+// lists them as the whole set, and a seventh invented one should be a finding
+// until that file and this list both say so.
 // `.local` is reserved for multicast DNS by RFC 6762 and is not delegable, so
 // these cannot reach a mailbox either, and a real address at someone's Bonjour
-// hostname is still a finding because it is not one of these five.
+// hostname is still a finding because it is not one of these six.
+// Then Sol's REVB1SL01S34 proof (byte for byte): two made-up database logins,
+// password `example` before a host, which read as addresses; those strings alone.
 const publishedAddresses = [
   /^security@launchastro\.com$/u,
   /^[a-z0-9._%+-]+@example\.(?:invalid|test|localhost)$/u,
+  /^example@(?:production-db\.example\.test|aws-0-ap-southeast-2\.pooler\.supabase\.com)$/u,
   /^[a-z0-9._%+-]+@example\.(?:com|net|org)$/u,
   /^ada@alpha\.local$/u,
   /^mia@alpha\.local$/u,
   /^noah@alpha\.local$/u,
   /^orphan@alpha\.local$/u,
   /^bea@bravo\.local$/u,
+  /^olive@alpha\.local$/u,
 ];
 
 // A raw commit object, as `git cat-file commit` prints it, is indexed under

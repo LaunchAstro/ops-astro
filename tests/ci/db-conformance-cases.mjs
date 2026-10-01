@@ -136,8 +136,8 @@ function withSuites(files, manifest, run) {
   }
 }
 
-const cruise = (manifestPath, url) =>
-  spawnSync(process.execPath, [runner, '--manifest', manifestPath], {
+const cruise = (manifestPath, url, ...args) =>
+  spawnSync(process.execPath, [runner, '--manifest', manifestPath, ...args], {
     cwd: repoRoot,
     encoding: 'utf8',
     env: { ...process.env, DATABASE_URL: url },
@@ -316,6 +316,32 @@ test('a named suite that is not on disk fails', (t) => {
       } finally {
         rmSync(broken, { force: true });
       }
+    }),
+  );
+});
+
+// Each shard runs its share, and still checks the whole manifest.
+test('a shard names a missing suite that another shard owns, and an empty shard fails', (t) => {
+  if (skipUnlessDocker(t)) return;
+  withDatabase((url) =>
+    withSuites({ 'present.test.ts': REACHES_DATABASE }, { invariant: ['present.test.ts'] }, (m) => {
+      const broken = `${m}.broken.json`;
+      writeFileSync(
+        broken,
+        JSON.stringify({ invariant: ['tests/db/no-such-a.test.ts', 'tests/db/no-such-b.test.ts'] }),
+      );
+      try {
+        for (const shard of ['1/2', '2/2']) {
+          const run = cruise(broken, url, '--shard', shard);
+          assert.equal(run.status, 1, `${shard}: expected exit 1, got ${String(run.status)}`);
+          assert.match(run.stderr, /no-such-a[\s\S]*no-such-b/u, shard);
+        }
+      } finally {
+        rmSync(broken, { force: true });
+      }
+      const empty = cruise(m, url, '--shard', '2/2');
+      assert.equal(empty.status, 1, `expected exit 1, got ${String(empty.status)}`);
+      assert.match(empty.stderr, /shard 2\/2 was given no suite/u);
     }),
   );
 });

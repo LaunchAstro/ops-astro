@@ -122,7 +122,7 @@ function client(fetch: typeof globalThis.fetch): OperationsClient {
   return new OperationsClient({
     origin: '',
     businessKey: 'alpha',
-    token: 'tok',
+    signedIn: true,
     fetch,
     newOperationId: () => {
       minted += 1;
@@ -132,7 +132,7 @@ function client(fetch: typeof globalThis.fetch): OperationsClient {
 }
 
 const screen = (fetch: typeof globalThis.fetch) => (
-  <Projects client={client(fetch)} grantKey="alpha:mia" />
+  <Projects client={client(fetch)} grantKey="alpha:mia" navigate={() => {}} />
 );
 
 describe('a create whose response was lost', () => {

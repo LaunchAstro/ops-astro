@@ -63,6 +63,16 @@ describe('CQ-6 operands described', () => {
       afterTarget: false,
     });
   });
+
+  it('a mistyped required identifier is named alone, before a mistyped optional one', () => {
+    const body = { command: 'task.decide' as const, operationId: 'op-cq6-dec' };
+    expect(
+      parseRequest(
+        { ...body, gateId: 5, versionId: 'v', recipientPersonId: 5 },
+        declarationOf('task.decide'),
+      ),
+    ).toMatchObject({ refusal: { names: ['gateId'] }, afterTarget: false });
+  });
 });
 
 describe('CQ-6 operands refused after the target', () => {

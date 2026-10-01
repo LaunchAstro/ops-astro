@@ -300,7 +300,8 @@ describe.skipIf(serverUrl === undefined)('T3b the sweeper and the unknown liabil
     // Business to business: another business's member names this task from home.
     const foreign = await readIn(other.business, other.decider);
     expect(foreign).toMatchObject({ code: 'NOT_FOUND' });
-    expect(JSON.stringify(foreign)).not.toMatch(/liability_unknown|2500/u);
+    // The held amount as a value: a bare 2500 also turns up inside a random id in the title.
+    expect(JSON.stringify(foreign)).not.toMatch(/liability_unknown|(?<![\w-])2500(?![\w-])/u);
   });
 
   it('client to client and person to person: the unknown amount reaches only a reader holding the task grant', async () => {
@@ -334,10 +335,12 @@ describe.skipIf(serverUrl === undefined)('T3b the sweeper and the unknown liabil
       `t3b-wrong-${randomUUID()}`,
       otherTask,
     );
-    expect(JSON.stringify(await readAs(own))).not.toMatch(/liability_unknown|heldMinor|2500/u);
+    expect(JSON.stringify(await readAs(own))).not.toMatch(
+      /liability_unknown|heldMinor|(?<![\w-])2500(?![\w-])/u,
+    );
     const crossed = await readAs(wrong);
     expect(crossed).toMatchObject({ code: 'NOT_FOUND' });
-    expect(JSON.stringify(crossed)).not.toMatch(/liability_unknown|2500/u);
+    expect(JSON.stringify(crossed)).not.toMatch(/liability_unknown|(?<![\w-])2500(?![\w-])/u);
   });
 });
 

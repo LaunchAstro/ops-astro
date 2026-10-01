@@ -16,12 +16,21 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { chromium, type Browser, type Page } from 'playwright';
+import type { Browser, Page } from 'playwright';
 import { createServer } from 'vite';
-import { load, openSide, shoot, type Catalogue } from './capture.ts';
+import { launchChromium } from '../support/chromium.ts';
+import { load, openSide, shoot, type Catalogue, type Side } from './capture.ts';
 import { scrollMetrics } from './drift.ts';
+import { answerMadeUp } from './made-up-api.ts';
 import { fetchAssets, MODE, readAssets, readPacket, type Packet, type Theme } from './packet.ts';
-import { addressOf, builtPages, needsSession, overflowOf, type PageShot } from './report.ts';
+import {
+  addressOf,
+  builtPages,
+  intendedScreen,
+  needsSession,
+  overflowOf,
+  type PageShot,
+} from './report.ts';
 
 /** The app served from source by its own Vite config, at a free local port. */
 export async function serveApp(): Promise<{ app: URL; close: () => Promise<void> }> {
@@ -64,7 +73,7 @@ export type SignedInApp = { browser: Browser; packet: Packet; app: URL; session:
 export async function withSignedInApp<T>(use: (at: SignedInApp) => Promise<T>): Promise<T> {
   const packet = readPacket();
   await fetchAssets(readAssets(), packet);
-  const browser = await chromium.launch(MODE);
+  const browser = await launchChromium(MODE);
   const { app, close } = await serveApp();
   const dir = mkdtempSync(join(tmpdir(), 'made-up-session-'));
   try {
@@ -76,13 +85,20 @@ export async function withSignedInApp<T>(use: (at: SignedInApp) => Promise<T>): 
   }
 }
 
+/** The parameters a page's address is filled with: a made-up task, business and document. */
+export const MADE_UP_PARAMS = { key: 'T-1', business: 'alpha', document: 'privacy-policy' };
+
 /** A built page drawn at one width in one theme: `<page>@<width>-<theme>`. */
 export type BuiltPage = { id: string; name: string; width: number; theme: Theme; page: Page };
 
+/** The two sides of one width and theme: signed out and signed in. */
+export type Sides = { signedOut: Side; signedIn: Side };
+
 /**
- * Every built page at each width in each theme, each on the side its route
- * asks for (a public page signed out, a working page signed in), handed to
- * `visit`, then closed.
+ * Every built page (or only `pages`) at each width in each theme, each on the
+ * side its route asks for (a public page signed out, a working page signed
+ * in), handed to `visit`, then closed. `route` sets each width and theme's
+ * routes before its first page loads.
  */
 export async function eachBuiltPage<T>(
   options: {
@@ -92,6 +108,8 @@ export async function eachBuiltPage<T>(
     session: string;
     widths: readonly number[];
     themes: readonly Theme[];
+    pages?: readonly string[] | undefined;
+    route?: ((sides: Sides) => Promise<void>) | undefined;
   },
   visit: (built: BuiltPage) => Promise<T>,
 ): Promise<T[]> {
@@ -102,9 +120,10 @@ export async function eachBuiltPage<T>(
       const signedOut = await openSide(browser, packet, width, { app, colorScheme: theme });
       const signedIn = await openSide(browser, packet, width, { app, session, colorScheme: theme });
       try {
-        for (const id of builtPages()) {
+        await options.route?.({ signedOut, signedIn });
+        for (const id of options.pages ?? builtPages()) {
           const side = needsSession(id) ? signedIn : signedOut;
-          const address = addressOf(id, { key: 'T-1' }) ?? '/';
+          const address = addressOf(id, MADE_UP_PARAMS) ?? '/';
           const page = await load(side, packet, new URL(address, app).href);
           out.push(
             await visit({ id, name: `${id}@${String(width)}-${theme}`, width, theme, page }),
@@ -127,14 +146,23 @@ export function captureBuiltPages(options: {
   widths: readonly number[];
   themes: readonly Theme[];
   out: string;
+  /** Only these pages (a ticket's own captures); every built page when not given. */
+  pages?: readonly string[];
+  /** Made-up answers to the app's reads, by the end of the read's address (`operations/read`). */
+  answers?: Readonly<Record<string, unknown>>;
 }): Promise<PageShot[]> {
   const { mask } = JSON.parse(
     readFileSync(new URL('states.json', import.meta.url), 'utf8'),
   ) as Catalogue;
   mkdirSync(options.out, { recursive: true });
-  return eachBuiltPage(options, async ({ id, name, width, theme, page }) => {
+  const route = async (sides: Sides): Promise<void> => {
+    // Made-up reads first; a page's own answers are routed after, so they are asked first.
+    await answerMadeUp(sides.signedIn.context);
+    for (const side of [sides.signedOut, sides.signedIn]) await answer(side, options.answers ?? {});
+  };
+  return eachBuiltPage({ ...options, route }, async ({ id, name, width, theme, page }) => {
     // The intended screen is checked before the picture counts.
-    const intended = needsSession(id) ? 'the page' : 'the sign-in form';
+    const intended = intendedScreen(id);
     const drew = await page.evaluate(screenOf);
     const [shot] = await shoot(page, name, { page: 'viewport' }, mask);
     const overflow = overflowOf(await page.evaluate(scrollMetrics));
@@ -145,9 +173,24 @@ export function captureBuiltPages(options: {
   });
 }
 
-/** Which screen the app drew: its sign-in form, a gate, or the page itself. */
+/** Each read named answers its made-up body; a route added last is asked first. */
+export async function answer(
+  side: Side,
+  answers: Readonly<Record<string, unknown>>,
+): Promise<void> {
+  for (const [read, body] of Object.entries(answers)) {
+    await side.context.route(`**/api/**/${read}`, (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) }),
+    );
+  }
+}
+
+/** Which screen the app drew: its sign-in form, a gate, its server error, or the page itself. */
 export function screenOf(): string {
   if (document.querySelector('.signin__form') !== null) return 'the sign-in form';
+  // main.tsx draws one bare paragraph when it cannot reach the server.
+  const bare = document.querySelector('#app > p:only-child')?.textContent ?? '';
+  if (bare.includes('cannot reach its server')) return 'the server error';
   const title = document.querySelector('.readstate .empty__title')?.textContent ?? '';
   if (title.startsWith('You are already signed in')) return 'the already-signed-in gate';
   if (title.startsWith('No screen is registered')) return 'the not-found gate';

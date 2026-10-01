@@ -40,6 +40,7 @@
 import {
   advisoryLock,
   checkAuthority,
+  refuseStaleMoneyStep,
   subjectsOf,
   isUuid,
 } from '../../../core-records/src/index.ts';
@@ -47,7 +48,11 @@ import type { TenantQuery, Session, Scope, EntryPoint } from '../../../core-reco
 import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { refused, type Refused } from './outcome.ts';
 import { readTaskSpine, type CommandContext, type TaskRow } from './context.ts';
-import { declarationOf, type CommandDeclaration } from '../../../core-wire/src/index.ts';
+import {
+  admitsSelfWrite,
+  declarationOf,
+  type CommandDeclaration,
+} from '../../../core-wire/src/index.ts';
 import type { CommandRequest, UncheckedRequest } from './requests.ts';
 import { IDENTIFIER_FIELDS, parseRequest, refuseUndescribed } from './operands.ts';
 import { refuseUnstorable, unstorableOperands } from './values.ts';
@@ -56,9 +61,6 @@ export const REVISION_FIXES: readonly string[] = [
   'Read the record and send the revision you are writing against as expected_revision.',
   'A write against a stale revision is refused, never merged.',
 ];
-
-/** The one write an external party (R4) may reach, and then only in the client audience. */
-const EXTERNAL_WRITES: ReadonlySet<string> = new Set(['task.comment']);
 
 const EXTERNAL_FIXES: readonly string[] = [
   'A person without a membership may read what was shared with them and nothing more.',
@@ -233,7 +235,8 @@ function refuseMalformedIdentifier(
 /**
  * The operands a command writes to a text or jsonb column as the caller sent
  * them: a comment's body, a cancel's reason, a decision's note, a proposal's
- * purpose, currency, payload and step, a handback's report and successor.
+ * purpose, currency, payload and step, a handback's report and successor, a
+ * privacy incident's words (C55), and a legal document version's words (C81).
  *
  * Without this check, each of them could reach its insert holding a NUL or an
  * unpaired surrogate, which the column refuses with a raise. The owed refusal
@@ -247,15 +250,28 @@ function refuseMalformedIdentifier(
  * field key it does not know is `FIELD_UNKNOWN`, as before.
  */
 const FREE_OPERANDS: readonly string[] = [
+  'affected',
   'body',
+  'contract',
   'currency',
+  'dataClass',
+  'deletion',
+  'disclosures',
+  'foundBy',
+  'name',
   'note',
   'payload',
   'purpose',
   'reason',
+  'receives',
   'report',
+  'retention',
+  'service',
   'step',
   'successor',
+  'trainsOnIt',
+  'whatHappened',
+  'where',
 ];
 
 /**
@@ -267,54 +283,6 @@ function refuseUnstorableOperands(request: UncheckedRequest): Refused | undefine
   const unstorable = unstorableOperands(request, FREE_OPERANDS);
   if (unstorable.length === 0) return undefined;
   return refused(refuseUnstorable(unstorable));
-}
-
-/**
- * The identifier operands a handler binds to a uuid parameter without typing
- * them first, by command: optional ones, which may be absent or `null`, and
- * required ones, which must be there.
- *
- * `refuseMalformedIdentifier` answers a *string* that is not a uuid, and it
- * lets any other type through, because `task.move` and `task.reparent` answer
- * a non-string `board` or `parentId` by name in their own handlers. The
- * handlers listed here do not, so `afterId: 5`, `lineageId: 5` or a `gateId`
- * of 5 or none would reach the bind and answer 503. They are refused by name,
- * as API.md says of every absent or mistyped operand. `task.cancel` and
- * `task.restart` type their `lineageId` themselves and are not listed.
- *
- * `decide()` lower-cases `versionId`, which throws on one that is absent or
- * not a string, and `task.create` carries `parentId`, `board` and
- * `boardSection` into its placement without typing any of them.
- */
-const TYPED_IDENTIFIERS: Readonly<
-  Record<string, { readonly optional?: readonly string[]; readonly required?: readonly string[] }>
-> = {
-  'task.rank': { optional: ['afterId', 'beforeId'] },
-  'task.propose': { optional: ['lineageId'] },
-  'task.create': { optional: ['parentId', 'board', 'boardSection'] },
-  'task.decide': { required: ['gateId', 'versionId'] },
-};
-
-const TYPED_IDENTIFIER_FIXES: readonly string[] = [
-  'Send each name above as the identifier string you were given.',
-];
-
-function refuseMistypedIdentifier(
-  request: UncheckedRequest,
-  declaration: CommandDeclaration,
-): Refused | undefined {
-  const typed = TYPED_IDENTIFIERS[declaration.name];
-  if (typed === undefined) return undefined;
-  const named = request;
-  const mistyped = [
-    ...(typed.optional ?? []).filter(
-      (field) =>
-        named[field] !== undefined && named[field] !== null && typeof named[field] !== 'string',
-    ),
-    ...(typed.required ?? []).filter((field) => typeof named[field] !== 'string'),
-  ];
-  if (mistyped.length === 0) return undefined;
-  return refused(refuseCommand('FIELD_VALUE_INVALID', mistyped.toSorted(), TYPED_IDENTIFIER_FIXES));
 }
 
 const BODY_FIXES: readonly string[] = [
@@ -516,7 +484,7 @@ const CLAIM_LOOKUPS: readonly ScopeLookup[] = [
  */
 const SCOPE_OF: Readonly<
   Record<
-    CommandDeclaration['authorisedOn'],
+    Exclude<CommandDeclaration['authorisedOn'], 'self'>,
     (tx: TenantQuery, request: UncheckedRequest, declaration: CommandDeclaration) => Promise<Scope>
   >
 > = {
@@ -561,33 +529,37 @@ export async function prepareCommand(
   const recordId = typeof request['recordId'] === 'string' ? request['recordId'] : undefined;
   // R4 before any grant row. A session with no membership stands on a read
   // share, and whatever else a row may say it holds, it writes nothing but a
-  // client-audience comment (minimum contract 8.1 R4; the audience is
-  // `tasks-comment.ts`'s to narrow).
-  if (session.roleKey === null && !EXTERNAL_WRITES.has(declaration.name)) {
+  // client-audience comment and the seen stamp on its own inbox item (minimum
+  // contract 8.1 R4; the audience is `tasks-comment.ts`'s to narrow).
+  if (!admitsSelfWrite(session.roleKey !== null, declaration.name)) {
     return refused(refuseCommand('SCOPE_NOT_GRANTED', [], EXTERNAL_FIXES));
   }
-  const authorised = await checkAuthority(tx, subjectsOf(session), {
-    // From the declaration, never written in here: see `CommandDeclaration`.
-    collection: declaration.collection,
-    action: declaration.action,
-    scope: await SCOPE_OF[declaration.authorisedOn](tx, request, declaration),
-  });
-  if (!authorised.ok) return refused(authorised.refusal);
+  // A `self` row asks no grant: its handler reaches the caller's own rows only.
+  if (declaration.authorisedOn !== 'self') {
+    const authorised = await checkAuthority(tx, subjectsOf(session), {
+      // From the declaration, never written in here: see `CommandDeclaration`.
+      collection: declaration.collection,
+      action: declaration.action,
+      scope: await SCOPE_OF[declaration.authorisedOn](tx, request, declaration),
+    });
+    if (!authorised.ok) return refused(authorised.refusal);
+  }
+  // The one step-up (C59), inside the grant check and straight after it: only
+  // a key in the money set is asked, so a caller without the grant is told
+  // that first, and nothing after this line runs on a stale sign-in.
+  const stale = await refuseStaleMoneyStep(tx, session, declaration);
+  if (stale !== undefined) return refused(stale);
   // A field the row does not describe, after authority as on the agent prefix:
   // a caller without the right is told that first (R4, `external-party`).
   // Against the row itself: a replay prepares with the target left out, and
   // the revision the first call sent is still a field this row takes.
   const undescribed = refuseUndescribed(request, declarationOf(declaration.name));
   if (undescribed !== undefined) return refused(undescribed);
-  // The operands' own shape, after authority as every handler's operand
-  // refusal is, so a caller holding nothing is told `SCOPE_NOT_GRANTED` and
-  // nothing about its body; before the target is read or locked.
-  // The body against its row's operands, once, after authority as every
-  // operand check on this prefix has always come: the typed request the
-  // command is handed, or the refusal naming what did not match, which a
-  // missing target answers first when it is not an identifier's.
-  const mistyped = refuseMistypedIdentifier(request, declaration);
-  if (mistyped !== undefined) return mistyped;
+  // The body against its row's operands, once, after authority so a caller
+  // holding nothing is told `SCOPE_NOT_GRANTED` and nothing about its body:
+  // the typed request the command is handed, or the refusal naming what did
+  // not match, which a missing target answers first when it is not an
+  // identifier's.
   const parsed = parseRequest(request, declaration);
   if ('refusal' in parsed && !parsed.afterTarget) return refused(parsed.refusal);
   const unstorable = refuseUnstorableOperands(request);

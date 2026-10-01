@@ -102,6 +102,10 @@ PROOF-CLOSURE their 243 cells sent fabricated ids with no control and no retry.
 `d06-agent.test.ts` holds the contract and exclusion cells for the agent
 route, including the top-level system-field keys, which the agent route now
 also refuses `FIELD_NOT_WRITABLE`.
+The hosted `database conformance` job runs `d06-generated.test.ts` in the six
+parts `tests/db/shard-plan.json` names (`SUITE_PART=i/6`). Each part runs its
+share of the cells and its own last check on its tally, and the two
+metadata tests run in part 1, so every cell and test above runs once.
 
 The in-flight half of I10 is `tests/acceptance/i10-inflight.test.ts`. A read
 is held at admission (after `effectiveGrants`) in its open transaction while
@@ -164,10 +168,10 @@ questions are the transport's. The questions here are the other half: whether
 a foreign read refuses, and whether a protected field stays put. A stub would
 make every one of them unfalsifiable.
 
-The suite signs the bearers with its own secret; GoTrue does not mint them.
-`createSupabaseVerifier` verifies an HS256 token against a deployment secret.
-A token signed with that same secret is the same token to every line of
-product code, and the subject it carries is a real row in `logins`. The cast
+The suite signs the bearers with its own test key; GoTrue does not mint them.
+`createSupabaseVerifier` verifies an ES256 token against a published key set,
+here a static one holding that key's public half. Such a token is the same
+token to every line of product code, and the subject it carries is a real row in `logins`. The cast
 is `scripts/local-seed.mjs`'s cast by name and by role: `ada` admin, `mia`
 member, `noah` member with no grant, `orphan` a verified login with no
 membership, and `bea` a member of the other business. The suite writes the
@@ -256,7 +260,7 @@ none unreachable.
 
 `role-case-matrix.test.ts` with `role-case-harness.ts` (its shape in
 `role-case-harness-shape.ts`), `role-case-bodies.ts` (its recipe table in
-`role-case-positive-body.ts`) and `role-case-ledger.ts`. The enumeration is generated from `COMMAND_SURFACE`
+`role-case-positive-body.ts`, C81's recipes in `role-case-privacy-bodies.ts`, API-2's in `role-case-credential-bodies.ts`) and `role-case-ledger.ts`. The enumeration is generated from `COMMAND_SURFACE`
 and the whole matrix is written to `.local/l5-matrix.tsv` as
 `role · case · operation · observed code · observed status · expected · verdict`.
 
@@ -695,7 +699,7 @@ lane does not own.
 - **Closed: no seeded role could `task.decide`.** When this lane ran, the
   seed gave the admin no `decide` action, so against the live stack every
   decision and so every pickup was unreachable. The seed now gives the admin
-  `task:decide` (`scripts/local-seed.mjs:93`); a member still does not hold it.
+  `task:decide` (`scripts/local-seed.mjs:97`); a member still does not hold it.
 - **The fixture's member and the seed's member differ.** The seed's `member`
   holds `['task:read', 'task:write', 'task:assign', 'person:read', 'settings:read']`;
   the `MEMBER_ACTIONS` that `world.ts` grants (from `tests/acceptance/cast.ts`)
@@ -1250,6 +1254,14 @@ login, and is green 3 of 3 (FR8-0031).
   dialogue. The U7 score (events log, 2026-09-23T23:19:45Z) left U7
   undischarged and named this as Nathan's item. Either answer clears it
   without re-scoring.
+
+## Retired by ruling
+
+- `tests/ci/staging-deploy-consumes-release.test.ts` ("deploys a checked staging artefact through the
+  shipped image build path", batch 1's blind review, finding 6): retired by the orchestrator's ruling
+  (ORCH45, option 1). It certified a local app image built from `deploy/staging/Dockerfile`, a path
+  staging no longer has: the app and API deploy only to Vercel (`scripts/ops/web-deploy.mjs`), and
+  `scripts/ops/deploy.mjs` now starts the M5's unit on its pinned images with no image build.
 
 ## What is not here
 

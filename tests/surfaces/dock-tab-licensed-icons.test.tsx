@@ -8,6 +8,7 @@ it('MP-1-2 dock tabs use licensed icons instead of initials', () => {
   const html = renderToStaticMarkup(
     <Shell
       face="agency"
+      build={null}
       rail={[]}
       here="/gallery/"
       title="Component gallery"

@@ -5,7 +5,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { chromium } from 'playwright';
+import { launchChromium } from '../support/chromium.ts';
 import { build, preview } from 'vite';
 import { expect, it } from 'vitest';
 
@@ -70,7 +70,7 @@ it('MP-1-2 a forward red then green pair and a production woff2 request', async 
     const address = server.httpServer.address();
     if (address === null || typeof address === 'string')
       throw new Error('Vite preview has no TCP port');
-    const browser = await chromium.launch();
+    const browser = await launchChromium();
     try {
       const page = await browser.newPage();
       const fontResponse = page.waitForResponse(
