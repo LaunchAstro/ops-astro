@@ -10,15 +10,20 @@
 // clears it. With no owner to ask it stops all the same, until a person
 // holding task:decide on the ticket starts it (ORCH52-SL14R): their start is
 // recorded as the lift, a system comment. Twice is counted since the last
-// item closed or lift, so two more failures after either stop it again.
+// item closed or lift, so two more failures after either stop it again. The
+// stop withdraws the ticket's runs no one has picked up, so a run begins after
+// it only on a word given after it.
 
 import {
   COMMENT_TYPE_KEY,
+  raiseIncident,
   raiseInboxItem,
   wayfinderFacts,
+  withdrawEndedGates,
   writeComment,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
+import { cancelAndClassify } from '../../../core-runtime/src/index.ts';
 
 /** The failures that make a research ticket stop and ask its map's owner. */
 const TWICE = 2;
@@ -31,8 +36,15 @@ const UNASKED =
   'The run on this ticket failed twice. ' +
   "It has no map's owner to ask, so no one has been asked to look.";
 
-/** The lift's comment; only `researchLifted` writes a system comment with it. */
 const LIFTED = 'Research started again, after two failed runs, by a person who decides on it.';
+
+/**
+ * The lift's mark: the comment's `source`, a system field no command writes
+ * (`task.comment` writes its entry point, never this), set only by `researchLifted`.
+ */
+const LIFT_SOURCE = 'research_lift';
+
+const WITHDRAWN = 'Research stopped: the run on this ticket failed twice.';
 
 /** The owner's item: about the ticket itself, waiting on their move. */
 const ASK = `subject_record_id = $2 and reason = 'waiting_run'
@@ -54,6 +66,7 @@ export async function researchFailed(
   if (facts?.type !== 'research') return;
   if ((await openAsk(tx, failed.taskId)) !== undefined) return;
   if ((await failuresSinceLift(tx, failed.taskId)) !== TWICE) return;
+  await withdrawWaiting(tx, failed.taskId);
   const author = await holderOf(tx, failed.leaseId);
   const commentTypeId = await commentType(tx);
   if (commentTypeId !== undefined) {
@@ -101,28 +114,57 @@ export async function failedTwice(tx: TenantQuery, taskId: string): Promise<bool
   return (await failuresSinceLift(tx, taskId)) >= TWICE;
 }
 
-/** A decide-holder's start lifts the stop: a system comment on the ticket, in their name. */
+/**
+ * A start lifts the stop: a system comment on the ticket, in the starter's
+ * name. False when the business has no comment type to record it in.
+ */
 export async function researchLifted(
   tx: TenantQuery,
   taskId: string,
   actorId: string,
-): Promise<void> {
+): Promise<boolean> {
   const commentTypeId = await commentType(tx);
-  if (commentTypeId === undefined) return;
+  if (commentTypeId === undefined) return false;
   await writeComment(tx, commentTypeId, {
     taskId,
     authorActorId: actorId,
     commentType: 'system',
     audience: 'internal',
     body: LIFTED,
-    source: 'automation',
+    source: LIFT_SOURCE,
   });
+  return true;
+}
+
+/**
+ * The stop withdraws the ticket's live lineages whose run waits, undecided or
+ * approved and not picked up, through `task.cancel`'s runtime path. A lineage
+ * with a run picked up is left to its handback.
+ */
+async function withdrawWaiting(tx: TenantQuery, taskId: string): Promise<void> {
+  const waiting = await tx.query<{ readonly id: string }>(
+    `select l.id from public.proposal_lineages l
+      where l.business_id = $1 and l.task_id = $2 and l.state = 'live'
+        and exists (select 1 from public.planned_runs r where r.business_id = $1
+                     and r.lineage_id = l.id and r.state = 'planned')
+        and not exists (select 1 from public.planned_runs r where r.business_id = $1
+                         and r.lineage_id = l.id and r.state = 'claimed')
+      order by l.id`,
+    [tx.businessId, taskId],
+  );
+  for (const lineage of waiting) {
+    // eslint-disable-next-line no-await-in-loop
+    const result = await cancelAndClassify(tx, { lineageId: lineage.id, reason: WITHDRAWN });
+    // eslint-disable-next-line no-await-in-loop
+    if (result.ok) await raiseIncident(tx, result.value);
+  }
+  await withdrawEndedGates(tx, taskId);
 }
 
 /**
  * The ticket's settled failed handbacks since its last lift: its last ask
- * closed, or a decide-holder's lift comment (or ever, if neither). Only this
- * module writes an `automation` comment: no command runs from that entry point.
+ * closed, or a lift comment (or ever, if neither). The lift is matched by its
+ * writer's mark, never by its words, and a trashed one lifts nothing.
  */
 async function failuresSinceLift(tx: TenantQuery, taskId: string): Promise<number> {
   const rows = await tx.query<{ readonly n: number }>(
@@ -137,9 +179,10 @@ async function failuresSinceLift(tx: TenantQuery, taskId: string): Promise<numbe
              join public.record_types t on t.business_id = c.business_id
               and t.id = c.record_type_id and t.key = $3
             where c.business_id = $1 and c.data ->> 'task' = $2::uuid::text
-              and c.data ->> 'source' = 'automation' and c.data ->> 'body' = $4),
+              and c.deleted_at is null and c.data ->> 'comment_type' = 'system'
+              and c.data ->> 'source' = $4),
           '-infinity')`,
-    [tx.businessId, taskId, COMMENT_TYPE_KEY, LIFTED],
+    [tx.businessId, taskId, COMMENT_TYPE_KEY, LIFT_SOURCE],
   );
   return rows[0]?.n ?? 0;
 }
