@@ -15,7 +15,7 @@ import {
   type FreshDatabase,
 } from '../support/fresh-database.ts';
 
-import { enrol, grantTo, installSpine, type Member } from './fixture.ts';
+import { addClient, enrol, grantTo, installSpine, type Member } from './fixture.ts';
 
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 
@@ -185,6 +185,8 @@ export async function setUp(part = 'hp'): Promise<void> {
     await grantTo(tx, writerNoAssign, 'read');
     await grantTo(tx, writerNoAssign, 'write');
   });
+  await addClient(db.app, alpha, clientA, editor);
+  await addClient(db.app, alpha, clientB, editor);
   await db.app.withBusiness(bravo, async (tx) => {
     for (const action of ['read', 'write', 'assign'] as const) {
       // oxlint-disable-next-line no-await-in-loop

@@ -12,7 +12,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { insertActor, insertLogin, insertMapping, insertPerson } from '../identity/fixture.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import { enrol, grantTo, type Member } from './fixture.ts';
+import { addClient, enrol, grantTo, type Member } from './fixture.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
@@ -114,9 +114,11 @@ async function seed(): Promise<void> {
     await grantTo(tx, decider, 'share', undefined, false, 'access');
     await grantTo(tx, reader, 'read');
   });
-  const clientA = randomUUID();
+  const [clientA, clientB] = [randomUUID(), randomUUID()];
+  await addClient(world.db.app, world.business, clientA, decider);
+  await addClient(world.db.app, world.business, clientB, decider);
   ids['a'] = await make(clientA, NOTE, 'a message for client A');
-  ids['b'] = await make(randomUUID(), `${OTHER} note`, OTHER);
+  ids['b'] = await make(clientB, `${OTHER} note`, OTHER);
   clientPersonA = await clientPerson(clientA);
   await must(decider, {
     command: 'task.share_with_client',
