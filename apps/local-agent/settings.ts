@@ -13,7 +13,7 @@
 // its value: the runner key is one of them.
 
 import { readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { homedir, userInfo } from 'node:os';
 import { join } from 'node:path';
 
 export const SEATS = ['hey', 'nathan'] as const;
@@ -35,7 +35,14 @@ export interface RunnerSettings {
   /** The seat usage reading, `{ seat, percent, at }`, when the operator keeps one. */
   readonly usageFile: string | null;
   /** What the child inherits, and nothing else. */
-  readonly childEnv: { readonly PATH: string; readonly HOME: string; readonly LANG: string };
+  readonly childEnv: {
+    readonly PATH: string;
+    readonly HOME: string;
+    readonly LANG: string;
+    /** Claude Code finds the seat's login in the macOS keychain by user name. */
+    readonly USER: string;
+    readonly LOGNAME: string;
+  };
   readonly timeoutMs: number;
 }
 
@@ -87,6 +94,21 @@ function capOf(text: string | undefined): number | undefined {
   return cap > 0 ? cap : undefined;
 }
 
+/** The only environment the claude child gets: nothing of the runner's own settings or keys. */
+function childEnvOf(
+  env: Readonly<Record<string, string | undefined>>,
+  userHome: string,
+): RunnerSettings['childEnv'] {
+  const userName = env['USER'] || userInfo().username;
+  return {
+    PATH: env['PATH'] ?? '/usr/bin:/bin',
+    HOME: userHome,
+    LANG: env['LANG'] || 'en_AU.UTF-8',
+    USER: userName,
+    LOGNAME: userName,
+  };
+}
+
 export function readSettings(
   env: Readonly<Record<string, string | undefined>>,
   userHome: string = homedir(),
@@ -126,11 +148,7 @@ export function readSettings(
       capUsd,
       claudeBin: env['OPS_LOCAL_AGENT_CLAUDE_BIN'] || 'claude',
       usageFile: env['OPS_LOCAL_AGENT_SEAT_USAGE_FILE'] || null,
-      childEnv: {
-        PATH: env['PATH'] ?? '/usr/bin:/bin',
-        HOME: userHome,
-        LANG: env['LANG'] || 'en_AU.UTF-8',
-      },
+      childEnv: childEnvOf(env, userHome),
       timeoutMs: 120_000,
     },
   };
