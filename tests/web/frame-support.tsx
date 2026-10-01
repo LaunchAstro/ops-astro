@@ -5,7 +5,7 @@
 // seen to move. `layout()` gives each element a box from its place among its
 // siblings, 36 tall and 120 wide, the way the rail and the tab row stack them,
 // and hands back the undo. Real geometry is measured in a browser by
-// `tests/browser/app-frame.mjs`.
+// `tests/surfaces/mp-2-8-harness.test.tsx`.
 
 import { act } from 'react';
 import type { Mounted } from '../surfaces/mount.tsx';

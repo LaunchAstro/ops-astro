@@ -5,7 +5,7 @@
 // section's pages; the underline slides, across a page change too; overflow
 // scrolls with a fade and an arrow at whichever edge has more (R62). That a
 // long label never widens the page at 390 is measured in a browser by
-// `tests/browser/app-frame.mjs`.
+// `tests/surfaces/mp-2-8-harness.test.tsx`.
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';

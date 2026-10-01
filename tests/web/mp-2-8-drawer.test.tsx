@@ -5,7 +5,7 @@
 // hamburger opens it, and the backdrop, Escape, a link or its own toggle close
 // it. Focus moves in on open, is held there, and returns to the hamburger on
 // close (TR-S-B1R-12). Its width, backdrop and slide are measured in a browser
-// by `tests/browser/app-frame.mjs`; the behaviour is width-independent in the
+// by `tests/surfaces/mp-2-8-harness.test.tsx`; the behaviour is width-independent in the
 // component, because the hamburger only shows at 900 and below.
 
 import { readFileSync } from 'node:fs';
