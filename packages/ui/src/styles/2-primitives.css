@@ -404,12 +404,20 @@
   margin: 0;
 }
 .empty--block {
-  justify-items: center;
+  display: block;
   padding: 48px 24px;
   font: var(--type-body);
   letter-spacing: var(--type-body-tracking);
   text-transform: var(--type-body-case);
   text-align: center;
+}
+/* As the mockup's house empty state: every line at the block's own size, 1em apart. */
+.empty.empty--block > * {
+  max-width: none;
+  margin: 1em 0;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
 }
 .empty--inline {
   max-width: 60ch;

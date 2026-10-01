@@ -19,6 +19,7 @@ import {
   PagePlaceholder,
   RouteTabs,
   SignedInAlready,
+  TopbarMeta,
   railFor,
 } from './route-views.tsx';
 import { HeldAddressNotice, heldAddressOffer, type HeldOffer } from './held-address.tsx';
@@ -260,12 +261,11 @@ export function App(props: AppProps): ReactElement {
       title={refused ? 'Not available' : (match?.route.title ?? at?.page.label ?? 'Not found')}
       meta={
         session === null ? null : (
-          <span className="topbar__who">
-            {session.email} · {session.businessKey}
-            <button className="btn" type="button" onClick={onSignOut}>
-              Sign out
-            </button>
-          </span>
+          <TopbarMeta
+            session={session}
+            held={match === null && at !== null && !refused}
+            onSignOut={onSignOut}
+          />
         )
       }
       // The panel registry is the dock. Each registration names the address

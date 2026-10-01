@@ -30,3 +30,39 @@ describe('the made-up reads the width-and-theme harness draws from', () => {
     expect([...MADE_UP_READS].toSorted()).toEqual([...drawn].toSorted());
   });
 });
+
+// The read states (UI-STATES): a variant answers the named reads in another
+// state, so the harness can photograph a board with no rows, a task that could
+// not be read, a refusal and a read still in flight. Every other read keeps its
+// default answer.
+describe('the made-up reads in another state', () => {
+  const board = `${PREFIX.person}alpha${pathOf('task.board')}`;
+  const task = `${PREFIX.person}alpha${pathOf('task.read')}`;
+
+  it('answers a read named empty with no rows, and the rest as before', () => {
+    expect(madeUpAnswer(board, { empty: ['task.board'] })).toEqual({
+      status: 200,
+      json: { ok: true, tasks: [] },
+    });
+    expect(madeUpAnswer(task, { empty: ['task.board'] })).toEqual(madeUpAnswer(task));
+  });
+
+  it('answers a read named unavailable as a server failure with no refusal body', () => {
+    expect(madeUpAnswer(task, { unavailable: ['task.read'] })).toEqual({ status: 503 });
+  });
+
+  it("answers a read named refused with the server's one refusal shape", () => {
+    expect(madeUpAnswer(board, { refused: ['task.board'] })).toEqual({
+      status: 403,
+      json: { refused: true, code: 'SCOPE_NOT_GRANTED', names: [], fixes: [] },
+    });
+  });
+
+  it('holds a read named pending, so the screen stays on its loading state', () => {
+    expect(madeUpAnswer(board, { pending: ['task.board'] })).toEqual({ pending: true });
+  });
+
+  it('answers exactly as the default with an empty variant', () => {
+    expect(madeUpAnswer(board, {})).toEqual(madeUpAnswer(board));
+  });
+});

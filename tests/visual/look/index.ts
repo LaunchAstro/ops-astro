@@ -10,9 +10,17 @@ import { BOARD } from './board.ts';
 import { SETTINGS } from './settings.ts';
 import { SHELL } from './shell.ts';
 import { SIGN_IN } from './sign-in.ts';
+import { STATES_SCREEN } from './states.ts';
 import { TASK } from './task.ts';
 import type { LookScreen } from './probe.ts';
 
 export { RULED_PAINT, type LookProbe, type LookScreen } from './probe.ts';
 
-export const LOOK_SCREENS: readonly LookScreen[] = [SHELL, BOARD, TASK, SETTINGS, SIGN_IN];
+export const LOOK_SCREENS: readonly LookScreen[] = [
+  SHELL,
+  BOARD,
+  TASK,
+  SETTINGS,
+  SIGN_IN,
+  STATES_SCREEN,
+];

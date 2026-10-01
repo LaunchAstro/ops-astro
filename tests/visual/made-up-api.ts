@@ -15,6 +15,7 @@
 
 import type {
   CapabilitiesResult,
+  CommandRefusal,
   InboxCountResult,
   InboxReadResult,
   InternalTaskDetail,
@@ -211,29 +212,70 @@ const READS = {
 /** The reads the harness answers; a read missing here draws its "could not be read" state. */
 export const MADE_UP_READS: readonly string[] = Object.keys(READS);
 
+// The collections a variant can answer with no rows: the screens whose empty
+// state a person meets (the board and the inbox).
+const EMPTY: { readonly 'task.board': TaskBoardResult; readonly 'inbox.read': InboxReadResult } = {
+  'task.board': { ok: true, tasks: [] },
+  'inbox.read': { ok: true, inbox: [] },
+};
+
+// The server's one refusal shape, under the status the register carries it at.
+const REFUSAL: CommandRefusal = { refused: true, code: 'SCOPE_NOT_GRANTED', names: [], fixes: [] };
+
+/**
+ * The made-up answers with some reads in another state (UI-STATES), so the
+ * harness can photograph a read's other renderings. A read not named keeps its
+ * default answer; with no variant, every answer is the default.
+ */
+export interface MadeUpVariant {
+  /** Answered with no rows: the screen's empty state. */
+  readonly empty?: readonly (keyof typeof EMPTY)[];
+  /** Answered 503 with no refusal body: the server failing, "could not be read". */
+  readonly unavailable?: readonly ReadName[];
+  /** Refused with the server's refusal shape: the screen's denied state. */
+  readonly refused?: readonly ReadName[];
+  /** Never answered: the screen stays on its loading state. */
+  readonly pending?: readonly ReadName[];
+}
+
+export type MadeUpAnswer = { status: number; json?: unknown } | { pending: true };
+
 /**
  * The made-up answer for one request path, or nothing for a path it does not
  * know. `/api/b/<business>/<collection>/<verb>` is a read's path (`pathOf`);
  * the tab's live stream is answered as down, so nothing streams in a capture.
  */
-export function madeUpAnswer(pathname: string): { status: number; json?: unknown } | undefined {
+export function madeUpAnswer(
+  pathname: string,
+  variant: MadeUpVariant = {},
+): MadeUpAnswer | undefined {
   const match = /^\/api\/b\/[^/]+\/(.+)$/u.exec(pathname);
   if (match === null) return undefined;
   const rest = match[1] ?? '';
   if (rest === 'live' || rest.startsWith('live/')) return { status: 503 };
   const name = rest.replace('/', '.');
+  const named = (list: readonly string[] | undefined): boolean => list?.includes(name) ?? false;
+  if (named(variant.pending)) return { pending: true };
+  if (named(variant.unavailable)) return { status: 503 };
+  if (named(variant.refused)) return { status: 403, json: REFUSAL };
+  if (named(variant.empty)) return { status: 200, json: EMPTY[name as keyof typeof EMPTY] };
   if (name in READS) return { status: 200, json: READS[name as keyof typeof READS] };
   return undefined;
 }
 
 /**
- * Answers a context's reads from the made-up set. Registered after the side's
- * own routes, so it runs first (Playwright runs the last match first); a path
- * it does not know falls through to them.
+ * Answers a context's reads from the made-up set, in the variant's states.
+ * Registered after the side's own routes, so it runs first (Playwright runs
+ * the last match first); a path it does not know falls through to them. A
+ * pending read is never answered: closing the context ends it.
  */
-export async function answerMadeUp(context: BrowserContext): Promise<void> {
+export async function answerMadeUp(
+  context: BrowserContext,
+  variant: MadeUpVariant = {},
+): Promise<void> {
   await context.route('**/api/b/**', async (route) => {
-    const answer = madeUpAnswer(new URL(route.request().url()).pathname);
+    const answer = madeUpAnswer(new URL(route.request().url()).pathname, variant);
+    if (answer !== undefined && 'pending' in answer) return;
     await (answer === undefined ? route.fallback() : route.fulfill(answer));
   });
 }
