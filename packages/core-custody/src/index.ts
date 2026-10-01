@@ -40,6 +40,13 @@ export {
   type PlanningCapView,
 } from './broker-planning.ts';
 export {
+  EMAIL_OPERATION,
+  sendInboxEmail,
+  type EmailRefusal,
+  type EmailResult,
+  type MailSettings,
+} from './broker-email.ts';
+export {
   callModel,
   promptCopyRegistered,
   registerPromptCopy,

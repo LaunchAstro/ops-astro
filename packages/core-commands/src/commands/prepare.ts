@@ -40,6 +40,7 @@
 import {
   advisoryLock,
   checkAuthority,
+  refuseStaleMoneyStep,
   subjectsOf,
   isUuid,
 } from '../../../core-records/src/index.ts';
@@ -47,7 +48,11 @@ import type { TenantQuery, Session, Scope, EntryPoint } from '../../../core-reco
 import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { refused, type Refused } from './outcome.ts';
 import { readTaskSpine, type CommandContext, type TaskRow } from './context.ts';
-import { declarationOf, type CommandDeclaration } from '../../../core-wire/src/index.ts';
+import {
+  admitsSelfWrite,
+  declarationOf,
+  type CommandDeclaration,
+} from '../../../core-wire/src/index.ts';
 import type { CommandRequest, UncheckedRequest } from './requests.ts';
 import { IDENTIFIER_FIELDS, parseRequest, refuseUndescribed } from './operands.ts';
 import { refuseUnstorable, unstorableOperands } from './values.ts';
@@ -56,13 +61,6 @@ export const REVISION_FIXES: readonly string[] = [
   'Read the record and send the revision you are writing against as expected_revision.',
   'A write against a stale revision is refused, never merged.',
 ];
-
-/**
- * The writes an external party (R4) may reach: a comment, only in the client
- * audience, and opening their own inbox item (`inbox.seen`, a `self` row whose
- * handler stamps the caller's own item on a task they can read, and nothing else).
- */
-const EXTERNAL_WRITES: ReadonlySet<string> = new Set(['task.comment', 'inbox.seen']);
 
 const EXTERNAL_FIXES: readonly string[] = [
   'A person without a membership may read what was shared with them and nothing more.',
@@ -237,7 +235,8 @@ function refuseMalformedIdentifier(
 /**
  * The operands a command writes to a text or jsonb column as the caller sent
  * them: a comment's body, a cancel's reason, a decision's note, a proposal's
- * purpose, currency, payload and step, a handback's report and successor.
+ * purpose, currency, payload and step, a handback's report and successor, a
+ * privacy incident's words (C55), and a legal document version's words (C81).
  *
  * Without this check, each of them could reach its insert holding a NUL or an
  * unpaired surrogate, which the column refuses with a raise. The owed refusal
@@ -251,15 +250,28 @@ function refuseMalformedIdentifier(
  * field key it does not know is `FIELD_UNKNOWN`, as before.
  */
 const FREE_OPERANDS: readonly string[] = [
+  'affected',
   'body',
+  'contract',
   'currency',
+  'dataClass',
+  'deletion',
+  'disclosures',
+  'foundBy',
+  'name',
   'note',
   'payload',
   'purpose',
   'reason',
+  'receives',
   'report',
+  'retention',
+  'service',
   'step',
   'successor',
+  'trainsOnIt',
+  'whatHappened',
+  'where',
 ];
 
 /**
@@ -524,7 +536,7 @@ export async function prepareCommand(
   // share, and whatever else a row may say it holds, it writes nothing but a
   // client-audience comment and the seen stamp on its own inbox item (minimum
   // contract 8.1 R4; the audience is `tasks-comment.ts`'s to narrow).
-  if (session.roleKey === null && !EXTERNAL_WRITES.has(declaration.name)) {
+  if (!admitsSelfWrite(session.roleKey !== null, declaration.name)) {
     return refused(refuseCommand('SCOPE_NOT_GRANTED', [], EXTERNAL_FIXES));
   }
   // A `self` row asks no grant: its handler reaches the caller's own rows only.
@@ -537,6 +549,12 @@ export async function prepareCommand(
     });
     if (!authorised.ok) return refused(authorised.refusal);
   }
+  // The one step-up (C59), inside the grant check and straight after it: only
+  // a key in the money set, and the switch when switching it off, is asked, so
+  // a caller without the grant is told that first, and nothing after this line
+  // runs on a stale sign-in.
+  const stale = await refuseStaleMoneyStep(tx, session, declaration, request);
+  if (stale !== undefined) return refused(stale);
   // A field the row does not describe, after authority as on the agent prefix:
   // a caller without the right is told that first (R4, `external-party`).
   // Against the row itself: a replay prepares with the target left out, and

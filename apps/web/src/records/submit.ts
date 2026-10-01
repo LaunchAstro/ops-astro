@@ -77,7 +77,7 @@ export function describeRefusal(refusal: WireRefusal): string {
 }
 
 /** One line for whatever went wrong, refusal or absence, in the sender's words. */
-export function describeFailure(result: SubmitResult): string | null {
+export function describeFailure<T>(result: CallResult<T>): string | null {
   if (isRefusal(result)) return describeRefusal(result);
   if (isUnavailable(result)) return result.because;
   return null;

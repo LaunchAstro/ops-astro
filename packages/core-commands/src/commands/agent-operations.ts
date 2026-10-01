@@ -98,7 +98,10 @@ interface AgentOperationRow<O extends object> {
  * - `decision`, the runtime's `decideAsAgent`, which always refuses, so it has
  * no `serve` at all;
  * - `helper`, AW-11's handback: the presented child credential itself, which
- *   the runtime binds to the helper's own login, under no resolved delegation.
+ *   the runtime binds to the helper's own login, under no resolved delegation;
+ * - `business`, the operation's own key over the whole business, which a
+ *   delegation bounded to one task never reaches (`checkDelegatedAuthority`
+ *   refuses it `DELEGATION_OUT_OF_PURPOSE`), so it has no `serve` either.
  */
 export type TypedOperation<O extends object> =
   | (AgentOperationRow<O> & {
@@ -140,7 +143,8 @@ export type TypedOperation<O extends object> =
         operands: O,
         credential: string,
       ) => Promise<HandlerOutcome>;
-    });
+    })
+  | (AgentOperationRow<O> & { readonly authority: 'business' });
 
 /**
  * A row, with its operands type closed over.
@@ -675,6 +679,16 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
     'task.decide',
     row({
       authority: 'decision',
+      replay: 'reauthorise',
+      operands: NONE,
+    }),
+  ],
+  // An agent credential adds a task (API-2, `credential-envelope.ts`); a
+  // pickup's delegation is one task, and a new one is outside it.
+  [
+    'task.create',
+    row({
+      authority: 'business',
       replay: 'reauthorise',
       operands: NONE,
     }),

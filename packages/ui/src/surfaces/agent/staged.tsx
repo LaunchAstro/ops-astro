@@ -28,7 +28,7 @@ export function StagedOutput(props: { readonly story: RunStory }): ReactElement 
               ? `Live · since ${shipped.at}`
               : `Was live · rolled back ${shipped.rolledBackAt}`}
         </span>
-        <span className="sbact__meta">built · nothing published</span>
+        {shipped === null ? <span className="sbact__meta">built · nothing published</span> : null}
       </div>
       {staged === null ? (
         <p className="sout__say" data-staged="none">

@@ -14,8 +14,8 @@
 // gate would catch, because opening the panel is the act that would make the
 // seam appear.
 //
-// Two panels. `settings` is a navigation entry rather than a drawer: `route`
-// names the route that draws the surface, and the dock tab goes there. `ai`
+// Notifications, Settings and Team are navigation entries rather than drawers:
+// `route` names the route that draws the surface, and the dock tab goes there. `ai`
 // is a drawer (MP-7-11): it has no address of its own, `route` is null, and the
 // tab opens it over the page, carrying that page's standing scope only. Its
 // surface reads AW-03's conversation records.
@@ -42,11 +42,25 @@ export interface PanelRegistration {
 
 export const PANELS: readonly PanelRegistration[] = [
   {
+    id: 'notifications',
+    label: 'Notifications',
+    ariaLabel: 'Notifications: what is waiting on you',
+    route: 'agency:inbox',
+    icon: 'bell',
+  },
+  {
     id: 'settings',
     label: 'Settings',
     ariaLabel: 'Business settings',
     route: 'agency:settings',
     icon: 'settings-sliders',
+  },
+  {
+    id: 'team',
+    label: 'Team',
+    ariaLabel: 'Team: who is here and who is away',
+    route: 'agency:team',
+    icon: 'comments',
   },
   {
     id: 'ai',
@@ -57,14 +71,30 @@ export const PANELS: readonly PanelRegistration[] = [
   },
 ];
 
-/** The dock's tabs: a panel with a route is open at its address, the Agent drawer by its own state. */
-export const dockTabs = (here: string, agentOpen: boolean) =>
-  PANELS.map((panel) => ({
-    id: panel.id,
-    label: panel.label,
-    icon: panel.icon,
-    open: panel.route === null ? agentOpen : here === pathTo(panel.route),
-  }));
+/**
+ * The dock's tabs at `here`. The panel registry is the dock. A registration
+ * with a route names the address that draws its surface, and the tab navigates
+ * there rather than opening a drawer over the page: the surface has a real
+ * address, and an address a person can quote is worth more than a panel they
+ * cannot. The Agent drawer (MP-7-11) has no address: its tab is open while the
+ * drawer is. The client face has no dock (R17).
+ */
+export const dockTabs = (
+  here: string,
+  counts: Readonly<Record<string, number | null>> = {},
+  agentOpen = false,
+): { id: string; label: string; icon: GlyphName; open: boolean; count?: number }[] =>
+  PANELS.map((panel) => {
+    const tab: { id: string; label: string; icon: GlyphName; open: boolean; count?: number } = {
+      id: panel.id,
+      label: panel.label,
+      icon: panel.icon,
+      open: panel.route === null ? agentOpen : here === pathTo(panel.route),
+    };
+    const count = counts[panel.id] ?? null;
+    if (count !== null) tab.count = count;
+    return tab;
+  });
 
 /**
  * Where a dock tab goes: the Agent drawer toggles over the page; a routed

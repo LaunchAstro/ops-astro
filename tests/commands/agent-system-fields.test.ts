@@ -17,27 +17,29 @@ import { agentWorld, codeOf, type AgentWorld, type PickedUp } from './agent-fixt
 
 const serverUrl = databaseUrlFromEnvironment();
 
+let world: AgentWorld;
+let picked: PickedUp;
+
+beforeAll(async () => {
+  if (serverUrl === undefined) return;
+  world = await agentWorld('s', 'agent-system-fields');
+  picked = await world.pickUp(await world.decider('commenter'), 'a task an agent comments on');
+}, 90_000);
+
+afterAll(async () => {
+  if (serverUrl === undefined) return;
+  await world?.drop();
+});
+
+const comment = (): Record<string, unknown> => ({
+  command: 'task.comment',
+  operationId: randomUUID(),
+  recordId: picked.taskId,
+  body: 'a note for the team',
+  audience: 'internal',
+});
+
 describe.skipIf(serverUrl === undefined)('system-owned fields on the agent path', () => {
-  let world: AgentWorld;
-  let picked: PickedUp;
-
-  beforeAll(async () => {
-    world = await agentWorld('s', 'agent-system-fields');
-    picked = await world.pickUp(await world.decider('commenter'), 'a task an agent comments on');
-  }, 90_000);
-
-  afterAll(async () => {
-    await world?.drop();
-  });
-
-  const comment = (): Record<string, unknown> => ({
-    command: 'task.comment',
-    operationId: randomUUID(),
-    recordId: picked.taskId,
-    body: 'a note for the team',
-    audience: 'internal',
-  });
-
   it('writes a valid agent comment', async () => {
     const before = await world.commentsOn(picked.taskId);
     const written = await world.asAgent(comment(), picked.credential);

@@ -187,8 +187,10 @@ export function expectedOutcome(
   const granted = applicationGrantsAt(table.qualified, at);
   if (granted === undefined) return `no contract for ${table.qualified}`;
   if (!granted.includes(GRANT_LETTER[operation])) return 'denied';
-  // A table of no business (0047's outbox): a granted write passes privilege and meets its constraints.
-  if (!table.tenant) return operation === 'select' ? `rows ${String(own)}` : 'past tenancy';
+  // A write granted on an installation-wide table (0047's outbox, SL09's gate
+  // tables) passes privilege and then meets the table's own constraints or
+  // triggers: the permitted path.
+  if (!table.tenant) return operation === 'select' ? `rows ${String(own)}` : 'past privilege';
   // The own tenant's writes pass privilege and tenancy and then meet the
   // table's own constraints or triggers; getting that far is the permitted path.
   if (caller === 'login in the wrapper, own tenant') {
@@ -245,7 +247,7 @@ export async function ownRowJson(
 
 /** Whether an answer meets the expectation `expectedOutcome` wrote. */
 export function meets(expected: string, outcome: Outcome): boolean {
-  if (expected === 'past tenancy') {
+  if (expected === 'past tenancy' || expected === 'past privilege') {
     return outcome.kind !== 'denied' && outcome.kind !== 'rls' && outcome.kind !== 'other';
   }
   return describeOutcome(outcome) === expected;

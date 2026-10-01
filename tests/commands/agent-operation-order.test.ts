@@ -301,21 +301,42 @@ const EXPECTED: Record<string, Record<string, Row>> = {
     ],
     'after, own credential': ['not-a-refusal', 'applied:-'],
   },
+  // API-2 made task.create an agent row (a credential adds a task), so it now
+  // asks its questions in the envelope's order like the others, and a pickup's
+  // one-task delegation refuses it for its purpose, as a decision is refused.
   'task.create': {
-    'operation id absent': ['DELEGATION_EXCLUDES_OPERATION', ''],
-    'operation id a number': ['DELEGATION_EXCLUDES_OPERATION', ''],
-    'system field, no credential': ['DELEGATION_EXCLUDES_OPERATION', ''],
-    'leaseSeconds 0, no credential': ['DELEGATION_EXCLUDES_OPERATION', ''],
-    'report a list, no credential': ['DELEGATION_EXCLUDES_OPERATION', ''],
-    'actualMinor 1, no credential': ['DELEGATION_EXCLUDES_OPERATION', ''],
-    'no credential': ['DELEGATION_EXCLUDES_OPERATION', ''],
-    'unknown credential': ['DELEGATION_EXCLUDES_OPERATION', ''],
-    'sibling task': ['DELEGATION_EXCLUDES_OPERATION', ''],
-    'own credential': ['DELEGATION_EXCLUDES_OPERATION', ''],
-    replayed: ['DELEGATION_EXCLUDES_OPERATION', ''],
-    'replayed without credential': ['DELEGATION_EXCLUDES_OPERATION', ''],
-    'replayed, body changed': ['DELEGATION_EXCLUDES_OPERATION', ''],
-    'after, own credential': ['DELEGATION_EXCLUDES_OPERATION', ''],
+    'operation id absent': ['OPERATION_ID_REQUIRED', ''],
+    'operation id a number': ['OPERATION_ID_REQUIRED', ''],
+    'system field, no credential': ['FIELD_NOT_WRITABLE', 'refused:FIELD_NOT_WRITABLE'],
+    'leaseSeconds 0, no credential': [
+      'DELEGATION_EXCLUDES_OPERATION',
+      'refused:DELEGATION_EXCLUDES_OPERATION',
+    ],
+    'report a list, no credential': [
+      'DELEGATION_EXCLUDES_OPERATION',
+      'refused:DELEGATION_EXCLUDES_OPERATION',
+    ],
+    'actualMinor 1, no credential': [
+      'DELEGATION_EXCLUDES_OPERATION',
+      'refused:DELEGATION_EXCLUDES_OPERATION',
+    ],
+    'no credential': ['DELEGATION_EXCLUDES_OPERATION', 'refused:DELEGATION_EXCLUDES_OPERATION'],
+    'unknown credential': ['DELEGATION_NOT_LIVE', 'refused:DELEGATION_NOT_LIVE'],
+    'sibling task': ['DELEGATION_OUT_OF_PURPOSE', 'refused:DELEGATION_OUT_OF_PURPOSE'],
+    'own credential': ['DELEGATION_OUT_OF_PURPOSE', 'refused:DELEGATION_OUT_OF_PURPOSE'],
+    replayed: [
+      'DELEGATION_OUT_OF_PURPOSE',
+      'refused:DELEGATION_OUT_OF_PURPOSE,replayed:DELEGATION_OUT_OF_PURPOSE',
+    ],
+    'replayed without credential': [
+      'DELEGATION_OUT_OF_PURPOSE',
+      'refused:DELEGATION_OUT_OF_PURPOSE,replayed:DELEGATION_OUT_OF_PURPOSE,replayed:DELEGATION_OUT_OF_PURPOSE',
+    ],
+    'replayed, body changed': [
+      'OPERATION_ID_REUSED',
+      'refused:DELEGATION_OUT_OF_PURPOSE,replayed:DELEGATION_OUT_OF_PURPOSE,replayed:DELEGATION_OUT_OF_PURPOSE,refused:OPERATION_ID_REUSED',
+    ],
+    'after, own credential': ['DELEGATION_OUT_OF_PURPOSE', 'refused:DELEGATION_OUT_OF_PURPOSE'],
   },
   'task.nothing': {
     'operation id absent': ['DELEGATION_EXCLUDES_OPERATION', ''],

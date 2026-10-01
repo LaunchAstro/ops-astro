@@ -40,6 +40,8 @@ export interface World {
   readonly answer: { readonly detail: Record<string, unknown> } | { readonly refuse: string };
   /** AW-05's stops on the task's runs, as the read's ledger carries them. */
   readonly stops?: readonly Record<string, unknown>[];
+  /** The task's envelopes on the same ledger; none when absent. */
+  readonly envelopes?: readonly Record<string, unknown>[];
 }
 
 function lineageOf(world: World) {
@@ -109,7 +111,9 @@ function server(world: World) {
     history: [],
     comments: [],
     proposals: [lineageOf(world)],
-    ...(world.stops === undefined ? {} : { ledger: { envelopes: [], stops: world.stops } }),
+    ...(world.stops === undefined
+      ? {}
+      : { ledger: { envelopes: world.envelopes ?? [], stops: world.stops } }),
   };
   const sent: { readonly route: string; readonly body: Record<string, unknown> }[] = [];
   let reads = 0;

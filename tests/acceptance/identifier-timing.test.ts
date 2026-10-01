@@ -80,6 +80,8 @@ const INJECTED_BOUNDS = 3;
 const TARGET_FREE: ReadonlySet<CommandName> = new Set(TARGET_FREE_BODIES.map(([op]) => op));
 
 const NOBODY = 'text nobody should find in an audit row';
+/** The ask an AW-05 answer names: the run is refused before any ask is read. */
+const ASK_ID = randomUUID();
 
 interface Verdict {
   readonly foreignMedian: number;
@@ -215,7 +217,7 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return { foreign, fabricated };
   }
 
-  /** The 43 cells: the record-targeted operations, then those with their own operand. */
+  /** The cells: the record-targeted operations, then those with their own operand. */
   // eslint-disable-next-line max-lines-per-function -- one table, built in one place
   async function cells(): Promise<readonly Cell[]> {
     const ada: Presenter = { kind: 'person', caller: w.h.world.ada };
@@ -305,8 +307,23 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     }));
     byAda('task.restore', 'batchId', f.batchId, (batchId) => ({ batchId }));
     byAda('grant.revoke', 'grantId', f.grantId, (grantId) => ({ grantId }));
+    byAda('access.revoke', 'grantId', f.grantId, (grantId) => ({ grantId }));
+    byAda('access.grant', 'holderId', f.admin.personId as string, (holderId) => ({
+      holderId,
+      collection: 'task',
+      action: 'read',
+    }));
+    byAda('access.end', 'holderId', f.admin.personId as string, (holderId) => ({ holderId }));
     byAda('delegation.revoke', 'delegationId', f.picked.delegationId, (delegationId) => ({
       delegationId,
+    }));
+    byAda('legal.approve_version', 'versionId', f.legalVersionId, (versionId) => ({
+      versionId,
+      digest: '0'.repeat(64),
+    }));
+    byAda('legal.publish_version', 'versionId', f.legalVersionId, (versionId) => ({ versionId }));
+    byAda('credential.revoke', 'credentialId', f.credentialId, (credentialId) => ({
+      credentialId,
     }));
     const own = await w.propose('a lineage the timing cells name');
     byAda('task.cancel', 'lineageId', f.proposal.lineageId, (lineageId) => ({
@@ -344,12 +361,14 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     byAda('run.top_up', 'runId', String(bravoRun?.run_id), (runId) => ({
       recordId: own.task.id,
       runId,
+      askId: ASK_ID,
       amountMinor: 100,
       currency: 'AUD',
     }));
     byAda('run.end_at_budget_stop', 'runId', String(bravoRun?.run_id), (runId) => ({
       recordId: own.task.id,
       runId,
+      askId: ASK_ID,
     }));
     byAda('run.revise_state', 'runId', String(bravoRun?.run_id), (runId) => ({
       recordId: own.task.id,
@@ -420,11 +439,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 49 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 55 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(49);
-    expect(names).toHaveLength(49);
+    expect(new Set(names).size, 'distinct operations').toBe(55);
+    expect(names).toHaveLength(55);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

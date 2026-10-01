@@ -198,13 +198,13 @@ it('AW-01 occurrence run isolation: another person under a live delegation', asy
   expect(codeOf(await start(w.s, randomUUID(), authorityFor(w.s), w.s.agentActorId))).toBe(
     'WORKER_REQUIRED',
   );
+  // Reach is asked with `task.read`, the read the delegation does carry, so the
+  // refusal is the one-task ceiling's and not the operation's.
   const credential = String(w.work.picked['credential']);
-  const readAsAgent = async (command: string, recordId: string) =>
-    await asAgent(w.s, { command, operationId: randomUUID(), recordId }, credential);
-  expect(commandCode(await readAsAgent('task.read', w.work.taskId))).toBe('applied');
-  const crossed = await readAsAgent('task.execution', started.value.taskId);
-  expect(isCommandRefusal(crossed) ? crossed.code : 'applied').toBe(
-    'DELEGATION_EXCLUDES_OPERATION',
-  );
+  const readAsAgent = async (recordId: string) =>
+    await asAgent(w.s, { command: 'task.read', operationId: randomUUID(), recordId }, credential);
+  expect(commandCode(await readAsAgent(w.work.taskId))).toBe('applied');
+  const crossed = await readAsAgent(started.value.taskId);
+  expect(isCommandRefusal(crossed) ? crossed.code : 'applied').toBe('DELEGATION_OUT_OF_PURPOSE');
   expect(JSON.stringify(crossed)).not.toContain(started.value.runId);
 });

@@ -51,7 +51,7 @@ const ADMISSION = 'insert into public.authentication_attempts';
 
 function stubDatabase(seen: Seen[], admissions: unknown[][] = []): Database {
   return {
-    log: { record: () => undefined, statements: () => [] } as unknown as Database['log'],
+    log: { record: () => {}, statements: () => [] } as unknown as Database['log'],
     withBusiness: async (businessId, run) => {
       seen.push({ businessId, presented: { provider: 'recorded', subject: businessId } });
       return await run({
@@ -60,10 +60,10 @@ function stubDatabase(seen: Seen[], admissions: unknown[][] = []): Database {
           await Promise.reject(new Error('the stub database has no savepoint')),
         query: async <Row>(text: string, parameters: readonly unknown[] = []) => {
           if (!text.trimStart().startsWith(ADMISSION)) {
-            throw new Error('the stub database has no rows');
+            return Promise.reject(new Error('the stub database has no rows'));
           }
           admissions.push([...parameters]);
-          return [] as readonly Row[];
+          return Promise.resolve([] as readonly Row[]);
         },
       });
     },
@@ -79,6 +79,8 @@ async function tokenFor(subject: string, options: { readonly expiresIn?: number 
     iss: ISSUER,
     role: 'authenticated',
     exp: now + (options.expiresIn ?? 600),
+    // The first sign-in, as GoTrue stamps it (C58's 12-hour limit is measured from it).
+    amr: [{ method: 'password', timestamp: now }],
   });
 }
 
@@ -185,8 +187,8 @@ describe('only a verified token says who is calling', () => {
     // missing, forged, unsigned and subject-less all answer
     // `AUTH_UNKNOWN_LOGIN`, because telling them apart tells an
     // unauthenticated caller which guess was closer. An expired token is not a
-    // guess — its signature verifies against a key the provider published, so
-    // whoever sent it held a credential this server issued — and the caller
+    // guess. Its signature verifies against a key the provider published, so
+    // whoever sent it held a credential this server issued, and the caller
     // learns nothing from being told it ran out that they could not already
     // prove. What they gain is a door they can open: `AUTH_SESSION_EXPIRED` is
     // the re-login path and the browser already draws it as one.
@@ -300,9 +302,9 @@ describe('a body that is not an object', () => {
   });
 });
 
-describe('the read half of the surface', () => {
-  const declared = COMMAND_SURFACE.filter((one) => one.kind === 'read');
+const declared = COMMAND_SURFACE.filter((one) => one.kind === 'read');
 
+describe('the read half of the surface', () => {
   it('names the read from the route, not from the body', async () => {
     const first = declared[0];
     if (first === undefined) {
@@ -330,7 +332,17 @@ describe('the read half of the surface', () => {
 
     expect(answer.status).toBe(200);
     expect(calls).toEqual([
-      { businessId: ALPHA, presented: { provider: 'supabase', subject: MIA }, read: first.name },
+      {
+        businessId: ALPHA,
+        // The token carries no `aal` and a password sign-in, so the lowest
+        // assurance with its sign-in time (C59, C58).
+        presented: {
+          provider: 'supabase',
+          subject: MIA,
+          assurance: { level: 'aal1', signedInAt: expect.any(Number), factorAt: null },
+        },
+        read: first.name,
+      },
     ]);
   });
 });

@@ -19,7 +19,7 @@ export const BROKER_ROLE = 'ops_astro_broker';
 export const OCCURRENCE_ROLE = 'ops_astro_occurrence';
 
 /**
- * The contract: what 0001-0048 grant the application group, table by table,
+ * The contract: what the migrations grant the application group, table by table,
  * as `s` select, `i` insert, `u` update, `d` delete. Read from the `grant`
  * lines of the migrations, not from the catalogue this suite then checks.
  */
@@ -27,11 +27,35 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['', 'ops.schema_migrations'],
   // 0045: the installation's operating business; the application reads it only.
   ['s', 'ops.operating_business'],
+  // 0070 (C55): the date of the last tested restore; the application reads it
+  // only, and the drill writes it through ops.record_tested_restore().
+  ['s', 'ops.last_tested_restore'],
   // 0047: the API's outbox; the application inserts its four columns, and reads nothing.
   ['i', 'ops.api_events'],
   // 0048: the forwarder's kept alerts; the application holds nothing on them.
   ['', 'ops.api_alerts'],
+  // 0069 (C55): the forwarder's alert log; the application selects its kind
+  // and time columns alone, and changes nothing. A column grant: this suite's
+  // `select 1` needs one column, and c55-security-alerts proves which.
+  ['s', 'ops.security_alert_log'],
   ['s', 'ops.slots'],
+  // 0058 (S0-5): the installation's mode and the gate items are read by the
+  // application through first_client_readiness().
+  // 0059 (S0-5, ORCH38): the gate's own commands write through the app, so it
+  // may insert a gate item, and update `mode` alone on the installation. A
+  // column grant is not a table letter: this suite's update sets the first
+  // column, which stays refused; s0-5-gate-commands proves the column.
+  ['s', 'ops.installation'],
+  ['si', 'ops.gate_items'],
+  // 0061 (C58): an ended provider session, installation-wide; the application
+  // inserts and reads its id column alone, and changes or removes nothing.
+  ['si', 'ops.ended_provider_sessions'],
+  // 0063 (C58): other sessions ended in every business, by subject digest.
+  ['si', 'ops.ended_subject_sessions'],
+  // 0064 (C59): a second factor verified or removed, by subject digest, for every business.
+  ['si', 'ops.second_factor_subjects'],
+  // 0072 (C59): a second-factor code sent or answered, by subject digest, for every business.
+  ['si', 'ops.second_factor_codes'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],
   ['si', 'alerts handback_reports operations run_events'],
   // A run's checks, append only as handback_reports is (MP-6-1).
@@ -74,6 +98,35 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // state alone, by the column grant in COLUMN_UPDATES.
   ['si', 'planned_runs'],
   ['siu', 'outage_reports outage_runs reservations task_envelopes'],
+  // 0049 (C59): a factor is written and moved on, never deleted.
+  ['siu', 'second_factors'],
+  // 0050 (C55): a privacy incident is recorded and moved on, never deleted.
+  ['siu', 'privacy_incidents'],
+  // 0051 (C81): a legal document version is drafted, then approved and
+  // published by update; never deleted.
+  ['siu', 'legal_document_versions'],
+  // 0052 (C81): a row of the overseas-services register is set by insert or
+  // update; never deleted.
+  ['siu', 'overseas_services'],
+  // 0053 (C81): a data class is set by insert or update; never deleted.
+  ['siu', 'data_classes'],
+  // 0054 (API-2): an agent credential is issued by insert and revoked by
+  // update; never deleted.
+  ['siu', 'agent_credentials'],
+  // 0055 (C32): a client is written once; never updated or deleted.
+  ['si', 'clients'],
+  // 0056 (C58): an access ending is written, then its provider steps are
+  // stamped by update; never deleted.
+  ['siu', 'access_endings'],
+  // 0057 (C58): an ended session is written once; never changed or deleted.
+  ['si', 'ended_sessions'],
+  // 0065: the live change record, stamped by the writes' own triggers (C4);
+  // the trash purge deletes a purged task's row.
+  ['siud', 'live_changes'],
+  // 0066: a person's own availability, set by them alone (MP-7-10).
+  ['siu', 'person_availability'],
+  // 0067: a second save of a key replaces its value; nothing deletes one (MP-2-11a).
+  ['siu', 'person_preferences'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
   // 0028 revokes delete on these two: identity history is kept (0002).
   ['siu', 'person_logins person_merges'],
@@ -99,7 +152,10 @@ const REVOKED: Readonly<Record<string, { readonly from: string; readonly letters
   'public.planned_runs': { from: '0192', letters: 'u' },
 };
 
-/** Update granted by column: table, columns, first migration. Any other column grant is outside. */
+/**
+ * Update granted column by column: the table, the columns, and the first migration that
+ * grants them. Every other column-level privilege, to any role, is outside the contract.
+ */
 const COLUMN_UPDATES: Readonly<
   Record<string, { readonly from: string; readonly columns: readonly string[] }>
 > = {
@@ -115,17 +171,83 @@ export function columnUpdatesAt(at?: string): readonly string[] {
 }
 
 /**
- * Every other column grant, from the migration that made it: the occurrence role
- * reads a task's revision for 0032's trigger (AW-01 J, 0203); batch 1's lookup
- * reads a business's id and key (0046); the application inserts the outbox (0047).
+ * Every other column grant, from the migration that made it: the occurrence role reads a
+ * task's revision for 0032's trigger and stamps the live change record for 0035's
+ * (AW-01 J, 0203), the application writes the outbox's
+ * four columns alone (S0-2, 0047), and the lookup reads a business's id and key (G2, 0046).
  */
-const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: string }[] = (
-  [
-    ['0203', `${OCCURRENCE_ROLE} SELECT public.records`, ['business_id', 'id', 'revision']],
-    ['0046', 'ops_astro_lookup SELECT public.businesses', ['id', 'key']],
-    ['0047', 'ops_astro_app INSERT ops.api_events', ['event', 'kind', 'scope', 'weight']],
-  ] as const
-).flatMap(([from, grant, columns]) => columns.map((c) => ({ from, line: `${grant}.${c}` })));
+const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: string }[] = [
+  ...['business_id', 'id', 'revision'].map((column) => ({
+    from: '0203',
+    line: `${OCCURRENCE_ROLE} SELECT public.records.${column}`,
+  })),
+  // 0203: 0035's trigger on the occurrence's run upserts the task's stamp in
+  // 0065's live change record, as the inserting role.
+  ...[
+    ['INSERT', 'business_id'],
+    ['INSERT', 'subject_id'],
+    ['INSERT', 'subject_kind'],
+    ['SELECT', 'business_id'],
+    ['SELECT', 'changed_xid'],
+    ['SELECT', 'subject_id'],
+    ['SELECT', 'subject_kind'],
+    ['UPDATE', 'changed_at'],
+    ['UPDATE', 'changed_xid'],
+  ].map(([act, column]) => ({
+    from: '0203',
+    line: `${OCCURRENCE_ROLE} ${act} public.live_changes.${column}`,
+  })),
+  ...['event', 'kind', 'scope', 'weight'].map((column) => ({
+    from: '0047',
+    line: `ops_astro_app INSERT ops.api_events.${column}`,
+  })),
+  { from: '0046', line: 'ops_astro_lookup SELECT public.businesses.id' },
+  { from: '0046', line: 'ops_astro_lookup SELECT public.businesses.key' },
+  // S0-5 (0059): the gate's installation mode, alone (no business column).
+  { from: '0059', line: 'ops_astro_app UPDATE ops.installation.mode' },
+  // Batch 2a's provider-step queues (C58, C59): the application inserts and
+  // reads them column by column.
+  ...['INSERT', 'SELECT'].map((act) => ({
+    from: '0061',
+    line: `ops_astro_app ${act} ops.ended_provider_sessions.session_id`,
+  })),
+  ...[
+    ['INSERT', 'kept_session'],
+    ['INSERT', 'subject_digest'],
+    ['SELECT', 'ended_before'],
+    ['SELECT', 'kept_session'],
+    ['SELECT', 'subject_digest'],
+  ].map(([act, column]) => ({
+    from: '0063',
+    line: `ops_astro_app ${act} ops.ended_subject_sessions.${column}`,
+  })),
+  ...['INSERT', 'SELECT'].flatMap((act) =>
+    ['factor_digest', 'state', 'subject_digest'].map((column) => ({
+      from: '0064',
+      line: `ops_astro_app ${act} ops.second_factor_subjects.${column}`,
+    })),
+  ),
+  // Batch 2b's (C55, C59): the forwarder writes an alert's kind alone and the
+  // application reads kind and time (0069); a second-factor code's rows are
+  // read and written column by column (0072).
+  { from: '0069', line: 'ops_astro_forwarder INSERT ops.security_alert_log.kind' },
+  ...['at', 'kind'].map((column) => ({
+    from: '0069',
+    line: `ops_astro_app SELECT ops.security_alert_log.${column}`,
+  })),
+  ...[
+    ['INSERT', 'attempt'],
+    ['INSERT', 'state'],
+    ['INSERT', 'subject_digest'],
+    ['SELECT', 'attempt'],
+    ['SELECT', 'recorded_at'],
+    ['SELECT', 'state'],
+    ['SELECT', 'subject_digest'],
+  ].map(([act, column]) => ({
+    from: '0072',
+    line: `ops_astro_app ${act} ops.second_factor_codes.${column}`,
+  })),
+];
 
 export function roleColumnGrantsAt(at?: string): readonly string[] {
   return ROLE_COLUMN_GRANTS.filter((grant) => at === undefined || at.slice(0, 4) >= grant.from)
@@ -149,20 +271,34 @@ export async function catalogueColumnGrants(admin: AdminConnection): Promise<rea
 }
 
 /**
+ * Grants a later migration added, so a prefix before it does not hold them yet.
+ * 0059 grants the gate's own insert (S0-5, ORCH38).
+ */
+const ADDED: Readonly<Record<string, { readonly from: string; readonly letters: string }>> = {
+  'ops.gate_items': { from: '0059', letters: 'i' },
+};
+
+/**
  * What the application group holds on a table after the migration `at` (its
  * version, `0001_tenancy` and so on), or at the full schema when `at` is absent.
  */
 export function applicationGrantsAt(qualified: string, at?: string): string | undefined {
   const granted = APPLICATION_GRANTS[qualified];
+  if (granted === undefined || at === undefined) return granted;
+  const version = at.slice(0, 4);
   const revoked = REVOKED[qualified];
-  if (granted === undefined || revoked === undefined || at === undefined) return granted;
-  return at.slice(0, 4) < revoked.from ? granted + revoked.letters : granted;
+  const added = ADDED[qualified];
+  if (revoked !== undefined && version < revoked.from) return granted + revoked.letters;
+  if (added !== undefined && version < added.from) return granted.replace(added.letters, '');
+  return granted;
 }
 
 /** The functions the application group may execute. Every other one is refused to it. */
 export const APPLICATION_EXECUTES: readonly string[] = [
   'public.app_business_id',
   'public.audit_event_hash',
+  // 0058 (S0-5): security invoker, so it reads no more than the caller may.
+  'public.first_client_readiness',
 ];
 
 export interface CatalogueTable {

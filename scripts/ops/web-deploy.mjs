@@ -14,8 +14,9 @@
 //
 // The operator gate (`operator.ts`) answers before any argument is read and
 // before Vercel is asked; a refusal writes nothing. The deployment record is
-// written only once Vercel reports the deployment in syd1 alone. Exit 0 when
-// deployed, 1 when refused or failed, 2 when the arguments are unusable.
+// written only once Vercel reports the deployment ready on production, its
+// output held to syd1 alone (`web-deploy.ts`). Exit 0 when deployed, 1 when
+// refused or failed, 2 when the arguments are unusable.
 
 import { parseArgs } from 'node:util';
 import { stagingSigns } from './deploy.ts';

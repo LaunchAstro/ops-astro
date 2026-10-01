@@ -20,7 +20,8 @@ const md = new MarkdownIt('commonmark', { html: true }).enable(['table', 'strike
 // the raw line does not. Marks are dropped one at a time, so a long run of
 // them reads in linear time.
 const MARK = /^(?:\[[xX]\]|\d{1,9}[.)]|[^\p{L}\p{N}])/u;
-const NAME = /^(code[ -]review|security[ -]review|reviewer|model|head[ -]sha|verdict)[*_`~ \t]*:/iu;
+const NAME =
+  /^(code[ -]review|security[ -]review|reviewer|model|head[ -]sha|verdict|sol[ -]owed)[*_`~ \t]*:/iu;
 const namesField = (text) => {
   let rest = text;
   for (let m = MARK.exec(rest); m !== null; m = MARK.exec(rest)) rest = rest.slice(m[0].length);
@@ -28,9 +29,9 @@ const namesField = (text) => {
 };
 // A counted field: the raw line at the margin, bold or underscore allowed.
 const PLAIN_FIELD =
-  /^[*_]{0,3}(?:code[ -]review|security[ -]review|reviewer|model|head sha|verdict)[*_]{0,3}[ \t]*:/iu;
+  /^[*_]{0,3}(?:code[ -]review|security[ -]review|reviewer|model|head sha|verdict|sol[ -]owed)[*_]{0,3}[ \t]*:/iu;
 const FIELD =
-  /^(code[ -]review|security[ -]review|reviewer|model|head sha|verdict)[ \t]*:[ \t]*(.*)$/iu;
+  /^(code[ -]review|security[ -]review|reviewer|model|head sha|verdict|sol[ -]owed)[ \t]*:[ \t]*(.*)$/iu;
 const fieldKey = (name) =>
   name
     .toLowerCase()
@@ -88,6 +89,7 @@ const htmlOf = (token) => {
  * The body as GitHub renders it.
  *  - stated: every counted `Code review:` and `Security review:` field;
  *  - record: every counted reviewer, model, head sha and verdict value;
+ *  - owed: every counted `Sol-owed:` value, the mark that stands in for a record;
  *  - buried: every other line that is written or shown as a review field;
  *  - html: every HTML node that is not only a comment, its first 40 characters;
  *  - prose: the text shown, code included, comments left out.
@@ -98,7 +100,8 @@ export const readBody = (body) => {
   const source = body.replaceAll(/\r\n?/gu, '\n');
   const lines = source.split('\n');
   const tokens = md.parse(source, {});
-  const read = { stated: [], record: { reviewer: [], model: [], 'head sha': [], verdict: [] } };
+  const record = { reviewer: [], model: [], 'head sha': [], verdict: [] };
+  const read = { stated: [], record, owed: [] };
   const counted = new Set();
   const buried = [];
   const html = [];
@@ -130,6 +133,7 @@ export const readBody = (body) => {
       const value = (field[2] ?? '').trim();
       if (name === 'code' || name === 'security')
         read.stated.push({ name, value, line: raw.trim() });
+      else if (name === 'sol owed') read.owed.push({ value, line: raw.trim() });
       else read.record[name].push(value);
     }
   }

@@ -51,7 +51,8 @@ const NOT_NAMED: Readonly<Record<string, string>> = {
   'tests/cli/operation-id-login-and-stdout.test.ts': 'pure: the CLI against stand-ins, counter 0',
   'tests/journey/budgets-bundle-and-person-crossing.test.ts':
     'pure: a stubbed fetch and a typed stand-in world, counter 0',
-  'tests/api/mp-6-1-preferences.test.ts': 'skips until preference.save is on the command surface',
+  'tests/api/function-agent-quota.test.ts':
+    'pure: the function handler with no database, counter 0',
 };
 
 interface Manifest {

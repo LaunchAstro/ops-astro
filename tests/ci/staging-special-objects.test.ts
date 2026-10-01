@@ -67,7 +67,6 @@ describe.skipIf(serverUrl === undefined)('S0-1 staging special objects', () => {
         {
           snapshot: () => '{}',
           compare: () => ({ unchanged: true, report: '' }),
-          buildImage: () => `sha256:${'a'.repeat(64)}`,
           up: () => {
             started = true;
           },

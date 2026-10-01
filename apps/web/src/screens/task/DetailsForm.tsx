@@ -16,7 +16,36 @@ export interface DetailsFormProps {
   readonly title: string;
   readonly due: string;
   readonly onEdit: (next: { title?: string; due?: string }) => void;
+  /** The field being changed, or null once focus leaves it (C2 presence). */
+  readonly onField: (field: 'title' | 'due' | null) => void;
   readonly onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}
+
+/** One of the form's two inputs; focus and blur say which field is being changed. */
+function FieldInput(props: {
+  readonly field: 'title' | 'due';
+  readonly form: DetailsFormProps;
+}): ReactElement {
+  const { field, form } = props;
+  return (
+    <input
+      id={`task-${field}`}
+      className="input"
+      type={field === 'title' ? 'text' : 'date'}
+      required={field === 'title'}
+      disabled={form.busy}
+      value={form[field]}
+      onChange={(event) => {
+        form.onEdit({ [field]: event.target.value });
+      }}
+      onFocus={() => {
+        form.onField(field);
+      }}
+      onBlur={() => {
+        form.onField(null);
+      }}
+    />
+  );
 }
 
 export function DetailsForm(props: DetailsFormProps): ReactElement {
@@ -40,32 +69,13 @@ export function DetailsForm(props: DetailsFormProps): ReactElement {
           response is about to throw away, and no amount of care on the
           settlement side makes that typing visible to the server.
         */}
-        <input
-          id="task-title"
-          className="input"
-          type="text"
-          required
-          disabled={props.busy}
-          value={props.title}
-          onChange={(event) => {
-            props.onEdit({ title: event.target.value });
-          }}
-        />
+        <FieldInput field="title" form={props} />
       </div>
       <div className="field">
         <label className="tf__k" htmlFor="task-due">
           Due date
         </label>
-        <input
-          id="task-due"
-          className="input"
-          type="date"
-          disabled={props.busy}
-          value={props.due}
-          onChange={(event) => {
-            props.onEdit({ due: event.target.value });
-          }}
-        />
+        <FieldInput field="due" form={props} />
       </div>
       <button className="btn btn--primary" type="submit" disabled={props.busy}>
         Save changes
