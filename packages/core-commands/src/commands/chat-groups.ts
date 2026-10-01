@@ -14,8 +14,9 @@
 // - `chat.rename_group`, `chat.change_members`: its creator while a member,
 //   or a holder of `chat:manage` (the owner and administrators), in it or
 //   not; a member who is neither gets the grant refusal, anyone else outside
-//   it NOT_FOUND. They change the name and who else is in it, never let the
-//   caller read it. `conversation renamed`, `conversation members changed`.
+//   it NOT_FOUND. They change the name and who else is in it, so a manager
+//   outside it learns who is in it from the answers, never a message.
+//   `conversation renamed`, `conversation members changed`.
 // - `chat.leave`: the person's own membership, no grant asked.
 //
 // Every one of them takes the conversation's lock before it reads who is in
