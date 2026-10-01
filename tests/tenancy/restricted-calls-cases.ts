@@ -74,6 +74,13 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['siu', 'access_endings'],
   // 0057 (C58): an ended session is written once; never changed or deleted.
   ['si', 'ended_sessions'],
+  // 0065: the live change record, stamped by the writes' own triggers (C4);
+  // the trash purge deletes a purged task's row.
+  ['siud', 'live_changes'],
+  // 0066: a person's own availability, set by them alone (MP-7-10).
+  ['siu', 'person_availability'],
+  // 0067: a second save of a key replaces its value; nothing deletes one (MP-2-11a).
+  ['siu', 'person_preferences'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
   // 0028 revokes delete on these two: identity history is kept (0002).
   ['siu', 'person_logins person_merges'],

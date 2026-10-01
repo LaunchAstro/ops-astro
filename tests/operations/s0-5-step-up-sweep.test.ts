@@ -30,8 +30,16 @@ import {
 import { createHarness, type Harness } from '../acceptance/role-case-harness.ts';
 import { serverUrl, tokenFor } from '../acceptance/world.ts';
 
-/** The money commands this sweep proves. A money command declared later joins here. */
-const SWEPT: readonly string[] = ['budget.top_up', 'budget.record_outcome', 'budget.write_off'];
+/**
+ * The money commands this sweep proves. A money command declared later joins here:
+ * the four-eyes threshold is `spend:decide` (MP-2-11, owner line 71).
+ */
+const SWEPT: readonly string[] = [
+  'budget.top_up',
+  'budget.record_outcome',
+  'budget.write_off',
+  'settings.set_four_eyes_threshold',
+];
 
 /**
  * The owner's sixty minutes (28 September 2026), written here rather than read

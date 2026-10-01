@@ -45,6 +45,8 @@ import { cancelOnTask, restartOnTask } from './tasks-controls.ts';
 import { topUpOnTask } from './budget-top-up.ts';
 import { recordOutcomeOnTask } from './budget-record-outcome.ts';
 import { writeOffOnTask } from './budget-write-off.ts';
+import { endOwnSession } from './session-end.ts';
+import { dismissOwnTip, saveOwnPreference } from './preference-save.ts';
 import { stampOwnSeen } from './inbox-seen.ts';
 
 /**
@@ -103,6 +105,8 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'settings.set_four_eyes_threshold': setting,
   'settings.set_client_sign_off': setting,
   'settings.set_money_step_up': setting,
+  'settings.set_conversation_window': setting,
+  'settings.set_retention_window': setting,
 
   'privacy.record_incident': recordIncident,
   'legal.draft_version': draftVersion,
@@ -137,6 +141,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.heartbeat': heartbeatOwnLease,
   'task.dispatch': dispatchOwnLease,
   'task.observe': observeOwnLease,
+  'session.end': endOwnSession,
   'task.handback': handbackOwnLease,
 
   // T2e. A person's money decision; no agent route reaches it.
@@ -145,6 +150,10 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'budget.record_outcome': recordOutcomeOnTask,
   // T3c. A person closes an unknown hold at an amount; no agent route reaches it.
   'budget.write_off': writeOffOnTask,
+
+  'preference.save': (tx, context, request) =>
+    saveOwnPreference(tx, context, request.preference, request.value),
+  'preference.dismiss_tip': (tx, context, request) => dismissOwnTip(tx, context, request),
   'inbox.seen': (tx, context, request) => stampOwnSeen(tx, context, request.itemId),
   'notifications.set_channel': setNotificationChannel,
 };
@@ -164,6 +173,8 @@ function setting(
     | 'settings.set_four_eyes_threshold'
     | 'settings.set_client_sign_off'
     | 'settings.set_money_step_up'
+    | 'settings.set_conversation_window'
+    | 'settings.set_retention_window'
   >,
 ): Promise<HandlerOutcome> {
   return setBusinessSetting(tx, context, request.command, request.value, request.expectedRevision);

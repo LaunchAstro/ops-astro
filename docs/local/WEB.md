@@ -44,6 +44,20 @@ and announces it in a `role="alert"` region (`apps/web/src/screens/SignIn.tsx`).
 The synthetic credentials live in the gitignored `.local/synthetic-users.json`,
 which `auth:seed` writes.
 
+### Signing out
+
+The person menu (C23) is the circle at the far right of the app strip, on both
+faces: it shows who is signed in (their name from `session.person`, the email
+until that answers), a link to `/settings` and Sign out
+(`packages/ui/src/surfaces/PersonMenu.tsx`). Sign out forgets the session in
+the tab first, so a server that never answers cannot keep anyone signed in,
+then sends two calls naming the ended sign-in's own session id: `session.end`,
+which records the sign-out on the audit chain, and the API's `/api/session/end`,
+which clears this sign-in's session cookie and leaves the person's others alone
+(`apps/web/src/App.tsx`, `signOut` in `session/sign-in.ts`). The page holds no
+token (S0-6c), so it asks the identity provider for nothing.
+Neither answer is waited for.
+
 ### When the session ends
 
 A local access token lives for one hour. The API refuses a bearer it will not
@@ -119,18 +133,19 @@ browser.
 
 ## Addresses
 
-| Address      | What it draws                                                                                    |
-| ------------ | ------------------------------------------------------------------------------------------------ |
-| `/sign-in`   | Credentials and the business selector                                                            |
-| `/projects/` | `task.board` for the unboarded tasks (`board: null`), and the create form                        |
-| `/task/:key` | `task.read`: state buttons, the assignee select, title and due date, comments, history, revision |
-| `/settings`  | The two operation-classified business settings, from `settings.read` and `session.capabilities`  |
+| Address      | What it draws                                                                                                                                                                                                                    |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/sign-in`   | Credentials and the business selector                                                                                                                                                                                            |
+| `/projects/` | Board tab: `task.board` for the unboarded tasks (`board: null`), and the create form. Work log tab (`#worklog`): `task.ledger` in the reader's zone, read on first opening; its search words live in the address as `?q=` (L-01) |
+| `/task/:key` | `task.read`: state buttons, the assignee select, title and due date, comments, history, revision                                                                                                                                 |
+| `/settings`  | Settings General: You and Notifications (the person's own preferences) and This business (the two operation-classified settings, from `settings.read` and `session.capabilities`)                                                |
+| `/inbox/`    | The Notifications list in full-page form (MP-7-3): `inbox.read` and `inbox.count` drawn by the kit's `InboxPage`, one list and one owed count                                                                                    |
 
 `/task/:key` is a real address. A hard reload lands on it because the dev server
 falls back to `index.html`, and everything on the page is reread from the API.
 
-The dock has one tab, Settings (`PANELS` in `apps/web/src/panels.ts`), and it
-goes to `/settings`. An open dock tab is announced as "Close Settings"
+The dock's tabs are `PANELS` in `apps/web/src/panels.ts`: Notifications goes to
+`/inbox/`, Settings to `/settings` and Team to `/team`. An open dock tab is announced as "Close Settings"
 (`aria-expanded="true"`, `Shell` in `packages/ui/src/surfaces/Shell.tsx`) and
 leaves its address for the board when pressed (`onDockTab` in
 `apps/web/src/App.tsx`).
@@ -361,7 +376,31 @@ What this screen does not read back, and cannot:
 
 ## The settings screen
 
-`/settings` draws the two settings the model classifies `operation`:
+`/settings` is Settings General (MP-2-11, `screens/SettingsGeneral.tsx`), three
+groups in one row pattern: a label, one quiet sentence, the control on the right.
+**You** holds Appearance (Light, Dark or System, default System) and Guided tips
+(on or off, and "Bring back N dismissed tips", its count derived with
+`dismissedTipCount`, closed with its reason when tips are off or none are
+dismissed), read with `preference.read` and written with `preference.save`, the
+caller's own row only. **Notifications** writes nothing: in-app is drawn on and
+locked, email is drawn not connected until AW-07b, and decisions and incidents
+are drawn as never silenced. **This business** is the screen below, whose
+`STEP_UP_REQUIRED` refusal shows its fix (sign in again), never the code, with
+two more rows: the conversation and retention windows in whole days, each
+written through its own command (`settings.set_conversation_window`,
+`settings.set_retention_window`) with the same revision, conflict and refusal
+handling (`settings/windows.tsx`).
+
+The appearance is applied at once (`appearance.ts`): `data-theme-preference` on
+the root, which MP-1-1's before-paint step turns into `data-theme`, with a 500ms
+crossfade while `data-theme-fade` is on. Signed in, the frame reads the person's
+preferences once (beside the person menu's `session.person`) and applies the
+stored appearance; the tab keeps a copy in `sessionStorage` as
+`ops-astro.appearance`, which the before-paint step replays on a reload. Signed
+out, the copy is dropped, so one person's appearance never opens the next
+person's session.
+
+This business draws the two settings the model classifies `operation`:
 `four_eyes_threshold` and `client_sign_off_required`. Each is written through
 the command that owns it, `settings.set_four_eyes_threshold` or
 `settings.set_client_sign_off`, with an `operationId`, and with an

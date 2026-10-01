@@ -16,6 +16,7 @@ export {
   admitsSelfWrite,
   DELEGATION_HEADER,
   pathOf,
+  ACCOUNT_AVAILABILITY_PATH,
   PREFIX,
   PUBLIC_PREFIX,
   READS,
@@ -30,6 +31,14 @@ export {
 } from './surface.ts';
 // The keys a grant may carry (C32).
 export { GRANTABLE_KEYS, isGrantableKey, SELF_SCOPED_COLLECTIONS } from './permission-keys.ts';
+export {
+  dismissedTipCount,
+  isTipRef,
+  tipKey,
+  tipShown,
+  TIPS_HELD_MAX,
+  type TipRef,
+} from './tips.ts';
 // The one refusal shape, for the clients that parse it off the wire. Type-only,
 // so no records code reaches a bundle.
 export type { CommandRefusal } from '../../core-records/src/index.ts';
@@ -56,6 +65,7 @@ export type {
   ServiceHealthView,
   Capability,
   CapabilitiesResult,
+  SessionPersonResult,
   ClientListResult,
   ClientView,
   CommentView,
@@ -72,7 +82,11 @@ export type {
   InternalTaskDetail,
   InternalTaskRead,
   LeaseView,
+  LedgerDayView,
+  LedgerEventView,
   PersonListResult,
+  TeamListResult,
+  TeamMemberView,
   PersonView,
   PresetPlanResult,
   ProposalVersionView,
@@ -81,6 +95,7 @@ export type {
   QueueResult,
   ReceiptResult,
   ReservationView,
+  SearchHit,
   SettingsReadResult,
   SessionCapabilities,
   SettingView,
@@ -93,7 +108,9 @@ export type {
   TaskEnvelope,
   TaskExecution,
   TaskExecutionResult,
+  TaskLedgerResult,
   TaskReadResult,
+  TaskSearchResult,
   TaskStateView,
   TaskSummary,
 } from './views.ts';

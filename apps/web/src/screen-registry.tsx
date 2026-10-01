@@ -13,9 +13,11 @@ import { Gallery } from '@launchastro/ui';
 import type { AuthenticatedRouteId, ParamsOf, RouteMatch } from './routes.ts';
 import type { OperationsClient } from './operations/client.ts';
 import { AccessScreen } from './screens/Access.tsx';
+import { InboxScreen } from './screens/Inbox.tsx';
 import { Projects } from './screens/Projects.tsx';
-import { SettingsScreen } from './screens/Settings.tsx';
+import { SettingsGeneralScreen } from './screens/SettingsGeneral.tsx';
 import { TaskDetailScreen } from './screens/TaskDetail.tsx';
+import { TeamScreen } from './screens/Team.tsx';
 import { TelemetryScreen } from './screens/Telemetry.tsx';
 
 /** What the application hands whichever screen the address resolves to. */
@@ -27,6 +29,8 @@ export interface ScreenContext<Id extends AuthenticatedRouteId = AuthenticatedRo
   /** Why the board was reached instead of the address that was held. */
   readonly notice: ReactNode;
   readonly storage: Storage | null;
+  /** Goes to an address inside the application. */
+  readonly navigate: (path: string) => void;
 }
 
 export const SCREENS: {
@@ -39,13 +43,21 @@ export const SCREENS: {
           {context.notice}
         </p>
       )}
-      <Projects client={context.client} grantKey={context.grantKey} />
+      <Projects client={context.client} grantKey={context.grantKey} navigate={context.navigate} />
     </>
   ),
   'agency:gallery': () => <Gallery />,
   'agency:settings': (context) => (
-    <SettingsScreen client={context.client} grantKey={context.grantKey} storage={context.storage} />
+    <SettingsGeneralScreen
+      client={context.client}
+      grantKey={context.grantKey}
+      storage={context.storage}
+    />
   ),
+  'agency:inbox': (context) => (
+    <InboxScreen client={context.client} grantKey={context.grantKey} navigate={context.navigate} />
+  ),
+  'agency:team': (context) => <TeamScreen client={context.client} grantKey={context.grantKey} />,
   'agency:access': (context) => (
     <AccessScreen client={context.client} grantKey={context.grantKey} />
   ),

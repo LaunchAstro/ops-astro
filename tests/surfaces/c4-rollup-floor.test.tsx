@@ -1,0 +1,126 @@
+// @vitest-environment jsdom
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// C4 on an agency-wide rollup: no topic reaches it (LIVE-SYNC.md, "two topic
+// shapes and no third"), so it re-reads on the floor: every 30 s while the tab
+// is visible, at once when it becomes visible again or comes back online, and
+// not at all while hidden, when the tab runs no timer for it.
+
+import { act, type ReactElement } from 'react';
+import { afterEach, expect, it, vi } from 'vitest';
+import { useRead } from '../../apps/web/src/data/use-read.ts';
+import { FLOOR_MS } from '../../apps/web/src/data/live.ts';
+import { createRollupFloor, type RollupFloor } from '../../apps/web/src/data/rollup-floor.ts';
+import type { CallResult } from '../../apps/web/src/operations/client.ts';
+import { mount } from './mount.tsx';
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+let visible = true;
+const floorFor = (): RollupFloor => createRollupFloor({ visible: () => visible });
+
+function turn(to: boolean): void {
+  visible = to;
+  act(() => {
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+}
+
+async function pass(ms: number): Promise<void> {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(ms);
+  });
+}
+
+/** A rollup page: one read, no topic, on the floor. */
+function rollupPage(floor: RollupFloor, reads: { n: number }) {
+  return function Rollup(): ReactElement {
+    const { state } = useRead<{ total: number }>({
+      grantKey: 'viewer',
+      run: async (): Promise<CallResult<{ total: number }>> => {
+        reads.n += 1;
+        return await Promise.resolve({ ok: true, value: { total: reads.n } });
+      },
+      deps: [],
+      rollup: floor,
+    });
+    return <p>{state.outcome}</p>;
+  };
+}
+
+it('C4 live-sync 7: a rollup page with no topic refreshes within 30 s while visible and not at all while hidden', async () => {
+  vi.useFakeTimers({ now: 1_000_000 });
+  visible = true;
+  const reads = { n: 0 };
+  const Rollup = rollupPage(floorFor(), reads);
+  const screen = await mount(<Rollup />);
+  expect(reads.n).toBe(1);
+
+  await pass(FLOOR_MS);
+  expect(reads.n).toBe(2);
+  await pass(FLOOR_MS);
+  expect(reads.n).toBe(3);
+
+  turn(false);
+  await pass(FLOOR_MS * 4);
+  expect(reads.n).toBe(3);
+  expect(vi.getTimerCount()).toBe(0);
+
+  turn(true);
+  expect(reads.n).toBe(4);
+  await pass(FLOOR_MS - 1);
+  expect(reads.n).toBe(4);
+  await pass(1);
+  expect(reads.n).toBe(5);
+
+  act(() => {
+    window.dispatchEvent(new Event('online'));
+  });
+  expect(reads.n).toBe(6);
+
+  await screen.unmount();
+  await pass(FLOOR_MS * 2);
+  expect(reads.n).toBe(6);
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+it('C4 live-sync 7 (floor): rollup pages share one timer that a later page never delays, and the last to leave stops it', async () => {
+  vi.useFakeTimers({ now: 1_000_000 });
+  visible = true;
+  const floor = floorFor();
+  const heard = { a: 0, b: 0 };
+  const stopA = floor.follow(() => (heard.a += 1));
+  await vi.advanceTimersByTimeAsync(FLOOR_MS - 10_000);
+  const stopB = floor.follow(() => (heard.b += 1));
+  expect(vi.getTimerCount()).toBe(1);
+  await vi.advanceTimersByTimeAsync(10_000);
+  expect(heard).toEqual({ a: 1, b: 1 });
+
+  stopA();
+  await vi.advanceTimersByTimeAsync(FLOOR_MS);
+  expect(heard).toEqual({ a: 1, b: 2 });
+  stopB();
+  expect(vi.getTimerCount()).toBe(0);
+  document.dispatchEvent(new Event('visibilitychange'));
+  window.dispatchEvent(new Event('online'));
+  expect(heard).toEqual({ a: 1, b: 2 });
+});
+
+it('C4 live-sync 7 (floor): a rollup followed in a hidden tab runs no timer until the tab is shown', async () => {
+  vi.useFakeTimers({ now: 1_000_000 });
+  visible = false;
+  const floor = floorFor();
+  let heard = 0;
+  const stop = floor.follow(() => (heard += 1));
+  expect(vi.getTimerCount()).toBe(0);
+  await vi.advanceTimersByTimeAsync(FLOOR_MS * 3);
+  expect(heard).toBe(0);
+
+  visible = true;
+  document.dispatchEvent(new Event('visibilitychange'));
+  expect(heard).toBe(1);
+  expect(vi.getTimerCount()).toBe(1);
+  stop();
+});

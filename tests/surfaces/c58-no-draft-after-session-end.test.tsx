@@ -79,6 +79,9 @@ function server(options: { readonly neverAMember?: boolean } = {}) {
       return json({ ok: true, persons: [{ personId: 'p1', name: 'Mia Alpha' }] });
     if (at.endsWith('/task/read')) return json({ ok: true, task: TASK });
     if (at.endsWith('/task/board')) return json({ ok: true, tasks: [TASK] });
+    // The board's inbox above it (INB-1g) reads on its own.
+    if (at.endsWith('/inbox/read')) return json({ ok: true, inbox: [] });
+    if (at.endsWith('/inbox/count')) return json({ ok: true, owed: 0 });
     return json({ recordId: TASK.id, revision: TASK.revision + 1 });
   };
   const fetch = ((url: string | URL) =>
@@ -234,7 +237,9 @@ describe('C58 no draft after session end', () => {
 
   it('signing out mid-edit says the edit was not saved and holds no draft', async () => {
     const { view, store, sessions } = await openMidEdit();
-    await view.click('.topbar__who button');
+    // Sign-out is the person menu's since C23.
+    await view.click('.appbar .who__trigger');
+    await view.click('.who__menu button[role="menuitem"]');
     await expectSignedOutWithNoDraft(view, store, sessions);
     expect(view.find('[data-reason="signed-out"]')).not.toBeNull();
     await signInAgainFindsNoDraft(view, true);

@@ -76,3 +76,15 @@ describe('S0-5 gate coverage: every command declares its data effects, and its c
     }
   });
 });
+
+describe('S0-5 effect metadata names each table once', () => {
+  it('no command declares the same written table twice', () => {
+    const repeated = Object.entries(COMMAND_EFFECTS).flatMap(([name, effects]) => {
+      const kinds = effects.writes.map((write) => `${write.kind}:${write.scope}`);
+      return kinds
+        .filter((kind, index) => kinds.indexOf(kind) !== index)
+        .map((k) => `${name} ${k}`);
+    });
+    expect(repeated).toEqual([]);
+  });
+});
