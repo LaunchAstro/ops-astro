@@ -170,11 +170,11 @@ function everyPageAtItsAddress(): void {
 
 function everyPageBuiltSoFar(): void {
   it('MP-1-7 every page built so far: each registered route has a picture at each width', () => {
-    // The wave 0 pages and the others already built: the route registry's
-    // four, the component gallery (MP-1-3, U04) and a conversation's own
-    // address (C36).
+    // The wave 0 pages and those built since: the gallery (MP-1-3, U04), a
+    // conversation's own address (C36) and an invitation's link (C39-T).
     expect(builtPages()).toEqual([
       'agency:sign-in',
+      'agency:enrol',
       'agency:projects-board',
       'agency:task-detail',
       'agency:settings',
