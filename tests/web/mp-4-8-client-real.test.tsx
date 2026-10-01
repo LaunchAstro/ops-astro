@@ -73,6 +73,16 @@ describe('MP-4-8 client field reads the real clients and the task’s client', (
     await view.unmount();
   });
 
+  it('a task under a client the reader’s grants do not reach reads A client you cannot see', async () => {
+    // task.read sends no id for that client (CS-4.12): `client` null beside `clientSet`.
+    const { client } = real({ client: null, clientSet: true, hasContent: true, steps: [] });
+    const view = await panel(client);
+    const select = view.find('#panel-field-client') as HTMLSelectElement | null;
+    expect(select?.selectedOptions[0]?.text).toBe('A client you cannot see');
+    expect(select?.disabled).toBe(true);
+    await view.unmount();
+  });
+
   it('a task under no client reads No client and is open to a choice', async () => {
     const { client } = real({ client: null, clientSet: false, hasContent: false, ...SHELL });
     const view = await panel(client);
