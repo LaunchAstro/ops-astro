@@ -442,6 +442,8 @@
     "tests/broker/aw-10-outcomes.test.ts",
     "tests/broker/aw-10-positive-proof.test.ts",
     "tests/broker/aw-10-wait.test.ts",
+    "tests/broker/aw-10-lookup-room.test.ts",
+    "tests/broker/aw-10-lookup-room-isolation.test.ts",
     "tests/runtime/aw-06-observed-layer.test.ts",
     "tests/runtime/aw-06-isolation.test.ts",
     "tests/runtime/aw-06-planned-layer.test.ts",

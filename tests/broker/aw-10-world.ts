@@ -131,12 +131,16 @@ export interface Dropped {
   readonly result: ModelCallResult;
 }
 
-/** Live work whose model call meets `mode`, handed back `dropped` with the cause the broker recorded. */
-export async function dropped(mode: ReplayMode, on: Schedules = s): Promise<Dropped> {
+/** Live work whose model call meets `mode` through `with_`, handed back `dropped` with the cause the broker recorded. */
+export async function dropped(
+  mode: ReplayMode,
+  on: Schedules = s,
+  with_: Broker = faultBroker(),
+): Promise<Dropped> {
   const work = await liveWork(on, `aw10 ${mode} ${randomUUID()}`, 2_000);
   await room(on, work);
   world.provider.mode(mode);
-  const result = await callIn(on, work);
+  const result = await callIn(on, work, with_);
   const cause = 'cause' in result ? result.cause : null;
   // A failure that is no drop is handed back as failed: the worker names no cause it lacks.
   const body = {

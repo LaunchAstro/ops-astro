@@ -42,6 +42,7 @@
     "tests/runtime/aw-11-child-commands-isolation.test.ts",
     "tests/broker/aw-11-child-graph-isolation.test.ts",
     "tests/harness/aw-12-isolation.test.ts",
+    "tests/broker/aw-10-lookup-room-isolation.test.ts",
     "tests/ci/operator-only.test.ts",
     "tests/ci/s0-3e-operating-business.test.ts",
     "tests/ci/s0-3e-operating-business-installed.test.ts",
