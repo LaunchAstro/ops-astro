@@ -126,3 +126,30 @@ test('RP-1c after the person row is erased, a row still naming their id is found
     grant,
   ]);
 });
+
+test('RP-1d find-copies by the email a person wrote from lists their membership', async () => {
+  const { world } = harness;
+  const mail = `qx7mail${randomUUID().slice(0, 8)}@example.test`;
+  const person = randomUUID();
+  const membership = randomUUID();
+  await world.db.app.withBusiness(world.alpha, async (tx) => {
+    await tx.query(`insert into public.people (business_id, id, display_name) values ($1, $2, 'Alex Doe')`, [
+      world.alpha,
+      person,
+    ]);
+    await tx.query(
+      `insert into public.person_identifiers
+         (business_id, id, person_id, kind, value, observed_value, source_system)
+       values ($1, $2, $3, 'email', $4, $4, 'dry-run')`,
+      [world.alpha, randomUUID(), person, mail],
+    );
+    await tx.query(
+      `insert into public.memberships (business_id, id, person_id, role_key) values ($1, $2, $3, 'staff')`,
+      [world.alpha, membership, person],
+    );
+  });
+  const found = await findCopies(adminUrl, ['--text', mail], 'alpha');
+  const pairs = found.hits.map((hit) => [hit.table, hit.id]);
+  expect(pairs.map(([table]) => table), 'the identifier row is found').toContain('person_identifiers');
+  expect(pairs, 'their membership').toContainEqual(['memberships', membership]);
+});
