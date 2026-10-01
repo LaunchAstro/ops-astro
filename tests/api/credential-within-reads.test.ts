@@ -14,6 +14,7 @@ import {
   heldScopes,
 } from '../../packages/core-records/src/index.ts';
 import type { Subject } from '../../packages/core-records/src/authority/grants.ts';
+import { holdCoveringGrants } from '../../packages/core-runtime/src/recovery/classifier.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { openSchedules, type Schedules } from '../runtime/schedules-harness.ts';
 import { cq8World, type Party } from '../runtime/cq-8-world.ts';
@@ -79,6 +80,31 @@ async function fingerprintHonoursWithin(): Promise<void> {
   expect(none).toBe(nobody);
 }
 
+/** Whether the member's grant of this task action can be locked from another connection now. */
+async function grantFree(action: string): Promise<boolean> {
+  try {
+    await s.db.admin.execute(
+      `select id from public.grants
+        where business_id = $1 and subject_kind = 'person' and subject_id = $2
+          and collection = 'task' and action = $3
+        for update nowait`,
+      [alpha.id, alpha.member.personId, action],
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** within: holdCoveringGrants holds only the ticked keys' grants */
+async function holdCoveringHonoursWithin(): Promise<void> {
+  const seen = await s.db.app.withBusiness(alpha.id, async (tx) => {
+    await holdCoveringGrants(tx, within(['task:read']), 'task');
+    return { read: await grantFree('read'), write: await grantFree('write') };
+  });
+  expect(seen).toEqual({ read: false, write: true });
+}
+
 describe.skipIf(serverUrl === undefined)(
   'within honoured by subject reads outside effectiveGrants',
   { timeout: 30_000 },
@@ -103,5 +129,6 @@ describe.skipIf(serverUrl === undefined)(
       clientsReachedHonoursWithin,
     );
     it("within: grantFingerprint covers only the ticked keys' grants", fingerprintHonoursWithin);
+    it("within: holdCoveringGrants holds only the ticked keys' grants", holdCoveringHonoursWithin);
   },
 );

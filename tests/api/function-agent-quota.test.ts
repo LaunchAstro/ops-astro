@@ -2,7 +2,7 @@
 //
 // API-2 quota on the function target: each instance holds its own count, so
 // the function hands every instance the installation's limits divided by the
-// deployment's instance ceiling, `AGENT_QUOTA_INSTANCES` (10 unset). The
+// deployment's instance ceiling, `AGENT_QUOTA_INSTANCES` (4 unset). The
 // instances together then stay within the limits one server holds. A
 // malformed ceiling stops the entry, naming the setting.
 
@@ -50,14 +50,38 @@ it('API-2 quota on the function: each instance holds the limits divided by the i
     exports: { credential: 500, person: 1000, business: 2500 },
     refused: 15,
   });
-  // Unset, a ceiling of ten; never below one call of each.
+  // Unset, a ceiling of four, the smallest limit; one call at once each.
   createFunctionHandler(settings);
   const unset = limitsOf() as typeof DEFAULT_AGENT_LIMITS;
-  expect(unset.requests.business).toBe(DEFAULT_AGENT_LIMITS.requests.business / 10);
+  expect(unset.requests.business).toBe(DEFAULT_AGENT_LIMITS.requests.business / 4);
   expect(unset.concurrent.credential).toBe(1);
   for (const bad of ['0', '-2', 'ten', '1.5']) {
     expect(() => createFunctionHandler({ ...settings, AGENT_QUOTA_INSTANCES: bad }), bad).toThrow(
       'AGENT_QUOTA_INSTANCES',
     );
   }
+});
+
+it('API-2 quota on the function: an instance ceiling above the smallest limit is refused at start-up, so the shares never total more than one server holds', () => {
+  const { requests, concurrent, exports, refused } = DEFAULT_AGENT_LIMITS;
+  const all = [requests, concurrent, exports].flatMap((tiers) => Object.values(tiers));
+  const smallest = Math.min(...all, refused);
+  expect(() =>
+    createFunctionHandler({ ...settings, AGENT_QUOTA_INSTANCES: String(smallest + 1) }),
+  ).toThrow('AGENT_QUOTA_INSTANCES');
+  for (const instances of [1, smallest]) {
+    createFunctionHandler({ ...settings, AGENT_QUOTA_INSTANCES: String(instances) });
+    const held = limitsOf() as typeof DEFAULT_AGENT_LIMITS;
+    for (const level of ['requests', 'concurrent', 'exports'] as const) {
+      for (const tier of ['credential', 'person', 'business'] as const) {
+        expect(held[level][tier] * instances).toBeLessThanOrEqual(
+          DEFAULT_AGENT_LIMITS[level][tier],
+        );
+      }
+    }
+    expect(held.refused * instances).toBeLessThanOrEqual(refused);
+  }
+  // Unset, the ceiling is one the smallest limit allows.
+  createFunctionHandler(settings);
+  expect((limitsOf() as typeof DEFAULT_AGENT_LIMITS).concurrent.credential).toBe(1);
 });

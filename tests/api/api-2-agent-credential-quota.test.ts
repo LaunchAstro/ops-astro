@@ -170,6 +170,24 @@ needsServer(
   },
 );
 
+needsServer(
+  'API-2 quota at the door: a live credential is still served once made-up bearers fill the door',
+  async () => {
+    const { api } = limited({ refused: 2 });
+    const live = await issued();
+    const made = async (): Promise<Answer> =>
+      await readWith(api, randomBytes(32).toString('base64url'));
+    await made();
+    await made();
+    const before = await attemptsIn(harness.world.alpha);
+    const past = await Promise.all([made(), made(), made()]);
+    expect(codesOf(past)).toEqual(Array.from({ length: 3 }, () => 'AGENT_QUOTA_EXCEEDED'));
+    // Past the cap a made-up bearer writes no attempt row.
+    expect(await attemptsIn(harness.world.alpha)).toBe(before);
+    expect((await readWith(api, live.secret)).code).toBe('ok');
+  },
+);
+
 async function attemptsIn(businessId: string): Promise<number> {
   const rows = await harness.world.db.admin.execute<{ readonly n: string }>(
     'select count(*)::text as n from public.authentication_attempts where business_id = $1',
