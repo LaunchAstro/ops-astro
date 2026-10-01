@@ -506,10 +506,17 @@ const REQUESTS: readonly CommandRequest[] = [
     operationId: 'op',
     recordId: 'r',
     runId: 'run',
+    askId: 'ask',
     amountMinor: 700,
     currency: 'AUD',
   },
-  { command: 'run.end_at_budget_stop', operationId: 'op', recordId: 'r', runId: 'run' },
+  {
+    command: 'run.end_at_budget_stop',
+    operationId: 'op',
+    recordId: 'r',
+    runId: 'run',
+    askId: 'ask',
+  },
   {
     command: 'run.revise_state',
     operationId: 'op',

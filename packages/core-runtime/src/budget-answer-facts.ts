@@ -6,9 +6,9 @@
 // The grants are held `for share` before the locks, as decide.ts does, then
 // the set is locked in the contract's order (cap, envelope, task, run,
 // lineage, reservation) and every fact is read again under it: the run still
-// waiting, its latest ask unanswered, the grant live at the locked instant.
-// Two answers at once meet on the run lock, and the second finds the ask
-// answered.
+// waiting, its latest ask unanswered and the one the person saw, the grant
+// live at the locked instant. Two answers at once meet on the run lock, and
+// the second finds the ask answered.
 
 import {
   checkAuthority,
@@ -27,6 +27,8 @@ import { refuse, type RuntimeRefusalCode } from './refusals.ts';
 /** Who answers, and the subjects the grant model reads for them. */
 export interface BudgetAnswerRequest {
   readonly runId: string;
+  /** The ask the person was shown, which the commands always name; absent, the open one. */
+  readonly askId?: string;
   readonly caller:
     | { readonly kind: 'person'; readonly personId: string; readonly actorId: string }
     | { readonly kind: 'agent'; readonly actorId: string };
@@ -139,14 +141,20 @@ export async function openAnswer(
     return notGranted(collection);
   }
   const locked = await readLocked(tx, request.runId, found);
-  if (locked === undefined || locked.run_state !== 'waiting_budget' || locked.answered) {
+  if (locked === undefined || !waitsOn(locked, request.askId)) {
     return refuse(
       'TRANSITION_NOT_PERMITTED',
-      'this run is not waiting for budget, or its stop has been answered already',
+      'this run is not waiting for budget, or the stop answered is not the one it waits on',
       NOT_WAITING_FIX,
     );
   }
   return { ok: true, value: { person: caller, locked, lockedAt } };
+}
+
+/** Waiting on its latest ask, unanswered, and that ask the one the person saw. */
+function waitsOn(locked: Locked, askId: string | undefined): boolean {
+  const open = locked.run_state === 'waiting_budget' && !locked.answered;
+  return open && (askId === undefined || askId === locked.ask_id);
 }
 
 /** The run's task, lineage, and the reservation, envelope and cap its latest ask stopped. */

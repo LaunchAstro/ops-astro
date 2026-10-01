@@ -60,8 +60,13 @@ export interface AgentPaneProps {
   /** The server's word that a write-off waits on a second person, or null. */
   readonly writeOffAwaiting?: string | null;
   /** C54's answers at a budget stop (AW-05), where the host offers both. */
-  readonly onTopUpAtStop?: (runId: string, amountMinor: number, currency: string) => void;
-  readonly onEndAtStop?: (runId: string) => void;
+  readonly onTopUpAtStop?: (
+    runId: string,
+    askId: string,
+    amountMinor: number,
+    currency: string,
+  ) => void;
+  readonly onEndAtStop?: (runId: string, askId: string) => void;
   /** The server's word that the last top-up at a stop waits on a second person, or null. */
   readonly stopAwaiting?: string | null;
 }

@@ -78,8 +78,9 @@ export interface StopAnswerProps {
   readonly busy: boolean;
   /** The server's word that the top-up waits on a second person, or null. */
   readonly awaiting: string | null;
-  readonly onTopUp: (runId: string, amountMinor: number, currency: string) => void;
-  readonly onEnd: (runId: string) => void;
+  /** Each answer names the ask it answers, so it never lands on a later stop. */
+  readonly onTopUp: (runId: string, askId: string, amountMinor: number, currency: string) => void;
+  readonly onEnd: (runId: string, askId: string) => void;
 }
 
 /** C54's answer at the stop: a top-up above nothing, in the ask's currency, or the end. */
@@ -104,7 +105,7 @@ export function StopAnswer(props: StopAnswerProps): ReactElement {
           disabled={!ready}
           data-stop="top-up"
           onClick={() => {
-            if (ready) props.onTopUp(stop.runId, minor, stop.currency);
+            if (ready) props.onTopUp(stop.runId, stop.askId, minor, stop.currency);
           }}
         >
           Top up
@@ -115,7 +116,7 @@ export function StopAnswer(props: StopAnswerProps): ReactElement {
           disabled={props.busy}
           data-stop="end"
           onClick={() => {
-            props.onEnd(stop.runId);
+            props.onEnd(stop.runId, stop.askId);
           }}
         >
           End the work

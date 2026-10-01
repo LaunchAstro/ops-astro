@@ -50,13 +50,13 @@ interface Cell {
 
 const NOBODY = 'text nobody should find in an audit row';
 
-/** An AW-05 answer's body: the task and the run on it, and a top-up's amount. */
+/** An AW-05 answer's body: the task, the run on it and an ask, and a top-up's amount. */
 const runOf = (recordId: string, runId: string, op: CommandName): Body =>
   op === 'run.top_up'
-    ? { recordId, runId, amountMinor: 100, currency: 'AUD' }
+    ? { recordId, runId, askId: randomUUID(), amountMinor: 100, currency: 'AUD' }
     : op === 'run.revise_state'
       ? { recordId, runId, expectedVersion: 0, knowledge: [NOBODY], unknowns: [] }
-      : { recordId, runId };
+      : { recordId, runId, askId: randomUUID() };
 
 /** An operand in its foreign and fabricated forms. */
 const pair = (

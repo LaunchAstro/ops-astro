@@ -1136,13 +1136,14 @@ business-internal source since the hold releases the call unsent
 A run stopped at its approved ceiling waits for a person (AW-05,
 [RUNTIME.md](RUNTIME.md#the-answers-at-the-budget-stop)). The two answers are
 commands on the person prefix, and the command line and the app's client post
-them to the same routes. Both name the task and the run on it, and neither
+them to the same routes. Both name the task, the run on it and the ask the
+person was shown (`askId`, the stop's id in `task.read`'s ledger), and neither
 writes the task record, so neither takes an `expectedRevision`.
 
-| Operation                | Route                                | Body                                                          | Authority                                                                                                                       |
-| ------------------------ | ------------------------------------ | ------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `run.top_up`             | `/api/b/:key/run/top_up`             | `operationId`, `recordId`, `runId`, `amountMinor`, `currency` | `decide` on `billing`, asked of the task named in `recordId`; the runtime asks it again of the run's task under the run's locks |
-| `run.end_at_budget_stop` | `/api/b/:key/run/end_at_budget_stop` | `operationId`, `recordId`, `runId`                            | `decide` on `gate`, asked the same way                                                                                          |
+| Operation                | Route                                | Body                                                                   | Authority                                                                                                                       |
+| ------------------------ | ------------------------------------ | ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `run.top_up`             | `/api/b/:key/run/top_up`             | `operationId`, `recordId`, `runId`, `askId`, `amountMinor`, `currency` | `decide` on `billing`, asked of the task named in `recordId`; the runtime asks it again of the run's task under the run's locks |
+| `run.end_at_budget_stop` | `/api/b/:key/run/end_at_budget_stop` | `operationId`, `recordId`, `runId`, `askId`                            | `decide` on `gate`, asked the same way                                                                                          |
 
 A run's state revised (MP-6-2) is the agent page's one write. It names the
 task and the run on it too, and carries the version it read (0 before the
@@ -1180,8 +1181,9 @@ releasedMinor, spentMinor }`. The task stays open for a person. It reaches a
   hold `billing:decide`, `FIELD_VALUE_INVALID` 422 (the amount, the currency,
   or a second approval of a different amount), `CAP_BINDING_MISMATCH`,
   `BUDGET_EXHAUSTED` (the business cap is the hard ceiling), `LINEAGE_TERMINAL`
-  and `TRANSITION_NOT_PERMITTED` 409 (the run is not waiting, or the ask is
-  already answered). A refusal writes nothing.
+  and `TRANSITION_NOT_PERMITTED` 409 (the run is not waiting, the ask is
+  already answered, or `askId` is not the ask the run waits on: an answer to
+  an earlier stop never applies to a later one). A refusal writes nothing.
 - **No agent answers.** Neither row is in `AGENT_SURFACE`: the agent prefix
   answers `DELEGATION_EXCLUDES_OPERATION` 403 with or without a delegation.
 - **Not here yet.** The question and its two buttons in the conversation where

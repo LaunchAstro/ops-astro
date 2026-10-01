@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // C54's answers at a budget stop on the Agent pane (AW-05): a top-up through
-// `run.top_up` or the end through `run.end_at_budget_stop`, naming the task
-// and the run the read showed, then a reread. The HTTP boundary is stood in
+// `run.top_up` or the end through `run.end_at_budget_stop`, naming the task,
+// the run and the ask the read showed, then a reread. The HTTP boundary is stood in
 // (`c54-page.tsx`); the read and the answers against Postgres are
 // `tests/api/mp-6-5-stops.test.ts`, and each command under its locks is AW-05's
 // own suites'.
@@ -44,7 +44,8 @@ describe('C54 the answers at the budget stop on the Agent pane', () => {
     expect(sent).toStrictEqual([
       {
         route: 'run/end_at_budget_stop',
-        body: { operationId: 'operation-54', recordId: TASK_ID, runId: RUN_ID },
+        // The ask the pane showed, so the answer never lands on a later stop.
+        body: { operationId: 'operation-54', recordId: TASK_ID, runId: RUN_ID, askId: 'ask-3' },
       },
     ]);
     expect(reads()).toBeGreaterThan(before);
@@ -62,6 +63,7 @@ describe('C54 the answers at the budget stop on the Agent pane', () => {
           operationId: 'operation-54',
           recordId: TASK_ID,
           runId: RUN_ID,
+          askId: 'ask-3',
           amountMinor: 250,
           currency: 'AUD',
         },
