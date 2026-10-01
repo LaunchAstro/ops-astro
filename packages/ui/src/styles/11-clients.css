@@ -1,0 +1,118 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* The Clients panel (DOCK.md section 2): the pinned mockup's `cl__` rules
+   (app.css:6462-6627, 9387-9406, 11583-11592) under `clbook__`. The field is the
+   kit's `tf`, the waiting count its corner `cbadge`, the sample mark its
+   `MockRegion`, all placed, never restyled. Radius is 0 and status has no fill.
+   R37 (D-10): below 900 there is no hover to reveal a row's door, so it shows at
+   rest there. */
+
+.clbook__note {
+  margin: 0 0 var(--s-3);
+  color: var(--text-muted);
+  font: var(--type-small);
+}
+.clbook__find {
+  margin-bottom: var(--s-2);
+}
+.clbook__count {
+  margin: 0 0 var(--s-3);
+  color: var(--ink-faint);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
+}
+.clbook__list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* One row to a reader: the rule spans the door and the count, and hovering
+   either half lights the whole row. */
+.clbook__item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  border-bottom: 1px solid var(--border);
+}
+.clbook__item:hover {
+  background: var(--surface);
+}
+.clbook__row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.1rem 0.6rem;
+  align-items: center;
+  padding: 0.55rem 0.35rem 0.55rem 0;
+}
+.clbook__tile {
+  display: grid;
+  place-items: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  border: 1px solid var(--border-strong);
+  background: var(--paper);
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 0.5625rem;
+  font-weight: 600;
+}
+.clbook__who {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+.clbook__name {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.84375rem;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.clbook__industry {
+  color: var(--text-muted);
+  font-size: 0.71875rem;
+}
+/* The door keeps its track while hidden, so rows never shift under the pointer. */
+.clbook__go {
+  display: inline-flex;
+  visibility: hidden;
+}
+.clbook__item:hover .clbook__go,
+.clbook__item:focus-within .clbook__go {
+  visibility: visible;
+}
+@media (max-width: 900px) {
+  .clbook__go {
+    visibility: visible;
+  }
+}
+.clbook__door {
+  display: inline-grid;
+  place-items: center;
+  padding: 0.35rem 0.3rem;
+  color: var(--text-muted);
+  line-height: 1;
+}
+.clbook__door:hover,
+.clbook__door:focus-visible {
+  color: var(--accent);
+}
+/* `position: relative` anchors the corner count to the glyph, not the panel. */
+.clbook__waiting {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  margin-right: 0.1rem;
+  padding: 0.35rem 0.5rem 0.35rem 0.35rem;
+  color: var(--text-muted);
+  line-height: 1;
+}
+.clbook__empty {
+  margin: var(--s-3) 0 0;
+  color: var(--text-muted);
+  font: var(--type-small);
+}

@@ -143,8 +143,9 @@ browser.
 falls back to `index.html`, and everything on the page is reread from the API.
 
 The dock's tabs are `PANELS` in `apps/web/src/panels.ts`, drawn in the rail's
-declared order: Notifications (the inbox at `/inbox/`), Team (`/team`) and
-Settings (`/settings`). Each tab opens its own panel: Settings opens the
+declared order: Notifications (the inbox at `/inbox/`), Team (`/team`),
+Clients (`/clients/`, a made-up client book under the mock mark until client
+records land) and Settings (`/settings`). Each tab opens its own panel: Settings opens the
 Settings panel beside the page rather than navigating (MP-3-1). A plain press shows one panel, shift adds one, each X
 closes only its own, Close all closes every one, and Escape closes the last
 opened unless a field, menu or editor took the key

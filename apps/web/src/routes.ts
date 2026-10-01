@@ -137,6 +137,18 @@ export const ROUTES = {
     surface: 'none',
     authenticated: true,
   },
+  // The Clients panel (SL06; the target of MP-7-3's client group head, CS-7.29):
+  // the client book as a list, drawn at the manifest's own Clients address in
+  // full-page form until MP-8-5's CRM board takes the address, as `/inbox/` is
+  // the Notifications panel's list (CS-7.39). The book is made up until
+  // MP-10-1 builds client records, and says so.
+  'agency:clients': {
+    namespace: 'agency',
+    path: '/clients/',
+    title: 'Clients',
+    surface: 'none',
+    authenticated: true,
+  },
 } as const satisfies Readonly<Record<`${Namespace}:${string}`, RouteDescriptor>>;
 
 export type RouteId = keyof typeof ROUTES;
