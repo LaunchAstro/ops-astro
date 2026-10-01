@@ -7,9 +7,9 @@
 // `local-claude` route through the broker the API itself would start.
 //
 // It refuses before it opens anything: outside OPS_ENVIRONMENT=local, without
-// OPS_AGENT_PROVIDER=local-claude, or without a database, a business id, the
-// agent's login subject and the business's worker. It never prints a setting's
-// value.
+// OPS_AGENT_PROVIDER=local-claude, with a database not on this machine's
+// loopback, or without a database, a business id, the agent's login subject
+// and the business's worker. It never prints a setting's value.
 //
 // The approval gate (approval.ts) runs in each pass: approved approvals are
 // written before the task pass, and a model step that comes back released is
@@ -52,7 +52,7 @@ export type TickSettings =
   | { readonly ok: true; readonly settings: TickProcessSettings }
   | {
       readonly ok: false;
-      readonly code: 'LOCAL_ONLY' | 'PROVIDER_NOT_LOCAL' | 'SETTING_MISSING';
+      readonly code: 'LOCAL_ONLY' | 'PROVIDER_NOT_LOCAL' | 'SETTING_MISSING' | 'DATABASE_NOT_LOCAL';
       readonly message: string;
     };
 
@@ -74,6 +74,13 @@ export function tickSettings(env: Readonly<Record<string, string | undefined>>):
   }
   const databaseUrl = env['DATABASE_URL'] ?? '';
   if (databaseUrl === '') return missing('DATABASE_URL');
+  if (!onThisMachine(databaseUrl)) {
+    return {
+      ok: false,
+      code: 'DATABASE_NOT_LOCAL',
+      message: 'the local tick connects only to a database on this machine (DATABASE_URL)',
+    };
+  }
   const businessId = env['OPS_LOCAL_AGENT_BUSINESS_ID'] ?? '';
   if (!isBusinessId(businessId)) return missing('OPS_LOCAL_AGENT_BUSINESS_ID');
   const subject = env['OPS_LOCAL_AGENT_AGENT_SUBJECT'] ?? '';
@@ -97,6 +104,17 @@ export function tickSettings(env: Readonly<Record<string, string | undefined>>):
       gate,
     },
   };
+}
+
+const LOOPBACK: ReadonlySet<string> = new Set(['127.0.0.1', 'localhost', '[::1]']);
+
+/** A database address whose host is this machine's loopback, by exact name. */
+function onThisMachine(databaseUrl: string): boolean {
+  try {
+    return LOOPBACK.has(new URL(databaseUrl).hostname);
+  } catch {
+    return false;
+  }
 }
 
 /** The runner's gate settings as the runner reads them, or the name of the one that is not valid. */
