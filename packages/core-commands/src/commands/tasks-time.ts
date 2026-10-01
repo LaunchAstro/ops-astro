@@ -9,7 +9,9 @@
 // - **The task.** Start, stop and log name a task, and a person times only a
 //   task they may read: `task:read` at that task's record scope. A task the
 //   caller may not read is `NOT_FOUND`, the answer a task that is not here
-//   gets, so a refusal never says whether it exists.
+//   gets, so a refusal never says whether it exists. The one exception is
+//   the person's own running timer: stop reaches it after `task:read` is
+//   lost, so a timer is never stuck running (ORCH57).
 // - **The person.** The entry is the session's person's, always. A note or a
 //   delete naming another person's entry is `NOT_FOUND` too: the store looks
 //   an entry up by its id and its person together.
@@ -48,8 +50,8 @@ const NO_TASK = refused(
 const NO_ENTRY = refused(
   refuseCommand('NOT_FOUND', [], ['None of your time entries carries that identifier.']),
 );
-/** A note is text, and a day's worth of it is more than an entry needs. */
-const NOTE_LIMIT = 2000;
+/** A note is text, held to 0078's check (`time_entries_note_bounded`). */
+const NOTE_LIMIT = 500;
 
 const person = (context: TimeContext) => ({
   personId: context.session.personId,
@@ -112,12 +114,15 @@ export async function stopTime(
   context: TimeContext,
   taskId: string,
 ): Promise<HandlerOutcome> {
+  // A person's own running timer stops even on a task they can no longer read
+  // (ORCH57): losing access does not end it, and the answer is the entry's
+  // own fields, nothing of the task. Without one, the task is still not found.
   const unreadable = await refuseUnreadable(tx, context, taskId);
-  if (unreadable !== undefined) return unreadable;
   const stopped = await stopTimer(tx, { taskId, ...person(context) });
   if (stopped.kind === 'none') {
-    return refused(
-      refuseCommand('NOT_FOUND', ['timer'], ['No timer of yours is running on this task.']),
+    return (
+      unreadable ??
+      refused(refuseCommand('NOT_FOUND', ['timer'], ['No timer of yours is running on this task.']))
     );
   }
   return applied(null, null, { entryId: stopped.entryId, minutes: stopped.minutes });

@@ -536,6 +536,16 @@ export async function purgeTrashedRecords(
       returning id`,
     [tx.businessId, gone],
   );
+  // A task's time entries (0078) and its tags (0081) are its work too, each
+  // keyed to `records` without a cascade: left behind, they fault the delete
+  // below and roll back the whole business's purge. The tag stays in the
+  // vocabulary; only the task's carrying of it goes.
+  await tx.query(
+    `with entries as (delete from public.time_entries
+                       where business_id = $1 and task_id = any ($2::uuid[]))
+     delete from public.task_tags where business_id = $1 and task_id = any ($2::uuid[])`,
+    [tx.businessId, ids],
+  );
   if (commentIds.length > 0) {
     await tx.query(`delete from records where business_id = $1 and id = any ($2::uuid[])`, [
       tx.businessId,

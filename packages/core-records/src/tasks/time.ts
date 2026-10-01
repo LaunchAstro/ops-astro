@@ -56,12 +56,19 @@ interface Person {
 /** A day is the most one entry can hold (0078's check). */
 const MAX_MINUTES = 1440;
 
+/** "23h 59m" with room to spare: a longer duration is not one anybody typed. */
+const DURATION_LIMIT = 32;
+
 /**
  * Minutes from what a person types: "1h 30m", "1h30m", "2h", "90m" or "90".
  * Anything else, zero, or more than a day is undefined, never a guess.
+ *
+ * Capped before the pattern runs, and trimmed so no two adjacent quantifiers
+ * can match the same character: hostile spacing never backtracks.
  */
 export function parseDuration(text: string): number | undefined {
-  const match = /^\s*(?:(\d+)\s*h)?\s*(?:(\d+)\s*m?)?\s*$/u.exec(text);
+  if (text.length > DURATION_LIMIT) return undefined;
+  const match = /^(?:(\d+)\s*h\s*)?(?:(\d+)\s*m?)?$/u.exec(text.trim());
   if (match === null) return undefined;
   const [, hours, rest] = match;
   if (hours === undefined && rest === undefined) return undefined;

@@ -15,7 +15,8 @@
 -- **Elapsed time is never dropped.** A stopped or logged entry carries at
 -- least one whole minute, and an entry is either running (no end, no minutes)
 -- or finished (both): the checks below hold that shape. A delete is a mark,
--- `deleted_at`, so a deleted entry stays evidence of what was recorded.
+-- `deleted_at`, so a deleted entry stays evidence of what was recorded. The
+-- one row delete is the trash purge's, taking a purged task's entries with it.
 
 create table public.time_entries (
   business_id uuid        not null,
@@ -68,4 +69,4 @@ create policy authority_time_entries on public.time_entries
   using (true)
   with check (true);
 
-grant select, insert, update on public.time_entries to ops_astro_app;
+grant select, insert, update, delete on public.time_entries to ops_astro_app;
