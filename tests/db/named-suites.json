@@ -179,8 +179,12 @@
     "B1-JOIN-FIX (REV187W): service-stop.test.ts's before-lookup refusals also run beside a live database of the named business and write no sign-in row to it; Sol's proof named-service-stop-reaches-database runs that suite alone through the conformance runner, which must see it reach the database.",
     "B1-END-FIX-OPS (batch 1 blind review A1, A5, A8) adds restore-includes-sign-in-tables (the restore drill passes the scheduled public, ops and auth archive), restore-includes-staging-guards (a staging archive restores after the seed installs its made-up guards) and hosted-expired-lease-recovery (the Vercel function runs the reconciliation pass and fences a lost worker's expired lease; fix round 1 adds hosted-recovery-waits-for-pass (every request waits on the pass in flight) and staging-archive-restores-guards (the complete staging archive restores with its guard triggers); round 2 adds restore-drill-keeps-staging-guards (the drill's target keeps the guard triggers).",
     "SL09-2a-f3 adds c58-end-access-credentials (access.end revoking every live agent credential the ended person issued, each agent actor deactivated with it, in the same act; another person's credential in the same business and the same provider user's credential in bravo left live), named as an isolation suite too.",
+    "FIX-2B1 (REVIEW-MAIN-2B1 ids 4, 5, P2-F2; REVIEW-MAIN-2A P2-1) names review-main-2b1-4-double-refusal (an aal1 refusal with a factor held is one attempt row), review-main-2b1-5-rollup-race (a grant moved during compute is not cached under the old fingerprint), fix-main-2b1-availability-attempt (availability.set records one attempt per call) and c59-second-factor-attempts, which now reaches a database through REVIEW-MAIN-2A's proof case.",
+    "FIX-2B1 (review RS, B2) names fix-2b1-rs-rollup-issued-and-revoked (a grant issued and revoked while a rollup is worked out leaves no wider answer held).",
+    "FIX-2B1 RS2 names fix-2b1-rs2-left-at-door-real-routes (a tab that leaves while each real live route awaits its door ends its stream: T2f, C4 topics and the board, through composeApi).",
     "FIX-B1 (review round 1, rs-6) adds inbox-unattended-escalated (an escalated gate's recipient who keeps decide across the business is a path to the decision, so the item is not listed unattended) and names review-p03-unattended-escalated-decider (REVIEW-MAIN-B1 p03-1's proof: the recipient keeps task-scope decide only, and the item is listed), both invariants.",
     "FIX-B1 (REVIEW-MAIN-B1 p02-1) adds forwarder-export-ageout-false-signals-dropped-review (an export signal under its threshold ages out of the forwarder's table without a false signals-dropped alert: the sweep window outlasts every rule's).",
+    "STAGING-FIX-2 adds staging-hosted-roles (a hosted Supabase reset: the migration runner applies with only the platform's own service logins connected, authenticator, pgbouncer, supabase_admin, supabase_auth_admin and supabase_storage_admin, and still refuses a look-alike, differently cased or unnamed Supabase login, naming only it; made-up-only accepts a definer function owned by supabase_admin and still refuses one owned by a look-alike superuser or supabase_etl_admin).",
     "FIX-2A (review RP-1) adds c81-privacy-find-copies-links (the runbook's finder lists every row naming the person through an id of their own: found by name, their sign-in's logins row and a grant held by their acting identity; found by the email they wrote from, their membership), named as an isolation suite too.",
     "FIX-2A (review RP-2) names c81-breach-drill-subject beside c81-breach-drill and c81-breach-drill-clock (the template's subject line filled per recipient through privacy.draft_breach_notices, a placeholder the drill cannot fill in it BREACH_TEMPLATE_UNFILLED 409 with nothing drafted), named as an isolation suite too."
   ],
@@ -607,6 +611,7 @@
     "tests/cli/c23-session-surfaces.test.ts",
     "tests/review/sl01-rel-g2-health-proof.test.ts",
     "tests/ci/staging-special-objects.test.ts",
+    "tests/ci/staging-hosted-roles.test.ts",
     "tests/ci/s0-1-staging-reset.test.ts",
     "tests/ci/staging-reset-refuses-invalid-service-key-before-emptying.test.ts",
     "tests/ci/staging-reset-refuses-unwritable-record-before-emptying.test.ts",
@@ -621,6 +626,12 @@
     "tests/api/hosted-recovery-waits-for-pass.test.ts",
     "tests/ci/staging-archive-restores-guards.test.ts",
     "tests/ci/restore-drill-keeps-staging-guards.test.ts",
-    "tests/ci/s0-1-staging-logins-live.test.ts"
+    "tests/ci/s0-1-staging-logins-live.test.ts",
+    "tests/identity/review-main-2b1-4-double-refusal.test.ts",
+    "tests/api/review-main-2b1-5-rollup-race.test.ts",
+    "tests/commands/fix-main-2b1-availability-attempt.test.ts",
+    "tests/identity/c59-second-factor-attempts.test.ts",
+    "tests/api/fix-2b1-rs-rollup-issued-and-revoked.test.ts",
+    "tests/api/fix-2b1-rs2-left-at-door-real-routes.test.ts"
   ]
 }
