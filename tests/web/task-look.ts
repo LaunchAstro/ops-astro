@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Which task look probes (tests/visual/look/task.ts) are held to the pinned
-// mockup at all six places: 1480, 900 and 390 in both themes. look-parity
-// (tests/visual/look-parity.test.ts) compares each in the browser on CI; a
+// mockup at all six places: 1480, 900 and 390 in both themes. CI's look step
+// (tests/visual/look.ts on the built app) compares each in the browser; a
 // visual-match case here proves its element is among them, pinned everywhere.
 
 import { readFileSync } from 'node:fs';
