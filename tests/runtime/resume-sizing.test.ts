@@ -144,9 +144,9 @@ it('a hold with no spend is re-held whole, as before', async () => {
   expect(fresh).toMatchObject({ state: 'held', held: '2000' });
 });
 
-it('a step whose spend used its whole hold stops at its budget and asks the person (AW-05), with no silent refusal', async () => {
-  // The replay operation's priced maximum is 500: one call open at it spends the whole hold.
-  const work = await liveWork(s, `resize whole ${randomUUID()}`, 500);
+/** Work whose one call is open at the replay maximum of 500, its whole hold, when its delegation is revoked. */
+const spentWhole = async (label: string): Promise<Work> => {
+  const work = await liveWork(s, `resize ${label} ${randomUUID()}`, 500);
   const silent = {
     ...broker,
     custody: { ...broker.custody, dispatch: async () => await new Promise<never>(() => {}) },
@@ -160,16 +160,19 @@ it('a step whose spend used its whole hold stops at its budget and asks the pers
     );
   await expect.poll(openCall, { timeout: 5_000 }).toMatchObject([{ state: 'dispatched' }]);
   await revoke(work);
+  return work;
+};
 
-  const refused = await asAgent(s, {
+const pickupOf = async (work: Work) =>
+  await asAgent(s, {
     command: 'task.pickup',
     operationId: randomUUID(),
     reservationId: work.decision['reservationId'],
     leaseSeconds: 600,
   });
 
-  expect(codeOf(refused)).toBe('BUDGET_UNAVAILABLE');
-  const asks = await rows<{ run_state: string; ceiling: string; spent: string; kind: string }>(
+const asksOn = async (work: Work) =>
+  await rows<{ run_state: string; ceiling: string; spent: string; kind: string }>(
     s,
     `select run.state as run_state, k.ceiling_minor::text as ceiling, k.spent_minor::text as spent,
             k.kind
@@ -177,6 +180,14 @@ it('a step whose spend used its whole hold stops at its budget and asks the pers
       where k.reservation_id = $1`,
     [work.decision['reservationId']],
   );
+
+it('a step whose spend used its whole hold stops at its budget and asks the person (AW-05), with no silent refusal', async () => {
+  const work = await spentWhole('whole');
+
+  const refused = await pickupOf(work);
+
+  expect(codeOf(refused)).toBe('BUDGET_UNAVAILABLE');
+  const asks = await asksOn(work);
   expect(asks).toEqual([
     { run_state: 'waiting_budget', ceiling: '500', spent: '500', kind: 'stop' },
   ]);
@@ -190,4 +201,26 @@ it('a step whose spend used its whole hold stops at its budget and asks the pers
   const [, topped] = await holdsOn(work);
   await pickup(s, topped?.id);
   expect(await holdsOn(work)).toMatchObject([{ state: 'actual' }, { state: 'held', held: '300' }]);
+});
+
+it('a claimant without authority at a spent-whole hold is refused, and no ask is raised', async () => {
+  const work = await spentWhole('unauthorised');
+  // The approver's write lapses: the agent's pickup on their approval would widen it.
+  const lapsed = await rows<{ id: string }>(
+    s,
+    `update public.grants set expires_at = clock_timestamp()
+      where subject_id = $1 and action = 'write' and expires_at is null returning id`,
+    [s.decider.personId],
+  );
+  try {
+    const refused = await pickupOf(work);
+
+    expect(codeOf(refused)).toBe('DELEGATION_WIDENS');
+    expect(await asksOn(work)).toEqual([]);
+    expect((await holdsOn(work)).map((one) => one.state)).toEqual(['actual']);
+  } finally {
+    await rows(s, 'update public.grants set expires_at = null where id = any($1::uuid[])', [
+      lapsed.map((one) => one.id),
+    ]);
+  }
 });
