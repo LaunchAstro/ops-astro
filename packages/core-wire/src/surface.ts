@@ -515,8 +515,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   read('task.ledger', TASK_COLLECTION),
   read('person.list', 'person'),
   // Served without the business-scope check: a record-scoped reader searches
-  // the records they hold, which `reads/search.ts` asks the grant model for.
-  read('task.search', TASK_COLLECTION),
+  // the records they hold, which `reads/search.ts` asks the grant model for,
+  // so it names no key of its own (`authority: []`).
+  read('task.search', TASK_COLLECTION, { authority: [] }),
   // The Team panel's people strip (MP-7-10): staff only, answered to anyone
   // else as for a thing they cannot see.
   read('team.list', 'person'),
@@ -551,7 +552,7 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // query, never an agent's. Like `session.capabilities` it asks no one
   // collection (`reads/catalogue.ts`, `holds-any-grant`), so it carries that
   // read's pair for the route generator and the surface inventory.
-  read('client.list', SESSION_COLLECTION),
+  read('client.list', SESSION_COLLECTION, { authority: [] }),
   // C55: `operations:read` (install default owner and administrators), never
   // an agent's.
   read('operations.read', 'operations'),

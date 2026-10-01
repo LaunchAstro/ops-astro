@@ -147,7 +147,7 @@ function scannerAndGrantSkip(): void {
 
 /** Where the app names `task.create` and `task.start`, as the catalogue computes it. */
 const CREATE_UI = [
-  'agency:projects-board (screens/Projects.tsx)',
+  'agency:projects-board (screens/projects/CreateTask.tsx)',
   'agency:task-detail (screens/task/History.tsx)',
   'agency:task-detail (screens/task/Subtasks.tsx)',
   'app shell (screens/task/task-draft.ts)',
