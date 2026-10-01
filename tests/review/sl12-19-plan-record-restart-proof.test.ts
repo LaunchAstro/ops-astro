@@ -22,7 +22,7 @@ const it = noDatabase ? vitestIt.skip : vitestIt;
 
 useAw06World('sl1219restart');
 
-it('Opus proof, MP-6-2 stored record: a run task.restart proposes stores the plan record bound at its proposal', async () => {
+it('MP-6-2 stored record: a run task.restart proposes stores the plan record bound at its proposal', async () => {
   const taskId = await createTask(w.s, `sl1219-restart-${randomUUID()}`);
   const plan = await acceptPlanOn(taskId);
   const work = await propose(w.s, taskId, { maximumMinor: 300, purpose: freshPurpose() });
