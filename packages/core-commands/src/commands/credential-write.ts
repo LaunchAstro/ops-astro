@@ -7,7 +7,10 @@
 // An issue is always the caller's own. Its scope is the ticked keys, each held
 // by the caller at business scope now, never decide, share or manage, and
 // never a money key (C59's set, `isMoneyKey`): CAPABILITY-SLICES.md says an
-// agent may hold none, and every credential is an agent's. Its expiry is at
+// agent may hold none, and every credential is an agent's. The keys are
+// judged under the business's access lock, which access.end takes too, so an
+// issue either sees the ending and is refused or lands before it and is
+// revoked by it. Its expiry is at
 // most `CREDENTIAL_MAX_DAYS` out. The secret is in the issue answer alone: the
 // register keeps the answer with the credential nulled (`envelope.ts`), and
 // the issuer's replay of the same operation derives it again while the
@@ -27,6 +30,7 @@ import {
   isMoneyKey,
   issueAgentCredential,
   isUuid,
+  lockAccess,
   lockAgentCredential,
   revokeAgentCredential,
   subjectsOf,
@@ -173,6 +177,7 @@ export async function issueCredential(
     return invalid('purpose');
   }
   const { session } = context;
+  await lockAccess(tx);
   const scopeRefusal = await refuseScope(tx, session, keys);
   if (scopeRefusal !== undefined) return refused(scopeRefusal);
   const held = delegationCredentialKeys();
