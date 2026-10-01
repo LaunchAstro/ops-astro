@@ -241,7 +241,7 @@ export function App(props: AppProps): ReactElement {
   if (content === signIn) return signIn;
   const title = refused ? 'Not available' : (match?.route.title ?? at?.page.label ?? 'Not found');
   // The client face has no dock (R17), and nobody signed out has one.
-  const dockScreen = session === null || face === 'client' ? null : { ...screen, notice: null };
+  const dockScreen = session === null ? null : { ...screen, notice: null };
   return (
     <SignedInName value={personName}>
       <PageFreshnessProvider>
