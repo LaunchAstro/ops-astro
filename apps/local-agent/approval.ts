@@ -13,7 +13,9 @@
 // The owner's yes approves the proposal, which makes it queued work like any
 // other. `applyApprovals` is the agent doing that work: it picks it up, writes
 // exactly what the item named into OPS_LOCAL_AGENT_HOME/approvals.json, and
-// hands it back completed, with no model call. A no rejects the gate and
+// hands it back completed, with no model call. Only an approval this agent
+// proposed, whose ask is the need's own words, is written; any other is
+// handed back failed and writes nothing. A no rejects the gate and
 // nothing is queued, so nothing is written. The tick runs `applyApprovals`
 // before its task pass, and the task pass skips this purpose whatever the
 // order, so the approval's own work is never sent to the model.
@@ -177,6 +179,37 @@ function writeApproval(home: string, need: Need): void {
   renameSync(staged, file);
 }
 
+interface ProposedRow {
+  readonly payload: unknown;
+  readonly by_agent: boolean;
+}
+
+// The approval's payload, and whether the tick's own agent proposed it: its
+// login's active agent actor is the version's proposer.
+const PROPOSED = `
+  select v.payload,
+         exists (
+           select 1
+             from public.logins l
+             join public.actor_logins al
+               on al.business_id = l.business_id and al.login_id = l.id and al.active
+             join public.actors a
+               on a.business_id = al.business_id and a.id = al.actor_id
+              and a.kind = 'agent' and a.active
+            where l.business_id = v.business_id and l.provider = $3 and l.subject = $4
+              and a.id = v.proposed_by_actor_id
+         ) as by_agent
+    from public.proposal_versions v
+   where v.business_id = $1 and v.id = $2`;
+
+/** The need, only when the ask the decider read is the one this need makes. */
+function trustedNeed(payload: unknown): Need | undefined {
+  const need = readNeed(payload);
+  if (need === undefined) return undefined;
+  const ask = (payload as Record<string, unknown>)['ask'];
+  return ask === askOf(need) ? need : undefined;
+}
+
 /** The agent doing one approved approval: pick it up, write it, hand it back. */
 async function applyOne(options: ApprovalOptions, entry: QueueEntry): Promise<Need | undefined> {
   const { database, businessId, agent } = options;
@@ -190,12 +223,14 @@ async function applyOne(options: ApprovalOptions, entry: QueueEntry): Promise<Ne
   const [row] = await database.withBusiness(
     businessId,
     async (tx) =>
-      await tx.query<{ readonly payload: unknown }>(
-        `select payload from public.proposal_versions where business_id = $1 and id = $2`,
-        [tx.businessId, entry.versionId],
-      ),
+      await tx.query<ProposedRow>(PROPOSED, [
+        tx.businessId,
+        entry.versionId,
+        agent.provider,
+        agent.subject,
+      ]),
   );
-  const need = readNeed(row?.payload);
+  const need = row?.by_agent === true ? trustedNeed(row.payload) : undefined;
   if (need !== undefined) writeApproval(options.home, need);
   await executeAgentCommand(database, businessId, agent, String(picked.detail['credential']), {
     command: 'task.handback',
