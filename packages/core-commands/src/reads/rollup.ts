@@ -11,13 +11,19 @@
 // transaction after the login is resolved. So one viewer never receives
 // another's rollup, and a grant narrowed, revoked or delegated inside the
 // lifetime misses the cache rather than meeting a wider answer. The call reads
-// at READ COMMITTED, so the fingerprint is taken again once the answer is worked
-// out: a grant issued or revoked between the two may be in the answer and not
-// in the key, and that answer is served once and never held. What the lifetime
-// can leave stale is the data alone, for less than the floor.
+// at READ COMMITTED, so a grant issued or revoked while the answer is worked
+// out may be in the answer and not in the key. The answer is held only when
+// the live grants' fingerprint and one of the viewer's grant rows, revoked ones
+// included, read the same after it is worked out as before; otherwise it is
+// served once and never held. The rows' fingerprint catches a grant issued and
+// revoked again in that window, which leaves the live set where it was. It
+// does not catch a revoked parent restored by a direct UPDATE, which no
+// product path does. What the lifetime can leave stale is the data alone, for
+// less than the floor.
 
 import {
   grantFingerprint,
+  grantRowsFingerprint,
   subjectsOf,
   withSession,
   type BusinessId,
@@ -121,8 +127,9 @@ export async function readRollup<T extends object>(
 ): Promise<T | CommandRefusal> {
   const outcome = await withSession(database, businessId, presented, async (tx, session) => {
     if (!isInternalReader(session.roleKey)) return refuseNotFound();
-    const fingerprint = async (): Promise<string> =>
-      await grantFingerprint(tx, subjectsOf(session));
+    const subjects = subjectsOf(session);
+    const fingerprint = async (): Promise<string> => await grantFingerprint(tx, subjects);
+    const rows = async (): Promise<string> => await grantRowsFingerprint(tx, subjects);
     const taken = await fingerprint();
     const key = JSON.stringify([
       session.businessId,
@@ -134,8 +141,10 @@ export async function readRollup<T extends object>(
     ]);
     // The key names the rollup, so what is held under it is this rollup's `T`.
     return (await cache.answer(key, async () => {
+      const rowsTaken = await rows();
       const value = await rollup.compute(tx, session);
-      return { value, hold: (await fingerprint()) === taken };
+      const hold = (await fingerprint()) === taken && (await rows()) === rowsTaken;
+      return { value, hold };
     })) as T;
   });
   return isCommandRefusal(outcome) ? asCallerVisible(outcome) : outcome;
