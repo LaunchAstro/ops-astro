@@ -121,39 +121,9 @@ export const SHELL: LookScreen = {
         { at: `box.height@${theme}`, want: '13', why: 'DS-TOK-128' },
       ]),
     },
-    {
-      // Widths left out on the switch and its options: their width is the label's
-      // text advance, which Linux Chromium (hosted CI) draws 1-2px narrower than the
-      // Mac that pinned the mockup (run 36814568207: 135 vs 137, 67 vs 68, 66 vs 67).
-      // Font, size, weight, case and height hold the look.
-      id: 'shell.appbar-switch',
-      mockup: { ...BOARD, selector: '#viewSwitch' },
-      app: { ...APP, selector: '.appbar .segmented' },
-      props: ['border-top-color', 'box.y', 'box.height'],
-      widths: ALL,
-    },
-    {
-      id: 'shell.appbar-switch-on',
-      mockup: { ...BOARD, selector: '#viewSwitch button[aria-pressed="true"]' },
-      app: { ...APP, selector: '.appbar .segmented__opt[aria-pressed="true"]' },
-      props: [
-        'background-color',
-        'color',
-        'font-family',
-        'font-size',
-        'font-weight',
-        'text-transform',
-        'box.height',
-      ],
-      widths: ALL,
-    },
-    {
-      id: 'shell.appbar-switch-off',
-      mockup: { ...BOARD, selector: '#viewSwitch button[aria-pressed="false"]' },
-      app: { ...APP, selector: '.appbar .segmented__opt[aria-pressed="false"]' },
-      props: ['background-color', 'color', 'font-family', 'font-size'],
-      widths: ALL,
-    },
+    // No face switch here: R17 (PLACEHOLDERS.md, decided) shows it only inside
+    // /clients/:client/* and /portal/:client/*, which the mockup's board does not
+    // keep to. Its look is probed when the client face is built (MP-2-4).
     {
       // Its width is left out: the pinned mockup's harness has no icon font, so its
       // play glyph draws nothing there (DS-COMP-1 measures the timer 101 wide).
