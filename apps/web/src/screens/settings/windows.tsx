@@ -57,7 +57,7 @@ export function WindowRow(props: {
           min={0}
           step={1}
           placeholder="Days"
-          disabled={model.disabled}
+          disabled={model.disabledFor(which)}
           value={days}
           onChange={(event) => {
             setDays(event.target.value);
@@ -67,7 +67,7 @@ export function WindowRow(props: {
           className="btn btn--sm btn--primary"
           type="button"
           data-settings={`save-${which}`}
-          disabled={model.disabled}
+          disabled={model.disabledFor(which)}
           onClick={save}
         >
           {model.busy === which ? 'Saving…' : `Save ${WINDOWS[which].label.toLowerCase()}`}

@@ -28,6 +28,14 @@ export {
   type AgentCredential,
   type CredentialKey,
 } from './authority/agent-credentials.ts';
+export {
+  credentialSubject,
+  isAgentCredentialForm,
+  isAgentCredentialLive,
+  recordCredentialRefusal,
+  resolveAgentCredential,
+  type CredentialStanding,
+} from './authority/agent-credential-standing.ts';
 export { readEnvFile } from './env-file.ts';
 export {
   checkDelegatedAuthority,
@@ -85,7 +93,10 @@ export {
   resolveAgentLogin,
   type AgentSession,
 } from './identity/agent-login.ts';
-export { recordBodyRefusal } from './identity/authentication-attempts.ts';
+export {
+  recordAuthenticationAttempt,
+  recordBodyRefusal,
+} from './identity/authentication-attempts.ts';
 export {
   NO_MEMBERSHIP_FIXES,
   standsOnShares,
@@ -104,6 +115,7 @@ export {
 } from './identity/verified-subject.ts';
 export {
   liveFactor,
+  loginHasVerifiedFactor,
   recordFactorEnrolled,
   recordFactorRemoved,
   recordFactorVerified,
@@ -135,6 +147,7 @@ export {
   type PrivacyIncident,
   type PrivacyIncidentFacts,
 } from './operations/privacy-incidents.ts';
+export { readSecurityAlerts, type SecurityAlert } from './operations/security-alerts.ts';
 export {
   draftBreachNotices,
   type BreachNotice,

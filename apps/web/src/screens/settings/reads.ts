@@ -24,8 +24,16 @@ export const SETTINGS_READ: ReadName = 'settings.read';
  */
 export const SESSION_CAPABILITIES: ReadName = 'session.capabilities';
 
-/** The collection and action the two settings commands take. */
-export const SETTINGS_MANAGE = { collection: 'settings', action: 'manage' } as const;
+/** A grant a settings command takes, as `collection:action`. */
+export interface Grant {
+  readonly collection: string;
+  readonly action: string;
+}
+
+/** What sign-off and the two windows take. */
+export const SETTINGS_MANAGE: Grant = { collection: 'settings', action: 'manage' };
+/** What the four-eyes threshold takes: it moves money, so the server gates it as spend. */
+export const SPEND_DECIDE: Grant = { collection: 'spend', action: 'decide' };
 
 export const FOUR_EYES = 'four_eyes_threshold';
 export const SIGN_OFF = 'client_sign_off_required';
@@ -39,6 +47,17 @@ export const KEY = {
   conversation: CONVERSATION_WINDOW,
   retention: RETENTION_WINDOW,
 } as const;
+
+/** Each row and the grant its own command takes; the server gates them apart. */
+export const GRANT: Record<keyof typeof KEY, Grant> = {
+  'four-eyes': SPEND_DECIDE,
+  'sign-off': SETTINGS_MANAGE,
+  conversation: SETTINGS_MANAGE,
+  retention: SETTINGS_MANAGE,
+};
+
+/** A grant in words, as the server names its scopes. */
+export const scopeName = (grant: Grant): string => `${grant.collection}:${grant.action}`;
 
 /**
  * The rows in hand: the answer, or while a reread is in flight the previous
@@ -61,11 +80,10 @@ export function settingOf(result: SettingsReadResult | null, key: string): Setti
   return result?.settings.find((row) => row.key === key) ?? null;
 }
 
-/** Whether these grants cover the two settings commands. */
-export function holdsManage(grants: readonly Capability[]): boolean {
+/** Whether these grants include the one asked for. */
+export function holds(grants: readonly Capability[], need: Grant): boolean {
   return grants.some(
-    (grant) =>
-      grant.collection === SETTINGS_MANAGE.collection && grant.action === SETTINGS_MANAGE.action,
+    (grant) => grant.collection === need.collection && grant.action === need.action,
   );
 }
 

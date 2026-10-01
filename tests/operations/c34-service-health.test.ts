@@ -155,9 +155,13 @@ describe.skipIf(serverUrl === undefined)('C34 service health on the operations v
     expect(answer.status).toBe(200);
     expect(Object.keys(answer.body).toSorted()).toEqual([
       'breachRunbook',
+      'errorSink',
+      'lastTestedRestore',
       'ok',
       'privacyIncidents',
+      'securityAlerts',
       'serviceHealth',
+      'unattended',
     ]);
     expect([watcher.calls - watcherBefore, errorSink.calls - sinkBefore, heard.length]).toEqual([
       1, 1, 1,
@@ -246,5 +250,15 @@ describe.skipIf(serverUrl === undefined)('C34 service health on the operations v
       for (const spy of spies) spy.mockRestore();
     }
     expect(logged.join('\n')).not.toContain(CANARY);
+  });
+});
+describe.skipIf(serverUrl === undefined)('C55 error sink link on the operations view', () => {
+  it('C55 error sink link: operations.read carries the address the API was given, and null with none', async () => {
+    const url = 'https://errors.example.test/organizations/ops/issues/';
+    const given = await view(apiWith({ watcher, errorSink }, { url }));
+    expect(given.status).toBe(200);
+    expect(given.body['errorSink']).toStrictEqual({ url });
+    const none = await view(apiWith({ watcher, errorSink }));
+    expect(none.body['errorSink']).toBeNull();
   });
 });
