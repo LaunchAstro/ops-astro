@@ -15,8 +15,9 @@
 -- rewritten: the application inserts and reads it, and may never update or
 -- delete one. The trigger checks the row's own subject, not just its pointers:
 -- the version and the lease's run are on the lineage the row names, so a
--- handback cannot mark a version of another lineage. It runs after the row,
--- so row security answers a write for another business first.
+-- handback cannot mark a version of another lineage, and the version is newer
+-- than the one the lease worked under, so no lease marks its own plan. It runs
+-- after the row, so row security answers a write for another business first.
 
 create table public.reviewed_outputs (
   business_id uuid        not null,
@@ -41,14 +42,17 @@ create function public.reviewed_outputs_on_their_lineage() returns trigger
   language plpgsql
   as $$
 begin
+  -- The version is newer work than the lease's own, on one lineage: a lease never
+  -- marks the version it ran under (its plan), so the plan accept fires nothing.
   if not exists (select 1 from public.proposal_versions v
+                   join public.leases l on l.business_id = v.business_id and l.id = new.lease_id
+                   join public.planned_runs r on r.business_id = l.business_id and r.id = l.run_id
+                   join public.proposal_versions worked
+                     on worked.business_id = r.business_id and worked.id = r.version_id
                   where v.business_id = new.business_id and v.id = new.version_id
-                    and v.lineage_id = new.lineage_id)
-     or not exists (select 1 from public.leases l
-                      join public.planned_runs r on r.business_id = l.business_id and r.id = l.run_id
-                     where l.business_id = new.business_id and l.id = new.lease_id
-                       and r.lineage_id = new.lineage_id) then
-    raise exception 'reviewed_outputs: the version and the lease''s work are on the named lineage'
+                    and v.lineage_id = new.lineage_id and r.lineage_id = new.lineage_id
+                    and v.version > worked.version) then
+    raise exception 'reviewed_outputs: the version is on the named lineage, newer than the lease''s work'
       using errcode = 'check_violation';
   end if;
   return null;

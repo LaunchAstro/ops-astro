@@ -918,8 +918,9 @@ the reviewed output: one row in `reviewed_outputs` naming the version, its
 lineage and the lease whose work produced it. The application may insert and
 read the row, never rewrite it, and row security keeps it to its business. A
 trigger, after the row so row security answers another business first, checks
-the version and the lease's run are both on the named lineage, so a handback
-cannot mark another lineage's version.
+the version and the lease's run are both on the named lineage, and the version
+is newer than the one the lease worked under: a handback cannot mark another
+lineage's version, and no lease marks its own plan.
 
 Dispatch reads the mark under its locks, after the four effect-time facts and
 the reconcile mode: a lease whose version has no mark is `LAUNCH_NOT_DECIDED`
