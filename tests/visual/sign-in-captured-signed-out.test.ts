@@ -20,7 +20,8 @@ vi.mock('./capture.ts', () => ({
     session: source.session,
     width,
     theme: source.colorScheme,
-    context: { close: () => {} },
+    // `route` takes the made-up reads (made-up-api.ts) a signed-in side registers.
+    context: { close: () => {}, route: () => Promise.resolve() },
   }),
   load: (
     side: { session?: string; width: number; theme: string },
