@@ -54,10 +54,12 @@ if (serverUrl === undefined) {
 
 const THROUGH_0029 = (version: string): boolean => version.slice(0, 4) <= '0029';
 // And AW-06's 0210 plan step key: the runtime that seeds below proposes with it.
-// It reads nothing 0030 adds, and the runner applies whatever is pending, so
-// the upgrade still applies 0030 onto these rows.
+// And AW-08's 0213 reviewed outputs: that runtime's revision asks whether it
+// revises an agent's output (AW-09). Neither reads anything 0030 adds, and the
+// runner applies whatever is pending, so the upgrade still applies 0030 onto
+// these rows.
 const SEEDED = (version: string): boolean =>
-  THROUGH_0029(version) || version.slice(0, 4) === '0210';
+  THROUGH_0029(version) || ['0210', '0213'].includes(version.slice(0, 4));
 
 const PACK_OF_VERSION = { code: '23503', constraint_name: 'gates_pack_in_same_version' };
 const VERSION_FIXED = { code: '23514', constraint_name: 'gates_version_fixed_once_decided' };
