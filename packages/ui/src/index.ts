@@ -35,6 +35,7 @@ import './styles/2-primitives.css';
 import './styles/2-forms.css';
 import './styles/3-shell.css';
 import './styles/4-board.css';
+import './styles/4b-board-machine.css';
 import './styles/5-task.css';
 import './styles/7-page-kit.css';
 import './styles/8-notifications.css';
@@ -62,6 +63,9 @@ export * from './surfaces/Frame.tsx';
 export * from './surfaces/TabRow.tsx';
 export * from './surfaces/PersonMenu.tsx';
 export * from './surfaces/Board.tsx';
+export * from './surfaces/BoardMachine.tsx';
+export * from './surfaces/ProjectsBoard.tsx';
+export * from './board/index.ts';
 export * from './surfaces/TaskPage.tsx';
 export * from './surfaces/Notifications.tsx';
 export * from './surfaces/Ledger.tsx';
@@ -70,5 +74,8 @@ export * from './page-kit/tips.tsx';
 export * from './page-kit/section.tsx';
 export * from './page-kit/stats.tsx';
 export * from './page-kit/table.tsx';
+// The page kit's table sort is the package's; the board machine's own sort
+// (U09) is reached through `board/index.ts`.
+export { nextSort, sortRows, type SortState } from './page-kit/table.tsx';
 export * from './page-kit/bars.tsx';
 export * from './page-kit/detail.tsx';

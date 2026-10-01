@@ -32,8 +32,9 @@ export interface SpineField {
   readonly writeMode: WriteMode;
   /**
    * The operations that own a protected field; empty for one no operation
-   * owns. More than one for `state`: completing, reopening and starting are
-   * three commands over one field (minimum contract, 5.2). A list rather than
+   * owns. More than one for `state`: completing, reopening, starting and
+   * setting a named state are four commands over one field (minimum contract,
+   * 5.2). A list rather than
    * a string holding a list since 0009, because a reader who forgets to split
    * sees one operation named `task.complete task.reopen task.start`.
    */
@@ -68,10 +69,11 @@ export const TASK_SPINE: readonly SpineField[] = [
     valueType: 'uuid',
     slot: 'uuid_1',
     writeMode: 'operation',
-    // Three commands over one field. The refusal names all three, because a
-    // caller told only "call task.complete" would be told the wrong thing
-    // two-thirds of the time.
-    owningOperations: ['task.complete', 'task.reopen', 'task.start'],
+    // Four commands over one field: the lifecycle three by machine category,
+    // and `task.set_state` by the state's id. The refusal names all four,
+    // because a caller told only "call task.complete" would be told the
+    // wrong thing most of the time.
+    owningOperations: ['task.complete', 'task.reopen', 'task.set_state', 'task.start'],
     escalatingOperation: null,
     // A shared task shows the client its status (I09 ruling), as the label.
     visibilityClass: 'shared',
@@ -249,6 +251,70 @@ export const TASK_SPINE: readonly SpineField[] = [
     owningOperations: ['task.set_audience'],
     escalatingOperation: null,
   },
+  // The three marks the derived rank reads (R70, migration 0131): whole
+  // numbers from 1 to 10, or absent, and absent is never 0. One command owns
+  // all three, so a mark changes only as `task scores changed` in the audit.
+  {
+    key: 'impact',
+    label: 'Impact',
+    valueType: 'numeric',
+    slot: 'num_3',
+    writeMode: 'operation',
+    owningOperations: ['task.set_scores'],
+    escalatingOperation: null,
+  },
+  {
+    key: 'confidence',
+    label: 'Confidence',
+    valueType: 'numeric',
+    slot: 'num_4',
+    writeMode: 'operation',
+    owningOperations: ['task.set_scores'],
+    escalatingOperation: null,
+  },
+  {
+    key: 'ease',
+    label: 'Ease',
+    valueType: 'numeric',
+    slot: 'num_5',
+    writeMode: 'operation',
+    owningOperations: ['task.set_scores'],
+    escalatingOperation: null,
+  },
+  {
+    // The Ad hoc mark (MP-4-10, migration 0132): it drives billing and is the
+    // default for the task's new time entries. Absent reads as not ad hoc.
+    key: 'ad_hoc',
+    label: 'Ad hoc',
+    valueType: 'boolean',
+    slot: 'bool_2',
+    writeMode: 'operation',
+    owningOperations: ['task.set_adhoc'],
+    escalatingOperation: null,
+  },
+  // A step left out of its parent's count without being done (MP-4-15,
+  // migration 0135): completing a task archives its unfinished subtasks and
+  // reopening it restores them, both in the transition's own transaction.
+  // System, like `completed_at`, because no operation takes either as an
+  // input; unslotted, because no view filters on them.
+  {
+    key: 'archived_at',
+    label: 'Archived at',
+    valueType: 'timestamptz',
+    slot: null,
+    writeMode: 'system',
+    owningOperations: [],
+    escalatingOperation: null,
+  },
+  {
+    key: 'archived_why',
+    label: 'Archived why',
+    valueType: 'text',
+    slot: null,
+    writeMode: 'system',
+    owningOperations: [],
+    escalatingOperation: null,
+  },
   {
     // Unslotted on purpose: long display text that no view filters, sorts or
     // groups on. A slot would buy nothing and cost an index.
@@ -260,6 +326,55 @@ export const TASK_SPINE: readonly SpineField[] = [
     owningOperations: [],
     escalatingOperation: null,
   },
+  {
+    // The pre-prompt an agent boots on for this task (MP-4-7, CS-4.23,
+    // migration 0134). Unslotted and generic like the description.
+    key: 'agent_brief',
+    label: 'Agent brief',
+    valueType: 'text',
+    slot: null,
+    writeMode: 'generic',
+    owningOperations: [],
+    escalatingOperation: null,
+  },
+  {
+    // The in-product address the task is about, path and hash (MP-4-12,
+    // CS-4.22, migration 0137). Unslotted, display only, as the fixed-slots
+    // contract has the legacy field; `task.update` keeps only an address
+    // inside the product (`isInProductLink`).
+    key: 'page_link',
+    label: 'Page link',
+    valueType: 'text',
+    slot: null,
+    writeMode: 'generic',
+    owningOperations: [],
+    escalatingOperation: null,
+  },
+  {
+    // The time the burn bar and time logged measure against, in whole minutes
+    // (MP-4-8, CS-4.14, migration 0138). Generic, as the fixed-slots contract
+    // classifies `estimated_minutes`, and unslotted: the slots beyond the
+    // reservation are the protected fields', and nothing filters on it yet.
+    key: 'estimated_minutes',
+    label: 'Estimate',
+    valueType: 'numeric',
+    slot: null,
+    writeMode: 'generic',
+    owningOperations: [],
+    escalatingOperation: null,
+  },
+  {
+    // The agent assignee (Assign to AI, migration 0140): a live delegation
+    // the assigner holds for this task. One kind at a time with `assignee`;
+    // `task.assign` is its only writer, and a revoke clears it.
+    key: 'agent',
+    label: 'Agent',
+    valueType: 'uuid',
+    slot: null,
+    writeMode: 'operation',
+    owningOperations: ['task.assign'],
+    escalatingOperation: null,
+  },
 ];
 
 /**
@@ -267,11 +382,18 @@ export const TASK_SPINE: readonly SpineField[] = [
  * relaxing one is a visible diff (minimum contract, 5.3 assertion 2).
  */
 export const PROTECTED_TASK_FIELDS: readonly string[] = [
+  'ad_hoc',
+  'agent',
+  'archived_at',
+  'archived_why',
   'assignee',
   'client',
   'client_visible',
   'completed_at',
+  'confidence',
   'delegate',
+  'ease',
+  'impact',
   'intake_state',
   'key',
   'parent',

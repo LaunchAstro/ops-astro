@@ -1,0 +1,252 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// The board's view state and its history (MP-5-3, MP-5-4, B-12, CS-5.5).
+//
+// Every change a person makes to how the board reads (a filter, a search, a
+// sort, a mode, a column width) goes through `reduceBoard`, which records the
+// view it replaced under a label naming the step, so Undo can say what it
+// would undo. Sixty steps are kept. The history holds views only: nothing
+// here writes a record, and undoing a view change never touches one.
+//
+// A press on something the board does not offer (an unknown facet, preset,
+// mode or column) changes nothing and records nothing.
+
+import { nextSort } from './sort.ts';
+import { parseQuery, pressFacet } from './filters.ts';
+import { isWidth } from './widths.ts';
+import type { BoardAction, BoardContext, BoardView, MachineState } from './types.ts';
+
+export const HISTORY_CAP = 60;
+
+const REST: BoardView = { ids: [], text: [], sort: null, mode: null, widths: null };
+
+export function initialMachine(view: BoardView = REST): MachineState {
+  return { view, history: { past: [], future: [] } };
+}
+
+function record(state: MachineState, label: string, view: BoardView): MachineState {
+  return {
+    view,
+    history: {
+      past: [...state.history.past, { label, view: state.view }].slice(-HISTORY_CAP),
+      future: [],
+    },
+  };
+}
+
+const unique = (list: readonly string[]): readonly string[] => [...new Set(list)];
+
+/** A mode's chip pressed: opening it drops the filters of the kinds it names (P-10). */
+function toggleMode<Row>(
+  state: MachineState,
+  id: string,
+  context: BoardContext<Row>,
+): MachineState {
+  const view = state.view;
+  const mode = context.modes.find((one) => one.id === id);
+  if (mode === undefined) return state;
+  const opening = view.mode !== mode.id;
+  const drops = opening ? (mode.drops ?? []) : [];
+  const kindOf = (facetId: string): string =>
+    context.facets.find((facet) => facet.id === facetId)?.kind ?? '';
+  return record(state, `mode ${mode.label}`, {
+    ...view,
+    ids: view.ids.filter((facetId) => !drops.includes(kindOf(facetId))),
+    mode: opening ? mode.id : null,
+  });
+}
+
+type Step<T extends BoardAction['type']> = Extract<BoardAction, { readonly type: T }>;
+
+export function reduceBoard<Row>(
+  state: MachineState,
+  action: BoardAction,
+  context: BoardContext<Row>,
+): MachineState {
+  switch (action.type) {
+    case 'press':
+    case 'take':
+      return pressStep(state, action, context);
+    case 'preset':
+      return presetStep(state, action, context);
+    case 'mode':
+      return toggleMode(state, action.id, context);
+    case 'drop':
+    case 'dropText':
+    case 'dropLast':
+    case 'clear':
+      return dropStep(state, action, context);
+    case 'commit':
+    case 'phrase':
+      return searchStep(state, action, context);
+    case 'sort':
+    case 'resize':
+    case 'resetWidths':
+      return columnStep(state, action, context);
+    case 'undo':
+    case 'redo':
+      return historyStep(state, action);
+  }
+}
+
+const labelOf = <Row>(context: BoardContext<Row>, id: string): string | undefined =>
+  context.facets.find((facet) => facet.id === id)?.label;
+
+function pressStep<Row>(
+  state: MachineState,
+  action: Step<'press' | 'take'>,
+  context: BoardContext<Row>,
+): MachineState {
+  const view = state.view;
+  const facetLabel = (id: string): string | undefined => labelOf(context, id);
+  const id = action.type === 'press' ? action.id : action.facetId;
+  const label = facetLabel(id);
+  if (label === undefined) return state;
+  const ids =
+    action.type === 'press' ? pressFacet(view.ids, id, action.stack) : unique([...view.ids, id]);
+  return record(state, `filter ${label}`, { ...view, ids });
+}
+
+function presetStep<Row>(
+  state: MachineState,
+  action: Step<'preset'>,
+  context: BoardContext<Row>,
+): MachineState {
+  const view = state.view;
+  const preset = context.presets.find((one) => one.id === action.id);
+  if (preset === undefined) return state;
+  const on = preset.facetIds.every((id) => view.ids.includes(id));
+  let ids: readonly string[];
+  if (action.stack) {
+    ids = on
+      ? view.ids.filter((id) => !preset.facetIds.includes(id))
+      : unique([...view.ids, ...preset.facetIds]);
+  } else {
+    ids = on && view.ids.length === preset.facetIds.length ? [] : [...preset.facetIds];
+  }
+  return record(state, `filter ${preset.label}`, { ...view, ids });
+}
+
+function dropStep<Row>(
+  state: MachineState,
+  action: Step<'drop' | 'dropText' | 'dropLast' | 'clear'>,
+  context: BoardContext<Row>,
+): MachineState {
+  const view = state.view;
+  switch (action.type) {
+    case 'drop': {
+      if (!view.ids.includes(action.id)) return state;
+      return record(state, `drop ${labelOf(context, action.id) ?? 'filter'}`, {
+        ...view,
+        ids: view.ids.filter((id) => id !== action.id),
+      });
+    }
+    case 'dropText': {
+      if (!view.text.includes(action.text)) return state;
+      return record(state, `drop “${action.text}”`, {
+        ...view,
+        text: view.text.filter((term) => term !== action.text),
+      });
+    }
+    case 'dropLast': {
+      const lastText = view.text.at(-1);
+      if (lastText !== undefined)
+        return reduceBoard(state, { type: 'dropText', text: lastText }, context);
+      const lastId = view.ids.at(-1);
+      if (lastId !== undefined) return reduceBoard(state, { type: 'drop', id: lastId }, context);
+      return state;
+    }
+    case 'clear': {
+      if (view.ids.length === 0 && view.text.length === 0) return state;
+      return record(state, 'clear all', { ...view, ids: [], text: [] });
+    }
+  }
+}
+
+function searchStep<Row>(
+  state: MachineState,
+  action: Step<'commit' | 'phrase'>,
+  context: BoardContext<Row>,
+): MachineState {
+  const view = state.view;
+  if (action.type === 'commit') {
+    const parsed = parseQuery(action.raw, context.facets);
+    if (parsed.ids.length === 0 && parsed.text.length === 0) return state;
+    const words = [
+      ...parsed.ids.map((id) => labelOf(context, id) ?? id),
+      ...parsed.text.map((term) => `“${term}”`),
+    ];
+    return record(state, `search ${words.join(' + ')}`, {
+      ...view,
+      ids: unique([...view.ids, ...parsed.ids]),
+      text: unique([...view.text, ...parsed.text]),
+    });
+  }
+  const words = action.text
+    .toLowerCase()
+    .split(/\s+/u)
+    .filter((word) => word !== '');
+  if (words.length === 0) return state;
+  return record(state, `search “${words.join(' ')}”`, {
+    ...view,
+    text: unique([...view.text, ...words]),
+  });
+}
+
+function columnStep<Row>(
+  state: MachineState,
+  action: Step<'sort' | 'resize' | 'resetWidths'>,
+  context: BoardContext<Row>,
+): MachineState {
+  const view = state.view;
+  switch (action.type) {
+    case 'sort': {
+      const column = context.columns.find((one) => one.key === action.key);
+      if (column?.sortValue === undefined) return state;
+      return record(state, `sort ${column.label}`, { ...view, sort: nextSort(view.sort, column) });
+    }
+    case 'resize': {
+      // One step per finished drag or arrow press, and only widths the board
+      // draws and the store could keep (MP-5-6).
+      const column = context.columns.find((one) => one.key === action.key);
+      const entries = Object.entries(action.widths);
+      const known = (key: string): boolean => context.columns.some((one) => one.key === key);
+      if (
+        column === undefined ||
+        entries.length === 0 ||
+        !entries.every(([key, width]) => known(key) && isWidth(width))
+      ) {
+        return state;
+      }
+      return record(state, `resize ${column.label}`, { ...view, widths: { ...action.widths } });
+    }
+    case 'resetWidths': {
+      if (view.widths === null) return state;
+      return record(state, 'reset columns', { ...view, widths: null });
+    }
+  }
+}
+
+function historyStep(state: MachineState, action: Step<'undo' | 'redo'>): MachineState {
+  const view = state.view;
+  if (action.type === 'undo') {
+    const step = state.history.past.at(-1);
+    if (step === undefined) return state;
+    return {
+      view: step.view,
+      history: {
+        past: state.history.past.slice(0, -1),
+        future: [...state.history.future, { label: step.label, view }],
+      },
+    };
+  }
+  const step = state.history.future.at(-1);
+  if (step === undefined) return state;
+  return {
+    view: step.view,
+    history: {
+      past: [...state.history.past, { label: step.label, view }],
+      future: state.history.future.slice(0, -1),
+    },
+  };
+}

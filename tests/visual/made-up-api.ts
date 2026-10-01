@@ -3,13 +3,14 @@
 // Made-up answers for the width-and-theme harness (UI-POLISH).
 //
 // The harness serves the app with its API at a dead port, so every data
-// screen was photographed on its "could not be read" state, proving nothing
-// about the look. These answers let each screen draw rows. They are typed against the wire
-// contract's own read shapes, so a changed read fails the typecheck here rather than drawing
-// a screen from a shape the API no longer sends. Test side only: the page asks the same
-// addresses it asks the real API; nothing here is a back end.
+// screen used to be photographed on its "could not be read" state: no
+// sideways scroll proven on an error, nothing about the look. These answers
+// let each screen draw rows. They are typed against the wire contract's own
+// read shapes, so a changed read fails the typecheck here rather than drawing
+// a screen from a shape the API no longer sends. Test side only: the page
+// asks the same addresses it asks the real API; nothing here is a back end.
 //
-// The rows follow the pinned mockup's Projects board, so a capture reads
+// The rows (made-up-tasks.ts) follow the pinned mockup's Projects board, so a capture reads
 // against the mockup's page. Every name and client is made up.
 
 import type {
@@ -17,94 +18,25 @@ import type {
   CapabilitiesResult,
   InboxCountResult,
   InboxReadResult,
-  InternalTaskDetail,
   InternalTaskRead,
   OperationsReadResult,
   PersonListResult,
   QueueResult,
   SessionPersonResult,
   SettingsReadResult,
+  TagListResult,
   TaskBoardResult,
   TaskExecutionResult,
   TaskLedgerResult,
   TaskSearchResult,
-  TaskStateView,
-  TaskSummary,
+  TaskTodosResult,
   TeamListResult,
 } from '../../packages/core-wire/src/index.ts';
 import type { BrowserContext } from 'playwright';
 import type { ReadName } from '../../apps/web/src/operations/read-names.ts';
+import { DETAIL, MIA, NATHAN, STATE, TAGS, TASKS, TODOS } from './made-up-tasks.ts';
 
-const STATE = {
-  active: { id: 's-active', key: 'active', label: 'Active', machineCategory: 'started' },
-  waiting: {
-    id: 's-waiting',
-    key: 'waiting',
-    label: 'Waiting on client',
-    machineCategory: 'backlog',
-  },
-  hold: { id: 's-hold', key: 'hold', label: 'On hold', machineCategory: 'unstarted' },
-} as const satisfies Record<string, TaskStateView>;
-
-const NATHAN = { personId: 'p-nathan', name: 'Nathan' };
-const MIA = { personId: 'p-mia', name: 'Mia' };
-
-const task = (
-  n: number,
-  title: string,
-  state: TaskStateView,
-  due: string | null,
-  assignee: TaskSummary['assignee'] = NATHAN,
-): TaskSummary => ({
-  id: `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`,
-  key: `T-${String(n)}`,
-  title,
-  state,
-  assignee,
-  due,
-  priority: null,
-  completedAt: null,
-  revision: 1,
-});
-
-// The harness clock is 2026-09-26; dates sit either side of it.
-export const TASKS: readonly TaskSummary[] = [
-  task(1, 'Contract review pack, 31 July', STATE.active, '2026-09-30'),
-  task(6, 'Renewal pack, 14 August', STATE.active, '2026-10-07'),
-  task(9, 'Sign off the Meridian ad run rate, 29% over budget', STATE.active, '2026-09-18'),
-  task(13, 'Approve the four review replies before they go out', STATE.active, '2026-09-26'),
-  task(15, 'Ads rebuild: cost per enquiry', STATE.active, '2026-10-06', MIA),
-  task(17, 'Shopping feed clean-up', STATE.active, '2026-10-05'),
-  task(24, 'New patient offer campaign', STATE.active, '2026-10-09'),
-  task(4, 'Budget pacing fix', STATE.waiting, '2026-10-01', null),
-  task(33, 'Paid social rebuild', STATE.hold, null),
-];
-
-const DETAIL: InternalTaskDetail = {
-  ...(TASKS[0] as TaskSummary),
-  description:
-    'Pull the signed scope, the two variations and the renewal terms into one pack for review.',
-  history: [
-    { at: '2026-09-24T01:10:00.000Z', actorId: NATHAN.personId, operation: 'task.create' },
-    { at: '2026-09-25T03:40:00.000Z', actorId: NATHAN.personId, operation: 'task.update' },
-  ],
-  comments: [
-    {
-      id: 'c-1',
-      audience: 'internal',
-      author: NATHAN.personId,
-      body: 'Variation two is still unsigned; chase before the pack goes out.',
-      comment_type: 'note',
-      posted_at: '2026-09-25T04:00:00.000Z',
-      edited_at: null,
-      source: 'app',
-    },
-  ],
-  proposals: [],
-  capCurrency: 'AUD',
-  envelope: null,
-  alerts: [],
-};
+export { TASKS } from './made-up-tasks.ts';
 
 const HARBOUR = { clientId: 'c-harbour', name: 'Harbour Physio' };
 const MERIDIAN = { clientId: 'c-meridian', name: 'Meridian Dental' };
@@ -159,8 +91,20 @@ const setting = (key: string, value: number | boolean, revision: number) => ({
 });
 
 const READS = {
-  'task.board': { ok: true, tasks: TASKS } satisfies TaskBoardResult,
-  'task.read': { ok: true, task: DETAIL } satisfies InternalTaskRead,
+  'task.board': {
+    ok: true,
+    tasks: TASKS,
+    changedAt: '2026-09-25T04:00:00.000Z',
+    viewer: NATHAN.personId,
+    owed: 0,
+  } satisfies TaskBoardResult,
+  'task.read': {
+    ok: true,
+    task: DETAIL,
+    states: Object.values(STATE),
+  } satisfies InternalTaskRead,
+  'task.todos': { ok: true, todos: TODOS } satisfies TaskTodosResult,
+  'tag.list': { ok: true, tags: TAGS } satisfies TagListResult,
   'person.list': { ok: true, persons: [NATHAN, MIA] } satisfies PersonListResult,
   'settings.read': {
     ok: true,

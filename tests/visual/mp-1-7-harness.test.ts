@@ -152,16 +152,19 @@ function zeroHorizontalOverflow(): void {
   });
 }
 
-// The registry's pages: wave 0's four, U14's two, MP-7-3's inbox, MP-1-3's gallery, MP-7-10's Team.
+// The registry's pages: wave 0's four, the task page with no key (MP-4-1), U14's two,
+// MP-7-3's inbox, MP-1-3's gallery, My to-dos (MP-7-1) and MP-7-10's Team.
 const BUILT_SO_FAR = [
   'agency:sign-in',
   'agency:projects-board',
   'agency:task-detail',
+  'agency:task-unnamed',
   'agency:settings',
   'agency:access',
   'agency:telemetry',
   'agency:inbox',
   'agency:gallery',
+  'agency:todos',
   'agency:team',
 ];
 

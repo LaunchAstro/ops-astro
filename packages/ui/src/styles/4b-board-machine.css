@@ -1,0 +1,754 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* The board machine (U09): the command bar, the chip row, the reading line,
+   the typeahead and the table's width model. Rules only the machine draws;
+   the board's shared dialect stays in 4-board.css. */
+
+.cbd__cmd {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cbdm__search {
+  position: relative;
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.cbd__barq {
+  width: 100%;
+  font: inherit;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+}
+
+.cbd__barq:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.cbd__ico {
+  font: inherit;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.cbd__ico:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.cbd__clear:disabled {
+  opacity: 0.32;
+  cursor: default;
+}
+
+.cbd__preset,
+.cbd__mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.cbd__preset:hover {
+  border-color: var(--text);
+}
+
+.cbd__preset.is-on {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--bg);
+}
+
+.cbd__mode.is-on {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  color: var(--text);
+}
+
+.cbd__count {
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
+
+/* The viewer's own chip (P-11): an ink fill when on. */
+.cbd__preset--viewer.is-on {
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+/* A category chip where a client or a mention waits (P-13): flagged, never counted. */
+.cbd__preset--cat.is-flagged {
+  border-color: var(--accent);
+}
+
+/* The Review chip's live count (P-10). */
+.cbd__count--accent {
+  color: var(--accent-ink);
+}
+
+.cbd__read {
+  margin: 0;
+  color: var(--text-muted);
+}
+
+/* The typeahead: groups are presentation, options are the only stops. */
+.cbdta {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+}
+
+.cbdta__gh,
+.cbdta__more {
+  padding: 4px 10px;
+  color: var(--text-muted);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
+}
+
+.cbdta__opt {
+  display: flex;
+  justify-content: space-between;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.cbdta__opt[aria-selected='true'] {
+  background: var(--surface-2);
+}
+
+.cbdta__k {
+  color: var(--text-muted);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
+}
+
+/* The width model: when the floors exceed the card the table takes their
+   sum and scrolls here, inside the card; the page never scrolls sideways.
+   The heads are the kit table's (`.table th`, MP-1-3); the width model, not
+   the kit table's phone floor, sizes the table. */
+.cbd__wrap {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+[data-board] .cbd__tbl {
+  min-width: 0;
+}
+
+/* The resize grip (MP-5-6, B-17): an 8px handle on the head's right edge
+   whose rule is 1px at rest and 2px accent on hover, focus and drag. */
+.cbd__grip {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 8px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+  z-index: 1;
+}
+
+.cbd__grip::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 1px;
+  height: 100%;
+  background: var(--border);
+}
+
+.cbd__grip:hover::after,
+.cbd__grip:focus-visible::after,
+.cbd__grip.is-live::after {
+  width: 2px;
+  background: var(--accent);
+}
+
+.cbd__grip:focus-visible {
+  outline: none;
+}
+
+.cbd__th {
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  width: 100%;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+.cbd__tbl [data-align='end'] {
+  text-align: end;
+}
+
+.cbd__tbl [data-align='center'] {
+  text-align: center;
+}
+
+.cbd__hd:not([data-tight]) .cbd__thi {
+  display: none;
+}
+
+/* Tight: the head drops its words and centres its icon; the label stays the
+   button's accessible name. */
+.cbd__hd[data-tight] .cbd__thl {
+  display: none;
+}
+
+/* Tight cells clip at the column's edge; they never shorten their text. */
+td[data-tight] {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: clip;
+}
+
+/* The sort arrow sits centred on the head's bottom rule, so a sorted column
+   is never wider than an unsorted one. */
+.cbd__arrow {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translate(-50%, 50%) scale(0.8);
+  font: var(--type-badge);
+  letter-spacing: var(--type-badge-tracking);
+  text-transform: var(--type-badge-case);
+  color: var(--text);
+}
+
+/* ── The command bar (MP-5-7, B-04, B-05, B-25, B-26, P-07) ─────────────── */
+
+.cbd__funnelw {
+  position: relative;
+}
+
+.cbd__funnel.is-on {
+  background: var(--surface-2);
+}
+
+/* The corner badge: how many filters are on that no chip on the bar shows. */
+.cbd__badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: var(--type-badge);
+  letter-spacing: var(--type-badge-tracking);
+  text-transform: var(--type-badge-case);
+  display: grid;
+  place-content: center;
+}
+
+/* Display-gated by `hidden`, never moved out of view. */
+.cbd__menu[hidden] {
+  display: none;
+}
+
+.cbd__menu {
+  position: absolute;
+  z-index: 45;
+  top: calc(100% + 4px);
+  right: 0;
+  width: min(22rem, calc(100vw - 32px));
+  max-height: 70vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-3);
+  background: var(--paper);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-overlay);
+}
+
+.cbd__menuq {
+  display: flex;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  padding: 4px var(--s-3);
+}
+
+.cbd__menuq:focus-within {
+  border-color: var(--accent);
+}
+
+.cbd__menuq input {
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+}
+
+.cbd__menuq input:focus {
+  outline: none;
+}
+
+.cbd__menugrp {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.cbd__menuk,
+.cbd__flabel {
+  flex: 0 0 100%;
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
+  color: var(--ink-faint);
+}
+
+.cbd__facet {
+  font: inherit;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+.cbd__facet[aria-pressed='true'] {
+  background: var(--text);
+  border-color: var(--text);
+  color: var(--bg);
+}
+
+.cbd__lnk {
+  align-self: flex-start;
+  font: inherit;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--text-muted);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* At 390 the menu spans the whole bar, which sits inside the page's 16px
+   gutter, instead of hanging off the funnel toward the screen's edge (D-22). */
+@media (max-width: 480px) {
+  .cbd__cmd {
+    position: relative;
+  }
+
+  .cbd__funnelw {
+    position: static;
+  }
+
+  .cbd__menu {
+    left: 0;
+    right: 0;
+    width: auto;
+  }
+}
+
+/* The freshness stamp (P-07): a stamp, not a control. The board stays live,
+   so there is no Sync button; the short words are for narrow bars. */
+.cbd__fresh {
+  margin-left: auto;
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+
+.cbd__freshs {
+  display: none;
+}
+
+@media (max-width: 480px) {
+  .cbd__freshl {
+    display: none;
+  }
+
+  .cbd__freshs {
+    display: inline;
+  }
+}
+
+/* The chip row's ladder (B-25): full words, then each chip's words capped at
+   96, 72, 56 and 44px (clipped, like every cell), then icons only; the chip
+   keeps its name as its label. */
+.cbd__presi {
+  display: none;
+}
+
+.cbd__filters[data-tier]:not([data-tier='words'], [data-tier='icons']) .cbd__presetw {
+  display: inline-block;
+  max-width: var(--catw);
+  overflow: hidden;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+.cbd__filters[data-tier='icons'] .cbd__presetw {
+  display: none;
+}
+
+.cbd__filters[data-tier='icons'] .cbd__presi {
+  display: inline;
+}
+
+/* The sticky stack (B-26): the chip row under the chrome, the heads under the
+   chip row. Each offset is measured by whoever draws the element: the shell
+   publishes --chrome-h, the board --catbar-h. The grounds are opaque so rows
+   never show through. Below 900 the chip row scrolls away. */
+@media not all and (max-width: 900px) {
+  .cbd__filters {
+    position: sticky;
+    top: var(--chrome-h, 0px);
+    z-index: 12;
+    background: var(--paper);
+  }
+}
+
+/* Heads stick only where the table fits its card: a scroll container would
+   pin them to itself, so the wrap clips instead of scrolling there. Below
+   1279 the table can overflow and scrolls, and the heads do not stick. */
+@media (min-width: 1279px) {
+  .cbd__wrap {
+    overflow-x: clip;
+  }
+
+  .cbd__tbl .cbd__hd {
+    position: sticky;
+    top: calc(var(--chrome-h, 0px) + var(--catbar-h, 0px));
+    z-index: 11;
+    background: var(--paper);
+  }
+}
+
+/* The Projects board's cells (MP-5-8, BOARDS P-20 to P-28, P-36). */
+.cbd__rank {
+  color: var(--ink-faint);
+}
+.cbd__due {
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+  color: var(--text-2);
+}
+.cbd__due[data-tone='overdue'] {
+  color: var(--danger);
+}
+.cbd__due[data-tone='today'] {
+  color: var(--text);
+}
+.cbd__chip {
+  display: inline-block;
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.cbd__tok {
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
+.cbd__tokk {
+  display: block;
+  font: var(--type-chip);
+  letter-spacing: var(--type-chip-tracking);
+  text-transform: var(--type-chip-case);
+  color: var(--ink-faint);
+}
+.cbd__cmt {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: var(--text-2);
+  text-decoration: none;
+}
+.cbd__cmtg {
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+.cbd__cmtn {
+  position: absolute;
+  top: -2px;
+  right: -4px;
+  min-width: 14px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: var(--type-badge);
+  letter-spacing: var(--type-badge-tracking);
+  text-transform: var(--type-badge-case);
+  display: grid;
+  place-content: center;
+  height: 14px;
+}
+.cbd__cmt:hover,
+.cbd__cmt:focus-visible {
+  color: var(--accent);
+}
+.cbd__cmt:hover .cbd__cmtn,
+.cbd__cmt:focus-visible .cbd__cmtn {
+  background: var(--ink);
+}
+.brn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+}
+.brn__bar {
+  flex: 1 1 auto;
+  min-width: 28px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--border);
+  overflow: hidden;
+}
+.brn__fill {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+.brn__fig {
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+  color: var(--text-2);
+}
+.brn.is-over .brn__fill {
+  background: var(--danger);
+}
+.brn.is-over .brn__fig {
+  color: var(--danger);
+}
+
+/* The Projects row's controls (MP-5-9, P-30, P-32, P-33). The tick sits
+   before the name; the rename input is sized to the cell so the row keeps
+   its height; the hover box shows on row hover or focus, and at rest below
+   900, where there is no hover. */
+.cbd__tick {
+  flex: none;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.cbd__rename {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 1.6em;
+  padding: 0 4px;
+  font: inherit;
+}
+
+.cbd__routes--pop {
+  display: none;
+  flex: none;
+  gap: 2px;
+  margin-left: auto;
+}
+
+tr:hover .cbd__routes--pop,
+tr:focus-within .cbd__routes--pop {
+  display: inline-flex;
+}
+
+@media (max-width: 900px) {
+  .cbd__routes--pop {
+    display: inline-flex;
+  }
+}
+
+.cbd__route {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text-2);
+  font: var(--type-button);
+  letter-spacing: var(--type-button-tracking);
+  text-transform: var(--type-button-case);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.cbd__route:hover {
+  border-color: var(--text);
+  color: var(--text);
+}
+
+/* Inline cell editors (MP-5-10, P-37, DS-PRIM-5 inline, R47). The editor lies
+   over its cell and the drawn value stays underneath, hidden, so the row keeps
+   its height and the editor is the cell's size; the menu hangs below the cell,
+   at least its width and never wider than 22rem. */
+.cbd__cell {
+  position: relative;
+}
+
+.cbd__edb {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: inherit;
+  cursor: pointer;
+}
+
+.cbd__edb:hover {
+  box-shadow: inset 0 -1px 0 var(--border-strong);
+}
+
+.cbd__cell.is-editing > .cbd__cellv {
+  visibility: hidden;
+}
+
+.cbd__ed {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+}
+
+.cbd__ed .sel,
+.cbd__ed .sel__btn,
+.cbd__ed .cbd__date {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+}
+
+.cbd__ed .sel__btn,
+.cbd__ed .cbd__date {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0;
+  padding: 0 6px;
+  border: 1px solid var(--accent);
+  border-radius: 0;
+  background: var(--paper);
+  color: var(--text);
+  font: inherit;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+/* The caret: a border triangle, as the house select draws it. */
+.cbd__ed .sel__btn::after {
+  content: '';
+  flex: none;
+  border: 4px solid transparent;
+  border-top-color: currentColor;
+  margin-top: 4px;
+}
+
+.cbd__ed .sel__menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 100%;
+  width: max-content;
+  max-width: 22rem;
+  max-height: 16rem;
+  overflow-y: auto;
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  background: var(--paper);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-overlay);
+}
+
+.cbd__ed .sel__menu:focus {
+  outline: none;
+}
+
+.cbd__ed .sel__opt {
+  padding: 6px 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.cbd__ed .sel__opt.is-active {
+  background: var(--surface-2);
+}
+
+.cbd__ed .sel__opt[aria-selected='true'] {
+  color: var(--accent);
+}
+
+/* The td and the scrolling wrap lift their clipping while an editor is open,
+   or the menu would vanish into them. */
+.cbd__tbl td:has(.cbd__cell.is-editing),
+.cbd__wrap:has(.cbd__cell.is-editing) {
+  overflow: visible;
+}
+
+/* Made-up category chips (no catalogue yet) under the one mock label (DS-PRIM-32):
+   the region is one item of the chip row, its chips in a row, room kept for the tag. */
+.cbd__filters > .is-mock {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 2.9rem 0.15rem 0.15rem;
+  border-radius: var(--radius-sm);
+}

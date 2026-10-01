@@ -17,8 +17,30 @@
 // The five untargeted commands that `refuseIrrelevantTarget` never checked
 // were pinned as `unchecked` at 06ab232. Architecture observation 2 flipped
 // them, red first (`stray-identifiers.test.ts`): each now names the
-// identifiers its request type declares, and that change is the one
-// deliberate edit to this pin.
+// identifiers its request type declares, and that change was the one
+// deliberate edit to this pin. The second is MP-4-9's `task.set_scores`, a new
+// write an agent reaches inside its delegation: one row added to each table
+// that lists every write or every agent operation, nothing else moved. The
+// third is MP-4-10's `task.set_adhoc`, the same shape as the second. The
+// fourth is MP-4-10's Client access, `task.share_with_client` and
+// `task.revoke_client_share`: two writes an agent never reaches, one row each
+// in the tables that list every write. The fifth is MP-4-5's author-only
+// `task.edit_comment` and `task.delete_comment`, two writes an agent reaches
+// inside its delegation, one row each in the tables that list every write or
+// every agent operation, and `task.comment` handing on its `parentId`.
+// The sixth is MP-4-4's parent scope: `task.set_party` goes to `setParty`,
+// which holds a subtask to its parent's client and carries a client down the
+// subtree before the owned write.
+// The seventh is MP-4-6's five `time.*` writes: untargeted, an agent never
+// reaches them, one row each in the tables that list every write or every
+// untargeted one.
+// The eighth is MP-4-11's tags: `tag.create`, `task.add_tag` and
+// `task.remove_tag`, untargeted writes an agent never reaches, and the
+// `tag.list` read, one row each in the tables that list every write, every
+// untargeted one or every operation with no expected revision.
+// The ninth is the status select's `task.set_state`: a targeted write an
+// agent never reaches, to `setStateById` with its state id, one row each in
+// the tables that list every write.
 //
 // This suite moves the database counter by zero, so it is a unit suite and
 // must not be named in `tests/db/named-suites.json`.
@@ -65,7 +87,25 @@ vi.mock('../../packages/core-commands/src/commands/tasks-write.ts', async (origi
 vi.mock('../../packages/core-commands/src/commands/tasks-state.ts', async (original) => ({
   ...(await original<object>()),
   setState: recorder('setState'),
+  setStateById: recorder('setStateById'),
   writeOwnedFields: recorder('writeOwnedFields'),
+}));
+vi.mock('../../packages/core-commands/src/commands/tasks-scores.ts', async (original) => ({
+  ...(await original<object>()),
+  setScores: recorder('setScores'),
+}));
+vi.mock('../../packages/core-commands/src/commands/tasks-adhoc.ts', async (original) => ({
+  ...(await original<object>()),
+  setAdHoc: recorder('setAdHoc'),
+}));
+vi.mock('../../packages/core-commands/src/commands/tasks-party.ts', async (original) => ({
+  ...(await original<object>()),
+  setParty: recorder('setParty'),
+}));
+vi.mock('../../packages/core-commands/src/commands/tasks-client-access.ts', async (original) => ({
+  ...(await original<object>()),
+  shareWithClient: recorder('shareWithClient'),
+  revokeClientShare: recorder('revokeClientShare'),
 }));
 vi.mock('../../packages/core-commands/src/commands/tasks-place.ts', async (original) => ({
   ...(await original<object>()),
@@ -82,6 +122,12 @@ vi.mock('../../packages/core-commands/src/commands/tasks-trash.ts', async (origi
 vi.mock('../../packages/core-commands/src/commands/tasks-comment.ts', async (original) => ({
   ...(await original<object>()),
   commentOnTask: recorder('commentOnTask'),
+}));
+vi.mock('../../packages/core-commands/src/commands/tasks-comment-edit.ts', async (original) => ({
+  ...(await original<object>()),
+  changeFrom: () => 'change',
+  editTaskComment: recorder('editTaskComment'),
+  deleteTaskComment: recorder('deleteTaskComment'),
 }));
 vi.mock('../../packages/core-commands/src/commands/settings-write.ts', async (original) => ({
   ...(await original<object>()),
@@ -159,6 +205,20 @@ vi.mock('../../packages/core-commands/src/commands/access-end.ts', async (origin
   ...(await original<object>()),
   endAccessOnSettings: recorder('endAccessOnSettings'),
 }));
+vi.mock('../../packages/core-commands/src/commands/tasks-time.ts', async (original) => ({
+  ...(await original<object>()),
+  startTime: recorder('startTime'),
+  stopTime: recorder('stopTime'),
+  logTimeEntry: recorder('logTimeEntry'),
+  setEntryNote: recorder('setEntryNote'),
+  deleteEntry: recorder('deleteEntry'),
+}));
+vi.mock('../../packages/core-commands/src/commands/tasks-tags.ts', async (original) => ({
+  ...(await original<object>()),
+  createTagNamed: recorder('createTagNamed'),
+  addTagToTask: recorder('addTagToTask'),
+  removeTagFromTask: recorder('removeTagFromTask'),
+}));
 vi.mock('../../packages/core-commands/src/commands/inbox-seen.ts', async (original) => ({
   ...(await original<object>()),
   stampOwnSeen: recorder('stampOwnSeen'),
@@ -230,6 +290,14 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'task.purge': [],
   'task.restart': ['recordId', 'lineageId'],
   'task.restore': ['batchId'],
+  'tag.create': [],
+  'task.add_tag': ['recordId', 'tagId'],
+  'task.remove_tag': ['recordId', 'tagId'],
+  'time.delete': ['entryId'],
+  'time.log': ['taskId'],
+  'time.set_note': ['entryId'],
+  'time.start': ['taskId'],
+  'time.stop': ['taskId'],
 };
 
 const PINNED_NEEDS_NO_EXPECTED_REVISION = [
@@ -275,6 +343,9 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'settings.set_four_eyes_threshold',
   'settings.set_money_step_up',
   'settings.set_retention_window',
+  'tag.create',
+  'tag.list',
+  'task.add_tag',
   'task.board',
   'task.cancel',
   'task.create',
@@ -290,17 +361,28 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'task.queue',
   'task.read',
   'task.receipt',
+  'task.remove_tag',
   'task.restart',
   'task.restore',
   'task.search',
+  'task.todos',
   'team.list',
+  'time.delete',
+  'time.log',
+  'time.set_note',
+  'time.start',
+  'time.stop',
 ];
 
 const PINNED_AGENT_SURFACE = [
   'session.capabilities',
+  // The assignee of its own task under a delegation holding assign (MP-4-8).
+  'task.assign',
   'task.comment',
   'task.decide',
+  'task.delete_comment',
   'task.dispatch',
+  'task.edit_comment',
   'task.handback',
   'task.heartbeat',
   'task.observe',
@@ -308,6 +390,9 @@ const PINNED_AGENT_SURFACE = [
   'task.propose',
   'task.queue',
   'task.read',
+  'task.set_adhoc',
+  'task.set_scores',
+  'task.update',
 ];
 
 const PINNED_BEFORE_PICKUP = ['task.pickup', 'task.queue'];
@@ -325,8 +410,17 @@ const REQUESTS: readonly CommandRequest[] = [
     body: 'b-comment',
     audience: 'a-comment',
     commentType: 't-comment',
+    parentId: 'p-comment',
     mentions: 'm-comment',
   },
+  {
+    command: 'task.edit_comment',
+    operationId: 'op',
+    recordId: 'r',
+    commentId: 'c-edit',
+    body: 'b-edit',
+  },
+  { command: 'task.delete_comment', operationId: 'op', recordId: 'r', commentId: 'c-delete' },
   {
     command: 'task.propose',
     operationId: 'op',
@@ -348,6 +442,7 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'task.pickup', operationId: 'op', reservationId: 'res' },
   { command: 'task.handback', operationId: 'op', leaseId: 'l', fence: 2, outcome: 'done' },
   { command: 'task.start', operationId: 'op', recordId: 'r' },
+  { command: 'task.set_state', operationId: 'op', recordId: 'r', stateId: 'state' },
   { command: 'task.assign', operationId: 'op', recordId: 'r', fields: { assignee: 'f-assign' } },
   { command: 'task.triage', operationId: 'op', recordId: 'r', fields: { intake: 'f-triage' } },
   { command: 'task.set_stage', operationId: 'op', recordId: 'r', fields: { stage: 'f-stage' } },
@@ -358,6 +453,10 @@ const REQUESTS: readonly CommandRequest[] = [
     recordId: 'r',
     fields: { audience: 'f-audience' },
   },
+  { command: 'task.set_scores', operationId: 'op', recordId: 'r', fields: { impact: 7 } },
+  { command: 'task.set_adhoc', operationId: 'op', recordId: 'r', fields: { ad_hoc: true } },
+  { command: 'task.share_with_client', operationId: 'op', recordId: 'r' },
+  { command: 'task.revoke_client_share', operationId: 'op', recordId: 'r' },
   { command: 'task.reparent', operationId: 'op', recordId: 'r', parentId: 'parent' },
   { command: 'task.move', operationId: 'op', recordId: 'r', board: 'b', boardSection: 's' },
   { command: 'task.rank', operationId: 'op', recordId: 'r', afterId: 'after' },
@@ -457,6 +556,14 @@ const REQUESTS: readonly CommandRequest[] = [
     amountMinor: 0,
     reason: 'why',
   },
+  { command: 'time.start', operationId: 'op', taskId: 't-start' },
+  { command: 'time.stop', operationId: 'op', taskId: 't-stop' },
+  { command: 'time.log', operationId: 'op', taskId: 't-log', duration: '1h', note: 'n-log' },
+  { command: 'time.set_note', operationId: 'op', entryId: 'e-note', note: 'n-note' },
+  { command: 'time.delete', operationId: 'op', entryId: 'e-delete' },
+  { command: 'tag.create', operationId: 'op', name: 'n-tag' },
+  { command: 'task.add_tag', operationId: 'op', recordId: 'r-add', tagId: 'g-add' },
+  { command: 'task.remove_tag', operationId: 'op', recordId: 'r-remove', tagId: 'g-remove' },
   { command: 'session.end', operationId: 'op' },
   { command: 'preference.save', operationId: 'op', preference: 'appearance', value: 'dark' },
   {
@@ -476,17 +583,32 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'task.update': ['updateTask', 'request'],
   'task.complete': ['setState', 'completed'],
   'task.reopen': ['setState', 'unstarted', 'why-reopen'],
-  'task.comment': ['commentOnTask', 'op', 'b-comment', 'a-comment', 't-comment', 'm-comment'],
+  'task.comment': [
+    'commentOnTask',
+    'op',
+    'b-comment',
+    'a-comment',
+    't-comment',
+    'p-comment',
+    'm-comment',
+  ],
+  'task.edit_comment': ['editTaskComment', 'c-edit', 'b-edit'],
+  'task.delete_comment': ['deleteTaskComment', 'c-delete'],
   'task.propose': ['proposeOnTask', 'request'],
   'task.decide': ['decideOnGate', 'request'],
   'task.pickup': ['pickupAsPerson', 'request'],
   'task.handback': ['handbackOwnLease', 'request'],
   'task.start': ['setState', 'started'],
+  'task.set_state': ['setStateById', 'state'],
   'task.assign': ['writeOwnedFields', 'task.assign', { assignee: 'f-assign' }],
   'task.triage': ['writeOwnedFields', 'task.triage', { intake: 'f-triage' }],
   'task.set_stage': ['writeOwnedFields', 'task.set_stage', { stage: 'f-stage' }],
-  'task.set_party': ['writeOwnedFields', 'task.set_party', { party: 'f-party' }],
+  'task.set_party': ['setParty', { party: 'f-party' }],
   'task.set_audience': ['writeOwnedFields', 'task.set_audience', { audience: 'f-audience' }],
+  'task.set_scores': ['setScores', { impact: 7 }],
+  'task.set_adhoc': ['setAdHoc', { ad_hoc: true }],
+  'task.share_with_client': ['shareWithClient'],
+  'task.revoke_client_share': ['revokeClientShare'],
   'task.reparent': ['reparentTask', 'parent'],
   'task.move': ['moveTask', 'b', 's'],
   'task.rank': ['rankTask', 'after', null],
@@ -547,6 +669,14 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'budget.top_up': ['topUpOnTask', 'request'],
   'budget.record_outcome': ['recordOutcomeOnTask', 'request'],
   'budget.write_off': ['writeOffOnTask', 'request'],
+  'time.start': ['startTime', 't-start'],
+  'time.stop': ['stopTime', 't-stop'],
+  'time.log': ['logTimeEntry', 't-log', '1h', 'n-log'],
+  'time.set_note': ['setEntryNote', 'e-note', 'n-note'],
+  'time.delete': ['deleteEntry', 'e-delete'],
+  'tag.create': ['createTagNamed', 'n-tag'],
+  'task.add_tag': ['addTagToTask', 'r-add', 'g-add'],
+  'task.remove_tag': ['removeTagFromTask', 'r-remove', 'g-remove'],
   'session.end': ['endOwnSession', 'request'],
   'preference.save': ['saveOwnPreference', 'appearance', 'dark'],
   'preference.dismiss_tip': ['dismissOwnTip', 'request'],
@@ -591,13 +721,13 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same fifty-nine from an expected revision', () => {
+  it('exempts the same sixty-nine from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );
   });
 
-  it('lets an agent reach the same eleven, two of them before a pickup', () => {
+  it('lets an agent reach the same seventeen, two of them before a pickup', () => {
     expect(agentReach(['delegated', 'before-pickup'])).toStrictEqual(PINNED_AGENT_SURFACE);
     expect(agentReach(['before-pickup'])).toStrictEqual(PINNED_BEFORE_PICKUP);
     expect([...AGENT_SURFACE].toSorted()).toStrictEqual(PINNED_AGENT_SURFACE);

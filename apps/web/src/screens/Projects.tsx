@@ -1,45 +1,51 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // `/projects/`. Two tabs: the caller's inbox above the board of the
-// business's unboarded tasks with the form that makes one, and the Work log
-// (MP-8-4), reached by `#worklog` as the mockup's `/projects/#worklog` is. The
-// Work log reads nothing until it is first opened, and stays drawn once it has
-// been, as every tab pane does.
+// business's unboarded tasks with the form that makes one (CreateTask.tsx),
+// and the Work log (MP-8-4), reached by `#worklog` as the mockup's
+// `/projects/#worklog` is. The Work log reads nothing until it is first
+// opened, and stays drawn once it has been, as every tab pane does.
 //
 // The read is `task.board` with `board: null`, which the contract defines as
 // the business's unboarded tasks — the acceptance case creates a task
 // **without a board** and expects to find it (B1).
 //
-// The board component is the ported one and it draws nine columns the slice
-// does not yet store. Those cells draw a dash, which is the ported behaviour
-// for "not set": the gap between what the mockup draws and what this build
-// stores is recorded rather than papered over by dropping the columns.
+// The board is the board machine with the Projects board's nine columns
+// (MP-5-8). Each row is the read's task mapped onto the board's row: the rank
+// and its calc line, the stage (drawn by its label in the task stage list),
+// the due and the estimate (MP-4-8) come from
+// stored records, and the hover door goes to the task's page link (MP-4-12).
+// What the product does not store yet draws a dash or nothing and is recorded
+// as such: the client's name (the client model), the comment counts (INB-1)
+// and starring (P-20). The actual is the time logged (MP-4-6).
 
-import { useState, type FormEvent, type ReactElement } from 'react';
-import { Board, Empty, TabPanel, TabStrip, type BoardRow } from '@launchastro/ui';
+import { useState, type ReactElement } from 'react';
+import { Empty, ProjectsBoard, TabPanel, TabStrip, type ProjectRow } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
+import { assigneeOf, rowActions, type BoardPanelHost, type RowOpened } from './projects-row.ts';
 import { titleOf } from '../views/task-title.ts';
-import type { TaskBoardResult, TaskSummary } from '../../../../packages/core-wire/src/index.ts';
+import type {
+  BoardTask,
+  PersonListResult,
+  TaskBoardResult,
+} from '../../../../packages/core-wire/src/index.ts';
+import { TASK_STAGES, isInProductLink } from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
 import { useBoardLive } from '../data/board-live.ts';
 import { RecordState } from '../views/record-state.tsx';
-import { drawTaskState } from '../views/task-state.ts';
-import { useCommand } from '../records/use-command.ts';
 import { pathTo } from '../routes.ts';
-import { WorkLog } from './projects/WorkLog.tsx';
 import { Inbox } from '../views/inbox.tsx';
-
-/** A create whose outcome is not known, held so the retry is the same attempt. */
-interface PendingCreate {
-  readonly operationId: string;
-  readonly title: string;
-}
+import { CATEGORIES_ARE_MOCK, categoryOf } from './category-mock.ts';
+import { CreateTask } from './projects/CreateTask.tsx';
+import { WorkLog } from './projects/WorkLog.tsx';
 
 export interface ProjectsProps {
   readonly client: OperationsClient;
   readonly grantKey: string;
   /** Goes to an address inside the application. */
   readonly navigate: (path: string) => void;
+  /** The dock task panel (MP-4-8): rows open beside the board through it. Absent, they open the task page. */
+  readonly taskPanel?: BoardPanelHost;
 }
 
 type ProjectsTab = 'board' | 'worklog';
@@ -75,7 +81,11 @@ export function Projects(props: ProjectsProps): ReactElement {
     <div className="stack">
       <TabStrip label="Projects" name="projects" tabs={TABS} selected={tab} onSelect={select} />
       <TabPanel name="projects" tab="board" selected={tab}>
-        <ProjectBoard client={props.client} grantKey={props.grantKey} />
+        <ProjectBoard
+          client={props.client}
+          grantKey={props.grantKey}
+          {...(props.taskPanel === undefined ? {} : { taskPanel: props.taskPanel })}
+        />
       </TabPanel>
       <TabPanel name="projects" tab="worklog" selected={tab}>
         {workLogOpened ? (
@@ -88,137 +98,36 @@ export function Projects(props: ProjectsProps): ReactElement {
 
 function ProjectBoard(props: Omit<ProjectsProps, 'navigate'>): ReactElement {
   const client = props.client;
-  // While this is true the create is in flight and the form is not editable:
-  // the input, the submit and `Start a different task` are all disabled. A
-  // person who can type a second title during the first create is a person
-  // whose second title a delayed success will wipe.
-  //
-  // `locked` adds `closed`: `task.create` is this form's one command, so a
-  // refusal about this reader's authority closes the form rather than letting
-  // it ask again, as the comment box and the propose form do.
-  const { busy: creating, because, locked, run, reset } = useCommand();
-  const [title, setTitle] = useState('');
-  // The attempt whose outcome nobody knows. A create that ended `unavailable`
-  // may well have committed on the server, so its identity and its exact
-  // payload are kept here and presented again on the next submission. Minting
-  // a fresh id instead would make the server's replay register unreachable and
-  // the retry would create a second task.
-  const [pending, setPending] = useState<PendingCreate | null>(null);
+  // The row open beside the board and the door it was opened by (MP-5-8).
+  const [opened, setOpened] = useState<RowOpened | null>(null);
+  const panel = props.taskPanel;
 
   const { state, reload } = useRead<TaskBoardResult>({
     grantKey: props.grantKey,
     run: () => client.read<TaskBoardResult>('task.board', { board: null }),
     isEmpty: (value) => value.tasks.length === 0,
+    // A change made in the panel is the board's next read, as it is the task page's.
+    deps: [panel?.changes ?? 0],
+  });
+
+  // The people the assignee editor offers (MP-5-10); until they answer, the
+  // assignee cell draws no editor.
+  const people = useRead<PersonListResult>({
+    grantKey: props.grantKey,
+    run: () => client.read<PersonListResult>('person.list', {}),
+    // An answer without its list offers nobody, rather than breaking the board.
+    isEmpty: (value) => !Array.isArray(value.persons) || value.persons.length === 0,
     deps: [],
   });
+  const persons = people.state.outcome === 'ready' ? people.state.value.persons : null;
   // INB-1f: one stream for the tab, shared by the board and the inbox panels.
   const followInbox = useBoardLive(client, props.grantKey, reload);
-
-  // The same attempt while the asked-for task is the same one, a new attempt
-  // when the person has changed what they are asking for. Retrying an unknown
-  // outcome and deliberately starting a second task are different intentions
-  // and the title is what tells them apart; `startNew` below says it outright.
-  const attemptFor = (asked: string): PendingCreate =>
-    pending !== null && pending.title === asked
-      ? pending
-      : { operationId: client.newOperationId(), title: asked };
-
-  const onCreate = (event: FormEvent<HTMLFormElement>): void => {
-    event.preventDefault();
-    const asked = title.trim();
-    if (locked || asked === '') return;
-    const attempt = attemptFor(asked);
-    setPending(attempt);
-    run(
-      // `board: null` is explicit. The acceptance case is a task with no board,
-      // and leaving the field out would let a server default decide.
-      () =>
-        client.mutate(
-          'task.create',
-          { fields: { title: attempt.title }, board: null },
-          { operationId: attempt.operationId },
-        ),
-      (settlement) => {
-        // The one case the attempt is kept for. The task may or may not exist.
-        if (settlement.kind === 'unknown') return;
-        // Anything else is a known outcome and the attempt is over: a refusal
-        // is a decision, and holding it would resend an identity the server
-        // has settled.
-        setPending(null);
-        if (settlement.kind !== 'ok') return;
-        // Clear only the text this create was for. The input is disabled while
-        // the request is in flight so there should be nothing newer, but a
-        // settlement that clears whatever happens to be in the box is the same
-        // defect as the task form's: a late success erasing the next task's
-        // title. Bind it to what was submitted and it cannot.
-        setTitle((current) => (current.trim() === attempt.title ? '' : current));
-        reload();
-      },
-    );
-  };
-
-  /** Abandon an unresolved attempt and ask for a genuinely different task. */
-  const startNew = (): void => {
-    setPending(null);
-    reset();
-    setTitle('');
-  };
-
-  const retrying = pending !== null && pending.title === title.trim();
 
   return (
     <div className="stack">
       {/* The inbox lives inside Tasks (INB-1g): the working minimum above the board. */}
       <Inbox client={client} grantKey={props.grantKey} follow={followInbox} />
-      <form className="taskform projects__create" onSubmit={onCreate}>
-        <div className="field">
-          <label className="tf__k" htmlFor="create-title">
-            New task
-          </label>
-          <input
-            id="create-title"
-            className="input"
-            type="text"
-            required
-            placeholder="What needs doing"
-            disabled={locked}
-            value={title}
-            onChange={(event) => {
-              setTitle(event.target.value);
-            }}
-          />
-        </div>
-        <button
-          className="btn btn--primary"
-          type="submit"
-          data-attempt={retrying ? 'retry' : 'new'}
-          disabled={locked || title.trim() === ''}
-        >
-          {creating ? 'Creating…' : retrying ? 'Retry create' : 'Create task'}
-        </button>
-        {pending === null ? null : (
-          <button
-            className="btn"
-            type="button"
-            data-attempt="discard"
-            disabled={creating}
-            onClick={startNew}
-          >
-            Start a different task
-          </button>
-        )}
-        {because === null ? null : (
-          <p className="field__error" role="alert" data-voice="input-wrong">
-            {because}
-          </p>
-        )}
-        {pending === null || because === null ? null : (
-          <p className="card__sub" data-attempt="unresolved">
-            This task may already have been created. Retrying sends the same attempt, so the server
-            answers with the original result rather than making a second task.
-          </p>
-        )}
-      </form>
+      <CreateTask client={client} onCreated={reload} />
 
       <RecordState
         state={state}
@@ -233,10 +142,31 @@ function ProjectBoard(props: Omit<ProjectsProps, 'navigate'>): ReactElement {
         }
       >
         {(value) => (
-          <Board
+          <ProjectsBoard
             rows={value.tasks.map((task) => rowOf(task))}
-            groups={groupsOf(value.tasks)}
-            filters={[{ kind: 'board', label: 'none' }]}
+            withheld={value.withheld ?? 0}
+            changedAt={value.changedAt ?? null}
+            stages={STAGE_LABELS}
+            viewer={value.viewer ?? null}
+            {...(value.owed === undefined ? {} : { owed: value.owed })}
+            mockCategories={CATEGORIES_ARE_MOCK}
+            href={(row) => pathTo('agency:task-detail', { key: row.key })}
+            actions={rowActions({
+              client,
+              tasks: value.tasks,
+              people: persons,
+              href: (key) => pathTo('agency:task-detail', { key }),
+              reload,
+              ...(panel === undefined ? {} : { panel: { host: panel, opened, setOpened } }),
+            })}
+            address={window.location.search}
+            onAddress={(query) => {
+              window.history.replaceState(
+                window.history.state,
+                '',
+                `${window.location.pathname}${query === '' ? '' : `?${query}`}`,
+              );
+            }}
           />
         )}
       </RecordState>
@@ -244,49 +174,50 @@ function ProjectBoard(props: Omit<ProjectsProps, 'navigate'>): ReactElement {
   );
 }
 
-/** One stored task as a board row. Everything the slice does not store is null. */
-function rowOf(task: TaskSummary): BoardRow {
+/** The Stage column's vocabulary and the stage editor's choices, in the list's order. */
+const STAGE_LABELS = TASK_STAGES.list().map((stage) => stage.label);
+
+/** One task from the read as a Projects board row (MP-5-8). */
+function rowOf(task: BoardTask): ProjectRow {
+  // A read from a server that predates Assign to AI, or the comment counts,
+  // carries none of them: none.
+  const read: Partial<Pick<BoardTask, 'agent' | 'myAgents' | 'comments'>> = task;
+  const agent = read.agent ?? null;
   return {
     id: task.id,
-    rank: null,
+    key: task.key,
     name: titleOf(task.title),
+    rank: { number: task.rank.number, calc: task.rank.calc },
+    // No ticket builds starring yet, so the starred tier is empty (P-20).
+    starred: false,
+    // The client's name waits on the client model; `clientSet` says only
+    // that there is one.
     client: null,
-    assignee: task.assignee?.name ?? null,
-    dueLabel: task.due === null ? null : dayOf(task.due),
-    due: dueTone(task.due),
-    stage: null,
-    state: drawTaskState(task.state),
-    estimate: null,
-    actual: null,
-    group: groupOf(task),
-    href: pathTo('agency:task-detail', { key: task.key }),
+    assignee: assigneeOf(task, agent),
+    // The reader's own agents for the task; the read sends no one else's.
+    agents: (read.myAgents ?? []).map((one) => ({ id: one.delegationId, name: one.purpose })),
+    // The tick sends the reader's agent's work to review unless it is there.
+    toReview:
+      agent !== null && task.completedAt === null && task.state?.machineCategory !== 'unstarted',
+    due: task.due,
+    completed: task.completedAt !== null,
+    stage: task.stage === null ? null : TASK_STAGES.labelOf(task.stage),
+    status: task.state?.label ?? 'No state',
+    statusPosition: task.statePosition,
+    // A run awaiting approval is the one wait the read carries; the banner
+    // prints the mockup's word for it (B-21).
+    waitReason: task.waitReason === 'needs_approval' ? 'approval' : null,
+    // No task category is stored yet: SL08's catalogue replaces this mock seam.
+    category: categoryOf(task),
+    awaitingDecision: task.awaitingDecision,
+    estimate:
+      task.estimateMinutes === null ? null : { kind: 'time', minutes: task.estimateMinutes },
+    // The time logged on the task (MP-4-6); none logged draws a dash.
+    actual: task.actualMinutes > 0 ? { kind: 'time', minutes: task.actualMinutes } : null,
+    // A stored link that is not an address inside the product is never a
+    // door (MP-4-12); the door is then the task's own page.
+    ...(isInProductLink(task.pageLink) ? { page: task.pageLink } : {}),
+    // The reader's own waiting client signals and mentions (MP-5-8).
+    comments: read.comments ?? { client: 0, mentions: 0, latest: null },
   };
-}
-
-const groupsOf = (tasks: readonly TaskSummary[]): readonly string[] => [
-  ...new Set(tasks.map((task) => groupOf(task))),
-];
-
-/** The heading a task sits under. A stateless one gets its own, not somebody else's. */
-const groupOf = (task: TaskSummary): string => task.state?.label ?? 'No state';
-
-const dayOf = (iso: string): string => iso.slice(0, 10);
-
-const pad = (n: number): string => String(n).padStart(2, '0');
-
-/**
- * Overdue, today or later, judged against the reader's own calendar day.
- *
- * The stored date part is the day the person picked in a local date input
- * (task/DetailsForm.tsx), so "today" is the local day too. Taking it from
- * `toISOString()` would be the UTC day, which in Australia lags the local one
- * for the first ten hours of every morning and draws yesterday's work as due
- * today.
- */
-export function dueTone(iso: string | null, now: Date = new Date()): BoardRow['due'] {
-  if (iso === null) return null;
-  const today = `${String(now.getFullYear())}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
-  const day = iso.slice(0, 10);
-  if (day < today) return 'past';
-  return day === today ? 'today' : 'later';
 }

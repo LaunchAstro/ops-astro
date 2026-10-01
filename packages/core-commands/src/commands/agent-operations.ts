@@ -17,7 +17,7 @@ import { businessKeyOf, type AgentCapabilities } from '../reads/capabilities.ts'
 import type { Capability } from '../../../core-wire/src/index.ts';
 import { readTaskSpine } from './context.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
-import { isFieldMap } from './operands.ts';
+import { invalid, isFieldMap } from './operands.ts';
 import { refuseUnstorable, unstorableOperands } from './values.ts';
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import {
@@ -35,12 +35,17 @@ import { MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/index.ts';
 import { agentClaimant } from './tasks-claimant.ts';
 import { writeTaskComment } from './tasks-comment.ts';
 import { proposeFor, type ProposeFields } from './tasks-propose.ts';
+import { deleteTaskComment, editTaskComment, type CommentChange } from './tasks-comment-edit.ts';
+import { setScores } from './tasks-scores.ts';
+import { setAdHoc } from './tasks-adhoc.ts';
+import { assignTaskAsAgent, updateTaskAsAgent } from './tasks-write.ts';
 import { refused, type HandlerOutcome, type Refused } from './outcome.ts';
 import {
   claimedSystemFields,
   expectedRevisionOf,
   irrelevantIdentifiers,
   lockTask,
+  REVISION_FIXES,
   SYSTEM_OWNED_FIXES,
 } from './prepare.ts';
 import { retainLateHandback } from './agent-late-handback.ts';
@@ -365,6 +370,7 @@ async function serveComment(
     request['body'],
     request['audience'],
     request['commentType'],
+    request['parentId'],
     request['mentions'],
   );
 }
@@ -401,6 +407,87 @@ async function servePropose(
     fields as unknown as ProposeFields,
   );
 }
+
+/**
+ * An agent's edit or delete of its own comment on its own task (MP-4-5,
+ * CS-4.34). The task is locked as `serveComment` locks it; the comment is
+ * read through it and must be the agent's own actor's (`tasks-comment-edit.ts`).
+ */
+const serveCommentChange =
+  (
+    change: (
+      tx: TenantQuery,
+      on: CommentChange,
+      request: AgentCall['request'],
+    ) => ReturnType<typeof editTaskComment>,
+  ): ((
+    tx: TenantQuery,
+    call: AgentCall,
+    operands: NoOperands,
+    delegation: Delegation,
+    taskId: string | undefined,
+  ) => ReturnType<typeof editTaskComment>) =>
+  async (tx, { session, request, declaration }, _operands, _delegation, taskId) => {
+    if (taskId === undefined) return NOT_FOUND();
+    const spine = await readTaskSpine(tx);
+    const task = await lockTask(tx, spine.taskTypeId, taskId);
+    if (task === undefined) return NOT_FOUND();
+    return await change(
+      tx,
+      {
+        commentTypeId: spine.taskCommentTypeId,
+        declaration,
+        target: task,
+        actorId: session.actorId,
+      },
+      request,
+    );
+  };
+
+/**
+ * A field write an agent makes on its own task: the three marks
+ * (`task.set_scores`), the Ad hoc mark (`task.set_adhoc`), its fields of
+ * `task.update` (MP-4-7, MP-4-8, MP-4-12) and the assignee (`task.assign`,
+ * MP-4-8). One entry, so the four refuse a stale write, a missing task and a
+ * malformed body alike.
+ */
+const serveOwnedWrite =
+  (
+    write: typeof setScores,
+    example: string,
+  ): ((
+    tx: TenantQuery,
+    call: AgentCall,
+    operands: NoOperands,
+    delegation: Delegation,
+    taskId: string | undefined,
+  ) => ReturnType<typeof setScores>) =>
+  async (tx, { request }, _operands, delegation, taskId) => {
+    // `authorise` has held the delegation to this task and its `write` action
+    // to the delegating person's live grant. The lock and the revision are the
+    // person envelope's (`prepareCommand`), so the two entries refuse a stale
+    // write in the same words. `fields` is read here, after authority, so an
+    // agent holding nothing is told that before it is told about its body.
+    if (taskId === undefined) return NOT_FOUND();
+    const spine = await readTaskSpine(tx);
+    const target = await lockTask(tx, spine.taskTypeId, taskId);
+    if (target === undefined) return NOT_FOUND();
+    if (expectedRevisionOf(request) !== target.revision) {
+      return refused(
+        refuseCommand('VERSION_STALE', [`revision=${target.revision}`], REVISION_FIXES),
+      );
+    }
+    const fields = request['fields'];
+    if (!isFieldMap(fields)) {
+      return refused(
+        invalid('fields', `Send fields as an object of fields to values, such as ${example}.`),
+      );
+    }
+    // The agent writes for its delegating person, so an assignment raises no
+    // item to them (INB-1), as their own write would not.
+    const session = { personId: delegation.delegatePersonId };
+    return await write(tx, { spine, target, session }, fields);
+  };
 
 async function serveHeartbeat(
   tx: TenantQuery,
@@ -556,15 +643,25 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
         const spine = await readTaskSpine(tx);
         let task: Awaited<ReturnType<typeof readTaskDetail>>;
         try {
-          task = await readTaskDetail(tx, spine.taskTypeId, taskId, {
-            commentTypeId: spine.taskCommentTypeId,
-            // An agent is never an internal reader. It is a delegate working one
-            // task, not a member of the business, so it is shown what an external
-            // reader is shown — the client comments in the fields the catalogue
-            // marks `shared` — and internal notes are absent from its answer
-            // rather than hidden in it (I09).
-            internal: false,
-          });
+          task = await readTaskDetail(
+            tx,
+            spine.taskTypeId,
+            taskId,
+            {
+              commentTypeId: spine.taskCommentTypeId,
+              // An agent is never an internal reader. It is a delegate working one
+              // task, not a member of the business, so it is shown what an external
+              // reader is shown — the client comments in the fields the catalogue
+              // marks `shared` — and internal notes are absent from its answer
+              // rather than hidden in it (I09).
+              internal: false,
+            },
+            // An agent works one task under its delegation, so the pool its
+            // rank is worked out in is that task and no other.
+            { kind: 'task' },
+            // An agent is sent no one's time: the time on a task is its people's.
+            null,
+          );
         } catch (cause) {
           // Decisions that do not verify are the fault the person read answers
           // (`runRead`), not a retryable one: the same body on both prefixes.
@@ -597,6 +694,71 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       replay: 'reauthorise',
       operands: recordIdOperand(() => refuseNotFound()),
       serve: servePropose,
+    }),
+  ],
+  [
+    'task.edit_comment',
+    row({
+      authority: 'record',
+      subjectTask: 'record',
+      replay: 'reauthorise',
+      operands: recordIdOperand(() => refuseNotFound()),
+      serve: serveCommentChange(
+        async (tx, on, request) =>
+          await editTaskComment(tx, on, request['commentId'], request['body']),
+      ),
+    }),
+  ],
+  [
+    'task.delete_comment',
+    row({
+      authority: 'record',
+      subjectTask: 'record',
+      replay: 'reauthorise',
+      operands: recordIdOperand(() => refuseNotFound()),
+      serve: serveCommentChange(
+        async (tx, on, request) => await deleteTaskComment(tx, on, request['commentId']),
+      ),
+    }),
+  ],
+  [
+    'task.update',
+    row({
+      authority: 'record',
+      subjectTask: 'record',
+      replay: 'reauthorise',
+      operands: recordIdOperand(() => refuseNotFound()),
+      serve: serveOwnedWrite(updateTaskAsAgent, '{ agent_brief }'),
+    }),
+  ],
+  [
+    'task.assign',
+    row({
+      authority: 'record',
+      subjectTask: 'record',
+      replay: 'reauthorise',
+      operands: recordIdOperand(() => refuseNotFound()),
+      serve: serveOwnedWrite(assignTaskAsAgent, '{ assignee }'),
+    }),
+  ],
+  [
+    'task.set_scores',
+    row({
+      authority: 'record',
+      subjectTask: 'record',
+      replay: 'reauthorise',
+      operands: recordIdOperand(() => refuseNotFound()),
+      serve: serveOwnedWrite(setScores, '{ impact }'),
+    }),
+  ],
+  [
+    'task.set_adhoc',
+    row({
+      authority: 'record',
+      subjectTask: 'record',
+      replay: 'reauthorise',
+      operands: recordIdOperand(() => refuseNotFound()),
+      serve: serveOwnedWrite(setAdHoc, '{ ad_hoc }'),
     }),
   ],
   [

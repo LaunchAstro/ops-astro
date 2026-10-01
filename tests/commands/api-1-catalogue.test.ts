@@ -145,6 +145,18 @@ function scannerAndGrantSkip(): void {
   });
 }
 
+/** Where the app names `task.create` and `task.start`, as the catalogue computes it. */
+const CREATE_UI = [
+  'agency:projects-board (screens/Projects.tsx)',
+  'agency:task-detail (screens/task/History.tsx)',
+  'agency:task-detail (screens/task/Subtasks.tsx)',
+  'app shell (screens/task/task-draft.ts)',
+];
+const START_UI = [
+  'agency:task-detail (screens/task/History.tsx)',
+  'agency:task-detail (screens/task/Lifecycle.tsx)',
+];
+
 function exemptAndMergedTickets(): void {
   it('API-1 exempt list: view-only actions are exempt with a reason, and nothing that writes a record is', () => {
     expect(VIEW_ONLY_EXEMPT.length).toBeGreaterThan(0);
@@ -178,8 +190,8 @@ function exemptAndMergedTickets(): void {
       expect(row?.ui.length, command).toBeGreaterThan(0);
     }
     const ui = (name: string) => rows.find((row) => row.command === name)?.ui ?? [];
-    expect(ui('task.create')).toEqual(['agency:projects-board (screens/Projects.tsx)']);
-    expect(ui('task.start')).toEqual(['agency:task-detail (screens/task/Lifecycle.tsx)']);
+    expect(ui('task.create')).toEqual(CREATE_UI);
+    expect(ui('task.start')).toEqual(START_UI);
     expect(ui('settings.set_client_sign_off')).toEqual([
       'agency:settings (screens/settings/use-settings.ts)',
     ]);

@@ -167,7 +167,7 @@ describe.skipIf(serverUrl === undefined)('CQ-6 on both prefixes', () => {
       ])[] = [
         [
           'outside its reach, before the identity',
-          'task.assign',
+          'task.set_stage',
           { operationId: undefined },
           'DELEGATION_EXCLUDES_OPERATION',
         ],
@@ -203,8 +203,11 @@ describe.skipIf(serverUrl === undefined)('CQ-6 on both prefixes', () => {
       const before = await revisionOf(task.id);
       for (const name of [
         'task.create',
-        'task.update',
-        'task.assign',
+        // Not task.update or task.assign: an agent writes its fields and the
+        // assignee on its own delegated task (MP-4-7, MP-4-8), and elsewhere is
+        // refused out of purpose.
+        'task.complete',
+        'task.set_stage',
         'task.trash',
         'grant.revoke',
       ] as const) {

@@ -56,6 +56,13 @@ export const PANELS: readonly PanelRegistration[] = [
     icon: 'settings-sliders',
   },
   {
+    id: 'todos',
+    label: 'Projects',
+    ariaLabel: 'My to-dos',
+    route: 'agency:todos',
+    icon: 'briefcase',
+  },
+  {
     id: 'team',
     label: 'Team',
     ariaLabel: 'Team: who is here and who is away',

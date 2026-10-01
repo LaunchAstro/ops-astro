@@ -15,11 +15,16 @@ import type { CommandContext } from './context.ts';
 import type { CommandRequest } from './requests.ts';
 import type { HandlerOutcome } from './outcome.ts';
 import { createTask, updateTask } from './tasks-write.ts';
-import { setState, writeOwnedFields } from './tasks-state.ts';
+import { setState, setStateById, writeOwnedFields } from './tasks-state.ts';
+import { assignTask } from './tasks-agent.ts';
+import { setScores } from './tasks-scores.ts';
+import { setAdHoc } from './tasks-adhoc.ts';
+import { revokeClientShare, shareWithClient } from './tasks-client-access.ts';
 import { setPartyWhileEmpty } from './task-client-lock.ts';
 import { moveTask, rankTask, reparentTask } from './tasks-place.ts';
 import { purgeTasks, restoreTasks, trashTask } from './tasks-trash.ts';
 import { commentOnTask } from './tasks-comment.ts';
+import { changeFrom, deleteTaskComment, editTaskComment } from './tasks-comment-edit.ts';
 import { setBusinessSetting, setNotificationChannel } from './settings-write.ts';
 import { recordIncident } from './privacy-write.ts';
 import { approveVersion, draftVersion, publishVersion } from './legal-write.ts';
@@ -45,6 +50,8 @@ import { cancelOnTask, restartOnTask } from './tasks-controls.ts';
 import { topUpOnTask } from './budget-top-up.ts';
 import { recordOutcomeOnTask } from './budget-record-outcome.ts';
 import { writeOffOnTask } from './budget-write-off.ts';
+import { deleteEntry, logTimeEntry, setEntryNote, startTime, stopTime } from './tasks-time.ts';
+import { addTagToTask, createTagNamed, removeTagFromTask } from './tasks-tags.ts';
 import { endOwnSession } from './session-end.ts';
 import { dismissOwnTip, saveOwnPreference } from './preference-save.ts';
 import { stampOwnSeen } from './inbox-seen.ts';
@@ -69,12 +76,17 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.complete': (tx, context) => setState(tx, context, 'completed'),
   'task.reopen': (tx, context, request) => setState(tx, context, 'unstarted', request.reason),
   'task.start': (tx, context) => setState(tx, context, 'started'),
+  'task.set_state': (tx, context, request) => setStateById(tx, context, request.stateId),
 
-  'task.assign': writeOwned,
+  'task.assign': (tx, context, request) => assignTask(tx, context, request.fields),
   'task.triage': writeOwned,
   'task.set_stage': writeOwned,
   'task.set_party': (tx, context, request) => setPartyWhileEmpty(tx, context, request.fields),
   'task.set_audience': writeOwned,
+  'task.set_scores': (tx, context, request) => setScores(tx, context, request.fields),
+  'task.set_adhoc': (tx, context, request) => setAdHoc(tx, context, request.fields),
+  'task.share_with_client': (tx, context) => shareWithClient(tx, context),
+  'task.revoke_client_share': (tx, context) => revokeClientShare(tx, context),
 
   'task.reparent': (tx, context, request) => reparentTask(tx, context, request.parentId),
   'task.move': (tx, context, request) =>
@@ -94,8 +106,13 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
       request.body,
       request.audience,
       request.commentType,
+      request.parentId,
       request.mentions,
     ),
+  'task.edit_comment': (tx, context, request) =>
+    editTaskComment(tx, changeFrom(context), request.commentId, request.body),
+  'task.delete_comment': (tx, context, request) =>
+    deleteTaskComment(tx, changeFrom(context), request.commentId),
 
   // The revision travels with the rest of the envelope rather than as a
   // field of the settings payload, and goes to the settings write as sent,
@@ -150,6 +167,22 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'budget.record_outcome': recordOutcomeOnTask,
   // T3c. A person closes an unknown hold at an amount; no agent route reaches it.
   'budget.write_off': writeOffOnTask,
+  // MP-4-6. The person is the session's, so a body names only the task or
+  // the entry, and what to write.
+  'time.start': (tx, context, request) => startTime(tx, context, request.taskId),
+  'time.stop': (tx, context, request) => stopTime(tx, context, request.taskId),
+  'time.log': (tx, context, request) =>
+    logTimeEntry(tx, context, request.taskId, request.duration, request.note),
+  'time.set_note': (tx, context, request) =>
+    setEntryNote(tx, context, request.entryId, request.note),
+  'time.delete': (tx, context, request) => deleteEntry(tx, context, request.entryId),
+  // MP-4-11. The envelope asked `tag:write` of the business for a new tag and
+  // `task:write` of the task for adding and removing.
+  'tag.create': (tx, context, request) => createTagNamed(tx, context, request.name),
+  'task.add_tag': (tx, context, request) =>
+    addTagToTask(tx, context, request.recordId, request.tagId),
+  'task.remove_tag': (tx, context, request) =>
+    removeTagFromTask(tx, context, request.recordId, request.tagId),
 
   'preference.save': (tx, context, request) =>
     saveOwnPreference(tx, context, request.preference, request.value),

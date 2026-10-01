@@ -41,7 +41,11 @@ import {
 import type { TenantQuery, TaskStateRow } from '../../../core-records/src/index.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { refuseWrongValueType } from './values.ts';
+import { isInProductLink } from '../../../core-wire/src/index.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
+import { clientOf } from './tasks-party.ts';
+import { oneKind } from './tasks-agent.ts';
+import { writeOwnedFields, type FieldWriteContext } from './tasks-state.ts';
 import type { CommandContext } from './context.ts';
 import type { CommandRequest, FieldValues } from './requests.ts';
 
@@ -122,7 +126,7 @@ export async function createTask(
     return refused(classified, attemptedFrom(request.fields, classified.names));
   }
 
-  const mistyped = refuseWrongValueType(definitions, request.fields);
+  const mistyped = refuseValues(definitions, request.fields);
   if (mistyped !== undefined) return refused(mistyped);
 
   const placedInFields = PLACED_BY_OPERAND.filter((key) => key in request.fields);
@@ -179,6 +183,10 @@ export async function createTask(
   }
   const stateId = named?.id ?? initialStateId(context.spine.states);
 
+  // A subtask carries its parent's client (MP-4-4): the placement above has
+  // already found the parent live in this business.
+  const client = parentId === null ? null : await clientOf(tx, context.spine.taskTypeId, parentId);
+
   const id = randomUUID();
   const data: Record<string, unknown> = {
     ...request.fields,
@@ -190,6 +198,7 @@ export async function createTask(
     ...(placement.board === null ? {} : { board: placement.board }),
     ...(placement.boardSection === null ? {} : { board_section: placement.boardSection }),
     ...(parentId === null ? {} : { parent: parentId }),
+    ...(client === null ? {} : { client }),
   };
 
   const rows = await tx.query<{ readonly revision: string; readonly key: string }>(
@@ -215,8 +224,8 @@ export async function createTask(
  */
 export async function updateTask(
   tx: TenantQuery,
-  context: CommandContext,
-  request: Extract<CommandRequest, { command: 'task.update' }>,
+  context: Pick<CommandContext, 'spine' | 'target'>,
+  request: Pick<Extract<CommandRequest, { command: 'task.update' }>, 'fields'>,
 ): Promise<HandlerOutcome> {
   const target = context.target;
   if (target === undefined) throw new Error('updateTask: the envelope read no target');
@@ -230,7 +239,7 @@ export async function updateTask(
     return refused(classified, attemptedFrom(request.fields, classified.names));
   }
 
-  const mistyped = refuseWrongValueType(definitions, request.fields);
+  const mistyped = refuseValues(definitions, request.fields);
   if (mistyped !== undefined) return refused(mistyped);
 
   const placed = refusePlacement(request.fields, target.data);
@@ -259,6 +268,115 @@ export async function updateTask(
   return applied(target.id, Number(written.revision), {
     changed: Object.keys(request.fields).toSorted(),
   });
+}
+
+/** A value of the wrong type for its field, then a page link out of the product. */
+function refuseValues(
+  definitions: Parameters<typeof refuseWrongValueType>[0],
+  fields: FieldValues,
+): CommandRefusal | undefined {
+  return (
+    refuseWrongValueType(definitions, fields) ??
+    refuseLinkOutside(fields) ??
+    refuseEstimateOutside(fields)
+  );
+}
+
+/** The most an estimate holds, in minutes: about two years of working days. */
+const ESTIMATE_LIMIT = 1_000_000;
+
+/**
+ * An estimate (MP-4-8) kept as whole minutes from 0 to `ESTIMATE_LIMIT`, on
+ * create and on update: the burn bar divides by it. Null clears it.
+ */
+function refuseEstimateOutside(fields: FieldValues): CommandRefusal | undefined {
+  const minutes = fields['estimated_minutes'];
+  if (minutes === undefined || minutes === null) return undefined;
+  if (
+    Number.isInteger(minutes) &&
+    (minutes as number) >= 0 &&
+    (minutes as number) <= ESTIMATE_LIMIT
+  ) {
+    return undefined;
+  }
+  return refuseCommand(
+    'FIELD_VALUE_INVALID',
+    ['estimated_minutes'],
+    [`An estimate is whole minutes from 0 to ${ESTIMATE_LIMIT}, or null to clear it.`],
+  );
+}
+
+/**
+ * A page link (MP-4-12) kept only as an address inside the product, on create
+ * and on update: the panel draws it as a door, so a scheme or another host is
+ * refused before anything is stored. Null clears the link.
+ */
+function refuseLinkOutside(fields: FieldValues): CommandRefusal | undefined {
+  const link = fields['page_link'];
+  if (link === undefined || link === null || isInProductLink(link)) return undefined;
+  return refuseCommand(
+    'FIELD_VALUE_INVALID',
+    ['page_link'],
+    ['A page link is an address inside the product: its path and hash, starting with one /.'],
+  );
+}
+
+/**
+ * The fields an agent writes through `task.update`: the two texts (MP-4-7),
+ * and the name, the due date, the estimate and the page link, which MP-4-8's
+ * and MP-4-12's Permissions tables give it "inside its delegation". Each is
+ * still held to the delegation's `task:write` and to the task's own field
+ * rules.
+ */
+export const AGENT_UPDATE_FIELDS: readonly string[] = [
+  'agent_brief',
+  'description',
+  'due',
+  'estimated_minutes',
+  'page_link',
+  'title',
+];
+
+/** What an agent's `task.assign` sets: the assignee (MP-4-8), not the delegate. */
+export const AGENT_ASSIGN_FIELDS: readonly string[] = ['assignee'];
+
+/**
+ * `task.update` as an agent makes it, on its own delegated task: the fields
+ * above and nothing else. A body naming any other field is refused whole,
+ * naming those fields, before anything is written.
+ */
+export async function updateTaskAsAgent(
+  tx: TenantQuery,
+  context: Pick<CommandContext, 'spine' | 'target'>,
+  fields: FieldValues,
+): Promise<HandlerOutcome> {
+  const outside = outsideAgentReach(fields, AGENT_UPDATE_FIELDS);
+  if (outside !== undefined) return refused(outside);
+  return await updateTask(tx, context, { fields });
+}
+
+/** `task.assign` as an agent makes it: the assignee of its own delegated task. */
+export async function assignTaskAsAgent(
+  tx: TenantQuery,
+  context: FieldWriteContext,
+  fields: FieldValues,
+): Promise<HandlerOutcome> {
+  const outside = outsideAgentReach(fields, AGENT_ASSIGN_FIELDS);
+  if (outside !== undefined) return refused(outside);
+  return await writeOwnedFields(tx, context, 'task.assign', oneKind(context, fields));
+}
+
+function outsideAgentReach(
+  fields: FieldValues,
+  reach: readonly string[],
+): CommandRefusal | undefined {
+  const outside = Object.keys(fields)
+    .filter((key) => !reach.includes(key))
+    .toSorted();
+  if (outside.length === 0) return undefined;
+  return refuseCommand('SCOPE_NOT_GRANTED', outside, [
+    `An agent writes only ${reach.join(', ')} through this command.`,
+  ]);
 }
 
 /**

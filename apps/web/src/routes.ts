@@ -76,6 +76,16 @@ export const ROUTES = {
     surface: 'S2',
     authenticated: true,
   },
+  // `/task/` with no key (MP-4-1, TKM-01 to TKM-04): its own page, saying no
+  // task was named and offering the board, rather than the not-found page,
+  // which would read as an address typed wrong.
+  'agency:task-unnamed': {
+    namespace: 'agency',
+    path: '/task/',
+    title: 'Task',
+    surface: 'none',
+    authenticated: true,
+  },
   // The business's own two operation-classified settings. It draws no pinned
   // surface — the mockup has no settings screen — so `surface` is `none`
   // rather than a letter it would be borrowing. The manifest places it in the
@@ -124,6 +134,14 @@ export const ROUTES = {
     namespace: 'agency',
     path: '/gallery/',
     title: 'Component gallery',
+    surface: 'none',
+    authenticated: true,
+  },
+  // The reader's own to-dos (MP-7-1): the Projects dock panel's address.
+  'agency:todos': {
+    namespace: 'agency',
+    path: '/todos',
+    title: 'My to-dos',
     surface: 'none',
     authenticated: true,
   },
