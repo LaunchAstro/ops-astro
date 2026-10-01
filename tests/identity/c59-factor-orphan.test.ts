@@ -350,6 +350,34 @@ describe.skipIf(serverUrl === undefined)(
       expect(await statusOf(person)).toEqual([{ status: 'verified' }]);
     });
 
+    it('C59: a concurrent first verify in another business keeps its factor at the provider', async () => {
+      // Security review 2b2 round 10: Mia's good code for F, enrolled in alpha,
+      // is through at the provider but not yet recorded while she enrols in
+      // bravo; alpha then records F verified. Bravo removes nothing there.
+      const subject = `sub-${randomUUID()}`;
+      const alphaPerson = await personIn(alpha, subject);
+      const f = await db.app.withBusiness(alpha, (tx) =>
+        recordFactorEnrolled(tx, {
+          personId: alphaPerson,
+          provider: 'supabase',
+          providerFactorId: `factor-${randomUUID()}`,
+        }),
+      );
+      const person = await personIn(bravo, subject);
+      const { provider, asked } = namingProvider([
+        { factorId: f.providerFactorId, status: 'verified' },
+      ]);
+
+      const answer = await enrolSecondFactor(callerFor(subject), provider);
+      await db.app.withBusiness(alpha, (tx) =>
+        recordFactorVerified(tx, { personId: alphaPerson, factorId: f.id, subject }),
+      );
+
+      expect('code' in answer ? answer.code : 'issued').toBe('issued');
+      expect(asked.filter((call) => call.startsWith('remove'))).toEqual([]);
+      expect(await statusOf(person)).toEqual([{ status: 'unverified' }]);
+    });
+
     it('C59: the next enrolment removes an unrecorded factor unverified at the provider, with an audit event, and touches no recorded one', async () => {
       const subject = `sub-${randomUUID()}`;
       const person = await personIn(bravo, subject);
