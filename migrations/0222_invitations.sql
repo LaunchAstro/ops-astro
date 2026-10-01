@@ -133,10 +133,11 @@ create policy authority_invitation_delivery_attempts on public.invitation_delive
 
 -- The invitation moves by these four columns alone (state, ended_at,
 -- expires_at, revision): who it is for, its role, its address and who made it
--- are fixed at create. A token and an attempt's observations are written once
--- and never rewritten here; the enrolment that spends a token (P3) brings its
--- own grant.
+-- are fixed at create. An attempt's observations are written once and never
+-- rewritten. A token moves once, by `spent_at` alone, when the invitation is
+-- accepted (P3).
 grant select, insert on public.invitations to ops_astro_app;
 grant update (state, ended_at, expires_at, revision) on public.invitations to ops_astro_app;
 grant select, insert on public.enrolment_tokens to ops_astro_app;
+grant update (spent_at) on public.enrolment_tokens to ops_astro_app;
 grant select, insert on public.invitation_delivery_attempts to ops_astro_app;

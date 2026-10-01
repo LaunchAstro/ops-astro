@@ -30,6 +30,12 @@ export {
 } from './data-class.ts';
 export { readAuthMessage, type AuthMessage } from './auth-message.ts';
 export {
+  AUTH_CREATE_USER,
+  AUTH_EXISTS_STATUS,
+  authUserAdapter,
+  readAuthUserAnswer,
+} from './auth-user.ts';
+export {
   EMAIL_NOTHING_HAPPENED,
   EMAIL_PATH,
   EMAIL_SEND,
