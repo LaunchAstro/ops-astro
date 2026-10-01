@@ -225,7 +225,7 @@ export async function load(
   side: Side,
   packet: Packet,
   url: string,
-  prep: { hide?: string[] | undefined; open?: string | undefined } = {},
+  prep: { hide?: string[] | undefined; open?: string | readonly string[] | undefined } = {},
 ): Promise<Page> {
   const hide = prep.hide ?? [];
   const page = await side.context.newPage();
@@ -258,8 +258,8 @@ export async function load(
   if (drawn !== null && drawn !== side.theme) {
     throw new Error(`visual: ${url} drew in ${String(drawn)}, not ${side.theme}`);
   }
-  // A state behind a tab or a disclosure is opened the way a person would.
-  if (prep.open !== undefined) await page.locator(prep.open).first().click();
+  // oxlint-disable-next-line no-await-in-loop -- opened as a person would, each control in turn
+  for (const control of [prep.open ?? []].flat()) await page.locator(control).first().click();
   await page.evaluate(
     () =>
       new Promise((resolve) => {

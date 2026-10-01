@@ -6,10 +6,18 @@
 export interface LookProbe {
   /** `<screen>.<element>`, unique across screens. */
   readonly id: string;
-  /** The mockup page path and the element there; `open` clicks before measuring. */
-  readonly mockup: { readonly path: string; readonly selector: string; readonly open?: string };
+  /** The mockup page path and the element there; `open` clicks, in turn, before measuring. */
+  readonly mockup: {
+    readonly path: string;
+    readonly selector: string;
+    readonly open?: string | readonly string[];
+  };
   /** The app page (drawn from the made-up reads) and the element there. */
-  readonly app: { readonly page: string; readonly selector: string; readonly open?: string };
+  readonly app: {
+    readonly page: string;
+    readonly selector: string;
+    readonly open?: string | readonly string[];
+  };
   /** Computed style properties (colours compared as painted), or `box.width|height|x|y`. */
   readonly props: readonly string[];
   /**

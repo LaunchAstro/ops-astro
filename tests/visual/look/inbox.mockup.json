@@ -91,6 +91,42 @@
         "line-height": "17.05px",
         "color": "rgba(248,248,248,140)"
       }
+    },
+    "inbox.info-tab": {
+      "1480-light": {
+        "font-family": "Funnel Sans",
+        "font-size": "13px",
+        "font-weight": "400",
+        "line-height": "20.15px",
+        "color": "rgba(0,0,0,255)",
+        "padding-top": "4.8px",
+        "padding-bottom": "7.2px",
+        "border-bottom-color": "rgba(0,0,0,255)"
+      },
+      "1480-dark": {
+        "font-family": "Funnel Sans",
+        "font-size": "13px",
+        "font-weight": "400",
+        "line-height": "20.15px",
+        "color": "rgba(248,248,248,255)",
+        "padding-top": "4.8px",
+        "padding-bottom": "7.2px",
+        "border-bottom-color": "rgba(248,248,248,255)"
+      }
+    },
+    "inbox.info-row": {
+      "1480-light": {
+        "padding-top": "4px",
+        "padding-bottom": "4px",
+        "padding-left": "12px",
+        "border-left-width": "2px"
+      },
+      "1480-dark": {
+        "padding-top": "4px",
+        "padding-bottom": "4px",
+        "padding-left": "12px",
+        "border-left-width": "2px"
+      }
     }
   }
 }

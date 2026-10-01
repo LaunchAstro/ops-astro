@@ -12,6 +12,11 @@ import type { LookScreen } from './types.ts';
 
 const PANEL = { path: '/agency/projects/', open: '[data-dock-tab="notifs"]' } as const;
 const APP = { page: 'agency:inbox' } as const;
+/** `p-notifs--info-tab`: the panel on its "No response needed" tab. */
+const INFO = {
+  mockup: { path: PANEL.path, open: [PANEL.open, '[data-nt-tab="info"]'] },
+  app: { ...APP, open: '[role="tab"][id$="-tab-info"]' },
+} as const;
 const TYPE = ['font-family', 'font-size', 'font-weight', 'line-height', 'color'] as const;
 
 /** A mockup size TOKENS.md folds onto the scale ("drift, drop"), in both themes. */
@@ -69,6 +74,19 @@ export const INBOX: LookScreen = {
       app: { ...APP, selector: '.nt__meta' },
       props: [...TYPE],
       ruled: CAPTION,
+    },
+    {
+      id: 'inbox.info-tab',
+      mockup: { ...INFO.mockup, selector: '[data-nt-tab="info"]' },
+      app: { ...INFO.app, selector: '[role="tab"][id$="-tab-info"]' },
+      props: [...TYPE, 'padding-top', 'padding-bottom', 'border-bottom-color'],
+      ruled: SMALL,
+    },
+    {
+      id: 'inbox.info-row',
+      mockup: { ...INFO.mockup, selector: '[data-nt-pane="info"] .nt__row' },
+      app: { ...INFO.app, selector: '[id$="-panel-info"] .nt__row' },
+      props: ['padding-top', 'padding-bottom', 'padding-left', 'border-left-width'],
     },
   ],
 };

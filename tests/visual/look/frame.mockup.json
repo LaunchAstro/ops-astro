@@ -63,6 +63,152 @@
         "border-top-width": "1px",
         "column-gap": "5.6px"
       }
+    },
+    "frame.tab-row": {
+      "1480-light": {
+        "background-color": "rgba(255,255,255,255)",
+        "border-bottom-color": "rgba(0,0,0,31)",
+        "box.height": "43"
+      },
+      "1480-dark": {
+        "background-color": "rgba(10,10,13,255)",
+        "border-bottom-color": "rgba(245,245,245,26)",
+        "box.height": "43"
+      },
+      "900-light": {
+        "background-color": "rgba(255,255,255,255)",
+        "border-bottom-color": "rgba(0,0,0,31)",
+        "box.height": "43"
+      },
+      "900-dark": {
+        "background-color": "rgba(10,10,13,255)",
+        "border-bottom-color": "rgba(245,245,245,26)",
+        "box.height": "43"
+      },
+      "390-light": {
+        "background-color": "rgba(255,255,255,255)",
+        "border-bottom-color": "rgba(0,0,0,31)",
+        "box.height": "43"
+      },
+      "390-dark": {
+        "background-color": "rgba(10,10,13,255)",
+        "border-bottom-color": "rgba(245,245,245,26)",
+        "box.height": "43"
+      }
+    },
+    "frame.tab": {
+      "1480-light": {
+        "font-family": "Funnel Sans",
+        "font-size": "14px",
+        "font-weight": "400",
+        "line-height": "21.7px",
+        "color": "rgba(107,99,93,255)",
+        "padding-top": "10.4px",
+        "padding-bottom": "8.4px",
+        "box.x": "340"
+      },
+      "1480-dark": {
+        "font-family": "Funnel Sans",
+        "font-size": "14px",
+        "font-weight": "400",
+        "line-height": "21.7px",
+        "color": "rgba(248,248,248,184)",
+        "padding-top": "10.4px",
+        "padding-bottom": "8.4px",
+        "box.x": "340"
+      },
+      "900-light": {
+        "font-family": "Funnel Sans",
+        "font-size": "14px",
+        "font-weight": "400",
+        "line-height": "21.7px",
+        "color": "rgba(107,99,93,255)",
+        "padding-top": "10.4px",
+        "padding-bottom": "8.4px",
+        "box.x": "116"
+      },
+      "900-dark": {
+        "font-family": "Funnel Sans",
+        "font-size": "14px",
+        "font-weight": "400",
+        "line-height": "21.7px",
+        "color": "rgba(248,248,248,184)",
+        "padding-top": "10.4px",
+        "padding-bottom": "8.4px",
+        "box.x": "116"
+      },
+      "390-light": {
+        "font-family": "Funnel Sans",
+        "font-size": "14px",
+        "font-weight": "400",
+        "line-height": "21.7px",
+        "color": "rgba(107,99,93,255)",
+        "padding-top": "10.4px",
+        "padding-bottom": "8.4px",
+        "box.x": "116"
+      },
+      "390-dark": {
+        "font-family": "Funnel Sans",
+        "font-size": "14px",
+        "font-weight": "400",
+        "line-height": "21.7px",
+        "color": "rgba(248,248,248,184)",
+        "padding-top": "10.4px",
+        "padding-bottom": "8.4px",
+        "box.x": "116"
+      }
+    },
+    "frame.tab-current": {
+      "1480-light": {
+        "color": "rgba(0,0,0,255)",
+        "font-weight": "500"
+      },
+      "1480-dark": {
+        "color": "rgba(248,248,248,255)",
+        "font-weight": "500"
+      },
+      "900-light": {
+        "color": "rgba(0,0,0,255)",
+        "font-weight": "500"
+      },
+      "900-dark": {
+        "color": "rgba(248,248,248,255)",
+        "font-weight": "500"
+      },
+      "390-light": {
+        "color": "rgba(0,0,0,255)",
+        "font-weight": "500"
+      },
+      "390-dark": {
+        "color": "rgba(248,248,248,255)",
+        "font-weight": "500"
+      }
+    },
+    "frame.tab-mark": {
+      "1480-light": {
+        "background-color": "rgba(116,92,238,255)",
+        "box.height": "2"
+      },
+      "1480-dark": {
+        "background-color": "rgba(116,92,238,255)",
+        "box.height": "2"
+      },
+      "900-light": {
+        "background-color": "rgba(116,92,238,255)",
+        "box.height": "2"
+      },
+      "900-dark": {
+        "background-color": "rgba(116,92,238,255)",
+        "box.height": "2"
+      },
+      "390-light": {
+        "background-color": "rgba(116,92,238,255)",
+        "box.height": "2"
+      },
+      "390-dark": {
+        "background-color": "rgba(116,92,238,255)",
+        "box.height": "2"
+      }
     }
   }
 }
