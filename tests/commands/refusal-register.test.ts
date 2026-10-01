@@ -15,10 +15,10 @@ import { describe, expect, it } from 'vitest';
 import {
   CALLER_VISIBLE,
   REFUSAL_REGISTER,
-  UNPRODUCED_CODES,
   registeredRefusal,
   type RefusalCode,
 } from '../../packages/core-records/src/register.ts';
+import { UNPRODUCED_CODES } from '../../packages/core-records/src/register-unproduced.ts';
 import {
   asCallerVisible,
   refuseCommand,
@@ -79,9 +79,7 @@ const STILL_UNPRODUCED: readonly string[] = [
   // AW-01 J's four for C52-A's dispatch, the occurrence run's one caller.
   'ACTIVATION_MODE_NOT_PERMITTED',
   'APPROVAL_NOT_STANDING',
-  'DEFINITION_DIGEST_MISMATCH',
   'DEFINITION_REVOKED',
-  'DEFINITION_UNAVAILABLE',
   'DELEGATION_EXCLUDES_ACTIVATION',
   // `AUDIENCE_NOT_PERMITTED` came off when a delegated agent's own-task
   // comment was wired: the agent writes `internal` only, and a `client`
@@ -108,9 +106,12 @@ const STILL_UNPRODUCED: readonly string[] = [
   // command envelope in `tests/commands/unproduced-reach.test.ts`.
   // `LEASE_HELD` came off when two lineages on one task, under an envelope
   // an earlier handback left open, reached it (`tests/commands/lease-held-reach.test.ts`).
-  'DELEGATION_EXCLUDES_INTAKE',
-  'DELEGATION_EXPIRED',
-  'DELEGATION_REVOKED',
+  // `DELEGATION_EXCLUDES_INTAKE` came off with AW-11: an agent calling
+  // `task.triage` is refused it (`tests/commands/unproduced-reach.test.ts`).
+  // `DELEGATION_EXPIRED` and `DELEGATION_REVOKED` came off with AW-11: a
+  // child delegation's call walks to its parent, and a parent that has run
+  // out, or was handed back or withdrawn, answers with them
+  // (`tests/runtime/aw-11-child-delegation.test.ts`).
   // `DELEGATION_WIDENS` came off when the approver's task write was revoked
   // between approval and pickup (`tests/commands/delegation-widens.test.ts`).
   'EVIDENCE_MISMATCH',

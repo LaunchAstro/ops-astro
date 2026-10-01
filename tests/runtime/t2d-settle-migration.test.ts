@@ -23,7 +23,7 @@ import {
   readMigrations,
 } from '../../packages/core-records/src/tenancy/migrate.ts';
 import type { Database } from '../../packages/core-records/src/tenancy/database.ts';
-import { propose } from '../../packages/core-runtime/src/propose.ts';
+import { BEFORE_0223, propose } from '../../packages/core-runtime/src/propose.ts';
 import { decide } from '../../packages/core-runtime/src/decide.ts';
 import {
   buildFixture,
@@ -42,6 +42,10 @@ if (serverUrl === undefined) {
 
 const onDisk = readMigrations('migrations');
 const THROUGH_0033 = (version: string): boolean => version.slice(0, 4) <= '0033';
+// And AW-06's 0210 plan step key: the runtime that seeds below proposes with
+// it, and it reads nothing the migrations under test add, so it is applied
+// with the seed and the runner applies whatever is pending after it.
+const SEEDED = (version: string): boolean => THROUGH_0033(version) || version.startsWith('0210');
 const BACKSTOP_0026 = '28554fabfe72a262c5344f6bc22885a646b959c44982137b373d441e9c9be97e';
 
 /** One approved piece of work: its held reservation and its attempt. */
@@ -61,6 +65,8 @@ async function held(
       currency: 'AUD',
       payload: { change: 'a comment' },
       step: { kind: 'synthetic_comment', payload: {} },
+      // Seeded before 0223 (and 0207): the step has no plan record columns.
+      planRecordId: BEFORE_0223,
       expiresAt: new Date(Date.now() + 3_600_000),
     });
     if (!proposed.ok) throw new Error(`propose refused ${proposed.refusal.code}`);
@@ -127,7 +133,7 @@ describe.skipIf(serverUrl === undefined)('0034 settlement at the observed cost',
     upgraded = await createEmptyDatabase({ part: 't2dmigup' });
     await applyMigrations(
       upgraded.admin,
-      onDisk.filter((m) => THROUGH_0033(m.version)),
+      onDisk.filter((m) => SEEDED(m.version)),
     );
     const seed = await buildFixture(upgraded.app, 't2d-seed');
     await held(upgraded.app, seed);

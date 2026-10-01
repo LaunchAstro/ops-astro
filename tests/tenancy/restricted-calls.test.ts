@@ -147,6 +147,63 @@ const UNREACHED: Readonly<Record<string, string>> = {
        join public.people p on p.business_id = a.business_id
        join public.actors actor on actor.business_id = a.business_id
       order by p.id, actor.id limit 1 returning 1`,
+  // C59: no journey enrols a second factor, so one is written here.
+  'public.second_factors': `insert into public.second_factors
+       (business_id, id, person_id, provider, provider_factor_id)
+     select business_id, gen_random_uuid(), id, 'supabase', 'restricted-calls-seed'
+       from public.people where business_id = $1 order by id limit 1 returning 1`,
+  // C55: no journey records a privacy incident, so one is written here.
+  'public.privacy_incidents': `insert into public.privacy_incidents
+       (business_id, id, what_happened, found_at, found_by, affected, information_kinds,
+        recorded_by_actor)
+     select business_id, gen_random_uuid(), 'restricted calls seed', now(), 'seed', 'nobody',
+            array['other'], id
+       from public.actors where business_id = $1 order by id limit 1 returning 1`,
+  // C81: no journey drafts a legal document version, so one is written here.
+  'public.legal_document_versions': `insert into public.legal_document_versions
+       (business_id, id, document, version, body, body_digest, drafted_by_actor)
+     select business_id, gen_random_uuid(), 'breach-runbook', '0.1', 'restricted calls seed', '',
+            id
+       from public.actors where business_id = $1 order by id limit 1 returning 1`,
+  // C81: no journey sets a register row, so one is written here.
+  'public.overseas_services': `insert into public.overseas_services
+       (business_id, id, service, receives, stored_where, trains_on_it, contract, to_confirm,
+        in_use, updated_by_actor)
+     select business_id, gen_random_uuid(), 'restricted calls seed', 'nothing', 'nowhere', 'no',
+            'none', false, true, id
+       from public.actors where business_id = $1 order by id limit 1 returning 1`,
+  // C81: no journey sets a data class, so one is written here.
+  'public.data_classes': `insert into public.data_classes
+       (business_id, id, data_class, purpose, disclosures, retention, deletion, in_use,
+        updated_by_actor)
+     select business_id, gen_random_uuid(), 'restricted calls seed', 'nothing', 'no one',
+            'a day', 'deleted', true, id
+       from public.actors where business_id = $1 order by id limit 1 returning 1`,
+  // API-2: no journey issues an agent credential, so one is written here.
+  'public.agent_credentials': `insert into public.agent_credentials
+       (business_id, id, agent_actor_id, issued_by_person_id, issued_by_actor_id, purpose, scope,
+        credential_hash, credential_scheme, credential_key_id, expires_at)
+     select business_id, gen_random_uuid(), id, person_id, id, 'restricted calls seed',
+            array['task:read'], repeat('0', 64), 'hmac-sha256-v1', 'seed', now() + interval '1 day'
+       from public.actors where business_id = $1 and kind = 'person'
+      order by id limit 1 returning 1`,
+  // C32: no journey makes a client, so one is written here.
+  'public.clients': `insert into public.clients (business_id, id, name, created_by_actor_id)
+     select business_id, gen_random_uuid(), 'restricted calls seed', id
+       from public.actors where business_id = $1 order by id limit 1 returning 1`,
+  // C58: no journey ends a person's access, so an ending is written here for a
+  // person's own login, as `access.end` writes one.
+  'public.access_endings': `insert into public.access_endings
+       (business_id, person_id, login_id, ended_by_actor_id)
+     select pl.business_id, pl.person_id, pl.login_id, a.id
+       from public.person_logins pl
+       join public.actors a on a.business_id = pl.business_id and a.person_id = pl.person_id
+      where pl.business_id = $1 order by pl.login_id limit 1 returning 1`,
+  // C58: an ended session, as signing out writes one for a person's own session.
+  'public.ended_sessions': `insert into public.ended_sessions
+       (business_id, person_id, session_id, reason)
+     select business_id, id, gen_random_uuid(), 'sign_out'
+       from public.people where business_id = $1 order by id limit 1 returning 1`,
   'public.record_links': `insert into public.record_links
        (business_id, id, link_type, from_record_id, to_record_id)
      select a.business_id, gen_random_uuid(), 'restricted_calls', a.id, b.id
@@ -173,6 +230,36 @@ const UNREACHED: Readonly<Record<string, string>> = {
             'bootstrap_file', 'skills/seed.md', encode(sha256('seed'::bytea), 'hex'), 4, now(),
             '[]'::jsonb, encode(sha256('seed'::bytea), 'hex'),
             coalesce((select id from public.actors where business_id = $1 order by id limit 1),
+                     gen_random_uuid())
+     returning 1`,
+  // AW-04: nothing binds a plan before a plan accept. The row rides on a
+  // decision the journey made; a business with none gets made-up ids, which
+  // the owner's seed writes with foreign keys off.
+  'public.plan_records': `insert into public.plan_records
+       (business_id, id, gate_id, decision_id, run_id, plan_text, text_digest, record,
+        record_digest, bound_by_actor_id)
+     select $1, gen_random_uuid(),
+            coalesce(d.gate_id, gen_random_uuid()), coalesce(d.id, gen_random_uuid()),
+            coalesce(g.run_id, gen_random_uuid()), 'seed', encode(sha256('seed'::bytea), 'hex'),
+            '{"steps": []}'::jsonb, encode(sha256('seed'::bytea), 'hex'),
+            coalesce((select id from public.actors where business_id = $1 order by id limit 1),
+                     gen_random_uuid())
+       from (select 1) one
+       left join public.gate_decisions d on d.business_id = $1
+             and d.id = (select id from public.gate_decisions where business_id = $1
+                          order by id limit 1)
+       left join public.gates g on g.business_id = d.business_id and g.id = d.gate_id
+     returning 1`,
+  // AW-04 (U10): no planning reply is priced before a cap is set. The row
+  // rides on the business's first cap and person; a business with none gets
+  // made-up ids, which the owner's seed writes with foreign keys off.
+  'public.planning_envelopes': `insert into public.planning_envelopes
+       (business_id, id, cap_id, conversation_id, owner_person_id)
+     select $1, gen_random_uuid(),
+            coalesce((select id from public.budget_caps where business_id = $1 order by id limit 1),
+                     gen_random_uuid()),
+            gen_random_uuid(),
+            coalesce((select id from public.people where business_id = $1 order by id limit 1),
                      gen_random_uuid())
      returning 1`,
   'public.bootstrap_reads': `insert into public.bootstrap_reads
@@ -231,9 +318,22 @@ const UNREACHED: Readonly<Record<string, string>> = {
   'public.trace_export_gaps': `insert into public.trace_export_gaps
        (business_id, id, code, events)
      values ($1, gen_random_uuid(), 'target_unreachable', 1) returning 1`,
+  'public.trace_expiry_batches': `insert into public.trace_expiry_batches
+       (business_id, id, window_days, runs, expired_run_ids)
+     values ($1, gen_random_uuid(), 30, 1, array[gen_random_uuid()]) returning 1`,
   'public.bootstrap_bytes': `insert into public.bootstrap_bytes
        (business_id, content_digest, content_size, bytes)
      values ($1, encode(sha256('seed'::bytea), 'hex'), 4, 'seed'::bytea) returning 1`,
+  // Nothing in the journey saves a preference (MP-2-11a adds the command).
+  'public.person_preferences': `insert into public.person_preferences
+       (business_id, person_id, key, value)
+     select business_id, id, 'appearance', '"dark"'::jsonb from public.people
+      where business_id = $1 order by id limit 1 returning 1`,
+  // 0043: set by a person in the Team panel (MP-7-10), which the journey never opens.
+  'public.person_availability': `insert into public.person_availability
+       (business_id, person_id, state, reason)
+     select business_id, id, 'away', 'restricted calls seed'
+       from public.people where business_id = $1 order by id limit 1 returning 1`,
   // Nothing in the journey raises an inbox item yet (INB-1b does), so one item,
   // its recipient's attention row and one attempt are written here, in order.
   'public.inbox_items': `insert into public.inbox_items
@@ -248,6 +348,24 @@ const UNREACHED: Readonly<Record<string, string>> = {
        (business_id, id, item_id, channel, state)
      select business_id, gen_random_uuid(), id, 'in_app', 'asked' from public.inbox_items
       where business_id = $1 order by id limit 1 returning 1`,
+  // C39-T: nothing on the journey invites anyone, so one invitation, the token
+  // its send minted and that send's attempt are written here, in order. The
+  // invitation names the business's first person and actor.
+  'public.invitations': `insert into public.invitations
+       (business_id, id, person_id, role_key, address, expires_at, created_by_actor_id)
+     select $1, gen_random_uuid(),
+            (select id from public.people where business_id = $1 order by id limit 1),
+            'member', 'invitee@example.test', now() + interval '7 days',
+            (select id from public.actors where business_id = $1 order by id limit 1)
+     returning 1`,
+  'public.enrolment_tokens': `insert into public.enrolment_tokens
+       (business_id, id, invitation_id, token_hash, expires_at)
+     select business_id, gen_random_uuid(), id, encode(sha256(id::text::bytea), 'hex'), expires_at
+       from public.invitations where business_id = $1 order by id limit 1 returning 1`,
+  'public.invitation_delivery_attempts': `insert into public.invitation_delivery_attempts
+       (business_id, id, invitation_id, token_id, state)
+     select business_id, gen_random_uuid(), invitation_id, id, 'asked'
+       from public.enrolment_tokens where business_id = $1 order by id limit 1 returning 1`,
 };
 
 /**
@@ -305,6 +423,7 @@ async function roleClasses(
                  when r.rolname = 'ops_astro_backup_restore' then 'backup restore'
                  when r.rolname = 'ops_astro_lookup' then 'lookup'
                  when r.rolname = 'ops_astro_forwarder' then 'forwarder'
+                 when r.rolname = 'ops_astro_restore_drill' then 'restore drill'
                  when r.rolcanlogin and not r.rolbypassrls and not r.rolcreaterole
                       and not r.rolcreatedb then 'outsider'
                  else 'unclassified' end as class
@@ -391,6 +510,9 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     // S0-2: the outbox forwarder reads and deletes ops.api_events and keeps its raised alerts in
     // ops.api_alerts (0048), proved in tests/db/api-events.test.ts.
     expect(classes['forwarder']).toStrictEqual(['ops_astro_forwarder']);
+    // C55: the restore drill stamps the date of the last tested restore through
+    // ops.record_tested_restore() (0070), proved in tests/operations/c55-last-tested-restore.test.ts.
+    expect(classes['restore drill']).toStrictEqual(['ops_astro_restore_drill']);
     expect(classes['application login']).toContain(world.db.loginRole);
     expect(classes['outsider']).toContain(world.db.restrictedRole);
   });
@@ -530,7 +652,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(inserting.length).toBeGreaterThan(0);
   }, 120_000);
 
-  it('calls every function as every caller, and only the granted two run', async () => {
+  it('calls every function as every caller, and only the granted three run', async () => {
     const wrong: string[] = [];
     for (const fn of functions) {
       for (const caller of [...TABLE_CALLERS, 'owner'] as const) {
@@ -556,16 +678,18 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     const definer = (signature: string): CatalogueFunction | undefined =>
       definers().find((fn) => fn.signature === signature);
 
-    // Exactly two, each for a named reason. The append-only trigger refuses
+    // Exactly three, each for a named reason. The append-only trigger refuses
     // the owner itself. The fair share's count (AW-01, ORCH-DECISION SL11
     // AW-01) is the one read across businesses: a provider route's ceiling is
     // the installation's, which a tenant transaction cannot count under row
     // security. It answers one number and no id, and only the broker's role
-    // may execute it (tests/broker/aw-01-broker-fair-share.test.ts).
-    it('are exactly two, each with its search path pinned', () => {
+    // may execute it (tests/broker/aw-01-broker-fair-share.test.ts). The drill
+    // stamp (0070, C55) writes only now().
+    it('are exactly three, each with its search path pinned', () => {
       expect(definers().map((fn) => fn.signature)).toStrictEqual([
         'handback_reports_append_only()',
         'model_route_room(text,integer)',
+        'ops.record_tested_restore()',
       ]);
     });
 
@@ -583,6 +707,15 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
       expect(fn?.trigger).toBe(false);
       expect(fn?.config).toStrictEqual(['search_path=pg_catalog, public', 'row_security=off']);
       expect(fn?.firedBy).toStrictEqual([]);
+    });
+
+    it('the third is the drill stamp, which takes no argument', () => {
+      const stamp = definer('ops.record_tested_restore()');
+      // 0070 (C55): no argument, so it writes only now(); only the drill's
+      // identity executes it (c55-last-tested-restore), refused above to every caller here.
+      expect(stamp?.trigger).toBe(false);
+      expect(stamp?.argumentTypes).toStrictEqual([]);
+      expect(stamp?.config).toStrictEqual(['search_path=pg_catalog']);
     });
   });
 

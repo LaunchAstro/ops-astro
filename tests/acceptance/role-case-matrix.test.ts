@@ -47,7 +47,22 @@ import { SUCCESS, except, failures, observe, refusal, writeMatrix } from './role
 import { createHarness, targetKeyOf, type Harness } from './role-case-harness.ts';
 import type { FixtureClient } from './role-case-clients.ts';
 import { alternativeFor } from './cd-alternatives.ts';
-import { PROPOSAL } from './role-case-bodies.ts';
+import { PROPOSAL, childProbe } from './role-case-bodies.ts';
+
+/** The person prefix refuses these by design; the agent reaches them in case (h). */
+const AGENT_ONLY: ReadonlySet<string> = new Set([
+  'model.call',
+  'run.delegate_child',
+  'run.child_handback',
+]);
+
+/** The inbox's `self` rows (INB-1d, INB-1e); the account's (C23) take the branch after. */
+const INBOX_SELF: ReadonlySet<string> = new Set([
+  'inbox.read',
+  'inbox.count',
+  'inbox.seen',
+  'notifications.set_channel',
+]);
 
 if (serverUrl === undefined) {
   console.warn('acceptance/matrix: DATABASE_URL is unset, so nothing below ran.');
@@ -226,7 +241,7 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
           );
           continue;
         }
-        if (declaration.authorisedOn === 'self' && grants !== undefined) {
+        if (INBOX_SELF.has(declaration.name) && grants !== undefined) {
           // The caller's own inbox (INB-1d). The stamp is `preference:write`,
           // self-scoped and held by every signed-in person, so nobody is R2
           // for it; another person's item is NOT_FOUND (INB-1 seen
@@ -261,6 +276,80 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
             none ? refusal('SCOPE_NOT_GRANTED') : SUCCESS,
           );
           expect(own.body['refused'] === true, `${caller.name}/${declaration.name}`).toBe(none);
+          continue;
+        }
+        if (declaration.collection === 'preference' && grants !== undefined) {
+          // The caller's own preferences (MP-2-11a). A save, and a tip dismissed
+          // (MP-2-11), are every signed-in person's, on their own row only. The read is self-scoped too but
+          // asks a live grant of any kind, as `session.capabilities` does:
+          // `noah`, holding nothing, is refused it; a member holding any grant
+          // is served their own row, which names nobody else.
+          const save = declaration.name === 'preference.save';
+          const dismiss = declaration.name === 'preference.dismiss_tip';
+          // eslint-disable-next-line no-await-in-loop
+          const own = await call(
+            harness.world.api,
+            personPath('alpha', pathOf(declaration.name)),
+            {
+              ...harness.probeBody(declaration),
+              ...(save ? { preference: 'appearance', value: 'dark' } : {}),
+              ...(dismiss ? { page: 'agency:inbox', tip: 'triage', version: 1 } : {}),
+            },
+            bearer(caller.token),
+          );
+          const expected =
+            save || dismiss || grants.size > 0 ? SUCCESS : refusal('SCOPE_NOT_GRANTED');
+          observe(caller.name, 'e-no-grant', declaration.name, own, expected);
+          expect(JSON.stringify(own.body), caller.name).not.toContain(
+            String(harness.world.ada.personId),
+          );
+          continue;
+        }
+        if (declaration.authorisedOn === 'self' && grants !== undefined) {
+          // The person menu's two (C23): `account:write` and the caller's own
+          // name are every signed-in person's, on their own account only, so a
+          // member holding no grant is not R2 for them. `noah`'s row is the
+          // control: served, and the answer names him alone. `orphan` and `bea`
+          // are not in `heldBy` and fall through below, refused at admission.
+          // eslint-disable-next-line no-await-in-loop
+          const own = await call(
+            harness.world.api,
+            personPath('alpha', pathOf(declaration.name)),
+            harness.probeBody(declaration),
+            bearer(caller.token),
+          );
+          observe(caller.name, 'e-no-grant', declaration.name, own, SUCCESS);
+          expect(own.body['refused'], `${caller.name}/${declaration.name}`).toBeUndefined();
+          expect(JSON.stringify(own.body), caller.name).not.toContain(
+            String(harness.world.ada.personId),
+          );
+          continue;
+        }
+        if (declaration.name === 'client.list' && grants !== undefined) {
+          // C32: the clients a caller's live grants reach, so like
+          // `session.capabilities` the grant it takes is holding one at all.
+          // `noah` holds nothing and is refused; `mia` holds the task keys
+          // over the whole business, so her row is a 200 listing clients.
+          // eslint-disable-next-line no-await-in-loop
+          const listed = await call(
+            harness.world.api,
+            personPath('alpha', pathOf(declaration.name)),
+            harness.probeBody(declaration),
+            bearer(caller.token),
+          );
+          if (grants.size === 0) {
+            observe(
+              caller.name,
+              'e-no-grant',
+              declaration.name,
+              listed,
+              refusal('SCOPE_NOT_GRANTED'),
+            );
+            expect(listed.body['clients'], caller.name).toBeUndefined();
+            continue;
+          }
+          observe(caller.name, 'e-no-grant', declaration.name, listed, SUCCESS);
+          expect(Array.isArray(listed.body['clients']), caller.name).toBe(true);
           continue;
         }
         if (declaration.name === 'session.capabilities' && grants !== undefined) {
@@ -426,7 +515,7 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
         }
         // eslint-disable-next-line no-await-in-loop
         const prepared = await harness.positiveBody(declaration);
-        if ('exception' in prepared && declaration.name === 'model.call') {
+        if ('exception' in prepared && AGENT_ONLY.has(declaration.name)) {
           // A person's write grant carries no model call: the person prefix
           // refuses it (tests/broker/aw-01-model-call.test.ts), and the agent
           // makes it in case (h).
@@ -488,7 +577,8 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
     // (h) I12, over every declaration, with the expectation derived from the
     // exported `BEFORE_PICKUP` rather than from a list here. Three answers, as
     // minimum contract 8.2 case 9 names them: the queue and a pickup succeed,
-    // `task.decide` is `DELEGATION_EXCLUDES_DECISION`, and every other
+    // `task.decide` is `DELEGATION_EXCLUDES_DECISION`, `task.triage`
+    // `DELEGATION_EXCLUDES_INTAKE` (contract 6.1), and every other
     // operation, the agent's own after a pickup included, is
     // `DELEGATION_EXCLUDES_OPERATION`.
     for (const declaration of COMMAND_SURFACE) {
@@ -501,7 +591,9 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
         : refusal(
             declaration.name === 'task.decide'
               ? 'DELEGATION_EXCLUDES_DECISION'
-              : 'DELEGATION_EXCLUDES_OPERATION',
+              : declaration.name === 'task.triage'
+                ? 'DELEGATION_EXCLUDES_INTAKE'
+                : 'DELEGATION_EXCLUDES_OPERATION',
           );
       // A handback's outcome and fence are read by type before the delegation
       // (Sol 6 AUTHORITY-2), so they are sent well formed: the answer is the
@@ -641,19 +733,30 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
         expect(untouched[0]?.n, 'no report for a lease outside the purpose').toBe('0');
         continue;
       }
+      // A child handback answers to a child credential, which the pickup's is
+      // not, and names no record: the credential is its whole target.
       const expected = refusal(
         declaration.name === 'task.decide'
           ? 'DELEGATION_EXCLUDES_DECISION'
-          : AGENT_SURFACE.has(declaration.name)
-            ? 'DELEGATION_OUT_OF_PURPOSE'
-            : 'DELEGATION_EXCLUDES_OPERATION',
+          : declaration.name === 'run.child_handback'
+            ? 'DELEGATION_NOT_LIVE'
+            : AGENT_SURFACE.has(declaration.name)
+              ? 'DELEGATION_OUT_OF_PURPOSE'
+              : declaration.name === 'task.triage'
+                ? 'DELEGATION_EXCLUDES_INTAKE'
+                : 'DELEGATION_EXCLUDES_OPERATION',
       );
       // eslint-disable-next-line no-await-in-loop
       const answer = await harness.asAgent(
         declaration.name,
-        ['task.heartbeat', 'task.dispatch', 'task.observe', 'task.check', 'model.call'].includes(
-          declaration.name,
-        )
+        [
+          'task.heartbeat',
+          'task.dispatch',
+          'task.observe',
+          'task.check',
+          'model.call',
+          'run.delegate_child',
+        ].includes(declaration.name)
           ? // A heartbeat, a dispatch, an observe, a check or a model call, like a handback, names its task
             // through the lease and never through a stray `recordId` (final review R1 #23), so
             // the sibling is reached by its own lease.
@@ -667,8 +770,13 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
               ...(declaration.name === 'task.observe'
                 ? { attemptId: siblingLease['attemptId'] }
                 : {}),
+              ...(declaration.name === 'run.delegate_child'
+                ? childProbe(harness.world.agent.actorId)
+                : {}),
             }
-          : { ...harness.probeBody(declaration), recordId: sibling.id },
+          : declaration.name === 'run.child_handback'
+            ? harness.probeBody(declaration)
+            : { ...harness.probeBody(declaration), recordId: sibling.id },
         credential,
       );
       observe('agent-after-pickup', table, declaration.name, answer, expected);

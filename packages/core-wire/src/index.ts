@@ -12,9 +12,13 @@ export {
   declarationOf,
   effectAttemptOf,
   effectOperationId,
+  EXTERNAL_WRITES,
+  admitsSelfWrite,
   DELEGATION_HEADER,
   pathOf,
+  ACCOUNT_AVAILABILITY_PATH,
   PREFIX,
+  PUBLIC_PREFIX,
   READS,
   SESSION_COOKIE,
   SESSION_PATH,
@@ -25,6 +29,16 @@ export {
   type OperandKind,
   type OperandSpec,
 } from './surface.ts';
+// The keys a grant may carry (C32).
+export { GRANTABLE_KEYS, isGrantableKey, SELF_SCOPED_COLLECTIONS } from './permission-keys.ts';
+export {
+  dismissedTipCount,
+  isTipRef,
+  tipKey,
+  tipShown,
+  TIPS_HELD_MAX,
+  type TipRef,
+} from './tips.ts';
 // The one refusal shape, for the clients that parse it off the wire. Type-only,
 // so no records code reaches a bundle.
 export type { CommandRefusal } from '../../core-records/src/index.ts';
@@ -45,6 +59,7 @@ export type {
   RunReadView,
   Capability,
   CapabilitiesResult,
+  SessionPersonResult,
   CommentView,
   DecisionLink,
   EvidenceView,
@@ -57,11 +72,16 @@ export type {
   InboxCountResult,
   InboxEntry,
   InboxReadResult,
+  UnattendedView,
   InternalCommentView,
   InternalTaskDetail,
   InternalTaskRead,
   LeaseView,
+  LedgerDayView,
+  LedgerEventView,
   PersonListResult,
+  TeamListResult,
+  TeamMemberView,
   PersonView,
   PresetPlanResult,
   ProposalVersionView,
@@ -70,12 +90,16 @@ export type {
   CoveringGrantView,
   QueuedWork,
   QueueResult,
+  AttributionResult,
+  PreReviewAttribution,
+  PreReviewRun,
   ReceiptResult,
   ReservationView,
   EnvelopeView,
   BudgetStopView,
   RunStateView,
   TaskLedgerView,
+  SearchHit,
   SettingsReadResult,
   SessionCapabilities,
   SettingView,
@@ -88,9 +112,42 @@ export type {
   TaskEnvelope,
   TaskExecution,
   TaskExecutionResult,
+  TaskLedgerResult,
   TaskReadResult,
+  TaskSearchResult,
   TaskStateView,
   TaskSummary,
 } from './views.ts';
+export type {
+  AccessAgent,
+  AccessGrant,
+  AccessPermission,
+  AccessPerson,
+  AccessPreview,
+  AccessReadResult,
+  ClientListResult,
+  ClientView,
+} from './views-access.ts';
+export type { InvitationListResult, InvitationState, InvitationView } from './views-invitations.ts';
+export type {
+  BreachNoticeDraft,
+  BreachNoticesResult,
+  BreachRunbookLink,
+  HealthFault,
+  HealthSourceName,
+  HealthSourceState,
+  HealthSourceView,
+  LastTestedRestoreView,
+  OperationsReadResult,
+  PrivacyIncidentView,
+  SecurityAlertView,
+  ServiceHealthSection,
+  ServiceHealthState,
+  ServiceHealthView,
+} from './views-operations.ts';
+// AW-04: a plan version as a planning reply offers it in the chat
+export type { PlanOffer, PlanOfferStep } from './plan-offer.ts';
 // the command catalogue and its parity check (API-1)
 export * from './catalogue.ts';
+// each command's data effects and its class, read by the first-client gate (S0-5)
+export * from './data-effects.ts';

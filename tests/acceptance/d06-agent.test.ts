@@ -61,6 +61,8 @@ const AGENT_OPERATIONS: readonly CommandName[] = [
   'task.observe',
   'task.check',
   'model.call',
+  'run.delegate_child',
+  'run.child_handback',
   'task.pickup',
   'task.handback',
 ];
@@ -70,8 +72,12 @@ const AGENT_OPERATIONS: readonly CommandName[] = [
 const toneOn = (taskId: string) =>
   ({ name: 'tone', from: { recordId: taskId, key: 'title' } }) as const;
 
-/** In `AGENT_SURFACE` and still not the agent's: a person decides (case (j) of the matrix). */
-const AGENT_EXCLUDED_BY_DESIGN: ReadonlySet<CommandName> = new Set(['task.decide']);
+/**
+ * In `AGENT_SURFACE` and still not the pickup agent's: a person decides (case (j)
+ * of the matrix), and a create is outside a one-task purpose (an agent
+ * credential's to make, API-2).
+ */
+const AGENT_EXCLUDED_BY_DESIGN: ReadonlySet<CommandName> = new Set(['task.decide', 'task.create']);
 
 const cells = AGENT_OPERATIONS.flatMap((operation) =>
   TOP_LEVEL_FIELDS.map((key) => ({ operation, key })),
@@ -167,6 +173,28 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
       );
       return { body: { operationId, ...lease, attemptId: held.attemptId }, credential };
     }
+    // AW-11: the hand-over on the held lease, a purpose of its own each time;
+    // the handback on a child credential handed over just before it. The
+    // world has one agent login, so it is its own helper.
+    const child = () => ({
+      leaseId: held.leaseId,
+      fence: held.fence,
+      helperActorId: harness.world.agent.actorId,
+      purpose: `d06_${randomUUID().replaceAll('-', '').slice(0, 12)}`,
+      collections: ['task'],
+      actions: ['read'],
+      expiresInSeconds: 600,
+    });
+    if (name === 'run.delegate_child') return { body: { operationId, ...child() }, credential };
+    if (name === 'run.child_handback') {
+      const handed = await harness.asAgent('run.delegate_child', child(), credential);
+      expect(handed.code, 'the hand-over a handback needs').toBe('ok');
+      const detail = handed.body['detail'] as Record<string, unknown>;
+      return {
+        body: { operationId, outcome: 'completed' },
+        credential: String(detail['credential']),
+      };
+    }
     const own =
       name === 'task.check'
         ? { name: 'the agent checks', outcome: 'passed' }
@@ -236,7 +264,7 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
       const answer = await harness.asAgent(cell.operation, body, held.credential);
       const after = await durable();
       const reason = AGENT_EXCLUDED_BY_DESIGN.has(cell.operation)
-        ? `a person decides; answered ${String(answer.body['code'])}`
+        ? `${cell.operation === 'task.decide' ? 'a person decides' : 'outside the purpose'}; answered ${String(answer.body['code'])}`
         : `not in AGENT_SURFACE; answered ${String(answer.body['code'])}`;
       tally.count(cell.operation, 'agent', answer.body['refused'] === true, reason);
       expect(answer.body['refused']).toBe(true);

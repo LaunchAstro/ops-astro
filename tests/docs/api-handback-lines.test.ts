@@ -211,7 +211,13 @@ describe('API.md lines derived from the code', () => {
 
 describe('API.md operands and codes derived from the code', () => {
   it('lists each typed identifier in the operand table, and every free operand', () => {
-    const typed = ['task.rank', 'task.propose', 'task.create', 'task.decide'] as const;
+    const typed = [
+      'task.rank',
+      'task.propose',
+      'task.create',
+      'task.decide',
+      'task.accept_plan',
+    ] as const;
     for (const operation of typed) {
       const ids = Object.entries(declarationOf(operation).operands ?? {})
         .filter(([name, operand]) => name !== 'recordId' && operand.startsWith('id'))
@@ -237,7 +243,11 @@ describe('API.md operands and codes derived from the code', () => {
     const cell = refusals('task.propose', '/task/propose');
     for (const code of codes) expect(cell, code).toContain(`\`${code}\``);
     expect(cell).not.toMatch(/`COMMAND_BODY_INVALID`[^,]*`lineageId`/u);
-    const register = read('packages/core-records/src/register.ts').replaceAll(/\n\s*\/\/ ?/gu, ' ');
+    // The unproduced codes' notes live beside the register, in `register-unproduced.ts`.
+    const register = read('packages/core-records/src/register-unproduced.ts').replaceAll(
+      /\n\s*\/\/ ?/gu,
+      ' ',
+    );
     expect(register).toContain(
       'second barrier behind the proposal, and no command case reaches it',
     );

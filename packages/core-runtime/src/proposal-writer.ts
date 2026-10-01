@@ -46,6 +46,13 @@ import { digestOf } from './signing.ts';
 import { renderEvidence } from './evidence.ts';
 import { type RuntimeResult } from './refusals.ts';
 
+/**
+ * Said in place of a plan record only on a schema from before 0223: the
+ * upgrade suites seed one and propose through this writer. Every other caller
+ * names the record it read, or null, so no new step is written the old way.
+ */
+export const BEFORE_0223: unique symbol = Symbol('planned_steps before 0223');
+
 export interface ProposalWrite {
   readonly taskId: string;
   /** The lineage this version joins. Its row is locked by the caller, or created by it. */
@@ -58,7 +65,21 @@ export interface ProposalWrite {
   readonly maximumMinor: number;
   readonly currency: string;
   readonly payload: Record<string, unknown>;
-  readonly step: { readonly kind: string; readonly payload: Record<string, unknown> };
+  /**
+   * The run's one step. `planStep`, when present, is a step key of the task's
+   * bound plan, checked by the command under the task lock (AW-06, 0210).
+   */
+  readonly step: {
+    readonly kind: string;
+    readonly payload: Record<string, unknown>;
+    readonly planStep?: string;
+  };
+  /**
+   * The task's bound plan record as the caller read it under the task lock,
+   * or null when none was bound, stored with the step (MP-6-2, 0223).
+   * `BEFORE_0223` writes the step as before 0223, its run placed by time.
+   */
+  readonly planRecordId: string | null | typeof BEFORE_0223;
   readonly expiresAt: Date;
 }
 
@@ -165,11 +186,28 @@ export async function writeProposal(
   );
 
   const stepId = randomUUID();
-  await tx.query(
-    `insert into public.planned_steps (business_id, id, run_id, ordinal, kind, payload)
-     values ($1, $2, $3, 1, $4, $5::text::jsonb)`,
-    [tx.businessId, stepId, runId, request.step.kind, JSON.stringify(request.step.payload)],
-  );
+  const step = [
+    tx.businessId,
+    stepId,
+    runId,
+    request.step.kind,
+    JSON.stringify(request.step.payload),
+    request.step.planStep ?? null,
+  ];
+  await (request.planRecordId === BEFORE_0223
+    ? tx.query(
+        `insert into public.planned_steps
+           (business_id, id, run_id, ordinal, kind, payload, plan_step_key)
+         values ($1, $2, $3, 1, $4, $5::text::jsonb, $6)`,
+        step,
+      )
+    : tx.query(
+        `insert into public.planned_steps
+           (business_id, id, run_id, ordinal, kind, payload, plan_step_key,
+            plan_record_id, plan_record_written)
+         values ($1, $2, $3, 1, $4, $5::text::jsonb, $6, $7, true)`,
+        [...step, request.planRecordId],
+      ));
 
   // Rendered here, from the rows just written, before the gate exists (G07).
   const pack = await renderEvidence(tx, { versionId, runId });

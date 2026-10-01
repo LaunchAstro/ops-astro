@@ -177,7 +177,7 @@ export async function clientOnItsOwnTask(owner: Schedules): Promise<string> {
 /** Another person's agent, under its own live delegation, with its own lease. */
 export async function anotherPersonsAgent(
   owner: Schedules,
-): Promise<{ readonly leaseId: string } & LeaseRow> {
+): Promise<{ readonly leaseId: string; readonly subject: string } & LeaseRow> {
   const other = await enrol(owner.db.app, owner.business, 'aw02-other-decider');
   const subject = `agent-${randomUUID()}`;
   const agent = randomUUID();
@@ -214,7 +214,7 @@ export async function anotherPersonsAgent(
     } as never,
   );
   const leaseId = String(appliedDetail(picked as CommandResult, 'pickup')['leaseId']);
-  return { leaseId, ...(await leaseOf(owner, leaseId)) };
+  return { leaseId, subject, ...(await leaseOf(owner, leaseId)) };
 }
 
 /** The world's live bindings, filled in by `useAw02World`. */

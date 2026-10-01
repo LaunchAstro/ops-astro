@@ -8,17 +8,18 @@ import { lockProposal, proposeUnderLocks } from '../../../core-runtime/src/index
 import type { CommandContext, TaskRow } from './context.ts';
 import { lockTask, REVISION_FIXES } from './prepare.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
-import { applied, refused, type HandlerOutcome } from './outcome.ts';
+import { applied, refused, type HandlerOutcome, type Refused } from './outcome.ts';
 import { EXPIRY_FIX, expiryFrom } from './expiry.ts';
 import { invalid, isFieldMap } from './operands.ts';
-import { readBusinessCapId } from '../../../core-runtime/src/index.ts';
+import { readBusinessCapId, readProjectedPlan } from '../../../core-runtime/src/index.ts';
+import type { ProjectedPlan } from '../../../core-runtime/src/index.ts';
 
 export interface ProposeFields {
   readonly purpose: string;
   readonly maximumMinor: number;
   readonly currency: string;
   readonly payload: Readonly<Record<string, unknown>>;
-  readonly step: { readonly kind: string; readonly payload: Readonly<Record<string, unknown>> };
+  readonly step: ProposedStep;
   readonly expiresInSeconds?: number;
   readonly lineageId?: string;
   /** The task revision the caller read, compared under the runtime's locks. */
@@ -32,18 +33,42 @@ export interface ProposeFields {
  */
 const PURPOSE_SHAPE = /^[a-z][a-z0-9_]{0,62}$/u;
 
+/** The run's one step, and the plan step it is proposed under when it names one (AW-06). */
+interface ProposedStep {
+  readonly kind: string;
+  readonly payload: Readonly<Record<string, unknown>>;
+  readonly planStep?: string;
+}
+
 /**
  * `planned_steps.kind` is `not null` and `payload` is `jsonb not null`. The
  * payload is a JSON object, not an array: spreading an array or a string into
- * one stores bytes the proposer never sent.
+ * one stores bytes the proposer never sent. A `planStep` that is present is
+ * a string; whether the task's bound plan has it is asked under the lock.
  */
-function isStep(
-  step: unknown,
-): step is { readonly kind: string; readonly payload: Readonly<Record<string, unknown>> } {
+function isStep(step: unknown): step is ProposedStep {
   if (typeof step !== 'object' || step === null) return false;
-  const candidate = step as { kind?: unknown; payload?: unknown };
+  const candidate = step as { kind?: unknown; payload?: unknown; planStep?: unknown };
   if (typeof candidate.kind !== 'string' || candidate.kind === '') return false;
+  if ('planStep' in candidate && typeof candidate.planStep !== 'string') return false;
   return isFieldMap(candidate.payload);
+}
+
+const PLAN_STEP_FIXES: readonly string[] = [
+  "Name a step of this task's accepted plan in planStep, or leave planStep out.",
+];
+
+/**
+ * Whether `step` may be proposed under `plan`, the task's bound plan read under
+ * the task lock the caller holds (`readProjectedPlan`, the record the graph
+ * projects): no plan step named, or one the plan has.
+ */
+function planStepRefusal(plan: ProjectedPlan | null, step: ProposedStep): Refused | undefined {
+  if (step.planStep === undefined) return undefined;
+  if (plan?.steps.some((each) => each.key === step.planStep) === true) return undefined;
+  return refused(refuseCommand('FIELD_VALUE_INVALID', ['step'], PLAN_STEP_FIXES), {
+    step: { planStep: step.planStep },
+  });
 }
 
 /**
@@ -154,7 +179,10 @@ export async function proposeFor(
       refuseCommand(
         'FIELD_VALUE_INVALID',
         ['step'],
-        ['Send a step as { kind, payload }, with a non-empty kind and a JSON object payload.'],
+        [
+          'Send a step as { kind, payload }, with a non-empty kind and a JSON object payload;',
+          'planStep, when sent, is the key of a step of the plan.',
+        ],
       ),
       { step: fields.step },
     );
@@ -176,7 +204,11 @@ export async function proposeFor(
     maximumMinor: fields.maximumMinor,
     currency: fields.currency,
     payload: { ...fields.payload },
-    step: { kind: fields.step.kind, payload: { ...fields.step.payload } },
+    step: {
+      kind: fields.step.kind,
+      payload: { ...fields.step.payload },
+      ...(fields.step.planStep === undefined ? {} : { planStep: fields.step.planStep }),
+    },
     expiresAt,
     ...(typeof lineageId === 'string' ? { lineageId } : {}),
     // T1's existing budget authority, for a task with no envelope open yet:
@@ -197,7 +229,13 @@ export async function proposeFor(
       refuseCommand('VERSION_STALE', [`revision=${current.revision}`], REVISION_FIXES),
     );
   }
-  const result = await proposeUnderLocks(tx, proposal, held);
+  // The plan the step key is checked against is the one stored with the step
+  // (MP-6-2, 0223), so the log places the run in it whatever binds later.
+  const plan = await readProjectedPlan(tx, target.id);
+  const unplanned = planStepRefusal(plan, proposal.step);
+  if (unplanned !== undefined) return unplanned;
+  const planRecordId = plan?.planRecordId ?? null;
+  const result = await proposeUnderLocks(tx, { ...proposal, planRecordId }, held);
   if (!result.ok) return refused(result.refusal);
   await raiseDecision(tx, { taskId: target.id, gateId: result.value.gateId });
 

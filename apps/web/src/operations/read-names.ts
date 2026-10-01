@@ -28,6 +28,7 @@ export const READ_NAMES = [
   'task.read',
   'task.board',
   'person.list',
+  'team.list',
   'settings.read',
   'session.capabilities',
   // The last two reads, which the client reached only through `mutate()` and
@@ -46,6 +47,23 @@ export const READ_NAMES = [
   'conversation.read',
   // The caller's own conversations, for the tab row (MP-7-11).
   'conversation.list',
+  // Which runs read an instruction file, by digest: pre-review (AW-04).
+  'definition.attribution',
+  // Search over what the caller may read (C1); the ⌘K surface is C1b's.
+  'task.search',
+  // Who is signed in, for the person menu (C23).
+  'session.person',
+  // The caller's own preferences (MP-2-11a); MP-2-11 draws them.
+  'preference.read',
+  // The activity ledger (MP-8-4), a read from the day it was declared.
+  'task.ledger',
+  // Settings ▸ Access (C32), under `access:manage` on the server.
+  'access.read',
+  'client.list',
+  // The operations view (C55), under `operations:read` on the server.
+  'operations.read',
+  // The breach drill's notices (C81), under `privacy:manage` on the server.
+  'privacy.draft_breach_notices',
   // The caller's own inbox and owed count (INB-1d), the same read the API and
   // the command line serve; the working minimum draws them in INB-1g.
   'inbox.read',
@@ -53,6 +71,8 @@ export const READ_NAMES = [
   // Items no path reaches (INB-1e), for `operations:read`; the operations view
   // (C55) draws them.
   'inbox.unattended',
+  // The business's team invitations (C39-T), under `access:share` on the server.
+  'invitation.list',
 ] as const;
 
 /**
@@ -74,3 +94,11 @@ export type ReadName = OnSurface<typeof READ_NAMES>[number];
  * something only the running caller knows.
  */
 export type NotARead<Name extends CommandName> = [Name] extends [ReadName] ? never : Name;
+
+/**
+ * The person's own account routes (C58) the browser calls, at `/account/<route>`
+ * on the person prefix. They are not surface operations: the body is always
+ * empty and the server takes the person and this session from the credential,
+ * so no caller can name another person, session or agent in one.
+ */
+export type AccountRoute = 'sessions/list' | 'sessions/end-others';

@@ -8,6 +8,7 @@
 import { randomUUID } from 'node:crypto';
 import { type CommandDeclaration } from '../../packages/core-wire/src/surface.ts';
 import {
+  ACCEPTED_PLAN,
   PROPOSAL,
   lineageOn,
   type Prepared,
@@ -15,18 +16,27 @@ import {
   batchOf,
   approvableGate,
   approvedReservationId,
-  approvedTaskId,
+  moneyBody,
   ownLease,
-  ownAppliedEffect,
-  ownUnknownAttempt,
 } from './role-case-bodies.ts';
 import { ownConversation } from './foreign-conversation.ts';
-import { answerAtTheStop } from './stopped-run.ts';
-import { revisedRunBody } from './revised-run.ts';
+import { privacyBody } from './role-case-privacy-bodies.ts';
+import { credentialBody } from './role-case-credential-bodies.ts';
+import { accessBody, madeClient } from './role-case-access-bodies.ts';
+import { createGateBody } from './role-case-gate-bodies.ts';
+import { leaseBody, runBody } from './role-case-run-bodies.ts';
+
+/** A team invitation to an address nobody holds yet. */
+export const invitee = (): Record<string, unknown> => ({
+  name: 'Invited Ivy',
+  email: `ivy-${randomUUID()}@example.test`,
+  role: 'member',
+});
 
 export function createPositiveBody(
   context: BodyContext,
 ): (declaration: CommandDeclaration) => Promise<Prepared> {
+  const gateBody = createGateBody(context);
   // eslint-disable-next-line max-lines-per-function -- one recipe per declaration reads as a table
   return async function positiveBody(declaration: CommandDeclaration): Promise<Prepared> {
     const target = async (): Promise<Record<string, unknown>> => {
@@ -70,13 +80,9 @@ export function createPositiveBody(
       case 'task.set_audience':
         return { body: { ...(await target()), fields: { client_visible: true } } };
       case 'task.set_party':
-        // The party link takes a uuid and nothing in this tree resolves one:
-        // the party model is not installed, and `tasks-state.ts` says so where
-        // it excludes `client` from the person links it checks. So this is the
-        // operation succeeding on a well-formed identifier, which is the whole
-        // of what it claims to check — written down so a reader is not left
-        // believing a party was proved to exist.
-        return { body: { ...(await target()), fields: { client: randomUUID() } } };
+        // The party link names a client of this business (C32), so the admin
+        // makes one first.
+        return { body: { ...(await target()), fields: { client: await madeClient(context) } } };
       case 'task.reparent':
         return { body: { ...(await target()), parentId: null } };
       case 'task.move':
@@ -113,6 +119,10 @@ export function createPositiveBody(
         const gate = await approvableGate(context);
         return { body: { ...gate, decision: 'approve', note: 'the admin approves' } };
       }
+      case 'task.accept_plan': {
+        const gate = await approvableGate(context);
+        return { body: { ...gate, ...ACCEPTED_PLAN, note: 'the admin accepts the plan' } };
+      }
       case 'task.pickup':
         // Person pickup (EX-01, transaction contract T3 line 66, minimum
         // contract line 331, ledger line 30): the admin claims approved work
@@ -127,30 +137,60 @@ export function createPositiveBody(
         return { body: { recordId: context.alphaTaskId } };
       case 'task.board':
         return { body: { board: null } };
+      case 'task.ledger':
+        return { body: { timeZone: 'UTC' } };
+      // An empty body, and no `expectedRevision`: `business_settings` has no revision column,
+      // and `session.capabilities` reports the caller's own grants. The admin holds what each
+      // asks: `settings:read`, `access:manage` and `operations:read` (C55, INB-1e), and a live
+      // grant of any kind for `session.capabilities`, `client.list` (C32) and the inbox (INB-1d).
+      // The person menu's two (C23) and the caller's own preferences (MP-2-11a) are its own.
+      // C39-T's `invitation.list` asks `access:share`, which the admin holds.
       // The pending gates the admin may decide: the admin holds `decide` on
       // the whole business, so the list answers.
       case 'gate.pending':
       case 'task.queue':
       case 'person.list':
-      // Both take an empty body and neither carries an `expectedRevision`:
-      // `settings.read` because `business_settings` has no revision column to
-      // be stale against, `session.capabilities` because it reports the
-      // caller's own grants and there is nothing of the caller's to be stale.
-      // `settings.read` needs `settings:read`, which the seed grants the
-      // admin; `session.capabilities` needs a live grant of any kind, which
-      // the admin holds, so the admin reaches both here.
+      case 'team.list':
       case 'settings.read':
       case 'session.capabilities':
+      case 'session.person':
+      case 'session.end':
+      case 'preference.read':
+      case 'access.read':
+      case 'operations.read':
+      case 'client.list':
       case 'inbox.read':
       case 'inbox.count':
       case 'inbox.unattended':
+      case 'invitation.list':
         // The caller's own inbox (INB-1d) needs a live grant of any kind, as
         // above; `inbox.unattended` needs `operations:read`, which the seed
         // grants the admin (INB-1e, C55).
         return { body: {} };
+      case 'preference.save':
+        return { body: { preference: 'appearance', value: 'dark' } };
+      case 'preference.dismiss_tip':
+        return { body: { page: 'agency:inbox', tip: 'triage', version: 1 } };
+      case 'task.search':
+        // A word no audit row carries, so digest-only is checked on it.
+        return { body: { query: 'brochure' } };
+      case 'client.create':
+      case 'access.grant':
+      case 'access.revoke':
+      case 'access.end':
+        return await accessBody(declaration.name, context);
       case 'notifications.set_channel':
         // Self-scoped (INB-1e): in-app is always on, the one mode it takes.
         return { body: { channel: 'in_app', mode: 'on' } };
+      // C39-T: the admin holds `access:share`; each recipe invites a new address.
+      case 'invitation.create':
+        return { body: invitee() };
+      case 'invitation.resend':
+      case 'invitation.revoke': {
+        const made = await context.asPerson('invitation.create', invitee());
+        if (made.code !== 'ok') throw new Error(`matrix: invitation refused ${made.code}`);
+        return { body: { invitationId: String(made.body['recordId']) } };
+      }
       case 'inbox.seen': {
         // The caller's own item: a proposal raises a decision item for every
         // decide holder, the admin among them, read back from their inbox.
@@ -161,33 +201,43 @@ export function createPositiveBody(
       }
       case 'preset.plan':
         return { body: { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] } };
+      case 'definition.attribution':
+        return { body: { digest: 'a'.repeat(64) } };
       case 'settings.set_four_eyes_threshold':
         return { body: { value: 1200 } };
       case 'settings.set_client_sign_off':
         return { body: { value: true } };
+      case 'settings.set_money_step_up':
+        return { body: { value: true } };
+      // Inside C122-1's bounds whichever runs first: seven or more, and the
+      // retention window never below the conversation window.
+      case 'settings.set_conversation_window':
+        return { body: { value: 14 } };
+      case 'settings.set_retention_window':
+        return { body: { value: 90 } };
+      // C81: the admin holds `privacy:manage`, as the owner does.
+      case 'legal.draft_version':
+      case 'legal.approve_version':
+      case 'legal.publish_version':
+      case 'privacy.set_overseas_service':
+      case 'privacy.set_data_class':
+      case 'privacy.draft_breach_notices':
+      case 'privacy.record_incident':
+        return await privacyBody(declaration.name, context);
+      // API-2: the admin holds `credential:write`, as the owner does.
+      case 'credential.issue':
+      case 'credential.revoke':
+        return await credentialBody(declaration.name, context);
+      // S0-5: the admin holds `operations:manage` in alpha, which operates the
+      // harness's installation.
+      case 'operations.record_gate_item':
+      case 'operations.change_installation_mode':
+        return await gateBody(declaration.name);
       case 'budget.top_up':
-        // The admin approved the plan and holds billing, so a top-up under
-        // the band is hers alone (T2e).
-        return {
-          body: {
-            recordId: await approvedTaskId(context),
-            amountMinor: 100,
-            fromMaximumMinor: PROPOSAL.maximumMinor,
-          },
-        };
       case 'budget.record_outcome':
-        // The admin holds billing, so any unknown attempt on the business's
-        // tasks is hers to record (O8, T3d1).
-        return { body: { ...(await ownUnknownAttempt(context)), outcome: 'happened' } };
       case 'budget.write_off':
-        // The same unknown hold, closed at nothing with a reason (T3c).
-        return {
-          body: {
-            ...(await ownUnknownAttempt(context)),
-            amountMinor: 0,
-            reason: 'The matrix writes its own unknown hold off.',
-          },
-        };
+      case 'budget.set_planning_cap':
+        return { body: await moneyBody(context, declaration.name) };
       case 'task.cancel': {
         // A lineage to cancel is a proposal's, so one is proposed first.
         const task = await context.freshTask('a task whose lineage is cancelled');
@@ -208,61 +258,20 @@ export function createPositiveBody(
         return { body: { recordId: task.id, lineageId } };
       }
       case 'grant.revoke':
-        // Its positive control is case (f): the admin revokes a member's read
-        // through this route, and the member's next read is refused. A body
-        // here would need a grant id, and the only way to one is the grant it
-        // then takes away from a later case.
-        return {
-          exception: 'executed alternative: success asserted in case (f), ada grant.revoke row',
-        };
       case 'delegation.revoke':
-        // A delegation exists only after an agent's pickup, which this recipe
-        // cannot make. The journey makes one and the admin revokes it through
-        // this route, case (h), `k-revoke` rows.
-        return {
-          exception:
-            'executed alternative: needs a pickup; ada revokes a live delegation in ' +
-            'case (h), k-revoke rows',
-        };
       case 'model.call':
-        // The run's worker's, never a person's: the person prefix refuses it
-        // SCOPE_NOT_GRANTED (AW-01, "n/a (system)"). The agent makes the call
-        // under its delegation in the agent journey, case (h).
-        return {
-          exception:
-            'executed alternative: the person prefix refuses it by design; the agent calls it ' +
-            'in case (h)',
-        };
+      case 'run.delegate_child':
+      case 'run.child_handback':
       case 'run.top_up':
       case 'run.end_at_budget_stop':
-        // A run the broker stopped at its approved ceiling (`stopped-run.ts`).
-        return await answerAtTheStop(context, declaration.name, PROPOSAL);
       case 'run.revise_state':
-        // MP-6-2: a proposal's planned run, its state revised under run:write.
-        return await revisedRunBody(context, PROPOSAL);
+        return await runBody(declaration.name, context);
       case 'task.heartbeat':
-        // The person renews their own lease (ledger line 38, "current lease
-        // owner"). The agent's renewal is in the agent journey.
-        return { body: await ownLease(context) };
       case 'task.dispatch':
-        // The person marks their own lease's step dispatched (T2c1).
-        return { body: await ownLease(context) };
       case 'task.check':
-        // A check recorded under the person's own lease (MP-6-1). The agent's
-        // check under its delegation is in the agent journey.
-        return {
-          body: { ...(await ownLease(context)), name: 'the admin checks', outcome: 'passed' },
-        };
       case 'task.observe':
-        // The person observes the effect they applied on their own lease (T2c2).
-        return { body: await ownAppliedEffect(context) };
-      case 'task.receipt': {
-        // The receipt of an effect the person applied and observed (T2c2).
-        const applied = await ownAppliedEffect(context);
-        const observed = await context.asPerson('task.observe', applied);
-        if (observed.code !== 'ok') throw new Error(`matrix: observe refused ${observed.code}`);
-        return { body: { attemptId: applied.attemptId } };
-      }
+      case 'task.receipt':
+        return await leaseBody(declaration.name, context);
       // AW-03. The admin holds `conversation:write`, so starts one of their own;
       // the message and the read name a conversation the admin just started.
       case 'conversation.start':

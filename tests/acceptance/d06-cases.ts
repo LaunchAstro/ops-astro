@@ -51,6 +51,7 @@ import { TASK_STATE_FIELDS } from '../../packages/core-records/src/tasks/states.
 import { createCli } from '../../apps/cli/client.ts';
 import { OperationsClient, type ReadName } from '../../apps/web/src/operations/client.ts';
 import type { Harness } from './role-case-harness.ts';
+import type { Caller } from './world.ts';
 import { asBrowser } from '../support/sign-in.ts';
 
 export type Surface = 'api' | 'cli' | 'web';
@@ -125,7 +126,11 @@ export interface TopCell {
  * so it has no person positive control, and its D06 cells run on the agent
  * prefix (`d06-agent.test.ts`).
  */
-const AGENT_ONLY: ReadonlySet<CommandName> = new Set(['model.call']);
+const AGENT_ONLY: ReadonlySet<CommandName> = new Set([
+  'model.call',
+  'run.delegate_child',
+  'run.child_handback',
+]);
 
 /** Every operation a person surface serves, by every classified key, by every surface. */
 export const TOP_LEVEL_CELLS: readonly TopCell[] = COMMAND_SURFACE.filter(
@@ -174,14 +179,16 @@ function said(answer: unknown): Said {
  * `apps/cli/client.ts` with its transport pointed at the same app. The web is
  * the mounted app's own `OperationsClient`, reads through `read` and commands
  * through `mutate`, which is the path every screen's submission takes.
+ * Each speaks as the admin unless another caller is named.
  */
 export function surfacesOf(
   harness: Harness,
+  caller: Caller = harness.world.ada,
 ): (surface: Surface, name: CommandName, body: Readonly<Record<string, unknown>>) => Promise<Said> {
   const { world } = harness;
   const cli = createCli({
     businessKey: 'alpha',
-    credential: world.ada.token,
+    credential: caller.token,
     transport: async (path, body, credential) =>
       await world.api.fetch(
         new Request(`http://api.test${path}`, {
@@ -196,13 +203,13 @@ export function surfacesOf(
     businessKey: 'alpha',
     signedIn: true,
     fetch: asBrowser(
-      world.ada.token,
+      caller.token,
       async (url, init) => await world.api.fetch(new Request(url, init)),
     ),
   });
   return async (surface, name, body) => {
     if (surface === 'api') {
-      const answer = await harness.asPerson(name, body);
+      const answer = await harness.asPerson(name, body, 'alpha', caller);
       return said(answer.body);
     }
     if (surface === 'cli') return said((await cli.run(name, body)).body);

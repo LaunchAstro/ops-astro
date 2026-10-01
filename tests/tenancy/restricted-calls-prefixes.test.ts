@@ -162,6 +162,24 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     manifest_digest: SEED_DIGEST,
     pinned_by_actor_id: randomUUID(),
   },
+  // AW-04: nothing binds a plan before a plan accept.
+  'public.plan_records': {
+    id: randomUUID(),
+    gate_id: randomUUID(),
+    decision_id: randomUUID(),
+    run_id: randomUUID(),
+    plan_text: 'restricted calls seed',
+    text_digest: SEED_DIGEST,
+    record: { steps: [] },
+    record_digest: SEED_DIGEST,
+    bound_by_actor_id: randomUUID(),
+  },
+  // AW-04 (U10): no planning reply is priced before a cap is set.
+  'public.planning_envelopes': {
+    cap_id: randomUUID(),
+    conversation_id: randomUUID(),
+    owner_person_id: randomUUID(),
+  },
   'public.bootstrap_reads': {
     run_id: randomUUID(),
     sequence: 1,
@@ -200,6 +218,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   // AW-13: nothing starts the exporter on the journey.
   'public.trace_export_cursors': {},
   'public.trace_export_gaps': { code: 'target_unreachable', events: 1 },
+  'public.trace_expiry_batches': { window_days: 30, runs: 1, expired_run_ids: [randomUUID()] },
   'public.bootstrap_bytes': {
     content_digest: SEED_DIGEST,
     content_size: 4,
@@ -215,6 +234,104 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   },
   'public.inbox_attention': { item_id: randomUUID(), person_id: randomUUID() },
   'public.inbox_delivery_attempts': { item_id: randomUUID(), channel: 'in_app', state: 'asked' },
+  // C39-T: nothing on the journey invites anyone.
+  'public.invitations': {
+    person_id: randomUUID(),
+    role_key: 'member',
+    address: 'invitee@example.test',
+    expires_at: '2099-01-01T00:00:00Z',
+    created_by_actor_id: randomUUID(),
+  },
+  'public.enrolment_tokens': {
+    invitation_id: randomUUID(),
+    token_hash: '0'.repeat(64),
+    expires_at: '2099-01-01T00:00:00Z',
+  },
+  'public.invitation_delivery_attempts': {
+    invitation_id: randomUUID(),
+    token_id: randomUUID(),
+    state: 'asked',
+  },
+  // 0049 (C59): no journey enrols a second factor.
+  'public.second_factors': {
+    person_id: randomUUID(),
+    provider: 'supabase',
+    provider_factor_id: 'restricted-calls-seed',
+  },
+  // 0050 (C55): no journey records a privacy incident.
+  'public.privacy_incidents': {
+    what_happened: 'restricted calls seed',
+    found_at: new Date(),
+    found_by: 'seed',
+    affected: 'nobody',
+    information_kinds: ['other'],
+    recorded_by_actor: randomUUID(),
+  },
+  // 0051 (C81): no journey drafts a legal document version.
+  'public.legal_document_versions': {
+    document: 'breach-runbook',
+    version: '0.1',
+    body: 'restricted calls seed',
+    body_digest: '',
+    drafted_by_actor: randomUUID(),
+  },
+  // 0052 (C81): no journey sets a register row.
+  'public.overseas_services': {
+    service: 'restricted calls seed',
+    receives: 'nothing',
+    stored_where: 'nowhere',
+    trains_on_it: 'no',
+    contract: 'none',
+    to_confirm: false,
+    in_use: true,
+    updated_by_actor: randomUUID(),
+  },
+  // 0053 (C81): no journey sets a data class.
+  'public.data_classes': {
+    data_class: 'restricted calls seed',
+    purpose: 'nothing',
+    disclosures: 'no one',
+    retention: 'a day',
+    deletion: 'deleted',
+    in_use: true,
+    updated_by_actor: randomUUID(),
+  },
+  // 0054 (API-2): no journey issues an agent credential.
+  'public.agent_credentials': {
+    agent_actor_id: randomUUID(),
+    issued_by_person_id: randomUUID(),
+    issued_by_actor_id: randomUUID(),
+    purpose: 'restricted calls seed',
+    scope: ['task:read'],
+    credential_hash: '0'.repeat(64),
+    credential_scheme: 'hmac-sha256-v1',
+    credential_key_id: 'seed',
+    expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000),
+  },
+  // 0055 (C32): no journey makes a client.
+  'public.clients': {
+    name: `restricted calls seed ${randomUUID()}`,
+    created_by_actor_id: randomUUID(),
+  },
+  // 0056 (C58): no journey ends a person's access.
+  'public.access_endings': {
+    person_id: randomUUID(),
+    login_id: randomUUID(),
+    ended_by_actor_id: randomUUID(),
+  },
+  // 0057 (C58): no journey here signs out.
+  'public.ended_sessions': {
+    person_id: randomUUID(),
+    session_id: randomUUID(),
+    reason: 'sign_out',
+  },
+  'public.person_availability': {
+    person_id: randomUUID(),
+    state: 'away',
+    reason: 'restricted calls seed',
+  },
+  // 0067: nothing in the journey saves a preference yet.
+  'public.person_preferences': { person_id: randomUUID(), key: 'appearance', value: '"dark"' },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;

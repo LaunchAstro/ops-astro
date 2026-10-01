@@ -7,8 +7,8 @@
 // controls that recipe file leaves to other cases: `grant.revoke` revokes a
 // grant minted for this cell, and `delegation.revoke` revokes the delegation a
 // fresh agent pickup just opened. With those, every operation a person
-// surface serves has a positive control in this file; `model.call`, the
-// agent's alone, runs its cells in `d06-agent.test.ts`. That includes the person's own lease work
+// surface serves has a positive control in this file; `model.call` and AW-11's two, the
+// agent's alone, run their cells in `d06-agent.test.ts`. That includes the person's own lease work
 // (EX-01, `handlers.ts`): `task.pickup` claims a fresh approved reservation,
 // and `task.heartbeat` and `task.handback` name a lease the person's own
 // pickup of fresh approved work just took (`role-case-bodies.ts` `ownLease`).
@@ -18,6 +18,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { SYSTEM_OWNED_FIELDS } from '../../packages/core-commands/src/commands/prepare.ts';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { grantTo } from '../commands/fixture.ts';
+import { enrolCaller, type Caller } from './cast.ts';
+import { invitee } from './role-case-positive-body.ts';
 import {
   FIELDS_PAYLOAD_OPERATIONS,
   PAYLOAD_CELLS,
@@ -43,6 +45,19 @@ import { serverUrl } from './world.ts';
 /** The two commands that write a record's generic fields, through `tasks-write.ts`. */
 const GENERIC_WRITES: ReadonlySet<CommandName> = new Set(['task.create', 'task.update']);
 
+/**
+ * C39-T's three acts. The product allows one person 30 invitation sends an
+ * hour (`INVITATION_LIMITS`), and a part holds about forty of these cells at
+ * up to four sends each, so each cell acts as a person of its own holding
+ * `access:share`: its sends are the only ones counted against it, and the
+ * limit itself stays proved where it is, in `tests/access/c39-t-*`.
+ */
+const INVITATION_ACTS: ReadonlySet<CommandName> = new Set([
+  'invitation.create',
+  'invitation.resend',
+  'invitation.revoke',
+]);
+
 // The hosted runner runs this file in the parts tests/db/shard-plan.json names,
 // SUITE_PART=i/k, each part on a fixture of its own. A part registers only its
 // share of the cells, so every cell runs once across the parts; unset, the
@@ -58,13 +73,17 @@ if (serverUrl === undefined) {
 // eslint-disable-next-line max-lines-per-function -- one fixture, and the cells that share it
 describe.skipIf(serverUrl === undefined)('D06: every operation, field and surface', () => {
   let harness: Harness;
-  let send: (surface: Surface, name: CommandName, body: Record<string, unknown>) => Promise<Said>;
+  let sendAsAda: (
+    surface: Surface,
+    name: CommandName,
+    body: Record<string, unknown>,
+  ) => Promise<Said>;
   let durable: () => Promise<Durable>;
   const tally = new Tally();
 
   beforeAll(async () => {
     harness = await createHarness('d06g');
-    send = surfacesOf(harness);
+    sendAsAda = surfacesOf(harness);
     await roomToApprove(harness);
     durable = await durableProbe(harness);
   }, 120_000);
@@ -74,9 +93,27 @@ describe.skipIf(serverUrl === undefined)('D06: every operation, field and surfac
     await harness?.close();
   });
 
-  /** A valid body for one operation, as ada, on work of its own: nothing is shared between cells. */
-  async function positive(name: CommandName): Promise<Record<string, unknown>> {
+  /** A new person in alpha holding `access:share` and nothing else, for one invitation cell. */
+  async function inviter(): Promise<Caller> {
+    const { world } = harness;
+    return await enrolCaller(world.db, world.alpha, 'alpha', 'inviter', {
+      membership: true,
+      actions: ['share'],
+      collections: ['access'],
+    });
+  }
+
+  /**
+   * A valid body for one operation, as ada (or the cell's inviter), on work of
+   * its own: nothing is shared between cells.
+   */
+  async function positive(name: CommandName, caller?: Caller): Promise<Record<string, unknown>> {
     const operationId = randomUUID();
+    if (caller !== undefined && (name === 'invitation.resend' || name === 'invitation.revoke')) {
+      const made = await harness.asPerson('invitation.create', invitee(), 'alpha', caller);
+      expect(made.code, `the invitation ${name} names`).toBe('ok');
+      return { operationId, invitationId: String(made.body['recordId']) };
+    }
     if (name === 'grant.revoke') {
       const { world } = harness;
       const grantId = await world.db.app.withBusiness(world.alpha, async (tx) => {
@@ -107,16 +144,22 @@ describe.skipIf(serverUrl === undefined)('D06: every operation, field and surfac
     code: string,
   ): Promise<void> {
     const value = probeValue(cell.key);
+    const caller = INVITATION_ACTS.has(cell.operation) ? await inviter() : undefined;
+    const send = caller === undefined ? sendAsAda : surfacesOf(harness, caller);
 
     // First, a valid request succeeds, so a refusal below is not a refusal of everything.
-    const control = await send(cell.surface, cell.operation, await positive(cell.operation));
+    const control = await send(
+      cell.surface,
+      cell.operation,
+      await positive(cell.operation, caller),
+    );
     expect(control.code, `positive control for ${cell.operation}`).toBe('ok');
     tally.control(cell.operation, cell.surface);
 
     // The injected request is prepared the same way, on work of its own (a
     // fresh reservation, a fresh lease), so nothing but the field stands
     // between it and a success, and the clean retry below reaches that work.
-    const body = await positive(cell.operation);
+    const body = await positive(cell.operation, caller);
     const before = await durable();
     const answer = await send(cell.surface, cell.operation, inject(body, value));
     // Counted on the answer, so a cell that goes red is still a cell that ran.

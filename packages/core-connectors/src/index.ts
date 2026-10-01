@@ -28,6 +28,24 @@ export {
   type RouteChoice,
   type RouteReach,
 } from './data-class.ts';
+export { readAuthMessage, type AuthMessage, type Recovery } from './auth-message.ts';
+export {
+  AUTH_RECOVER,
+  AUTH_RECOVER_PATH,
+  authRecoverAdapter,
+  readAuthRecoverAnswer,
+} from './auth-recover.ts';
+export {
+  AUTH_CREATE_USER,
+  AUTH_EXISTS_STATUS,
+  AUTH_NOT_FOUND_STATUS,
+  AUTH_READ_USER,
+  AUTH_USERS_PATH,
+  authUserAdapter,
+  authUserReadAdapter,
+  readAuthUserAnswer,
+  readAuthUserReadAnswer,
+} from './auth-user.ts';
 export {
   EMAIL_NOTHING_HAPPENED,
   EMAIL_PATH,
@@ -44,6 +62,28 @@ export {
   type FakeEmailProvider,
   type OutboxMessage,
 } from './email-fake.ts';
+export {
+  EMAIL_HOOK_MAX_BYTES,
+  EMAIL_HOOK_TOLERANCE_S,
+  isEmailHookSecret,
+  STANDARD_WEBHOOK_HEADERS,
+  SVIX_HEADERS,
+  verifyEmailHook,
+  verifySignedHook,
+  type EmailHookEvent,
+  type HookHeaderNames,
+  type EmailHookRefusal,
+  type EmailHookVerdict,
+} from './email-hook.ts';
+export {
+  checkSender,
+  dmarcPolicy,
+  type DmarcPolicy,
+  type RecordStatus,
+  type SenderReport,
+  type SenderSource,
+} from './email-sender.ts';
+export { fakeSenderSource, type FakeSenderState } from './email-sender-fake.ts';
 export {
   CONVERSATION_ANSWER,
   readReplayAnswer,

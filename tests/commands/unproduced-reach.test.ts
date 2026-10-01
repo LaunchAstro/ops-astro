@@ -278,7 +278,8 @@ describe.skipIf(serverUrl === undefined)(
         [business],
       );
       for (const body of [
-        { command: 'task.create', fields: { title: 'an agent making its own work' } },
+        // task.create is a credential's since API-2; a pickup's is refused for its purpose.
+        { command: 'task.trash', recordId: subject },
         { command: 'task.assign', recordId: subject, assigneeActorId: agentActorId },
       ]) {
         // eslint-disable-next-line no-await-in-loop
@@ -301,11 +302,61 @@ describe.skipIf(serverUrl === undefined)(
             event.refusal_code === 'DELEGATION_EXCLUDES_OPERATION',
         );
       });
-      expect(events.map((event) => event.command)).toStrictEqual(['task.create', 'task.assign']);
+      expect(events.map((event) => event.command)).toStrictEqual(['task.trash', 'task.assign']);
       expect(events.every((event) => event.outcome === 'refused')).toBe(true);
       expect(events.every((event) => event.operation_id === null)).toBe(true);
 
       // Settle it, so the agent leaves this case holding nothing.
+      await asAgent(
+        {
+          command: 'task.handback',
+          operationId: randomUUID(),
+          leaseId: String(picked['leaseId']),
+          fence: Number(picked['fence']),
+          outcome: 'completed',
+        },
+        credential,
+      );
+    });
+
+    it('refuses DELEGATION_EXCLUDES_INTAKE to an agent calling the intake operation', async () => {
+      // Minimum contract 6.1: intake is reached only inside a decision, so an
+      // agent that could call task.triage could accept its own work.
+      const subject = await createTask('the task an agent would accept itself');
+      const decided = await decideOn(await proposeOn(subject), 'approve');
+      const pickedUp = await asAgent({
+        command: 'task.pickup',
+        operationId: randomUUID(),
+        reservationId: String(detailOf(decided)['reservationId']),
+      });
+      const picked = detailOf(pickedUp);
+      const credential = String(picked['credential']);
+      const revision = await revisionOf(subject);
+      const triage = {
+        command: 'task.triage',
+        recordId: subject,
+        expectedRevision: revision,
+        fields: { intake_state: 'accepted' },
+      };
+
+      // Under a live delegation on this very task, and before any pickup.
+      for (const presented of [credential, undefined]) {
+        // eslint-disable-next-line no-await-in-loop
+        const outcome = await asAgent({ ...triage, operationId: randomUUID() }, presented);
+        expect(codeOf(outcome), String(presented !== undefined)).toBe('DELEGATION_EXCLUDES_INTAKE');
+      }
+      expect(await revisionOf(subject)).toBe(revision);
+      const events = await db.app.withBusiness(business, async (tx) =>
+        (await readAuditEvents(tx)).filter(
+          (event) =>
+            event.actor_id === agentActorId && event.refusal_code === 'DELEGATION_EXCLUDES_INTAKE',
+        ),
+      );
+      expect(events.map((event) => [event.command, event.outcome])).toStrictEqual([
+        ['task.triage', 'refused'],
+        ['task.triage', 'refused'],
+      ]);
+
       await asAgent(
         {
           command: 'task.handback',

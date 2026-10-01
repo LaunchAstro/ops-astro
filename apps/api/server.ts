@@ -44,19 +44,27 @@ import {
   connect,
   connectAsAdmin,
   connectListener,
+  loginLiveElsewhere,
   isBusinessId,
   KEY_FILE_VARIABLE,
   readEnvFile,
 } from '../../packages/core-records/src/index.ts';
-import type { AdminConnection, Database } from '../../packages/core-records/src/index.ts';
-import { createApi, type LiveOptions, type ReadExecutor } from './app.ts';
+import type {
+  AdminConnection,
+  BusinessId,
+  Database,
+} from '../../packages/core-records/src/index.ts';
+import { createApi, type LiveOptions, type ReadAdmitter, type ReadExecutor } from './app.ts';
 import { createAlerts, faultCode, sinkFrom, type Alerts } from './alerts/sink.ts';
 import {
   executeAgentCommand,
+  executeCredentialCommand,
   executeCommand,
   executeRead as readExecutor,
   type ConversationExchange,
   type ModelCallExecutor,
+  admitReads,
+  type LoginProvider,
 } from '../../packages/core-commands/src/index.ts';
 import {
   CRASH_POINT_VARIABLE,
@@ -65,14 +73,32 @@ import {
   withRuntimeKeys,
 } from '../../packages/core-runtime/src/index.ts';
 import type { RuntimeKeys } from '../../packages/core-runtime/src/index.ts';
+import type { AgentLimits } from './auth/agent-quota.ts';
+import { createGoTrueFactors } from './auth/factors.ts';
+import { errorSinkLink, type ErrorSinkLink } from './health/error-sink-link.ts';
+import { createLangfuseHealth } from './health/tracing.ts';
+import { goTrueLogins, providerAdminKey } from './auth/provider-logins.ts';
 import {
   createSupabaseVerifier,
   keySetUrlFor,
   type SupabaseVerifierOptions,
 } from './auth/supabase.ts';
 import { startLiveTopics } from './live.ts';
+import { createLivePresence } from './live-presence.ts';
 import { isLoopback, migrationHead, readIdentity, type ServedIdentity } from './identity.ts';
+import {
+  authEmailHookSettings,
+  authHookReady,
+  mountAuthEmailHook,
+  type AuthEmailHookOptions,
+} from './auth-email-hook.ts';
+import { mailHookSettings, mountMailHook, type MailHookOptions } from './mail-hook.ts';
 import { brokerSettings, startModelBroker } from './model-broker.ts';
+import { mailDeliverySettings, startMailDelivery } from './mail-delivery.ts';
+import { enrolmentSettings, startEnrolment } from './enrolment-broker.ts';
+import type { EnrolmentOptions } from './enrolment.ts';
+import { mountPasswordReset, mountPasswordSet, type PasswordSetOptions } from './password-set.ts';
+import type { Broker } from '../../packages/core-custody/src/index.ts';
 import { startTraceExporter, traceExportSettings } from './trace-exporter.ts';
 import {
   describeRecovered,
@@ -172,8 +198,20 @@ export interface ApiConfig {
   readonly admin: AdminConnection;
   /** The issuer and published key set bearers are checked against: public keys only. */
   readonly signIn: Omit<SupabaseVerifierOptions, 'onRefusal'>;
+  /** The provider's publishable key the page sends with a sign-in: public; '' or absent, none. */
+  readonly providerKey?: string;
   /** The signing key and delegation keyring `main` read, never put in `process.env`. */
   readonly keys: RuntimeKeys;
+  /**
+   * The provider admin API's key (`providerAdminKey`), for C58's calls on an
+   * ended login only; sign-in never reads it. Absent, those calls are not sent
+   * and stay owed.
+   */
+  readonly providerAdminKey?: () => Promise<string>;
+  /** Langfuse's URL, `LANGFUSE_HOST` (C34); absent is tracing switched off. */
+  readonly tracingUrl?: string;
+  /** The error sink's web address, `OPS_ERROR_SINK_URL` (C55); absent is no link. */
+  readonly errorSink?: ErrorSinkLink;
   /**
    * The read half of the surface. Absent means `reads/execute.ts`, imported
    * statically, so a module that fails to load stops the server rather than
@@ -183,19 +221,34 @@ export interface ApiConfig {
   readonly executeRead?: ReadExecutor;
   /** Read once at process start (`identity.ts`); absent, the identity route is not mounted. */
   readonly identity?: ServedIdentity;
-  /** The live task channel, started by `main`; absent, the event route is not mounted. */
-  readonly live?: LiveOptions;
+  /**
+   * The live task channel, started by `main`; absent, the event route is not
+   * mounted. Its check is `admitReads` unless a test hands in its own to count.
+   */
+  readonly live?: Omit<LiveOptions, 'admit'> & { readonly admit?: ReadAdmitter };
+  /** The email provider's delivery hook (AW-07b); absent, the hook route is not mounted. */
+  readonly mailHook?: MailHookOptions;
+  /** The login provider's Send Email hook (C39-T); absent, the hook route is not mounted. */
+  readonly authEmailHook?: AuthEmailHookOptions;
+  /** C39-T's `POST /api/enrol` (`enrolment-broker.ts`); absent, the route is not mounted. */
+  readonly enrolment?: EnrolmentOptions;
+  /** C40's `/api/password/set` and `/reset` (the ask through `authBroker`); absent, not mounted. */
+  readonly passwordSet?: Pick<PasswordSetOptions, 'businesses'> & { readonly authBroker?: Broker };
   /** `model.call` through the credential broker; absent where none is configured. */
   readonly executeModelCall?: ModelCallExecutor;
   /** AW-03's exchange through the same broker; absent where none is configured. */
   readonly answerConversation?: ConversationExchange;
   /** The error sink and the security detections (ticket S0-2); absent without a sink. */
   readonly alerts?: Alerts;
+  /** The agent credential's limits in this process (API-2); absent, the defaults. */
+  readonly agentLimits?: AgentLimits;
 }
 
 export interface ComposedApi {
   /** The served app: `/api/health`, the boundary, and the fault mapping. */
   readonly app: Hono;
+  /** The sign-in provider's calls for an ended login (C58), for the retry. */
+  readonly logins: LoginProvider;
   /**
    * The app's own business resolver. Restart recovery resolves its keys
    * through it before the port is bound, so the recovery and the requests that
@@ -211,6 +264,7 @@ export interface ComposedApi {
 export function composeApi(config: ApiConfig): ComposedApi {
   const { database, admin } = config;
   const executeRead = config.executeRead ?? readExecutor;
+  const logins = goTrueLogins(config.providerAdminKey, config.signIn.issuer);
   const resolveBusiness = createBusinessResolver(admin);
   const server = new Hono();
   // S0-6 no edge caching: the API is served behind Vercel's edge network, so
@@ -257,7 +311,10 @@ export function composeApi(config: ApiConfig): ComposedApi {
 
   // G3: the page reads its sign-in address here, so one web build serves every
   // environment. The issuer is public, and nothing is read to answer it.
-  server.get('/api/sign-in', (context) => context.json({ issuer: config.signIn.issuer }));
+  // The hosted provider also wants its publishable key, public too (S0-6).
+  const key = config.providerKey ?? '';
+  const signInAnswer = { issuer: config.signIn.issuer, ...(key === '' ? {} : { key }) };
+  server.get('/api/sign-in', (context) => context.json(signInAnswer));
 
   const { identity } = config;
   if (identity !== undefined) {
@@ -274,22 +331,62 @@ export function composeApi(config: ApiConfig): ComposedApi {
     });
   }
 
+  // AW-07b: the provider's delivery and bounce events, verified by signature,
+  // as system work with no sign-in (`mail-hook.ts`).
+  if (config.mailHook !== undefined) mountMailHook(server, database, config.mailHook);
+  // C39-T: the login provider's Auth mail, handed to the broker's send (`auth-email-hook.ts`).
+  if (config.authEmailHook !== undefined) {
+    mountAuthEmailHook(server, database, config.authEmailHook);
+  }
+  const verify = createSupabaseVerifier({
+    ...config.signIn,
+    // The reason alone: an answer the provider sent is never repeated.
+    onRefusal: ({ reason }) => {
+      console.error(`api: the sign-in key set answer was refused (${reason})`);
+    },
+  });
+  // The provider GoTrue is: the one destination its factor and password calls reach.
+  const factors = createGoTrueFactors({ baseUrl: config.signIn.issuer });
+  // C40: a reset link's password set, mounted when given; `main()` does not yet.
+  if (config.passwordSet !== undefined) {
+    const { businesses, authBroker } = config.passwordSet;
+    mountPasswordSet(server, database, { businesses, provider: factors, verify });
+    if (authBroker !== undefined) mountPasswordReset(server, database, authBroker);
+  }
+
   server.route(
     '/',
     createApi({
       database,
-      verify: createSupabaseVerifier({
-        ...config.signIn,
-        // The reason alone: an answer the provider sent is never repeated.
-        onRefusal: ({ reason }) => {
-          console.error(`api: the sign-in key set answer was refused (${reason})`);
-        },
-      }),
+      ...(config.agentLimits === undefined
+        ? {}
+        : { agentCredentials: { limits: config.agentLimits } }),
+      verify,
       resolveBusiness,
       executeRead,
       executeCommand,
       executeAgentCommand,
-      ...(config.live === undefined ? {} : { live: config.live }),
+      executeCredentialCommand,
+      ...(config.live === undefined
+        ? {}
+        : { live: { ...config.live, admit: config.live.admit ?? admitReads } }),
+      factors,
+      logins,
+      // Only where a provider key is held (the local server): the Vercel
+      // function has none, so it asks the owner nothing and leaves every
+      // provider step to the endings loop (ORCH47).
+      ...(config.providerAdminKey === undefined
+        ? {}
+        : {
+            sharedLogin: async (subject: string, businessId: string) =>
+              await loginLiveElsewhere(admin, subject, businessId),
+          }),
+      // C34: tracing where switched on; the watcher and error sink are C29's.
+      health:
+        config.tracingUrl === undefined
+          ? {}
+          : { tracing: createLangfuseHealth({ baseUrl: config.tracingUrl }) },
+      ...(config.errorSink === undefined ? {} : { errorSink: config.errorSink }),
       ...(config.executeModelCall === undefined
         ? {}
         : { executeModelCall: config.executeModelCall }),
@@ -297,6 +394,7 @@ export function composeApi(config: ApiConfig): ComposedApi {
         ? {}
         : { answerConversation: config.answerConversation }),
       ...(config.alerts === undefined ? {} : { observe: config.alerts.observe }),
+      ...(config.enrolment === undefined ? {} : { enrolment: config.enrolment }),
     }),
   );
 
@@ -315,7 +413,25 @@ export function composeApi(config: ApiConfig): ComposedApi {
     return context.json({ code: 'SERVICE_UNAVAILABLE', names: [], fixes: [RETRY] }, 503);
   });
 
-  return { app: server, resolveBusiness };
+  return { app: server, logins, resolveBusiness };
+}
+
+/** One part of the server to stop, or none where that part is off. */
+type Stopping = (() => Promise<unknown>) | undefined;
+
+/**
+ * The server's shutdown in two stages: the work that may be mid-pass first
+ * (the live streams, the mail worker's running pass, the login provider's
+ * custody), then the pools and processes that work uses. The second stage
+ * starts only once every part of the first has settled, so a question or a
+ * send ends before its pool does.
+ */
+export async function shutDown(
+  working: readonly Stopping[],
+  pools: readonly Stopping[],
+): Promise<void> {
+  await Promise.allSettled(working.map(async (stop) => await stop?.()));
+  await Promise.allSettled(pools.map(async (stop) => await stop?.()));
 }
 
 async function main(): Promise<void> {
@@ -335,6 +451,8 @@ async function main(): Promise<void> {
   const databaseUrl = environment['DATABASE_URL'];
   const adminUrl = environment['DATABASE_ADMIN_URL'];
   const issuer = environment['GOTRUE_URL'];
+  const tracingUrl = environment['LANGFUSE_HOST'];
+  const adminKey = providerAdminKey(environment, join(ROOT, '.local'));
 
   // A test's stand-in set, for a loopback issuer only: a hosted issuer's
   // tokens are checked against that provider's own published set, always.
@@ -385,10 +503,84 @@ async function main(): Promise<void> {
     console.error(`api: ${traceConfig.problem}`);
     process.exit(1);
   }
+  // AW-07b: the delivery worker, off unless `MAIL_DELIVERY=mock` (no provider
+  // account yet); mock with a setting missing or malformed stops the server here.
+  const mailConfig = mailDeliverySettings(environment);
+  if (mailConfig.kind === 'invalid') {
+    console.error(`api: ${mailConfig.problem}`);
+    process.exit(1);
+  }
+  // C39-T: the enrolment route, off unless `ENROLMENT=on`; on with a setting
+  // missing or malformed, the server stops here.
+  const enrolConfig = enrolmentSettings(environment);
+  if (enrolConfig.kind === 'invalid') {
+    console.error(`api: ${enrolConfig.problem}`);
+    process.exit(1);
+  }
+  // C40 (ORCH60): the login provider's Send Email hook and the reset routes, off
+  // unless `AUTH_EMAIL_HOOK_SECRET` is set; set, they need enrolment and the mail.
+  const on = { enrol: enrolConfig.kind === 'on', mail: mailConfig.kind === 'mock' };
+  const authHook = authHookReady(authEmailHookSettings(environment), on.enrol, on.mail);
+  if (authHook.kind === 'invalid') {
+    console.error(`api: ${authHook.problem}`);
+    process.exit(1);
+  }
   const broker =
     brokerConfig.kind === 'configured' ? await startModelBroker(brokerConfig) : undefined;
   console.log(`api: credential broker ${broker === undefined ? 'not configured' : 'started'}`);
   const alerts = alertsFrom(environment);
+  // AW-07b: the provider's delivery hook, mounted only with a hook secret in
+  // the provider's form; a malformed one stops the server, naming the setting.
+  const hookConfig = mailHookSettings(environment);
+  if (hookConfig.kind === 'invalid') {
+    console.error(`api: ${hookConfig.problem}`);
+    process.exit(1);
+  }
+  // The hook's events land, and enrolment tokens are looked for, over the
+  // businesses restart recovery resolves, set below before the port is bound.
+  let deployed: readonly BusinessId[] = [];
+  // The login provider's custody, started before the port is bound like the broker's;
+  // a credentials file without the service key stops the server here, naming the reference.
+  const enrolment =
+    enrolConfig.kind === 'on'
+      ? await startEnrolment(enrolConfig, async () => await Promise.resolve(deployed)).catch(
+          async (error: unknown) => {
+            console.error(`api: enrolment is on but ${(error as Error).message}`);
+            await shutDown(
+              [async () => await topics.close(), broker?.stop],
+              [async () => await database.close(), async () => await admin.close()],
+            );
+            process.exit(1);
+          },
+        )
+      : undefined;
+  console.log(`api: enrolment ${enrolment === undefined ? 'off' : 'on'}`);
+  // AW-07b: the mail worker over the recovered businesses, started before the
+  // routes are built so the login provider's hook can lend its broker (C40).
+  const mail =
+    mailConfig.kind === 'mock'
+      ? await startMailDelivery(mailConfig, database, async () => await Promise.resolve(deployed))
+      : undefined;
+  console.log(
+    mail === undefined
+      ? 'api: mail delivery off'
+      : 'api: mail delivery mock (fake provider, made-up sender check and email choices)',
+  );
+  const businesses = async () => await Promise.resolve(deployed);
+  const resets =
+    authHook.kind === 'configured' && enrolment !== undefined && mail !== undefined
+      ? {
+          authEmailHook: { secret: authHook.secret, businesses, ...mail.sending },
+          passwordSet: { businesses, authBroker: enrolment.options.broker },
+        }
+      : {};
+  let errorSink: ErrorSinkLink;
+  try {
+    errorSink = errorSinkLink(environment);
+  } catch (error) {
+    console.error(`api: ${(error as Error).message}`);
+    process.exit(1);
+  }
 
   // Wiring only: nothing here runs a statement or binds a port, so building it
   // before recovery changes nothing recovery sees, and recovery resolves its
@@ -399,12 +591,27 @@ async function main(): Promise<void> {
     admin,
     signIn: { issuer: issuer as string, keySetUrl },
     keys,
-    live: { topics },
+    live: { topics, presence: createLivePresence() },
     ...(broker === undefined
       ? {}
       : { executeModelCall: broker.executor, answerConversation: broker.answerConversation }),
+    ...(adminKey === undefined ? {} : { providerAdminKey: adminKey }),
+    ...(tracingUrl === undefined || tracingUrl === '' ? {} : { tracingUrl }),
+    errorSink,
     ...(alerts === undefined ? {} : { alerts }),
+    ...(hookConfig.kind === 'configured'
+      ? {
+          mailHook: {
+            secret: hookConfig.secret,
+            businesses: async () => await Promise.resolve(deployed),
+          },
+        }
+      : {}),
+    ...(enrolment === undefined ? {} : { enrolment: enrolment.options }),
+    ...resets,
   });
+  console.log(`api: email hook ${hookConfig.kind === 'configured' ? 'mounted' : 'not mounted'}`);
+  console.log(`api: auth email hook ${'authEmailHook' in resets ? 'mounted' : 'not mounted'}`);
 
   // Restart recovery (TRANSACTION-CONTRACT 84, 92), awaited before the port is
   // bound: a process start is the resume entry, and a failure is a failed
@@ -421,7 +628,8 @@ async function main(): Promise<void> {
   const recovered = await withRuntimeKeys(keys, recovery);
   if (!recovered.ok) {
     console.error(`api: ${recovered.problem}`);
-    await Promise.allSettled([database.close(), admin.close(), topics.close(), broker?.stop()]);
+    const started = [topics.close(), broker?.stop(), enrolment?.stop(), mail?.stop()];
+    await Promise.allSettled([database.close(), admin.close(), ...started]);
     process.exit(1);
   }
   for (const business of recovered.businesses) console.log(describeRecovered(business));
@@ -430,6 +638,7 @@ async function main(): Promise<void> {
   // an interval; nothing on the wire reaches it. Started before the port is
   // bound, so a custody that cannot start stops the server first.
   const traced = recovered.businesses.map((business) => business.businessId);
+  deployed = traced;
   const tracer =
     traceConfig.kind === 'on'
       ? await startTraceExporter(traceConfig, database, async () => await Promise.resolve(traced))
@@ -452,20 +661,19 @@ async function main(): Promise<void> {
       }),
   );
 
+  // C58: what the act could not settle, the endings loop retries (`apps/endings`).
+
   const stop = (): void => {
     sweeper.stop();
-    // The live streams first: a question one has in flight ends before its pool does.
-    void Promise.allSettled([topics.close()])
-      .then(
-        async () =>
-          await Promise.allSettled([
-            database.close(),
-            admin.close(),
-            broker?.stop(),
-            tracer?.stop(),
-          ]),
-      )
-      .then(() => process.exit(0));
+    void shutDown(
+      [async () => await topics.close(), mail?.stop, enrolment?.stop],
+      [
+        async () => await database.close(),
+        async () => await admin.close(),
+        broker?.stop,
+        tracer?.stop,
+      ],
+    ).then(() => process.exit(0));
   };
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);

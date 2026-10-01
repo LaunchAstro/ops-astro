@@ -26,6 +26,7 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import type { Answer } from './fixture.ts';
 import {
   CODE_REVISION,
+  WINDOW_SETTING,
   conversationWorld,
   started,
   type ConversationWorld,
@@ -137,7 +138,7 @@ describe.skipIf(serverUrl === undefined)('AW-03 races and recovery', () => {
     w = await conversationWorld('aw_03_races');
     second = connect(w.fixture.db.appUrl, { source: 'runtime' });
     await on(w.fixture.db.app, async (tx) => {
-      await writeBusinessSetting(tx, { key: 'conversation_window_days', value: 7 });
+      await writeBusinessSetting(tx, { ...WINDOW_SETTING, value: 7 });
     });
   }, 120_000);
 

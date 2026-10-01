@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { expect } from 'vitest';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import type { Answer, Caller, World } from './world.ts';
+import { childProbe } from './role-case-bodies.ts';
 
 export const TITLE = 'Quarterly retainer: draft for review';
 export const DESCRIPTION = 'internal: client is behind on two invoices';
@@ -52,3 +53,19 @@ export async function seedRecords(
   });
   return { shared, sibling: String(other.body['recordId']) };
 }
+
+export const REVOCATION_BODIES: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
+  'grant.revoke': { grantId: randomUUID() },
+  'delegation.revoke': { delegationId: randomUUID() },
+  // No person body either: it is the agent's (AW-01). Sent well formed,
+  // naming a lease, so the answer is authority's.
+  'model.call': {
+    leaseId: randomUUID(),
+    fence: 1,
+    operation: 'model.replay_compose',
+    fields: [],
+  },
+  // AW-11's hand-over and handback are the agent's too, read by type first.
+  'run.delegate_child': { leaseId: randomUUID(), fence: 1, ...childProbe(randomUUID()) },
+  'run.child_handback': { outcome: 'completed' },
+};

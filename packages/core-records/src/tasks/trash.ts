@@ -63,6 +63,8 @@ export const RETENTION_CLASS_BY_TABLE: Readonly<Record<string, RetentionClass>> 
   bootstrap_bytes: 'runtime',
   bootstrap_reads: 'runtime',
   run_definition_pins: 'runtime',
+  // AW-04: the plan a decision approved, words and record, kept with its run.
+  plan_records: 'runtime',
 };
 
 /**
@@ -557,6 +559,13 @@ export async function purgeTrashedRecords(
         and deleted_at is not null and deleted_at < $3
       returning id`,
     [tx.businessId, ids, options.trashedBefore],
+  );
+  // The live change record (0065) names a task with no key to it; a purged
+  // task's row goes with it, so nothing there says the task ever existed.
+  await tx.query(
+    `delete from public.live_changes
+      where business_id = $1 and subject_kind = 'task' and subject_id = any ($2::uuid[])`,
+    [tx.businessId, purged.map((each) => each.id)],
   );
   return {
     recordIds: purged.map((each) => each.id).toSorted(),

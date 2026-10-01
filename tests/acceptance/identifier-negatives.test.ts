@@ -21,8 +21,10 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { READS } from '../../packages/core-wire/src/surface.ts';
+import { GATE_ITEMS } from '../../packages/core-commands/src/index.ts';
 import { grantTo, type Member } from '../commands/fixture.ts';
-import { PROPOSAL } from './role-case-bodies.ts';
+import { gateRecordBody } from './role-case-gate-bodies.ts';
+import { ACCEPTED_PLAN, PROPOSAL, childProbe } from './role-case-bodies.ts';
 import { CASE, TARGET_FREE } from './cd-alternatives.ts';
 import { foreignConversation } from './foreign-conversation.ts';
 import { serverUrl, type AgentIdentity, type Caller } from './world.ts';
@@ -65,6 +67,55 @@ const pair = (
   operand,
   forms: { foreign: body(foreignId), fabricated: body(randomUUID()) },
 });
+
+/** Every gate item recorded in alpha, the operator, so the mode may move to real (S0-5). */
+async function gateReady(w: IdentWorld, caller: Caller): Promise<void> {
+  for (const item of GATE_ITEMS) {
+    // eslint-disable-next-line no-await-in-loop
+    const answer = await w.person(caller, 'operations.record_gate_item', gateRecordBody(item));
+    expect(['ok', 'GATE_ITEM_ALREADY_RECORDED'], item).toContain(answer.code);
+  }
+}
+
+/**
+ * The breach drill's body made real in alpha (C81): a runbook the drill can
+ * fill, published, and an incident to draft for; the recipients are the listed body's.
+ */
+async function drillReady(w: IdentWorld, caller: Caller, listed: Body): Promise<Body> {
+  const runbook = [
+    '## Template: notice to affected people',
+    '> Subject: A made-up notice',
+    '> Dear `<name>`, on `<date>`: `<plain description>`; `<kinds>`; `<containment>`; `<steps>`.',
+  ].join('\n');
+  const drafted = await w.person(caller, 'legal.draft_version', {
+    operationId: randomUUID(),
+    document: 'breach-runbook',
+    version: '77.1',
+    body: runbook,
+  });
+  const detail = drafted.body['detail'] as Record<string, unknown>;
+  for (const [name, body] of [
+    ['legal.approve_version', { versionId: detail['versionId'], digest: detail['digest'] }],
+    ['legal.publish_version', { versionId: detail['versionId'] }],
+  ] as const) {
+    // oxlint-disable-next-line no-await-in-loop
+    const done = await w.person(caller, name, { operationId: randomUUID(), ...body });
+    expect(done.code, name).toBe('ok');
+  }
+  const recorded = await w.person(caller, 'privacy.record_incident', {
+    operationId: randomUUID(),
+    whatHappened: 'A made-up incident to drill.',
+    foundAt: new Date(Date.now() - 60_000).toISOString(),
+    foundBy: 'The probe',
+    affected: 'Nobody; it is made up.',
+    informationKinds: ['other'],
+  });
+  expect(recorded.code, 'the drill incident').toBe('ok');
+  return {
+    ...listed,
+    incidentId: (recorded.body['detail'] as Record<string, unknown>)['incidentId'],
+  };
+}
 
 const actorOf = (by: Presenter): string =>
   by.kind === 'person' ? (by.caller.actorId as string) : by.identity.actorId;
@@ -250,6 +301,24 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
     }
   }, 300_000);
 
+  /** C32: a person and a client of bravo's, each named in an alpha grant. */
+  const accessGrantCells = (
+    person: string,
+    client: string,
+  ): [CommandName, ReturnType<typeof pair>][] => {
+    const key = { collection: 'task', action: 'read' };
+    const own = w.h.world.ada.personId;
+    return [
+      ['access.grant', pair('holderId', person, (holderId) => ({ holderId, ...key }))],
+      [
+        'access.grant',
+        pair('clientId', client, (clientId) => ({ holderId: own, clientId, ...key })),
+      ],
+      // C58: bravo's person named in an alpha ending.
+      ['access.end', pair('holderId', person, (holderId) => ({ holderId }))],
+    ];
+  };
+
   it(
     CASE.control,
     async () => {
@@ -297,6 +366,23 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
             reason: 'identifier negatives',
           })),
         ],
+        [
+          'legal.approve_version',
+          pair('versionId', f.legalVersionId, (versionId) => ({
+            versionId,
+            digest: '0'.repeat(64),
+          })),
+        ],
+        [
+          'legal.publish_version',
+          pair('versionId', f.legalVersionId, (versionId) => ({ versionId })),
+        ],
+        [
+          'credential.revoke',
+          pair('credentialId', f.credentialId, (credentialId) => ({ credentialId })),
+        ],
+        ['access.revoke', pair('grantId', f.grantId, (grantId) => ({ grantId }))],
+        ...accessGrantCells(f.admin.personId as string, f.clientId),
       );
       // AW-05's answers name the task and the run on it. Bravo's run is the
       // one its pickup claimed; alpha's task is named beside it, and then
@@ -355,6 +441,16 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         foreign: { gateId, versionId, ...decision },
         fabricated: { gateId: randomUUID(), versionId: randomUUID(), ...decision },
       });
+      // AW-04: the plan accept is that decision, refused the same way.
+      await refuses('task.accept_plan', 'gateId', ada, 'NOT_FOUND', {
+        foreign: { gateId, versionId, ...ACCEPTED_PLAN, note: NOBODY },
+        fabricated: {
+          gateId: randomUUID(),
+          versionId: randomUUID(),
+          ...ACCEPTED_PLAN,
+          note: NOBODY,
+        },
+      });
     },
     120_000,
   );
@@ -410,6 +506,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         ['task.observe', { attemptId: randomUUID() }],
         ['task.check', { name: NOBODY, outcome: 'passed' }],
         ['task.handback', { outcome: 'completed', report: { wrote: NOBODY } }],
+        ['run.delegate_child', childProbe(w.h.world.agent.actorId)],
       ];
       for (const [op, extra] of byLease) {
         const forms = {
@@ -454,8 +551,14 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
       const caller = w.h.world.ada;
       const answered: Record<string, string> = {};
       const audited: string[] = [];
-      for (const [op, body] of TARGET_FREE) {
+      for (const [op, listed] of TARGET_FREE) {
         /* eslint-disable no-await-in-loop -- one operation at a time */
+        // The breach drill's body names an incident, so its positive request
+        // needs one of alpha's, and a published runbook to draft from (C81).
+        // The mode moves to real only once every gate item is done (S0-5).
+        if (op === 'operations.change_installation_mode') await gateReady(w, caller);
+        const body =
+          op === 'privacy.draft_breach_notices' ? await drillReady(w, caller, listed) : listed;
         const before = await domainState(w.h, [bravo]);
         const positive = await w.person(caller, op, body);
         expect(positive.code, `${op}: ${JSON.stringify(positive.body)}`).toBe('ok');
@@ -493,7 +596,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
       // SC2 audit, 9/9: every aimed probe left its one row at home.
       expect(audited).toStrictEqual(TARGET_FREE.map(([op]) => op));
       console.log(
-        `identifier-negatives: SC2 audit ${String(audited.length)}/9 in alpha, 0 in bravo`,
+        `identifier-negatives: SC2 audit ${String(audited.length)}/${String(TARGET_FREE.length)} in alpha, 0 in bravo`,
       );
     },
     300_000,

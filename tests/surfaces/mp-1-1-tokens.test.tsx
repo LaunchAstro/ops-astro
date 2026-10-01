@@ -99,7 +99,9 @@ const COLOUR_PROPERTY =
 const SHEETS = [
   `${styles}2-controls-and-marks.css`,
   `${styles}2-primitives.css`,
+  `${styles}2-forms.css`,
   `${styles}3-shell.css`,
+  `${styles}3-shell-agent-search.css`,
   `${styles}4-board.css`,
   `${styles}5-task.css`,
   `${root}apps/web/src/styles/6-slice.css`,
@@ -168,7 +170,6 @@ describe('MP-1-1 tokens', () => {
     const clean = run();
     expect(clean.stderr).toBe('');
     expect(clean.status).toBe(0);
-
     // A planted drift: one dark colour changed. The diff fails and names it.
     const drifted = read(tokensCss).replace(
       /(\[data-theme='dark'\] \{[\s\S]*?--surface-2: )[^;]+;/u,

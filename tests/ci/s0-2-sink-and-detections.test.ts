@@ -15,6 +15,9 @@ import type { Database } from '../../packages/core-records/src/index.ts';
 import { PREFIX, pathOf } from '../../packages/core-wire/src/index.ts';
 import { times } from './s0-2-plain.ts';
 
+// The agent prefix reads its caller from the bearer alone (API-2); this one is no agent
+// credential, so the verifier above answers for it.
+const AGENT_BEARER = 'Bearer agent-delegation-token';
 const ROOT = process.cwd();
 
 it('planted words in an error name and forged in-app frame never reach the sink', async () => {
@@ -124,7 +127,7 @@ it('repeated agent cross-business refusals raise a burst alert', async () => {
     const response = await api.fetch(
       new Request(`http://api.test${PREFIX.agent}foreign${pathOf('task.update')}`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', authorization: AGENT_BEARER },
         body: '{}',
       }),
     );
@@ -172,7 +175,7 @@ it('an agent queue download contributes to the volume alert', async () => {
   const response = await api.fetch(
     new Request(`http://api.test${PREFIX.agent}alpha${pathOf('task.queue')}`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers: { 'content-type': 'application/json', authorization: AGENT_BEARER },
       body: '{}',
     }),
   );

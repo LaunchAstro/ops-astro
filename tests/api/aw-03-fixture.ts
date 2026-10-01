@@ -29,6 +29,12 @@ export const CONVERSATION = 'conversation';
 /** The code revision a case's wrap-up names as its writer's. */
 export const CODE_REVISION = 'aw03test';
 
+/** The conversation window, written as its owning command writes it (0068). */
+export const WINDOW_SETTING = {
+  key: 'conversation_window_days',
+  owningOperation: 'settings.set_conversation_window',
+} as const;
+
 export interface ConversationWorld {
   readonly fixture: ApiFixture;
   readonly api: Hono;

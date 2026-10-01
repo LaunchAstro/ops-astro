@@ -3,12 +3,11 @@
 // Made-up answers for the width-and-theme harness (UI-POLISH).
 //
 // The harness serves the app with its API at a dead port, so every data
-// screen used to be photographed on its "could not be read" state: no
-// sideways scroll proven on an error, nothing about the look. These answers
-// let each screen draw rows. They are typed against the wire contract's own
-// read shapes, so a changed read fails the typecheck here rather than drawing
-// a screen from a shape the API no longer sends. Test side only: the page
-// asks the same addresses it asks the real API; nothing here is a back end.
+// screen was photographed on its "could not be read" state, proving nothing
+// about the look. These answers let each screen draw rows. They are typed against the wire
+// contract's own read shapes, so a changed read fails the typecheck here rather than drawing
+// a screen from a shape the API no longer sends. Test side only: the page asks the same
+// addresses it asks the real API; nothing here is a back end.
 //
 // The rows follow the pinned mockup's Projects board, so a capture reads
 // against the mockup's page. Every name and client is made up.
@@ -21,14 +20,19 @@ import type {
   InternalTaskRead,
   PersonListResult,
   QueueResult,
+  SessionPersonResult,
   SettingsReadResult,
   TaskBoardResult,
   TaskExecutionResult,
+  TaskLedgerResult,
+  TaskSearchResult,
   TaskStateView,
   TaskSummary,
+  TeamListResult,
 } from '../../packages/core-wire/src/index.ts';
 import type { BrowserContext } from 'playwright';
 import type { ReadName } from '../../apps/web/src/operations/read-names.ts';
+import { ACCESS_READS, HARBOUR, MERIDIAN, MIA, NATHAN, OPERATIONS } from './made-up-access.ts';
 import { AGENT_LEDGER, AGENT_PROPOSALS, AGENT_READS } from './made-up-agent.ts';
 
 const STATE = {
@@ -41,9 +45,6 @@ const STATE = {
   },
   hold: { id: 's-hold', key: 'hold', label: 'On hold', machineCategory: 'unstarted' },
 } as const satisfies Record<string, TaskStateView>;
-
-const NATHAN = { personId: 'p-nathan', name: 'Nathan' };
-const MIA = { personId: 'p-mia', name: 'Mia' };
 
 const task = (
   n: number,
@@ -76,13 +77,15 @@ export const TASKS: readonly TaskSummary[] = [
   task(33, 'Paid social rebuild', STATE.hold, null),
 ];
 
+const BY_NATHAN = { actorId: NATHAN.personId, personId: NATHAN.personId };
 const DETAIL: InternalTaskDetail = {
   ...(TASKS[0] as TaskSummary),
   description:
     'Pull the signed scope, the two variations and the renewal terms into one pack for review.',
+  clientId: null,
   history: [
-    { at: '2026-09-24T01:10:00.000Z', actorId: NATHAN.personId, operation: 'task.create' },
-    { at: '2026-09-25T03:40:00.000Z', actorId: NATHAN.personId, operation: 'task.update' },
+    { at: '2026-09-24T01:10:00.000Z', ...BY_NATHAN, operation: 'task.create' },
+    { at: '2026-09-25T03:40:00.000Z', ...BY_NATHAN, operation: 'task.update' },
   ],
   comments: [
     {
@@ -103,6 +106,55 @@ const DETAIL: InternalTaskDetail = {
   ledger: AGENT_LEDGER,
 };
 
+/** The Work log's two days, newest first, as `task.ledger` answers them (MP-8-4). */
+const LEDGER: TaskLedgerResult = {
+  ok: true,
+  earlier: true,
+  days: [
+    {
+      day: '2026-09-26',
+      events: [
+        {
+          id: 'e-3',
+          at: '2026-09-26T01:20:00.000Z',
+          actorName: NATHAN.name,
+          operation: 'task.complete',
+          task: { key: 'T-13', title: 'Approve the four review replies before they go out' },
+        },
+        {
+          id: 'e-2',
+          at: '2026-09-25T23:05:00.000Z',
+          actorName: MIA.name,
+          operation: 'task.comment',
+          task: { key: 'T-15', title: 'Ads rebuild: cost per enquiry' },
+        },
+      ],
+    },
+    {
+      day: '2026-09-25',
+      events: [
+        {
+          id: 'e-1',
+          at: '2026-09-25T03:40:00.000Z',
+          actorName: NATHAN.name,
+          operation: 'task.update',
+          task: { key: 'T-1', title: 'Contract review pack, 31 July' },
+        },
+      ],
+    },
+  ],
+};
+
+/** One business setting as `settings.read` answers it, last written by Nathan. */
+const setting = (key: string, value: number | boolean, revision: number) => ({
+  key,
+  value,
+  valueType: typeof value === 'boolean' ? ('boolean' as const) : ('numeric' as const),
+  updatedAt: '2026-09-20T00:00:00.000Z',
+  updatedByActorId: NATHAN.personId,
+  revision,
+});
+
 const READS = {
   'task.board': { ok: true, tasks: TASKS } satisfies TaskBoardResult,
   'task.read': { ok: true, task: DETAIL } satisfies InternalTaskRead,
@@ -110,24 +162,20 @@ const READS = {
   'settings.read': {
     ok: true,
     settings: [
-      {
-        key: 'four_eyes_threshold',
-        value: 500,
-        valueType: 'numeric',
-        updatedAt: '2026-09-20T00:00:00.000Z',
-        updatedByActorId: NATHAN.personId,
-        revision: 2,
-      },
-      {
-        key: 'client_sign_off_required',
-        value: true,
-        valueType: 'boolean',
-        updatedAt: '2026-09-20T00:00:00.000Z',
-        updatedByActorId: NATHAN.personId,
-        revision: 1,
-      },
+      setting('four_eyes_threshold', 500, 2),
+      setting('client_sign_off_required', true, 1),
+      setting('conversation_window_days', 30, 1),
+      setting('retention_window_days', 365, 1),
     ],
+    // The planning cap's default (AW-04): AUD 50, not yet moved by a person.
+    planningCap: { limitMinor: 5000, currency: 'AUD', set: false },
   } satisfies SettingsReadResult,
+  // The person's own store (MP-2-11a): no appearance, so the capture's colour
+  // scheme draws; two dismissals no page draws, so the reset has a count.
+  'preference.read': {
+    ok: true,
+    preferences: { 'tips.dismissed': { 'agency:settings#one': 1, 'agency:settings#two': 1 } },
+  },
   'session.capabilities': {
     ok: true,
     personId: NATHAN.personId,
@@ -136,6 +184,8 @@ const READS = {
       { collection: 'tasks', action: 'read' },
       { collection: 'tasks', action: 'write' },
       { collection: 'settings', action: 'manage' },
+      // Settings ▸ Access draws its invite form and invitations under this (C39-T).
+      { collection: 'access', action: 'share' },
     ],
   } satisfies CapabilitiesResult,
   'task.queue': { ok: true, queue: [], alerts: [], outages: [] } satisfies QueueResult,
@@ -147,6 +197,7 @@ const READS = {
       complete: true,
       next: null,
       graph: { plan: 'unbound', sourceRevision: 1, complete: true, nodes: [] },
+      plans: [],
     },
   } satisfies TaskExecutionResult,
   'inbox.read': {
@@ -164,6 +215,7 @@ const READS = {
         seenAt: null,
         lastDelivery: 'delivered',
         task: { key: 'T-9', title: 'Sign off the Meridian ad run rate, 29% over budget' },
+        client: MERIDIAN,
       },
       {
         id: 'i-2',
@@ -177,11 +229,41 @@ const READS = {
         seenAt: '2026-09-25T21:00:00.000Z',
         lastDelivery: 'delivered',
         task: { key: 'T-13', title: 'Approve the four review replies before they go out' },
+        client: HARBOUR,
+      },
+      {
+        id: 'i-3',
+        reason: 'run_finished',
+        workState: 'open',
+        access: 'readable',
+        owed: false,
+        counted: false,
+        raisedAt: '2026-09-25T18:10:00.000Z',
+        closedAt: null,
+        seenAt: null,
+        lastDelivery: 'delivered',
+        task: { key: 'T-17', title: 'Shopping feed clean-up' },
       },
     ],
   } satisfies InboxReadResult,
   'inbox.count': { ok: true, owed: 2 } satisfies InboxCountResult,
   ...AGENT_READS,
+  'session.person': { ok: true, person: { name: NATHAN.name } } satisfies SessionPersonResult,
+  'team.list': {
+    ok: true,
+    you: NATHAN.personId,
+    people: [
+      { personId: NATHAN.personId, name: NATHAN.name, availability: null },
+      { personId: MIA.personId, name: MIA.name, availability: { state: 'away', reason: 'Leave' } },
+    ],
+  } satisfies TeamListResult,
+  'task.ledger': LEDGER,
+  'task.search': {
+    ok: true,
+    hits: TASKS.slice(0, 3).map(({ id, key, title }) => ({ id, key, title })),
+  } satisfies TaskSearchResult,
+  ...ACCESS_READS,
+  'operations.read': OPERATIONS,
 } as const satisfies Partial<Record<ReadName, unknown>>;
 
 /** The reads the harness answers; a read missing here draws its "could not be read" state. */

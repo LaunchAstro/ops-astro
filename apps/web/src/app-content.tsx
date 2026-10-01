@@ -1,0 +1,62 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// What the application draws inside the shell for an address: a screen, a
+// public page (C81's legal documents), sign-in, enrolment (C39-T), a manifest
+// page's placeholder or refusal, or not-found.
+
+import type { ReactElement } from 'react';
+import { gateOf } from './route-gate.ts';
+import type { RouteMatch } from './routes.ts';
+import type { PageMatch } from './manifest.ts';
+import { ClientRefused, NotFound, PagePlaceholder, SignedInAlready } from './route-views.tsx';
+import {
+  drawOpenScreen,
+  drawScreen,
+  type OpenContext,
+  type ScreenContext,
+} from './screen-registry.tsx';
+
+export function drawContent(props: {
+  readonly here: string;
+  readonly match: RouteMatch | null;
+  readonly at: PageMatch | null;
+  readonly signedIn: boolean;
+  /** The address names a client the session holds no grant on. */
+  readonly refused: boolean;
+  readonly signIn: ReactElement;
+  /** Where "Go to Projects" goes for a person already signed in. */
+  readonly onGo: () => void;
+  /** The page an invitation's link opens (C39-T), signed in or out. */
+  readonly enrol: (token: string) => ReactElement;
+  readonly screen: Omit<ScreenContext, 'params'>;
+  /** What a public page reads with: the API's origin and the fetch. */
+  readonly open: Omit<OpenContext, 'fragment'>;
+}): ReactElement {
+  const { match, at } = props;
+  // A manifest page with no screen yet: sign-in first, then the grant check.
+  if (match === null && at !== null) {
+    if (!props.signedIn) return props.signIn;
+    return props.refused ? <ClientRefused /> : <PagePlaceholder page={at.page} />;
+  }
+  const gate = gateOf(match, props.signedIn);
+  switch (gate.kind) {
+    case 'not-found':
+      return <NotFound path={props.here} />;
+    case 'sign-in':
+      return props.signIn;
+    case 'enrol':
+      return props.enrol(gate.token);
+    case 'open':
+      return drawOpenScreen(gate.match, { ...props.open, fragment: fragmentOf(props.here) });
+    case 'signed-in-already':
+      return <SignedInAlready onGo={props.onGo} />;
+    case 'screen':
+      return drawScreen(gate.match, props.screen);
+  }
+}
+
+/** The address's fragment, `#` and all, or empty when it has none. */
+const fragmentOf = (address: string): string => {
+  const at = address.indexOf('#');
+  return at === -1 ? '' : address.slice(at);
+};

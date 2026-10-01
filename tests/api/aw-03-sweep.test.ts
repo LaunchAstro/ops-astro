@@ -24,6 +24,7 @@ import { connect, type Database } from '../../packages/core-records/src/tenancy/
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import {
   CODE_REVISION,
+  WINDOW_SETTING,
   conversationWorld,
   started,
   type ConversationWorld,
@@ -57,7 +58,7 @@ describe.skipIf(serverUrl === undefined)('AW-03 idle sweep', () => {
     );
   const window = async (days: number): Promise<void> => {
     await on(w.fixture.db.app, async (tx) => {
-      await writeBusinessSetting(tx, { key: 'conversation_window_days', value: days });
+      await writeBusinessSetting(tx, { ...WINDOW_SETTING, value: days });
     });
   };
 

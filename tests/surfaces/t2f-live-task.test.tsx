@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // T2f on the page: the open task re-reads itself when its stream says the
-// task changed, never underneath an unsaved edit, and re-reads into a denial
+// task changed, never over an unsaved edit (which stays as typed while the
+// rest of the page updates, C4 live-sync 4), and re-reads into a denial
 // when the server closes the stream. Where the channel is down, a 30-second
 // floor re-reads a visible page and never a hidden one.
 
@@ -10,7 +11,7 @@ import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TaskDetailScreen } from '../../apps/web/src/screens/TaskDetail.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
-import { FLOOR_MS, followLive } from '../../apps/web/src/data/live.ts';
+import { FLOOR_MS, createLiveHub } from '../../apps/web/src/data/live.ts';
 import { mount } from './mount.tsx';
 
 const TASK = {
@@ -57,7 +58,7 @@ function server() {
   const fetch = (async (url: string | URL) => {
     const at = String(url);
     if (at.endsWith('/person/list')) return json({ ok: true, persons: [] });
-    if (at.includes('/live/task/')) {
+    if (at.includes('/live?')) {
       joins.push(at);
       return new Response(
         new ReadableStream<Uint8Array>({
@@ -88,7 +89,7 @@ function server() {
     reads,
     joins,
     send: (event: string) =>
-      stream?.enqueue(encoder.encode(`event: ${event}\ndata: ${TASK.id}\n\n`)),
+      stream?.enqueue(encoder.encode(`event: ${event}\ndata: task:${TASK.id}\n\n`)),
     close: () => stream?.close(),
     deny: () => {
       denied = true;
@@ -117,7 +118,7 @@ describe('T2f the live task page', () => {
       () => api.joins.length === 1 && view.find('#task-title') !== null,
       Date.now() + 2_000,
     );
-    expect(api.joins[0]).toBe(`/api/b/alpha/live/task/${TASK.id}`);
+    expect(api.joins[0]).toBe(`/api/b/alpha/live?topic=task%3A${TASK.id}`);
 
     api.task.title = 'Picked up by the worker';
     const sent = Date.now();
@@ -153,15 +154,50 @@ describe('T2f the live task page', () => {
       await pause();
     });
     expect(valueOf(view.host, '#task-title')).toBe('My unsaved title');
-    expect(api.reads).toHaveLength(1);
+    // The change is read under the draft (C4 live-sync 4, ORCH-DECISION
+    // 29 Sep 19:01Z) so the regions not being edited keep updating; the
+    // draft is not read over. Once per change: the named test below.
+    expect(api.reads).toHaveLength(2);
 
-    // Resolved by the person, the held invalidation reads once.
+    // Resolved by the person, discarding reads the task and shows the change.
     await view.click('[data-draft-resolve="discard"]');
     await until(
       'the held re-read',
       () => valueOf(view.host, '#task-title') === api.task.title,
       Date.now() + 2_000,
     );
+    await view.unmount();
+  });
+
+  it('T2f draft never overwritten: each live change under an unsaved edit re-reads once and leaves the draft as typed', async () => {
+    const api = server();
+    const view = await mount(
+      <TaskDetailScreen client={client(api.fetch)} grantKey="alpha:mia" taskKey={TASK.id} />,
+    );
+    await until(
+      'the task and the stream',
+      () => api.joins.length === 1 && view.find('#task-title') !== null,
+      Date.now() + 2_000,
+    );
+    await view.type('#task-title', 'My unsaved title');
+
+    const change = async (reads: number, title: string): Promise<void> => {
+      api.task.title = title;
+      await act(async () => {
+        api.send('invalidate');
+        await pause();
+      });
+      await until('the re-read', () => api.reads.length === reads, Date.now() + 2_000);
+      await act(async () => {
+        await pause();
+        await pause();
+      });
+      expect(api.reads).toHaveLength(reads);
+      expect(valueOf(view.host, '#task-title')).toBe('My unsaved title');
+      expect(view.find('[data-draft-resolve="choice"]')).not.toBeNull();
+    };
+    await change(2, 'Somebody else moved it');
+    await change(3, 'And moved it again');
     await view.unmount();
   });
 
@@ -221,10 +257,9 @@ describe('T2f floor', () => {
     vi.useFakeTimers();
     let visible = true;
     const changes: number[] = [];
-    const stop = followLive(
-      () => Promise.resolve(null),
+    const stop = createLiveHub(() => Promise.resolve(null), { visible: () => visible }).follow(
+      'task:one',
       () => changes.push(Date.now()),
-      { visible: () => visible },
     );
     await vi.advanceTimersByTimeAsync(FLOOR_MS - 1);
     expect(changes).toHaveLength(0);
@@ -247,14 +282,13 @@ describe('T2f floor', () => {
       },
     });
     const changes: number[] = [];
-    const stop = followLive(
-      () => Promise.resolve(body),
+    const stop = createLiveHub(() => Promise.resolve(body), { visible: () => visible }).follow(
+      `task:${TASK.id}`,
       () => changes.push(Date.now()),
-      { visible: () => visible },
     );
     await pause();
     await act(async () => {
-      controller?.enqueue(new TextEncoder().encode(`event: invalidate\ndata: ${TASK.id}\n\n`));
+      controller?.enqueue(new TextEncoder().encode(`event: invalidate\ndata: task:${TASK.id}\n\n`));
       await pause();
     });
     expect(changes).toHaveLength(0);

@@ -15,7 +15,7 @@ import {
   catalogueColumnGrants,
   columnUpdatesAt,
   roleColumnGrantsAt,
-} from '../tenancy/restricted-calls-cases.ts';
+} from '../tenancy/restricted-calls-columns.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 

@@ -51,7 +51,7 @@ import {
   type AdminConnection,
   type TenantQuery,
 } from '../../packages/core-records/src/tenancy/database.ts';
-import { propose } from '../../packages/core-runtime/src/propose.ts';
+import { BEFORE_0223, propose } from '../../packages/core-runtime/src/propose.ts';
 import { decide } from '../../packages/core-runtime/src/decide.ts';
 import {
   buildFixture,
@@ -71,7 +71,12 @@ if (serverUrl === undefined) {
 }
 
 const onDisk = readMigrations('migrations');
-const THROUGH_0029 = onDisk.filter((m) => m.version.slice(0, 4) <= '0029');
+// And AW-06's 0210 plan step key: the runtime that seeds below proposes with
+// it, and it reads nothing the migrations under test add, so it is applied
+// with the seed and the runner applies whatever is pending after it.
+const THROUGH_0029 = onDisk.filter(
+  (m) => m.version.slice(0, 4) <= '0029' || m.version.startsWith('0210'),
+);
 const UPGRADE = onDisk.find((m) => m.version.startsWith('0030'));
 
 const VERSION_FIXED = { code: '23514', constraint_name: 'gates_version_fixed_once_decided' };
@@ -138,6 +143,8 @@ async function stagedAt0029(part: string): Promise<Staged> {
       currency: 'AUD',
       payload: { instruction: 'draft it' },
       step: { kind: 'local.draft', payload: { words: 200 } },
+      // Seeded before 0223 (and 0207): the step has no plan record columns.
+      planRecordId: BEFORE_0223,
       expiresAt: new Date(Date.now() + 3_600_000),
     });
     if (!result.ok) throw new Error(`propose refused ${result.refusal.code}`);
@@ -235,6 +242,8 @@ async function proposeOn(tx: TenantQuery, on: Bare, lineageId?: string) {
     currency: 'AUD',
     payload: { instruction: 'draft it' },
     step: { kind: 'local.draft', payload: { words: 200 } },
+    // Seeded before 0223 (and 0207): the step has no plan record columns.
+    planRecordId: BEFORE_0223,
     expiresAt: new Date(Date.now() + 3_600_000),
   });
   if (!result.ok) throw new Error(`propose refused ${result.refusal.code}`);
@@ -353,7 +362,7 @@ async function asTheRunnerApplies(admin: AdminConnection, migration: Migration):
 
 async function lastApplied(db: EmptyDatabase): Promise<string | undefined> {
   const [row] = await db.admin.execute<{ readonly last: string }>(
-    `select max(version) as last from ops.schema_migrations`,
+    `select max(version) as last from ops.schema_migrations where version not like '0210%'`,
   );
   return row?.last.slice(0, 4);
 }

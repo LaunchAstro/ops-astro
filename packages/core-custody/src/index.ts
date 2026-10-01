@@ -25,6 +25,29 @@ export {
 } from './egress.ts';
 export { startCustody, type Custody, type CustodyConfig, type CustodyOutcome } from './custody.ts';
 export {
+  ENROL_PATH,
+  INVITATION_SEND_ACTS,
+  sendInvitation,
+  type InvitationSendRefusal,
+  type InvitationSendResult,
+} from './broker-invitation.ts';
+export { deliverAuthMessage, type AuthMessageOutcome } from './broker-auth-email.ts';
+export {
+  askRecovery,
+  RESET_PATH,
+  resetLink,
+  sendResetMail,
+  type RecoveryAsked,
+  type ResetMailSent,
+} from './broker-reset.ts';
+export {
+  createLogin,
+  readLogin,
+  type LoginAsked,
+  type LoginMade,
+  type LoginRead,
+} from './broker-auth-user.ts';
+export {
   callModelInConversation,
   type ConversationCallRequest,
   type ConversationScope,
@@ -36,6 +59,32 @@ export {
   type EmailResult,
   type MailSettings,
 } from './broker-email.ts';
+export { landEmailEvent, type EmailHookOutcome } from './broker-email-hook.ts';
+export { tellCommentClients } from './broker-email-mention.ts';
+export {
+  emailAtOnce,
+  emailDailyBatch,
+  type BatchResult,
+  type EmailChoice,
+  type EmailPreferences,
+  type EmailTiming,
+} from './email-timing.ts';
+export {
+  AT_ONCE_EVERY_MS,
+  deliverDue,
+  startMailWorker,
+  type DeliveryPass,
+  type MailCadence,
+  type MailTarget,
+} from './email-worker.ts';
+export {
+  callModelForPlanning,
+  PLANNING_CAP_DEFAULT,
+  readPlanningAllowance,
+  readPlanningCap,
+  type PlanningAllowance,
+  type PlanningCapView,
+} from './broker-planning.ts';
 export {
   callModel,
   promptCopyRegistered,

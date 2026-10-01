@@ -75,6 +75,8 @@ const DELEGATION_CODES: Readonly<Record<DelegationRefusalCode, true>> = {
   DELEGATION_NOT_LIVE: true,
   DELEGATION_WIDENS: true,
   DELEGATION_ALREADY_LIVE: true,
+  DELEGATION_EXPIRED: true,
+  DELEGATION_REVOKED: true,
 };
 
 /**

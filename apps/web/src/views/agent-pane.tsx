@@ -15,21 +15,41 @@
 // the task page's own (T2e). A run stopped at its ceiling (AW-05) is answered
 // with `run.top_up` (`billing:decide`) or `run.end_at_budget_stop`
 // (`gate:decide`), naming the task and the run the read showed. Every outcome
-// ends in a reread, as the proposals section's does.
+// ends in a reread, as the proposals section's does. The operational log
+// (MP-6-2) is `task.execution`'s events and their runs' plans, read again with each
+// new task read, as the run's own section reads them; a refused or failed read
+// draws no log, and the run's section says why.
 
 import { useState, type ReactElement } from 'react';
-import { AgentPane, type GateDecision, type RecordedOutcome } from '@launchastro/ui';
+import {
+  AgentPane,
+  type GateDecision,
+  type RecordedOutcome,
+  type RunActivity,
+} from '@launchastro/ui';
+import { askDrawer, newAttemptAsk } from '../assistant/asks.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import type {
+  ExecutionEvent,
   PersonView,
   ProposalView,
+  TaskExecutionResult,
   TaskLedgerView,
 } from '../../../../packages/core-wire/src/index.ts';
+import { useRead } from '../data/use-read.ts';
 import { useCommand, type Settlement } from '../records/use-command.ts';
+import { wholeExecution } from './run-progress.tsx';
 
 export interface AgentSectionProps {
   readonly client: OperationsClient;
   readonly recordId: string;
+  /** The task's key and the page's grant, for the operational log's read (MP-6-2). */
+  readonly taskKey: string;
+  readonly grantKey: string;
+  /** The client the task is for, as `task.read` gave it: the drawer's ask carries it. */
+  readonly clientId: string | null;
+  /** The task read's latest answer: each new one re-reads the log. */
+  readonly readOf: unknown;
   readonly proposals: readonly ProposalView[];
   readonly people: readonly PersonView[];
   /** `task.read`'s token ledger (MP-6-5): null for a reader it is not shown to, absent on an older read. */
@@ -176,6 +196,7 @@ export function AgentSection(props: AgentSectionProps): ReactElement {
   // preference store once that store is in (MP-2-11); until then it lasts
   // as long as the page.
   const [jobListOpen, setJobListOpen] = useState(false);
+  const activity = useActivity(props);
   const nameOf = (personId: string): string =>
     props.people.find((person) => person.personId === personId)?.name ?? 'a person';
 
@@ -204,7 +225,45 @@ export function AgentSection(props: AgentSectionProps): ReactElement {
         onTopUpAtStop={controls.topUpAtStop}
         onEndAtStop={controls.endAtStop}
         stopAwaiting={controls.stopAwaiting}
+        {...(activity === undefined ? {} : { activity })}
+        onStartAttempt={() => {
+          askDrawer(
+            newAttemptAsk({
+              id: props.recordId,
+              title: titleOf(props),
+              clientId: props.clientId,
+            }),
+          );
+        }}
       />
     </section>
   );
 }
+
+/** The task's title as the read gave it, or its key while it has none. */
+function titleOf(props: AgentSectionProps): string {
+  const read = props.readOf as { readonly title?: unknown } | null;
+  return typeof read?.title === 'string' && read.title !== '' ? read.title : props.taskKey;
+}
+
+/**
+ * The log's rows: the execution read's events, each placed in the plan its run
+ * was proposed under, and those plans, once read. A read without placements
+ * draws no log rather than rows placed against nothing.
+ */
+function useActivity(props: AgentSectionProps): RunActivity | undefined {
+  const { state } = useRead<TaskExecutionResult>({
+    grantKey: props.grantKey,
+    run: async () => await wholeExecution(props.client, props.taskKey),
+    deps: [props.taskKey, props.readOf],
+  });
+  if (state.outcome !== 'ready' && state.outcome !== 'empty') return undefined;
+  const execution = state.value.execution as Partial<TaskExecutionResult['execution']> | undefined;
+  if (!Array.isArray(execution?.events) || !Array.isArray(execution.plans)) return undefined;
+  if (!execution.events.every(placed)) return undefined;
+  return { plans: execution.plans, events: execution.events };
+}
+
+type Placed = ExecutionEvent & { readonly placement: NonNullable<ExecutionEvent['placement']> };
+
+const placed = (event: ExecutionEvent): event is Placed => event.placement !== undefined;

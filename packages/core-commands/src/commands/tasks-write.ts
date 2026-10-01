@@ -185,7 +185,11 @@ export async function createTask(
   const data: Record<string, unknown> = {
     ...request.fields,
     key: await nextTaskKey(tx, context.spine.taskTypeId),
-    source: deriveSource('person', context.entryPoint),
+    // An agent credential's create is the agent's (API-2), never its person's.
+    source: deriveSource(
+      context.session.credentialScope === undefined ? 'person' : 'agent',
+      context.entryPoint,
+    ),
     board_rank: placement.boardRank,
     ...(stateId === undefined ? {} : { state: stateId }),
     // From the placement alone: `fields` cannot carry either (refused above).
@@ -214,7 +218,7 @@ export async function createTask(
  * and a made-up id alike. Absent or null is a task created from no
  * conversation.
  */
-async function originOf(
+export async function originOf(
   tx: TenantQuery,
   context: CommandContext,
   conversationId: string | null | undefined,

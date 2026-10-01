@@ -16,11 +16,21 @@ import type { CommandRequest } from './requests.ts';
 import type { HandlerOutcome } from './outcome.ts';
 import { createTask, updateTask } from './tasks-write.ts';
 import { setState, writeOwnedFields } from './tasks-state.ts';
+import { setPartyWhileEmpty } from './task-client-lock.ts';
 import { moveTask, rankTask, reparentTask } from './tasks-place.ts';
 import { purgeTasks, restoreTasks, trashTask } from './tasks-trash.ts';
 import { commentOnTask } from './tasks-comment.ts';
 import { setBusinessSetting, setNotificationChannel } from './settings-write.ts';
+import { recordIncident } from './privacy-write.ts';
+import { approveVersion, draftVersion, publishVersion } from './legal-write.ts';
+import { issueCredential, revokeCredential } from './credential-write.ts';
+import { setService } from './overseas-write.ts';
+import { setClass } from './data-class-write.ts';
+import { changeInstallationMode, recordGateItem } from './gate-write.ts';
+import { createClientRecord, grantOnAccess } from './access-write.ts';
+import { endAccessOnSettings } from './access-end.ts';
 import { decideOnGate } from './tasks-decide.ts';
+import { acceptPlanOnGate } from './plan-accept.ts';
 import { handbackOwnLease } from './tasks-handback.ts';
 import { heartbeatOwnLease } from './tasks-lease.ts';
 import { dispatchOwnLease } from './tasks-dispatch.ts';
@@ -28,17 +38,26 @@ import { observeOwnLease } from './tasks-observe.ts';
 import { checkOwnLease } from './tasks-check.ts';
 import { pickupAsPerson } from './tasks-pickup.ts';
 import { proposeOnTask } from './tasks-propose.ts';
-import { revokeDelegationAsManager, revokeGrantAsManager } from './authority-controls.ts';
+import {
+  revokeDelegationAsManager,
+  revokeGrantAsManager,
+  revokeGrantOnAccess,
+} from './authority-controls.ts';
 import { cancelOnTask, restartOnTask } from './tasks-controls.ts';
 import { topUpOnTask } from './budget-top-up.ts';
 import { recordOutcomeOnTask } from './budget-record-outcome.ts';
 import { writeOffOnTask } from './budget-write-off.ts';
+import { setPlanningCap } from './budget-planning-cap.ts';
 import { messageConversation, startConversation } from './conversations.ts';
 import { renameConversation, setConversationScope } from './conversation-tabs.ts';
+import { refuseChildWorkAsPerson } from './child-work-person.ts';
 import { refuseModelCallAsPerson } from './model-call-person.ts';
 import { endOnRun, topUpOnRun } from './run-answers.ts';
 import { reviseStateOnRun } from './run-state.ts';
+import { endOwnSession } from './session-end.ts';
+import { dismissOwnTip, saveOwnPreference } from './preference-save.ts';
 import { stampOwnSeen } from './inbox-seen.ts';
+import { invitationAct } from './invitations.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
@@ -64,7 +83,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.assign': writeOwned,
   'task.triage': writeOwned,
   'task.set_stage': writeOwned,
-  'task.set_party': writeOwned,
+  'task.set_party': (tx, context, request) => setPartyWhileEmpty(tx, context, request.fields),
   'task.set_audience': writeOwned,
 
   'task.reparent': (tx, context, request) => reparentTask(tx, context, request.parentId),
@@ -95,10 +114,30 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   // `any`).
   'settings.set_four_eyes_threshold': setting,
   'settings.set_client_sign_off': setting,
+  'settings.set_money_step_up': setting,
+  'settings.set_conversation_window': setting,
+  'settings.set_retention_window': setting,
+
+  'privacy.record_incident': recordIncident,
+  'legal.draft_version': draftVersion,
+  'legal.approve_version': approveVersion,
+  'legal.publish_version': publishVersion,
+  'credential.issue': issueCredential,
+  'credential.revoke': revokeCredential,
+  'privacy.set_overseas_service': setService,
+  'privacy.set_data_class': setClass,
+  'operations.record_gate_item': recordGateItem,
+  'operations.change_installation_mode': changeInstallationMode,
 
   'task.propose': proposeOnTask,
   'task.decide': decideOnGate,
+  // AW-04: the plan accept, the only activation of a run's instruction file.
+  'task.accept_plan': acceptPlanOnGate,
 
+  'client.create': createClientRecord,
+  'access.grant': grantOnAccess,
+  'access.revoke': (tx, context, request) => revokeGrantOnAccess(tx, context, request.grantId),
+  'access.end': endAccessOnSettings,
   'grant.revoke': (tx, context, request) => revokeGrantAsManager(tx, context, request.grantId),
   'delegation.revoke': (tx, context, request) =>
     revokeDelegationAsManager(tx, context, request.delegationId),
@@ -115,6 +154,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.dispatch': dispatchOwnLease,
   'task.observe': observeOwnLease,
   'task.check': checkOwnLease,
+  'session.end': endOwnSession,
   'task.handback': handbackOwnLease,
 
   // T2e. A person's money decision; no agent route reaches it.
@@ -123,6 +163,8 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'budget.record_outcome': recordOutcomeOnTask,
   // T3c. A person closes an unknown hold at an amount; no agent route reaches it.
   'budget.write_off': writeOffOnTask,
+  // AW-04 (U10). A person sets the planning cap; no agent route reaches it.
+  'budget.set_planning_cap': setPlanningCap,
   // AW-03: the conversation's first message mints it; later ones are its owner's.
   'conversation.start': startConversation,
   'conversation.message': messageConversation,
@@ -138,16 +180,25 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   // MP-6-2: a run's state revised, a person's under run:write; the agent's is
   // served on its own prefix (`agent-operations.ts`).
   'run.revise_state': reviseStateOnRun,
+  // AW-11: the parent's and the helper's, on the agent prefix only.
+  'run.delegate_child': refuseChildWorkAsPerson,
+  'run.child_handback': refuseChildWorkAsPerson,
+
+  'preference.save': (tx, context, request) =>
+    saveOwnPreference(tx, context, request.preference, request.value),
+  'preference.dismiss_tip': (tx, context, request) => dismissOwnTip(tx, context, request),
   'inbox.seen': (tx, context, request) => stampOwnSeen(tx, context, request.itemId),
   'notifications.set_channel': setNotificationChannel,
+  // C39-T: a person's acts on a team invitation, under `access:share`.
+  'invitation.create': invitationAct,
+  'invitation.resend': invitationAct,
+  'invitation.revoke': invitationAct,
 };
 
 function writeOwned(
   tx: TenantQuery,
   context: CommandContext,
-  request: RequestOf<
-    'task.assign' | 'task.triage' | 'task.set_stage' | 'task.set_party' | 'task.set_audience'
-  >,
+  request: RequestOf<'task.assign' | 'task.triage' | 'task.set_stage' | 'task.set_audience'>,
 ): Promise<HandlerOutcome> {
   return writeOwnedFields(tx, context, request.command, request.fields);
 }
@@ -155,7 +206,13 @@ function writeOwned(
 function setting(
   tx: TenantQuery,
   context: CommandContext,
-  request: RequestOf<'settings.set_four_eyes_threshold' | 'settings.set_client_sign_off'>,
+  request: RequestOf<
+    | 'settings.set_four_eyes_threshold'
+    | 'settings.set_client_sign_off'
+    | 'settings.set_money_step_up'
+    | 'settings.set_conversation_window'
+    | 'settings.set_retention_window'
+  >,
 ): Promise<HandlerOutcome> {
   return setBusinessSetting(tx, context, request.command, request.value, request.expectedRevision);
 }

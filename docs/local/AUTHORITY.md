@@ -19,11 +19,12 @@ A person's login, an agent login and a delegation credential are distinct
 identity model exists to prevent. It arrives one layer up from the failure
 migration 0002 guards.
 
-| Credential   | Resolves through               | To                                | Confers                                             |
-| ------------ | ------------------------------ | --------------------------------- | --------------------------------------------------- |
-| A person's   | `identity/login-resolution.ts` | `Session` (person, actor, role)   | membership, and nothing else; authority is `grants` |
-| An agent's   | `identity/agent-login.ts`      | `AgentSession` (actor, no person) | nothing at all                                      |
-| A delegation | `authority/delegations.ts`     | `Delegation`                      | nothing stored; an intersection computed per call   |
+| Credential                  | Resolves through                 | To                                          | Confers                                                                      |
+| --------------------------- | -------------------------------- | ------------------------------------------- | ---------------------------------------------------------------------------- |
+| A person's                  | `identity/login-resolution.ts`   | `Session` (person, actor, role)             | membership, and nothing else; authority is `grants`                          |
+| An agent's                  | `identity/agent-login.ts`        | `AgentSession` (actor, no person)           | nothing at all                                                               |
+| A delegation                | `authority/delegations.ts`       | `Delegation`                                | nothing stored; an intersection computed per call                            |
+| An agent credential (API-2) | `authority/agent-credentials.ts` | its row, a fresh agent actor and its issuer | the ticked keys, standing, until expiry or revocation; not served yet (S0-6) |
 
 A login is in `person_logins` or in `actor_logins`, never both. Two triggers in
 0008 hold that from either side, because a login in both would make the order in
@@ -118,6 +119,7 @@ pinned, so a rearrangement behind it is not a change to what L3 imports.
 ```ts
 // authority/delegations.ts
 mintDelegation(tx, MintRequest): Promise<DelegationDecision<MintedDelegation>>
+mintChildDelegation(tx, parent: Delegation, ChildMintRequest): Promise<DelegationDecision<MintedDelegation>>
 resolveDelegation(tx, agentActorId: string, credential: string): Promise<DelegationDecision<Delegation>>
 checkDelegatedAuthority(tx, delegation: Delegation, request: ScopeRequest): Promise<DelegationDecision<readonly string[]>>
 revokeDelegation(tx, delegationId: string, cause?: RevocationCause): Promise<Date | null>
@@ -127,7 +129,7 @@ digestOf(credential: string): string
 type DelegationRefusalCode =
   | 'DELEGATION_EXCLUDES_DECISION' | 'DELEGATION_OUT_OF_PURPOSE'
   | 'DELEGATION_NARROWED' | 'DELEGATION_NOT_LIVE' | 'DELEGATION_WIDENS'
-  | 'DELEGATION_ALREADY_LIVE'
+  | 'DELEGATION_ALREADY_LIVE' | 'DELEGATION_EXPIRED' | 'DELEGATION_REVOKED'
 type RevocationCause = 'authority_lost' | 'delegation_revoked' | 'work_retired' // absent: 'delegation_revoked'
 type DelegationDecision<T> = { ok: true; value: T } | { ok: false; refusal: DelegationRefusal }
 
@@ -215,22 +217,35 @@ of them, with the HTTP status in the register's own column (`statusOf`,
 `core-records/src/register.ts`). The last column says whether a caller can meet the
 code on this head, and where that is shown.
 
-| Code                                                                         | Status | Reachable on this head                                                                                                 |
-| ---------------------------------------------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------- |
-| `AUTH_NO_AGENT_IDENTITY`                                                     | 401    | yes                                                                                                                    |
-| `AUTH_SESSION_EXPIRED`                                                       | 401    | yes, on both prefixes; this is the re-login path                                                                       |
-| `DELEGATION_EXCLUDES_DECISION`                                               | 403    | yes                                                                                                                    |
-| `DELEGATION_EXCLUDES_OPERATION`                                              | 403    | yes; see below                                                                                                         |
-| `DELEGATION_OUT_OF_PURPOSE`                                                  | 403    | yes                                                                                                                    |
-| ↳ _also_ when `request.scope` is not exactly the delegation's `purposeScope` | 403    | yes                                                                                                                    |
-| `DELEGATION_NARROWED`                                                        | 403    | yes: `grant.revoke` on the delegating person's grant, or that grant's expiry, between pickup and the agent's next call |
-| `DELEGATION_NOT_LIVE`                                                        | 401    | yes                                                                                                                    |
-| `DELEGATION_WIDENS`                                                          | 403    | yes: `grant.revoke` on the approving person's grant, or that grant's expiry, between approval and the agent's pickup   |
-| `DELEGATION_ALREADY_LIVE`                                                    | 409    | yes, at mint time; see below                                                                                           |
-| `PRESET_FIELD_UNCLASSIFIED`                                                  | 422    | yes, with the field keys                                                                                               |
-| `PRESET_TYPE_UNKNOWN`                                                        | 404    | yes                                                                                                                    |
-| `PRESET_FIELD_UNPLACEABLE`                                                   | 409    | yes                                                                                                                    |
-| `PRESET_FIELD_DUPLICATE`                                                     | 422    | yes                                                                                                                    |
+| Code                                                                         | Status | Reachable on this head                                                                                                                              |
+| ---------------------------------------------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AUTH_NO_AGENT_IDENTITY`                                                     | 401    | yes                                                                                                                                                 |
+| `AUTH_SESSION_EXPIRED`                                                       | 401    | yes, on both prefixes; this is the re-login path                                                                                                    |
+| `AUTH_SECOND_FACTOR_REQUIRED`                                                | 401    | yes, on the person prefix, for a login with a verified second factor, in any business, below `aal2` (C59)                                           |
+| `AUTH_SECOND_FACTOR_SETUP_REQUIRED`                                          | 401    | yes, on the person prefix, for a person an accepted invitation of this business placed, with no verified second factor (C39-T)                      |
+| `STEP_UP_REQUIRED`                                                           | 403    | yes, on `budget.top_up`, `record_outcome`, `write_off`, `run.top_up` (billing:decide) past sixty minutes; an absent setting reads as on (C59, S0-5) |
+| `FRESH_SIGN_IN_REQUIRED`                                                     | 403    | yes, on `/account/factor/enrol` (C59)                                                                                                               |
+| `FACTOR_ALREADY_ENROLLED`                                                    | 409    | yes, on `/account/factor/enrol` (C59)                                                                                                               |
+| `FACTOR_NOT_ENROLLED`                                                        | 409    | yes, on `/account/factor/verify` and `/remove` (C59)                                                                                                |
+| `SECOND_FACTOR_INVALID`                                                      | 422    | yes, on `/account/factor/verify` and `/remove` (C59)                                                                                                |
+| `SECOND_FACTOR_LOCKED`                                                       | 429    | yes, after five wrong codes in fifteen minutes (C59)                                                                                                |
+| `AGENT_QUOTA_EXCEEDED`                                                       | 429    | yes, an agent credential past a limit a minute or at once (API-2)                                                                                   |
+| `PROVIDER_ANSWER_INVALID`                                                    | 502    | yes, on the three factor routes (C59)                                                                                                               |
+| `DELEGATION_EXCLUDES_DECISION`                                               | 403    | yes                                                                                                                                                 |
+| `DELEGATION_EXCLUDES_INTAKE`                                                 | 403    | yes: an agent's `task.triage`, the intake operation (minimum contract 6.1)                                                                          |
+| `DELEGATION_EXCLUDES_OPERATION`                                              | 403    | yes; see below                                                                                                                                      |
+| `DELEGATION_OUT_OF_PURPOSE`                                                  | 403    | yes                                                                                                                                                 |
+| ↳ _also_ when `request.scope` is not exactly the delegation's `purposeScope` | 403    | yes                                                                                                                                                 |
+| `DELEGATION_NARROWED`                                                        | 403    | yes: `grant.revoke` on the delegating person's grant, or that grant's expiry, between pickup and the agent's next call                              |
+| `DELEGATION_NOT_LIVE`                                                        | 401    | yes                                                                                                                                                 |
+| `DELEGATION_WIDENS`                                                          | 403    | yes: `grant.revoke` on the approving person's grant, or that grant's expiry, between approval and the agent's pickup                                |
+| `DELEGATION_ALREADY_LIVE`                                                    | 409    | yes, at mint time; see below                                                                                                                        |
+| `DELEGATION_EXPIRED`                                                         | 403    | yes: a child's parent ran out (see [Sub-delegation](#sub-delegation-aw-11))                                                                         |
+| `DELEGATION_REVOKED`                                                         | 403    | yes: a child's parent was withdrawn or handed back                                                                                                  |
+| `PRESET_FIELD_UNCLASSIFIED`                                                  | 422    | yes, with the field keys                                                                                                                            |
+| `PRESET_TYPE_UNKNOWN`                                                        | 404    | yes                                                                                                                                                 |
+| `PRESET_FIELD_UNPLACEABLE`                                                   | 409    | yes                                                                                                                                                 |
+| `PRESET_FIELD_DUPLICATE`                                                     | 422    | yes                                                                                                                                                 |
 
 `DELEGATION_WIDENS` is off `UNPRODUCED_CODES` (`core-records/src/register.ts`). The
 mint reads the approving person's live grants when the agent picks the work
@@ -300,6 +315,78 @@ and caller-visible ("registers it, gives it 409"), and that it is not one of the
 twenty runtime codes ("is not one of the runtime codes"). The runtime passes
 it through from the authority layer, the same way `DELEGATION_NOT_LIVE` and
 `DELEGATION_OUT_OF_PURPOSE` travel, and does not own its status.
+
+## Sub-delegation (AW-11)
+
+An agent holding a delegation may hand part of its work to a helper agent
+through `mintChildDelegation`: `run:write` inside its own delegation, depth
+one, the parent's person, authoriser and record, and an operation set that
+is a strict subset of the parent's (every collection and action the
+parent's, at least one of the two fewer). The mint re-reads the parent under
+a share lock, so a revocation in flight either lands first and is named or
+waits for the mint.
+
+The database holds the same rules for the application role
+(`delegations_child_within_parent`, 0205), and fixes a delegation's
+operation set, purpose, scope, person, authoriser and parent at mint
+(`delegations_set_is_fixed`); only `expires_at`, revocation and settlement
+move. Token claims add nothing (the U6 fallback): every call a child makes
+re-reads its parent in the serving transaction and asks it the same question
+(`checkDelegatedAuthority`), so the parent's state bites at the child's next
+call: handed back or withdrawn is `DELEGATION_REVOKED`, run out is
+`DELEGATION_EXPIRED`, its person's authority lost is `DELEGATION_NARROWED`.
+The child's own credential, once not live, stays `DELEGATION_NOT_LIVE`.
+
+A child spends on its parent's work, never on a lease of its own: its
+`model.call` names the parent's lease and fence, and the broker admits the
+lease's holder under its delegation or a helper holding a live child of that
+delegation (`holdsWork`, `core-custody/src/broker-facts.ts`), so the call is
+held on the parent's reservation under the parent's locks and one ceiling
+covers both. An exhausted envelope stops the child as it stops the parent
+(`BUDGET_UNAVAILABLE` with the budget wait); a pickup by the helper mints no
+second delegation; a parent that runs out ends the child's calls with
+`DELEGATION_EXPIRED` and its settled calls stay on the ledger.
+
+The hand-over and the merged result are `core-runtime/src/child-work.ts`.
+`delegateChild` hands part of the work over on the parent's own lease, at its
+own fence: the task, lease and parent delegation are locked, the heartbeat's
+owner check (`recheckOwner`) binds the parent to that lease, the child is
+minted as above and never past the lease's expiry, and a `delegated` run event
+is written (`0206`). The helper's one answer carries the business, the
+resource (task, run, lease, fence, reservation), the approved version and task
+revision, its own `collection:action` set, the parent's envelope, its actor
+scope and expiry, the run's pinned bootstrap file or `null`, and what it cannot
+do. `handBackChild` takes the helper's own credential (agent and digest
+together): completed work, or partial work naming a registered refusal, lands
+on the parent's run as `child_handed_back` and settles the child; a revoked or
+run-out child may still hand back, since a handback grants nothing, and the
+parent's lease is untouched. `childResults` is the parent's view: working,
+handed back with its outcome, or dropped with the fault named
+(`DELEGATION_EXPIRED`, `DELEGATION_REVOKED`, `DELEGATION_NARROWED`); nothing
+re-delegates on a guess.
+
+Both are agent operations (`commands/agent-child.ts`; API.md, "The hand-over
+and the handback"). `run.delegate_child` is a `record` row on the lease's
+task: `authorise` resolves the parent from the caller's own credential and
+asks `run:write` of it there, so a parent the body could name does not exist,
+and the runtime then binds that delegation to the lease at its fence.
+`run.child_handback` is the one `helper` row: no grant is asked, the
+presented credential itself is the authority and `handBackChild` binds it to
+the caller's login. Neither credential reaches the register: a hand-over's
+replay re-authorises the parent, finds the child still live and its own, and
+derives the child's credential again under its pinned key; a handback's
+replay is released only to the same helper presenting the same credential.
+A person is refused both `SCOPE_NOT_GRANTED`.
+
+A person sees the helpers under the parent's run on `task.execution` (API.md,
+the execution graph): each helper's standing by the same rule, and its steps,
+the calls the broker records with the caller's own delegation beside the
+lease's (`model_calls.caller_delegation_id`, `0209`). When the parent's lease
+runs out, the child it was capped at runs out with it and its credential is
+`DELEGATION_NOT_LIVE`; the sweep brings the work back, and a replacement parent
+picks it up and hands a new helper the work. The old child is never resumed.
+
+Not built yet: an unplanned helper step against AW-06's planned layer.
 
 ## The expired session
 
@@ -372,11 +459,11 @@ fields and client-audience comments only".
   its content and the next call is `AUTH_NO_MEMBERSHIP`.
 - **The seed enrols one.** `scripts/local-seed.mjs` adds an entry with
   `role: 'external'` to `.local/synthetic-users.json` and creates its GoTrue
-  user (`:667-703`, run at `:832-840`). It gets a login and an acting identity,
-  and no membership and no business grant (`:135-138`, `:288-290`). The seed
+  user (`:684-725`, run at `:859-867`). It gets a login and an acting identity,
+  and no membership and no business grant (`:152-155`, `:305-307`). The seed
   makes no task, so it shares one only when rerun with `LOCAL_SEED_SHARE_TASK`
   naming a task, through `shareRecord` under the admin's own `share` grant
-  (`:710-734`, `:874-884`).
+  (`:727-756`, `:896-906`).
 - **Standing checks raw liveness.** Resolution asks whether a share grant is
   revoked or expired, not the `EFFECTIVE` chain in `grants.ts`. `shareRecord`
   issues root grants only, so the two agree today; a derived share under a
@@ -508,12 +595,13 @@ than as an answer about the preset. D05 says so, and the test counts
 landed contracts read without having. `records/business-settings.ts` produces
 the named rows:
 
-| Key                        | Default             | Write mode  | Why                                                              |
-| -------------------------- | ------------------- | ----------- | ---------------------------------------------------------------- |
-| `four_eyes_threshold`      | `500`, `null` = off | `operation` | changes who must agree before money moves                        |
-| `client_sign_off_required` | `false`             | `operation` | changes who must agree before work completes                     |
-| `retention_window_days`    | `30`                | `generic`   | policy an administrator sets; read by `task.purge` as its window |
-| `conversation_window_days` | `30`                | `generic`   | policy an administrator sets                                     |
+| Key                        | Default             | Write mode  | Why                                                                     |
+| -------------------------- | ------------------- | ----------- | ----------------------------------------------------------------------- |
+| `four_eyes_threshold`      | `500`, `null` = off | `operation` | changes who must agree before money moves                               |
+| `client_sign_off_required` | `false`             | `operation` | changes who must agree before work completes                            |
+| `money_step_up_required`   | `true`              | `operation` | whether a money action needs a recent second-factor sign-in (C59)       |
+| `retention_window_days`    | `30`                | `operation` | read by `task.purge` as its window; never below the conversation window |
+| `conversation_window_days` | `30`                | `operation` | seven days or more, never past the retention window (C122-1)            |
 
 The classification matters here, not the values. A setting that decides
 whether a second approver is needed changes authority, the same category the
@@ -560,6 +648,156 @@ every row (`SettingView.revision`, filled by `readSettings` in
 `tests/records/business-settings.test.ts` holds the writer, including two
 administrators writing at once (its `describe` at `:287`), and
 `tests/commands/settings-revision.test.ts` holds the command path.
+
+## The operations view (C55)
+
+Two keys, each on its own collection, neither ever an agent's:
+`operations:read` opens the operations view (`operations.read`) and
+`privacy:manage` records a privacy incident (`privacy.record_incident`). A
+holder of one is not a holder of the other. An agent under a live delegation
+from a person who holds both is refused both, `DELEGATION_EXCLUDES_OPERATION`,
+because neither is in the agent's operation set. The install defaults (the
+owner and administrators) are C32's role presets.
+
+The breach drill's notices (`privacy.draft_breach_notices`, C81) are a read
+under `privacy:manage`, the incident's own key, so a holder of
+`operations:read` alone sees an incident overdue but cannot draft its notices.
+The read looks the incident up in the business's own rows and sends nothing.
+
+## Legal documents (C81)
+
+Drafting, approving and publishing a legal document's version are each
+`privacy:manage`, the key C55's privacy incident uses, and none is ever an
+agent's: an agent under a live delegation from a holder is refused
+`DELEGATION_EXCLUDES_OPERATION`. Publishing takes only a version approved as
+the bytes it holds (standing gate 5); approval and publication each lock the
+version's row and decide from what they read under it. The public read of a
+published version asks no key: it is published.
+
+Setting a row of the overseas-services register
+(`privacy.set_overseas_service`) is `privacy:manage` too, never an agent's.
+The register has one lock per business, taken by every change to it and by
+each draft, approval and publication of a privacy policy before it reads the
+register, so a change and a policy decision apply in one order. Approval and
+publication take the version's row lock first and the register's second; a
+change takes only the register's, so the two never wait in a cycle.
+
+Setting a class of the data-class register (`privacy.set_data_class`) is
+`privacy:manage` too, never an agent's. It takes the same per-business lock as
+the overseas-services register, and a policy's draft, approval and publication
+read the classes under it, so the order above holds for both registers.
+
+`operations:manage` moves the first-client gate (S0-5): a gate item recorded
+(`operations.record_gate_item`) and the installation's one-way change to real
+data (`operations.change_installation_mode`). Both are a person's, never an
+agent's. The gate is the installation's, so the grant counts only in the
+business that operates it (`ops.installation.operator_business_id`); the same
+key in another business on the installation is refused `SCOPE_NOT_GRANTED`.
+Each takes the installation's row lock before it checks that, so a refusal
+writes nothing.
+
+## Agent credentials (API-2)
+
+An agent credential is a standing delegation from the person who issues it to
+a fresh agent actor of theirs, with no lease and no run
+(`authority/agent-credentials.ts`, migration 0054). `credential.issue` is
+`credential:write` and is always the caller's own. Its scope is the ticked
+`collection:action` keys, each one the caller holds at business scope when it
+is issued, by the grant check's own walk under the access lock
+(`CREDENTIAL_SCOPE_WIDENS` otherwise), and never decide, share or manage (`CREDENTIAL_ACTION_EXCLUDED`). It never
+holds a money key either (C59's set, `isMoneyKey`, `billing:read` included):
+the permission key catalogue (`docs/design-system/CAPABILITY-SLICES.md`) says
+an agent may hold none, and every credential is an agent's, so a scope with
+one is `CREDENTIAL_MONEY_KEY_EXCLUDED` before any grant walk, on any sign-in.
+No credential is held by a person, so no money step-up is asked at issue.
+Its expiry is at most
+`CREDENTIAL_MAX_DAYS` (90) from issue, set in that one constant.
+
+The secret is derived as a delegation's credential is, under the delegation
+credential key, in its own domain (`AGENT_CREDENTIAL_DOMAIN`), so it can never
+equal a delegation's. It is in the issue answer only: the row keeps its SHA-256,
+the scheme and the key id, the register keeps the answer with the credential
+null, and the issuer's replay of the same operation derives it again while the
+credential is theirs and live. A live one holding a money key, issued before
+that rule, is refused `CREDENTIAL_MONEY_KEY_EXCLUDED` on replay instead.
+
+`credential.revoke` is `credential:write` too. The issuer revokes their own;
+anyone else needs `access:manage` as well, and without it another person's
+credential is `NOT_FOUND`, as a foreign or made-up one is. It locks the row,
+decides under the lock, sets the revocation once (`CREDENTIAL_ALREADY_REVOKED`
+after) and deactivates the agent actor. Ending the issuer's access
+(`access.end`) revokes every credential they issued there the same way, by
+the person who ended it. Neither command is ever an agent's: an
+agent under a live delegation is refused `DELEGATION_EXCLUDES_OPERATION`.
+
+**Using it** (`commands/credential-envelope.ts`). The agent sends the secret
+as `Authorization: Bearer` on the agent prefix, and nowhere else: that prefix
+never reads a session cookie, and the secret is no sign-in on the person
+prefix. A bearer in the credential's form (43 base64url characters, no dot) is
+the product's own scheme and never reaches the sign-in provider's verifier.
+Every call looks the credential up by its digest in the path's business and
+locks the row `for share` (`resolveAgentCredential`), so a revocation either
+commits first and the call is refused, or waits for the call. Revoked, past its
+expiry, its agent actor inactive, its issuer no longer a member, or never
+issued: one answer, `DELEGATION_NOT_LIVE` 401, in plain words, and the same
+answer at a business key nobody holds. Each one writes a refused
+authentication attempt (owner `delegation`, the digest of the credential's
+digest, never the secret).
+
+The call runs through the person's command and read envelopes as the agent
+actor for the issuing person (`Session.credentialScope`). The audit event, the
+register row and anything written carry the agent actor, and the credential row
+names the person it acts for. Every grant check asks the key within the ticked
+ones and the person's grants as they are now (`subjectsOf`, `askedFor`); the
+credential has no sign-in assurance, so a money step-up is never met. It
+reaches the rows an agent may reach under a delegation that need no lease
+(`CREDENTIAL_REACH`: `task.create`, `task.read`, `task.comment`, `task.propose`
+and `session.capabilities`); anything else is `DELEGATION_EXCLUDES_OPERATION`.
+A create asks the person's business-wide `task:write` within the ticked keys; it
+is audited against the agent and the task's `source` is `agent:api`.
+`session.capabilities` answers the ticked keys the person's grants still cover,
+so a key the person holds and did not tick, or one revoked from them since, is
+not listed; `agentActorId` is the acting identity and `personId` the person it
+acts for (`readCapabilities`). The pickup agent reaches `task.create` too, and
+its one-task delegation never does: `DELEGATION_OUT_OF_PURPOSE`, nothing written
+(`authorise`, the `business` row). The app holds a quota per credential, per
+person and per business on calls a minute, calls at once and records handed out
+a minute (`apps/api/auth/agent-quota.ts`), answered `AGENT_QUOTA_EXCEEDED` 429.
+A call counts once, retried or not, and a call outside the reach counts too.
+The quota is held in each API process, so it multiplies across instances.
+
+## Settings ▸ Access (C32)
+
+Giving and revoking a grant on Settings ▸ Access (`access.grant`,
+`access.revoke`) is `access:manage`, the owner's and the administrators' key,
+never an agent's. A grant given here is a root grant, to a person with an
+active membership, over the whole business or over one client of it
+(`scope_kind = 'party'`, `scope_id` the client). Making a client
+(`client.create`) is `record:write`, never an agent's.
+
+Every change to who may do what takes the business's one access lock first
+(`lockAccess`, `access:<business>`), before any grant row: a grant given, a
+grant revoked on either route, ending a person's access (C58), and an agent
+credential issued, before its grant walk. So an issue racing an ending is
+refused, or lands first and is revoked by it. The same
+grant given twice is one row, and two revocations that would each leave one
+holder of business-wide `access:manage` cannot both apply: the second is
+`ACCESS_LAST_MANAGER`.
+
+Ending a person's access (`access.end`, C58) is `access:manage` too, never an
+agent's. After the access lock it locks every live grant the person holds, in
+id order, before any runtime lock (the order one revocation and `task.pickup`
+take), then revokes them and every delegation the person gave in one
+authority-loss classification (`endPersonAuthority`,
+`commands/authority-controls.ts`), revokes every agent credential the person
+issued in that business with its agent actor, and ends the membership and the
+person's acting identity. The delegations lose their ceiling with the grants and are
+revoked with the cause `authority_lost`. Nobody ends the last business-wide
+`access:manage` of a person who can sign in.
+
+A party-scoped grant is checked at party scope. The task reads and writes ask
+record scope, so they do not yet resolve a grant over a client through the
+task's `client` link; `client.list` and the preview do read it.
 
 ## Revocation
 
@@ -698,6 +936,11 @@ the runtime asks the same pair of the run's own task again under the run's
 locks. No agent holds `decide`, and neither row is in the agent's reach. The
 seed gives both pairs to `admin` only (`scripts/local-seed.mjs`).
 
+AW-04's `budget.set_planning_cap` asks `decide` on `billing` of the business
+as a whole (`authorisedOn: 'business'`), so a `billing:decide` grant on one
+task does not reach it: only a business-wide holder, which the seed makes the
+owner and administrators. It is not in the agent's reach.
+
 MP-6-2's `run.revise_state` asks `write` on `run` of the task named in
 `recordId` (ORCH33: `run:write` is the only key on `run`; its reads stay
 `task:read`). The handler refuses a run on another task with the bytes a
@@ -720,6 +963,17 @@ through a privilege the worker holds itself.
 call every table and function as `ops_astro_worker`, beside the application
 login, the application group and an outsider, at the full schema and at every
 migration prefix ([DATA.md](DATA.md#what-the-tenancy-proofs-are)).
+
+## Attribution by digest (AW-04)
+
+`definition.attribution` asks `read` on tasks the way `gate.pending` asks
+`decide`: the door takes any grant, and the statement that reads the runs
+keeps only those whose task the caller's `read` covers (`coveredScopes`), so a
+record-scoped member sees its own tasks' runs and no other's. It is the team's,
+as the queue's alerts and outages are: a client, a contractor and anyone
+holding no `read` on tasks get `SCOPE_NOT_GRANTED`, never an empty list. An
+agent has no route to it (`DELEGATION_EXCLUDES_OPERATION`). Every row is
+labelled pre-review; see [API.md](API.md).
 
 ## What is not here
 

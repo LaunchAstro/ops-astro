@@ -28,6 +28,10 @@
 // commands that take them are ordinary record writes that never reach
 // `acquire`; the runtime's commands declare `targetLock: 'runtime'` or no
 // target, so the envelope locks nothing for them and this order starts clean.
+// C59's login-wide keys, `second-factor-codes:<digest>` and
+// `second-factor-subject:<digest>`, are command-layer locks too, and the only
+// installation-wide ones: each names a sign-in login, not a business, and is
+// taken first in its transaction, before any row or chain lock.
 // The grant rows an operation's authority rests on are the other class outside
 // the list, also taken first: decide, pickup and cancellation hold theirs `for
 // share` (`holdCoveringGrants`) and `grant.revoke` its own `for update`, before
@@ -44,8 +48,13 @@
 // operation, then its route's key, which every business shares
 // (`broker-reserve.ts`), last. Settlement takes the lease, delegation and
 // reservation only: what it settles was already sent.
+// A planning reply (AW-04, U10; `core-custody/src/broker-planning.ts`)
+// takes its business's planning cap `for update` (the `cap` class, first),
+// then the same ceiling and route keys, last.
 // The pinned read (AW-02, `definitions-read.ts`) takes one lock, its lease,
 // through `acquire`, before it writes its ledger row.
+// An invitation's accept (C39-T, `invitation-accept.ts`) takes its login id's
+// key (`lockLoginId`), then the invitation's row, before anything else.
 // Every advisory lock, the chain class included, is taken through the one
 // helper, `advisoryLock` in `core-records/src/tenancy/database.ts`.
 // `tests/runtime/cq-8-db.test.ts` records each transaction's lock statements

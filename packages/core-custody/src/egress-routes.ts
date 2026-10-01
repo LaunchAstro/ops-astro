@@ -1,0 +1,155 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// What a destination adds to a request, and which it takes (AW-13): fixed
+// headers custody sets on every request to it, a header that carries the
+// credential's bare value as well (a hosted login provider's `apikey`, C39-T),
+// and the few DELETE and GET
+// routes it answers (the trace store's expiry and the read that confirms it;
+// the login provider's read of one user, C39-T). A destination may also list
+// the exact paths it takes a POST on (the login provider's create); one that
+// lists none takes a POST on any plain path. Custody never sends a PUT. Both are custody's own
+// list, read once at start; a caller names none of them.
+
+import { presented, type StoredCredential } from './credentials.ts';
+
+/** A route: an exact path, or for a GET one trailing `/*` segment. A POST is only ever exact. */
+export interface Route {
+  readonly method: 'POST' | 'DELETE' | 'GET';
+  readonly path: string;
+}
+
+export type Method = Route['method'];
+
+export const METHODS: readonly Method[] = ['POST', 'DELETE', 'GET'];
+
+/** A lower-case token: one spelling per name, so no two can collide by case. */
+const HEADER_NAME = /^[a-z][a-z0-9-]{0,62}$/u;
+/** Visible ASCII, inner spaces only: no CR, LF, tab or other control byte. */
+const HEADER_VALUE = /^[!-~](?:[ -~]{0,254}[!-~])?$/u;
+/** Names custody or the transport owns: the credential, framing and routing. */
+const RESERVED = new Set([
+  'authorization',
+  'proxy-authorization',
+  'x-api-key',
+  'cookie',
+  'host',
+  'content-type',
+  'content-length',
+  'transfer-encoding',
+  'connection',
+  'keep-alive',
+  'te',
+  'upgrade',
+  'expect',
+]);
+/** Plain segments from the root; no empty, `.` or `..` segment. */
+const ROUTE_PATH = /^(?:\/(?!\.\.?(?:\/|$))[A-Za-z0-9._~-]+)+$/u;
+/** What a `/*` stands for: one identifier segment. */
+const SEGMENT = /^[A-Za-z0-9_-]{1,128}$/u;
+
+export interface Extras {
+  readonly headers?: Readonly<Record<string, string>>;
+  /** A header the provider also reads the credential's bare value from, as hosted secret keys need. */
+  readonly keyHeader?: string;
+  readonly routes?: readonly Route[];
+}
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+function headersOf(value: unknown): Record<string, string> | undefined {
+  if (!isObject(value)) return undefined;
+  const entries = Object.entries(value);
+  const valid = entries.every(
+    ([name, text]) =>
+      HEADER_NAME.test(name) &&
+      !RESERVED.has(name) &&
+      typeof text === 'string' &&
+      HEADER_VALUE.test(text),
+  );
+  return valid ? Object.fromEntries(entries as [string, string][]) : undefined;
+}
+
+function routeOf(value: unknown): Route | undefined {
+  if (!isObject(value) || Object.keys(value).toSorted().join() !== 'method,path') return undefined;
+  const { method, path } = value;
+  if (typeof path !== 'string') return undefined;
+  if ((method === 'DELETE' || method === 'POST') && ROUTE_PATH.test(path)) {
+    return { method, path };
+  }
+  const prefix = path.endsWith('/*') ? path.slice(0, -2) : path;
+  if (method === 'GET' && ROUTE_PATH.test(prefix)) return { method, path };
+  return undefined;
+}
+
+/** A key header's name: a header name custody does not own, and no fixed header's. */
+const keyHeaderOf = (
+  value: unknown,
+  fixed: Readonly<Record<string, string>>,
+): string | undefined =>
+  typeof value === 'string' && HEADER_NAME.test(value) && !RESERVED.has(value) && !(value in fixed)
+    ? value
+    : undefined;
+
+/** A destination entry's headers, key header and routes, or `undefined` when any is malformed. */
+export function parseExtras(entry: Readonly<Record<string, unknown>>): Extras | undefined {
+  const extras: { headers?: Record<string, string>; keyHeader?: string; routes?: Route[] } = {};
+  if (entry['headers'] !== undefined) {
+    const headers = headersOf(entry['headers']);
+    if (headers === undefined) return undefined;
+    extras.headers = headers;
+  }
+  if (entry['keyHeader'] !== undefined) {
+    const keyHeader = keyHeaderOf(entry['keyHeader'], extras.headers ?? {});
+    if (keyHeader === undefined) return undefined;
+    extras.keyHeader = keyHeader;
+  }
+  if (entry['routes'] !== undefined) {
+    if (!Array.isArray(entry['routes'])) return undefined;
+    const routes = entry['routes'].map(routeOf);
+    if (routes.some((route) => route === undefined)) return undefined;
+    extras.routes = routes as Route[];
+  }
+  return extras;
+}
+
+/** A path under the origin: starts with one slash, no scheme, no authority, no traversal, no control bytes. */
+const PATH = /^\/(?!\/)[A-Za-z0-9._~\-/]*$/u;
+
+/**
+ * A path a request may name: for a POST, a plain path under the origin unless
+ * the destination lists POST paths, then only one of those; for any other
+ * method, only a route the destination lists.
+ */
+export function pathAllowed(extras: Extras, method: Method, path: string): boolean {
+  if (!PATH.test(path) || path.includes('..')) return false;
+  const routes = extras.routes ?? [];
+  if (method === 'POST' && !routes.some((route) => route.method === 'POST')) return true;
+  return routes.some((route) => {
+    if (route.method !== method) return false;
+    if (!route.path.endsWith('/*')) return route.path === path;
+    const prefix = route.path.slice(0, -1);
+    return path.startsWith(prefix) && SEGMENT.test(path.slice(prefix.length));
+  });
+}
+
+/**
+ * The headers custody sets on one request: the destination's fixed ones, the
+ * framing, the credential in its own header and, where the destination names
+ * a key header, the bare credential there as well. No two names overlap.
+ */
+export function requestHeaders(
+  extras: Extras,
+  body: string,
+  credential: Pick<StoredCredential, 'header' | 'scheme' | 'value'> | null,
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    ...extras.headers,
+    'content-type': 'application/json',
+    'content-length': String(Buffer.byteLength(body)),
+  };
+  if (credential === null) return headers;
+  headers[credential.header] = presented(credential);
+  if (extras.keyHeader !== undefined) headers[extras.keyHeader] = credential.value;
+  return headers;
+}

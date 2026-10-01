@@ -4,10 +4,10 @@
 //
 // Both read the **slots**, not `data`. The slots are the projection the field
 // table fixes -- state `uuid_1`, assignee `uuid_2`, title `txt_4`, due `ts_1`,
-// priority `num_1`, completed_at `ts_2` -- and reading them is what makes a
-// read of a task and the trigger that writes it two halves of one claim. A read
-// out of `data` would still return the right answer on a record the trigger had
-// stopped projecting, which is the failure worth catching.
+// priority `num_1`, completed_at `ts_2`, client `uuid_7` -- and reading them is
+// what makes a read of a task and the trigger that writes it two halves of one
+// claim. A read out of `data` would still return the right answer on a record
+// the trigger had stopped projecting, which is the failure worth catching.
 //
 // `description` is the exception and has to be: it is unslotted on purpose
 // (`tasks/spine.ts`), so `data` is where it lives.
@@ -43,6 +43,7 @@ interface TaskRowRead {
   readonly priority: string | null;
   readonly completed_at: Date | null;
   readonly description: string | null;
+  readonly client_id: string | null;
   readonly state_id: string | null;
   readonly state_key: string | null;
   readonly state_label: string | null;
@@ -70,6 +71,7 @@ const SELECT = `
          r.num_1::text as priority,
          r.ts_2  as completed_at,
          r.data ->> 'description' as description,
+         r.uuid_7 as client_id,
          s.id as state_id,
          s.data ->> 'key' as state_key,
          s.data ->> 'label' as state_label,
@@ -124,6 +126,7 @@ async function historyOf(
   const rows = await tx.query<{
     readonly occurred_at: Date;
     readonly actor_id: string;
+    readonly person_id: string | null;
     readonly command: string;
   }>(
     // The writes only. Reads are audited now (I13) and they carry the record
@@ -132,11 +135,13 @@ async function historyOf(
     // nobody. The two questions share one chain and are not the same question,
     // so the projection names the outcomes it wants rather than taking every
     // row that mentions the record.
-    `select occurred_at, actor_id, command
-       from public.audit_events
-      where business_id = $1 and subject_record_id = $2 and outcome = 'applied'
-        and command <> all($3::text[])
-      order by seq`,
+    // The actor's person, so a page names who acted by the people it may list.
+    `select e.occurred_at, e.actor_id, a.person_id, e.command
+       from public.audit_events e
+       left join public.actors a on a.business_id = e.business_id and a.id = e.actor_id
+      where e.business_id = $1 and e.subject_record_id = $2 and e.outcome = 'applied'
+        and e.command <> all($3::text[])
+      order by e.seq`,
     // A reader outside the business is not shown that a comment was written:
     // its comments carry only what the catalogue shares, and an internal
     // note's author and time in the history would be the note, hidden rather
@@ -146,6 +151,8 @@ async function historyOf(
   return rows.map((row) => ({
     at: row.occurred_at.toISOString(),
     actorId: row.actor_id,
+    // An outside reader (and an agent, read as one) is shown no person behind an actor.
+    personId: internal ? row.person_id : null,
     operation: row.command,
   }));
 }
@@ -263,6 +270,7 @@ export async function readTaskDetail(
   return {
     ...summaryOf(row),
     description: row.description,
+    clientId: row.client_id,
     history: await historyOf(tx, row.id, comments.internal),
     comments: await commentsFor(tx, comments.commentTypeId, row.id, comments.internal),
     // The proposals go to every reader of the detail, internal or external,

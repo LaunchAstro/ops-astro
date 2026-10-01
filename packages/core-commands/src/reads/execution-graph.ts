@@ -4,11 +4,17 @@
 // events. One node per run, each with a planned layer and an observed layer,
 // never merged into one reading.
 //
-// **The planned layer is not read yet.** Planned nodes come from the
-// structured plan record the plan decision bound (AW-04, owner decision U4),
-// which this code does not have. Every node's planned layer is null and the
-// graph says `plan: 'unbound'`, so no reader mistakes an absent plan for an
-// empty one, and no node is called unplanned against a plan nobody read.
+// **The planned layer is the bound plan record** (AW-04, owner decision U4):
+// the one `projectedPlan` (`core-runtime/src/plan-binding.ts`) finds bound to
+// its approving decision, or none, and then the graph says `plan: 'unbound'`
+// with no steps, so no reader mistakes an absent plan for an empty one and no
+// node is called unplanned against a plan nobody bound. With a plan, the
+// graph lists its steps with the runs proposed under each, and each run
+// carries the step its proposal named (ORCH41 decision (a)). A run naming
+// none, or a key the bound plan lacks, reads `unplanned`, never dropped. The
+// plan's own run, and the runs of its lineage, are the plan, not work
+// outside it. A helper's steps (AW-11) take their run's placement, the step
+// or unplanned, as the node reads.
 //
 // **The observed layer comes from the run's own rows**: the run, its gate,
 // its version, its latest lease and attempt, and its reservations, read in the
@@ -30,34 +36,15 @@
 // run state this module does not know is kept raw (`runState`) with the
 // condition `unrecognised`, never dropped.
 
-/** What `execution.ts` reads for each run. */
-export interface RunFacts {
-  readonly runId: string;
-  readonly state: string;
-  readonly superseded: boolean;
-  readonly gateState: string | null;
-  readonly currency: string;
-  readonly lease: {
-    readonly state: string;
-    readonly expiresAt: string;
-    readonly lapsed: boolean;
-    readonly holderActorId: string;
-    readonly agent: boolean;
-  } | null;
-  readonly attempt: {
-    readonly id: string;
-    readonly state: string;
-    readonly outcome: string | null;
-  } | null;
-  readonly effectObserved: boolean;
-  readonly heldMinor: number | null;
-  readonly spentMinor: number | null;
-  readonly lastKind: string | null;
-  readonly lastFault: string | null;
-}
+import type { RunDefinition } from './execution-definition.ts';
+import type { HelperEntry, PlacedStep } from './execution-helpers.ts';
+import { validateFacts, type RunFacts } from './execution-facts.ts';
 
 export type ObservedCondition =
   'not_started' | 'in_progress' | 'settled' | 'superseded' | 'unrecognised';
+
+/** A node's reading: its observed condition, or `unplanned` under a bound plan. */
+export type NodeCondition = ObservedCondition | 'unplanned';
 
 export interface WhoseMove {
   readonly kind: 'agent' | 'person';
@@ -85,33 +72,86 @@ export interface ObservedLayer {
 
 export interface GraphNode {
   readonly nodeId: string;
-  /** The node's reading: the observed condition while no plan is bound. */
-  readonly condition: ObservedCondition;
-  /** AW-04's bound plan record; null until it is read. */
-  readonly planned: null;
+  /** The observed condition, or `unplanned`: a run outside the bound plan. */
+  readonly condition: NodeCondition;
+  /** The bound plan's step this run was proposed under, or null. */
+  readonly planned: { readonly key: string; readonly title: string } | null;
   readonly observed: ObservedLayer;
+  /** The helpers the run's work was handed to, each with its own steps (AW-11). */
+  readonly helpers: readonly HelperEntry<PlacedStep>[];
+  /** The instruction file the run was pinned to and every file it read, or null (AW-04). */
+  readonly definition: RunDefinition | null;
+}
+
+/** A step of the bound plan, with the runs proposed under it (none yet: planned). */
+export interface PlannedStepNode {
+  readonly key: string;
+  readonly title: string;
+  readonly after: readonly string[];
+  readonly runIds: readonly string[];
 }
 
 export interface ExecutionGraph {
-  readonly plan: 'unbound';
+  readonly plan: 'bound' | 'unbound';
+  readonly planRecordId: string | null;
+  /** The run the plan was accepted on. */
+  readonly planRunId: string | null;
+  readonly steps: readonly PlannedStepNode[];
   readonly sourceRevision: number;
   readonly complete: boolean;
   readonly nodes: readonly GraphNode[];
 }
 
+/** The bound plan the graph projects (`projectedPlan`), or null. */
+export interface GraphPlan {
+  readonly planRecordId: string;
+  readonly runId: string;
+  readonly steps: readonly {
+    readonly key: string;
+    readonly title: string;
+    readonly after: readonly string[];
+  }[];
+}
+
 export function projectGraph(
   facts: unknown,
+  plan: GraphPlan | null,
   sourceRevision: number,
   complete: boolean,
 ): ExecutionGraph {
   const runs = validateFacts(facts);
+  const planLineage = runs.find((run) => run.runId === plan?.runId)?.lineageId;
+  const stepOf = (run: RunFacts) => plan?.steps.find((step) => step.key === run.planStepKey);
   return deepFreeze({
-    plan: 'unbound',
+    plan: plan === null ? 'unbound' : 'bound',
+    planRecordId: plan?.planRecordId ?? null,
+    planRunId: plan?.runId ?? null,
+    steps: (plan?.steps ?? []).map((step) => ({
+      key: step.key,
+      title: step.title,
+      after: [...step.after],
+      runIds: runs.filter((run) => stepOf(run) === step).map((run) => run.runId),
+    })),
     sourceRevision,
     complete,
     nodes: runs.map((run) => {
       const observed = observe(run);
-      return { nodeId: run.runId, condition: observed.condition, planned: null, observed };
+      const step = stepOf(run);
+      const outside = plan !== null && step === undefined && run.lineageId !== planLineage;
+      const planned = step === undefined ? null : { key: step.key, title: step.title };
+      return {
+        nodeId: run.runId,
+        condition: outside ? 'unplanned' : observed.condition,
+        planned,
+        observed,
+        // A helper's steps are model calls, which carry no plan key: each takes
+        // this run's placement (ORCH42 decision (a)).
+        helpers: run.helpers.map((helper) => ({
+          ...helper,
+          steps: helper.steps.map((one) => ({ ...one, planned, unplanned: outside })),
+        })),
+        definition: run.definition,
+      };
     }),
   });
 }
@@ -169,60 +209,6 @@ function observe(run: RunFacts): ObservedLayer {
       ? other('not_started', null)
       : other('in_progress', { kind: 'agent', actorId: null });
   return other('unrecognised', null);
-}
-
-function validateFacts(facts: unknown): readonly RunFacts[] {
-  if (!Array.isArray(facts)) throw new Error('task.execution: the run facts are not a list');
-  return facts.map((fact: unknown, index) => {
-    const where = `task.execution: run fact ${String(index)}`;
-    if (!isRecord(fact)) throw new Error(`${where} is not an object`);
-    for (const key of ['runId', 'state', 'currency'] as const) {
-      if (typeof fact[key] !== 'string') throw new Error(`${where}: ${key} is not a string`);
-    }
-    for (const key of ['superseded', 'effectObserved'] as const) {
-      if (typeof fact[key] !== 'boolean') throw new Error(`${where}: ${key} is not a boolean`);
-    }
-    for (const key of ['gateState', 'lastKind', 'lastFault'] as const) {
-      if (fact[key] !== null && typeof fact[key] !== 'string')
-        throw new Error(`${where}: ${key} is neither null nor a string`);
-    }
-    for (const key of ['heldMinor', 'spentMinor'] as const) {
-      const value = fact[key];
-      if (
-        value !== null &&
-        !(typeof value === 'number' && Number.isSafeInteger(value) && value >= 0)
-      )
-        throw new Error(`${where}: ${key} is neither null nor a whole non-negative number`);
-    }
-    const { lease, attempt } = fact;
-    if (
-      lease !== null &&
-      !(
-        isRecord(lease) &&
-        typeof lease['state'] === 'string' &&
-        typeof lease['expiresAt'] === 'string' &&
-        typeof lease['lapsed'] === 'boolean' &&
-        typeof lease['holderActorId'] === 'string' &&
-        typeof lease['agent'] === 'boolean'
-      )
-    )
-      throw new Error(`${where}: the lease is malformed`);
-    if (
-      attempt !== null &&
-      !(
-        isRecord(attempt) &&
-        typeof attempt['id'] === 'string' &&
-        typeof attempt['state'] === 'string' &&
-        (attempt['outcome'] === null || typeof attempt['outcome'] === 'string')
-      )
-    )
-      throw new Error(`${where}: the attempt is malformed`);
-    return fact as unknown as RunFacts;
-  });
-}
-
-function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function deepFreeze<T>(value: T): T {

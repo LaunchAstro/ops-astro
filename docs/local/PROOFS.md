@@ -259,8 +259,8 @@ none unreachable.
 ## Item 2: the six roles and the nine cases
 
 `role-case-matrix.test.ts` with `role-case-harness.ts` (its shape in
-`role-case-harness-shape.ts`), `role-case-bodies.ts` (its recipe table in
-`role-case-positive-body.ts`) and `role-case-ledger.ts`. The enumeration is generated from `COMMAND_SURFACE`
+`role-case-harness-shape.ts`, its probe body in `role-case-probe-body.ts`), `role-case-bodies.ts` (its recipe table in
+`role-case-positive-body.ts`, its run and lease recipes in `role-case-run-bodies.ts`, C81's recipes in `role-case-privacy-bodies.ts`, API-2's in `role-case-credential-bodies.ts`) and `role-case-ledger.ts`. The enumeration is generated from `COMMAND_SURFACE`
 and the whole matrix is written to `.local/l5-matrix.tsv` as
 `role · case · operation · observed code · observed status · expected · verdict`.
 
@@ -387,7 +387,7 @@ foreign and a fabricated operand by status and raw bytes, audited at home.
 | `task.restore`                    | `batchId`                  | refuses foreign and fabricated control identifiers alike                           |
 | `grant.revoke`                    | `grantId`                  | refuses foreign and fabricated control identifiers alike                           |
 | `delegation.revoke`               | `delegationId`             | refuses foreign and fabricated control identifiers alike                           |
-| `task.decide`                     | `gateId`                   | refuses a foreign and a fabricated gate NOT_FOUND, as contract 8.2 case 1 names it |
+| `task.decide`, `task.accept_plan` | `gateId`                   | refuses a foreign and a fabricated gate NOT_FOUND, as contract 8.2 case 1 names it |
 | `task.board`                      | `board`                    | refuses a board read on a foreign or fabricated board, never an empty success      |
 | `task.heartbeat`, `task.handback` | `leaseId`                  | refuses the agent alike on foreign, fabricated and in-business operands            |
 | `task.pickup`                     | `reservationId`            | refuses a pickup alike on a foreign, a fabricated and a claimed reservation        |
@@ -1254,6 +1254,14 @@ login, and is green 3 of 3 (FR8-0031).
   dialogue. The U7 score (events log, 2026-09-23T23:19:45Z) left U7
   undischarged and named this as Nathan's item. Either answer clears it
   without re-scoring.
+
+## Retired by ruling
+
+- `tests/ci/staging-deploy-consumes-release.test.ts` ("deploys a checked staging artefact through the
+  shipped image build path", batch 1's blind review, finding 6): retired by the orchestrator's ruling
+  (ORCH45, option 1). It certified a local app image built from `deploy/staging/Dockerfile`, a path
+  staging no longer has: the app and API deploy only to Vercel (`scripts/ops/web-deploy.mjs`), and
+  `scripts/ops/deploy.mjs` now starts the M5's unit on its pinned images with no image build.
 
 ## What is not here
 

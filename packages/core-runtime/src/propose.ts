@@ -31,7 +31,8 @@ import {
   liveWorkLocks,
   retireWork,
 } from './recovery.ts';
-import { writeProposal } from './proposal-writer.ts';
+import { BEFORE_0223, writeProposal } from './proposal-writer.ts';
+import { readProjectedPlan } from './plan-binding.ts';
 import { lockRediscovered } from './rediscovery.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
@@ -40,7 +41,7 @@ import { refuse, type RuntimeResult } from './refusals.ts';
 // code rather than a second copy of it (T4). `roundsUsed` moved with them and
 // is re-exported here, because `index.ts` pins it under this module's name and
 // the command layer imports it from there.
-export { roundsUsed } from './proposal-writer.ts';
+export { BEFORE_0223, roundsUsed } from './proposal-writer.ts';
 
 export interface ProposeRequest {
   readonly taskId: string;
@@ -52,7 +53,20 @@ export interface ProposeRequest {
   readonly maximumMinor: number;
   readonly currency: string;
   readonly payload: Record<string, unknown>;
-  readonly step: { readonly kind: string; readonly payload: Record<string, unknown> };
+  /**
+   * The run's one step. `planStep`, when present, is a step key of the task's
+   * bound plan, checked by the command under the task lock (AW-06, 0210).
+   */
+  readonly step: {
+    readonly kind: string;
+    readonly payload: Record<string, unknown>;
+    readonly planStep?: string;
+  };
+  /**
+   * The bound plan record the command read under the task lock (0223), or
+   * null; see `ProposalWrite`. Absent, it is read under this proposal's locks.
+   */
+  readonly planRecordId?: string | null | typeof BEFORE_0223;
   readonly expiresAt: Date;
   /** Present to add a version to a live lineage; absent to open one. */
   readonly lineageId?: string;
@@ -319,6 +333,13 @@ export async function proposeUnderLocks(
     lineage = only(opened, 'propose: the lineage inserted above');
   }
 
+  // The plan bound now, stored with the step (0223). A command that checked a
+  // step key read it already; `restart` and the rest read it here, under the
+  // task lock this set holds, so no run is left to be placed by time.
+  const planRecordId =
+    request.planRecordId === undefined
+      ? ((await readProjectedPlan(tx, request.taskId))?.planRecordId ?? null)
+      : request.planRecordId;
   const written = await writeProposal(
     tx,
     {
@@ -332,6 +353,7 @@ export async function proposeUnderLocks(
       currency: request.currency,
       payload: request.payload,
       step: request.step,
+      planRecordId,
       expiresAt: request.expiresAt,
     },
     locks,

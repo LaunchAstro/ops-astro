@@ -4,7 +4,8 @@
 // their own conversation, which has no task lease, run, step or approved
 // version. Local routes only and unpriced: no money moves, so nothing is
 // reserved, and a cloud route is refused before anything is written (AW-03
-// egress off). Priced conversation spend is the owner's call, later.
+// egress off). A priced planning reply takes the same checks and holds
+// against the planning budget (`broker-planning.ts`, AW-04's U10).
 
 import { randomUUID } from 'node:crypto';
 import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
@@ -45,10 +46,23 @@ export interface ConversationCallRequest {
   readonly fields: readonly ClaimedField[];
 }
 
-const refused = (code: BrokerRefusal): ModelCallResult => ({ ok: false, code, callId: null });
+export const refused = (code: BrokerRefusal): ModelCallResult => ({
+  ok: false,
+  code,
+  callId: null,
+});
+
+/** S3: a claim of business-internal only narrows; the person's words are outside. */
+export function outsideFields(fields: readonly ClaimedField[]): readonly ResolvedField[] {
+  return fields.map((field) => ({
+    name: field.name,
+    source: field.source === 'business_internal' ? ('outside' as const) : field.source,
+    value: field.value,
+  }));
+}
 
 /** Only the owner, in their own session, with no delegation between them and the call. */
-function ownsConversation(
+export function ownsConversation(
   businessId: BusinessId,
   caller: ModelCaller,
   { conversation }: ConversationCallRequest,
@@ -62,7 +76,7 @@ function ownsConversation(
 }
 
 /** A local route the fields may take and the person's own session may carry, or why not. */
-function localRoute(
+export function localRoute(
   operation: ModelOperation,
   fields: readonly ResolvedField[],
   caller: ModelCaller,
@@ -167,12 +181,7 @@ export async function callModelInConversation(
   const operation = broker.operations.get(request.operation);
   if (operation === undefined) return refused('OPERATION_NOT_CATALOGUED');
   if (operation.nothingHappened === 'not_reconcilable') return refused('EFFECT_NOT_RECONCILABLE');
-  // S3: a claim of business-internal only narrows; the person's words are outside.
-  const fields = request.fields.map((field) => ({
-    name: field.name,
-    source: field.source === 'business_internal' ? ('outside' as const) : field.source,
-    value: field.value,
-  }));
+  const fields = outsideFields(request.fields);
   const chosen = localRoute(operation, fields, caller, broker);
   if (!chosen.ok) return refused(chosen.code);
   const { route } = chosen;

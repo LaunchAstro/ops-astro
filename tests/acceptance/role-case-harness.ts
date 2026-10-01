@@ -17,12 +17,7 @@
 // deployment already has. It substitutes nothing below the boundary.
 
 import { randomUUID } from 'node:crypto';
-import {
-  COMMAND_SURFACE,
-  pathOf,
-  type CommandDeclaration,
-  type CommandName,
-} from '../../packages/core-wire/src/surface.ts';
+import { COMMAND_SURFACE, pathOf, type CommandName } from '../../packages/core-wire/src/surface.ts';
 import { issueGrant, type Action } from '../../packages/core-records/src/authority/grants.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
 import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
@@ -35,10 +30,12 @@ import {
   type Answer,
   type Caller,
 } from './world.ts';
+import { enrol } from '../commands/fixture.ts';
 import { PROPOSAL, type Task } from './role-case-bodies.ts';
 import { createPositiveBody } from './role-case-positive-body.ts';
 import { plainRows, seedFixtureClients } from './role-case-clients.ts';
-import { pairFor, targetKeyOf, type Harness } from './role-case-harness-shape.ts';
+import { pairFor, type Harness } from './role-case-harness-shape.ts';
+import { probeBody } from './role-case-probe-body.ts';
 
 export { pairFor, targetKeyOf, type Harness } from './role-case-harness-shape.ts';
 
@@ -164,35 +161,6 @@ export async function createHarness(part: string): Promise<Harness> {
   const bravoRecordId = String(inBravo.body['recordId']);
 
   /**
-   * The least a caller can send and still be asking the operation its own
-   * question, for the cases whose answer arrives before the body is read.
-   *
-   * `recordId` is sent only where the declaration names a record by it, because
-   * `prepare.ts` refuses an identifier on a command that has no use for one —
-   * `COMMAND_BODY_INVALID`, and before the authority check — so a body that was
-   * uniform across the table would have measured that refusal rather than the
-   * authority one the case is about.
-   */
-  function probeBody(declaration: CommandDeclaration): Readonly<Record<string, unknown>> {
-    const targeted = declaration.targetsExistingRecord;
-    return {
-      operationId: randomUUID(),
-      ...(targetKeyOf(declaration) === 'recordId' ? { recordId: alphaTask.id } : {}),
-      ...(targeted ? { expectedRevision: alphaTask.revision } : {}),
-      ...(declaration.name === 'task.board' ? { board: null } : {}),
-      ...(declaration.name === 'task.receipt' ? { attemptId: randomUUID() } : {}),
-      ...(declaration.name === 'preset.plan'
-        ? { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] }
-        : {}),
-      // Well formed, so what answers is authority: the call's operands are
-      // read by type before the delegation, as a handback's are.
-      ...(declaration.name === 'model.call'
-        ? { leaseId: randomUUID(), fence: 1, operation: 'model.replay_compose', fields: [] }
-        : {}),
-    };
-  }
-
-  /**
    * A task an agent may pick up, and a sibling it may not touch, with the
    * person's own decision returned so the case can record it as the control.
    *
@@ -277,13 +245,18 @@ export async function createHarness(part: string): Promise<Harness> {
     asPerson,
     asAgent,
     freshTask,
-    probeBody,
+    probeBody: (declaration) => probeBody(declaration, alphaTask),
     positiveBody: createPositiveBody({
       alphaTaskId: alphaTask.id,
       assigneePersonId: world.mia.personId as string,
       asPerson: async (name, body) => await asPerson(name, body),
       asAgent,
       freshTask,
+      freshMember: async () =>
+        (await enrol(world.db.app, world.alpha, `ended-${randomUUID().slice(0, 8)}`)).personId,
+      clearGateItem: async (item) => {
+        await world.db.admin.execute('delete from ops.gate_items where item = $1', [item]);
+      },
     }),
     approvedReservation,
     reserve,

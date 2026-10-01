@@ -352,6 +352,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
       currency: 'AUD',
       payload: { instruction: 'revise it' },
       step: { kind: 'local.draft', payload: { words: 300 } },
+      planRecordId: null,
       expiresAt: hour(),
     };
 

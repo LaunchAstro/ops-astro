@@ -16,24 +16,25 @@
 import postgres from 'postgres';
 import { createStatementLog, type StatementLog } from './statements.ts';
 import { isUuid } from './ids.ts';
+import {
+  handleOn,
+  type BusinessId,
+  type TenantQuery,
+  type TransactionQuery,
+} from './transaction.ts';
 
-/** A business identifier. Checked before it reaches the server, never interpolated. */
-export type BusinessId = string;
+export type { BusinessId, TenantQuery, TransactionQuery } from './transaction.ts';
 
 export function isBusinessId(value: string): value is BusinessId {
   return isUuid(value);
 }
 
-export interface TenantQuery {
-  readonly businessId: BusinessId;
-  /** Run one statement inside the open transaction. Parameters are bound, never spliced. */
-  query<Row>(text: string, parameters?: readonly unknown[]): Promise<readonly Row[]>;
-}
-
 /**
  * The one advisory lock in the product: a transaction-scoped lock on `key`,
- * released at commit or rollback like a row lock. Every caller builds a key
- * that names its business, so two businesses never wait on each other.
+ * released at commit or rollback like a row lock. Every key names its business,
+ * so two businesses never wait on each other, except C59's two installation-wide keys,
+ * `second-factor-codes:` and `second-factor-subject:` with a login's subject digest, so
+ * its businesses do: each is taken first in its transaction, before any row or chain lock.
  *
  * Where it sits in the lock order is `core-runtime/src/locks.ts`: the chain
  * class is `acquire`'s own first class, and the command layer's keys (the
@@ -52,7 +53,7 @@ export interface Connection {
 
 /** What the application gets. There is no way through it but the wrapper. */
 export interface Database extends Connection {
-  withBusiness<T>(businessId: BusinessId, run: (tx: TenantQuery) => Promise<T>): Promise<T>;
+  withBusiness<T>(businessId: BusinessId, run: (tx: TransactionQuery) => Promise<T>): Promise<T>;
 }
 
 /**
@@ -161,7 +162,7 @@ async function sendUnsafe<Row>(
 function withBusinessOn(sql: postgres.Sql): Database['withBusiness'] {
   return async function withBusiness<T>(
     businessId: BusinessId,
-    run: (tx: TenantQuery) => Promise<T>,
+    run: (tx: TransactionQuery) => Promise<T>,
   ): Promise<T> {
     if (!isBusinessId(businessId)) {
       throw new Error(`withBusiness: ${JSON.stringify(businessId)} is not a business identifier`);
@@ -172,16 +173,7 @@ function withBusinessOn(sql: postgres.Sql): Database['withBusiness'] {
       // Inside the transaction, and nowhere else. `true` is the is_local
       // argument, which is what makes this SET LOCAL rather than SET.
       await tx.unsafe(`select set_config('app.business_id', $1, true)`, [businessId]);
-      return await run({
-        businessId,
-        async query<Row>(
-          text: string,
-          parameters: readonly unknown[] = [],
-        ): Promise<readonly Row[]> {
-          const rows = await tx.unsafe(text, parameters as never[]);
-          return rows as unknown as readonly Row[];
-        },
-      });
+      return await run(handleOn(tx, businessId));
     })) as T;
   };
 }

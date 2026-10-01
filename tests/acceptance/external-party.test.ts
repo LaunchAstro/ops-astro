@@ -13,9 +13,11 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { COMMAND_SURFACE, pathOf, type CommandName } from '../../packages/core-wire/src/surface.ts';
 import { shareRecord } from '../../packages/core-records/src/authority/shares.ts';
+import { enrol } from '../commands/fixture.ts';
 import {
   CLIENT_NOTE,
   DESCRIPTION,
+  REVOCATION_BODIES,
   seedRecords,
   SIBLING_TITLE,
   TEAM_NOTE,
@@ -200,18 +202,6 @@ describe.skipIf(serverUrl === undefined)('R4: the external party over HTTP', () 
   // time over HTTP, which takes about 5 s alone and ran past the 5 s default
   // while the machine was busy. The assertions are unchanged.
   it('item 3: every write is refused on authority, nothing moves, and every attempt is audited', async () => {
-    const REVOCATION_BODIES: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
-      'grant.revoke': { grantId: randomUUID() },
-      'delegation.revoke': { delegationId: randomUUID() },
-      // No person body either: it is the agent's (AW-01). Sent well formed,
-      // naming a lease, so the answer is authority's.
-      'model.call': {
-        leaseId: randomUUID(),
-        fence: 1,
-        operation: 'model.replay_compose',
-        fields: [],
-      },
-    };
     // The matrix's own valid bodies, so a refusal is authority's and not the
     // body check's. Each is sent as it is (against a sibling the admin made, or
     // the business) and again aimed at the shared record itself.
@@ -227,9 +217,15 @@ describe.skipIf(serverUrl === undefined)('R4: the external party over HTTP', () 
         });
         return { id: String(made.body['recordId']), revision: Number(made.body['revision']) };
       },
+      freshMember: async () =>
+        (await enrol(world.db.app, world.alpha, `ended-${randomUUID().slice(0, 8)}`)).personId,
     });
     const revision = await revisionOf(shared);
-    const writes = COMMAND_SURFACE.filter((declaration) => declaration.kind !== 'read');
+    // Every write but the party's own sign-out (C23), which is their own
+    // account and nothing of the business's: it is the last case below.
+    const writes = COMMAND_SURFACE.filter(
+      (declaration) => declaration.kind !== 'read' && declaration.authorisedOn !== 'self',
+    );
     const answers: [string, Answer][] = [];
     for (const declaration of writes) {
       // eslint-disable-next-line no-await-in-loop -- one attempt at a time, in the audit's order
@@ -291,5 +287,10 @@ describe.skipIf(serverUrl === undefined)('R4: the external party over HTTP', () 
     expect(appliedWrites).toStrictEqual([]);
     const refusedReads = audited.filter((row) => row.outcome === 'refused').map((r) => r.command);
     expect(refusedReads).toEqual(expect.arrayContaining(['task.read', 'task.board', 'task.queue']));
+
+    // Their own sign-out is theirs to record, and it moves nothing else.
+    const signOut = await as(ext, 'session.end', { operationId: randomUUID() });
+    expect(signOut.code).toBe('ok');
+    expect(await revisionOf(shared)).toBe(revision);
   }, 30_000);
 });

@@ -20,7 +20,10 @@
 // end the session the same way, so the notice says what holds for both: the
 // session has ended, this is the word the server used, and anything unsaved is
 // gone. The code is printed because a refusal a person cannot quote is a refusal
-// they cannot get help with -- the same rule the read states follow.
+// they cannot get help with -- the same rule the read states follow. Ended
+// access (C58) is the third ending and arrives as 403 `AUTH_NO_MEMBERSHIP` to a
+// bearer that had been a member's; it takes the same notice. A person who
+// signs out here is told the same about their unsaved edit, without a code.
 //
 // **A failed sign-in is paired with the password control and announced.** The
 // control carries `aria-invalid` and points at the message with
@@ -28,8 +31,11 @@
 // in an alert region so a screen reader hears it when it appears.
 
 import { useState, type FormEvent, type ReactElement } from 'react';
-import { FieldError } from '@launchastro/ui';
+import { BrandMark, FieldError } from '@launchastro/ui';
+import { buildStamp } from '../app-state.ts';
+import { pathTo } from '../routes.ts';
 import { openSession } from '../session/sign-in.ts';
+import { PUBLIC_DOCUMENTS } from './Legal.tsx';
 import type { Interruption, Session } from '../session/token.ts';
 
 export interface SignInProps {
@@ -39,6 +45,10 @@ export interface SignInProps {
   readonly onSignedIn: (session: Session) => void;
   /** Set when the person was put here by a session that ended under them. */
   readonly ended: Interruption | null;
+  /** True when the person signed out in this tab. */
+  readonly signedOut?: boolean;
+  /** The version stamp, drawn where the rail would draw it; the build's own when not given. */
+  readonly build?: string | null;
 }
 
 const BUSINESSES: readonly { readonly key: string; readonly label: string }[] = [
@@ -79,24 +89,40 @@ export function SignIn(props: SignInProps): ReactElement {
     })();
   };
 
+  // Signed out there is no shell: the rail's pages all ask for a session, so
+  // the page is the brand mark and the form, held to the kit (B6).
+  const build = props.build === undefined ? buildStamp() : props.build;
   return (
-    <div className="signin">
-      <form className="signin__form taskform" onSubmit={onSubmit}>
-        <h2 className="tpr__title">Sign in</h2>
+    <main className="signin" data-screen="sign-in">
+      <form className="signin__form card" aria-labelledby="signin-title" onSubmit={onSubmit}>
+        <div className="signin__brand">
+          <BrandMark variant="wordmark" />
+          <span className="rail__hub">Ops Astro</span>
+        </div>
+        <h1 className="card__title" id="signin-title">
+          Sign in
+        </h1>
         {props.ended === null ? null : (
-          <p className="signin__ended" role="status" data-reason="session-ended">
-            Your session has ended and you need to sign in again. The server answered{' '}
-            <code>{props.ended.code}</code>. Any edit you had not saved was not saved, and signing
-            in to <strong>{props.ended.businessKey}</strong> will take you back to where you were.
-          </p>
+          <div className="banner banner--warn" role="status" data-reason="session-ended">
+            <p className="banner__body">
+              Your session has ended and you need to sign in again. The server answered{' '}
+              <code>{props.ended.code}</code>. Any edit you had not saved was not saved, and signing
+              in to <strong>{props.ended.businessKey}</strong> will take you back to where you were.
+            </p>
+          </div>
         )}
+        {props.ended === null && props.signedOut === true ? (
+          <p className="signin__ended" role="status" data-reason="signed-out">
+            You have signed out. Any edit you had not saved was not saved.
+          </p>
+        ) : null}
         <div className="field">
-          <label className="tf__k" htmlFor="signin-email">
+          <label className="field__label" htmlFor="signin-email">
             Email
           </label>
           <input
             id="signin-email"
-            className="input"
+            className="tf"
             type="email"
             autoComplete="username"
             required
@@ -107,12 +133,12 @@ export function SignIn(props: SignInProps): ReactElement {
           />
         </div>
         <div className="field">
-          <label className="tf__k" htmlFor="signin-password">
+          <label className="field__label" htmlFor="signin-password">
             Password
           </label>
           <input
             id="signin-password"
-            className="input"
+            className="tf"
             type="password"
             autoComplete="current-password"
             required
@@ -123,14 +149,23 @@ export function SignIn(props: SignInProps): ReactElement {
               setPassword(event.target.value);
             }}
           />
+          {because === null ? null : (
+            <div role="alert">
+              <FieldError controlId="signin-password" say={because} />
+            </div>
+          )}
+          {/* C40: a reset by email, from a page that needs no sign-in. */}
+          <p className="field__hint">
+            <a href={pathTo('agency:forgot-password')}>Forgot password</a>
+          </p>
         </div>
         <div className="field">
-          <label className="tf__k" htmlFor="signin-business">
+          <label className="field__label" htmlFor="signin-business">
             Business
           </label>
           <select
             id="signin-business"
-            className="input"
+            className="tf"
             value={businessKey}
             onChange={(event) => {
               setBusinessKey(event.target.value);
@@ -143,15 +178,24 @@ export function SignIn(props: SignInProps): ReactElement {
             ))}
           </select>
         </div>
-        {because === null ? null : (
-          <div role="alert">
-            <FieldError controlId="signin-password" say={because} />
-          </div>
-        )}
-        <button className="btn btn--primary" type="submit" disabled={busy}>
-          {busy ? 'Signing in…' : 'Sign in'}
-        </button>
+        <div className="signin__foot">
+          <button className="btn btn--primary" type="submit" disabled={busy} aria-busy={busy}>
+            {busy ? 'Signing in…' : 'Sign in'}
+          </button>
+        </div>
       </form>
-    </div>
+      {/* The business's public legal documents (C81), for the business chosen above. */}
+      <nav aria-label="Legal documents">
+        {PUBLIC_DOCUMENTS.map(([document, words]) => (
+          <p key={document}>
+            <a href={pathTo('agency:legal', { business: businessKey, document })}>{words}</a>
+          </p>
+        ))}
+      </nav>
+      {/* The version stamp's fixed place when there is no rail (S0-1). */}
+      <p className="rail__build signin__build" data-build={build ?? ''}>
+        {build === null ? 'Build not stamped' : `Build ${build}`}
+      </p>
+    </main>
   );
 }

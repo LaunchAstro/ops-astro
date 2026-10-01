@@ -35,6 +35,8 @@
 
 import { openReplayBroker, type ReplayBroker } from '../broker/replay-broker.ts';
 import { randomUUID } from 'node:crypto';
+import { join } from 'node:path';
+import { INSTRUCTION_ROOT_VARIABLE } from '../../packages/core-runtime/src/index.ts';
 import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
@@ -71,6 +73,7 @@ import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import { testSignIn } from '../support/sign-in.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { executeAgentCommand } from '../../packages/core-commands/src/commands/agent-envelope.ts';
+import { executeCredentialCommand } from '../../packages/core-commands/src/commands/credential-envelope.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import type { BusinessId } from '../../packages/core-records/src/tenancy/database.ts';
@@ -106,10 +109,18 @@ export interface World {
 export async function createWorld(part: string): Promise<World> {
   process.env['GATE_SIGNING_KEY_ID'] ??= `test/acceptance@1`;
   process.env['GATE_SIGNING_SECRET'] ??= randomUUID();
+  // AW-04: the plan accept reads the run's instruction file from the server's
+  // root. By directory, not `import.meta.url`: a jsdom suite's is not a file URL.
+  process.env[INSTRUCTION_ROOT_VARIABLE] ??= join(
+    import.meta.dirname,
+    '../support/instruction-root',
+  );
 
   const db = await createFreshDatabase({ part });
   const alpha = (await insertBusiness(db.app, 'alpha')) as BusinessId;
   const bravo = (await insertBusiness(db.app, 'bravo')) as BusinessId;
+  // S0-5 (0059): alpha operates the installation, as provisioning sets it.
+  await db.admin.execute('update ops.installation set operator_business_id = $1', [alpha]);
   const spineAlpha = await installSpine(db.app, alpha);
   const spineBravo = await installSpine(db.app, bravo);
 
@@ -126,10 +137,13 @@ export async function createWorld(part: string): Promise<World> {
     });
   }
 
+  // The admin holds billing, so a money act of theirs needs a sign-in with the
+  // second factor inside C59's window: the cast signs them in with it.
   const ada = await enrolCaller(db, alpha, 'alpha', 'ada', {
     membership: true,
     actions: ADMIN_ACTIONS,
     collections: ADMIN_COLLECTIONS,
+    secondFactor: true,
   });
   const mia = await enrolCaller(db, alpha, 'alpha', 'mia', {
     membership: true,
@@ -179,6 +193,7 @@ export async function createWorld(part: string): Promise<World> {
     executeRead,
     executeAgentCommand,
     executeModelCall: broker.executor,
+    executeCredentialCommand,
   });
 
   return {
@@ -229,6 +244,7 @@ export function rebuildApi(world: World): {
       executeRead,
       executeAgentCommand,
       executeModelCall: world.broker.executor,
+      executeCredentialCommand,
     }),
     close: async () => {
       await database.close();

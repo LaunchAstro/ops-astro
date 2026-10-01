@@ -16,6 +16,7 @@
 import { readFileSync } from 'node:fs';
 import { parseCredentials, type StoredCredential } from './credentials.ts';
 import { parseDestinations, send, type Destination, type OutboundRequest } from './egress.ts';
+import { METHODS } from './egress-routes.ts';
 
 interface Loaded {
   readonly credentials: ReadonlyMap<string, StoredCredential>;
@@ -25,6 +26,21 @@ interface Loaded {
 function fail(kind: string): never {
   process.stderr.write(`custody: ${kind}\n`);
   process.exit(78);
+}
+
+const isRef = (ref: unknown): ref is string =>
+  typeof ref === 'string' && /^[a-z][a-z0-9_]{0,62}$/u.test(ref);
+
+/** The references custody must hold to start: each a plain reference, or the list is refused. */
+function requiredRefs(): readonly string[] {
+  let refs: unknown;
+  try {
+    refs = JSON.parse(process.env['CUSTODY_REQUIRES'] ?? '[]');
+  } catch {
+    fail('required list unreadable');
+  }
+  if (!Array.isArray(refs) || !refs.every((ref) => isRef(ref))) fail('required list unreadable');
+  return refs;
 }
 
 function load(): Loaded {
@@ -46,6 +62,13 @@ function load(): Loaded {
   }
   const destinations = parseDestinations(listed);
   if (!destinations.ok) fail(`destination ${String(destinations.at)} refused ${destinations.code}`);
+  // A caller that cannot work without a credential stops here, naming its reference.
+  for (const ref of requiredRefs()) {
+    const held = credentials.credentials.get(ref);
+    if (held === undefined || !destinations.destinations.has(held.destination)) {
+      fail(`credential ${ref} missing`);
+    }
+  }
   // The file's path leaves the environment once read; a child of this process inherits neither.
   delete process.env['CUSTODY_CREDENTIALS_FILE'];
   return { credentials: credentials.credentials, destinations: destinations.destinations };
@@ -66,13 +89,17 @@ function redact(text: string, credential: StoredCredential): string {
   return spellings.reduce((out, spelling) => out.split(spelling).join('[redacted]'), text);
 }
 
+/** Exactly these keys: a request naming a header, an origin or anything else is refused whole. */
+const REQUEST_KEYS = 'body,destination,maxResponseBytes,method,path,timeoutMs';
+
 function isRequest(value: unknown): value is OutboundRequest {
   if (typeof value !== 'object' || value === null) return false;
   const shape = value as Record<string, unknown>;
   return (
+    Object.keys(shape).toSorted().join() === REQUEST_KEYS &&
     typeof shape['destination'] === 'string' &&
     typeof shape['path'] === 'string' &&
-    shape['method'] === 'POST' &&
+    (METHODS as readonly unknown[]).includes(shape['method']) &&
     typeof shape['body'] === 'string' &&
     typeof shape['timeoutMs'] === 'number' &&
     typeof shape['maxResponseBytes'] === 'number'
