@@ -59,7 +59,7 @@
   font-size: var(--text-body-lg);
 }
 .btn--primary {
-  border-color: var(--text);
+  border-color: transparent;
   background: var(--text);
   color: var(--bg);
 }
@@ -345,7 +345,7 @@
   padding: 2px;
   border: 1px solid var(--border);
   border-radius: 0;
-  background: var(--bg);
+  background: var(--surface);
   cursor: pointer;
 }
 .switch:hover:not(:disabled) {
@@ -419,7 +419,7 @@
   height: 34px;
   padding: 5.6px 11.2px;
   border: 1px solid var(--border);
-  background: var(--bg);
+  background: var(--surface);
   color: var(--text-2);
   font: var(--type-small);
   letter-spacing: var(--type-small-tracking);

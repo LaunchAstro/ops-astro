@@ -109,6 +109,7 @@
 .cbd__tbl td {
   padding: 0.5rem var(--s-3);
   border-bottom: 1px solid var(--border);
+  color: var(--text);
   vertical-align: middle;
   overflow: hidden;
 }
