@@ -13,7 +13,7 @@
 // place its button, so the page places none.
 
 import type { ReactElement } from 'react';
-import { Card, Chip, MockRegion } from '@launchastro/ui';
+import { Card, Chip, SourceRegion } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
 import {
   MADE_UP_ONBOARDING,
@@ -96,9 +96,9 @@ export function OnboardingScreen(_props: { readonly client: OperationsClient }):
         <h1 className="t-title">Onboarding</h1>
         <p className="t-2">Start one from the command palette or the CLI.</p>
       </header>
-      <MockRegion word>
+      <SourceRegion provenance="mock">
         <Phases onboarding={MADE_UP_ONBOARDING} />
-      </MockRegion>
+      </SourceRegion>
     </section>
   );
 }
