@@ -17,7 +17,11 @@ import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import { authHookReady } from '../../apps/api/auth-email-hook.ts';
 import { enrolmentBroker } from '../../apps/api/enrolment-broker.ts';
-import { mountPasswordReset, PASSWORD_RESET_PATH } from '../../apps/api/password-set.ts';
+import {
+  mountPasswordReset,
+  PASSWORD_RESET_PATH,
+  RESET_IN_FLIGHT,
+} from '../../apps/api/password-set.ts';
 import type { Custody, CustodyOutcome } from '../../packages/core-custody/src/index.ts';
 import type { Database } from '../../packages/core-records/src/index.ts';
 
@@ -50,7 +54,7 @@ function underLimits(statements: (readonly unknown[])[]): Database {
 }
 
 /** A custody stand-in: every dispatch recorded, answered by `answer`. */
-function standIn(answer: () => Promise<CustodyOutcome>) {
+function standIn(answer: () => Promise<CustodyOutcome>, database?: Database) {
   const dispatched: Dispatched[] = [];
   const statements: (readonly unknown[])[] = [];
   const custody = {
@@ -60,7 +64,7 @@ function standIn(answer: () => Promise<CustodyOutcome>) {
     },
   } as unknown as Custody;
   const app = new Hono();
-  mountPasswordReset(app, underLimits(statements), enrolmentBroker(custody));
+  mountPasswordReset(app, database ?? underLimits(statements), enrolmentBroker(custody));
   return { app, dispatched, statements };
 }
 
@@ -85,10 +89,14 @@ async function ask(
 
 const sha256 = (text: string): string => createHash('sha256').update(text).digest('hex');
 
-const settle = async (): Promise<void> => {
+const wait = async (ms: number): Promise<void> => {
   await new Promise((resolve) => {
-    setTimeout(resolve, 20);
+    setTimeout(resolve, ms);
   });
+};
+
+const settle = async (): Promise<void> => {
+  await wait(20);
 };
 
 const BODIES = [
@@ -211,6 +219,61 @@ describe('C40 password reset, the ask: its source key', () => {
     expect((await app.fetch(request, env)).status).toBe(200);
     await settle();
     expect(statements[0]?.[0]).toBe(sha256('203.0.113.10'));
+  });
+});
+
+/**
+ * A database whose first two `withBusiness` calls (one ask's limits) answer at
+ * once and later ones never do, held on it; the provider answers in 50 ms.
+ */
+function heldAfterOne() {
+  const db = { calls: 0, open: 0, mostOpen: 0 };
+  const underAll = underLimits([]);
+  const database = {
+    withBusiness: async (business: string, run: (tx: unknown) => Promise<unknown>) => {
+      db.calls += 1;
+      if (db.calls <= 2) return await underAll.withBusiness(business as never, run as never);
+      db.open += 1;
+      db.mostOpen = Math.max(db.mostOpen, db.open);
+      return await new Promise(() => {});
+    },
+  } as unknown as Database;
+  const slow = async () => {
+    await wait(50);
+    return answered(200, '{}');
+  };
+  return { db, app: standIn(slow, database).app };
+}
+
+const asking = (local: string) => JSON.stringify({ address: `${local}@example.test` });
+
+describe('C40 password reset, the ask: each slot freed once', () => {
+  it("C40 reset gate: an old ask freed late never frees its source's newer ask", async () => {
+    const { db, app } = heldAfterOne();
+    await ask(app, asking('one'), fromPeer('203.0.113.9'));
+    await wait(10);
+    await ask(app, asking('two'), fromPeer('203.0.113.9'));
+    expect(db.calls).toBe(3);
+    // The first ask's provider call is over, and its slot freed a second time.
+    await wait(60);
+    await ask(app, asking('three'), fromPeer('203.0.113.9'));
+    await settle();
+    expect(db.calls).toBe(3);
+  });
+
+  it('C40 reset gate: an old ask freed late never lets more than the slots onto the database', async () => {
+    const { db, app } = heldAfterOne();
+    await ask(app, asking('one'), fromPeer('203.0.113.9'));
+    await wait(10);
+    for (const peer of ['203.0.113.9', '203.0.113.21', '203.0.113.22', '203.0.113.23']) {
+      // oxlint-disable-next-line no-await-in-loop -- one ask at a time
+      await ask(app, asking('two'), fromPeer(peer));
+    }
+    expect(db.open).toBe(RESET_IN_FLIGHT);
+    await wait(60);
+    await ask(app, asking('three'), fromPeer('203.0.113.9'));
+    await settle();
+    expect(db.mostOpen).toBeLessThanOrEqual(RESET_IN_FLIGHT);
   });
 });
 
