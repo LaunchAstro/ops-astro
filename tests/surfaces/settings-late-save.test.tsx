@@ -49,7 +49,10 @@ function api(): { fetch: typeof globalThis.fetch; answer: () => void } {
         ok: true,
         personId: 'p',
         businessKey: 'alpha',
-        grants: [{ collection: 'settings', action: 'manage' }],
+        grants: [
+          { collection: 'settings', action: 'manage' },
+          { collection: 'spend', action: 'decide' },
+        ],
       });
     }
     if (at.endsWith('/settings/read')) return json({ error: 'unavailable' }, 503);
