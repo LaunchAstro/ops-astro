@@ -105,8 +105,9 @@ copies of that class and delete them, or record the lawful reason each is kept.
 ## Lawful reasons a copy is kept
 
 - **Audit evidence:** the audit chain and the operation register are
-  append-only by design and never name a person's details in their words; a hit
-  there is a defect, not a kept copy.
+  append-only by design and never name a person's details in their words. A
+  row there that names the person only by their actor id (who acted) is kept
+  as audit evidence; a hit on their words there is a defect, not a kept copy.
 - **Breach record:** a privacy incident naming the person is kept while the
   incident is open or under assessment, by the owner's decision.
 - **Legal hold:** a copy under a hold that still stands.
