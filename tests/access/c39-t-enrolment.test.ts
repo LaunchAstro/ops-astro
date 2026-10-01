@@ -18,9 +18,12 @@ import { describe, expect, it } from 'vitest';
 import { acceptInvitation } from '../../packages/core-commands/src/index.ts';
 import { resolveLogin, type Session } from '../../packages/core-records/src/index.ts';
 import {
+  bindVia,
+  boundTo,
   e,
   enrolVia,
   invited,
+  loginOf,
   mountOver,
   passwordFor,
   rowsIn,
@@ -44,6 +47,7 @@ import {
 useEnrolWorld();
 
 const REFUSED = { status: 404, body: { code: 'ENROLMENT_LINK_INVALID' }, cookie: null };
+const SIGN_IN = { status: 200, body: { state: 'sign_in' }, cookie: null };
 
 /** The login a provider subject resolves to in one business, or the refusal's code. */
 async function sessionOf(business: string, subject: string): Promise<Session | string> {
@@ -263,23 +267,29 @@ describe.skipIf(noDatabase)('C39-T enrolment', () => {
     expect(Number(grants?.n)).toBe(0);
   });
 
-  it('C39-T enrolment: a login the provider made while its answer came too late does not stop the same link enrolling the invited person', async () => {
-    const { id, token } = await invited(c.admin, addressFor('made-late'));
+  it('C39-T enrolment: a login the provider made while its answer came too late does not stop the same link enrolling the invited person, signed in with it', async () => {
+    const address = addressFor('made-late');
+    const { id, token } = await invited(c.admin, address);
+    const password = passwordFor();
     e.users.mode('made_late');
-    expect(await enrolVia(token)).toStrictEqual({
+    expect(await enrolVia(token, password)).toStrictEqual({
       status: 503,
       body: { code: 'ENROLMENT_UNAVAILABLE' },
       cookie: null,
     });
     expect(await spentOf(id)).toStrictEqual({ state: 'pending', spent: 0, tokens: 1 });
+    const made = String(e.users.users.get(address));
+    expect(e.users.passwords.get(made)).toBe(password);
 
-    // The link was spent on nothing, so its holder tries again and is enrolled.
+    // The link was spent on nothing. Tried again it sets nothing and says sign in; signed in
+    // with the login the provider made, under the password its holder set, the link enrols.
     e.users.mode('accept');
-    expect(await enrolVia(token)).toStrictEqual({
-      status: 200,
-      body: { state: 'enrolled' },
-      cookie: null,
-    });
+    const from = e.users.received.length;
+    expect(await enrolVia(token)).toStrictEqual(SIGN_IN);
+    expect((await bindVia(token, loginOf(made))).body).toStrictEqual({ state: 'joined' });
+    expect(e.users.received.slice(from).map((one) => one.method)).toStrictEqual(['POST', 'GET']);
+    expect(e.users.passwords.get(made)).toBe(password);
+    expect(await boundTo(w.alpha, made)).toBe(await personOf(id));
     expect(await spentOf(id)).toStrictEqual({ state: 'accepted', spent: 1, tokens: 1 });
   }, 30_000);
 });
