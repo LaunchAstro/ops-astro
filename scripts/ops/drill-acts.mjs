@@ -110,14 +110,14 @@ export async function fetchLatest(storeUrl, file, reach = stagingReach, operator
 async function stampIfPassed(gate, act) {
   if (act.outcome !== 'passed' || act.lastTestedRestore === null) return act;
   try {
-    await gate.recordTestedRestore();
+    // The date the stamp wrote is the one recorded, never the store's or a note's.
+    return { ...act, lastTestedRestore: await gate.recordTestedRestore() };
   } catch {
     // The database's own message can name its host; the operator is told the step.
     throw new Error(
       'the drill passed and the store has its receipt, but the date of the last tested restore could not be written for the operations view',
     );
   }
-  return act;
 }
 
 /**
@@ -225,11 +225,10 @@ export async function recordCarried({
     );
   }
   const outcome = carried.outcome === 'pending' ? 'passed' : 'failed';
-  // The store takes a receipt once, so a pass it took whose stamp failed is
-  // noted beside the receipt; a re-run of --record writes only the stamp.
+  // The store takes a receipt once: a pass whose stamp failed is noted beside
+  // the receipt, and a re-run of --record writes only the stamp.
   const owed = `${receiptFile}.stamp-owed`;
-  const noted = outcome === 'passed' ? stampOwed(owed, archiveId) : null;
-  if (noted !== null) return await recordStamp(gate, owed, noted);
+  if (outcome === 'passed' && stampOwed(owed, archiveId)) return await stampCarried(gate, owed);
   let lastTestedRestore;
   try {
     lastTestedRestore = await recordCarriedDrill(
@@ -245,11 +244,7 @@ export async function recordCarried({
     );
   }
   if (outcome === 'passed' && lastTestedRestore !== null) {
-    writeFileSync(owed, JSON.stringify({ archiveId, lastTestedRestore }), {
-      flag: 'wx',
-      mode: 0o600,
-    });
-    return await recordStamp(gate, owed, lastTestedRestore);
+    return await stampCarried(gate, owed, archiveId);
   }
   return await recordDeployment(gate, carriedAct(outcome, lastTestedRestore));
 }
@@ -261,21 +256,45 @@ const carriedAct = (outcome, lastTestedRestore) => ({
   lastTestedRestore,
 });
 
-/** The date of the pass the store took for `archiveId`, if its stamp is still owed. */
-function stampOwed(owed, archiveId) {
-  if (!existsSync(owed)) return null;
-  const noted = JSON.parse(readFileSync(owed, 'utf8'));
-  if (noted.archiveId !== archiveId) throw new Error('the stamp owed is of another archive');
-  return noted.lastTestedRestore;
+/** A carried pass the store took, stamped first; a note only if that fails (`archiveId` given). */
+async function stampCarried(gate, owed, archiveId) {
+  const act = await stampIfPassed(gate, carriedAct('passed', 'owed')).catch((error) => {
+    if (archiveId !== undefined) noteOwed(owed, archiveId, error);
+    throw new Error(`${error.message}: re-run --record to write it`, { cause: error });
+  });
+  // A re-run's stamp is written, so its note goes.
+  if (archiveId === undefined) unlinkSync(owed);
+  return await recordDeployment(gate, act);
 }
 
-/** The stamp of a carried pass the store holds; the note goes once it is written. */
-async function recordStamp(gate, owed, lastTestedRestore) {
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+
+/** Notes beside the receipt that the store took `archiveId`'s pass and its stamp is owed. */
+function noteOwed(owed, archiveId, stampError) {
   try {
-    await stampIfPassed(gate, { outcome: 'passed', lastTestedRestore });
-  } catch (error) {
-    throw new Error(`${error.message}: re-run --record to write it`, { cause: error });
+    writeFileSync(owed, JSON.stringify({ archiveId }), { flag: 'wx', mode: 0o600 });
+  } catch {
+    throw new Error(
+      `${stampError.message}; and the note to finish it, ${owed}, could not be written either, ` +
+        'so a re-run of --record cannot stamp this pass (the store has its receipt): ' +
+        'run select ops.record_tested_restore() with DATABASE_ADMIN_URL',
+      { cause: stampError },
+    );
   }
-  unlinkSync(owed);
-  return await recordDeployment(gate, carriedAct('passed', lastTestedRestore));
+}
+
+/** Whether the store holds `archiveId`'s pass with its stamp still owed, from the note. */
+function stampOwed(owed, archiveId) {
+  if (!existsSync(owed)) return false;
+  let noted;
+  try {
+    noted = JSON.parse(readFileSync(owed, 'utf8'));
+  } catch {}
+  if (typeof noted?.archiveId !== 'string' || !UUID.test(noted.archiveId)) {
+    throw new Error(
+      `the stamp-owed note ${owed} is not one --record wrote: remove it only if the store has not taken this receipt`,
+    );
+  }
+  if (noted.archiveId !== archiveId) throw new Error('the stamp owed is of another archive');
+  return true;
 }
