@@ -9,7 +9,9 @@
 -- The transaction id is the point: a reader's next point is the oldest
 -- transaction still open when it read, so a write open at the point is read
 -- next time rather than skipped. A rolled-back write leaves no stamp.
--- Rows are upserted in task order, so two bulk writes lock them alike.
+-- Rows are upserted in task order, so two bulk writes lock them alike. Task ids
+-- are lower-cased before the distinct, so one id in two letter cases is one row
+-- (no cardinality_violation) and one topic, keyed as subscribers key it.
 
 create table public.live_changes (
   business_id  uuid        not null,
@@ -67,7 +69,7 @@ begin
   insert into public.live_changes as c (business_id, subject_kind, subject_id)
        select topics.business_id, 'task', topics.task::uuid
          from (select distinct changed.business_id,
-                      coalesce(changed.data ->> 'task', changed.id::text) as task
+                      lower(coalesce(changed.data ->> 'task', changed.id::text)) as task
                  from changed) as topics
         where topics.task ~ '^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$'
         order by 3
@@ -76,7 +78,7 @@ begin
         where c.changed_xid <> pg_current_xact_id();
   perform pg_notify('ops_astro_live', topic)
      from (select distinct changed.business_id::text || ':task:'
-                  || coalesce(changed.data ->> 'task', changed.id::text) as topic
+                  || lower(coalesce(changed.data ->> 'task', changed.id::text)) as topic
              from changed) as topics;
   return null;
 end;
