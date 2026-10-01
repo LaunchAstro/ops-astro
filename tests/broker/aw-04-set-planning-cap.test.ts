@@ -1,17 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// `AW-04 set planning cap` (U10, ORCH43 on BUILDABLE-SCAN-4 (b)1): the command
-// that sets a business's planning cap, `budget.set_planning_cap`. `decide` on
-// `billing` for the whole business (owners and administrators), never an agent;
-// audited by the envelope; checked against the limit the caller last saw
-// (`fromLimitMinor`), under the cap row's lock. It writes the `budget_caps` row
-// keyed `planning` and nothing else, and the planning broker reads what it
-// wrote. Until a person sets it the cap is the default, AUD 50, and that is
-// the limit a caller has seen.
-//
-// A money action, so it is in the step-up set: AW-04 set planning cap: a
-// sign-in older than the money step-up window is refused before any write
-// (LEANS-ON C59, family B; written here at the batch rebase).
+// `AW-04 set planning cap` (U10, ORCH43 on BUILDABLE-SCAN-4 (b)1): `budget.set_planning_cap`,
+// `decide` on `billing` for the whole business (owners and administrators), never an agent;
+// audited by the envelope; checked against the limit the caller last saw (`fromLimitMinor`)
+// under the cap row's lock. It writes the `planning` row of `budget_caps` and nothing else,
+// and the planning broker reads it. Unset, the cap is the default, AUD 50, the limit seen.
+// A money action, so in the step-up set: a sign-in older than the money step-up window is
+// refused before any write (LEANS-ON C59, family B; written here at the batch rebase).
 
 import { randomUUID } from 'node:crypto';
 import { beforeAll, expect, it as vitestIt } from 'vitest';
