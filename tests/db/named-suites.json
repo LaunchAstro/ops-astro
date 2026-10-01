@@ -156,7 +156,8 @@
     "SL11-25 names aw-04-set-planning-cap (AW-04 set planning cap, U10: budget.set_planning_cap under billing:decide on the whole business writes only the planning cap row, against the limit last seen, under the row's lock; the planning broker spends under what it wrote; two setters at once, one applies; its isolation case crosses another business, another client, another person and an agent under a live delegation) as an invariant.",
     "SL11-26 names aw-04-planning-cap-setting (AW-04 planning cap setting, owner NATHAN-STAGE1-TODAY 4: settings.read carries the business's planning cap, the default AUD 50 until a person moves it through budget.set_planning_cap, then the limit they set; and its isolation: another business, another client, another person and an agent under a live delegation read none of it) as an invariant.",
     "SL12-17-F names c39-t-invitations (C39-T records, invite a team member, send only on the inviter's act, rate limit: invitation.create, resend and revoke under access:share and expiry by the business's worker each write the invitation and its audit event; each act is one send through the broker's email.send, its enrolment token kept as a SHA-256 only; acts limited per address and per account, counted from the records) and c39-t-invitation-refusals (C39-T refusal access:share and C39-T isolation: no key, a client-scoped key or an agent is refused writing nothing; another business is NOT_FOUND as an unissued id; another client's key reaches nothing; each invitation makes a new person).",
-    "SL12-18-F names c39-t-invitation-send (C39-T sender and C39-T token kept as a hash only: an invitation leaves only from the verified sending subdomain, refused before the provider and before a token is minted otherwise; a provider answer echoing the link's token fails the attempt and nothing stored holds the token) as an invariant."
+    "SL12-18-F names c39-t-invitation-send (C39-T sender and C39-T token kept as a hash only: an invitation leaves only from the verified sending subdomain, refused before the provider and before a token is minted otherwise; a provider answer echoing the link's token fails the attempt and nothing stored holds the token) as an invariant.",
+    "SL12-18-P2 names c39-t-review-proofs (the Opus review's two proofs: an invitation's dead ask stops holding the ceiling past custody's timeout and the grace, and inbox and invitation emails share email.send's one ceiling), c39-t-auth-hook (C39-T hook signature, C39-T no account oracle and C39-T isolation on the login provider's Send Email hook: a Standard Webhooks signature over the raw body before any parse, a stale timestamp and a replayed id refused durably, every verified message answered alike, an Auth invitation sent through email.send with its attempt for one business and one person only) and c39-t-auth-link (C39-T hostile provider and C39-T token canary: the invite link generated through custody under auth.invite_link, a hostile login provider sends and keeps nothing, a planted invitation or reset token reaches no log, answer or stored row) as invariants."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -477,7 +478,10 @@
     "tests/runtime/aw-13-retention-isolation.test.ts",
     "tests/access/c39-t-invitations.test.ts",
     "tests/access/c39-t-invitation-refusals.test.ts",
-    "tests/access/c39-t-invitation-send.test.ts"
+    "tests/access/c39-t-invitation-send.test.ts",
+    "tests/access/c39-t-review-proofs.test.ts",
+    "tests/access/c39-t-auth-hook.test.ts",
+    "tests/access/c39-t-auth-link.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

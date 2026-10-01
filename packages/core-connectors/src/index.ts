@@ -29,6 +29,16 @@ export {
   type RouteReach,
 } from './data-class.ts';
 export {
+  AUTH_ACTIONS,
+  AUTH_EMAIL_EXISTS,
+  AUTH_INVITE_LINK,
+  AUTH_LINK_PATH,
+  authLinkAdapter,
+  readAuthLinkAnswer,
+  readAuthMessage,
+  type AuthMessage,
+} from './auth-link.ts';
+export {
   EMAIL_NOTHING_HAPPENED,
   EMAIL_PATH,
   EMAIL_SEND,
@@ -48,8 +58,12 @@ export {
   EMAIL_HOOK_MAX_BYTES,
   EMAIL_HOOK_TOLERANCE_S,
   isEmailHookSecret,
+  STANDARD_WEBHOOK_HEADERS,
+  SVIX_HEADERS,
   verifyEmailHook,
+  verifySignedHook,
   type EmailHookEvent,
+  type HookHeaderNames,
   type EmailHookRefusal,
   type EmailHookVerdict,
 } from './email-hook.ts';
