@@ -11,6 +11,8 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it as vitestIt } from 'vitest';
+import { markReviewedOutput } from '../../packages/core-runtime/src/index.ts';
+import { marksOf } from './aw-08-world.ts';
 import {
   appliedDetail,
   approve,
@@ -115,4 +117,52 @@ it('the_second_accept_is_the_only_gate: the plan accept never releases an effect
   );
   expect(await marked(taskId)).toBe(1);
   expect(await openDecisions(taskId)).toEqual([]);
+});
+
+/** A mark the database refuses, written straight through the application role. */
+async function markRefusedAsOlder(versionId: unknown, lineageId: unknown, leaseId: unknown) {
+  const mark = {
+    versionId: String(versionId),
+    lineageId: String(lineageId),
+    leaseId: String(leaseId),
+  };
+  await expect(
+    s.db.app.withBusiness(s.business, async (tx) => await markReviewedOutput(tx, mark)),
+  ).rejects.toThrow(/newer than the lease's work/u);
+}
+
+it('AW-08 mark: a lease marks only newer work on its lineage, never the plan it ran under', async () => {
+  const taskId = await createTask(s, `aw08-mark-${randomUUID()}`);
+  const plan = appliedDetail(
+    await asPerson(s, {
+      ...proposeBody(taskId, await revisionOf(s, taskId), { purpose: freshPurpose() }),
+      step: EFFECT,
+    }),
+    'task.propose',
+  );
+  const working = await pickup(s, (await approve(s, plan))['reservationId']);
+  const successor = {
+    purpose: freshPurpose(),
+    maximumMinor: 2_000,
+    currency: 'AUD',
+    payload: { change: 'the reviewed output' },
+    step: EFFECT,
+  };
+  const back = appliedDetail(
+    await asAgent(s, handbackBody(working, successor), String(working['credential'])),
+    'task.handback',
+  );
+
+  // The plan's own lease never marks the plan; the launch's lease never marks older work.
+  await markRefusedAsOlder(plan['versionId'], plan['lineageId'], working['leaseId']);
+  const open = await openDecisions(taskId);
+  const launched = await pickup(s, (await approve(s, open[0] ?? {}))['reservationId']);
+  await markRefusedAsOlder(plan['versionId'], plan['lineageId'], launched['leaseId']);
+
+  // Control: the handback's own successor is the one mark, and its launch dispatches.
+  expect(await marksOf(s, taskId)).toEqual([back['successorVersionId']]);
+  appliedDetail(
+    await asAgent(s, dispatchBody(launched), String(launched['credential'])),
+    'dispatch',
+  );
 });
