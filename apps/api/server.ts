@@ -408,6 +408,24 @@ export function composeApi(config: ApiConfig): ComposedApi {
   return { app: server, logins, resolveBusiness };
 }
 
+/** One part of the server to stop, or none where that part is off. */
+type Stopping = (() => Promise<unknown>) | undefined;
+
+/**
+ * The server's shutdown in two stages: the work that may be mid-pass first
+ * (the live streams, the mail worker's running pass, the login provider's
+ * custody), then the pools and processes that work uses. The second stage
+ * starts only once every part of the first has settled, so a question or a
+ * send ends before its pool does.
+ */
+export async function shutDown(
+  working: readonly Stopping[],
+  pools: readonly Stopping[],
+): Promise<void> {
+  await Promise.allSettled(working.map(async (stop) => await stop?.()));
+  await Promise.allSettled(pools.map(async (stop) => await stop?.()));
+}
+
 async function main(): Promise<void> {
   // T2c1: the crash seam is test-only, so an armed one outside test mode stops the start.
   const seam = crashSeamProblem(process.env);
@@ -505,10 +523,20 @@ async function main(): Promise<void> {
   // The hook's events land, and enrolment tokens are looked for, over the
   // businesses restart recovery resolves, set below before the port is bound.
   let deployed: readonly BusinessId[] = [];
-  // The login provider's custody, started before the port is bound like the broker's.
+  // The login provider's custody, started before the port is bound like the broker's;
+  // a credentials file without the service key stops the server here, naming the reference.
   const enrolment =
     enrolConfig.kind === 'on'
-      ? await startEnrolment(enrolConfig, async () => await Promise.resolve(deployed))
+      ? await startEnrolment(enrolConfig, async () => await Promise.resolve(deployed)).catch(
+          async (error: unknown) => {
+            console.error(`api: enrolment is on but ${(error as Error).message}`);
+            await shutDown(
+              [async () => await topics.close(), broker?.stop],
+              [async () => await database.close(), async () => await admin.close()],
+            );
+            process.exit(1);
+          },
+        )
       : undefined;
   console.log(`api: enrolment ${enrolment === undefined ? 'off' : 'on'}`);
   let errorSink: ErrorSinkLink;
@@ -610,19 +638,15 @@ async function main(): Promise<void> {
 
   const stop = (): void => {
     sweeper.stop();
-    // The live streams, the mail worker's running pass and the login
-    // provider's custody first: a question or a send ends before its pool does.
-    void Promise.allSettled([topics.close(), mail?.stop(), enrolment?.stop()])
-      .then(
-        async () =>
-          await Promise.allSettled([
-            database.close(),
-            admin.close(),
-            broker?.stop(),
-            tracer?.stop(),
-          ]),
-      )
-      .then(() => process.exit(0));
+    void shutDown(
+      [async () => await topics.close(), mail?.stop, enrolment?.stop],
+      [
+        async () => await database.close(),
+        async () => await admin.close(),
+        broker?.stop,
+        tracer?.stop,
+      ],
+    ).then(() => process.exit(0));
   };
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);

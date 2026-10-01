@@ -144,6 +144,7 @@ export function createPositiveBody(
       // asks: `settings:read`, `access:manage` and `operations:read` (C55, INB-1e), and a live
       // grant of any kind for `session.capabilities`, `client.list` (C32) and the inbox (INB-1d).
       // The person menu's two (C23) and the caller's own preferences (MP-2-11a) are its own.
+      // C39-T's `invitation.list` asks `access:share`, which the admin holds.
       // The pending gates the admin may decide: the admin holds `decide` on
       // the whole business, so the list answers.
       case 'gate.pending':
@@ -161,6 +162,7 @@ export function createPositiveBody(
       case 'inbox.read':
       case 'inbox.count':
       case 'inbox.unattended':
+      case 'invitation.list':
         // The caller's own inbox (INB-1d) needs a live grant of any kind, as
         // above; `inbox.unattended` needs `operations:read`, which the seed
         // grants the admin (INB-1e, C55).

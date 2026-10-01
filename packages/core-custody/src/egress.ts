@@ -18,10 +18,16 @@ import type { LookupAddress } from 'node:dns';
 import { request as httpRequest, type IncomingMessage, type RequestOptions } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { BlockList, isIP, type LookupFunction } from 'node:net';
-import { presented, type StoredCredential } from './credentials.ts';
-import { parseExtras, pathAllowed, type Extras, type Method } from './egress-routes.ts';
+import type { StoredCredential } from './credentials.ts';
+import {
+  parseExtras,
+  pathAllowed,
+  requestHeaders,
+  type Extras,
+  type Method,
+} from './egress-routes.ts';
 
-/** A listed origin, with any fixed headers and non-POST routes of its own (AW-13). */
+/** A listed origin, with any fixed headers, key header and non-POST routes of its own (AW-13). */
 export interface Destination extends Extras {
   readonly key: string;
   readonly origin: string;
@@ -258,7 +264,7 @@ async function exchange(
 
 /**
  * Send one request to a listed destination with the credential header and
- * the destination's fixed headers custody adds. The caller never supplies the
+ * the destination's fixed and key headers custody adds. The caller never supplies the
  * origin, a header, or a method the destination does not route.
  */
 export async function send(
@@ -279,18 +285,11 @@ export async function send(
   const addresses = await checkedAddresses(url, resolve, signal);
   if (addresses === 'timeout') return { ok: false, fault: 'timeout', status: null };
   if (addresses.length === 0) return { ok: false, fault: 'forbidden', status: null };
-  // The destination's fixed headers first; their names never overlap these.
-  const headers: Record<string, string> = {
-    ...destination.headers,
-    'content-type': 'application/json',
-    'content-length': String(Buffer.byteLength(request.body)),
-  };
-  if (credential !== null) headers[credential.header] = presented(credential);
   return await exchange(
     url,
     {
       method: request.method,
-      headers,
+      headers: requestHeaders(destination, request.body, credential),
       lookup: pinnedTo(addresses),
       signal,
     },

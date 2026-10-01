@@ -35,6 +35,12 @@ export type CustodyOutcome =
 export interface CustodyConfig {
   readonly credentialsFile: string;
   readonly destinations: readonly Destination[];
+  /**
+   * Credential references custody must hold, each for a listed destination,
+   * or it does not start: a caller that cannot work without one fails at
+   * start, not at its first call.
+   */
+  readonly requires?: readonly string[];
 }
 
 export interface Custody {
@@ -56,6 +62,7 @@ function forkCustody(config: CustodyConfig): ChildProcess {
     env: {
       CUSTODY_CREDENTIALS_FILE: config.credentialsFile,
       CUSTODY_DESTINATIONS: JSON.stringify(config.destinations),
+      CUSTODY_REQUIRES: JSON.stringify(config.requires ?? []),
     },
     execArgv: [],
     stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
@@ -63,7 +70,11 @@ function forkCustody(config: CustodyConfig): ChildProcess {
   });
 }
 
-async function ready(child: ChildProcess): Promise<void> {
+/**
+ * Custody's `ready`, or why it ended first: the kind its own log names (it
+ * writes kinds, never values), read once its log has closed.
+ */
+async function ready(child: ChildProcess, log: () => string): Promise<void> {
   await new Promise<void>((resolve, reject) => {
     const onReady = (message: unknown): void => {
       if ((message as Record<string, unknown>)['type'] === 'ready') {
@@ -72,7 +83,10 @@ async function ready(child: ChildProcess): Promise<void> {
       }
     };
     child.on('message', onReady);
-    child.once('exit', (code) => reject(new Error(`custody did not start (${String(code)})`)));
+    child.once('close', (code) => {
+      const kind = /^custody: ([\w ]+)$/mu.exec(log())?.[1] ?? 'no reason given';
+      reject(new Error(`custody did not start (${String(code)}): ${kind}`));
+    });
   });
 }
 
@@ -140,7 +154,7 @@ export async function startCustody(config: CustodyConfig): Promise<Custody> {
     errors += chunk.toString('utf8');
   });
   const exchange = exchangeWith(child);
-  await ready(child);
+  await ready(child, () => errors);
   return {
     pid: child.pid ?? -1,
     dispatch: async (credentialRef, request) => {

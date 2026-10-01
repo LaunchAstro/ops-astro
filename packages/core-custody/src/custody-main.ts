@@ -28,6 +28,21 @@ function fail(kind: string): never {
   process.exit(78);
 }
 
+const isRef = (ref: unknown): ref is string =>
+  typeof ref === 'string' && /^[a-z][a-z0-9_]{0,62}$/u.test(ref);
+
+/** The references custody must hold to start: each a plain reference, or the list is refused. */
+function requiredRefs(): readonly string[] {
+  let refs: unknown;
+  try {
+    refs = JSON.parse(process.env['CUSTODY_REQUIRES'] ?? '[]');
+  } catch {
+    fail('required list unreadable');
+  }
+  if (!Array.isArray(refs) || !refs.every((ref) => isRef(ref))) fail('required list unreadable');
+  return refs;
+}
+
 function load(): Loaded {
   const file = process.env['CUSTODY_CREDENTIALS_FILE'];
   if (file === undefined || file === '') fail('no credential file named');
@@ -47,6 +62,13 @@ function load(): Loaded {
   }
   const destinations = parseDestinations(listed);
   if (!destinations.ok) fail(`destination ${String(destinations.at)} refused ${destinations.code}`);
+  // A caller that cannot work without a credential stops here, naming its reference.
+  for (const ref of requiredRefs()) {
+    const held = credentials.credentials.get(ref);
+    if (held === undefined || !destinations.destinations.has(held.destination)) {
+      fail(`credential ${ref} missing`);
+    }
+  }
   // The file's path leaves the environment once read; a child of this process inherits neither.
   delete process.env['CUSTODY_CREDENTIALS_FILE'];
   return { credentials: credentials.credentials, destinations: destinations.destinations };

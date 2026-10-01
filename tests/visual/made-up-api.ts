@@ -32,7 +32,7 @@ import type {
 } from '../../packages/core-wire/src/index.ts';
 import type { BrowserContext } from 'playwright';
 import type { ReadName } from '../../apps/web/src/operations/read-names.ts';
-import { ACCESS, HARBOUR, MERIDIAN, MIA, NATHAN, OPERATIONS } from './made-up-access.ts';
+import { ACCESS_READS, HARBOUR, MERIDIAN, MIA, NATHAN, OPERATIONS } from './made-up-access.ts';
 import { AGENT_LEDGER, AGENT_PROPOSALS, AGENT_READS } from './made-up-agent.ts';
 
 const STATE = {
@@ -260,7 +260,7 @@ const READS = {
     ok: true,
     hits: TASKS.slice(0, 3).map(({ id, key, title }) => ({ id, key, title })),
   } satisfies TaskSearchResult,
-  'access.read': ACCESS,
+  ...ACCESS_READS,
   'operations.read': OPERATIONS,
 } as const satisfies Partial<Record<ReadName, unknown>>;
 

@@ -43,6 +43,14 @@
     {
       "sha": "e167c9ed4541b4dab7ea5c03fe45dead6752b452",
       "reason": "SL10's 30 Sep rebase note: a 377-character Rebase-note footer commitlint refuses; kept in history because b0/SL05 and batch 2 hold it (ORCH48, 1 Oct 2026)"
+    },
+    {
+      "sha": "1139f74ed83ada593ffeb85b5c48e3c1de9d8496",
+      "reason": "SL12's 1 Oct seat-pause WIP commit: a 'wip' type commitlint refuses; kept in history because b0/SL12-next was pushed with it and fast-forward only holds (SL12-22, 2 Oct 2026)"
+    },
+    {
+      "sha": "34e90c321419d8eb6aec2ade736ffb79f312d0b4",
+      "reason": "SL12's 1 Oct seat-pause WIP commit: a 'wip' type commitlint refuses; kept in history because b0/SL12-next was pushed with it and fast-forward only holds (SL12-22, 2 Oct 2026)"
     }
   ]
 }

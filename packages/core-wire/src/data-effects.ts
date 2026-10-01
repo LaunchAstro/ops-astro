@@ -270,4 +270,6 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'invitation.create': writing(business('invitations', 'people', 'enrolment_tokens')),
   'invitation.resend': writing(business('invitations', 'enrolment_tokens')),
   'invitation.revoke': writing(business('invitations', 'enrolment_tokens')),
+  // Lists the business's invitations; it writes only its audit event.
+  'invitation.list': READ,
 };
