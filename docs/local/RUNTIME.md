@@ -909,6 +909,22 @@ Inside the runtime, `SuccessorRequest` still carries an absolute `expiresAt`.
 The command surface computes that instant on the server from `expiresInSeconds`,
 so a caller has one spelling, the same as `task.propose`'s.
 
+## Only the launch releases an effect
+
+AW-08 (`reviewed-output.ts`, migration `0213_reviewed_outputs`). Accepting a
+plan lets work run under its lease; it fires nothing. A handback that writes a
+successor marks it, in the same transaction and under the handback's locks, as
+the reviewed output: one row in `reviewed_outputs` naming the version, its
+lineage and the lease whose work produced it. The application may insert and
+read the row, never rewrite it, and row security keeps it to its business. A
+trigger checks the version and the lease's run are both on the named lineage,
+so a handback cannot mark another lineage's version.
+
+Dispatch reads the mark under its locks, after the four effect-time facts and
+the reconcile mode: a lease whose version has no mark is `LAUNCH_NOT_DECIDED`
+before any dispatch mark, so the plan's approval spends nothing outside its
+hold. The successor's accept is the launch; its lease dispatches as before.
+
 ## What the classifier will not do
 
 `recovery.ts` closes the lifecycle of work that is durably no longer claimable.

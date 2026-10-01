@@ -218,8 +218,11 @@ it("AW-08 isolation: another person's launched work is not reached under the age
   expect([await marked(s, mine.taskId), await marked(s, theirs.taskId)]).toEqual([1, 1]);
 });
 
-it('AW-08 race: two launch dispatches at once on two backends mark the step once', async () => {
-  const work = await launched(racing, 'aw08 race twice');
+it("AW-08 race: two dispatches of a plan's lease at once on two backends are both refused, and mark nothing", async () => {
+  // Under the plan's accept only: a gate that let either through would mark the step.
+  const plan = await proposeEffect(racing, 'aw08 race plan twice');
+  const picked = await pickup(racing, (await approve(racing, plan.plan))['reservationId']);
+  const work = { taskId: plan.taskId, picked };
   const [a, b] = [racer(racing), racer(racing)];
   try {
     const answers = await settle(
@@ -234,13 +237,15 @@ it('AW-08 race: two launch dispatches at once on two backends mark the step once
       ),
     );
     const codes = answers.map((one) => (one.status === 'fulfilled' ? codeOf(one.value) : 'threw'));
-    expect(codes).toEqual(['applied', 'applied']);
-    expect(await marked(racing, work.taskId)).toBe(1);
+    expect(codes).toEqual(['LAUNCH_NOT_DECIDED', 'LAUNCH_NOT_DECIDED']);
+    expect(await marked(racing, work.taskId)).toBe(0);
   } finally {
     await Promise.all([a.close(), b.close()]);
   }
 });
 
+// The launch keeps dispatch's effect-time authority check: the mark is read after it,
+// so a revocation in flight still wins over a reviewed output.
 it('AW-08 race: a launch dispatch waits on a revocation in flight and is refused AUTHORITY_LOST', async () => {
   const work = await launched(racing, 'aw08 race revoke');
   const revoker = racer(racing);

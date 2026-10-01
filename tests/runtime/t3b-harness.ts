@@ -248,6 +248,17 @@ export function workerWorld(fixture: ApiFixture, api: Hono): WorkerWorld {
       note: 'approve this version',
     });
     if (decided.status !== 200) throw new Error(`decide: ${JSON.stringify(decided.body)}`);
+    // AW-08: the plan's lease goes back for review; the person's accept of it is the launch.
+    const handed = await worker.applyOnce(taskId);
+    if (!('handedBack' in handed)) throw new Error(`hand back: ${JSON.stringify(handed)}`);
+    const launched = await asPerson('task.decide', {
+      operationId: randomUUID(),
+      gateId: handed.handedBack.gateId,
+      versionId: handed.handedBack.versionId,
+      decision: 'approve',
+      note: 'launch the reviewed output',
+    });
+    if (launched.status !== 200) throw new Error(`launch: ${JSON.stringify(launched.body)}`);
     const applied = await worker.applyOnce(taskId);
     if (!('applied' in applied)) throw new Error(`apply: ${JSON.stringify(applied)}`);
     return taskId;

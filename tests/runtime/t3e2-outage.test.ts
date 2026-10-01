@@ -33,6 +33,7 @@ import {
 } from './schedules-harness.ts';
 import { cq8World } from './t2d-harness.ts';
 import { openSecond } from './t3b-harness.ts';
+import { seedLaunch } from './launch-seed.ts';
 
 const url = databaseUrlFromEnvironment();
 
@@ -53,6 +54,7 @@ async function work(on: Schedules): Promise<Picked> {
   };
   const decision = await approve(on, appliedDetail(await asPerson(on, body), 'task.propose'));
   const picked = await pickup(on, decision['reservationId']);
+  await seedLaunch(on, picked);
   return { taskId, picked, credential: String(picked['credential']) };
 }
 

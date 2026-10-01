@@ -47,6 +47,7 @@ import {
   TEST_SIGNING_KEY,
   type RuntimeFixture,
 } from './fixture.ts';
+import { seedLaunchIn } from './launch-seed.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -134,6 +135,7 @@ async function leased(
       leaseSeconds: 600,
     });
     if (!picked.ok) throw new Error(`pickup refused ${picked.refusal.code}`);
+    await seedLaunchIn(tx, picked.value.leaseId);
     const delegationId = picked.value.delegation.delegation.id;
     return {
       taskId,
@@ -195,6 +197,7 @@ async function personLeased(database: Database, fixture: RuntimeFixture) {
       leaseSeconds: 600,
     });
     if (!picked.ok) throw new Error(`pickup refused ${picked.refusal.code}`);
+    await seedLaunchIn(tx, picked.value.leaseId);
     return picked.value;
   });
 }

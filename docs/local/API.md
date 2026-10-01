@@ -1185,6 +1185,16 @@ is `task.decide`'s. It answers the approval's detail with `runId`, `pin`,
 `manifestDigest`, `planRecordId`, `textDigest` and `recordDigest`. A repeat of
 the operation id replays it; a changed body is `OPERATION_ID_REUSED`.
 
+**The plan accept fires nothing (AW-08).** It lets the agent work under its
+lease; it never releases an effect. The agent hands its output back with a
+successor (`task.handback`'s `successor`), and that version is the reviewed
+output. Its accept, by `task.decide` or `task.accept_plan`, is the launch, and
+only a lease on a reviewed output may `task.dispatch`. Any other approved
+version is `LAUNCH_NOT_DECIDED` 409 before any mark, and nothing is written.
+The worker (`apps/worker`) answers that refusal by handing the work back as
+its successor (outcome `handedBack`, with the successor's gate and version);
+the next pass after a person's accept picks up the launch and applies it.
+
 A run's state revised (MP-6-2) is the agent page's one write. It names the
 task and the run on it too, and carries the version it read (0 before the
 first) instead of an `expectedRevision`. It is also on the agent prefix, under

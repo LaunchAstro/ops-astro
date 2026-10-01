@@ -48,6 +48,18 @@ export type WorkerOutcome =
         readonly commentId: string;
       };
     }
+  /**
+   * Picked up on the plan's accept, which fires nothing (AW-08): the work went
+   * back for review as its successor, whose accept is the launch. The next pass
+   * after that accept picks the launch up and applies it.
+   */
+  | {
+      readonly handedBack: {
+        readonly taskId: string;
+        readonly gateId: string;
+        readonly versionId: string;
+      };
+    }
   /** The provider dropped the step before it acted; handed back, and the work comes back (T3e1). */
   | { readonly dropped: { readonly taskId: string; readonly cause: string } }
   /** Nothing approved and unpicked on the task: done already, or not yet approved. */
@@ -61,6 +73,9 @@ interface Answered {
 }
 
 /** The effect's text: a note to the team, and nothing leaves the app. */
+/** The reviewed output's change, as the successor names it. */
+const REVIEWED_CHANGE = 'a team-only comment, reviewed; this changes nothing outside the app';
+
 export const EFFECT_BODY =
   'Synthetic change applied: a team-only comment. This demonstration changes nothing outside the app.';
 
@@ -98,6 +113,8 @@ interface Held {
     readonly cause: 'provider_unavailable' | 'connection_lost';
     readonly operationId: string;
   };
+  /** Set once the plan's lease went back for review: the hand-back is asked again under it. */
+  readonly review?: { readonly operationId: string };
 }
 
 /** A pickup asked for and not yet answered: asked again under its identity, it replays. */
@@ -191,6 +208,25 @@ async function effectOnce(
   // A drop whose hand-back answer was lost: send the hand-back again, and
   // never call the provider a second time for this attempt.
   if (held.drop !== undefined) return await handBackDrop(held.drop);
+  const handBackForReview = async (operationId: string): Promise<WorkerOutcome> => {
+    const back = await call('task.handback', {
+      operationId,
+      ...lease,
+      outcome: 'completed',
+      report: { summary: 'the reviewed output, for a person to accept' },
+      successor: {
+        purpose: SYNTHETIC_STEP.kind,
+        maximumMinor: options.reporter.estimate(SYNTHETIC_STEP),
+        currency: 'AUD',
+        payload: { change: REVIEWED_CHANGE },
+        step: SYNTHETIC_STEP,
+      },
+    });
+    if (!('body' in back)) return back;
+    const gateId = String(back.detail['successorGateId']);
+    return { handedBack: { taskId, gateId, versionId: String(back.detail['successorVersionId']) } };
+  };
+  if (held.review !== undefined) return await handBackForReview(held.review.operationId);
   // The mark first: a provider call may act and then
   // lose its answer, so it is made only once the step is marked. A fault is
   // then handed back as a drop, and the step's whole hold stays unknown until
@@ -198,6 +234,13 @@ async function effectOnce(
   // comment, so the pass cannot prove the provider did nothing.
   // Nothing is released or reserved again on the worker's word.
   const dispatched = await call('task.dispatch', lease);
+  // AW-08: the plan's lease fires nothing. Dispatch refused it before any mark,
+  // so the work goes back for review, and its successor's accept is the launch.
+  if ('refused' in dispatched && dispatched.refused.code === 'LAUNCH_NOT_DECIDED') {
+    const review = { operationId: randomUUID() };
+    keep({ ...held, review });
+    return await handBackForReview(review.operationId);
+  }
   if (!('body' in dispatched)) return dispatched;
   // The provider start is made durable before the call, so a
   // worker lost after it is known to have reached a provider that may have
