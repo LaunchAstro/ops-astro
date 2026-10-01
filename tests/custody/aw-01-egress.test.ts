@@ -28,11 +28,15 @@ const NETWORK_SITES: Readonly<Record<string, string>> = {
   'packages/core-custody/src/custody.ts': "starts custody's own process",
   'packages/core-connectors/src/replay.ts':
     'the replay stand-in listens on loopback; it calls nothing',
+  'packages/core-connectors/src/replay-faults.ts':
+    "the replay stand-in's faults end its own loopback response's socket; it calls nothing",
   'packages/core-connectors/src/email-fake.ts':
     'the fake email provider listens on loopback; it calls nothing (AW-07b)',
   'apps/api/server.ts': "the API serves its own routes on loopback; `app.fetch` is Hono's handler",
   'apps/web/src/main.tsx': "the browser's own fetch, bound once at the composition root",
   'apps/web/src/App.tsx': "threads that fetch to the product's own API, same origin",
+  'apps/web/src/session/use-signed-in.ts':
+    "threads that fetch to the held-address offer, the product's own API",
   'apps/web/src/screens/SignIn.tsx': "threads that fetch to the product's own sign-in route",
   'apps/cli/main.ts': "the command line calls the product's own API",
   // Main's core after the slice's base (rebase onto 8eba5e6):

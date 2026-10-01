@@ -9,7 +9,7 @@
 // the failure. The corpus survives in `packages/ui` as the drawn *vocabulary*
 // — the words and tones a state may print — and not as a source of rows.
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Shell } from '@launchastro/ui';
 import { FaceProvider } from './face.tsx';
 import { SearchPalette, useSearch, useSearchKey } from './search.tsx';
@@ -19,10 +19,13 @@ import { frameAt } from './route-views.tsx';
 import { drawContent } from './app-content.tsx';
 import { buildStamp, useCanonicalAddress, useOfflineSince, usePersonName } from './app-state.ts';
 import { FrameStrip } from './strip.tsx';
-import { HeldAddressNotice, heldAddressOffer, type HeldOffer } from './held-address.tsx';
+import { HeldAddressNotice } from './held-address.tsx';
 import { useDock } from './dock.ts';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
-import { grantKeyOf, type Interruption, type Session } from './session/token.ts';
+import { grantKeyOf, sessionGeneration, type Session } from './session/token.ts';
+import { useSignedIn, type HeldNotice } from './session/use-signed-in.ts';
+import { stepUpSession, type StepUpResult } from './session/step-up.ts';
+import { StepUpContext } from './records/use-money-command.ts';
 import { SignIn } from './screens/SignIn.tsx';
 import { endThenSignOut } from './sign-out.ts';
 import { PagePresenceProvider, StripPresence } from './views/presence.tsx';
@@ -47,56 +50,14 @@ export function App(props: AppProps): ReactElement {
   // Why the board was reached instead of the address that was held. Drawn on
   // the board and nowhere else, and gone when this session is. The offer is the
   // server's answer on whether to name the business the address belongs to.
-  const [notice, setNotice] = useState<{
-    readonly held: Interruption;
-    readonly offer: HeldOffer | null;
-  } | null>(null);
+  const [notice, setNotice] = useState<HeldNotice | null>(null);
   // The Agent drawer (MP-7-11): open over the page, never an address. Keyed on grantKey, so a
   // change of business, person or session drops every tab and a late reply has nowhere to land.
   const [agentOpen, setAgentOpen] = useState(false);
   // The person signed out here, so sign-in says their unsaved edit went with it (C58).
   const [signedOut, setSignedOut] = useState(false);
 
-  const onSignedIn = useCallback(
-    (next: Session) => {
-      // Spent here, so the next ordinary sign-in is not redirected by an
-      // interruption somebody already answered.
-      const back = props.sessions.takeInterruption();
-      props.sessions.set(next);
-      setSession(next);
-      setNotice(null);
-      setSignedOut(false);
-      if (back === null) {
-        props.navigate(pathTo('agency:projects-board'));
-        return;
-      }
-      // **The held address only means anything in the business it was held
-      // in.** A task key is business-local, so replaying the string under a
-      // different business does not reopen the task the person was promised:
-      // it refuses, or -- worse, because it looks like success -- it draws an
-      // unrelated record that happens to share the key. A deliberate change of
-      // business is not a mistake, so it is not refused; it goes to that
-      // business's board and says why.
-      if (back.businessKey === next.businessKey) {
-        props.navigate(back.address);
-        return;
-      }
-      setNotice({ held: back, offer: null });
-      props.navigate(pathTo('agency:projects-board'));
-      void heldAddressOffer({
-        held: back,
-        next,
-        apiOrigin: props.apiOrigin,
-        fetch: props.fetch,
-      }).then((offer) => {
-        // Only onto the notice it was asked for: a sign-out or a switch since
-        // has replaced or cleared it.
-        setNotice((current) => (current?.held === back ? { held: back, offer } : current));
-        return offer;
-      });
-    },
-    [props],
-  );
+  const onSignedIn = useSignedIn(props, setSession, setNotice, setSignedOut);
 
   // **The session ending is a fact about the application, not about a screen.**
   // The client raises it once, from wherever the refusal arrived, and this is
@@ -160,6 +121,27 @@ export function App(props: AppProps): ReactElement {
     props.navigate(pathTo('agency:sign-in'));
     if (ended === null) return;
     void endThenSignOut(() => client.mutate('session.end', {}), props, ended);
+  };
+
+  // The money step-up (C59): the tab moves to the stepped-up sign-in as a sign-in does, without
+  // going anywhere, and only while the session that asked is still the one in hand.
+  const stepUp = async (code: string): Promise<StepUpResult> => {
+    const from = session;
+    if (from === null) return { ok: false, because: 'Sign in first.' };
+    const generation = sessionGeneration();
+    return await stepUpSession({
+      code,
+      client,
+      route: { apiOrigin: props.apiOrigin, fetch: props.fetch },
+      from: from.sessionId,
+      current: () => generation === sessionGeneration() && sessionRef.current === from,
+      adopt: (sessionId) => {
+        const next = { ...from, sessionId };
+        props.sessions.set(next);
+        sessionRef.current = next;
+        setSession(next);
+      },
+    });
   };
 
   const personName = usePersonName(client, session, props.storage);
@@ -282,7 +264,9 @@ export function App(props: AppProps): ReactElement {
             ) : undefined
           }
         >
-          <FaceProvider face={face}>{content}</FaceProvider>
+          <StepUpContext.Provider value={session === null ? null : stepUp}>
+            <FaceProvider face={face}>{content}</FaceProvider>
+          </StepUpContext.Provider>
         </Shell>
         {search.showing && searchable ? (
           <SearchPalette
