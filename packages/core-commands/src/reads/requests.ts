@@ -68,8 +68,12 @@ export interface ReadOperands {
   readonly 'person.list': NoOperands;
   /** The business's tag vocabulary (MP-4-11). */
   readonly 'tag.list': NoOperands;
-  /** The reader's own open tasks (MP-7-1). */
-  readonly 'task.todos': NoOperands;
+  /**
+   * The reader's own open tasks (MP-7-1); or, scoped (MP-7-2), a teammate's
+   * open tasks (`person`) or every open task under a client (`client`). One
+   * scope at a time.
+   */
+  readonly 'task.todos': { readonly person?: string; readonly client?: string };
   /** Approved, held and unpicked. A projection; reading it claims nothing. */
   readonly 'task.queue': NoOperands;
   /**

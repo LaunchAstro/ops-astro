@@ -441,7 +441,8 @@ Eight reads are declared in `COMMAND_SURFACE` with `kind: 'read'` and served by
   reader of the business's tasks
 - `task.todos {}` → the reader's own open tasks on any board, with their tags
   and the client messages owed a reply (MP-7-1), for a reader of the
-  business's tasks
+  business's tasks; `{ person }` a teammate's, `{ client }`
+  every one under that client (MP-7-2), under the same key
 
 The other four, `task.queue`, `preset.plan`, `settings.read` and
 `session.capabilities`, are listed with their answers under "Reads" in
