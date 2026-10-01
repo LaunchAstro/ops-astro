@@ -111,6 +111,7 @@ import {
   CROSS_SITE_FIXES,
   crossSiteSession,
   fromOwnPages,
+  lapsedSessions,
   MISMATCH_FIXES,
   namedSession,
   sessionIdOf,
@@ -277,7 +278,15 @@ async function admit(
   // A session cookie from another site's page stops here, before the
   // verifier reads it (`auth/session.ts`).
   if (crossSiteSession(context.req)) return refuse(context, CROSS_SITE());
+  // Other sign-ins' cookies whose tokens have run out go with any answer.
+  const now = Math.floor(Date.now() / 1000);
+  for (const name of lapsedSessions(context.req, now)) {
+    deleteCookie(context, name, SESSION_COOKIE_OPTIONS);
+  }
   const presented = await options.verify(context.req);
+  // The key set could not be reached: an outage, so the cookie stays and
+  // nothing is counted as a failed sign-in.
+  if (presented === 'unavailable') return unavailable(context);
   if (typeof presented === 'object') context.set(PRESENTED, presented);
   else clearNamedCookie(context);
   if (presented === undefined || presented === 'absent') {
@@ -331,6 +340,7 @@ export function createApi(options: ApiOptions): Hono {
     if (!fromOwnPages(context.req)) return refuse(context, CROSS_SITE());
     const token = bearerOf(context.req);
     const presented = token === undefined ? undefined : await options.verify(context.req);
+    if (presented === 'unavailable') return unavailable(context);
     if (presented === 'expired') {
       return refuse(context, refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED_FIXES));
     }
@@ -888,6 +898,19 @@ function refuse(context: Context, refusal: CommandRefusal): Response {
   );
 }
 
+/**
+ * The sign-in provider’s key set could not be reached, so no credential could
+ * be checked. Not a refusal: no `refused` flag, so the page draws it as
+ * unavailable and keeps its session. The detector reads the code and counts
+ * nothing.
+ */
+function unavailable(context: Context): Response {
+  context.set(REFUSAL, 'SERVICE_UNAVAILABLE');
+  return context.json({ code: 'SERVICE_UNAVAILABLE', names: [], fixes: [RETRY] }, 503);
+}
+
+const RETRY =
+  'The service could not complete the request. Retry; if it persists, check /api/health.';
 const PRESENTED = 'presented';
 const REFUSAL = 'refusal';
 const HANDED_OUT = 'handed-out';
