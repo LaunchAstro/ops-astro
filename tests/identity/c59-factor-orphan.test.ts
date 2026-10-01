@@ -21,6 +21,7 @@ import {
   recordFactorEnrolled,
   recordFactorVerified,
 } from '../../packages/core-records/src/identity/second-factor.ts';
+import { endOtherSeenSessions } from '../../packages/core-records/src/identity/sessions.ts';
 import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
@@ -55,7 +56,13 @@ async function personIn(business: string, subject: string): Promise<string> {
   });
 }
 
-async function enrolHere(business: string, personId: string, subject: string, verify: boolean) {
+async function enrolHere(
+  business: string,
+  personId: string,
+  subject: string,
+  verify: boolean,
+  endOthers = false,
+) {
   await db.app.withBusiness(business, async (tx) => {
     const enrolled = await recordFactorEnrolled(tx, {
       personId,
@@ -63,6 +70,8 @@ async function enrolHere(business: string, personId: string, subject: string, ve
       providerFactorId: `factor-${randomUUID()}`,
     });
     if (verify) await recordFactorVerified(tx, { personId, factorId: enrolled.id, subject });
+    // The winner's completed enrolment ends every other session (C58), the loser's included.
+    if (endOthers) await endOtherSeenSessions(tx, personId, randomUUID(), 'factor_change', subject);
   });
 }
 
@@ -75,15 +84,23 @@ async function events(business: string, command: string) {
   );
 }
 
-/** Mia's code is good at the provider; while it is checked, alpha verifies her other factor. */
-function racingProvider(subject: string, alphaPerson: string, removal: ProviderAnswer<void>) {
+/**
+ * Mia's code is good at the provider; while it is checked, alpha verifies her
+ * other factor, and with `endOthers` ends her other sessions as it does so.
+ */
+function racingProvider(
+  subject: string,
+  alphaPerson: string,
+  removal: ProviderAnswer<void>,
+  endOthers: boolean,
+) {
   const asked: string[] = [];
   const session = { accessToken: 'aal2-access-token', refreshToken: 'r', expiresIn: 3600 };
   const provider: FactorProvider = {
     enrol: () => Promise.resolve({ ok: false, fault: 'refused' }),
     verify: async () => {
       asked.push('verify');
-      await enrolHere(alpha, alphaPerson, subject, true);
+      await enrolHere(alpha, alphaPerson, subject, true, endOthers);
       return { ok: true, value: session };
     },
     remove: () => {
@@ -95,19 +112,20 @@ function racingProvider(subject: string, alphaPerson: string, removal: ProviderA
   return { provider, asked };
 }
 
-async function race(removal: ProviderAnswer<void>) {
+async function race(removal: ProviderAnswer<void>, endOthers = false) {
   const subject = `sub-${randomUUID()}`;
   const alphaPerson = await personIn(alpha, subject);
   const bravoPerson = await personIn(bravo, subject);
   await enrolHere(bravo, bravoPerson, subject, false);
-  const { provider, asked } = racingProvider(subject, alphaPerson, removal);
+  const { provider, asked } = racingProvider(subject, alphaPerson, removal, endOthers);
   const caller: FactorCaller = {
     database: db.app,
     businessId: bravo,
     presented: {
       provider: 'supabase',
       subject,
-      assurance: { level: 'aal1', signedInAt: Math.floor(Date.now() / 1000), factorAt: null },
+      sessionId: randomUUID(),
+      assurance: { level: 'aal1', signedInAt: Math.floor(Date.now() / 1000) - 5, factorAt: null },
     },
     accessToken: 'aal1-access-token',
   };
@@ -148,6 +166,21 @@ describe.skipIf(serverUrl === undefined)(
       expect(code).toBe('FACTOR_ALREADY_ENROLLED');
       expect(asked).toEqual(['verify', 'remove']);
       expect(await events(bravo, 'account.factor_orphaned')).toHaveLength(before);
+    });
+
+    it('C59: a losing session ended by the winning enrolment still removes its provider factor, and records the orphan when removal fails', async () => {
+      const removed = await race({ ok: true, value: undefined }, true);
+      expect(removed).toEqual({ code: 'AUTH_SESSION_EXPIRED', asked: ['verify', 'remove'] });
+
+      const before = (await events(bravo, 'account.factor_orphaned')).length;
+      const stuck = await race({ ok: false, fault: 'unreachable' }, true);
+      expect(stuck).toEqual({
+        code: 'AUTH_SESSION_EXPIRED',
+        asked: ['verify', 'remove', 'remove'],
+      });
+      expect((await events(bravo, 'account.factor_orphaned')).slice(before)).toEqual([
+        { outcome: 'refused', refusal_code: 'PROVIDER_ANSWER_INVALID' },
+      ]);
     });
   },
 );
