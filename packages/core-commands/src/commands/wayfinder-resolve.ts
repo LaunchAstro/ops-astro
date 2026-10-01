@@ -9,6 +9,7 @@ import type { TenantQuery, WayfinderFacts } from '../../../core-records/src/inde
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
+import { raiseFrontierDecisions } from './wayfinder-frontier-raise.ts';
 import { invalid, notPermitted, refuseUnlessOwner, textOk, type RequestOf } from './wayfinder.ts';
 import { applyRevision } from './wayfinder-revision.ts';
 
@@ -57,6 +58,8 @@ async function completeWith(
   if (written === undefined) {
     return refused(refuseCommand('NOT_FOUND', [], ['No live task carries that identifier here.']));
   }
+  // Completing a ticket can unblock its map's grilling and prototype tickets (WF-2).
+  await raiseFrontierDecisions(tx, target.id);
   return applied(target.id, Number(written.revision), { state: state.key, ...extra });
 }
 
