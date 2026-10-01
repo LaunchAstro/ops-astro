@@ -25,9 +25,8 @@ function drawn(markup: string): string {
   }
 }
 
-const noFetch = (async () => {
-  throw new Error('no request in a static draw');
-}) as unknown as typeof globalThis.fetch;
+const noFetch = (() =>
+  Promise.reject(new Error('no request in a static draw'))) as unknown as typeof globalThis.fetch;
 
 it('the enrolment form is the page, and the sign-in form is still the sign-in form', () => {
   const enrol = renderToStaticMarkup(
