@@ -644,6 +644,8 @@
     "tests/broker/email-sender-from-outside-verified-subdomain.test.ts",
     "tests/broker/aw-07b-timing.test.ts",
     "tests/broker/aw-07b-client-cap.test.ts",
+    "tests/broker/aw-07b-in-flight.test.ts",
+    "tests/broker/aw-07b-worker.test.ts",
     "tests/api/live-board-lost-access.test.ts",
     "tests/api/live-board-scoped-revocation-review.test.ts",
     "tests/api/live-board-client-move-review.test.ts",
