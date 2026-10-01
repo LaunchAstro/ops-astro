@@ -12,7 +12,7 @@ import { loginHasVerifiedFactor, withSession } from '../../../core-records/src/i
 import type { RefusalCode, Session, TenantQuery } from '../../../core-records/src/index.ts';
 import { payloadDigest } from '../../../core-digest/src/index.ts';
 import type { FactorProvider } from './account-factor-provider.ts';
-import type { FactorCaller } from './account-factor.ts';
+import type { FactorCaller } from './account-factor-judged.ts';
 import { writeAuditEvent } from './audit.ts';
 
 const ORPHANED = 'account.factor_orphaned';
