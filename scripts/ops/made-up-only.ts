@@ -73,11 +73,8 @@ const SPECIAL: Readonly<Record<string, string>> = {
       join pg_depend d on d.classid = 'pg_rewrite'::regclass and d.objid = w.oid
      where d.refobjid in (${GUARDED}) and v.relowner is distinct from
        (select oid from pg_roles where rolname = 'ops_astro_app'))`,
-  // The database owner's own definer functions are the guard's to judge: their
-  // writes run as the owner and are noted. Hosted Supabase's superuser
-  // supabase_admin, by that exact name, owns the platform's own (pgbouncer.get_auth,
-  // extensions.grant_pg_*_access, pg_net: supabase/postgres migrations/db at
-  // 9b0996e); only the platform logs in as it.
+  // The owner's definer functions are the guard's to judge: their writes are noted. Hosted
+  // Supabase's own belong to supabase_admin, by exact name (supabase/postgres@9b0996e).
   'a definer function runs as a role past row security': `exists (select from pg_proc p
       join pg_namespace n on n.oid = p.pronamespace join pg_roles r on r.oid = p.proowner
      where p.prosecdef and n.nspname not in ('pg_catalog', 'information_schema')

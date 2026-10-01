@@ -7,8 +7,8 @@
 // list still refuse. Each case holds real sessions as those logins, or plants
 // a real definer function owned by the role, on its own fresh database.
 //
-// The role names are cluster-wide, so this one file makes them and drops them,
-// and its cases run in order.
+// The role names are cluster-wide, so this one file makes them and drops them
+// around each describe, and its cases run in order.
 
 import { randomBytes } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
@@ -62,10 +62,11 @@ async function server<T>(work: (admin: AdminConnection) => Promise<T>): Promise<
   }
 }
 
-describe.skipIf(serverUrl === undefined)('hosted Supabase roles, by name only', () => {
-  let db: FreshDatabase | undefined;
-  const held: ObservedPool[] = [];
+const held: ObservedPool[] = [];
+let db: FreshDatabase | undefined;
 
+/** Make the roles before the cases and drop them after; each case gets its own database. */
+function withHostedRoles(): void {
   beforeAll(async () => {
     await server(async (admin) => {
       for (const role of [...SERVICES, ...LOOK_ALIKES]) {
@@ -92,29 +93,47 @@ describe.skipIf(serverUrl === undefined)('hosted Supabase roles, by name only', 
         await admin.execute(`drop role if exists "${role}"`);
     });
   });
+}
 
-  async function fresh(part: string): Promise<FreshDatabase> {
-    db = await createFreshDatabase({ part });
-    await db.closeSessions();
-    return db;
-  }
+async function fresh(part: string): Promise<FreshDatabase> {
+  db = await createFreshDatabase({ part });
+  await db.closeSessions();
+  return db;
+}
 
-  /** A session held open on the database as `role`, and its backend's pid. */
-  async function holdAs(on: FreshDatabase, role: string): Promise<number> {
-    const url = new URL(serverUrl ?? '');
-    url.pathname = `/${on.name}`;
-    url.username = encodeURIComponent(role);
-    url.password = PASSWORD;
-    const pool = connectObserved(url.toString(), { source: `held-${role}` });
-    held.push(pool);
-    const [row] = await pool.betweenTransactions<{ readonly pid: number }>(
-      `select pg_backend_pid() as pid`,
-    );
-    if (row === undefined) throw new Error(`no pid for the session held as ${role}`);
-    return row.pid;
-  }
+/** A session held open on the database as `role`, and its backend's pid. */
+async function holdAs(on: FreshDatabase, role: string): Promise<number> {
+  const url = new URL(serverUrl ?? '');
+  url.pathname = `/${on.name}`;
+  url.username = encodeURIComponent(role);
+  url.password = PASSWORD;
+  const pool = connectObserved(url.toString(), { source: `held-${role}` });
+  held.push(pool);
+  const [row] = await pool.betweenTransactions<{ readonly pid: number }>(
+    `select pg_backend_pid() as pid`,
+  );
+  if (row === undefined) throw new Error(`no pid for the session held as ${role}`);
+  return row.pid;
+}
 
-  it('migrate applies with only the platform services connected', async () => {
+/** The made-up signs of a marked database holding one definer function owned by `role`. */
+async function definerOwnedBy(part: string, role: string): Promise<string[]> {
+  const on = await fresh(part);
+  await on.admin.execute('create schema if not exists auth');
+  await on.admin.execute('create table if not exists auth.users (id uuid, email text)');
+  await markMadeUp(on.admin, []);
+  await on.admin.execute(
+    `create function public.hosted_definer() returns int
+       language sql security definer as 'select 1'`,
+  );
+  await on.admin.execute(`alter function public.hosted_definer() owner to "${role}"`);
+  return productionSigns(on.admin);
+}
+
+describe.skipIf(serverUrl === undefined)('migrate beside hosted Supabase', () => {
+  withHostedRoles();
+
+  it('applies with only the platform services connected', async () => {
     const on = await fresh('hostedok');
     for (const role of SERVICES)
       // oxlint-disable-next-line no-await-in-loop
@@ -127,7 +146,7 @@ describe.skipIf(serverUrl === undefined)('hosted Supabase roles, by name only', 
   }, 120_000);
 
   it.each(LOOK_ALIKES)(
-    'migrate still refuses %s beside the platform services, naming only it',
+    'still refuses %s beside the platform services, naming only it',
     async (role) => {
       const on = await fresh('hostedno');
       for (const service of SERVICES)
@@ -147,26 +166,17 @@ describe.skipIf(serverUrl === undefined)('hosted Supabase roles, by name only', 
     },
     120_000,
   );
+});
 
-  async function definerOwnedBy(part: string, role: string): Promise<string[]> {
-    const on = await fresh(part);
-    await on.admin.execute('create schema if not exists auth');
-    await on.admin.execute('create table if not exists auth.users (id uuid, email text)');
-    await markMadeUp(on.admin, []);
-    await on.admin.execute(
-      `create function public.hosted_definer() returns int
-         language sql security definer as 'select 1'`,
-    );
-    await on.admin.execute(`alter function public.hosted_definer() owner to "${role}"`);
-    return productionSigns(on.admin);
-  }
+describe.skipIf(serverUrl === undefined)('made-up-only beside hosted Supabase', () => {
+  withHostedRoles();
 
-  it('made-up-only accepts a definer function owned by supabase_admin', async () => {
+  it('accepts a definer function owned by supabase_admin', async () => {
     expect(await definerOwnedBy('hosteddef', 'supabase_admin')).toStrictEqual([]);
   }, 120_000);
 
   it.each(['supabase_adminx', 'supabase_etl_admin'])(
-    'made-up-only still refuses a definer function owned by %s',
+    'still refuses a definer function owned by %s',
     async (role) => {
       expect(await definerOwnedBy('hostednodef', role)).toStrictEqual([PAST_ROW_SECURITY]);
     },
