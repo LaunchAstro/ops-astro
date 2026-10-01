@@ -79,8 +79,9 @@ them can be told apart from an application safely, and there is no flag or
 environment variable that skips the check. The one exception is hosted
 Supabase's own services, which never stop: sessions whose login is exactly
 `authenticator`, `pgbouncer`, `supabase_admin`, `supabase_auth_admin` or
-`supabase_storage_admin` are left out of the count, and none of those roles
-exists on the local install. With nothing pending it does not
+`supabase_storage_admin` are left out of the count, so on hosted Supabase it
+does not see Data API or Realtime traffic, and none of those roles exists on
+the local install. With nothing pending it does not
 look at all, so an up-to-date install with the application running passes.
 The runner's role must be able to read every session in `pg_stat_activity`:
 a superuser, as `DATABASE_ADMIN_URL` is on the local install, or a member of

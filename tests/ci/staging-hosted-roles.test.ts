@@ -44,11 +44,17 @@ const SERVICES = [
   'supabase_storage_admin',
 ];
 /** Near misses: a suffix, a different case, and a real Supabase role not named. */
-const LOOK_ALIKES = ['supabase_adminx', 'Supabase_Auth_Admin', 'supabase_etl_admin'];
+const LOOK_ALIKES = [
+  'supabase_adminx',
+  'Supabase_Admin',
+  'Supabase_Auth_Admin',
+  'supabase_etl_admin',
+];
 /** Superuser or BYPASSRLS, as on hosted Supabase, so a definer they own is past row security. */
 const PAST_RLS: Readonly<Record<string, string>> = {
   supabase_admin: 'superuser',
   supabase_adminx: 'superuser',
+  Supabase_Admin: 'superuser',
   supabase_etl_admin: 'bypassrls',
 };
 const PASSWORD = randomBytes(24).toString('base64url');
@@ -62,20 +68,35 @@ async function server<T>(work: (admin: AdminConnection) => Promise<T>): Promise<
   }
 }
 
+const ROLES = [...SERVICES, ...LOOK_ALIKES];
 const held: ObservedPool[] = [];
+const created: string[] = [];
 let db: FreshDatabase | undefined;
 
-/** Make the roles before the cases and drop them after; each case gets its own database. */
+/**
+ * Make the roles before the cases and drop them after; each case gets its own
+ * database. A server where any of them already exists, as hosted Supabase is,
+ * is refused before anything changes: this suite alters and drops only roles
+ * it made itself.
+ */
 function withHostedRoles(): void {
   beforeAll(async () => {
     await server(async (admin) => {
-      for (const role of [...SERVICES, ...LOOK_ALIKES]) {
-        const attributes = `login password '${PASSWORD}' ${PAST_RLS[role] ?? 'nosuperuser nobypassrls'}`;
+      const taken = await admin.execute<{ readonly rolname: string }>(
+        `select rolname::text from pg_roles where rolname = any($1::text[])`,
+        [ROLES],
+      );
+      if (taken.length > 0)
+        throw new Error(
+          `staging-hosted-roles: ${taken.map((r) => r.rolname).join(', ')} already exist on ` +
+            'this server, so it is not a throwaway one; refusing to touch them',
+        );
+      for (const role of ROLES) {
         // oxlint-disable-next-line no-await-in-loop
         await admin.execute(
-          `do $$ begin create role "${role}" ${attributes};
-             exception when duplicate_object then alter role "${role}" ${attributes}; end $$`,
+          `create role "${role}" login password '${PASSWORD}' ${PAST_RLS[role] ?? 'nosuperuser nobypassrls'}`,
         );
+        created.push(role);
       }
     });
   }, 60_000);
@@ -88,7 +109,7 @@ function withHostedRoles(): void {
 
   afterAll(async () => {
     await server(async (admin) => {
-      for (const role of [...SERVICES, ...LOOK_ALIKES])
+      for (const role of created.splice(0))
         // oxlint-disable-next-line no-await-in-loop
         await admin.execute(`drop role if exists "${role}"`);
     });
@@ -175,7 +196,20 @@ describe.skipIf(serverUrl === undefined)('made-up-only beside hosted Supabase', 
     expect(await definerOwnedBy('hosteddef', 'supabase_admin')).toStrictEqual([]);
   }, 120_000);
 
-  it.each(['supabase_adminx', 'supabase_etl_admin'])(
+  it('still refuses one owned by a supabase_admin that is not a superuser', async () => {
+    await server(
+      async (admin) => await admin.execute('alter role supabase_admin nosuperuser bypassrls'),
+    );
+    try {
+      expect(await definerOwnedBy('hostedbyp', 'supabase_admin')).toStrictEqual([
+        PAST_ROW_SECURITY,
+      ]);
+    } finally {
+      await server(async (admin) => await admin.execute('alter role supabase_admin superuser'));
+    }
+  }, 120_000);
+
+  it.each(['supabase_adminx', 'Supabase_Admin', 'supabase_etl_admin'])(
     'still refuses a definer function owned by %s',
     async (role) => {
       expect(await definerOwnedBy('hostednodef', role)).toStrictEqual([PAST_ROW_SECURITY]);
