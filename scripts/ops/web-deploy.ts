@@ -33,8 +33,9 @@
 //
 // The maintenance page (`deployMaintenance`, `maintenance.ts`) goes out the
 // same prebuilt way, with no database asked, so a broken database never keeps
-// it off; it holds no function, so there is no region to read back. Deploying
-// a version again takes it off.
+// it off; it holds no function, so it declares no region, and it is recorded
+// on the deploy's answer alone, without `vercel inspect`. Deploying a version
+// again takes it off.
 
 import { spawnSync } from 'node:child_process';
 import { cpSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
