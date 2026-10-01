@@ -11,6 +11,7 @@ import {
   type CommandDeclaration,
   type CommandName,
 } from './surface.ts';
+import { VISUAL_HANDOFFS } from './handoff.ts';
 
 /** A place in the app that calls a command; `file` is relative to apps/web/src. */
 export type UiUse = { readonly command: string; readonly route: string; readonly file: string };
@@ -206,6 +207,8 @@ export function renderReport(rows: readonly CatalogueRow[], failures: readonly s
       : `\nMissing or unequal:\n${failures.map((line) => `- ${line}`).join('\n')}`,
     '\nExempt, view only:',
     ...VIEW_ONLY_EXEMPT.map((one) => `- ${one.action}: ${one.reason}`),
+    '\nVisual, handed off from the command line:',
+    ...VISUAL_HANDOFFS.map((one) => `- \`pnpm cli ${one.name}\` opens ${one.route}: ${one.why}`),
   ];
   return `${lines.join('\n')}\n`;
 }

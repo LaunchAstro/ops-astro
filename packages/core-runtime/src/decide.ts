@@ -58,6 +58,7 @@ import {
   type SigningKey,
 } from './signing.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
+import { reviewedByPerson } from './review-round.ts';
 import {
   assignedTo,
   escalateGate,
@@ -441,6 +442,9 @@ async function recheckDecision(
   if (await assignedTo(tx, found.task_id, request.decidedByPersonId)) {
     return { ok: false, refusal: fourEyesRequired() };
   }
+  // AW-09: an agent's output is decided by a person as themselves (`review-round.ts`).
+  const reviewer = await reviewedByPerson(tx, gate.value.version_id, request);
+  if (!reviewer.ok) return reviewer;
   const evidence = await recheckEvidence(tx, gate.value);
   if (!evidence.ok) return evidence;
   const work = await recheckWork(tx, request, found, gate.value, evidence.value.version, locked);
