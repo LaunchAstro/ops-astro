@@ -76,6 +76,10 @@ export interface QuotaSlot {
 /** The app's limits (`apps/api/auth/agent-quota.ts`): a slot, or undefined when one is reached. */
 export interface CredentialQuota {
   enter(keys: QuotaKeys): QuotaSlot | undefined;
+  /** Whether the business's door has room for another bearer; asked before it is resolved. */
+  knock(businessId: string): boolean;
+  /** A bearer turned away as not live, counted at the business's door. */
+  turnedAway(businessId: string): void;
 }
 
 export interface CredentialCall {
@@ -100,6 +104,8 @@ const LIMITED_FIXES: readonly string[] = [
   'Wait a minute and try again.',
 ];
 
+const limited = (): CommandRefusal => refuseCommand('AGENT_QUOTA_EXCEEDED', [], LIMITED_FIXES);
+
 /** The one answer for a credential not served: unknown, revoked, expired, or a key nobody holds. */
 export const credentialNotLive = (): CommandRefusal =>
   refuseCommand('DELEGATION_NOT_LIVE', [], NOT_LIVE_FIXES);
@@ -113,6 +119,8 @@ export async function executeCredentialCommand(
   // Entered once per request, outside `retryOnce`, so a retry is not a second call.
   let slot: QuotaSlot | undefined;
   let answer: CommandResult | ReadResult | undefined;
+  // Made-up bearers cost a transaction and an attempt row each (finding 5).
+  if (call.quota?.knock(businessId) === false) return asCallerVisible(limited());
   try {
     answer = await retryOnce(
       async () =>
@@ -127,7 +135,7 @@ export async function executeCredentialCommand(
           // Before the reach, so a call outside it counts too.
           slot ??= call.quota?.enter(keys);
           if (call.quota !== undefined && slot === undefined) {
-            return refuseCommand('AGENT_QUOTA_EXCEEDED', [], LIMITED_FIXES);
+            return limited();
           }
           const session = sessionOf(standing, tx.businessId);
           if (!CREDENTIAL_REACH.has(request.command)) {
@@ -143,7 +151,10 @@ export async function executeCredentialCommand(
             : await runCommand(tx, session, 'api', request);
         }),
     );
-    return isCommandRefusal(answer) ? asCallerVisible(answer) : answer;
+    if (!isCommandRefusal(answer)) return answer;
+    // Counted once the retry is settled, so a retried attempt is one.
+    if (answer.code === 'DELEGATION_NOT_LIVE') call.quota?.turnedAway(businessId);
+    return asCallerVisible(answer);
   } finally {
     slot?.leave(answer === undefined || isCommandRefusal(answer) ? undefined : answer);
   }

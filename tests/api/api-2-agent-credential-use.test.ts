@@ -241,6 +241,21 @@ needsServer(
 );
 
 needsServer(
+  'API-2 reach: task.decide is DELEGATION_EXCLUDES_OPERATION for a credential, whatever it ticked',
+  async () => {
+    const credential = await issued();
+    const body = {
+      gateId: harness.alphaTask.id,
+      versionId: harness.alphaTask.id,
+      verdict: 'approve',
+    };
+    const decided = await asCredential('task.decide', body, bearer(credential.secret));
+    expect(decided.status).toBe(403);
+    expect(decided.code).toBe('DELEGATION_EXCLUDES_OPERATION');
+  },
+);
+
+needsServer(
   'API-2 isolation on use: another business’s key and another business’s task are not reached, and say nothing of either',
   async () => {
     const credential = await issued();

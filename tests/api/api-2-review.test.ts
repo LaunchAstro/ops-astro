@@ -23,6 +23,8 @@ openWorld();
 
 const needsServer = it.skipIf(serverUrl === undefined);
 const WIDE = { credential: 1000, person: 1000, business: 1000 };
+/** Every other limit out of the way. */
+const OPEN = { concurrent: WIDE, exports: WIDE, refused: 1000 };
 const madeUpCredential = (): string => randomBytes(32).toString('base64url');
 const sha = (text: string): string => createHash('sha256').update(text, 'utf8').digest('hex');
 
@@ -76,7 +78,7 @@ needsServer(
   async () => {
     const api = apiWith({
       agentCredentials: {
-        limits: { requests: { ...WIDE, credential: 2 }, concurrent: WIDE, exports: WIDE },
+        limits: { requests: { ...WIDE, credential: 2 }, ...OPEN },
       },
     });
     const credential = await issued();
@@ -109,7 +111,7 @@ needsServer(
     const api = apiWith({
       database: pool,
       agentCredentials: {
-        limits: { requests: { ...WIDE, credential: 3 }, concurrent: WIDE, exports: WIDE },
+        limits: { requests: { ...WIDE, credential: 3 }, ...OPEN },
       },
     });
     const credential = await issued();

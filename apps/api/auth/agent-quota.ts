@@ -2,7 +2,8 @@
 //
 // The agent credential's quota (API-2): requests a minute, calls in flight
 // and records handed out a minute, each held per credential, per person and
-// per business.
+// per business; and, before a bearer is resolved, the made-up or dead ones
+// a business key is sent a minute.
 
 import type { CredentialQuota } from '../../../packages/core-commands/src/index.ts';
 
@@ -20,6 +21,8 @@ export interface AgentLimits {
   readonly concurrent: Tiers;
   /** Records handed out a minute. */
   readonly exports: Tiers;
+  /** Not-live bearers a minute, per business, before the next is even looked up. */
+  readonly refused: number;
 }
 
 /** The installation's limits unless a deployment names its own. */
@@ -27,6 +30,7 @@ export const DEFAULT_AGENT_LIMITS: AgentLimits = {
   requests: { credential: 120, person: 240, business: 600 },
   concurrent: { credential: 4, person: 8, business: 16 },
   exports: { credential: 2000, person: 4000, business: 10_000 },
+  refused: 60,
 };
 
 const WINDOW_MS = 60_000;
@@ -51,6 +55,18 @@ function currentWindow(windows: Map<string, Window>, key: string, at: number): W
   return fresh;
 }
 
+/** A business's door: its not-live bearers a minute, counted in its own window's `requests`. */
+function doorOf(refused: number, now: () => Date): Pick<CredentialQuota, 'knock' | 'turnedAway'> {
+  const windows = new Map<string, Window>();
+  const door = (businessId: string): Window => currentWindow(windows, businessId, now().getTime());
+  return {
+    knock: (businessId) => door(businessId).requests < refused,
+    turnedAway(businessId) {
+      door(businessId).requests += 1;
+    },
+  };
+}
+
 /**
  * The quota as the app holds it, in this process: a fixed one-minute window
  * of requests and records handed out, and a count of calls in flight, per
@@ -63,6 +79,15 @@ export function createAgentQuota(
   now: () => Date,
   handedOut: (answer: object) => number,
 ): CredentialQuota {
+  return { ...doorOf(limits.refused, now), ...callsOf(limits, now, handedOut) };
+}
+
+/** The three levels' counts; `createAgentQuota` adds the door. */
+function callsOf(
+  limits: AgentLimits,
+  now: () => Date,
+  handedOut: (answer: object) => number,
+): Pick<CredentialQuota, 'enter'> {
   const windows = new Map<string, Window>();
   const inFlight = new Map<string, number>();
   const windowOf = (key: string, at: number): Window => currentWindow(windows, key, at);

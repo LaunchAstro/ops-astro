@@ -6,6 +6,7 @@
 // clear answer and nothing run. The limits are the app's (`agent-quota.ts`);
 // each case builds the world's composition with small ones.
 
+import { randomBytes } from 'node:crypto';
 import { expect, it } from 'vitest';
 import type { AgentLimits } from '../../apps/api/auth/agent-quota.ts';
 import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
@@ -36,7 +37,7 @@ function limited(
     database,
     agentCredentials: {
       now: () => new Date(clock),
-      limits: { requests: WIDE, concurrent: WIDE, exports: WIDE, ...overrides },
+      limits: { requests: WIDE, concurrent: WIDE, exports: WIDE, refused: 1000, ...overrides },
     },
   });
   return { api, tick: (ms) => (clock += ms) };
@@ -149,3 +150,30 @@ needsServer('API-2 quota on export: records handed out past the limit are refuse
   expect((await readWith(api, credential.secret)).code).toBe('ok');
   expectClearRefusal(await readWith(api, credential.secret), credential.secret);
 });
+
+needsServer(
+  'API-2 quota at the door: made-up bearers on a business key are limited before they are resolved',
+  async () => {
+    const { api, tick } = limited({ refused: 2 });
+    const before = await attemptsIn(harness.world.alpha);
+    const made = async (): Promise<Answer> =>
+      await readWith(api, randomBytes(32).toString('base64url'));
+    expect((await made()).code).toBe('DELEGATION_NOT_LIVE');
+    expect((await made()).code).toBe('DELEGATION_NOT_LIVE');
+    const third = await made();
+    expect(third.status).toBe(429);
+    expect(third.code).toBe('AGENT_QUOTA_EXCEEDED');
+    // The third was turned away before its transaction: no attempt row.
+    expect(await attemptsIn(harness.world.alpha)).toBe(before + 2);
+    tick(61_000);
+    expect((await made()).code).toBe('DELEGATION_NOT_LIVE');
+  },
+);
+
+async function attemptsIn(businessId: string): Promise<number> {
+  const rows = await harness.world.db.admin.execute<{ readonly n: string }>(
+    'select count(*)::text as n from public.authentication_attempts where business_id = $1',
+    [businessId],
+  );
+  return Number(rows[0]?.n ?? '-1');
+}
