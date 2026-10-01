@@ -57,7 +57,6 @@ import { statesOf, withPageDefaults } from './read-defaults.ts';
 import { TeamSubtasks } from './Subtasks.tsx';
 import { HandlingTicks } from './Ticks.tsx';
 import { BriefField, DescriptionField } from './Writing.tsx';
-import { useShowFinished } from './show-finished.ts';
 
 /** What opened the panel: the task, the door pressed, and the conversation tab it was pressed on. */
 export interface PanelOpening {
@@ -188,14 +187,11 @@ function useTimerStop(props: SideProps): void {
 
 /** The subtasks and time, without the doors: this is where their edits happen. */
 function PanelWork(props: SideProps): ReactElement {
-  const [showFinished, setShowFinished] = useShowFinished(props.client);
   const [showAllTime, setShowAllTime] = useState(false);
   return (
     <TeamSubtasks
       client={props.client}
       task={props.task}
-      showFinished={showFinished}
-      onShowFinished={setShowFinished}
       showAllTime={showAllTime}
       onShowAllTime={setShowAllTime}
       onChanged={props.onChanged}

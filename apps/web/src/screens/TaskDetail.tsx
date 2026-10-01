@@ -132,7 +132,6 @@ import { History } from './task/History.tsx';
 import { Outages } from './task/Outages.tsx';
 import { Assignee, Lifecycle, type LifecycleCommand } from './task/Lifecycle.tsx';
 import { PageStatus } from './task/StatusField.tsx';
-import { useShowFinished } from './task/show-finished.ts';
 
 export interface TaskDetailProps {
   readonly client: OperationsClient;
@@ -591,9 +590,6 @@ function Loaded(props: LoadedProps): ReactElement {
     isEmpty: (value) => (value.outages ?? []).length === 0,
     deps: [],
   });
-  // Remembered per person in the preference store (MP-4-4, CS-4.27); the
-  // shared view never reaches here, so an outside reader reads only task.read.
-  const [showFinished, setShowFinished] = useShowFinished(client);
 
   // Where this edit began. An existing draft keeps its own starting point; a
   // first keystroke takes the record as it stands right now.
@@ -712,7 +708,7 @@ function Loaded(props: LoadedProps): ReactElement {
 
             <DescriptionSection description={task.description} />
 
-            <TeamSubtasks {...props} showFinished={showFinished} onShowFinished={setShowFinished} />
+            <TeamSubtasks {...props} />
 
             <Comments
               client={client}
