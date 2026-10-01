@@ -23,7 +23,7 @@
 // - The read: each held call's drop, as the task's people read it.
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
-import type { EffectLookup } from './reconcile.ts';
+import type { EffectLookup } from './effect-lookup.ts';
 
 /** The sweep's half, under its locks: the lost worker's started calls held, unsent ones released. */
 export async function holdLostCalls(

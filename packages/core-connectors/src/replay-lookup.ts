@@ -8,7 +8,10 @@
 // at registration (`nothingHappened`), and anything else proves nothing.
 
 import type { AdapterRequest } from './operation.ts';
-import type { ReplayLookupMode } from './replay.ts';
+
+/** How the stand-in answers a lookup (AW-10): honestly, or one of the hostile answers. */
+export type ReplayLookupMode =
+  'honest' | 'malformed' | 'oversized' | 'redirect' | 'slow' | 'claims_success' | 'unreachable';
 
 /** Where the stand-in answers whether it began one operation. */
 export const REPLAY_LOOKUP_PATH = '/v1/operations/lookup';

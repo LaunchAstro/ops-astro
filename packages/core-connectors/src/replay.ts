@@ -22,7 +22,12 @@ import {
   type ModelAnswer,
   type ModelOperationDeclaration,
 } from './operation.ts';
-import { lookupBody, operationOf, REPLAY_LOOKUP_PATH } from './replay-lookup.ts';
+import {
+  lookupBody,
+  operationOf,
+  REPLAY_LOOKUP_PATH,
+  type ReplayLookupMode,
+} from './replay-lookup.ts';
 
 /** The model window the replay provider declares, recorded for the harness adoption test (AW-12). */
 export const REPLAY_MODEL_WINDOW: { readonly model: string; readonly contextUnits: number } = {
@@ -117,9 +122,7 @@ export type ReplayMode =
   | 'rate_limited'
   | 'cut';
 
-/** How the stand-in answers a lookup (AW-10): honestly, or one of the hostile answers. */
-export type ReplayLookupMode =
-  'honest' | 'malformed' | 'oversized' | 'redirect' | 'slow' | 'claims_success' | 'unreachable';
+export type { ReplayLookupMode } from './replay-lookup.ts';
 
 export interface SeenRequest {
   readonly path: string;

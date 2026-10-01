@@ -29,13 +29,10 @@ import { reserve } from '../decide.ts';
 import type { LockRequest } from '../locks.ts';
 import { priceAttempt } from '../price-book.ts';
 import { lockRediscovered } from '../rediscovery.ts';
+import type { EffectLookup } from './effect-lookup.ts';
 import { markCameBack } from './outage.ts';
 
-/** The register's answer for one unknown step: true, false, or `undefined` when it cannot answer. */
-export type EffectLookup = (
-  tx: TenantQuery,
-  step: { readonly attemptId: string; readonly holderActorId: string; readonly stepKind: string },
-) => Promise<boolean | undefined>;
+export type { EffectLookup } from './effect-lookup.ts';
 
 export interface Reconciled {
   readonly attemptId: string;
