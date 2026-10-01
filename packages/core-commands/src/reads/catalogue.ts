@@ -308,7 +308,7 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       // detail and the shared view are built apart and carry neither.
       return {
         ok: true,
-        task: { ...task, ...(await readClientFacts(tx, task.id)) },
+        task: { ...task, ...(await readClientFacts(tx, task.id, subjectsOf(session))) },
         states: await readStateChoices(tx, spine.taskStateTypeId),
       };
     },

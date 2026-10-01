@@ -6,7 +6,7 @@
 // client, for the Client field (MP-4-8), so the field and the lock never
 // disagree about a task they both see.
 
-import type { TenantQuery } from '../../../core-records/src/index.ts';
+import { clientsReached, type Subject, type TenantQuery } from '../../../core-records/src/index.ts';
 import { COMMAND_SURFACE } from '../../../core-wire/src/index.ts';
 
 /**
@@ -42,15 +42,25 @@ export async function hasContent(tx: TenantQuery, taskId: string): Promise<boole
 
 /**
  * What the Client field reads (MP-4-8): the client the task is under, by id
- * (`records.uuid_7`), and whether it has content, the lock's own answer. The client's name is `client.list`'s to send, never this.
+ * (`records.uuid_7`), and whether it has content, the lock's own answer. The
+ * id goes only to a reader whose grants reach that client, `client.list`'s
+ * rule (a grant across the business, or one on the client); anyone else reads
+ * null, and the task's `clientSet` says it is under one (CS-4.12). The
+ * client's name is `client.list`'s to send, never this.
  */
 export async function readClientFacts(
   tx: TenantQuery,
   taskId: string,
+  subjects: readonly Subject[],
 ): Promise<{ readonly client: string | null; readonly hasContent: boolean }> {
   const [row] = await tx.query<{ readonly client: string | null }>(
     'select uuid_7 as client from records where business_id = $1 and id = $2',
     [tx.businessId, taskId],
   );
-  return { client: row?.client ?? null, hasContent: await hasContent(tx, taskId) };
+  const client = row?.client ?? null;
+  const reached = client === null ? [] : ((await clientsReached(tx, subjects)) ?? []);
+  return {
+    client: reached.some((one) => one.clientId === client) ? client : null,
+    hasContent: await hasContent(tx, taskId),
+  };
 }
