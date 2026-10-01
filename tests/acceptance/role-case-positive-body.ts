@@ -25,7 +25,7 @@ import { answerAtTheStop } from './stopped-run.ts';
 import { revisedRunBody } from './revised-run.ts';
 
 /** A team invitation to an address nobody holds yet. */
-const invitee = (): Record<string, unknown> => ({
+export const invitee = (): Record<string, unknown> => ({
   name: 'Invited Ivy',
   email: `ivy-${randomUUID()}@example.test`,
   role: 'member',
