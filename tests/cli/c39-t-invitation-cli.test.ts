@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // C39-T's agent parity (CS-15.18) for a team invitation: `invitation.create`,
-// `invitation.resend` and `invitation.revoke`, each sent through the CLI
+// `invitation.resend` and `invitation.revoke`, and the read `invitation.list`,
+// each sent through the CLI
 // client and straight to the person API as the same caller (`cli-parity.ts`).
 // One invitation is made, resent and revoked through each surface, and the
 // answers are the same record bar the values minted per call. The refusals
@@ -71,6 +72,8 @@ async function refusedWithoutShare(alphaId: string): Promise<void> {
   const { world } = harness;
   const create = await both(world.api, 'invitation.create', CREATE, world.mia.token);
   refusedAlike(create, 403, 'SCOPE_NOT_GRANTED');
+  const list = await both(world.api, 'invitation.list', {}, world.mia.token);
+  refusedAlike(list, 403, 'SCOPE_NOT_GRANTED');
   for (const verb of VERBS_ON_ONE) {
     // eslint-disable-next-line no-await-in-loop
     const pair = await both(world.api, verb, { invitationId: alphaId }, world.mia.token);
@@ -83,6 +86,7 @@ async function refusedOnAgentPrefix(alphaId: string): Promise<void> {
   const { world } = harness;
   const agent = { entry: 'agent' as const };
   refusedSame(await both(world.api, 'invitation.create', CREATE, world.agent.token, agent));
+  refusedSame(await both(world.api, 'invitation.list', {}, world.agent.token, agent));
   for (const verb of VERBS_ON_ONE) {
     // eslint-disable-next-line no-await-in-loop
     refusedSame(await both(world.api, verb, { invitationId: alphaId }, world.agent.token, agent));
@@ -141,6 +145,12 @@ describe.skipIf(serverUrl === undefined)('C39-T invitations on the command line'
     expect((revoked.cli.body as { detail: { state: string } }).detail.state).toBe('revoked');
     expect(await stateOf(ids.cli)).toBe('revoked');
     expect(await stateOf(ids.api)).toBe('revoked');
+    // The list reads the same on both, each revoked invitation in it.
+    const listed = await both(world.api, 'invitation.list', {}, world.ada.token);
+    sameRecord(listed, MINTED);
+    const states = (listed.cli.body as { invitations: { invitationId: string; state: string }[] })
+      .invitations;
+    expect(states.find((row) => row.invitationId === ids.cli)?.state).toBe('revoked');
   });
 
   it('C39-T parity refusals: no access:share, the agent prefix and another business, alike on both', async () => {
