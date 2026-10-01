@@ -24,7 +24,9 @@ import {
 } from '../../packages/core-records/src/authority/step-up.ts';
 import type { BusinessId } from '../../packages/core-records/src/tenancy/database.ts';
 import { declarationOf, type CommandName } from '../../packages/core-wire/src/surface.ts';
+import { PROPOSAL, type Prepared } from '../acceptance/role-case-bodies.ts';
 import { createHarness, type Harness } from '../acceptance/role-case-harness.ts';
+import { answerAtTheStop } from '../acceptance/stopped-run.ts';
 import { serverUrl, tokenFor, type Answer } from '../acceptance/world.ts';
 import { agentOnWork, billingHolder, signed, type Signed } from './c54-fixture.ts';
 
@@ -104,11 +106,27 @@ describe.skipIf(serverMissing)('C54 recent sign-in', { timeout: 120_000 }, () =>
     return new Map(rows.map((row) => [row.name, row.digest]));
   }
 
+  /**
+   * A fresh positive body. A stopped run's delegation stays live while it
+   * waits, and an agent holds one live delegation per purpose, so each stop
+   * here is proposed under a purpose of its own.
+   */
+  async function bodyFor(name: CommandName): Promise<Readonly<Record<string, unknown>>> {
+    const prepared: Prepared =
+      name === 'run.top_up'
+        ? await answerAtTheStop(harness, name, {
+            ...PROPOSAL,
+            purpose: `c54_recent_${randomUUID().replaceAll('-', '_')}`,
+          })
+        : await harness.positiveBody(declarationOf(name));
+    if ('exception' in prepared) throw new Error(`c54: ${name}: ${prepared.exception}`);
+    return prepared.body;
+  }
+
   /** One money answer as ada, its body made fresh so each call has its own work. */
   async function answer(name: CommandName, token?: string): Promise<Answer> {
-    const prepared = await harness.positiveBody(declarationOf(name));
-    if ('exception' in prepared) throw new Error(`c54: ${name}: ${prepared.exception}`);
-    return await harness.asPerson(name, prepared.body, 'alpha', {
+    const body = await bodyFor(name);
+    return await harness.asPerson(name, body, 'alpha', {
       token: token ?? harness.world.ada.token,
     });
   }
@@ -130,12 +148,11 @@ describe.skipIf(serverMissing)('C54 recent sign-in', { timeout: 120_000 }, () =>
     for (const name of C54_MONEY) {
       // Sequential: each answer's digest is its own.
       // oxlint-disable-next-line no-await-in-loop
-      const prepared = await harness.positiveBody(declarationOf(name));
-      if ('exception' in prepared) throw new Error(`c54: ${name}: ${prepared.exception}`);
+      const body = await bodyFor(name);
       // oxlint-disable-next-line no-await-in-loop
       const before = await fingerprint();
       // oxlint-disable-next-line no-await-in-loop
-      const refused = await harness.asPerson(name, prepared.body, 'alpha', { token: stale });
+      const refused = await harness.asPerson(name, body, 'alpha', { token: stale });
       // oxlint-disable-next-line no-await-in-loop
       const after = await fingerprint();
       const wrote = [...after.keys()].filter(
@@ -146,7 +163,7 @@ describe.skipIf(serverMissing)('C54 recent sign-in', { timeout: 120_000 }, () =>
       }
       // The same body on a fresh factor: the refusal was the step-up's, not the body's.
       // oxlint-disable-next-line no-await-in-loop
-      const fresh = await harness.asPerson(name, prepared.body);
+      const fresh = await harness.asPerson(name, body);
       if (fresh.code !== 'ok') wrong.push(`${name} fresh: ${fresh.status} ${fresh.code}`);
     }
     expect(wrong).toStrictEqual([]);
@@ -201,10 +218,7 @@ describe.skipIf(serverMissing)('C54 recent sign-in', { timeout: 120_000 }, () =>
       await setStepUp(world.alpha, value);
       for (const name of C54_MONEY) {
         // oxlint-disable-next-line no-await-in-loop
-        const prepared = await harness.positiveBody(declarationOf(name));
-        if ('exception' in prepared) throw new Error(`c54: ${name}: ${prepared.exception}`);
-        // oxlint-disable-next-line no-await-in-loop
-        const refused = await harness.asAgent(name, prepared.body, credential);
+        const refused = await harness.asAgent(name, await bodyFor(name), credential);
         seen.push(`${String(value)} ${name} ${refused.status} ${refused.code}`);
       }
     }
