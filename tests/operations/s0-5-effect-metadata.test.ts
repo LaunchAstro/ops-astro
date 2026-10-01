@@ -26,6 +26,7 @@ import type { Prepared } from '../acceptance/role-case-bodies.ts';
 import { serverUrl } from '../acceptance/world.ts';
 import { grantTo, type Member } from '../commands/fixture.ts';
 import { AGENT_RECIPES } from '../tenancy/statement-capture-agent-recipes.ts';
+import { endLive } from '../tenancy/statement-capture-cases.ts';
 
 if (serverUrl === undefined) {
   console.warn('operations/s0-5-effect-metadata: DATABASE_URL is unset, so nothing below ran.');
@@ -163,8 +164,11 @@ async function runFaults(declaration: CommandDeclaration): Promise<string[]> {
     'agent' in prepared
       ? await harness.asAgent(name, prepared.body, prepared.credential)
       : await harness.asPerson(name, prepared.body);
+  const after = answer.code === 'ok' ? await fingerprint() : before;
+  // Measured, the agent's pickup is ended: the world's one agent holds one live
+  // delegation at a time, and a later recipe picks up its own.
+  if ('agent' in prepared) await endLive(harness);
   if (answer.code !== 'ok') return [`${name}: its fixture was refused ${answer.code}`];
-  const after = await fingerprint();
   const written = [...after.keys()].filter(
     (table) => !BOOKKEEPING.has(table) && after.get(table) !== before.get(table),
   );
