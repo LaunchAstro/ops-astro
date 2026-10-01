@@ -135,8 +135,6 @@ const REVOKED: Readonly<Record<string, { readonly from: string; readonly letters
 const COLUMN_UPDATES: Readonly<
   Record<string, { readonly from: string; readonly columns: readonly string[] }>
 > = {
-  // S0-5 (0059): the gate's installation mode, alone.
-  'ops.installation': { from: '0059', columns: ['mode'] },
   'public.planned_runs': { from: '0192', columns: ['state'] },
 };
 
@@ -164,6 +162,8 @@ const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: strin
   })),
   { from: '0046', line: 'ops_astro_lookup SELECT public.businesses.id' },
   { from: '0046', line: 'ops_astro_lookup SELECT public.businesses.key' },
+  // S0-5 (0059): the gate's installation mode, alone (no business column).
+  { from: '0059', line: 'ops_astro_app UPDATE ops.installation.mode' },
   // Batch 2a's provider-step queues (C58, C59): the application inserts and
   // reads them column by column.
   ...['INSERT', 'SELECT'].map((act) => ({
