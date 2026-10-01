@@ -262,9 +262,9 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   ),
   // MP-6-2: a run's state, a new version.
   'run.revise_state': writing(client('run_states')),
-  // AW-11: the child's delegation, minted and handed back.
-  'run.delegate_child': writing(business('delegations')),
-  'run.child_handback': writing(business('delegations')),
+  // AW-11: the child's delegation, minted and handed back, each a run event.
+  'run.delegate_child': writing([...client('run_events'), ...business('delegations')]),
+  'run.child_handback': writing([...client('run_events'), ...business('delegations')]),
   // C39-T: a team invitation and its one-time link. A team member is not an
   // outside person (the `access` rule above), so it admits no one here.
   'invitation.create': writing(business('invitations', 'people', 'enrolment_tokens')),
