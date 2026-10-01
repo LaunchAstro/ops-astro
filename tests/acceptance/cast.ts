@@ -166,6 +166,31 @@ function steppedUpNow(): Assurance {
   return { level: 'aal2', signedInAt: now, factorAt: now };
 }
 
+/** Every collection × action pair, then the extra pairs, one grant each, in that order. */
+async function grantPairs(
+  db: FreshDatabase,
+  businessId: BusinessId,
+  member: Parameters<typeof grantTo>[1],
+  options: {
+    readonly actions: readonly Action[];
+    readonly collections: readonly string[];
+    readonly extraPairs?: readonly (readonly [string, Action])[];
+  },
+): Promise<void> {
+  const pairs = [
+    ...options.collections.flatMap((collection) =>
+      options.actions.map((action) => [collection, action] as const),
+    ),
+    ...(options.extraPairs ?? []),
+  ];
+  await db.app.withBusiness(businessId, async (tx: TenantQuery) => {
+    for (const [collection, action] of pairs) {
+      // eslint-disable-next-line no-await-in-loop -- one grant at a time reads as a list
+      await grantTo(tx, member, action, WHOLE_BUSINESS, false, collection);
+    }
+  });
+}
+
 export async function enrolCaller(
   db: FreshDatabase,
   businessId: BusinessId,
@@ -193,20 +218,7 @@ export async function enrolCaller(
     return { personId, actorId };
   });
   const member = { ...identity, presented: { provider: 'supabase', subject } as VerifiedSubject };
-  if (options.actions.length > 0) {
-    await db.app.withBusiness(businessId, async (tx: TenantQuery) => {
-      for (const collection of options.collections) {
-        for (const action of options.actions) {
-          // eslint-disable-next-line no-await-in-loop -- one grant at a time reads as a list
-          await grantTo(tx, member, action, WHOLE_BUSINESS, false, collection);
-        }
-      }
-      for (const [collection, action] of options.extraPairs ?? []) {
-        // eslint-disable-next-line no-await-in-loop
-        await grantTo(tx, member, action, WHOLE_BUSINESS, false, collection);
-      }
-    });
-  }
+  if (options.actions.length > 0) await grantPairs(db, businessId, member, options);
   return {
     name,
     businessKey,

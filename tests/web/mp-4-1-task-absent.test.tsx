@@ -21,6 +21,7 @@ const unnamedPage = async () =>
       params: {},
       notice: null,
       storage: null,
+      navigate: () => {},
     }),
   );
 

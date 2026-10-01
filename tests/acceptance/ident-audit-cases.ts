@@ -293,12 +293,3 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
     },
   };
 }
-
-// Durable state and the audit chain, read on the administrative connection.
-
-/** Evidence of attempts, which a committed refusal writes by contract (T1). */
-export const EVIDENCE_TABLES: ReadonlySet<string> = new Set([
-  'audit_events',
-  'operations',
-  'authentication_attempts',
-]);

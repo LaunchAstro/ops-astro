@@ -57,7 +57,8 @@ export function conversing(...threads: readonly (readonly unknown[])[]): {
       return Promise.resolve(json({ ok: true, queue: [], alerts: [], outages: [] }));
     }
     if (at.endsWith('/task/execution')) return Promise.resolve(json({ ok: false }));
-    if (at.includes('/live/task/')) return Promise.resolve(new Response(null, { status: 404 }));
+    // The tab's one live stream (C4), unavailable here.
+    if (/\/live(\/task\/|\?|$)/u.test(at)) return Promise.resolve(new Response(null, { status: 404 }));
     if (at.endsWith('/task/read')) {
       const comments = threads[Math.min(reads, threads.length - 1)] ?? [];
       reads += 1;

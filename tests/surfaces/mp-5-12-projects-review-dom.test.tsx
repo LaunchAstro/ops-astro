@@ -201,7 +201,7 @@ describe('MP-5-12 drawn from task.board through the Projects screen', () => {
       newOperationId: () => 'operation-1',
     });
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1480 });
-    mounted = await mount(<Projects client={client} grantKey="alpha:ada" />);
+    mounted = await mount(<Projects navigate={() => {}} client={client} grantKey="alpha:ada" />);
     await settle();
     expect(one(mounted, VIEWER)?.classList.contains('is-on')).toBe(true);
     expect(drawn(mounted)).toStrictEqual(['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa']);

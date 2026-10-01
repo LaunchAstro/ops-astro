@@ -74,5 +74,8 @@ export * from './page-kit/tips.tsx';
 export * from './page-kit/section.tsx';
 export * from './page-kit/stats.tsx';
 export * from './page-kit/table.tsx';
+// The page kit's table sort is the package's; the board machine's own sort
+// (U09) is reached through `board/index.ts`.
+export { nextSort, sortRows, type SortState } from './page-kit/table.tsx';
 export * from './page-kit/bars.tsx';
 export * from './page-kit/detail.tsx';

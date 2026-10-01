@@ -26,6 +26,7 @@ import { privacyBody } from './role-case-privacy-bodies.ts';
 import { credentialBody } from './role-case-credential-bodies.ts';
 import { accessBody, madeClient } from './role-case-access-bodies.ts';
 import { createGateBody } from './role-case-gate-bodies.ts';
+import { FIXED_BODIES } from './role-case-fixed-bodies.ts';
 
 export function createPositiveBody(
   context: BodyContext,
@@ -42,6 +43,8 @@ export function createPositiveBody(
       const task = await context.freshTask(`a task for ${declaration.name}`);
       return { recordId: task.id, expectedRevision: task.revision };
     };
+    const fixed = FIXED_BODIES[declaration.name];
+    if (fixed !== undefined) return { body: { ...fixed } };
     switch (declaration.name) {
       case 'task.create':
         return { body: { fields: { title: 'the admin creates a task' } } };
@@ -162,48 +165,11 @@ export function createPositiveBody(
       case 'task.read':
       case 'task.execution':
         return { body: { recordId: context.alphaTaskId } };
-      case 'task.board':
-        return { body: { board: null } };
-      case 'task.ledger':
-        return { body: { timeZone: 'UTC' } };
-      // An empty body, and no `expectedRevision`: `business_settings` has no revision column,
-      // and `session.capabilities` reports the caller's own grants. The admin holds what each
-      // asks: `settings:read`, `access:manage` and `operations:read` (C55, INB-1e), and a live
-      // grant of any kind for `session.capabilities`, `client.list` (C32) and the inbox (INB-1d).
-      // The person menu's two (C23) and the caller's own preferences (MP-2-11a) are its own.
-      case 'task.queue':
-      case 'person.list':
-      case 'team.list':
-      case 'settings.read':
-      case 'session.capabilities':
-      case 'session.person':
-      case 'session.end':
-      case 'preference.read':
-      case 'access.read':
-      case 'operations.read':
-      case 'client.list':
-      case 'inbox.read':
-      case 'inbox.count':
-      case 'inbox.unattended':
-        // The caller's own inbox (INB-1d) needs a live grant of any kind, as
-        // above; `inbox.unattended` needs `operations:read`, which the seed
-        // grants the admin (INB-1e, C55).
-        return { body: {} };
-      case 'preference.save':
-        return { body: { preference: 'appearance', value: 'dark' } };
-      case 'preference.dismiss_tip':
-        return { body: { page: 'agency:inbox', tip: 'triage', version: 1 } };
-      case 'task.search':
-        // A word no audit row carries, so digest-only is checked on it.
-        return { body: { query: 'brochure' } };
       case 'client.create':
       case 'access.grant':
       case 'access.revoke':
       case 'access.end':
         return await accessBody(declaration.name, context);
-      case 'notifications.set_channel':
-        // Self-scoped (INB-1e): in-app is always on, the one mode it takes.
-        return { body: { channel: 'in_app', mode: 'on' } };
       case 'inbox.seen': {
         // The caller's own item: a proposal raises a decision item for every
         // decide holder, the admin among them, read back from their inbox.
@@ -212,20 +178,6 @@ export function createPositiveBody(
         const items = listed.body['inbox'] as readonly Record<string, unknown>[];
         return { body: { itemId: String(items.at(-1)?.['id']) } };
       }
-      case 'preset.plan':
-        return { body: { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] } };
-      case 'settings.set_four_eyes_threshold':
-        return { body: { value: 1200 } };
-      case 'settings.set_client_sign_off':
-        return { body: { value: true } };
-      case 'settings.set_money_step_up':
-        return { body: { value: true } };
-      // Inside C122-1's bounds whichever runs first: seven or more, and the
-      // retention window never below the conversation window.
-      case 'settings.set_conversation_window':
-        return { body: { value: 14 } };
-      case 'settings.set_retention_window':
-        return { body: { value: 90 } };
       // C81: the admin holds `privacy:manage`, as the owner does.
       case 'legal.draft_version':
       case 'legal.approve_version':
@@ -318,9 +270,6 @@ export function createPositiveBody(
       case 'task.remove_tag':
       case 'tag.list':
         return await tags[declaration.name]();
-      case 'task.todos':
-        // The reader's own to-dos (MP-7-1): no operand.
-        return { body: {} };
       case 'task.dispatch':
         // The person marks their own lease's step dispatched (T2c1).
         return { body: await ownLease(context) };

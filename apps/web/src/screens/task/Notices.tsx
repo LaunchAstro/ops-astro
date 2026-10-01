@@ -5,6 +5,7 @@
 // apart; the heading is `Header.tsx`.
 
 import type { ReactElement } from 'react';
+import type { InternalTaskDetail } from '../../../../../packages/core-wire/src/index.ts';
 import type { WireRefusal } from '../../operations/client.ts';
 import { describeRefusal } from '../../records/submit.ts';
 

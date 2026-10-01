@@ -267,7 +267,7 @@ describe('MP-5-8 column read-back, drawn from task.board', () => {
       newOperationId: () => 'operation-1',
     });
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1480 });
-    mounted = await mount(<Projects client={client} grantKey="alpha:ada" />);
+    mounted = await mount(<Projects navigate={() => {}} client={client} grantKey="alpha:ada" />);
     await settle();
     const rank = mounted.find('tbody tr td[data-key="rank"] [title]');
     expect([rank?.textContent, rank?.getAttribute('title')]).toStrictEqual([

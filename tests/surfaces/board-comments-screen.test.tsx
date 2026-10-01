@@ -77,7 +77,7 @@ const open = async (answer: Readonly<Record<string, unknown>>): Promise<Mounted>
     newOperationId: () => 'operation-1',
   });
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1480 });
-  const board = await mount(<Projects client={client} grantKey="alpha:ada" />);
+  const board = await mount(<Projects navigate={() => {}} client={client} grantKey="alpha:ada" />);
   await settle();
   return board;
 };

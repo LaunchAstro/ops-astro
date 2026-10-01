@@ -84,10 +84,11 @@ const screen = async (changes = 0, route = false) => {
         params: {},
         notice: null,
         storage: null,
+        navigate: () => {},
         taskPanel: host(count),
       })
     ) : (
-      <Projects client={client} grantKey="alpha:ada" taskPanel={host(count)} />
+      <Projects navigate={() => {}} client={client} grantKey="alpha:ada" taskPanel={host(count)} />
     );
   mounted = await mount(element(changes));
   await settle();

@@ -97,7 +97,7 @@ const screen = async (sent: Sent): Promise<Mounted> => {
     newOperationId: () => 'operation-1',
   });
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1480 });
-  mounted = await mount(<Projects client={client} grantKey="alpha:ada" />);
+  mounted = await mount(<Projects navigate={() => {}} client={client} grantKey="alpha:ada" />);
   await settle();
   return mounted;
 };

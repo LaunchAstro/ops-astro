@@ -238,22 +238,7 @@ export {
   type RuntimeRefusalCode,
 } from './register.ts';
 export { UNPRODUCED_CODES } from './register-unproduced.ts';
-export {
-  COMMENT_TYPE_KEY,
-  externalCommentProjection,
-  writeComment,
-  type CommentAudience,
-  type CommentType,
-  type StoredComment,
-} from './tasks/comments.ts';
-export {
-  commentSignals,
-  lockComment,
-  readTaskComments,
-  removeComment,
-  rewriteComment,
-  type CommentSignal,
-} from './tasks/comment-thread.ts';
+export * from './tasks/content.ts';
 export {
   DERIVED_ON_CREATE,
   deriveSource,
@@ -268,27 +253,6 @@ export {
   type EntryPoint,
 } from './tasks/placement.ts';
 export { readTaskFamily, type FamilyRow, type TaskFamily } from './tasks/family.ts';
-export {
-  deleteTimeEntry,
-  logTime,
-  parseDuration,
-  readTaskTime,
-  setTimeEntryNote,
-  startTimer,
-  stopTimer,
-  type TaskTime,
-  type TimeEntry,
-} from './tasks/time.ts';
-export {
-  addTaskTag,
-  createTag,
-  listTags,
-  removeTaskTag,
-  TAG_NAME_LIMIT,
-  tagNameOf,
-  tagsOfTask,
-  type Tag,
-} from './tasks/tags.ts';
 export { changesSince, type ChangesSince, type TaskChange } from './tasks/changes.ts';
 export { slotOf, TASK_SPINE, TASK_TYPE_KEY } from './tasks/spine.ts';
 export { readTaskStates, setTaskState, type TaskStateRow } from './tasks/state.ts';
