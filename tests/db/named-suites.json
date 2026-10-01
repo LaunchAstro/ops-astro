@@ -944,6 +944,7 @@
     "tests/api/aw-03-origin.test.ts",
     "tests/api/c54-money.test.ts",
     "tests/runtime/mp-6-2-placement.test.ts",
+    "tests/review/sl12-18-placement-lineage-proof.test.ts",
     "tests/review/sl01-rel-g2-health-proof.test.ts",
     "tests/ci/staging-special-objects.test.ts",
     "tests/ci/s0-1-staging-reset.test.ts",
