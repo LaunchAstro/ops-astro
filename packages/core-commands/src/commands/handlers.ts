@@ -42,6 +42,7 @@ import { refuseModelCallAsPerson } from './model-call-person.ts';
 import { endOnRun, topUpOnRun } from './run-answers.ts';
 import { reviseStateOnRun } from './run-state.ts';
 import { stampOwnSeen } from './inbox-seen.ts';
+import { invitationAct } from './invitations.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
@@ -150,6 +151,10 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'run.child_handback': refuseChildWorkAsPerson,
   'inbox.seen': (tx, context, request) => stampOwnSeen(tx, context, request.itemId),
   'notifications.set_channel': setNotificationChannel,
+  // C39-T: a person's acts on a team invitation, under `access:share`.
+  'invitation.create': invitationAct,
+  'invitation.resend': invitationAct,
+  'invitation.revoke': invitationAct,
 };
 
 function writeOwned(
