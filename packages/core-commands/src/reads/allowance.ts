@@ -11,7 +11,10 @@
 //   planning replies, so the read is the team's (owner, administrator,
 //   member: `isInternalReader`) holding `conversation:write`, the drawer's
 //   own key; a client, a member with no drawer and anyone else are refused
-//   `SCOPE_NOT_GRANTED` before any figure is read;
+//   `SCOPE_NOT_GRANTED` before any figure is read. A member is in the set by
+//   the owner's ruling of 1 Oct 2026 (Q4): "conversation:write members see the
+//   cap and what remains, as settings.read does", the same cap that read shows
+//   (`aw-04-planning-allowance-member.test.ts`);
 // - the conversation is optional: none is the empty drawer, before the first
 //   message, and reads nothing spent; one that is named must be the caller's
 //   own in this business, and anything else (another person's, another

@@ -992,7 +992,10 @@ MP-7-11 adds the assistant panel's tab row, under the same rule
 the planning cap (`set` false is the default, AUD 50), what is left of it
 across the business, and the named conversation's settled spend and held
 amount (nothing, with none named). The cap and what is left are the
-business's, so it is the team's only.
+business's, so it is the team's only: owner, administrator and member alike
+while they hold `conversation:write` across the business, a member seeing the
+same cap `settings.read` shows (owner ruling, 1 October 2026). A member
+without it is refused before any figure.
 
 `conversation.set_scope` is "Add page to context" (CS-7.31): one slot, so a
 second page replaces the first, and `null` clears it. The address is a page of
