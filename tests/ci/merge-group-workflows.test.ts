@@ -144,17 +144,31 @@ describe('merge group: no step skips a group', () => {
     for (const path of [CI, REVIEW])
       expect(top(read(path), 'jobs'), path).not.toMatch(/continue-on-error/u);
   });
+
+  // review3 M7: the cases above read block style, two-space steps and plain or quoted keys. A
+  // form they cannot read (flow style, a wider step indent, an escaped key) fails here instead.
+  it('both workflows keep to the one form these cases read', () => {
+    for (const path of [CI, REVIEW]) {
+      const text = top(read(path), 'jobs');
+      expect(text, `${path}: flow-style step`).not.toMatch(/^\s*- \{/mu);
+      expect(text, `${path}: wider step indent`).not.toMatch(/^\s*- {2,}\S/mu);
+      expect(text, `${path}: escaped key`).not.toMatch(/^\s*(?:- )?["'][^"'\n]*\\/mu);
+    }
+  });
 });
 
-/** A ci.yml step's one-line command, run on a group of #11 and #12 where #12 adds `file`. */
+/** A ci.yml step's one-line command, run on a group of #11 and #12 where each adds `file`. */
 function sweep(name: string, file: string, text: string) {
   const r = repo();
   // Copied, not linked: both scanners read the repository they sit in.
   cpSync(join(ROOT, 'scripts'), join(r.dir, 'scripts'), { recursive: true });
-  r.git('checkout', '-q', 'pr12');
-  writeFileSync(join(r.dir, file), text);
-  r.git('add', file);
-  r.git('commit', '-q', '-m', 'feat: b, planted');
+  // In both pull requests (review3 M8): a scan of one of them alone does not pass.
+  for (const pr of ['pr11', 'pr12']) {
+    r.git('checkout', '-q', pr);
+    writeFileSync(join(r.dir, `${pr}-${file}`), text);
+    r.git('add', `${pr}-${file}`);
+    r.git('commit', '-q', '-m', `feat: ${pr}, planted`);
+  }
   r.git('checkout', '-q', '-B', 'queue', r.main);
   r.merge('pr11', 'Merge pull request #11 from LaunchAstro/pr11');
   const head = r.merge('pr12', 'Merge pull request #12 from LaunchAstro/pr12');
@@ -185,10 +199,10 @@ describe('merge group: the range scans judge every pull request in the group', (
       expect(`${out.status} ${out.stdout} ${out.stderr}`).toMatch(/^0 /u);
     });
 
-    it(`${name}: fails a group when one pull request's range holds what it refuses, naming it`, () => {
+    it(`${name}: fails a group when each pull request's range holds what it refuses, naming both`, () => {
       const out = sweep(name, file, bad);
       expect(out.status).toBe(1);
-      expect(out.stderr).toMatch(/failed for #12\./u);
+      expect(out.stderr).toMatch(/failed for #11, #12\./u);
     });
   }
 });
