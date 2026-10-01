@@ -139,8 +139,8 @@ interface Gated {
  * The asks let onto the database: an ask from a client address past
  * `RESET_SOURCE_LIMIT` in the window, or with an ask of its own still on the
  * database, is dropped, then one past `RESET_IN_FLIGHT`. Each ask let on gets
- * its release, to run once its database work is over; dropped asks are counted
- * too. The database's counts stay the authority.
+ * its release, to run once its database work is over; a second call of it does
+ * nothing. Dropped asks are counted too. The database's counts stay the authority.
  */
 function resetGate(): (source: string) => (() => void) | undefined {
   let inFlight = 0;
@@ -161,8 +161,11 @@ function resetGate(): (source: string) => (() => void) | undefined {
     const held = gated;
     held.busy = true;
     inFlight += 1;
+    // Once per admission: an old ask's release never frees its source's newer ask.
+    let freed = false;
     return () => {
-      if (!held.busy) return;
+      if (freed) return;
+      freed = true;
       held.busy = false;
       inFlight -= 1;
     };
