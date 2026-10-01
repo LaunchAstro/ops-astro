@@ -1874,12 +1874,19 @@ the handback's transaction (`raiseRunSettled`). It is a pointer and grants
 nothing; the output it points at is still not the assignee's to decide (four
 eyes). An assignee who authorised the run is recorded once, as that person.
 
+"Reject this proposal" sits on the proposal's header, outside the gate card,
+on the task page's lineage and on the Agent pane alike. The pane tells the
+head version's story from its own hold (`headHold`): the settled hold of the
+run that handed the output back is history, so the output's pending gate is
+drawn armed, with approve, request changes and the header's reject on offer.
+
 Until the batch join, `isReviewedOutput` comes from a stand-in
 (`reviewed-output-n9-standin.ts`) that counts a version proposed by an agent's
 actor; AW-08's `reviewed-output.ts` replaces it there. Tests:
 `aw-09-reviewed-on-every-surface` (the invariant,
 `agent_output_is_reviewed_on_every_surface`), `aw-09-no-self-review`,
-`aw-09-isolation`, `aw-09-round-rules` and `aw-09-stuck-notice`.
+`aw-09-isolation`, `aw-09-round-rules`, `aw-09-stuck-notice` and
+`aw-09-reject-header`.
 
 ## What is not here
 

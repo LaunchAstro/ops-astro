@@ -15,8 +15,8 @@
 // passed on the server's clock, which the read already derived), never a
 // timer in the browser. What the run staged is read in `agent-staged.ts`.
 
-import { unknownOf, type UnknownAttempt } from './run-projection.ts';
-import type { RunCheck, RunLineage, RunReservation, RunVersion } from './run-projection.ts';
+import { headHold, unknownOf, type UnknownAttempt } from './run-projection.ts';
+import type { RunCheck, RunLineage, RunVersion } from './run-projection.ts';
 
 export type RunTone = 'gate' | 'run' | 'done' | 'bad';
 
@@ -103,15 +103,10 @@ const WORDS: Readonly<Record<RunState, { word: string; tone: RunTone }>> = {
   cancelled: { word: 'Cancelled', tone: 'bad' },
 };
 
-/** The run's reservation that matters now: the newest one. */
-function latest(reservations: readonly RunReservation[]): RunReservation | undefined {
-  return reservations.at(-1);
-}
-
 function stateOf(lineage: RunLineage, head: RunVersion): RunState {
   if (lineage.state === 'rejected') return 'rejected';
   if (lineage.state === 'cancelled') return 'cancelled';
-  const reservation = latest(lineage.reservations);
+  const reservation = headHold(lineage, head);
   if (reservation?.state === 'quarantined') return 'unknown-outcome';
   // T3b's unknown effect: held until a person records what happened (C54).
   if (reservation?.attempt?.state === 'liability_unknown') return 'unknown-outcome';
@@ -259,7 +254,7 @@ export function runStories(proposals: readonly RunLineage[] | undefined): readon
     const box = gateBox(lineage, head, state);
     const jobs = jobsOf(head, state, box);
     const passed = head.checks.filter((check) => check.outcome === 'passed').length;
-    const reservation = latest(lineage.reservations);
+    const reservation = headHold(lineage, head);
     const { word, tone } = WORDS[state];
     return [
       {
