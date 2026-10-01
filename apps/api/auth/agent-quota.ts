@@ -55,6 +55,18 @@ function currentWindow(windows: Map<string, Window>, key: string, at: number): W
   return fresh;
 }
 
+/** A business's door: its not-live bearers a minute, counted in its own window's `requests`. */
+function doorOf(refused: number, now: () => Date): Pick<CredentialQuota, 'knock' | 'turnedAway'> {
+  const windows = new Map<string, Window>();
+  const door = (businessId: string): Window => currentWindow(windows, businessId, now().getTime());
+  return {
+    knock: (businessId) => door(businessId).requests < refused,
+    turnedAway(businessId) {
+      door(businessId).requests += 1;
+    },
+  };
+}
+
 /**
  * The quota as the app holds it, in this process: a fixed one-minute window
  * of requests and records handed out, and a count of calls in flight, per
@@ -67,16 +79,19 @@ export function createAgentQuota(
   now: () => Date,
   handedOut: (answer: object) => number,
 ): CredentialQuota {
+  return { ...doorOf(limits.refused, now), ...callsOf(limits, now, handedOut) };
+}
+
+/** The three levels' counts; `createAgentQuota` adds the door. */
+function callsOf(
+  limits: AgentLimits,
+  now: () => Date,
+  handedOut: (answer: object) => number,
+): Pick<CredentialQuota, 'enter'> {
   const windows = new Map<string, Window>();
   const inFlight = new Map<string, number>();
   const windowOf = (key: string, at: number): Window => currentWindow(windows, key, at);
-  // A not-live bearer's count rides in its business's door window's `requests`.
-  const doorOf = (businessId: string): Window => windowOf(`d:${businessId}`, now().getTime());
   return {
-    knock: (businessId) => doorOf(businessId).requests < limits.refused,
-    turnedAway(businessId) {
-      doorOf(businessId).requests += 1;
-    },
     enter(keys) {
       const at = now().getTime();
       const named = {

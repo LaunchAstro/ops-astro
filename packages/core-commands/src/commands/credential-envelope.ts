@@ -104,6 +104,8 @@ const LIMITED_FIXES: readonly string[] = [
   'Wait a minute and try again.',
 ];
 
+const limited = (): CommandRefusal => refuseCommand('AGENT_QUOTA_EXCEEDED', [], LIMITED_FIXES);
+
 /** The one answer for a credential not served: unknown, revoked, expired, or a key nobody holds. */
 export const credentialNotLive = (): CommandRefusal =>
   refuseCommand('DELEGATION_NOT_LIVE', [], NOT_LIVE_FIXES);
@@ -117,11 +119,8 @@ export async function executeCredentialCommand(
   // Entered once per request, outside `retryOnce`, so a retry is not a second call.
   let slot: QuotaSlot | undefined;
   let answer: CommandResult | ReadResult | undefined;
-  // Made-up bearers cost a transaction and an attempt row each, so a business
-  // that has turned away its minute's worth takes no more until it passes.
-  if (call.quota?.knock(businessId) === false) {
-    return asCallerVisible(refuseCommand('AGENT_QUOTA_EXCEEDED', [], LIMITED_FIXES));
-  }
+  // Made-up bearers cost a transaction and an attempt row each (finding 5).
+  if (call.quota?.knock(businessId) === false) return asCallerVisible(limited());
   try {
     answer = await retryOnce(
       async () =>
@@ -136,7 +135,7 @@ export async function executeCredentialCommand(
           // Before the reach, so a call outside it counts too.
           slot ??= call.quota?.enter(keys);
           if (call.quota !== undefined && slot === undefined) {
-            return refuseCommand('AGENT_QUOTA_EXCEEDED', [], LIMITED_FIXES);
+            return limited();
           }
           const session = sessionOf(standing, tx.businessId);
           if (!CREDENTIAL_REACH.has(request.command)) {
