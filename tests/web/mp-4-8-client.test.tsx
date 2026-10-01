@@ -9,8 +9,8 @@
 // field, and sends through the injected sender; the server's carried-text
 // warning is drawn on each field it names, and the create waits for the
 // person's confirmation. The client list, the content answer and
-// `task.duplicate` are not on this base: they come through the panel's seams,
-// and made-up ones carry the one Mock label. The server side (the lock, the
+// `task.duplicate` come through the panel's seams: absent, the real ones, and
+// a made-up one carries the one Mock label. The server side (the lock, the
 // refusals, the audit, the crossings) is S0-5's and `task.duplicate`'s suites.
 
 import { afterEach, describe, expect, it } from 'vitest';
@@ -275,14 +275,31 @@ describe('MP-4-8 duplicate opens the new task', () => {
   });
 });
 
-describe('MP-4-8 client field marks made-up data mock', () => {
-  it('the made-up duplicate carries the one Mock label; the real client field does not', async () => {
-    const listed = [{ clientId: A.id, name: A.name }];
+describe('MP-4-8 client field marks made-up data mock, and only that', () => {
+  it('the panel’s own duplicate sends task.duplicate and carries no Mock label', async () => {
+    const listed = [
+      { clientId: A.id, name: A.name },
+      { clientId: B.id, name: B.name },
+    ];
     const over = { ...SHELL, client: A.id, clientSet: true, hasContent: true };
-    const view = await panel(serving(over, [], [], [], listed).client);
-    expect(view.find('[data-panel-field="client"] .mocktag')).toBeNull();
+    const { client, sent } = serving(over, [], [], [], listed);
+    const view = await panel(client);
     await view.click('[data-panel-field="duplicate"]');
-    expect(view.find('[data-duplicate-form] .mocktag')?.textContent).toBe('Mock');
+    expect(view.all('.mocktag')).toStrictEqual([]);
+    await view.type('#duplicate-title', 'Budget pacing fix');
+    await view.choose('#duplicate-client', B.id);
+    await view.click('[data-duplicate="create"]');
+    await tick();
+    expect(sent.filter((one) => one.to === '/task/duplicate').map((one) => one.body)).toStrictEqual(
+      [
+        expect.objectContaining({
+          client: B.id,
+          title: 'Budget pacing fix',
+          stepNames: SHELL.steps.map((step) => step.title),
+          confirmCarried: false,
+        }),
+      ],
+    );
     await view.unmount();
   });
 
