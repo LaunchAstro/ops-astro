@@ -3,7 +3,9 @@
 // The sort cycle (MP-5-2, B-15, CS-5.7): the first press lands on the
 // column's useful direction, the second reverses it, the third puts the
 // board back in its own order. Blanks sort last in either direction, so
-// reversing a due column never brings the undated tasks to the top.
+// reversing a due column never brings the undated tasks to the top. Numbers
+// sort before words, so a column can put its known values (a stage's place
+// in the vocabulary) ahead of free text.
 
 import type { ColumnSpec, SortDir, SortState } from './types.ts';
 
@@ -35,10 +37,9 @@ export function sortRows<Row>(
     const a = value(left);
     const b = value(right);
     if (a === null || b === null) return a === b ? 0 : a === null ? 1 : -1;
-    const order =
-      typeof a === 'number' && typeof b === 'number'
-        ? a - b
-        : String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' });
-    return order * direction;
+    if (typeof a === 'number' && typeof b === 'number') return (a - b) * direction;
+    if (typeof a === 'number') return -direction;
+    if (typeof b === 'number') return direction;
+    return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }) * direction;
   });
 }

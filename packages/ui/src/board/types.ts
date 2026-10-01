@@ -135,7 +135,7 @@ export interface BoardContext<Row> {
   readonly facets: readonly Facet<Row>[];
   readonly columns: readonly ColumnSpec<Row>[];
   readonly presets: readonly Preset[];
-  readonly modes: readonly Mode[];
+  readonly modes: readonly RowMode<Row>[];
 }
 
 export type BoardAction =
