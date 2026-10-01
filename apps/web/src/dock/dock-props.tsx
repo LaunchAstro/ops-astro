@@ -160,7 +160,7 @@ function dockPanels(input: DockInput): readonly DockPanel[] {
         door,
         icon: panel.icon,
         ...walked,
-        body: view === null ? null : drawScreen(view.match, input.screen),
+        body: view === null ? null : drawScreen(view.match, { ...input.screen, address: door }),
       },
     ];
   });

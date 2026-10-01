@@ -262,6 +262,16 @@ export function pathTo<Id extends RouteId>(
   return path;
 }
 
+/** The Clients panel at one client (CS-7.29): the book's address, the client in its query. */
+export const clientsAt = (clientId: string): string =>
+  `${pathTo('agency:clients')}?client=${encodeURIComponent(clientId)}`;
+
+/** The client an address names in its query, if any. */
+export function clientNamedIn(address: string | undefined): string | undefined {
+  const query = address?.split('#')[0]?.split('?')[1];
+  return query === undefined ? undefined : (new URLSearchParams(query).get('client') ?? undefined);
+}
+
 /** Which screen an address draws, given whether there is a session. */
 export type Gate =
   | { readonly kind: 'not-found' }

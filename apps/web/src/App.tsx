@@ -193,7 +193,9 @@ export function App(props: AppProps): ReactElement {
   };
 
   const bare = here.split(/[?#]/u)[0] ?? here;
-  const screen = { client, grantKey, storage: props.storage, navigate, taskPanel: taskDock.host };
+  const { host: taskPanel } = taskDock;
+  const { open: openPanel } = docked.dock;
+  const screen = { client, grantKey, storage: props.storage, navigate, taskPanel, openPanel };
   const { match, at, refused, rail, tabs, identity, face } = frameAt(
     bare,
     session?.businessKey ?? null,
@@ -223,6 +225,7 @@ export function App(props: AppProps): ReactElement {
     onGo: () => props.navigate(pathTo('agency:projects-board')),
     screen: {
       ...screen,
+      address: here,
       notice:
         notice === null || session === null ? null : (
           <HeldAddressNotice
