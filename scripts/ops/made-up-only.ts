@@ -242,11 +242,10 @@ export async function guardMadeUp(admin: OwnerQuery): Promise<void> {
 
 /**
  * After the staging reset empties the product's schemas: the ledger forgets the
- * emptied tables and keeps its notes on sign-ins and guards, which no reset
- * empties; then guard and mark. On a marked database the guard on `auth.users`
- * stands throughout. A new one had none until now, so it is judged again under
- * the guard, as the seed's admission is: a sign-in made since the reset's check
- * stops the reset, and the next run refuses the database.
+ * emptied tables, keeps its notes on sign-ins and guards (no reset empties
+ * those), then guard and mark. A new database had no guard on `auth.users`, so
+ * it is judged again under the guard, as the seed's admission is: a sign-in
+ * made since the reset's check stops the reset, and the next run refuses it.
  */
 export async function markEmptied(admin: OwnerQuery): Promise<void> {
   if (await yes(admin, `to_regclass('${LEDGER}') is not null`))
