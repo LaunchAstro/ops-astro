@@ -14,4 +14,13 @@ export const LAUNCH_ROWS = [
     source: 'AW-08',
     runtime: true,
   },
+  // Where the business requires the client's sign-off, agency approval alone
+  // releases nothing: the launch and dispatch both refuse (`launch-gate.ts`).
+  {
+    code: 'CLIENT_SIGNOFF_REQUIRED',
+    status: 409,
+    meaning: 'The business requires the client’s sign-off before this effect goes out',
+    source: 'AW-08',
+    runtime: true,
+  },
 ] as const;

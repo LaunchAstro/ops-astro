@@ -25,12 +25,13 @@ export interface ObserveFields {
   readonly attemptId: unknown;
   readonly usage?: unknown;
   readonly outcome?: unknown;
+  readonly receiptLink?: unknown;
 }
 
 /** Who asks: the verified caller, never a body field; an agent under its resolved delegation. */
 type Holder = ObserveRequest extends infer R
   ? R extends unknown
-    ? Omit<R, 'leaseId' | 'fence' | 'attemptId' | 'effect' | 'usage' | 'outcome'>
+    ? Omit<R, 'leaseId' | 'fence' | 'attemptId' | 'effect' | 'usage' | 'outcome' | 'receiptLink'>
     : never
   : never;
 
@@ -96,6 +97,7 @@ async function observeAs(
     effect: async () => await lookupEffect(tx, holder.holderActorId, attemptId),
     usage: fields.usage,
     outcome: operands.outcome,
+    receiptLink: fields.receiptLink,
   });
   if (!result.ok) return refused(result.refusal);
   const { taskId, ...observed } = result.value;

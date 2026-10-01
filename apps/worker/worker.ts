@@ -19,7 +19,7 @@ import { randomUUID } from 'node:crypto';
 import { effectOperationId } from '../../packages/core-wire/src/index.ts';
 import { createCli, isRefusal, type CliAnswer, type Transport } from '../cli/client.ts';
 import { handedBackFrom, reviewBody, type HandedBack } from './review.ts';
-import { ProviderFault, SYNTHETIC_PROVIDER, type Provider, type UsageReporter } from './usage.ts';
+import { callProvider, ProviderFault, type Provider, type UsageReporter } from './usage.ts';
 
 export interface WorkerOptions {
   readonly transport: Transport;
@@ -94,10 +94,7 @@ interface Held {
   readonly lease: { readonly leaseId: unknown; readonly fence: unknown };
   readonly attemptId: string;
   readonly credential: string;
-  /**
-   * Set once the provider dropped this attempt: only the hand-back is sent
-   * again, under its first operation identity, so it replays.
-   */
+  /** Set once the provider dropped this attempt: only its hand-back is sent again, and replays. */
   readonly drop?: {
     readonly cause: 'provider_unavailable' | 'connection_lost';
     readonly operationId: string;
@@ -226,8 +223,9 @@ async function effectOnce(
   // fault, and the provider is not called until the start is recorded.
   const starting = await call('task.heartbeat', { ...lease, providerStarting: true });
   if (!('body' in starting)) return starting;
+  let link: { readonly receiptLink?: string };
   try {
-    await (options.provider ?? SYNTHETIC_PROVIDER).call(SYNTHETIC_STEP);
+    link = await callProvider(SYNTHETIC_STEP, options.provider);
   } catch (fault) {
     if (!(fault instanceof ProviderFault)) throw fault;
     const drop = { cause: fault.dropCause, operationId: randomUUID() };
@@ -242,7 +240,8 @@ async function effectOnce(
   });
   if (!('body' in effect)) return effect;
   const usage = options.reporter.observe(SYNTHETIC_STEP);
-  const observed = await call('task.observe', { ...lease, attemptId, usage });
+  // The link rides as the provider gave it; observe keeps it only on the declared host.
+  const observed = await call('task.observe', { ...lease, attemptId, usage, ...link });
   if (!('body' in observed)) return observed;
   return { applied: { taskId, attemptId, commentId: String(effect.detail['commentId']) } };
 }

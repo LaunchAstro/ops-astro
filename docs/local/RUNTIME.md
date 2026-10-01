@@ -922,9 +922,9 @@ the version and the lease's run are both on the named lineage, and the version
 is newer than the one the lease worked under: a handback cannot mark another
 lineage's version, and no lease marks its own plan.
 
-Dispatch reads the mark under its locks, after the four effect-time facts and
-the reconcile mode: a lease whose version has no mark is `LAUNCH_NOT_DECIDED`
-before any dispatch mark, so the plan's approval spends nothing outside its
+Dispatch reads the mark under its locks, as its `launch` effect-time fact
+([The launch is the effect gate](#the-launch-is-the-effect-gate)): a lease
+whose version has no mark is `LAUNCH_NOT_DECIDED` before any dispatch mark, so the plan's approval spends nothing outside its
 hold. The successor's accept is the launch; its lease dispatches as before.
 A person's own lease on a plan is refused the same way: until direct send-live
 is built, a person hands their output back and launches it like an agent's.
@@ -1981,6 +1981,52 @@ output when the handback marked it. Tests:
 `agent_output_is_reviewed_on_every_surface`), `aw-09-no-self-review`,
 `aw-09-isolation`, `aw-09-round-rules`, `aw-09-stuck-notice` and
 `aw-09-reject-header`.
+
+## The launch is the effect gate
+
+AW-08 part (b), `core-runtime/src/launch-gate.ts`, `receipt-link.ts` and
+migration 0214. The plan accept lets the agent work and releases nothing; the
+launch of the reviewed output is the only decision an effect waits on.
+
+- **The facts at dispatch.** `dispatch` rechecks, under its locks and in this
+  order (`EFFECT_TIME_FACTS`): authority (`AUTHORITY_LOST`), a superseded
+  version (`PROPOSAL_SUPERSEDED`, its approval reset), a rejected or cancelled
+  lineage (`LINEAGE_TERMINAL`), the approval itself (`DECISION_STALE`), the
+  launch (`LAUNCH_NOT_DECIDED`: the approval behind the lease accepted a plan,
+  not a reviewed output), the client's sign-off (`CLIENT_SIGNOFF_REQUIRED`
+  409), the lease and the budget, then the reconcile mode. Each refusal marks
+  nothing.
+- **The reviewed output.** Whether a version's approval is a launch is
+  `isReviewedOutput`, part (a)'s handback mark (0213,
+  [Only the launch releases an effect](#only-the-launch-releases-an-effect)).
+  A plan is never marked, so its accept never meets the sign-off check below.
+- **The client's sign-off.** Where the business's `client_sign_off_required`
+  is on, agency approval alone never releases the effect: the launch of a
+  reviewed output cannot decide (`decide` refuses `CLIENT_SIGNOFF_REQUIRED`
+  and writes nothing), and the dispatch recheck refuses every lease of the
+  business with the same code, whatever approved it. The setting's row is held
+  `for share` before it is read, so a change in flight is waited for and then
+  seen. The client's own sign-off is MP-11-5's (phase 8); until the portal
+  exists the work stays held, visibly, under that code.
+- **The receipt link.** The worker reads the provider's answer
+  (`readProviderAnswer`, `apps/worker/usage.ts`): a status outside 2xx (a
+  redirect included), a body over 4,096 characters, or a body that is not a
+  JSON object is a hostile answer, handed back as a `provider_unavailable`
+  drop, so the whole hold stays unknown, nothing settles and nothing is
+  observed. Otherwise its `link` rides on `task.observe`, and `observe` keeps
+  it on the attempt (`attempts.receipt_link`, 0214) only when `receiptLinkOf`
+  does: `https:`, exactly the step kind's declared host
+  (`EFFECT_RECEIPT_HOSTS`), no user, password, port, query or fragment, at most
+  512 characters, and the parsed form byte for byte the text sent. Anything
+  else is stored as null, which a reader shows as "no link", never as a link.
+  0214's check repeats the shape and allows a link only on an observed
+  attempt; its trigger fixes the link once the attempt is observed, so a link
+  resolved later is not a receipt. `task.receipt` names it as `link` beside
+  the decision, version, effect and settlement, and carries no undo.
+
+Tests: `aw-08-approval-gate`, `aw-08-client-sign-off`, `aw-08-isolation` and
+`aw-08-receipt-provider` (`AW-08 receipt link`, `AW-08 hostile provider`,
+`AW-08 canary`).
 
 ## What is not here
 

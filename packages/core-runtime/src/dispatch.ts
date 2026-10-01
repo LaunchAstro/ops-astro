@@ -4,7 +4,7 @@
 // dispatched, and the mark commits on its own, before any effect is applied
 // (T2c2 applies it).
 //
-// **The recheck is inside.** The four effect-time facts the execution-owner
+// **The recheck is inside.** The effect-time facts the execution-owner
 // contract names are read under this transaction's locks, at the instant read
 // after them, and never before: the grant rows the work's authority rests on
 // are held `for share` first, so a revocation in flight is waited for and then
@@ -16,6 +16,15 @@
 // instant is `AUTHORITY_LOST`, the answer an agent's lapsed lease also gets,
 // since pickup mints the two to end together.
 //
+// AW-08: the launch is the effect gate (`launch-gate.ts`). The plan accept
+// lets work run and fires nothing: the lease's version has to be a reviewed
+// output (`reviewed-output.ts`), the successor a handback wrote, whose accept
+// is the launch; any other is `LAUNCH_NOT_DECIDED`. Where the business
+// requires the client's sign-off nothing is dispatched at all
+// (`CLIENT_SIGNOFF_REQUIRED`). A reset approval (`DECISION_STALE`), a
+// superseded version (`PROPOSAL_SUPERSEDED`) and a rejected or cancelled
+// lineage (`LINEAGE_TERMINAL`) each answer with their own code.
+//
 // **Only a replayable or reconcilable effect is dispatched.** Each effect
 // operation declares its `reconcile_mode` by step kind; one that declares
 // none is `neither`. No gate in this head accepts a duplicate, so `neither` is
@@ -26,12 +35,6 @@
 // marked attempt writes nothing and answers the first mark, so a lost response
 // is recovered by asking again. The answer carries no secret: the attempt
 // identity is the effect's token (T2c2).
-//
-// **Only the launch releases an effect** (AW-08). The plan accept lets work
-// run and fires nothing: after the four facts and the reconcile mode, the
-// lease's version has to be a reviewed output (`reviewed-output.ts`), the
-// successor a handback wrote, whose accept is the launch. Any other approved
-// version is refused `LAUNCH_NOT_DECIDED` before any mark.
 
 import type { Subject, TenantQuery } from '../../core-records/src/index.ts';
 import { lockedInstant } from './clock.ts';
@@ -44,13 +47,22 @@ import {
   refuseLease,
   type LeaseRow,
 } from './lease-ownership.ts';
+import { holdSignOffSetting, launchRecheck, signOffRequired } from './launch-gate.ts';
 import { acquire, type LockRequest } from './locks.ts';
 import { checkAuthorityAt, holdCoveringGrants } from './recovery.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
-import { isReviewedOutput, launchNotDecided } from './reviewed-output.ts';
 
 /** The facts rechecked at effect time, in the order a moved one is answered. */
-export const EFFECT_TIME_FACTS = ['authority', 'approvedVersion', 'lease', 'budget'] as const;
+export const EFFECT_TIME_FACTS = [
+  'authority',
+  'superseded',
+  'lineage',
+  'approvedVersion',
+  'launch',
+  'signOff',
+  'lease',
+  'budget',
+] as const;
 export type EffectTimeFact = (typeof EFFECT_TIME_FACTS)[number];
 
 export type ReconcileMode = 'replay' | 'observe' | 'neither';
@@ -90,7 +102,6 @@ interface Found {
   readonly step_id: string;
   readonly lineage_id: string;
   readonly gate_id: string;
-  readonly version_id: string;
   readonly reservation_id: string;
   readonly delegation_id: string | null;
   readonly delegate_person_id: string | null;
@@ -98,7 +109,11 @@ interface Found {
 
 /** The facts as re-read under the locks. */
 interface Facts {
+  /** The gate's approval stands; `superseded` and `lineage_live` are asked apart. */
   readonly approved: boolean;
+  readonly superseded: boolean;
+  readonly lineage_live: boolean;
+  readonly version_id: string;
   readonly covered: boolean;
   /** Unrevoked, unsettled and unexpired at the locked instant; true for a person's lease. */
   readonly delegation_live: boolean;
@@ -169,7 +184,6 @@ export async function dispatch(
       'Nothing was dispatched. Declare how the effect replays or reconciles; no gate here accepts a duplicate.',
     );
   }
-  if (!(await isReviewedOutput(tx, found.version_id))) return launchNotDecided();
   const dispatchedAt = facts.dispatched_at ?? (await mark(tx, found, facts.attempt_id, lockedAt));
   return {
     ok: true,
@@ -188,8 +202,7 @@ export async function dispatch(
 /** Find: the lease and everything its dispatch touches, in this business only. */
 async function discover(tx: TenantQuery, leaseId: string): Promise<Found | undefined> {
   const rows = await tx.query<Found>(
-    `select l.task_id, att.step_id, run.lineage_id, g.id as gate_id, res.version_id,
-            res.id as reservation_id,
+    `select l.task_id, att.step_id, run.lineage_id, g.id as gate_id, res.id as reservation_id,
             l.delegation_id, d.delegate_person_id
        from public.leases l
        join public.reservations res on res.business_id = l.business_id and res.id = l.reservation_id
@@ -211,7 +224,8 @@ async function readFacts(
   lockedAt: string,
 ): Promise<Facts> {
   const rows = await tx.query<Facts>(
-    `select (g.state = 'approved' and ver.superseded_at is null and lin.state = 'live') as approved,
+    `select g.state = 'approved' as approved, ver.superseded_at is not null as superseded,
+            lin.state = 'live' as lineage_live, ver.id as version_id,
             (res.state = 'held' and res.lease_id = $3 and res.held_minor >= att.estimated_minor
               and att.state = 'dispatched' and att.lease_id = $3) as covered,
             (d.id is null or (d.revoked_at is null and d.settled_at is null
@@ -297,6 +311,26 @@ async function recheck(fact: EffectTimeFact, on: Recheck): Promise<RuntimeResult
             'the approval behind this lease is no longer the current one',
             'Nothing was dispatched. Work the current approved version under a new pickup.',
           );
+    case 'superseded':
+      return on.facts.superseded
+        ? refuse(
+            'PROPOSAL_SUPERSEDED',
+            'a later version superseded the one this lease was approved for, and its approval reset',
+            'Nothing was dispatched. The later version needs its own decision.',
+          )
+        : null;
+    case 'lineage':
+      return on.facts.lineage_live
+        ? null
+        : refuse(
+            'LINEAGE_TERMINAL',
+            'the proposal this work belongs to was rejected or cancelled',
+            'Nothing was dispatched. Only an authorised restart opens a new lineage.',
+          );
+    case 'launch':
+      return await launchRecheck(on.tx, on.facts.version_id);
+    case 'signOff':
+      return (await holdSignOffSetting(on.tx)) ? signOffRequired() : null;
     case 'lease': {
       const cause = fenceCause(on.lease, on.request.fence);
       return cause === null ? null : refuseLease(cause, LEASE_FIXES.heartbeat.expired);
