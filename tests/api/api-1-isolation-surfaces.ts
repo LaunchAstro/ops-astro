@@ -21,13 +21,13 @@ export interface Heard {
   readonly body: unknown;
 }
 
-/** Every task, title, lease, reservation, business or person any answer names, refusals included, but the caller's own. */
+/** Every task, title, lease, run, reservation, business or person any answer names, refusals included, but the caller's own. */
 export function foreign(heard: readonly Heard[], own: Name | null): string[] {
   const named = heard
     .flatMap((one) =>
       Array.from(
         JSON.stringify(one.body).matchAll(
-          /<(client1|client2|bravo|other) (?:task|title|lease|reservation|business|person)>/gu,
+          /<(client1|client2|bravo|other) (?:task|title|lease|run|reservation|business|person)>/gu,
         ),
       ),
     )
