@@ -130,6 +130,8 @@ export type CommandName =
   // The assistant panel's tab row (MP-7-11): the person's own conversations,
   // a tab's title, and the page it is about.
   | 'conversation.list'
+  // AW-04 (U10): the drawer's planning allowance line.
+  | 'conversation.allowance'
   | 'conversation.rename'
   | 'conversation.set_scope'
   // One priced model call, made by the lease holder through the credential
@@ -637,6 +639,10 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // The list is the caller's own conversations and nobody else's, whatever
   // read-any grant they hold; its rule is the read's own, like the read's.
   read('conversation.list', CONVERSATION_COLLECTION),
+  // AW-04 (U10): the drawer's allowance line, under the list's rule and the
+  // team's only, since the cap and what is left are the business's; the spend
+  // is the caller's own conversation's (`reads/allowance.ts`). No agent entry.
+  read('conversation.allowance', CONVERSATION_COLLECTION),
   declare('conversation.rename', 'write', {
     collection: CONVERSATION_COLLECTION,
     targetsExistingRecord: false,

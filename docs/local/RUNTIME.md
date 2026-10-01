@@ -1616,9 +1616,14 @@ totals.
   is left of it across the business, and the
   person's own conversation's settled spend and held amount. The conversation
   part is filtered by its owner inside the query: another person's
-  conversation, or a made-up one, reads as nothing spent. The surface that
-  shows it (the drawer's allowance line, the spend beside the plan) is not here
-  yet; it is the team's and the conversation owner's to see.
+  conversation, or a made-up one, or none, reads as nothing spent.
+- **The drawer's allowance line.** `conversation.allowance` serves it
+  ([API.md](API.md#a-persons-conversation-with-the-agent)) to the team holding
+  `conversation:write`, since the cap and what is left are the business's; a
+  named conversation must be the caller's own, or it is `NOT_FOUND`. The drawer
+  draws the line above the transcript from before the first message, and adds
+  the tab's own spend and hold once its conversation has started
+  (`apps/web/src/views/allowance-line.tsx`).
 - **Setting the cap.** `budget.set_planning_cap` writes the `planning` row and
   no other ([API.md](API.md#budgetset_planning_cap-aw-04-u10)): `billing:decide`
   on the whole business, against the limit the caller last saw, under the same
@@ -1631,7 +1636,7 @@ totals.
   for a session holding `billing:decide` (`screens/settings/planning-cap.tsx`).
 
 Not here yet: the recent sign-in the command asks as a money action (C59), and
-the drawer's allowance line and spend beside the plan.
+the planning spend beside the plan.
 
 ## The budget wait
 

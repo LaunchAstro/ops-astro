@@ -35,6 +35,7 @@ import type {
   QueueResult,
   AwaitingReviewResult,
   ConversationListResult,
+  AllowanceResult,
   ConversationReadResult,
   SettingsReadResult,
   SharedTaskRead,
@@ -118,6 +119,8 @@ export interface ReadOperands {
   readonly 'conversation.read': { readonly conversationId: unknown };
   /** The caller's own conversations, for the assistant panel's tab row (MP-7-11). */
   readonly 'conversation.list': NoOperands;
+  /** The drawer's planning allowance, and the caller's own conversation's spend (AW-04). */
+  readonly 'conversation.allowance': { readonly conversationId: unknown };
   /** The runs that read one file, by its digest: pre-review (AW-04). */
   readonly 'definition.attribution': { readonly digest: string };
   /** The caller's own inbox items, each with its access derived now (INB-1d). */
@@ -155,6 +158,7 @@ export type ReadResult =
   | CapabilitiesResult
   | ConversationReadResult
   | ConversationListResult
+  | AllowanceResult
   | AttributionResult
   | InboxReadResult
   | InboxCountResult

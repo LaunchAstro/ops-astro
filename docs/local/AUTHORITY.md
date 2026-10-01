@@ -813,6 +813,16 @@ holding no `read` on tasks get `SCOPE_NOT_GRANTED`, never an empty list. An
 agent has no route to it (`DELEGATION_EXCLUDES_OPERATION`). Every row is
 labelled pre-review; see [API.md](API.md).
 
+## The planning allowance (AW-04)
+
+`conversation.allowance` is the drawer's allowance line. Its cap and what is
+left are the business's, a sum over every person's planning replies, so it is
+the team's (owner, administrator, member) holding `conversation:write`, the
+drawer's key, as the tab row asks it (`reads/allowance.ts`): a client, a member
+with no drawer and anyone else get `SCOPE_NOT_GRANTED` before any figure is
+read. The spend is the caller's own conversation's: a conversation named that
+is not theirs is `NOT_FOUND`, the same bytes as a made-up id. No agent route.
+
 ## What is not here
 
 This file is the model modules. What calls them is elsewhere, and on this head

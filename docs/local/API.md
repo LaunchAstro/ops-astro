@@ -972,8 +972,16 @@ MP-7-11 adds the assistant panel's tab row, under the same rule
 | Operation                | Route                     | Body                                                                                     | Authority                                                                                                             | Refusals                                                                                                                       |
 | ------------------------ | ------------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | `conversation.list`      | `/conversation/list`      | nothing                                                                                  | `conversation:write`; the caller's own conversations only, newest activity first, at most 50, whatever else they hold | `SCOPE_NOT_GRANTED` 403 (no `conversation:write`, or no membership)                                                            |
+| `conversation.allowance` | `/conversation/allowance` | `conversationId?` (absent or `null`: the empty drawer)                                   | the team (owner, administrator, member) holding `conversation:write`; a named conversation is the caller's own        | `SCOPE_NOT_GRANTED` 403 (not the team, or no `conversation:write`), `NOT_FOUND` 404 (not theirs), `FIELD_VALUE_INVALID` 422    |
 | `conversation.rename`    | `/conversation/rename`    | `operationId`, `conversationId`, `title`                                                 | `conversation:write`, and the caller is the owner                                                                     | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` (body purged), `FIELD_VALUE_INVALID` 422 (title 1 to 120) |
 | `conversation.set_scope` | `/conversation/set_scope` | `operationId`, `conversationId`, `page` (`{"address":<path>,"shows":<label>}` or `null`) | `conversation:write`, and the caller is the owner                                                                     | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` (body purged), `FIELD_VALUE_INVALID` 422 (page)           |
+
+`conversation.allowance` (AW-04, U10) is the drawer's allowance line:
+`{ ok: true, allowance: { set, currency, limitMinor, leftMinor, conversation: { spentMinor, heldMinor } } }`,
+the planning cap (`set` false is the default, AUD 50), what is left of it
+across the business, and the named conversation's settled spend and held
+amount (nothing, with none named). The cap and what is left are the
+business's, so it is the team's only.
 
 `conversation.set_scope` is "Add page to context" (CS-7.31): one slot, so a
 second page replaces the first, and `null` clears it. The address is a page of
@@ -1272,6 +1280,7 @@ The five support controls, with their owning functions:
 | `conversation.message`   | `/api/b/:key/conversation/message`      | refused `DELEGATION_EXCLUDES_OPERATION` | `messageConversation` (`commands/conversations.ts`)                                                                                                                                   | `conversation_messages`                                                                                     |
 | `conversation.read`      | `/api/b/:key/conversation/read`         | refused `DELEGATION_EXCLUDES_OPERATION` | `readConversation` (`reads/conversation.ts`)                                                                                                                                          | `conversations`, `conversation_messages`, `conversation_wrap_ups`                                           |
 | `conversation.list`      | `/api/b/:key/conversation/list`         | refused `DELEGATION_EXCLUDES_OPERATION` | `listConversations` (`reads/conversation.ts`)                                                                                                                                         |
+| `conversation.allowance` | `/api/b/:key/conversation/allowance`    | refused `DELEGATION_EXCLUDES_OPERATION` | `readAllowance` (`reads/allowance.ts`) → `readPlanningAllowance` (`core-custody/src/broker-planning.ts`)                                                                              |
 | `conversation.rename`    | `/api/b/:key/conversation/rename`       | refused `DELEGATION_EXCLUDES_OPERATION` | `renameConversation` (`commands/conversation-tabs.ts`)                                                                                                                                |
 | `conversation.set_scope` | `/api/b/:key/conversation/set_scope`    | refused `DELEGATION_EXCLUDES_OPERATION` | `setConversationScope` (`commands/conversation-tabs.ts`)                                                                                                                              |
 
@@ -1761,7 +1770,8 @@ yet: the recent sign-in a money action asks (C59).
 
 `task.read`, `task.board`, `task.queue`, `gate.pending`, `person.list`,
 `preset.plan`, `settings.read`, `session.capabilities`, `conversation.read`,
-`conversation.list`, `definition.attribution`, `inbox.read`, `inbox.count` and
+`conversation.list`, `conversation.allowance`, `definition.attribution`,
+`inbox.read`, `inbox.count` and
 `inbox.unattended` are declared in `COMMAND_SURFACE` with `kind: 'read'`. The boundary branches on that and calls the executor the
 composition root supplies:
 

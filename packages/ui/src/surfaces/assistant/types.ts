@@ -3,6 +3,8 @@
 // MP-7-11: the drawer's shapes, in one module its parts and its caller share,
 // so no part imports the panel that imports it.
 
+import type { ReactNode } from 'react';
+
 export type AssistantRole = 'user' | 'ai' | 'note' | 'failed';
 
 export interface AssistantCite {
@@ -60,6 +62,8 @@ export interface AssistantPanelProps {
   /** The selected tab's own address (C36), once its conversation has started. */
   readonly address?: string | null;
   readonly citation: AssistantCitation | null;
+  /** The caller's planning allowance line (AW-04), drawn above the transcript. */
+  readonly allowance?: ReactNode;
   readonly draft: string;
   readonly onSelect: (key: string) => void;
   readonly onRename: (key: string, title: string) => void;

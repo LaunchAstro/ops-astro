@@ -33,6 +33,8 @@ function recorder(
 } {
   const sent: Sent[] = [];
   const client = {
+    // The drawer's allowance line (AW-04, its own suite) reads; nothing here is about it.
+    read: async () => await Promise.resolve({ unavailable: true, because: 'not asked here' }),
     mutate: async (name: string, body: Readonly<Record<string, unknown>>) => {
       sent.push({ name, body });
       // An answer the test holds back, so a second press lands while the

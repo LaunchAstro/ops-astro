@@ -258,6 +258,9 @@ export function createPositiveBody(
       // on the conversation the admin just started.
       case 'conversation.list':
         return { body: {} };
+      // AW-04: the drawer's allowance line, on the admin's own conversation.
+      case 'conversation.allowance':
+        return { body: { conversationId: await ownConversation(context) } };
       case 'conversation.rename':
         return { body: { conversationId: await ownConversation(context), title: 'Renamed' } };
       case 'conversation.set_scope':

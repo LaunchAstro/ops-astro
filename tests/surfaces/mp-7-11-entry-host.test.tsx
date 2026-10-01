@@ -34,6 +34,8 @@ interface Sent {
 function recorder(): { readonly client: OperationsClient; readonly sent: Sent[] } {
   const sent: Sent[] = [];
   const client = {
+    // The drawer's allowance line (AW-04, its own suite) reads; nothing here is about it.
+    read: () => Promise.resolve({ unavailable: true, because: 'not asked here' }),
     mutate: (name: string, body: Readonly<Record<string, unknown>>) => {
       sent.push({ name, body });
       return Promise.resolve({

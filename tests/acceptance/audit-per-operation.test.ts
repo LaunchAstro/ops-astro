@@ -444,12 +444,12 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
     );
   }
 
-  it('covered all 64 exported operations both ways', () => {
+  it('covered all 65 exported operations both ways', () => {
     const names = COMMAND_SURFACE.map((declaration) => declaration.name).toSorted();
-    expect(names).toHaveLength(64);
+    expect(names).toHaveLength(65);
     expect([...covered.applied].toSorted()).toStrictEqual(names);
     expect([...covered.refused].toSorted()).toStrictEqual(names);
-    // R2 (`noah`, no grant) is the refused caller on every one of the 64.
+    // R2 (`noah`, no grant) is the refused caller on every one of the 65.
     expect([...r2].toSorted()).toStrictEqual(names);
   });
 

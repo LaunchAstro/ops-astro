@@ -88,10 +88,14 @@ interface Asked {
   readonly body: Readonly<Record<string, unknown>>;
 }
 
+const AWAY = { unavailable: true, because: 'not asked here' };
+
 function reader(answer: unknown): { readonly client: OperationsClient; readonly asked: Asked[] } {
   const asked: Asked[] = [];
   const client = {
     read: (name: string, body: Readonly<Record<string, unknown>>) => {
+      // The drawer's allowance line (AW-04) is not what these cases are about.
+      if (name === 'conversation.allowance') return Promise.resolve(AWAY);
       asked.push({ name, body });
       // A refusal comes back as it is; a result comes back as the call's value.
       const refused = typeof answer === 'object' && answer !== null && 'refused' in answer;

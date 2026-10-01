@@ -35,6 +35,8 @@ export type {
   ConversationMessageView,
   ConversationPointerView,
   ConversationListResult,
+  AllowanceResult,
+  PlanningAllowanceView,
   ConversationReadResult,
   ConversationTabView,
   WrapUpItemView,

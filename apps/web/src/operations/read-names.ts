@@ -46,6 +46,8 @@ export const READ_NAMES = [
   'conversation.read',
   // The caller's own conversations, for the tab row (MP-7-11).
   'conversation.list',
+  // The drawer's planning allowance line (AW-04, U10).
+  'conversation.allowance',
   // Which runs read an instruction file, by digest: pre-review (AW-04).
   'definition.attribution',
   // The caller's own inbox and owed count (INB-1d), the same read the API and

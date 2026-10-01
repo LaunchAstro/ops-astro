@@ -156,6 +156,7 @@ export function AssistantPanel(props: AssistantPanelProps): ReactElement {
         </p>
       )}
       <Provenance address={props.address ?? null} citation={props.citation} />
+      {props.allowance}
       <Transcript messages={chat?.messages ?? NO_MESSAGES} />
       <Asker
         // A new draft, or another tab, starts the field again.

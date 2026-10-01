@@ -25,6 +25,7 @@ const OUTSIDER_NOT_FOUND = rows.filter(([, row]) => row.outsiderNotFound).map(([
 
 /** How each read reaches its answer: spine, a resolved subject, and how authority is asked. */
 const PINNED_SHAPE = {
+  'conversation.allowance': { spine: false, subject: false, authority: 'holds-any-grant' },
   'conversation.list': { spine: false, subject: false, authority: 'holds-any-grant' },
   'conversation.read': { spine: false, subject: false, authority: 'holds-any-grant' },
   'definition.attribution': { spine: true, subject: false, authority: 'holds-any-grant' },
@@ -44,6 +45,7 @@ const PINNED_SHAPE = {
 };
 
 const PINNED_IDENTIFIERS = {
+  'conversation.allowance': ['conversationId'],
   'conversation.list': [],
   'conversation.read': ['conversationId'],
   'definition.attribution': [],
@@ -143,6 +145,8 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'session.capabilities': BODIES.map(() => null),
   'conversation.read': BODIES.map(() => null),
   'conversation.list': BODIES.map(() => null),
+  // AW-04: an absent conversation is the empty drawer; the id is checked after the door.
+  'conversation.allowance': BODIES.map(() => null),
   // AW-04: the file's digest, which none of these bodies carries.
   'definition.attribution': BODIES.map(() => ({
     code: 'FIELD_VALUE_INVALID',
@@ -163,7 +167,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same sixteen reads', () => {
+  it('names the same seventeen reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 

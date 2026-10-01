@@ -36,6 +36,7 @@ import { readSettings } from './settings.ts';
 import { readCapabilities } from './capabilities.ts';
 import { parseReceipt, receiptSubject, serveReceipt } from './receipts.ts';
 import { listConversations, readConversation } from './conversation.ts';
+import { readAllowance } from './allowance.ts';
 import { DIGEST, readAttribution } from './attribution.ts';
 import { countOwed, readInbox, readUnattendedInbox } from './inbox.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
@@ -196,6 +197,20 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     authority: 'holds-any-grant',
     outsiderNotFound: false,
     serve: async (tx, session) => await listConversations(tx, session),
+  },
+  // AW-04 (U10): the drawer's allowance line. The rule is the read's own, as
+  // the list's is: the team's, holding `conversation:write`; the conversation
+  // is optional (an empty drawer has none yet) and must be the caller's own.
+  'conversation.allowance': {
+    identifiers: ['conversationId'],
+    // Any body parses, so a caller holding nothing is refused before the
+    // identifier is looked at, as `conversation.read` does.
+    parse: ({ conversationId }) => parsed({ conversationId }),
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session, { conversationId }) =>
+      await readAllowance(tx, session, conversationId),
   },
   'task.read': {
     identifiers: ['recordId'],
