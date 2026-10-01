@@ -401,19 +401,23 @@ describe.skipIf(serverUrl === undefined)(
           providerFactorId: `factor-${randomUUID()}`,
         }),
       );
-      const g = await factorIn(bravoPerson, subject, true);
       const inAlpha = (): FactorCaller => ({
         ...callerFor(subject),
         businessId: alpha,
         presented: { ...callerFor(subject).presented, sessionId: randomUUID() },
       });
+      let g: { id: string } | undefined;
+      // G is verified in bravo while tab A's code is at the provider.
+      const racing = namingProvider(async () => {
+        g = await factorIn(bravoPerson, subject, true);
+      });
       let tabB = 'not run';
       const { provider } = namingProvider();
       const tabA: FactorProvider = {
-        ...provider,
+        ...racing.provider,
         remove: async (token, factorId) => {
           await db.app.withBusiness(bravo, (tx) =>
-            recordFactorRemoved(tx, { personId: bravoPerson, factorId: g.id, subject }),
+            recordFactorRemoved(tx, { personId: bravoPerson, factorId: g?.id ?? '', subject }),
           );
           const answer = await verifySecondFactor(inAlpha(), { code: '123456' }, provider);
           tabB = 'code' in answer ? answer.code : 'verified';
