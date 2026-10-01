@@ -9,6 +9,14 @@ import {
   type ModelAnswer,
   type ModelOperation,
 } from '../../core-connectors/src/index.ts';
+import {
+  declaresNothing,
+  failureOf,
+  MALFORMED,
+  reconcileModeOf,
+  WORKER_LOST,
+  type Failure,
+} from './broker-fault.ts';
 import type { CredentialKind } from './credentials.ts';
 import type { CustodyOutcome } from './custody.ts';
 import { lockCall } from './broker-facts.ts';
@@ -33,39 +41,38 @@ export type Settlement =
       readonly credentialKind: CredentialKind;
     }
   | { readonly kind: 'nothing'; readonly reason: string }
-  | {
-      readonly kind: 'unknown';
-      readonly drop: 'dropped_worker_lost' | 'dropped_no_answer' | null;
-      readonly fault: 'ours' | 'provider';
-    };
+  | ({ readonly kind: 'unknown' } & Failure);
 
-/** What custody's outcome means for the money: priced, positive proof that nothing happened, or unknown. */
+/**
+ * What custody's outcome means for the money: priced, positive proof that
+ * nothing happened, or unknown with what the failure was (AW-10,
+ * `broker-fault.ts`). A provider code the operation declared proves nothing
+ * happened whether it came in an answer or as the status of a refusal.
+ */
 export function settlementOf(
   outcome: CustodyOutcome,
   operation: ModelOperation,
   adapter: ProviderAdapter,
 ): Settlement {
-  if (outcome.kind === 'worker_lost')
-    return { kind: 'unknown', drop: 'dropped_worker_lost', fault: 'ours' };
+  if (outcome.kind === 'worker_lost') return { kind: 'unknown', ...WORKER_LOST };
   if (outcome.kind === 'refused') return { kind: 'nothing', reason: outcome.code };
-  if (!outcome.outbound.ok)
-    return { kind: 'unknown', drop: 'dropped_no_answer', fault: 'provider' };
+  if (!outcome.outbound.ok) {
+    const failure = failureOf(outcome.outbound.fault, outcome.outbound.status);
+    if (declaresNothing(operation, failure.providerCode)) {
+      return { kind: 'nothing', reason: String(failure.providerCode) };
+    }
+    return { kind: 'unknown', ...failure };
+  }
   let body: unknown;
   try {
     body = JSON.parse(outcome.outbound.body);
   } catch {
-    return { kind: 'unknown', drop: 'dropped_no_answer', fault: 'provider' };
+    return { kind: 'unknown', ...MALFORMED };
   }
   const answer = operation.answer(body);
-  if (answer === undefined)
-    return { kind: 'unknown', drop: 'dropped_no_answer', fault: 'provider' };
-  const proof = operation.nothingHappened;
-  if (
-    answer.providerCode !== null &&
-    proof !== 'not_reconcilable' &&
-    proof.includes(answer.providerCode)
-  ) {
-    return { kind: 'nothing', reason: answer.providerCode };
+  if (answer === undefined) return { kind: 'unknown', ...MALFORMED };
+  if (declaresNothing(operation, answer.providerCode)) {
+    return { kind: 'nothing', reason: String(answer.providerCode) };
   }
   return {
     kind: 'priced',
@@ -74,6 +81,24 @@ export function settlementOf(
     account: outcome.account,
     credentialKind: outcome.credentialKind,
   };
+}
+
+/**
+ * The run's step, marked as one that may have acted (AW-10): a call held
+ * unknown went out and nobody knows what it did, so the step is the
+ * dispatched, marked attempt the sweep, a hand-back and the reconciliation
+ * pass already stop on (T2c1, T3b). Only the attempt still in its owning
+ * state on the call's own hold; a conversation or planning call has none.
+ */
+export async function markStepActed(tx: TenantQuery, callId: string): Promise<void> {
+  await tx.query(
+    `update public.attempts att
+        set dispatch_marker = true, provider_started_at = coalesce(att.provider_started_at, now())
+       from public.model_calls c
+      where c.business_id = $1 and c.id = $2 and att.business_id = c.business_id
+        and att.reservation_id = c.reservation_id and att.state = 'dispatched'`,
+    [tx.businessId, callId],
+  );
 }
 
 /** Above the hold, or no answer: the maximum stays held as unknown liability until a person records an outcome. */
@@ -85,36 +110,40 @@ export async function hold(
   broker: Broker,
 ): Promise<ModelCallResult> {
   const { callId, operation, reservedMinor } = reserved;
+  // Above the hold is the provider's answer: its fault, with no drop and no code.
+  const failure: Failure = drop ?? MALFORMED;
+  const said = {
+    observedMinor: observed,
+    drop: drop?.drop ?? null,
+    cause: failure.cause,
+    fault: failure.fault,
+    providerCode: failure.providerCode,
+  };
   await tx.query(
     `update public.model_calls
         set state = 'liability_unknown', observed_minor = $3, fault = $4, drop_state = $5,
+            drop_cause = $6, provider_code = $7, reconcile_mode = $8,
             unknown_since = clock_timestamp()
       where business_id = $1 and id = $2`,
-    [tx.businessId, callId, observed, drop?.fault ?? 'provider', drop?.drop ?? null],
+    [
+      tx.businessId,
+      callId,
+      observed,
+      said.fault,
+      said.drop,
+      said.cause,
+      said.providerCode,
+      reconcileModeOf(operation, broker.providers.get(operation.provider)),
+    ],
   );
+  await markStepActed(tx, callId);
   await broker.audit(tx, {
     action: 'model.call_held',
     outcome: 'refused',
     refusalCode: 'LIABILITY_UNKNOWN',
-    detail: {
-      callId,
-      operation: operation.key,
-      heldMinor: reservedMinor,
-      observedMinor: observed,
-      drop: drop?.drop ?? null,
-    },
+    detail: { callId, operation: operation.key, heldMinor: reservedMinor, ...said },
   });
-  return {
-    ok: false,
-    code: 'LIABILITY_UNKNOWN',
-    callId,
-    heldMinor: reservedMinor,
-    observedMinor: observed,
-    drop: drop?.drop ?? null,
-    cause: null,
-    fault: drop?.fault ?? 'provider',
-    providerCode: null,
-  };
+  return { ok: false, code: 'LIABILITY_UNKNOWN', callId, heldMinor: reservedMinor, ...said };
 }
 
 /** Positive proof that nothing happened: the whole hold is released. */

@@ -182,7 +182,7 @@ export async function sendReservedCall(
   const adapter = broker.providers.get(reserved.operation.provider);
   if (adapter === undefined) throw new Error(`no adapter for ${reserved.operation.provider}`);
   const values = Object.fromEntries(started.fields.map((field) => [field.name, field.value]));
-  const built = adapter.build(values);
+  const built = adapter.build(values, reserved.callId);
   const outcome = await broker.custody.dispatch(reserved.route.credentialRef, {
     destination: reserved.operation.destination,
     path: built.path,

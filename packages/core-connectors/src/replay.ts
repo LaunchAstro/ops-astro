@@ -89,7 +89,8 @@ export const REPLAY_COMPOSE: ModelOperationDeclaration = {
   maxResponseBytes: 64 * 1024,
   maximumMinor: 500,
   settlesAt: 'completed',
-  nothingHappened: [REPLAY_NOTHING_HAPPENED],
+  // A 429 is the provider's own word that it began nothing (AW-10).
+  nothingHappened: [REPLAY_NOTHING_HAPPENED, 'http_429'],
   billed: true,
   concurrency: 4,
 };

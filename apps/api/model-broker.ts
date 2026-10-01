@@ -14,12 +14,16 @@
 
 import {
   catalogue,
+  readReplayLookup,
   REPLAY_COMPOSE,
   replayAdapter,
   replayCostMinor,
+  replayLookup,
 } from '../../packages/core-connectors/src/index.ts';
+import type { BusinessId, Database } from '../../packages/core-records/src/index.ts';
 import {
   parseDestinations,
+  reconcileProviderCalls,
   startCustody,
   type BrokerRoute,
   type CredentialKind,
@@ -49,7 +53,18 @@ export type BrokerSettings =
   | { readonly kind: 'invalid'; readonly problem: string };
 
 const OPERATIONS = catalogue([REPLAY_COMPOSE]);
-const PROVIDERS = new Map([['replay', { build: replayAdapter, price: replayCostMinor }]]);
+const PROVIDERS = new Map([
+  [
+    'replay',
+    {
+      build: replayAdapter,
+      price: replayCostMinor,
+      // AW-10: the reconciliation pass asks the provider about an unknown call.
+      lookup: replayLookup,
+      readLookup: readReplayLookup,
+    },
+  ],
+]);
 
 const REACHES: ReadonlySet<string> = new Set(['local', 'cloud']);
 const KINDS: ReadonlySet<string> = new Set<CredentialKind>([
@@ -138,14 +153,24 @@ export function brokerSettings(
 /** Custody's own process, started, and the executor over it. */
 export async function startModelBroker(
   settings: Extract<BrokerSettings, { kind: 'configured' }>,
-): Promise<{ readonly executor: ModelCallExecutor; readonly stop: () => Promise<void> }> {
+): Promise<{
+  readonly executor: ModelCallExecutor;
+  /** AW-10: the reconciliation pass's provider phase for one business. */
+  readonly reconcile: (database: Database, businessId: BusinessId) => Promise<unknown>;
+  readonly stop: () => Promise<void>;
+}> {
   const custody = await startCustody(settings.custody);
-  const executor = modelCallExecutor({
+  const broker = {
     custody,
     operations: OPERATIONS,
     providers: PROVIDERS,
     routes: settings.routes,
     installation: settings.installation,
-  });
-  return { executor, stop: async () => await custody.stop() };
+  };
+  return {
+    executor: modelCallExecutor(broker),
+    reconcile: async (database, businessId) =>
+      await reconcileProviderCalls(database, businessId, broker),
+    stop: async () => await custody.stop(),
+  };
 }

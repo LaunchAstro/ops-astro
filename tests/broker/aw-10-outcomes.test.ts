@@ -144,6 +144,8 @@ it('AW-10 no timer: only the commands a person sends reach the outcome and the w
   expect(callers.toSorted()).toStrictEqual([
     'packages/core-commands/src/commands/budget-record-outcome.ts',
     'packages/core-commands/src/commands/budget-write-off.ts',
+    // Defines `resolveHeldCalls`; its callers are the two below.
+    'packages/core-runtime/src/recovery/broker-effect.ts',
     'packages/core-runtime/src/recovery/outcome.ts',
     'packages/core-runtime/src/recovery/write-off.ts',
   ]);
