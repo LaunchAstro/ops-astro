@@ -15,7 +15,7 @@ import type { ConversationReadResult } from '../../packages/core-wire/src/index.
 import { AssistantView } from '../../apps/web/src/views/assistant.tsx';
 import { drawScreen } from '../../apps/web/src/screen-registry.tsx';
 import { pageAt } from '../../apps/web/src/manifest.ts';
-import { gateOf, matchRoute, pathTo, ROUTES } from '../../apps/web/src/routes.ts';
+import { gateOf, matchRoute, pathTo } from '../../apps/web/src/routes.ts';
 import type { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { mount, settle } from './mount.tsx';
 import { press, track, unmountAll } from './mp-7-11-drawer-fixtures.tsx';
@@ -136,9 +136,7 @@ describe('C36 conversation address', () => {
     expect(match?.id).toBe('agency:agent-conversation');
     expect(match?.params).toStrictEqual({ conversation: ID });
     expect(pathTo('agency:agent-conversation', { conversation: ID })).toBe(`/agent/${ID}`);
-    expect(ROUTES['agency:agent-conversation']).toMatchObject({ authenticated: true });
-    // No rail entry: the manifest, which places the rail, has no page at the address.
-    expect(pageAt(`/agent/${ID}`)).toBeNull();
+    expect(pageAt(`/agent/${ID}`), 'the manifest places no rail entry here').toBeNull();
     expect(gateOf(matchRoute(`/agent/${ID}`), false).kind).toBe('sign-in');
   });
 
