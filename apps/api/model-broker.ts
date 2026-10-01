@@ -17,6 +17,7 @@ import {
   CONVERSATION_ANSWER,
   REPLAY_COMPOSE,
   replayAdapter,
+  RESEARCH_COMPOSE,
   replayCostMinor,
 } from '../../packages/core-connectors/src/index.ts';
 import {
@@ -51,10 +52,11 @@ export type BrokerSettings =
     }
   | { readonly kind: 'invalid'; readonly problem: string };
 
-/** Every operation the broker serves, registered here in code and reviewed. */
+/** Every operation the broker serves, registered here in code and reviewed (WF-7's research call too). */
 export const BROKER_OPERATIONS: ReturnType<typeof catalogue> = catalogue([
   REPLAY_COMPOSE,
   CONVERSATION_ANSWER,
+  RESEARCH_COMPOSE,
 ]);
 const PROVIDERS = new Map([['replay', { build: replayAdapter, price: replayCostMinor }]]);
 

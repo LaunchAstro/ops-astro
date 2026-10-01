@@ -237,43 +237,36 @@ function filesUnder(at: string): readonly string[] {
   );
 }
 
-const pinsOf = async (runId: unknown) =>
+const pinsOf = async (work: Work) =>
   await s.db.admin.execute<Record<string, unknown>>(
-    `select ref_kind, path, content_digest, content_size::int as size, manifest
-       from public.run_definition_pins where run_id = $1`,
-    [runId],
+    `select ref_kind, path, manifest from public.run_definition_pins where run_id = $1`,
+    [work.proposal['runId']],
   );
 
-it('WF-7 skill pinned by digest: a research run pins the upstream research skill unmodified, and a changed folder is refused', async () => {
-  const lock = JSON.parse(
-    readFileSync(join(import.meta.dirname, '../../skills-lock.json'), 'utf8'),
-  ) as {
-    skills: Record<string, { computedHash: string }>;
-  };
-  expect(RESEARCH_SKILL.digest).toBe(lock.skills['research']?.computedHash);
-  expect(skillFolderHash(SKILL_FOLDER)).toBe(RESEARCH_SKILL.digest);
-
-  const files = filesUnder(SKILL_FOLDER);
+/** The skill pinned on the run's record, by the person who started it, from `source`. */
+const pinOn = async (work: Work, source: InstructionSource) => {
   const admitted = admitActivation({
     mode: 'manual',
     activator: { kind: 'person', actorId: s.decider.actorId },
   });
   if (!admitted.ok) throw new Error('the starter is a person, by hand');
-  const pinOn = async (work: Work, source: InstructionSource) =>
-    await s.db.app.withBusiness(
-      s.business,
-      async (tx) =>
-        await pinResearchSkill(tx, admitted.value, {
-          runId: String(work.proposal['runId']),
-          source,
-          files,
-        }),
-    );
+  const runId = String(work.proposal['runId']);
+  const files = filesUnder(SKILL_FOLDER);
+  return await s.db.app.withBusiness(s.business, async (tx) => {
+    return await pinResearchSkill(tx, admitted.value, { runId, source, files });
+  });
+};
+
+it('WF-7 skill pinned by digest: a research run pins the upstream research skill, unmodified, on its record', async () => {
+  const lock = JSON.parse(
+    readFileSync(join(import.meta.dirname, '../../skills-lock.json'), 'utf8'),
+  ) as { skills: Record<string, { computedHash: string }> };
+  expect(RESEARCH_SKILL.digest).toBe(lock.skills['research']?.computedHash);
+  expect(skillFolderHash(SKILL_FOLDER)).toBe(RESEARCH_SKILL.digest);
 
   const work = await researchRun('which skill does the run follow?');
-  const pinned = await pinOn(work, directorySource(SKILL_FOLDER));
   const entry = readFileSync(join(SKILL_FOLDER, RESEARCH_SKILL.entry));
-  expect(pinned).toStrictEqual({
+  expect(await pinOn(work, directorySource(SKILL_FOLDER))).toStrictEqual({
     ok: true,
     value: {
       path: RESEARCH_SKILL.entry,
@@ -281,14 +274,16 @@ it('WF-7 skill pinned by digest: a research run pins the upstream research skill
       size: entry.byteLength,
     },
   });
-  const [pin] = await pinsOf(work.proposal['runId']);
+  const [pin] = await pinsOf(work);
   expect(pin).toMatchObject({ ref_kind: 'bootstrap_file', path: RESEARCH_SKILL.entry });
-  expect(
-    (pin?.['manifest'] as { path: string }[]).map((file) => file.path).toSorted(),
-  ).toStrictEqual([...files].toSorted());
+  const manifest = (pin?.['manifest'] ?? []) as readonly { readonly path: string }[];
+  expect(manifest.map((file) => file.path).toSorted()).toStrictEqual(
+    [...filesUnder(SKILL_FOLDER)].toSorted(),
+  );
+});
 
-  // One byte changed is another skill: refused, and nothing pinned.
-  const changed = await researchRun('and a changed skill?');
+it('WF-7 skill pinned by digest: one byte changed is another skill, refused, and nothing is pinned', async () => {
+  const work = await researchRun('and a changed skill?');
   const edited: InstructionSource = {
     read: async (path) => {
       const bytes = await directorySource(SKILL_FOLDER).read(path);
@@ -297,7 +292,9 @@ it('WF-7 skill pinned by digest: a research run pins the upstream research skill
         : bytes;
     },
   };
-  const refused = await pinOn(changed, edited);
-  expect(refused).toMatchObject({ ok: false, refusal: { code: 'DEFINITION_DIGEST_MISMATCH' } });
-  expect(await pinsOf(changed.proposal['runId'])).toStrictEqual([]);
+  expect(await pinOn(work, edited)).toMatchObject({
+    ok: false,
+    refusal: { code: 'DEFINITION_DIGEST_MISMATCH' },
+  });
+  expect(await pinsOf(work)).toHaveLength(0);
 });
