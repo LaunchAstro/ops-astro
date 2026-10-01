@@ -245,4 +245,34 @@ describe.skipIf(noDatabase)('C39-T invitations', () => {
     expect(await send(lapsed)).toStrictEqual({ ok: false, code: 'INVITATION_NOT_PENDING' });
     expect(received()).toBe(before + 2);
   });
+
+  it('C39-T column grant: the application moves an invitation only by state, end, expiry and revision', async () => {
+    const id = await invite(c.admin);
+    const update = async (set: string): Promise<string> =>
+      await w.db.app
+        .withBusiness(w.alpha, async (tx) => {
+          const sql = `update public.invitations set ${set} where business_id = $1 and id = $2`;
+          await tx.query(sql, [tx.businessId, id]);
+          return 'updated';
+        })
+        .catch((error: unknown) => String((error as { code?: string }).code));
+    const before = await invitationRow(id);
+    for (const set of [
+      'business_id = business_id',
+      'id = id',
+      'person_id = person_id',
+      'role_key = role_key',
+      'address = address',
+      'created_by_actor_id = created_by_actor_id',
+      'created_at = created_at',
+    ]) {
+      // oxlint-disable-next-line no-await-in-loop -- one refusal at a time
+      expect(await update(set), set).toBe('42501');
+    }
+    expect(await invitationRow(id)).toStrictEqual(before);
+    // The commands' own moves stay open to it.
+    const moved =
+      'state = state, ended_at = ended_at, expires_at = expires_at, revision = revision';
+    expect(await update(moved)).toBe('updated');
+  });
 });
