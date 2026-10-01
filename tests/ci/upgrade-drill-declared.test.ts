@@ -32,12 +32,13 @@ interface Planted {
   readonly changes?: readonly Declaration[];
 }
 
-/** The real migrations, plus the planted ones after the head, each with its declaration if any. */
+/** The real migrations with their declarations, plus the planted ones after the head, each with its own if any. */
 function withPlanted(planted: readonly Planted[]): string {
   const directory = mkdtempSync(join(tmpdir(), 'upgrade-drill-declared-'));
   scratch.push(directory);
   for (const file of readdirSync('migrations')) {
-    if (file.endsWith('.sql')) copyFileSync(join('migrations', file), join(directory, file));
+    if (/\.(sql|changes\.json)$/u.test(file))
+      copyFileSync(join('migrations', file), join(directory, file));
   }
   for (const one of planted) {
     writeFileSync(join(directory, `${one.version}.sql`), `${one.sql}\n`);

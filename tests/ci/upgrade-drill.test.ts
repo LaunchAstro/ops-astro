@@ -36,12 +36,13 @@ const onDisk = readMigrations('migrations');
 const head = onDisk.at(-1)?.version ?? '';
 const scratch: string[] = [];
 
-/** The real migrations, plus one planted after the head. */
+/** The real migrations with their declared changes, plus one planted after the head. */
 function withPlanted(name: string, sql: string): string {
   const directory = mkdtempSync(join(tmpdir(), 'upgrade-drill-'));
   scratch.push(directory);
   for (const file of readdirSync('migrations')) {
-    if (file.endsWith('.sql')) copyFileSync(join('migrations', file), join(directory, file));
+    if (/\.(sql|changes\.json)$/u.test(file))
+      copyFileSync(join('migrations', file), join(directory, file));
   }
   writeFileSync(join(directory, name), `${sql}\n`);
   return directory;
