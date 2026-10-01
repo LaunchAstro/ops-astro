@@ -744,6 +744,25 @@ export interface ConversationListResult {
   readonly conversations: readonly ConversationTabView[];
 }
 
+/**
+ * The drawer's planning allowance (AW-04, U10): the business's planning cap,
+ * what is left of it across the business, and the caller's own conversation's
+ * settled spend and held amount. `set` false is the default cap, AUD 50.
+ */
+export interface PlanningAllowanceView {
+  readonly set: boolean;
+  readonly currency: string;
+  readonly limitMinor: number;
+  readonly leftMinor: number;
+  readonly conversation: { readonly spentMinor: number; readonly heldMinor: number };
+}
+
+/** `conversation.allowance`'s answer: the team's, and the caller's own spend only. */
+export interface AllowanceResult {
+  readonly ok: true;
+  readonly allowance: PlanningAllowanceView;
+}
+
 export interface ConversationReadResult {
   readonly ok: true;
   readonly conversation: {

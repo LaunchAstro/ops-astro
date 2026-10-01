@@ -329,6 +329,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
       const foreign = await foreignConversation(w.h.world.db.admin, bravo);
       const cells: readonly [CommandName, Body][] = [
         ['conversation.read', {}],
+        ['conversation.allowance', {}],
         ['conversation.message', { body: NOBODY }],
         ['conversation.rename', { title: NOBODY }],
         ['conversation.set_scope', { page: null }],

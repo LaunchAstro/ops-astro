@@ -255,12 +255,13 @@ export async function callModelForPlanning(
 /**
  * The allowance line and the planning spend. The cap and what is left are the
  * business's; the spend is the person's own conversation only, filtered by its
- * owner inside the query, so another person's conversation reads as none.
+ * owner inside the query, so another person's conversation reads as none, and
+ * so does no conversation at all (the empty drawer, before the first message).
  */
 export async function readPlanningAllowance(
   tx: TenantQuery,
   personId: string,
-  conversationId: string,
+  conversationId: string | null,
 ): Promise<PlanningAllowance> {
   const cap = await planningCap(tx, false);
   const [own] = await tx.query<{ spent: string; held: string }>(

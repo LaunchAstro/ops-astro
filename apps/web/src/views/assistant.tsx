@@ -24,6 +24,9 @@
 //
 // A started tab links to the conversation's own address (C36), where it stays
 // after it is taken out of the tab row.
+//
+// The planning allowance line (AW-04) sits above the transcript, from before
+// the first message (`allowance-line.tsx`).
 
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { AssistantPanel, type AssistantMessage, type AssistantPage } from '@launchastro/ui';
@@ -46,6 +49,7 @@ import { modelOffer, subjectFor, type ModelChoice, type Subject } from '../assis
 import type { CallResult, CommandOutcome, OperationsClient } from '../operations/client.ts';
 import { settle } from '../records/use-command.ts';
 import { pathTo, ROUTES, type RouteId } from '../routes.ts';
+import { AllowanceLine } from './allowance-line.tsx';
 
 export const KEPT = 'Kept in this conversation. The agent does not answer here yet.';
 
@@ -227,6 +231,7 @@ export function AssistantView(props: AssistantViewProps): ReactElement {
         opened === null ? null : pathTo('agency:agent-conversation', { conversation: opened })
       }
       citation={state.citation}
+      allowance={<AllowanceLine client={props.client} conversationId={opened} />}
       draft={state.draft}
       onSelect={(key) => {
         update((current) => select(current, key));

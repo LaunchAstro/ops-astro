@@ -82,6 +82,8 @@ export const IDENTIFIER_BEARING: Readonly<
   'budget.write_off': ['attemptId', 'control'],
   'conversation.message': ['conversationId', 'conversation'],
   'conversation.read': ['conversationId', 'conversation'],
+  // AW-04: the drawer's allowance names the caller's own conversation, or none.
+  'conversation.allowance': ['conversationId', 'conversation'],
   'conversation.rename': ['conversationId', 'conversation'],
   'conversation.set_scope': ['conversationId', 'conversation'],
   'run.top_up': ['runId and recordId', 'control'],
