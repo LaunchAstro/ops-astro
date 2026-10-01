@@ -127,6 +127,23 @@ export async function signOut(
   signingOut.delete(sent);
 }
 
+/**
+ * Sign out the sign-in a tab has just forgotten (C23): its business key too,
+ * so the API ends it where its cookie is sent (C58).
+ */
+export async function signOutOf(
+  route: ApiRoute,
+  ended: { readonly sessionId?: string; readonly businessKey: string },
+): Promise<void> {
+  const named = ended.sessionId === undefined ? {} : { sessionId: ended.sessionId };
+  await signOut({
+    apiOrigin: route.apiOrigin,
+    fetch: route.fetch,
+    ...named,
+    businessKey: ended.businessKey,
+  });
+}
+
 /** One call to the session route, with the header its CSRF check asks for. */
 async function toApi(
   request: ApiRoute,

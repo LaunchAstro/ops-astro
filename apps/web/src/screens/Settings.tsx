@@ -46,6 +46,7 @@ import {
   Written,
 } from './settings/panels.tsx';
 import { useSettings, type StorageLike, type Which } from './settings/use-settings.ts';
+import { WindowRow } from './settings/windows.tsx';
 
 export type { StorageLike } from './settings/use-settings.ts';
 
@@ -151,12 +152,12 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
       {/* DS-COMP-26's settings rows (AG-X20, AG-X21): one card, a row per setting. */}
       <section className="card set__card" aria-labelledby="settings-title">
         <h2 className="card__title" id="settings-title">
-          Settings for {businessKey}
+          This business
         </h2>
         <p className="card__sub">
-          Two settings the model classifies <code>operation</code>: each has a command of its own
-          and neither is reachable through an ordinary edit. Both are stored and shown here; no
-          operation applies either one yet.
+          Settings for {businessKey} the model classifies <code>operation</code>: each has a command
+          of its own and none is reachable through an ordinary edit. The four-eyes threshold is
+          applied to money; the others are stored and shown here.
         </p>
         <div className="set">
           <div className="setrow" data-set="four-eyes">
@@ -256,6 +257,9 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
             </div>
             {conflictFor('sign-off')}
           </div>
+
+          <WindowRow which="conversation" model={model} conflict={conflictFor('conversation')} />
+          <WindowRow which="retention" model={model} conflict={conflictFor('retention')} />
         </div>
       </section>
     </div>

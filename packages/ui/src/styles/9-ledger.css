@@ -1,0 +1,103 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* The activity ledger (MP-8-4): the pinned mockup's `act__` rules. The day head
+   sticks while its day scrolls under it. The search row, the reading line (in
+   the accent: what the box understood) and the count line sit above the list. */
+
+.act__find {
+  display: flex;
+  gap: var(--s-3);
+  align-items: center;
+  max-width: 40rem;
+}
+.act__find .search {
+  flex: 1;
+}
+.act__read {
+  margin: var(--s-3) 0 0;
+  color: var(--accent);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
+.act__count {
+  margin: var(--s-2) 0 0;
+  color: var(--text-muted);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
+
+.act__list {
+  margin-top: var(--s-5);
+}
+.act__day {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0;
+  padding: var(--s-3) 0 var(--s-2);
+  border-bottom: 1px solid var(--border-strong);
+  background: var(--bg);
+  color: var(--text);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
+}
+.act__row {
+  display: grid;
+  grid-template-columns: 3.2rem 6.5rem 5rem minmax(0, 1fr);
+  gap: var(--s-4);
+  align-items: baseline;
+  padding: var(--s-3) 0;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+.act__t {
+  color: var(--text-muted);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
+.act__kind {
+  color: var(--text-2);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
+}
+.act__who {
+  font: var(--type-small-strong);
+  letter-spacing: var(--type-small-strong-tracking);
+  text-transform: var(--type-small-strong-case);
+}
+.act__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+.act__text {
+  color: var(--text);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+.act__proj {
+  color: var(--text-muted);
+  text-decoration: none;
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
+.act__proj:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.act__more {
+  margin-top: var(--s-4);
+}
+
+@media (width <= 640px) {
+  .act__row {
+    grid-template-columns: 3.2rem minmax(0, 1fr);
+  }
+}

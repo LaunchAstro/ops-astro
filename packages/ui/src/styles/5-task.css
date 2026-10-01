@@ -22,8 +22,10 @@
   text-transform: var(--type-body-case);
   color: var(--text-muted);
 }
-/* TP-01: the door link, DS-TOK-124 (the mockup's 13 snaps to the data style). */
-.tpr__crumb .sb__addr {
+/* TP-01: the door link, DS-TOK-124 (the mockup's 13 snaps to the data style),
+   and the same door out of a gate or an empty page. */
+.tpr__crumb .sb__addr,
+.empty__action .sb__addr {
   font: var(--type-data);
   letter-spacing: var(--type-data-tracking);
   text-transform: var(--type-data-case);
@@ -31,7 +33,9 @@
   text-decoration: none;
 }
 .tpr__crumb .sb__addr:hover,
-.tpr__crumb .sb__addr:focus-visible {
+.tpr__crumb .sb__addr:focus-visible,
+.empty__action .sb__addr:hover,
+.empty__action .sb__addr:focus-visible {
   color: var(--accent);
 }
 /* TP-06: DS-TOK-107 --type-display (the mockup's 600 weight is drift). */

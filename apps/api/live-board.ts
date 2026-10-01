@@ -36,6 +36,9 @@ export interface BoardQuestions {
   readonly shown: (personId: string) => Promise<string | undefined>;
 }
 
+/** The stream, or the board topic's share of C4's one stream. */
+type BoardStream = Pick<SSEStreamingApi, 'writeSSE' | 'abort' | 'aborted' | 'onAbort'>;
+
 const noop = (): void => {};
 
 /** The person whose reads the stream digests, and the digest the tab was last told. */
@@ -50,7 +53,7 @@ interface Bound {
 }
 
 export async function followBoard(
-  stream: SSEStreamingApi,
+  stream: BoardStream,
   topics: LiveTopics,
   on: { readonly businessId: string; readonly personId: string; readonly recheckMs: number },
   ask: BoardQuestions,
@@ -96,7 +99,7 @@ export async function followBoard(
 
 /** The rule run once for every signal heard while it runs; `check` is the stream's own. */
 function batch(
-  stream: SSEStreamingApi,
+  stream: BoardStream,
   ask: BoardQuestions,
   bound: Bound,
   bind: (personId: string) => void,
@@ -132,7 +135,7 @@ function batch(
 }
 
 /** A frame, unless the stream ended while a question before it was asked. */
-async function send(stream: SSEStreamingApi, event: string): Promise<void> {
+async function send(stream: BoardStream, event: string): Promise<void> {
   if (!stream.aborted) await stream.writeSSE({ event, data: '' });
 }
 
@@ -141,7 +144,7 @@ async function send(stream: SSEStreamingApi, event: string): Promise<void> {
  * `resync` when the bearer is still that person and the digest moved.
  */
 async function rule(
-  stream: SSEStreamingApi,
+  stream: BoardStream,
   ask: BoardQuestions,
   bound: Bound,
   bind: (personId: string) => void,
@@ -167,7 +170,7 @@ async function rule(
  * topic replaces the previous one's; `same` otherwise.
  */
 async function rejoin(
-  stream: SSEStreamingApi,
+  stream: BoardStream,
   ask: BoardQuestions,
   bound: Bound,
   bind: (personId: string) => void,

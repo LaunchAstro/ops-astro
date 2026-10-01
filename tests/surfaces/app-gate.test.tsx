@@ -105,15 +105,16 @@ describe('the screens with nothing to draw', () => {
     await view.unmount();
   });
 
-  it('draws a held address as its page head, the not-built chip and the one empty state', async () => {
+  // A held address is SL10's reserved address (U06, MP-2-10): the page head and
+  // the one shared not-built state, no chip and no ticket in its words (R2).
+  it('draws a held address as its page head and the one not-built state', async () => {
     const view = await open('/dashboard/', true);
-    expect(view.find('.topbar__title')?.textContent).toBe('Dashboard');
-    expect(view.find('.topbar__meta .chip.chip--outline')?.textContent).toBe('Not built yet');
-    const empty = view.find('[data-outcome="placeholder"] > .empty.empty--block');
-    expect(empty?.querySelector('.empty__title')?.textContent).toBe('Dashboard is not built yet.');
-    expect(empty?.querySelector('.empty__desc')?.textContent).toBe(
-      'Its address is held for it. It is built by MP-2-10.',
-    );
+    expect(view.find('.topbar__title')?.textContent).toBe('Portfolio');
+    expect(view.find('.topbar__meta .chip')).toBeNull();
+    const empty = view.find('[data-outcome="placeholder"] > .empty');
+    expect(empty?.matches('[data-voice="not-built"]')).toBe(true);
+    expect(empty?.querySelector('.empty__title')?.textContent).toBe('Not here yet');
+    expect(empty?.querySelector('.empty__desc')?.textContent).toBe("This page isn't built yet.");
     await view.unmount();
   });
 

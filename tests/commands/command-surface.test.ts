@@ -79,7 +79,7 @@ describe('the surface as a table', () => {
     // documents, asked of `privacy`. `credential` is API-2's agent credential.
     expect(
       paths.every((path) =>
-        /^\/(?:task|person|preset|settings|session|grant|delegation|budget|access|operations|privacy|legal|credential|client|inbox|notifications)\/[a-z_]+$/u.test(
+        /^\/(?:task|team|person|preset|settings|session|grant|delegation|budget|preference|access|operations|privacy|legal|credential|client|inbox|notifications)\/[a-z_]+$/u.test(
           path,
         ),
       ),
@@ -87,27 +87,34 @@ describe('the surface as a table', () => {
   });
 });
 
-// eslint-disable-next-line max-lines-per-function -- one table, read top to bottom
+/** The reads the surface declares, sorted. */
+const DECLARED_READS = [
+  'access.read',
+  'client.list',
+  'inbox.count',
+  'inbox.read',
+  'inbox.unattended',
+  'operations.read',
+  'person.list',
+  'preference.read',
+  'preset.plan',
+  'privacy.draft_breach_notices',
+  'session.capabilities',
+  'session.person',
+  'settings.read',
+  'task.board',
+  'task.execution',
+  'task.ledger',
+  'task.queue',
+  'task.read',
+  'task.receipt',
+  'task.search',
+  'team.list',
+];
+
 describe('the surface as a table', () => {
-  it('declares the sixteen reads as reads, and everything else as a write', () => {
-    expect([...READS].toSorted()).toStrictEqual([
-      'access.read',
-      'client.list',
-      'inbox.count',
-      'inbox.read',
-      'inbox.unattended',
-      'operations.read',
-      'person.list',
-      'preset.plan',
-      'privacy.draft_breach_notices',
-      'session.capabilities',
-      'settings.read',
-      'task.board',
-      'task.execution',
-      'task.queue',
-      'task.read',
-      'task.receipt',
-    ]);
+  it('declares the twenty-one reads as reads, and everything else as a write', () => {
+    expect([...READS].toSorted()).toStrictEqual(DECLARED_READS);
     for (const command of COMMAND_SURFACE) {
       expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));
       // A read has nothing to be stale against. It does not always take the
@@ -133,14 +140,16 @@ describe('the surface as a table', () => {
     expect(collections.get('task.create')).toBe('task');
     expect(collections.get('person.list')).toBe('person');
     expect(collections.get('preset.plan')).toBe('preset');
-    expect(collections.get('settings.set_four_eyes_threshold')).toBe('settings');
+    // MP-2-11: the four-eyes threshold is a money action (owner line 71).
+    expect(collections.get('settings.set_four_eyes_threshold')).toBe('spend');
     expect(collections.get('settings.set_client_sign_off')).toBe('settings');
     // `settings.read` is on the same collection as the two writes and takes a
     // different action, which is the whole of the asymmetry: every member may
     // see a setting, and changing one is `manage`.
     expect(collections.get('settings.read')).toBe('settings');
     expect(declarationOf('settings.read').action).toBe('read');
-    expect(declarationOf('settings.set_four_eyes_threshold').action).toBe('manage');
+    expect(declarationOf('settings.set_client_sign_off').action).toBe('manage');
+    expect(declarationOf('settings.set_four_eyes_threshold').action).toBe('decide');
     expect(collections.get('session.capabilities')).toBe('session');
     for (const command of COMMAND_SURFACE) {
       expect(command.collection, command.name).toMatch(/^[a-z][a-z_]*$/u);

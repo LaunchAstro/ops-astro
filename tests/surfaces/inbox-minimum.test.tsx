@@ -49,7 +49,9 @@ function server(inbox: readonly InboxEntry[], owed: number) {
 describe('INB-1g the inbox inside Tasks', () => {
   it('INB-1 the inbox lands inside Tasks: the board screen draws the items and the owed count', async () => {
     const api = server([entry({ id: 'a' }), entry({ id: 'b', reason: 'assignment' })], 2);
-    const view = await mount(<Projects client={api.client} grantKey="alpha:mia" />);
+    const view = await mount(
+      <Projects client={api.client} grantKey="alpha:mia" navigate={() => {}} />,
+    );
     await settle();
     expect((view.find('[data-inbox-count]') as HTMLElement | null)?.dataset['inboxCount']).toBe(
       '2',

@@ -90,7 +90,7 @@ export const SHELL: LookScreen = {
     {
       id: 'shell.appbar-nav',
       mockup: { ...BOARD, selector: '.appbar__nav button' },
-      app: { ...APP, selector: '.appbar__nav button' },
+      app: { ...APP, selector: '.appbar__step' },
       props: ['color', 'box.x', 'box.y', 'box.width', 'box.height'],
       widths: [1480, 900],
     },
@@ -113,7 +113,7 @@ export const SHELL: LookScreen = {
     {
       id: 'shell.appbar-kbd',
       mockup: { ...BOARD, selector: '.appbar__kbd' },
-      app: { ...APP, selector: '.appbar__kbd' },
+      app: { ...APP, selector: '.appbar__key' },
       props: ['font-family', 'font-size', 'border-top-color', 'color', 'box.height'],
       // TOKENS.md type census row 39 folds the keycap's 10.88/1.4 into the chip style.
       ruled: (['light', 'dark'] as const).flatMap((theme) => [
@@ -174,14 +174,14 @@ export const SHELL: LookScreen = {
       // DS-COMP-2: the tab row sits between the app strip and the page header.
       id: 'shell.tabrow',
       mockup: { ...TABBED, selector: 'nav.tabbar' },
-      app: { ...APP, selector: 'nav.routetabs' },
+      app: { ...APP, selector: 'nav.tabbar' },
       props: ['padding-left', 'box.x', 'box.y', 'box.width', 'box.height'],
       widths: ALL,
     },
     {
       id: 'shell.tabrow-first',
       mockup: { ...TABBED, selector: '.tabbar__t:first-of-type' },
-      app: { ...APP, selector: 'nav.routetabs a:first-of-type' },
+      app: { ...APP, selector: '.tabbar__t:first-of-type' },
       props: ['box.x', 'box.y', 'box.height'],
       widths: ALL,
     },

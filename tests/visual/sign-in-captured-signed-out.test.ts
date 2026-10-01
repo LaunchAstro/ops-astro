@@ -20,7 +20,7 @@ vi.mock('./capture.ts', () => ({
     session: source.session,
     width,
     theme: source.colorScheme,
-    // The signed-in side answers its reads from the made-up set (app-pages.ts).
+    // The made-up answers route on the signed-in context; nothing is fetched here.
     context: { close: () => {}, route: async () => {} },
   }),
   load: (

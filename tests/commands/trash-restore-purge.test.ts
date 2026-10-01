@@ -165,7 +165,11 @@ describe.skipIf(serverUrl === undefined)('trash, restore and purge', () => {
       await grantTo(tx, worker, 'write');
       await grantTo(tx, worker, 'manage');
       await grantTo(tx, worker, 'comment');
-      const written = await writeBusinessSetting(tx, { key: 'retention_window_days', value: 0 });
+      const written = await writeBusinessSetting(tx, {
+        key: 'retention_window_days',
+        owningOperation: 'settings.set_retention_window',
+        value: 0,
+      });
       if (written === undefined || 'refused' in written) throw new Error('window not written');
     });
   }, 60_000);

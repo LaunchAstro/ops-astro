@@ -73,6 +73,7 @@ const writing = (
 const READ = writing([]);
 // A task is a row of `records`, with its unique values beside it.
 const TASK = writing(client('records', 'record_unique_values'));
+// A proposal raises the decision's inbox items (INB-1b).
 const PROPOSAL = writing(
   client(
     'evidence_packs',
@@ -144,11 +145,25 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.read': READ,
   'task.board': READ,
   'task.queue': READ,
+  // Search (C1): finds what the caller may read, and stores nothing.
+  'task.search': READ,
+  // The activity ledger (MP-8-4): reads audit events, writes nothing.
+  'task.ledger': READ,
   'task.execution': READ,
   'person.list': READ,
+  // The Team panel's staff list (MP-7-10).
+  'team.list': READ,
   'preset.plan': READ,
   'settings.read': READ,
   'session.capabilities': READ,
+  // The person menu (C23): the caller's own name; and the sign-out, which
+  // writes only its audit event (the browser ends the credential itself).
+  'session.person': READ,
+  'session.end': READ,
+  // The caller's own preferences (MP-2-11a), a row of their own in the business.
+  'preference.read': READ,
+  'preference.save': writing(business('person_preferences')),
+  'preference.dismiss_tip': writing(business('person_preferences')),
   'access.read': READ,
   'client.list': READ,
   'operations.read': READ,
@@ -164,6 +179,8 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'settings.set_four_eyes_threshold': SETTINGS,
   'settings.set_client_sign_off': SETTINGS,
   'settings.set_money_step_up': SETTINGS,
+  'settings.set_conversation_window': SETTINGS,
+  'settings.set_retention_window': SETTINGS,
   'privacy.record_incident': writing(business('privacy_incidents')),
   'legal.draft_version': LEGAL,
   'legal.approve_version': LEGAL,

@@ -39,7 +39,7 @@ const MUTED_DARK = { at: 'color@dark', want: 'rgba(248,248,248,140)', why: 'DR-1
 
 const BOARD_PROBES: readonly LookProbe[] = [
   // DS-COMP-2: the tab row and its tabs.
-  probe('board.tabrow', { path: '/agency/brief/', selector: 'nav.tabbar' }, 'nav.routetabs', [
+  probe('board.tabrow', { path: '/agency/brief/', selector: 'nav.tabbar' }, 'nav.tabbar', [
     'box.height',
     'padding-left',
     'column-gap',
@@ -50,13 +50,13 @@ const BOARD_PROBES: readonly LookProbe[] = [
   probe(
     'board.tab',
     { path: '/agency/brief/', selector: '.tabbar__t:not(.is-on)' },
-    'nav.routetabs a:not([aria-current])',
+    '.tabbar__t:not([aria-current])',
     [...TYPE, 'color', 'padding-top', 'padding-bottom', 'box.height'],
   ),
   probe(
     'board.tab-current',
     { path: '/agency/brief/', selector: '.tabbar__t.is-on' },
-    'nav.routetabs a[aria-current]',
+    '.tabbar__t[aria-current]',
     [...TYPE, 'color', 'box.height'],
   ),
   // The create field, dressed as the mockup's quick-add field (P-02, B-01).
