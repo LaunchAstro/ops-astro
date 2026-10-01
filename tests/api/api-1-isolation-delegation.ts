@@ -21,6 +21,7 @@ import {
   task,
 } from './api-1-isolation-world.ts';
 import { SHAPE, asAgent, canonical, foreign, type Heard } from './api-1-isolation-surfaces.ts';
+import { requestBody as correction } from '../site/c80-world.ts';
 
 let attemptedForeignLeaseId = '';
 let attemptedForeignReservationId = '';
@@ -53,6 +54,8 @@ export function delegationCrossing(): void {
     const before = await claims();
     expect(before).toHaveLength(1);
     const target: Record<string, (record: string) => Record<string, unknown> | null> = {
+      // C80: a one-word correction under another task, refused before its party is read.
+      'live_correction.request': (record) => ({ ...correction(randomUUID(), record) }),
       'task.read': (record) => ({ recordId: record }),
       'task.comment': (record) => ({ recordId: record, body: 'made-up', audience: 'internal' }),
       'task.heartbeat': () => ({ ...notOwnLease, leaseSeconds: 60 }),
@@ -79,6 +82,7 @@ export function delegationCrossing(): void {
     // The lease: the delegation's one task is not the other lease's. The pickup: one live
     // delegation per agent and purpose, so a second task never joins the first one's reach.
     const reason: Record<string, string> = {
+      'live_correction.request': 'DELEGATION_OUT_OF_PURPOSE',
       'task.heartbeat': 'DELEGATION_OUT_OF_PURPOSE',
       'task.handback': 'DELEGATION_OUT_OF_PURPOSE',
       'task.dispatch': 'DELEGATION_OUT_OF_PURPOSE',
