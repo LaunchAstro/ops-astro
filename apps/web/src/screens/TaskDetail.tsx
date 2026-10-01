@@ -659,7 +659,6 @@ function TaskWork(
     isEmpty: (value) => (value.outages ?? []).length === 0,
     deps: [],
   });
-
   return (
     <>
       <AgentSection
@@ -674,7 +673,6 @@ function TaskWork(
         ledger={task.ledger}
         onChanged={props.onChanged}
       />
-
       <Proposals
         capCurrency={task.capCurrency}
         client={client}
@@ -693,12 +691,9 @@ function TaskWork(
         recordId={task.id}
         revision={task.revision}
       />
-
       <RunProgress client={client} grantKey={props.grantKey} readOf={task} taskKey={task.key} />
       <Alerts alerts={task.alerts} />
-
       <Outages state={outages.state} taskId={task.id} />
-
       <History history={task.history} />
     </>
   );
