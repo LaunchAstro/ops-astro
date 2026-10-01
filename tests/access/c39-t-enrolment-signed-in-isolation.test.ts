@@ -5,7 +5,8 @@
 // another site is answered before the link is looked at. A token reaches only
 // its own business, binds only its invitation's person in the invited role
 // and leaves the login's other business as it was. A login a signed-in
-// accept bound is never set again by another business's link.
+// accept bound is never set again by another business's link. A hostile
+// answer to the provider read binds and spends nothing.
 
 import { describe, expect, it } from 'vitest';
 import { acceptSignedIn } from '../../packages/core-commands/src/index.ts';
@@ -24,6 +25,7 @@ import {
   spentOf,
   useEnrolWorld,
 } from './c39-t-enrol-world.ts';
+import type { FakeUsersMode } from './c39-t-users-fake.ts';
 import { addressFor, c, noDatabase, w } from './c39-t-world.ts';
 
 useEnrolWorld();
@@ -143,5 +145,34 @@ describe.skipIf(noDatabase)('C39-T enrolment signed in, its edges', () => {
     expect(e.users.received).toHaveLength(asked);
     expect(e.users.passwords.get(subject)).toBe(password);
     expect(await spentOf(alpha.id)).toStrictEqual(PENDING);
+  }, 30_000);
+
+  it('C39-T hostile provider: a hostile answer to the read of the signed-in login binds nothing and spends nothing, and the link then binds', async () => {
+    const address = addressFor('bind-hostile');
+    const subject = await heldInBravo(address);
+    const alpha = await invited(c.admin, address);
+    const rows = await identityRows(w.alpha);
+    const modes: readonly FakeUsersMode[] = [
+      'oversized',
+      'redirect',
+      'not_json',
+      'bad_id',
+      'other_id',
+      'fault',
+      'slow',
+    ];
+    for (const mode of modes) {
+      e.users.mode(mode);
+      // oxlint-disable-next-line no-await-in-loop
+      expect(await bindVia(alpha.token, loginOf(subject)), mode).toStrictEqual({
+        status: 503,
+        body: { code: 'ENROLMENT_UNAVAILABLE' },
+        cookie: null,
+      });
+    }
+    e.users.mode('accept');
+    expect(await identityRows(w.alpha)).toStrictEqual(rows);
+    expect(await spentOf(alpha.id)).toStrictEqual(PENDING);
+    expect(await bindVia(alpha.token, loginOf(subject))).toStrictEqual(JOINED);
   }, 30_000);
 });
