@@ -114,7 +114,18 @@ const placesOf = (probe: LookProbe): { width: number; theme: Theme }[] =>
 async function measureOn(side: Side, url: string, probe: LookProbe, on: 'mockup' | 'app') {
   try {
     const page = await load(side, packet, url, { open: probe[on].open });
-    return await page.evaluate(measure, { selector: probe[on].selector, props: probe.props });
+    const read = () => page.evaluate(measure, { selector: probe[on].selector, props: probe.props });
+    // The dev server injects each style sheet as its module loads, so an early read can
+    // catch a block before its look applies (13px for 14px, 16px for 48px padding). Read
+    // until two reads 100ms apart agree, for at most two seconds.
+    let last = await read();
+    for (let tries = 0; tries < 20; tries += 1) {
+      await page.waitForTimeout(100);
+      const next = await read();
+      if (JSON.stringify(next) === JSON.stringify(last)) return next;
+      last = next;
+    }
+    return last;
   } finally {
     await side.context.close();
   }
