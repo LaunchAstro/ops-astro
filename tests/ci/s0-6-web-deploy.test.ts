@@ -1,10 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The staging web deploy on Vercel (ticket S0-6, the Vercel re-plan, section
-// 11 step 4): `S0-6 deploy recorded` and the read-back half of `S0-6 functions
-// in Sydney`. The stored build output is checked by its digest, deployed with
-// `vercel deploy --prebuilt --prod` under the person's own Vercel sign-in, and
-// its region read back from Vercel; only a deploy in `syd1` alone is recorded.
+// 11 step 4): `S0-6 deploy recorded`. The stored build output is checked by
+// its digest, deployed with `vercel deploy --prebuilt --prod` under the
+// person's own Vercel sign-in, and read back with `vercel inspect <address>
+// --format json`. Only a deployment Vercel reports as the one just made (its
+// `url`), on `production` (its `target`) and `READY` (its `readyState`) is
+// recorded. The CLI's answer is not read for a region: the `syd1` recorded is
+// the one the build output declares, held by `buildOutputProblems` before
+// Vercel is asked (s0-6-functions-in-sydney.test.ts).
 // `vercel` is the fixture's fake (web-deploy.fixture.ts). The operator gate in
 // front of the command is proved in operator-only.test.ts.
 
@@ -18,6 +22,7 @@ import {
   CANARY,
   clean,
   fakeVercel,
+  INSPECTED,
   OUTPUT,
   PROJECT,
   scratch,
@@ -34,8 +39,8 @@ describe('S0-6 deploy recorded, on Vercel', () => {
   refusedCases();
 });
 
-describe('S0-6 functions in Sydney, read back from Vercel', () => {
-  regionCases();
+describe('S0-6 deploy recorded only when Vercel reads it back ready on production', () => {
+  readBackCases();
   failedCliCases();
 });
 
@@ -132,44 +137,116 @@ function refusedCases() {
   });
 }
 
-function regionCases() {
-  it('a deployment Vercel reports anywhere but syd1 alone, or cannot report, is not recorded', async () => {
-    for (const out of [
-      JSON.stringify({ regions: ['iad1'] }),
-      JSON.stringify({ regions: ['syd1', 'iad1'] }),
-      JSON.stringify({ regions: [] }),
-      JSON.stringify({ regions: 'syd1' }),
-      JSON.stringify({}),
-      'not json',
-    ]) {
-      const vercel = fakeVercel({ inspect: { out, status: 0 } });
-      // oxlint-disable-next-line no-await-in-loop -- each answer on its own
-      const outcome = await deployWeb(
-        { version: STAGED, store: store() },
-        { env: settings(vercel.path), preflight: clean },
-      );
-      expect(outcome.kind, out).toBe('failed');
-      expect(outcome.kind === 'failed' && outcome.reason, out).toMatch(/syd1/u);
-    }
+/** One `vercel inspect` answer, named for the failure message. */
+interface Answer {
+  readonly label: string;
+  readonly out: string;
+  readonly status?: number;
+}
+
+/** Deploys once with `inspect` answering `out`: the outcome and the calls made. */
+async function deployAnswering(out: string, status = 0) {
+  const vercel = fakeVercel({ inspect: { out, status } });
+  const outcome = await deployWeb(
+    { version: STAGED, store: store() },
+    { env: settings(vercel.path), preflight: clean },
+  );
+  return { outcome, argv: vercel.lines('argv') };
+}
+
+/** Each answer, deployed on its own, ends failed after Vercel was asked, with no record. */
+async function expectUnrecorded(answers: readonly Answer[]) {
+  for (const { label, out, status } of answers) {
+    // oxlint-disable-next-line no-await-in-loop -- each answer on its own
+    const { outcome, argv } = await deployAnswering(out, status);
+    expect(outcome.kind, label).toBe('failed');
+    expect(outcome.kind === 'failed' && outcome.reason, label).toMatch(
+      /did not report https:\/\/\S+ ready on production/u,
+    );
+    expect(argv, label).toStrictEqual([
+      'deploy --prebuilt --prod',
+      `inspect ${URL_MADE} --format json`,
+    ]);
+  }
+}
+
+const answering = (over: Record<string, unknown>): string =>
+  JSON.stringify({ ...INSPECTED, ...over });
+
+/** A case that deploys several times waits longer than one deploy's default. */
+const SEVERAL_DEPLOYS = { timeout: 30_000 };
+
+const UNRECORDED: readonly [string, readonly Answer[]][] = [
+  [
+    'a read-back naming another deployment, or none, is not recorded',
+    [
+      {
+        label: 'another deployment',
+        out: answering({ url: 'ops-astro-staging-z9y8x7w6v.vercel.app' }),
+      },
+      { label: 'with its scheme', out: answering({ url: URL_MADE }) },
+      { label: 'no url', out: answering({ url: undefined }) },
+    ],
+  ],
+  [
+    'a read-back on any target but production is not recorded',
+    [
+      { label: 'preview', out: answering({ target: 'preview' }) },
+      { label: 'staging', out: answering({ target: 'staging' }) },
+      { label: 'no target', out: answering({ target: null }) },
+    ],
+  ],
+  [
+    'a read-back in any state but READY is not recorded',
+    [
+      { label: 'BUILDING', out: answering({ readyState: 'BUILDING' }) },
+      { label: 'ERROR', out: answering({ readyState: 'ERROR' }) },
+      { label: 'QUEUED', out: answering({ readyState: 'QUEUED' }) },
+      { label: 'CANCELED', out: answering({ readyState: 'CANCELED' }) },
+      { label: 'ready', out: answering({ readyState: 'ready' }) },
+    ],
+  ],
+  [
+    'a read-back Vercel cannot give is not recorded',
+    [
+      { label: 'inspect failed', out: answering({}), status: 1 },
+      { label: 'empty object', out: '{}' },
+      { label: 'not json', out: 'not json' },
+      { label: 'empty', out: '' },
+    ],
+  ],
+];
+
+function readBackCases() {
+  it('records the deployment Vercel reads back as the one made, on production, READY', async () => {
+    const { outcome } = await deployAnswering(answering({}));
+    expect(outcome.kind).toBe('deployed');
   });
+  for (const [title, answers] of UNRECORDED) {
+    it(title, SEVERAL_DEPLOYS, () => expectUnrecorded(answers));
+  }
 }
 
 function failedCliCases() {
-  it('a deploy Vercel refuses, or answers without a deployment address, records nothing', async () => {
-    for (const deploy of [
-      { out: '', status: 1 },
-      { out: URL_MADE, status: 1 },
-      { out: 'Error: not signed in', status: 0 },
-      { out: 'https://elsewhere.example.test', status: 0 },
-    ]) {
-      const vercel = fakeVercel({ deploy });
-      // oxlint-disable-next-line no-await-in-loop -- each answer on its own
-      const outcome = await deployWeb(
-        { version: STAGED, store: store() },
-        { env: settings(vercel.path), preflight: clean },
-      );
-      expect(outcome.kind, deploy.out).toBe('failed');
-      expect(vercel.lines('argv'), deploy.out).toStrictEqual(['deploy --prebuilt --prod']);
-    }
-  });
+  it(
+    'a deploy Vercel refuses, or answers without a deployment address, records nothing',
+    SEVERAL_DEPLOYS,
+    async () => {
+      for (const deploy of [
+        { out: '', status: 1 },
+        { out: URL_MADE, status: 1 },
+        { out: 'Error: not signed in', status: 0 },
+        { out: 'https://elsewhere.example.test', status: 0 },
+      ]) {
+        const vercel = fakeVercel({ deploy });
+        // oxlint-disable-next-line no-await-in-loop -- each answer on its own
+        const outcome = await deployWeb(
+          { version: STAGED, store: store() },
+          { env: settings(vercel.path), preflight: clean },
+        );
+        expect(outcome.kind, deploy.out).toBe('failed');
+        expect(vercel.lines('argv'), deploy.out).toStrictEqual(['deploy --prebuilt --prod']);
+      }
+    },
+  );
 }
