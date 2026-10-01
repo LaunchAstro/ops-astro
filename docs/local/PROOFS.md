@@ -1255,6 +1255,14 @@ login, and is green 3 of 3 (FR8-0031).
   undischarged and named this as Nathan's item. Either answer clears it
   without re-scoring.
 
+## Retired by ruling
+
+- `tests/ci/staging-deploy-consumes-release.test.ts` ("deploys a checked staging artefact through the
+  shipped image build path", batch 1's blind review, finding 6): retired by the orchestrator's ruling
+  (ORCH45, option 1). It certified a local app image built from `deploy/staging/Dockerfile`, a path
+  staging no longer has: the app and API deploy only to Vercel (`scripts/ops/web-deploy.mjs`), and
+  `scripts/ops/deploy.mjs` now starts the M5's unit on its pinned images with no image build.
+
 ## What is not here
 
 Each is named so the unfinished work stays countable.

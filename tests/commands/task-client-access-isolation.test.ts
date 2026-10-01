@@ -21,6 +21,7 @@ import {
   fresh,
   liveHolders,
   outcomeOf,
+  placeBehind,
   readAs,
   revisionOf,
   scopedSharer,
@@ -48,7 +49,17 @@ afterAll(async () => {
 describe.skipIf(serverUrl === undefined)('MP-4-10 client access', () => {
   describe('MP-4-10 isolation: client access', () => {
     it('another business: its task is not found and gains no share', async () => {
-      const foreign = await fresh(bravo, bravoAdmin, CANARY, clientA);
+      // Bravo cannot name alpha's client (C32); a bravo task pointing at it
+      // anyway is planted, so the share below still crosses businesses.
+      const foreign = await fresh(bravo, bravoAdmin, CANARY, null);
+      const named = await as(bravo, bravoAdmin, {
+        command: 'task.set_party',
+        recordId: foreign,
+        expectedRevision: await revisionOf(foreign),
+        fields: { client: clientA },
+      });
+      expect(outcomeOf(named)).toMatchObject({ code: 'NOT_FOUND' });
+      await placeBehind(foreign, clientA);
       const answer = await as(alpha, admin, {
         command: SHARE,
         recordId: foreign,

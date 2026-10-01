@@ -45,6 +45,11 @@ export interface HandbackFields {
 
 export const OUTCOMES: ReadonlySet<string> = new Set(['completed', 'failed', 'dropped']);
 
+/** The three ends a holder reports. */
+type Outcome = 'completed' | 'failed' | 'dropped';
+
+const isOutcome = (outcome: string): outcome is Outcome => OUTCOMES.has(outcome);
+
 /**
  * The handback refusals that have already written a report row the runtime
  * keeps.
@@ -159,7 +164,8 @@ async function settle(
   fields: HandbackFields,
   claimant: Claimant,
 ): Promise<HandlerOutcome> {
-  if (!OUTCOMES.has(fields.outcome)) return refuseOutcome(fields.outcome);
+  const outcome = fields.outcome;
+  if (!isOutcome(outcome)) return refuseOutcome(outcome);
   if (!Number.isSafeInteger(fields.fence) || fields.fence < 0) return refuseFence(fields.fence);
   // Root ruling 2 (ROOT-01a437a): a present report is an object of named
   // values. Null, an array or a string is refused by name, never spread into
@@ -215,7 +221,7 @@ async function settle(
   const result = await handback(tx, {
     leaseId: fields.leaseId,
     fence: fields.fence,
-    outcome: fields.outcome as 'completed' | 'failed' | 'dropped',
+    outcome,
     ...(dropCause === undefined ? {} : { dropCause: dropCause as DropCause }),
     report: { ...fields.report },
     actualMinor: null,
@@ -237,7 +243,6 @@ async function settle(
 
   const settled = result.value;
   // INB-1: the launcher is told, and a successor's gate is a decision to raise.
-  const outcome = fields.outcome as 'completed' | 'failed';
   const taskId = await raiseRunSettled(tx, { leaseId: settled.leaseId, outcome });
   await raiseIncident(tx, [
     { reservationId: settled.reservationId, state: settled.reservationState },

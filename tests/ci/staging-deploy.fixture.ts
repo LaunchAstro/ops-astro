@@ -23,8 +23,6 @@ export const STAGED = '0123456789ab';
 /** The made-up-only preflight, answering clean: the deploy's own decisions are tested here. */
 export const clean = (): Promise<string[]> => Promise.resolve([]);
 
-export const BUILT: string = `sha256:${'a'.repeat(64)}`;
-
 export const CANARY = 'canary-3be1d0-deploy-secret';
 
 export const PG =
@@ -33,10 +31,9 @@ export const PG =
 export const scratch: string = mkdtempSync(join(tmpdir(), 's0-6d-'));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
-/** A definition with one pinned database and one app service, for the hostile cases. */
+/** A definition with the services given, for the hostile cases. */
 export const withImages = (images: Record<string, unknown>): StagingDefinition => ({
   ...definition,
-  'x-ops-astro': { ...definition['x-ops-astro'], appServices: ['api'] },
   services: Object.fromEntries(
     Object.entries(images).map(([name, image]) => [
       name,
@@ -59,13 +56,10 @@ export const live: Readonly<Record<string, unknown>> = {
   config: 'c',
 };
 
-/** Each staging container and the image it should run: the built one for an app service. */
+/** Each staging container and the image it should run. */
 export const expected = (): Record<string, string> =>
   Object.fromEntries(
-    Object.entries(definition.services).map(([name, s]) => [
-      s.container_name,
-      (definition['x-ops-astro'].appServices ?? []).includes(name) ? BUILT : String(s.image),
-    ]),
+    Object.values(definition.services).map((s) => [s.container_name, String(s.image)]),
   );
 
 export interface Watched extends DeployEffects {
@@ -78,7 +72,6 @@ export function effects(over: Partial<DeployEffects> = {}): Watched {
   const base: DeployEffects = {
     snapshot: () => snapshot([live]),
     compare: (before, after) => ({ unchanged: before === after, report: 'compared' }),
-    buildImage: () => BUILT,
     up: () => {},
     imageId: (ref) => ref,
     runningImages: () => expected(),

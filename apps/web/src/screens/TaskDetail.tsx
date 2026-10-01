@@ -650,28 +650,18 @@ function Loaded(props: LoadedProps): ReactElement {
       <TaskFacts task={task} />
       <TaskPresence seen={presence.seen} />
 
-      {because === null ? null : (
-        <p className="field__error" role="alert" data-voice="input-wrong">
-          {because}
-        </p>
-      )}
-
-      <MovedNotice because={props.moved} />
-
-      <ConflictNotice
+      <EditNotices
+        because={because}
+        moved={props.moved}
         conflict={conflict}
         base={base.revision}
         title={title}
         due={due}
-        onDiscard={props.onDiscard}
-      />
-
-      <UnsavedBar
         dirty={dirty}
+        busy={busy}
         changed={
           props.draft === null ? null : changedSince(props.draft.base.task, task, namesOf(people))
         }
-        busy={busy}
         onDiscard={props.onDiscard}
       />
 
@@ -740,6 +730,47 @@ function Loaded(props: LoadedProps): ReactElement {
         }
       />
     </div>
+  );
+}
+
+/** Above both sides: the write's refusal, a stale press, a conflict and the unsaved edit. */
+function EditNotices(props: {
+  readonly because: string | null;
+  readonly moved: string | null;
+  readonly conflict: Parameters<typeof ConflictNotice>[0]['conflict'];
+  readonly base: number;
+  readonly title: string;
+  readonly due: string;
+  readonly dirty: boolean;
+  readonly busy: boolean;
+  readonly changed: Parameters<typeof UnsavedBar>[0]['changed'];
+  readonly onDiscard: () => void;
+}): ReactElement {
+  return (
+    <>
+      {props.because === null ? null : (
+        <p className="field__error" role="alert" data-voice="input-wrong">
+          {props.because}
+        </p>
+      )}
+
+      <MovedNotice because={props.moved} />
+
+      <ConflictNotice
+        conflict={props.conflict}
+        base={props.base}
+        title={props.title}
+        due={props.due}
+        onDiscard={props.onDiscard}
+      />
+
+      <UnsavedBar
+        dirty={props.dirty}
+        changed={props.changed}
+        busy={props.busy}
+        onDiscard={props.onDiscard}
+      />
+    </>
   );
 }
 

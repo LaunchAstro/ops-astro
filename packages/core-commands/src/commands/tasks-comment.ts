@@ -46,6 +46,8 @@ import {
   audienceNotPermitted,
   raiseMentions,
   readMentions,
+  seenBy,
+  type Mentioned,
   writeComment,
 } from '../../../core-records/src/index.ts';
 import { acquire } from '../../../core-runtime/src/index.ts';
@@ -185,6 +187,31 @@ async function effectRefusal(
   return held === undefined ? refuseCommand('EFFECT_NOT_DISPATCHED', [], EFFECT_FIXES) : undefined;
 }
 
+/**
+ * The refusal of mentions that cannot read the comment. It names each person
+ * only to an author who could already see them (`seenBy`), and otherwise gives
+ * back the identifier exactly as sent: its stored letter case would say it exists.
+ */
+async function unreadableMentions(
+  tx: TenantQuery,
+  on: CommentTarget,
+  named: readonly string[],
+  unreadable: readonly Mentioned[],
+): Promise<CommandRefusal> {
+  const ids = unreadable.map((person) => person.personId);
+  const seen = await seenBy(tx, on.authorActorId, ids);
+  const sent = new Map(named.map((id) => [id.toLowerCase(), id] as const));
+  const shown = (person: Mentioned): string =>
+    seen.has(person.personId)
+      ? person.label
+      : (sent.get(person.personId.toLowerCase()) ?? person.personId);
+  return refuseCommand(
+    'MENTION_NOT_READABLE',
+    ['mentions'],
+    unreadable.map((person) => `${shown(person)} cannot read this comment: remove the mention.`),
+  );
+}
+
 /** The attempt's step, when the attempt is dispatched to the author's own lease on this task. */
 async function dispatchedToAuthor(
   tx: TenantQuery,
@@ -259,18 +286,12 @@ export async function writeTaskComment(
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['mentions'], MENTIONS_FIXES));
   }
   // INB-1: a mention of someone who cannot read the comment is refused before
-  // it saves, naming them, rather than raising an item they could never open.
+  // it saves, rather than raising an item they could never open.
   const task = { taskId: on.target.id, audience };
   const mentioned = await readMentions(tx, task, named as string[]);
   const unreadable = mentioned.filter((person) => !person.readable);
   if (unreadable.length > 0) {
-    return refused(
-      refuseCommand(
-        'MENTION_NOT_READABLE',
-        ['mentions'],
-        unreadable.map((person) => `${person.label} cannot read this comment: remove the mention.`),
-      ),
-    );
+    return refused(await unreadableMentions(tx, on, named as string[], unreadable));
   }
 
   const effect = await effectRefusal(tx, on, audience);
