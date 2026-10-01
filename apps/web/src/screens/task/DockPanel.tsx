@@ -28,6 +28,7 @@ export function useDockPanel(props: DockPanelProps): {
     readonly open: boolean;
     readonly body: ReactElement;
     readonly door: string;
+    readonly beside: boolean;
     readonly close: () => void;
   };
 } {
@@ -42,6 +43,7 @@ export function useDockPanel(props: DockPanelProps): {
         opening === null
           ? pathTo('agency:projects-board')
           : pathTo('agency:task-detail', { key: opening.taskKey }),
+      beside: taskPanel.beside,
       close: taskPanel.close,
     },
   };
