@@ -61,7 +61,23 @@ function client(): OperationsClient {
       {
         lineageId: 'l-5555',
         state: 'live',
-        versions: [],
+        // A lineage is read only with a version; its currency counts the money.
+        versions: [
+          {
+            versionId: 'v-5555',
+            version: 1,
+            purpose: 'send_the_reply',
+            maximumMinor: 2_500,
+            currency: 'AUD',
+            payloadDigest: 'digest-5555',
+            payload: {},
+            supersededAt: null,
+            runId: null,
+            checks: [],
+            evidence: null,
+            gate: null,
+          },
+        ],
         decisions: [],
         reservations: [
           reservation('r-unknown', 'liability_unknown', {}),
