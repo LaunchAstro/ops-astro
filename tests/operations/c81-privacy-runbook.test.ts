@@ -284,3 +284,28 @@ test('find-copies finds nothing in another business', async () => {
   expect(inBravo.stdout).toContain(bravoCanary);
   expect(inBravo.stdout).not.toContain(ids.alpha);
 });
+
+test('find-copies finds the person by name in every kind of copy the runbook lists, memberships included', async () => {
+  const { world } = harness;
+  const member = `qx7member${randomUUID().slice(0, 8)}`;
+  const personId = randomUUID();
+  const membershipId = randomUUID();
+  await world.db.app.withBusiness(world.alpha, async (tx) => {
+    await tx.query(
+      `insert into public.people (business_id, id, display_name) values ($1, $2, $3)`,
+      [world.alpha, personId, `Riley ${member}`],
+    );
+    await tx.query(
+      `insert into public.memberships (business_id, id, person_id, role_key) values ($1, $2, $3, 'staff')`,
+      [world.alpha, membershipId, personId],
+    );
+  });
+  // The runbook's Records copy names memberships; a reply that misses the
+  // person's membership misses a copy of them.
+  const found = await find(['--text', member]);
+  expect(found.code).toBe(0);
+  expect(found.hits.map((hit) => [hit.table, hit.id])).toContainEqual([
+    'memberships',
+    membershipId,
+  ]);
+});
