@@ -136,13 +136,13 @@ export function AccessScreen(props: AccessScreenProps): ReactElement {
     deps: [client],
   });
   const [busy, setBusy] = useState(false);
-  const [outcome, setOutcome] = useState<string | null>(null);
+  const [outcome, setOutcome] = useState<{ text: string; refused: boolean } | null>(null);
   const act: Act = (send, done) => {
     setBusy(true);
     void (async () => {
       const failure = describeFailure(await send());
       setBusy(false);
-      setOutcome(failure ?? done);
+      setOutcome({ text: failure ?? done, refused: failure !== null });
       if (failure === null) reload();
     })();
   };
@@ -161,9 +161,14 @@ export function AccessScreen(props: AccessScreenProps): ReactElement {
               busy={busy}
               act={act}
               outcome={
-                outcome === null ? null : (
-                  <p className="card__sub" role="status" data-access-outcome>
-                    {outcome}
+                outcome === null ? null : outcome.refused ? (
+                  // A refusal is drawn as Settings draws one; a success stays a quiet line.
+                  <p className="field__error" role="alert" data-access-outcome="refused">
+                    {outcome.text}
+                  </p>
+                ) : (
+                  <p className="card__sub" role="status" data-access-outcome="done">
+                    {outcome.text}
                   </p>
                 )
               }
