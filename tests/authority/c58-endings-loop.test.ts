@@ -10,7 +10,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { main as endingsLoop } from '../../apps/endings/main.ts';
+import { main as endingsLoop } from '../../apps/endings/loop.ts';
 import { endingsSettings, retryAccessEndings } from '../../apps/endings/pass.ts';
 import { composeApi } from '../../apps/api/server.ts';
 import type { AdminConnection } from '../../packages/core-records/src/index.ts';
