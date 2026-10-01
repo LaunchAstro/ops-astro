@@ -55,8 +55,9 @@ function containing(text) {
 
 /**
  * The ids standing for the people the text names ($1, in business $2): those
- * whose own row or an identifier holds it, their actors and their logins.
- * Neither an actor nor a login leads to another person, so the set is closed.
+ * whose own row or an identifier holds it, their actors, their logins and the
+ * agent actor of each credential they issued (that actor has no person_id).
+ * None of these leads to another person, so the set is closed.
  */
 const PERSON_IDS = `with persons as (
     select t.id from public.people t
@@ -70,7 +71,10 @@ const PERSON_IDS = `with persons as (
    where a.business_id = $2 and a.person_id in (select id from persons)
   union
   select l.login_id::text from public.person_logins l
-   where l.business_id = $2 and l.person_id in (select id from persons)`;
+   where l.business_id = $2 and l.person_id in (select id from persons)
+  union
+  select c.agent_actor_id::text from public.agent_credentials c
+   where c.business_id = $2 and c.issued_by_person_id in (select id from persons)`;
 
 /**
  * The business's rows holding the needle, one JSON line each; answers how

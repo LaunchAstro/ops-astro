@@ -36,10 +36,16 @@ For each request, list every copy of the person that exists at that moment,
 by kind. A copy not on the list is a copy the reply missed.
 
 - **Records:** the database rows that name the person (people, identifiers,
-  memberships, their actors, logins and grants, records and their fields,
+  memberships, their actors, logins and grants, the agent actor of each
+  credential they issued and that agent's rows, records and their fields,
   incidents). Found with
   `node scripts/privacy/find-copies.mjs --business <key> --text <name>`, which
   searches the request's business only and refuses to run without one.
+- **Second-factor codes:** `ops.second_factor_codes` keeps one row per code
+  sent or answered, keyed by the SHA-256 of the login's subject: no business,
+  name or email, across the installation, and the application never changes
+  or removes a row (DATA.md). A kept pseudonymous class. The finder scans `public` only, so name it in the reply as held, by
+  the login's digest.
 - **Search indexes:** the records' search column (`records.search_tsv`),
   rebuilt from the record's text, so it follows the record. The finder reads it
   with the rest of the row.
