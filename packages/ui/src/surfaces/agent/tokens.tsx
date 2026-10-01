@@ -24,6 +24,7 @@ import {
   type TokenRun,
   type TokenStory,
 } from '../../state/token-ledger.ts';
+import { Empty } from '../../primitives/Absence.tsx';
 import { money, words } from './format.ts';
 import { StopStates } from './stops.tsx';
 
@@ -168,7 +169,7 @@ function Spend(props: { readonly story: Tracked }): ReactElement {
 function Runs(props: { readonly story: Tracked; readonly reasonId: string }): ReactElement {
   const { runs, envelope } = props.story;
   return runs.length === 0 ? (
-    <p className="tokempty__say">Nothing has run against this allowance yet.</p>
+    <Empty look="inline" title="Nothing has run against this allowance yet." />
   ) : (
     <div className="tokruns">
       {runs.map((run) => (
@@ -184,12 +185,13 @@ function Runs(props: { readonly story: Tracked; readonly reasonId: string }): Re
 }
 
 const NO_ALLOWANCE = (
-  <section className="tokempty" data-agent="tokens" data-tokens="none">
+  <section className="tokpanel" data-agent="tokens" data-tokens="none">
     <span className="sb__k">Token tracked</span>
-    <p className="sb__state">No allowance on this task yet.</p>
-    <p className="tokempty__say">
-      An allowance is set when a person approves a run on this task. Nobody types one.
-    </p>
+    <Empty
+      look="inline"
+      title="No allowance on this task yet."
+      description="An allowance is set when a person approves a run on this task. Nobody types one."
+    />
   </section>
 );
 
@@ -217,7 +219,7 @@ export function TokenTracked(props: {
       <Runs story={story} reasonId={reasonId} />
       <StopStates stops={latestStops(props.ledger)} />
       {showsReason ? (
-        <p className="tokempty__say" id={reasonId} data-tokens="skill-reason">
+        <p className="tokpanel__reason" id={reasonId} data-tokens="skill-reason">
           {SKILL_REASON}
         </p>
       ) : null}

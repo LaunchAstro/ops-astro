@@ -12,6 +12,9 @@
 // contract does not name fails rather than being skipped. Nothing here asserts.
 
 import { type AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
+import { applicationSelectsAt } from './restricted-calls-column-grants.ts';
+
+export { catalogueColumnGrants, columnUpdatesAt } from './restricted-calls-column-grants.ts';
 
 export const WORKER_ROLE = 'ops_astro_worker';
 /** The broker's role (AW-01): it executes the fair share's one count, and holds nothing else. */
@@ -71,30 +74,23 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['siu', 'person_logins person_merges'],
   ['siud', 'record_links record_types record_unique_values'],
   ['siud', 'records'],
-  // 0251: custody's select is a column grant that leaves out the sealed
-  // columns. A count is admitted and a sealed column is refused, which
-  // `tests/custody/c31-credentials.test.ts` proves by name (C31).
+  // 0251: custody's select is a column grant without the sealed columns (C31,
+  // proved by name in `tests/custody/c31-credentials.test.ts`).
   ['siu', 'custody_secrets'],
-  // 0252: the fleet is read here and written by MP-13-5 and the broker, and a
-  // repair is recorded once and never changed (MP-14-7a).
+  // 0252: the fleet is written elsewhere; a repair is written once (MP-14-7a).
   ['s', 'connection_clients connections'],
   ['si', 'connection_repairs'],
-  // 0253: tripwires and night round steps are written by the checks and the
-  // round itself and only read here (MP-14-8).
+  // 0253: tripwires and night round steps are only read here (MP-14-8).
   ['s', 'night_round_steps tripwires'],
-  // 0254: a graduation row only has its revision bumped here; a mandate is
-  // filed and revoked, never deleted (MP-14-10a). Both are column grants.
+  // 0254: column-granted updates; a mandate is never deleted (MP-14-10a).
   ['su', 'graduation_classes'],
   ['siu', 'standing_mandates'],
-  // 0255: a definition, a released version and an occurrence are written once;
-  // an activation's setting is a column-granted update (C33).
+  // 0255: written once, but an activation's column-granted setting (C33).
   ['si', 'activation_occurrences automation_definitions definition_versions'],
   ['siu', 'activations'],
-  // 0256: an adoption, a revocation and a dispatch are written once; the
-  // activation names its adoption through a column grant (C52-A).
+  // 0256: written once; the activation names its adoption by column grant (C52-A).
   ['si', 'occurrence_dispatches standing_approval_revocations standing_approvals'],
-  // 0257: an onboarding and its steps are laid out once and moved on by
-  // column grants, never deleted (C41-A).
+  // 0257: an onboarding and its steps move by column grants, never deleted (C41-A).
   ['siu', 'onboarding_steps onboardings'],
 ];
 
@@ -117,35 +113,31 @@ const REVOKED: Readonly<Record<string, { readonly from: string; readonly letters
 };
 
 /**
- * Column grants held by a role other than the application's, each from the
- * migration that made it: the occurrence role reads a task's revision for
- * 0032's trigger when it inserts an occurrence's run (AW-01 J, 0203).
+ * Every other column grant, from the migration that made it: the occurrence role reads a
+ * task's revision for 0032's trigger (AW-01 J, 0203), the application writes the outbox's
+ * four columns alone (S0-2, 0047), and the lookup reads a business's id and key (G2, 0046).
  */
 const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: string }[] = [
-  'business_id',
-  'id',
-  'revision',
-].map((column) => ({ from: '0203', line: `${OCCURRENCE_ROLE} SELECT public.records.${column}` }));
+  ...['business_id', 'id', 'revision'].map((column) => ({
+    from: '0203',
+    line: `${OCCURRENCE_ROLE} SELECT public.records.${column}`,
+  })),
+  ...['event', 'kind', 'scope', 'weight'].map((column) => ({
+    from: '0047',
+    line: `ops_astro_app INSERT ops.api_events.${column}`,
+  })),
+  { from: '0046', line: 'ops_astro_lookup SELECT public.businesses.id' },
+  { from: '0046', line: 'ops_astro_lookup SELECT public.businesses.key' },
+];
 
+/** Every column grant but the application's updates; with C31's custody select (0251). */
 export function roleColumnGrantsAt(at?: string): readonly string[] {
-  return ROLE_COLUMN_GRANTS.filter((grant) => at === undefined || at.slice(0, 4) >= grant.from)
-    .map((grant) => grant.line)
-    .toSorted();
-}
-
-/** Every column-level privilege on the cluster's schema, as `grantee PRIVILEGE table.column`. */
-export async function catalogueColumnGrants(admin: AdminConnection): Promise<readonly string[]> {
-  const rows = await admin.execute<{ line: string }>(
-    `select pg_get_userbyid(acl.grantee) || ' ' || acl.privilege_type || ' ' ||
-            n.nspname || '.' || c.relname || '.' || a.attname as line
-       from pg_attribute a
-       join pg_class c on c.oid = a.attrelid
-       join pg_namespace n on n.oid = c.relnamespace
-       cross join lateral aclexplode(a.attacl) acl
-      where a.attacl is not null and n.nspname in ('public', 'ops')
-      order by 1`,
-  );
-  return rows.map((row) => row.line);
+  return [
+    ...ROLE_COLUMN_GRANTS.filter((grant) => at === undefined || at.slice(0, 4) >= grant.from).map(
+      (grant) => grant.line,
+    ),
+    ...applicationSelectsAt(at),
+  ].toSorted();
 }
 
 /**
