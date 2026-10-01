@@ -94,7 +94,19 @@ describe('MP-6-1 agent pane', () => {
       'Dropped',
     );
     expect(word({ state: 'cancelled' })).toBe('Cancelled');
-    expect(word({ state: 'completed' })).toBe('Done');
+    // A completed hand-back as the server leaves it: the lineage live, the
+    // reservation abandoned under `handback_completed`, the attempt abandoned.
+    const handedBack = {
+      ...running,
+      state: 'abandoned',
+      classifiedCause: 'handback_completed',
+      lease: { state: 'released' },
+      attempt: { state: 'abandoned' },
+    };
+    expect(word({ reservations: [handedBack] })).toBe('Done');
+    expect(word({ reservations: [{ ...handedBack, attempt: { state: 'dropped' } }] })).toBe(
+      'Dropped',
+    );
   });
 
   it('MP-6-1 one story', () => {
