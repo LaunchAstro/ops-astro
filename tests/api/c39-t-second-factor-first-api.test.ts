@@ -36,8 +36,9 @@ describe.skipIf(serverUrl === undefined)('C39-T second factor first, through the
     });
     await world.db.admin.execute(
       `insert into public.invitations
-         (business_id, id, person_id, role_key, address, state, expires_at, created_by_actor_id)
-       values ($1, $2, $3, 'member', 'mia@example.test', 'accepted', now() + interval '1 day', $4)`,
+         (business_id, id, person_id, role_key, address, state, expires_at, created_by_actor_id,
+          ended_at)
+       values ($1, $2, $3, 'member', 'mia@example.test', 'accepted', now() + interval '1 day', $4, now())`,
       [world.alpha, randomUUID(), mia.personId, world.ada.actorId],
     );
 
