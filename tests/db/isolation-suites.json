@@ -31,6 +31,7 @@
     "tests/commands/task-set-state.test.ts",
     "tests/commands/task-set-state-agent.test.ts",
     "tests/commands/task-set-category.test.ts",
+    "tests/commands/task-set-category-isolation.test.ts",
     "tests/commands/task-set-category-agent.test.ts",
     "tests/reads/task-read-states.test.ts",
     "tests/reads/mp-5-8-board-agent.test.ts",
