@@ -100,8 +100,10 @@ live('MP-7-2 scope to a client', () => {
       [adas, noahs, unassigned].toSorted(),
     );
     expect(await ids(w.ada, { client: clientY })).toStrictEqual([other]);
-    // A client with nothing here is an empty list: there is no client record to find.
-    expect(await ids(w.ada, { client: randomUUID() })).toStrictEqual([]);
+    // A client of this business with nothing open is an empty list; an id naming
+    // no client here is NOT_FOUND, never an empty success.
+    expect(await ids(w.ada, { client: await madeClient(w, w.alpha, w.ada) })).toStrictEqual([]);
+    expect((await refusalOf(w.ada, { client: randomUUID() })).code).toBe('NOT_FOUND');
   });
 });
 
