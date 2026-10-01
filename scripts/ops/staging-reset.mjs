@@ -17,9 +17,11 @@
 // database neither marked made-up nor new is refused, and so are a service key
 // the admin API does not accept (one read) and a record that is not a real
 // file (a `started` line is written to it and read back); then the owner's
-// folder is made; only then empty (the product's schemas and the made-up
-// mark), migrate, make the sign-ins, seed (`scripts/local-seed.mjs`, which
-// judges the database again and marks it) and write the installation's
+// folder is made; only then empty (the product's schemas and the guard's
+// ledger), mark the database made-up again, migrate, make the sign-ins (the
+// provider keeps them in `auth.users`, where the guard judges each), seed
+// (`scripts/local-seed.mjs`, which judges the database again and marks it with
+// what it made) and write the installation's
 // operating business once, and append the done line to the same record. Exit 0
 // when done, 1 when refused or stopped. Nothing it prints carries an address,
 // a password, a key or a project reference.
@@ -42,7 +44,7 @@ import {
 import { join } from 'node:path';
 import { connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
 import { migrate } from '../../packages/core-records/src/tenancy/migrate.ts';
-import { resettable } from './made-up-only.ts';
+import { markMadeUp, resettable } from './made-up-only.ts';
 import { RECORD_FILE } from './operator.ts';
 import {
   OPERATING_BUSINESS,
@@ -184,7 +186,10 @@ let record;
 const admin = connectAsAdmin(env.DATABASE_ADMIN_URL, { source: 'reset' });
 try {
   if (!(await resettable(admin)))
-    refuse('the database is neither marked made-up nor new, so it may hold real data');
+    refuse(
+      'the database is neither marked made-up nor new, or its guard cannot vouch for a sign-in, ' +
+        'so it may hold real data',
+    );
   // Every precondition before anything is emptied: a refusal empties and records nothing.
   if (!(await keyAccepted())) refuse('the admin API did not accept SUPABASE_SERVICE_KEY');
   record = openRecord();
@@ -194,10 +199,9 @@ try {
   step = 'emptying';
   // oxlint-disable-next-line no-await-in-loop -- in order: each builds on the one before
   for (const statement of EMPTY) await admin.execute(statement);
-  const [unmark] = await admin.execute(
-    "select format('comment on database %I is null', current_database()) as statement",
-  );
-  await admin.execute(unmark.statement);
+  // Marked from here on: the guard is back on `auth.users` before a sign-in is
+  // made, guards each table a migration makes, and a stopped run stays resettable.
+  await markMadeUp(admin, []);
   console.log('staging-reset: emptied');
   step = 'migrating';
   const { applied } = await migrate(admin, MIGRATIONS);
@@ -234,7 +238,6 @@ try {
       GOTRUE_URL: env.GOTRUE_URL,
       SUPABASE_SERVICE_KEY: env.SUPABASE_SERVICE_KEY,
       OPS_SEED_DIR: folder,
-      LOCAL_SEED_MADE_UP: 'confirm',
     },
   });
   process.stdout.write(redact(seeded.stdout ?? ''));

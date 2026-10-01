@@ -128,12 +128,20 @@ export async function productionSigns(
   return [...signs, ...(await specialSigns(admin))];
 }
 
+/** What a marked database's guard says about its sign-ins, which no reset empties. */
+const SIGN_IN_SIGNS = [SIGNS['auth.users'], SIGNS['guard'], UNGUARDED];
+
 /**
- * Whether the staging reset may empty this database: the seed marked it, or no
- * tenant table has ever held a row. Judged from the mark and storage sizes alone.
+ * Whether the staging reset may empty this database: no tenant or sign-in
+ * table has ever held a row, or it is marked and its guard vouches for every
+ * sign-in. The reset keeps the provider's sign-ins and marks the database again
+ * before it makes its own, so the guard judges every sign-in it carries over or
+ * makes. Judged from the mark, the guard and storage sizes alone.
  */
 export async function resettable(admin: OwnerQuery): Promise<boolean> {
-  return (await marked(admin)) || (await yes(admin, NEVER_HELD_A_ROW));
+  if (await marked(admin))
+    return !(await guardSigns(admin)).some((sign) => SIGN_IN_SIGNS.includes(sign));
+  return yes(admin, NEVER_HELD_A_ROW);
 }
 
 /** A marked database: what its guard's ledger names, and any table left unguarded. */
