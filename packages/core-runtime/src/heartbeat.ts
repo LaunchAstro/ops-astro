@@ -124,6 +124,8 @@ export async function lockOwnedLease(
   tx: TenantQuery,
   request: LeaseCaller,
   fixes: OwnerFixes,
+  // DO NOT MERGE mutation (REVIEW-3A-20): recordCheck takes no lease lock.
+  lock = true,
 ): Promise<RuntimeResult<{ readonly taskId: string; readonly lockedAt: string }>> {
   const delegationId = request.claimant === 'person' ? null : request.delegationId;
   const found = await tx.query<{ readonly delegation_id: string | null }>(
@@ -132,10 +134,12 @@ export async function lockOwnedLease(
   );
   if (found[0] === undefined) return refuseLease('not_owned', fixes.notOwned);
 
-  await acquire(tx, [
-    { lockClass: 'lease', id: request.leaseId },
-    ...(delegationId === null ? [] : [{ lockClass: 'delegation' as const, id: delegationId }]),
-  ]);
+  if (lock) {
+    await acquire(tx, [
+      { lockClass: 'lease', id: request.leaseId },
+      ...(delegationId === null ? [] : [{ lockClass: 'delegation' as const, id: delegationId }]),
+    ]);
+  }
   const lockedAt = await lockedInstant(tx);
   const checked = await recheckOwner(tx, request, lockedAt, fixes);
   if (!checked.ok) return checked;

@@ -37,7 +37,7 @@ export async function recordCheck(
   tx: TenantQuery,
   request: CheckRequest,
 ): Promise<RuntimeResult<RecordedCheck>> {
-  const owned = await lockOwnedLease(tx, request, LEASE_FIXES.check);
+  const owned = await lockOwnedLease(tx, request, LEASE_FIXES.check, false);
   if (!owned.ok) return owned;
   const checkId = randomUUID();
   const written = await tx.query<{
