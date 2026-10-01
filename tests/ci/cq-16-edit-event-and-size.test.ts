@@ -32,6 +32,7 @@ function job(text: string, name: string): string {
   return [...jobs(text).values()].find((b) => b.includes(`\n    name: ${name}\n`)) ?? '';
 }
 
+const LIST = 'The pull requests being judged';
 const FETCH = 'Read the description as it stands now';
 const CASES = "The checker's own cases";
 const BINDS = 'The review must cover the head being merged';
@@ -70,10 +71,13 @@ describe('CQ-16 edited runs review evidence only: what the edit run judges', () 
     // finishes after an edit's run must not judge the old one.
     expect(block).not.toContain('github.event.pull_request.body');
     expect(step(block, FETCH)).toContain('gh api "repos/${REPO}/pulls/${PR_NUMBER}"');
-    expect(step(block, BINDS)).toContain('PR_BODY="$(cat "${RUNNER_TEMP}/pr-body.md")"');
-    expect(step(block, BINDS)).toContain('node scripts/review-evidence-check.mjs');
+    // CI-QUEUE: the body each pull request's check reads is its record as fetched here.
+    expect(step(block, FETCH)).toContain('> "${RUNNER_TEMP}/pr-${PR_NUMBER}/pull.json"');
+    expect(step(block, BINDS)).toContain(
+      'node scripts/merge-group.mjs each --pulls "${RUNNER_TEMP}" node scripts/review-evidence-check.mjs',
+    );
     expect(step(block, CASES)).toContain('bash tests/ci/review-evidence-cases.sh');
-    const order = [CASES, FETCH, BINDS].map((n) => block.indexOf(`- name: ${n}\n`));
+    const order = [CASES, LIST, FETCH, BINDS].map((n) => block.indexOf(`- name: ${n}\n`));
     expect(order.every((at, i) => at > (order[i - 1] ?? -1))).toBe(true);
   });
 
@@ -321,7 +325,8 @@ describe('FU-93 one workflow owns review evidence', () => {
   it('FU-93 one workflow owns review evidence: it runs when the head is opened, moved or reopened, on an edit and on a label change', () => {
     // Owner, 1 October 2026: the `needs-sol` label is half of the Sol-owed mark.
     expect(top(read(REVIEW), 'on')).toBe(
-      'on:\n  pull_request:\n    types: [opened, synchronize, reopened, edited, labeled, unlabeled]\n\n',
+      // CI-QUEUE: and on the merge queue's build of a group.
+      'on:\n  pull_request:\n    types: [opened, synchronize, reopened, edited, labeled, unlabeled]\n  merge_group:\n\n',
     );
     expect(read(REVIEW)).not.toContain('pull_request_target');
   });
@@ -329,10 +334,11 @@ describe('FU-93 one workflow owns review evidence', () => {
   it('owed mark: the check reads the labels as they stand when it judges, not the event copy', () => {
     const block = job(read(REVIEW), CHECK);
     expect(block).not.toContain('github.event.pull_request.labels');
+    // CI-QUEUE: the labels come from the record fetched when it judges (scripts/merge-group.mjs).
     expect(step(block, FETCH)).toContain(
-      `gh api "repos/\${REPO}/pulls/\${PR_NUMBER}" --jq '(.labels // [])[].name' > "\${RUNNER_TEMP}/pr-labels.txt"`,
+      `gh api "repos/\${REPO}/pulls/\${PR_NUMBER}" > "\${RUNNER_TEMP}/pr-\${PR_NUMBER}/pull.json"`,
     );
-    expect(step(block, BINDS)).toContain('PR_LABELS="$(cat "${RUNNER_TEMP}/pr-labels.txt")"');
+    expect(step(block, BINDS)).toContain('merge-group.mjs each --pulls "${RUNNER_TEMP}"');
   });
 
   it('FU-93 one workflow owns review evidence: a push runs every required check, and an edit runs this one alone', () => {

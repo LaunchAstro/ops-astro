@@ -25,6 +25,14 @@ const PEOPLE = [
   { personId: 'p-bo', name: 'Bo Reyes' },
 ];
 
+/** Bo made the task: his actor, which the audit records, is not his person. */
+const CREATED = {
+  at: '2026-09-29T09:00:00Z',
+  actorId: 'a-bo',
+  personId: 'p-bo',
+  operation: 'task.create',
+};
+
 /** One task, a stream the case writes into, and an update checked against the revision. */
 function server() {
   const task = {
@@ -38,7 +46,7 @@ function server() {
     priority: null,
     completedAt: null,
     revision: 1,
-    history: [{ at: '2026-09-29T09:00:00Z', actorId: 'p-bo', operation: 'task.create' }],
+    history: [CREATED],
     comments: [] as Record<string, unknown>[],
   };
   const offered: number[] = [];
@@ -95,9 +103,15 @@ function moveOn(api: ReturnType<typeof server>): void {
     body: 'Moved it on',
   });
   task.history.push(
-    { at: '2026-09-30T01:00:00Z', actorId: 'p-ana', operation: 'task.move' },
+    // Ana's actor, which the audit records, is not her person: named by the person.
+    { at: '2026-09-30T01:00:00Z', actorId: 'a-ana', personId: 'p-ana', operation: 'task.move' },
     // Someone this reader cannot list: named as nobody in particular.
-    { at: '2026-09-30T01:00:01Z', actorId: 'p-unlisted', operation: 'task.comment' },
+    {
+      at: '2026-09-30T01:00:01Z',
+      actorId: 'a-unlisted',
+      personId: 'p-unlisted',
+      operation: 'task.comment',
+    },
   );
   api.invalidate();
 }
