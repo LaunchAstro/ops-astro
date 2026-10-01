@@ -1844,6 +1844,31 @@ C52-A fills from its own rows under the activation lock; its foreign keys and
 that read join at the batch 3 join. Tests: `aw-01-occurrence-run` and
 `aw-01-occurrence-run-isolation`.
 
+## The agent's output takes its own review round
+
+AW-09 (`review-round.ts`). Whatever the agent hands back with a successor is
+the reviewed output (AW-08), and it takes the same revision loop as any
+version (T3a): its own pending gate, two rounds of requested changes, then
+approve, reject or escalate, a reject terminal and a restart a new lineage on
+its own envelope. This holds when the task came from an approved automation:
+the standing approval accepts the task, never the output.
+
+A person completes the round, never the agent that produced it. The surfaces
+keep the agent out (its delegation never reaches `decide`, and the person
+prefix resolves only a person's login), and `decide` asks again itself,
+because its caller hands it the deciding actor and the schema checks only
+that the actor exists. On a reviewed output the decider's actor must be the
+active person actor of the person deciding; anything else is
+`DELEGATION_EXCLUDES_DECISION`, under the locks and before anything is
+written, for every decision, the escalate and the plan accept alike.
+
+Until the batch join, `isReviewedOutput` comes from a stand-in
+(`reviewed-output-n9-standin.ts`) that counts a version proposed by an agent's
+actor; AW-08's `reviewed-output.ts` replaces it there. Tests:
+`aw-09-reviewed-on-every-surface` (the invariant,
+`agent_output_is_reviewed_on_every_surface`), `aw-09-no-self-review`,
+`aw-09-isolation` and `aw-09-round-rules`.
+
 ## What is not here
 
 - **No machine write-off.** The worker (`apps/worker/`, T2b), effect

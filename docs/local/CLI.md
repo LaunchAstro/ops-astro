@@ -50,6 +50,7 @@ sends any request. It prints
 | `--agent`            | `OPS_ASTRO_AGENT=1`         | Call the agent prefix instead of the person prefix.                                             |
 |                      | `OPS_ASTRO_DELEGATION`      | Agent mode: the delegation credential. When unset, the file a pickup wrote is used.             |
 |                      | `OPS_ASTRO_DELEGATION_FILE` | Where an agent pickup saves its credential. Default `.local/cli-delegation` (owner-only).       |
+| `--web <url>`        | `OPS_ASTRO_WEB_URL`         | A visual operation only: the app origin its link is under. Default `http://127.0.0.1:5190`.     |
 
 The bearer and the delegation credential are never taken as flags, so they do
 not appear in a process listing or shell history, and the command line never
@@ -129,6 +130,29 @@ pnpm cli run.revise_state --json '{"recordId":"<taskId>","runId":"<runId>","expe
 `reservationId` comes from the queue; `leaseId` and `fence` from the pickup's
 `detail`. `operationId` is optional on each of them; naming your own lets you
 send the same body again after a lost answer and get the replay.
+
+## Visual operations
+
+Some operations are a page someone looks at, not a request with an answer.
+The command line's honest answer to one is the address of the app's page for
+it (AW-09; `VISUAL_HANDOFFS`, `packages/core-wire/src/handoff.ts`). It sends
+nothing and needs no bearer or business: the page asks for its own session
+and reads through its own commands.
+
+```sh
+pnpm cli review.view --json '{"key":"T-12"}'
+# {"handoff":"http://127.0.0.1:5190/task/T-12","operation":"review.view","why":"..."}
+```
+
+`review.view` is the review round's page: the agent's output and its stored
+evidence beside the version history, the rounds used and the decisions on
+offer. `task.read` answers the same facts as JSON, and `task.decide` makes
+each decision. The body holds the route's one parameter and nothing else; a
+key that is not one path segment (letters, digits, `.`, `_` or `-`, at most
+64), an undeclared field, or an origin with a path, query, credentials or a
+scheme other than http or https is refused with `FIELD_VALUE_INVALID` and exit 2. `--help` lists the visual operations after the others, and
+`scripts/command-parity.mjs` fails a hand-off whose route the app does not
+register or whose name is a command's.
 
 ## Output and exit codes
 
