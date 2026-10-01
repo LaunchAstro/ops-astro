@@ -134,11 +134,29 @@ const releasedEvents = async () =>
     [s.business],
   );
 
-it("AW-10 audit: the provider's proof that releases a held call writes one model.call_released event, as the agent whose call it was", async () => {
+/** How many calls a provider's proof has released in the business. */
+const provedReleases = async (): Promise<number> =>
+  (
+    await rows(
+      s,
+      `select 1 from public.model_calls where business_id = $1 and state = 'released'
+          and reconcile_note like 'proved nothing happened: %'`,
+      [s.business],
+    )
+  ).length;
+
+it("AW-10 audit: each call a provider's proof releases writes one model.call_released event, as the agent whose call it was", async () => {
   world.provider.lookupMode('honest');
   const run = await dropped('unavailable');
-  const before = (await releasedEvents()).length;
+  const events = (await releasedEvents()).length;
+  const proved = await provedReleases();
   await pass();
   expect(await after(run)).toMatchObject({ resumed: true, call: 'released' });
-  expect((await releasedEvents()).slice(before)).toStrictEqual([{ actor_id: s.agentActorId }]);
+  // Earlier cases' held calls may be proved in the same pass: one event for each release, no more.
+  const released = (await provedReleases()) - proved;
+  const written = (await releasedEvents()).slice(events);
+  expect(released).toBeGreaterThan(0);
+  expect(written).toStrictEqual(
+    Array.from({ length: released }, () => ({ actor_id: s.agentActorId })),
+  );
 });
