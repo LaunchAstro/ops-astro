@@ -17,7 +17,7 @@ export function ExecutiveScreen(props: {
   return (
     <section className="page" data-screen="executive">
       <header className="page__head">
-        <h1>Executive</h1>
+        <h1 className="t-title">Executive</h1>
       </header>
       <InDevelopment title="Sections 001 to 004: the pulse, revenue and the book" owner="MP-14-3" />
       <AgentCostSection client={props.client} now={props.now ?? Date.now} />

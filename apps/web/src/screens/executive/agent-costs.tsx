@@ -261,9 +261,9 @@ export function AgentCostSection(props: {
   if (costs.state === 'refused' || costs.state === 'loading') return null;
   return (
     <section className="sec" id="agentcost" data-section="005" data-view="agency" data-agent-costs>
-      <h2>
+      <h2 className="sec__head">
         005 <Term tip={TIP}>What our agents cost us</Term>{' '}
-        <span className="t-2">
+        <span className="marker sec__aside">
           {costs.state === 'shown' ? plural(costs.costs.runs.length, 'run') : 'Runs'} ·
           API-equivalent
         </span>

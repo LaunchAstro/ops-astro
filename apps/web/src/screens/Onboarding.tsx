@@ -93,7 +93,7 @@ export function OnboardingScreen(_props: { readonly client: OperationsClient }):
   return (
     <section className="page" data-screen="onboarding" data-onboarding>
       <header className="page__head">
-        <h1>Onboarding</h1>
+        <h1 className="t-title">Onboarding</h1>
         <p className="t-2">Start one from the command palette or the CLI.</p>
       </header>
       <MockRegion word>

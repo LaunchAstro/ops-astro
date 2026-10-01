@@ -6,6 +6,15 @@
    294-295, 613-676, 2912-2955, 8878-8953, 8999-9037, 9046-9118) onto the
    product's tokens; only the rules for what these sections draw. */
 
+/* A page's title (Connections, Executive, Onboarding) in the declared page-title style
+   (DS-TOK-109, h1.t-title). */
+.page__head .t-title {
+  margin: 0;
+  font: var(--type-title);
+  letter-spacing: var(--type-title-tracking);
+  text-transform: var(--type-title-case);
+}
+
 .sec__meta {
   display: flex;
   align-items: baseline;

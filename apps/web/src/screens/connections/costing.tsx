@@ -185,8 +185,9 @@ export function SkillCostingSection(props: {
   if (costing.state === 'absent') return null;
   return (
     <section id="costing" className="skcsec" data-section="009" data-costing>
-      <h2>
-        009 Skill costing <span className="t-2">Fleet · what a process costs to run</span>
+      <h2 className="sec__head">
+        009 Skill costing{' '}
+        <span className="marker sec__aside">Fleet · what a process costs to run</span>
       </h2>
       {costing.state === 'not shown' ? (
         <p>Skill costing could not be read: {costing.because}</p>

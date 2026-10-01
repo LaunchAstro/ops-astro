@@ -232,7 +232,7 @@ export function ConnectionsScreen(props: {
   return (
     <section className="page" data-screen="connections">
       <header className="page__head">
-        <h1>Connections &amp; Signal</h1>
+        <h1 className="t-title">Connections &amp; Signal</h1>
         <p className="marker" data-fleet-marker>
           {lastPass(rows)}
         </p>
