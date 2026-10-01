@@ -15,15 +15,19 @@
 //
 // **The service key stays in custody.** A custody process of its own holds
 // it; this process names the file and never reads it. The broker catalogues
-// `auth.create_user` and `auth.read_user` and nothing else, and custody lets
-// the `auth` destination take the create's POST on `/auth/v1/admin/users`
-// and the read's GET on `/auth/v1/admin/users/<id>`, no other method or
-// path: no update, sign-in link, invite, code or factor route.
+// `auth.create_user`, `auth.read_user` and (C40) `auth.recover` and nothing
+// else, and custody lets the `auth` destination take the create's POST on
+// `/auth/v1/admin/users`, the read's GET on `/auth/v1/admin/users/<id>` and
+// the reset's POST on `/auth/v1/recover`, no other method or path: no
+// update, sign-in link, invite, code or factor route.
 
 import {
   AUTH_CREATE_USER,
   AUTH_READ_USER,
+  AUTH_RECOVER,
+  AUTH_RECOVER_PATH,
   AUTH_USERS_PATH,
+  authRecoverAdapter,
   authUserAdapter,
   authUserReadAdapter,
   catalogue,
@@ -68,6 +72,8 @@ export function authDestination(origin: string): Destination {
     routes: [
       { method: 'POST', path: AUTH_USERS_PATH },
       { method: 'GET', path: `${AUTH_USERS_PATH}/*` },
+      // C40 (ORCH60): a reset asked for one address, the provider mailing nothing itself.
+      { method: 'POST', path: AUTH_RECOVER_PATH },
     ],
   };
 }
@@ -108,12 +114,17 @@ const route = (provider: string): BrokerRoute => ({
 export function enrolmentBroker(custody: Custody): Broker {
   return {
     custody,
-    operations: catalogue([AUTH_CREATE_USER, AUTH_READ_USER]),
+    operations: catalogue([AUTH_CREATE_USER, AUTH_READ_USER, AUTH_RECOVER]),
     providers: new Map([
       [AUTH_CREATE_USER.provider, { build: authUserAdapter, price: () => 0 }],
       [AUTH_READ_USER.provider, { build: authUserReadAdapter, price: () => 0 }],
+      [AUTH_RECOVER.provider, { build: authRecoverAdapter, price: () => 0 }],
     ]),
-    routes: [route(AUTH_CREATE_USER.provider), route(AUTH_READ_USER.provider)],
+    routes: [
+      route(AUTH_CREATE_USER.provider),
+      route(AUTH_READ_USER.provider),
+      route(AUTH_RECOVER.provider),
+    ],
     installation: 'here',
     // The accept records its own audit events in its transaction, never the model audit.
     audit: async () => {},

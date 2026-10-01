@@ -28,7 +28,13 @@ export {
   type RouteChoice,
   type RouteReach,
 } from './data-class.ts';
-export { readAuthMessage, type AuthMessage } from './auth-message.ts';
+export { readAuthMessage, type AuthMessage, type Recovery } from './auth-message.ts';
+export {
+  AUTH_RECOVER,
+  AUTH_RECOVER_PATH,
+  authRecoverAdapter,
+  readAuthRecoverAnswer,
+} from './auth-recover.ts';
 export {
   AUTH_CREATE_USER,
   AUTH_EXISTS_STATUS,

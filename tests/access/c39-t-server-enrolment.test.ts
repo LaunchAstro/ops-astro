@@ -172,7 +172,7 @@ it("C39-T enrolment settings: the login provider's origin is a bare https origin
   expect(enrolmentSettings({ ...enrolmentOn(), ENROLMENT: 'off' }).kind).toBe('off');
 });
 
-it("C39-T enrolment broker: it catalogues auth.create_user and auth.read_user and nothing else, its custody sends the login provider no PUT and no other GET, and the key stays out of this process's settings and environment", async () => {
+it("C39-T enrolment broker: it catalogues auth.create_user, auth.read_user and auth.recover (C40) and nothing else, its custody sends the login provider no PUT and no other GET, and the key stays out of this process's settings and environment", async () => {
   const settings = enrolmentSettings(enrolmentOn());
   if (settings.kind !== 'on') throw new Error(`enrolment settings: ${settings.kind}`);
   expect(settings.destination).toStrictEqual({
@@ -182,18 +182,18 @@ it("C39-T enrolment broker: it catalogues auth.create_user and auth.read_user an
     routes: [
       { method: 'POST', path: '/auth/v1/admin/users' },
       { method: 'GET', path: '/auth/v1/admin/users/*' },
+      { method: 'POST', path: '/auth/v1/recover' },
     ],
   });
   const started = await startEnrolment(settings, async () => await Promise.resolve([w.alpha]));
   try {
     const { broker } = started.options;
-    expect([...broker.operations.keys()].toSorted()).toStrictEqual([
-      'auth.create_user',
-      'auth.read_user',
-    ]);
+    const operations = [...broker.operations.keys()].toSorted();
+    expect(operations).toStrictEqual(['auth.create_user', 'auth.read_user', 'auth.recover']);
     expect(broker.routes.map((route) => [route.provider, route.credentialRef])).toStrictEqual([
       ['supabase_auth', 'auth_key'],
       ['supabase_auth_read', 'auth_key'],
+      ['supabase_auth_recover', 'auth_key'],
     ]);
     const asked = e.users.received.length;
     // A PUT is no method custody sends, the one user's path among them.
