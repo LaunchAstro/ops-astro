@@ -1,178 +1,254 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// B4, the task page and the dock task panel's fields (TASK-PAGE.md S1 and S5;
-// PAGE-MAP TASKS S1 to S8). The mockup's task is Grove Street's hours copy,
-// the row with the gate step; the app's is the made-up T-1 (made-up-api.ts),
-// on a board, at a stage, with an estimate, logged time and a gate step.
-//
-// The panel opens the way a person opens it from the page: the page's door
-// (TT-06) in both. The page's Status select (Stage 1 add) is the panel's
-// DS-PRIM-5 field select, so it is held to the panel's.
+// B4, the task page (TASK-PAGE.md; PAGE-MAP TASKS S5 to S8). The header and
+// facts are measured on the mockup's gate task (Team, as it opens); the gate
+// box on its Agent perspective. The app draws the made-up T-1, whose one
+// proposal waits at an armed gate and whose run has a receipt (made-up-api.ts).
+// The perspective tabs, the fact strip (sample values behind the mock label)
+// and the receipt box (`.sout`, the mockup's live task) follow; then the field
+// band and the dock task panel's fields (task-fields.ts) and the page's own
+// header, steps, writing and thread probes (task-page.ts), on the mockup's
+// Grove Street task.
 
+import { MOCKUP_TASK_KEY } from '../made-up-api.ts';
 import type { LookProbe, LookScreen } from './probe.ts';
-import {
-  APP,
-  APP_PANEL,
-  bothThemes,
-  FAINT_DARK,
-  GATE_NOTE_RULED,
-  PAGE,
-  PAGE_PROBES,
-  PANEL,
-  probe,
-  type Ruled,
-  TYPE,
-} from './task-page.ts';
+import { FIELD_PROBES } from './task-fields.ts';
+import { PAGE_PROBES } from './task-page.ts';
 
-/** DS-PRIM-5, the field select. */
-const SELECT = [
-  'font-family',
-  'font-size',
-  'color',
-  'background-color',
-  'border-top-color',
-  'border-top-width',
-  'border-top-left-radius',
-  'padding-left',
-  'box.height',
-] as const;
+const MOCK = { path: '/agency/task/?task=proj-meridian-hero-copy' } as const;
+const OPEN_AGENT = '[role=tab]:has-text("Agent")';
+const AGENT = { ...MOCK, open: OPEN_AGENT } as const;
+const LIVE = { path: '/agency/task/?task=proj-blue-schema-live', open: OPEN_AGENT } as const;
+const APP = { page: 'agency:task-detail' } as const;
+const TABS = '[data-tabs="perspective"]';
+const TEAM = '[data-tp-pane="team"]';
+const ALL = [1480, 900, 390] as const;
+const TYPE: readonly string[] = ['font-family', 'font-size', 'font-weight', 'color'];
 
-// The grids' tracks are left to the frames around them (the page gutter is
-// the shell's, the panel's width the dock's); the gaps and the frame are ours.
-const GRID = ['display', 'column-gap', 'row-gap'] as const;
-
-/**
- * The field label (`.tf__k`): the mockup draws it Mono 12/1.55 400, which
- * TOKENS' type map drops to DS-TOK-126 `--type-eyebrow` (row 8, drift); its
- * dark ink is the folded faint ink (DR-10).
- */
-const LABEL_RULED: Ruled = [
-  ...bothThemes('font-weight', '300', 'TOKENS type row 8, DS-TOK-126'),
-  ...bothThemes('line-height', '16.8px', 'TOKENS type row 8, DS-TOK-126'),
-  { at: 'color@dark', want: 'rgba(248,248,248,140)', why: 'DR-10' },
-];
-
-const select = (
+const probe = (
   id: string,
-  sb: string,
+  mockup: LookProbe['mockup'],
   app: string,
-  open: { readonly page: string; readonly open?: string } = APP_PANEL,
-): LookProbe =>
-  probe({
-    id,
-    mockup: { ...PANEL, selector: `.dpanel .sb__fields select[data-sb="${sb}"]` },
-    app: { ...open, selector: app },
-    props: SELECT,
-  });
+  props: readonly string[],
+  ruled?: LookProbe['ruled'],
+): LookProbe => ({
+  id: `task.${id}`,
+  mockup,
+  // A probe the mockup measures on its Agent perspective opens the app's too.
+  app: { ...APP, selector: app, ...(mockup.open === undefined ? {} : { open: mockup.open }) },
+  props,
+  widths: ALL,
+  ...(ruled === undefined ? {} : { ruled }),
+});
+
+// TP-06: the title is DS-TOK-107 --type-display; the mockup's 600 weight,
+// 1.15 leading and -0.01em tracking are drift (TASK-PAGE.md S5).
+const DISPLAY = (['light', 'dark'] as const).flatMap((theme) => [
+  { at: `font-weight@${theme}`, want: '500', why: 'TP-06' },
+]);
+// DS-TASK-1 and DS-TASK-7: labels snap to DS-TOK-126 --type-eyebrow (300);
+// the mockup's 400 is drift (TASK-PAGE.md S4).
+const EYEBROW = (['light', 'dark'] as const).map((theme) => ({
+  at: `font-weight@${theme}`,
+  want: '300',
+  why: 'DS-TASK-1',
+}));
+// TP-01: the crumb's door link is DS-TOK-124 (mono 12); the mockup drew 13.
+const DOOR = (['light', 'dark'] as const).map((theme) => ({
+  at: `font-size@${theme}`,
+  want: '12px',
+  why: 'TP-01',
+}));
 
 export const TASK: LookScreen = {
   id: 'task',
   probes: [
-    // S5, TP-10: the page's read-only field band.
-    probe({
-      id: 'task.facts-grid',
-      mockup: { ...PAGE, selector: '.tpr__facts .tf__grid' },
-      app: { ...APP, selector: '.tpr__band' },
-      props: GRID,
-    }),
-    // DS-COMP-26: the read-only form's frame, the mockup's `.taskform`.
-    probe({
-      id: 'task.facts-frame',
-      mockup: { ...PAGE, selector: '.tpr__facts .taskform' },
-      app: { ...APP, selector: '.tpr__band' },
-      props: ['padding-top', 'padding-left', 'padding-bottom', 'background-color'],
-    }),
-    probe({
-      id: 'task.facts-label',
-      mockup: { ...PAGE, selector: '.tpr__facts .tf__grid .tf__k' },
-      app: { ...APP, selector: '.tpr__band .tf__k' },
-      props: TYPE,
-      ruled: LABEL_RULED,
-    }),
-    probe({
-      id: 'task.facts-value',
-      mockup: { ...PAGE, selector: '.tpr__facts .tf__grid .sb__state' },
-      app: { ...APP, selector: '.tpr__band .sb__state' },
-      props: TYPE,
-    }),
-    // S5, TT-06: a door to the dock task panel, DS-PRIM-1 `--text` in DS-TOK-124.
-    probe({
-      id: 'task.panel-door',
-      mockup: { ...PAGE, selector: '.tt__more[data-tp-panel]' },
-      app: { ...APP, selector: '.tt__more[data-panel-door]' },
-      props: [...TYPE, 'text-align'],
-    }),
-    // S1, DP-18 to DP-25: the panel's two-column field grid and its selects.
-    probe({
-      id: 'task.panel-grid',
-      mockup: { ...PANEL, selector: '.dpanel .sb__fields .tf__grid' },
-      app: { ...APP_PANEL, selector: 'aside.dtp .dtp__fields' },
-      props: GRID,
-    }),
-    probe({
-      id: 'task.panel-label',
-      mockup: { ...PANEL, selector: '.dpanel .sb__fields .tf__k' },
-      app: { ...APP_PANEL, selector: 'aside.dtp .dtp__fields .tf__k' },
-      props: TYPE,
-      ruled: LABEL_RULED,
-    }),
-    select('task.panel-project', 'board', 'aside.dtp #panel-field-board'),
-    select('task.panel-stage', 'stage', 'aside.dtp #panel-field-stage'),
-    select('task.panel-status', 'status', 'aside.dtp #panel-field-status'),
-    select('task.page-status', 'status', '#task-field-status', APP),
-    // S2, DT-09: the burn bar. The mockup's agent row folds its time track,
-    // so its drawn height is read from the style, not the box.
-    probe({
-      id: 'task.panel-burn',
-      mockup: { ...PANEL, selector: '.dpanel .sb__sh--tt + div > .tt__bar' },
-      app: { ...APP_PANEL, selector: 'aside.dtp .sb__burn' },
-      props: ['height', 'background-color', 'border-top-left-radius'],
-      // DS-PRIM-23: the time track's track is `--border`; the mockup mixed ink at 12%.
-      ruled: [{ at: 'background-color@dark', want: 'rgba(245,245,245,26)', why: 'DS-PRIM-23' }],
-    }),
-    // S2, DT-04: the gate step, no tick, its note trailing.
-    probe({
-      id: 'task.panel-gate-note',
-      mockup: { ...PANEL, selector: '.dpanel .sbtask--gate .sbtask__gm' },
-      app: { ...APP_PANEL, selector: 'aside.dtp .sb__gate-note' },
-      props: TYPE,
-      ruled: GATE_NOTE_RULED,
-    }),
-    // S2, DT-22 and DT-23 (MP-4-16): the history section's head, its latest change on
-    // the head line, and the fold that shows the trail.
-    probe({
-      id: 'task.panel-history-key',
-      mockup: { ...PANEL, selector: '.dpanel .sb__sect--hist .sb__k' },
-      app: { ...APP_PANEL, selector: 'aside.dtp [data-history] .sb__k' },
-      props: TYPE,
-      ruled: FAINT_DARK,
-    }),
-    probe({
-      id: 'task.panel-history-latest',
-      mockup: { ...PANEL, selector: '.dpanel .sb__sect--hist .sb__meta' },
-      app: { ...APP_PANEL, selector: 'aside.dtp [data-history="latest"]' },
-      props: TYPE,
-    }),
-    probe({
-      id: 'task.panel-history-more',
-      mockup: { ...PANEL, selector: '.dpanel .sb__sect--hist .tt__more' },
-      app: { ...APP_PANEL, selector: 'aside.dtp [data-history] .tt__more' },
-      props: TYPE,
-    }),
-    // S1, DP-30 (MP-4-12): the page link's label and its value.
-    probe({
-      id: 'task.panel-link-label',
-      mockup: { ...PANEL, selector: '.dpanel .sb__linkrow:has([data-sb-at]) .tf__k' },
-      app: { ...APP_PANEL, selector: 'aside.dtp .dtp__link .tf__k' },
-      props: TYPE,
-      ruled: LABEL_RULED,
-    }),
-    probe({
-      id: 'task.panel-link-value',
-      mockup: { ...PANEL, selector: '.dpanel [data-sb-at]' },
-      app: { ...APP_PANEL, selector: 'aside.dtp .dtp__link [data-page-link="value"]' },
-      props: TYPE,
-    }),
+    probe('crumb', { ...MOCK, selector: '.tpr__crumb' }, '.tpr__crumb', [...TYPE, 'column-gap']),
+    probe(
+      'crumb-door',
+      { ...MOCK, selector: '.tpr__crumb a.sb__addr' },
+      '.tpr__crumb a.sb__addr',
+      ['font-family', 'font-size', 'color', 'text-decoration-line'],
+      DOOR,
+    ),
+    probe('state', { ...MOCK, selector: '.tpr__crumb .spill' }, '.tpr__crumb .spill', [
+      'font-size',
+    ]),
+    probe(
+      'title',
+      { ...MOCK, selector: '.tpr__title' },
+      '.tpr__title',
+      ['font-family', 'font-size', 'font-weight', 'color'],
+      DISPLAY,
+    ),
+    probe('runline', { ...MOCK, selector: '.tpr .card__sub' }, '.tpr .card__sub', [
+      'font-size',
+      'color',
+    ]),
+    probe('header', { ...MOCK, selector: '.tpr' }, '.tpr', ['row-gap', 'margin-bottom']),
+    probe('facts', { ...MOCK, selector: '.tpr__facts .taskform' }, '.tpr__facts .taskform', [
+      'background-color',
+      'border-top-color',
+      'border-top-width',
+      'padding-top',
+      'padding-left',
+      'padding-bottom',
+    ]),
+    probe('facts-grid', { ...MOCK, selector: '.tpr__facts .tf__grid' }, '.tpr__facts .tf__grid', [
+      'row-gap',
+      'column-gap',
+    ]),
+    probe(
+      'fact-key',
+      { ...MOCK, selector: '.tpr__facts .tf__k' },
+      '.tpr__facts .tf__k',
+      [...TYPE, 'text-transform', 'letter-spacing'],
+      EYEBROW,
+    ),
+    probe('fact-value', { ...MOCK, selector: '.tpr__facts .sb__state' }, '.tpr__facts .sb__state', [
+      ...TYPE,
+      'padding-top',
+    ]),
+    probe('section', { ...MOCK, selector: '.sb__sect' }, `${TEAM} > .sb__sect`, [
+      'border-top-color',
+      'border-top-width',
+      'padding-top',
+      'padding-left',
+      'row-gap',
+    ]),
+    probe('section-key', { ...MOCK, selector: '.sb__sect .sb__k' }, `${TEAM} > .sb__sect .sb__k`, [
+      ...TYPE,
+      'text-transform',
+    ]),
+    probe('gatebox', { ...AGENT, selector: '.gatebox' }, '.gatebox', [
+      'border-top-color',
+      'border-top-width',
+      'padding-top',
+      'row-gap',
+    ]),
+    probe('gate', { ...AGENT, selector: '.gatebox .gate' }, '.gatebox .gate', [
+      'background-color',
+      'border-left-color',
+      'border-left-width',
+      'border-top-color',
+      'padding-top',
+      'padding-left',
+    ]),
+    probe(
+      'gate-word',
+      { ...AGENT, selector: '.gatebox .gate__word' },
+      '.gatebox .gate__word',
+      [...TYPE, 'text-transform'],
+      EYEBROW,
+    ),
+    probe('gate-say', { ...AGENT, selector: '.gatebox .gate__say' }, '.gatebox .gate__say', [
+      ...TYPE,
+    ]),
+    probe(
+      'gate-row-key',
+      { ...AGENT, selector: '.gatebox .sout__row .tf__k' },
+      '.gatebox .sout__row .tf__k',
+      TYPE,
+      EYEBROW,
+    ),
+    probe('gate-rows', { ...AGENT, selector: '.gatebox .sout__box' }, '.gatebox .sout__box', [
+      'border-top-color',
+      'background-color',
+    ]),
+    probe(
+      'gate-approve',
+      { ...AGENT, selector: '.gatebox__acts .btn--primary' },
+      '.gatebox__acts .btn--primary',
+      ['font-size', 'background-color', 'color', 'box.height'],
+    ),
+    probe(
+      'gate-changes',
+      { ...AGENT, selector: '.gatebox__acts .btn--secondary' },
+      '.gatebox__acts .btn:not(.btn--primary)',
+      ['font-size', 'border-top-color', 'color', 'box.height'],
+    ),
+    // TP-12: the Team | Agent switch (DS-COMP-23, static) and its one count.
+    probe('tabs', { ...MOCK, selector: '[data-tp-tabs]' }, TABS, ['column-gap']),
+    probe(
+      'tab-on',
+      { ...MOCK, selector: '[data-tp-tabs] .cmtab[aria-selected="true"]' },
+      `${TABS} .cmtab[aria-selected="true"]`,
+      [...TYPE, 'padding-top', 'padding-bottom'],
+    ),
+    probe(
+      'tab-off',
+      { ...MOCK, selector: '[data-tp-tabs] .cmtab[aria-selected="false"]' },
+      `${TABS} .cmtab[aria-selected="false"]`,
+      ['font-size', 'color'],
+    ),
+    // Width left out on the mark: it is placed to the selected tab's word, a text
+    // advance Linux Chromium (hosted CI) draws 1px narrower than the Mac that pinned
+    // the mockup (run 36820761849: 31 vs 32). Same treatment as the shell switch.
+    probe(
+      'tab-mark',
+      { ...MOCK, selector: '[data-tp-tabs] .cmtabs__mark' },
+      `${TABS} .cmtabs__mark`,
+      ['background-color', 'box.height'],
+    ),
+    probe('tab-count', { ...MOCK, selector: '[data-tp-tabs] .cbadge' }, `${TABS} .cbadge`, [
+      'font-family',
+      'font-size',
+      'color',
+      'background-color',
+    ]),
+    // DS-TASK-1, read-only: the strip above the field grid (sample values).
+    probe('strip', { ...MOCK, selector: '.tpr__facts .mstrip' }, '.tpr__facts .mstrip', [
+      'border-bottom-color',
+      'border-bottom-width',
+      'padding-bottom',
+      'margin-bottom',
+      'row-gap',
+      'column-gap',
+    ]),
+    probe(
+      'strip-key',
+      { ...MOCK, selector: '.mstrip .mstrip__k' },
+      '.mstrip .mstrip__k',
+      [...TYPE, 'text-transform'],
+      EYEBROW,
+    ),
+    probe(
+      'strip-move',
+      { ...MOCK, selector: '.mstrip [data-mstrip-fact="whose-move"] .mstrip__v' },
+      '.mstrip [data-mstrip-fact="whose-move"] .mstrip__v',
+      TYPE,
+    ),
+    {
+      ...probe(
+        'strip-rank',
+        { ...MOCK, selector: '.mstrip .mstrip__v--none' },
+        '.mstrip .mstrip__v--none',
+        ['font-size', 'font-style', 'color'],
+      ),
+      // The mockup's task has no rank yet; the app reads the same task unranked
+      // under the mockup's key (made-up-api.ts), so the strip draws 'not ranked'.
+      app: { ...APP, path: `/task/${MOCKUP_TASK_KEY}`, selector: '.mstrip .mstrip__v--none' },
+    },
+    // DS-TASK-6, live: the receipt of an attempt (states.json `receipt`).
+    probe('receipt-box', { ...LIVE, selector: '.sout .sout__box' }, '.sout .sout__box', [
+      'border-top-color',
+      'border-top-width',
+      'padding-top',
+      'row-gap',
+    ]),
+    probe(
+      'receipt-key',
+      { ...LIVE, selector: '.sout .sout__row .tf__k' },
+      '.sout .sout__row .tf__k',
+      TYPE,
+      EYEBROW,
+    ),
+    probe('receipt-value', { ...LIVE, selector: '.sout .sout__v' }, '.sout .sout__v', [
+      'font-family',
+      'font-size',
+      'color',
+    ]),
+    ...FIELD_PROBES,
     ...PAGE_PROBES,
   ],
 };

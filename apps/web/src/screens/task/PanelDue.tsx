@@ -2,8 +2,8 @@
 //
 // The dock task panel's due date (MP-4-8), one of `PanelFields.tsx`'s field
 // edits: chosen in the picker and sent through `task.update` at the revision
-// the picker opened at (review/305-pf-keep round 3), so a colleague's change
-// since answers stale rather than being overwritten.
+// the picker opened at, so a colleague's change since answers stale rather
+// than being overwritten.
 
 import { useState, type ReactElement } from 'react';
 import type { InternalTaskDetail as Task } from '../../../../../packages/core-wire/src/index.ts';

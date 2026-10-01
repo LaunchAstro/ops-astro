@@ -1,0 +1,10 @@
+{
+  "action": "synchronize",
+  "number": 11,
+  "pull_request": {
+    "number": 11,
+    "head": { "sha": "@HEAD@", "ref": "pr11" },
+    "base": { "sha": "@BASE@", "ref": "main" }
+  },
+  "repository": { "full_name": "LaunchAstro/ops-astro" }
+}

@@ -15,7 +15,7 @@
 // be confidently wrong about it.
 
 import type { ReactElement } from 'react';
-import { Empty } from '@launchastro/ui';
+import { Banner, Empty } from '@launchastro/ui';
 import type { ReadState } from '../../data/authorised-read.ts';
 import { describeRefusal } from '../../records/submit.ts';
 import type {
@@ -49,16 +49,19 @@ export function ReadBanner(props: {
         />
       ) : null}
       {state.outcome === 'unavailable' ? (
-        <Empty
-          title="These values could not be read."
-          description={state.because}
-          hint="Nobody refused anything: the answer did not come back. Nothing below is the business's value."
+        // DS-PRIM-30: a read that could not be read is the bad banner, not the empty state.
+        <Banner
+          tone="bad"
+          lead="These values could not be read."
           action={
             <button className="btn" type="button" onClick={props.onRetry}>
               Try again
             </button>
           }
-        />
+        >
+          {state.because} Nobody refused anything: the answer did not come back. Nothing below is
+          the business&apos;s value.
+        </Banner>
       ) : null}
       {state.outcome === 'empty' ? (
         <Empty

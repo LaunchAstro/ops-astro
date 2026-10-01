@@ -53,6 +53,8 @@ export function RailFold(props: {
 export function RailItem(props: {
   readonly entry: RailEntry;
   readonly collapsed: boolean;
+  /** Heard on a press, after which the link is followed. */
+  readonly onPress?: () => void;
 }): ReactElement {
   const { entry } = props;
   return (
@@ -71,6 +73,7 @@ export function RailItem(props: {
       // In the strip the name shows on hover; the label stays the item's
       // accessible name, hidden only from sight.
       {...(props.collapsed ? { title: entry.label } : {})}
+      onClick={props.onPress}
     >
       {/* The section's glyph, drawn once the rail folds (MP-2-2); a section
           with none keeps its initial. */}

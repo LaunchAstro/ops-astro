@@ -20,6 +20,8 @@
 // It is a stub for the API and the identity provider, like
 // `session-ended.test.tsx`; the refusals are the bodies C58's own suites pin.
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { act, useState, type ReactElement } from 'react';
 import { App } from '../../apps/web/src/App.tsx';
@@ -255,7 +257,10 @@ describe('C58 no draft after session end', () => {
     await view.click('.appbar .who__trigger');
     await view.click('.who__menu button[role="menuitem"]');
     await expectSignedOutWithNoDraft(view, store, sessions);
-    expect(view.find('[data-reason="signed-out"]')).not.toBeNull();
+    // The same card draws both endings in the kit's banner (DS-PRIM-30), as status.
+    expect(
+      view.find('.banner[role="status"][data-reason="signed-out"] .banner__body'),
+    ).not.toBeNull();
     await signInAgainFindsNoDraft(view, true);
   });
 
@@ -270,5 +275,26 @@ describe('C58 no draft after session end', () => {
     expect(view.text()).toContain('AUTH_NO_MEMBERSHIP');
     expect(view.find('#signin-email')).toBeNull();
     expect(sessions.session).not.toBeNull();
+  });
+});
+
+describe('C58 no draft after session end, the browser run', () => {
+  // ND3 in `tests/browser/cases-c58-no-draft.mjs` presses its controls to sign
+  // out. A selector the shell no longer draws times the case out and ends the
+  // whole browser run, so each must be found, in order, on the page drawn here.
+  it('every control ND3 presses, in order, is drawn and the last one signs out', async () => {
+    const script = readFileSync(resolve('tests/browser/cases-c58-no-draft.mjs'), 'utf8');
+    const nd3 = /async function signedOut\([^)]*\) \{([\s\S]*?)\n\}/u.exec(script)?.[1] ?? '';
+    const presses = [...nd3.matchAll(/page\.click\('([^']+)'\)/gu)].map((hit) => hit[1] ?? '');
+    expect(presses[0] ?? '', 'ND3 presses a control to sign out').not.toBe('');
+    const { view } = await openMidEdit();
+    for (const pressed of presses) {
+      // A template, not the bare name: `find` here is the host's querySelector.
+      expect(view.find(`${pressed}`), `ND3 presses '${pressed}'`).not.toBeNull();
+      // oxlint-disable-next-line no-await-in-loop
+      await view.click(pressed);
+    }
+    await settle();
+    expect(view.find('[data-reason="signed-out"]')).not.toBeNull();
   });
 });

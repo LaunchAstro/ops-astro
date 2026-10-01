@@ -523,13 +523,10 @@ td[data-tight] {
   padding: 0.1rem 0.35rem;
   border: 1px solid var(--border);
   background: var(--surface);
-  font: var(--type-caption);
-  letter-spacing: var(--type-caption-tracking);
-  text-transform: var(--type-caption-case);
   color: var(--text-2);
-  /* A cell clips at its edge and never shortens its words (MP-5-1). */
-  text-overflow: clip;
   white-space: nowrap;
+  /* Its type (the 11 px caption, DS-COMP-17) and its text overflow are the board
+     chip's in 4-board.css. */
 }
 .cbd__tok {
   font: var(--type-data);

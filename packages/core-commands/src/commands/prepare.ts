@@ -551,9 +551,10 @@ export async function prepareCommand(
     if (!authorised.ok) return refused(authorised.refusal);
   }
   // The one step-up (C59), inside the grant check and straight after it: only
-  // a key in the money set is asked, so a caller without the grant is told
-  // that first, and nothing after this line runs on a stale sign-in.
-  const stale = await refuseStaleMoneyStep(tx, session, declaration);
+  // a key in the money set, and the switch when switching it off, is asked, so
+  // a caller without the grant is told that first, and nothing after this line
+  // runs on a stale sign-in.
+  const stale = await refuseStaleMoneyStep(tx, session, declaration, request);
   if (stale !== undefined) return refused(stale);
   // A field the row does not describe, after authority as on the agent prefix:
   // a caller without the right is told that first (R4, `external-party`).

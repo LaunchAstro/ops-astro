@@ -65,7 +65,9 @@ async function onBoard<T>(
   // so its badge draws. Routed last, so asked first.
   if (answers.comments === true) {
     await side.context.route('**/api/b/*/task/board', async (route) => {
-      const base = madeUpAnswer(new URL(route.request().url()).pathname);
+      const answer = madeUpAnswer(new URL(route.request().url()).pathname);
+      // The default answer, never a held one: no variant is passed.
+      const base = answer !== undefined && 'json' in answer ? answer : undefined;
       const waiting = { client: 2, mentions: 1, latest: '2026-09-25T04:00:00.000Z' };
       const [first, ...rest] = TASKS;
       const tasks = first === undefined ? [] : [{ ...first, comments: waiting }, ...rest];

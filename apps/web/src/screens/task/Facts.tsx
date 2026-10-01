@@ -1,15 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The task page's facts block (MP-4-2, TP-08 to TP-10), inside the band's
-// frame the header ticket built (DS-TASK-11): the strip, the calc line and
-// the ten-field band. Every value is `task.read`'s, and nothing here changes
-// anything.
+// frame the header ticket built (DS-TASK-11): the fact strip (DS-TASK-1,
+// read-only), the calc line and the ten-field grid (TP-10, DS-COMP-26 inline
+// form) in the mockup's order. Every value is `task.read`'s, and nothing here
+// changes anything. No field is a sample any more, so none carries the mock
+// label: the sample module's own rule was that a field a read carries leaves
+// the samples, and its mock label goes with it, so the module has gone.
 //
-// **The marks are inert, and look it.** On this page the strip and the
-// Handling chips only say what the record says: no tab stop, no role, no
-// handler, and the default cursor (the mockup's pointer on a dead mark is
-// D-08, not copied). The ticks that change them are the dock panel's
-// (MP-4-10).
+// **The marks are inert, and look it.** On this page the strip's ticks and
+// the Handling chips only say what the record says: no tab stop, no handler,
+// and the default cursor (the mockup's pointer on a dead mark is D-08, not
+// copied). A tick is a picture of a state (`role="img"`), which takes no
+// `aria-checked`: its state is in its name and `data-on`. The ticks that
+// change them are the dock panel's (MP-4-10).
 //
 // **Whose move is derived** (DP-14): absent once the task is complete; Review
 // while a gate waits on a person; Agent while an agent holds a live lease;
@@ -23,6 +27,7 @@
 // the client model names it.
 
 import type { ReactElement } from 'react';
+import { Icon } from '@launchastro/ui';
 import { estimateWords } from './estimates.ts';
 import {
   TASK_CATEGORIES,
@@ -59,22 +64,35 @@ function projectOf(task: InternalTaskDetail): string {
   return orNotSet(task.board.title);
 }
 
+/** A derived cell's label, with the calculation-source word after it. */
+function Derived(props: { readonly label: string }): ReactElement {
+  return (
+    <span className="mstrip__k">
+      {props.label}
+      <span className="mcalc__src">derived</span>
+    </span>
+  );
+}
+
+/** A handling tick on the page: a picture of the record's state, not a control. */
 function Mark(props: { readonly name: string; readonly label: string; readonly on: boolean }) {
   return (
-    <span className="tpr__fact">
-      <span className="tf__k">{props.label}</span>
+    <span className="mstrip__c">
+      <span className="mstrip__k">{props.label}</span>
       <span
-        className="tpr__mark"
+        className="check tpr__mark"
+        role="img"
         data-mark={props.name}
         data-on={props.on ? 'yes' : 'no'}
         aria-label={`${props.label}: ${props.on ? 'yes' : 'no'}`}
       >
-        {props.on ? '✓' : ''}
+        {props.on ? <Icon name="check" size="sm" /> : null}
       </span>
     </span>
   );
 }
 
+/** A true flag is worth a chip; neither true is worth a sentence (the mockup's rule). */
 function Handling(props: { readonly task: InternalTaskDetail }): ReactElement {
   const chips = [
     ...(props.task.adHoc ? ['Ad hoc'] : []),
@@ -84,7 +102,7 @@ function Handling(props: { readonly task: InternalTaskDetail }): ReactElement {
   return (
     <>
       {chips.map((chip) => (
-        <span className="tpr__chip" data-chip key={chip}>
+        <span className="chip chip--outline" data-chip key={chip}>
           {chip}
         </span>
       ))}
@@ -92,22 +110,38 @@ function Handling(props: { readonly task: InternalTaskDetail }): ReactElement {
   );
 }
 
+/**
+ * DS-TASK-1, the page's read-only variant: two derived cells and two ticks
+ * drawn as pictures of a state (no pointer, nothing to press).
+ */
 function Strip(props: { readonly task: InternalTaskDetail }): ReactElement {
   const { task } = props;
   const move = whoseMove(task);
   return (
-    <div className="tpr__strip">
+    <div className="mstrip" role="group" aria-label="Derived task facts and handling">
       {move === null ? null : (
-        <span className="tpr__fact" data-fact="move" title="Worked out from the task, not set">
-          <span className="tf__k">Whose move · derived</span>
-          <output className="sb__state">{move}</output>
+        <span
+          className="mstrip__c"
+          data-mstrip-fact="whose-move"
+          data-fact="move"
+          title="Worked out from the task, not set"
+        >
+          <Derived label="Whose move" />
+          <output className="mstrip__v mstrip__bucket">{move}</output>
         </span>
       )}
-      <span className="tpr__fact" data-fact="rank" title="Worked out from the marks, not set">
-        <span className="tf__k">Rank · derived</span>
-        <output className="sb__state">
-          {task.rank.number === null ? 'not ranked' : `#${task.rank.number}`}
-        </output>
+      <span
+        className="mstrip__c"
+        data-mstrip-fact="rank"
+        data-fact="rank"
+        title="Worked out from the marks, not set"
+      >
+        <Derived label="Rank" />
+        {task.rank.number === null ? (
+          <output className="mstrip__v mstrip__v--none">not ranked</output>
+        ) : (
+          <output className="mstrip__v mstrip__rank">#{task.rank.number}</output>
+        )}
       </span>
       <Mark name="adhoc" label="Ad hoc" on={task.adHoc} />
       <Mark name="client-access" label="Client access" on={task.clientAccess} />
@@ -140,21 +174,23 @@ export function TaskFacts(props: { readonly task: InternalTaskDetail }): ReactEl
     ['handling', 'Handling', <Handling key="handling" task={task} />],
   ];
   return (
-    <section className="tpr__facts" aria-label="Facts">
+    <section className="tpr__facts" aria-label="Facts" data-task-facts="">
       <Strip task={task} />
       {task.rank.calc === '' ? null : (
         <p className="tpr__calc" data-calc>
           {task.rank.calc}
         </p>
       )}
-      <dl className="tpr__band" data-band>
-        {band.map(([key, label, value]) => (
-          <div className="tf__row" data-field={key} key={key}>
-            <dt className="tf__k">{label}</dt>
-            <dd className="sb__state">{value}</dd>
-          </div>
-        ))}
-      </dl>
+      <div className="taskform">
+        <dl className="tf__grid" data-band>
+          {band.map(([key, label, value]) => (
+            <div className="tf__row" data-field={key} key={key}>
+              <dt className="tf__k">{label}</dt>
+              <dd className="sb__state">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      </div>
     </section>
   );
 }

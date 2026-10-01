@@ -29,6 +29,7 @@ import {
   digestOf,
   isMoneyKey,
   issueAgentCredential,
+  isUuid,
   lockAccess,
   lockAgentCredential,
   revokeAgentCredential,
@@ -204,7 +205,8 @@ export async function revokeCredential(
   request: Revoke,
 ): Promise<HandlerOutcome> {
   const { credentialId } = request;
-  if (typeof credentialId !== 'string') return refused(refuseNotFound());
+  // A malformed id is not found, as a made-up one is, before the uuid cast.
+  if (typeof credentialId !== 'string' || !isUuid(credentialId)) return refused(refuseNotFound());
   const held = await lockAgentCredential(tx, credentialId);
   if (held === undefined) return refused(refuseNotFound());
   const { session } = context;

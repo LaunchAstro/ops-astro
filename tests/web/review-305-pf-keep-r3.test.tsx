@@ -92,7 +92,7 @@ function draftServer() {
   };
 }
 
-describe('review/305-pf-keep round 3: the panel due date', () => {
+describe('the panel due date', () => {
   it('S1: a panel due date picked in a picker opened before a colleague changed the task is sent at the revision it opened at', async () => {
     const { client, updates } = panelServer();
     const view = await mount(<Panel client={client} changes={0} />);
@@ -115,7 +115,7 @@ describe('review/305-pf-keep round 3: the panel due date', () => {
   });
 });
 
-describe('review/305-pf-keep round 3: Create parts and own saves', () => {
+describe('Create parts and own saves', () => {
   it('S2: a part with no answer is sent again under its own id by the next Create, never reported missing', async () => {
     const api = draftServer();
     const opened = await draft({ client: api.client, storage: store() });
