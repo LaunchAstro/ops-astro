@@ -8,14 +8,16 @@
 // events of the run the plan was made and accepted on are logged as outside
 // the plan the graph says they are.
 //
-// The graph and the pane are the real functions; the activity is built as
-// `agent-pane.tsx`'s `useActivity` builds it: the graph's steps and the events.
+// The graph, the placement and the pane are the real functions; the activity is
+// built as `task.execution` builds it: each event placed in the plan its run was
+// proposed under (`placeEvents`), with those plans.
 
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   projectGraph,
   type GraphPlan,
 } from '../../packages/core-commands/src/reads/execution-graph.ts';
+import { placeEvents } from '../../packages/core-commands/src/reads/execution-placement.ts';
 import { lineage, pane, unmountAll } from './mp-6-1-agent-fixtures.tsx';
 
 afterEach(unmountAll);
@@ -48,6 +50,11 @@ function runFacts(runId: string, lineageId: string, planStepKey: string | null) 
 }
 
 const FACTS = [runFacts('plan-run', 'plan-lineage', null), runFacts('run-1', 'work', 'draft')];
+// As `PLACEMENT_FACTS` reads the same runs: the plan run came before its plan.
+const PLACEMENTS = [
+  { runId: 'plan-run', lineageId: 'plan-lineage', planStepKey: null, boundBefore: [] },
+  { runId: 'run-1', lineageId: 'work', planStepKey: 'draft', boundBefore: ['plan-record'] },
+];
 
 describe('the operational log places the plan run as the graph does', () => {
   it("the plan's own run, which the graph never calls unplanned, is not logged outside the plan", async () => {
@@ -58,9 +65,10 @@ describe('the operational log places the plan run as the graph does', () => {
 
     const page = await pane({
       lineages: [lineage()],
-      activity: {
-        steps: graph.steps,
-        events: [
+      activity: placeEvents(
+        PLACEMENTS,
+        [PLAN],
+        [
           {
             eventId: 'e-1',
             runId: 'plan-run',
@@ -70,7 +78,7 @@ describe('the operational log places the plan run as the graph does', () => {
             at: '2026-09-30T09:00:00.000Z',
           },
         ],
-      },
+      ),
     });
     const row = page.find('[data-agent="log"] [data-log="row"]');
     expect(row?.querySelector('[data-log="job"]')?.textContent).not.toBe('Outside the plan');

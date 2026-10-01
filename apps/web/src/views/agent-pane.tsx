@@ -16,8 +16,8 @@
 // with `run.top_up` (`billing:decide`) or `run.end_at_budget_stop`
 // (`gate:decide`), naming the task, the run and the stop the read showed.
 // Every outcome ends in a reread, as the proposals section's does. The
-// operational log (MP-6-2) is `task.execution`'s events and bound plan, read
-// again with each new task read, as the run's own section reads them; a
+// operational log (MP-6-2) is `task.execution`'s events and their runs' plans,
+// read again with each new task read, as the run's own section reads them; a
 // refused or failed read draws no log, and the run's section says why.
 
 import { useState, type ReactElement } from 'react';
@@ -29,6 +29,7 @@ import {
 } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
 import type {
+  ExecutionEvent,
   PersonView,
   ProposalView,
   TaskExecutionResult,
@@ -241,7 +242,11 @@ export function AgentSection(props: AgentSectionProps): ReactElement {
   );
 }
 
-/** The log's rows: the execution read's events and its bound plan's steps, once read. */
+/**
+ * The log's rows: the execution read's events, each placed in the plan its run
+ * was proposed under, and those plans, once read. A read without placements
+ * draws no log rather than rows placed against nothing.
+ */
 function useActivity(props: AgentSectionProps): RunActivity | undefined {
   const { state } = useRead<TaskExecutionResult>({
     grantKey: props.grantKey,
@@ -250,6 +255,11 @@ function useActivity(props: AgentSectionProps): RunActivity | undefined {
   });
   if (state.outcome !== 'ready' && state.outcome !== 'empty') return undefined;
   const execution = state.value.execution as Partial<TaskExecutionResult['execution']> | undefined;
-  if (!Array.isArray(execution?.events)) return undefined;
-  return { steps: execution.graph?.steps ?? [], events: execution.events };
+  if (!Array.isArray(execution?.events) || !Array.isArray(execution.plans)) return undefined;
+  if (!execution.events.every(placed)) return undefined;
+  return { plans: execution.plans, events: execution.events };
 }
+
+type Placed = ExecutionEvent & { readonly placement: NonNullable<ExecutionEvent['placement']> };
+
+const placed = (event: ExecutionEvent): event is Placed => event.placement !== undefined;

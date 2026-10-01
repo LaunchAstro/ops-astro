@@ -9,15 +9,15 @@
 // proves "the newest wins" on a real database). So a plan accepted later
 // rewrites the rows already drawn for the events recorded under the first one.
 //
-// The plan, the graph and the pane are the real functions; the activity is
-// built as `agent-pane.tsx`'s `useActivity` builds it: the graph's steps and
-// the read's events.
+// The binding, the placement and the pane are the real functions; the activity
+// is built as `task.execution` builds it: each event placed in the plan its run
+// was proposed under (`placeEvents`), with those plans.
 
 import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
-import { projectedPlan } from '../../packages/core-runtime/src/index.ts';
+import { boundPlans } from '../../packages/core-runtime/src/index.ts';
 import { payloadDigest } from '../../packages/core-digest/src/index.ts';
-import { projectGraph } from '../../packages/core-commands/src/reads/execution-graph.ts';
+import { placeEvents } from '../../packages/core-commands/src/reads/execution-placement.ts';
 import { lineage, pane, unmountAll } from './mp-6-1-agent-fixtures.tsx';
 
 afterEach(unmountAll);
@@ -40,25 +40,14 @@ function bound(id: string, runId: string, steps: readonly { key: string; title: 
   };
 }
 
-function runFacts(runId: string, lineageId: string, planStepKey: string | null) {
-  return {
-    runId,
-    lineageId,
-    state: 'handed_back',
-    planStepKey,
-    superseded: false,
-    gateState: 'approved',
-    currency: 'AUD',
-    lease: null,
-    attempt: null,
-    effectObserved: false,
-    heldMinor: null,
-    spentMinor: null,
-    lastKind: 'handed_back',
-    lastFault: null,
-    definition: null,
-    helpers: [],
-  };
+/** A run as `PLACEMENT_FACTS` reads it: the records bound before its proposal, newest first. */
+function placementFacts(
+  runId: string,
+  lineageId: string,
+  planStepKey: string | null,
+  boundBefore: readonly string[],
+) {
+  return { runId, lineageId, planStepKey, boundBefore };
 }
 
 const event = (position: number, runId: string, kind: string, at: string) => ({
@@ -78,16 +67,15 @@ const SECOND_PLAN = bound('plan-2', 'plan-run-2', [
 ]);
 
 const FACTS = [
-  runFacts('plan-run-1', 'plan-lineage-1', null),
-  runFacts('run-1', 'work-lineage-1', 'draft'),
-  runFacts('plan-run-2', 'plan-lineage-2', null),
-  runFacts('run-2', 'work-lineage-2', 'send'),
+  placementFacts('plan-run-1', 'plan-lineage-1', null, []),
+  placementFacts('run-1', 'work-lineage-1', 'draft', ['plan-1']),
+  placementFacts('plan-run-2', 'plan-lineage-2', null, ['plan-1']),
+  placementFacts('run-2', 'work-lineage-2', 'send', ['plan-2', 'plan-1']),
 ];
 
-/** One read: the projected plan from the candidates (newest first), its graph, its events. */
+/** One read: the bound plans from the candidates (newest first), its events placed in them. */
 function activityOf(candidates: readonly unknown[], events: readonly ReturnType<typeof event>[]) {
-  const graph = projectGraph(FACTS, projectedPlan(candidates), 1, true);
-  return { steps: graph.steps, events };
+  return placeEvents(FACTS, boundPlans(candidates), events);
 }
 
 const rows = (page: Awaited<ReturnType<typeof pane>>) => [
@@ -100,10 +88,12 @@ describe('the operational log keeps its drawn rows when a newer plan is bound', 
       event(1, 'run-1', 'claimed', '2026-09-30T10:00:00.000Z'),
       event(2, 'run-1', 'handed_back', '2026-09-30T10:42:00.000Z'),
     ];
-    const before = rows(await pane({
-      lineages: [lineage()],
-      activity: activityOf([FIRST_PLAN], drafted),
-    })).map((row) => row.outerHTML);
+    const before = rows(
+      await pane({
+        lineages: [lineage()],
+        activity: activityOf([FIRST_PLAN], drafted),
+      }),
+    ).map((row) => row.outerHTML);
     expect(before).toHaveLength(2);
     expect(before[0]).toContain('JOB-01');
     expect(before[0]).toContain('Draft the reply');
@@ -112,10 +102,12 @@ describe('the operational log keeps its drawn rows when a newer plan is bound', 
     // Later: the second plan is accepted (newest first, as PLAN_CANDIDATES
     // orders them) and its run records one more event.
     const later = [...drafted, event(3, 'run-2', 'claimed', '2026-09-30T11:05:00.000Z')];
-    const after = rows(await pane({
-      lineages: [lineage()],
-      activity: activityOf([SECOND_PLAN, FIRST_PLAN], later),
-    })).map((row) => row.outerHTML);
+    const after = rows(
+      await pane({
+        lineages: [lineage()],
+        activity: activityOf([SECOND_PLAN, FIRST_PLAN], later),
+      }),
+    ).map((row) => row.outerHTML);
     expect(after).toHaveLength(3);
     expect(after.slice(0, before.length)).toStrictEqual(before);
   });
