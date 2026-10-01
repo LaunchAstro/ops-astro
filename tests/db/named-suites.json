@@ -184,7 +184,8 @@
     "B1-END-FIX-OPS (batch 1 blind review A1, A5, A8) adds restore-includes-sign-in-tables (the restore drill passes the scheduled public, ops and auth archive), restore-includes-staging-guards (a staging archive restores after the seed installs its made-up guards) and hosted-expired-lease-recovery (the Vercel function runs the reconciliation pass and fences a lost worker's expired lease; fix round 1 adds hosted-recovery-waits-for-pass (every request waits on the pass in flight) and staging-archive-restores-guards (the complete staging archive restores with its guard triggers); round 2 adds restore-drill-keeps-staging-guards (the drill's target keeps the guard triggers).",
     "SL09-2a-f3 adds c58-end-access-credentials (access.end revoking every live agent credential the ended person issued, each agent actor deactivated with it, in the same act; another person's credential in the same business and the same provider user's credential in bravo left live), named as an isolation suite too.",
     "REVIEW-BATCH-2 #313 batch 3b adds review-3b-2-accept-clears-inbox (task.accept_plan clears the gate's inbox decision items in its own transaction, naming the decider, and inbox.count drops, as task.decide does) as conformance.",
-    "REVIEW-BATCH-2 #313 batch 3b adds review-3b-3-set-planning-cap-step-up (budget.set_planning_cap under C59's money step-up: a second factor past sixty minutes and a factorless sign-in each refused STEP_UP_REQUIRED with budget_caps unchanged, then the same body applies on a fresh sign-in) as conformance."
+    "REVIEW-BATCH-2 #313 batch 3b adds review-3b-3-set-planning-cap-step-up (budget.set_planning_cap under C59's money step-up: a second factor past sixty minutes and a factorless sign-in each refused STEP_UP_REQUIRED with budget_caps unchanged, then the same body applies on a fresh sign-in) as conformance.",
+    "REVIEW-BATCH-2 #313 batch 3b adds review-3b-4-parent-end-drops-helper (a parent revoked, or handed back, while its helper never handed back: the merged result shows the helper dropped with its fault, DELEGATION_REVOKED for the revocation, never working) as conformance."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -680,6 +681,7 @@
     "tests/ci/restore-drill-keeps-staging-guards.test.ts",
     "tests/ci/s0-1-staging-logins-live.test.ts",
     "tests/runtime/review-3b-2-accept-clears-inbox.test.ts",
-    "tests/broker/review-3b-3-set-planning-cap-step-up.test.ts"
+    "tests/broker/review-3b-3-set-planning-cap-step-up.test.ts",
+    "tests/runtime/review-3b-4-parent-end-drops-helper.test.ts"
   ]
 }
