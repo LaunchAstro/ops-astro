@@ -75,6 +75,25 @@ const touch = async (business: string, recordId: string): Promise<void> => {
   });
 };
 
+/** The board's frames so far: batch 1's board says only `resync` (and `closed`), naming no task. */
+const moves = (joined: Joined): number => count(joined, 'resync', BOARD);
+
+/** The board's count once it stops moving, so a recheck resync never stands in for a change. */
+const still = async (joined: Joined): Promise<number> => {
+  for (let heard = moves(joined); ; heard = moves(joined)) {
+    // eslint-disable-next-line no-await-in-loop
+    await sleep(450);
+    if (moves(joined) === heard) return heard;
+  }
+};
+
+/** A write on `recordId` that `witness` hears: every write before it has reached every tab. */
+const barrier = async (witness: Joined, business: string, recordId: string): Promise<void> => {
+  const before = await still(witness);
+  await touch(business, recordId);
+  await within(2_000, () => moves(witness) > before, 'the barrier');
+};
+
 /** Every frame is one of the channel's events and names one of the caller's own topics. */
 function carriesOnly(joined: Joined, named: readonly string[]): void {
   for (const { event, data } of joined.heard) {
@@ -97,12 +116,12 @@ async function oneConnection(): Promise<void> {
   await within(2_000, () => count(tab, 'resync', BOARD) === 1, 'the board resynced');
   expect(count(tab, 'resync', topic(taskId))).toBe(1);
 
-  // The proposal raises the reviewer's decision item: the owed count moves on
-  // this one stream, and the task's change reaches both its topic and the board.
+  // The proposal raises the reviewer's decision item and changes the task: the
+  // board resyncs on this one stream (it names no task) and the task topic hears it.
+  const joined = await still(tab);
   await propose(s, taskId, { maximumMinor: 1_000, purpose: freshPurpose() });
-  await within(2_000, () => count(tab, 'inbox', BOARD) > 0, 'the new notification');
   await within(2_000, () => count(tab, 'invalidate', topic(taskId)) > 0, 'the task topic');
-  await within(2_000, () => count(tab, 'invalidate', BOARD) > 0, 'the board');
+  await within(2_000, () => moves(tab) > joined, 'the board');
   expect(tab.raw).not.toContain(`data: ${taskId}`);
   carriesOnly(tab, [topic(taskId), BOARD]);
 }
@@ -123,9 +142,9 @@ async function closedAlone(): Promise<void> {
   await touch(s.business, lost);
   await within(2_000, () => count(tab, 'closed', topic(lost)) === 1, 'the task topic closed');
   // The last task topic gone, the board stays on the stream and delivers.
-  const before = count(tab, 'invalidate', BOARD);
+  const before = await still(tab);
   await touch(s.business, kept);
-  await within(2_000, () => count(tab, 'invalidate', BOARD) > before, 'the board still delivers');
+  await within(2_000, () => moves(tab) > before, 'the board still delivers');
   expect(tab.ended).toBe(false);
   expect(count(tab, 'closed', BOARD)).toBe(0);
   carriesOnly(tab, [topic(lost), BOARD]);
@@ -152,11 +171,14 @@ async function isolation(): Promise<void> {
   const theirs = await open([BOARD], other.member, await keyOf(other.id));
   expect(theirs.status, JSON.stringify(theirs.refusal)).toBe(200);
   await within(2_000, () => count(theirs, 'resync', BOARD) === 1, 'their board');
-  await touch(s.business, mine);
+  // A write in this business moves this business's board and never theirs.
+  const witness = await open([BOARD], s.decider);
+  expect(witness.status, JSON.stringify(witness.refusal)).toBe(200);
+  const theirsJoined = await still(theirs);
+  await barrier(witness, s.business, mine);
+  expect(moves(theirs)).toBe(theirsJoined);
   await touch(other.id, otherTask.id);
-  await within(2_000, () => count(theirs, 'invalidate', BOARD) === 1, 'their own task');
-  await sleep(300);
-  expect(count(theirs, 'invalidate', BOARD)).toBe(1);
+  await within(2_000, () => moves(theirs) > theirsJoined, 'their own task');
 
   // Two clients in this business, one shared task each: both stay off the channel.
   await s.db.app.withBusiness(s.business, async (tx) => await grantTo(tx, s.decider, 'share'));
@@ -173,7 +195,7 @@ async function isolation(): Promise<void> {
     expect(refused.raw).not.toContain(mine);
   }
 
-  await delegated(mine, sibling, [theirs], otherTask.id);
+  await delegated(mine, sibling, witness, [theirs], otherTask.id);
 }
 
 /**
@@ -183,6 +205,7 @@ async function isolation(): Promise<void> {
 async function delegated(
   mine: string,
   sibling: string,
+  witness: Joined,
   others: readonly Joined[],
   otherTaskId: string,
 ): Promise<void> {
@@ -194,14 +217,16 @@ async function delegated(
   const tab = await open([BOARD], delegate);
   expect(tab.status, JSON.stringify(tab.refusal)).toBe(200);
   await within(2_000, () => count(tab, 'resync', BOARD) === 1, 'the delegate joined');
-  await touch(s.business, mine);
+  const joined = await still(tab);
+  await barrier(witness, s.business, mine);
+  expect(moves(tab)).toBe(joined);
   await touch(s.business, sibling);
-  await within(2_000, () => count(tab, 'invalidate', BOARD) === 1, 'the delegated task');
+  await within(2_000, () => moves(tab) > joined, 'the delegated task');
   await s.db.app.withBusiness(s.business, async (tx) => await revokeGrant(tx, parent));
+  const revoked = await still(tab);
   await touch(s.business, sibling);
-  await touch(s.business, mine);
-  await sleep(500);
-  expect(count(tab, 'invalidate', BOARD)).toBe(1);
+  await barrier(witness, s.business, mine);
+  expect(moves(tab)).toBe(revoked);
   for (const each of [...others, tab]) {
     carriesOnly(each, [BOARD]);
     expect(each.raw).not.toContain(mine);
