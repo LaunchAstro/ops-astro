@@ -202,6 +202,8 @@ export async function settle(
       const observed = Number.isSafeInteger(costMinor) ? costMinor : null;
       return await hold(tx, reserved, observed, null, broker);
     }
+    // DO NOT MERGE: REVIEW-3A-6 mutation. The expired-lease branch holds the call instead of settling it.
+    if (work === 'LEASE_EXPIRED') return await hold(tx, reserved, costMinor, null, broker);
     await settlePriced(tx, reserved, settlement, broker);
     if (work !== 'stands') return { ok: false, code: work, callId };
     return {
