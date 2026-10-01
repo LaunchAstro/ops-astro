@@ -18,7 +18,7 @@ import type { BusinessId } from '../../packages/core-records/src/index.ts';
 import { grantTo, type Member } from './fixture.ts';
 import { agentWorld, codeOf, type AgentWorld } from './agent-fixture.ts';
 import { timeWorld, type TimeWorld } from './time-world.ts';
-import { assignTo, todosOf } from './todo-support.ts';
+import { assignTo, madeClient, todosOf } from './todo-support.ts';
 
 const CANARY = `canary-${randomUUID()}`;
 
@@ -61,7 +61,7 @@ async function readAs(business: BusinessId, member: Member, scope: Record<string
 
 describe.skipIf(serverUrl === undefined)('MP-7-2 isolation: another business', () => {
   it('another business’s person is not found, and its client’s tasks are never listed', async () => {
-    const client = randomUUID();
+    const client = await madeClient(w, w.bravo, w.bravoOwner);
     const foreign = await assignTo(w, w.bravo, w.bravoOwner, CANARY, w.bravoOwner, {}, client);
     const person = await readAs(w.alpha, w.ada, { person: w.bravoOwner.personId });
     expect(person.code).toBe('NOT_FOUND');
@@ -83,7 +83,8 @@ describe.skipIf(serverUrl === undefined)('MP-7-2 isolation: another business', (
 
 describe.skipIf(serverUrl === undefined)('MP-7-2 isolation: another client', () => {
   it('a reader held to client A’s task is refused a teammate’s and client B’s lists, with no count', async () => {
-    const [clientA, clientB] = [randomUUID(), randomUUID()];
+    const clientA = await madeClient(w, w.alpha, w.ada);
+    const clientB = await madeClient(w, w.alpha, w.ada);
     const taskA = await assignTo(w, w.alpha, w.ada, 'client A work', w.noah, {}, clientA);
     const taskB = await assignTo(w, w.alpha, w.ada, `${CANARY}-b`, w.noah, {}, clientB);
     await w.db.app.withBusiness(w.alpha, async (tx) => {

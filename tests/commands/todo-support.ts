@@ -5,6 +5,7 @@
 //
 // A harness, not a suite: nothing here runs on its own.
 
+import { randomUUID } from 'node:crypto';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import type { BusinessId } from '../../packages/core-records/src/index.ts';
@@ -46,6 +47,15 @@ export async function commandOk(
   if (isCommandRefusal(answer))
     throw new Error(`${String(body['command'])} refused ${answer.code}`);
   return answer as { readonly recordId: string | null; readonly detail?: Readonly<Body> };
+}
+
+/** A real client of `business` (C32), made by `by`; `task.set_party` names only one of these. */
+export async function madeClient(w: TimeWorld, business: BusinessId, by: Member): Promise<string> {
+  const made = await commandOk(w, business, by, {
+    command: 'client.create',
+    name: `A made-up client ${randomUUID()}`,
+  });
+  return String(made.detail?.['clientId']);
 }
 
 /**

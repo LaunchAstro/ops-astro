@@ -16,7 +16,7 @@ import type { CommandResult } from '../../packages/core-commands/src/commands/re
 import { codeOf } from './agent-fixture.ts';
 import { grantTo, type Member } from './fixture.ts';
 import { timeWorld, type TimeWorld } from './time-world.ts';
-import { assignTo, commandOk, todosOf } from './todo-support.ts';
+import { assignTo, commandOk, madeClient, todosOf } from './todo-support.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -83,7 +83,8 @@ live('MP-7-2 scope to a person', () => {
 
 live('MP-7-2 scope to a client', () => {
   it('lists every open task under that client, whoever holds it, and none of another', async () => {
-    const [clientX, clientY] = [randomUUID(), randomUUID()];
+    const clientX = await madeClient(w, w.alpha, w.ada);
+    const clientY = await madeClient(w, w.alpha, w.ada);
     const adas = await assignTo(w, w.alpha, w.ada, 'X for Ada', w.ada, {}, clientX);
     const noahs = await assignTo(w, w.alpha, w.ada, 'X for Noah', w.noah, {}, clientX);
     const unassigned = await w.fresh(w.alpha, w.ada, 'X for nobody');
