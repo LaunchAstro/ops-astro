@@ -359,7 +359,9 @@ select.aip__hmodel {
   border: 1px solid transparent;
   background: none;
   color: var(--text-muted);
-  font-size: var(--text-label);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
 }
 select.aip__hmodel:hover:not(:disabled) {
   border-color: var(--border-strong);
@@ -442,6 +444,8 @@ select.aip__hmodel:hover:not(:disabled) {
   background: var(--paper);
   color: var(--text);
   font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
 }
 /* Send stands as tall as the field beside it (AI-12), as the mockup's row does. */
 .aip__inputrow .btn {
@@ -480,7 +484,6 @@ select.aip__hmodel:hover:not(:disabled) {
 .aip__act {
   padding: 0.25rem 0.35rem;
   color: var(--text-muted);
-  line-height: 1;
 }
 .aip__x {
   justify-content: center;
