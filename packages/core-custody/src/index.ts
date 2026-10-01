@@ -6,6 +6,8 @@
 // and never a credential.
 
 export {
+  carriesLocally,
+  LOCAL_SESSION_PROVIDER,
   mayCarry,
   parseCredentials,
   type CarryContext,

@@ -57,6 +57,12 @@ export interface Broker {
   readonly providers: ReadonlyMap<string, ProviderAdapter>;
   readonly routes: readonly BrokerRoute[];
   readonly installation: string;
+  /**
+   * LA-1's local carve-out (#859): set by the API's composition root only
+   * where it accepted `OPS_AGENT_PROVIDER=local-claude` under
+   * `OPS_ENVIRONMENT=local`. It reaches `mayCarry` only for a `local-claude` route.
+   */
+  readonly localOwnerTesting?: boolean;
   /** Written by the command layer inside the settling transaction. */
   readonly audit: (tx: TenantQuery, note: AuditNote) => Promise<void>;
 }

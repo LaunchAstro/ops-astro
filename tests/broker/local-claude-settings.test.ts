@@ -45,7 +45,7 @@ const broker = (routes: unknown[]) => ({
   MODEL_BROKER_INSTALLATION: 'here',
 });
 
-const LOCAL_CLAUDE = { ...broker([route('local-claude')]), OPS_AGENT_PROVIDER: 'local-claude' };
+const LOCAL_CLAUDE = { ...broker([route('local_claude')]), OPS_AGENT_PROVIDER: 'local-claude' };
 
 const problemOf = (environment: Readonly<Record<string, string | undefined>>): string => {
   const settings = brokerSettings(environment);
@@ -73,7 +73,7 @@ it('LA-1 provider setting: local-claude is the broker where OPS_ENVIRONMENT is l
   expect(brokerSettings({ ...LOCAL_CLAUDE, OPS_ENVIRONMENT: 'local' })).toMatchObject({
     kind: 'configured',
     provider: 'local-claude',
-    routes: [{ key: 'local_claude', provider: 'local-claude', credentialKind: 'subscription' }],
+    routes: [{ key: 'local_claude', provider: 'local_claude', credentialKind: 'subscription' }],
   });
 });
 
@@ -162,7 +162,7 @@ it('LA-1 price: a local answer costs nothing, whatever its API-equivalent cost',
 it('LA-1 operations: both register with all twelve declarations, on the local_claude destination', () => {
   const operations = catalogue([LOCAL_CLAUDE_COMPOSE, LOCAL_CLAUDE_CONVERSATION]);
   for (const operation of operations.values()) {
-    expect(operation).toMatchObject({ provider: 'local-claude', destination: 'local_claude' });
+    expect(operation).toMatchObject({ provider: 'local_claude', destination: 'local_claude' });
     expect(operation.nothingHappened).toEqual(LOCAL_CLAUDE_NOTHING_HAPPENED);
   }
   // The conversation seam asks for the conversation operation by its one key;

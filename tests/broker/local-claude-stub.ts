@@ -50,28 +50,8 @@ const ANSWERS: Record<StubMode, unknown> = {
   },
 };
 
-export async function startStubRunner(): Promise<StubRunner> {
-  let current: StubMode = 'answer';
-  const seen: StubRunner['seen'] = [];
-  const server: Server = createServer((request, response) => {
-    const parts: Buffer[] = [];
-    request.on('data', (part: Buffer) => parts.push(part));
-    request.on('end', () => {
-      seen.push({
-        path: request.url ?? '',
-        authorization: request.headers['authorization'],
-        body: Buffer.concat(parts).toString('utf8'),
-      });
-      response.writeHead(200, { 'content-type': 'application/json' });
-      response.end(JSON.stringify(ANSWERS[current]));
-    });
-  });
-  await new Promise<void>((resolve) => {
-    server.listen(0, '127.0.0.1', resolve);
-  });
-  const { port } = server.address() as AddressInfo;
-  const folder = mkdtempSync(join(tmpdir(), 'la1-runner-'));
-  const canary = plantedKey();
+/** The runner's key, filed for custody as the local session's route carries it. */
+function writeRunnerCredential(folder: string, canary: string): string {
   const credentialsFile = join(folder, 'credentials.json');
   writeFileSync(
     credentialsFile,
@@ -87,17 +67,53 @@ export async function startStubRunner(): Promise<StubRunner> {
     ]),
     { mode: 0o600 },
   );
-  const closeServer = async (): Promise<void> => {
-    server.closeAllConnections();
-    await new Promise<void>((resolve) => {
-      server.close(() => resolve());
+  return credentialsFile;
+}
+
+/** The loopback server: records each request, answers in the current mode. */
+async function listen(
+  seen: StubRunner['seen'],
+  mode: () => StubMode,
+): Promise<{ readonly origin: string; readonly close: () => Promise<void> }> {
+  const server: Server = createServer((request, response) => {
+    const parts: Buffer[] = [];
+    request.on('data', (part: Buffer) => parts.push(part));
+    request.on('end', () => {
+      seen.push({
+        path: request.url ?? '',
+        authorization: request.headers['authorization'],
+        body: Buffer.concat(parts).toString('utf8'),
+      });
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify(ANSWERS[mode()]));
     });
+  });
+  await new Promise<void>((resolve) => {
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const { port } = server.address() as AddressInfo;
+  return {
+    origin: `http://127.0.0.1:${String(port)}`,
+    close: async () => {
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => {
+        server.close(() => resolve());
+      });
+    },
   };
+}
+
+export async function startStubRunner(): Promise<StubRunner> {
+  let current: StubMode = 'answer';
+  const seen: StubRunner['seen'] = [];
+  const server = await listen(seen, () => current);
+  const folder = mkdtempSync(join(tmpdir(), 'la1-runner-'));
+  const canary = plantedKey();
   const custody = await startCustody({
-    credentialsFile,
-    destinations: [{ key: 'local_claude', origin: `http://127.0.0.1:${String(port)}` }],
+    credentialsFile: writeRunnerCredential(folder, canary),
+    destinations: [{ key: 'local_claude', origin: server.origin }],
   }).catch(async (error: unknown) => {
-    await closeServer();
+    await server.close();
     rmSync(folder, { recursive: true, force: true });
     throw error;
   });
@@ -110,7 +126,7 @@ export async function startStubRunner(): Promise<StubRunner> {
     },
     close: async () => {
       await custody.stop();
-      await closeServer();
+      await server.close();
       rmSync(folder, { recursive: true, force: true });
     },
   };

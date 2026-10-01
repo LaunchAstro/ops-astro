@@ -8,7 +8,13 @@
 // work, is still refused by name.
 
 import { expect, it } from 'vitest';
-import { mayCarry, type CarryContext } from '../../packages/core-custody/src/index.ts';
+import { LOCAL_CLAUDE_PROVIDER } from '../../packages/core-connectors/src/index.ts';
+import {
+  carriesLocally,
+  LOCAL_SESSION_PROVIDER,
+  mayCarry,
+  type CarryContext,
+} from '../../packages/core-custody/src/index.ts';
 
 const unattended: CarryContext = {
   unattended: true,
@@ -61,4 +67,13 @@ it("LA-1 local carve-out: an attended call for another person's work is still re
 it('LA-1 local carve-out: an attended call for its own person is carried, as before', () => {
   expect(mayCarry('subscription', { ...attended, localOwnerTesting: true })).toEqual({ ok: true });
   expect(mayCarry('subscription', attended)).toEqual({ ok: true });
+});
+
+it("LA-1 local carve-out: it reaches only the local session's route, and only where the broker carries it", () => {
+  expect(LOCAL_SESSION_PROVIDER).toBe(LOCAL_CLAUDE_PROVIDER);
+  const local = { provider: LOCAL_CLAUDE_PROVIDER };
+  expect(carriesLocally({ localOwnerTesting: true }, local)).toBe(true);
+  expect(carriesLocally({ localOwnerTesting: true }, { provider: 'replay' })).toBe(false);
+  expect(carriesLocally({ localOwnerTesting: false }, local)).toBe(false);
+  expect(carriesLocally({}, local)).toBe(false);
 });
