@@ -174,6 +174,7 @@ const OPERANDS = {
   'task.execution': { recordId: 'r' },
   'task.board': { board: null },
   'task.receipt': { attemptId: 'a' },
+  'definition.attribution': { digest: 'a'.repeat(64) },
   'preset.plan': { recordTypeKey: 'preset', presetKey: 'p', fields: [] },
   'task.ledger': { before: null, timeZone: 'Australia/Brisbane', query: null },
   'privacy.draft_breach_notices': {
