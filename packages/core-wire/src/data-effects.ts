@@ -202,26 +202,29 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'conversation.message': writing(client('conversations', 'conversation_messages')),
   'conversation.rename': writing(client('conversations')),
   'conversation.set_scope': writing(client('conversations')),
-  // AW-01: the broker's call, recorded against the lease's run (the provider
-  // call itself goes through the credential broker).
-  'model.call': writing(client('model_calls', 'run_events')),
+  // AW-01: the broker's hold on the lease's run and its prompt copy's
+  // registration. At the approved ceiling the refusal commits the stop instead
+  // (AW-05): the ask, the lease released, the delegation retired, the run
+  // waiting. The provider call goes through the credential broker; a client's
+  // task never reaches a route (C60), so it is the business's own.
+  'model.call': writing(
+    [
+      ...client('model_calls', 'budget_asks', 'leases', 'planned_runs'),
+      ...business('copy_registrations', 'delegations'),
+    ],
+    [{ provider: 'model', forClient: false }],
+  ),
   // AW-05: the two answers at the budget stop, and MP-6-2's state revised.
+  // None of the four below writes `run_events`: only pickup, hand-back and a drop append it.
   'run.top_up': writing(
-    client(
-      'budget_answers',
-      'budget_approvals',
-      'run_events',
-      'planned_runs',
-      'reservations',
-      'task_envelopes',
-    ),
+    client('budget_answers', 'budget_approvals', 'planned_runs', 'reservations', 'task_envelopes'),
   ),
   'run.end_at_budget_stop': writing(
-    client('budget_answers', 'run_events', 'planned_runs', 'reservations', 'task_envelopes'),
+    client('budget_answers', 'planned_runs', 'reservations', 'task_envelopes'),
   ),
-  'run.revise_state': writing(client('run_states', 'run_events')),
+  'run.revise_state': writing(client('run_states')),
   // MP-6-1's check on a task's run.
-  'task.check': writing(client('run_checks', 'run_events')),
+  'task.check': writing(client('run_checks')),
   'access.grant': GRANTS,
   'access.revoke': GRANTS,
   // C58: the team member signed out and deactivated at the identity provider.

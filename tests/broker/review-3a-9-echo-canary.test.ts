@@ -9,7 +9,7 @@
 // for a slash or `c` for the key's first character). The answer text the
 // broker returns, and every row of every public table, must hold no key.
 //
-// Expected red on 3338f1fd6 for the escaped spellings because of n=8: custody
+// Expected red on 8cbd0e422 (batch 3a before its fix squash) for the escaped spellings because of n=8: custody
 // redacts the raw bytes and the broker JSON-parses them afterwards.
 
 import { randomBytes } from 'node:crypto';

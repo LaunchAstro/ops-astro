@@ -156,8 +156,29 @@ async function runFaults(declaration: CommandDeclaration): Promise<string[]> {
     ...written
       .filter((table) => !declared.some((kind) => kind.kind === table))
       .map((table) => `${name}: wrote ${table}, undeclared`),
+    ...(EXACT.has(name)
+      ? declared
+          .filter(({ kind }) => !written.includes(kind))
+          .map(({ kind }) => `${name}: declares ${kind}, which its fixture did not write`)
+      : []),
   ];
 }
+
+/**
+ * Commands whose declaration is also proved the other way: every kind they
+ * declare, their fixture writes, so a kind they never write is not claimed.
+ * SL12's commands (batch 3a); each writes all it declares on its one path.
+ */
+const EXACT: ReadonlySet<string> = new Set([
+  'task.check',
+  'conversation.start',
+  'conversation.message',
+  'conversation.rename',
+  'conversation.set_scope',
+  'run.top_up',
+  'run.end_at_budget_stop',
+  'run.revise_state',
+]);
 
 /**
  * Write commands whose fixture changes no row, each with where its write is

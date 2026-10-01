@@ -7,7 +7,7 @@
 // handback.ts). So a priced call vanishes from the envelope, and a call held
 // as an unknown liability has its hold released by an ordinary handback.
 //
-// Red on 3338f1fd6. Green once the handback (or the settle) carries settled
+// Red on 8cbd0e422 (batch 3a before its fix squash). Green once the handback (or the settle) carries settled
 // model-call cost into the envelope's actual, and a liability_unknown call
 // keeps the reservation's hold instead of letting it be abandoned.
 

@@ -12,7 +12,7 @@
 // the whole purge rolls back: every other aged task in the business, here U,
 // is never purged.
 //
-// Red on 3338f1fd6: the purge answers a fault, not 200, and U is still there.
+// Red on 8cbd0e422 (batch 3a before its fix squash): the purge answers a fault, not 200, and U is still there.
 // Green once the purge either holds a conversation-scoped task (lists T in
 // `retained`) or clears or nulls the scope before the delete (lists T in
 // `purgedIds`); either way U is purged and the purge applies.

@@ -10,7 +10,7 @@
 // The fix names the ask: both commands take the askId the person was shown,
 // and an answer to an ask that is no longer the open one is refused with
 // nothing moved. This test sends the askId as the fix will require. On
-// 3338f1fd6 the commands refuse any askId as an undescribed body field, so
+// 8cbd0e422 (batch 3a before its fix squash) the commands refuse any askId as an undescribed body field, so
 // the case fails on that refusal; once the operand exists it must refuse the
 // stale ask, and the current ask must still be answerable.
 
