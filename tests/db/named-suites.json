@@ -168,7 +168,8 @@
     "STAGING-DEPLOY (STAGING-PREP B3) adds s0-1-staging-logins-live (S0-1 staging logins: before the reset the runtime login in the app group, after it one noinherit login per lookup, backup and forwarder group, each address written owner-only in the pooler's form; an existing folder is refused and an address already given out keeps working).",
     "B1-JOIN-FIX (REV187W): service-stop.test.ts's before-lookup refusals also run beside a live database of the named business and write no sign-in row to it; Sol's proof named-service-stop-reaches-database runs that suite alone through the conformance runner, which must see it reach the database.",
     "B1-END-FIX-OPS (batch 1 blind review A1, A5, A8) adds restore-includes-sign-in-tables (the restore drill passes the scheduled public, ops and auth archive), restore-includes-staging-guards (a staging archive restores after the seed installs its made-up guards) and hosted-expired-lease-recovery (the Vercel function runs the reconciliation pass and fences a lost worker's expired lease; fix round 1 adds hosted-recovery-waits-for-pass (every request waits on the pass in flight) and staging-archive-restores-guards (the complete staging archive restores with its guard triggers); round 2 adds restore-drill-keeps-staging-guards (the drill's target keeps the guard triggers).",
-    "SL09-2a-f3 adds c58-end-access-credentials (access.end revoking every live agent credential the ended person issued, each agent actor deactivated with it, in the same act; another person's credential in the same business and the same provider user's credential in bravo left live), named as an isolation suite too."
+    "SL09-2a-f3 adds c58-end-access-credentials (access.end revoking every live agent credential the ended person issued, each agent actor deactivated with it, in the same act; another person's credential in the same business and the same provider user's credential in bravo left live), named as an isolation suite too.",
+    "FIX-B1 (review round 1, rs-6) adds inbox-unattended-escalated (an escalated gate's recipient who keeps decide across the business is a path to the decision, so the item is not listed unattended) and names review-p03-unattended-escalated-decider (REVIEW-MAIN-B1 p03-1's proof: the recipient keeps task-scope decide only, and the item is listed), both invariants."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -485,7 +486,9 @@
     "tests/commands/inbox-unattended.test.ts",
     "tests/commands/inbox-escalation-settings.test.ts",
     "tests/ci/staging-no-production-data.test.ts",
-    "tests/ci/staging-no-production-data-guard.test.ts"
+    "tests/ci/staging-no-production-data-guard.test.ts",
+    "tests/commands/review-p03-unattended-escalated-decider.test.ts",
+    "tests/commands/inbox-unattended-escalated.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
