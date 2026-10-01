@@ -920,7 +920,10 @@ read the row, never rewrite it, and row security keeps it to its business. A
 trigger, after the row so row security answers another business first, checks
 the version and the lease's run are both on the named lineage, and the version
 is newer than the one the lease worked under: a handback cannot mark another
-lineage's version, and no lease marks its own plan.
+lineage's version, and no lease marks its own plan. Only the lease's own work
+is marked: the handback marks the successor it has just written, and `propose`
+an agent's revision only when the lease's holder proposed it, so a person's
+newer version on the agent's lineage is never marked.
 
 Dispatch reads the mark under its locks, as its `launch` effect-time fact
 ([The launch is the effect gate](#the-launch-is-the-effect-gate)): a lease
@@ -1945,17 +1948,22 @@ AW-09 (`review-round.ts`). Whatever the agent hands back with a successor is
 the reviewed output (AW-08), and it takes the same revision loop as any
 version (T3a): its own pending gate, two rounds of requested changes, then
 approve, reject or escalate, a reject terminal and a restart a new lineage on
-its own envelope. This holds when the task came from an approved automation:
-the standing approval accepts the task, never the output.
+its own envelope. The agent's revision after requested changes is its output
+too: `propose` marks it under the lease the revised output names
+(`markRevision`), so approving it is the launch; a person's own revision on
+that lineage is not marked, and its approval stays a plan accept. This holds
+when the task came from an approved automation: the standing approval accepts
+the task, never the output.
 
 A person completes the round, never the agent that produced it. The surfaces
 keep the agent out (its delegation never reaches `decide`, and the person
 prefix resolves only a person's login), and `decide` asks again itself,
 because its caller hands it the deciding actor and the schema checks only
-that the actor exists. On a reviewed output the decider's actor must be the
-active person actor of the person deciding; anything else is
-`DELEGATION_EXCLUDES_DECISION`, under the locks and before anything is
-written, for every decision, the escalate and the plan accept alike.
+that the actor exists. On every decision, whatever the version, the
+decider's actor must be the active person actor of the person deciding;
+anything else is `DELEGATION_EXCLUDES_DECISION`, under the locks and before
+anything is written, for every decision, the escalate and the plan accept
+alike.
 
 An approval does not survive its version. When the agent's revision
 supersedes an approved version, the proposal ends that version's lease and
@@ -1976,11 +1984,12 @@ run that handed the output back is history, so the output's pending gate is
 drawn armed, with approve, request changes and the header's reject on offer.
 
 `isReviewedOutput` is AW-08's (`reviewed-output.ts`): a version is a reviewed
-output when the handback marked it. Tests:
+output when the handback, or `propose` for the agent's revision, marked it.
+Tests:
 `aw-09-reviewed-on-every-surface` (the invariant,
 `agent_output_is_reviewed_on_every_surface`), `aw-09-no-self-review`,
-`aw-09-isolation`, `aw-09-round-rules`, `aw-09-stuck-notice` and
-`aw-09-reject-header`.
+`aw-09-isolation`, `aw-09-round-rules`, `aw-09-revision-launch`,
+`aw-09-stuck-notice` and `aw-09-reject-header`.
 
 ## The launch is the effect gate
 

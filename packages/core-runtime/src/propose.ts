@@ -34,6 +34,7 @@ import {
 import { writeProposal } from './proposal-writer.ts';
 import { lockRediscovered } from './rediscovery.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
+import { markRevision } from './reviewed-output.ts';
 
 // The version, run, step, evidence pack and gate inserts moved to
 // `proposal-writer.ts` so `handback` can make a successor through the same
@@ -351,6 +352,8 @@ export async function proposeUnderLocks(
   // above. Leaving it for a later unrelated replay is what made the business-
   // wide sweep from cancellation look necessary.
   if (written.value.supersededVersionId !== null) {
+    // AW-09: the agent's revision of its reviewed output is its output too.
+    await markRevision(tx, written.value.versionId, written.value.supersededVersionId);
     await retireWork(tx, liveWork, locks);
     await classifyVersions(
       tx,
