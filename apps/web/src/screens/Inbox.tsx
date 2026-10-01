@@ -63,7 +63,7 @@ export function InboxScreen(props: {
       {(inbox) => (
         <InboxPage
           items={inbox.items}
-          owedCount={inbox.owed}
+          owedCount={inbox.items.filter((item) => item.owed).length}
           groupOf={() => OWN_WORK}
           taskHref={taskHref}
           onOpenTask={onOpenTask}
