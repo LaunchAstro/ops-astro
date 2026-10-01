@@ -59,6 +59,14 @@ it("the tick process reads the runner's cap and seat the way the runner does", (
 });
 
 it.each([
+  'postgres://app@127.0.0.1:54390/ops_astro_local',
+  'postgres://app@localhost:54390/ops_astro_local',
+  'postgres://app@[::1]:54390/ops_astro_local',
+])('the tick process takes a database on this machine: %s (review 2 M5)', (url) => {
+  expect(tickSettings(env({ DATABASE_URL: url }))).toMatchObject({ ok: true });
+});
+
+it.each([
   ['staging', { OPS_ENVIRONMENT: 'staging' }, 'LOCAL_ONLY'],
   ['unset environment', { OPS_ENVIRONMENT: undefined }, 'LOCAL_ONLY'],
   ['api provider', { OPS_AGENT_PROVIDER: 'api' }, 'PROVIDER_NOT_LOCAL'],
@@ -71,6 +79,17 @@ it.each([
   ['a runner folder that is not absolute', { OPS_LOCAL_AGENT_HOME: 'agent' }, 'SETTING_MISSING'],
   ['a cap that is not dollars', { OPS_LOCAL_AGENT_CAP_USD: 'ten' }, 'SETTING_MISSING'],
   ['a cap of nothing', { OPS_LOCAL_AGENT_CAP_USD: '0' }, 'SETTING_MISSING'],
+  [
+    'a database on another machine (review 2 M5)',
+    { DATABASE_URL: 'postgres://db.example.com:5432/ops_astro' },
+    'DATABASE_NOT_LOCAL',
+  ],
+  [
+    'a database host that only starts with a loopback name (review 2 M5)',
+    { DATABASE_URL: 'postgres://127.0.0.1.example.com:5432/ops_astro' },
+    'DATABASE_NOT_LOCAL',
+  ],
+  ['a database address that is not a URL', { DATABASE_URL: 'not a url' }, 'DATABASE_NOT_LOCAL'],
 ])('the tick process refuses with %s', (_, overrides, code) => {
   expect(tickSettings(env(overrides))).toMatchObject({ ok: false, code });
 });
