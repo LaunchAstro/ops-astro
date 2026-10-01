@@ -16,11 +16,12 @@
 // the live channel's LISTEN.
 //
 // **Recovery has one owner here: the function.** The worker holds no database,
-// so with `RECOVERY_BUSINESS_KEYS` set the function runs the reconciliation
-// pass (`passDeployment`: sweep, replay, the register's answers) over those
-// businesses, awaited by every request while it runs, again each
-// `SWEEP_INTERVAL_MS` after one succeeds, since an instance may be frozen once
-// it answers. Instances that pass at once meet
+// so the function runs the reconciliation pass (`passDeployment`: sweep,
+// replay, the register's answers) over the businesses `RECOVERY_BUSINESS_KEYS`
+// names, which a named environment (`OPS_ENVIRONMENT`) must set, if only to
+// `none`. Each business passes on its own, awaited by every request while it
+// runs, again each `SWEEP_INTERVAL_MS` after it succeeds, since an instance may
+// be frozen once it answers. Instances that pass at once meet
 // on the pass's own row locks. `server.ts` runs the same pass only where there
 // is no function.
 //
@@ -128,9 +129,11 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
 
 /**
  * The reconciliation pass the function owns, over `RECOVERY_BUSINESS_KEYS`:
- * at most once each `SWEEP_INTERVAL_MS` after one succeeds, awaited by every
- * request while it runs. Unset or `none`, it does nothing; a malformed value
- * throws at start.
+ * each business at most once each `SWEEP_INTERVAL_MS` after its pass succeeds,
+ * awaited by every request while it runs. A business passes on its own, so a key
+ * that does not resolve, or a pass that rolls back, holds up no other (#287 A8).
+ * `none` does nothing; unset does nothing only where no environment is named,
+ * and a malformed value throws at start.
  */
 function recoveryPass(
   settings: Settings,
@@ -138,31 +141,34 @@ function recoveryPass(
   resolveBusiness: (businessKey: string) => Promise<string | undefined>,
   keys: RuntimeKeys,
 ): () => Promise<void> {
-  const scope =
-    settings[RECOVERY_SCOPE_SETTING] === undefined
-      ? undefined
-      : parseRecoveryScope(settings[RECOVERY_SCOPE_SETTING]);
+  const raw = settings[RECOVERY_SCOPE_SETTING];
+  const named = (settings['OPS_ENVIRONMENT'] ?? '') !== '';
+  const scope = raw === undefined && !named ? undefined : parseRecoveryScope(raw);
   if (scope?.ok === false) throw new Error(scope.problem);
 
-  let due = 0;
+  const due = new Map<string, number>();
   let running: Promise<void> | undefined;
-  const run = async (scopeKeys: readonly string[]): Promise<void> => {
-    const outcome = await withRuntimeKeys(
-      keys,
-      async () => await passDeployment(database, resolveBusiness, scopeKeys, registerEffectLookup),
-    ).catch((cause: unknown) => ({
-      ok: false as const,
-      problem: cause instanceof Error ? cause.message : 'unknown',
-    }));
-    // Only a pass that finished marks the interval done; a failed one runs again.
-    if (outcome.ok) due = Date.now() + SWEEP_INTERVAL_MS;
-    else console.error(`api: reconciliation pass: ${outcome.problem}`);
+  const run = async (owed: readonly string[]): Promise<void> => {
+    for (const key of owed) {
+      // One business at a time, as `passDeployment` runs them.
+      // eslint-disable-next-line no-await-in-loop
+      const outcome = await withRuntimeKeys(
+        keys,
+        async () => await passDeployment(database, resolveBusiness, [key], registerEffectLookup),
+      ).catch((cause: unknown) => ({
+        ok: false as const,
+        problem: cause instanceof Error ? cause.message : 'unknown',
+      }));
+      // Only a pass that finished marks its interval done; a failed one runs again.
+      if (outcome.ok) due.set(key, Date.now() + SWEEP_INTERVAL_MS);
+      else console.error(`api: reconciliation pass: ${outcome.problem}`);
+    }
   };
   // Every request waits on the pass in flight, so none is served beside it.
   return async (): Promise<void> => {
-    if (scope === undefined || scope.keys.length === 0) return;
-    if (running === undefined && Date.now() >= due) {
-      running = run(scope.keys).finally(() => {
+    const owed = scope?.keys.filter((key) => Date.now() >= (due.get(key) ?? 0)) ?? [];
+    if (running === undefined && owed.length > 0) {
+      running = run(owed).finally(() => {
         running = undefined;
       });
     }
