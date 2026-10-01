@@ -96,9 +96,12 @@
 .nt__mark--progress {
   color: var(--text-muted);
 }
+/* The mention mark is mono (the mockup's CM 12.8/500); the data style is the
+   nearest declared one, so it draws at 400 (MP-1-4 census). */
 .nt__at {
-  font-family: var(--font-mono);
-  font-weight: var(--weight-medium);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 .nt__body {
   display: flex;
