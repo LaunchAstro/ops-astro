@@ -67,6 +67,7 @@ import {
   withRuntimeKeys,
 } from '../../packages/core-runtime/src/index.ts';
 import type { RuntimeKeys } from '../../packages/core-runtime/src/index.ts';
+import type { AgentLimits } from './auth/agent-quota.ts';
 import { createGoTrueFactors } from './auth/factors.ts';
 import { errorSinkLink, type ErrorSinkLink } from './health/error-sink-link.ts';
 import { createLangfuseHealth } from './health/tracing.ts';
@@ -207,6 +208,8 @@ export interface ApiConfig {
   readonly live?: Omit<LiveOptions, 'admit'> & { readonly admit?: ReadAdmitter };
   /** The error sink and the security detections (ticket S0-2); absent without a sink. */
   readonly alerts?: Alerts;
+  /** The agent credential's limits in this process (API-2); absent, the defaults. */
+  readonly agentLimits?: AgentLimits;
 }
 
 export interface ComposedApi {
@@ -300,6 +303,9 @@ export function composeApi(config: ApiConfig): ComposedApi {
     '/',
     createApi({
       database,
+      ...(config.agentLimits === undefined
+        ? {}
+        : { agentCredentials: { limits: config.agentLimits } }),
       verify: createSupabaseVerifier({
         ...config.signIn,
         // The reason alone: an answer the provider sent is never repeated.

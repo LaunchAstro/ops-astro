@@ -39,6 +39,12 @@
 // login, scopes keyed by `ALERT_SCOPE_KEY`, and the environment's forwarder
 // counts and sends (`apps/forwarder`). The sink's DSN is the forwarder's, so
 // the entry refuses to start beside it.
+//
+// **The agent quota is per instance (API-2).** Its counts live in one
+// process's memory and every instance starts its own, so each holds the
+// installation's limits divided by the deployment's instance ceiling,
+// `AGENT_QUOTA_INSTANCES` (10 unset; set it to the function's maximum
+// instances). Together they stay within what one server holds.
 
 import { join } from 'node:path';
 import {
@@ -55,6 +61,7 @@ import {
 } from '../../packages/core-runtime/src/index.ts';
 import { createOutboxAlerts, scopeKey } from './alerts/outbox.ts';
 import type { Alerts } from './alerts/sink.ts';
+import { DEFAULT_AGENT_LIMITS, type AgentLimits, type Tiers } from './auth/agent-quota.ts';
 import { publishableKey } from './auth/publishable-key.ts';
 import { errorSinkLink } from './health/error-sink-link.ts';
 import { keySetUrlFor } from './auth/supabase.ts';
@@ -98,8 +105,7 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
       'SUPABASE_KEY_SET_URL may name a loopback key set only, for a loopback issuer.',
     );
   }
-  // The keyring from the settings alone: without them `runtimeKeys` falls back
-  // to creating a local key file, and a function has none to share.
+  // The keyring from the settings alone: `runtimeKeys` would make a key file no instance shares.
   for (const name of ['DELEGATION_CREDENTIAL_KEY_ID', 'DELEGATION_CREDENTIAL_KEYS']) required(name);
   const keys = runtimeKeys(settings);
   if (!keys.delegation.ok) {
@@ -115,6 +121,7 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
     keys,
     errorSink: errorSinkLink(settings),
     ...(alerts === undefined ? {} : { alerts }),
+    agentLimits: perInstance(settings['AGENT_QUOTA_INSTANCES']),
   });
   const pass = recoveryPass(settings, database, resolveBusiness, keys);
 
@@ -125,6 +132,28 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
     }
     await pass();
     return await app.fetch(request);
+  };
+}
+
+const INSTANCES_UNSET = 10;
+
+/** The default limits split across the instance ceiling, never below one of each. */
+function perInstance(setting: string | undefined): AgentLimits {
+  const given = setting === undefined || setting === '' ? String(INSTANCES_UNSET) : setting;
+  const instances = /^\d+$/u.test(given) ? Number(given) : 0;
+  if (instances < 1) throw new Error('AGENT_QUOTA_INSTANCES is not a whole number of instances.');
+  const share = (limit: number): number => Math.max(1, Math.floor(limit / instances));
+  const tiers = (all: Tiers): Tiers => ({
+    credential: share(all.credential),
+    person: share(all.person),
+    business: share(all.business),
+  });
+  const { requests, concurrent, exports, refused } = DEFAULT_AGENT_LIMITS;
+  return {
+    requests: tiers(requests),
+    concurrent: tiers(concurrent),
+    exports: tiers(exports),
+    refused: share(refused),
   };
 }
 
