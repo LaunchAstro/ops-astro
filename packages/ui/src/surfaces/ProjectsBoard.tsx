@@ -74,9 +74,9 @@ function useChips(
   rows: readonly ProjectRow[],
   viewer: string | null,
   now: Date,
-  owed?: number,
-  mock = false,
+  board: Pick<ProjectsBoardProps, 'owed' | 'mockCategories'>,
 ) {
+  const { owed, mockCategories: mock = false } = board;
   const facets = useMemo(() => projectFacets(rows, now, viewer, mock), [rows, now, viewer, mock]);
   const presets = useMemo(() => projectPresets(rows, viewer, mock), [rows, viewer, mock]);
   const modes = useMemo(
@@ -120,13 +120,7 @@ export function ProjectsBoard(props: ProjectsBoardProps): ReactElement {
     () => sortRows(props.rows, WORK_ORDER, projectColumns({ stages: props.stages })),
     [props.rows, props.stages],
   );
-  const { facets, presets, modes } = useChips(
-    props.rows,
-    viewer,
-    now,
-    props.owed,
-    props.mockCategories,
-  );
+  const { facets, presets, modes } = useChips(props.rows, viewer, now, props);
   const cells = useCells(props, now);
   const statuses = useMemo(() => statusOrder(props.rows), [props.rows]);
   return (
