@@ -97,6 +97,7 @@ export const DETAIL: InternalTaskDetail = {
       actorId: NATHAN.personId,
       actorKind: 'person',
       actorName: NATHAN.name,
+      personId: NATHAN.personId,
       operation: 'task.create',
     },
     {
@@ -104,6 +105,7 @@ export const DETAIL: InternalTaskDetail = {
       actorId: NATHAN.personId,
       actorKind: 'person',
       actorName: NATHAN.name,
+      personId: NATHAN.personId,
       operation: 'task.update',
     },
   ],

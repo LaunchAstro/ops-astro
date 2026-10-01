@@ -6,7 +6,10 @@
 // The browser trades its token once for a `Secure`, `HttpOnly`, `SameSite=Lax`
 // cookie, one per sign-in, named from an id only that tab is given, so a tab
 // reads only its own session and a late sign-out ends only the one it names. A
-// cookie is ambient: a request it signs in must carry `CSRF_HEADER` (no other
+// tab closed without signing out never names its cookie again, so the door
+// clears any other sign-in's cookie whose token has run out, and all but the
+// newest few beside the tab's own (`staleSessions`).
+// A cookie is ambient: a request it signs in must carry `CSRF_HEADER` (no other
 // origin can without a preflight this API never answers).
 
 import { createHash } from 'node:crypto';
@@ -78,9 +81,55 @@ export function sessionCookieOf(request: Context['req']): string | undefined {
   return token !== undefined && sessionIdOf(token) === id ? token : undefined;
 }
 
-/** Any `Authorization` header or session cookie, good or not: a sign-in attempt. */
+/** How many other sign-ins' cookies a request keeps beside its own: the newest. */
+const OTHER_SESSIONS_KEPT = 5;
+
+/** A token's `exp`, read unverified, or undefined when it carries none. */
+function expiryOf(token: string): number | undefined {
+  try {
+    const payload = Buffer.from(token.split('.')[1] ?? '', 'base64url').toString('utf8');
+    const exp: unknown = (JSON.parse(payload) as { exp?: unknown } | null)?.exp;
+    return typeof exp === 'number' ? exp : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The cookies of other sign-ins this request carries that go with its answer:
+ * each whose token's `exp` has passed, and every one beyond the
+ * `OTHER_SESSIONS_KEPT` with the latest `exp`, or one more when the request
+ * carries no cookie of its own (a tab whose cookie went), so that it clears no
+ * live cookie a request with its own would keep. A closed tab never names its
+ * cookie again, and the cookies of tabs opened faster than their tokens run
+ * out would otherwise ride on every request until the headers are too large to
+ * answer (431), after which no request reaches the door to clear them. A tab
+ * whose cookie goes signs in again. The claim is read unverified because all it
+ * decides is which of the cookies this request carries are cleared.
+ */
+export function staleSessions(request: Context['req'], now: number): string[] {
+  const named = cookieNameFor(namedSession(request) ?? '');
+  const held = sessionCookies(request);
+  const kept = OTHER_SESSIONS_KEPT + (held.some(([name]) => name === named) ? 0 : 1);
+  const others = held
+    .filter(([name]) => name !== named)
+    .map(([name, token]) => [name, expiryOf(token)] as const)
+    .toSorted(([, a = -Infinity], [, b = -Infinity]) => (a === b ? 0 : b - a));
+  const stale = others.filter(([, exp], rank) => rank >= kept || (exp !== undefined && exp < now));
+  return [...new Set(stale.map(([name]) => name))];
+}
+
+/**
+ * Any `Authorization` header or session cookie, good or not: a sign-in
+ * attempt. A tab that names its sign-in tries only that sign-in's cookie, so
+ * once that cookie is gone (cleared as lapsed, or past its `Max-Age`) the
+ * cookies of other tabs beside it are no attempt of its own.
+ */
 export function presentsCredential(request: Context['req']): boolean {
-  return request.header('authorization') !== undefined || sessionCookies(request).length > 0;
+  if (request.header('authorization') !== undefined) return true;
+  const id = namedSession(request);
+  const held = sessionCookies(request);
+  return id === undefined ? held.length > 0 : held.some(([name]) => name === cookieNameFor(id));
 }
 
 /** `CSRF_HEADER` present, and no `Sec-Fetch-Site` naming another site. */

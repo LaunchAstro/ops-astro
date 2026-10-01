@@ -159,6 +159,7 @@ async function historyOf(
   const rows = await tx.query<{
     readonly occurred_at: Date;
     readonly actor_id: string;
+    readonly person_id: string | null;
     readonly command: string;
     readonly actor_kind: string | null;
     readonly actor_name: string | null;
@@ -172,8 +173,9 @@ async function historyOf(
     //
     // Who is the actor's kind and, for a person's actor, that person's name,
     // joined inside this business: an actor or a person of another business
-    // matches nothing (MP-4-16).
-    `select e.occurred_at, e.actor_id, e.command, a.kind as actor_kind,
+    // matches nothing (MP-4-16). The actor's person, so a page names who acted
+    // by the people it may list.
+    `select e.occurred_at, e.actor_id, a.person_id, e.command, a.kind as actor_kind,
             case when a.kind = 'person' then p.display_name end as actor_name
        from public.audit_events e
        left join public.actors a on a.business_id = e.business_id and a.id = e.actor_id
@@ -191,7 +193,10 @@ async function historyOf(
     at: row.occurred_at.toISOString(),
     actorId: row.actor_id,
     actorKind: row.actor_kind,
-    actorName: row.actor_name,
+    // An outside reader (and an agent, read as one) is shown no person behind an actor:
+    // neither the person's id nor their name.
+    personId: internal ? row.person_id : null,
+    actorName: internal ? row.actor_name : null,
     operation: row.command,
   }));
 }

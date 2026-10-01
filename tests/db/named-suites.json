@@ -219,7 +219,9 @@
     "B1-JOIN-FIX (REV187W): service-stop.test.ts's before-lookup refusals also run beside a live database of the named business and write no sign-in row to it; Sol's proof named-service-stop-reaches-database runs that suite alone through the conformance runner, which must see it reach the database.",
     "B1-END-FIX-OPS (batch 1 blind review A1, A5, A8) adds restore-includes-sign-in-tables (the restore drill passes the scheduled public, ops and auth archive), restore-includes-staging-guards (a staging archive restores after the seed installs its made-up guards) and hosted-expired-lease-recovery (the Vercel function runs the reconciliation pass and fences a lost worker's expired lease; fix round 1 adds hosted-recovery-waits-for-pass (every request waits on the pass in flight) and staging-archive-restores-guards (the complete staging archive restores with its guard triggers); round 2 adds restore-drill-keeps-staging-guards (the drill's target keeps the guard triggers).",
     "SL09-2a-f3 adds c58-end-access-credentials (access.end revoking every live agent credential the ended person issued, each agent actor deactivated with it, in the same act; another person's credential in the same business and the same provider user's credential in bravo left live), named as an isolation suite too.",
-    "BATCH2-INTEG-7 (review 2c1 findings 6 to 9) names task-time-bounds (a hostile duration refused FIELD_VALUE_INVALID at once; the note limit equal to 0078's 500; an own running timer stopped and deleted after task:read is lost, with no task content, while another person's and another business's timers stay refused) and task-purge-children (the purge taking a trashed task's time entries and tags with it, so the rest of the business purges). parse-duration is a pure unit suite and must not be named."
+    "BATCH2-INTEG-7 (review 2c1 findings 6 to 9) names task-time-bounds (a hostile duration refused FIELD_VALUE_INVALID at once; the note limit equal to 0078's 500; an own running timer stopped and deleted after task:read is lost, with no task content, while another person's and another business's timers stay refused) and task-purge-children (the purge taking a trashed task's time entries and tags with it, so the rest of the business purges). parse-duration is a pure unit suite and must not be named.",
+    "FIX-B1 (review round 1, rs-6) adds inbox-unattended-escalated (an escalated gate's recipient who keeps decide across the business is a path to the decision, so the item is not listed unattended) and names review-p03-unattended-escalated-decider (REVIEW-MAIN-B1 p03-1's proof: the recipient keeps task-scope decide only, and the item is listed), both invariants.",
+    "FIX-B1 (REVIEW-MAIN-B1 p02-1) adds forwarder-export-ageout-false-signals-dropped-review (an export signal under its threshold ages out of the forwarder's table without a false signals-dropped alert: the sweep window outlasts every rule's)."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -403,6 +405,7 @@
     "tests/db/business-lookup.test.ts",
     "tests/db/api-events.test.ts",
     "tests/db/api-events-forwarder.test.ts",
+    "tests/db/forwarder-export-ageout-false-signals-dropped-review.test.ts",
     "tests/db/backup-identity.test.ts",
     "tests/db/backup-identity-grants.test.ts",
     "tests/db/backup-store.test.ts",
@@ -625,7 +628,9 @@
     "tests/commands/inbox-unattended.test.ts",
     "tests/commands/inbox-escalation-settings.test.ts",
     "tests/ci/staging-no-production-data.test.ts",
-    "tests/ci/staging-no-production-data-guard.test.ts"
+    "tests/ci/staging-no-production-data-guard.test.ts",
+    "tests/commands/review-p03-unattended-escalated-decider.test.ts",
+    "tests/commands/inbox-unattended-escalated.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
