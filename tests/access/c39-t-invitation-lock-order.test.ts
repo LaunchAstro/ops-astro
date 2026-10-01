@@ -10,11 +10,15 @@
 // parks; the create starts once the database clock has passed the expiry and
 // parks; then the row is let go. Under the other order the resend held the
 // row and waited on the limiter the create held, while the create waited on
-// the row: the server's deadlock check killed one of them.
+// the row: the server's deadlock check killed one of them. Each act is one
+// transaction here, as `runCommand` runs it: `executeCommand` retries a
+// deadlock once, which hides one such cycle behind a second's stall and
+// surfaces the next.
 
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { runCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { withSession } from '../../packages/core-records/src/identity/login-resolution.ts';
 import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
 import type { Member } from '../commands/fixture.ts';
 import {
@@ -88,7 +92,7 @@ async function lapsed(id: string): Promise<void> {
   await lapsed(id);
 }
 
-/** One act as a person, on its own connection, so acts race in the server. */
+/** One act as a person, one transaction on its own connection, so acts race in the server. */
 async function act(
   database: Database,
   who: Member,
@@ -96,7 +100,13 @@ async function act(
 ): Promise<string> {
   const request = { operationId: randomUUID(), ...body } as never;
   try {
-    return codeOf(await executeCommand(database, w.alpha, who.presented, 'api', request));
+    const result = await withSession(
+      database,
+      w.alpha,
+      who.presented,
+      async (tx, session) => await runCommand(tx, session, 'api', request),
+    );
+    return 'refused' in result ? 'LOGIN_REFUSED' : codeOf(result);
   } catch (cause) {
     return `threw ${String((cause as { code?: unknown }).code)}`;
   }
