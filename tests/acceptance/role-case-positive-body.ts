@@ -113,8 +113,17 @@ export function createPositiveBody(
         const task = await context.clientTask('a task the admin shares with its client');
         return { body: { recordId: task.id, expectedRevision: task.revision } };
       }
-      case 'task.revoke_client_share':
-        return { body: await target() };
+      case 'task.revoke_client_share': {
+        // A share to take back, so the revoke changes the grant it names.
+        if (context.clientTask === undefined) return { body: await target() };
+        const task = await context.clientTask('a task the admin shares, then takes back');
+        const shared = await context.asPerson('task.share_with_client', {
+          recordId: task.id,
+          expectedRevision: task.revision,
+        });
+        if (shared.code !== 'ok') throw new Error(`matrix: share refused ${shared.code}`);
+        return { body: { recordId: task.id, expectedRevision: Number(shared.body['revision']) } };
+      }
       case 'task.set_party':
         // The party link names a client of this business (C32), so the admin
         // makes one first.
