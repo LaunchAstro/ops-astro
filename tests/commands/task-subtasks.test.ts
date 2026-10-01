@@ -90,18 +90,22 @@ describe.skipIf(serverUrl === undefined)('MP-4-4 parent scope', () => {
     expect(made[0]?.n).toBe('0');
   });
 
-  it('the parent’s client changed carries down to its subtasks, in the same act', async () => {
+  // S0-5 (owner line 75) counts a subtask as its parent's content, so a parent's
+  // client is locked once it has one, and its subtree keeps the client it had.
+  it('the parent’s client is locked once it has subtasks, and nothing moves down', async () => {
     const parent = await make(alpha, owner, 'moving', 'Rebrand', { client: CLIENT_A });
     const child = await make(alpha, owner, 'movingChild', 'Logo', { parentId: parent });
     const grandchild = await make(alpha, owner, 'movingGrand', 'Colours', { parentId: child });
-    await command(alpha, owner, {
+    const answer = await send(alpha, owner, {
       command: 'task.set_party',
       recordId: parent,
       expectedRevision: await revisionOf(parent),
       fields: { client: CLIENT_B },
     });
-    expect(await clientOf(child)).toBe(CLIENT_B);
-    expect(await clientOf(grandchild)).toBe(CLIENT_B);
+    expect(codeOf(answer)).toBe('CLIENT_LOCKED');
+    expect(await clientOf(parent)).toBe(CLIENT_A);
+    expect(await clientOf(child)).toBe(CLIENT_A);
+    expect(await clientOf(grandchild)).toBe(CLIENT_A);
   });
 });
 
