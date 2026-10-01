@@ -18,6 +18,7 @@ import type { Capability } from '../../../core-wire/src/index.ts';
 import { readTaskSpine } from './context.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import { requestAsAgent, requestOperands } from './live-corrections.ts';
+import { readCorrectionAsAgent } from '../reads/live-correction.ts';
 import { isFieldMap } from './operands.ts';
 import { refuseUnstorable, unstorableOperands } from './values.ts';
 import type { CommandName } from '../../../core-wire/src/index.ts';
@@ -687,6 +688,21 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       operands: requestOperands,
       serve: async (tx, { session }, operands, delegation) =>
         await requestAsAgent(tx, session.actorId, operands, delegation),
+    }),
+  ],
+  [
+    'live_correction.read',
+    row({
+      authority: 'purpose',
+      replay: 'reauthorise',
+      identifiers: READ_CATALOGUE['live_correction.read'].identifiers,
+      // The person read's own operand rule, so the two prefixes refuse one body alike.
+      operands: (request) => {
+        const read = READ_CATALOGUE['live_correction.read'].parse(request);
+        return read.ok ? read.operands : refused(read.refusal);
+      },
+      serve: async (tx, _call, operands, delegation) =>
+        await readCorrectionAsAgent(tx, operands, delegation),
     }),
   ],
   [

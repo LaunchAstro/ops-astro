@@ -779,6 +779,22 @@ export interface ConversationListResult {
   readonly conversations: readonly ConversationTabView[];
 }
 
+/**
+ * C80: one live correction's decision as a card reads it again. The state as
+ * the request and decide commands name it, the person who decided it (the
+ * configured approver at that moment) by name or null, and its version; the
+ * card already holds the page, the word and the lines, so none comes back.
+ */
+export interface LiveCorrectionReadResult {
+  readonly ok: true;
+  readonly correction: {
+    readonly correctionId: string;
+    readonly state: string;
+    readonly approver: string | null;
+    readonly versionId: string;
+  };
+}
+
 export interface ConversationReadResult {
   readonly ok: true;
   readonly conversation: {

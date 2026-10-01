@@ -56,6 +56,8 @@ export function delegationCrossing(): void {
     const target: Record<string, (record: string) => Record<string, unknown> | null> = {
       // C80: a one-word correction under another task, refused before its party is read.
       'live_correction.request': (record) => ({ ...correction(randomUUID(), record) }),
+      // C80: a decision read of a correction this delegation's task never asked for.
+      'live_correction.read': () => ({ correctionId: randomUUID() }),
       'task.read': (record) => ({ recordId: record }),
       'task.comment': (record) => ({ recordId: record, body: 'made-up', audience: 'internal' }),
       'task.heartbeat': () => ({ ...notOwnLease, leaseSeconds: 60 }),

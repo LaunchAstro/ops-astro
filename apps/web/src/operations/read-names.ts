@@ -55,6 +55,8 @@ export const READ_NAMES = [
   // Items no path reaches (INB-1e), for `operations:read`; the operations view
   // (C55) draws them.
   'inbox.unattended',
+  // One live correction's decision, read again for its card (C80).
+  'live_correction.read',
 ] as const;
 
 /**

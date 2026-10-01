@@ -117,9 +117,10 @@ export type CommandName =
   // A person closes an unknown hold at an amount, with a reason (T3c).
   | 'budget.write_off'
   // C80's live correction: an agent may request it inside its delegation, a
-  // person decides the exact version, a named setting names who; the publish,
-  // revert and receipt are system writes under the worker lease, never rows here.
+  // person decides the exact version, a named setting names who, the decision
+  // is read back; the publish, revert and receipt are system writes, not rows here.
   | 'live_correction.request'
+  | 'live_correction.read'
   | 'live_correction.decide'
   | 'settings.set_live_correction_approver'
   // AW-04 (U10): a person sets the business's planning cap, the allowance the
@@ -786,11 +787,12 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     untargetedIdentifiers: [],
   }),
-  // C80, both asked at the correction's party (`prepare.ts`, TARGET_LOOKUPS), so
-  // one client's grant reaches no other client's correction. The request is
-  // `run:write`, an agent's inside its delegation; the approval `gate:decide`,
-  // never an agent's (contract 2.3 to 2.6); the handler admits only the
-  // configured approver who is not the requester.
+  // C80, each asked at the correction's party (`prepare.ts`, TARGET_LOOKUPS; the
+  // read inside its query), so one client's grant reaches no other client's
+  // correction. The request is `run:write` and the read `run:read`, an agent's
+  // inside its delegation; the approval `gate:decide`, never an agent's (contract
+  // 2.3 to 2.6), and only the configured approver who is not the requester.
+  read('live_correction.read', RUN_COLLECTION, { agent: 'delegated' }),
   declare('live_correction.request', 'write', {
     collection: RUN_COLLECTION,
     targetsExistingRecord: false,
