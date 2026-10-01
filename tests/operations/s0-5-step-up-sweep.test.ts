@@ -12,8 +12,9 @@
 // joins, and a name that has left the money set fails until it is taken out.
 // Each one is driven through the real API with a token whose second factor is
 // past C59's sixty minutes, and with one that never gave a factor; both are
-// refused `STEP_UP_REQUIRED` and write nothing. The same body then runs on a fresh sign-in, so the refusal is the
-// step-up's and not the body's. C59's seeded money stand-in is proved in
+// refused `STEP_UP_REQUIRED` and write nothing. The same body then runs on a
+// fresh sign-in, so the refusal is the step-up's and not the body's. C59's
+// seeded money stand-in is proved in
 // `tests/identity/c59-second-factor-commands.test.ts`.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -44,9 +45,22 @@ const SWEPT: readonly string[] = [
   'settings.set_money_step_up',
 ];
 
-/** Whether a command is asked the step-up while the setting is on. */
+/**
+ * Whether a command is asked the step-up while the setting is on: the switch
+ * only when it switches the step-up off.
+ */
 const stepsUp = (one: CommandDeclaration): boolean =>
   isMoneyKey(one.collection, one.action) || one.name === MONEY_STEP_UP_SWITCH;
+
+/**
+ * The switch is asked only when it switches the step-up off, so it is swept
+ * switching off, and last, so every money command before it still meets the
+ * step-up.
+ */
+const sweptBody = (name: string, body: Readonly<Record<string, unknown>>) =>
+  name === MONEY_STEP_UP_SWITCH ? { ...body, value: false } : body;
+const switchLast = (one: CommandDeclaration, other: CommandDeclaration): number =>
+  Number(one.name === MONEY_STEP_UP_SWITCH) - Number(other.name === MONEY_STEP_UP_SWITCH);
 
 /**
  * The owner's sixty minutes (28 September 2026), written here rather than read
@@ -74,7 +88,7 @@ function sweepGaps(
 }
 
 describe('S0-5 step-up sweep (closed world)', () => {
-  it('S0-5 step-up sweep (closed world): the sweep names every catalogue command holding a money key, and nothing else', () => {
+  it('S0-5 step-up sweep (closed world): the sweep names every catalogue command holding a money key, and the switch, and nothing else', () => {
     expect(sweepGaps(COMMAND_SURFACE, SWEPT)).toEqual({ missing: [], extra: [] });
   });
 
@@ -149,7 +163,7 @@ describe.skipIf(serverMissing)('S0-5 step-up sweep', () => {
       }),
       'no second factor': await tokenFor(world.ada.subject),
     };
-    const money = COMMAND_SURFACE.filter((one) => stepsUp(one));
+    const money = COMMAND_SURFACE.filter((one) => stepsUp(one)).toSorted(switchLast);
     expect(money.map((one) => one.name).toSorted()).toEqual([...SWEPT].toSorted());
 
     const wrong: string[] = [];
@@ -160,11 +174,12 @@ describe.skipIf(serverMissing)('S0-5 step-up sweep', () => {
         wrong.push(`${declaration.name}: no positive body (${prepared.exception})`);
         continue;
       }
+      const body = sweptBody(declaration.name, prepared.body);
       for (const [how, token] of Object.entries(stale)) {
         // oxlint-disable-next-line no-await-in-loop
         const before = await fingerprint();
         // oxlint-disable-next-line no-await-in-loop
-        const answer = await harness.asPerson(declaration.name, prepared.body, 'alpha', { token });
+        const answer = await harness.asPerson(declaration.name, body, 'alpha', { token });
         // oxlint-disable-next-line no-await-in-loop
         const wrote = wroteBetween(before, await fingerprint());
         if (answer.code !== 'STEP_UP_REQUIRED' || answer.status !== 403 || wrote.length > 0) {
@@ -174,7 +189,7 @@ describe.skipIf(serverMissing)('S0-5 step-up sweep', () => {
         }
       }
       // oxlint-disable-next-line no-await-in-loop
-      const fresh = await harness.asPerson(declaration.name, prepared.body);
+      const fresh = await harness.asPerson(declaration.name, body);
       if (fresh.code !== 'ok')
         wrong.push(`${declaration.name} (fresh): ${fresh.status} ${fresh.code}`);
     }
