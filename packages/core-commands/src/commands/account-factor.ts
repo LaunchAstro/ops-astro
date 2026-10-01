@@ -44,6 +44,7 @@ import {
   type IssuedFactor,
   type SessionsEnded,
 } from './account-factor-provider.ts';
+import { removeRefusedFactor } from './account-factor-orphan.ts';
 import { endOthersOnChange, signOutOthers } from './account-factor-sessions.ts';
 import { codeOf, freshSignIn, recordCode, wrongCodeLock } from './account-factor-checks.ts';
 import { writeAuditEvent } from './audit.ts';
@@ -162,9 +163,9 @@ export async function verifySecondFactor(
     await recordFactorVerified(tx, ownFactor(caller, session, live.id));
     return undefined;
   });
-  // Verified at the provider but refused here: removed there too, best effort.
+  // Verified at the provider but refused here: removed there too, or recorded as orphaned.
   if (recorded?.code === 'FACTOR_ALREADY_ENROLLED' && verified.ok)
-    await provider.remove(verified.value.accessToken, target.providerFactorId);
+    await removeRefusedFactor(caller, provider, verified.value, target);
   if (recorded !== undefined || !verified.ok)
     return recorded ?? providerRefusal('malformed', 'answer');
   if (ended === undefined) return verified.value;
