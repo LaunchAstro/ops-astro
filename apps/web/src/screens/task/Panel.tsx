@@ -6,9 +6,10 @@
 // (`clientSet` only), so a draft filed from here starts with no client. Its own field edits (the name, the assignee and the due
 // date) are `PanelFields.tsx`. It mounts the pieces built for it: the
 // handling ticks (MP-4-10), the description and agent brief fields (MP-4-7),
-// the subtasks and time (MP-4-4, MP-4-6), the conversation (MP-4-5) and the
-// folded trail (MP-4-16), under the same Team and Agent counts and the same
-// facts as the task page (MP-4-3, MP-4-9, MP-4-2).
+// the subtasks and time (MP-4-4, MP-4-6), the conversation (MP-4-5,
+// `PanelConversation.tsx`) and the folded trail (MP-4-16), under the same
+// Team and Agent counts and the same facts as the task page (MP-4-3, MP-4-9,
+// MP-4-2).
 //
 // **The frame is not this file's.** Seating, floating, the sheet, back and
 // forward and the one close path are the dock's (MP-3-1), which draws this
@@ -38,8 +39,6 @@ import { hubOf } from '../../data/live.ts';
 import { useRead } from '../../data/use-read.ts';
 import { pathTo } from '../../routes.ts';
 import { RecordState } from '../../views/record-state.tsx';
-import { Comments, type CommentDraft } from './Comments.tsx';
-import type { RowEdit } from './Thread.tsx';
 import { TaskFacts } from './Facts.tsx';
 import { History, useShowTrail } from './History.tsx';
 import {
@@ -51,6 +50,7 @@ import {
   type Perspective,
 } from './Perspectives.tsx';
 import { PageLink, pageLinkDoor } from './PageLink.tsx';
+import { PanelConversation } from './PanelConversation.tsx';
 import type { DraftScope } from './DraftPanel.tsx';
 import type { ClientSeams } from './client-seam.ts';
 import { PanelFields, PanelName } from './PanelFields.tsx';
@@ -158,7 +158,12 @@ function PanelBody(
               onSaved={props.onChanged}
             />
             <PanelWork {...props} />
-            <PanelConversation {...props} />
+            <PanelConversation
+              client={client}
+              task={task}
+              tab={props.opening.tab}
+              onChanged={props.onChanged}
+            />
             <History history={task.history} fold={props.fold} />
           </>
         }
@@ -204,34 +209,6 @@ function PanelWork(props: SideProps): ReactElement {
       onChanged={props.onChanged}
       onOpenPanel={undefined}
       doors={false}
-    />
-  );
-}
-
-/** The conversation, opening on the tab the reply door was pressed from. */
-function PanelConversation(props: SideProps): ReactElement {
-  const { task, opening } = props;
-  const [draft, setDraft] = useState<CommentDraft | null>(
-    opening.tab === null
-      ? null
-      : { body: '', tab: opening.tab, replyTo: null, pending: null, stale: null },
-  );
-  const [refusal, setRefusal] = useState<string | null>(null);
-  const [editing, setEditing] = useState<RowEdit | null>(null);
-  return (
-    <Comments
-      scope="panel"
-      client={props.client}
-      comments={task.comments}
-      recordId={task.id}
-      revision={task.revision}
-      refusal={refusal}
-      onRefused={setRefusal}
-      onPosted={props.onChanged}
-      draft={draft}
-      onDraft={setDraft}
-      editing={editing}
-      onEditing={setEditing}
     />
   );
 }

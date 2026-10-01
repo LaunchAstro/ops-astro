@@ -44,6 +44,7 @@ describe.skipIf(serverUrl === undefined)(
       await db.app.withBusiness(alpha, async (tx) => {
         await grantTo(tx, prober, 'read', { kind: 'record', id: old });
         await grantTo(tx, prober, 'write', { kind: 'party', id: clientB });
+        await grantTo(tx, prober, 'share', { kind: 'party', id: clientB });
       });
       // The prober is not shown client A's name anywhere it may read.
       const clients = await executeRead(db.app, alpha, prober.presented, {

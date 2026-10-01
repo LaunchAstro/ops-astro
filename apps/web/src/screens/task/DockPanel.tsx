@@ -28,7 +28,8 @@ export function useDockPanel(props: DockPanelProps): {
     readonly open: boolean;
     readonly body: ReactElement;
     readonly door: string;
-    readonly close: () => void;
+    /** False, closing nothing, while the draft's Create is out. */
+    readonly close: () => boolean;
   };
 } {
   const { grantKey, session, storage } = props;

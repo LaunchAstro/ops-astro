@@ -80,11 +80,12 @@ function hold(statements: (tx: TenantQuery) => Promise<unknown>) {
   return { done, release };
 }
 
-/** A person with write for client B and read on `old` only; returns the read grant. */
+/** A person with write and share for client B and read on `old` only; returns the read grant. */
 async function reader(old: string, name: string) {
   const who = await person(name);
   const readGrant = await db.app.withBusiness(alpha, async (tx) => {
     await grantTo(tx, who, 'write', { kind: 'party', id: clientB });
+    await grantTo(tx, who, 'share', { kind: 'party', id: clientB });
     return await grantTo(tx, who, 'read', { kind: 'record', id: old });
   });
   return { who, readGrant };

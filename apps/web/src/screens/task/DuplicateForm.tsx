@@ -13,11 +13,16 @@
 // an alias on its record), the sender answers `CARRIED_TEXT_NAMES_CLIENT`
 // naming the fields (`title`, `stepNames.<index>`). Each named field is
 // warned, and Create waits for the person to confirm the carried text; the
-// resend says `confirmCarried`. Editing a warned field clears its warning, and
-// the next send is checked again. Any other refusal is quoted in the server's
-// words; a landed duplicate hands the new task's key to the host.
+// resend says `confirmCarried`. A confirm covers only the shell and client the
+// server warned on: any edit to a carried field or the client withdraws it, so
+// the next send is unconfirmed and the server checks every field again
+// (REVIEW-2D-1). A warning that comes back after such an edit, made while
+// Create was in flight, asks for no confirm: it was on a shell or client no
+// longer on screen. Editing a warned field also clears its warning. Any other
+// refusal is quoted in the server's words; a landed duplicate hands the new
+// task's key to the host.
 
-import { useState, type ReactElement } from 'react';
+import { useRef, useState, type ReactElement } from 'react';
 import type { WireRefusal } from '../../operations/client.ts';
 import type { InternalTaskDetail as Task } from '../../../../../packages/core-wire/src/index.ts';
 import { useCommand } from '../../records/use-command.ts';
@@ -83,16 +88,35 @@ const shellOf = (task: Task): Shell => ({
   stepNames: task.steps.map((step) => step.title ?? ''),
 });
 
-/** The shell as edited, the chosen client, the fields warned, and the send. */
+/**
+ * The confirm for carried text: none to give (nothing warned, or edited since
+ * the warning, so the next send is checked again), asked on the warned shell,
+ * or given for it.
+ */
+type Confirm = 'unasked' | 'asked' | 'given';
+
+/**
+ * The shell as edited, the chosen client, the fields warned, and the send.
+ * `edits` counts edits to the shell or client, so a warning that settles after
+ * one knows the shell it warned on is no longer the one on screen.
+ */
 function useDuplicate(props: DuplicateFormProps) {
   const { task } = props;
   const [shell, setShell] = useState<Shell>(() => shellOf(task));
-  const [client, setClient] = useState('');
+  const [client, setChosen] = useState('');
   const [warned, setWarned] = useState<ReadonlySet<string>>(new Set());
-  const [confirmed, setConfirmed] = useState(false);
+  const [confirm, setConfirm] = useState<Confirm>('unasked');
   const command = useCommand();
+  const edits = useRef(0);
+  const setClient = (next: string): void => {
+    edits.current += 1;
+    setChosen(next);
+    setConfirm('unasked');
+  };
   const edit = (field: string, next: Shell): void => {
+    edits.current += 1;
     setShell(next);
+    setConfirm('unasked');
     if (!warned.has(field)) return;
     const rest = new Set(warned);
     rest.delete(field);
@@ -104,8 +128,9 @@ function useDuplicate(props: DuplicateFormProps) {
       client,
       title: shell.title.trim(),
       stepNames: shell.stepNames.map((name) => name.trim()),
-      confirmCarried: warned.size > 0 && confirmed,
+      confirmCarried: confirm === 'given',
     };
+    const sentAt = edits.current;
     command.run(
       () => props.send(request),
       (settlement) => {
@@ -113,25 +138,15 @@ function useDuplicate(props: DuplicateFormProps) {
           const key = settlement.value.detail?.['key'];
           if (typeof key === 'string') props.onDuplicated(key);
         } else if (settlement.kind !== 'unknown' && carriedWarning(settlement.refusal)) {
+          if (edits.current !== sentAt) return;
           setWarned(new Set(settlement.refusal.names));
-          setConfirmed(false);
+          setConfirm('asked');
         }
       },
     );
   };
-  const ready = client !== '' && shell.title.trim() !== '' && (warned.size === 0 || confirmed);
-  return {
-    shell,
-    client,
-    setClient,
-    warned,
-    confirmed,
-    setConfirmed,
-    command,
-    edit,
-    create,
-    ready,
-  };
+  const ready = client !== '' && shell.title.trim() !== '' && confirm !== 'asked';
+  return { shell, client, setClient, warned, confirm, setConfirm, command, edit, create, ready };
 }
 
 type Duplicate = ReturnType<typeof useDuplicate>;
@@ -197,17 +212,17 @@ function CarriedShell(props: { readonly form: Duplicate }): ReactElement {
 
 /** The confirmation while a warning shows, with the server's words; or any other refusal, quoted. */
 function Answer(props: { readonly form: Duplicate }): ReactElement | null {
-  const { warned, confirmed, setConfirmed, command } = props.form;
+  const { warned, confirm, setConfirm, command } = props.form;
   const failure = command.failure;
   const refusal = failure === null || failure.kind === 'unknown' ? null : failure.refusal;
   if (refusal !== null && carriedWarning(refusal)) {
-    return warned.size === 0 ? null : (
+    return warned.size === 0 || confirm === 'unasked' ? null : (
       <label className="field__hint" htmlFor="duplicate-confirm">
         <input
           id="duplicate-confirm"
           type="checkbox"
-          checked={confirmed}
-          onChange={(event) => setConfirmed(event.target.checked)}
+          checked={confirm === 'given'}
+          onChange={(event) => setConfirm(event.target.checked ? 'given' : 'asked')}
         />{' '}
         {refusal.fixes.join(' ')} Keep the carried text as it is.
       </label>

@@ -34,6 +34,8 @@ function server() {
       string,
       unknown
     >;
+    // The panel's Project field (SL08) reads the Projects board.
+    if (where.endsWith('/task/board')) return Promise.resolve(json({ ok: true, tasks: [] }));
     if (where.endsWith('/task/read')) {
       const key = String(body['recordId']);
       return Promise.resolve(json({ ok: true, task: task({ key, title: `Title of ${key}` }) }));
@@ -90,6 +92,10 @@ function Dock(props: {
           {key}
         </button>
       ))}
+      {/* The dock's X: in the dock the draft draws no Close of its own. */}
+      <button type="button" data-dock-x onClick={dock.panel.close}>
+        X
+      </button>
       {dock.panel.body}
     </main>
   );
@@ -120,7 +126,7 @@ describe('A11-1 the draft cannot be left while Create is in flight', () => {
     const api = server();
     const storage = store();
     const view = await createInFlight(api, storage);
-    expect((view.find('[data-draft="close"]') as HTMLButtonElement).disabled).toBe(true);
+    await view.click('[data-dock-x]');
     expect((view.find('[data-draft="cancel"]') as HTMLButtonElement).disabled).toBe(true);
     await press(view, '[data-draft-panel]', 'Escape');
     await view.click('[data-door="Proj-Other"]');

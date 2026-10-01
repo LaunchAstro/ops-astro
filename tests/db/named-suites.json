@@ -481,6 +481,7 @@
     "tests/commands/task-duplicate-access.test.ts",
     "tests/commands/task-duplicate-agent.test.ts",
     "tests/commands/task-duplicate-race.test.ts",
+    "tests/commands/review-2d-2-duplicate-cross-client-share.test.ts",
     "tests/reads/task-read-states.test.ts",
     "tests/reads/mp-5-8-board-agent.test.ts",
     "tests/reads/mp-5-11-board-status-order.test.ts",

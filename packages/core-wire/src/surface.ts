@@ -477,10 +477,10 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // call: an agent's lifecycle stays pickup and handback.
   declare('task.set_state', 'write'),
   // Duplicate without contents (MP-4-8, CS-4.12): a new task for the chosen
-  // client from the shell the person sent. `task:write` is asked of that
-  // client (`target`: party scope, the business for none), and the handler
-  // asks it again with `read` on the old task named in `recordId`, both
-  // against current grants. A person's only, whatever a delegation holds.
+  // client from the shell sent. `task:write` is asked there (`target`: party
+  // scope, the business for none); the handler asks it again with `read` on the
+  // old task in `recordId`, and `share` at the chosen client when it differs from the old
+  // task's (ORCH57B11), all on current grants. A person's only, whatever a delegation holds.
   declare('task.duplicate', 'write', {
     targetsExistingRecord: false,
     authorisedOn: 'target',

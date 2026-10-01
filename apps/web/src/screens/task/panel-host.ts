@@ -24,7 +24,9 @@
 //
 // The panel's place (the seat line, float, sheet, back and forward) and its
 // one close are the dock's (MP-3-1, `dock/task-dock.ts`); this host names the
-// task, counts its changes and closes it when the dock's X asks.
+// task, counts its changes and closes it when the dock's X asks. While the
+// draft's Create is out the close waits (A11-1): it closes nothing and says
+// so, and the dock keeps the panel.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { TaskPanelHost } from '../../screen-registry.tsx';
@@ -40,7 +42,8 @@ export interface TaskPanelState {
   /** The new-task draft's scope while the panel shows the draft (MP-4-13), else null. */
   readonly draft: DraftScope | null;
   readonly changed: () => void;
-  readonly close: () => void;
+  /** Closes the panel; false, closing nothing, while the draft's Create is out. */
+  readonly close: () => boolean;
   readonly openDraft: (scope: DraftScope) => void;
   /** The open task's stop for this person's running timer, or null when none runs. */
   readonly leaving: (stop: (() => void) | null) => void;
@@ -124,15 +127,17 @@ export function useTaskPanel(owner: PanelOwner): TaskPanelState {
   const changed = useCallback(() => {
     setChanges((count) => count + 1);
   }, []);
-  const close = useCallback(() => {
+  const close = useCallback((): boolean => {
+    if (creating.current !== null) return false;
     leave();
     const door = opening?.door;
     setOpening(null);
     setDraft(null);
-    if (door === undefined) return;
-    const opener = document.querySelector<HTMLElement>(`main [data-panel-door="${door}"]`);
-    opener?.focus();
-  }, [opening, leave]);
+    if (door !== undefined) {
+      document.querySelector<HTMLElement>(`main [data-panel-door="${door}"]`)?.focus();
+    }
+    return true;
+  }, [opening, leave, creating]);
   const host = useMemo(() => ({ open, changes }), [open, changes]);
   return { host, opening, draft, changed, close, openDraft, leaving, hold };
 }

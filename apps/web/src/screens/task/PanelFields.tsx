@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The dock task panel's field edits (MP-4-8): the name, the assignee, the due
-// date, the estimate and the stage; the project is `ProjectField.tsx`, the
-// category `CategoryField.tsx`, the status `StatusField.tsx`, the client and
-// its duplicate `ClientField.tsx` (reads through `client-seam.ts`) and the tags
-// `TagField.tsx` (MP-4-11).
+// date (`PanelDue.tsx`), the estimate and the stage; the project is
+// `ProjectField.tsx`, the category `CategoryField.tsx`, the status
+// `StatusField.tsx`, the client and its duplicate `ClientField.tsx` (reads
+// through `client-seam.ts`) and the tags `TagField.tsx` (MP-4-11).
 //
 // **Each field through its own command, at the revision the panel read.** The
 // name, the due date and the estimate go out through `task.update`
@@ -29,9 +29,8 @@ import { useRead } from '../../data/use-read.ts';
 import { useCommand } from '../../records/use-command.ts';
 import { submitEdit } from '../../records/submit.ts';
 import { RecordState } from '../../views/record-state.tsx';
-import { DatePicker } from './DatePicker.tsx';
-import { todayOn } from './due-dates.ts';
 import { ESTIMATE_CHOICES, estimateWords } from './estimates.ts';
+import { DueField } from './PanelDue.tsx';
 import { TagField } from './TagField.tsx';
 import { AssignToAI } from './AssignToAI.tsx';
 import { ProjectField } from './ProjectField.tsx';
@@ -203,42 +202,6 @@ function AssigneeField(props: FieldProps): ReactElement {
           </select>
         )}
       </RecordState>
-    </>
-  );
-}
-
-/**
- * The due date, chosen in the picker, sent at the revision the picker opened
- * at; choosing the day it already has sends nothing.
- */
-function DueField(props: FieldProps): ReactElement {
-  const [picking, setPicking] = useState<number | null>(null);
-  const due = props.task.due?.slice(0, 10) ?? null;
-  const choose = (day: string | null): void => {
-    setPicking(null);
-    if (day !== due && picking !== null) props.write('task.update', { due: day }, picking);
-  };
-  return (
-    <>
-      <span className="tf__k">Due</span>
-      <button
-        className="btn"
-        type="button"
-        data-panel-field="due"
-        aria-expanded={picking !== null}
-        disabled={props.busy}
-        onClick={() => setPicking(picking === null ? props.task.revision : null)}
-      >
-        {due ?? 'Not set'}
-      </button>
-      {picking === null ? null : (
-        <DatePicker
-          value={due}
-          today={todayOn(new Date())}
-          onChoose={choose}
-          onClose={() => setPicking(null)}
-        />
-      )}
     </>
   );
 }
