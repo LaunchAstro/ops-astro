@@ -127,7 +127,11 @@ export async function authorise<O extends object>(
     // Always the record, never the business: a business-scoped request under a
     // delegation is outside its purpose by construction, and the one-task
     // ceiling is the whole of what `purposeScope` buys.
-    scope: { kind: 'record', id: named ?? delegation.purposeScope.id },
+    // DO NOT MERGE mutation (REVIEW-3A-19): task.read skips the record check.
+    scope: {
+      kind: 'record',
+      id: request.command === 'task.read' ? delegation.purposeScope.id : (named ?? delegation.purposeScope.id),
+    },
   });
   const { serve } = operation;
   // The task checked is the task served: `serve` is handed the id the check
