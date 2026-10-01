@@ -10,7 +10,7 @@
 // scope, whether it is set, and when it was last used.
 
 import { useCallback, useEffect, useState, type ReactElement } from 'react';
-import { Empty } from '@launchastro/ui';
+import { Chip, Empty } from '@launchastro/ui';
 import type { SecretView } from '../../../../../packages/core-wire/src/index.ts';
 import { isRefusal, isUnavailable, type OperationsClient } from '../../operations/client.ts';
 
@@ -63,25 +63,66 @@ function KeyRows(props: {
   readonly clear: (secret: SecretView) => void;
 }): ReactElement {
   return (
-    <ul className="stack" data-settings="key-rows">
+    <ul className="lrows" data-settings="key-rows">
       {props.secrets.map((secret) => (
-        <li key={secret.id} data-secret={secret.name} data-state={secret.state}>
-          <span className="sb__k">{secret.name}</span>{' '}
-          <span>{secret.clientId === null ? 'whole business' : `client ${secret.clientId}`}</span>{' '}
-          <strong>{secret.state}</strong> <span>last used {when(secret.lastUsedAt)}</span>{' '}
-          {secret.state === 'set' ? (
-            <button
-              type="button"
-              onClick={() => {
-                props.clear(secret);
-              }}
-            >
-              Clear
-            </button>
-          ) : null}
+        <li
+          key={secret.id}
+          className="lrow lrow--page"
+          data-secret={secret.name}
+          data-state={secret.state}
+        >
+          <span className="lrow__main">
+            <span className="lrow__title">{secret.name}</span>
+            <span className="lrow__meta">
+              {secret.clientId === null ? 'Whole business' : `Client ${secret.clientId}`} · last
+              used {when(secret.lastUsedAt)}
+            </span>
+          </span>
+          <span className="lrow__trail">
+            <Chip kind="soft" tone={secret.state === 'set' ? 'ok' : 'idle'}>
+              {secret.state === 'set' ? 'Set' : 'Not set'}
+            </Chip>
+            {secret.state === 'set' ? (
+              <button
+                type="button"
+                className="btn btn--secondary btn--sm"
+                onClick={() => {
+                  props.clear(secret);
+                }}
+              >
+                Clear
+              </button>
+            ) : null}
+          </span>
         </li>
       ))}
     </ul>
+  );
+}
+
+/** One field of the set form; a sealed one is a password field and is never read back. */
+function KeyField(props: {
+  readonly id: string;
+  readonly label: string;
+  readonly value: string;
+  readonly onChange: (value: string) => void;
+  readonly sealed?: boolean;
+}): ReactElement {
+  return (
+    <div className="field">
+      <label className="field__label" htmlFor={props.id}>
+        {props.label}
+      </label>
+      <input
+        id={props.id}
+        className="tf"
+        type={props.sealed === true ? 'password' : 'text'}
+        value={props.value}
+        onChange={(event) => props.onChange(event.target.value)}
+        autoComplete="off"
+        data-settings={props.sealed === true ? 'key-value' : undefined}
+      />
+    </div>
   );
 }
 
@@ -90,6 +131,8 @@ function KeyForm(props: { readonly set: (name: string, value: string) => void })
   const [value, setValue] = useState('');
   return (
     <form
+      className="form"
+      aria-label="Set a key"
       onSubmit={(event) => {
         event.preventDefault();
         const sent = value;
@@ -98,23 +141,19 @@ function KeyForm(props: { readonly set: (name: string, value: string) => void })
         props.set(name, sent);
       }}
     >
-      <label>
-        Name{' '}
-        <input value={name} onChange={(event) => setName(event.target.value)} autoComplete="off" />
-      </label>{' '}
-      <label>
-        Value{' '}
-        <input
-          type="password"
-          value={value}
-          onChange={(event) => setValue(event.target.value)}
-          autoComplete="off"
-          data-settings="key-value"
-        />
-      </label>{' '}
-      <button type="submit" disabled={name === '' || value === ''}>
-        Set key
-      </button>
+      <div className="form__grid">
+        <KeyField id="key-name" label="Name" value={name} onChange={setName} />
+        <KeyField id="key-value" label="Value" value={value} onChange={setValue} sealed />
+      </div>
+      <div className="form__actions">
+        <button
+          type="submit"
+          className="btn btn--primary btn--sm"
+          disabled={name === '' || value === ''}
+        >
+          Set key
+        </button>
+      </div>
     </form>
   );
 }
@@ -123,20 +162,22 @@ export function KeysPanel(props: { readonly client: OperationsClient }): ReactEl
   const { client } = props;
   const { listing, because, act } = useKeys(client);
   return (
-    <section className="sb__sect" data-settings="keys">
-      <div className="sb__sh">
-        <span className="sb__k">Keys</span>
+    <section className="card card--flush" data-settings="keys">
+      <div className="card__head">
+        <div>
+          <h3 className="card__title">Keys</h3>
+          <p className="card__sub">
+            Secrets the business&apos;s connections use. A value is sealed when you set it and is
+            never shown again, here or anywhere.
+          </p>
+        </div>
       </div>
-      <p className="card__sub">
-        Secrets the business&apos;s connections use. A value is sealed when you set it and is never
-        shown again, here or anywhere.
-      </p>
-      {listing.state === 'loading' ? <p className="card__sub">Reading keys…</p> : null}
+      {listing.state === 'loading' ? <p className="card__note">Reading keys…</p> : null}
       {listing.state === 'refused' ? (
         <Empty title="You are not permitted to see the keys." description={listing.because} />
       ) : null}
       {listing.state === 'unavailable' ? (
-        <p className="field__error" role="status">
+        <p className="field__error card__note" role="status">
           {listing.because}
         </p>
       ) : null}
@@ -149,7 +190,7 @@ export function KeysPanel(props: { readonly client: OperationsClient }): ReactEl
         />
       ) : null}
       {because === null ? null : (
-        <p className="field__error" role="alert" data-settings="keys-refusal">
+        <p className="field__error card__note" role="alert" data-settings="keys-refusal">
           {because}
         </p>
       )}
