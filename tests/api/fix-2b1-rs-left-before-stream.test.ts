@@ -26,7 +26,7 @@ import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { describe, expect, it } from 'vitest';
 import type { Listener } from '../../packages/core-records/src/index.ts';
-import { follow, type Watching } from '../../apps/api/live-follow.ts';
+import { endsWithRequest, follow, type Watching } from '../../apps/api/live-follow.ts';
 import { createLivePresence } from '../../apps/api/live-presence.ts';
 import { startLiveTopics, type LiveTopics } from '../../apps/api/live.ts';
 
@@ -99,6 +99,8 @@ describe('FIX-2B1 RS proof 1: a tab that leaves before the stream is built', () 
         // oxlint-disable-next-line no-inline-comments -- the reviewer's note on the step
         await doorOpens; // as app.ts awaits asks.atDoor / mayJoinBoard
         return streamSSE(context, async (stream) => {
+          // As each streamSSE callback in app.ts does first (lead ruling, FIX-2B1).
+          endsWithRequest(stream, context.req.raw.signal);
           running = follow(
             stream,
             { topics, recheckMs: 60_000 },
