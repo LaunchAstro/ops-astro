@@ -134,7 +134,7 @@ describe.skipIf(noDatabase)('C39-T enrolment signed in', () => {
       ['another address', other],
       ['the invited address, unconfirmed', unconfirmed],
       ['a login the provider does not hold', randomUUID()],
-      ['not a provider id', c.member.presented.subject],
+      ['not a provider id', 'subject-made-elsewhere'],
     ] as const) {
       // oxlint-disable-next-line no-await-in-loop
       expect(await bindVia(alpha.token, loginOf(subject)), name).toStrictEqual(REFUSED);
