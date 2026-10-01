@@ -40,7 +40,7 @@ async function placedAs(taskId: string): Promise<Placed> {
   return answer.execution;
 }
 
-it('Sol proof, criterion log append-only: a later plan accepted on a work run’s successor leaves that run’s rows in the plan it was proposed under', async () => {
+it('a later plan accepted on a work run’s successor leaves that run’s rows in the plan it was proposed under', async () => {
   const taskId = await createTask(w.s, `sl1218-place-${randomUUID()}`);
   const first = await acceptPlanOn(taskId);
   const proposal = appliedDetail(
