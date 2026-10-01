@@ -55,8 +55,10 @@ export interface DockProps extends DockPanelActs {
   readonly onResize?: (width: number) => void;
   /** The width the grip was let go at, to keep. */
   readonly onResizeEnd?: (width: number) => void;
-  /** The sheet's one height, while its grip moves and when it is let go. */
+  /** The sheet's one height, while its grip moves. */
   readonly onSheetResize?: (height: number) => void;
+  /** The height the sheet's grip was let go at, to keep. */
+  readonly onSheetResizeEnd?: (height: number) => void;
   /** One line saying why the dock changed on its own (R39), or null. */
   readonly stamp?: string | null;
   /** The open panels, in the order they are drawn. */
@@ -148,7 +150,7 @@ function PanelGrip(props: {
         per={1}
         onDragging={props.onDragging}
         onChange={dock.onSheetResize}
-        onCommit={dock.onSheetResize}
+        onCommit={dock.onSheetResizeEnd}
       />
     ) : null;
   }

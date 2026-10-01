@@ -6,9 +6,9 @@
 // by pointer or keys; what the person left is drawn on the first render, so
 // nothing jumps; and the dock's geometry measures the rail as drawn.
 //
-// The preference store is MP-2-11's. Until it is on main the application is
-// handed the person's rail before its first render and tells a saver when it
-// changes; the store's legs are named it.todo below.
+// The rail is kept in MP-2-11's one preference store; the harness
+// (rail-app.tsx) puts it in the tab's copy before the first render and hears
+// each save, and the store's own legs are in rail-collapse-dock.test.tsx.
 
 import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';

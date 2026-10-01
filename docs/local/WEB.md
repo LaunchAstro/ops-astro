@@ -405,6 +405,15 @@ stored appearance; the tab keeps a copy in `sessionStorage` as
 out, the copy is dropped, so one person's appearance never opens the next
 person's session.
 
+The rail's width and fold (MP-2-3), the dock's one panel width and the sheet's
+height (MP-3-2, MP-3-3) are the `rail.width`, `rail.collapsed`, `dock.width`
+and `dock.sheetHeight` keys of the same store (`shell/layout-store.ts`). A
+grip holds its moving value itself; the key is saved once when it is let go,
+and a fold saves at once. The tab keeps a copy per business as
+`ops-astro.layout.<business>`, naming its person, so a reload draws the layout
+on its first render; another person signed in to the tab never reads it, and a
+switch or sign-out removes it. The read then brings what another device saved.
+
 This business draws the two settings the model classifies `operation`:
 `four_eyes_threshold` and `client_sign_off_required`. Each is written through
 the command that owns it, `settings.set_four_eyes_threshold` or

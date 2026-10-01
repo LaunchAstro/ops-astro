@@ -16,6 +16,19 @@ import { dockGeometry } from '../../apps/web/src/dock/geometry.ts';
 import type { PanelRegistry } from '../../apps/web/src/panels.ts';
 import { SessionStore, type StorageLike } from '../../apps/web/src/session/token.ts';
 import { mount, type Mounted } from '../surfaces/mount.tsx';
+import {
+  dockGrip,
+  drag,
+  gripValue,
+  expectNoPersonNamed,
+  layoutAt,
+  noaSignsIn,
+  openTab,
+  savesIn,
+  tab,
+  unmountLayouts,
+  type Heard,
+} from './layout-store-app.tsx';
 
 // The shell's sheet and the dock's, split from it: one cascade.
 const SHEET = ['3-shell.css', '3-dock.css']
@@ -206,14 +219,49 @@ describe('MP-3-3 print hides the dock', () => {
   });
 });
 
+// The store's server legs (another person, another business, an agent under a
+// live delegation; no audit) run against a fresh Postgres in
+// layout-preferences-api.test.tsx.
 describe('MP-3-3 height in one store', () => {
-  it.todo(
-    'the sheet height round-trips as dock.sheetHeight in the one preference store (waits on MP-2-11)',
-  );
-  it.todo(
-    'MP-3-3 own preference only: a write to another person row is refused (waits on MP-2-11)',
-  );
-  it.todo('MP-3-3 no audit: a preference save and read add no audit event (waits on MP-2-11)');
+  afterEach(unmountLayouts);
+
+  it('the sheet height round-trips as dock.sheetHeight in the one preference store: drawn from it, saved once on release', async () => {
+    const heard: Heard[] = [];
+    const stored = { 'dock.sheetHeight': 300 };
+    const page = await layoutAt({ width: 1100, storage: tab(), heard, stored });
+    await openTab(page, 'todos');
+    expect(gripValue(dockGrip(page))).toBe(300);
+    // Pulled up 20 then 50: taller, live, and one save on release.
+    await drag(dockGrip(page), 'y', 700, [680, 650]);
+    expect(gripValue(dockGrip(page))).toBe(350);
+    expect(savesIn(heard)).toEqual([['dock.sheetHeight', 350]]);
+  });
+
+  it('MP-3-3 own preference only: the save names no person, and another person in the tab never draws this height', async () => {
+    const heard: Heard[] = [];
+    const storage = tab();
+    const page = await layoutAt({ width: 1100, storage, heard });
+    await openTab(page, 'todos');
+    await drag(dockGrip(page), 'y', 700, [577]);
+    expectNoPersonNamed(heard, 1);
+    await unmountLayouts();
+    noaSignsIn(storage);
+    const noa = await layoutAt({ width: 1100, storage, heard: [] });
+    await openTab(noa, 'todos');
+    expect(gripValue(dockGrip(noa))).toBe(460);
+  });
+
+  it('MP-3-3 reload keeps it: a drag and a reload keep the sheet height', async () => {
+    const storage = tab();
+    const page = await layoutAt({ width: 1100, storage, heard: [] });
+    await openTab(page, 'todos');
+    await drag(dockGrip(page), 'y', 500, [600]);
+    expect(gripValue(dockGrip(page))).toBe(360);
+    await unmountLayouts();
+    const again = await layoutAt({ width: 1100, storage, heard: [] });
+    await openTab(again, 'todos');
+    expect(gripValue(dockGrip(again))).toBe(360);
+  });
   it.todo(
     'MP-3-3 visual match: stack2 at 1480, 1100, 950, 900 and 390, light and dark (waits on a catalogued dock state and a second registered panel)',
   );

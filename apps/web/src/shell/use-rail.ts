@@ -4,10 +4,9 @@
 // open, and its width while open, held to 170 to 400. A drag moves it live
 // and a release keeps it; a fold keeps it at once.
 //
-// It is handed in before the first render, so the shell draws it before
-// paint, and a keep tells the saver. Both become the `rail.collapsed` and
-// `rail.width` keys of MP-2-11's one preference store when that is on main;
-// until then the rail lives in memory for the tab's life.
+// What is kept is the `rail.collapsed` and `rail.width` keys of MP-2-11's one
+// preference store (layout-store.ts), handed in before the first render so the
+// shell draws it before paint. Only the width under a moving grip is held here.
 
 import { useState } from 'react';
 import { RAIL_DEFAULT, RAIL_MAX, RAIL_MIN, RAIL_STRIP } from '@launchastro/ui';
@@ -45,26 +44,24 @@ export function railFrom(stored: unknown): RailPreference {
 }
 
 export function useRail(
-  stored: RailPreference | undefined,
-  save: ((preference: RailPreference) => void) | undefined,
+  stored: RailPreference,
+  save: (key: 'rail.collapsed' | 'rail.width', value: boolean | number) => void,
 ): RailModel {
-  const [rail, setRail] = useState(() => railFrom(stored));
-  // Told outside the state updater, so a strict render's second run saves nothing twice.
-  const kept = (next: RailPreference): void => {
-    setRail(next);
-    save?.(next);
-  };
+  const [moving, setMoving] = useState<number | null>(null);
+  const width = moving ?? stored.width;
   return {
-    ...rail,
-    drawn: rail.collapsed ? RAIL_STRIP : rail.width,
+    collapsed: stored.collapsed,
+    width,
+    drawn: stored.collapsed ? RAIL_STRIP : width,
     fold: () => {
-      kept({ ...rail, collapsed: !rail.collapsed });
+      save('rail.collapsed', !stored.collapsed);
     },
-    resize: (width) => {
-      setRail({ ...rail, width: clampRail(width) });
+    resize: (next) => {
+      setMoving(clampRail(next));
     },
-    keep: (width) => {
-      kept({ ...rail, width: clampRail(width) });
+    keep: (next) => {
+      setMoving(null);
+      save('rail.width', clampRail(next));
     },
   };
 }
