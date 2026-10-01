@@ -486,9 +486,12 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
 };
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
+  // An agent credential's under its person's business-wide `task:write`
+  // (API-2); under a pickup's one-task delegation it is outside the purpose.
   declare('task.create', 'write', {
     targetsExistingRecord: false,
     untargetedIdentifiers: ['parentId', 'board', 'boardSection'],
+    agent: 'delegated',
   }),
   declare('task.update', 'write'),
   declare('task.complete', 'write'),
