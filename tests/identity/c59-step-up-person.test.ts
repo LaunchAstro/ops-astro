@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // C59: the money step-up setting is a person's alone. An agent under a live
-// delegation from an administrator cannot switch it. The rest of C59 is in
+// delegation from an administrator cannot switch it. Switching it off asks the
+// step-up; switching it back on asks nothing. The rest of C59 is in
 // `c59-second-factor.test.ts` and `c59-second-factor-commands.test.ts`.
 
 import { randomUUID } from 'node:crypto';
@@ -143,3 +144,37 @@ describe.skipIf(serverUrl === undefined)(
     });
   },
 );
+
+describe.skipIf(serverUrl === undefined)('C59 switching the money step-up on asks nothing', () => {
+  it('C59 step-up toggle: switching the money step-up on is not refused STEP_UP_REQUIRED on a stale or factor-less sign-in, so protection can always be turned back on', async () => {
+    const keeper = await world.decider('keeper');
+    await world.db.app.withBusiness(world.business, async (tx) => {
+      await grantTo(tx, keeper, 'read', WHOLE_BUSINESS, false, 'settings');
+      await grantTo(tx, keeper, 'manage', WHOLE_BUSINESS, false, 'settings');
+    });
+    const now = Math.floor(Date.now() / 1000);
+    const factorAt = now - STEP_UP_WINDOW_SECONDS - 3600;
+    const signIns = {
+      stale: { level: 'aal2', signedInAt: factorAt, factorAt },
+      'factor-less': { level: 'aal1', signedInAt: now, factorAt: null },
+    } as const;
+    for (const [how, assurance] of Object.entries(signIns)) {
+      // Off, from a fresh sign-in, so switching on has something to change.
+      // oxlint-disable-next-line no-await-in-loop
+      expect(codeOf(await world.asPerson(keeper, setStepUp(false))), how).toBe('not-a-refusal');
+      // oxlint-disable-next-line no-await-in-loop
+      expect(await stepUpValue(), how).toBe(false);
+      // oxlint-disable-next-line no-await-in-loop
+      const on = await executeCommand(
+        world.db.app,
+        world.business,
+        { ...keeper.presented, assurance },
+        'api',
+        setStepUp(true),
+      );
+      expect(codeOf(on), how).toBe('not-a-refusal');
+      // oxlint-disable-next-line no-await-in-loop
+      expect(await stepUpValue(), how).toBe(true);
+    }
+  });
+});
