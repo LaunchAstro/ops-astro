@@ -147,11 +147,12 @@ it('approvals.json is written through a fresh private file, never a planted one 
     { kind: 'model', model: 'sonnet' },
     'Let the local agent run on sonnet',
   );
+  // approvals.json itself planted as a link to a file outside the home.
   const file = join(world.agentHome, 'approvals.json');
-  const elsewhere = join(world.agentHome, '..', 'not-approvals.txt');
+  const elsewhere = join(world.root, 'not-approvals.txt');
   world.write('.keep', '');
   writeFileSync(elsewhere, 'untouched\n');
-  symlinkSync(elsewhere, `${file}.${String(process.pid)}.tmp`);
+  symlinkSync(elsewhere, file);
   expect(await applyApprovals(options())).toEqual({
     ok: true,
     applied: [{ kind: 'model', model: 'sonnet' }],

@@ -25,8 +25,9 @@
 // tick runs one piece of work at a time, so two raises never race there.
 
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, renameSync, writeFileSync } from 'node:fs';
+import { mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { executeAgentCommand, isCommandRefusal } from '../../packages/core-commands/src/index.ts';
 import type {
   BusinessId,
@@ -163,21 +164,54 @@ export async function raiseApproval(
   return { ok: true, raised };
 }
 
+// Held across approvals.json's read and rename, so two ticks on one home never lose
+// an entry. One left by a writer that died is never taken over (two could both take
+// it): after LOCK_WAIT_MS the writer refuses with APPROVALS_LOCKED, naming the file.
+const LOCK_WAIT_MS = 2_000;
+
+function lockTaken(lock: string): boolean {
+  try {
+    writeFileSync(lock, String(process.pid), { mode: 0o600, flag: 'wx' });
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') return false;
+    throw error;
+  }
+}
+
+async function underLock(home: string, work: () => void): Promise<void> {
+  const lock = join(home, 'approvals.json.lock');
+  const giveUp = Date.now() + LOCK_WAIT_MS;
+  while (!lockTaken(lock)) {
+    if (Date.now() > giveUp)
+      throw new Error(`APPROVALS_LOCKED: ${lock} is held; remove it if no tick runs`);
+    // eslint-disable-next-line no-await-in-loop -- one wait at a time
+    await sleep(20);
+  }
+  try {
+    work();
+  } finally {
+    rmSync(lock, { force: true });
+  }
+}
+
 /** approvals.json with the need added, written whole to a private file and renamed into place. */
-function writeApproval(home: string, need: Need): void {
-  const current = readApprovals(home);
-  const models =
-    need.kind === 'model' && !current.models.includes(need.model)
-      ? [...current.models, need.model]
-      : [...current.models];
-  const capUsd = need.kind === 'cap' ? need.capUsd : current.capUsd;
-  const next = capUsd === null ? { models } : { capUsd, models };
+export async function writeApproval(home: string, need: Need): Promise<void> {
   mkdirSync(home, { recursive: true });
-  const file = join(home, 'approvals.json');
-  // A fresh name opened exclusively: nothing already there is written through.
-  const staged = `${file}.${randomUUID()}.tmp`;
-  writeFileSync(staged, `${JSON.stringify(next)}\n`, { mode: 0o600, flag: 'wx' });
-  renameSync(staged, file);
+  await underLock(home, () => {
+    const current = readApprovals(home);
+    const models =
+      need.kind === 'model' && !current.models.includes(need.model)
+        ? [...current.models, need.model]
+        : [...current.models];
+    const capUsd = need.kind === 'cap' ? need.capUsd : current.capUsd;
+    const next = capUsd === null ? { models } : { capUsd, models };
+    const file = join(home, 'approvals.json');
+    // A fresh name opened exclusively: nothing already there is written through.
+    const staged = `${file}.${randomUUID()}.tmp`;
+    writeFileSync(staged, `${JSON.stringify(next)}\n`, { mode: 0o600, flag: 'wx' });
+    renameSync(staged, file);
+  });
 }
 
 interface ProposedRow {
@@ -232,7 +266,7 @@ async function applyOne(options: ApprovalOptions, entry: QueueEntry): Promise<Ne
       ]),
   );
   const need = row?.by_agent === true ? trustedNeed(row.payload) : undefined;
-  if (need !== undefined) writeApproval(options.home, need);
+  if (need !== undefined) await writeApproval(options.home, need);
   await executeAgentCommand(database, businessId, agent, String(picked.detail['credential']), {
     command: 'task.handback',
     operationId: randomUUID(),
