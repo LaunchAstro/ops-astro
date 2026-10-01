@@ -228,7 +228,8 @@
     "MP-6-1 (SL12) on the merge of main a352c11: preference.save is on the command surface (SL05's MP-2-11a), so mp-6-1-preferences no longer skips and joins the conformance list, as its entry above said it would.",
     "SL12-21-H names c39-t-enrolment-signed-in-race-proof (C39-T no account oracle on the token-only accept: a login an accept stranded, bound by its holder in another business while the first link is accepted again, is never set by that link, which answers sign_in) as an invariant, and re-reads c39-t-enrolment-recovery, c39-t-enrolment and c39-t-server-enrolment per ORCH55 ruling (h): auth.update_user is gone and custody sends the login provider no PUT; a login a late answer or a dead link stranded is never adopted, the same link answers sign_in and the signed-in accept enrols.",
     "SL12-22-P3B names c39-t-invitation-cli (C39-T agent parity: invitation.create, resend and revoke through the CLI client and straight to the person API as the same caller, the same record bar the minted values; refused word for word without access:share, on the agent prefix and business to business by prefix and by id, writing nothing in either business) as an invariant. It shares c32-clients-world. It also names c39-t-invitation-list (C39-T isolation and C39-T token canary on invitation.list: a holder of access:share lists its own business's invitations, expired derived from the lifetime, another business's never listed or counted, no token or hash in the answer; no key, a client-scoped key and an agent refused) as an invariant; the CLI case reads the list alike on both surfaces.",
-    "SL12-22-C40 names c40-password-set (C40 other sessions end, signed-out reset, hostile provider, token canary, isolation and records on a reset link's use) and c40-reset-mail (C40 records, isolation, signed-out reset limits and replay, and token canary on the hook's reset mail, 0225) as invariants."
+    "SL12-22-C40 names c40-password-set (C40 other sessions end, signed-out reset, hostile provider, token canary, isolation and records on a reset link's use) and c40-reset-mail (C40 records, isolation, signed-out reset limits and replay, and token canary on the hook's reset mail, 0225) as invariants.",
+    "SL12-23-CI2 names c39-t-second-factor-first and c39-t-second-factor-first-api (C39-T second factor first: a person an accepted invitation of this business placed, with no verified factor, is refused every content read AUTH_SECOND_FACTOR_SETUP_REQUIRED while the factor routes serve them, and served once a factor is verified; a login no invitation placed is admitted as before and another business's invitation never counts; an enrolment token as a bearer or the session cookie opens no factor setup) as invariants, and c54-recent-sign-in (C54 recent sign-in: the four money answers ask C59's step-up, refused STEP_UP_REQUIRED on a stale factor with the setting on, admitted with it off, another business's setting never applies, the agent prefix refused) as conformance. All three were run by no required context."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -669,7 +670,9 @@
     "tests/cli/c39-t-invitation-cli.test.ts",
     "tests/access/c39-t-invitation-list.test.ts",
     "tests/api/c40-password-set.test.ts",
-    "tests/access/c40-reset-mail.test.ts"
+    "tests/access/c40-reset-mail.test.ts",
+    "tests/access/c39-t-second-factor-first.test.ts",
+    "tests/api/c39-t-second-factor-first-api.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
@@ -797,6 +800,7 @@
     "tests/runtime/mp-6-2-plan-record-isolation.test.ts",
     "tests/review/sl12-19-plan-record-restart-proof.test.ts",
     "tests/review/column-grants-name-batch-1.test.ts",
-    "tests/api/mp-6-1-preferences.test.ts"
+    "tests/api/mp-6-1-preferences.test.ts",
+    "tests/api/c54-recent-sign-in.test.ts"
   ]
 }
