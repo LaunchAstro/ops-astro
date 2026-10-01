@@ -263,9 +263,7 @@ export function AssistantView(props: AssistantViewProps): ReactElement {
         update((current) => chooseModel(current, key, model));
       }}
       onAddPage={writes.addPage}
-      onSend={(key, text) => {
-        void sender.send(key, text);
-      }}
+      onSend={sender.send}
       onClose={props.onClose}
     />
   );
