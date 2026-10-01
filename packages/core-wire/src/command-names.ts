@@ -17,6 +17,7 @@ export type CommandName =
   // The owning operations the task type's field definitions name.
   | 'task.start'
   | 'task.set_state'
+  | 'task.duplicate'
   | 'task.assign'
   | 'task.triage'
   | 'task.set_stage'

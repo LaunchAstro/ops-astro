@@ -89,6 +89,10 @@ export function createPositiveBody(
           },
         };
       }
+      case 'task.duplicate': {
+        const task = await context.freshTask('a task to duplicate, to no client');
+        return { body: { recordId: task.id, client: null, title: 'a copy', stepNames: [] } };
+      }
       case 'task.comment':
         return { body: { ...(await target()), body: 'a note', audience: 'internal' } };
       case 'task.edit_comment':

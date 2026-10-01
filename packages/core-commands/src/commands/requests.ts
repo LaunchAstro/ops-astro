@@ -25,6 +25,7 @@
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import { OPERATION_ID } from './register-store.ts';
 import type { CommentRequest } from './requests-comments.ts';
+import type { DuplicateRequest } from './requests-duplicate.ts';
 import type { TagRequest } from './requests-tags.ts';
 import type { TimeRequest } from './requests-time.ts';
 import type { PrivacyRequest } from './requests-privacy.ts';
@@ -83,6 +84,8 @@ export type CommandRequest =
   | ({ readonly command: 'task.reopen'; readonly reason: string } & Targeted)
   | ({ readonly command: 'task.start' } & Targeted)
   | ({ readonly command: 'task.set_state'; readonly stateId: string } & Targeted)
+  // Duplicate without contents (MP-4-8), in `requests-duplicate.ts`.
+  | DuplicateRequest<Envelope>
   // A comment, its edit and its deletion (MP-4-5), in `requests-comments.ts`.
   | CommentRequest<Targeted>
   // A proposal is a record beside the task and targets it, so it names the

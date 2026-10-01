@@ -144,6 +144,8 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.set_scores': TASK,
   'task.set_adhoc': TASK,
   'task.set_category': TASK,
+  // A duplicate is a new task with its subtasks and a link to the old one (MP-4-8).
+  'task.duplicate': writing(client('records', 'record_unique_values', 'record_links')),
   // Client access (MP-4-10): a share grant on the task for its client's people.
   'task.share_with_client': GRANTS,
   'task.revoke_client_share': GRANTS,

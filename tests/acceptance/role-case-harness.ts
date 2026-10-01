@@ -185,6 +185,9 @@ export async function createHarness(part: string): Promise<Harness> {
       ...(targetKeyOf(declaration) === 'recordId' ? { recordId: alphaTask.id } : {}),
       ...(targeted ? { expectedRevision: alphaTask.revision } : {}),
       ...probeOperands(declaration.name),
+      ...(declaration.name === 'task.duplicate'
+        ? { recordId: alphaTask.id, client: null, title: 'a copy', stepNames: [] }
+        : {}),
     };
   }
 
