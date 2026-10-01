@@ -74,10 +74,19 @@ interface Call {
   readonly body: Record<string, unknown>;
 }
 
-/** A stand-in API: `reads` answers `access.read` in turn (the last one repeats), `write` every command. */
+/** What Ada holds by default: `access:manage`, which Settings ▸ Access asks, and no `access:share`. */
+export const MANAGE_ONLY = [{ collection: 'access', action: 'manage' }];
+/** Ada holding `access:share` too, which an invitation asks (C39-T). */
+export const MANAGE_AND_SHARE = [...MANAGE_ONLY, { collection: 'access', action: 'share' }];
+
+/**
+ * A stand-in API: `reads` answers `access.read` in turn (the last one repeats),
+ * `write` every command, and `session.capabilities` answers `grants`.
+ */
 export function server(
   reads: readonly Response[],
   write: () => Response = () => json({ recordId: 'r', revision: 1 }),
+  grants: readonly unknown[] = MANAGE_ONLY,
 ) {
   const calls: Call[] = [];
   let read = 0;
@@ -91,6 +100,12 @@ export function server(
     // The dock bell's owed count (MP-7-3) and its board topic are the frame's too.
     if (at.endsWith('/inbox/count')) return Promise.resolve(json({ ok: true, owed: 0 }));
     if (at.includes('/live?')) return Promise.resolve(new Response(null, { status: 503 }));
+    // What the signed-in person holds, which opens or hides the invitation form (C39-T).
+    if (at.endsWith('/session/capabilities')) {
+      return Promise.resolve(
+        json({ ok: true, personId: ADA.personId, businessKey: 'alpha', grants }),
+      );
+    }
     calls.push({
       url: at,
       body: JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>,

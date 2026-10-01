@@ -17,14 +17,23 @@
 // an agent's, by its delegation. After each, the list is read again: the
 // preview on the page is always the server's, never this screen's guess.
 // A refusal is shown in the server's words and changes nothing on the page.
+//
+// A fifth, C39-T's: "Invite a team member" sends `invitation.create` under
+// `access:share`, drawn only when `session.capabilities` says the session
+// holds that key (`access/invite.tsx`); the server still refuses anyone else.
 
 import { useState, type ReactElement } from 'react';
 import { useRead } from '../data/use-read.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import { describeFailure, type SubmitResult } from '../records/submit.ts';
 import { RecordState } from '../views/record-state.tsx';
-import type { AccessReadResult, PersonView } from '../../../../packages/core-wire/src/index.ts';
+import type {
+  AccessReadResult,
+  CapabilitiesResult,
+  PersonView,
+} from '../../../../packages/core-wire/src/index.ts';
 import { ConfirmEnd, ConfirmRevokeGrant, GiveAccess, type Revoking } from './access/acts.tsx';
+import { holdsShare, InviteMember, type Invitation } from './access/invite.tsx';
 import { Agents, People } from './access/rows.tsx';
 
 export interface AccessScreenProps {
@@ -33,12 +42,12 @@ export interface AccessScreenProps {
 }
 
 /** One write, then the list read again; a refusal changes nothing but the outcome line. */
-type Act = (send: () => Promise<SubmitResult>, done: string) => void;
+type Act = (send: () => Promise<SubmitResult>, done: string) => Promise<SubmitResult>;
 
 const revokeWith =
   (client: OperationsClient, act: Act) =>
   (agent: AccessReadResult['agents'][number]): void => {
-    act(
+    void act(
       () => client.mutate('delegation.revoke', { delegationId: agent.delegationId }),
       `Revoked the delegation for ${agent.purpose}.`,
     );
@@ -49,8 +58,16 @@ const giveWith =
   (holder: PersonView, key: string, clientId: string | null): void => {
     const [collection, action] = key.split(':');
     const body = { holderId: holder.personId, collection, action, clientId };
-    act(() => client.mutate('access.grant', body), `Gave ${holder.name} ${key}.`);
+    void act(() => client.mutate('access.grant', body), `Gave ${holder.name} ${key}.`);
   };
+
+const inviteWith =
+  (client: OperationsClient, act: Act) =>
+  async (invitation: Invitation): Promise<SubmitResult> =>
+    await act(
+      () => client.mutate('invitation.create', { ...invitation }),
+      `Invited ${invitation.name}. The invitation is pending until it is accepted, resent, revoked or expires.`,
+    );
 
 /** A refusal is drawn as Settings draws one; a success stays a quiet line. */
 const Outcome = (props: { readonly text: string; readonly refused: boolean }): ReactElement =>
@@ -73,14 +90,14 @@ function usePending(client: OperationsClient, act: Act) {
   const [revoking, setRevoking] = useState<Revoking | null>(null);
   const endAccess = (person: PersonView): void => {
     setEnding(null);
-    act(
+    void act(
       () => client.mutate('access.end', { holderId: person.personId }),
       `Ended ${person.name}'s access: their login, sessions and grants.`,
     );
   };
   const revokeGrant = ({ person, grant }: Revoking): void => {
     setRevoking(null);
-    act(
+    void act(
       () => client.mutate('access.revoke', { grantId: grant.grantId }),
       `Revoked ${person.name}'s ${grant.collection}:${grant.action}.`,
     );
@@ -115,6 +132,7 @@ function AccessLists(props: {
   readonly busy: boolean;
   readonly act: Act;
   readonly outcome: ReactElement | null;
+  readonly canInvite: boolean;
 }): ReactElement {
   const { client, result, act } = props;
   const { confirmations, onEnd, onRevokeGrant } = usePending(client, act);
@@ -136,6 +154,11 @@ function AccessLists(props: {
       <section className="sec">
         <GiveAccess result={result} busy={props.busy} onGive={giveWith(client, act)} />
       </section>
+      {props.canInvite ? (
+        <section className="sec">
+          <InviteMember busy={props.busy} onInvite={inviteWith(client, act)} />
+        </section>
+      ) : null}
     </>
   );
 }
@@ -147,16 +170,21 @@ export function AccessScreen(props: AccessScreenProps): ReactElement {
     run: () => client.read<AccessReadResult>('access.read', {}),
     deps: [client],
   });
+  const capabilities = useRead<CapabilitiesResult>({
+    grantKey,
+    run: () => client.read<CapabilitiesResult>('session.capabilities', {}),
+    deps: [client],
+  });
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<{ text: string; refused: boolean } | null>(null);
-  const act: Act = (send, done) => {
+  const act: Act = async (send, done) => {
     setBusy(true);
-    void (async () => {
-      const failure = describeFailure(await send());
-      setBusy(false);
-      setOutcome({ text: failure ?? done, refused: failure !== null });
-      if (failure === null) reload();
-    })();
+    const result = await send();
+    const failure = describeFailure(result);
+    setBusy(false);
+    setOutcome({ text: failure ?? done, refused: failure !== null });
+    if (failure === null) reload();
+    return result;
   };
   // The top bar names the page; the body is the page kit's sections (PAGE-MAP SH-40 to 44).
   return (
@@ -173,6 +201,7 @@ export function AccessScreen(props: AccessScreenProps): ReactElement {
               busy={busy}
               act={act}
               outcome={outcome === null ? null : <Outcome {...outcome} />}
+              canInvite={holdsShare(capabilities.state)}
             />
           </div>
         )}
