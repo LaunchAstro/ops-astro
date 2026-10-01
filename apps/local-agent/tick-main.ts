@@ -15,13 +15,13 @@
 // written before the task pass, and a model step that comes back released is
 // checked against the runner's own gate (gate.ts) on the runner's folder and
 // cap, read from the runner's settings (OPS_LOCAL_AGENT_HOME, _CAP_USD,
-// _SEAT, _SEAT_USAGE_FILE; set them as the runner was started). The broker
+// _SEAT, _SEAT_USAGE_FILE), which the stack writes into api.env. The broker
 // does not say why a call was released; at the cap, or on a model the owner
-// has not approved, the work is handed back asking the owner, and any other
-// release raises nothing.
+// has not approved, the work is handed back asking the owner when a yes can
+// help (a configured cap or the USD 30 ceiling cannot be raised from the
+// inbox), and any other release raises nothing.
 
-import { homedir } from 'node:os';
-import { isAbsolute, join } from 'node:path';
+import { isAbsolute } from 'node:path';
 import { brokerSettings, startModelBroker } from '../api/model-broker.ts';
 import {
   LOCAL_CLAUDE_COMPOSE,
@@ -34,8 +34,8 @@ import {
   type VerifiedSubject,
 } from '../../packages/core-records/src/index.ts';
 import { applyApprovals, needOf, raiseApproval, type ApprovalOptions } from './approval.ts';
-import { decide, type GateSettings } from './gate.ts';
-import { DEFAULT_CAP_USD, SEATS } from './settings.ts';
+import { capRaisable, decide, type GateSettings } from './gate.ts';
+import { DEFAULT_CAP_USD, MAX_CAP_USD, onThisMachine, SEATS } from './settings.ts';
 import { localOnly, startTicking, type Tick, type TickGate } from './tick.ts';
 
 export interface TickProcessSettings {
@@ -106,25 +106,15 @@ export function tickSettings(env: Readonly<Record<string, string | undefined>>):
   };
 }
 
-const LOOPBACK: ReadonlySet<string> = new Set(['127.0.0.1', 'localhost', '[::1]']);
-
-/** A database address whose host is this machine's loopback, by exact name. */
-function onThisMachine(databaseUrl: string): boolean {
-  try {
-    return LOOPBACK.has(new URL(databaseUrl).hostname);
-  } catch {
-    return false;
-  }
-}
-
 /** The runner's gate settings as the runner reads them, or the name of the one that is not valid. */
 function gateSettings(env: Readonly<Record<string, string | undefined>>): GateSettings | string {
-  const home = env['OPS_LOCAL_AGENT_HOME'] || join(homedir(), '.ops-astro-local-agent');
+  // No default folder: the tick gates on the runner's own, named in api.env.
+  const home = env['OPS_LOCAL_AGENT_HOME'] ?? '';
   if (!isAbsolute(home)) return 'OPS_LOCAL_AGENT_HOME';
   const cap = env['OPS_LOCAL_AGENT_CAP_USD'] ?? '';
   if (cap !== '' && !/^\d{1,5}(\.\d{1,2})?$/u.test(cap)) return 'OPS_LOCAL_AGENT_CAP_USD';
   const capUsd = cap === '' ? DEFAULT_CAP_USD : Number(cap);
-  if (capUsd <= 0) return 'OPS_LOCAL_AGENT_CAP_USD';
+  if (capUsd <= 0 || capUsd > MAX_CAP_USD) return 'OPS_LOCAL_AGENT_CAP_USD';
   const seat = SEATS.find((known) => known === env['OPS_LOCAL_AGENT_SEAT']);
   const usageFile = env['OPS_LOCAL_AGENT_SEAT_USAGE_FILE'] || null;
   const gate = { home, capUsd, capConfigured: cap !== '', usageFile };
@@ -134,7 +124,8 @@ function gateSettings(env: Readonly<Record<string, string | undefined>>): GateSe
 /**
  * The approval gate for the tick, on approval.ts and the runner's own gate.
  * A release the gate explains (the cap, an unapproved model) hands the work
- * back asking the owner, once while the ask is open; any other raises nothing.
+ * back refused, asking the owner once while the ask is open when a yes can
+ * lift it; any other release raises nothing.
  */
 export function localGate(
   approval: ApprovalOptions,
@@ -150,6 +141,8 @@ export function localGate(
       if (decision.ok) return;
       const { code } = decision;
       if (code !== 'LOCAL_CAP_REACHED' && code !== 'LOCAL_MODEL_NOT_APPROVED') return;
+      // A yes that cannot lift the cap is never asked for: the work is refused as it stands.
+      if (code === 'LOCAL_CAP_REACHED' && !capRaisable(settings)) return code;
       const raised = await raiseApproval(approval, lease, needOf(code, model));
       return raised.ok ? code : raised.code;
     },

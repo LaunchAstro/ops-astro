@@ -14,7 +14,7 @@ import { mkdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createRunner, type Runner } from './runner.ts';
-import { readSettings } from './settings.ts';
+import { readSettings, type RunnerSettings } from './settings.ts';
 import { identityFromSeed, type IdentityRead } from './seed.ts';
 
 export interface Stack {
@@ -50,6 +50,16 @@ function apiEnvOf(origin: string, credentialsFile: string, installation: string)
     MODEL_BROKER_DESTINATIONS: JSON.stringify([{ key: DESTINATION, origin }]),
     MODEL_BROKER_ROUTES: JSON.stringify([route]),
     MODEL_BROKER_INSTALLATION: installation,
+  };
+}
+
+/** The runner's own gate settings, for the tick started from api.env (gate.ts). */
+function gateEnvOf(settings: RunnerSettings): Record<string, string> {
+  return {
+    OPS_LOCAL_AGENT_HOME: settings.home,
+    OPS_LOCAL_AGENT_SEAT: settings.seat,
+    ...(settings.capConfigured ? { OPS_LOCAL_AGENT_CAP_USD: String(settings.capUsd) } : {}),
+    ...(settings.usageFile === null ? {} : { OPS_LOCAL_AGENT_SEAT_USAGE_FILE: settings.usageFile }),
   };
 }
 
@@ -123,6 +133,18 @@ function credentialOf(seat: string, key: string) {
   };
 }
 
+/** The refusal for a setting api.env could not hold as it is. */
+function unquotable(settings: RunnerSettings, installation: string): StackStart | undefined {
+  if ([settings.home, installation, settings.usageFile ?? ''].every((v) => QUOTABLE.test(v))) {
+    return undefined;
+  }
+  return {
+    ok: false,
+    code: 'SETTING_MALFORMED',
+    message: 'OPS_LOCAL_AGENT_HOME, _INSTALLATION and _SEAT_USAGE_FILE hold no quote or line break',
+  };
+}
+
 // The runner takes the home before anything is written: a second start on a
 // live home is refused with the filed key still the one the first runner serves.
 async function claimHome(
@@ -155,16 +177,13 @@ export async function startStack(
   const read = readSettings({ ...env, OPS_LOCAL_AGENT_KEY: key }, userHome);
   if (!read.ok) return { ok: false, code: read.code, message: read.message };
   const { settings } = read;
+  // The seed is asked first: an unseeded business refuses before the home is made.
+  // Its worker is found or made once per business (seed.ts), whichever start is first.
   const tick = await tickIdentity(env, identityOf);
   if (!tick.ok) return tick;
   const installation = env['OPS_LOCAL_AGENT_INSTALLATION'] || 'local';
-  if (!QUOTABLE.test(settings.home) || !QUOTABLE.test(installation)) {
-    return {
-      ok: false,
-      code: 'SETTING_MALFORMED',
-      message: 'OPS_LOCAL_AGENT_HOME and OPS_LOCAL_AGENT_INSTALLATION hold no quote or line break',
-    };
-  }
+  const malformed = unquotable(settings, installation);
+  if (malformed !== undefined) return malformed;
   mkdirSync(settings.home, { recursive: true, mode: 0o700 });
   // A home someone else owns could hold their symlinks or read the key.
   if (statSync(settings.home).uid !== process.getuid?.()) {
@@ -179,6 +198,7 @@ export async function startStack(
     writeOwnerFile(credentialsFile, JSON.stringify([credentialOf(settings.seat, key)]));
     writeApiEnv(apiEnvFile, {
       ...apiEnvOf(runner.origin, credentialsFile, installation),
+      ...gateEnvOf(settings),
       ...tick.env,
     });
   } catch (error) {

@@ -8,7 +8,7 @@
 // only when absent, through the application role inside that business.
 //
 // Local only: it refuses outside OPS_ENVIRONMENT=local before it opens a file
-// or a database. A business or agent the seed has not made is refused, never
+// or a database, and opens no database off this machine's loopback. A business or agent the seed has not made is refused, never
 // made here.
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -17,11 +17,13 @@ import { fileURLToPath } from 'node:url';
 import { readEnvFile } from '../../packages/core-records/src/env-file.ts';
 import { isBusinessId } from '../../packages/core-records/src/index.ts';
 import {
+  advisoryLock,
   connect,
   connectAsAdmin,
   type AdminConnection,
   type Database,
 } from '../../packages/core-records/src/tenancy/database.ts';
+import { onThisMachine } from './settings.ts';
 import { localOnly } from './tick.ts';
 
 export interface LocalIdentity {
@@ -34,7 +36,7 @@ export type IdentityRead =
   | { readonly ok: true; readonly identity: LocalIdentity }
   | {
       readonly ok: false;
-      readonly code: 'LOCAL_ONLY' | 'NOT_SEEDED';
+      readonly code: 'LOCAL_ONLY' | 'NOT_SEEDED' | 'DATABASE_NOT_LOCAL';
       readonly message: string;
     };
 
@@ -84,6 +86,8 @@ export async function localIdentity(
       [tx.businessId, agentSubject],
     );
     if (agents.length === 0) return notSeeded(`no agent login in ${businessKey}`);
+    // Two stacks starting together find or make the same worker, one after the other.
+    await advisoryLock(tx, `local-agent-worker:${tx.businessId}`);
     const [held] = await tx.query<{ id: string }>(
       `select id from public.actors
         where business_id = $1 and kind = 'worker' and active order by id limit 1`,
@@ -122,6 +126,13 @@ export async function identityFromSeed(
   const adminUrl = env['DATABASE_ADMIN_URL'] || held['DATABASE_ADMIN_URL'];
   const appUrl = env['DATABASE_URL'] || held['DATABASE_URL'];
   if (!adminUrl || !appUrl) return notSeeded('no local database settings');
+  if (!onThisMachine(adminUrl) || !onThisMachine(appUrl)) {
+    return {
+      ok: false,
+      code: 'DATABASE_NOT_LOCAL',
+      message: 'the seed lookup connects only to a database on this machine',
+    };
+  }
   const agentsFile = `${folder}/synthetic-agents.json`;
   if (!existsSync(agentsFile)) return notSeeded('no synthetic-agents.json');
   const agentSubject = agentSubjectOf(readFileSync(agentsFile, 'utf8'), businessKey);

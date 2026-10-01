@@ -34,14 +34,17 @@ client: client-facing agent work stays on the API.
    business id, its agent's login subject (from `.local/synthetic-agents.json`)
    and an active worker actor, which the seed does not make, so the stack makes
    one, once (`apps/local-agent/seed.ts`). The database comes from
-   `DATABASE_URL`/`DATABASE_ADMIN_URL` or `.local/db.env`. A business or agent
-   the seed has not made refuses with `NOT_SEEDED` before anything is written.
+   `DATABASE_URL`/`DATABASE_ADMIN_URL` or `.local/db.env`, on this machine's
+   loopback only (`DATABASE_NOT_LOCAL` otherwise). A business or agent the seed
+   has not made refuses with `NOT_SEEDED` before anything is written.
 
 2. The API, in a terminal that has run `source <home>/api.env` first. That file
    sets `OPS_ENVIRONMENT=local`, `OPS_AGENT_PROVIDER=local-claude` and the four
    `MODEL_BROKER_*` settings: the credentials file, the runner as destination
    `local_claude`, and one route `local_claude` (reach `local`, kind
-   `subscription`). The side panel is then answered by the local session.
+   `subscription`). The side panel is then answered by the local session. It
+   also names the runner's home, seat, and cap and usage file when set, for the
+   tick's approval gate.
 
 3. The tick (`apps/local-agent/tick-main.ts`), in a terminal that has also
    sourced `api.env` and exported `.local/db.env` for `DATABASE_URL`
@@ -74,17 +77,19 @@ client: client-facing agent work stays on the API.
 - A cap set in `OPS_LOCAL_AGENT_CAP_USD` is the cap, whatever `approvals.json`
   says. Unset, the owner's yes on a raise is the cap from the next call on,
   never past USD 30.
-- At the cap a call is refused before anything runs (`LOCAL_CAP_REACHED`) and the
-  runner asks for the owner's yes. Any model but Haiku needs `approvals.json`
-  `{ "models": [...] }`, else `LOCAL_MODEL_NOT_APPROVED`. Until the inbox approval
-  gate is wired these are plain refusals.
+- At the cap a call is refused before anything runs (`LOCAL_CAP_REACHED`). Any
+  model but Haiku needs `approvals.json` `{ "models": [...] }`, else
+  `LOCAL_MODEL_NOT_APPROVED`. The tick hands such work back and files one inbox
+  decision item asking for the owner's yes, which it writes to `approvals.json`.
+  A cap set in `OPS_LOCAL_AGENT_CAP_USD`, or one already at USD 30, is never
+  asked about: a yes could not lift it, so the work is refused as it stands.
 - One runner per home: a second one on the same ledger, or a second stack,
-  refuses to start (`LOCAL_HOME_IN_USE`) before it writes anything.
+  refuses to start (`LOCAL_HOME_IN_USE`) before it writes a file. The seed's
+  worker is found or made under a lock, so two starts on one business share one.
 
 ## What is not here
 
 - A scheduled job fires and starts its run and task; its agent reply lands after
   AW-04 (SL11 U101), by the owner's ruling of 1 October 2026.
-- The inbox decision item for raising the cap or approving another model.
 - A machine-readable seat usage reading; without the usage file, watching the 85%
   stop is the operator's job (`/usage`).

@@ -168,3 +168,14 @@ export function readSettings(
     },
   };
 }
+
+const LOOPBACK: ReadonlySet<string> = new Set(['127.0.0.1', 'localhost', '[::1]']);
+
+/** A database address whose host is this machine's loopback, by exact name. */
+export function onThisMachine(databaseUrl: string): boolean {
+  try {
+    return LOOPBACK.has(new URL(databaseUrl).hostname);
+  } catch {
+    return false;
+  }
+}
