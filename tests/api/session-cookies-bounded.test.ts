@@ -231,4 +231,18 @@ describe('FIX-B1 rs2-2 (b): a tab whose cookie has gone clears no other live tab
     expect(cookies.sessions()).toBe(6);
     for (const tab of tabs.slice(1)) expect(cookies.holds(cookieNameFor(tab))).toBe(true);
   });
+  it('an eighth tab signs in, then tab 1 reads before it: only tab 2 of the others is cleared', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const api = build();
+    const cookies = jar();
+    const { tabs } = await sevenTabs(api, cookies);
+    const eighth = await newTab(api, cookies, 8);
+    expect(cookies.sessions()).toBe(7);
+    const own = cookieNameFor(tabs[0] ?? '');
+    const read = await readAs(api, cookies, tabs[0] ?? '');
+    expect(read.status).toBe(401);
+    expect(read.cleared.filter((name) => name !== own)).toEqual([cookieNameFor(tabs[1] ?? '')]);
+    expect(cookies.sessions()).toBe(6);
+    expect(cookies.holds(cookieNameFor(eighth))).toBe(true);
+  });
 });
