@@ -11,6 +11,7 @@ import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { PanelDoorButton, type PanelDoor } from '../../apps/web/src/screens/task/Perspectives.tsx';
 import { found, server, task, tick } from './task-page-stub.tsx';
 import { badge, json, mount, open, page, typeInto, unmountAll } from './perspective-support.tsx';
+import { unheld } from './task-look.ts';
 
 // A test that fails before its own unmount would leave its page mounted.
 afterEach(unmountAll);
@@ -136,5 +137,7 @@ describe('MP-4-3 panel doors placed on the page', () => {
 });
 
 describe('MP-4-3 visual match', () => {
-  it.todo('matches the mockup at 1480, 900 and 390, light and dark (MP-1-7 harness)');
+  it('the door to the panel is held to the mockup at 1480, 900 and 390, light and dark', () => {
+    expect(unheld(['task.panel-door'])).toEqual([]);
+  });
 });

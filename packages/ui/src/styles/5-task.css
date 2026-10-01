@@ -34,11 +34,19 @@
   gap: var(--s-3);
 }
 /* The facts band's frame (DS-TASK-11): 5 columns, 2 below 1280, 1 below 641. */
+/* DS-COMP-26 read-only: the `.taskform` frame (16 24 24 on --surface-2) and
+   its `.tf__grid` gaps (12 16), fields plain inside it as the mockup draws. */
 .tpr__band {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--s-3) var(--s-4);
   margin: 0;
+  padding: var(--s-4) var(--s-5) var(--s-5);
   background: var(--surface-2);
+}
+.tpr__band > .tf__row {
+  padding: 0;
+  border: 0;
 }
 @media (width <= 1279px) {
   .tpr__band {
@@ -147,11 +155,41 @@
   text-transform: var(--type-eyebrow-case);
   color: var(--ink-faint);
 }
+/* A field's value as words (TP-10): DS-TOK-117 in the secondary ink. */
 .sb__state {
-  font: var(--type-small);
-  letter-spacing: var(--type-small-tracking);
-  text-transform: var(--type-small-case);
-  color: var(--text);
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+  color: var(--text-2);
+}
+
+/* The dock task panel's field grid (DP-18 to DP-25, `.sb__grid`): label and
+   control pairs, two to a line, one below 641; a field that is more than a
+   pair (Assign to AI, the tags, a refusal) takes the whole line. */
+.dtp__fields {
+  display: grid;
+  grid-template-columns: 4.4rem minmax(0, 1fr) 4.4rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.4rem var(--s-3);
+}
+@media (width <= 640px) {
+  .dtp__fields {
+    grid-template-columns: 4.4rem minmax(0, 1fr);
+  }
+}
+.dtp__fields > :is(.field, .tf__tags, .field__error, p) {
+  grid-column: 1 / -1;
+}
+/* DS-PRIM-5, the field select, on the panel and the page's Status: 37 tall. */
+.dtp__fields select.input,
+[data-task-status] select.input {
+  box-sizing: border-box;
+  block-size: 2.3125rem;
+  padding: 0 var(--s-3);
+  background: var(--paper);
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
 }
 
 /* -- The sliding tab set (S3/S4 switch, and the panel's conversations) ---- */
