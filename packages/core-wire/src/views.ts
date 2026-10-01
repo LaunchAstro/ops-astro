@@ -602,7 +602,7 @@ export interface ServiceHealthSection {
 
 /**
  * One security alert S0-2's forwarder raised, as the operations view lists it
- * (C55, TR-SEC-9): its kind, the time it was raised (ISO 8601) and fixed plain
+ * (C55): its kind, the time it was raised (ISO 8601) and fixed plain
  * words for what it concerns; 'An alert of an unknown kind' for a kind the
  * view has no words for. Never an id, a secret or record content.
  */

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The security alert log (C55, TR-SEC-9, migration 0067): each alert the
+// The security alert log (C55, migration 0067): each alert the
 // forwarder raised, by kind and time alone. The alerts are the installation's
 // and the detector counts every business's signals together, so an alert's
 // time could tell one business when another's people failed a sign-in or

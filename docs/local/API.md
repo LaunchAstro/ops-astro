@@ -1648,7 +1648,7 @@ or every business while none is set, reads `[]`.
 `lastTestedRestore` is `{ at, stale }`: `at` the date of the last successful
 tested restore (ISO 8601), or `null` while no drill has passed, and `stale`
 true once that date is older than the store's restore window
-(`backups.settings.restore_days`, 35 days, the window past which the restore
+(`backups.settings.restore_days`, the window past which the restore
 heartbeat is withheld and the restore alert fires), or while none has passed.
 The drill's receipt stays in the backup store, which the API cannot reach; a
 pass the store took also stamps the date on the installation's database
