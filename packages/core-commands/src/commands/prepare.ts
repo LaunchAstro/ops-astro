@@ -552,7 +552,11 @@ export async function prepareCommand(
   // The one step-up (C59), inside the grant check and straight after it: only
   // a key in the money set is asked, so a caller without the grant is told
   // that first, and nothing after this line runs on a stale sign-in.
-  const stale = await refuseStaleMoneyStep(tx, session, declaration);
+  // DO NOT MERGE: REVIEW-3B-3 mutation, the planning cap skips the money step-up.
+  const stale =
+    declaration.name === 'budget.set_planning_cap'
+      ? undefined
+      : await refuseStaleMoneyStep(tx, session, declaration);
   if (stale !== undefined) return refused(stale);
   // A field the row does not describe, after authority as on the agent prefix:
   // a caller without the right is told that first (R4, `external-party`).
