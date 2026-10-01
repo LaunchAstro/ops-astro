@@ -51,7 +51,28 @@ describe('C54 the answers at the budget stop on the Agent pane', () => {
   });
 
   it('C54 consolidated stop answered: a top-up sends the amount in the ask’s currency, then reads again', async () => {
-    const { page, sent, reads } = await open(stoppedAt(3));
+    // The ask is NZD while the head version and the task's envelope are AUD,
+    // so only the ask's own currency passes.
+    const world = stoppedAt(3);
+    const { page, sent, reads } = await open({
+      ...world,
+      stops: (world.stops ?? []).map((ask) => Object.assign({}, ask, { currency: 'NZD' })),
+      envelopes: [
+        {
+          id: 'env-54',
+          state: 'open',
+          maximumMinor: 1_800,
+          heldMinor: 1_800,
+          actualMinor: 0,
+          currency: 'AUD',
+          openedAt: '2026-09-29T01:00:00.000Z',
+          closedAt: null,
+          openedBy: { versionId: 'v-54' },
+          cap: { key: 'agent_work', limitMinor: 100_000, currency: 'AUD' },
+        },
+      ],
+    });
+    expect(page.find('[data-tokens="allowance"]')?.textContent).toContain('AUD');
     const before = reads();
     await type(page, '[data-stop="amount"]', '2.50');
     await press(page, '[data-stop="top-up"]');
@@ -63,7 +84,7 @@ describe('C54 the answers at the budget stop on the Agent pane', () => {
           recordId: TASK_ID,
           runId: RUN_ID,
           amountMinor: 250,
-          currency: 'AUD',
+          currency: 'NZD',
         },
       },
     ]);
