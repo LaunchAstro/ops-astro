@@ -51,6 +51,7 @@ import { only, RuntimeInvariantError } from './only.ts';
 import { AffectedSetChanged } from './rediscovery.ts';
 import { classifyUnderLocks, endLease, type Classification } from './recovery.ts';
 import { recordDrop, type DropCause } from './recovery/drop.ts';
+import { readProjectedPlan } from './plan-binding.ts';
 import { roundsUsed, writeProposal } from './proposal-writer.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 import { appendRunEvent, type RunEvent } from './run-events.ts';
@@ -534,6 +535,8 @@ async function writeSuccessor(
   locks: LockSet,
 ): Promise<RuntimeResult<Successor> | null> {
   if (successor === undefined) return null;
+  // The successor's step keeps the plan bound now, as a proposal's does (0223).
+  const plan = await readProjectedPlan(tx, found.task_id);
   return await writeProposal(
     tx,
     {
@@ -547,6 +550,7 @@ async function writeSuccessor(
       currency: successor.currency,
       payload: successor.payload,
       step: successor.step,
+      planRecordId: plan?.planRecordId ?? null,
       expiresAt: successor.expiresAt,
     },
     locks,

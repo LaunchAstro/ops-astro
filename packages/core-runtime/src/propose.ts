@@ -61,6 +61,8 @@ export interface ProposeRequest {
     readonly payload: Record<string, unknown>;
     readonly planStep?: string;
   };
+  /** The bound plan record the command read under the task lock (0223), or null; see `ProposalWrite`. */
+  readonly planRecordId?: string | null;
   readonly expiresAt: Date;
   /** Present to add a version to a live lineage; absent to open one. */
   readonly lineageId?: string;
@@ -340,6 +342,7 @@ export async function proposeUnderLocks(
       currency: request.currency,
       payload: request.payload,
       step: request.step,
+      ...(request.planRecordId === undefined ? {} : { planRecordId: request.planRecordId }),
       expiresAt: request.expiresAt,
     },
     locks,
