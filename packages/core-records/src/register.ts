@@ -309,6 +309,14 @@ const ROWS_HEAD = [
     meaning: 'This person has a second factor and the sign-in did not use it',
     source: 'C59 LF-4',
   },
+  // C39-T. A person an accepted invitation placed sets up the second factor
+  // before any content shows: 401, the door that sends them to set it up.
+  {
+    code: 'AUTH_SECOND_FACTOR_SETUP_REQUIRED',
+    status: 401,
+    meaning: 'This person joined by invitation and has not set up a second factor yet',
+    source: 'C39-T',
+  },
   {
     code: 'STEP_UP_REQUIRED',
     status: 403,

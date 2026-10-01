@@ -2321,6 +2321,13 @@ business the login reaches, and removing it clears it in every one
 and the provider's factor id). That holds on every person route except the
 three below, which are how the sign-in gets its code.
 
+Login resolution refuses `AUTH_SECOND_FACTOR_SETUP_REQUIRED` 401 when the
+person was placed by an accepted invitation of this business and the login
+holds no verified second factor (C39-T, the gate before the first real client
+data). Another business's invitation never counts, and a person no invitation
+placed is served as before. The same three factor routes serve them, so the
+first sign-in sets the factor up before any content shows.
+
 A command whose declared key is in the money set (every `billing` key,
 `offer:decide`, `mandate:manage`, `spend:decide`) is judged once, in
 `prepare.ts`, straight after its grant check: a team member needs a second

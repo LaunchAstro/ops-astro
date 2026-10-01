@@ -90,13 +90,14 @@ async function acceptAs(
 }
 
 const SAID: Readonly<Record<Ended, string>> = {
-  enrolled: 'Your login is ready. Sign in with your email address and the password you just set.',
+  enrolled:
+    'Your login is ready. Sign in with your email address and the password you just set. Your first sign-in has you set up an authenticator app before any work shows.',
   sign_in:
     'This email address already has a login. Sign in with it to accept the invitation. Your link still works.',
   invalid:
     'This link has been used, has expired or has been replaced by a newer invitation. Ask whoever invited you to send it again.',
   joined:
-    'You have joined the team with the login you are signed in with. To work there, choose its business when you next sign in.',
+    'You have joined the team with the login you are signed in with. To work there, choose its business when you next sign in. Unless this login has one already, you set up an authenticator app before any work shows.',
   not_yours:
     'This link cannot be accepted with this login. It may have been used, expired or been replaced, or it was sent to another email address than the one you are signed in with.',
 };

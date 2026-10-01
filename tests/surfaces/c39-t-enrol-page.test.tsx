@@ -180,6 +180,25 @@ describe('C39-T enrolment page', () => {
     expect(went).toStrictEqual([pathTo('agency:projects-board')]);
   });
 
+  it('C39-T second factor first: the done step says the first sign-in sets up an authenticator app before any work shows', async () => {
+    for (const [state, signedIn] of [
+      ['enrolled', false],
+      ['joined', true],
+    ] as const) {
+      // oxlint-disable-next-line no-await-in-loop
+      const { view } = await open({ status: 200, body: { state } }, signedIn);
+      // oxlint-disable-next-line no-await-in-loop
+      await (signedIn ? view.click('[data-enrol="signed-in"] button') : submit(view));
+      // oxlint-disable-next-line no-await-in-loop
+      await settle();
+      // oxlint-disable-next-line no-await-in-loop
+      await settle();
+      expect(view.find(`[data-enrol="${state}"]`)?.textContent).toContain(
+        'set up an authenticator app before any work shows',
+      );
+    }
+  });
+
   it('C39-T enrolment page: signed in, a link refused for this login is said once, and an ended session keeps the offer', async () => {
     const refused = await open({ status: 404, body: { code: 'ENROLMENT_LINK_INVALID' } }, true);
     await refused.view.click('[data-enrol="signed-in"] button');

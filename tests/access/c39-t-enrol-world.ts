@@ -230,10 +230,20 @@ export async function boundTo(business: string, subject: string): Promise<string
   return row?.person_id;
 }
 
-/** The login a provider subject resolves to in one business, or the refusal's code. */
-export async function sessionOf(business: string, subject: string): Promise<Session | string> {
+/**
+ * The login a provider subject resolves to in one business, or the refusal's
+ * code. Asked as the factor routes ask it (`enrolling`): an invitee with no
+ * second factor is refused content until they set one up, which
+ * `c39-t-second-factor-first` proves; here the binding is what is read.
+ * `required` asks the content gate.
+ */
+export async function sessionOf(
+  business: string,
+  subject: string,
+  rule: 'required' | 'enrolling' = 'enrolling',
+): Promise<Session | string> {
   return await w.db.app.withBusiness(business, async (tx) => {
-    const resolved = await resolveLogin(tx, { provider: 'supabase', subject });
+    const resolved = await resolveLogin(tx, { provider: 'supabase', subject }, rule);
     return 'code' in resolved ? resolved.code : resolved;
   });
 }

@@ -16,7 +16,6 @@
 
 import { describe, expect, it } from 'vitest';
 import { acceptInvitation } from '../../packages/core-commands/src/index.ts';
-import { resolveLogin, type Session } from '../../packages/core-records/src/index.ts';
 import {
   bindVia,
   boundTo,
@@ -27,6 +26,7 @@ import {
   mountOver,
   passwordFor,
   rowsIn,
+  sessionOf,
   spentOf,
   tokenTo,
   useEnrolWorld,
@@ -48,14 +48,6 @@ useEnrolWorld();
 
 const REFUSED = { status: 404, body: { code: 'ENROLMENT_LINK_INVALID' }, cookie: null };
 const SIGN_IN = { status: 200, body: { state: 'sign_in' }, cookie: null };
-
-/** The login a provider subject resolves to in one business, or the refusal's code. */
-async function sessionOf(business: string, subject: string): Promise<Session | string> {
-  return await w.db.app.withBusiness(business, async (tx) => {
-    const resolved = await resolveLogin(tx, { provider: 'supabase', subject });
-    return 'code' in resolved ? resolved.code : resolved;
-  });
-}
 
 /** The identity rows a business holds, to show a refusal wrote none. */
 async function identityRows(business: string): Promise<readonly number[]> {
@@ -107,6 +99,8 @@ describe.skipIf(noDatabase)('C39-T enrolment', () => {
     const session = await sessionOf(w.alpha, subject);
     expect(session).toMatchObject({ businessId: w.alpha, personId: await personOf(id) });
     expect(session).toMatchObject({ roleKey: 'member' });
+    // Bound, and no content yet: the first sign-in sets up the second factor.
+    expect(await sessionOf(w.alpha, subject, 'required')).toBe('AUTH_SECOND_FACTOR_SETUP_REQUIRED');
     const audit = await auditOf(id);
     expect(audit.map((row) => row.command)).toStrictEqual([
       'invitation.create',

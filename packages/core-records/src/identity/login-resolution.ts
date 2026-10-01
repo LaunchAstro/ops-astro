@@ -31,10 +31,11 @@ type Refusal = CommandRefusal<IdentityRefusalCode>;
 const refuse = (code: IdentityRefusalCode, fixes: readonly string[]): Refusal =>
   refuseCommand(code, [], fixes);
 import { recordAuthenticationAttempt } from './authentication-attempts.ts';
-import { loginHasVerifiedFactor } from './second-factor.ts';
+import { FACTOR_GATE_FIXES, factorGate, type SecondFactorRule } from './factor-gate.ts';
 import { NO_ASSURANCE, type Assurance, type VerifiedSubject } from './verified-subject.ts';
 
 export type { VerifiedSubject } from './verified-subject.ts';
+export type { SecondFactorRule } from './factor-gate.ts';
 
 /** What a resolved call runs as. The business is the server's value, not the caller's. */
 export interface Session {
@@ -59,13 +60,6 @@ export interface Session {
   readonly credentialScope?: readonly string[];
 }
 
-/**
- * Whether a sign-in without the second factor is refused for a person who has
- * one. `required` everywhere but the factor routes, which serve the sign-in
- * that has not yet given its code (C59), and `recovering`, the reset's alone
- * (C40): it serves a recovery session, which every other rule refuses. */
-export type SecondFactorRule = 'required' | 'enrolling' | 'recovering';
-
 interface ResolutionRow {
   readonly login_id: string;
   readonly person_id: string | null;
@@ -76,6 +70,8 @@ interface ResolutionRow {
   readonly second_factor_verified: string | null;
   /** Whether the login's factors are kept by subject (0064), so every business reads them. */
   readonly by_subject: boolean;
+  /** Whether the installation has invitations (C39-T); one stopped before them has none. */
+  readonly invitations: boolean;
 }
 
 export const NO_MEMBERSHIP_FIXES = [
@@ -85,9 +81,6 @@ export const NO_MEMBERSHIP_FIXES = [
 
 const INACTIVE_FIXES = ['ask an administrator of this business to reactivate this person'] as const;
 const ENDED_FIXES = ['sign in again: this session was signed out'] as const;
-const SECOND_FACTOR_FIXES = [
-  'enter the code from your authenticator app to finish signing in',
-] as const;
 
 // Left joins rather than four round trips, because the four facts are read under one snapshot and
 // one policy evaluation. Row security scopes every table to the business the wrapper set, so no
@@ -102,7 +95,8 @@ const RESOLUTION = `
          -- Read through the row's json so this one query serves a database
          -- from before 0049, which has no such column and so no factor.
          to_jsonb(p) ->> 'second_factor_verified' as second_factor_verified,
-         to_regclass('ops.second_factor_subjects') is not null as by_subject
+         to_regclass('ops.second_factor_subjects') is not null as by_subject,
+         to_regclass('public.invitations') is not null as invitations
     from public.logins l
     left join public.person_logins pl
       on pl.business_id = l.business_id and pl.login_id = l.id and pl.active
@@ -162,17 +156,18 @@ export async function standingOf(
     return refuse('AUTH_SESSION_EXPIRED', ENDED_FIXES);
   }
 
-  // After the person is known and active, and before anything is served: a
-  // sign-in that stopped at the password is not yet a sign-in for a login
-  // that verified a second factor, in any business (C59, LF-4).
+  // After the person is known and active, and before anything is served:
+  // C59's second factor, and C39-T's setup for an invited person (`factor-gate.ts`).
   const assurance = presented.assurance ?? NO_ASSURANCE;
-  const short = assurance.level !== 'aal2';
-  if (rule === 'required' && short && (await factorHeld(tx, presented.subject, found))) {
-    return await recordRefusal(
-      tx,
-      presented,
-      refuse('AUTH_SECOND_FACTOR_REQUIRED', SECOND_FACTOR_FIXES),
-    );
+  const person = {
+    personId: found.person_id,
+    mirrored: found.second_factor_verified,
+    bySubject: found.by_subject,
+    invitations: found.invitations,
+  };
+  const gate = await factorGate(tx, presented.subject, person, assurance, rule);
+  if (gate !== undefined) {
+    return await recordRefusal(tx, presented, refuse(gate, FACTOR_GATE_FIXES[gate]));
   }
 
   return {
@@ -183,12 +178,6 @@ export async function standingOf(
     roleKey: found.role_key,
     assurance,
   };
-}
-
-/** A factor verified through this business (the mirror) or, from 0064, any (C59, LF-4). */
-async function factorHeld(tx: TenantQuery, subject: string, found: ResolutionRow) {
-  if (found.second_factor_verified === 'true') return true;
-  return found.by_subject && (await loginHasVerifiedFactor(tx, subject));
 }
 
 /**

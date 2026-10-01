@@ -14,6 +14,10 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { executeRead } from '../../packages/core-commands/src/index.ts';
+import {
+  recordFactorEnrolled,
+  recordFactorVerified,
+} from '../../packages/core-records/src/identity/second-factor.ts';
 import { grantTo } from '../commands/fixture.ts';
 import {
   bindVia,
@@ -101,7 +105,8 @@ describe.skipIf(noDatabase)('C39-T enrolment signed in', () => {
     );
     expect(login?.worker).toBe('worker');
 
-    // The person acts in alpha under that login: given a read, they read their own capabilities.
+    // The person acts in alpha under that login: given a read, they read their own capabilities,
+    // once the second factor is set up (C39-T second factor first), on a sign-in that used it.
     const [actor] = await w.db.admin.execute<{ id: string }>(
       'select id from public.actors where person_id = $1',
       [person],
@@ -110,9 +115,21 @@ describe.skipIf(noDatabase)('C39-T enrolment signed in', () => {
     await w.db.app.withBusiness(w.alpha, async (tx) => {
       await grantTo(tx, { personId: person, actorId: String(actor?.id), presented }, 'read');
     });
-    const read = await executeRead(w.db.app, w.alpha, presented, {
-      read: 'session.capabilities',
+    const capabilities = { read: 'session.capabilities' } as const;
+    expect(await executeRead(w.db.app, w.alpha, presented, capabilities)).toMatchObject({
+      code: 'AUTH_SECOND_FACTOR_SETUP_REQUIRED',
     });
+    await w.db.app.withBusiness(w.alpha, async (tx) => {
+      const factor = { personId: person, provider: 'supabase', providerFactorId: 'factor-bound' };
+      const enrolled = await recordFactorEnrolled(tx, factor);
+      await recordFactorVerified(tx, { personId: person, factorId: enrolled.id, subject });
+    });
+    const now = Math.floor(Date.now() / 1000);
+    const withFactor = {
+      ...presented,
+      assurance: { level: 'aal2', signedInAt: now, factorAt: now } as const,
+    };
+    const read = await executeRead(w.db.app, w.alpha, withFactor, capabilities);
     expect(read).toMatchObject({ personId: person });
 
     // Used a second time, with the same session, the link does nothing and asks nothing.

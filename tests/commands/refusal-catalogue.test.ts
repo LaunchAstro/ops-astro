@@ -73,6 +73,7 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['AUTH_NO_AGENT_IDENTITY', 401, 'caller'],
   ['AUTH_SESSION_EXPIRED', 401, 'caller'],
   ['AUTH_SECOND_FACTOR_REQUIRED', 401, 'caller'],
+  ['AUTH_SECOND_FACTOR_SETUP_REQUIRED', 401, 'caller'],
   ['STEP_UP_REQUIRED', 403, 'caller'],
   ['FRESH_SIGN_IN_REQUIRED', 403, 'caller'],
   ['FACTOR_ALREADY_ENROLLED', 409, 'caller'],
