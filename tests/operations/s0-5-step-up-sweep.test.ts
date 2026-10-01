@@ -32,12 +32,15 @@ import { serverUrl, tokenFor } from '../acceptance/world.ts';
 
 /**
  * The money commands this sweep proves. A money command declared later joins here:
- * the four-eyes threshold is `spend:decide` (MP-2-11, owner line 71).
+ * the four-eyes threshold is `spend:decide` (MP-2-11, owner line 71); the top-up
+ * at a budget stop is C54's answer (`C54 recent sign-in`), the planning cap AW-04's.
  */
 const SWEPT: readonly string[] = [
   'budget.top_up',
   'budget.record_outcome',
   'budget.write_off',
+  'budget.set_planning_cap',
+  'run.top_up',
   'settings.set_four_eyes_threshold',
 ];
 

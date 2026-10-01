@@ -92,7 +92,11 @@ export const signed = (member: World['ada']): Signed => ({
   businessKey: member.businessKey,
 });
 
-/** A new person of `business`, granted `billing:decide` on the whole business or on one task. */
+/**
+ * A new person of `business`, granted `billing:decide` on the whole business or
+ * on one task, signed in with the second factor just now: a team member's money
+ * act asks C59's step-up (`C54 recent sign-in`).
+ */
 export async function billingHolder(
   world: World,
   business: BusinessId,
@@ -106,7 +110,8 @@ export async function billingHolder(
     const scope = taskId === undefined ? undefined : { kind: 'record' as const, id: taskId };
     await grantTo(tx, member, 'decide', scope, false, 'billing');
   });
-  return { ...member, token: await tokenFor(member.presented.subject), businessKey };
+  const token = await tokenFor(member.presented.subject, { secondFactor: true });
+  return { ...member, token, businessKey };
 }
 
 /** An external client of alpha on the one task `sharer` shares, also granted `billing:decide` on it. */
