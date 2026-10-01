@@ -60,7 +60,7 @@ function credentialReads(source: string): readonly string[] {
     const carries =
       /_CREDENTIALS_FILE\b/u.test(args) ||
       [...tainted].some((name) =>
-        new RegExp(`(?<![\\w$])${name.replace('$', '\\$')}(?![\\w$])`, 'u').test(args),
+        new RegExp(`(?<![\\w$])${name.replaceAll('$', '\\$')}(?![\\w$])`, 'u').test(args),
       );
     if (carries) {
       const line = source.slice(0, match.index).split('\n').length;
