@@ -13,7 +13,7 @@ import { builtPages } from '../visual/report.ts';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 
-it("Sol proof, criterion correctness: MP-1-7's every-page check holds with SL13's Connections route registered", () => {
+it("MP-1-7's every-page check holds with SL13's Connections route registered", () => {
   expect(builtPages()).toContain('agency:connections');
   const run = spawnSync(
     'pnpm',

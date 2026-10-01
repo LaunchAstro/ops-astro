@@ -25,7 +25,7 @@ const detail = (answer: Answer): Record<string, unknown> =>
   (answer.body['detail'] ?? {}) as Record<string, unknown>;
 
 // eslint-disable-next-line max-lines-per-function -- one world, the cases that share it
-describe.skipIf(serverUrl === undefined)('Sol proofs, C41-A inbox raise', () => {
+describe.skipIf(serverUrl === undefined)('C41-A inbox raise: the move follows its owner', () => {
   let controls: Controls;
   let admin: Member;
   let assignee: Member;
@@ -165,7 +165,7 @@ describe.skipIf(serverUrl === undefined)('Sol proofs, C41-A inbox raise', () => 
     }
   };
 
-  it('Sol proof, criterion races: a step opening while its task is being assigned leaves the move with the assignee alone, not a stale item to the starter too', async () => {
+  it('a step opening while its task is being assigned leaves the move with the assignee alone, not a stale item to the starter too', async () => {
     const steps = await onboard('Made-up Client Race');
     const kickoff = String(steps.get('kickoff-call'));
     // The result that opens the kickoff step comes while its assignment is uncommitted.
@@ -214,7 +214,7 @@ describe.skipIf(serverUrl === undefined)('Sol proofs, C41-A inbox raise', () => 
     expect(await openOn(kickoff)).toStrictEqual([]);
   });
 
-  it('Sol proof, criterion CS-15.4: unassigning a ready person step leaves it parked with an item to the starter', async () => {
+  it('unassigning a ready person step leaves it parked with an item to the starter', async () => {
     const steps = await onboard('Made-up Client Unassign');
     const kickoff = String(steps.get('kickoff-call'));
     await done(steps, 'welcome-email');
@@ -250,7 +250,7 @@ describe.skipIf(serverUrl === undefined)('Sol proofs, C41-A inbox raise', () => 
     expect(await openOn(grant)).toStrictEqual([]);
   });
 
-  it('Sol proof, criterion CS-15.4: a person who takes a ready person step themselves holds its item', async () => {
+  it('a person who takes a ready person step themselves holds its item', async () => {
     const steps = await onboard('Made-up Client Self');
     const kickoff = String(steps.get('kickoff-call'));
     await done(steps, 'welcome-email');
@@ -260,7 +260,7 @@ describe.skipIf(serverUrl === undefined)('Sol proofs, C41-A inbox raise', () => 
     // The move is now the assignee's: the starter's item went, and one is theirs.
     expect(await openOn(kickoff)).toStrictEqual([selfAssigner.personId]);
   });
-  it('Sol proof, criterion isolation: a step whose task moved to another client before it opens raises nothing for this onboarding', async () => {
+  it('a step whose task moved to another client before it opens raises nothing for this onboarding', async () => {
     const steps = await onboard('Made-up Client Moved');
     const other = await as(admin, 'record.create', {
       type: 'client',
@@ -286,7 +286,7 @@ describe.skipIf(serverUrl === undefined)('Sol proofs, C41-A inbox raise', () => 
     expect(await openOn(kickoff)).toStrictEqual([]);
   });
 
-  it('Sol proof, criterion tests: a step its assignee took before it opened raises its item to that assignee when it opens', async () => {
+  it('a step its assignee took before it opened raises its item to that assignee when it opens', async () => {
     // Green on 94b5963; red with the assignee leg of `raiseStepMoves` removed,
     // which every case in c41-a-inbox-raise.test.ts survives (check script).
     const steps = await onboard('Made-up Client Took');

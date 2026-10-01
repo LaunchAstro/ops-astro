@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Opus interim review of SL13's take (75527ae..9c625d4), finding M1. Sits in
-// tests/review/. 969fa33 cites b0/SL11's f4fd674 in a test comment; that
+// tests/review/. 969fa33 cited a b0/SL11 commit in a test comment; that
 // commit is not in this head's history, so the docs history guard
 // (authority-proofs-and-history-docs 'resolve in the history of this head')
 // is red. Closed by 4b45853 (outside the reviewed range).
@@ -14,7 +14,7 @@ import { expect, it } from 'vitest';
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const FILES = ['tests/api/api-1-isolation-delegation.ts', 'tests/ci/upgrade-drill.test.ts'];
 
-it("Sol proof, criterion correctness: the take's own test comments cite only commits in this head's history", () => {
+it("the take's own test comments cite only commits in this head's history", () => {
   const unreachable: string[] = [];
   for (const file of FILES) {
     const text = readFileSync(`${root}${file}`, 'utf8');

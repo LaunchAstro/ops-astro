@@ -2,7 +2,7 @@
 //
 // What a look probe and a screen's probe list are. A leaf: each screen's file
 // and `index.ts` import these from here, so no screen file imports the index
-// that lists it (the cycle ui/b1-polish broke the same way at e10e25f).
+// that lists it (the cycle ui/b1-polish broke the same way).
 
 export interface LookProbe {
   /** `<screen>.<element>`, unique across screens. */

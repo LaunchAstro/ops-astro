@@ -11,7 +11,7 @@ import { expect, it } from 'vitest';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 
-it('Sol proof, criterion correctness: the merged Connections page draws every text in one of the 23 type styles (MP-1-4 visual match)', () => {
+it('the merged Connections page draws every text in one of the 23 type styles (MP-1-4 visual match)', () => {
   const run = spawnSync(
     'pnpm',
     ['exec', 'vitest', 'run', 'tests/surfaces/mp-1-4-type-scale.test.ts', '-t', 'visual match'],
