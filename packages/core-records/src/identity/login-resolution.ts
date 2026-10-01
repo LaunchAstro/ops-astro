@@ -235,8 +235,8 @@ export async function standsOnShares(tx: TenantQuery, personId: string): Promise
 
 /**
  * Whether the session the token belongs to has ended (C58): signed out, in any
- * business the login reaches (0065), or one of the login's other sessions
- * ended from any business (0069): not the kept one, first signed in at or
+ * business the login reaches (0061), or one of the login's other sessions
+ * ended from any business (0063): not the kept one, first signed in at or
  * before that ending. A token naming no session has none to end.
  */
 async function sessionEnded(tx: TenantQuery, presented: VerifiedSubject): Promise<boolean> {

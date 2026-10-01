@@ -8,7 +8,7 @@
 // (and so after a factor change, which uses the same helper) it is still
 // served in bravo: until its token expires, or for the whole 12 hours when the
 // provider's `scope=others` sign-out did not land. Fixed by a subject-wide
-// ending (0069): a session of that login, not the kept one, whose first
+// ending (0063): a session of that login, not the kept one, whose first
 // sign-in is at or before the ending is refused in every business; a sign-in
 // after it is served.
 

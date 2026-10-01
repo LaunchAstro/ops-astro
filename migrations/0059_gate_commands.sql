@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0062 S0-5: the gate's own commands (ORCH38). A gate item is ticked with its
+-- 0059 S0-5: the gate's own commands (ORCH38). A gate item is ticked with its
 -- evidence link (`operations.record_gate_item`) and the installation moves
 -- from made-up to real data (`operations.change_installation_mode`), each a
 -- person's act under `operations:manage` in the business that operates the

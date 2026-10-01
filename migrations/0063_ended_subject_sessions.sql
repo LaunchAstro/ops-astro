@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0069 other sessions ended in every business (C58, ORCH47). A person ending
+-- 0063 other sessions ended in every business (C58, ORCH47). A person ending
 -- their other sessions (or changing a second factor) ends every session of
 -- their sign-in login but the one they keep, in every business the login
 -- reaches, including sessions this business never saw.

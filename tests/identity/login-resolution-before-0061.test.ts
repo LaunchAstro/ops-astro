@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Login resolution on an installation stopped before C58's session endings
-// (0065 ended_provider_sessions, 0069 ended_subject_sessions). The upgrade
+// (0061 ended_provider_sessions, 0063 ended_subject_sessions). The upgrade
 // suites seed through the runtime at old migration prefixes with tokens that
 // name no session, so resolution must not reach for either table when there is
 // no session to have ended: a token with no `session_id` is served as before
@@ -33,10 +33,10 @@ import {
 const serverUrl = databaseUrlFromEnvironment();
 
 if (serverUrl === undefined) {
-  console.warn('login-resolution-before-0065: DATABASE_URL is unset, so nothing below ran.');
+  console.warn('login-resolution-before-0061: DATABASE_URL is unset, so nothing below ran.');
 }
 
-const BEFORE_0065 = readMigrations('migrations').filter((m) => m.version.slice(0, 4) < '0065');
+const BEFORE_0061 = readMigrations('migrations').filter((m) => m.version.slice(0, 4) < '0061');
 
 describe.skipIf(serverUrl === undefined)('login resolution before the session endings', () => {
   let db: EmptyDatabase;
@@ -44,8 +44,8 @@ describe.skipIf(serverUrl === undefined)('login resolution before the session en
   let ada: string;
 
   beforeAll(async () => {
-    db = await createEmptyDatabase({ part: 'lr0064' });
-    await applyMigrations(db.admin, BEFORE_0065);
+    db = await createEmptyDatabase({ part: 'lr0060' });
+    await applyMigrations(db.admin, BEFORE_0061);
     alpha = await insertBusiness(db.app, 'alpha');
     await db.app.withBusiness(alpha, async (tx) => {
       ada = await insertPerson(tx, 'Ada');
@@ -59,7 +59,7 @@ describe.skipIf(serverUrl === undefined)('login resolution before the session en
     await db?.drop();
   });
 
-  it('serves a token naming no session on an installation stopped at 0064', async () => {
+  it('serves a token naming no session on an installation stopped at 0060', async () => {
     const session = await db.app.withBusiness(alpha, (tx) =>
       resolveLogin(tx, { provider: 'supabase', subject: 'sub-ada' }),
     );

@@ -31,16 +31,16 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['s', 'ops.slots'],
   // 0058 (S0-5): the installation's mode and the gate items are read by the
   // application through first_client_readiness().
-  // 0062 (S0-5, ORCH38): the gate's own commands write through the app, so it
+  // 0059 (S0-5, ORCH38): the gate's own commands write through the app, so it
   // may insert a gate item, and update `mode` alone on the installation. A
   // column grant is not a table letter: this suite's update sets the first
   // column, which stays refused; s0-5-gate-commands proves the column.
   ['s', 'ops.installation'],
   ['si', 'ops.gate_items'],
-  // 0065 (C58): an ended provider session, installation-wide; the application
+  // 0061 (C58): an ended provider session, installation-wide; the application
   // inserts and reads its id column alone, and changes or removes nothing.
   ['si', 'ops.ended_provider_sessions'],
-  // 0069 (C58): other sessions ended in every business, by subject digest.
+  // 0063 (C58): other sessions ended in every business, by subject digest.
   ['si', 'ops.ended_subject_sessions'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],
   ['si', 'alerts handback_reports operations run_events'],
@@ -97,10 +97,10 @@ const REVOKED: Readonly<Record<string, { readonly from: string; readonly letters
 
 /**
  * Grants a later migration added, so a prefix before it does not hold them yet.
- * 0062 grants the gate's own insert (S0-5, ORCH38).
+ * 0059 grants the gate's own insert (S0-5, ORCH38).
  */
 const ADDED: Readonly<Record<string, { readonly from: string; readonly letters: string }>> = {
-  'ops.gate_items': { from: '0062', letters: 'i' },
+  'ops.gate_items': { from: '0059', letters: 'i' },
 };
 
 /**

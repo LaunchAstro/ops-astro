@@ -743,7 +743,7 @@ try {
     businessIds[tag] = await businessIdFor(admin, key);
     console.log(`local-seed: business ${key} ${businessIds[tag]}`);
   }
-  // S0-5 (0062): business A operates this installation, as provisioning sets it.
+  // S0-5 (0059): business A operates this installation, as provisioning sets it.
   await admin.execute(
     'update ops.installation set operator_business_id = $1 where operator_business_id is null',
     [businessIds.A],

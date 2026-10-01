@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0065 ended provider sessions (C58 refresh revoked, the API's half). A
+-- 0061 ended provider sessions (C58 refresh revoked, the API's half). A
 -- signed-out token is refused from its next call, not at its expiry, in every
 -- business its login reaches.
 --

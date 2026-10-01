@@ -9,7 +9,7 @@
 // the eight items or the three closing lines is open. The mode and the items live in `ops`, which the
 // application's role reads through `public.first_client_readiness()` and
 // writes only through the gate's own commands (`gate-write.ts`, migration
-// 0062); the readiness value itself is derived, never written.
+// 0059); the readiness value itself is derived, never written.
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { COMMAND_EFFECTS, classOf, type CommandName } from '../../../core-wire/src/index.ts';
@@ -17,7 +17,7 @@ import type { DataEffects } from '../../../core-wire/src/index.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 
 /**
- * The eight gate items, then the three closing lines (0064), as
+ * The eight gate items, then the three closing lines (0060), as
  * `ops.gate_items` names them. A closing line carries the owner's one line.
  */
 export const GATE_ITEMS = [

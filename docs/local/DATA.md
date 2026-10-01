@@ -550,7 +550,7 @@ each stamped once when done (`sessions_ended_at`, `login_deactivated_at`).
 (the kind of the last failure, one of five words, never the provider's text)
 record the retries. The application may select, insert and update; nothing
 deletes a row. Tenancy-keyed with the restrictive policy. The partial index
-`access_endings_owed` is what the server's retry looks for. `provider_steps_skipped` (0066) is `shared` where both steps were stamped done without a call because the subject was still live in another business.
+`access_endings_owed` is what the server's retry looks for. `provider_steps_skipped` (0062) is `shared` where both steps were stamped done without a call because the subject was still live in another business.
 
 ## Ended sessions (0057, C58)
 
@@ -563,7 +563,7 @@ change (`factor_change`). Unique on business, person and session. The
 application may select and insert; nothing changes or deletes a row.
 Tenancy-keyed with the restrictive policy.
 
-## Ended provider sessions (0065, C58)
+## Ended provider sessions (0061, C58)
 
 `ops.ended_provider_sessions` holds the id of every provider session ended
 anywhere: each `ended_sessions` row, and the browser's sign-out at
@@ -573,7 +573,7 @@ is here in every business, and a person's session list leaves it out. The
 application may insert and read the id column; nothing changes or deletes a
 row.
 
-## Other sessions ended by subject (0069, C58)
+## Other sessions ended by subject (0063, C58)
 
 `ops.ended_subject_sessions` holds one row per "end my other sessions" or
 factor change: a SHA-256 digest of the login's subject, the session kept

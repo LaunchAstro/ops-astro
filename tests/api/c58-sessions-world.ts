@@ -126,7 +126,7 @@ export const tokenFor = async (
   expiresAt: number = now() + 600,
   /**
    * The first sign-in (`amr`), which a refresh keeps. A fresh session by
-   * default: just after now, so an ending earlier in this second (0069)
+   * default: just after now, so an ending earlier in this second (0063)
    * does not reach it. A session that predates an ending names its time.
    */
   signedInAt: number = now() + 1,

@@ -272,12 +272,12 @@ person has ended (signed out of, ended from another session, or ended by a
 factor change) is refused at login resolution from that commit,
 `AUTH_SESSION_EXPIRED` 401, before the second-factor check, whatever the
 token's own `exp` says. The ending holds in every business the login reaches,
-whichever route asked (`ops.ended_provider_sessions`, 0065; each business's
+whichever route asked (`ops.ended_provider_sessions`, 0061; each business's
 own record is `ended_sessions`, 0057). Ending the other sessions, or a factor
 change, also ends every session of the login but the kept one in every
 business, seen here or not: a token whose first sign-in (`amr`) is at or
 before that ending is refused; a sign-in after it is served
-(`ops.ended_subject_sessions`, 0069, keyed by a SHA-256 digest of the
+(`ops.ended_subject_sessions`, 0063, keyed by a SHA-256 digest of the
 subject). The provider's sign-out, which revokes
 the refresh tokens, comes after and cannot undo it. A sign-out this business refuses (it no
 longer admits the person) still ends the verified token's own session in
@@ -1898,7 +1898,7 @@ function nor `ops.installation`, runs them, as 0058 provisions it made-up.
 The eight items are `ops.gate_items` rows, each with an `https` evidence link:
 `tested-backups`, `second-factor`, `legal-basics`, `privacy-act-statement`,
 `overseas-register`, `breach-runbook`, `security-pass`, `phone-alerts`. Three
-closing lines are rows too (migration 0064), each with the owner's one line
+closing lines are rows too (migration 0060), each with the owner's one line
 (`statement`, at most 500 characters, no line breaks) as well as its link, and
 open until recorded like any item: `privacy-opt-in` (the link is the OAIC's
 public Privacy Opt-In Register page, where the entry is listed; a lodged form
@@ -1910,7 +1910,7 @@ date, with its evidence link). The eight items carry no line. The table holds
 the same rules. The mode moves from made-up to real only while every item and
 line is done, and never back; the row cannot be deleted.
 
-Two commands move the gate (migration 0062), each a person's under
+Two commands move the gate (migration 0059), each a person's under
 `operations:manage` in the business that operates the installation
 (`ops.installation.operator_business_id`, set at provisioning), never an
 agent's or a delegation's; any other caller, and every caller while no business
