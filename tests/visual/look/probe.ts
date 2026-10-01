@@ -3,6 +3,8 @@
 // What a look probe is (UI-POLISH). Its own module, so the screen files and
 // the list in index.ts each import it and never each other.
 
+import type { MadeUpVariant } from '../made-up-api.ts';
+
 export interface LookProbe {
   /** `<screen>.<element>`, unique across screens. */
   readonly id: string;
@@ -17,6 +19,13 @@ export interface LookProbe {
     readonly page: string;
     readonly selector: string;
     readonly open?: string | readonly string[];
+    /**
+     * An address to draw instead of the page's, signed in: a held address, an
+     * unknown one, or sign-in with a session already held.
+     */
+    readonly path?: string;
+    /** The made-up reads in another state (`made-up-api.ts`): a read's other renderings. */
+    readonly reads?: MadeUpVariant;
   };
   /** Computed style properties (colours compared as painted), or `box.width|height|x|y`. */
   readonly props: readonly string[];

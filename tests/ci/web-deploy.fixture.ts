@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Shared by the S0-6 web deploy and maintenance page cases: a stored build
-// output, the settings a person's deploy runs with (canaries included), and a
+// output, the settings a person's deploy runs with (canaries included), a
 // `vercel` on PATH that logs its arguments, working folder and environment and
-// answers as told, and the sign-in server's `/health` as a loopback stand-in:
-// no real deploy, no network.
+// answers as told, and the sign-in server's `/health` as a loopback stand-in.
+// No real deploy, no network.
 
 import { randomBytes } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -12,13 +12,13 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, beforeAll } from 'vitest';
-import { outputDigest } from '../../scripts/ops/build-output.ts';
+import { stampOutput } from '../../scripts/ops/build-output.ts';
 import { artefactName } from '../../scripts/ops/promotion.ts';
 
 export const STAGED = '0123456789ab';
 export const CANARY = 'canary-5d19e0-web-deploy-secret';
 export const URL_MADE = 'https://ops-astro-staging-a1b2c3d4e.vercel.app';
-export const ORG = 'team_madeUpOrg0123';
+const ORG = 'team_madeUpOrg0123';
 export const PROJECT = 'prj_madeUpProject0123';
 export const AUTH_VERSION = 'v2.180.0';
 
@@ -80,11 +80,7 @@ export function store(files: Files = OUTPUT, version: string = STAGED): string {
     mkdirSync(dirname(join(out, path)), { recursive: true });
     writeFileSync(join(out, path), typeof body === 'string' ? body : JSON.stringify(body));
   }
-  writeFileSync(join(out, 'build.json'), JSON.stringify({ build: version }));
-  writeFileSync(
-    join(out, 'build.json'),
-    JSON.stringify({ build: version, digest: outputDigest(out) }),
-  );
+  stampOutput(out, version);
   return root;
 }
 

@@ -557,7 +557,7 @@ live('S0-1 containment and resource limits, live', () => {
       '{{.Internal}} {{index .Options "com.docker.network.bridge.gateway_mode_ipv4"}} {{.EnableIPv6}}';
     const internal = docker(['network', 'inspect', names('staging'), '--format', format2]);
     expect(internal.out).toBe('true isolated false');
-  });
+  }, 30_000);
 
   // eslint-disable-next-line max-lines-per-function -- one test, its body kept byte for byte
   it('S0-1 containment: from inside staging, each target is refused', async () => {

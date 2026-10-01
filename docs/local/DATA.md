@@ -74,9 +74,14 @@ every client backend on its own database except its own
 which names each one by pid, login, application name, client address and
 start time. It has applied nothing and written no ledger row. The CLI prints
 the same and exits 2. It counts any client session: the application login, GoTrue
-(which connects as `postgres`), a `psql` you left open, another tool. None of
+(which connects as `postgres` on the local install), a `psql` you left open, another tool. None of
 them can be told apart from an application safely, and there is no flag or
-environment variable that skips the check. With nothing pending it does not
+environment variable that skips the check. The one exception is hosted
+Supabase's own services, which never stop: sessions whose login is exactly
+`authenticator`, `pgbouncer`, `supabase_admin`, `supabase_auth_admin` or
+`supabase_storage_admin` are left out of the count, so on hosted Supabase it
+does not see Data API, Auth, Storage or Realtime traffic, and none of those roles exists on
+the local install. With nothing pending it does not
 look at all, so an up-to-date install with the application running passes.
 The runner's role must be able to read every session in `pg_stat_activity`:
 a superuser, as `DATABASE_ADMIN_URL` is on the local install, or a member of
@@ -173,6 +178,16 @@ the last one, because the next migration would make it wrong.
 `tests/tenancy/restricted-calls.test.ts` all read the list from `migrations/`,
 so a new migration edits none of them.
 
+The upgrade drill (`pnpm verify:upgrade-drill`) fails a migration that changes a
+row an installation already holds. A migration that does so on purpose, such as
+a slot reservation or a field's owners, says so in
+`migrations/<version>.changes.json`, beside the file: a list of
+`{ "table", "columns", "where" }`. The drill excuses a changed row only where
+that predicate picked it before the upgrade and the row differs in those columns
+alone, and it fails a declaration whose change never happened
+(`scripts/local/upgrade-drill-changes.mjs`). Every other reader of `migrations/`
+reads `.sql` files only.
+
 The first seven, `0001_tenancy` to `0007_command_envelope`, are the tenancy,
 identity, grant, record and command-envelope spine ported from
 `ops-astro-t1-draft@60f2009`. Two companion files describe the later ones.
@@ -185,20 +200,36 @@ There is no `tasks` table. A task is a record of the built-in `task` record
 type in fixed typed slots, and the slots are the acceptance checklist's field
 table exactly:
 
-| Field           | Slot                 | Written by                                   |
-| --------------- | -------------------- | -------------------------------------------- |
-| `state`         | `uuid_1`             | `task.start`, `task.complete`, `task.reopen` |
-| `assignee`      | `uuid_2`             | `task.assign`                                |
-| `title`         | `txt_4`              | `task.update`                                |
-| `description`   | unslotted, in `data` | `task.update`                                |
-| `due`           | `ts_1`               | `task.update`                                |
-| `priority`      | `num_1`              | `task.update`                                |
-| `completed_at`  | `ts_2`               | derived on complete, cleared on reopen       |
-| `stage`         | `txt_5`              | `task.set_stage`                             |
-| `key`, `source` | `txt_1`, `txt_2`     | system                                       |
+| Field               | Slot                 | Written by                                                     |
+| ------------------- | -------------------- | -------------------------------------------------------------- |
+| `state`             | `uuid_1`             | `task.start`, `task.complete`, `task.reopen`, `task.set_state` |
+| `assignee`          | `uuid_2`             | `task.assign`                                                  |
+| `title`             | `txt_4`              | `task.update`                                                  |
+| `description`       | unslotted, in `data` | `task.update`                                                  |
+| `agent_brief`       | unslotted, in `data` | `task.update` (0076, MP-4-7)                                   |
+| `page_link`         | unslotted, in `data` | `task.update` (0079, MP-4-12)                                  |
+| `estimated_minutes` | unslotted, in `data` | `task.update` (0080, MP-4-8)                                   |
+| `agent`             | unslotted, in `data` | `task.assign` (0082, Assign to AI)                             |
+| `due`               | `ts_1`               | `task.update`                                                  |
+| `priority`          | `num_1`              | `task.update`                                                  |
+| `completed_at`      | `ts_2`               | derived on complete, cleared on reopen                         |
+| `stage`             | `txt_5`              | `task.set_stage`                                               |
+| `impact`            | `num_3`              | `task.set_scores`                                              |
+| `confidence`        | `num_4`              | `task.set_scores`                                              |
+| `ease`              | `num_5`              | `task.set_scores`                                              |
+| `ad_hoc`            | `bool_2`             | `task.set_adhoc`                                               |
+| `archived_at`       | unslotted, in `data` | derived on complete, cleared on reopen                         |
+| `archived_why`      | unslotted, in `data` | derived on complete, cleared on reopen                         |
+| `key`, `source`     | `txt_1`, `txt_2`     | system                                                         |
 
 There is no `status` column and no second coarse field. Whether a task is done
 is the machine category of the state record the task points at.
+
+A task's tags are not a field. The business's vocabulary is `tags` (one name
+per business whatever its case, a unique index on the lower-cased name) and
+the tags a task carries are rows of `task_tags`, keyed by the task and the
+tag (0081, MP-4-11): written by `tag.create`, `task.add_tag` and
+`task.remove_tag`, read on `task.read` and by `tag.list`.
 
 A new task ranks after the last of its siblings: the tasks under its parent,
 or for a top-level task the tasks on its board with no parent. Trashed siblings
@@ -411,14 +442,21 @@ has the interface and the tests.
 
 ## The reads
 
-Eight reads are declared in `COMMAND_SURFACE` with `kind: 'read'` and served by
-`packages/core-commands/src/reads/`. Three of them are this file's:
+Nine reads are declared in `COMMAND_SURFACE` with `kind: 'read'` and served by
+`packages/core-commands/src/reads/`. Four of them are this file's:
 
 - `task.read { recordId }` → the task, its state, its assignee and its history
-- `task.board { board }` → the tasks on a board; `null` is the unboarded ones,
-  which is where a task created without a board lives
+- `task.board { board }` → the tasks on a board that the caller's grants
+  reach, and, for a collection-wide reader only, `withheld`, how many others
+  there are; `null` is the unboarded
+  ones, which is where a task created without a board lives
 - `person.list {}` → the people with an active membership, which is the set
   `task.assign` will accept
+- `tag.list {}` → the business's tag vocabulary, by name (MP-4-11), for a
+  reader of the business's tasks
+- `task.todos {}` → the reader's own open tasks on any board, with their tags
+  and the client messages owed a reply (MP-7-1), for a reader of the
+  business's tasks
 - `team.list {}` → the staff with an active membership and each one's
   availability (`person_availability`, 0066, set only by that person), for the
   Team panel; a client of the business is answered `NOT_FOUND`

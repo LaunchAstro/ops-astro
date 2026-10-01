@@ -24,7 +24,7 @@ const KEY_FIXES: readonly string[] = [
 
 const VALUE_FIXES: readonly string[] = [
   'appearance takes light, dark or system.',
-  'A width or height is a whole number of pixels above zero; columns.widths maps each column id to one.',
+  'A width or height is a whole number of pixels above zero; columns.widths maps at most 64 column ids, of at most 64 characters, to one each.',
   'tips.enabled takes true or false; tips.dismissed takes only {}, which brings every tip back.',
 ];
 
