@@ -43,16 +43,28 @@ export const PASSWORD_RESET_REQUESTED = 'account.password_reset_requested';
 /** Reset mails per login, and per address, in `RESET_WINDOW_SECONDS` (SP-14). */
 export const RESET_LIMIT = 3;
 export const RESET_WINDOW_SECONDS: number = 60 * 60;
+/** Reset asks per client address in `RESET_WINDOW_SECONDS`, refused ones included. */
+export const RESET_SOURCE_LIMIT = 10;
 
 /** An address as the provider keeps one: no space, one `@`, bounded. */
 const ADDRESS = /^[^@\s]{1,64}@[^@\s]{1,189}$/u;
 
 const digest = (text: string): string => createHash('sha256').update(text).digest('hex');
 
+/** One ask: the address as sent, and the client address it came from. */
+export interface ResetAsk {
+  readonly address: unknown;
+  readonly source: string;
+}
+
 /** Hand one address to the login provider; nothing is said back, whatever happened. */
-export async function requestPasswordReset(broker: Broker, address: unknown): Promise<void> {
-  if (typeof address !== 'string') return;
-  const asked = address.trim().toLowerCase();
+export async function requestPasswordReset(
+  _database: Database,
+  broker: Broker,
+  asking: ResetAsk,
+): Promise<void> {
+  if (typeof asking.address !== 'string') return;
+  const asked = asking.address.trim().toLowerCase();
   if (!ADDRESS.test(asked)) return;
   await askRecovery(broker, asked);
 }

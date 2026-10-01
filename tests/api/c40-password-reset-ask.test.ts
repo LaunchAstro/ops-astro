@@ -5,15 +5,20 @@
 // answers every request alike, at once. Custody here is a stand-in that
 // records each dispatch and answers as a case sets it, hostile answers among
 // them; the real custody's route list is pinned in
-// `c39-t-server-enrolment.test.ts`. And `main()`'s switch for the hook and
-// the reset routes: off without the secret, refused without what it needs.
+// `c39-t-server-enrolment.test.ts`. The database is a stand-in too, under
+// every limit, recording the source each ask is counted under; the limits
+// themselves are counted in a real database in `c40-reset-mail.test.ts`. And
+// `main()`'s switch for the hook and the reset routes: off without the
+// secret, refused without what it needs.
 
+import { createHash } from 'node:crypto';
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
 import { authHookReady } from '../../apps/api/auth-email-hook.ts';
 import { enrolmentBroker } from '../../apps/api/enrolment-broker.ts';
 import { mountPasswordReset, PASSWORD_RESET_PATH } from '../../apps/api/password-set.ts';
 import type { Custody, CustodyOutcome } from '../../packages/core-custody/src/index.ts';
+import type { Database } from '../../packages/core-records/src/index.ts';
 
 const CANARY = 'CANARY-c40-ask-5e2a91';
 
@@ -30,9 +35,23 @@ const answered = (status: number, body: string): CustodyOutcome => ({
   account: null,
 });
 
+/** A database under every limit: each statement's parameters recorded, every count 0. */
+function underLimits(statements: (readonly unknown[])[]): Database {
+  return {
+    withBusiness: async (_business: string, run: (tx: unknown) => Promise<unknown>) =>
+      await run({
+        query: async (_text: string, parameters: readonly unknown[] = []) => {
+          statements.push(parameters);
+          return await Promise.resolve([{ source: 0, address: 0 }]);
+        },
+      }),
+  } as unknown as Database;
+}
+
 /** A custody stand-in: every dispatch recorded, answered by `answer`. */
 function standIn(answer: () => Promise<CustodyOutcome>) {
   const dispatched: Dispatched[] = [];
+  const statements: (readonly unknown[])[] = [];
   const custody = {
     dispatch: async (ref: string, request: Dispatched['request']) => {
       dispatched.push({ ref, request });
@@ -40,20 +59,30 @@ function standIn(answer: () => Promise<CustodyOutcome>) {
     },
   } as unknown as Custody;
   const app = new Hono();
-  mountPasswordReset(app, enrolmentBroker(custody));
-  return { app, dispatched };
+  mountPasswordReset(app, underLimits(statements), enrolmentBroker(custody));
+  return { app, dispatched, statements };
 }
 
-async function ask(app: Hono, body: string): Promise<{ status: number; text: string }> {
+/** The request's client address, the way `@hono/node-server` hands the socket over. */
+const fromPeer = (remoteAddress: string) => ({ incoming: { socket: { remoteAddress } } });
+
+async function ask(
+  app: Hono,
+  body: string,
+  env?: object,
+): Promise<{ status: number; text: string }> {
   const response = await app.fetch(
     new Request(`http://api.test${PASSWORD_RESET_PATH}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body,
     }),
+    env,
   );
   return { status: response.status, text: await response.text() };
 }
+
+const sha256 = (text: string): string => createHash('sha256').update(text).digest('hex');
 
 const settle = async (): Promise<void> => {
   await new Promise((resolve) => {
@@ -115,6 +144,18 @@ describe('C40 password reset, the ask', () => {
       await settle();
       expect(dispatched).toHaveLength(1);
     }
+  });
+});
+
+describe('C40 password reset, the ask: its source', () => {
+  it('C40 reset per-source limit: an ask is counted under its client address, hashed', async () => {
+    const { app, statements } = standIn(async () => await Promise.resolve(answered(200, '{}')));
+    await ask(app, BODIES[0] ?? '', fromPeer('203.0.113.7'));
+    await settle();
+    const written = statements.flat().map(String).join(' ');
+    expect(written).toContain(sha256('203.0.113.7'));
+    expect(written).not.toContain('203.0.113.7');
+    expect(written).not.toContain('known@example.test');
   });
 });
 

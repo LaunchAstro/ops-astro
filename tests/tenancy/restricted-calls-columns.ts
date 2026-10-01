@@ -81,6 +81,12 @@ const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: strin
     ['subject_digest', 'address_digest', 'attempt', 'state', 'evidence', 'recorded_at'],
     ['subject_digest', 'address_digest', 'attempt', 'state', 'evidence'],
   ),
+  ...grantsOn(
+    '0226',
+    'ops.password_reset_asks',
+    ['source_digest', 'recorded_at'],
+    ['source_digest'],
+  ),
   ...['business_id', 'id', 'revision'].map((column) => ({
     from: '0203',
     line: `${OCCURRENCE_ROLE} SELECT public.records.${column}`,

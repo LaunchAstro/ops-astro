@@ -351,7 +351,7 @@ export function composeApi(config: ApiConfig): ComposedApi {
   if (config.passwordSet !== undefined) {
     const { businesses, authBroker } = config.passwordSet;
     mountPasswordSet(server, database, { businesses, provider: factors, verify });
-    if (authBroker !== undefined) mountPasswordReset(server, authBroker);
+    if (authBroker !== undefined) mountPasswordReset(server, database, authBroker);
   }
 
   server.route(

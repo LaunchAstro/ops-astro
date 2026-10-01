@@ -121,6 +121,7 @@ export {
 export {
   PASSWORD_RESET_REQUESTED,
   RESET_LIMIT,
+  RESET_SOURCE_LIMIT,
   RESET_WINDOW_SECONDS,
   requestPasswordReset,
   sendPasswordReset,
