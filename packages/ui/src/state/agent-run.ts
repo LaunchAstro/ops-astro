@@ -110,7 +110,11 @@ function stateOf(lineage: RunLineage, head: RunVersion): RunState {
   if (reservation?.state === 'quarantined') return 'unknown-outcome';
   // T3b's unknown effect: held until a person records what happened (C54).
   if (reservation?.attempt?.state === 'liability_unknown') return 'unknown-outcome';
-  if (reservation?.state === 'abandoned') return 'dropped';
+  // A hold the classifier settled at its calls' spend stopped as an abandoned one did.
+  const stopped = ['abandoned', 'dropped'].includes(reservation?.attempt?.state ?? '');
+  if (reservation?.state === 'abandoned' || (reservation?.state === 'actual' && stopped)) {
+    return 'dropped';
+  }
   if (lineage.state === 'completed' || reservation?.state === 'actual') return 'done';
   if (reservation?.attempt?.state === 'handed_back') return 'done';
   if (reservation?.lease?.state === 'live') return 'running';

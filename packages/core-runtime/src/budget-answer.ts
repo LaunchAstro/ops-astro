@@ -30,12 +30,12 @@ import {
   invalid,
   NOT_WAITING_FIX,
   openAnswer,
-  spentOn,
   type BudgetAnswerRequest,
   type BudgetAnswerResult,
   type Opened,
 } from './budget-answer-facts.ts';
 import { capCommitted, capVerdict } from './budget.ts';
+import { spentOn } from './recovery/classifier.ts';
 import { fourEyes } from './budget-answer-eyes.ts';
 import { refuse } from './refusals.ts';
 

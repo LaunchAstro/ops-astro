@@ -797,7 +797,7 @@ function planClaim(state: ClaimState, reservationId: string): ClaimPlan {
     if (!approvalCurrent(state)) return { kind: 'refuse', refusal: approvalNotCurrent() };
     return { kind: 'replace', fence: state.lease_id };
   }
-  const replacing = state.state === 'abandoned' && replaceable(state);
+  const replacing = replaceable(state);
   if (state.state !== 'held' && !replacing) {
     return {
       kind: 'refuse',
@@ -827,14 +827,22 @@ function approvalNotCurrent(): RuntimeResult<never> {
 
 /** An abandoned hold whose work was never settled and whose run is still open. */
 function replaceable(state: {
+  readonly state: string;
+  readonly attempt_state: string;
   readonly run_state: string;
   readonly settled: boolean;
   readonly marked: boolean;
   readonly active_elsewhere: boolean;
 }): boolean {
+  // A hold the classifier settled at its calls' spend ended as one it abandoned:
+  // its attempt is `abandoned`, where an observed or written-off cost settled it.
+  const ended =
+    state.state === 'abandoned' ||
+    (state.state === 'actual' && state.attempt_state === 'abandoned');
   // One active hold per version (0019): a version already holding elsewhere is
   // claimed through that hold, from the queue, and not through this one.
   return (
+    ended &&
     !state.settled &&
     !state.marked &&
     !state.active_elsewhere &&

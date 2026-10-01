@@ -32,7 +32,7 @@ Five transactions, in the order the accepted transaction contract names them.
 | T2       | `decide.ts`   | signed decision and chain link, envelope, reservation, immutable attempt, held total |
 | T3       | `pickup.ts`   | delegation, fenced lease, reservation bound once, attempt dispatched                 |
 | T4       | `handback.ts` | lease released, delegation settled, attempt outcome, reservation's disposition       |
-| T5       | `recovery.ts` | the bounded classifier: `held` → `abandoned`, hold subtracted once, cause recorded   |
+| T5       | `recovery.ts` | the bounded classifier: `held` → `abandoned`, or `actual` at its calls' spend, once  |
 
 Nothing in this head dispatches. `planned_steps.dispatched_at` carries a check
 constraint keeping it null, the attempt names no provider or model, and
@@ -816,7 +816,9 @@ ended without settling, because its lease expired or the authority behind it was
 lost. If its version is still approved and current on a live lineage, the pickup
 replaces it with a fresh hold and a fresh attempt on that version, under the
 locks it already holds (`pickup`, `pickup.ts`). The abandoned reservation stays
-abandoned. A settled hold, a quarantined one, or a version already holding
+abandoned. A hold the classifier settled at its calls' spend (`actual`, its
+attempt `abandoned`) is replaced the same way, and the replacement needs room
+beside that spend. A settled hold, a quarantined one, or a version already holding
 elsewhere is refused `RESERVATION_NOT_CLAIMABLE` (`replaceable`). Storage
 counts a quarantined hold as active too.
 
@@ -945,6 +947,16 @@ support `lineage_cancelled`, and a live lease does not support
 `lease_expired_and_fenced`. The release itself is a guarded update that
 reports the row it changed, and the envelope subtraction uses that row's own
 amount, so a classifier that lost the race writes nothing.
+
+The classifier never abandons spend. Before it releases a hold it reads the
+reservation's broker calls (`spentOn`, `recovery/classifier.ts`): settled calls
+at their actual, calls still open at their maximum. Above zero the hold settles
+`actual` at that spend and the envelope takes it, so the cap counts it once;
+only a hold with no spend is `abandoned`. A hold whose spend a budget top-up
+already moved to the envelope's actual (`raiseHold`, `budget-answer.ts`) is
+abandoned, so the spend is not counted twice. The sweep, a cancel, a lost
+authority, pickup's expired-lease replacement and every hand-back, a drop
+included, reach this one step (`tests/runtime/classifier-counts-spend.test.ts`).
 
 Startup, elapsed time, a missing claimant and `lease_id = null` are not
 abandonment triggers. An approved, unleased, currently authorised reservation

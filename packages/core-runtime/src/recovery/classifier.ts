@@ -26,7 +26,8 @@ export type NonclaimableCause =
 export interface Classification {
   readonly reservationId: string;
   readonly released: boolean;
-  readonly state: 'abandoned' | 'held' | 'quarantined' | 'liability_unknown';
+  /** `actual` when the hold settled at the spend its calls recorded. */
+  readonly state: 'abandoned' | 'actual' | 'held' | 'quarantined' | 'liability_unknown';
   /** Why it was left alone, when it was. A classification with no reason is a guess. */
   readonly reason: string;
 }
@@ -103,7 +104,7 @@ export async function classifyUnderLocks(
     return {
       reservationId: request.reservationId,
       released: false,
-      state: row.state === 'quarantined' ? 'quarantined' : 'abandoned',
+      state: row.state === 'quarantined' || row.state === 'actual' ? row.state : 'abandoned',
       reason: `already ${row.state}; a terminal reservation is never reclassified or revived`,
     };
   }
@@ -191,12 +192,27 @@ export async function classifyUnderLocks(
   // after it is conditional on that row. A classifier whose conditional update
   // affected nothing has lost the race, and it must not then move the attempt
   // or subtract a hold the winner has already subtracted.
+  //
+  // The hold's calls through the broker record their spend on the calls alone
+  // (`spentOn`): settled at their actual, still open at their maximum. Above
+  // zero the hold settles at that spend, so the envelope and the cap count it
+  // once; abandoning it "at no cost" would hand the spend back to the cap. At
+  // zero it is abandoned, with no number: there is no observation to justify
+  // one, not even zero.
+  const spent = await spendToSettle(tx, request.reservationId);
   const changed = await tx.query<{ readonly held_minor: string }>(
-    `update public.reservations
-        set state = 'abandoned', classified_cause = $3, classified_cause_id = $4, terminal_at = now()
-      where business_id = $1 and id = $2 and state = 'held'
-      returning held_minor::text as held_minor`,
-    [tx.businessId, request.reservationId, request.cause, request.causeId],
+    spent > 0
+      ? `update public.reservations set state = 'actual', actual_minor = $3, terminal_at = now()
+          where business_id = $1 and id = $2 and state = 'held'
+          returning held_minor::text as held_minor`
+      : `update public.reservations
+            set state = 'abandoned', classified_cause = $3, classified_cause_id = $4,
+                terminal_at = now()
+          where business_id = $1 and id = $2 and state = 'held'
+          returning held_minor::text as held_minor`,
+    spent > 0
+      ? [tx.businessId, request.reservationId, spent]
+      : [tx.businessId, request.reservationId, request.cause, request.causeId],
   );
   const released = changed[0];
   if (released === undefined) {
@@ -207,26 +223,66 @@ export async function classifyUnderLocks(
       reason: 'another transaction classified this reservation first; the hold was released once',
     };
   }
+  // A hand-back that spent finished its work: its attempt stays `handed_back`.
   await tx.query(
     `update public.attempts set state = 'abandoned', outcome = coalesce(outcome, 'abandoned')
-      where business_id = $1 and id = $2`,
-    [tx.businessId, row.attempt_id],
+      where business_id = $1 and id = $2 and not ($3 and state = 'handed_back')`,
+    [tx.businessId, row.attempt_id, spent > 0],
   );
-  // Subtracted once, from the held total only, and by the amount the changed
-  // row carried. Nothing is added to `actual`: there is no observation to
-  // justify a number, not even zero.
+  // Subtracted once, from the held total, by the amount the changed row
+  // carried; the spend, when there is one, added to `actual` beside it.
   await tx.query(
-    `update public.task_envelopes set held_minor = held_minor - $3
+    `update public.task_envelopes
+        set held_minor = held_minor - $3, actual_minor = actual_minor + $4
       where business_id = $1 and id = $2`,
-    [tx.businessId, row.envelope_id, Number(released.held_minor)],
+    [tx.businessId, row.envelope_id, Number(released.held_minor), spent],
   );
 
   return {
     reservationId: request.reservationId,
     released: true,
-    state: 'abandoned',
-    reason: `abandoned under ${request.cause} (${request.causeId}); the hold was released once and no cost was recorded`,
+    state: spent > 0 ? 'actual' : 'abandoned',
+    reason:
+      spent > 0
+        ? `stopped under ${request.cause} (${request.causeId}); the hold settled once at the ${spent} its calls spent`
+        : `abandoned under ${request.cause} (${request.causeId}); the hold was released once and no cost was recorded`,
   };
+}
+
+/**
+ * The reservation's spend to date, as the broker counts it
+ * (`core-custody/src/broker-facts.ts`, `committedMinor`): settled calls at
+ * their actual, and calls still open at the maximum they hold, so a call in
+ * flight at the stop is never released as unspent.
+ */
+export async function spentOn(tx: TenantQuery, reservationId: string): Promise<number> {
+  const [row] = await tx.query<{ readonly spent: string }>(
+    `select coalesce(sum(case when state = 'settled' then actual_minor
+                              when state in ('reserved', 'dispatched', 'liability_unknown')
+                                then reserved_minor
+                              else 0 end), 0)::text as spent
+       from public.model_calls where business_id = $1 and reservation_id = $2`,
+    [tx.businessId, reservationId],
+  );
+  return Number(row?.spent ?? 0);
+}
+
+/**
+ * The spend a stopped hold has not yet handed the envelope: its calls'
+ * (`spentOn`), unless a budget top-up already moved that spend to the
+ * envelope's actual and lowered the hold by it (AW-05, `raiseHold`), which a
+ * replacement's pickup then classifies. Read under the run lock every answer takes.
+ */
+async function spendToSettle(tx: TenantQuery, reservationId: string): Promise<number> {
+  const spent = await spentOn(tx, reservationId);
+  if (spent === 0) return 0;
+  const toppedUp = await tx.query(
+    `select 1 from public.budget_answers a
+       join public.budget_asks k on k.business_id = a.business_id and k.id = a.ask_id
+      where a.business_id = $1 and k.reservation_id = $2 and a.kind = 'top_up'`,
+    [tx.businessId, reservationId],
+  );
+  return toppedUp.length > 0 ? 0 : spent;
 }
 
 interface CauseRow {

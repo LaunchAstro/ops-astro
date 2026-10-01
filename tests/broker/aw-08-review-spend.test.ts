@@ -67,4 +67,9 @@ it("a plan lease's settled model call is counted on hand-back for review", async
     envelope_actual: String(Number(before.envelope_actual) + Number(spent)),
   });
   expect(handed['envelopeActualMinor']).toBe(Number(before.envelope_actual) + Number(spent));
+  const { state } = await one<{ state: string }>(
+    'select state from public.attempts where reservation_id = $1',
+    [reservationId],
+  );
+  expect(state, 'the finished work reads as abandoned').toBe('handed_back');
 });
