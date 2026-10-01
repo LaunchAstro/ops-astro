@@ -220,6 +220,7 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   const [topUpNote, setTopUpNote] = useHeld<TopUpNote>(identity, denied);
   const [perspective, setPerspective] = useHeld<Perspective>(identity, denied);
   const [showAllTime, setShowAllTime] = useHeld<boolean>(identity, denied);
+  const [showFinished, setShowFinished] = useHeld<boolean>(identity, denied);
 
   return (
     <div className="stack">
@@ -260,6 +261,8 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
                 onPerspective={setPerspective}
                 showAllTime={showAllTime ?? false}
                 onShowAllTime={setShowAllTime}
+                showFinished={showFinished}
+                onShowFinished={setShowFinished}
                 onOpenPanel={props.onOpenPanel}
                 onAttempt={(attempt) => {
                   setDraft((current) =>
@@ -557,6 +560,8 @@ interface LoadedProps {
   readonly perspective: Perspective;
   readonly onPerspective: (next: Perspective) => void;
   /** Whether the finished subtasks are unfolded, held above the read (MP-4-4). */
+  readonly showFinished: boolean | null;
+  readonly onShowFinished: (next: boolean | null) => void;
   /** Whether every time entry shows, not only the latest three, held above the read (MP-4-6). */
   readonly showAllTime: boolean;
   readonly onShowAllTime: (next: boolean) => void;
