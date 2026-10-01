@@ -65,6 +65,12 @@ it('AW-12 trigger read: a manifest it cannot count is refused, never read as not
     [{ path: 'a.md', digest: 'x', size: -5 }],
     [{ path: 'a.md', digest: 'x', size: 1.5 }],
     ['a.md'],
+    // Each size whole, the sum past what a figure can hold exactly.
+    Array.from({ length: 10 }, (_, i) => ({
+      path: `b${String(i)}.md`,
+      digest: 'x',
+      size: 999_999_999_999_999,
+    })),
   ];
   for (const entries of hostile) {
     // Sequential: each run is picked up in turn.
