@@ -137,7 +137,7 @@ browser.
 | `/projects/` | Board tab: `task.board` for the unboarded tasks (`board: null`), and the create form. Work log tab (`#worklog`): `task.ledger` in the reader's zone, read on first opening; its search words live in the address as `?q=` (L-01); its section tip (MP-9-1) reads `preference.read` and dismisses through `preference.dismiss_tip` |
 | `/task/:key` | `task.read`: state buttons, the assignee select, title and due date, comments, history, revision                                                                                                                                                                                                                                  |
 | `/settings`  | Settings General: You and Notifications (the person's own preferences) and This business (the two operation-classified settings, from `settings.read` and `session.capabilities`)                                                                                                                                                 |
-| `/inbox/`    | The Notifications list in full-page form (MP-7-3): `inbox.read` and `inbox.count` drawn by the kit's `InboxPage`, one list and one owed count, grouped by the client each entry names                                                                                                                                             |
+| `/inbox/`    | The Notifications list in full-page form (MP-7-3): `inbox.read` and `inbox.count` drawn by the kit's `InboxPage`, one list and one owed count, grouped by the client each entry names; a live re-read keeps the list and its chosen tab drawn                                                                                     |
 
 `/task/:key` is a real address. A hard reload lands on it because the dev server
 falls back to `index.html`, and everything on the page is reread from the API.
@@ -145,8 +145,12 @@ falls back to `index.html`, and everything on the page is reread from the API.
 The dock's tabs are `PANELS` in `apps/web/src/panels.ts`: Notifications goes to
 `/inbox/`, Settings to `/settings` and Team to `/team`. An open dock tab is announced as "Close Settings"
 (`aria-expanded="true"`, `Shell` in `packages/ui/src/surfaces/Shell.tsx`) and
-leaves its address for the board when pressed (`onDockTab` in
-`apps/web/src/App.tsx`).
+leaves its address for the board when pressed (`useDock` in
+`apps/web/src/dock.ts`). The Notifications tab carries INB-1's owed figure
+from the first frame on every agency screen (MP-7-3 bell count at load):
+`inbox.count`, read in the frame's load and again on the `board` topic, with no
+badge at zero and none when the count is refused or fails
+(`apps/web/src/data/owed-count.ts`).
 
 The route registry is the router. `SCREENS` in `apps/web/src/screen-registry.tsx`
 looks each screen up by route id and is keyed by `AuthenticatedRouteId`, so an
