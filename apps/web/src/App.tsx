@@ -22,7 +22,6 @@ import { SignedInName } from './app-state.ts';
 import { FrameStrip } from './strip.tsx';
 import { HeldAddressNotice, heldAddressOffer, type HeldOffer } from './held-address.tsx';
 import { shellDock, useDockShell } from './dock/dock-props.tsx';
-import { closeAgent } from './dock/agent-dock.ts';
 import { useDockPanel } from './screens/task/DockPanel.tsx';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, type Interruption, type Session } from './session/token.ts';
@@ -231,16 +230,7 @@ export function App(props: AppProps): ReactElement {
   // person or session drops every tab and a late reply has nowhere to land.
   const agent =
     dockScreen === null || match === null ? null : (
-      <AssistantView
-        key={grantKey}
-        client={client}
-        route={match.id}
-        here={here}
-        entry={null}
-        onClose={() => {
-          closeAgent(docked.dock);
-        }}
-      />
+      <AssistantView key={grantKey} client={client} route={match.id} here={here} entry={null} />
     );
   return (
     <SignedInName value={personName}>

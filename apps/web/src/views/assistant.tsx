@@ -67,7 +67,8 @@ export interface AssistantViewProps {
   readonly here: string;
   /** The entry point the drawer was last opened from, if any: asked through the one seam. */
   readonly entry: EntryPoint | null;
-  readonly onClose: () => void;
+  /** Its own close and title; the dock leaves it out, as its panel head closes and names it. */
+  readonly onClose?: () => void;
 }
 
 type Move = (state: AssistantState) => AssistantState;

@@ -63,11 +63,27 @@ describe('MP-7-11 sparkle entry: a direct open from the edge tab', () => {
     expect(
       page.find('[data-panel="ai"][aria-label="Close Agent"]')?.getAttribute('aria-expanded'),
     ).toBe('true');
-    await page.click('[data-assistant="close"]');
+    // Its head is the dock panel's, and so is its close.
+    await page.click('.dpanel[data-panel-id="ai"] .dpanel__x');
     expect(page.find('[data-assistant="panel"]')).toBeNull();
     await page.click('[aria-label="Open Agent"]');
     await page.click('[data-panel="ai"][aria-label="Close Agent"]');
     expect(page.find('[data-assistant="panel"]')).toBeNull();
+  });
+
+  it("draws one head in the dock: the dock panel's, over the drawer's model picker and Page", async () => {
+    const page = await app(
+      new SessionStore(storage({ 'ops-astro.session': JSON.stringify(SESSION) })),
+    );
+    await page.click('[aria-label="Open Agent"]');
+    const panel = page.find('.dpanel[data-panel-id="ai"]');
+    expect(panel?.querySelectorAll('header')).toHaveLength(1);
+    const titles = [...(panel?.querySelectorAll('.dpanel__name, .aip__title') ?? [])];
+    expect(titles.map((title) => title.textContent)).toStrictEqual(['Agent']);
+    expect(panel?.querySelectorAll('.dpanel__x')).toHaveLength(1);
+    expect(panel?.querySelector('[data-assistant="close"]')).toBeNull();
+    expect(panel?.querySelector('[data-assistant="model"]')).not.toBeNull();
+    expect(panel?.querySelector('[data-assistant="add-page"]')).not.toBeNull();
   });
 
   it('signed out, there is no Agent tab to open', async () => {

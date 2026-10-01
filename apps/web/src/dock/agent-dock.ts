@@ -5,15 +5,15 @@
 // its body itself, as it draws the task panel's (`task-dock.ts`). The tab is
 // there whenever the drawer can be drawn, first in the rank; the panel is open
 // while `ai` is in the open set, so the gesture law, Close all, Escape and the
-// phone's one panel treat it like any other. Storage and the history never
-// bring it back after a reload: the dock restores only registered panels.
+// phone's one panel treat it like any other. Its head is the dock panel's, which
+// names and closes it; the drawer draws no head of its own. Storage and the
+// history never bring it back after a reload: the dock restores only registered
+// panels.
 
 import type { ReactNode } from 'react';
 import type { DockPanel, DockTab } from '@launchastro/ui';
 import { PANEL_RANK, type PanelId } from '../panels.ts';
 import { pathTo } from '../routes.ts';
-import { close } from './open-set.ts';
-import type { DockModel } from './use-dock.ts';
 
 const LABEL = 'Agent';
 
@@ -43,8 +43,3 @@ export const agentPanelOf = (
   ...walked,
   body,
 });
-
-/** The drawer's own close takes `ai` out of the dock. */
-export function closeAgent(dock: DockModel): void {
-  dock.change((state) => close(state, 'ai'));
-}
