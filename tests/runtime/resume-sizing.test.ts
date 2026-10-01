@@ -15,7 +15,6 @@ import { topUpAtBudgetStop } from '../../packages/core-runtime/src/index.ts';
 import {
   appliedDetail,
   asAgent,
-  asPerson,
   codeOf,
   handbackBody,
   liveWork,
@@ -23,30 +22,13 @@ import {
   rows,
   type Work,
 } from './schedules-harness.ts';
-import { grantTo } from '../commands/fixture.ts';
 import { openBilling } from './t3d1-harness.ts';
-import { broker, call, noDatabase, s, useBrokerWorld, world } from '../broker/broker-world.ts';
+import { call, noDatabase, s, useBrokerWorld, world } from '../broker/broker-world.ts';
+import { asksOn, holdsOn, pickupOf, revoke, spentWhole } from './resume-sizing-world.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
 
 useBrokerWorld('resize');
-
-interface Hold {
-  readonly id: string;
-  readonly state: string;
-  readonly held: string;
-  readonly actual: string | null;
-}
-
-const holdsOn = async (work: Work): Promise<readonly Hold[]> =>
-  await rows<Hold>(
-    s,
-    `select r.id, r.state, r.held_minor::text as held, r.actual_minor::text as actual
-       from public.reservations r
-       join public.reservations old on old.run_id = r.run_id
-      where old.id = $1 order by r.created_at, r.id`,
-    [work.decision['reservationId']],
-  );
 
 const spentOn = async (work: Work): Promise<number> => {
   const [row] = await rows<{ spent: string }>(
@@ -66,17 +48,6 @@ const settledCall = async (label: string): Promise<Work> => {
   const result = await call(work);
   if (!result.ok) throw new Error(`the priced replay call was refused ${result.code}`);
   return work;
-};
-
-/** A manager revokes the worker's delegation: its hold is classified and its run goes back to planned. */
-const revoke = async (work: Work): Promise<void> => {
-  await s.db.app.withBusiness(s.business, async (tx) => await grantTo(tx, s.decider, 'manage'));
-  const revoked = await asPerson(s, {
-    command: 'delegation.revoke',
-    operationId: randomUUID(),
-    delegationId: work.picked['delegationId'],
-  });
-  appliedDetail(revoked, 'delegation.revoke');
 };
 
 /** The decider tops up the work's stopped run, as a person with `billing:decide`. */
@@ -143,43 +114,6 @@ it('a hold with no spend is re-held whole, as before', async () => {
   expect(old).toMatchObject({ state: 'abandoned', actual: null });
   expect(fresh).toMatchObject({ state: 'held', held: '2000' });
 });
-
-/** Work whose one call is open at the replay maximum of 500, its whole hold, when its delegation is revoked. */
-const spentWhole = async (label: string): Promise<Work> => {
-  const work = await liveWork(s, `resize ${label} ${randomUUID()}`, 500);
-  const silent = {
-    ...broker,
-    custody: { ...broker.custody, dispatch: async () => await new Promise<never>(() => {}) },
-  };
-  void call(work, {}, silent);
-  const openCall = async () =>
-    await rows<{ state: string }>(
-      s,
-      'select state from public.model_calls where reservation_id = $1',
-      [work.decision['reservationId']],
-    );
-  await expect.poll(openCall, { timeout: 5_000 }).toMatchObject([{ state: 'dispatched' }]);
-  await revoke(work);
-  return work;
-};
-
-const pickupOf = async (work: Work) =>
-  await asAgent(s, {
-    command: 'task.pickup',
-    operationId: randomUUID(),
-    reservationId: work.decision['reservationId'],
-    leaseSeconds: 600,
-  });
-
-const asksOn = async (work: Work) =>
-  await rows<{ run_state: string; ceiling: string; spent: string; kind: string }>(
-    s,
-    `select run.state as run_state, k.ceiling_minor::text as ceiling, k.spent_minor::text as spent,
-            k.kind
-       from public.budget_asks k join public.planned_runs run on run.id = k.run_id
-      where k.reservation_id = $1`,
-    [work.decision['reservationId']],
-  );
 
 it('a step whose spend used its whole hold stops at its budget and asks the person (AW-05), with no silent refusal', async () => {
   const work = await spentWhole('whole');

@@ -13,67 +13,15 @@
 import { randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';
 import { topUpAtBudgetStop } from '../../packages/core-runtime/src/index.ts';
-import type { Broker } from '../../packages/core-custody/src/index.ts';
 import { sweepLostWorkers } from '../../packages/core-runtime/src/index.ts';
-import {
-  appliedDetail,
-  asPerson,
-  liveWork,
-  pickup,
-  rows,
-  type Work,
-} from '../runtime/schedules-harness.ts';
+import { appliedDetail, asPerson, liveWork, pickup, rows } from '../runtime/schedules-harness.ts';
 import { openBilling } from '../runtime/t3d1-harness.ts';
-import { broker, call, noDatabase, s, useBrokerWorld, world } from './broker-world.ts';
+import { call, noDatabase, s, useBrokerWorld, world } from './broker-world.ts';
+import { calls, dispatched, envelopeActual, gated, reservationOf } from './give-back-world.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
 
 useBrokerWorld('giveback');
-
-/** A broker whose custody waits for `open` before it dispatches for real. */
-const gated = (): { readonly broker: Broker; readonly open: () => void } => {
-  let release: (() => void) | undefined;
-  const gate = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  const dispatch: Broker['custody']['dispatch'] = async (credentialRef, request) => {
-    await gate;
-    return await broker.custody.dispatch(credentialRef, request);
-  };
-  return {
-    broker: { ...broker, custody: { ...broker.custody, dispatch } },
-    open: () => release?.(),
-  };
-};
-
-const reservationOf = (work: Work): string => String(work.decision['reservationId']);
-
-const envelopeActual = async (work: Work): Promise<number> => {
-  const [row] = await rows<{ actual: string }>(
-    s,
-    `select e.actual_minor::text as actual from public.task_envelopes e
-       join public.reservations r on r.envelope_id = e.id where r.id = $1`,
-    [reservationOf(work)],
-  );
-  return Number(row?.actual);
-};
-
-/** What the call came to once it ended: its actual, or nothing when it was released. */
-const calls = async (work: Work) =>
-  await rows<{ state: string; reserved: string; came_to: string }>(
-    s,
-    `select state, reserved_minor::text as reserved,
-            (case when state = 'settled' then actual_minor else 0 end)::text as came_to
-       from public.model_calls where reservation_id = $1 and state <> 'refused'
-      order by accepted_at`,
-    [reservationOf(work)],
-  );
-
-const dispatched = async (work: Work): Promise<void> => {
-  await expect
-    .poll(async () => (await calls(work)).map((one) => one.state), { timeout: 5_000 })
-    .toContain('dispatched');
-};
 
 it('an open call counted at its maximum gives back the difference when it settles lower, once', async () => {
   const work = await liveWork(s, `giveback open ${randomUUID()}`, 2_000);

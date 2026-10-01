@@ -160,7 +160,8 @@
     "SL11-29 names aw-08-review-spend (FIXA2, A2-B1: a plan lease handed back for review settles its hold at the spend its broker calls recorded, so the envelope and the cap count it once) as an invariant.",
     "SL11-29 (GATE, N9-M2) adds aw-09-revision-launch (the agent's revision after requested changes is the reviewed output, under the lease the revised output names, and approving it is the launch; a person's own revision on that lineage stays a plan accept, LAUNCH_NOT_DECIDED at dispatch) as an invariant.",
     "SL11-29 MONEY names classifier-counts-spend (a hold whose work stopped, by the sweep, a lineage cancel or a dropped hand-back, settles at its broker calls' spend, open calls at their maximum, and only a hold with no calls is abandoned at zero) as an invariant.",
-    "SL11-29 FIXMONEY names resume-sizing (a step whose hold settled at its spend is re-held at the hold less the spend at pickup and at a drop's resume, a hold with no spend whole, and a spend that used the whole hold stops the run at its budget with the AW-05 ask a top-up answers) and spend-give-back (a call counted at its maximum gives the envelope back what it did not spend, once, and a top-up counts only the spend it moved) as invariants."
+    "SL11-29 FIXMONEY names resume-sizing (a step whose hold settled at its spend is re-held at the hold less the spend at pickup and at a drop's resume, a hold with no spend whole, and a spend that used the whole hold stops the run at its budget with the AW-05 ask a top-up answers) and spend-give-back (a call counted at its maximum gives the envelope back what it did not spend, once, and a top-up counts only the spend it moved) as invariants.",
+    "SL11-30 GIVEBACK names spend-give-back-late (a call counted at its maximum gives back what it did not spend, once, after a top-up, after the end at a budget stop, and on a person's or a provider's resolution of an unknown liability, only in its own business's envelope) and resume-sizing-stop (FIXMONEY B1 and B2: a spent-whole hold whose open call settled lower is re-held at what remains with no ask, and a spent-whole stop after the consolidated ask ends the run and alerts a person) as invariants."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -463,7 +464,9 @@
     "tests/broker/aw-08-review-spend.test.ts",
     "tests/runtime/classifier-counts-spend.test.ts",
     "tests/runtime/resume-sizing.test.ts",
+    "tests/runtime/resume-sizing-stop.test.ts",
     "tests/broker/spend-give-back.test.ts",
+    "tests/broker/spend-give-back-late.test.ts",
     "tests/api/aw-08-receipt-provider.test.ts",
     "tests/runtime/aw-13-export.test.ts",
     "tests/runtime/aw-13-isolation.test.ts",
