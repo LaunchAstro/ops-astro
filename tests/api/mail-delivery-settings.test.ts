@@ -62,3 +62,17 @@ it('AW-07b mail delivery: a setting missing or malformed is named, never its val
     expect(JSON.stringify(refused)).not.toContain('secret-host');
   }
 });
+
+it('AW-07b mail delivery: mock reaches only a provider on this machine, never a real one', () => {
+  for (const origin of ['https://api.resend.com', 'https://outbox.secret-host.test']) {
+    const refused = mailDeliverySettings({ ...mock, MAIL_PROVIDER_ORIGIN: origin });
+    expect(refused, origin).toMatchObject({ kind: 'invalid' });
+    expect(JSON.stringify(refused)).toContain('MAIL_PROVIDER_ORIGIN');
+    expect(JSON.stringify(refused)).not.toContain('secret-host');
+  }
+  for (const origin of ['http://127.0.0.1:9', 'https://127.0.0.1:8443']) {
+    expect(mailDeliverySettings({ ...mock, MAIL_PROVIDER_ORIGIN: origin }), origin).toMatchObject({
+      kind: 'mock',
+    });
+  }
+});
