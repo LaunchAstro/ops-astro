@@ -20,20 +20,18 @@ function byField(
   kind: string,
   rows: readonly ProjectRow[],
   of: (row: ProjectRow) => string | null,
-  mock = false,
 ): readonly Facet<ProjectRow>[] {
   const values = [...new Set(rows.map((row) => of(row)))]
     .filter((value): value is string => value !== null)
     .toSorted();
   return values.map((value) => {
-    const facet: Facet<ProjectRow> = {
+    return {
       id: `${kind.toLowerCase()}:${slug(value)}`,
       kind,
       label: value,
       words: wordsOf(value),
       test: (row: ProjectRow) => of(row) === value,
     };
-    return mock ? Object.assign(facet, { mock: true }) : facet;
   });
 }
 
@@ -74,7 +72,6 @@ export function projectFacets(
   rows: readonly ProjectRow[],
   now: Date,
   viewer: string | null = null,
-  mockCategories = false,
 ): readonly Facet<ProjectRow>[] {
   // The reader's own calendar day, as the due cell judges it (never the UTC day).
   const today = `${String(now.getFullYear())}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
@@ -83,7 +80,7 @@ export function projectFacets(
     ...byAssignee(rows, viewer),
     ...byField('Stage', rows, (row) => row.stage),
     ...byField('Status', rows, (row) => row.status),
-    ...byField('Category', rows, (row) => row.category, mockCategories),
+    ...byField('Category', rows, (row) => row.category),
     {
       id: 'due:overdue',
       kind: 'Due',
