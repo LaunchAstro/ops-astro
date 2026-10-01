@@ -19,7 +19,12 @@
 // queue, and the second reads the first's `asked`. An attempt that failed
 // with proof nothing went does not spend a window.
 
-import { hasRoom, type InboxReason, type TenantQuery } from '../../core-records/src/index.ts';
+import {
+  advisoryLock,
+  hasRoom,
+  type InboxReason,
+  type TenantQuery,
+} from '../../core-records/src/index.ts';
 import type { ModelOperation } from '../../core-connectors/src/index.ts';
 
 export type MailClass = 'staff' | 'transactional' | 'relationship';
@@ -74,9 +79,7 @@ export async function windowSpent(
 ): Promise<boolean> {
   const byPerson = 'person' in key;
   const id = byPerson ? key.person : key.client;
-  await tx.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [
-    `aw07b:${byPerson ? 'person' : 'client'}:${tx.businessId}:${id}`,
-  ]);
+  await advisoryLock(tx, `aw07b:${byPerson ? 'person' : 'client'}:${tx.businessId}:${id}`);
   const [row] = await tx.query<{ readonly spent: boolean }>(
     `select exists (
        select 1 from public.inbox_delivery_attempts a
