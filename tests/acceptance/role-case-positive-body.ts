@@ -147,6 +147,7 @@ export function createPositiveBody(
       // `settings.read` needs `settings:read`, which the seed grants the
       // admin; `session.capabilities` needs a live grant of any kind, which
       // the admin holds, so the admin reaches both here.
+      // falls through
       case 'settings.read':
       case 'session.capabilities':
       case 'inbox.read':
