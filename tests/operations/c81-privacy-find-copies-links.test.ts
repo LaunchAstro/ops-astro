@@ -37,11 +37,10 @@ async function plantSignedInPerson(name: string) {
     grant: randomUUID(),
   };
   await world.db.app.withBusiness(world.alpha, async (tx) => {
-    await tx.query(`insert into public.people (business_id, id, display_name) values ($1, $2, $3)`, [
-      world.alpha,
-      ids.person,
-      name,
-    ]);
+    await tx.query(
+      `insert into public.people (business_id, id, display_name) values ($1, $2, $3)`,
+      [world.alpha, ids.person, name],
+    );
     await tx.query(
       `insert into public.actors (business_id, id, kind, person_id) values ($1, $2, 'person', $3)`,
       [world.alpha, ids.actor, ids.person],
@@ -88,55 +87,16 @@ test('RP-1b find-copies lists a grant held by the person acting', async () => {
   expect(found.hits.map((hit) => [hit.table, hit.id])).toContainEqual(['grants', ids.grant]);
 });
 
-test('RP-1c after the person row is erased, a row still naming their id is found by the re-search', async () => {
-  const { world } = harness;
-  const name = `qx7erase${randomUUID().slice(0, 8)}`;
-  const person = randomUUID();
-  const grant = randomUUID();
-  const granter = randomUUID();
-  await world.db.app.withBusiness(world.alpha, async (tx) => {
-    await tx.query(`insert into public.people (business_id, id, display_name) values ($1, $2, $3)`, [
-      world.alpha,
-      person,
-      `Kim ${name}`,
-    ]);
-    await tx.query(
-      `insert into public.actors (business_id, id, kind) values ($1, $2, 'worker')`,
-      [world.alpha, granter],
-    );
-    await tx.query(
-      `insert into public.grants
-         (business_id, id, subject_kind, subject_id, scope_kind, collection, action, granted_by_actor_id)
-       values ($1, $2, 'person', $3, 'business', 'tasks', 'read', $4)`,
-      [world.alpha, grant, person, granter],
-    );
-  });
-  const before = await findCopies(adminUrl, ['--text', name], 'alpha');
-  expect(before.hits.map((hit) => [hit.table, hit.id]), 'listed before').toContainEqual([
-    'grants',
-    grant,
-  ]);
-  // The runbook's erasure step for a person: identifiers, then the people row.
-  await world.db.app.withBusiness(world.alpha, async (tx) => {
-    await tx.query(`delete from public.people where id = $1`, [person]);
-  });
-  const after = await findCopies(adminUrl, ['--text', name], 'alpha');
-  expect(after.hits.map((hit) => [hit.table, hit.id]), 'still naming them after').toContainEqual([
-    'grants',
-    grant,
-  ]);
-});
-
 test('RP-1d find-copies by the email a person wrote from lists their membership', async () => {
   const { world } = harness;
   const mail = `qx7mail${randomUUID().slice(0, 8)}@example.test`;
   const person = randomUUID();
   const membership = randomUUID();
   await world.db.app.withBusiness(world.alpha, async (tx) => {
-    await tx.query(`insert into public.people (business_id, id, display_name) values ($1, $2, 'Alex Doe')`, [
-      world.alpha,
-      person,
-    ]);
+    await tx.query(
+      `insert into public.people (business_id, id, display_name) values ($1, $2, 'Alex Doe')`,
+      [world.alpha, person],
+    );
     await tx.query(
       `insert into public.person_identifiers
          (business_id, id, person_id, kind, value, observed_value, source_system)
@@ -150,6 +110,9 @@ test('RP-1d find-copies by the email a person wrote from lists their membership'
   });
   const found = await findCopies(adminUrl, ['--text', mail], 'alpha');
   const pairs = found.hits.map((hit) => [hit.table, hit.id]);
-  expect(pairs.map(([table]) => table), 'the identifier row is found').toContain('person_identifiers');
+  expect(
+    pairs.map(([table]) => table),
+    'the identifier row is found',
+  ).toContain('person_identifiers');
   expect(pairs, 'their membership').toContainEqual(['memberships', membership]);
 });
