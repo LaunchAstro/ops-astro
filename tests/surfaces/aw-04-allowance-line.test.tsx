@@ -95,11 +95,28 @@ describe('AW-04 planning allowance read: the drawer', () => {
     );
   });
 
+  it('AW-04 planning allowance read: a refused or unavailable read draws no line and no figure', async () => {
+    for (const answer of [
+      { refused: true, code: 'SCOPE_NOT_GRANTED', names: [], fixes: ['no live grant covers it'] },
+      { unavailable: true, because: 'The API answered 503.' },
+    ]) {
+      // eslint-disable-next-line no-await-in-loop -- one drawer per answer
+      const { page } = await drawer(() => answer);
+      expect(page.find('[data-assistant="allowance"]')).toBeNull();
+      expect(page.text()).not.toContain('AUD');
+      // eslint-disable-next-line no-await-in-loop
+      await unmountAll();
+    }
+  });
+});
+
+describe('AW-04 planning allowance read: the line follows the spend', () => {
   it('AW-04 planning allowance read: a later reply settling reloads the line with its new figures', async () => {
     let reads = 0;
     const { page } = await drawer((body) => {
-      if (body['conversationId'] !== CONVERSATION)
+      if (body['conversationId'] !== CONVERSATION) {
         return allowance({ spentMinor: 0, heldMinor: 0 });
+      }
       reads += 1;
       return allowance(
         reads === 1 ? { spentMinor: 745, heldMinor: 500 } : { spentMinor: 1_490, heldMinor: 0 },
@@ -116,19 +133,5 @@ describe('AW-04 planning allowance read: the drawer', () => {
     expect(page.find('[data-assistant="allowance"]')?.textContent).toBe(
       'Planning allowance: AUD 37.55 left of AUD 50.00. This conversation: AUD 14.90 spent, AUD 0.00 held.',
     );
-  });
-
-  it('AW-04 planning allowance read: a refused or unavailable read draws no line and no figure', async () => {
-    for (const answer of [
-      { refused: true, code: 'SCOPE_NOT_GRANTED', names: [], fixes: ['no live grant covers it'] },
-      { unavailable: true, because: 'The API answered 503.' },
-    ]) {
-      // eslint-disable-next-line no-await-in-loop -- one drawer per answer
-      const { page } = await drawer(() => answer);
-      expect(page.find('[data-assistant="allowance"]')).toBeNull();
-      expect(page.text()).not.toContain('AUD');
-      // eslint-disable-next-line no-await-in-loop
-      await unmountAll();
-    }
   });
 });
