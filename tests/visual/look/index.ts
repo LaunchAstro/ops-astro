@@ -8,10 +8,13 @@
 
 import { ACCESS } from './access.ts';
 import { BOARD } from './board.ts';
+import { CLIENTS } from './clients.ts';
+import { DOCK } from './dock.ts';
 import { FRAME } from './frame.ts';
 import { INBOX } from './inbox.ts';
 import { SETTINGS } from './settings.ts';
 import { SHELL } from './shell.ts';
+import { RAIL } from './rail.ts';
 import { SIGN_IN } from './sign-in.ts';
 import { TASK } from './task.ts';
 import { TASK_PANEL } from './task-panel.ts';
@@ -21,16 +24,19 @@ import { TODOS } from './todos.ts';
 import { WORKLOG } from './worklog.ts';
 import type { LookScreen } from './probe.ts';
 
-export { RULED_PAINT, type LookProbe, type LookScreen } from './probe.ts';
+export { RULED_PAINT, type LookPrep, type LookProbe, type LookScreen } from './probe.ts';
 
 export const LOOK_SCREENS: readonly LookScreen[] = [
   SHELL,
+  RAIL,
   BOARD,
   TASK,
   SETTINGS,
   SIGN_IN,
   ACCESS,
   TELEMETRY,
+  CLIENTS,
+  DOCK,
   TODOS,
   TASK_PANEL,
   INBOX,

@@ -64,6 +64,11 @@ export interface HistoryEntry {
   /** The person's display name for a person's actor; null for any other. */
   readonly actorName: string | null;
   readonly operation: string;
+  /**
+   * On a `task.duplicate` entry only (MP-4-8): the task it was duplicated
+   * from, for a reader who holds read on that task now; null for anyone else.
+   */
+  readonly duplicatedFrom?: string | null;
 }
 
 /** A task in a list. Everything the detail has except the long text and the history. */
@@ -100,6 +105,8 @@ export interface TaskDetail extends TaskSummary {
   readonly pageLink: string | null;
   /** The time the burn bar measures against, whole minutes (MP-4-8); null when not set. */
   readonly estimateMinutes: number | null;
+  /** The work label's id as `task.set_category` stored it (MP-4-8, CS-4.16); null for none. */
+  readonly category: string | null;
   readonly history: readonly HistoryEntry[];
   /** Oldest first. Empty is a real answer; a denied read never reaches here. */
   readonly comments: readonly CommentView[];
@@ -224,7 +231,9 @@ export interface TimeEntryView {
 /**
  * One subtask as its parent's page lists it (MP-4-4). `done` is the completed
  * category; `archived` says when and why a step left the count without being
- * done (MP-4-15), and is null for a live one.
+ * done (MP-4-15), and is null for a live one. `awaitingApproval` is true while
+ * a gate on the step's live proposal waits for a decision (MP-5-11's
+ * question): the page draws that step with a note and no tick.
  */
 export interface StepView {
   readonly id: string;
@@ -233,6 +242,7 @@ export interface StepView {
   readonly state: TaskStateView | null;
   readonly done: boolean;
   readonly archived: { readonly at: string; readonly why: string } | null;
+  readonly awaitingApproval: boolean;
   readonly assignee: PersonView | null;
   readonly revision: number;
 }
@@ -257,9 +267,10 @@ export interface TaskEnvelope {
   readonly actualMinor: number;
 }
 
-/** A task's board as the crumb draws it: its title, or that it is withheld. */
+/** A task's board as the crumb draws it: its id and title, or that it is withheld. */
 export type BoardCrumb =
-  { readonly readable: true; readonly title: string | null } | { readonly readable: false };
+  | { readonly readable: true; readonly id: string; readonly title: string | null }
+  | { readonly readable: false };
 
 /**
  * A task's derived rank as its reader is shown it (R70, MP-4-9).
@@ -510,6 +521,14 @@ export interface SessionCapabilities {
  */
 export interface InternalTaskDetail extends TaskDetail {
   readonly comments: readonly InternalCommentView[];
+  /**
+   * The client the task is under, by id (C32), or null for none (MP-4-8). Its
+   * name is `client.list`'s. A client the reader's grants do not reach is sent
+   * as null too, beside `clientSet: true` (CS-4.12): no id `client.list` withholds.
+   */
+  readonly client: string | null;
+  /** True once the task has content, so its client is locked (S0-5, `CLIENT_LOCKED`). */
+  readonly hasContent: boolean;
 }
 
 /** `task.read` on the person prefix: the whole detail, for a reader inside the business. */
@@ -554,6 +573,8 @@ export interface BoardTask extends TaskSummary {
   readonly actualMinutes: number;
   /** The task's estimate in whole minutes (MP-4-8), as `task.read` answers it; null when not set. */
   readonly estimateMinutes: number | null;
+  /** The work label's id (CS-4.16), as `task.read` answers it; null for none. */
+  readonly category: string | null;
   /** The in-product address the task is about (MP-4-12), as `task.read` answers it; null when unlinked. */
   readonly pageLink: string | null;
   /**

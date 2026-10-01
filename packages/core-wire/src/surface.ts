@@ -278,6 +278,15 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'task.reopen': { ...TARGET, reason: 'any' },
   'task.start': TARGET,
   'task.set_state': { ...TARGET, stateId: 'id' },
+  // The old task, the chosen client and the shell the person edited: no
+  // operand for anything else, so nothing else can carry over (MP-4-8).
+  'task.duplicate': {
+    recordId: 'id',
+    client: 'id|null',
+    title: 'text',
+    stepNames: 'any',
+    confirmCarried: 'flag?',
+  },
   'task.comment': {
     ...TARGET,
     body: 'any',
@@ -324,6 +333,7 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'task.set_audience': FIELDS,
   'task.set_scores': FIELDS,
   'task.set_adhoc': FIELDS,
+  'task.set_category': FIELDS,
   'task.share_with_client': TARGET,
   'task.revoke_client_share': TARGET,
   'task.reparent': { ...TARGET, parentId: 'any' },
@@ -466,6 +476,18 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // record id (the status select: Waiting on client, On hold). A person's
   // call: an agent's lifecycle stays pickup and handback.
   declare('task.set_state', 'write'),
+  // Duplicate without contents (MP-4-8, CS-4.12): a new task for the chosen
+  // client from the shell the person sent. `task:write` is asked of that
+  // client (`target`: party scope, the business for none), and the handler
+  // asks it again with `read` on the old task named in `recordId`, both
+  // against current grants. A person's only, whatever a delegation holds.
+  declare('task.duplicate', 'write', {
+    targetsExistingRecord: false,
+    authorisedOn: 'target',
+    untargetedIdentifiers: ['recordId'],
+    authority: ['task:read', 'task:write'],
+    rule: 'carried text naming the old client: refused CARRIED_TEXT_NAMES_CLIENT (409) until confirmed',
+  }),
   // An agent sets the assignee of its own task when its delegation holds
   // `task:assign` (MP-4-8), and not the delegate: `assignTaskAsAgent`.
   declare('task.assign', 'assign', { agent: 'delegated' }),
@@ -483,6 +505,10 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // The Ad hoc mark (MP-4-10, CS-4.9): `task:write`, and an agent sets it on
   // its own task inside its delegation.
   declare('task.set_adhoc', 'write', { agent: 'delegated' }),
+  // The task's work label (MP-4-8, CS-4.16): `task:write`, and an agent sets
+  // it on its own task inside its delegation. A label only (R76): it reaches
+  // no grant, delegation or scope.
+  declare('task.set_category', 'write', { agent: 'delegated' }),
   // Client access (MP-4-10, CS-4.10, R45): the task's share grants to its
   // client's people, created and withdrawn under `access:share`, which an
   // agent never holds (contract 2.3 to 2.6). The target row is the lock, so

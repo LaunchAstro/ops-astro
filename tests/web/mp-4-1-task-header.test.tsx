@@ -13,6 +13,7 @@ import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { matchRoute } from '../../apps/web/src/routes.ts';
 import { dataOf, found, page, proposalWith, tick } from './task-page-stub.tsx';
+import { unheld } from './task-look.ts';
 
 const ADDRESS = '[data-copy="address"]';
 
@@ -69,7 +70,22 @@ describe('MP-4-1 crumb', () => {
     await withheld.unmount();
   });
 
-  it.todo('reads the category after the board (LEANS-ON: no section or category is named on main)');
+  it('names the task’s category after the board, by its label', async () => {
+    const view = await page('Proj-Verity-Pacing', found({ category: 'seo' }));
+    const parts = view.all('[data-crumb]').map((part) => (part as HTMLElement).dataset['crumb']);
+    expect(parts).toStrictEqual(['projects', 'board', 'category', 'key', 'state']);
+    expect(view.find('[data-crumb="category"]')?.textContent).toBe('SEO');
+    await view.unmount();
+  });
+
+  it('draws no category where the task has none or the read does not carry one', async () => {
+    const none = await page('Proj-Verity-Pacing', found({ category: null }));
+    expect(none.find('[data-crumb="category"]')).toBeNull();
+    await none.unmount();
+    const uncarried = await page('Proj-Verity-Pacing', found());
+    expect(uncarried.find('[data-crumb="category"]')).toBeNull();
+    await uncarried.unmount();
+  });
 });
 
 describe('MP-4-1 copy address tick', () => {
@@ -164,5 +180,10 @@ describe('MP-4-1 run line shapes', () => {
 });
 
 describe('MP-4-1 visual match', () => {
-  it.todo('found, missing and bare states at 1480, 900 and 390, light and dark (MP-1-7 harness)');
+  // The mockup draws the found header only; the missing and bare states are
+  // held by the run line shapes above and mp-4-1-task-absent.test.tsx.
+  it('the found header’s crumb, key, title and run line are held to the mockup at 1480, 900 and 390, light and dark', () => {
+    const header = ['crumb', 'key', 'title', 'run-line'].map((one) => `task.page-${one}`);
+    expect(unheld(header)).toEqual([]);
+  });
 });

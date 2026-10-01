@@ -6,14 +6,12 @@ import { MADE_UP_READS, madeUpAnswer, TASKS } from './made-up-api.ts';
 
 // Reads no screen draws at the harness's addresses: a receipt needs a
 // finished run, the preset plan is the command line's, and the unattended list
-// is the operations view's. No screen asks the client list (Access reads its
-// clients inside access.read) or the breach notice drafts (the command line's
-// drill). Each is drawn "could not be read" if asked.
+// is the operations view's. No screen asks the breach notice drafts (the
+// command line's drill). Each is drawn "could not be read" if asked.
 const NOT_DRAWN = new Set([
   'task.receipt',
   'preset.plan',
   'inbox.unattended',
-  'client.list',
   'privacy.draft_breach_notices',
 ]);
 

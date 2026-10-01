@@ -1,28 +1,29 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The dock task panel's field edits (MP-4-8): the name, the assignee, the due
-// date and the estimate; the tags are `TagField.tsx` (MP-4-11).
+// date, the estimate and the stage; the project is `ProjectField.tsx`, the
+// category `CategoryField.tsx`, the status `StatusField.tsx`, the client and
+// its duplicate `ClientField.tsx` (reads through `client-seam.ts`) and the tags
+// `TagField.tsx` (MP-4-11).
 //
 // **Each field through its own command, at the revision the panel read.** The
 // name, the due date and the estimate go out through `task.update`
-// (`task:write`), the
+// (`task:write`), the stage through `task.set_stage` (`task:write`), the
 // assignee through `task.assign` (`task:assign`). A change that lands asks the
 // host to count it (`onChanged`), so the panel and the page read the task
 // again and draw what the server holds; a refusal is quoted in the server's
 // words and nothing is drawn as changed.
-//
-// **Only the fields with an owner on the record.** Category, stage, board,
-// state, Assign to AI and the client wait on theirs (SL08 handback,
-// LEANS-ON).
 //
 // **A control's Escape is the control's.** The name edit's Escape ends the
 // edit; the picker marks its own handled (TR-A3-3).
 
 import { useState, type KeyboardEvent, type ReactElement } from 'react';
 import type { OperationsClient } from '../../operations/client.ts';
-import type {
-  InternalTaskDetail as Task,
-  PersonListResult,
+import {
+  TASK_STAGES,
+  type InternalTaskDetail as Task,
+  type PersonListResult,
+  type TaskStateView,
 } from '../../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../../data/use-read.ts';
 import { useCommand } from '../../records/use-command.ts';
@@ -33,15 +34,22 @@ import { todayOn } from './due-dates.ts';
 import { ESTIMATE_CHOICES, estimateWords } from './estimates.ts';
 import { TagField } from './TagField.tsx';
 import { AssignToAI } from './AssignToAI.tsx';
+import { ProjectField } from './ProjectField.tsx';
+import { StatusField } from './StatusField.tsx';
+import { ClientField } from './ClientField.tsx';
+import type { ClientSeams } from './client-seam.ts';
+import { CategoryField } from './CategoryField.tsx';
 
-export interface PanelFieldsProps {
+export interface PanelFieldsProps extends ClientSeams {
   readonly client: OperationsClient;
   readonly grantKey: string;
   readonly task: Task;
+  /** The business's task states `task.read` sent, the Status select's choices. */
+  readonly states?: readonly TaskStateView[];
   readonly onChanged: () => void;
 }
 
-type FieldCommand = 'task.update' | 'task.assign';
+type FieldCommand = 'task.update' | 'task.assign' | 'task.set_stage';
 
 /** One field write at the read revision; a landed one is counted. */
 function useFieldWrite(props: Omit<PanelFieldsProps, 'grantKey'>) {
@@ -128,6 +136,22 @@ export function PanelFields(props: PanelFieldsProps): ReactElement {
       />
       <DueField {...props} {...field} />
       <EstimateField {...props} {...field} />
+      <CategoryField client={props.client} task={props.task} onChanged={props.onChanged} />
+      <StageField {...props} {...field} />
+      <StatusField
+        client={props.client}
+        task={props.task}
+        states={props.states ?? []}
+        id="panel-field-status"
+        onChanged={props.onChanged}
+      />
+      <ProjectField
+        client={props.client}
+        grantKey={props.grantKey}
+        task={props.task}
+        onChanged={props.onChanged}
+      />
+      <ClientField {...props} />
       <TagField client={props.client} task={props.task} onChanged={props.onChanged} />
       <Refusal because={field.because} />
     </div>
@@ -237,6 +261,39 @@ function EstimateField(props: FieldProps): ReactElement {
             {estimateWords(choice)}
           </option>
         ))}
+      </select>
+    </>
+  );
+}
+
+/** The stage, from the task stage list the board reads; one stored off it stays as itself. */
+function StageField(props: FieldProps): ReactElement {
+  const stage = props.task.stage;
+  const stages = TASK_STAGES.list();
+  const off = stage !== null && !stages.some((each) => each.id === stage);
+  return (
+    <>
+      <label className="tf__k" htmlFor="panel-field-stage">
+        Stage
+      </label>
+      <select
+        id="panel-field-stage"
+        className="input"
+        disabled={props.busy}
+        value={stage ?? ''}
+        onChange={(event) =>
+          props.write('task.set_stage', {
+            stage: event.target.value === '' ? null : event.target.value,
+          })
+        }
+      >
+        <option value="">Not set</option>
+        {stages.map((each) => (
+          <option key={each.id} value={each.id}>
+            {each.label}
+          </option>
+        ))}
+        {off ? <option value={stage}>{stage}</option> : null}
       </select>
     </>
   );

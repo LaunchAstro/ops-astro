@@ -18,6 +18,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { briefFacts } from '../../apps/web/src/screens/task/brief-facts.ts';
 import { BriefField, DescriptionField } from '../../apps/web/src/screens/task/Writing.tsx';
 import { found, TASK_ID } from './task-page-stub.tsx';
+import { unheld } from './task-look.ts';
 import { mount, page, unmountAll } from './perspective-support.tsx';
 import { BRIEF, field, textOf } from './writing-support.tsx';
 import type { Mounted } from '../surfaces/mount.tsx';
@@ -179,7 +180,7 @@ describe('MP-4-7 the description is sans everywhere; mono only on the Agent MD f
 });
 
 describe('MP-4-7 visual match', () => {
-  it.todo(
-    'matches the mockup’s dock task panel and task page at 1480, 900 and 390, light and dark (MP-1-7 harness)',
-  );
+  it('the description on the task page and in the dock task panel is held to the mockup at 1480, 900 and 390, light and dark', () => {
+    expect(unheld(['task.page-description', 'task.panel-description'])).toEqual([]);
+  });
 });

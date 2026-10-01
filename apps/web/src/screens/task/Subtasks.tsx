@@ -8,18 +8,25 @@
 // success asks the page to read the task again, so the list, the count and
 // the percentage are always the steps the server sent.
 //
+// **A gate step has no tick.** A step whose gate waits for a decision
+// (`awaitingApproval` on the read) is decided at its gate, never ticked here:
+// its row carries an eye and a note in place of the tick, and it stays open in
+// the count until the gate is decided.
+//
 // **The box stays ready.** Enter adds and clears the box, and focus stays in
 // it for the next one. The box sits at the top and a new step joins the end,
 // in the order the server lists them.
 //
 // **Finished steps fold away.** A done step, and an archived one (it left the
-// count without being done, MP-4-15), sit under "Show finished", which the
-// page holds so a reread keeps it open. An archived step says when and why,
-// and carries no tick: it comes back only when its parent is reopened.
+// count without being done, MP-4-15), sit under "Show finished", the person's
+// own preference (`show-finished.ts`), so a reread keeps it open. An archived
+// step says when and why, and carries no tick: it comes back only when its
+// parent is reopened.
 
 import { useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
 import type { StepView, TaskTimeView } from '../../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../../operations/client.ts';
+import { useShowFinished } from './show-finished.ts';
 import { useCommand } from '../../records/use-command.ts';
 import { stepMarks } from './perspective-counts.ts';
 import { TeamWork, type PanelOpener } from './Perspectives.tsx';
@@ -46,6 +53,19 @@ const archivedOn = (at: string): string =>
     timeZone: 'Australia/Brisbane',
   });
 
+/** A step waiting at its gate: decided there, so no tick here (DT-04). */
+function GateStepRow({ step }: { readonly step: StepView }): ReactElement {
+  return (
+    <li className="sb__step" data-step={step.id} data-done={step.done} data-gate>
+      <span aria-hidden="true">◉</span>
+      <span className="sb__step-title">{step.title ?? step.key}</span>
+      <span className="sb__gate-note" data-step-gate>
+        Waiting on a gate
+      </span>
+    </li>
+  );
+}
+
 function StepRow(props: {
   readonly step: StepView;
   readonly busy: boolean;
@@ -61,6 +81,7 @@ function StepRow(props: {
     press();
   };
   const title = step.title ?? step.key;
+  if (step.archived === null && step.awaitingApproval) return <GateStepRow step={step} />;
   return (
     <li className="sb__step" data-step={step.id} data-done={step.done}>
       {step.archived === null ? (
@@ -212,24 +233,36 @@ export function SubtaskList(props: {
   );
 }
 
-/** The Team side's subtask and time sections, each placed in it, as the task page draws them. */
-export function TeamSubtasks(props: {
+interface TeamSubtasksProps {
   readonly client: OperationsClient;
   readonly task: {
     readonly id: string;
     readonly steps: readonly StepView[];
     readonly time: TaskTimeView | null;
+    readonly estimateMinutes: number | null;
   };
-  readonly showFinished: boolean;
-  readonly onShowFinished: (value: boolean) => void;
   readonly showAllTime: boolean;
   readonly onShowAllTime: (value: boolean) => void;
+  /** The fold, held above the page's read so a reread keeps it; the panel keeps its own. */
+  readonly showFinished?: boolean | null;
+  readonly onShowFinished?: (value: boolean | null) => void;
   readonly onChanged: () => void;
   readonly onOpenPanel: PanelOpener | undefined;
   /** False inside the dock task panel, where the edit already happens. */
   readonly doors?: boolean;
-}): ReactElement {
+}
+
+/** The Team side's subtask and time sections, each placed in it, as the task page draws them. */
+export function TeamSubtasks(props: TeamSubtasksProps): ReactElement {
   const { task } = props;
+  // The person's own choice (MP-4-4, CS-4.27). The member page and the panel
+  // draw this; the shared view does not, so an outside reader reads nothing more.
+  const [showFinished, setShowFinished] = useShowFinished(
+    props.client,
+    props.onShowFinished === undefined
+      ? undefined
+      : [props.showFinished ?? null, props.onShowFinished],
+  );
   return (
     <TeamWork
       steps={stepMarks(task.steps)}
@@ -238,19 +271,18 @@ export function TeamSubtasks(props: {
           client={props.client}
           parentId={task.id}
           steps={task.steps}
-          showFinished={props.showFinished}
-          onShowFinished={props.onShowFinished}
+          showFinished={showFinished}
+          onShowFinished={setShowFinished}
           onChanged={props.onChanged}
         />
       }
-      // No estimate is on the record yet, so the burn bar waits for one.
       time={
         task.time === null ? undefined : (
           <TimeLog
             client={props.client}
             taskId={task.id}
             time={task.time}
-            estimateMinutes={null}
+            estimateMinutes={task.estimateMinutes}
             showAll={props.showAllTime}
             onShowAll={props.onShowAllTime}
             onChanged={props.onChanged}

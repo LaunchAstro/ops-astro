@@ -98,6 +98,7 @@ export const FIELDS_PAYLOAD_OPERATIONS: readonly CommandName[] = [
   'task.create',
   'task.set_adhoc',
   'task.set_audience',
+  'task.set_category',
   'task.set_party',
   'task.set_scores',
   'task.set_stage',
