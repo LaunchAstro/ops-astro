@@ -1,0 +1,7 @@
+[
+  {
+    "table": "ops.slots",
+    "columns": ["reservation"],
+    "where": "slot in ('num_3', 'num_4', 'num_5')"
+  }
+]
