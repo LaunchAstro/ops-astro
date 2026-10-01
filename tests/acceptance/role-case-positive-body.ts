@@ -141,14 +141,14 @@ export function createPositiveBody(
         return { body: { board: null } };
       case 'task.ledger':
         return { body: { timeZone: 'UTC' } };
-      // The pending gates the admin may decide: the admin holds `decide` on
-      // the whole business, so the list answers.
-      case 'gate.pending':
       // An empty body, and no `expectedRevision`: `business_settings` has no revision column,
       // and `session.capabilities` reports the caller's own grants. The admin holds what each
       // asks: `settings:read`, `access:manage` and `operations:read` (C55, INB-1e), and a live
       // grant of any kind for `session.capabilities`, `client.list` (C32) and the inbox (INB-1d).
       // The person menu's two (C23) and the caller's own preferences (MP-2-11a) are its own.
+      // The pending gates the admin may decide: the admin holds `decide` on
+      // the whole business, so the list answers.
+      case 'gate.pending':
       case 'task.queue':
       case 'person.list':
       case 'team.list':
