@@ -114,6 +114,14 @@ const placesOf = (probe: LookProbe): { width: number; theme: Theme }[] =>
 async function measureOn(side: Side, url: string, probe: LookProbe, on: 'mockup' | 'app') {
   try {
     const page = await load(side, packet, url, { open: probe[on].open });
+    // An app element drawn from its own read (the panel's Project select asks
+    // task.board) comes after the first paint: wait for it, so a slow answer
+    // is not read as "draws no"; one never drawn is still null after 5s.
+    if (on === 'app') {
+      await page
+        .waitForSelector(probe.app.selector, { state: 'attached', timeout: 5000 })
+        .catch(() => null);
+    }
     return await page.evaluate(measure, { selector: probe[on].selector, props: probe.props });
   } finally {
     await side.context.close();

@@ -14,173 +14,40 @@
 // against the mockup's page. Every name and client is made up.
 
 import type {
-  BoardTask,
+  AccessReadResult,
   CapabilitiesResult,
   ClientListResult,
   InboxCountResult,
   InboxReadResult,
-  InternalTaskDetail,
   InternalTaskRead,
+  OperationsReadResult,
   PersonListResult,
   QueueResult,
+  SessionPersonResult,
   SettingsReadResult,
   TagListResult,
-  TagView,
   TaskBoardResult,
   TaskExecutionResult,
-  TaskStateView,
-  TaskSummary,
+  TaskSearchResult,
   TaskTodosResult,
-  TodoView,
+  TeamListResult,
 } from '../../packages/core-wire/src/index.ts';
 import type { BrowserContext } from 'playwright';
 import type { ReadName } from '../../apps/web/src/operations/read-names.ts';
+import {
+  STATE,
+  NATHAN,
+  MIA,
+  TASKS,
+  DETAIL,
+  HARBOUR,
+  MERIDIAN,
+  LEDGER,
+  TAGS,
+  TODOS,
+} from './made-up-rows.ts';
 
-const STATE = {
-  active: { id: 's-active', key: 'active', label: 'Active', machineCategory: 'started' },
-  waiting: {
-    id: 's-waiting',
-    key: 'waiting',
-    label: 'Waiting on client',
-    machineCategory: 'backlog',
-  },
-  hold: { id: 's-hold', key: 'hold', label: 'On hold', machineCategory: 'unstarted' },
-} as const satisfies Record<string, TaskStateView>;
-
-const NATHAN = { personId: 'p-nathan', name: 'Nathan' };
-const MIA = { personId: 'p-mia', name: 'Mia' };
-
-const task = (
-  n: number,
-  title: string,
-  state: TaskStateView,
-  due: string | null,
-  assignee: TaskSummary['assignee'] = NATHAN,
-  board: Partial<BoardTask> = {},
-): BoardTask => ({
-  id: `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`,
-  key: `T-${String(n)}`,
-  title,
-  state,
-  assignee,
-  due,
-  priority: null,
-  completedAt: null,
-  revision: 1,
-  // What the Projects board's cells draw (MP-5-8), made up like the rest.
-  rank: { number: n, score: 100 - n, calc: 'made up' },
-  stage: null,
-  clientSet: true,
-  actualMinutes: 0,
-  estimateMinutes: null,
-  pageLink: null,
-  statePosition: state.key === 'active' ? 1 : state.key === 'waiting' ? 2 : 3,
-  waitReason: null,
-  awaitingDecision: false,
-  agent: null,
-  myAgents: [],
-  // The reader's own waiting client signals and mentions (MP-5-8), none here.
-  comments: { client: 0, mentions: 0, latest: null },
-  category: null,
-  ...board,
-});
-
-// The harness clock is 2026-09-26; dates sit either side of it.
-export const TASKS: readonly BoardTask[] = [
-  task(1, 'Contract review pack, 31 July', STATE.active, '2026-09-30', NATHAN, {
-    stage: 'Build',
-    estimateMinutes: 240,
-    actualMinutes: 95,
-  }),
-  task(6, 'Renewal pack, 14 August', STATE.active, '2026-10-07', NATHAN, { stage: 'Brief' }),
-  task(
-    9,
-    'Sign off the Meridian ad run rate, 29% over budget',
-    STATE.active,
-    '2026-09-18',
-    NATHAN,
-    {
-      waitReason: 'needs_approval',
-      awaitingDecision: true,
-    },
-  ),
-  task(13, 'Approve the four review replies before they go out', STATE.active, '2026-09-26'),
-  task(15, 'Ads rebuild: cost per enquiry', STATE.active, '2026-10-06', MIA),
-  task(17, 'Shopping feed clean-up', STATE.active, '2026-10-05'),
-  task(24, 'New patient offer campaign', STATE.active, '2026-10-09'),
-  task(4, 'Budget pacing fix', STATE.waiting, '2026-10-01', null),
-  task(33, 'Paid social rebuild', STATE.hold, null),
-];
-
-const VERITY = { clientId: 'client-verity', name: 'Verity Dental' };
-const DETAIL: InternalTaskDetail = {
-  ...(TASKS[0] as BoardTask),
-  agentBrief: null,
-  description:
-    'Pull the signed scope, the two variations and the renewal terms into one pack for review.',
-  history: [
-    {
-      at: '2026-09-24T01:10:00.000Z',
-      actorId: NATHAN.personId,
-      actorKind: 'person',
-      actorName: NATHAN.name,
-      operation: 'task.create',
-    },
-    {
-      at: '2026-09-25T03:40:00.000Z',
-      actorId: NATHAN.personId,
-      actorKind: 'person',
-      actorName: NATHAN.name,
-      operation: 'task.update',
-    },
-  ],
-  comments: [
-    {
-      id: 'c-1',
-      audience: 'internal',
-      author: NATHAN.personId,
-      body: 'Variation two is still unsigned; chase before the pack goes out.',
-      comment_type: 'note',
-      posted_at: '2026-09-25T04:00:00.000Z',
-      edited_at: null,
-      source: 'app',
-      parent: null,
-      signal: null,
-      own: true,
-    },
-  ],
-  client: VERITY.clientId,
-  hasContent: true,
-  proposals: [],
-  capCurrency: 'AUD',
-  envelope: null,
-  alerts: [],
-  adHoc: false,
-  clientAccess: false,
-  board: null,
-  steps: [],
-  time: null,
-  tags: [],
-};
-
-const TAGS: readonly TagView[] = [
-  { id: 'g-renewal', name: 'renewal' },
-  { id: 'g-ads', name: 'ads' },
-];
-
-// My to-dos (MP-7-1): the reader's own open tasks, with tags and owed messages.
-const todo = (at: number, tags: readonly TagView[], waitingComments = 0): TodoView => ({
-  ...(TASKS[at] as BoardTask),
-  tags,
-  waitingComments,
-});
-const TODOS: readonly TodoView[] = [
-  todo(0, TAGS.slice(0, 1)),
-  todo(1, [], 2),
-  todo(2, TAGS.slice(1)),
-  todo(3, []),
-  todo(5, []),
-];
+export { TASKS } from './made-up-rows.ts';
 
 const READS = {
   'task.board': {
@@ -197,7 +64,6 @@ const READS = {
   } satisfies InternalTaskRead,
   'task.todos': { ok: true, todos: TODOS } satisfies TaskTodosResult,
   'tag.list': { ok: true, tags: TAGS } satisfies TagListResult,
-  'client.list': { ok: true, clients: [VERITY] } satisfies ClientListResult,
   'person.list': { ok: true, persons: [NATHAN, MIA] } satisfies PersonListResult,
   'settings.read': {
     ok: true,
@@ -218,8 +84,30 @@ const READS = {
         updatedByActorId: NATHAN.personId,
         revision: 1,
       },
+      {
+        key: 'conversation_window_days',
+        value: 30,
+        valueType: 'numeric',
+        updatedAt: '2026-09-20T00:00:00.000Z',
+        updatedByActorId: NATHAN.personId,
+        revision: 1,
+      },
+      {
+        key: 'retention_window_days',
+        value: 365,
+        valueType: 'numeric',
+        updatedAt: '2026-09-20T00:00:00.000Z',
+        updatedByActorId: NATHAN.personId,
+        revision: 1,
+      },
     ],
   } satisfies SettingsReadResult,
+  // The person's own store (MP-2-11a): no appearance, so the capture's colour
+  // scheme draws; two dismissals no page draws, so the reset has a count.
+  'preference.read': {
+    ok: true,
+    preferences: { 'tips.dismissed': { 'agency:settings#one': 1, 'agency:settings#two': 1 } },
+  },
   'session.capabilities': {
     ok: true,
     personId: NATHAN.personId,
@@ -266,6 +154,38 @@ const READS = {
     ],
   } satisfies InboxReadResult,
   'inbox.count': { ok: true, owed: 2 } satisfies InboxCountResult,
+  'session.person': { ok: true, person: { name: NATHAN.name } } satisfies SessionPersonResult,
+  'team.list': {
+    ok: true,
+    you: NATHAN.personId,
+    people: [
+      { personId: NATHAN.personId, name: NATHAN.name, availability: null },
+      { personId: MIA.personId, name: MIA.name, availability: { state: 'away', reason: 'Leave' } },
+    ],
+  } satisfies TeamListResult,
+  'task.ledger': LEDGER,
+  'task.search': {
+    ok: true,
+    hits: TASKS.slice(0, 3).map(({ id, key, title }) => ({ id, key, title })),
+  } satisfies TaskSearchResult,
+  'access.read': {
+    ok: true,
+    team: [
+      { ...NATHAN, permissions: [], grants: [] },
+      { ...MIA, permissions: [], grants: [] },
+    ],
+    clients: [],
+    agents: [],
+    clientRecords: [HARBOUR, MERIDIAN],
+  } satisfies AccessReadResult,
+  'operations.read': {
+    ok: true,
+    privacyIncidents: [],
+    breachRunbook: null,
+  } satisfies OperationsReadResult,
+  // The business's clients (C32), as the task's client field and the to-dos'
+  // client scope ask them.
+  'client.list': { ok: true, clients: [HARBOUR, MERIDIAN] } satisfies ClientListResult,
 } as const satisfies Partial<Record<ReadName, unknown>>;
 
 /** The reads the harness answers; a read missing here draws its "could not be read" state. */

@@ -96,7 +96,7 @@ export function History(props: {
       <div className="sb__sh">
         <span className="sb__k">History</span>
         {latest === undefined ? null : (
-          <span className="sbact__meta" data-history="latest">
+          <span className="sb__meta" data-history="latest">
             {`${ago(latest.at, now)} · ${whoOf(latest)} · ${whatOf(latest)}`}
           </span>
         )}

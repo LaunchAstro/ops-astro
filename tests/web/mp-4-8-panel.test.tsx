@@ -14,6 +14,7 @@ import { TaskDetailScreen } from '../../apps/web/src/screens/TaskDetail.tsx';
 import { TaskPanel, type PanelOpening } from '../../apps/web/src/screens/task/Panel.tsx';
 import { task, tick } from './task-page-stub.tsx';
 import { json, mount, open, press, unmountAll } from './perspective-support.tsx';
+import { unheld } from './task-look.ts';
 
 afterEach(unmountAll);
 
@@ -243,5 +244,10 @@ describe('MP-4-8 close uses the frame', () => {
 });
 
 describe('MP-4-8 visual match', () => {
-  it.todo('matches the mockup at 1480, 900 and 390, light and dark (MP-1-7 harness)');
+  it('the panel’s field grid, labels and selects are held to the mockup at 1480, 900 and 390, light and dark', () => {
+    const fields = ['grid', 'label', 'project', 'stage', 'status'].map(
+      (one) => `task.panel-${one}`,
+    );
+    expect(unheld(fields)).toEqual([]);
+  });
 });

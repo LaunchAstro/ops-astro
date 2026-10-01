@@ -156,5 +156,40 @@ export const TASK: LookScreen = {
       props: TYPE,
       ruled: GATE_NOTE_RULED,
     }),
+    // S2, DT-22 and DT-23 (MP-4-16): the history section's head, its latest change on
+    // the head line, and the fold that shows the trail.
+    probe({
+      id: 'task.panel-history-key',
+      mockup: { ...PANEL, selector: '.dpanel .sb__sect--hist .sb__k' },
+      app: { ...APP_PANEL, selector: 'aside.dtp [data-history] .sb__k' },
+      props: TYPE,
+      ruled: [{ at: 'color@dark', want: 'rgba(248,248,248,140)', why: 'DR-10' }],
+    }),
+    probe({
+      id: 'task.panel-history-latest',
+      mockup: { ...PANEL, selector: '.dpanel .sb__sect--hist .sb__meta' },
+      app: { ...APP_PANEL, selector: 'aside.dtp [data-history="latest"]' },
+      props: TYPE,
+    }),
+    probe({
+      id: 'task.panel-history-more',
+      mockup: { ...PANEL, selector: '.dpanel .sb__sect--hist .tt__more' },
+      app: { ...APP_PANEL, selector: 'aside.dtp [data-history] .tt__more' },
+      props: TYPE,
+    }),
+    // S1, DP-30 (MP-4-12): the page link's label and its value.
+    probe({
+      id: 'task.panel-link-label',
+      mockup: { ...PANEL, selector: '.dpanel .sb__linkrow:has([data-sb-at]) .tf__k' },
+      app: { ...APP_PANEL, selector: 'aside.dtp .dtp__link .tf__k' },
+      props: TYPE,
+      ruled: LABEL_RULED,
+    }),
+    probe({
+      id: 'task.panel-link-value',
+      mockup: { ...PANEL, selector: '.dpanel [data-sb-at]' },
+      app: { ...APP_PANEL, selector: 'aside.dtp .dtp__link [data-page-link="value"]' },
+      props: TYPE,
+    }),
   ],
 };
