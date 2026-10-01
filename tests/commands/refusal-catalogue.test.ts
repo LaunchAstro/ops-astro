@@ -141,11 +141,13 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['RATE_LIMITED', 409, 'caller'],
   ['COPY_NOT_REGISTERED', 409, 'caller'],
   ['LIABILITY_UNKNOWN', 409, 'caller'],
+  // AW-08, the launch gate.
+  ['LAUNCH_NOT_DECIDED', 409, 'caller'],
 ];
 
 /**
- * The runtime's own thirty-four, as `core-runtime` names them; T2c1 added
- * three, T2c2 one, T2g one, T3d1 one, AW-02 four, AW-01 J four.
+ * The runtime's own thirty-five, as `core-runtime` names them; T2c1 added
+ * three, T2c2 one, T2g one, T3d1 one, AW-02 four, AW-01 J four, AW-08 one.
  */
 const RUNTIME = [
   'ACTIVATION_MODE_NOT_PERMITTED',
@@ -168,6 +170,7 @@ const RUNTIME = [
   'GATE_ALREADY_DECIDED',
   'GATE_EXPIRED',
   'GATE_NOT_FOUND',
+  'LAUNCH_NOT_DECIDED',
   'LEASE_EXPIRED',
   'LEASE_HELD',
   'LEASE_NOT_OWNED',
@@ -191,7 +194,7 @@ describe('the refusal catalogue', () => {
     ).toStrictEqual(CATALOGUE);
   });
 
-  it('names the same thirty-four as the runtime’s own, each under its register status', () => {
+  it('names the same thirty-five as the runtime’s own, each under its register status', () => {
     expect(Object.keys(SUGGESTED_STATUS).toSorted()).toStrictEqual(RUNTIME);
     for (const [code, status] of Object.entries(SUGGESTED_STATUS)) {
       expect(status, code).toBe(CATALOGUE.find(([listed]) => listed === code)?.[1]);

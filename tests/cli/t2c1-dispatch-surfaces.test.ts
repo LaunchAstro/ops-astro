@@ -9,7 +9,9 @@
 // again replays the stored answer. With no committed reservation behind the
 // lease, dispatch refuses `BUDGET_UNAVAILABLE` on the agent's command line,
 // the agent's HTTP route, the person's command line and the person's HTTP
-// route, and marks nothing. No output carries a credential.
+// route, and marks nothing. No output carries a credential. Each lease is on
+// a launched version (AW-08's mark, seeded): the plan accept alone fires
+// nothing, which `tests/runtime/aw-08-*.test.ts` prove through the commands.
 
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -20,6 +22,7 @@ import { createWorld, serverUrl, tokenFor, type World } from '../acceptance/worl
 import { insertActor, insertLogin, insertMapping, insertPerson } from '../identity/fixture.ts';
 import { shareRecord } from '../../packages/core-records/src/authority/shares.ts';
 import { runCli, serveApi, type Run, type ServedApi } from './cli-process-harness.ts';
+import { seedLaunchOn } from '../runtime/launch-seed.ts';
 
 interface Lease {
   readonly taskId: string;
@@ -112,6 +115,7 @@ describe.skipIf(serverUrl === undefined)('T2c1 task.dispatch on every surface', 
     );
     expect(pickup.code, pickup.stdout).toBe(0);
     const held = detailOf(pickup);
+    await seedLaunchOn(world.db.admin, world.alpha, held['leaseId']);
     return {
       taskId: String(task.json?.['recordId']),
       leaseId: String(held['leaseId']),

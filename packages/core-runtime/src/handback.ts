@@ -53,6 +53,7 @@ import { classifyUnderLocks, endLease, type Classification } from './recovery.ts
 import { recordDrop, type DropCause } from './recovery/drop.ts';
 import { roundsUsed, writeProposal } from './proposal-writer.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
+import { markReviewedOutput } from './reviewed-output.ts';
 import { appendRunEvent, type RunEvent } from './run-events.ts';
 
 /**
@@ -534,7 +535,7 @@ async function writeSuccessor(
   locks: LockSet,
 ): Promise<RuntimeResult<Successor> | null> {
   if (successor === undefined) return null;
-  return await writeProposal(
+  const written = await writeProposal(
     tx,
     {
       taskId: found.task_id,
@@ -551,6 +552,15 @@ async function writeSuccessor(
     },
     locks,
   );
+  // AW-08: the successor is the reviewed output, the one version whose accept launches.
+  if (written.ok) {
+    await markReviewedOutput(tx, {
+      versionId: written.value.versionId,
+      lineageId: found.lineage_id,
+      leaseId: found.id,
+    });
+  }
+  return written;
 }
 
 /** The durable handles, and the envelope's totals as the settlement left them. */

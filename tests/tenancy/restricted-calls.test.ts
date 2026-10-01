@@ -193,6 +193,30 @@ const UNREACHED: Readonly<Record<string, string>> = {
                           order by id limit 1)
        left join public.gates g on g.business_id = d.business_id and g.id = d.gate_id
      returning 1`,
+  // AW-08: the mark rides on a lease the journey made and a version newer than
+  // its work on its run's lineage (0213's trigger), which the owner writes
+  // beside it, superseded, since the journey hands nothing back for review. A
+  // business with none gets made-up ids, written with foreign keys off.
+  'public.reviewed_outputs': `with picked as (
+       select l.id as lease_id, r.lineage_id from public.leases l
+         join public.planned_runs r on r.business_id = l.business_id and r.id = l.run_id
+        where l.business_id = $1 order by l.id limit 1),
+     newer as (
+       insert into public.proposal_versions (business_id, id, lineage_id, version, payload,
+              payload_digest, purpose, maximum_minor, currency, proposed_by_actor_id,
+              superseded_at)
+       select v.business_id, gen_random_uuid(), v.lineage_id, v.version + 1, v.payload,
+              v.payload_digest, v.purpose, v.maximum_minor, v.currency,
+              v.proposed_by_actor_id, now()
+         from picked p join public.proposal_versions v
+           on v.business_id = $1 and v.lineage_id = p.lineage_id
+        order by v.version desc limit 1
+       returning id, lineage_id)
+     insert into public.reviewed_outputs (business_id, version_id, lineage_id, lease_id)
+     select $1, coalesce(n.id, gen_random_uuid()), coalesce(n.lineage_id, gen_random_uuid()),
+            coalesce(p.lease_id, gen_random_uuid())
+       from (select 1) one left join picked p on true left join newer n on true
+     returning 1`,
   // AW-04 (U10): no planning reply is priced before a cap is set. The row
   // rides on the business's first cap and person; a business with none gets
   // made-up ids, which the owner's seed writes with foreign keys off.

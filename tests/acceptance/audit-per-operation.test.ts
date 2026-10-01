@@ -156,7 +156,46 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
   }
 
   async function pickUpBy(approver: Caller, agent: AgentIdentity, title: string): Promise<Picked> {
-    const reservationId = await reservationBy(approver, title);
+    return await claimAs(agent, await reservationBy(approver, title));
+  }
+
+  /**
+   * AW-08: the plan's lease fires nothing. Its work goes back for review,
+   * `approver` accepts the reviewed output (the launch) and the agent picks
+   * the launch up: the lease a dispatch releases the effect under, which the
+   * dispatch and observe cells use; the other lease cells work under the plan's.
+   */
+  async function launchedBy(
+    approver: Caller,
+    agent: AgentIdentity,
+    title: string,
+  ): Promise<Picked> {
+    const plan = await pickUpBy(approver, agent, title);
+    const lease = { leaseId: plan.leaseId, fence: plan.fence, outcome: 'completed' };
+    const back = await w.agent(
+      agent,
+      'task.handback',
+      { ...lease, report: { wrote: 'the reviewed output' }, successor: PROPOSAL },
+      plan.credential,
+    );
+    const handed = back.body['detail'] as Record<string, unknown> | undefined;
+    if (back.code !== 'ok' || handed === undefined) {
+      throw new Error(`audit: hand-back refused ${back.code}`);
+    }
+    const launch = await w.person(approver, 'task.decide', {
+      gateId: handed['successorGateId'],
+      versionId: handed['successorVersionId'],
+      decision: 'approve',
+      note: 'launch the reviewed output',
+    });
+    const detail = launch.body['detail'] as Record<string, unknown> | undefined;
+    if (launch.code !== 'ok' || detail === undefined) {
+      throw new Error(`audit: launch refused ${launch.code}`);
+    }
+    return await claimAs(agent, String(detail['reservationId']));
+  }
+
+  async function claimAs(agent: AgentIdentity, reservationId: string): Promise<Picked> {
     const picked = await w.agent(agent, 'task.pickup', { reservationId });
     const detail = picked.body['detail'] as Record<string, unknown> | undefined;
     if (picked.code !== 'ok' || detail === undefined) {
@@ -180,7 +219,7 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
   async function observedCell(): Promise<Cell> {
     const ada = w.h.world.ada;
     const agent = await freshAgent();
-    const p = await pickUpBy(ada, agent, 'work whose effect is observed');
+    const p = await launchedBy(ada, agent, 'work whose effect is observed');
     const lease = { leaseId: p.leaseId, fence: p.fence };
     const marked = await w.agent(agent, 'task.dispatch', lease, p.credential);
     const effect = await w.agent(
@@ -223,7 +262,7 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
       case 'model.call':
       case 'task.handback': {
         const agent = await freshAgent();
-        const p = await pickUpBy(ada, agent, `work for ${name}`);
+        const p = await (name === 'task.dispatch' ? launchedBy : pickUpBy)(ada, agent, name);
         const lease = { leaseId: p.leaseId, fence: p.fence };
         const settle = { outcome: 'completed', report: { wrote: 'a draft for the audit' } };
         const body =

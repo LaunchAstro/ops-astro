@@ -65,6 +65,8 @@ export const RETENTION_CLASS_BY_TABLE: Readonly<Record<string, RetentionClass>> 
   run_definition_pins: 'runtime',
   // AW-04: the plan a decision approved, words and record, kept with its run.
   plan_records: 'runtime',
+  // AW-08: the mark that a version is a reviewed output, kept with its run.
+  reviewed_outputs: 'runtime',
 };
 
 /**

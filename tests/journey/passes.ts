@@ -6,8 +6,8 @@
 // one command-line process per call; the agent's steps go through the shipped
 // worker module over HTTP in both, so the two passes differ only in the
 // person's surface. Each pass: create a task, let the worker propose, read
-// the version, approve it, let the worker apply it once, read the receipt and
-// the run. The facts it leaves are then read back (`facts.ts`).
+// the version, approve it, let the worker hand it back for review, launch that
+// (AW-08), let the worker apply it once, read the receipt and the run. The facts it leaves are then read back (`facts.ts`).
 //
 // Every write carries an operation identity chosen here and every answer is
 // kept, so the restart step can send the same writes again and compare the
@@ -20,6 +20,7 @@ import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { httpTransport } from '../../apps/cli/client.ts';
 import { createWorker, type WorkerOptions } from '../../apps/worker/worker.ts';
 import { SYNTHETIC_USAGE } from '../../apps/worker/usage.ts';
+import { launchThrough } from '../support/launch-worker.ts';
 import type { World } from '../acceptance/world.ts';
 import { runCli } from '../cli/cli-process-harness.ts';
 import { asBrowser } from '../support/sign-in.ts';
@@ -140,7 +141,7 @@ export async function approve(person: Person, taskId: string, gateId: string): P
   must(await person('task.decide', decision), 'decide');
 }
 
-/** A task created through `person`, proposed by the shipped worker and approved; it applies next. */
+/** A task created through `person`, proposed by the shipped worker, approved and launched; it applies next. */
 export async function approvedTask(
   context: PassContext,
   person: Person,
@@ -161,6 +162,11 @@ export async function approvedTask(
   const proposed = await worker.proposeOnce();
   if (!('proposed' in proposed)) throw new Error(`propose: ${JSON.stringify(proposed)}`);
   await approve(person, taskId, proposed.proposed.gateId);
+  // AW-08: the plan's accept fires nothing. The worker hands the work back, and
+  // the person's accept of that reviewed output, on the same surface, is the launch.
+  await launchThrough(worker, taskId, async (body) => {
+    must(await person('task.decide', body), 'launch');
+  });
   return { taskId, worker };
 }
 

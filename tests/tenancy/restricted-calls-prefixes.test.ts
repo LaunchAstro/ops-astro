@@ -174,6 +174,12 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     record_digest: SEED_DIGEST,
     bound_by_actor_id: randomUUID(),
   },
+  // AW-08: no output is handed back for review before a plan's work runs.
+  'public.reviewed_outputs': {
+    version_id: randomUUID(),
+    lineage_id: randomUUID(),
+    lease_id: randomUUID(),
+  },
   // AW-04 (U10): no planning reply is priced before a cap is set.
   'public.planning_envelopes': {
     cap_id: randomUUID(),

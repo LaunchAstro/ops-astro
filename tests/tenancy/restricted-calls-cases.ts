@@ -54,6 +54,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'plan_records'],
   // AW-04 (U10): a planning envelope is opened once and never moved.
   ['si', 'planning_envelopes'],
+  // AW-08: a reviewed output is marked once, by its handback, and never rewritten.
+  ['si', 'reviewed_outputs'],
   // AW-05: a budget ask is the persisted count and is never rewritten.
   ['si', 'budget_asks'],
   // AW-05: an answer and its approvals are never rewritten.
