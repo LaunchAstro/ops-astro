@@ -24,15 +24,23 @@ export function scopeWords(
   return clients.find((each) => each.clientId === scope.id)?.name ?? 'a client not listed here';
 }
 
+/** The money step-up as the person meets it: a team member's second factor, a client's sign-in. */
+const STEP_UP_WORDS = {
+  team: 'after a second factor in the last 60 minutes',
+  clients: 'after a sign-in in the last 60 minutes',
+};
+
 function Preview(props: {
-  readonly permissions: readonly AccessPermission[];
+  readonly permissions: readonly (AccessPermission & { readonly stepUp?: boolean })[];
   readonly clients: readonly ClientView[];
+  readonly stepUpWords?: string;
 }): ReactElement {
   if (props.permissions.length === 0) return <span className="card__sub">No permission</span>;
   return (
     <>
       {props.permissions.map((each) => {
-        const words = `${each.collection}:${each.action} · ${scopeWords(each.scope, props.clients)}`;
+        const reach = `${each.collection}:${each.action} · ${scopeWords(each.scope, props.clients)}`;
+        const words = each.stepUp === true ? `${reach} · ${props.stepUpWords}` : reach;
         return <Chip key={words}>{words}</Chip>;
       })}
     </>
@@ -79,7 +87,13 @@ export function People(props: {
 }): ReactElement {
   const rows = props.people.map((person) => ({
     name: <span data-person={person.personId}>{person.name}</span>,
-    preview: <Preview permissions={person.permissions} clients={props.clients} />,
+    preview: (
+      <Preview
+        permissions={person.permissions}
+        clients={props.clients}
+        stepUpWords={STEP_UP_WORDS[props.id]}
+      />
+    ),
     grants: (
       <Grants
         grants={person.grants}

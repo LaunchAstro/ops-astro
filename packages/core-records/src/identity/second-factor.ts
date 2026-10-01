@@ -7,9 +7,11 @@
 // person has one and where it stands. Whether the person has a *verified* one
 // is mirrored onto `people.second_factor_verified` in the same statement set,
 // because login resolution asks it on every call and reads it inside the one
-// query it already makes (`login-resolution.ts`). Every function takes the serving
-// transaction, so the record and the audit event of the act that caused it
-// commit together.
+// query it already makes (`login-resolution.ts`). The factor is the login's,
+// not the business's, so a verification and a removal are also written
+// installation-wide by subject (0064), where resolution in every business the
+// login reaches finds them. Every function takes the serving transaction, so
+// the record and the audit event of the act that caused it commit together.
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
@@ -92,33 +94,75 @@ export async function recordFactorEnrolled(
   return shaped(row);
 }
 
+/** A factor of the person's, and the subject of the login that holds it at the provider. */
+interface FactorOfLogin {
+  readonly personId: string;
+  readonly factorId: string;
+  readonly subject: string;
+}
+
+const DIGEST = (text: string) => `encode(sha256(convert_to(${text}, 'UTF8')), 'hex')`;
+
+/**
+ * The factor's new state, by subject, for every business (0064): `$1` the
+ * subject, `changed` the factor rows the statement moved, which it answers.
+ * A verification a step-up repeats is written once.
+ */
+const BY_SUBJECT = `
+  written as (
+    insert into ops.second_factor_subjects (subject_digest, factor_digest, state)
+    select ${DIGEST('$1')}, ${DIGEST('c.provider_factor_id')}, c.status from changed c
+     where not exists (
+       select 1 from ops.second_factor_subjects s
+        where s.subject_digest = ${DIGEST('$1')}
+          and s.factor_digest = ${DIGEST('c.provider_factor_id')} and s.state = c.status))
+  select 1 from changed`;
+
 /** The first verification completes an enrolment. A verified factor stays verified. */
-export async function recordFactorVerified(
-  tx: TenantQuery,
-  factor: { readonly personId: string; readonly factorId: string },
-): Promise<void> {
+export async function recordFactorVerified(tx: TenantQuery, factor: FactorOfLogin): Promise<void> {
   const verified = await tx.query(
-    `update public.second_factors
-        set status = 'verified', verified_at = coalesce(verified_at, now())
-      where business_id = $1 and person_id = $2 and id = $3 and status <> 'removed'
-      returning id`,
-    [tx.businessId, factor.personId, factor.factorId],
+    `with changed as (
+       update public.second_factors
+          set status = 'verified', verified_at = coalesce(verified_at, now())
+        where business_id = $2 and person_id = $3 and id = $4 and status <> 'removed'
+       returning provider_factor_id, status),
+     ${BY_SUBJECT}`,
+    [factor.subject, tx.businessId, factor.personId, factor.factorId],
   );
   if (verified.length > 0) await mirror(tx, factor.personId);
 }
 
 /** Replacing or removing a factor ends its row; the row is kept. */
-export async function recordFactorRemoved(
-  tx: TenantQuery,
-  factor: { readonly personId: string; readonly factorId: string },
-): Promise<void> {
+export async function recordFactorRemoved(tx: TenantQuery, factor: FactorOfLogin): Promise<void> {
   await tx.query(
-    `update public.second_factors
-        set status = 'removed', removed_at = now()
-      where business_id = $1 and person_id = $2 and id = $3 and status <> 'removed'`,
-    [tx.businessId, factor.personId, factor.factorId],
+    `with changed as (
+       update public.second_factors
+          set status = 'removed', removed_at = now()
+        where business_id = $2 and person_id = $3 and id = $4 and status <> 'removed'
+       returning provider_factor_id, status),
+     ${BY_SUBJECT}`,
+    [factor.subject, tx.businessId, factor.personId, factor.factorId],
   );
   await mirror(tx, factor.personId);
+}
+
+/**
+ * Whether the login has a factor verified, and not removed, through any
+ * business (0064). A removed factor is never verified again, so no order.
+ */
+export async function loginHasVerifiedFactor(tx: TenantQuery, subject: string): Promise<boolean> {
+  const rows = await tx.query<{ readonly held: boolean }>(
+    `select exists (
+       select 1 from ops.second_factor_subjects v
+        where v.subject_digest = ${DIGEST('$1')} and v.state = 'verified'
+          and not exists (
+            select 1 from ops.second_factor_subjects r
+             where r.subject_digest = v.subject_digest and r.factor_digest = v.factor_digest
+               and r.state = 'removed')
+     ) as held`,
+    [subject],
+  );
+  return rows[0]?.held === true;
 }
 
 /** The person row's copy of "has a verified factor", recomputed from the factor rows. */

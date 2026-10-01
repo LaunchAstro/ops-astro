@@ -106,6 +106,7 @@ function instance() {
     SERVED_HOST: HOST,
     OPS_ENVIRONMENT: 'staging',
     ALERT_SCOPE_KEY: KEY.toString('hex'),
+    RECOVERY_BUSINESS_KEYS: 'none',
   });
 }
 

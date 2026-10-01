@@ -29,14 +29,12 @@
 // deployment's own secret and whose `exp` has passed is `AUTH_SESSION_EXPIRED`.
 // Both mean the credential this client holds is no longer one, so both end the
 // session here. A client that recognised only the first would leave a person
-// whose hour ran out reading a raw refusal on whichever screen they were on,
-// with the sign-in path never offered. A token lives an
-// hour, so this arrives at an ordinary moment in an ordinary day, and it
-// arrives at whichever call happened to be next — a board read, a task read, a
-// save. Recognising it in each screen would be the same rule written five times
-// and forgotten in the sixth; recognising it here is one signal in one place,
-// and `onSessionEnded` is how the application hears it. The refusal is still
-// returned unchanged: this module reports, it does not swallow.
+// whose hour ran out reading a raw refusal, with the sign-in path never
+// offered. It arrives at whichever call happens to be next, so recognising it
+// in each screen would be one rule written five times and forgotten in the
+// sixth; here it is one signal, and `onSessionEnded` is how the application
+// hears it. The refusal is still returned unchanged: this module reports, it
+// does not swallow.
 //
 // **Access ended is the third way a session ends (C58).** Ending a person's
 // access deactivates their login and ends their memberships, but the bearer in
@@ -44,7 +42,8 @@
 // call 403 `AUTH_NO_MEMBERSHIP`. A login that was never a member gets the same
 // answer on its first call, and that one is a denial to draw, not a session to
 // end. So the client remembers whether its bearer has been answered as a
-// member, and only a bearer that has been ends its session on that refusal.
+// member, by a success or by a refusal decided past login resolution (a scope
+// not granted), and only a bearer that has been ends its session on it.
 //
 // The wire spells the envelope `operationId` and `expectedRevision`, camelCase,
 // matching `commands/requests.ts`, though the slice contract's prose writes
@@ -127,8 +126,7 @@ export interface ClientOptions {
    * The session this client was given is one the API will not vouch for.
    *
    * Called only when signed in: a 401 with no session is a call nobody was
-   * signed in for, and ending a session that was never held would
-   * be reporting an event that did not happen.
+   * signed in for, and ending a session never held reports nothing that happened.
    */
   readonly onSessionEnded?: (refusal: WireRefusal) => void;
 }
@@ -142,7 +140,7 @@ export interface MutationOptions {
 
 export class OperationsClient {
   readonly #options: ClientOptions;
-  /** Whether this bearer has had an answer, so it belonged to a member here. */
+  /** Whether this bearer has had an answer only a member here gets. */
   #answered = false;
 
   constructor(options: ClientOptions) {
@@ -250,6 +248,7 @@ export class OperationsClient {
       if (this.#options.signedIn && this.#endsSession(response.status, parsed.code)) {
         this.#options.onSessionEnded?.(parsed);
       }
+      if (response.status !== 401 && !BEFORE_LOGIN.has(parsed.code)) this.#answered = true;
       return parsed;
     }
 
@@ -278,17 +277,21 @@ export class OperationsClient {
  * and the status names the boundary that made it, and a 403 carrying either of
  * these would be a different answer than the one this rule is about.
  *
- * They are two rather than one because the API tells them apart deliberately.
- * `AUTH_UNKNOWN_LOGIN` covers every bearer the server cannot place, and saying
- * more would tell an unauthenticated caller which guess was closer.
- * `AUTH_SESSION_EXPIRED` is the exception the API documents: the signature
- * verifies against this deployment's own secret, so whoever sent it already held
- * a session here and learns nothing new from being told it ran out. The
- * difference matters to the person reading the notice and not at all to what
- * this client does about it, which is why both are on this list and neither is
- * treated as the other.
+ * They are two because the API tells them apart on purpose (`AUTH_UNKNOWN_LOGIN`
+ * says nothing of which guess was closer; `AUTH_SESSION_EXPIRED` goes only to a
+ * bearer this deployment signed). The difference is for the person reading the
+ * notice, not for this client.
  */
 const SESSION_ENDED = new Set(['AUTH_UNKNOWN_LOGIN', 'AUTH_SESSION_EXPIRED']);
+
+/** Refusals besides the 401s that can come before login resolution places a member. */
+const BEFORE_LOGIN = new Set([
+  'AUTH_NO_MEMBERSHIP',
+  'ACTOR_INACTIVE',
+  'AUTH_CROSS_SITE',
+  'AUTH_SESSION_MISMATCH',
+  'COMMAND_BODY_INVALID',
+]);
 
 function isWireRefusal(value: unknown): value is WireRefusal {
   if (typeof value !== 'object' || value === null) return false;

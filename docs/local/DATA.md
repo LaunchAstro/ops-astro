@@ -443,7 +443,7 @@ Nine reads are declared in `COMMAND_SURFACE` with `kind: 'read'` and served by
   and the client messages owed a reply (MP-7-1), for a reader of the
   business's tasks
 - `team.list {}` → the staff with an active membership and each one's
-  availability (`person_availability`, 0065, set only by that person), for the
+  availability (`person_availability`, 0066, set only by that person), for the
   Team panel; a client of the business is answered `NOT_FOUND`
 
 The other six, `task.queue`, `task.ledger`, `preset.plan`, `settings.read`,
@@ -529,7 +529,8 @@ never written here. Whether a person has a verified factor is mirrored onto
 (`identity/second-factor.ts`), so login resolution reads it inside the one
 query it already makes and refuses a sign-in without the second factor. It
 reads the column through the row's json, so on a database from before 0049,
-which has no such column, the answer is no factor.
+which has no such column, the answer is no factor. The same writers record
+the verification and the removal by subject for every business (0064, below).
 
 ## Privacy incidents (0050, C55)
 
@@ -608,6 +609,17 @@ reason. Login resolution refuses a token of that subject whose session is not
 the kept one and whose first sign-in is at or before the ending. The
 application may insert the digest and the kept session and read the three
 columns; nothing changes or deletes a row.
+
+## Second factors by subject (0064, C59)
+
+`ops.second_factor_subjects` holds one row per second factor verified or
+removed through any business: a SHA-256 digest of the login's subject, one of
+the provider's factor id, and `verified` or `removed`. Installation-wide, no
+business, person or reason. Login resolution refuses a sign-in below `aal2`
+in every business the login reaches while one of its factors is verified and
+not removed; a removed factor is never verified again, so the rows need no
+order. Before 0064 the person's mirror alone answers. The application may
+insert and read the three columns; nothing changes or deletes a row.
 
 ## Overseas-services register (0052, C81)
 

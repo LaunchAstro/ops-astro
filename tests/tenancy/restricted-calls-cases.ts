@@ -42,6 +42,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'ops.ended_provider_sessions'],
   // 0063 (C58): other sessions ended in every business, by subject digest.
   ['si', 'ops.ended_subject_sessions'],
+  // 0064 (C59): a second factor verified or removed, by subject digest, for every business.
+  ['si', 'ops.second_factor_subjects'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],
   ['si', 'alerts handback_reports operations run_events'],
   // 0042: an attempt and a seen stamp are observations, never rewritten (INB-1a).
@@ -72,11 +74,11 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['siu', 'access_endings'],
   // 0057 (C58): an ended session is written once; never changed or deleted.
   ['si', 'ended_sessions'],
-  // 0064: the live change record, stamped by the writes' own triggers (C4).
+  // 0065: the live change record, stamped by the writes' own triggers (C4).
   ['siu', 'live_changes'],
-  // 0065: a person's own availability, set by them alone (MP-7-10).
+  // 0066: a person's own availability, set by them alone (MP-7-10).
   ['siu', 'person_availability'],
-  // 0066: a second save of a key replaces its value; nothing deletes one (MP-2-11a).
+  // 0067: a second save of a key replaces its value; nothing deletes one (MP-2-11a).
   ['siu', 'person_preferences'],
   // 0077: a time entry is deleted by a mark, never a row delete.
   ['siu', 'time_entries'],

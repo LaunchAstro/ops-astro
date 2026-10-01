@@ -97,6 +97,7 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['BREACH_TEMPLATE_UNFILLED', 409, 'caller'],
   ['CREDENTIAL_SCOPE_WIDENS', 403, 'caller'],
   ['CREDENTIAL_ACTION_EXCLUDED', 403, 'caller'],
+  ['CREDENTIAL_MONEY_KEY_EXCLUDED', 403, 'caller'],
   ['CREDENTIAL_ALREADY_REVOKED', 409, 'caller'],
   ['CLIENT_NAME_TAKEN', 409, 'caller'],
   ['ACCESS_LAST_MANAGER', 409, 'caller'],
