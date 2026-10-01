@@ -1884,9 +1884,10 @@ adoption is the owner's separate decision.
   `tests/harness/`, so none of them is in the product's dependency tree.
 
 Tests: `aw-12-trigger`, `aw-12-trigger-read`, `aw-12-isolation`,
-`aw-12-candidates` (with `AW-12 candidate audit`) and `aw-12-fakes`. The
-refusal tests, the representative case, the comparison families, the ledger
-and the gates wait on AW-08, AW-09 and AW-10.
+`aw-12-candidates` (with `AW-12 candidates kept out of the product`; the
+candidate audit, a dependency audit at each pinned commit, is part two's) and
+`aw-12-fakes`. The refusal tests, the representative case, the comparison
+families, the ledger and the gates wait on AW-08, AW-09 and AW-10.
 
 ## What is not here
 
