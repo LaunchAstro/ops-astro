@@ -52,7 +52,10 @@ function replacesDiscovery(): void {
     });
     expect(agent.map((one) => one.command)).toContain('task.handback');
     expect(agent.map((one) => one.command)).not.toContain('task.decide');
-    expect(agent.map((one) => one.command)).not.toContain('task.update');
+    // An agent writes its own task's fields under a delegation (MP-4-7, MP-4-8),
+    // and never trashes a task.
+    expect(agent.map((one) => one.command)).toContain('task.update');
+    expect(agent.map((one) => one.command)).not.toContain('task.trash');
     const withUi = reachableBy(real().rows, { kind: 'person', grants: wide('task:write') });
     expect(withUi.find((one) => one.command === 'task.start')?.surfaces).toEqual([
       'app',

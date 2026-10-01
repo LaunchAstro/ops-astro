@@ -6,7 +6,7 @@
 // A harness, not a suite: nothing here runs on its own.
 
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
-import { TaskPanel } from '../../apps/web/src/screens/task/Panel.tsx';
+import { TaskPanel, type TaskPanelProps } from '../../apps/web/src/screens/task/Panel.tsx';
 import { task, tick } from './task-page-stub.tsx';
 import { json, mount } from './perspective-support.tsx';
 
@@ -74,6 +74,8 @@ export const panel = async (
     readonly close?: () => void;
     /** What the panel hands its host to stop before leaving (MP-4-13). */
     readonly leaving?: (stop: (() => void) | null) => void;
+    /** The Client field's seams and the duplicate's landing (MP-4-8, CS-4.12). */
+    readonly client?: Pick<TaskPanelProps, 'clientFacts' | 'duplicate' | 'onDuplicated'>;
   } = {},
 ) => {
   const view = await mount(
@@ -94,6 +96,7 @@ export const panel = async (
         })
       }
       {...(on.leaving === undefined ? {} : { onLeaving: on.leaving })}
+      {...on.client}
     />,
   );
   await tick();
