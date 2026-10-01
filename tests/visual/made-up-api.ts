@@ -3,9 +3,8 @@
 // Made-up answers for the width-and-theme harness (UI-POLISH).
 //
 // The harness serves the app with its API at a dead port, so every data
-// screen used to be photographed on its "could not be read" state: no
-// sideways scroll proven on an error, nothing about the look. These answers
-// let each screen draw rows. They are typed against the wire contract's own
+// screen was photographed on its "could not be read" state, proving nothing
+// about the look. These answers let each screen draw rows. They are typed against the wire contract's own
 // read shapes, so a changed read fails the typecheck here rather than drawing
 // a screen from a shape the API no longer sends. Test side only: the page
 // asks the same addresses it asks the real API; nothing here is a back end.
@@ -207,6 +206,7 @@ const READS = {
         seenAt: null,
         lastDelivery: 'delivered',
         task: { key: 'T-9', title: 'Sign off the Meridian ad run rate, 29% over budget' },
+        client: MERIDIAN,
       },
       {
         id: 'i-2',
@@ -220,6 +220,7 @@ const READS = {
         seenAt: '2026-09-25T21:00:00.000Z',
         lastDelivery: 'delivered',
         task: { key: 'T-13', title: 'Approve the four review replies before they go out' },
+        client: HARBOUR,
       },
       {
         id: 'i-3',
