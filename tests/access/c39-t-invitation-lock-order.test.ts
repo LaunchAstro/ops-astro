@@ -13,7 +13,9 @@
 // the row: the server's deadlock check killed one of them. Each act is one
 // transaction here, as `runCommand` runs it: `executeCommand` retries a
 // deadlock once, which hides one such cycle behind a second's stall and
-// surfaces the next.
+// surfaces the next. The other way round, a create parked on the row and a
+// resend after it, the resend waits on the create's limiter and finds the
+// invitation ended. Either way one invitation for the address is pending.
 
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
@@ -92,6 +94,15 @@ async function lapsed(id: string): Promise<void> {
   await lapsed(id);
 }
 
+/** How many invitations for the address are pending, in every business. */
+async function pendingFor(address: string): Promise<number> {
+  const [row] = await w.db.admin.execute<{ n: number }>(
+    `select count(*)::int as n from public.invitations where address = $1 and state = 'pending'`,
+    [address.toLowerCase()],
+  );
+  return row?.n ?? -1;
+}
+
 /** One act as a person, one transaction on its own connection, so acts race in the server. */
 async function act(
   database: Database,
@@ -112,6 +123,7 @@ async function act(
   }
 }
 
+// eslint-disable-next-line max-lines-per-function -- one database world, and the races that share it
 describe.skipIf(noDatabase)('C39-T invitation lock order', () => {
   it('C39-T rate limit: a resend and a create for the same address, racing at expiry, both finish and the resend wins', async () => {
     const address = addressFor('Lock-Order');
@@ -140,6 +152,38 @@ describe.skipIf(noDatabase)('C39-T invitation lock order', () => {
       await letGo();
       expect(await Promise.all([resend, create])).toEqual(['applied', 'UNIQUE_VALUE_TAKEN']);
       expect(await invitationRow(id)).toMatchObject({ state: 'pending', revision: 2 });
+      expect(await pendingFor(address)).toBe(1);
+    } finally {
+      await Promise.all([holder, resender, creator].map(async (db) => await db.close()));
+    }
+  }, 60_000);
+
+  it('C39-T rate limit: a create parked first and a resend after it, racing at expiry, both finish and the create wins', async () => {
+    const address = addressFor('Lock-Order-Create-First');
+    const id = await invite(c.admin, address);
+    await w.db.admin.execute(
+      `update public.invitations set expires_at = now() + interval '2 seconds' where id = $1`,
+      [id],
+    );
+    const [holder, resender, creator] = [own(), own(), own()] as const;
+    try {
+      const letGo = await holdRow(holder, id);
+      await lapsed(id);
+      // The create holds the address's limiter and waits on the row to end it as lapsed.
+      const create = act(creator, c.second, {
+        command: 'invitation.create',
+        name: 'Cy Create',
+        email: address,
+        role: 'member',
+      });
+      await parked(1);
+      // The resend waits on that limiter, before it reaches for the row.
+      const resend = act(resender, c.admin, { command: 'invitation.resend', invitationId: id });
+      await parked(2);
+      await letGo();
+      expect(await Promise.all([create, resend])).toEqual(['applied', 'TRANSITION_NOT_PERMITTED']);
+      expect(await invitationRow(id)).toMatchObject({ state: 'expired' });
+      expect(await pendingFor(address)).toBe(1);
     } finally {
       await Promise.all([holder, resender, creator].map(async (db) => await db.close()));
     }
