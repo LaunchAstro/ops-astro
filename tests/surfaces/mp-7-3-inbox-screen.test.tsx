@@ -154,7 +154,10 @@ describe('MP-7-3 client group order', () => {
       { name: 'Zenith Physio', rows: ['/task/T-1'] },
       { name: 'Your work', rows: ['/task/T-4'] },
     ]);
-    // The Clients panel is not built, so a client head is a name, not a link.
-    expect(view.all('a.nt__gname')).toHaveLength(0);
+    // A client head opens that client in the Clients panel (CS-7.29); the reader's own work stays a name.
+    expect(view.all('a.nt__gname').map((head) => head.getAttribute('href'))).toEqual([
+      '/clients/?client=c-summit',
+      '/clients/?client=c-zenith',
+    ]);
   });
 });
