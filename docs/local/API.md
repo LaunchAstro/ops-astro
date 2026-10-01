@@ -1459,9 +1459,12 @@ route (`tests/runtime/aw-13-readers.test.ts`; [RUNTIME.md](RUNTIME.md#the-diagno
 `{ ok: true, harness }`. `harness` is the trigger's reading: `result: 'not_yet'`
 with the `missing` limbs and the two `figures` (the reading against the window,
 the delegation depth against the depth built), or `result: 'fired'` with the
-same figures. It is computed from the run's frozen accept-time manifest on
-every read and stores nothing. It is the team's: a reader outside the team, or
-one holding no `read` on tasks, is refused `SCOPE_NOT_GRANTED` 403; the run is
+same two figures and no verdict. The per-candidate runs, with a verdict and a
+recommendation per framework, are AW-12's follow-up, built when the trigger
+first fires; this read does not carry them yet. It is computed from the run's
+frozen accept-time manifest on every read and stores nothing. It is the
+team's: a reader outside the team, or one holding no `read` on tasks, is
+refused `SCOPE_NOT_GRANTED` 403; the run is
 filtered by the caller's task `read` inside the statement, so another client's
 run, another business's and a made-up one are one `NOT_FOUND` 404. A manifest
 it cannot count is `DEFINITION_UNAVAILABLE`. No agent route; the command line

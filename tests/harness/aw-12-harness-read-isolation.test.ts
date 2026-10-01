@@ -5,10 +5,23 @@
 // crossing has its status, a stored canary (the task's title and a reading no
 // other run has) checked in every body, refusals included, and a positive
 // control: another business; another client in the same business; a person
-// with no `task:read`; an agent under a live delegation on the very run.
+// with no `task:read`; a client or contractor holding `task:read` (the read is
+// the team's); an agent under a live delegation on the very run.
 
 import { randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';
+import { createApi } from '../../apps/api/app.ts';
+import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
+import { createBusinessResolver } from '../../apps/api/server.ts';
+import {
+  executeAgentCommand,
+  executeCommand,
+  executeRead,
+} from '../../packages/core-commands/src/index.ts';
+import { DELEGATION_HEADER, PREFIX } from '../../packages/core-wire/src/index.ts';
+import { pathOf } from '../../packages/core-wire/src/surface.ts';
+import { ISSUER, tokenFor } from '../api/fixture.ts';
+import { testSignIn } from '../support/sign-in.ts';
 import { enrol, grantTo } from '../commands/fixture.ts';
 import { noDatabase, useChildWorld, w } from '../runtime/aw-11-child-world.ts';
 import { shapedWork } from './aw-12-world.ts';
@@ -37,6 +50,48 @@ const reads = (units: number) => ({
     }),
   },
 });
+
+/** A member of `role`, outside the team, granted task:read on `taskId` alone, asking twice. */
+async function asOutsider(role: string, taskId: string, runId: string) {
+  const outsider = await enrol(w.s.db.app, w.s.business, `aw12r-${role}`);
+  await w.s.db.admin.execute(
+    `update public.memberships set role_key = $3 where business_id = $1 and person_id = $2`,
+    [w.s.business, outsider.personId, role],
+  );
+  await w.s.db.app.withBusiness(w.s.business, async (tx) => {
+    await grantTo(tx, outsider, 'read', { kind: 'record', id: taskId });
+  });
+  const refused = await harnessOver(w.s, outsider, runId);
+  return { refused, madeUp: await harnessOver(w.s, outsider, randomUUID()) };
+}
+
+/** `task.read` on `taskId` on the agent route, as the run's own agent on `credential`. */
+async function taskReadAsAgent(taskId: string, credential: string): Promise<Answer> {
+  const api = createApi({
+    database: w.s.db.app,
+    verify: createSupabaseVerifier(testSignIn(ISSUER)),
+    resolveBusiness: createBusinessResolver(w.s.db.admin),
+    executeRead,
+    executeCommand,
+    executeAgentCommand,
+  });
+  const [row] = await w.s.db.admin.execute<{ readonly key: string }>(
+    'select key from public.businesses where id = $1',
+    [w.s.business],
+  );
+  const response = await api.fetch(
+    new Request(`http://api.test${PREFIX.agent}${String(row?.key)}${pathOf('task.read')}`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${await tokenFor(w.s.agent.subject)}`,
+        [DELEGATION_HEADER]: credential,
+      },
+      body: JSON.stringify({ operationId: randomUUID(), recordId: taskId }),
+    }),
+  );
+  return { status: response.status, body: (await response.json()) as Answer['body'] };
+}
 
 it('AW-12 harness read isolation: another business’s run is NOT_FOUND over the route', async () => {
   const canary = `aw12r-alpha-canary-${randomUUID()}`;
@@ -105,6 +160,21 @@ it('AW-12 harness read isolation: a person without task:read gets SCOPE_NOT_GRAN
   expect(await harnessOver(w.s, colleague, mine.runId)).toMatchObject(reads(CANARY_UNITS));
 });
 
+it('AW-12 harness read isolation: a client or contractor holding task:read on the task gets SCOPE_NOT_GRANTED over the route', async () => {
+  const canary = `aw12r-outsider-canary-${randomUUID()}`;
+  const mine = await shapedWork(w.s, [CANARY_UNITS], w.helper, canary);
+  for (const role of ['client', 'contractor']) {
+    // eslint-disable-next-line no-await-in-loop -- one role at a time
+    const { refused, madeUp } = await asOutsider(role, mine.work.taskId, mine.runId);
+    expect(refused, role).toMatchObject({ status: 403, body: { code: 'SCOPE_NOT_GRANTED' } });
+    // The same caller on a made-up run: the same bytes, so the refusal tells nothing apart.
+    expect(JSON.stringify(madeUp), role).toBe(JSON.stringify(refused));
+    clean(refused, canary, mine.runId, mine.work.taskId);
+  }
+  // Control: the decider, on the team, reads the same run.
+  expect(await harnessOver(w.s, w.s.decider, mine.runId)).toMatchObject(reads(CANARY_UNITS));
+});
+
 it('AW-12 harness read isolation: an agent under a live delegation on the run is refused on the agent route', async () => {
   const canary = `aw12r-agent-canary-${randomUUID()}`;
   const mine = await shapedWork(w.s, [CANARY_UNITS], w.helper, canary);
@@ -112,8 +182,15 @@ it('AW-12 harness read isolation: an agent under a live delegation on the run is
 
   // The run's own agent, its delegation on this very run live: no agent reads the result.
   const agent = await harnessOver(w.s, { presented: w.s.agent }, mine.runId, credential);
-  expect(agent.status).toBeGreaterThanOrEqual(400);
-  expect(agent.body).toMatchObject({ refused: true });
+  expect(agent).toMatchObject({
+    status: 403,
+    body: { code: 'DELEGATION_EXCLUDES_OPERATION', names: ['harness.read'] },
+  });
+  // Control: that agent and credential are live on the agent route: its own task reads.
+  expect(await taskReadAsAgent(mine.work.taskId, credential)).toMatchObject({
+    status: 200,
+    body: { command: 'task.read', recordId: mine.work.taskId },
+  });
   // Its login on the person route is no member's either.
   const asPerson = await harnessOver(w.s, { presented: w.s.agent }, mine.runId);
   expect(asPerson.body).toMatchObject({ refused: true });
