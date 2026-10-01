@@ -139,3 +139,30 @@ describe('C33 Workflow triggers panel', () => {
     await page.unmount();
   });
 });
+
+describe('C33 Workflow triggers panel look', () => {
+  it('C33 look: each activation draws as a page row in one list card, its approval a chip', async () => {
+    const page = await mount(<TriggersPanel client={clientOf(server().fetch)} />);
+    await tick();
+    expect(page.find('[data-settings="triggers"]')?.className).toBe('card card--flush');
+    expect(page.find('[data-settings="triggers"] .card__title')?.textContent).toBe(
+      'Workflow triggers',
+    );
+    const row = page.find('[data-activation="a-1"]');
+    expect(row?.className).toBe('lrow lrow--page');
+    expect(row?.getAttribute('data-definition')).toBe('d-1');
+    expect(row?.querySelector('.lrow__title')?.textContent).toBe('Weekly report');
+    expect(row?.querySelector('.lrow__meta')?.textContent).toBe(
+      'Automation · scheduled, every 60 minutes · pinned to v2 · on',
+    );
+    expect(row?.querySelector('.lrow__trail .chip')?.textContent).toBe('not approved to run');
+    const controls = [...(row?.querySelectorAll('.lrow__trail .btn') ?? [])];
+    expect(controls.map((control) => control.getAttribute('data-control'))).toEqual([
+      'manual',
+      'adopt',
+      'roll-back',
+      'turn-off',
+    ]);
+    await page.unmount();
+  });
+});

@@ -104,3 +104,31 @@ describe('C31 Keys panel', () => {
     await again.unmount();
   });
 });
+
+describe('C31 Keys panel look', () => {
+  it('C31 look: the keys draw as a list card of page rows, each state a chip', async () => {
+    const stub = server();
+    const client = new OperationsClient({
+      origin: '',
+      businessKey: 'alpha',
+      signedIn: true,
+      fetch: stub.fetch,
+    });
+    const page = await mount(<KeysPanel client={client} />);
+    await tick();
+    await page.type('[data-settings="keys"] input:not([type="password"])', 'xero.key');
+    await page.type('[data-settings="key-value"]', VALUE);
+    await page.click('[data-settings="keys"] button[type="submit"]');
+    await tick();
+    expect(page.find('[data-settings="keys"]')?.className).toBe('card card--flush');
+    expect(page.find('[data-settings="keys"] .card__title')?.textContent).toBe('Keys');
+    const row = page.find('[data-secret="xero.key"]');
+    expect(row?.className).toBe('lrow lrow--page');
+    expect(row?.querySelector('.lrow__title')?.textContent).toBe('xero.key');
+    expect(row?.querySelector('.lrow__meta')?.textContent).toBe('Whole business · last used never');
+    expect(row?.querySelector('.lrow__trail .chip')?.textContent).toBe('Set');
+    expect(row?.querySelector('.lrow__trail .btn')?.textContent).toBe('Clear');
+    expect(page.find('[data-settings="keys"] form.form')).not.toBeNull();
+    await page.unmount();
+  });
+});
