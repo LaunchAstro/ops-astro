@@ -6,7 +6,9 @@
 //
 // - `invitation.create` names a person, their address and a role. It writes a
 //   new enduring person and the invitation, pending for the lifetime below.
-// - `invitation.resend` moves a pending invitation's expiry on by a lifetime.
+// - `invitation.resend` moves a pending invitation's expiry on by a lifetime
+//   and spends every token the invitation has: a link already mailed, or
+//   still on its way, is dead, and only the resend's own send mints a live one.
 // - `invitation.revoke` ends a pending invitation.
 //
 // Each create and resend is one act the send may answer with one email
@@ -218,6 +220,13 @@ async function move(
           where business_id = $1 and id = $2 returning revision, state`,
         [tx.businessId, found.id],
       );
+  if (resend) {
+    await tx.query(
+      `update enrolment_tokens set spent_at = now()
+        where business_id = $1 and invitation_id = $2 and spent_at is null`,
+      [tx.businessId, found.id],
+    );
+  }
   return applied(found.id, moved?.revision ?? null, {
     invitationId: found.id,
     state: moved?.state,

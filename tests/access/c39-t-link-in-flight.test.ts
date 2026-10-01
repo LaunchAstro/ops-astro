@@ -109,10 +109,10 @@ describe.skipIf(noDatabase)('C39-T link in flight', () => {
     const address = addressFor('resent-unsent');
     const { id, token } = await invited(c.admin, address);
     await resend(id);
-    expect(await spentOf(id)).toStrictEqual({ state: 'pending', spent: 1, tokens: 1 });
     const rows = await identityRows(w.alpha);
     expect(await enrolVia(token)).toStrictEqual(REFUSED);
     expect(await identityRows(w.alpha)).toStrictEqual(rows);
+    expect(await spentOf(id)).toStrictEqual({ state: 'pending', spent: 1, tokens: 1 });
     // The control: the resend's own send mints the one live link.
     expect(await send(id)).toMatchObject({ ok: true });
     expect(await enrolVia(tokenTo(address))).toStrictEqual(ENROLLED);
