@@ -12,7 +12,11 @@
 import { randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';
 import { checkItem, recordAsked } from '../../packages/core-custody/src/broker-email.ts';
-import { deliverDue, type DeliveryPass } from '../../packages/core-custody/src/index.ts';
+import {
+  deliverDue,
+  startMailWorker,
+  type DeliveryPass,
+} from '../../packages/core-custody/src/index.ts';
 import { EMAIL_SEND } from '../../packages/core-connectors/src/index.ts';
 import { raiseInboxItem, type InboxReason } from '../../packages/core-records/src/index.ts';
 import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
@@ -81,6 +85,12 @@ async function agentComment(person: string): Promise<string> {
       }),
   );
 }
+
+/** A pause, so a pass already running has ended. */
+const settle = async () =>
+  await new Promise((resolve) => {
+    setTimeout(resolve, 300);
+  });
 
 const states = async (item: string) => (await attemptsOf(item)).map((row) => row.state);
 
@@ -228,4 +238,34 @@ it('AW-07b delivery worker: only an active worker of the business sends, never a
   }
   expect(w.provider.outbox.length).toBe(before);
   expect(await attemptsOf(decision)).toEqual([]);
+});
+
+it('AW-07b delivery worker: started, both passes run on their intervals until stopped', async () => {
+  await freshInbox();
+  worker = await workerOf(w.alpha);
+  const decision = await itemFor(w.task, 'decision');
+  const mention = await itemFor(w.task, 'mention');
+  const before = w.provider.outbox.length;
+  const started = startMailWorker(
+    w.db.app,
+    async () => await Promise.resolve([{ businessId: w.alpha, workerActorId: worker }]),
+    timing(),
+    { atOnceMs: 50, dailyTickMs: 80 },
+  );
+  try {
+    await expect
+      .poll(async () => [await states(decision), await states(mention)], { timeout: 10_000 })
+      .toEqual([
+        ['asked', 'accepted'],
+        ['asked', 'accepted'],
+      ]);
+  } finally {
+    started.stop();
+  }
+  expect(w.provider.outbox.length).toBe(before + 2);
+  // Stopped (a pass already running given time to end), it sends nothing more.
+  await settle();
+  const after = await itemFor(w.task, 'incident');
+  await settle();
+  expect(await attemptsOf(after)).toEqual([]);
 });
