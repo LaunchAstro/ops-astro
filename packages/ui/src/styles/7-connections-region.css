@@ -1,0 +1,451 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* Connections & signal, sections 009 to 012: skill costing (MP-14-9), the
+   per-client region's scope bar, graduation and standing approvals
+   (MP-14-10a), and 011 Channels and 012 Exceptions drawn as mock rows.
+   Ported from the mockup's `app.css` (556, 4314-4319, 5079-5081, 8328-8494,
+   8758-8786, 9600-9657) onto the product's tokens. R61 numbers skill costing
+   009 above the scope bar; the mockup prints it 012. Nothing on the costing
+   table carries a tone: a large figure is a large process, not a problem. */
+
+/* The mono note line the page's sections share (mockup `.approval__meta`). */
+.approval__meta {
+  margin: 0;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+}
+
+.skcsec,
+.gradsec {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-4);
+  min-width: 0;
+}
+
+/* -- 009 Skill costing -------------------------------------------------- */
+.skc__lede {
+  display: grid;
+  gap: var(--s-2);
+}
+.skc__count {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+.skc__say {
+  max-width: 68ch;
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+.skc {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.skc__row {
+  display: grid;
+  gap: 0.35rem;
+  padding: var(--s-4) var(--s-5);
+  border-bottom: 1px solid var(--border);
+}
+.skc__row:last-child {
+  border-bottom: 0;
+}
+.skc__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+}
+.skc__what {
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+/* Mono: quantities read down a column. */
+.skc__fig {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-4);
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+}
+.skc__figv {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+}
+.skc__n {
+  color: var(--text);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+.skc__u,
+.skc__iok {
+  color: var(--ink-faint);
+  letter-spacing: var(--tracking-label);
+}
+.skc__spread {
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.skc__io {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  color: var(--text-2);
+}
+.skc__ion {
+  font-variant-numeric: tabular-nums;
+}
+/* The two silences are sentences, never a thinner number. */
+.skc__fig--thin .skc__say,
+.skc__fig--none .skc__say {
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: var(--text-overline);
+}
+.skc__fig--none {
+  color: var(--text-muted);
+}
+.skc__obs,
+.skc__mods,
+.skc__alt {
+  margin: 0;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+}
+.skc__k {
+  margin-right: 0.5rem;
+  color: var(--ink-faint);
+  letter-spacing: var(--tracking-label);
+}
+/* Exact model ids wrap; they never truncate. */
+.skc__model {
+  display: inline-block;
+  margin-right: var(--s-3);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.skc__foot {
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--border);
+}
+.skc__split {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+}
+.skc__leg {
+  font-variant-numeric: tabular-nums;
+}
+.skc__leg b {
+  color: var(--text);
+  font-weight: 400;
+}
+
+/* -- The client scope bar ------------------------------------------------ */
+.gradbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-3);
+  padding-bottom: var(--s-2);
+}
+.gradbar__l {
+  color: var(--ink-faint);
+  font-size: var(--fs-mono-sm);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+.gradbar select {
+  width: auto;
+  min-width: 15rem;
+}
+
+/* -- 010 Graduation: the class and its record left, the switch right; the
+   note runs the full width under both, since it is the row's argument. -- */
+.grad__row,
+.chan__row,
+.exc__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.35rem var(--s-5);
+  padding: var(--s-4) var(--s-5);
+  border-bottom: 1px solid var(--border);
+}
+.grad__row:last-child,
+.chan__row:last-child,
+.exc__row:last-child {
+  border-bottom: 0;
+}
+.grad__head,
+.chan__head,
+.exc__head {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 1;
+  align-items: center;
+  gap: var(--s-3);
+}
+.grad__name,
+.chan__name,
+.exc__what {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-3);
+  min-width: 0;
+}
+.grad__name b,
+.chan__name b,
+.exc__what b {
+  font-weight: var(--weight-medium);
+}
+/* The action class reads exactly as typed: mono, never uppercased. */
+.grad__type {
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+  letter-spacing: var(--tracking-label);
+}
+.grad__act,
+.chan__act,
+.exc__act {
+  display: flex;
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s-3);
+}
+.autosw__lbl {
+  max-width: 12.5rem;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  text-align: right;
+}
+.grad__rec {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 1;
+  align-items: baseline;
+  gap: var(--s-4);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+/* Three counts, never a score. */
+.grad__n b {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+  font-weight: 400;
+}
+.grad__note {
+  grid-column: 1 / -1;
+  max-width: 62ch;
+  margin: 0.25rem 0 0;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+
+/* -- 011 Channels and 012 Exceptions: the graduation row's frame; each
+   row's argument runs full width under it. -------------------------- */
+.chan__where,
+.exc__where {
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+  overflow-wrap: anywhere;
+}
+.chan__meta {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 1;
+  align-items: center;
+  gap: var(--s-3);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+.chan__note,
+.exc__why {
+  grid-column: 1 / -1;
+  max-width: 74ch;
+  margin: 0.25rem 0 0;
+  color: var(--text-2);
+  font-size: var(--text-sm);
+}
+.exc__meta {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+  gap: var(--s-2) var(--s-4);
+  margin-top: 0.3rem;
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+/* The switch is on every row, the dead ones included: squared, its knob an
+   outline that fills only while the class runs unattended. */
+.autosw {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: flex-start;
+  width: 2.6rem;
+  height: 1.25rem;
+  padding: 2px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+}
+.autosw__k {
+  display: block;
+  width: 1rem;
+  height: 100%;
+  border: 1px solid var(--border-strong);
+  background: var(--paper);
+}
+.autosw[aria-checked='true'] {
+  justify-content: flex-end;
+  border-color: var(--success);
+}
+.autosw[aria-checked='true'] .autosw__k {
+  border-color: var(--success);
+  background: var(--success);
+}
+.autosw:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+.autosw:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+.autosw:disabled {
+  border-style: dashed;
+  cursor: not-allowed;
+}
+.autosw:disabled .autosw__k {
+  border-style: dashed;
+  border-color: var(--border);
+}
+
+/* -- Standing approvals: a sentence is a record; a refusal's left rule is
+   the whole difference from an approval. ------------------------------- */
+.pslist {
+  display: grid;
+  gap: var(--s-2);
+}
+.ps {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border);
+  background: var(--surface);
+}
+.ps--no {
+  border-left-color: var(--danger);
+}
+.ps__text {
+  margin: 0;
+  color: var(--text);
+  font-size: var(--text-sm);
+}
+.ps__meta {
+  margin-top: 0.25rem;
+  color: var(--ink-faint);
+  font-size: var(--fs-mono-sm);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+.ps__x {
+  padding: 0 0.2rem;
+  border: 0;
+  background: none;
+  color: var(--text-muted);
+  font-size: 1.05rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.ps__x:hover {
+  color: var(--danger);
+}
+.fieldrow {
+  display: flex;
+  align-items: stretch;
+  gap: 0.35rem;
+}
+.fieldrow > input {
+  flex: 1;
+  min-width: 0;
+}
+.fieldrow > .btn {
+  align-self: stretch;
+  height: auto;
+  white-space: nowrap;
+}
+.connnote__field {
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--border);
+  background: var(--paper);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+.connnote__field:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+
+/* 640 is the narrow stop: the figure row stacks, the switch drops under its
+   class, and the mandate form's controls stack. */
+@media (width <= 640px) {
+  .skc__fig {
+    gap: var(--s-2) var(--s-3);
+  }
+  .skc__head {
+    gap: var(--s-2);
+  }
+  .grad__row,
+  .chan__row,
+  .exc__row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .grad__act,
+  .chan__act,
+  .exc__act {
+    grid-row: auto;
+    grid-column: 1;
+    justify-content: flex-start;
+    padding-top: 0.2rem;
+  }
+  .autosw__lbl {
+    max-width: none;
+    text-align: left;
+  }
+  .gradbar select {
+    width: 100%;
+    min-width: 0;
+  }
+  .psadd {
+    flex-wrap: wrap;
+  }
+  .psadd > input {
+    flex: 1 1 100%;
+  }
+}

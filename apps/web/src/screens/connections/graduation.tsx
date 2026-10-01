@@ -2,7 +2,8 @@
 //
 // Connections & signal, the per-client region (MP-14-10a): the client scope
 // bar, 010 Graduation with its standing approvals, and the per-client halves
-// of 011 Channels and 012 Exceptions, which MP-14-10b draws.
+// of 011 Channels and 012 Exceptions, made-up rows under the mock label until
+// MP-14-10b builds their reads (`client-mock.tsx`).
 //
 // One read, `connection.graduation`, brings every client the caller may see,
 // so the one select drives all three sections as view state and asks the
@@ -12,13 +13,13 @@
 // needs (owner answer 13); demoting and revoking send one command each.
 
 import { useCallback, useEffect, useState, type ReactElement } from 'react';
-import { InDevelopment } from '@launchastro/ui';
 import type {
   ConnectionGraduationResult,
   GraduationRowView,
   MandateView,
 } from '../../../../../packages/core-wire/src/index.ts';
 import { isRefusal, isUnavailable, type OperationsClient } from '../../operations/client.ts';
+import { ChannelsMock, ExceptionsMock } from './client-mock.tsx';
 import { MandateForm, type MandateFiling } from './graduation-forms.tsx';
 import { GraduationRow, Mandate } from './graduation-rows.tsx';
 
@@ -100,12 +101,12 @@ function StandingApprovals(props: {
     send('mandate.file', { clientId: client.id, ...mandate });
   };
   return (
-    <div className="card mt-4">
+    <div className="card">
       <div className="card__title">Standing approvals</div>
       <div className="card__sub">
         Classes and a ceiling picked from lists, an expiry, and the sentence as its label
       </div>
-      <div className="pslist mt-3">
+      <div className="pslist">
         {props.mandates.length === 0 ? (
           <p className="approval__meta">No standing approval or refusal for this client.</p>
         ) : (
@@ -119,7 +120,7 @@ function StandingApprovals(props: {
         )}
       </div>
       <MandateForm key={client.id} scopes={client.scopes} file={file} />
-      <p className="approval__meta mt-2">
+      <p className="approval__meta">
         Core checks the classes, client, ceiling, expiry and revocation at every effect; nothing
         reads the sentence.
       </p>
@@ -139,7 +140,7 @@ function Graduation(props: {
     else setPromoting(row.id);
   };
   return (
-    <div className="card card--flush mt-4">
+    <div className="card card--flush">
       <div className="grad">
         {props.rows.map((row) => (
           <GraduationRow
@@ -179,7 +180,7 @@ function Shown(props: {
   return (
     <>
       <ScopeBar clients={region.clients} chosen={client.id} choose={choose} />
-      <section data-section="010" id="graduation">
+      <section className="gradsec" data-section="010" id="graduation">
         <h2>010 Graduation {scoped}</h2>
         {props.said === null ? null : (
           <p role="alert" data-region-said>
@@ -198,13 +199,13 @@ function Shown(props: {
           send={send}
         />
       </section>
-      <section data-section="011" data-not-connected="channels">
+      <section className="gradsec" data-section="011" data-mock="channels">
         <h2>011 Channels {scoped}</h2>
-        <InDevelopment title="Channels for this client" owner="MP-14-10b" />
+        <ChannelsMock />
       </section>
-      <section data-section="012" data-not-connected="exceptions">
+      <section className="gradsec" data-section="012" data-mock="exceptions">
         <h2>012 Exceptions {scoped}</h2>
-        <InDevelopment title="Exceptions for this client" owner="MP-14-10b" />
+        <ExceptionsMock />
       </section>
     </>
   );

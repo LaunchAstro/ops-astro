@@ -31,7 +31,7 @@
 // because the web client imports this table and must not import the database.
 
 import type { Action } from '../../core-records/src/index.ts';
-import { SETUP_OPERANDS } from './surface-setup.ts';
+import { SETUP_OPERANDS, type SetupCommandName } from './surface-setup.ts';
 
 export type CommandName =
   // The contract's nine.
@@ -112,49 +112,8 @@ export type CommandName =
   | 'budget.record_outcome'
   // A person closes an unknown hold at an amount, with a reason (T3c).
   | 'budget.write_off'
-  // Custody (C31): the business's secrets, shown only as set or not set. One
-  // command serves both secret screens, and no path returns a value.
-  | 'secret.list'
-  | 'secret.set'
-  | 'secret.clear'
-  // The connector fleet (MP-14-7a): read by `connection:read`, and a repair
-  // started by `custody:manage`, which records it and sends nothing.
-  | 'connection.fleet'
-  | 'connector.repair'
-  // Grants, tripwires and the night round (MP-14-8): one read by
-  // `connection:read`, the same page's key. The sections change nothing.
-  | 'connection.signal'
-  // Graduation and standing mandates (MP-14-10a): the per-client region is one
-  // read by `connection:read`; filing, revoking, promoting and demoting are
-  // `mandate:manage`, a money key, never an agent's.
-  | 'connection.graduation'
-  | 'mandate.file'
-  | 'mandate.revoke'
-  | 'graduation.promote'
-  | 'graduation.demote'
-  // What agent runs cost (U39): skill costing (MP-14-9) and the agents' cost
-  // log (MP-14-6), each one read by `finance:read`, a person's only.
-  | 'finance.skill_costs'
-  | 'finance.agent_costs'
-  // Settings ▸ Workflow triggers (C33): the registry is one read by
-  // `settings:read`; changing an activation is `settings:manage` and releasing
-  // a definition version `automation:manage`, neither an agent's.
-  | 'automation.registry'
-  | 'activation.change'
-  | 'definition.release'
-  // Adoption, rollback, revocation and turning off (C52-A): each
-  // `automation:manage`, never an agent's. A rollback is an adoption of the
-  // version before; revoking an approval is its own act.
-  | 'activation.adopt'
-  | 'activation.roll_back'
-  | 'activation.turn_off'
-  | 'approval.revoke'
-  // New client onboarding (C41-A): the record-create command (a client, for
-  // now), laying a template out as tasks on that client, and the result each
-  // step writes onto its own task.
-  | 'record.create'
-  | 'onboarding.start'
-  | 'onboarding.step_result'
+  // Setup's operations (C31, MP-14-7a, MP-14-8, MP-14-10a, U39, C33, C52-A, C41-A).
+  | SetupCommandName
   // A check the run performed, recorded under its worker lease (MP-6-1,
   // CS-16.3): a system write whose authority is the live lease, not a grant.
   | 'task.check'
@@ -679,11 +638,8 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     untargetedIdentifiers: ['secretId'],
   }),
 
-  // The connector fleet (MP-14-7a). The fleet is `connection:read`, asked per
-  // row by the scopes the caller holds it at, so a client-scoped reader sees
-  // the connections serving that client only. Starting a repair touches the
-  // credential's custody, so it is `custody:manage`, never an agent (the
-  // ticket's permissions table).
+  // The connector fleet (MP-14-7a): `connection:read`, asked per row by the
+  // caller's scopes. A repair touches custody: `custody:manage`, never an agent.
   read('connection.fleet', CONNECTION_COLLECTION),
   read('connection.signal', CONNECTION_COLLECTION),
   declare('connector.repair', 'manage', {
@@ -692,15 +648,12 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     untargetedIdentifiers: ['connectionId'],
   }),
 
-  // Graduation and standing mandates (MP-14-10a). The region is one read on
-  // the page's key, asked per client by the scopes the caller holds it at.
-  // Every change is `mandate:manage` business-wide (owner and administrators;
-  // a mandate carries a spend ceiling), never an agent: an agent may propose,
-  // never create, an activation.
+  // Graduation and standing mandates (MP-14-10a): one read, per client by the
+  // caller's scopes; every change `mandate:manage` business-wide (a mandate
+  // carries a spend ceiling), never an agent's.
   read('connection.graduation', CONNECTION_COLLECTION),
-  // What agent runs cost (U39): skill costing (MP-14-9) and the agents' cost
-  // log for a period (MP-14-6), each asked per row by the scopes the caller
-  // holds `finance:read` at; a person's, never an agent's.
+  // What agent runs cost (U39, MP-14-9, MP-14-6): per row by the caller's
+  // `finance:read` scopes; a person's, never an agent's.
   read('finance.skill_costs', FINANCE_COLLECTION),
   read('finance.agent_costs', FINANCE_COLLECTION),
   declare('mandate.file', 'manage', {
@@ -723,10 +676,8 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     untargetedIdentifiers: ['classId'],
   }),
-  // Settings ▸ Workflow triggers (C33). The registry is a business fact read
-  // like `settings.read`; an activation is changed under `settings:manage` and
-  // a version released under `automation:manage`, both business-wide and
-  // never an agent's (the key catalogue: owner and administrators).
+  // Settings ▸ Workflow triggers (C33): the registry read like `settings.read`;
+  // changes `settings:manage`, releases `automation:manage`; never an agent's.
   read('automation.registry', SETTINGS_COLLECTION),
   declare('activation.change', 'manage', {
     collection: SETTINGS_COLLECTION,
@@ -761,15 +712,11 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     untargetedIdentifiers: ['approvalId'],
   }),
 
-  // New client onboarding (C41-A). Creating a client and starting its
-  // onboarding are `record:write` business-wide; the start also asks
-  // `task:write` business-wide, because it lays tasks out. The ticket lets an
-  // agent hold them inside its delegation, but a delegation is narrowed to
-  // one task (0016), so none reaches a business-wide create: both are a
-  // person's until an agent's reach widens. A step's result is `task:write`
-  // asked at the step's client (`target`: `prepare.ts` reads the step's
-  // onboarding), so a holder scoped to one client writes that client's steps
-  // and no other's; an agent's is asked on the task it is delegated on.
+  // New client onboarding (C41-A). Creating a client and starting one are
+  // `record:write` business-wide, the start `task:write` too (it lays tasks
+  // out); a delegation is narrowed to one task (0016), so both are a person's.
+  // A step's result is `task:write` at the step's client (`prepare.ts` reads
+  // the onboarding), or, for an agent, on the task it is delegated on.
   declare('record.create', 'write', {
     collection: RECORD_COLLECTION,
     targetsExistingRecord: false,

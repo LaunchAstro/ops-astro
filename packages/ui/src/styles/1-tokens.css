@@ -169,6 +169,7 @@
   --text-overline: 11px;
   --fs-mono-sm: 0.75rem;
   --fs-mono: 0.875rem;
+  --fs-lead: 1.125rem;
   --fs-title: clamp(1.5rem, 2.4vw, 1.75rem);
 
   --leading-snug: 1.35;

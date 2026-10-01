@@ -40,7 +40,7 @@ if (serverUrl === undefined) {
   console.warn('audit origin: DATABASE_URL is unset, so nothing below ran and nothing is proved.');
 }
 
-const THROUGH_0049 = (version: string): boolean => version.slice(0, 4) <= '0198';
+const THROUGH_0198 = (version: string): boolean => version.slice(0, 4) <= '0198';
 
 interface Member {
   readonly business: string;
@@ -132,7 +132,7 @@ describe.skipIf(serverUrl === undefined)('audit origin: a chain written before 0
     const onDisk = readMigrations('migrations');
     await applyMigrations(
       db.admin,
-      onDisk.filter((m) => THROUGH_0049(m.version)),
+      onDisk.filter((m) => THROUGH_0198(m.version)),
     );
   }, 120_000);
 

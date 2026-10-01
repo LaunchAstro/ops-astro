@@ -15,7 +15,7 @@
 // down (010 to 012; R61, numbers read top to bottom) is MP-14-10a's.
 
 import { useCallback, useEffect, useState, type ReactElement } from 'react';
-import { Empty, InDevelopment } from '@launchastro/ui';
+import { Empty, InDevelopment, Kpi } from '@launchastro/ui';
 import type {
   ConnectionFleetResult,
   ConnectionView,
@@ -25,6 +25,7 @@ import { FleetTable } from './connections/fleet-table.tsx';
 import { SignalSections } from './connections/signal.tsx';
 import { SkillCostingSection } from './connections/costing.tsx';
 import { GraduationRegion } from './connections/graduation.tsx';
+import { SectionHead } from './connections/section-head.tsx';
 import {
   initialFleetView,
   toggleOpen,
@@ -84,29 +85,23 @@ function Banner(props: {
   );
 }
 
+/** Clean, degraded and broken partition the fleet, so each is drawn out of it. */
 function Tiles(props: { readonly fleet: ConnectionFleetResult }): ReactElement {
   const { counts } = props.fleet;
+  const tile = (label: string, value: number): ReactElement => (
+    <Kpi
+      label={label}
+      value={String(value)}
+      of={String(counts.all)}
+      track={{ value, max: counts.all }}
+    />
+  );
   return (
-    <dl className="tiles">
-      <div>
-        <dt>Sources clean</dt>
-        <dd>
-          {counts.active} <span className="of">of {counts.all}</span>
-        </dd>
-      </div>
-      <div>
-        <dt>Degraded</dt>
-        <dd>
-          {counts.degraded} <span className="of">of {counts.all}</span>
-        </dd>
-      </div>
-      <div>
-        <dt>Broken</dt>
-        <dd>
-          {counts.broken} <span className="of">of {counts.all}</span>
-        </dd>
-      </div>
-    </dl>
+    <div className="statrow g3" data-fleet-tiles>
+      {tile('Sources clean', counts.active)}
+      {tile('Degraded', counts.degraded)}
+      {tile('Broken', counts.broken)}
+    </div>
   );
 }
 
@@ -162,16 +157,16 @@ function useRepair(
 function NotConnected(): ReactElement {
   return (
     <>
-      <section data-section="003" data-not-connected="credentials-quota">
-        <h2>003 Credentials &amp; quota</h2>
+      <section className="sec" data-section="003" data-not-connected="credentials-quota">
+        <SectionHead number="003" title="Credentials & quota" />
         <InDevelopment title="Token expiry and quota burn" owner="MP-14-7b" />
       </section>
-      <section data-section="004" data-not-connected="data-quality">
-        <h2>004 Data quality</h2>
+      <section className="sec" data-section="004" data-not-connected="data-quality">
+        <SectionHead number="004" title="Data quality" aside="What the numbers cannot tell you" />
         <InDevelopment title="Known gaps and restatement windows" owner="MP-14-7b" />
       </section>
-      <section data-section="005" data-not-connected="band-health">
-        <h2>005 Band health</h2>
+      <section className="sec" data-section="005" data-not-connected="band-health">
+        <SectionHead number="005" title="Band health" />
         <InDevelopment title="Band health" owner="MP-14-7b" />
       </section>
     </>
@@ -194,21 +189,21 @@ function Shown(props: {
   };
   return (
     <>
-      <section data-section="001">
-        <h2>
-          001 Fleet state{' '}
-          <span className="t-2">
-            {fleet.counts.all} sources · {fleet.counts.clientConnections} client connections
-          </span>
-        </h2>
+      <section className="sec" data-section="001">
+        <SectionHead
+          number="001"
+          title="Fleet state"
+          aside={`${String(fleet.counts.all)} sources · ${String(fleet.counts.clientConnections)} client connections`}
+        />
         <Banner broken={broken} fix={fix} />
         <Tiles fleet={fleet} />
       </section>
-      <section data-section="002">
-        <h2>
-          002 Connectors{' '}
-          <span className="t-2">Agency-wide · filter, sort and open a row for its clients</span>
-        </h2>
+      <section className="sec" data-section="002">
+        <SectionHead
+          number="002"
+          title="Connectors"
+          aside="Agency-wide · filter, sort and open a row for its clients"
+        />
         <FleetTable
           rows={fleet.connections}
           counts={fleet.counts}

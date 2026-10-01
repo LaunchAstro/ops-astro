@@ -1,0 +1,296 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+
+/* Connections & signal, sections 001 to 008 (MP-14-7a, MP-14-8): the section
+   head, the fleet's tiles, the connector table and its controls, the grants,
+   the tripwires and the night round. Ported from the mockup's app.css (14-16,
+   294-295, 613-676, 2912-2955, 8878-8953, 8999-9037, 9046-9118) onto the
+   product's tokens; only the rules for what these sections draw. */
+
+.sec__meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+  border-top: 1px solid var(--rule);
+  padding-top: var(--s-3);
+}
+
+.statrow > .stat {
+  padding: var(--s-4) var(--s-5) var(--s-4) 0;
+}
+
+.connmore .pginfo {
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+  color: var(--ink-faint);
+}
+
+.statrow {
+  display: grid;
+  border-bottom: 1px dotted var(--border-strong);
+}
+
+.legend {
+  display: flex;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+  color: var(--text-2);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+}
+
+.legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+@media (max-width: 900px) {
+  .statrow {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .statrow {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  table.conn .num,
+  table.conn .marker {
+    white-space: nowrap;
+  }
+}
+
+.conn {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.conn thead th {
+  text-align: left;
+  font-family: var(--font-mono);
+  font-size: var(--fs-mono-sm);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--ink-faint);
+  font-weight: 400;
+  padding: 0.55rem var(--s-5);
+  border-bottom: 1px solid var(--border);
+}
+
+.conn__row {
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.conn__row:hover {
+  background: var(--surface-2);
+}
+
+.conn__row td {
+  padding: 0.45rem var(--s-5);
+  vertical-align: middle;
+  font-size: 0.9rem;
+}
+
+/* Only the sorted column: the table marks the others aria-sort="none". */
+.conn thead th[aria-sort]:not([aria-sort='none']) {
+  color: var(--text);
+}
+
+.connctrls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-4);
+  flex-wrap: wrap;
+  margin-bottom: var(--s-3);
+}
+
+.connmore {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  margin-top: var(--s-3);
+}
+
+.conn__row[aria-expanded='true'] {
+  background: var(--surface-2);
+}
+
+.conn__detail > td {
+  padding: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-2);
+}
+
+.conn__panel {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: var(--s-6);
+  padding: var(--s-5) var(--s-5) var(--s-6) 2.6rem;
+}
+
+@media (max-width: 900px) {
+  .conn__panel {
+    grid-template-columns: 1fr;
+  }
+}
+
+.statrow[hidden] {
+  display: none !important;
+}
+
+.grl__lede {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.grl__count {
+  font-size: var(--fs-lead);
+  color: var(--text);
+  margin: 0;
+}
+
+.grl__count b {
+  font-family: var(--font-mono);
+  font-size: var(--text-num-md);
+}
+
+.grl__grp + .grl__grp {
+  border-top: 1px solid var(--border-strong);
+}
+
+.grl__banner {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-5);
+  background: color-mix(in srgb, var(--border) 22%, transparent);
+}
+
+.grl__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1.4fr) auto auto auto;
+  gap: 0.35rem var(--s-4);
+  padding: var(--s-4) var(--s-5);
+  border-bottom: 1px solid var(--border);
+  align-items: baseline;
+}
+
+.grl__row:last-child {
+  border-bottom: 0;
+}
+
+@media (max-width: 900px) {
+  .grl__row {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+}
+
+.tw__lede {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.tw__row {
+  display: grid;
+  gap: 0.35rem;
+  padding: var(--s-4) var(--s-5);
+  border-bottom: 1px solid var(--border);
+}
+
+.tw__row:last-child {
+  border-bottom: 0;
+}
+
+.tw__row--dead {
+  border-left: 2px solid var(--warning);
+}
+
+.nr__lede {
+  display: grid;
+  gap: 0.3rem;
+}
+
+.nr {
+  list-style: none;
+  margin: 0;
+  padding: var(--s-4) var(--s-5);
+  display: grid;
+  gap: 0;
+}
+
+.nr__step {
+  display: grid;
+  grid-template-columns: 4.2rem auto minmax(0, 1fr);
+  gap: 0 var(--s-3);
+  align-items: start;
+}
+
+.nr__dot {
+  position: relative;
+  align-self: stretch;
+  width: 0.5rem;
+}
+
+.nr__dot::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.3rem;
+  width: 0.5rem;
+  height: 0.5rem;
+  box-sizing: border-box;
+  border: 1px solid var(--border-strong);
+  background: var(--paper);
+}
+
+.nr__step:not(:last-child) .nr__dot::after {
+  content: '';
+  position: absolute;
+  left: calc(0.25rem - 0.5px);
+  top: 1rem;
+  bottom: -0.2rem;
+  width: 1px;
+  background: var(--border-strong);
+}
+
+.nr__roster {
+  display: grid;
+}
+
+@media (max-width: 900px) {
+  .nr__step {
+    grid-template-columns: 3.4rem auto minmax(0, 1fr);
+  }
+}
+
+/* The section head's meta on the right, in the faint ink the mockup sets inline. */
+.sec__aside {
+  color: var(--ink-faint);
+}
+
+/* The fleet's facets, as the mockup draws them in its connector controls:
+   a shade smaller and on the surface (app.css:2951). */
+.connctrls .facet {
+  background: var(--surface);
+  font-size: 0.82rem;
+}
+
+/* The connector table scrolls inside its card at a narrow width, never the
+   page (the mockup's card, app.css:2912 with its inline overflow). */
+.conn__scroll {
+  overflow-x: auto;
+}
+
+/* A phone draws the fleet's tile numbers a size down (app.css:677). */
+@media (max-width: 640px) {
+  .statrow .stat__num {
+    font-size: 1.75rem;
+  }
+}

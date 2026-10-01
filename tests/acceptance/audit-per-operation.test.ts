@@ -2,12 +2,12 @@
 //
 // I13 and I08 over the whole exported surface, through the real boundary.
 //
-// **I13** (CONTRACT-LEDGER I13). For each of the 94 `COMMAND_SURFACE`
+// **I13** (CONTRACT-LEDGER I13). For each of the 82 `COMMAND_SURFACE`
 // declarations, one call that applies and one that is refused, and what each
 // wrote to `audit_events` in *every* business: one row, in the caller's own,
 // naming actor, command, operation, outcome and code, the request as a digest
 // only. A refused call also leaves both businesses' domain tables alone. The
-// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 94. For
+// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 82. For
 // the seven lease operations he names real work in his own business: an
 // approved reservation, and a live lease and its fence held by ada. The agent's
 // own refusals of those seven are a case of their own below. `model.call`'s
@@ -421,12 +421,12 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
     );
   }
 
-  it('covered all 94 exported operations both ways', () => {
+  it('covered all 82 exported operations both ways', () => {
     const names = COMMAND_SURFACE.map((declaration) => declaration.name).toSorted();
-    expect(names).toHaveLength(94);
+    expect(names).toHaveLength(82);
     expect([...covered.applied].toSorted()).toStrictEqual(names);
     expect([...covered.refused].toSorted()).toStrictEqual(names);
-    // R2 (`noah`, no grant) is the refused caller on every one of the 94.
+    // R2 (`noah`, no grant) is the refused caller on every one of the 82.
     expect([...r2].toSorted()).toStrictEqual(names);
   });
 

@@ -13,7 +13,7 @@
 // refuses anyone without the key, and the refusal is shown as it came.
 
 import { useCallback, useEffect, useState, type ReactElement } from 'react';
-import { Empty } from '@launchastro/ui';
+import { Chip, Empty } from '@launchastro/ui';
 import type {
   ActivationView,
   AutomationDefinitionView,
@@ -105,7 +105,13 @@ function adoptOf(
 }
 
 const controlButton = (control: string, label: string, run: () => void): ReactElement => (
-  <button key={control} type="button" data-control={control} onClick={run}>
+  <button
+    key={control}
+    type="button"
+    className="btn btn--secondary btn--sm"
+    data-control={control}
+    onClick={run}
+  >
     {label}
   </button>
 );
@@ -156,49 +162,85 @@ function Controls(props: {
   );
 }
 
+const KIND = { automation: 'Automation', skill: 'Skill' } as const;
+
+function approvalTone(activation: ActivationView): 'ok' | 'warn' | 'idle' {
+  const { approval } = activation;
+  if (approval === null) return 'idle';
+  return approval.revoked ? 'warn' : 'ok';
+}
+
+/** One page row per activation; a definition with none still draws its row. */
 function Definition(props: {
   readonly definition: AutomationDefinitionView;
   readonly change: Change;
 }): ReactElement {
   const { definition } = props;
+  const title = <span className="lrow__title">{definition.name}</span>;
+  if (definition.activations.length === 0) {
+    return (
+      <li className="lrow lrow--page" data-definition={definition.id}>
+        <span className="lrow__main">
+          {title}
+          <span className="lrow__meta">{KIND[definition.kind]} · no activation</span>
+        </span>
+      </li>
+    );
+  }
   return (
-    <li data-definition={definition.id}>
-      <span className="sb__k">{definition.name}</span>{' '}
-      <span className="card__sub">{definition.kind}</span>
-      <ul className="stack">
-        {definition.activations.map((activation) => (
-          <li
-            key={activation.id}
-            data-activation={activation.id}
-            data-mode={activation.mode}
-            data-enabled={String(activation.enabled)}
-          >
-            <span data-trigger="mode">{modeOf(activation)}</span>{' '}
-            <span data-trigger="version">pinned to v{activation.versionNumber}</span>{' '}
-            <span>{activation.enabled ? 'on' : 'off'}</span>{' '}
-            <span data-trigger="approval">{approvalOf(activation)}</span>{' '}
+    <>
+      {definition.activations.map((activation) => (
+        <li
+          key={activation.id}
+          className="lrow lrow--page"
+          data-definition={definition.id}
+          data-activation={activation.id}
+          data-mode={activation.mode}
+          data-enabled={String(activation.enabled)}
+        >
+          <span className="lrow__main">
+            {title}
+            <span className="lrow__meta">
+              {KIND[definition.kind]} · <span data-trigger="mode">{modeOf(activation)}</span> ·{' '}
+              <span data-trigger="version">pinned to v{activation.versionNumber}</span> ·{' '}
+              {activation.enabled ? 'on' : 'off'}
+            </span>
+          </span>
+          <span className="lrow__trail">
+            <Chip kind="soft" tone={approvalTone(activation)}>
+              <span data-trigger="approval">{approvalOf(activation)}</span>
+            </Chip>
             <Controls definition={definition} activation={activation} change={props.change} />
-          </li>
-        ))}
-      </ul>
-    </li>
+          </span>
+        </li>
+      ))}
+    </>
+  );
+}
+
+/** The card's head: what a trigger is and what starts one. */
+function TriggersHead(): ReactElement {
+  return (
+    <div className="card__head">
+      <div>
+        <h3 className="card__title">Workflow triggers</h3>
+        <p className="card__sub">
+          Each automation runs by hand, on a schedule or on an event, always on the version it is
+          pinned to. Turning one to a schedule or an event starts nothing until a person adopts that
+          version, which approves it to run; revoking the approval or turning the automation off
+          stops the next run.
+        </p>
+      </div>
+    </div>
   );
 }
 
 export function TriggersPanel(props: { readonly client: OperationsClient }): ReactElement {
   const { listing, because, change } = useRegistry(props.client);
   return (
-    <section className="sb__sect" data-settings="triggers">
-      <div className="sb__sh">
-        <span className="sb__k">Workflow triggers</span>
-      </div>
-      <p className="card__sub">
-        Each automation runs by hand, on a schedule or on an event, always on the version it is
-        pinned to. Turning one to a schedule or an event starts nothing until a person adopts that
-        version, which approves it to run; revoking the approval or turning the automation off stops
-        the next run.
-      </p>
-      {listing.state === 'loading' ? <p className="card__sub">Reading triggers…</p> : null}
+    <section className="card card--flush" data-settings="triggers">
+      <TriggersHead />
+      {listing.state === 'loading' ? <p className="card__note">Reading triggers…</p> : null}
       {listing.state === 'refused' ? (
         <Empty
           title="You are not permitted to see the workflow triggers."
@@ -206,15 +248,15 @@ export function TriggersPanel(props: { readonly client: OperationsClient }): Rea
         />
       ) : null}
       {listing.state === 'unavailable' ? (
-        <p className="field__error" role="status">
+        <p className="field__error card__note" role="status">
           {listing.because}
         </p>
       ) : null}
       {listing.state === 'shown' && listing.definitions.length === 0 ? (
         <Empty title="No automations yet." description="A released automation shows here." />
       ) : null}
-      {listing.state === 'shown' ? (
-        <ul className="stack" data-settings="trigger-rows">
+      {listing.state === 'shown' && listing.definitions.length > 0 ? (
+        <ul className="lrows" data-settings="trigger-rows">
           {listing.definitions.map((definition) => (
             <Definition
               key={definition.id}
@@ -227,7 +269,7 @@ export function TriggersPanel(props: { readonly client: OperationsClient }): Rea
         </ul>
       ) : null}
       {because === null ? null : (
-        <p className="field__error" role="alert" data-settings="triggers-refusal">
+        <p className="field__error card__note" role="alert" data-settings="triggers-refusal">
           {because}
         </p>
       )}

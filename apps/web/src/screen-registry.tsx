@@ -14,6 +14,8 @@ import type { AuthenticatedRouteId, ParamsOf, RouteMatch } from './routes.ts';
 import type { OperationsClient } from './operations/client.ts';
 import { ConnectionsScreen } from './screens/Connections.tsx';
 import { ConversationScreen } from './screens/Conversation.tsx';
+import { ExecutiveScreen } from './screens/Executive.tsx';
+import { OnboardingScreen } from './screens/Onboarding.tsx';
 import { Projects } from './screens/Projects.tsx';
 import { SettingsScreen } from './screens/Settings.tsx';
 import { TaskDetailScreen } from './screens/TaskDetail.tsx';
@@ -50,7 +52,9 @@ export const SCREENS: {
       conversationId={context.params.conversation}
     />
   ),
+  'agency:executive': (context) => <ExecutiveScreen client={context.client} />,
   'agency:gallery': () => <Gallery />,
+  'agency:onboarding': (context) => <OnboardingScreen client={context.client} />,
   'agency:settings': (context) => (
     <SettingsScreen client={context.client} grantKey={context.grantKey} storage={context.storage} />
   ),
