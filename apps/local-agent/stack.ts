@@ -15,6 +15,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createRunner, type Runner } from './runner.ts';
 import { readSettings } from './settings.ts';
+import { identityFromSeed, type IdentityRead } from './seed.ts';
 
 export interface Stack {
   readonly home: string;
@@ -72,6 +73,9 @@ export async function startStack(
   env: Readonly<Record<string, string | undefined>>,
   userHome: string = homedir(),
   print: (line: string) => void = (line) => process.stdout.write(`${line}\n`),
+  _identityOf: (
+    env: Readonly<Record<string, string | undefined>>,
+  ) => Promise<IdentityRead> = identityFromSeed,
 ): Promise<StackStart> {
   const key = env['OPS_LOCAL_AGENT_KEY'] || randomBytes(24).toString('hex');
   const read = readSettings({ ...env, OPS_LOCAL_AGENT_KEY: key }, userHome);
