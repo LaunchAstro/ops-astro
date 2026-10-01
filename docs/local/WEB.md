@@ -168,7 +168,12 @@ once all have ended, and "No agent has run this task. It is a person's work
 so far." with none (TP-07). An id `task.read`
 refuses `NOT_FOUND` is said as "No task is filed under" that id, quoted as
 typed, with the refusal and a link to the board (`screens/task/Absent.tsx`);
-any other refusal is the denied state. Neither draws another task.
+any other refusal is the denied state. Neither draws another task. The title
+is set in the display style, the crumb's door in data ink and its key, like
+the subtasks count, as an eyebrow. The look (`tests/visual/look/task-page.ts`)
+holds the header, the Team side's steps, the description on the page and in
+the dock panel, and the conversation's head to the mockup at 1480, 900 and
+390 in both themes.
 
 Below it, the facts block (`screens/task/Facts.tsx`, MP-4-2): the strip
 (whose move, derived: absent once complete, Review at a pending gate, Agent
