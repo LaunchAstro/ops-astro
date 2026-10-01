@@ -16,13 +16,21 @@ client: client-facing agent work stays on the API.
 1. The stack (`apps/local-agent/stack.ts`), in its own terminal:
 
    ```sh
-   OPS_ENVIRONMENT=local OPS_LOCAL_AGENT_SEAT=hey node apps/local-agent/stack.ts
+   OPS_ENVIRONMENT=local OPS_LOCAL_AGENT_SEAT=hey OPS_LOCAL_AGENT_BUSINESS=alpha pnpm local-agent
    ```
 
    It makes a runner key, starts the runner, files the key for custody in
    `credentials.json` and writes `api.env`, both 0600 under
    `OPS_LOCAL_AGENT_HOME`. It prints the runner's origin and the `api.env` path,
    never the key.
+
+   With `OPS_LOCAL_AGENT_BUSINESS` set to a business `pnpm db:seed` made
+   (`alpha` or `bravo`), it also writes the tick's identity into `api.env`: the
+   business id, its agent's login subject (from `.local/synthetic-agents.json`)
+   and an active worker actor, which the seed does not make, so the stack makes
+   one, once (`apps/local-agent/seed.ts`). The database comes from
+   `DATABASE_URL`/`DATABASE_ADMIN_URL` or `.local/db.env`. A business or agent
+   the seed has not made refuses with `NOT_SEEDED` before anything is written.
 
 2. The API, in a terminal that has run `source <home>/api.env` first. That file
    sets `OPS_ENVIRONMENT=local`, `OPS_AGENT_PROVIDER=local-claude` and the four
@@ -31,9 +39,11 @@ client: client-facing agent work stays on the API.
    `subscription`). The side panel is then answered by the local session.
 
 3. The tick (`apps/local-agent/tick-main.ts`), in a terminal that has also
-   sourced `api.env`, with `DATABASE_URL`, `OPS_LOCAL_AGENT_BUSINESS_ID`, the
-   agent's login subject (`OPS_LOCAL_AGENT_AGENT_SUBJECT`) and the business's
-   worker (`OPS_LOCAL_AGENT_WORKER_ACTOR_ID`). Every
+   sourced `api.env` and exported `.local/db.env` for `DATABASE_URL`
+   (`set -a; . .local/db.env; set +a`). The business, agent and worker come from
+   `api.env` when the stack was started with `OPS_LOCAL_AGENT_BUSINESS`;
+   otherwise set `OPS_LOCAL_AGENT_BUSINESS_ID`,
+   `OPS_LOCAL_AGENT_AGENT_SUBJECT` and `OPS_LOCAL_AGENT_WORKER_ACTOR_ID`. Every
    `OPS_LOCAL_AGENT_TICK_SECONDS` (60 by default, 10 at least) it fires due
    schedules and runs queued task work, and prints counts and refusal codes,
    never the model's words.

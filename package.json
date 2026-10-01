@@ -69,6 +69,7 @@
     "fixture:clone": "bash scripts/local/fixture-snapshot.sh clone",
     "auth:up": "bash scripts/local/auth-up.sh",
     "auth:seed": "node scripts/local/auth-seed.mjs",
+    "local-agent": "node apps/local-agent/stack.ts",
     "api:up": "bash scripts/local/api-up.sh",
     "web:up": "bash scripts/local/web-up.sh",
     "verify:slice": "node scripts/local/verify-slice.mjs",
