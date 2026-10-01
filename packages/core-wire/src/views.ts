@@ -82,6 +82,8 @@ export interface TaskDetail extends TaskSummary {
   readonly pageLink: string | null;
   /** The time the burn bar measures against, whole minutes (MP-4-8); null when not set. */
   readonly estimateMinutes: number | null;
+  /** The work label's id as `task.set_category` stored it (MP-4-8, CS-4.16); null for none. */
+  readonly category: string | null;
   readonly history: readonly HistoryEntry[];
   /** Oldest first. Empty is a real answer; a denied read never reaches here. */
   readonly comments: readonly CommentView[];
@@ -534,6 +536,8 @@ export interface BoardTask extends TaskSummary {
   readonly actualMinutes: number;
   /** The task's estimate in whole minutes (MP-4-8), as `task.read` answers it; null when not set. */
   readonly estimateMinutes: number | null;
+  /** The work label's id (CS-4.16), as `task.read` answers it; null for none. */
+  readonly category: string | null;
   /** The in-product address the task is about (MP-4-12), as `task.read` answers it; null when unlinked. */
   readonly pageLink: string | null;
   /**

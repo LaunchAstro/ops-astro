@@ -364,6 +364,21 @@ export const TASK_SPINE: readonly SpineField[] = [
     escalatingOperation: null,
   },
   {
+    // The task's work label (MP-4-8, CS-4.16, migration 0161): one of the
+    // nine ids of `TASK_CATEGORIES`, or absent. A label and nothing more
+    // (R76): no grant, delegation or scope reads it. Owned by
+    // `task.set_category`, which keeps only a catalogue id, so a generic
+    // write cannot store a value the list does not hold. Unslotted: the board
+    // filters its rows in the browser, and nothing queries on it.
+    key: 'category',
+    label: 'Category',
+    valueType: 'text',
+    slot: null,
+    writeMode: 'operation',
+    owningOperations: ['task.set_category'],
+    escalatingOperation: null,
+  },
+  {
     // The agent assignee (Assign to AI, migration 0140): a live delegation
     // the assigner holds for this task. One kind at a time with `assignee`;
     // `task.assign` is its only writer, and a revoke clears it.
@@ -387,6 +402,7 @@ export const PROTECTED_TASK_FIELDS: readonly string[] = [
   'archived_at',
   'archived_why',
   'assignee',
+  'category',
   'client',
   'client_visible',
   'completed_at',

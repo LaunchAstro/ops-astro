@@ -18,13 +18,14 @@
 // **A field with nothing in it reads "not set"**, and Page link "nothing
 // yet". The page link (MP-4-12) reads as words here, like every mark in the
 // band; the panel draws it as a door. The estimate reads as the panel's words
-// (`estimateWords`). Category has no value on the record yet (a named board
-// section arrives later), so it reads that way for every task until then;
-// Client says only whether one is set until the client model names it.
+// (`estimateWords`), and the category by its label (`TASK_CATEGORIES`, a
+// value off the list as stored). Client says only whether one is set until
+// the client model names it.
 
 import type { ReactElement } from 'react';
 import { estimateWords } from './estimates.ts';
 import {
+  TASK_CATEGORIES,
   TASK_STAGES,
   type InternalTaskDetail,
 } from '../../../../../packages/core-wire/src/index.ts';
@@ -114,6 +115,11 @@ function Strip(props: { readonly task: InternalTaskDetail }): ReactElement {
   );
 }
 
+function categoryOf(task: InternalTaskDetail): string | undefined {
+  const category = task.category ?? null;
+  return category === null ? undefined : TASK_CATEGORIES.labelOf(category);
+}
+
 function estimateOf(task: InternalTaskDetail): string | undefined {
   const minutes = task.estimateMinutes ?? null;
   return minutes === null ? undefined : estimateWords(minutes);
@@ -127,7 +133,7 @@ export function TaskFacts(props: { readonly task: InternalTaskDetail }): ReactEl
     ['due', 'Due date', orNotSet(task.due?.slice(0, 10))],
     ['estimate', 'Estimate', orNotSet(estimateOf(task))],
     ['project', 'Project', projectOf(task)],
-    ['category', 'Category', NOT_SET],
+    ['category', 'Category', orNotSet(categoryOf(task))],
     ['stage', 'Stage', orNotSet(task.stage === null ? null : TASK_STAGES.labelOf(task.stage))],
     ['status', 'Status', orNotSet(task.state?.label)],
     ['page-link', 'Page link', task.pageLink ?? 'nothing yet'],

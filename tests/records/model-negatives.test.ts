@@ -183,9 +183,10 @@ describe.skipIf(serverUrl === undefined)('the model negatives, one per member', 
     // Fourteen since MP-4-9 added the three marks `task.set_scores` owns, and
     // fifteen since MP-4-10 added the Ad hoc mark `task.set_adhoc` owns, and
     // seventeen since MP-4-15 added the two archive fields its transition writes,
-    // and eighteen since Assign to AI added the agent `task.assign` owns.
-    it('is eighteen, read from the spine', () => {
-      expect(PROTECTED_TASK_FIELDS.length).toBe(18);
+    // and eighteen since Assign to AI added the agent `task.assign` owns, and
+    // nineteen since MP-4-8 added the category `task.set_category` owns.
+    it('is nineteen, read from the spine', () => {
+      expect(PROTECTED_TASK_FIELDS.length).toBe(19);
     });
 
     it.each([...PROTECTED_TASK_FIELDS])('catches %s relaxed to generic', async (key) => {
@@ -303,6 +304,11 @@ const OWNER_CASES: Readonly<Record<string, OwnerCase>> = {
     command: 'task.set_adhoc',
     payload: () => ({ fields: { ad_hoc: true } }),
     stored: () => true,
+  },
+  category: {
+    command: 'task.set_category',
+    payload: () => ({ fields: { category: 'seo' } }),
+    stored: () => 'seo',
   },
   state: {
     command: 'task.start',

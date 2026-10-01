@@ -26,7 +26,11 @@ import type {
   PersonListResult,
   TaskBoardResult,
 } from '../../../../packages/core-wire/src/index.ts';
-import { TASK_STAGES, isInProductLink } from '../../../../packages/core-wire/src/index.ts';
+import {
+  TASK_CATEGORIES,
+  TASK_STAGES,
+  isInProductLink,
+} from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
 import { useBoardLive } from '../data/board-live.ts';
 import { RecordState } from '../views/record-state.tsx';
@@ -244,9 +248,11 @@ const STAGE_LABELS = TASK_STAGES.list().map((stage) => stage.label);
 
 /** One task from the read as a Projects board row (MP-5-8). */
 function rowOf(task: BoardTask): ProjectRow {
-  // A read from a server that predates Assign to AI carries neither: none.
-  const read: Partial<Pick<BoardTask, 'agent' | 'myAgents'>> = task;
+  // A read from a server that predates Assign to AI or the category carries
+  // none of them: none.
+  const read: Partial<Pick<BoardTask, 'agent' | 'myAgents' | 'category'>> = task;
   const agent = read.agent ?? null;
+  const category = read.category ?? null;
   return {
     id: task.id,
     key: task.key,
@@ -271,9 +277,9 @@ function rowOf(task: BoardTask): ProjectRow {
     // A run awaiting approval is the one wait the read carries; the banner
     // prints the mockup's word for it (B-21).
     waitReason: task.waitReason === 'needs_approval' ? 'approval' : null,
-    // No task category is stored yet (it arrives with named board sections,
-    // LEANS-ON), so no category chip draws.
-    category: null,
+    // The stored category by its label (TASK_CATEGORIES); a value outside
+    // the list draws as stored, and none offers no chip (P-13).
+    category: category === null ? null : TASK_CATEGORIES.labelOf(category),
     awaitingDecision: task.awaitingDecision,
     estimate:
       task.estimateMinutes === null ? null : { kind: 'time', minutes: task.estimateMinutes },

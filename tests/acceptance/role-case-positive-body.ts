@@ -99,6 +99,8 @@ export function createPositiveBody(
         return { body: { ...(await target()), fields: { impact: 7, confidence: 9, ease: 8 } } };
       case 'task.set_adhoc':
         return { body: { ...(await target()), fields: { ad_hoc: true } } };
+      case 'task.set_category':
+        return { body: { ...(await target()), fields: { category: 'seo' } } };
       case 'task.share_with_client': {
         if (context.clientTask === undefined) return { body: await target() };
         const task = await context.clientTask('a task the admin shares with its client');

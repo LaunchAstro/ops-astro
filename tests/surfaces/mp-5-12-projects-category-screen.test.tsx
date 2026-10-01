@@ -85,7 +85,7 @@ describe('the task category list on the Projects board', () => {
   it('draws a chip per stored category, by its label, and one outside the list as stored', async () => {
     const board = await screen([]);
     const chips = [...board.host.querySelectorAll('[data-preset^="cat-"]')].map((chip) =>
-      chip.textContent?.trim(),
+      chip.getAttribute('aria-label'),
     );
     expect(chips.toSorted()).toStrictEqual(['Legacy work', 'Paid Ads']);
   });

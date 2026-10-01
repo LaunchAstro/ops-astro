@@ -2,7 +2,8 @@
 //
 // The dock task panel's field edits (MP-4-8): the name, the assignee, the due
 // date, the estimate and the stage; the project is `ProjectField.tsx`, the
-// status `StatusField.tsx` and the tags `TagField.tsx` (MP-4-11).
+// category `CategoryField.tsx`, the status `StatusField.tsx` and the tags
+// `TagField.tsx` (MP-4-11).
 //
 // **Each field through its own command, at the revision the panel read.** The
 // name, the due date and the estimate go out through `task.update`
@@ -12,8 +13,8 @@
 // again and draw what the server holds; a refusal is quoted in the server's
 // words and nothing is drawn as changed.
 //
-// **Only the fields with an owner on the record.** Category and the client
-// wait on theirs (SL08 handback, LEANS-ON).
+// **Only the fields with an owner on the record.** The client waits on its
+// own (SL08 handback, LEANS-ON).
 //
 // **A control's Escape is the control's.** The name edit's Escape ends the
 // edit; the picker marks its own handled (TR-A3-3).
@@ -37,6 +38,7 @@ import { TagField } from './TagField.tsx';
 import { AssignToAI } from './AssignToAI.tsx';
 import { ProjectField } from './ProjectField.tsx';
 import { StatusField } from './StatusField.tsx';
+import { CategoryField } from './CategoryField.tsx';
 
 export interface PanelFieldsProps {
   readonly client: OperationsClient;
@@ -134,6 +136,7 @@ export function PanelFields(props: PanelFieldsProps): ReactElement {
       />
       <DueField {...props} {...field} />
       <EstimateField {...props} {...field} />
+      <CategoryField client={props.client} task={props.task} onChanged={props.onChanged} />
       <StageField {...props} {...field} />
       <StatusField
         client={props.client}
