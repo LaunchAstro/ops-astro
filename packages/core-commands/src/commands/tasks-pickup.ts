@@ -132,6 +132,9 @@ async function claim(
     // gives the same two sentences for a reservation somebody else holds.
     return notClaimable();
   }
+  // WF-7: a stopped research ticket's run is not picked up, whoever approved it.
+  const stopped = await pickupStopRefusal(tx, approver.taskId);
+  if (stopped !== undefined) return refused(stopped);
 
   const common = {
     reservationId: fields.reservationId,
@@ -154,9 +157,6 @@ async function claim(
           mintedByActorId: approver.actorId,
         });
   if (!result.ok) return refused(result.refusal);
-  // WF-7: a stopped research ticket's run is not picked up, whoever approved it.
-  const stopped = await pickupStopRefusal(tx, result.value.taskId);
-  if (stopped !== undefined) return refused(stopped);
   return applied(result.value.taskId, null, pickupDetail(result.value));
 }
 
@@ -237,9 +237,10 @@ function pickupDetail(picked: PickedUp | PickedUpByPerson): Record<string, unkno
 interface Approver {
   readonly personId: string;
   readonly actorId: string;
+  readonly taskId: string;
 }
 
-/** The person whose approval put this reservation on the queue. */
+/** The person whose approval put this reservation on the queue, and the run's task. */
 async function approvingPerson(
   tx: TenantQuery,
   reservationId: string,
@@ -247,11 +248,13 @@ async function approvingPerson(
   const rows = await tx.query<{
     readonly decided_by_person_id: string;
     readonly decided_by_actor_id: string;
+    readonly task_id: string;
   }>(
-    `select d.decided_by_person_id, d.decided_by_actor_id
+    `select d.decided_by_person_id, d.decided_by_actor_id, run.task_id
        from public.reservations res
        join public.gate_decisions d
          on d.business_id = res.business_id and d.version_id = res.version_id
+       join public.planned_runs run on run.business_id = res.business_id and run.id = res.run_id
       where res.business_id = $1 and res.id = $2 and d.decision = 'approve'
       order by d.seq desc
       limit 1`,
@@ -260,5 +263,9 @@ async function approvingPerson(
   const row = rows[0];
   return row === undefined
     ? undefined
-    : { personId: row.decided_by_person_id, actorId: row.decided_by_actor_id };
+    : {
+        personId: row.decided_by_person_id,
+        actorId: row.decided_by_actor_id,
+        taskId: row.task_id,
+      };
 }

@@ -259,9 +259,9 @@ async function settle(
   await raiseIncident(tx, [
     { reservationId: settled.reservationId, state: settled.reservationState },
   ]);
-  if (settled.successorGateId !== null && (await decidable(tx, settled.successorGateId))) {
-    await raiseDecision(tx, { taskId, gateId: settled.successorGateId });
-  }
+  const liveSuccessor =
+    settled.successorGateId !== null && (await decidable(tx, settled.successorGateId));
+  if (liveSuccessor) await raiseDecision(tx, { taskId, gateId: settled.successorGateId });
   return applied(null, null, {
     leaseId: settled.leaseId,
     reservationId: settled.reservationId,
@@ -275,13 +275,14 @@ async function settle(
     // nobody can read.
     reportId: settled.reportId,
     // The successor's four durable handles, null throughout when none was
-    // asked for. They are in the same detail as the settlement because they
-    // were written in the same transaction: T4 wants "the durable
-    // handback/proposal handles in one response", and a caller that had to go
-    // looking for its own gate could not tell the two halves apart.
-    successorVersionId: settled.successorVersionId,
-    successorGateId: settled.successorGateId,
-    successorRunId: settled.successorRunId,
-    successorStepId: settled.successorStepId,
+    // asked for or the same handback withdrew it. They are in the same detail
+    // as the settlement because they were written in the same transaction: T4
+    // wants "the durable handback/proposal handles in one response", and a
+    // caller that had to go looking for its own gate could not tell the two
+    // halves apart.
+    successorVersionId: liveSuccessor ? settled.successorVersionId : null,
+    successorGateId: liveSuccessor ? settled.successorGateId : null,
+    successorRunId: liveSuccessor ? settled.successorRunId : null,
+    successorStepId: liveSuccessor ? settled.successorStepId : null,
   });
 }
