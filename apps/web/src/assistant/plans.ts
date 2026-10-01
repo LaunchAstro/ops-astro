@@ -8,7 +8,8 @@
 // that drops composes no plan version, so it adds no card (the drawer draws
 // its words as a failed line). The click's answer settles the one card: kept
 // words make it the approved card, a refusal offers the click again with the
-// server's words.
+// server's words. A committed accept is approved even if a newer version made
+// the card stale meanwhile: the server kept those words and started that run.
 
 import type { AssistantPlan, PlanCardState } from '@launchastro/ui';
 import type { PlanOffer } from '../../../../packages/core-wire/src/index.ts';
@@ -22,6 +23,7 @@ function change(state: AssistantState, key: string, edit: (chat: Chat) => Chat):
 /** The card a plan version draws, offered. */
 export const cardOf = (offer: PlanOffer): AssistantPlan => ({
   version: offer.version,
+  text: offer.text,
   steps: offer.steps.map((step) => step.title),
   ceilingMinor: offer.ceilingMinor,
   spendMinor: offer.planningSpendMinor,
@@ -62,7 +64,9 @@ export function settlePlan(
   return change(state, key, (chat) => ({
     ...chat,
     messages: chat.messages.map((each) =>
-      each.id === id && each.plan !== undefined && each.plan.state !== 'stale'
+      each.id === id &&
+      each.plan !== undefined &&
+      (each.plan.state !== 'stale' || settled.state === 'approved')
         ? { ...each, plan: { ...each.plan, ...settled } }
         : each,
     ),

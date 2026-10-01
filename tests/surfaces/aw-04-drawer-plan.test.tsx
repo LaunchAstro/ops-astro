@@ -67,6 +67,7 @@ function recorder(replies: readonly Answer[], accept: Answer | null = null) {
   const sent: Sent[] = [];
   const queue = [...replies];
   const client = {
+    newOperationId: () => 'op-1',
     mutate: (name: string, body: Readonly<Record<string, unknown>>) => {
       sent.push({ name, body });
       if (name === 'task.accept_plan') {
