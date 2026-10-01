@@ -86,13 +86,19 @@ import {
 import { startLiveTopics } from './live.ts';
 import { createLivePresence } from './live-presence.ts';
 import { isLoopback, migrationHead, readIdentity, type ServedIdentity } from './identity.ts';
-import { mountAuthEmailHook, type AuthEmailHookOptions } from './auth-email-hook.ts';
+import {
+  authEmailHookSettings,
+  authHookReady,
+  mountAuthEmailHook,
+  type AuthEmailHookOptions,
+} from './auth-email-hook.ts';
 import { mailHookSettings, mountMailHook, type MailHookOptions } from './mail-hook.ts';
 import { brokerSettings, startModelBroker } from './model-broker.ts';
 import { mailDeliverySettings, startMailDelivery } from './mail-delivery.ts';
 import { enrolmentSettings, startEnrolment } from './enrolment-broker.ts';
 import type { EnrolmentOptions } from './enrolment.ts';
-import { mountPasswordSet, type PasswordSetOptions } from './password-set.ts';
+import { mountPasswordReset, mountPasswordSet, type PasswordSetOptions } from './password-set.ts';
+import type { Broker } from '../../packages/core-custody/src/index.ts';
 import { startTraceExporter, traceExportSettings } from './trace-exporter.ts';
 import {
   describeRecovered,
@@ -226,8 +232,8 @@ export interface ApiConfig {
   readonly authEmailHook?: AuthEmailHookOptions;
   /** C39-T's `POST /api/enrol` (`enrolment-broker.ts`); absent, the route is not mounted. */
   readonly enrolment?: EnrolmentOptions;
-  /** C40's `POST /api/password/set` over these businesses; absent, the route is not mounted. */
-  readonly passwordSet?: Pick<PasswordSetOptions, 'businesses'>;
+  /** C40's `/api/password/set` and `/reset` (the ask through `authBroker`); absent, not mounted. */
+  readonly passwordSet?: Pick<PasswordSetOptions, 'businesses'> & { readonly authBroker?: Broker };
   /** `model.call` through the credential broker; absent where none is configured. */
   readonly executeModelCall?: ModelCallExecutor;
   /** AW-03's exchange through the same broker; absent where none is configured. */
@@ -343,7 +349,9 @@ export function composeApi(config: ApiConfig): ComposedApi {
   const factors = createGoTrueFactors({ baseUrl: config.signIn.issuer });
   // C40: a reset link's password set, mounted when given; `main()` does not yet.
   if (config.passwordSet !== undefined) {
-    mountPasswordSet(server, database, { ...config.passwordSet, provider: factors, verify });
+    const { businesses, authBroker } = config.passwordSet;
+    mountPasswordSet(server, database, { businesses, provider: factors, verify });
+    if (authBroker !== undefined) mountPasswordReset(server, authBroker);
   }
 
   server.route(
@@ -509,6 +517,14 @@ async function main(): Promise<void> {
     console.error(`api: ${enrolConfig.problem}`);
     process.exit(1);
   }
+  // C40 (ORCH60): the login provider's Send Email hook and the reset routes, off
+  // unless `AUTH_EMAIL_HOOK_SECRET` is set; set, they need enrolment and the mail.
+  const on = { enrol: enrolConfig.kind === 'on', mail: mailConfig.kind === 'mock' };
+  const authHook = authHookReady(authEmailHookSettings(environment), on.enrol, on.mail);
+  if (authHook.kind === 'invalid') {
+    console.error(`api: ${authHook.problem}`);
+    process.exit(1);
+  }
   const broker =
     brokerConfig.kind === 'configured' ? await startModelBroker(brokerConfig) : undefined;
   console.log(`api: credential broker ${broker === undefined ? 'not configured' : 'started'}`);
@@ -539,6 +555,25 @@ async function main(): Promise<void> {
         )
       : undefined;
   console.log(`api: enrolment ${enrolment === undefined ? 'off' : 'on'}`);
+  // AW-07b: the mail worker over the recovered businesses, started before the
+  // routes are built so the login provider's hook can lend its broker (C40).
+  const mail =
+    mailConfig.kind === 'mock'
+      ? await startMailDelivery(mailConfig, database, async () => await Promise.resolve(deployed))
+      : undefined;
+  console.log(
+    mail === undefined
+      ? 'api: mail delivery off'
+      : 'api: mail delivery mock (fake provider, made-up sender check and email choices)',
+  );
+  const businesses = async () => await Promise.resolve(deployed);
+  const resets =
+    authHook.kind === 'configured' && enrolment !== undefined && mail !== undefined
+      ? {
+          authEmailHook: { secret: authHook.secret, businesses, ...mail.sending },
+          passwordSet: { businesses, authBroker: enrolment.options.broker },
+        }
+      : {};
   let errorSink: ErrorSinkLink;
   try {
     errorSink = errorSinkLink(environment);
@@ -573,8 +608,10 @@ async function main(): Promise<void> {
         }
       : {}),
     ...(enrolment === undefined ? {} : { enrolment: enrolment.options }),
+    ...resets,
   });
   console.log(`api: email hook ${hookConfig.kind === 'configured' ? 'mounted' : 'not mounted'}`);
+  console.log(`api: auth email hook ${'authEmailHook' in resets ? 'mounted' : 'not mounted'}`);
 
   // Restart recovery (TRANSACTION-CONTRACT 84, 92), awaited before the port is
   // bound: a process start is the resume entry, and a failure is a failed
@@ -591,7 +628,7 @@ async function main(): Promise<void> {
   const recovered = await withRuntimeKeys(keys, recovery);
   if (!recovered.ok) {
     console.error(`api: ${recovered.problem}`);
-    const started = [topics.close(), broker?.stop(), enrolment?.stop()];
+    const started = [topics.close(), broker?.stop(), enrolment?.stop(), mail?.stop()];
     await Promise.allSettled([database.close(), admin.close(), ...started]);
     process.exit(1);
   }
@@ -607,16 +644,6 @@ async function main(): Promise<void> {
       ? await startTraceExporter(traceConfig, database, async () => await Promise.resolve(traced))
       : undefined;
   console.log(`api: trace export ${tracer === undefined ? 'off' : 'on'}`);
-  // AW-07b: the mail worker over the same businesses, started the same way.
-  const mail =
-    mailConfig.kind === 'mock'
-      ? await startMailDelivery(mailConfig, database, async () => await Promise.resolve(traced))
-      : undefined;
-  console.log(
-    mail === undefined
-      ? 'api: mail delivery off'
-      : 'api: mail delivery mock (fake provider, made-up sender check and email choices)',
-  );
 
   serve({ fetch: app.fetch, hostname: '127.0.0.1', port }, (info) => {
     console.log(`api: listening on http://127.0.0.1:${info.port}`);

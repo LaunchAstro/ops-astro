@@ -1914,13 +1914,26 @@ signature over the raw body before parsing (401), refuses a stale timestamp
 (401) and a replayed message id (409, held in the attempt's `hook:<id>`
 evidence), and answers every verified message 200 `{}`, sent or not. An
 invitation message is sent through `sendInvitation` when exactly one business
-holds a pending invitation for the address with an unanswered act; other
-Auth mail (a reset among it) has no attempt yet and is not sent (C40).
+holds a pending invitation for the address with an unanswered act. A
+`recovery` message (C40) is read for the user's id and the provider's hashed
+token too, and nothing else's tokens are read: when a business maps that
+login, `sendPasswordReset` counts the login's and the address's reset mail in
+the last hour (three each), records the attempt `asked` (0225, by digests,
+the hook id its evidence), audits `account.password_reset_requested` in every
+business the login reaches, and mails `<app origin>/reset#token_hash=<hash>`
+through `email.send`, recording what came back. Other Auth mail is not sent.
+`main()` mounts the hook, `POST /api/password/set` and `POST
+/api/password/reset` only when `AUTH_EMAIL_HOOK_SECRET` is set, and then
+refuses to start without `ENROLMENT=on` and mail delivery.
+
+`POST /api/password/reset` with `address` asks the login provider for a reset
+through custody (`auth.recover`, `POST /auth/v1/recover` on the `auth`
+destination, the service key in custody) after answering: every request is
+200 `{}` at once, for a known address, an unknown one or a malformed body.
 
 `POST /api/password/set` with `password` and the bearer of the session a
 reset link opened sets the new password (C40, `setPasswordByRecovery`,
-mounted by `mountPasswordSet` with the deployment's businesses; `main()` does
-not mount it yet). A token whose `amr` holds `recovery` is a recovery
+mounted by `mountPasswordSet` with the deployment's businesses). A token whose `amr` holds `recovery` is a recovery
 session: login resolution refuses it everywhere else (`AUTH_SESSION_EXPIRED`),
 and this route takes nothing else. The provider sets the password on the
 person's own token (GoTrue `PUT /user`, not custody), and only a user whose

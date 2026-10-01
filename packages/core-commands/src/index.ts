@@ -119,6 +119,15 @@ export {
   type SessionsEnded,
 } from './commands/account-factor-provider.ts';
 export {
+  PASSWORD_RESET_REQUESTED,
+  RESET_LIMIT,
+  RESET_WINDOW_SECONDS,
+  requestPasswordReset,
+  sendPasswordReset,
+  type ResetMailOutcome,
+  type ResetMessage,
+} from './commands/account-password-reset.ts';
+export {
   PASSWORD_CHANGED,
   setPasswordByRecovery,
   type PasswordProvider,

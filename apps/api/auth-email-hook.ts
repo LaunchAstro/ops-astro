@@ -13,6 +13,7 @@
 // sent or not: the provider's caller (a reset asked for an unknown address,
 // say) learns nothing of who has an account or an invitation. A refused
 // signature is 401, a malformed verified body 400, a replay 409, a fault 503;
+// a reset (C40) is mailed by `sendPasswordReset` and answered the same way;
 // an answer carries a code and nothing else, and nothing is logged.
 //
 // A replayed message id is refused twice over: by this process for any
@@ -26,9 +27,11 @@ import {
   EMAIL_HOOK_TOLERANCE_S,
   isEmailHookSecret,
   readAuthMessage,
+  type AuthMessage,
   STANDARD_WEBHOOK_HEADERS,
   verifySignedHook,
 } from '../../packages/core-connectors/src/index.ts';
+import { sendPasswordReset } from '../../packages/core-commands/src/index.ts';
 import {
   deliverAuthMessage,
   type Broker,
@@ -63,6 +66,24 @@ export function authEmailHookSettings(
   return { kind: 'configured', secret };
 }
 
+/**
+ * C40 (ORCH60): the hook, and with it the reset routes, as `main()` turns them
+ * on. Off when the secret is unset. Set, the reset needs the login provider's
+ * custody (`ENROLMENT=on`) and the mail delivery's broker (`MAIL_DELIVERY`),
+ * and without either the server stops before it listens, naming the settings.
+ */
+export function authHookReady(
+  settings: AuthEmailHookSettings,
+  enrolmentOn: boolean,
+  mailOn: boolean,
+): AuthEmailHookSettings {
+  if (settings.kind !== 'configured' || (enrolmentOn && mailOn)) return settings;
+  return {
+    kind: 'invalid',
+    problem: `${AUTH_EMAIL_HOOK_SECRET_SETTING} is set, but it needs ENROLMENT on and MAIL_DELIVERY on`,
+  };
+}
+
 export interface AuthEmailHookOptions {
   /** The hook secret, `whsec_...`, read once at start; never logged. */
   readonly secret: string;
@@ -73,6 +94,20 @@ export interface AuthEmailHookOptions {
   readonly mail: MailSettings;
   /** The clock, in milliseconds; a test moves it. */
   readonly now?: () => number;
+}
+
+/** C40: a reset mail, its link the provider's hashed token; every other action as before. */
+async function land(
+  database: Database,
+  options: AuthEmailHookOptions,
+  message: AuthMessage & { readonly id: string },
+): Promise<string> {
+  const businesses = await options.businesses();
+  const { recovery, ...rest } = message;
+  if (recovery === undefined) {
+    return await deliverAuthMessage(database, businesses, options.broker, options.mail, rest);
+  }
+  return await sendPasswordReset(database, businesses, options, { ...rest, recovery });
 }
 
 /** Mount the hook on `server`, the way `composeApi` does. */
@@ -110,11 +145,7 @@ export function mountAuthEmailHook(
       if (taken.has(verdict.id)) return context.json({ code: 'REPLAYED' }, 409);
       id = verdict.id;
       taken.set(id, at);
-      const businesses = await options.businesses();
-      const landed = await deliverAuthMessage(database, businesses, options.broker, options.mail, {
-        ...message,
-        id,
-      });
+      const landed = await land(database, options, { ...message, id });
       if (landed === 'REPLAYED') return context.json({ code: 'REPLAYED' }, 409);
       return context.json({}, 200);
     } catch {

@@ -14,20 +14,23 @@
 // bounds; 503 `RESET_UNAVAILABLE` when the provider failed or answered
 // wrongly, nothing changed here.
 //
-// Mounted by the composition root only when it is given the deployment's
-// businesses and the provider; `main()` does not turn it on yet (C40-plan).
+// Mounted, with the ask below, by the composition root when the login
+// provider's Send Email hook is configured (`AUTH_EMAIL_HOOK_SECRET`).
 
 import type { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import {
+  requestPasswordReset,
   setPasswordByRecovery,
   type PasswordProvider,
 } from '../../packages/core-commands/src/index.ts';
+import type { Broker } from '../../packages/core-custody/src/index.ts';
 import type { BusinessId, Database } from '../../packages/core-records/src/index.ts';
 import type { Verifier } from './auth/supabase.ts';
 import { bearerOf } from './auth/session.ts';
 
 export const PASSWORD_SET_PATH = '/api/password/set';
+export const PASSWORD_RESET_PATH = '/api/password/reset';
 
 /** A password and room for its JSON, no more. */
 const SET_MAX_BYTES = 1024;
@@ -84,5 +87,33 @@ export function mountPasswordSet(
     } catch {
       return context.json({ code: 'RESET_FAULT' }, 503);
     }
+  });
+}
+
+/**
+ * `POST /api/password/reset` (C40, the ask): `{ address }`, no sign-in. The
+ * address goes to the login provider through custody (`requestPasswordReset`)
+ * after the answer is given, so every request, for a known address, an
+ * unknown one or none, is answered 200 `{}` at once, and its time says
+ * nothing either. A failure is nobody's to hear, and nothing is logged.
+ */
+export function mountPasswordReset(server: Hono, broker: Broker): void {
+  const tooLarge = bodyLimit({
+    maxSize: SET_MAX_BYTES,
+    onError: (context) => context.json({ code: 'RESET_TOO_LARGE' }, 413),
+  });
+  server.post(PASSWORD_RESET_PATH, tooLarge, async (context) => {
+    let address: unknown;
+    try {
+      const body: unknown = await context.req.json();
+      address =
+        typeof body === 'object' && body !== null
+          ? (body as Record<string, unknown>)['address']
+          : undefined;
+    } catch {
+      address = undefined;
+    }
+    void requestPasswordReset(broker, address).catch(() => {});
+    return context.json({}, 200);
   });
 }

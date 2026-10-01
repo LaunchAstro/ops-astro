@@ -33,6 +33,14 @@ export {
 } from './broker-invitation.ts';
 export { deliverAuthMessage, type AuthMessageOutcome } from './broker-auth-email.ts';
 export {
+  askRecovery,
+  RESET_PATH,
+  resetLink,
+  sendResetMail,
+  type RecoveryAsked,
+  type ResetMailSent,
+} from './broker-reset.ts';
+export {
   createLogin,
   readLogin,
   type LoginAsked,

@@ -38,6 +38,7 @@ import {
   type Destination,
   type EmailPreferences,
   type MailCadence,
+  type MailSettings,
   type MailTarget,
 } from '../../packages/core-custody/src/index.ts';
 import type { BusinessId, Database } from '../../packages/core-records/src/index.ts';
@@ -192,7 +193,11 @@ export async function startMailDelivery(
   database: Database,
   businesses: () => Promise<readonly BusinessId[]>,
   cadence: MailCadence = {},
-): Promise<{ readonly stop: () => Promise<void> }> {
+): Promise<{
+  readonly stop: () => Promise<void>;
+  /** The broker and the mail settings, lent to the login provider's hook (C40). */
+  readonly sending: { readonly broker: Broker; readonly mail: MailSettings };
+}> {
   const sender = await mockSender(settings.subdomain);
   const custody = await startCustody({
     credentialsFile: settings.credentialsFile,
@@ -210,6 +215,7 @@ export async function startMailDelivery(
     cadence,
   );
   return {
+    sending: { broker: timing.broker, mail: timing.mail },
     // The pass running ends first: custody stopped under a send would leave it unknown.
     stop: async () => {
       await worker.stop();
