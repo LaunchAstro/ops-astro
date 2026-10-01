@@ -10,6 +10,7 @@
 
 import { useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
 import type { AssistantChat } from './types.ts';
+import { Icon } from '../../primitives/Icon.tsx';
 
 export const TAB_TITLE_LIMIT = 40;
 
@@ -111,7 +112,7 @@ function Tab(props: TabProps): ReactElement {
           props.onTakeOut(chat.key);
         }}
       >
-        <span aria-hidden="true">×</span>
+        <Icon name="cross-small" size="sm" />
       </button>
     </span>
   );
@@ -183,7 +184,7 @@ export function TabRow(props: TabRowProps): ReactElement {
           props.onNew();
         }}
       >
-        <span aria-hidden="true">+</span>
+        <Icon name="plus" size="sm" />
       </button>
     </div>
   );

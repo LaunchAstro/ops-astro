@@ -14,7 +14,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { ConversationReadResult } from '../../packages/core-wire/src/index.ts';
 import { AssistantView } from '../../apps/web/src/views/assistant.tsx';
 import { drawScreen } from '../../apps/web/src/screen-registry.tsx';
-import { gateOf, matchRoute, pathTo, ROUTES } from '../../apps/web/src/routes.ts';
+import { pageAt } from '../../apps/web/src/manifest.ts';
+import { gateOf, matchRoute, pathTo } from '../../apps/web/src/routes.ts';
 import type { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { mount, settle } from './mount.tsx';
 import { press, track, unmountAll } from './mp-7-11-drawer-fixtures.tsx';
@@ -135,7 +136,7 @@ describe('C36 conversation address', () => {
     expect(match?.id).toBe('agency:agent-conversation');
     expect(match?.params).toStrictEqual({ conversation: ID });
     expect(pathTo('agency:agent-conversation', { conversation: ID })).toBe(`/agent/${ID}`);
-    expect(ROUTES['agency:agent-conversation']).toMatchObject({ authenticated: true, rail: false });
+    expect(pageAt(`/agent/${ID}`), 'the manifest places no rail entry here').toBeNull();
     expect(gateOf(matchRoute(`/agent/${ID}`), false).kind).toBe('sign-in');
   });
 
@@ -147,6 +148,17 @@ describe('C36 conversation address', () => {
     expect(said).toStrictEqual(['What did the supplier quote?', '<b>Four hundred</b> dollars']);
     expect(page.find('b')).toBeNull();
     expect(page.find('[data-conversation="wrap-up"]')).toBeNull();
+  });
+
+  it('the transcript wears the drawer message look (AI-09), each speaker still named to a reader', async () => {
+    const { page } = await address(`/agent/${ID}`, LIVE);
+    const looks = page
+      .all('[data-conversation="transcript"] > li')
+      .map((each) => [...each.classList].filter((name) => name.startsWith('aip__msg')).join(' '));
+    expect(looks).toStrictEqual(['aip__msg aip__msg--user', 'aip__msg aip__msg--ai']);
+    const who = page.all('.convrec__who');
+    expect(who.map((each) => each.textContent)).toStrictEqual(['You', 'Agent']);
+    expect(who.every((each) => each.classList.contains('visually-hidden'))).toBe(true);
   });
 
   it('after the body purges, the address shows the wrap-up with working links, never a transcript', async () => {

@@ -152,7 +152,12 @@ function upgradeDrillCases2() {
   }, 180_000);
 
   it('a migration that erases existing decisions fails the drill', () => {
-    const planted = withPlanted('9999_planted_decision_loss.sql', 'truncate public.gate_decisions');
+    // cascade: later tables hold foreign keys to gate_decisions (0193 budget waits,
+    // 0207 plan records), and a bare truncate of a referenced table is refused (0A000).
+    const planted = withPlanted(
+      '9999_planted_decision_loss.sql',
+      'truncate public.gate_decisions cascade',
+    );
     const { status, result, output } = drill('0023', planted);
     expect(result, output).toBeDefined();
     expect(status).toBe(1);

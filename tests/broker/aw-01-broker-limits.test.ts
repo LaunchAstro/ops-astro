@@ -3,6 +3,10 @@
 // AW-01 on the database, continued from aw-01-broker.test.ts: the data-class
 // route, the credential rule, the durable ceiling, the last room in a
 // reservation, revocation and an expired lease.
+//
+// The ticket's `AW-01 expired-lease settlement` is the case of that name here;
+// its cost half is also shown by `AW-01 settlement by the call`, whose name
+// the SL11 handback pins.
 
 import { expect, it as vitestIt } from 'vitest';
 import { catalogue, REPLAY_COMPOSE } from '../../packages/core-connectors/src/index.ts';
@@ -196,7 +200,7 @@ it('AW-01 revocation between the hold and the send: nothing is sent and the hold
   ]);
 });
 
-it('AW-01 expired lease: the cost settles and the work is refused', async () => {
+it('AW-01 expired-lease settlement: the cost settles and the work is refused', async () => {
   const work = await liveWork(s, 'expires mid-call', 2_000);
   await stepOf(work);
   world.provider.mode('slow');

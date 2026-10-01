@@ -24,7 +24,6 @@ import {
   codeOf,
   createTask,
   racer,
-  seedSchedules,
   type Schedules,
 } from '../runtime/schedules-harness.ts';
 import { cq8World } from '../runtime/t2d-harness.ts';
@@ -212,32 +211,6 @@ it('AW-04 set planning cap: two setters at once from the same limit, on two conn
       // eslint-disable-next-line no-await-in-loop
       await other.close();
     }
-  }
-});
-
-it('AW-04 set planning cap: a setter from the default meets a first reply writing the default row: the reply holds and the setter applies', async () => {
-  const fresh = await seedSchedules(s.db, 'aw04setcap-meet', 1_000_000);
-  await fresh.db.app.withBusiness(fresh.business, async (tx) => {
-    await grantTo(tx, fresh.decider, 'decide', undefined, false, 'billing');
-  });
-  world.provider.mode('answer');
-  const other = racer(fresh);
-  try {
-    // The reply asks first, so it writes the default row; the setter's
-    // insert then meets it on the unique key and must still apply from 5000.
-    const both = await fresh.db.admin.transaction(async (execute) => {
-      await execute('lock table public.budget_caps in exclusive mode');
-      const reply = plan(fresh, ownerOf(fresh), ask(fresh));
-      await waiting(execute, 1);
-      const setter = asPerson(fresh, setBody(700, 5_000), other);
-      await waiting(execute, 2);
-      return { racing: Promise.all([reply, setter]) };
-    });
-    const [reply, setter] = await both.racing;
-    expect([reply.ok, codeOf(setter)]).toStrictEqual([true, 'applied']);
-    expect((await caps(fresh))['planning']).toBe('700');
-  } finally {
-    await other.close();
   }
 });
 

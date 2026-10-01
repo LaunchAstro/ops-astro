@@ -42,6 +42,8 @@ export interface ConversationRecordProps {
 }
 
 const ROLE = { person: 'You', agent: 'Agent' } as const;
+/** The drawer's message look (AI-09): one transcript look, at either address. */
+const LOOK = { person: 'aip__msg aip__msg--user', agent: 'aip__msg aip__msg--ai' } as const;
 
 function Pointer(props: { readonly pointer: ConversationRecordPointer }): ReactElement {
   const { pointer } = props;
@@ -97,8 +99,11 @@ export function ConversationRecord(props: ConversationRecordProps): ReactElement
       ) : (
         <ol className="convrec__log" data-conversation="transcript" aria-label="Conversation">
           {props.messages.map((message) => (
-            <li key={message.id} className={`convrec__msg convrec__msg--${message.role}`}>
-              <span className="convrec__who">{ROLE[message.role]}</span>
+            <li
+              key={message.id}
+              className={`${LOOK[message.role]} convrec__msg convrec__msg--${message.role}`}
+            >
+              <span className="convrec__who visually-hidden">{ROLE[message.role]}</span>
               <p data-conversation="message">{message.body}</p>
             </li>
           ))}

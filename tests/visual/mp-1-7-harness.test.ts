@@ -162,6 +162,7 @@ function everyPageBuiltSoFar(): void {
       'agency:task-detail',
       'agency:settings',
       'agency:gallery',
+      'agency:agent-conversation',
     ]);
     const all = report(packet, builtPages(), everyShot(packet.widths));
     expect(all.failed).toBe(0);
