@@ -3,12 +3,15 @@
 // C59: the second factor belongs to the sign-in login, not to one business.
 // The provider holds one set of factors per subject, so a factor verified
 // through alpha is the login's factor in bravo too: a password-only (aal1)
-// sign-in is refused in every business the login reaches, and removing the
-// factor serves it again in every one. Each case opens its own login, mapped
-// to a person in alpha and a person in bravo.
+// sign-in is refused in every business the login reaches, removing the
+// factor serves it again in every one, and no business starts a second
+// enrolment for it. Each case opens its own login, mapped to a person in alpha
+// and a person in bravo.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { enrolSecondFactor } from '../../packages/core-commands/src/commands/account-factor.ts';
+import type { FactorProvider } from '../../packages/core-commands/src/commands/account-factor-provider.ts';
 import { resolveLogin } from '../../packages/core-records/src/identity/login-resolution.ts';
 import {
   recordFactorEnrolled,
@@ -104,6 +107,41 @@ const everywhere = async (login: Login, level: AssuranceLevel) => [
 
 const REFUSED = 'AUTH_SECOND_FACTOR_REQUIRED';
 
+/** A provider that issues a factor to anyone, as one that does not hold AAL2 to enrol would. */
+function lenientProvider(asked: string[]): FactorProvider {
+  const done = Promise.resolve({ ok: true, value: undefined } as const);
+  return {
+    enrol: () => {
+      asked.push('enrol');
+      const factorId = `factor-${randomUUID()}`;
+      const issued = { factorId, qrCode: 'qr', secret: 'secret', uri: 'otpauth:' };
+      return Promise.resolve({ ok: true, value: issued } as const);
+    },
+    verify: () => Promise.resolve({ ok: false, fault: 'refused' }),
+    remove: () => done,
+    signOut: () => done,
+  };
+}
+
+/** An enrolment through `business` on a fresh password-only sign-in: the refusal code, or `issued`. */
+async function enrolThrough(login: Login, business: string, provider: FactorProvider) {
+  const now = Math.floor(Date.now() / 1000);
+  const answer = await enrolSecondFactor(
+    {
+      database: db.app,
+      businessId: business,
+      presented: {
+        provider: 'supabase',
+        subject: login.subject,
+        assurance: { level: 'aal1', signedInAt: now, factorAt: null },
+      },
+      accessToken: 'aal1-access-token',
+    },
+    provider,
+  );
+  return 'code' in answer ? answer.code : 'issued';
+}
+
 beforeAll(async () => {
   if (serverUrl === undefined) return;
   db = await createFreshDatabase({ part: 'c59fe' });
@@ -144,5 +182,16 @@ describe.skipIf(serverUrl === undefined)('C59 the second factor is the login’s
     await removeThrough(mia, alpha, first);
 
     expect(await everywhere(mia, 'aal1')).toEqual([REFUSED, REFUSED]);
+  });
+
+  it('C59: a login with a factor verified in one business cannot start a second enrolment in another', async () => {
+    const mia = await loginInBoth();
+    await verifyThrough(mia, alpha);
+    const asked: string[] = [];
+
+    expect(await enrolThrough(mia, bravo, lenientProvider(asked))).toBe('FACTOR_ALREADY_ENROLLED');
+    expect(asked).toEqual([]);
+    // A login with no factor anywhere still enrols.
+    expect(await enrolThrough(await loginInBoth(), bravo, lenientProvider(asked))).toBe('issued');
   });
 });
