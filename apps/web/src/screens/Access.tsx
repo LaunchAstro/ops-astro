@@ -138,12 +138,10 @@ export function AccessScreen(props: AccessScreenProps): ReactElement {
   };
   return (
     <div className="stack" data-screen="access" data-business={client.businessKey}>
-      <header className="tpr">
-        <h2 className="tpr__title">Access</h2>
-        <div className="card__sub">
-          Who may do what in {client.businessKey}, as the server grants it now.
-        </div>
-      </header>
+      {/* The shell's page header names the page; the page keeps its lead line only. */}
+      <p className="card__sub" data-page-lead>
+        Who may do what in {client.businessKey}, as the server grants it now.
+      </p>
       <RecordState state={state} subject="access list" onRetry={reload}>
         {(result) => (
           <>
