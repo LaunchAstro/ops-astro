@@ -2,8 +2,9 @@
 //
 // Provider operations: what a model call is, what it may carry and to where
 // (AW-01); the catalogue's registration rule, the one guarded provider call,
-// the fenced page capture, and the live correction's six operations with the
-// executable that performs its one real effect (C80).
+// the fenced page capture, and the live correction's catalogued operations
+// with the executable that performs its one real effect and the binding that
+// reaches its providers (C80).
 //
 // Nothing here holds a credential: custody does (`core-custody`), and adapter
 // code never runs in its process; a connector borrows through a port the
@@ -134,3 +135,12 @@ export {
   receiptLP,
   type ReceiptLObservations,
 } from './site/receipts.ts';
+export {
+  mergeAndFind,
+  readServed,
+  readSiteSource,
+  revertForward,
+  type BindingDependencies,
+  type SiteBinding,
+} from './site/binding.ts';
+export { proposeSource, type ProposeInput } from './site/propose.ts';
