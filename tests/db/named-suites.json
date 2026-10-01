@@ -169,7 +169,8 @@
     "B1-JOIN-FIX (REV187W): service-stop.test.ts's before-lookup refusals also run beside a live database of the named business and write no sign-in row to it; Sol's proof named-service-stop-reaches-database runs that suite alone through the conformance runner, which must see it reach the database.",
     "B1-END-FIX-OPS (batch 1 blind review A1, A5, A8) adds restore-includes-sign-in-tables (the restore drill passes the scheduled public, ops and auth archive), restore-includes-staging-guards (a staging archive restores after the seed installs its made-up guards) and hosted-expired-lease-recovery (the Vercel function runs the reconciliation pass and fences a lost worker's expired lease; fix round 1 adds hosted-recovery-waits-for-pass (every request waits on the pass in flight) and staging-archive-restores-guards (the complete staging archive restores with its guard triggers); round 2 adds restore-drill-keeps-staging-guards (the drill's target keeps the guard triggers).",
     "SL09-2a-f3 adds c58-end-access-credentials (access.end revoking every live agent credential the ended person issued, each agent actor deactivated with it, in the same act; another person's credential in the same business and the same provider user's credential in bravo left live), named as an isolation suite too.",
-    "FIX-2A (review RP-1) adds c81-privacy-find-copies-links (the runbook's finder lists every row naming the person through an id of their own: found by name, their sign-in's logins row and a grant held by their acting identity; found by the email they wrote from, their membership), named as an isolation suite too."
+    "FIX-2A (review RP-1) adds c81-privacy-find-copies-links (the runbook's finder lists every row naming the person through an id of their own: found by name, their sign-in's logins row and a grant held by their acting identity; found by the email they wrote from, their membership), named as an isolation suite too.",
+    "FIX-2A (review RP-2) names c81-breach-drill-subject beside c81-breach-drill and c81-breach-drill-clock (the template's subject line filled per recipient through privacy.draft_breach_notices, a placeholder the drill cannot fill in it BREACH_TEMPLATE_UNFILLED 409 with nothing drafted), named as an isolation suite too."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -421,6 +422,7 @@
     "tests/operations/c81-legal-documents-access.test.ts",
     "tests/operations/c81-register-isolation.test.ts",
     "tests/operations/c81-breach-drill-clock.test.ts",
+    "tests/operations/c81-breach-drill-subject.test.ts",
     "tests/api/api-2-agent-credential.test.ts",
     "tests/api/api-2-agent-credential-revoke.test.ts",
     "tests/authority/c32-clients-and-grants.test.ts",
