@@ -233,6 +233,13 @@ export function createPositiveBody(
       case 'run.revise_state':
         // MP-6-2: a proposal's planned run, its state revised under run:write.
         return await revisedRunBody(context, PROPOSAL);
+      case 'task.heartbeat':
+        // The person renews their own lease (ledger line 38, "current lease
+        // owner"). The agent's renewal is in the agent journey.
+        return { body: await ownLease(context) };
+      case 'task.dispatch':
+        // The person marks their own lease's step dispatched (T2c1).
+        return { body: await ownLease(context) };
       case 'task.check':
         // A check recorded under the person's own lease (MP-6-1). The agent's
         // check under its delegation is in the agent journey.
