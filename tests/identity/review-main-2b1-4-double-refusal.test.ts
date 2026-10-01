@@ -60,7 +60,7 @@ async function loginWithFactor(): Promise<string> {
   return subject;
 }
 
-const passwordOnly = (subject: string): VerifiedSubject => {
+const firstFactorOnly = (subject: string): VerifiedSubject => {
   const now = Math.floor(Date.now() / 1000);
   return {
     provider: 'supabase',
@@ -90,7 +90,7 @@ describe.skipIf(serverUrl === undefined)(
   'REVIEW-MAIN-2B1-4 second-factor refusal recording',
   () => {
     it('REVIEW-MAIN-2B1-4: one aal1 sign-in by a login holding a verified factor records exactly one refused attempt, not two', async () => {
-      const presented = passwordOnly(await loginWithFactor());
+      const presented = firstFactorOnly(await loginWithFactor());
 
       const resolved = await db.app.withBusiness(business, (tx) => resolveLogin(tx, presented));
       expect(resolved).toMatchObject({ refused: true, code: REFUSED });
@@ -99,7 +99,7 @@ describe.skipIf(serverUrl === undefined)(
     });
 
     it('REVIEW-MAIN-2B1-4: the live recheck (withStanding) refuses the same aal1 subject and records nothing', async () => {
-      const presented = passwordOnly(await loginWithFactor());
+      const presented = firstFactorOnly(await loginWithFactor());
       let ran = false;
 
       const rechecked = await withStanding(db.app, business, presented, () => {
