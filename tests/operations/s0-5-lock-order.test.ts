@@ -53,6 +53,14 @@ const BEFORE_LOCK: readonly (readonly [RegExp, string])[] = [
   [/^select set_config\('app\.business_id', \$1, true\)$/u, 'the business, set locally'],
   [/^select l\.id as login_id, pl\.person_id, /u, 'the sign-in resolved (held: runtime half)'],
   [/^insert into public\.authentication_attempts /u, 'sign-in bookkeeping, never task content'],
+  [
+    /^select exists \( select 1 from ops\.second_factor_subjects v /u,
+    'the sign-in: C59 factor (held)',
+  ],
+  [
+    /^select 1 from public\.invitations where business_id = \$1 /u,
+    'the sign-in: C39-T setup gate (held)',
+  ],
   [/^select command, payload_digest, outcome, result from operations /u, 'the idempotency read'],
   [/^select distinct key from public\.field_defs /u, 'system-owned fields refused'],
   [/^select key, id from record_types /u, 'the task spine (held: runtime half)'],
