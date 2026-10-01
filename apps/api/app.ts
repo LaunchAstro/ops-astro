@@ -829,8 +829,10 @@ export async function follow(
   taskId: string,
   may: () => Promise<string | CommandRefusal>,
 ): Promise<void> {
+  // Ended before this ran (the tab left at the door): no listener added now is called.
   const ended = new Promise<void>((resolve) => {
-    stream.onAbort(resolve);
+    if (stream.aborted) resolve();
+    else stream.onAbort(resolve);
   });
   let pending: LiveSignal | 'check' | null = null;
   let chain = Promise.resolve();
