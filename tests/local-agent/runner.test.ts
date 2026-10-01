@@ -262,8 +262,16 @@ describe('the planted canary', () => {
     const reply = await call(r, message);
     const child = w.calls('hey')[0];
     // macOS adds its own `__CF_USER_TEXT_ENCODING` to a process; nothing else is the runner's.
+    // USER and LOGNAME are how Claude Code finds the seat's login in the keychain.
     const passed = Object.keys(child?.env ?? {}).filter((name) => !name.startsWith('__CF_'));
-    expect(passed.toSorted()).toEqual(['CLAUDE_CONFIG_DIR', 'HOME', 'LANG', 'PATH']);
+    expect(passed.toSorted()).toEqual([
+      'CLAUDE_CONFIG_DIR',
+      'HOME',
+      'LANG',
+      'LOGNAME',
+      'PATH',
+      'USER',
+    ]);
     const everything = [reply.raw, JSON.stringify(w.ledger()), JSON.stringify(child)].join('\n');
     expect(everything).not.toContain(CANARY);
     expect(everything).not.toContain(RUNNER_KEY);
