@@ -39,6 +39,9 @@ import {
   type VerifiedSubject,
 } from '../../packages/core-records/src/index.ts';
 import { queue, type QueueEntry } from '../../packages/core-runtime/src/index.ts';
+import type { TickGate } from './tick-gate.ts';
+
+export type { HeldLease, TickGate } from './tick-gate.ts';
 
 export type Environment = Readonly<Record<string, string | undefined>>;
 
@@ -144,31 +147,6 @@ export async function fireSchedules(
     });
   }
   return { ok: true, fired };
-}
-
-/** A lease the tick holds work under, as its pickup returned it. */
-export interface HeldLease {
-  readonly leaseId: string;
-  readonly fence: number;
-  readonly credential: string;
-}
-
-/**
- * The local approval gate's two moments in a task pass. The tick process fills
- * it from approval.ts (tick-main.ts); it is handed in so this file never
- * imports approval.ts, which imports this one.
- */
-export interface TickGate {
-  /** Work of this purpose is the gate's own and never goes to the model. */
-  readonly purpose: string;
-  /** Before the queue is read: approved approvals applied, so the pass runs under them. */
-  readonly beforeTasks: () => Promise<void>;
-  /**
-   * A model step that came back released, its work still under the lease.
-   * The code the gate handed the work back under, or undefined when the
-   * release is not the gate's and the tick goes on as without one.
-   */
-  readonly onReleased: (lease: HeldLease) => Promise<string | undefined>;
 }
 
 export interface TaskTick {

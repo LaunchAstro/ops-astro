@@ -27,8 +27,12 @@ import {
   LOCAL_CLAUDE_COMPOSE,
   LOCAL_CLAUDE_DEFAULT_MODEL,
 } from '../../packages/core-connectors/src/index.ts';
-import { connect, isBusinessId, type BusinessId } from '../../packages/core-records/src/index.ts';
-import type { VerifiedSubject } from '../../packages/core-records/src/identity/verified-subject.ts';
+import {
+  connect,
+  isBusinessId,
+  type BusinessId,
+  type VerifiedSubject,
+} from '../../packages/core-records/src/index.ts';
 import {
   APPROVAL_PURPOSE,
   applyApprovals,
@@ -131,9 +135,9 @@ export function localGate(
     },
     onReleased: async (lease) => {
       const decision = decide(settings, model);
-      if (decision.ok) return undefined;
+      if (decision.ok) return;
       const { code } = decision;
-      if (code !== 'LOCAL_CAP_REACHED' && code !== 'LOCAL_MODEL_NOT_APPROVED') return undefined;
+      if (code !== 'LOCAL_CAP_REACHED' && code !== 'LOCAL_MODEL_NOT_APPROVED') return;
       const raised = await raiseApproval(approval, lease, needOf(code, model));
       return raised.ok ? code : raised.code;
     },
@@ -154,6 +158,13 @@ function reportOf(print: (line: string) => void) {
     );
   };
 }
+
+/** The approval gate's business, agent and folder, from the tick's settings. */
+const approvalOf = (settings: TickProcessSettings) => ({
+  businessId: settings.businessId,
+  agent: settings.agent,
+  home: settings.gate.home,
+});
 
 export async function main(
   env: Readonly<Record<string, string | undefined>>,
@@ -184,16 +195,7 @@ export async function main(
       fieldsFor: (entry) => [
         { name: 'instruction', from: { recordId: entry.taskId, key: 'title' } },
       ],
-      gate: localGate(
-        {
-          environment: env,
-          database,
-          businessId: settings.businessId,
-          agent: settings.agent,
-          home: settings.gate.home,
-        },
-        settings.gate,
-      ),
+      gate: localGate({ ...approvalOf(settings), environment: env, database }, settings.gate),
     },
     settings.intervalMs,
     reportOf(print),

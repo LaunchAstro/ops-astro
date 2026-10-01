@@ -33,7 +33,8 @@ import type {
 import { queue, type QueueEntry } from '../../packages/core-runtime/src/index.ts';
 import { DEFAULT_MODEL, MODEL_NAME } from './gate.ts';
 import { readApprovals } from './settings.ts';
-import { localOnly, type Environment, type HeldLease, type Refused } from './tick.ts';
+import type { HeldLease } from './tick-gate.ts';
+import { localOnly, type Environment, type Refused } from './tick.ts';
 
 export const APPROVAL_PURPOSE = 'local_agent_approval';
 
