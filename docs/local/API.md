@@ -165,7 +165,7 @@ more, is `FIELD_VALUE_INVALID`. There is no default, floor or ceiling.
 `tests/commands/purge-retention.test.ts` holds it.
 The purge clears the scope (`scope_kind` and `scope_record_id` to null) of any
 conversation opened on a task or comment it removes, before the delete; the
-conversation, its body and its wrap-ups are kept (0198's scope reference does
+conversation, its body and its wrap-ups are kept (0092's scope reference does
 not cascade).
 
 **The two windows are written by a command each** (MP-2-11, 0068):
@@ -1145,7 +1145,7 @@ MP-7-11 adds the assistant panel's tab row, under the same rule
 second page replaces the first, and `null` clears it. The address is a page of
 this product: one leading slash, never two and never a slash then a
 backslash, printable ASCII with no backslash, at most 300 characters; what it
-shows is 1 to 200 characters with no control character. Migration 0200
+shows is 1 to 200 characters with no control character. Migration 0094
 refuses the same rows as the backstop. Neither write moves the last activity,
 which measures the exchange. Both answer the conversation's id and address
 only, so the title and the page are stored on the conversation and nowhere
@@ -1172,7 +1172,7 @@ message in a conversation of this business whose body is kept, and sends its
 words through AW-01's conversation seam (`callModelInConversation`,
 `model.conversation_answer`, the owner's own session, local routes only,
 nothing held). The answer is kept as an `agent` message whose
-`answers_message_id` names the question (0221: one reply per message, in the
+`answers_message_id` names the question (0099: one reply per message, in the
 same conversation), in a second transaction under the conversation's row
 lock. The HTTP answer then carries `reply` beside the command's own fields:
 `{ answered: true, messageId, body }`, or `{ answered: false, code, words }`
@@ -1219,10 +1219,10 @@ activity, so a retried pass asks for the same purge. Nothing schedules the
 pass yet, and raising a failure as an inbox item is INB-1's.
 
 Which conversation created a task is a fact of the task's creation audit
-event: `audit_events.origin_conversation_id` (0199), a same-business
+event: `audit_events.origin_conversation_id` (0093), a same-business
 reference to `conversations`, in the chain's one hash formula
 (`audit_event_hash`, thirteen arguments). A null adds nothing to the hashed
-text, so events without one hash as they did before 0199. The command that
+text, so events without one hash as they did before 0093. The command that
 creates a task from a conversation sets it; until that command exists, the
 wrap-up's "tasks created" item says no task records the conversation.
 
@@ -1700,7 +1700,7 @@ whole of what `decide` compares.
 Each version carries `checks`: the checks its run recorded through
 `task.check` under the run's lease, oldest first, each with its `outcome` and
 the lease holder as `performedByActorId` (MP-6-1, CS-16.3; `run_checks`,
-migration 0197). They are read in the same snapshot as the rest.
+migration 0091). They are read in the same snapshot as the rest.
 
 Each lineage carries `scopes`: what each lease its runs took was allowed to
 touch, oldest first (MP-6-4, CS-6.1). A scope is the lease's own delegation,
@@ -1747,9 +1747,9 @@ proposals: {
     runId: string | null;
     startedAt: string | null;          // the run's first claim (MP-6-2)
     endedAt: string | null;            // a hand-back with no claim after it
-    tokenUnits: number | null;         // the run's model calls' units (0204)
-    pins: { kind; path; digest; size; readAt; definitionVersionId; pinnedAt }[]; // pinned at run start (0192)
-    reads: { sequence; path; digest; size; readAt; isEntry }[];  // the run's read ledger (0192)
+    tokenUnits: number | null;         // the run's model calls' units (0098)
+    pins: { kind; path; digest; size; readAt; definitionVersionId; pinnedAt }[]; // pinned at run start (0086)
+    reads: { sequence; path; digest; size; readAt; isEntry }[];  // the run's read ledger (0086)
     evidence: { id; renderer; digest; body } | null;
     gate: { id; state; round; expiresAt; expired; payloadDigest } | null;
   }[];

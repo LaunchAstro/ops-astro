@@ -3,7 +3,7 @@
 // REVIEW-BATCH-2 #312, batch 3a, defect 2: task.purge faults on a
 // conversation's scope key.
 //
-// 0198's conversations_scope_record_fkey references records (business_id,
+// 0092's conversations_scope_record_fkey references records (business_id,
 // scope_record_id) with no on delete action, and core-records tasks/trash.ts
 // purgeTrashedRecords neither counts a conversation's scope as a hold (it
 // checks proposal_lineages, planned_runs, task_envelopes and leases only) nor

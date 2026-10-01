@@ -545,7 +545,7 @@ export async function purgeTrashedRecords(
     [tx.businessId, gone],
   );
   // A conversation opened on a purged task keeps its body, its wrap-ups and
-  // its address and loses only the scope: 0198's key to `records` does not
+  // its address and loses only the scope: 0092's key to `records` does not
   // cascade, and deleting the task under it would fault the whole purge.
   await tx.query(
     `update public.conversations set scope_kind = null, scope_record_id = null

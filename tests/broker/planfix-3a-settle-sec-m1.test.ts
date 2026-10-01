@@ -3,7 +3,7 @@
 // PLANFIX-3A settle, security finding M1: the deployment sweep holds a sent
 // call on a lease that ended as unknown liability with its drop recorded, and
 // an answer that arrives after it settled the row with the drop still on it,
-// which `model_calls_drop_is_held` (0191) refuses: the settle threw and the
+// which `model_calls_drop_is_held` (0085) refuses: the settle threw and the
 // call stayed held at its maximum. A late answer settles at its price.
 
 import { expect, it as vitestIt } from 'vitest';
