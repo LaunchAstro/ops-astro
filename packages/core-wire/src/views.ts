@@ -605,9 +605,11 @@ export interface ServiceHealthSection {
  * own records. The service-health section (C34) is the installation's
  * watcher, error sink and optional tracing, read by the API after the grant
  * check and outside the serving transaction. The unattended items are INB-1's
- * own read (`inbox.unattended`'s answer). Security alerts (S0-2) and the last
- * tested restore (S0-3) join it as those parts land; each is its owner's
- * read, placed here, never a second copy.
+ * own read (`inbox.unattended`'s answer). The last tested restore (C55,
+ * carried from S0-3) is the date a passed drill stamps (migration 0068),
+ * which operations.read serves on every answer. Security alerts (S0-2) join
+ * it as that part lands; each is its owner's read, placed here, never a
+ * second copy.
  */
 export interface OperationsReadResult {
   readonly ok: true;
@@ -618,6 +620,7 @@ export interface OperationsReadResult {
   readonly breachRunbook: BreachRunbookLink | null;
   /** Present on every answer the API serves; absent from a read made in-process. */
   readonly serviceHealth?: ServiceHealthSection;
+  readonly lastTestedRestore?: { readonly at: string | null; readonly stale: boolean };
 }
 
 /** One notice the breach runbook's template drafts; nothing sends it (owner line 54). */

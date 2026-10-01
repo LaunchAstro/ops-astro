@@ -58,11 +58,14 @@ export async function operatorReceiptCase(): Promise<void> {
   const records = mkdtempSync(join(tmpdir(), 's0-3d-'));
   const canary = `canary-${randomBytes(8).toString('hex')}`;
   try {
+    let stamped = 0;
     const gate = {
       ok: true as const,
       operator: { personId: operator, business: OPERATING_BUSINESS },
       records,
       recordSignIn: async () => {},
+      // C55: only the pass stamps the operations view's date (migration 0068).
+      recordTestedRestore: () => Promise.resolve(String((stamped += 1))),
     };
     const backup = await asRole(backupLogin.url, BACKUP);
     try {
@@ -115,6 +118,7 @@ export async function operatorReceiptCase(): Promise<void> {
       }
       expect(text).not.toMatch(/PRIVATE KEY|postgres:\/\/|\/Users\/|\/tmp\/|sha256/u);
     }
+    expect(stamped).toBe(1);
     const kept = readFileSync(join(records, 'deployments.jsonl'), 'utf8').trim().split('\n');
     expect(kept).toHaveLength(2);
     expect(kept.map((line) => (JSON.parse(line) as { action: string }).action)).toStrictEqual([

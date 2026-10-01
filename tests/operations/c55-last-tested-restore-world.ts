@@ -3,7 +3,7 @@
 // What `c55-last-tested-restore.test.ts` shares: the view it reads, the row it
 // checks, a statement tried as a role, and the drill run as an admitted
 // operator with its restore and its store stood in, writing the date with the
-// real writer (scripts/ops/operator.ts) on the world's own database.
+// real writer (scripts/ops/tested-restore.ts) on the world's own database.
 
 import { randomUUID } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -102,7 +102,7 @@ export async function drill(
     /* @vite-ignore */
     acts
   )) as Drill;
-  const gateModule = '../../scripts/ops/operator.ts';
+  const gateModule = '../../scripts/ops/tested-restore.ts';
   const writer = (await import(
     /* @vite-ignore */
     gateModule

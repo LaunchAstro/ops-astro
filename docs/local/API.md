@@ -1616,7 +1616,7 @@ local end stands, and asking again is safe. The provider's words go nowhere.
 
 ## The operations view and privacy incidents (C55)
 
-`operations.read` answers `{ ok, unattended, privacyIncidents, breachRunbook, serviceHealth }`
+`operations.read` answers `{ ok, unattended, privacyIncidents, breachRunbook, serviceHealth, lastTestedRestore }`
 to a holder of `operations:read` (install default: the owner and administrators). It is
 never an agent's: on the agent prefix it is `DELEGATION_EXCLUDES_OPERATION` 403. Each incident carries its day-0 facts, its status and `assessBy`, 30 days
 after `foundAt` (the breach runbook's assessment limit), most recently found
@@ -1627,6 +1627,19 @@ incident record links to: the breach runbook published most recently, as
 `{ version, digest, publishedAt, body }`, or `null` until one is published.
 `unattended` is INB-1's list, read for the same caller: exactly what
 `inbox.unattended` answers them, built by the same read (no second list).
+
+`lastTestedRestore` is `{ at, stale }`: `at` the date of the last successful
+tested restore (ISO 8601), or `null` while no drill has passed, and `stale`
+true once that date is older than the store's restore window
+(`backups.settings.restore_days`, 35 days, the window past which the restore
+heartbeat is withheld and the restore alert fires), or while none has passed.
+The drill's receipt stays in the backup store, which the API cannot reach; a
+pass the store took also stamps the date on the installation's database
+(`ops.last_tested_restore`, [DATA.md](DATA.md)), and that is what this reads.
+The service-health section is read outside the serving transaction, so the
+age alone decides `stale`; nothing here asks the watcher a second time. The
+date is installation state, the same in every business's answer, and carries
+no business, person, archive or path.
 
 `privacy.record_incident` is the tracked action `privacy incident recorded`,
 under `privacy:manage` and never an agent's. Its body is

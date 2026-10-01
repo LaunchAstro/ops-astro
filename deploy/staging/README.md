@@ -101,7 +101,9 @@ Each drill it runs, passed or failed, leaves a receipt in the backup store
 (`backups.drills`: time, outcome, stage, majors, table count, stage timings
 and the operator; no record data, key, credential, fingerprint or path) and a
 line in the operator's record folder. The receipt names the date of the last
-tested restore. The daily upkeep job (`backup.mjs expire`) pings the restore
+tested restore, and a pass the store took also stamps that date on staging's
+database (`ops.last_tested_restore`, migration 0068), where the operations
+view reads it; a failed drill stamps nothing. The daily upkeep job (`backup.mjs expire`) pings the restore
 heartbeat only while a drill passed within `backups.settings.restore_days`
 (35 to start); once none has, the watcher mails the owner and the second
 operator that the restore drill is out of date.
