@@ -61,6 +61,12 @@ const TASK = {
   comments: [],
 };
 
+/** The board's row for a task: its comments are the reader's open counts (MP-5-8). */
+const boardRow = <T extends object>(task: T) => ({
+  ...task,
+  comments: { client: 0, mentions: 0, latest: null },
+});
+
 const PEOPLE = [{ personId: 'p1', name: 'Mia Alpha' }];
 
 /** A storage that is a map the test can read back, so "cleared" is a fact. */
@@ -151,7 +157,7 @@ function server(options: { readonly reads?: 'ok' | 'ended' | 'scope' } = {}) {
       return Promise.resolve(
         at.endsWith('/task/read')
           ? json({ ok: true, task: TASK })
-          : json({ ok: true, tasks: [TASK] }),
+          : json({ ok: true, tasks: [boardRow(TASK)] }),
       );
     }
     // Every mutation: create, assign, the three lifecycle commands, update.
@@ -450,7 +456,9 @@ function perBusiness(): typeof globalThis.fetch {
     if (framed !== undefined) return framed;
     if (at.endsWith('/person/list')) return Promise.resolve(json({ ok: true, persons: PEOPLE }));
     if (at.endsWith('/task/read')) return Promise.resolve(json({ ok: true, task }));
-    if (at.endsWith('/task/board')) return Promise.resolve(json({ ok: true, tasks: [task] }));
+    if (at.endsWith('/task/board')) {
+      return Promise.resolve(json({ ok: true, tasks: [boardRow(task)] }));
+    }
     return Promise.resolve(json({ recordId: TASK.id, revision: TASK.revision + 1 }));
   }) as unknown as typeof globalThis.fetch;
 }
