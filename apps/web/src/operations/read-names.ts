@@ -40,6 +40,13 @@ export const READ_NAMES = [
   'task.execution',
   // What an observed effect came from (T2c2); the task page draws it in T2g.
   'task.receipt',
+  // Settings ▸ Access (C32), under `access:manage` on the server.
+  'access.read',
+  'client.list',
+  // The operations view (C55), under `operations:read` on the server.
+  'operations.read',
+  // The breach drill's notices (C81), under `privacy:manage` on the server.
+  'privacy.draft_breach_notices',
   // The caller's own inbox and owed count (INB-1d), the same read the API and
   // the command line serve; the working minimum draws them in INB-1g.
   'inbox.read',

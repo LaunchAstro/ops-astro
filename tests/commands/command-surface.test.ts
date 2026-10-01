@@ -74,10 +74,12 @@ describe('the surface as a table', () => {
     // the only collection nothing is stored in, because the read under it is
     // about the caller rather than about the business's records. `grant` and
     // `delegation` are the revocation controls': the path names the row a
-    // revocation writes, and the authority it asks is still on tasks.
+    // revocation writes, and the authority it asks is still on tasks. `operations`
+    // and `privacy` are C55's view and its incident record, and `legal` is C81's
+    // documents, asked of `privacy`. `credential` is API-2's agent credential.
     expect(
       paths.every((path) =>
-        /^\/(?:task|person|preset|settings|session|grant|delegation|budget|inbox|notifications)\/[a-z_]+$/u.test(
+        /^\/(?:task|person|preset|settings|session|grant|delegation|budget|access|operations|privacy|legal|credential|client|inbox|notifications)\/[a-z_]+$/u.test(
           path,
         ),
       ),
@@ -87,13 +89,17 @@ describe('the surface as a table', () => {
 
 // eslint-disable-next-line max-lines-per-function -- one table, read top to bottom
 describe('the surface as a table', () => {
-  it('declares the twelve reads as reads, and everything else as a write', () => {
+  it('declares the sixteen reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual([
+      'access.read',
+      'client.list',
       'inbox.count',
       'inbox.read',
       'inbox.unattended',
+      'operations.read',
       'person.list',
       'preset.plan',
+      'privacy.draft_breach_notices',
       'session.capabilities',
       'settings.read',
       'task.board',
@@ -113,7 +119,9 @@ describe('the surface as a table', () => {
       }
     }
   });
+});
 
+describe('the surface as a table', () => {
   it('gives every declaration the collection its authority is checked against', () => {
     // The collection used to be written into `prepareCommand` as `'task'`,
     // which was true while every operation was a task operation. A caller
@@ -160,33 +168,35 @@ describe('the surface as a table', () => {
   });
 });
 
+let db: FreshDatabase;
+let business: string;
+let named: readonly string[];
+
+beforeAll(async () => {
+  if (serverUrl === undefined) return;
+  db = await createFreshDatabase({ part: 'f' });
+  business = await insertBusiness(db.app, 'surface');
+  const spine = await installSpine(db.app, business);
+  const fields = await db.app.withBusiness(
+    business,
+    async (tx) => await readFieldDefinitions(tx, spine.taskTypeId),
+  );
+  // Both columns: the operation that owns a field always, and the one that
+  // owns it when the write crosses a containment boundary.
+  const operations = new Set<string>();
+  for (const field of fields) {
+    for (const name of field.owningOperation?.split(' ') ?? []) operations.add(name);
+    if (field.escalatingOperation !== null) operations.add(field.escalatingOperation);
+  }
+  named = [...operations].toSorted();
+}, 60_000);
+
+afterAll(async () => {
+  if (serverUrl === undefined) return;
+  await db?.drop();
+});
+
 describe.skipIf(serverUrl === undefined)('the surface against the installed model', () => {
-  let db: FreshDatabase;
-  let business: string;
-  let named: readonly string[];
-
-  beforeAll(async () => {
-    db = await createFreshDatabase({ part: 'f' });
-    business = await insertBusiness(db.app, 'surface');
-    const spine = await installSpine(db.app, business);
-    const fields = await db.app.withBusiness(
-      business,
-      async (tx) => await readFieldDefinitions(tx, spine.taskTypeId),
-    );
-    // Both columns: the operation that owns a field always, and the one that
-    // owns it when the write crosses a containment boundary.
-    const operations = new Set<string>();
-    for (const field of fields) {
-      for (const name of field.owningOperation?.split(' ') ?? []) operations.add(name);
-      if (field.escalatingOperation !== null) operations.add(field.escalatingOperation);
-    }
-    named = [...operations].toSorted();
-  }, 60_000);
-
-  afterAll(async () => {
-    await db?.drop();
-  });
-
   it('finds every operation the model names in the surface', () => {
     const declared = new Set<string>(COMMAND_SURFACE.map((command) => command.name));
     const missing = named.filter((name) => !declared.has(name));

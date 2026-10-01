@@ -14,10 +14,20 @@
 // `COMMAND_SURFACE` row: that is what the route generator and the surface
 // inventory read. This row says only how the check is asked.
 
-import { planPresetSync, isUuid } from '../../../core-records/src/index.ts';
+import {
+  clientsReached,
+  planPresetSync,
+  isUuid,
+  subjectsOf,
+} from '../../../core-records/src/index.ts';
 import { readAlerts, readOutages } from '../../../core-runtime/src/index.ts';
 import type { TenantQuery, Session, PresetField } from '../../../core-records/src/index.ts';
-import { refuseCommand, refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
+import {
+  isCommandRefusal,
+  refuseCommand,
+  refuseNotFound,
+  type CommandRefusal,
+} from '../commands/refusal.ts';
 import type { TaskSpine } from '../commands/context.ts';
 import type { ReadOperands, ReadRequest, ReadResult } from './requests.ts';
 import {
@@ -27,12 +37,13 @@ import {
   readTaskDetail,
   resolveTaskId,
 } from './tasks.ts';
-import { listPeople } from './people.ts';
+import { listPeople, readAccess } from './people.ts';
 import { readQueue } from './queue.ts';
 import { readTaskExecution } from './execution.ts';
 import { readSettings } from './settings.ts';
 import { readCapabilities } from './capabilities.ts';
 import { parseReceipt, receiptSubject, serveReceipt } from './receipts.ts';
+import { parseBreachNotices, readBreachNotices, readOperations } from './operations.ts';
 import { countOwed, readInbox, readUnattendedInbox } from './inbox.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
 
@@ -381,6 +392,56 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     authority: 'declared',
     outsiderNotFound: true,
     serve: serveReceipt,
+  },
+  // Every person's authority, so it asks the key that changes it: `manage` on
+  // `access`, which no agent holds. No subject record, as for `task.queue`.
+  'access.read': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'declared',
+    outsiderNotFound: false,
+    serve: async (tx) => ({ ok: true, ...(await readAccess(tx)) }),
+  },
+  // C32. The clients the caller's live grants reach, asked inside the query:
+  // every client for a business-wide grant of any key, one client for a grant
+  // over it. No one collection is asked, and a caller holding nothing is
+  // refused rather than shown an empty list.
+  'client.list': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    async serve(tx, session) {
+      const clients = await clientsReached(tx, subjectsOf(session));
+      if (clients === null) return NO_GRANT_AT_ALL;
+      return { ok: true, clients };
+    },
+  },
+  // C55. The business's own operations, so no subject record; it asks
+  // `read` on `operations`, which no agent holds.
+  'operations.read': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'declared',
+    outsiderNotFound: false,
+    serve: async (tx) => ({ ok: true, ...(await readOperations(tx)) }),
+  },
+  // C81's breach drill. It asks `manage` on `privacy`, the key the incident is
+  // recorded under, which no agent holds. The incident is looked up in the
+  // business's own rows, so another business's id is NOT_FOUND like a made-up one.
+  'privacy.draft_breach_notices': {
+    identifiers: [],
+    parse(body) {
+      const operands = parseBreachNotices(body);
+      return isCommandRefusal(operands) ? { ok: false, refusal: operands } : parsed(operands);
+    },
+    spine: false,
+    authority: 'declared',
+    outsiderNotFound: false,
+    serve: async (tx, _session, operands) => await readBreachNotices(tx, operands),
   },
   // The caller's own items: the query names the caller as recipient and each
   // item's access is asked of their live grants, which is the permission

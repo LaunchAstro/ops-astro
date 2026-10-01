@@ -114,34 +114,34 @@ describe('worker_boundary: the structure', () => {
   });
 });
 
-describe('worker_boundary: the cruiser rules fire', () => {
-  const runner = join(ROOT, 'scripts/deps-cruise.mjs');
-  const config = readFileSync(join(ROOT, '.dependency-cruiser.cjs'), 'utf8');
-  const REPORTER = 'export const R = { observe: () => null };\n';
+const runner = join(ROOT, 'scripts/deps-cruise.mjs');
+const config = readFileSync(join(ROOT, '.dependency-cruiser.cjs'), 'utf8');
+const REPORTER = 'export const R = { observe: () => null };\n';
 
-  function cruise(files: Record<string, string>): { status: number | null; output: string } {
-    const root = mkdtempSync(join(tmpdir(), 't2b-cruise-'));
-    try {
-      writeFileSync(join(root, '.dependency-cruiser.cjs'), config);
-      for (const [path, contents] of Object.entries(files)) {
-        mkdirSync(dirname(join(root, path)), { recursive: true });
-        writeFileSync(join(root, path), contents);
-      }
-      const run = spawnSync(process.execPath, [runner, 'apps', 'tests', 'packages'], {
-        env: { ...process.env, DEPS_CRUISE_ROOT: root },
-        encoding: 'utf8',
-      });
-      return { status: run.status, output: `${run.stdout}${run.stderr}` };
-    } finally {
-      rmSync(root, { recursive: true, force: true });
+function cruise(files: Record<string, string>): { status: number | null; output: string } {
+  const root = mkdtempSync(join(tmpdir(), 't2b-cruise-'));
+  try {
+    writeFileSync(join(root, '.dependency-cruiser.cjs'), config);
+    for (const [path, contents] of Object.entries(files)) {
+      mkdirSync(dirname(join(root, path)), { recursive: true });
+      writeFileSync(join(root, path), contents);
     }
+    const run = spawnSync(process.execPath, [runner, 'apps', 'tests', 'packages'], {
+      env: { ...process.env, DEPS_CRUISE_ROOT: root },
+      encoding: 'utf8',
+    });
+    return { status: run.status, output: `${run.stdout}${run.stderr}` };
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
+}
 
-  const base = {
-    [FIXTURE_REPORTER]: REPORTER,
-    'packages/core-records/src/index.ts': 'export const records = 1;\n',
-  };
+const base = {
+  [FIXTURE_REPORTER]: REPORTER,
+  'packages/core-records/src/index.ts': 'export const records = 1;\n',
+};
 
+describe('worker_boundary: the cruiser rules fire', () => {
   it('is green when only a test reaches the fixture reporter', () => {
     const answer = cruise({
       ...base,
