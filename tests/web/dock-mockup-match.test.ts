@@ -205,7 +205,8 @@ function tabMotion(): string {
   const ease = getComputedStyle(document.documentElement).getPropertyValue('--ease').trim();
   const props = style.transitionProperty.split(', ');
   const durations = style.transitionDuration.split(', ');
-  const easings = style.transitionTimingFunction.split(', ');
+  // A comma inside cubic-bezier() does not part two easings.
+  const easings = style.transitionTimingFunction.split(/,\s*(?![^(]*\))/u);
   const each = ['color', 'background-color'].map((prop) => {
     const at = props.indexOf(prop);
     if (at === -1) return `${prop} none`;
