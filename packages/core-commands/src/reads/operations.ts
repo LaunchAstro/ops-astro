@@ -4,7 +4,8 @@
 // It places other parts' reads rather than keeping lists of its own (the
 // unattended items are INB-1's `readUnattendedInbox`, as the caller reads
 // them); the privacy incidents are the part that is this view's own record, and each
-// links the breach runbook published most recently (C81).
+// links the breach runbook published most recently (C81). The security alerts
+// are the forwarder's log (S0-2, 0067), each with fixed words for its kind.
 //
 // Beside it, the breach drill's notices (C81): drafted from that runbook for
 // the recipients the caller names, answered and never sent.
@@ -15,12 +16,45 @@ import {
   readPrivacyIncident,
   readPrivacyIncidents,
   readPublishedLegal,
+  readSecurityAlerts,
 } from '../../../core-records/src/index.ts';
 import type { NoticeRecipient, TenantQuery } from '../../../core-records/src/index.ts';
-import type { BreachNoticesResult, OperationsReadResult } from '../../../core-wire/src/index.ts';
+import type {
+  BreachNoticesResult,
+  OperationsReadResult,
+  SecurityAlertView,
+} from '../../../core-wire/src/index.ts';
 import { invalid } from '../commands/operands.ts';
 import { readUnattendedInbox } from './inbox.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
+
+/**
+ * What each alert kind the forwarder raises concerns, in fixed words: never a
+ * value from the alert, which holds none (0067).
+ */
+const ALERT_CONCERNS: ReadonlyMap<string, string> = new Map(
+  Object.entries({
+    'sign-in-failures': 'Repeated failed sign-ins: someone may be guessing a password.',
+    'cross-scope-burst':
+      'Someone was refused access outside their permissions many times; nothing was shown to them.',
+    'webhook-signature-failures':
+      'Repeated incoming messages with a bad signature; none were accepted.',
+    'export-volume': 'Unusually many exports or downloads of client information.',
+    'authority-changed': 'A permission, grant or custody changed.',
+    'secret-scan-failed':
+      'The secret scan failed: a password or key may have been written where it should not be.',
+    'signals-dropped':
+      'The forwarder dropped security signals it did not handle in time, so some were not counted.',
+  }),
+);
+
+const UNKNOWN_ALERT = 'An alert of an unknown kind';
+
+const alertView = ({ kind, at }: { kind: string; at: Date }): SecurityAlertView => ({
+  kind,
+  at: at.toISOString(),
+  concerns: ALERT_CONCERNS.get(kind) ?? UNKNOWN_ALERT,
+});
 
 export async function readOperations(
   tx: TenantQuery,
@@ -29,6 +63,7 @@ export async function readOperations(
   const unattended = await readUnattendedInbox(tx, viewerPersonId);
   const incidents = await readPrivacyIncidents(tx);
   const runbook = await readPublishedLegal(tx, 'breach-runbook');
+  const alerts = await readSecurityAlerts(tx);
   return {
     unattended,
     privacyIncidents: incidents.map((incident) => ({
@@ -53,6 +88,7 @@ export async function readOperations(
             publishedAt: runbook.publishedAt.toISOString(),
             body: runbook.body,
           },
+    securityAlerts: alerts.map((alert) => alertView(alert)),
   };
 }
 

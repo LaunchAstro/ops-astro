@@ -157,6 +157,7 @@ describe.skipIf(serverUrl === undefined)('C34 service health on the operations v
       'breachRunbook',
       'ok',
       'privacyIncidents',
+      'securityAlerts',
       'serviceHealth',
       'unattended',
     ]);

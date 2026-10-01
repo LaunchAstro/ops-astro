@@ -601,14 +601,29 @@ export interface ServiceHealthSection {
 }
 
 /**
+ * One security alert S0-2's forwarder raised, as the operations view lists it
+ * (C55, TR-SEC-9): its kind, the time it was raised (ISO 8601) and fixed plain
+ * words for what it concerns; 'An alert of an unknown kind' for a kind the
+ * view has no words for. Never an id, a secret or record content.
+ */
+export interface SecurityAlertView {
+  readonly kind: string;
+  readonly at: string;
+  readonly concerns: string;
+}
+
+/**
  * `operations.read`'s answer (C55). The privacy incidents are this business's
  * own records. The service-health section (C34) is the installation's
  * watcher, error sink and optional tracing, read by the API after the grant
  * check and outside the serving transaction. The unattended items are INB-1's
- * own read (`inbox.unattended`'s answer). Security alerts (S0-2), the last
- * tested restore (S0-3) and the error sink link join it as those parts land;
- * each is its owner's read, placed here, never a second copy. Until then the
- * server leaves them out and the view draws made-up values, labelled Mock.
+ * own read (`inbox.unattended`'s answer). `operations.read` serves the
+ * security alerts (S0-2) from the forwarder's log (0067), newest first, at
+ * most 50, to the business that operates the installation alone; every other
+ * business reads an empty list. The last tested restore (S0-3) and the error
+ * sink link join it as those parts land; each is its owner's read, placed
+ * here, never a second copy. Until then the server leaves them out and the
+ * view draws made-up values, labelled Mock.
  */
 export interface OperationsReadResult {
   readonly ok: true;
@@ -619,10 +634,6 @@ export interface OperationsReadResult {
   readonly breachRunbook: BreachRunbookLink | null;
   /** Present on every answer the API serves; absent from a read made in-process. */
   readonly serviceHealth?: ServiceHealthSection;
-  /**
-   * S0-2's security alerts, drawn beside incidents. Not yet served: the API
-   * does not fill it until S0-2's read lands (BUILDABLE-NOW decision 6).
-   */
   readonly securityAlerts?: readonly SecurityAlertView[];
   /**
    * The last successful tested restore, from S0-3's drill receipt; `stale`
@@ -631,17 +642,6 @@ export interface OperationsReadResult {
   readonly lastTestedRestore?: LastTestedRestoreView;
   /** Where the error sink is read; `null` with none configured. Not yet served. */
   readonly errorSink?: { readonly url: string } | null;
-}
-
-/**
- * One security alert S0-2 raises: its kind, when, and what it concerns, in
- * words. Never the secret or the record content behind it.
- */
-export interface SecurityAlertView {
-  readonly kind: string;
-  /** ISO 8601. */
-  readonly at: string;
-  readonly concerns: string;
 }
 
 /** The drill receipt's last successful tested restore (S0-3). */

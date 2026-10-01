@@ -517,6 +517,20 @@ with the restrictive policy like every business table, and it is not a
 `records` row, so no share, search or export reaches it. The audit chain and
 the operation register hold a digest and the new row's id, never the words.
 
+## Security alert log (0067, C55)
+
+`ops.security_alert_log` holds each alert S0-2's forwarder raised, by its kind
+and the database's time alone: no sink id, scope, business, client, person,
+secret or record content. The forwarder writes it in the statement that keeps
+the alert in `ops.api_alerts` (0048), so a pass that fails writes neither and
+an alert kept already is not written twice; the send that deletes the
+`ops.api_alerts` row leaves the log alone. The forwarder may insert the kind
+column only. The application group may select `kind` and `at` only, and
+changes nothing; it still holds nothing on `ops.api_alerts`. The table belongs
+to no business, so the operations view reads it only for the business that
+operates the installation (`ops.installation.operator_business_id`), newest
+first, at most 50 (`operations/security-alerts.ts`).
+
 ## Legal documents (0051, C81)
 
 `legal_document_versions` holds every version of a business's legal documents:
