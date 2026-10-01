@@ -10,13 +10,15 @@
 // own words, and says nothing about the services it watches. Tracing is
 // optional: switched off, it is "off", never a failure. An answer made
 // in-process carries no section, and the page says so rather than drawing an
-// empty, healthy-looking one.
+// empty, healthy-looking one. The operations view (C55) draws this same
+// section, and the page links there.
 
 import type { ReactElement, ReactNode } from 'react';
 import { Card, Empty, StatusMark, Table, type MarkTone } from '@launchastro/ui';
 import { useRead } from '../data/use-read.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import { RecordState } from '../views/record-state.tsx';
+import { pathTo } from '../routes.ts';
 import type {
   HealthSourceName,
   HealthSourceView,
@@ -86,36 +88,53 @@ const serviceRows = (section: Section): readonly Record<string, ReactNode>[] =>
     };
   });
 
-function Health(props: { readonly result: OperationsReadResult }): ReactElement {
+/** The page kit's section (PAGE-MAP SH-42): one head over what it holds. */
+const HealthSec = (props: { readonly children: ReactNode }): ReactElement => (
+  <section className="sec">
+    <h2 className="sec__head">Service health</h2>
+    {props.children}
+  </section>
+);
+
+export function Health(props: { readonly result: OperationsReadResult }): ReactElement {
   const section = props.result.serviceHealth;
   if (section === undefined) {
     return (
-      <div data-health="absent">
-        <Empty
-          title="Service health is not in this answer."
-          description="The watcher and the error sink are read by the API; this answer did not come through it."
-        />
-      </div>
+      <HealthSec>
+        <div data-health="absent">
+          <Empty
+            title="Service health is not in this answer."
+            description="The watcher and the error sink are read by the API; this answer did not come through it."
+          />
+        </div>
+      </HealthSec>
     );
   }
   return (
-    <Card title="Service health" sub={`Checked at ${section.checkedAt}`}>
-      <div data-health="sources">
-        <Table
-          caption="Where service health is read from"
-          columns={SOURCE_COLUMNS}
-          rows={sourceRows(section)}
-          dense
-        />
+    <HealthSec>
+      <p className="card__sub">Checked at {section.checkedAt}.</p>
+      <div className="stack" data-health-cards>
+        <div data-health="sources">
+          <Card title="Sources" sub="Where service health is read from">
+            <Table
+              caption="Where service health is read from"
+              columns={SOURCE_COLUMNS}
+              rows={sourceRows(section)}
+              dense
+            />
+          </Card>
+        </div>
+        <div data-health="services">
+          <Card title="Services" sub="Each service as its source last saw it">
+            <Table
+              caption="Each service as its source last saw it"
+              columns={SERVICE_COLUMNS}
+              rows={serviceRows(section)}
+            />
+          </Card>
+        </div>
       </div>
-      <div data-health="services">
-        <Table
-          caption="Each service as its source last saw it"
-          columns={SERVICE_COLUMNS}
-          rows={serviceRows(section)}
-        />
-      </div>
-    </Card>
+    </HealthSec>
   );
 }
 
@@ -126,14 +145,16 @@ export function TelemetryScreen(props: TelemetryScreenProps): ReactElement {
     run: () => client.read<OperationsReadResult>('operations.read', {}),
     deps: [client],
   });
+  // The top bar names the page; the body is the page kit's sections (PAGE-MAP SH-40 to 44).
   return (
-    <div className="stack" data-screen="telemetry" data-business={client.businessKey}>
-      <header className="tpr">
-        <h2 className="tpr__title">Telemetry</h2>
-        <div className="card__sub">
-          Service health for {client.businessKey}, from the operations read.
-        </div>
-      </header>
+    <div className="secs" data-screen="telemetry" data-business={client.businessKey}>
+      <p className="card__sub" data-page-lead>
+        Service health for {client.businessKey}, from the{' '}
+        <a href={pathTo('agency:operations')} data-link="operations">
+          operations view
+        </a>
+        .
+      </p>
       <RecordState state={state} subject="service health" onRetry={reload}>
         {(result) => <Health result={result} />}
       </RecordState>

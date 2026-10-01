@@ -163,6 +163,8 @@ it('MP-1-6 CS-1.4 on a real client no pink ever shows', () => {
     .filter(({ path, text }) => /<MockRegion\b/u.test(text) && !path.endsWith('blocks.tsx'))
     .map((s) => s.path)
     .toSorted();
+  // An app screen draws the mark only over made-up values whose read is not
+  // served yet (MOCK-1PM point 3); served values are never marked.
   // The board's made-up categories (no catalogue yet) carry the one mock label
   // (MOCK-1PM 3, ORCH47 (b)4), and only around data flagged `mock`: a real
   // preset or filter never draws it.
@@ -171,6 +173,7 @@ it('MP-1-6 CS-1.4 on a real client no pink ever shows', () => {
     'packages/ui/src/surfaces/BoardCommandBar.tsx',
   ];
   expect(users).toEqual([
+    'apps/web/src/screens/operations/held-sections.tsx',
     'packages/ui/src/kit/gallery-feedback.tsx',
     'packages/ui/src/kit/treatments.tsx',
     ...board,

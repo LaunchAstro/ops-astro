@@ -236,6 +236,7 @@ export function App(props: AppProps): ReactElement {
       navigate: props.navigate,
       taskPanel: taskDock.host,
     },
+    open: props,
   });
 
   // Signed out, the page is the form alone: no rail entry opens without a session (B6).

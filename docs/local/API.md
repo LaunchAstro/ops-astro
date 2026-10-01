@@ -1092,7 +1092,7 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 
 | Operation                                  | Person prefix: owning function                                                            | Agent prefix                                                                                                                                                                           |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `task.create`                              | `createTask` (`commands/tasks-write.ts`)                                                  | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `task.create`                              | `createTask` (`commands/tasks-write.ts`)                                                  | an agent credential's (API-2); under a pickup refused `DELEGATION_OUT_OF_PURPOSE`                                                                                                      |
 | `task.update`                              | `updateTask` (`commands/tasks-write.ts`)                                                  | served under a live delegation, on its own task, `description`, `agent_brief`, `title`, `due`, `estimated_minutes` and `page_link` only (MP-4-7, MP-4-8, MP-4-12; `updateTaskAsAgent`) |
 | `task.complete`                            | `setState` (`commands/tasks-state.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `task.reopen`                              | `setState` (`commands/tasks-state.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
@@ -1474,6 +1474,16 @@ returned. It is a header and not a body field for the same reason the bearer
 token is. A credential in a body is a credential that gets logged with the
 payload, stored in the register row and compared by a digest.
 
+An agent credential (API-2) is the other bearer this prefix takes: the secret
+a person issued on Settings ▸ Access, as `Authorization: Bearer`, with no agent
+login behind it and no `X-Agent-Delegation`. It is told from a sign-in token by
+its form and never reaches the provider's verifier, and this prefix never reads
+a session cookie. Its security signals (S0-2) name it by the digest of its
+digest (`credentialSubject`), the value its refused attempts are stored under,
+never the stored hash or a slice of it. Its calls, reach and refusals are in
+AUTHORITY.md, "Agent credentials (API-2)"; past a limit it answers
+`AGENT_QUOTA_EXCEEDED` 429.
+
 An agent login confers nothing on its own. With no `X-Agent-Delegation` header
 it may read `task.queue` and call `task.pickup` (`BEFORE_PICKUP`,
 `commands/agent-envelope.ts`, read off the surface rows whose `agent` is
@@ -1492,16 +1502,16 @@ answers `DELEGATION_NARROWED` (R-B). A name outside `AGENT_SURFACE` is refused
 delegation on the spot: the collection, the action, and a `scope` that must be
 exactly the one task it was minted for.
 
-| Answer                          | Status | When                                                                                                                                                                                                                                                     |
-| ------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `AUTH_NO_AGENT_IDENTITY`        | 401    | the login is not an agent login in this business                                                                                                                                                                                                         |
-| `AUTH_SESSION_EXPIRED`          | 401    | the bearer's signature verifies and its `exp` has passed, or its session is past the 12-hour limit or was ended (C58)                                                                                                                                    |
-| `DELEGATION_NOT_LIVE`           | 401    | a presented credential that answers to no live delegation                                                                                                                                                                                                |
-| `DELEGATION_OUT_OF_PURPOSE`     | 403    | a sibling task, a collection or an action the purpose does not carry                                                                                                                                                                                     |
-| `DELEGATION_NARROWED`           | 403    | the purpose reaches the call and the person's live grants no longer cover it, or the delegation was revoked for `authority_lost`                                                                                                                         |
-| `DELEGATION_EXCLUDES_DECISION`  | 403    | `task.decide`, always: at the envelope with no credential, and from L4's `decideAsAgent` asking L2 under a delegation                                                                                                                                    |
-| `DELEGATION_EXCLUDES_OPERATION` | 403    | any name not in `AGENT_SURFACE`, whose eight members are the queue, a pickup, a handback, a heartbeat, `task.read`, `task.comment`, `task.decide` and `session.capabilities`; or, with no credential, any name but the queue, a pickup and `task.decide` |
-| `DELEGATION_ALREADY_LIVE`       | 409    | a pickup under a purpose word the agent already holds a live delegation for                                                                                                                                                                              |
+| Answer                          | Status | When                                                                                                                                                                                                                                                                                                             |
+| ------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AUTH_NO_AGENT_IDENTITY`        | 401    | the login is not an agent login in this business                                                                                                                                                                                                                                                                 |
+| `AUTH_SESSION_EXPIRED`          | 401    | the bearer's signature verifies and its `exp` has passed, or its session is past the 12-hour limit or was ended (C58)                                                                                                                                                                                            |
+| `DELEGATION_NOT_LIVE`           | 401    | a presented credential that answers to no live delegation                                                                                                                                                                                                                                                        |
+| `DELEGATION_OUT_OF_PURPOSE`     | 403    | a sibling task, a collection or an action the purpose does not carry, or a call over the whole business (`task.create`)                                                                                                                                                                                          |
+| `DELEGATION_NARROWED`           | 403    | the purpose reaches the call and the person's live grants no longer cover it, or the delegation was revoked for `authority_lost`                                                                                                                                                                                 |
+| `DELEGATION_EXCLUDES_DECISION`  | 403    | `task.decide`, always: at the envelope with no credential, and from L4's `decideAsAgent` asking L2 under a delegation                                                                                                                                                                                            |
+| `DELEGATION_EXCLUDES_OPERATION` | 403    | any name not in `AGENT_SURFACE`, whose twelve members are the queue, a pickup, a handback, a heartbeat, a dispatch, an observe, `task.read`, `task.comment`, `task.propose`, `task.create`, `task.decide` and `session.capabilities`; or, with no credential, any name but the queue, a pickup and `task.decide` |
+| `DELEGATION_ALREADY_LIVE`       | 409    | a pickup under a purpose word the agent already holds a live delegation for                                                                                                                                                                                                                                      |
 
 A handback or heartbeat names a lease, not a task, so the task it is checked
 against is read from the lease (`namedTaskId`). A handback naming a lease on
@@ -1785,12 +1795,12 @@ machineCategory }`, the status select's choices and the ids `task.set_state`
 takes (`reads/task-states.ts`). It is served only with a found task; a
 refusal, the shared answer and an agent's read carry none.
 
-| Read                   | Route                   | Body                     | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Refusals it can answer                                                                                  |
-| ---------------------- | ----------------------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `settings.read`        | `/settings/read`        | `{}`; it takes no fields | `{ ok: true, settings: [{ key, value, valueType, revision, updatedAt, updatedByActorId }] }`                                                                                                                                                                                                                                                                                                                                                                                                  | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403                             |
-| `session.capabilities` | `/session/capabilities` | `{}`; it takes no fields | `{ ok: true, personId, businessKey, grants: [{ collection, action }] }`                                                                                                                                                                                                                                                                                                                                                                                                                       | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403, `AUTH_SESSION_EXPIRED` 401 |
-| `access.read`          | `/access/read`          | `{}`; it takes no fields | `{ ok: true, team, clients, agents, clientRecords }` (`clientRecords`: every client `{ clientId, name }`): each person `{ personId, name, permissions: [{ collection, action, scope, stepUp }], grants: [{ grantId, collection, action, scope }] }` (`stepUp`: the money step-up is asked before that key, by `asksMoneyStepUp`, C59; `grants`: their live grant rows in this business, each revocable by `access.revoke`), each agent its `person`, `purpose`, `expiresAt` and `permissions` | `SCOPE_NOT_GRANTED` 403 without `access:manage`, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403     |
-| `session.person`       | `/session/person`       | `{}`; it takes no fields | `{ ok: true, person: { name } }`, the caller's own name                                                                                                                                                                                                      | `FIELD_NOT_WRITABLE` 422, `COMMAND_BODY_INVALID` 400, `AUTH_NO_MEMBERSHIP` 403, `AUTH_SESSION_EXPIRED` 401 |
+| Read                   | Route                   | Body                     | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Refusals it can answer                                                                                     |
+| ---------------------- | ----------------------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `settings.read`        | `/settings/read`        | `{}`; it takes no fields | `{ ok: true, settings: [{ key, value, valueType, revision, updatedAt, updatedByActorId }] }`                                                                                                                                                                                                                                                                                                                                                                                                  | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403                                |
+| `session.capabilities` | `/session/capabilities` | `{}`; it takes no fields | `{ ok: true, personId, businessKey, grants: [{ collection, action }] }`                                                                                                                                                                                                                                                                                                                                                                                                                       | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403, `AUTH_SESSION_EXPIRED` 401    |
+| `access.read`          | `/access/read`          | `{}`; it takes no fields | `{ ok: true, team, clients, agents, clientRecords }` (`clientRecords`: every client `{ clientId, name }`): each person `{ personId, name, permissions: [{ collection, action, scope, stepUp }], grants: [{ grantId, collection, action, scope }] }` (`stepUp`: the money step-up is asked before that key, by `asksMoneyStepUp`, C59; `grants`: their live grant rows in this business, each revocable by `access.revoke`), each agent its `person`, `purpose`, `expiresAt` and `permissions` | `SCOPE_NOT_GRANTED` 403 without `access:manage`, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403        |
+| `session.person`       | `/session/person`       | `{}`; it takes no fields | `{ ok: true, person: { name } }`, the caller's own name                                                                                                                                                                                                                                                                                                                                                                                                                                       | `FIELD_NOT_WRITABLE` 422, `COMMAND_BODY_INVALID` 400, `AUTH_NO_MEMBERSHIP` 403, `AUTH_SESSION_EXPIRED` 401 |
 
 `session.person` and the command `session.end` are the person menu's (C23).
 Neither asks the grant model: `session.person` answers anyone signed in with
@@ -2037,22 +2047,42 @@ A person's own factor has three routes on the person prefix only. Each is
 served only when the composition root passes a `factors` provider
 (`apps/api/auth/factors.ts`, GoTrue's MFA endpoints called with the person's own
 bearer). Each writes one audit event, applied or refused, named by the act.
+`enrol` is refused `FACTOR_ALREADY_ENROLLED` while the login holds a verified
+factor through any business it reaches (0064), not only this one, and so is
+`verify` on an enrolment here not yet completed, without asking the provider.
+`remove` works where the factor was verified: another business holds no verified
+factor of its own and answers `FACTOR_NOT_ENROLLED`.
 
-| Route                    | Body                   | Answer                                                                                             | Refusals                                                                                                                                                                       |
-| ------------------------ | ---------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `/account/factor/enrol`  | `{}`                   | `{ factorId, qrCode, secret, uri }`, shown once                                                    | `FRESH_SIGN_IN_REQUIRED` 403 (no password sign-in in the last 60 minutes), `FACTOR_ALREADY_ENROLLED` 409, `PROVIDER_ANSWER_INVALID` 502                                        |
-| `/account/factor/verify` | `{ code }`, six digits | `{ accessToken, refreshToken, expiresIn }` at `aal2`; completing an enrolment adds `otherSessions` | `COMMAND_BODY_INVALID` 400, `FACTOR_NOT_ENROLLED` 409, `SECOND_FACTOR_INVALID` 422 (recorded as the failed attempt), `SECOND_FACTOR_LOCKED` 429, `PROVIDER_ANSWER_INVALID` 502 |
-| `/account/factor/remove` | `{ code }`, six digits | `{ removed: true, otherSessions }`                                                                 | `COMMAND_BODY_INVALID` 400, `FACTOR_NOT_ENROLLED` 409, `SECOND_FACTOR_INVALID` 422, `SECOND_FACTOR_LOCKED` 429, `PROVIDER_ANSWER_INVALID` 502                                  |
+| Route                    | Body                   | Answer                                                                                             | Refusals                                                                                                                                                                                                      |
+| ------------------------ | ---------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/account/factor/enrol`  | `{}`                   | `{ factorId, qrCode, secret, uri }`, shown once                                                    | `FRESH_SIGN_IN_REQUIRED` 403 (no password sign-in in the last 60 minutes), `FACTOR_ALREADY_ENROLLED` 409, `PROVIDER_ANSWER_INVALID` 502                                                                       |
+| `/account/factor/verify` | `{ code }`, six digits | `{ accessToken, refreshToken, expiresIn }` at `aal2`; completing an enrolment adds `otherSessions` | `COMMAND_BODY_INVALID` 400, `FACTOR_NOT_ENROLLED` 409, `FACTOR_ALREADY_ENROLLED` 409, `SECOND_FACTOR_INVALID` 422 (recorded as the failed attempt), `SECOND_FACTOR_LOCKED` 429, `PROVIDER_ANSWER_INVALID` 502 |
+| `/account/factor/remove` | `{ code }`, six digits | `{ removed: true, otherSessions }`                                                                 | `COMMAND_BODY_INVALID` 400, `FACTOR_NOT_ENROLLED` 409, `SECOND_FACTOR_INVALID` 422, `SECOND_FACTOR_LOCKED` 429, `PROVIDER_ANSWER_INVALID` 502                                                                 |
 
-Five wrong codes in fifteen minutes, counted from the person's own refused
-attempts in the audit chain, answer `SECOND_FACTOR_LOCKED` 429 on `verify` and
-`remove` without asking the provider, so a caller holding only the password
-cannot walk the six digits. The check before a provider call writes an audit
-event only when it refuses; the act's own event is written after the call,
-beside the record it changes. GoTrue served under a path (`/auth/v1`) is called
-under that path. The record step locks the person's own row (`for no key
-update`), so two tabs enrolling at once queue: the later enrolment replaces the
-earlier unverified one, and one live factor remains.
+Five wrong codes in fifteen minutes answer `SECOND_FACTOR_LOCKED` 429 on
+`verify` and `remove` without asking the provider, so a caller holding only the
+password cannot walk the six digits. The count is the login's, through every
+business it reaches, since the provider holds one factor per login. The check
+before a code goes to the provider takes the login's lock (a transaction-scoped
+advisory lock on its subject's digest), counts the codes the login sent in the
+window that the provider has not proved good (wrong ones, ones still at the
+provider, and ones it answered `slow`, `unreachable`, `malformed` or
+`oversized`, which it may still have checked), and, passing, records the code as sent before it commits, in
+`ops.second_factor_codes` (0072) and as `account.factor_code_sent` in the
+business's audit chain: requests sent at once, in any business, count each
+other, and at most five codes reach the provider. Otherwise the check writes an
+audit event only when it refuses; the act's own event is written after the
+call, beside the record it changes, and carries the sent code's id as its
+`operation_id`; a code the provider proved good is recorded as answered there
+too, so it stops counting, and a provider fault on the code leaves it counted. GoTrue served under a path (`/auth/v1`) is called
+under that path. The record step locks the login (a transaction-scoped
+advisory lock, `second-factor-subject:` and its subject's digest), then the
+person's own row (`for no key update`), so two tabs enrolling at once queue: the
+later enrolment replaces the earlier unverified one, and one live factor
+remains. Two businesses completing enrolments for one login at once queue too:
+the later is refused `FACTOR_ALREADY_ENROLLED`, and the factor the provider has
+just verified for it is removed there, best effort, so the login holds one
+verified factor.
 
 `PROVIDER_ANSWER_INVALID` names only the kind of fault (`malformed`,
 `oversized`, `slow`, `unreachable` or `refused`), never the provider's words.
@@ -2087,10 +2117,14 @@ empty body counts as done; a 200, any body, a refusal, a redirect (never
 followed), an oversized or slow answer is `signedOutAtProvider: false`, the
 local end stands, and asking again is safe. The provider's words go nowhere.
 
+In the web app, Settings ▸ General's "Your sessions" panel calls the first two,
+ending the others only once confirmed, then listing again; it draws no session
+id (`apps/web/src/screens/settings/sessions.tsx`).
+
 ## The operations view and privacy incidents (C55)
 
-`operations.read` answers `{ ok, privacyIncidents, serviceHealth }` to a holder of
-`operations:read` (install default: the owner and administrators). It is
+`operations.read` answers `{ ok, unattended, privacyIncidents, breachRunbook, securityAlerts, serviceHealth, errorSink, lastTestedRestore }`
+to a holder of `operations:read` (install default: the owner and administrators). It is
 never an agent's: on the agent prefix it is `DELEGATION_EXCLUDES_OPERATION` 403. Each incident carries its day-0 facts, its status and `assessBy`, 30 days
 after `foundAt` (the breach runbook's assessment limit), most recently found
 first, at most 200. The clock starts at `foundAt`, day 0, whenever the record
@@ -2098,6 +2132,34 @@ was made. `overdue` is true while an incident is open past `assessBy`, judged
 on the database's clock (C81 breach drill). `breachRunbook` is what every
 incident record links to: the breach runbook published most recently, as
 `{ version, digest, publishedAt, body }`, or `null` until one is published.
+`unattended` is INB-1's list, read for the same caller: exactly what
+`inbox.unattended` answers them, built by the same read (no second list).
+
+**Security alerts (TR-SEC-9).** `securityAlerts` lists the alerts S0-2's
+forwarder raised, newest first, at most 50, each `{ kind, at, concerns }`:
+the alert's kind, the time it was raised (ISO 8601) and fixed plain words for
+what it concerns (`An alert of an unknown kind` for a kind the view has no
+words for). It is read from the forwarder's log (`ops.security_alert_log`,
+0069), written in the pass that raises the alert, so an alert stays listed
+after the sink took it and its `ops.api_alerts` row is gone. No id, scope,
+business, person, secret or record content is in it. An alert names no
+business and the detector counts every business's signals together, so the
+list is the installation's: only the business that operates it
+(`ops.installation.operator_business_id`) reads it, and every other business,
+or every business while none is set, reads `[]`.
+
+`lastTestedRestore` is `{ at, stale }`: `at` the date of the last successful
+tested restore (ISO 8601), or `null` while no drill has passed, and `stale`
+true once that date is older than the store's restore window
+(`backups.settings.restore_days`, the window past which the restore
+heartbeat is withheld and the restore alert fires), or while none has passed.
+The drill's receipt stays in the backup store, which the API cannot reach; a
+pass the store took also stamps the date on the installation's database
+(`ops.last_tested_restore`, [DATA.md](DATA.md)), and that is what this reads.
+The service-health section is read outside the serving transaction, so the
+age alone decides `stale`; nothing here asks the watcher a second time. The
+date is installation state, the same in every business's answer, and carries
+no business, person, archive or path.
 
 `privacy.record_incident` is the tracked action `privacy incident recorded`,
 under `privacy:manage` and never an agent's. Its body is
@@ -2146,6 +2208,13 @@ minute ahead) is a read failure, and none of its services is shown. A client's
 own site (`scope: 'client-site'`) is that client's and never shown here. The
 source's own words go nowhere.
 
+**Error sink link (C55).** `errorSink` is `{ url }`, the sink's web address
+from `OPS_ERROR_SINK_URL`, or `null` when that is unset; the API adds it beside
+`serviceHealth`, so a read made in-process carries none. The setting holds no
+secret and is never derived from `OPS_ERROR_SINK_DSN`, whose user part is the
+sink's key: an address that is not https, or that has a user part (a DSN
+pasted there), stops the API at start, naming the setting and never its value.
+
 The port is `HealthSource` (`reads/service-health.ts`). Tracing is Langfuse,
 `LANGFUSE_HOST`, read at `GET /api/public/health` with no credential
 (`apps/api/health/tracing.ts`): one destination, no redirect, a time and a size
@@ -2155,7 +2224,7 @@ and the error sink (GlitchTip, C29-3) are their adapters, filled in at the same
 port when they land.
 
 Held until their parts land (each placed here as its owner's read, never a
-second list): unattended items (INB-1), security alerts (S0-2), the last tested
+second list): security alerts (S0-2), the last tested
 restore (S0-3) and the error-sink link.
 
 ## Legal documents (C81)
@@ -2369,9 +2438,13 @@ or a receipt is refused; the line says the published policy matches it),
 `cloudflare-rolled` (the link shows the old credential refused; the line
 records the new one in custody) and `training-line` (item 5's dated line that
 model training is off on both model accounts, carrying a real `YYYY-MM-DD`
-date, with its evidence link). The eight items carry no line. The table holds
-the same rules. The mode moves from made-up to real only while every item and
-line is done, and never back; the row cannot be deleted.
+date, with its evidence link). The eight items carry no line. Item 3's tested
+manual privacy-request procedure has a line of its own (migration 0071),
+`privacy-procedure`: the procedure's dry run ([PRIVACY-RUNBOOK.md](PRIVACY-RUNBOOK.md)),
+recorded with its `https` link and no owner's line, and open until recorded,
+so item 3 done does not close it. The table holds the same rules. The mode
+moves from made-up to real only while every item and line is done, and never
+back; the row cannot be deleted.
 
 Two commands move the gate (migration 0059), each a person's under
 `operations:manage` in the business that operates the installation
@@ -2380,9 +2453,9 @@ agent's or a delegation's; any other caller, and every caller while no business
 operates it, is refused `SCOPE_NOT_GRANTED` 403 and writes nothing:
 
 - `operations.record_gate_item` takes `{ operationId, item, evidence,
-statement? }`: one of the eight items or three closing lines, one `https`
-  link of at most 2000 characters with no spaces, and the owner's line on a
-  closing line only, each refused `FIELD_VALUE_INVALID` 422 naming the field. An item is
+statement? }`: one of the eight items, three closing lines or the procedure
+  line, one `https` link of at most 2000 characters with no spaces, and the
+  owner's line on a closing line only, each refused `FIELD_VALUE_INVALID` 422 naming the field. An item is
   recorded once; a second record is refused `GATE_ITEM_ALREADY_RECORDED` 409
   and the first evidence stays.
 - `operations.change_installation_mode` takes `{ operationId, mode: 'real' }`.

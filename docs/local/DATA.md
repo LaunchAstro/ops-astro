@@ -544,6 +544,36 @@ with the restrictive policy like every business table, and it is not a
 `records` row, so no share, search or export reaches it. The audit chain and
 the operation register hold a digest and the new row's id, never the words.
 
+## Security alert log (0069, C55)
+
+`ops.security_alert_log` holds each alert S0-2's forwarder raised, by its kind
+and the database's time alone: no sink id, scope, business, client, person,
+secret or record content. The forwarder writes it in the statement that keeps
+the alert in `ops.api_alerts` (0048), so a pass that fails writes neither and
+an alert kept already is not written twice; the send that deletes the
+`ops.api_alerts` row leaves the log alone. The forwarder may insert the kind
+column only. The application group may select `kind` and `at` only, and
+changes nothing; it still holds nothing on `ops.api_alerts`. The table belongs
+to no business, so the operations view reads it only for the business that
+operates the installation (`ops.installation.operator_business_id`), newest
+first, at most 50 (`operations/security-alerts.ts`).
+
+## The last tested restore (0070, C55)
+
+`ops.last_tested_restore` holds one row, the date of the last successful
+tested restore, and nothing else: no business, person, archive, path or key.
+It is installation state, like `ops.operating_business` (0045). The restore
+drill writes it on a pass the backup store took, and only then
+(`scripts/ops/drill-acts.mjs`), as `ops_astro_restore_drill`: a role no one
+logs in as, which runs `ops.record_tested_restore()` and holds nothing else.
+That function is a security definer with its search path pinned, takes no
+argument and stamps the database's own time, never moving it back, so the
+drill cannot name a date. The drill takes the role by name on the owner's
+connection (`scripts/ops/tested-restore.ts`), as the business lookup takes
+0046's. The application may select the row and nothing more; PUBLIC holds
+nothing on the table or the function. `operations.read` serves it as
+`lastTestedRestore` ([API.md](API.md)).
+
 ## Legal documents (0051, C81)
 
 `legal_document_versions` holds every version of a business's legal documents:
@@ -620,6 +650,18 @@ in every business the login reaches while one of its factors is verified and
 not removed; a removed factor is never verified again, so the rows need no
 order. Before 0064 the person's mirror alone answers. The application may
 insert and read the three columns; nothing changes or deletes a row.
+
+## Second-factor codes by subject (0072, C59)
+
+`ops.second_factor_codes` holds one row when a second-factor code is sent to
+the provider through any business, and one when it is answered other than
+wrong: a SHA-256 digest of the login's subject, the attempt's random id (the
+act's audit event carries it as its `operation_id`), `sent` or `answered`, and
+when. Installation-wide, no business, person or reason. The factor routes
+refuse `SECOND_FACTOR_LOCKED` while five codes sent in the last fifteen
+minutes have no `answered` row, counted under a transaction-scoped lock on the
+subject's digest. The application may insert the digest, the attempt and the
+state and read the four columns; nothing changes or deletes a row.
 
 ## Overseas-services register (0052, C81)
 

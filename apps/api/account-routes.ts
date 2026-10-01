@@ -5,7 +5,8 @@
 // refused that still ends its session (C58). Moved out of app.ts whole when
 // batch 2b joined it past the 1000-line limit.
 
-import type { Hono } from 'hono';
+import { Hono } from 'hono';
+import type { Context } from 'hono';
 import {
   endProviderSession,
   PUBLIC_LEGAL_DOCUMENTS,
@@ -16,7 +17,17 @@ import type {
   LegalDocument,
   VerifiedSubject,
 } from '../../packages/core-records/src/index.ts';
-import type { FactorProvider } from '../../packages/core-commands/src/index.ts';
+import {
+  endOtherSessions,
+  enrolSecondFactor,
+  isCommandRefusal,
+  listOwnSessions,
+  removeSecondFactor,
+  signOutSession,
+  verifySecondFactor,
+} from '../../packages/core-commands/src/index.ts';
+import type { CommandRefusal, FactorProvider } from '../../packages/core-commands/src/index.ts';
+import { bearerOf, sessionCookieOf } from './auth/session.ts';
 import { PUBLIC_PREFIX } from '../../packages/core-wire/src/index.ts';
 
 /** What the public legal read needs of the API's options. */
@@ -72,4 +83,71 @@ export async function signOutRefused(
     await endProviderSession(tx, sessionId);
   });
   await factors.signOut(caller.accessToken, 'local');
+}
+
+/** What the API lends the account routes: its door on the person prefix, and its refusal. */
+export interface AccountDoor {
+  readonly prefix: string;
+  readonly admit: (context: Context) => Promise<
+    | Response
+    | {
+        readonly businessId: string;
+        readonly presented: VerifiedSubject;
+        readonly body: Readonly<Record<string, unknown>>;
+      }
+  >;
+  readonly refuse: (context: Context, refusal: CommandRefusal) => Response;
+  readonly unknownLogin: () => CommandRefusal;
+}
+
+/**
+ * The person's own account routes (C58, C59): the second factor and their
+ * sessions, each through the person prefix's door and its business.
+ */
+export function mountFactorRoutes(
+  api: Hono,
+  options: { readonly database: Database },
+  factors: FactorProvider,
+  door: AccountDoor,
+): void {
+  const routes = new Hono();
+  type Caller = Parameters<typeof enrolSecondFactor>[0];
+  const acts = {
+    'factor/enrol': async (caller: Caller) => await enrolSecondFactor(caller, factors),
+    'factor/verify': async (caller: Caller, body: unknown) =>
+      await verifySecondFactor(caller, body, factors),
+    'factor/remove': async (caller: Caller, body: unknown) =>
+      await removeSecondFactor(caller, body, factors),
+    'sessions/list': async (caller: Caller, body: unknown) => await listOwnSessions(caller, body),
+    'sessions/end-others': async (caller: Caller, body: unknown) =>
+      await endOtherSessions(caller, body, factors),
+    'sessions/sign-out': async (caller: Caller, body: unknown) =>
+      await signOutSession(caller, body, factors),
+  } as const;
+  for (const [name, act] of Object.entries(acts)) {
+    routes.post(`/account/${name}`, async (context) => {
+      const admitted = await door.admit(context);
+      if (admitted instanceof Response) return admitted;
+      // The person's own token, as the door took it: the bearer, or the browser's session cookie.
+      const accessToken = bearerOf(context.req) ?? sessionCookieOf(context.req);
+      if (accessToken === undefined) {
+        return door.refuse(context, door.unknownLogin());
+      }
+      const caller = {
+        database: options.database,
+        businessId: admitted.businessId,
+        presented: admitted.presented,
+        accessToken,
+      };
+      const result = await act(caller, admitted.body);
+      if (isCommandRefusal(result)) {
+        if (name === 'sessions/sign-out' && result.code !== 'COMMAND_BODY_INVALID') {
+          await signOutRefused(options, caller, factors);
+        }
+        return door.refuse(context, result);
+      }
+      return context.json(result, 200);
+    });
+  }
+  api.route(`${door.prefix}:businessKey`, routes);
 }

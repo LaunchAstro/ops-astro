@@ -13,8 +13,8 @@
 // login reaches finds them. Every function takes the serving transaction, so
 // the record and the audit event of the act that caused it commit together.
 
-import { randomUUID } from 'node:crypto';
-import type { TenantQuery } from '../tenancy/database.ts';
+import { createHash, randomUUID } from 'node:crypto';
+import { advisoryLock, type TenantQuery } from '../tenancy/database.ts';
 
 export type FactorStatus = 'unverified' | 'verified' | 'removed';
 
@@ -43,22 +43,29 @@ const shaped = (row: FactorRow): SecondFactor => ({
 });
 
 /**
- * The person's live factor. With `lock`, the person's own row is locked for
- * the rest of the transaction first, so an enrolment, a verification and a
+ * The person's live factor. With `lock`, the subject of the login the person
+ * signs in with, the login and then the person's own row are locked for the
+ * rest of the transaction first, so an enrolment, a verification and a
  * removal for the same person queue behind each other instead of
- * interleaving. The lock is on the person, not the factor row, because a
- * first enrolment has no factor row to lock: two tabs would both find none
- * and both insert. It is `no key update`, the strength the mirror's own
- * update takes, because rows this transaction has already written reference
- * the person and hold a key-share lock on it, which `for update` would wait
- * on in the other transaction and deadlock.
+ * interleaving, and so do two businesses completing enrolments for the one
+ * login: the second then reads the first's verified factor (0064).
+ *
+ * The login's lock is the advisory key `second-factor-subject:<digest>`,
+ * taken first, before any row or chain lock. The person's lock is on the
+ * person, not the factor row, because a first enrolment has no factor row to
+ * lock: two tabs would both find none and both insert. It is `no key update`,
+ * the strength the mirror's own update takes, because rows this transaction
+ * has already written reference the person and hold a key-share lock on it,
+ * which `for update` would wait on in the other transaction and deadlock.
  */
 export async function liveFactor(
   tx: TenantQuery,
   personId: string,
-  options: { readonly lock?: boolean } = {},
+  options: { readonly lock?: string } = {},
 ): Promise<SecondFactor | undefined> {
-  if (options.lock === true) {
+  if (options.lock !== undefined) {
+    const digest = createHash('sha256').update(options.lock).digest('hex');
+    await advisoryLock(tx, `second-factor-subject:${digest}`);
     await tx.query(
       'select 1 from public.people where business_id = $1 and id = $2 for no key update',
       [tx.businessId, personId],

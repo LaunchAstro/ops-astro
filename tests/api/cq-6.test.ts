@@ -52,6 +52,12 @@ describe.skipIf(serverUrl === undefined)('CQ-6 on both prefixes', () => {
     );
     return rows[0]?.revision;
   };
+  const recordCount = async (): Promise<number> => {
+    const rows = await w.h.world.db.admin.execute<{ readonly n: number }>(
+      `select count(*)::int as n from public.records`,
+    );
+    return rows[0]?.n ?? -1;
+  };
   const person = async (name: Parameters<IdentWorld['person']>[1], body: object) =>
     await w.person(w.h.world.ada, name, { ...body });
   const agent = async (name: Parameters<IdentWorld['agent']>[1], body: object) =>
@@ -201,11 +207,12 @@ describe.skipIf(serverUrl === undefined)('CQ-6 on both prefixes', () => {
     it('an agent never reaches an operation outside its delegation, whatever the body', async () => {
       const task = await w.h.freshTask('a task only a person may change');
       const before = await revisionOf(task.id);
+      const records = await recordCount();
       for (const name of [
-        'task.create',
-        // Not task.update or task.assign: an agent writes its fields and the
-        // assignee on its own delegated task (MP-4-7, MP-4-8), and elsewhere is
-        // refused out of purpose.
+        // Not task.create: a credential's since API-2, a pickup's is refused for its
+        // purpose (below). Not task.update or task.assign: an agent writes its fields
+        // and the assignee on its own delegated task (MP-4-7, MP-4-8), and elsewhere
+        // is refused out of purpose.
         'task.complete',
         'task.set_stage',
         'task.trash',
@@ -220,6 +227,13 @@ describe.skipIf(serverUrl === undefined)('CQ-6 on both prefixes', () => {
         }
       }
       expect(await revisionOf(task.id)).toBe(before);
+      // task.create is in a credential's reach (API-2), so a pickup's create is
+      // refused for its purpose, one record, and makes nothing.
+      for (const body of [{ fields: { title: 'x' } }, { fields: 5, recordId: [task.id] }]) {
+        // eslint-disable-next-line no-await-in-loop -- one call at a time
+        expectRefused(await agent('task.create', body), 'DELEGATION_OUT_OF_PURPOSE', 'task.create');
+      }
+      expect(await recordCount()).toBe(records);
     });
   });
 

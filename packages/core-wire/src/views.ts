@@ -38,6 +38,8 @@ export type {
   OperationsReadResult,
   BreachNoticeDraft,
   BreachNoticesResult,
+  SecurityAlertView,
+  LastTestedRestoreView,
 } from './views-operations.ts';
 
 /** The task state a task points at. The machine category is what a board groups on. */
@@ -486,7 +488,13 @@ export interface Capability {
  * client reach through one more level for three fields.
  */
 export interface SessionCapabilities {
+  /** The signed-in person, or under an agent credential the person it acts for. */
   readonly personId: string;
+  /**
+   * Under an agent credential (API-2) only: the acting identity, its agent
+   * actor, and then `grants` are the ticked keys the person still holds.
+   */
+  readonly agentActorId?: string;
   /** The business's key, which is what a path and a screen both name it by. */
   readonly businessKey: string;
   /** Distinct pairs, sorted. A pair held at two scopes appears once. */
@@ -920,6 +928,17 @@ export interface InboxEntry {
    * page and the queue read show (INB-1, the alert's third and last place).
    */
   readonly alert?: InboxAlert;
+}
+
+/** An item no path reaches (INB-1e): its recipient, reason and task, never the task's words. */
+export interface UnattendedView {
+  readonly id: string;
+  readonly recipientPersonId: string;
+  readonly subjectRecordId: string;
+  readonly reason: InboxReason;
+  readonly factKind: InboxFactKind;
+  readonly factId: string;
+  readonly raisedAt: string;
 }
 
 /** `inbox.read`'s answer: the caller's open items and newest page of closed ones, oldest raised first. */

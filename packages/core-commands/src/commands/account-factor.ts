@@ -8,9 +8,10 @@
 // each crosses to the sign-in provider, which holds the factor and its secret.
 // A provider call is never made inside a database transaction, so every act is
 // three steps: check under the serving transaction, call the provider, then
-// record under a second transaction that locks the person's own row and
-// checks again, so two tabs cannot enrol twice or verify a factor another tab
-// has just removed. The record and its audit event commit together.
+// record under a second transaction that locks the login, then the person's
+// row (`liveFactor`), and checks again, so two tabs or two businesses cannot
+// enrol twice or verify a factor another has just removed. The record and its
+// audit event commit together.
 //
 // Nothing the provider or the person sends is kept: not the authenticator
 // secret or its QR code (handed to the person once, in the enrol answer, and
@@ -18,8 +19,10 @@
 // a failure, which could carry anything. The audit event holds the act, its
 // outcome and a digest of what identifies it.
 
+import { randomUUID } from 'node:crypto';
 import {
   liveFactor,
+  loginHasVerifiedFactor,
   recordFactorEnrolled,
   recordFactorRemoved,
   recordFactorVerified,
@@ -28,6 +31,7 @@ import {
 import type {
   BusinessId,
   Database,
+  SecondFactor,
   Session,
   TenantQuery,
   VerifiedSubject,
@@ -41,7 +45,7 @@ import {
   type SessionsEnded,
 } from './account-factor-provider.ts';
 import { endOthersOnChange, signOutOthers } from './account-factor-sessions.ts';
-import { codeOf, freshSignIn, tooManyWrongCodes } from './account-factor-checks.ts';
+import { codeOf, freshSignIn, recordCode, wrongCodeLock } from './account-factor-checks.ts';
 import { writeAuditEvent } from './audit.ts';
 import { asCallerVisible, refuseCommand, type CommandRefusal } from './refusal.ts';
 
@@ -64,14 +68,12 @@ const ENROLLED_FIXES: readonly string[] = [
 ];
 const NOT_ENROLLED_FIXES: readonly string[] = ['Set up an authenticator app first.'];
 const BODY_FIXES: readonly string[] = ['Send only { "code": "<the six digits>" }.'];
-const LOCKED_FIXES: readonly string[] = [
-  'Too many wrong codes. Wait 15 minutes, then try again with the code your app shows.',
-];
 
 /**
  * First enrolment: a person with no factor, after a fresh password sign-in
  * inside the step-up window (TR-A2-2). A person who already has a verified
- * factor replaces it by removing it first, with a code.
+ * factor, here or through any business the login reaches (0064), replaces it
+ * by removing it first, with a code.
  */
 export async function enrolSecondFactor(
   caller: FactorCaller,
@@ -82,8 +84,7 @@ export async function enrolSecondFactor(
     caller,
     act,
     async (tx, session) => {
-      const live = await liveFactor(tx, session.personId);
-      if (live?.status === 'verified')
+      if (await holdsVerified(tx, caller, await liveFactor(tx, session.personId)))
         return refuseCommand('FACTOR_ALREADY_ENROLLED', [], ENROLLED_FIXES);
       return (await freshSignIn(tx, session))
         ? undefined
@@ -96,14 +97,12 @@ export async function enrolSecondFactor(
   const issued = await provider.enrol(caller.accessToken);
   const recorded = await judged(caller, act, async (tx, session) => {
     if (!issued.ok) return providerRefusal(issued.fault, 'answer');
-    const live = await liveFactor(tx, session.personId, { lock: true });
-    if (live?.status === 'verified')
+    const live = await liveFactor(tx, session.personId, { lock: caller.presented.subject });
+    if (await holdsVerified(tx, caller, live))
       return refuseCommand('FACTOR_ALREADY_ENROLLED', [], ENROLLED_FIXES);
     // An enrolment never completed is replaced, not stacked: the newest
     // unverified factor is the one the first code completes.
-    if (live !== undefined) {
-      await recordFactorRemoved(tx, ownFactor(caller, session, live.id));
-    }
+    if (live !== undefined) await recordFactorRemoved(tx, ownFactor(caller, session, live.id));
     await recordFactorEnrolled(tx, {
       personId: session.personId,
       provider: caller.presented.provider,
@@ -118,7 +117,9 @@ export async function enrolSecondFactor(
 
 /**
  * A code checked against the person's live factor. The first good code
- * completes an enrolment; a wrong one is refused and recorded as failed.
+ * completes an enrolment; a wrong one is refused and recorded as failed. An
+ * enrolment is not completed while the login holds a verified factor through
+ * any business (0064), as it is not started then.
  */
 export async function verifySecondFactor(
   caller: FactorCaller,
@@ -127,46 +128,48 @@ export async function verifySecondFactor(
 ): Promise<(FactorSession & { readonly otherSessions?: SessionsEnded }) | CommandRefusal> {
   const act = 'account.factor_verify';
   const code = codeOf(body);
-  let factor: { readonly id: string; readonly providerFactorId: string } | undefined;
+  const sending = { ...caller, attempt: randomUUID() };
+  let factor: SecondFactor | undefined;
   const precondition = await judged(
-    caller,
+    sending,
     act,
     async (tx, session) => {
       if (code === undefined) return refuseCommand('COMMAND_BODY_INVALID', [], BODY_FIXES);
-      if (await tooManyWrongCodes(tx, session))
-        return refuseCommand('SECOND_FACTOR_LOCKED', [], LOCKED_FIXES);
+      const locked = await wrongCodeLock(tx, caller.presented.subject);
+      if (locked !== undefined) return locked;
       factor = await liveFactor(tx, session.personId);
       return factor === undefined
         ? refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES)
-        : undefined;
+        : await enrolledElsewhere(tx, caller, factor);
     },
     'before',
   );
-  if (precondition !== undefined || factor === undefined || code === undefined) {
+  if (precondition !== undefined || factor === undefined || code === undefined)
     return precondition ?? refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES);
-  }
   const target = factor;
 
   const verified = await provider.verify(caller.accessToken, target.providerFactorId, code);
   let ended: number | undefined;
-  const recorded = await judged(caller, act, async (tx, session) => {
+  const recorded = await judged({ ...sending, proven: verified.ok }, act, async (tx, session) => {
     if (!verified.ok) return providerRefusal(verified.fault, 'code');
-    const live = await liveFactor(tx, session.personId, { lock: true });
+    const live = await liveFactor(tx, session.personId, { lock: caller.presented.subject });
     // Removed or replaced by another tab between the two transactions.
     if (live?.id !== target.id) return refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES);
-    // The first good code completes an enrolment, which is a factor change;
-    // a later one is a step-up and changes nothing.
+    const elsewhere = await enrolledElsewhere(tx, caller, live);
+    if (elsewhere !== undefined) return elsewhere;
+    // The first good code completes an enrolment (a factor change); a later one is a step-up.
     if (live.status !== 'verified') ended = await endOthersOnChange(tx, session, caller.presented);
     await recordFactorVerified(tx, ownFactor(caller, session, live.id));
     return undefined;
   });
+  // Verified at the provider but refused here: removed there too, best effort.
+  if (recorded?.code === 'FACTOR_ALREADY_ENROLLED' && verified.ok)
+    await provider.remove(verified.value.accessToken, target.providerFactorId);
   if (recorded !== undefined || !verified.ok)
     return recorded ?? providerRefusal('malformed', 'answer');
   if (ended === undefined) return verified.value;
-  return {
-    ...verified.value,
-    otherSessions: await signOutOthers(provider, verified.value.accessToken, ended),
-  };
+  const otherSessions = await signOutOthers(provider, verified.value.accessToken, ended);
+  return { ...verified.value, otherSessions };
 }
 
 /**
@@ -182,14 +185,15 @@ export async function removeSecondFactor(
 ): Promise<{ readonly removed: true; readonly otherSessions: SessionsEnded } | CommandRefusal> {
   const act = 'account.factor_remove';
   const code = codeOf(body);
+  const sending = { ...caller, attempt: randomUUID() };
   let factor: { readonly id: string; readonly providerFactorId: string } | undefined;
   const precondition = await judged(
-    caller,
+    sending,
     act,
     async (tx, session) => {
       if (code === undefined) return refuseCommand('COMMAND_BODY_INVALID', [], BODY_FIXES);
-      if (await tooManyWrongCodes(tx, session))
-        return refuseCommand('SECOND_FACTOR_LOCKED', [], LOCKED_FIXES);
+      const locked = await wrongCodeLock(tx, caller.presented.subject);
+      if (locked !== undefined) return locked;
       const live = await liveFactor(tx, session.personId);
       if (live?.status !== 'verified')
         return refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES);
@@ -198,9 +202,8 @@ export async function removeSecondFactor(
     },
     'before',
   );
-  if (precondition !== undefined || factor === undefined || code === undefined) {
+  if (precondition !== undefined || factor === undefined || code === undefined)
     return precondition ?? refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES);
-  }
   const target = factor;
 
   const proved = await provider.verify(caller.accessToken, target.providerFactorId, code);
@@ -208,10 +211,10 @@ export async function removeSecondFactor(
   const removed = proved.ok
     ? await provider.remove(proved.value.accessToken, target.providerFactorId)
     : undefined;
-  const recorded = await judged(caller, act, async (tx, session) => {
+  const recorded = await judged({ ...sending, proven: proved.ok }, act, async (tx, session) => {
     if (!proved.ok) return providerRefusal(proved.fault, 'code');
     if (removed !== undefined && !removed.ok) return providerRefusal(removed.fault, 'answer');
-    const live = await liveFactor(tx, session.personId, { lock: true });
+    const live = await liveFactor(tx, session.personId, { lock: caller.presented.subject });
     if (live?.id !== target.id) return refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES);
     ended = await endOthersOnChange(tx, session, caller.presented);
     await recordFactorRemoved(tx, ownFactor(caller, session, live.id));
@@ -225,6 +228,26 @@ export async function removeSecondFactor(
   };
 }
 
+/** A verified factor here, or one the login holds through any business (0064). */
+const holdsVerified = async (
+  tx: TenantQuery,
+  caller: FactorCaller,
+  live: { readonly status: string } | undefined,
+) => live?.status === 'verified' || (await loginHasVerifiedFactor(tx, caller.presented.subject));
+
+/**
+ * An enrolment here not yet completed is refused as a new one would be while
+ * the login holds a verified factor through any business (0064).
+ */
+const enrolledElsewhere = async (
+  tx: TenantQuery,
+  caller: FactorCaller,
+  live: { readonly status: string },
+) =>
+  live.status !== 'verified' && (await loginHasVerifiedFactor(tx, caller.presented.subject))
+    ? refuseCommand('FACTOR_ALREADY_ENROLLED', [], ENROLLED_FIXES)
+    : undefined;
+
 /** The caller's factor, and the login's subject that holds it in every business (0064). */
 const ownFactor = (caller: FactorCaller, session: Session, factorId: string) => ({
   personId: session.personId,
@@ -237,12 +260,14 @@ const ownFactor = (caller: FactorCaller, session: Session, factorId: string) => 
  * required yet, since these acts are how they give it), run `check`, and write
  * the act's audit event in the same transaction.
  *
- * The check before the provider call records only a refusal: a check that
- * passed has done nothing yet, and the act's own event is the one written
- * after the call, applied or refused, beside the record it changes.
+ * The check before the provider call records only a refusal, or, passed for a
+ * code (`attempt`), the code as sent, under the login's lock (`recordCode`);
+ * the act's own event, applied or refused, is written after the call beside
+ * the record it changes, and names the same `attempt`, with the code recorded
+ * as answered only when the provider proved it good (`proven`).
  */
 async function judged(
-  caller: FactorCaller,
+  caller: FactorCaller & { readonly attempt?: string; readonly proven?: boolean },
   act: Act,
   check: (tx: TenantQuery, session: Session) => Promise<CommandRefusal | undefined>,
   stage: 'before' | 'after' = 'after',
@@ -253,10 +278,12 @@ async function judged(
     caller.presented,
     async (tx, session) => {
       const refusal = await check(tx, session);
+      await recordCode(tx, session, caller, stage, refusal);
       if (stage === 'before' && refusal === undefined) return;
       await writeAuditEvent(tx, {
         actorId: session.actorId,
         command: act,
+        operationId: caller.attempt ?? null,
         outcome: refusal === undefined ? 'applied' : 'refused',
         refusalCode: refusal?.code ?? null,
         payloadDigest: payloadDigest({ command: act, person: session.personId }),

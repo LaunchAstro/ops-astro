@@ -12,6 +12,7 @@ import type {
   TaskSummary,
   TodoView,
 } from '../../packages/core-wire/src/index.ts';
+import { MIA, NATHAN } from './made-up-access.ts';
 
 export const STATE: Readonly<Record<'active' | 'waiting' | 'hold', TaskStateView>> = {
   active: { id: 's-active', key: 'active', label: 'Active', machineCategory: 'started' },
@@ -23,9 +24,6 @@ export const STATE: Readonly<Record<'active' | 'waiting' | 'hold', TaskStateView
   },
   hold: { id: 's-hold', key: 'hold', label: 'On hold', machineCategory: 'unstarted' },
 };
-
-export const NATHAN = { personId: 'p-nathan', name: 'Nathan' };
-export const MIA = { personId: 'p-mia', name: 'Mia' };
 
 const task = (
   n: number,

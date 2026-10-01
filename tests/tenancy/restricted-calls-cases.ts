@@ -24,10 +24,17 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['', 'ops.schema_migrations'],
   // 0045: the installation's operating business; the application reads it only.
   ['s', 'ops.operating_business'],
+  // 0070 (C55): the date of the last tested restore; the application reads it
+  // only, and the drill writes it through ops.record_tested_restore().
+  ['s', 'ops.last_tested_restore'],
   // 0047: the API's outbox; the application inserts its four columns, and reads nothing.
   ['i', 'ops.api_events'],
   // 0048: the forwarder's kept alerts; the application holds nothing on them.
   ['', 'ops.api_alerts'],
+  // 0069 (C55): the forwarder's alert log; the application selects its kind
+  // and time columns alone, and changes nothing. A column grant: this suite's
+  // `select 1` needs one column, and c55-security-alerts proves which.
+  ['s', 'ops.security_alert_log'],
   ['s', 'ops.slots'],
   // 0058 (S0-5): the installation's mode and the gate items are read by the
   // application through first_client_readiness().
@@ -44,6 +51,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'ops.ended_subject_sessions'],
   // 0064 (C59): a second factor verified or removed, by subject digest, for every business.
   ['si', 'ops.second_factor_subjects'],
+  // 0072 (C59): a second-factor code sent or answered, by subject digest, for every business.
+  ['si', 'ops.second_factor_codes'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],
   ['si', 'alerts handback_reports operations run_events'],
   // 0042: an attempt and a seen stamp are observations, never rewritten (INB-1a).

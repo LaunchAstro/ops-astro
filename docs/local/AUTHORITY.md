@@ -223,6 +223,7 @@ code on this head, and where that is shown.
 | `FACTOR_NOT_ENROLLED`                                                        | 409    | yes, on `/account/factor/verify` and `/remove` (C59)                                                                                                |
 | `SECOND_FACTOR_INVALID`                                                      | 422    | yes, on `/account/factor/verify` and `/remove` (C59)                                                                                                |
 | `SECOND_FACTOR_LOCKED`                                                       | 429    | yes, after five wrong codes in fifteen minutes (C59)                                                                                                |
+| `AGENT_QUOTA_EXCEEDED`                                                       | 429    | yes, an agent credential past a limit a minute or at once (API-2)                                                                                   |
 | `PROVIDER_ANSWER_INVALID`                                                    | 502    | yes, on the three factor routes (C59)                                                                                                               |
 | `DELEGATION_EXCLUDES_DECISION`                                               | 403    | yes                                                                                                                                                 |
 | `DELEGATION_EXCLUDES_OPERATION`                                              | 403    | yes; see below                                                                                                                                      |
@@ -620,8 +621,8 @@ a fresh agent actor of theirs, with no lease and no run
 (`authority/agent-credentials.ts`, migration 0054). `credential.issue` is
 `credential:write` and is always the caller's own. Its scope is the ticked
 `collection:action` keys, each one the caller holds at business scope when it
-is issued, by the grant check's own walk (`CREDENTIAL_SCOPE_WIDENS` otherwise),
-and never decide, share or manage (`CREDENTIAL_ACTION_EXCLUDED`). It never
+is issued, by the grant check's own walk under the access lock
+(`CREDENTIAL_SCOPE_WIDENS` otherwise), and never decide, share or manage (`CREDENTIAL_ACTION_EXCLUDED`). It never
 holds a money key either (C59's set, `isMoneyKey`, `billing:read` included):
 the permission key catalogue (`docs/design-system/CAPABILITY-SLICES.md`) says
 an agent may hold none, and every credential is an agent's, so a scope with
@@ -647,9 +648,41 @@ after) and deactivates the agent actor. Ending the issuer's access
 the person who ended it. Neither command is ever an agent's: an
 agent under a live delegation is refused `DELEGATION_EXCLUDES_OPERATION`.
 
-Using the credential on the agent route (bearer only, revocation on the next
-call, expiry either side, the actor and the person recorded, the quota) waits
-on S0-6's bearer scheme and is not served yet.
+**Using it** (`commands/credential-envelope.ts`). The agent sends the secret
+as `Authorization: Bearer` on the agent prefix, and nowhere else: that prefix
+never reads a session cookie, and the secret is no sign-in on the person
+prefix. A bearer in the credential's form (43 base64url characters, no dot) is
+the product's own scheme and never reaches the sign-in provider's verifier.
+Every call looks the credential up by its digest in the path's business and
+locks the row `for share` (`resolveAgentCredential`), so a revocation either
+commits first and the call is refused, or waits for the call. Revoked, past its
+expiry, its agent actor inactive, its issuer no longer a member, or never
+issued: one answer, `DELEGATION_NOT_LIVE` 401, in plain words, and the same
+answer at a business key nobody holds. Each one writes a refused
+authentication attempt (owner `delegation`, the digest of the credential's
+digest, never the secret).
+
+The call runs through the person's command and read envelopes as the agent
+actor for the issuing person (`Session.credentialScope`). The audit event, the
+register row and anything written carry the agent actor, and the credential row
+names the person it acts for. Every grant check asks the key within the ticked
+ones and the person's grants as they are now (`subjectsOf`, `askedFor`); the
+credential has no sign-in assurance, so a money step-up is never met. It
+reaches the rows an agent may reach under a delegation that need no lease
+(`CREDENTIAL_REACH`: `task.create`, `task.read`, `task.comment`, `task.propose`
+and `session.capabilities`); anything else is `DELEGATION_EXCLUDES_OPERATION`.
+A create asks the person's business-wide `task:write` within the ticked keys; it
+is audited against the agent and the task's `source` is `agent:api`.
+`session.capabilities` answers the ticked keys the person's grants still cover,
+so a key the person holds and did not tick, or one revoked from them since, is
+not listed; `agentActorId` is the acting identity and `personId` the person it
+acts for (`readCapabilities`). The pickup agent reaches `task.create` too, and
+its one-task delegation never does: `DELEGATION_OUT_OF_PURPOSE`, nothing written
+(`authorise`, the `business` row). The app holds a quota per credential, per
+person and per business on calls a minute, calls at once and records handed out
+a minute (`apps/api/auth/agent-quota.ts`), answered `AGENT_QUOTA_EXCEEDED` 429.
+A call counts once, retried or not, and a call outside the reach counts too.
+The quota is held in each API process, so it multiplies across instances.
 
 ## Settings ▸ Access (C32)
 
@@ -662,7 +695,9 @@ active membership, over the whole business or over one client of it
 
 Every change to who may do what takes the business's one access lock first
 (`lockAccess`, `access:<business>`), before any grant row: a grant given, a
-grant revoked on either route, and ending a person's access (C58). So the same
+grant revoked on either route, ending a person's access (C58), and an agent
+credential issued, before its grant walk. So an issue racing an ending is
+refused, or lands first and is revoked by it. The same
 grant given twice is one row, and two revocations that would each leave one
 holder of business-wide `access:manage` cannot both apply: the second is
 `ACCESS_LAST_MANAGER`.

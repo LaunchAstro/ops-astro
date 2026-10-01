@@ -161,7 +161,7 @@ export const errorSink: StandIn = new StandIn(answers());
 
 export type Api = ReturnType<typeof createApi>;
 
-export const apiWith = (health?: HealthSources): Api =>
+export const apiWith = (health?: HealthSources, sinkLink?: { readonly url: string }): Api =>
   createApi({
     database: harness.world.db.app,
     verify: createSupabaseVerifier(testSignIn(ACCEPTANCE_ISSUER)),
@@ -171,6 +171,7 @@ export const apiWith = (health?: HealthSources): Api =>
     executeRead,
     executeAgentCommand,
     ...(health === undefined ? {} : { health }),
+    ...(sinkLink === undefined ? {} : { errorSink: sinkLink }),
   });
 
 export const tracing = (timeoutMs = 300): ReturnType<typeof createLangfuseHealth> =>
