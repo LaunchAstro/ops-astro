@@ -25,7 +25,7 @@ import { calls, dispatched, envelopeActual, gated } from '../broker/give-back-wo
 import {
   asksOn,
   holdsOn,
-  openAtWhole,
+  settledAtWhole,
   pickupOf,
   revoke,
   spentWhole,
@@ -118,7 +118,7 @@ it('a spent-whole stop after the consolidated ask ends the run and alerts a pers
   });
 
   // The same through a dropped hand-back's resume.
-  const dropped = await openAtWhole('consolidated drop');
+  const dropped = await settledAtWhole('consolidated drop');
   await asksSpent(dropped);
   const body = {
     ...handbackBody(dropped.picked),

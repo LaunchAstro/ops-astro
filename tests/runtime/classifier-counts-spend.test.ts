@@ -2,10 +2,11 @@
 //
 // SL11-29 MONEY: a hold whose work stopped is never abandoned "at no cost"
 // while the broker's calls under it spent. The classifier's abandon step reads
-// the reservation's calls (`spentOn`): settled calls at their actual, calls
-// still open at the maximum they hold. Above zero it settles the hold at that
-// spend, so the envelope and the cap count it once; at zero it abandons as
-// before. Each path that reaches the step is driven through the real process:
+// the reservation's calls (`modelCallsOn`, AW-01): with none still open it
+// settles the hold at what the settled ones cost, so the envelope and the cap
+// count it once, and at zero it abandons as before. A call still open may have
+// cost up to its maximum, so the whole hold is kept for a person (SL11-32,
+// ORCH62: 3a-r2's runtime). Each path that reaches the step is driven through the real process:
 // the sweep the API runs, a person's cancel, and a dropped hand-back.
 
 import { randomUUID } from 'node:crypto';
@@ -172,29 +173,37 @@ it('a hold with no calls is abandoned at zero, as before', async () => {
   expect(after.envelope_held).toBe(after.still_held);
 });
 
-it('a call still open at the stop is counted at its maximum', async () => {
+it('a call still open at the stop keeps the whole hold for a person, counting nothing yet', async () => {
   const work = await liveWork(s, `mospend open ${randomUUID()}`, 2_000);
   const silent = {
     ...broker,
     custody: { ...broker.custody, dispatch: async () => await new Promise<never>(() => {}) },
   };
-  // Custody took the call and never answers: the call stays dispatched, its step unmarked.
-  // (The sweep holds such a call unknown with its step marked; a cancel reads it as it stands.)
+  // Custody took the call and never answers: the call stays dispatched.
   void call(work, {}, silent);
   const openCall = async () =>
-    await rows<{ state: string; reserved: string }>(
+    await rows<{ state: string }>(
       s,
-      `select state, reserved_minor::text as reserved from public.model_calls
-        where reservation_id = $1`,
+      'select state from public.model_calls where reservation_id = $1',
       [work.decision['reservationId']],
     );
   await expect.poll(openCall, { timeout: 5_000 }).toMatchObject([{ state: 'dispatched' }]);
-  const [open] = await openCall();
   const before = await moneyOf(work);
 
   appliedDetail(await cancel(work), 'task.cancel');
 
-  expectCounted(before, await moneyOf(work), Number(open?.reserved));
+  const after = await moneyOf(work);
+  expect(after).toMatchObject({ state: 'held', actual: null });
+  expect(after.envelope_held, 'the whole hold stays held').toBe(before.envelope_held);
+  expect(after.envelope_actual, 'nothing is counted while the cost is unknown').toBe(
+    before.envelope_actual,
+  );
+  const [attempt] = await rows<{ state: string }>(
+    s,
+    'select state from public.attempts where reservation_id = $1',
+    [work.decision['reservationId']],
+  );
+  expect(attempt?.state, 'a person records the outcome').toBe('liability_unknown');
 });
 
 it('work whose authority was lost after it spent is counted, and picked up again on a fresh hold', async () => {

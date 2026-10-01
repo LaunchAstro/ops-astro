@@ -9,6 +9,10 @@
 //
 // Red on 8cbd0e422 (batch 3a before its fix squash). Green once the deployment sweep also runs the model-call
 // half (sweepModelCalls, or the same rule) in each business's transaction.
+//
+// Label (ORCH62, first detector wins): a sent call whose worker was lost is
+// held by AW-10's runtime half first, as `dropped_worker_lost`; a sent call
+// with no worker to lose that gets no answer is `dropped_no_answer`.
 
 import { randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';
@@ -64,6 +68,31 @@ it('REVIEW-3A-5: the deployment sweep releases a reserved call and holds a dispa
     { state: 'released' },
   ]);
   expect(await rowsOf(started), 'the sent call must be held as an unknown liability').toMatchObject(
-    [{ state: 'liability_unknown', fault: 'ours', drop_state: 'dropped_no_answer' }],
+    [{ state: 'liability_unknown', fault: 'ours', drop_state: 'dropped_worker_lost' }],
   );
+});
+
+it('REVIEW-3A-5: the deployment sweep holds a sent call that got no answer as dropped_no_answer', async () => {
+  // A conversation call has no lease and no worker to lose: past ten minutes
+  // started with no answer, the model-call half holds it.
+  const unanswered = randomUUID();
+  await s.db.app.withBusiness(s.business, async (tx) => {
+    await tx.query(
+      `insert into public.model_calls
+         (business_id, id, conversation_id, operation_key, state, reserved_minor,
+          route_key, route_reach, credential_kind, accepted_at, started_at)
+       values ($1, $2, gen_random_uuid(), 'model.replay_compose', 'dispatched', 0,
+               'on_premises', 'local', 'api_key',
+               clock_timestamp() - interval '11 minutes',
+               clock_timestamp() - interval '11 minutes')`,
+      [tx.businessId, unanswered],
+    );
+  });
+
+  const outcome = await sweepDeployment(s.db.app, resolve, ['home']);
+
+  expect(outcome).toMatchObject({ ok: true, businesses: [{ key: 'home' }] });
+  expect(await rowsOf(unanswered)).toMatchObject([
+    { state: 'liability_unknown', fault: 'ours', drop_state: 'dropped_no_answer' },
+  ]);
 });
