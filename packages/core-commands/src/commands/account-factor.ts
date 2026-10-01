@@ -44,7 +44,6 @@ import {
   type IssuedFactor,
   type SessionsEnded,
 } from './account-factor-provider.ts';
-import { reconcileFactors } from './account-factor-cleanup.ts';
 import { removeAtProvider } from './account-factor-orphan.ts';
 import { endOthersOnChange, signOutOthers } from './account-factor-sessions.ts';
 import { codeOf, freshSignIn, recordCode, wrongCodeLock } from './account-factor-checks.ts';
@@ -95,7 +94,7 @@ export async function enrolSecondFactor(
     'before',
   );
   if (precondition !== undefined) return precondition;
-  await reconcileFactors(caller, provider);
+
   const issued = await provider.enrol(caller.accessToken);
   const recorded = await judged(caller, act, async (tx, session) => {
     if (!issued.ok) return providerRefusal(issued.fault, 'answer');
@@ -166,7 +165,7 @@ export async function verifySecondFactor(
     await recordFactorVerified(tx, ownFactor(caller, session, live.id));
     return undefined;
   });
-  // No other refusal removes at the provider; a stray waits for `reconcileFactors`.
+  // No other refusal removes at the provider; a stray stays, reported (reconcile: #300).
   if (unrecorded && verified.ok)
     await removeAtProvider(caller, provider, verified.value, target, sending.attempt);
   if (recorded !== undefined || !verified.ok)
@@ -209,7 +208,7 @@ export async function removeSecondFactor(
   if (precondition !== undefined || factor === undefined || code === undefined)
     return precondition ?? refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES);
   const target = factor;
-  await reconcileFactors(caller, provider);
+
   const proved = await provider.verify(caller.accessToken, target.providerFactorId, code);
   let ended = 0;
   const recorded = await judged({ ...sending, proven: proved.ok }, act, async (tx, session) => {

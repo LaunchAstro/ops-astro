@@ -9,7 +9,7 @@
 //
 // No other refusal removes anything at the provider (rounds 7 and 8: the factor
 // may be the one another tab has just recorded). A provider factor nothing
-// records is removed at the person's next enrolment or removal instead.
+// records stays there; reconciling strays is issue #300.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -21,12 +21,10 @@ import {
 } from '../../packages/core-commands/src/commands/account-factor.ts';
 import type {
   FactorProvider,
-  ListedFactor,
   ProviderAnswer,
 } from '../../packages/core-commands/src/commands/account-factor-provider.ts';
 import {
   recordFactorEnrolled,
-  recordFactorRemoved,
   recordFactorVerified,
 } from '../../packages/core-records/src/identity/second-factor.ts';
 import { endOtherSeenSessions } from '../../packages/core-records/src/identity/sessions.ts';
@@ -116,7 +114,6 @@ function racingProvider(
       return Promise.resolve(removal);
     },
     signOut: () => Promise.resolve({ ok: true, value: undefined }),
-    list: () => Promise.resolve({ ok: true, value: [] }),
   };
   return { provider, asked };
 }
@@ -166,7 +163,6 @@ async function stepUpAfterSignOut() {
       return Promise.resolve({ ok: true, value: undefined });
     },
     signOut: () => Promise.resolve({ ok: true, value: undefined }),
-    list: () => Promise.resolve({ ok: true, value: [] }),
   };
   const caller: FactorCaller = {
     database: db.app,
@@ -229,11 +225,8 @@ const statusOf = async (person: string) =>
     ),
   );
 
-/** A provider naming each call, holding `listed`, its verify running `during` first. */
-function namingProvider(
-  listed: readonly ListedFactor[],
-  during: () => Promise<void> = async () => {},
-) {
+/** A provider naming each call, its verify running `during` first. */
+function namingProvider(during: () => Promise<void> = async () => {}) {
   const asked: string[] = [];
   const session = { accessToken: 'aal2', refreshToken: 'r', expiresIn: 3600 };
   const provider: FactorProvider = {
@@ -255,10 +248,6 @@ function namingProvider(
     remove: (_token, factorId) => {
       asked.push(`remove ${factorId}`);
       return Promise.resolve({ ok: true, value: undefined });
-    },
-    list: () => {
-      asked.push('list');
-      return Promise.resolve({ ok: true, value: listed });
     },
     signOut: () => Promise.resolve({ ok: true, value: undefined }),
   };
@@ -334,7 +323,7 @@ describe.skipIf(serverUrl === undefined)(
       const person = await personIn(bravo, subject);
       const factor = await factorIn(person, subject, false);
       // Tab B's completion commits while tab A's good code is at the provider.
-      const { provider, asked } = namingProvider([], async () => {
+      const { provider, asked } = namingProvider(async () => {
         await db.app.withBusiness(bravo, async (tx) => {
           await recordFactorVerified(tx, { personId: person, factorId: factor.id, subject });
           await endOtherSeenSessions(tx, person, randomUUID(), 'factor_change', subject);
@@ -364,9 +353,8 @@ describe.skipIf(serverUrl === undefined)(
         }),
       );
       const person = await personIn(bravo, subject);
-      const { provider, asked } = namingProvider([
-        { factorId: f.providerFactorId, status: 'verified' },
-      ]);
+      // The provider holds F, verified there, the whole time.
+      const { provider, asked } = namingProvider();
 
       const answer = await enrolSecondFactor(callerFor(subject), provider);
       await db.app.withBusiness(alpha, (tx) =>
@@ -378,79 +366,12 @@ describe.skipIf(serverUrl === undefined)(
       expect(await statusOf(person)).toEqual([{ status: 'unverified' }]);
     });
 
-    it('C59: the next enrolment removes an unrecorded factor unverified at the provider, with an audit event, and touches no recorded one', async () => {
-      const subject = `sub-${randomUUID()}`;
-      const person = await personIn(bravo, subject);
-      const recorded = await factorIn(person, subject, false);
-      const stray = `factor-${randomUUID()}`;
-      const { provider, asked } = namingProvider([
-        { factorId: recorded.providerFactorId, status: 'unverified' },
-        { factorId: stray, status: 'unverified' },
-        { factorId: `factor-${randomUUID()}`, status: 'verified' },
-      ]);
-      const before = (await events(bravo, 'account.factor_reconciled')).length;
-
-      const answer = await enrolSecondFactor(callerFor(subject), provider);
-
-      expect('code' in answer ? answer.code : 'issued').toBe('issued');
-      expect(asked).toEqual(['list', `remove ${stray}`, 'enrol']);
-      const reconciled = (await events(bravo, 'account.factor_reconciled')).slice(before);
-      expect(reconciled.map(({ outcome }) => outcome)).toEqual(['applied']);
-    });
-
-    it('C59 sec r9: the next enrolment removes a factor verified at the provider that no business records, after a replaced enrolment', async () => {
-      const subject = `sub-${randomUUID()}`;
-      const person = await personIn(bravo, subject);
-      // Tab A's good code verified F at the provider; tab B's enrolment G
-      // replaced F in the record first, so F was never recorded. G was then
-      // completed and removed.
-      const replaced = `factor-${randomUUID()}`;
-      const g = await factorIn(person, subject, true);
-      await db.app.withBusiness(bravo, (tx) =>
-        recordFactorRemoved(tx, { personId: person, factorId: g.id, subject }),
-      );
-      const { provider, asked } = namingProvider([{ factorId: replaced, status: 'verified' }]);
-      const before = (await events(bravo, 'account.factor_reconciled')).length;
-
-      const answer = await enrolSecondFactor(callerFor(subject), provider);
-
-      expect('code' in answer ? answer.code : 'issued').toBe('issued');
-      expect(asked).toEqual(['list', `remove ${replaced}`, 'enrol']);
-      const reconciled = (await events(bravo, 'account.factor_reconciled')).slice(before);
-      expect(reconciled.map(({ outcome }) => outcome)).toEqual(['applied']);
-    });
-
-    it('C59 sec r9: reconciling never removes a factor another business records as verified', async () => {
-      const subject = `sub-${randomUUID()}`;
-      const alphaPerson = await personIn(alpha, subject);
-      await enrolHere(alpha, alphaPerson, subject, true);
-      const elsewhere = await db.app.withBusiness(alpha, (tx) =>
-        tx.query<{ provider_factor_id: string }>(
-          'select provider_factor_id from public.second_factors where person_id = $1',
-          [alphaPerson],
-        ),
-      );
-      const person = await personIn(bravo, subject);
-      const own = await factorIn(person, subject, true);
-      const stray = `factor-${randomUUID()}`;
-      const { provider, asked } = namingProvider([
-        { factorId: own.providerFactorId, status: 'verified' },
-        { factorId: elsewhere[0]!.provider_factor_id, status: 'verified' },
-        { factorId: stray, status: 'verified' },
-      ]);
-
-      await removeSecondFactor(callerFor(subject), { code: '123456' }, provider);
-
-      expect(asked.slice(0, 3)).toEqual(['list', `remove ${stray}`, 'verify']);
-      expect(asked).not.toContain(`remove ${elsewhere[0]!.provider_factor_id}`);
-    });
-
     it('C59: a removal the product refuses removes nothing at the provider', async () => {
       const subject = `sub-${randomUUID()}`;
       const person = await personIn(bravo, subject);
       await factorIn(person, subject, true);
       // Signed out in another tab while this one held the code.
-      const { provider, asked } = namingProvider([], async () => {
+      const { provider, asked } = namingProvider(async () => {
         await db.app.withBusiness(bravo, (tx) =>
           endOtherSeenSessions(tx, person, randomUUID(), 'factor_change', subject),
         );

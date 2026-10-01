@@ -98,7 +98,6 @@ function gatedProvider(waitFor: number) {
       return done;
     },
     signOut: () => done,
-    list: () => Promise.resolve({ ok: true, value: [] }),
   };
   return { provider, asked, removed };
 }

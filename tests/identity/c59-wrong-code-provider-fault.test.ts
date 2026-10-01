@@ -84,7 +84,6 @@ function faultyProvider(fault: ProviderFault) {
     },
     remove: () => done,
     signOut: () => done,
-    list: () => Promise.resolve({ ok: true, value: [] }),
   };
   return { provider, asked };
 }

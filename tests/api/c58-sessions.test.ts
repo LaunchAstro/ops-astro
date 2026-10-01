@@ -155,7 +155,6 @@ describe.skipIf(serverUrl === undefined)('C58 a person’s own sessions, through
       otherSessions: { ended: 1, signedOutAtProvider: true },
     });
     expect(seen.map((request) => request.route)).toEqual([
-      'GET /user',
       'POST /factors/factor-one/challenge',
       'POST /factors/factor-one/verify',
       'DELETE /factors/factor-one',

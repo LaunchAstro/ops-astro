@@ -27,12 +27,6 @@ export interface FactorSession {
   readonly expiresIn: number;
 }
 
-/** A factor the provider holds for the login, as it lists them. */
-export interface ListedFactor {
-  readonly factorId: string;
-  readonly status: 'verified' | 'unverified';
-}
-
 /** A person's other sessions ended (C58): how many here, and whether the provider confirmed. */
 export interface SessionsEnded {
   readonly ended: number;
@@ -40,7 +34,7 @@ export interface SessionsEnded {
 }
 
 /**
- * The provider's calls made with the person's own token: the four
+ * The provider's calls made with the person's own token: the three
  * second-factor calls, and signing out (C58), of this session (`local`) or of
  * every other (`others`), which revokes those sessions' refresh tokens.
  */
@@ -52,8 +46,6 @@ export interface FactorProvider {
     code: string,
   ): Promise<ProviderAnswer<FactorSession>>;
   remove(accessToken: string, factorId: string): Promise<ProviderAnswer<void>>;
-  /** Every factor the login holds at the provider, in one call. */
-  list(accessToken: string): Promise<ProviderAnswer<readonly ListedFactor[]>>;
   signOut(accessToken: string, scope: 'local' | 'others'): Promise<ProviderAnswer<void>>;
 }
 

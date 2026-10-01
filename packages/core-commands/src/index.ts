@@ -70,7 +70,6 @@ export {
   type FactorProvider,
   type FactorSession,
   type IssuedFactor,
-  type ListedFactor,
   type ProviderAnswer,
   type ProviderFault,
   type SessionsEnded,

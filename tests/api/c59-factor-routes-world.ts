@@ -66,8 +66,6 @@ export const GOOD: Readonly<Record<string, Reply>> = {
     type: 'totp',
     totp: { qr_code: 'data:image/svg+xml;utf-8,<svg/>', secret: CANARY, uri: 'otpauth://totp/x' },
   }),
-  // The login's factors (C59): none at the provider, so nothing to reconcile.
-  'GET /user': json(200, { id: 'user-one', factors: [] }),
   'POST /factors/factor-one/challenge': json(200, { id: 'challenge-one', type: 'totp' }),
   'POST /factors/factor-one/verify': json(200, {
     access_token: 'aal2-access-token',

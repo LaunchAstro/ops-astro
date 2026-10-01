@@ -100,7 +100,6 @@ function countingProvider(good?: string) {
     },
     remove: () => done,
     signOut: () => done,
-    list: () => Promise.resolve({ ok: true, value: [] }),
   };
   return { provider, asked, release: open };
 }
