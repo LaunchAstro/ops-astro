@@ -234,17 +234,22 @@ export async function standsOnShares(tx: TenantQuery, personId: string): Promise
 }
 
 /**
- * Whether the session the token belongs to has ended (C58, 0057 and 0065): a
- * sign-out anywhere, in any business the login reaches or in the browser, ends
- * it in all of them. A token naming no session has none to end.
+ * Whether the session the token belongs to has ended (C58): signed out, in any
+ * business the login reaches (0065), or one of the login's other sessions
+ * ended from any business (0069): not the kept one, first signed in at or
+ * before that ending.
  */
 async function sessionEnded(tx: TenantQuery, presented: VerifiedSubject): Promise<boolean> {
-  if (presented.sessionId === undefined) return false;
   const rows = await tx.query<{ readonly ended: boolean }>(
     `select exists (
-       select 1 from ops.ended_provider_sessions where session_id = $1
+       select 1 from ops.ended_provider_sessions where session_id = $1::uuid
+     ) or exists (
+       select 1 from ops.ended_subject_sessions s
+        where s.subject_digest = encode(sha256(convert_to($2, 'UTF8')), 'hex')
+          and s.kept_session is distinct from $1::uuid
+          and to_timestamp($3::bigint) <= s.ended_before
      ) as ended`,
-    [presented.sessionId],
+    [presented.sessionId ?? null, presented.subject, presented.assurance?.signedInAt ?? null],
   );
   return rows[0]?.ended === true;
 }

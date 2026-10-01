@@ -573,6 +573,16 @@ is here in every business, and a person's session list leaves it out. The
 application may insert and read the id column; nothing changes or deletes a
 row.
 
+## Other sessions ended by subject (0069, C58)
+
+`ops.ended_subject_sessions` holds one row per "end my other sessions" or
+factor change: a SHA-256 digest of the login's subject, the session kept
+(null keeps none) and when. Installation-wide, no business, person or
+reason. Login resolution refuses a token of that subject whose session is not
+the kept one and whose first sign-in is at or before the ending. The
+application may insert the digest and the kept session and read the three
+columns; nothing changes or deletes a row.
+
 ## Overseas-services register (0052, C81)
 
 `overseas_services` holds one row per outside service that receives personal

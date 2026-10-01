@@ -273,7 +273,12 @@ factor change) is refused at login resolution from that commit,
 `AUTH_SESSION_EXPIRED` 401, before the second-factor check, whatever the
 token's own `exp` says. The ending holds in every business the login reaches,
 whichever route asked (`ops.ended_provider_sessions`, 0065; each business's
-own record is `ended_sessions`, 0057). The provider's sign-out, which revokes
+own record is `ended_sessions`, 0057). Ending the other sessions, or a factor
+change, also ends every session of the login but the kept one in every
+business, seen here or not: a token whose first sign-in (`amr`) is at or
+before that ending is refused; a sign-in after it is served
+(`ops.ended_subject_sessions`, 0069, keyed by a SHA-256 digest of the
+subject). The provider's sign-out, which revokes
 the refresh tokens, comes after and cannot undo it.
 
 The business is named by the path and verified by login resolution. A business

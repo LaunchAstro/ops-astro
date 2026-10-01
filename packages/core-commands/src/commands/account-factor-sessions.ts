@@ -17,7 +17,13 @@ export async function endOthersOnChange(
   session: Session,
   presented: VerifiedSubject,
 ): Promise<number> {
-  return await endOtherSeenSessions(tx, session.personId, presented.sessionId, 'factor_change');
+  return await endOtherSeenSessions(
+    tx,
+    session.personId,
+    presented.sessionId,
+    'factor_change',
+    presented.subject,
+  );
 }
 
 /**

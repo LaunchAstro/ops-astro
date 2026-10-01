@@ -50,12 +50,14 @@ describe.skipIf(serverUrl === undefined)('C58 end other sessions in every busine
   it('C58 end other sessions: end-others in alpha refuses a session of the same login that has only called bravo', async () => {
     await inBravoToo(world.mia.subject);
     const [phone, laptop] = [randomUUID(), randomUUID()];
-    const phoneToken = await tokenFor(world.mia.subject, phone);
-    const laptopToken = await tokenFor(world.mia.subject, laptop);
+    // Both signed in a minute before the ending below.
+    const before = now() - 60;
+    const phoneToken = await tokenFor(world.mia.subject, phone, undefined, undefined, before);
+    const laptopToken = await tokenFor(world.mia.subject, laptop, undefined, undefined, before);
     expect(await served(phoneToken, 'alpha')).toEqual(OK);
     // The laptop is past the door in bravo (403 for scope, not for sign-in).
-    const before = await served(laptopToken, 'bravo');
-    expect(before.status).toBe(403);
+    const inBravo = await served(laptopToken, 'bravo');
+    expect(inBravo.status).toBe(403);
 
     // On the phone, in alpha: end every other session.
     const ended = await sessions('end-others', phoneToken);

@@ -93,7 +93,13 @@ async function endAndSignOut(
   const sessionId = caller.presented.sessionId;
   const end = async (tx: TenantQuery, session: Session) =>
     scope === 'others'
-      ? await endOtherSeenSessions(tx, session.personId, sessionId, 'end_others')
+      ? await endOtherSeenSessions(
+          tx,
+          session.personId,
+          sessionId,
+          'end_others',
+          caller.presented.subject,
+        )
       : await endOwnSession(tx, session.personId, sessionId);
   const outcome = await withSession(
     caller.database,
