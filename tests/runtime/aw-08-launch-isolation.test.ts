@@ -253,7 +253,7 @@ it("AW-08 race: behind a grant change in flight, a plan's dispatch is refused LA
   const work = await launched(racing, 'aw08 race launch');
   const plan = await proposeEffect(racing, 'aw08 race plan');
   const working = await pickup(racing, (await approve(racing, plan.plan))['reservationId']);
-  const revoker = racer(racing);
+  const [revoker, a, b] = [racer(racing), racer(racing), racer(racing)];
   const held = barrier();
   const locked = barrier();
   const rolledBack = new Error('the grant change rolls back');
@@ -274,9 +274,10 @@ it("AW-08 race: behind a grant change in flight, a plan's dispatch is refused LA
   const release = held.release;
   try {
     await locked.held;
+    // Each on a backend of its own, so both wait on the grant row at once.
     const both = [
-      dispatchAs(racing, working, working),
-      dispatchAs(racing, work.picked, work.picked),
+      asAgent(racing, dispatchBody(working), String(working['credential']), a),
+      asAgent(racing, dispatchBody(work.picked), String(work.picked['credential']), b),
     ];
     await awaitParked(racing, 'grants', 2);
     release();
@@ -288,6 +289,6 @@ it("AW-08 race: behind a grant change in flight, a plan's dispatch is refused LA
     expect([await marked(racing, plan.taskId), await marked(racing, work.taskId)]).toEqual([0, 1]);
   } finally {
     release();
-    await revoker.close();
+    await Promise.all([revoker.close(), a.close(), b.close()]);
   }
 });
