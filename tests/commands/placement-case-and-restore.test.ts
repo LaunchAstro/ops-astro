@@ -137,7 +137,7 @@ describe.skipIf(serverUrl === undefined)('placement', () => {
 
   const listed = async (board: string | null) =>
     await db.app.withBusiness(business, async (tx) =>
-      (await readBoard(tx, taskTypeId, board)).map((task) => task.id),
+      (await readBoard(tx, taskTypeId, board, null)).map((task) => task.id),
     );
 
   /** Whether a backend in this database is parked on a lock, by the deadline. */

@@ -3,9 +3,9 @@
 //
 // UI-POLISH B4, the task page's second piece (TASK-PAGE.md S5, S6): the Team |
 // Agent perspective tabs (TP-12) with the working controls arranged under them,
-// none removed; the fact strip (DS-TASK-1) and the seven fields batch/1 has no
-// read for, drawn from sample values inside the shared mock label and nowhere
-// else; and the receipt drawn as the mockup's evidence box (DS-TASK-6).
+// none removed; the fact strip (DS-TASK-1) and the ten fields, every one now
+// the record's (MP-4-2), so none sits inside the shared mock label; and the
+// receipt drawn as the mockup's evidence box (DS-TASK-6).
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -45,6 +45,7 @@ const TASK = {
   history: [],
   comments: [],
   alerts: [],
+  clientAccess: true,
   proposals: [
     {
       lineageId: 'l-1',
@@ -229,34 +230,36 @@ describe('B4 switching perspective', () => {
   });
 });
 
-describe('B4 the sample facts, inside the mock label and nowhere else', () => {
-  it('marks the strip and exactly the seven fields batch/1 has no read for', async () => {
+describe('B4 the facts, the record’s and outside the mock label', () => {
+  it('marks none of the strip or the ten fields as a sample: every one is read', async () => {
     const { page } = await open();
     await tick();
 
     const facts = page.find('.tpr__facts');
     const fields = marked(facts, '.tf__grid .tf__k');
-    expect(fields.mock).toStrictEqual([
+    expect(fields.mock).toStrictEqual([]);
+    expect(fields.real).toStrictEqual([
+      'Assignee',
       'Client',
+      'Due date',
       'Estimate',
       'Project',
       'Category',
       'Stage',
+      'Status',
       'Page link',
       'Handling',
     ]);
-    expect(fields.real).toStrictEqual(['Assignee', 'Due date', 'Status']);
     const strip = marked(facts, '.mstrip .mstrip__k');
-    expect(strip.real).toStrictEqual([]);
-    expect(strip.mock.map((key) => key.replace('derived', '').trim())).toStrictEqual([
+    expect(strip.mock).toStrictEqual([]);
+    expect(strip.real.map((key) => key.replace('derived', '').trim())).toStrictEqual([
       'Whose move',
       'Rank',
       'Ad hoc',
       'Client access',
     ]);
-    // The real values carry no mark, and nothing outside the facts band does.
-    expect(page.all('[data-provenance="mock"]').every((node) => facts?.contains(node))).toBe(true);
-    expect(page.all('[data-provenance="mock"] .mocktag').length).toBeGreaterThan(0);
+    // A field the read carries leaves the samples, and its mock label with it.
+    expect(facts?.querySelectorAll('[data-provenance="mock"]').length).toBe(0);
     await page.unmount();
   });
 
@@ -270,9 +273,9 @@ describe('B4 the sample facts, inside the mock label and nowhere else', () => {
     expect(strip?.querySelectorAll('[aria-checked]').length).toBe(0);
     const on = (name: string): string | undefined =>
       strip?.querySelector<HTMLElement>(`[role="img"][aria-label="${name}"]`)?.dataset['on'];
-    expect([on('Client access: yes'), on('Ad hoc: no')]).toEqual(['true', 'false']);
+    expect([on('Client access: yes'), on('Ad hoc: no')]).toEqual(['yes', 'no']);
     expect(TASK_SHEET).toMatch(
-      /\.mstrip \.check\[data-on='true'\]\s*\{[^}]*border-color:\s*var\(--accent\)/u,
+      /\.mstrip \.check\[data-on='yes'\]\s*\{[^}]*border-color:\s*var\(--accent\)/u,
     );
     await page.unmount();
   });

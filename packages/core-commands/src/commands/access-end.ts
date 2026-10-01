@@ -91,7 +91,7 @@ export async function endAccessOnSettings(
   }
   if ((await otherManagers(tx, [], personId)) === 0) return refused(lastManager());
 
-  const authority = await endPersonAuthority(tx, personId);
+  const authority = await endPersonAuthority(tx, personId, context.session.actorId);
   const credentialsRevoked = await revokeIssued(tx, personId, context.session.actorId);
   const endings = await endStanding(tx, personId, context.session.actorId);
   return applied(personId, null, {

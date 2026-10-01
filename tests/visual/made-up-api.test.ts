@@ -2,8 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { READ_NAMES } from '../../apps/web/src/operations/read-names.ts';
 import { pathOf, PREFIX } from '../../packages/core-wire/src/index.ts';
-import { MADE_UP_READS, madeUpAnswer } from './made-up-api.ts';
-import { TASKS } from './made-up-data.ts';
+import { MADE_UP_READS, madeUpAnswer, MOCKUP_TASK_KEY, TASKS } from './made-up-api.ts';
 
 // Reads no screen draws at the harness's addresses: the preset plan is the
 // command line's, the unattended list is the operations view's. No screen asks
@@ -20,7 +19,16 @@ const NOT_DRAWN = new Set([
 describe('the made-up reads the width-and-theme harness draws from', () => {
   it('answers a read at the path the app asks it on, with the made-up rows', () => {
     const answer = madeUpAnswer(`${PREFIX.person}alpha${pathOf('task.board')}`);
-    expect(answer).toEqual({ status: 200, json: { ok: true, tasks: TASKS } });
+    expect(answer).toEqual({
+      status: 200,
+      json: {
+        ok: true,
+        tasks: TASKS,
+        changedAt: '2026-09-25T04:00:00.000Z',
+        viewer: 'p-nathan',
+        owed: 0,
+      },
+    });
   });
 
   it('answers the live stream as down, so nothing streams into a capture', () => {
@@ -50,7 +58,7 @@ describe('the made-up reads in another state', () => {
   it('answers a read named empty with no rows, and the rest as before', () => {
     expect(madeUpAnswer(board, { empty: ['task.board'] })).toEqual({
       status: 200,
-      json: { ok: true, tasks: [] },
+      json: { ok: true, tasks: [], changedAt: null, viewer: 'p-nathan', owed: 0 },
     });
     expect(madeUpAnswer(task, { empty: ['task.board'] })).toEqual(madeUpAnswer(task));
   });
@@ -72,5 +80,16 @@ describe('the made-up reads in another state', () => {
 
   it('answers exactly as the default with an empty variant', () => {
     expect(madeUpAnswer(board, {})).toEqual(madeUpAnswer(board));
+  });
+
+  it("reads the mockup task page's task unranked, as its strip draws it, and any other ranked", () => {
+    const read = `${PREFIX.person}alpha${pathOf('task.read')}`;
+    const rankOf = (recordId: string) => {
+      const answer = madeUpAnswer(read, {}, { recordId });
+      if (answer === undefined || !('json' in answer)) throw new Error('task.read not answered');
+      return (answer.json as { task: { rank: { number: number | null } } }).task.rank.number;
+    };
+    expect(rankOf(MOCKUP_TASK_KEY)).toBeNull();
+    expect(rankOf('T-1')).toBe(1);
   });
 });

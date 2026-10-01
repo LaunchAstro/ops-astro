@@ -1,0 +1,80 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// Shared by the MP-7-1 read suites: a command that must apply, a task made
+// and assigned, and a reader's to-dos.
+//
+// A harness, not a suite: nothing here runs on its own.
+
+import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
+import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
+import type { BusinessId } from '../../packages/core-records/src/index.ts';
+import type { TaskTodosResult } from '../../packages/core-wire/src/index.ts';
+import type { Member } from './fixture.ts';
+import type { TimeWorld } from './time-world.ts';
+
+type Body = Record<string, unknown>;
+
+/** The commands that name the task's revision: the rest are rows beside it. */
+const REVISED: ReadonlySet<string> = new Set(['task.assign', 'task.complete', 'task.comment']);
+
+async function revisionOf(w: TimeWorld, recordId: string): Promise<number> {
+  const rows = await w.db.admin.execute<{ readonly revision: string }>(
+    'select revision::text as revision from public.records where id = $1',
+    [recordId],
+  );
+  return Number(rows[0]?.revision);
+}
+
+/** A setup command that must apply, at the task's current revision where it names one. */
+export async function commandOk(
+  w: TimeWorld,
+  business: BusinessId,
+  member: Member,
+  body: Body,
+): Promise<{ readonly recordId: string | null; readonly detail?: Readonly<Body> }> {
+  const recordId = body['recordId'];
+  const revised =
+    REVISED.has(String(body['command'])) && typeof recordId === 'string'
+      ? { expectedRevision: await revisionOf(w, recordId) }
+      : {};
+  const answer = await w.as(business, member, { ...body, ...revised });
+  if (isCommandRefusal(answer))
+    throw new Error(`${String(body['command'])} refused ${answer.code}`);
+  return answer as { readonly recordId: string | null; readonly detail?: Readonly<Body> };
+}
+
+/** A task made by `by` (with any create operands) and assigned to `assignee`. */
+export async function assignTo(
+  w: TimeWorld,
+  business: BusinessId,
+  by: Member,
+  title: string,
+  assignee: Member,
+  operands: Body = {},
+): Promise<string> {
+  const made = await commandOk(w, business, by, {
+    command: 'task.create',
+    fields: { title },
+    ...operands,
+  });
+  const recordId = String(made.recordId);
+  await commandOk(w, business, by, {
+    command: 'task.assign',
+    recordId,
+    fields: { assignee: assignee.personId },
+  });
+  return recordId;
+}
+
+/** The member's to-dos, or the refusal thrown. */
+export async function todosOf(
+  w: TimeWorld,
+  business: BusinessId,
+  member: Member,
+): Promise<TaskTodosResult> {
+  const answer = await executeRead(w.db.app, business, member.presented, {
+    read: 'task.todos',
+  } as never);
+  if (isCommandRefusal(answer)) throw new Error(`task.todos refused ${answer.code}`);
+  return answer as unknown as TaskTodosResult;
+}

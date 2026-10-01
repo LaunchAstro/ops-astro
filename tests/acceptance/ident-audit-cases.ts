@@ -34,6 +34,7 @@ import {
   type Answer,
   type Caller,
 } from './world.ts';
+import { logTime } from '../../packages/core-records/src/tasks/time.ts';
 
 export type Body = Readonly<Record<string, unknown>>;
 
@@ -78,6 +79,8 @@ export interface IdentWorld {
     picked: Picked;
     batchId: string;
     grantId: string;
+    /** A time entry of bravo's admin on bravo's task (MP-4-6). */
+    entryId: string;
     legalVersionId: string;
     credentialId: string;
     clientId: string;
@@ -224,6 +227,18 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
   const trashable = await taskOf(bravoAdmin, 'a bravo task in the trash', 'bravo');
   const trashBody = { recordId: trashable.id, expectedRevision: trashable.revision };
   const trashed = need(await person(bravoAdmin, 'task.trash', trashBody, 'bravo'), 'task.trash');
+  const bravoEntry = await world.db.app.withBusiness(
+    world.bravo,
+    async (tx) =>
+      await logTime(tx, {
+        taskId: bravoTask.id,
+        personId: bravoAdmin.personId as string,
+        actorId: bravoAdmin.actorId as string,
+        minutes: 5,
+        note: 'a bravo entry alpha is handed',
+      }),
+  );
+  if (bravoEntry.kind !== 'logged') throw new Error('ident-audit: bravo’s entry was not logged');
   const bravoGrants = await world.db.admin.execute<{ readonly id: string }>(
     `select id from public.grants
       where business_id = $1 and subject_kind = 'person' and subject_id = $2
@@ -263,6 +278,7 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
       picked: bravoPicked,
       batchId: String(trashed['batchId']),
       grantId: String(bravoGrants[0]?.id),
+      entryId: bravoEntry.entryId,
       ...bravoRows,
     },
     otherPicked,
@@ -277,12 +293,3 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
     },
   };
 }
-
-// Durable state and the audit chain, read on the administrative connection.
-
-/** Evidence of attempts, which a committed refusal writes by contract (T1). */
-export const EVIDENCE_TABLES: ReadonlySet<string> = new Set([
-  'audit_events',
-  'operations',
-  'authentication_attempts',
-]);

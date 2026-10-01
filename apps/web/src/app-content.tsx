@@ -4,7 +4,8 @@
 // public page (C81's legal documents), sign-in, a manifest page's placeholder or refusal, or not-found.
 
 import type { ReactElement } from 'react';
-import { gateOf, type RouteMatch } from './routes.ts';
+import { gateOf } from './route-gate.ts';
+import type { RouteMatch } from './routes.ts';
 import type { PageMatch } from './manifest.ts';
 import { ClientRefused, NotFound, PagePlaceholder, SignedInAlready } from './route-views.tsx';
 import {

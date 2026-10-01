@@ -21,6 +21,7 @@ import { buildStamp, useCanonicalAddress, useOfflineSince, usePersonName } from 
 import { FrameStrip } from './strip.tsx';
 import { HeldAddressNotice, heldAddressOffer, type HeldOffer } from './held-address.tsx';
 import { useDock } from './dock.ts';
+import { useDockPanel } from './screens/task/DockPanel.tsx';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, type Interruption, type Session, type SessionStore } from './session/token.ts';
 import { SignIn } from './screens/SignIn.tsx';
@@ -188,6 +189,7 @@ export function App(props: AppProps): ReactElement {
 
   const bare = here.split(/[?#]/u)[0] ?? here;
   const grantKey = grantKeyOf(session);
+  const taskDock = useDockPanel({ client, grantKey, session, storage: props.storage });
   const { match, at, refused, rail, tabs, identity, face } = frameAt(
     bare,
     session?.businessKey ?? null,
@@ -231,6 +233,7 @@ export function App(props: AppProps): ReactElement {
         ),
       storage: props.storage,
       navigate: props.navigate,
+      taskPanel: taskDock.host,
     },
     open: props,
   });
@@ -276,6 +279,7 @@ export function App(props: AppProps): ReactElement {
           dock={dock.tabs}
           onDockTab={dock.press}
           seated={false}
+          panel={taskDock.panel}
         >
           <FaceProvider face={face}>{content}</FaceProvider>
         </Shell>
