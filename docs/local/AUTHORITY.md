@@ -341,10 +341,15 @@ fields and client-audience comments only".
   identity. Any live business grant disqualifies. A scoped `comment` or
   `write` row alone is no standing, and the login answers
   `AUTH_NO_MEMBERSHIP`.
-- **The one write is a client comment.** A session with no membership
-  reaches no write except `task.comment` (`EXTERNAL_WRITES` in
-  `commands/prepare.ts`, checked before the authority check), and then only
-  in the `client` audience (`commentOnTask` in `commands/tasks-comment.ts`).
+- **The one write on business records is a client comment.** A session with
+  no membership reaches no write except those in `EXTERNAL_WRITES`
+  (core-wire `surface.ts`, checked in `commands/prepare.ts` before the
+  authority check): `task.comment`, only in the `client` audience
+  (`commentOnTask` in `commands/tasks-comment.ts`); and its own account's
+  writes, `session.end`, `inbox.seen` on its own item, and `preference.save`
+  and `preference.dismiss_tip` on its own preference rows (`preference:write`
+  is every signed-in person's, ORCH50's ruling of 1 Oct 2026;
+  `tests/api/preference-write-client-user.test.ts`).
   Any other write is `SCOPE_NOT_GRANTED` 403, whatever other grant rows exist.
   With a `comment` grant on the task, an internal comment is
   `AUDIENCE_NOT_PERMITTED` 422. Without one, a comment in either audience is
