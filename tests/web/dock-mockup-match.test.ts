@@ -12,9 +12,9 @@
 // (its strip is off screen at 900 and below, D9) or the state takes a
 // shift-click, from the mockup inventory's measured captures (ops-astro-roadmap
 // `.local/mockup-inventory-2026-09-26/captures/DOCK/`, numbers copied below).
-// The picture comparison against the mockup itself runs locally with the
-// mockup (`tests/visual/dock-mockup.ts`, MOCKUP_DIR); its pictures and report
-// are kept under the roadmap's
+// The pinned values are re-measured from the mockup itself locally
+// (`MOCKUP_DIR=<clone> node tests/visual/look.ts --measure --screen dock`);
+// evidence is kept under the roadmap's
 // `.local/design-system-2026-09-26/evidence/SL06-dock-mockup-match/`.
 
 import { readFileSync } from 'node:fs';
