@@ -113,6 +113,7 @@ import {
   MISMATCH_FIXES,
   namedSession,
   sessionIdOf,
+  staleSessions,
   unnamedSession,
   SESSION_COOKIE_OPTIONS,
 } from './auth/session.ts';
@@ -293,7 +294,12 @@ async function admit(
   // A session cookie from another site's page stops here, before the
   // verifier reads it (`auth/session.ts`).
   if (crossSiteSession(context.req)) return refuse(context, CROSS_SITE());
+  // Lapsed and surplus other-tab cookies go with any answer (`staleSessions`).
+  for (const name of staleSessions(context.req, Math.floor(Date.now() / 1000))) {
+    deleteCookie(context, name, SESSION_COOKIE_OPTIONS);
+  }
   const { presented, credential } = await presentedBy(options.verify, context.req, entry === AGENT);
+  if (presented === 'unavailable') return unavailable(context);
   if (typeof presented === 'object') context.set(PRESENTED, presented);
   else clearNamedCookie(context);
   if (presented === undefined || presented === 'absent') {
@@ -357,6 +363,7 @@ export function createApi(options: ApiOptions): Hono {
     if (!fromOwnPages(context.req)) return refuse(context, CROSS_SITE());
     const token = bearerOf(context.req);
     const presented = token === undefined ? undefined : await options.verify(context.req);
+    if (presented === 'unavailable') return unavailable(context);
     if (presented === 'expired') {
       return refuse(context, refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED_FIXES));
     }
@@ -891,6 +898,17 @@ function refuse(context: Context, refusal: CommandRefusal): Response {
   );
 }
 
+/**
+ * The provider's key set could not be reached, so no credential was checked.
+ * Not a refusal: no `refused` flag, the page keeps its session, nothing counted.
+ */
+function unavailable(context: Context): Response {
+  context.set(REFUSAL, 'SERVICE_UNAVAILABLE');
+  return context.json({ code: 'SERVICE_UNAVAILABLE', names: [], fixes: [RETRY] }, 503);
+}
+
+const RETRY =
+  'The service could not complete the request. Retry; if it persists, check /api/health.';
 const PRESENTED = 'presented';
 const REFUSAL = 'refusal';
 const HANDED_OUT = 'handed-out';
