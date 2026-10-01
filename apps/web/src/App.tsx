@@ -290,7 +290,7 @@ export function App(props: AppProps): ReactElement {
         const target = pathTo(panel.route);
         props.navigate(here === target ? pathTo('agency:projects-board') : target);
       }}
-      seated={false}
+      seated={dock.seated}
       panel={dock.panel}
     >
       {at === null || refused || session === null ? null : <RouteTabs at={at} />}

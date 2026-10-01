@@ -148,3 +148,40 @@
     display: none;
   }
 }
+
+/* The dock task panel's place (MP-4-8, T-D19, DS-SIDE-7): `seatFor` names the
+   placement and the width, set on the element. Seated it stands at the edge with no lift;
+   floating it lifts over the page; below the side rail it is the sheet under
+   the content, and on a phone the bottom sheet over the dock strip. The page's
+   third track beside a seated panel is the dock frame's (MP-3-1). */
+.dtp-seat {
+  position: fixed;
+  inset: 0 0 0 auto;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  border-left: 1px solid var(--border);
+  background: var(--rail-bg);
+}
+
+.dtp-seat[data-placement='floating'],
+.dtp-seat[data-placement='bottom-sheet'] {
+  box-shadow: var(--shadow-overlay);
+}
+
+.dtp-seat[data-placement='sheet'],
+.dtp-seat[data-placement='bottom-sheet'] {
+  inset: auto 0 0;
+  border-top: 1px solid var(--border);
+  border-left: 0;
+}
+
+.dtp-seat[data-placement='sheet'] {
+  max-height: calc(100vh - 18rem);
+}
+
+.dtp-seat[data-placement='bottom-sheet'] {
+  bottom: var(--dock-w);
+  height: min(72dvh, 560px);
+}

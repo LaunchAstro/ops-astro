@@ -4,12 +4,15 @@
 // (MP-3-1) draws panels in place. A new door or task remounts it; a new-task
 // draft (MP-4-13) takes the same slot. Signed out, the slot is empty.
 // `useDockPanel` holds the panel's state for the application: the host a
-// screen opens rows through, and what the slot draws.
+// screen opens rows through, what the slot draws, and whether the open panel
+// is seated (the seat line, `seat-line.ts`, read from the frame's facts).
 
 import type { ReactElement } from 'react';
 import type { OperationsClient } from '../../operations/client.ts';
 import type { Session } from '../../session/token.ts';
+import { DockSeat, useSeat } from './DockSeat.tsx';
 import { DraftPanel } from './DraftPanel.tsx';
+import { MOCK_FRAME, type FrameFactsSource } from './frame-seam.ts';
 import { TaskPanel } from './Panel.tsx';
 import { useTaskPanel, type TaskPanelState } from './panel-host.ts';
 
@@ -18,23 +21,40 @@ interface DockPanelProps {
   readonly grantKey: string;
   readonly session: Session | null;
   readonly storage: Storage | null;
+  /** The dock frame's facts; made up (and marked) until MP-3-1 joins. */
+  readonly frame?: FrameFactsSource;
 }
 
 export function useDockPanel(props: DockPanelProps): {
   readonly host: TaskPanelState['host'];
   readonly panel: ReactElement | null;
+  /** Whether an open panel sits seated, for the shell's `seated`. */
+  readonly seated: boolean;
 } {
   const taskPanel = useTaskPanel();
-  return { host: taskPanel.host, panel: <DockPanel {...props} taskPanel={taskPanel} /> };
+  const frame = props.frame ?? MOCK_FRAME;
+  const seat = useSeat(frame);
+  const open = props.session !== null && (taskPanel.draft !== null || taskPanel.opening !== null);
+  return {
+    host: taskPanel.host,
+    panel: <DockPanel {...props} frame={frame} taskPanel={taskPanel} />,
+    seated: open && seat.placement === 'seated',
+  };
 }
 
-function DockPanel(props: {
-  readonly client: OperationsClient;
-  readonly grantKey: string;
-  readonly session: Session | null;
-  readonly storage: Storage | null;
-  readonly taskPanel: TaskPanelState;
-}): ReactElement | null {
+function DockPanel(
+  props: DockPanelProps & {
+    readonly frame: FrameFactsSource;
+    readonly taskPanel: TaskPanelState;
+  },
+): ReactElement | null {
+  const body = panelBody(props);
+  return body === null ? null : <DockSeat source={props.frame}>{body}</DockSeat>;
+}
+
+function panelBody(
+  props: DockPanelProps & { readonly taskPanel: TaskPanelState },
+): ReactElement | null {
   const { client, grantKey, session, taskPanel } = props;
   if (session === null) return null;
   if (taskPanel.draft !== null) {

@@ -47,7 +47,9 @@ describe('MP-4-8 seat line', () => {
     expect(seatFor(facts({ viewport: 2200, panels: 2 })).placement).toBe('seated');
     expect(seatFor(facts({ viewport: 2199, panels: 2 })).placement).toBe('floating');
   });
+});
 
+describe('MP-4-8 seat line: the floor, 1440 and the sheets', () => {
   it('floats at the width asked for rather than narrowing to fit the line', () => {
     expect(seatFor(facts({ viewport: 1480 }))).toEqual({ placement: 'floating', width: 550 });
   });
@@ -93,7 +95,7 @@ describe('MP-4-8 seat line: the panel takes its place from the rule', () => {
     const { host } = await mount(<DockSeat source={source('real')}>{panel()}</DockSeat>);
     const seat = host.querySelector<HTMLElement>('.dtp-seat');
     expect(seat?.dataset['placement']).toBe('seated');
-    expect(seat?.style.getPropertyValue('--dtp-w')).toBe('550px');
+    expect(seat?.style.width).toBe('550px');
     expect(seat?.querySelector('[data-task-panel]')).not.toBeNull();
   });
 

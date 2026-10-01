@@ -193,6 +193,16 @@ The dock task panel (`screens/task/Panel.tsx`, MP-4-8) is where a task is
 changed beside its page. A page door opens it (`useTaskPanel` in
 `screens/task/panel-host.ts`, held by `App`) in the shell's panel slot, since
 the dock frame that seats, floats and closes panels (MP-3-1) is not on main.
+Its place follows the seat line (T-D19, `screens/task/seat-line.ts`): it seats
+only when every open panel at the width asked for fits beside the 836px
+content floor (`n × per ≤ vw − rail − 40 − 836`, from 1440), else it floats at
+that width, never under 380; from 901 to 1279 it is the sheet under the
+content and at 640 and under the bottom sheet (`DockSeat.tsx`, styles in
+`styles/6-slice.css`). The frame's facts (rail state, panels open, width
+asked) come through `FrameFactsSource` (`frame-seam.ts`); until MP-3-1 joins,
+`MOCK_FRAME` reads the real window width, makes up the rest, and marks the
+panel with the one Mock corner label. The shell's `seated` follows it; the
+page's third track beside a seated panel is the frame's.
 It reads the task through `task.read` as the page does and draws the same
 facts, rank, calc line and Team and Agent counts; the live Ad hoc and Client
 access ticks; the description on Team and the agent brief on Agent as
