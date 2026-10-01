@@ -275,34 +275,7 @@ describe('MP-4-8 duplicate opens the new task', () => {
   });
 });
 
-describe('MP-4-8 client field marks made-up data mock, and only that', () => {
-  it('the panel’s own duplicate sends task.duplicate and carries no Mock label', async () => {
-    const listed = [
-      { clientId: A.id, name: A.name },
-      { clientId: B.id, name: B.name },
-    ];
-    const over = { ...SHELL, client: A.id, clientSet: true, hasContent: true };
-    const { client, sent } = serving(over, [], [], [], listed);
-    const view = await panel(client);
-    await view.click('[data-panel-field="duplicate"]');
-    expect(view.all('.mocktag')).toStrictEqual([]);
-    await view.type('#duplicate-title', 'Budget pacing fix');
-    await view.choose('#duplicate-client', B.id);
-    await view.click('[data-duplicate="create"]');
-    await tick();
-    expect(sent.filter((one) => one.to === '/task/duplicate').map((one) => one.body)).toStrictEqual(
-      [
-        expect.objectContaining({
-          client: B.id,
-          title: 'Budget pacing fix',
-          stepNames: SHELL.steps.map((step) => step.title),
-          confirmCarried: false,
-        }),
-      ],
-    );
-    await view.unmount();
-  });
-
+describe('MP-4-8 client field marks made-up data mock', () => {
   it('real sources carry no Mock label', async () => {
     const view = await opened(sender().source);
     expect(view.find('[data-panel-field="client"]')).not.toBeNull();

@@ -15,7 +15,13 @@ import { isCommandRefusal } from '../../packages/core-commands/src/commands/refu
 import type { BusinessId } from '../../packages/core-records/src/index.ts';
 import { insertBusiness } from '../identity/fixture.ts';
 import { enrol, grantTo, installSpine, WHOLE_BUSINESS, type Member } from '../commands/fixture.ts';
-import { agentWorld, codeOf, detailOf, type AgentWorld } from '../commands/agent-fixture.ts';
+import {
+  agentWorld,
+  codeOf,
+  detailOf,
+  type AgentWorld,
+  type Decider,
+} from '../commands/agent-fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -95,6 +101,72 @@ async function readAs(
   return { code: 'ok', task, body };
 }
 
+interface Scene {
+  readonly decider: Decider;
+  readonly clientA: string;
+  readonly clientB: string;
+  readonly taskA: string;
+}
+
+/** Another business: its member is refused the task, and A's id never shows. */
+async function crossBusiness({ clientA, taskA }: Scene): Promise<void> {
+  const bravo = (await insertBusiness(
+    world.db.app,
+    `tcfi-b-${randomUUID().slice(0, 8)}`,
+  )) as BusinessId;
+  await installSpine(world.db.app, bravo);
+  const bravoReader = await enrol(world.db.app, bravo, 'bravo-reader');
+  await world.db.app.withBusiness(bravo, async (tx) => {
+    await grantTo(tx, bravoReader, 'read');
+  });
+  const fromBravo = await readAs(bravo, bravoReader, taskA);
+  expect(fromBravo.code).toBe('NOT_FOUND');
+  expect(fromBravo.body).not.toContain(clientA);
+}
+
+/**
+ * Another client: held to B and shared A's one task, the task reads and its
+ * client does not. Its own side: the same shape held to A, and a business-wide
+ * reader, each read A.
+ */
+async function crossClient({ decider, clientA, clientB, taskA }: Scene): Promise<void> {
+  const heldToB = await enrol(world.db.app, world.business, 'held-to-b');
+  const heldToA = await enrol(world.db.app, world.business, 'held-to-a');
+  await world.db.app.withBusiness(world.business, async (tx) => {
+    await grantTo(tx, heldToB, 'read', { kind: 'party', id: clientB });
+    await grantTo(tx, heldToB, 'read', { kind: 'record', id: taskA });
+    await grantTo(tx, heldToA, 'read', { kind: 'party', id: clientA });
+    await grantTo(tx, heldToA, 'read', { kind: 'record', id: taskA });
+  });
+  const fromB = await readAs(world.business, heldToB, taskA);
+  expect(fromB.code).toBe('ok');
+  expect(fromB.task?.['client']).toBeNull();
+  expect(fromB.task?.['clientSet']).toBe(true);
+  expect(fromB.body).not.toContain(clientA);
+  const fromA = await readAs(world.business, heldToA, taskA);
+  expect([fromA.code, fromA.task?.['client']]).toStrictEqual(['ok', clientA]);
+  expect((await readAs(world.business, decider, taskA)).task?.['client']).toBe(clientA);
+}
+
+/** A live delegation: the agent reads its own task without client facts, and not A's task. */
+async function crossDelegation({ decider, clientA, taskA }: Scene): Promise<void> {
+  const picked = await world.pickUp(decider, 'delegated');
+  const own = await world.asAgent(
+    { command: 'task.read', operationId: randomUUID(), recordId: picked.taskId },
+    picked.credential,
+  );
+  expect(codeOf(own)).toBe('not-a-refusal');
+  const ownTask = detailOf(own)['task'] as Body;
+  expect('client' in ownTask).toBe(false);
+  expect('hasContent' in ownTask).toBe(false);
+  const other = await world.asAgent(
+    { command: 'task.read', operationId: randomUUID(), recordId: taskA },
+    picked.credential,
+  );
+  expect(codeOf(other)).not.toBe('not-a-refusal');
+  expect(JSON.stringify(other)).not.toContain(clientA);
+}
+
 describe.skipIf(serverUrl === undefined)('MP-4-8 task.read client id isolation', () => {
   it('MP-4-8 task.read sends a client id only to a reader whose grants reach that client', async () => {
     const decider = await world.decider('tcfi-decider');
@@ -102,56 +174,9 @@ describe.skipIf(serverUrl === undefined)('MP-4-8 task.read client id isolation',
       await grantTo(tx, decider, 'share');
     });
     const [clientA, clientB] = [await clientBy(decider), await clientBy(decider)];
-    const taskA = await taskOf(decider, clientA);
-
-    // Another business: its member is refused the task, and A's id never shows.
-    const bravo = (await insertBusiness(
-      world.db.app,
-      `tcfi-b-${randomUUID().slice(0, 8)}`,
-    )) as BusinessId;
-    await installSpine(world.db.app, bravo);
-    const bravoReader = await enrol(world.db.app, bravo, 'bravo-reader');
-    await world.db.app.withBusiness(bravo, async (tx) => {
-      await grantTo(tx, bravoReader, 'read');
-    });
-    const fromBravo = await readAs(bravo, bravoReader, taskA);
-    expect(fromBravo.code).toBe('NOT_FOUND');
-    expect(fromBravo.body).not.toContain(clientA);
-
-    // Another client: held to B, shared A's one task. The task reads, its client does not.
-    const heldToB = await enrol(world.db.app, world.business, 'held-to-b');
-    // Its own side: the same shape held to A instead, and the same task names A.
-    const heldToA = await enrol(world.db.app, world.business, 'held-to-a');
-    await world.db.app.withBusiness(world.business, async (tx) => {
-      await grantTo(tx, heldToB, 'read', { kind: 'party', id: clientB });
-      await grantTo(tx, heldToB, 'read', { kind: 'record', id: taskA });
-      await grantTo(tx, heldToA, 'read', { kind: 'party', id: clientA });
-      await grantTo(tx, heldToA, 'read', { kind: 'record', id: taskA });
-    });
-    const fromB = await readAs(world.business, heldToB, taskA);
-    expect(fromB.code).toBe('ok');
-    expect(fromB.task?.['client']).toBeNull();
-    expect(fromB.task?.['clientSet']).toBe(true);
-    expect(fromB.body).not.toContain(clientA);
-    const fromA = await readAs(world.business, heldToA, taskA);
-    expect([fromA.code, fromA.task?.['client']]).toStrictEqual(['ok', clientA]);
-    expect((await readAs(world.business, decider, taskA)).task?.['client']).toBe(clientA);
-
-    // A live delegation: the agent reads its own task without client facts, and not A's task.
-    const picked = await world.pickUp(decider, 'delegated');
-    const own = await world.asAgent(
-      { command: 'task.read', operationId: randomUUID(), recordId: picked.taskId },
-      picked.credential,
-    );
-    expect(codeOf(own)).toBe('not-a-refusal');
-    const ownTask = detailOf(own)['task'] as Body;
-    expect('client' in ownTask).toBe(false);
-    expect('hasContent' in ownTask).toBe(false);
-    const other = await world.asAgent(
-      { command: 'task.read', operationId: randomUUID(), recordId: taskA },
-      picked.credential,
-    );
-    expect(codeOf(other)).not.toBe('not-a-refusal');
-    expect(JSON.stringify(other)).not.toContain(clientA);
+    const scene = { decider, clientA, clientB, taskA: await taskOf(decider, clientA) };
+    await crossBusiness(scene);
+    await crossClient(scene);
+    await crossDelegation(scene);
   });
 });
