@@ -135,14 +135,20 @@ export async function grantFingerprint(
   tx: TenantQuery,
   subjects: readonly Subject[],
 ): Promise<string> {
+  // One row per ticked key for a subject held within keys (API-2), so only
+  // those keys' grants count; a key of null stands for every key.
+  const asked = subjects.flatMap((subject) =>
+    (subject.within ?? [null]).map((key) => ({ kind: subject.kind, id: subject.id, key })),
+  );
   const [row] = await tx.query<{ readonly fingerprint: string }>(
     `${EFFECTIVE}
      select encode(sha256(convert_to(coalesce(string_agg(e.id::text, ',' order by e.id), ''),
                                      'UTF8')), 'hex') as fingerprint
        from effective e
-      where exists (select 1 from unnest($1::text[], $2::uuid[]) as s (kind, id)
-                     where s.kind = e.subject_kind and s.id = e.subject_id)`,
-    [subjects.map((subject) => subject.kind), subjects.map((subject) => subject.id)],
+      where exists (select 1 from unnest($1::text[], $2::uuid[], $3::text[]) as s (kind, id, key)
+                     where s.kind = e.subject_kind and s.id = e.subject_id
+                       and (s.key is null or s.key = e.collection || ':' || e.action))`,
+    [asked.map((s) => s.kind), asked.map((s) => s.id), asked.map((s) => s.key)],
   );
   if (row === undefined) throw new Error('grant fingerprint answered no row');
   return row.fingerprint;
