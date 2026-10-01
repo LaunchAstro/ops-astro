@@ -14,8 +14,9 @@
 // other. `applyApprovals` is the agent doing that work: it picks it up, writes
 // exactly what the item named into OPS_LOCAL_AGENT_HOME/approvals.json, and
 // hands it back completed, with no model call. A no rejects the gate and
-// nothing is queued, so nothing is written. Run `applyApprovals` before the
-// tick's task pass, so the approval's own work is never sent to the model.
+// nothing is queued, so nothing is written. The tick runs `applyApprovals`
+// before its task pass, and the task pass skips this purpose whatever the
+// order, so the approval's own work is never sent to the model.
 //
 // Both refuse unless OPS_ENVIRONMENT is exactly `local`, before any read.
 // The open-need check and the handback are not one transaction: the local
@@ -33,10 +34,10 @@ import type {
 import { queue, type QueueEntry } from '../../packages/core-runtime/src/index.ts';
 import { DEFAULT_MODEL, MODEL_NAME } from './gate.ts';
 import { readApprovals } from './settings.ts';
-import type { HeldLease } from './tick-gate.ts';
+import { APPROVAL_PURPOSE, type HeldLease } from './tick-gate.ts';
 import { localOnly, type Environment, type Refused } from './tick.ts';
 
-export const APPROVAL_PURPOSE = 'local_agent_approval';
+export { APPROVAL_PURPOSE };
 
 /** The cap a raise asks for: the owner's own next step (addendum 2), never more. */
 export const RAISED_CAP_USD = 30;

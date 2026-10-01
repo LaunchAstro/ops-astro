@@ -4,6 +4,9 @@
 // filled in by tick-main.ts). Its own file, so the tick never imports
 // approval.ts, which imports the tick.
 
+/** The approval gate's own work: the tick never sends it to the model. */
+export const APPROVAL_PURPOSE = 'local_agent_approval';
+
 /** A lease the tick holds work under, as its pickup returned it. */
 export interface HeldLease {
   readonly leaseId: string;
@@ -16,8 +19,6 @@ export interface HeldLease {
  * the tick process fills it from approval.ts (tick-main.ts).
  */
 export interface TickGate {
-  /** Work of this purpose is the gate's own and never goes to the model. */
-  readonly purpose: string;
   /** Before the queue is read: approved approvals applied, so the pass runs under them. */
   readonly beforeTasks: () => Promise<void>;
   /**

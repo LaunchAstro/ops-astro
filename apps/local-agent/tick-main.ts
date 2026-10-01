@@ -33,13 +33,7 @@ import {
   type BusinessId,
   type VerifiedSubject,
 } from '../../packages/core-records/src/index.ts';
-import {
-  APPROVAL_PURPOSE,
-  applyApprovals,
-  needOf,
-  raiseApproval,
-  type ApprovalOptions,
-} from './approval.ts';
+import { applyApprovals, needOf, raiseApproval, type ApprovalOptions } from './approval.ts';
 import { decide, type GateSettings } from './gate.ts';
 import { DEFAULT_CAP_USD, SEATS } from './settings.ts';
 import { localOnly, startTicking, type Tick, type TickGate } from './tick.ts';
@@ -129,7 +123,6 @@ export function localGate(
   model: string = LOCAL_CLAUDE_DEFAULT_MODEL,
 ): TickGate {
   return {
-    purpose: APPROVAL_PURPOSE,
     beforeTasks: async () => {
       await applyApprovals(approval);
     },

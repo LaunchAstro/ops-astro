@@ -39,7 +39,7 @@ import {
   type VerifiedSubject,
 } from '../../packages/core-records/src/index.ts';
 import { queue, type QueueEntry } from '../../packages/core-runtime/src/index.ts';
-import type { TickGate } from './tick-gate.ts';
+import { APPROVAL_PURPOSE, type TickGate } from './tick-gate.ts';
 
 export type { HeldLease, TickGate } from './tick-gate.ts';
 
@@ -238,7 +238,8 @@ export async function runQueuedTasks(
     async (tx) => await queue(tx),
   );
   const ran: Ran[] = [];
-  for (const entry of entries.filter((queued) => queued.purpose !== gate?.purpose)) {
+  // The approval gate's own work is the gate's to apply, with or without one here.
+  for (const entry of entries.filter((queued) => queued.purpose !== APPROVAL_PURPOSE)) {
     // Sequential: one model call at a time on the owner's own seat.
     // eslint-disable-next-line no-await-in-loop
     ran.push(await runOne(options, entry));
