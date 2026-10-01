@@ -73,4 +73,20 @@ describe.skipIf(serverUrl === undefined)('C81 the breach drill', () => {
       expect(notice.subject, 'no placeholder is left in the subject').not.toContain('<');
     }
   });
+
+  it('C81 breach drill subject: a line break typed into a value filling the subject becomes a space, and the body keeps it', async () => {
+    const incidentId = await record(incident(4));
+    const ada = harness.world.ada.token;
+    await publishRunbook('2.2', ada, 'alpha', withSubject('What to do: `<steps>`'));
+
+    const steps = 'Change your password.\r\nWatch your mail.\nCall us';
+    const drafted = await drill(incidentId, { steps });
+    expect(drafted.status).toBe(200);
+    for (const notice of noticesOf(drafted)) {
+      expect(notice.subject, 'the subject is one line').toBe(
+        'What to do: Change your password. Watch your mail. Call us',
+      );
+      expect(notice.body, 'the body keeps the lines as typed').toContain(steps);
+    }
+  });
 });
