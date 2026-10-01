@@ -26,7 +26,8 @@ import { useRead } from '../data/use-read.ts';
 import { hubOf } from '../data/live.ts';
 import { BOARD } from '../data/board-live.ts';
 import { RecordState } from '../views/record-state.tsx';
-import { clientsAt, pathTo } from '../routes.ts';
+import { clientsAt } from '../client-address.ts';
+import { pathTo } from '../routes.ts';
 import type { PanelId } from '../panels.ts';
 
 /** The group of an entry that names no client: the reader's own work. */

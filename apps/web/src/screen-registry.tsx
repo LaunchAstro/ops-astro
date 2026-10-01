@@ -11,8 +11,8 @@
 
 import type { ReactElement, ReactNode } from 'react';
 import { Gallery } from '@launchastro/ui';
+import { clientNamedIn } from './client-address.ts';
 import {
-  clientNamedIn,
   type AuthenticatedRouteId,
   type OpenRouteId,
   type ParamsOf,
