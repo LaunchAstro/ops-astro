@@ -177,3 +177,36 @@ it('AW-13 readers isolation: another person, an agent under a live delegation, r
   expect(codeOf(answer as never)).toBe('DELEGATION_EXCLUDES_OPERATION');
   namesNothing(answer, [canary, ids[1] ?? '']);
 });
+
+it('AW-13 readers: a trace past 1,000 events reads the first 1,000 in order and says it is not complete', async () => {
+  const work = await liveWork(t.alpha, `aw13-read-cap-${randomUUID()}`, 1_000);
+  await drain(t.alpha);
+  const owner = await reader(t.alpha, 'aw13-cap-owner');
+  // Control: the run's own few events are the whole trace.
+  const whole = await traceRead(t.alpha, owner.presented, work.taskId);
+  expect(whole).toMatchObject({ ok: true, trace: { complete: true } });
+  const own = spansOf(whole).length;
+  expect(own).toBeGreaterThan(0);
+
+  // A thousand more events on the same run, after its own.
+  await rows(
+    t.alpha,
+    `insert into public.run_events
+            (business_id, id, run_id, task_id, position, kind, lease_id, attempt_id, actor_id, detail)
+     select ev.business_id, gen_random_uuid(), ev.run_id, ev.task_id,
+            (select max(position) from public.run_events
+              where business_id = ev.business_id and task_id = ev.task_id) + g,
+            ev.kind, ev.lease_id, ev.attempt_id, ev.actor_id, '{}'::jsonb
+       from public.run_events ev, generate_series(1, 1000) g
+      where ev.business_id = $1 and ev.task_id = $2 and ev.position = 1`,
+    [t.alpha.business, work.taskId],
+  );
+
+  const capped = await traceRead(t.alpha, owner.presented, work.taskId);
+  expect(capped).toMatchObject({ ok: true, trace: { taskId: work.taskId, complete: false } });
+  const spans = spansOf(capped);
+  expect(spans).toHaveLength(1_000);
+  const sequence = spans.map((span) => Number(span['sequence']));
+  expect(sequence).toEqual(sequence.toSorted((a, b) => a - b));
+  expect(sequence[0]).toBe(1);
+});
