@@ -9,9 +9,10 @@
 // wrote. Until a person sets it the cap is the default, AUD 50, and that is
 // the limit a caller has seen.
 //
-// A money action, so it is in the step-up set: AW-04 set planning cap: a
-// sign-in older than the money step-up window is refused before any write
-// (LEANS-ON C59, family B; written here at the batch rebase).
+// A money action, so it is in C59's step-up set: a second factor older than
+// the money step-up window, or none, is refused before any write. That case
+// is review-3b-3-set-planning-cap-step-up.test.ts, and the S0-5 sweep
+// (tests/operations/s0-5-step-up-sweep.test.ts) drives it through the API.
 
 import { randomUUID } from 'node:crypto';
 import { beforeAll, expect, it as vitestIt } from 'vitest';

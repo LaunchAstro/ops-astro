@@ -48,6 +48,7 @@ const workerSettings = (work: Work): Record<string, string> => {
     OPS_ASTRO_WORKER_INTERVAL_MS: '5000',
     OPS_WORKER_HEARTBEAT_URL: 'https://beat.example.com/ping',
     OPS_EGRESS_HEARTBEAT_HOST: 'beat.example.com',
+    OPS_HEARTBEAT_EVERY_MS: '240000',
   };
   return Object.fromEntries(WORKER_SETTINGS.map((name) => [name, given[name]]));
 };

@@ -240,6 +240,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
       'attempts',
       'gate_decisions',
       'gates',
+      'inbox_items',
       'plan_records',
       'reservations',
       'run_definition_pins',

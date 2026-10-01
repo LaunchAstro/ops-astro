@@ -21,10 +21,15 @@
 //   effect but its calls: dispatch refuses any other (`EFFECT_NOT_RECONCILABLE`).
 // - A person's: the outcome or write-off they record on the step resolves its
 //   held calls with their name, in the same transaction, under the step's locks.
+//   A planning reply (AW-04) has no step and no reservation: its conversation's
+//   owner records the outcome on the call itself (`recordPlanningOutcome`).
 // - The read: each held call's drop, for the task's people (internal, ungated).
 
-import type { TenantQuery } from '../../../core-records/src/index.ts';
+import type { Subject, TenantQuery } from '../../../core-records/src/index.ts';
 import { giveBack } from '../../../core-custody/src/index.ts';
+import { lockedInstant } from '../clock.ts';
+import { refuse, type RuntimeResult } from '../refusals.ts';
+import { checkAuthorityAt, holdCoveringGrants } from './classifier.ts';
 import type { EffectLookup } from './effect-lookup.ts';
 
 /** The sweep's half, under its locks: the lost worker's started calls held, unsent ones released. */
@@ -84,6 +89,33 @@ export function withProviderCalls(inner: EffectLookup): EffectLookup {
   };
 }
 
+type HeldOutcome = 'nothing_happened' | 'happened' | 'happened_differently' | 'written_off';
+
+/** The held calls keyed by `key` take the outcome; the ids of those that did. */
+async function resolveCalls(
+  tx: TenantQuery,
+  key: 'reservation_id' | 'id',
+  value: string,
+  outcome: HeldOutcome,
+  personId: string,
+): Promise<readonly string[]> {
+  const ends = outcome !== 'written_off';
+  const resolved = await tx.query<{ readonly id: string }>(
+    `update public.model_calls
+        set outcome = $3, outcome_person_id = $4,
+            state = case when $3 = 'nothing_happened' then 'released'
+                         when $5 then 'settled' else state end,
+            actual_minor = case when $5 and $3 <> 'nothing_happened' then reserved_minor
+                                else actual_minor end,
+            ended_at = case when $5 then clock_timestamp() else ended_at end
+      where business_id = $1 and ${key} = $2 and state = 'liability_unknown'
+        and outcome is null
+      returning id`,
+    [tx.businessId, value, outcome, personId, ends],
+  );
+  return resolved.map((call) => call.id);
+}
+
 /**
  * A person's outcome on the step, on its held calls: nothing happened gives
  * the call's hold back; it happened, or happened differently, records the
@@ -95,29 +127,72 @@ export function withProviderCalls(inner: EffectLookup): EffectLookup {
 export async function resolveHeldCalls(
   tx: TenantQuery,
   reservationId: string,
-  outcome: 'nothing_happened' | 'happened' | 'happened_differently' | 'written_off',
+  outcome: HeldOutcome,
   personId: string,
 ): Promise<void> {
-  const ends = outcome !== 'written_off';
-  const resolved = await tx.query<{ readonly id: string }>(
-    `update public.model_calls
-        set outcome = $3, outcome_person_id = $4,
-            state = case when $3 = 'nothing_happened' then 'released'
-                         when $5 then 'settled' else state end,
-            actual_minor = case when $5 and $3 <> 'nothing_happened' then reserved_minor
-                                else actual_minor end,
-            ended_at = case when $5 then clock_timestamp() else ended_at end
-      where business_id = $1 and reservation_id = $2 and state = 'liability_unknown'
-        and outcome is null
-      returning id`,
-    [tx.businessId, reservationId, outcome, personId, ends],
-  );
-  if (!ends) return;
-  for (const call of resolved) {
+  const resolved = await resolveCalls(tx, 'reservation_id', reservationId, outcome, personId);
+  if (outcome === 'written_off') return;
+  for (const callId of resolved) {
     // Sequential: each gives back to the one envelope the step holds locked.
     // eslint-disable-next-line no-await-in-loop
-    await giveBack(tx, call.id);
+    await giveBack(tx, callId);
   }
+}
+
+export interface PlanningOutcomeRequest {
+  readonly conversationId: string;
+  readonly callId: string;
+  readonly outcome: 'nothing_happened' | 'happened' | 'happened_differently';
+  readonly subjects: readonly Subject[];
+  readonly collection: string;
+}
+
+/**
+ * AW-04: a person's outcome on a planning reply held unknown, which has no
+ * step and no reservation. The call is found by its own id on the named
+ * conversation, filtered by the conversation's owner inside the query, so
+ * another person's reads as none (undefined). With their covering grants held
+ * and `billing:decide` on the business judged again, the call takes the
+ * outcome as a step's held call does; the planning cap counts it from then on.
+ */
+export async function recordPlanningOutcome(
+  tx: TenantQuery,
+  request: PlanningOutcomeRequest,
+): Promise<RuntimeResult<{ readonly callId: string; readonly outcome: string }> | undefined> {
+  const person = request.subjects.find((one) => one.kind === 'person');
+  if (person === undefined) return undefined;
+  await holdCoveringGrants(tx, request.subjects, request.collection);
+  const owned = await tx.query(
+    `select 1 from public.model_calls c
+       join public.planning_envelopes e
+         on e.business_id = c.business_id and e.id = c.planning_envelope_id
+      where c.business_id = $1 and c.id = $2 and e.conversation_id = $3
+        and e.owner_person_id = $4`,
+    [tx.businessId, request.callId, request.conversationId, person.id],
+  );
+  if (owned.length === 0) return undefined;
+  const decides = await checkAuthorityAt(
+    tx,
+    request.subjects,
+    { collection: request.collection, action: 'decide', scope: { kind: 'business', id: null } },
+    await lockedInstant(tx),
+  );
+  if (!decides.ok) {
+    return refuse(
+      'SCOPE_NOT_GRANTED',
+      'no live grant to decide money on this business covers the outcome',
+      'A person holding budget permission records it.',
+    );
+  }
+  const settled = await resolveCalls(tx, 'id', request.callId, request.outcome, person.id);
+  if (settled.length === 0) {
+    return refuse(
+      'LIABILITY_NOT_UNKNOWN',
+      'this planning reply is not held as an unknown liability',
+      'Nothing was recorded. Its outcome is already settled or never was unknown.',
+    );
+  }
+  return { ok: true, value: { callId: request.callId, outcome: request.outcome } };
 }
 
 export interface CallDrop {

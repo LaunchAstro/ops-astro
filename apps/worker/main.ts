@@ -15,7 +15,7 @@
 // nothing, so a stopped or broken worker goes quiet and the watcher mails.
 
 import { httpTransport } from '../cli/client.ts';
-import { heartbeatEvery, offEgress, paced, ping, UNREACHABLE } from './heartbeat.ts';
+import { EVERY, heartbeatEvery, offEgress, paced, ping, UNREACHABLE } from './heartbeat.ts';
 import { SYNTHETIC_USAGE } from './usage.ts';
 import { createWorker } from './worker.ts';
 
@@ -31,7 +31,8 @@ export type WorkerSetting =
   | typeof API
   | typeof INTERVAL
   | typeof HEARTBEAT
-  | typeof HEARTBEAT_EGRESS;
+  | typeof HEARTBEAT_EGRESS
+  | typeof EVERY;
 
 /** Every setting the worker reads: the required three, then the optional ones. */
 export const WORKER_SETTINGS: readonly WorkerSetting[] = [
@@ -40,6 +41,7 @@ export const WORKER_SETTINGS: readonly WorkerSetting[] = [
   INTERVAL,
   HEARTBEAT,
   HEARTBEAT_EGRESS,
+  EVERY,
 ];
 
 /** What is wrong with the settings, in words naming each, never a value. */

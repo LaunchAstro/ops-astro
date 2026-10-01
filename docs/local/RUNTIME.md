@@ -1555,7 +1555,8 @@ both tenancy-scoped with row security forced, and the fair share's count
   run per business by `passDeployment` after the sweep) asks the provider, through
   custody and by the call's id (the operation id every call sends, a
   conversation call's and a planning reply's too), about each
-  held call whose step is held unknown, at most 50 a pass, one at a time and
+  held call whose step is held unknown, and about each planning reply held
+  unknown (AW-04: it has no step), at most 50 a pass, one at a time and
   each through the gate a model call takes (`atCeiling`: the operation's
   ceiling for the business, then the route's ceiling and the business's fair
   share). A lookup with no room is not sent and writes nothing; the next pass

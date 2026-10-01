@@ -151,19 +151,27 @@ export function auditAs(actorId: string): Broker['audit'] {
  * AW-10: the reconciliation pass's broker events, as the agent whose
  * delegation made the call. The pass is system work and has no caller of
  * its own, so a call its provider proved never began is released in the
- * name of the agent that held it.
+ * name of the agent that held it. A planning reply (AW-04) has no
+ * delegation: it is released in the name of its planning envelope's owner,
+ * the person who asked for it, as their acting identity.
  */
 export const callerAudit: Broker['audit'] = async (tx, note) => {
-  const [call] = await tx.query<{ readonly actor_id: string }>(
-    `select d.agent_actor_id as actor_id
+  const [call] = await tx.query<{ readonly actor_id: string | null }>(
+    `select coalesce(d.agent_actor_id, pa.id) as actor_id
        from public.model_calls c
-       join public.delegations d
+       left join public.delegations d
          on d.business_id = c.business_id and d.id = coalesce(c.caller_delegation_id, c.delegation_id)
+       left join public.planning_envelopes e
+         on e.business_id = c.business_id and e.id = c.planning_envelope_id
+       left join public.actors pa
+         on pa.business_id = e.business_id and pa.person_id = e.owner_person_id
+        and pa.kind = 'person' and pa.active
       where c.business_id = $1 and c.id = $2`,
     [tx.businessId, note.detail['callId']],
   );
-  if (call === undefined) throw new Error('the call has no agent to write its event as');
-  await auditAs(call.actor_id)(tx, note);
+  const actorId = call?.actor_id ?? null;
+  if (actorId === null) throw new Error('the call has no actor to write its event as');
+  await auditAs(actorId)(tx, note);
 };
 
 /** A reserve refusal, made in the register's shape by the broker. One that recorded its step keeps it. */
