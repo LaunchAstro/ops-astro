@@ -64,8 +64,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'ops.second_factor_codes'],
   // 0225 (C40): a password reset mail asked or answered, by subject digest, for every business.
   ['si', 'ops.password_reset_attempts'],
-  // 0226 (C40): a password reset ask, by source digest, for every business.
-  ['si', 'ops.password_reset_asks'],
+  // 0226 (C40): a password reset ask, by source digest, for every business;
+  // 0227 by address digest too, and deleted only once older than the hour (its row policy).
+  ['sid', 'ops.password_reset_asks'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],
   ['si', 'alerts handback_reports operations run_events'],
   // A run's checks, append only as handback_reports is (MP-6-1).
@@ -159,6 +160,8 @@ const REVOKED: Readonly<Record<string, { readonly from: string; readonly letters
  */
 const ADDED: Readonly<Record<string, { readonly from: string; readonly letters: string }>> = {
   'ops.gate_items': { from: '0059', letters: 'i' },
+  // 0227 lets the application sweep reset asks older than the hour (C40).
+  'ops.password_reset_asks': { from: '0227', letters: 'd' },
 };
 
 /**

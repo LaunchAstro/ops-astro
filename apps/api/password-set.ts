@@ -17,7 +17,8 @@
 // Mounted, with the ask below, by the composition root when the login
 // provider's Send Email hook is configured (`AUTH_EMAIL_HOOK_SECRET`).
 
-import type { Hono } from 'hono';
+import { isIPv6 } from 'node:net';
+import type { Hono, MiddlewareHandler } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import {
   requestPasswordReset,
@@ -31,6 +32,9 @@ import { bearerOf } from './auth/session.ts';
 
 export const PASSWORD_SET_PATH = '/api/password/set';
 export const PASSWORD_RESET_PATH = '/api/password/reset';
+
+/** Asks one process works on at once; past it an ask is dropped, answered alike. */
+export const RESET_IN_FLIGHT = 4;
 
 /** A password and room for its JSON, no more. */
 const SET_MAX_BYTES = 1024;
@@ -60,12 +64,28 @@ async function passwordOf(request: Request): Promise<string | undefined> {
 /**
  * The request's client address, as the API reads it elsewhere (`/api/identity`):
  * the socket's peer that `@hono/node-server` hands over, never a forwarded
- * header a client can write. With none, every such ask shares one source.
+ * header a client can write. An IPv4 mapped into IPv6 counts as the IPv4, and
+ * an IPv6 client by its /64, the least a host is handed. With none, every
+ * such ask shares one source.
  */
 function sourceOf(env: unknown): string {
   const peer = (env as { incoming?: { socket?: { remoteAddress?: string } } } | undefined)?.incoming
     ?.socket?.remoteAddress;
-  return typeof peer === 'string' && peer !== '' ? peer : 'unknown';
+  if (typeof peer !== 'string' || peer === '') return 'unknown';
+  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/iu.exec(peer);
+  if (mapped?.[1] !== undefined) return mapped[1];
+  if (!isIPv6(peer)) return peer;
+  const [head = '', tail] = peer.split('%')[0]?.split('::') ?? [];
+  const before = head === '' ? [] : head.split(':');
+  const after = tail === undefined || tail === '' ? [] : tail.split(':');
+  // A dotted IPv4 at the end fills two groups.
+  const filled = before.length + after.length + (peer.includes('.') ? 1 : 0);
+  const groups =
+    tail === undefined ? before : [...before, ...Array(8 - filled).fill('0'), ...after];
+  return `${groups
+    .slice(0, 4)
+    .map((group) => Number.parseInt(group, 16).toString(16))
+    .join(':')}::/64`;
 }
 
 /** Mount the route on `server`, the way `composeApi` mounts the hooks. */
@@ -105,16 +125,25 @@ export function mountPasswordSet(
  * `POST /api/password/reset` (C40, the ask): `{ address }`, no sign-in. The
  * address goes to the login provider through custody (`requestPasswordReset`)
  * after the answer is given, unless the client address or the address is past
- * its limit, so every request, for a known address, an unknown one or none,
- * limited or not, is answered 200 `{}` at once, and its time says nothing
- * either. A failure is nobody's to hear, and nothing is logged.
+ * its limit, or `RESET_IN_FLIGHT` asks are already being worked on, so every
+ * request, for a known address, an unknown one or none, limited, dropped or
+ * not, is answered 200 `{}` at once, and its time says nothing either. A
+ * failure is nobody's to hear, and nothing is logged.
  */
 export function mountPasswordReset(server: Hono, database: Database, broker: Broker): void {
   const tooLarge = bodyLimit({
     maxSize: SET_MAX_BYTES,
     onError: (context) => context.json({ code: 'RESET_TOO_LARGE' }, 413),
   });
-  server.post(PASSWORD_RESET_PATH, tooLarge, async (context) => {
+  let inFlight = 0;
+  // The peer is read before the body limit reads the body, while the socket is surely there.
+  const sources = new WeakMap<object, string>();
+  const peerFirst: MiddlewareHandler = async (context, next) => {
+    sources.set(context, sourceOf(context.env));
+    await next();
+  };
+  server.post(PASSWORD_RESET_PATH, peerFirst, tooLarge, async (context) => {
+    const source = sources.get(context) ?? 'unknown';
     let address: unknown;
     try {
       const body: unknown = await context.req.json();
@@ -125,8 +154,15 @@ export function mountPasswordReset(server: Hono, database: Database, broker: Bro
     } catch {
       address = undefined;
     }
-    const source = sourceOf(context.env);
-    void requestPasswordReset(database, broker, { address, source }).catch(() => {});
+    // One held database connection serves the whole API: past the cap, the ask is dropped.
+    if (inFlight < RESET_IN_FLIGHT) {
+      inFlight += 1;
+      void requestPasswordReset(database, broker, { address, source })
+        .catch(() => {})
+        .finally(() => {
+          inFlight -= 1;
+        });
+    }
     return context.json({}, 200);
   });
 }

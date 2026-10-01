@@ -47,7 +47,7 @@ function underLimits(statements: (readonly unknown[])[]): Database {
       await run({
         query: async (_text: string, parameters: readonly unknown[] = []) => {
           statements.push(parameters);
-          return await Promise.resolve([{ source: 0, address: 0 }]);
+          return await Promise.resolve([{ source: 0, asks: 0, mails: 0 }]);
         },
       }),
   } as unknown as Database;
@@ -195,14 +195,17 @@ describe('C40 password reset, the ask: its source key', () => {
   it('C40 reset per-source key: the peer is read before the body, so a reset mid-body keeps it', async () => {
     const { app, statements } = standIn(async () => await Promise.resolve(answered(200, '{}')));
     const env = { incoming: { socket: { remoteAddress: '203.0.113.10' as string | undefined } } };
-    const body = new ReadableStream<Uint8Array>({
-      pull(controller) {
-        // The socket goes away while the body is read, as a reset one does.
-        env.incoming.socket.remoteAddress = undefined;
-        controller.enqueue(new TextEncoder().encode(BODIES[0] ?? ''));
-        controller.close();
+    const body = new ReadableStream<Uint8Array>(
+      {
+        pull(controller) {
+          // The socket goes away while the body is read, as a reset one does.
+          env.incoming.socket.remoteAddress = undefined;
+          controller.enqueue(new TextEncoder().encode(BODIES[0] ?? ''));
+          controller.close();
+        },
       },
-    });
+      { highWaterMark: 0 },
+    );
     const request = new Request(`http://api.test${PASSWORD_RESET_PATH}`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
