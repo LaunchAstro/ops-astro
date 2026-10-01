@@ -144,6 +144,43 @@ async function ownPickup(context: BodyContext): Promise<Record<string, unknown>>
   return picked.body['detail'] as Record<string, unknown>;
 }
 
+/**
+ * AW-08: the person's own launch. Their plan's lease hands its output back as a
+ * successor, they accept it (the launch), and they pick the launch up: the one
+ * lease a dispatch releases an effect under.
+ */
+async function ownLaunchedPickup(context: BodyContext): Promise<Record<string, unknown>> {
+  const plan = await ownPickup(context);
+  const back = await context.asPerson('task.handback', {
+    leaseId: plan['leaseId'],
+    fence: plan['fence'],
+    outcome: 'completed',
+    report: { summary: 'the reviewed output' },
+    successor: PROPOSAL,
+  });
+  if (back.code !== 'ok') throw new Error(`matrix: handback refused ${back.code}`);
+  const handed = back.body['detail'] as Record<string, unknown>;
+  const launch = await context.asPerson('task.decide', {
+    gateId: handed['successorGateId'],
+    versionId: handed['successorVersionId'],
+    decision: 'approve',
+    note: 'launch the reviewed output',
+  });
+  if (launch.code !== 'ok') throw new Error(`matrix: launch refused ${launch.code}`);
+  const reservationId = (launch.body['detail'] as Record<string, unknown>)['reservationId'];
+  const picked = await context.asPerson('task.pickup', { reservationId });
+  if (picked.code !== 'ok') throw new Error(`matrix: launch pickup refused ${picked.code}`);
+  return picked.body['detail'] as Record<string, unknown>;
+}
+
+/** The person's launched lease (AW-08): what `task.dispatch` takes. */
+export async function ownLaunchedLease(
+  context: BodyContext,
+): Promise<{ leaseId: string; fence: number }> {
+  const detail = await ownLaunchedPickup(context);
+  return { leaseId: String(detail['leaseId']), fence: Number(detail['fence']) };
+}
+
 /** A lease the context's person holds: their own pickup of fresh approved work (EX-01). */
 export async function ownLease(context: BodyContext): Promise<{ leaseId: string; fence: number }> {
   const detail = await ownPickup(context);
@@ -165,7 +202,7 @@ export async function ownAppliedEffect(
 async function ownAppliedOnTask(
   context: BodyContext,
 ): Promise<{ leaseId: string; fence: number; attemptId: string; taskId: string }> {
-  const detail = await ownPickup(context);
+  const detail = await ownLaunchedPickup(context);
   const lease = { leaseId: String(detail['leaseId']), fence: Number(detail['fence']) };
   const attemptId = String(detail['attemptId']);
   const taskId = String(detail['taskId']);

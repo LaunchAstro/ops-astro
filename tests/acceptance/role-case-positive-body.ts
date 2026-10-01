@@ -17,6 +17,7 @@ import {
   approvableGate,
   approvedReservationId,
   moneyBody,
+  ownLaunchedLease,
   ownLease,
   ownAppliedEffect,
 } from './role-case-bodies.ts';
@@ -235,8 +236,8 @@ export function createPositiveBody(
         // owner"). The agent's renewal is in the agent journey.
         return { body: await ownLease(context) };
       case 'task.dispatch':
-        // The person marks their own lease's step dispatched (T2c1).
-        return { body: await ownLease(context) };
+        // The person marks their own launched lease's step dispatched (T2c1, AW-08).
+        return { body: await ownLaunchedLease(context) };
       case 'task.check':
         // A check recorded under the person's own lease (MP-6-1). The agent's
         // check under its delegation is in the agent journey.
