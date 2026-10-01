@@ -19,7 +19,7 @@ import { pinResearchSkillOnStart } from './research-skill.ts';
 
 /**
  * The research checks, in order: `run:write` (`researchRunRefusal`), then a
- * stop (`stopRefusal`: the map's owner's start is their decision, past
+ * stop (`stopRefusal`: a start that lifts it is that person's decision, past
  * another's claim), then a claim
  * held by someone else, then `task:assign` where the start would write the
  * claim (ORCH36-WF7-ASSIGN). Asked before the revision, so a starter who lost
@@ -35,10 +35,10 @@ export async function researchStartRefusal(
 ): Promise<CommandRefusal | undefined> {
   const refusal = await researchRunRefusal(tx, ticket.id, subjects, delegation);
   if (refusal !== undefined) return refusal;
-  const asked = await openAsk(tx, ticket.id);
+  const lifts = await isStopped(tx, ticket.id);
   const stopped = await stopRefusal(tx, ticket.id, { personId: starter, actorId });
   if (stopped !== undefined) return stopped;
-  if (asked === undefined && claimedByAnother(ticket, starter)) {
+  if (!lifts && claimedByAnother(ticket, starter)) {
     return refuseCommand('TRANSITION_NOT_PERMITTED', ['claimed'], [CLAIMED_FIX]);
   }
   // Writing the claim asks what `task.claim` asks.
@@ -68,9 +68,10 @@ export interface Starter {
  * ticket, a run on it begins only on their word, however it begins. The
  * owner's (or the person asked, if the map has none now) is their decision and
  * clears the ask; anyone else's is refused. With no one asked, a ticket failed
- * twice since its last lift begins only on the word of a person holding
- * task:decide on it, recorded as the lift (ORCH52-SL14R). Asked under the task
- * lock, which the failed handback also takes; a refusal rolls back.
+ * twice since its last lift begins only on the map owner's word, or with no
+ * owner on the word of a person holding task:decide on it, recorded as the
+ * lift (ORCH52-SL14R); a lift with nowhere to be recorded is refused. Asked
+ * under the task lock, which the failed handback also takes; a refusal rolls back.
  */
 export async function stopRefusal(
   tx: TenantQuery,
@@ -84,10 +85,33 @@ export async function stopRefusal(
     if (starter.personId !== (facts.mapOwner ?? asked)) return refuseStopped();
     await clearAsk(tx, taskId, starter.personId);
   } else if (await failedTwice(tx, taskId)) {
-    if (!(await mayDecide(tx, taskId, starter))) return refuseStopped();
-    await researchLifted(tx, taskId, starter.actorId);
+    const lifts =
+      facts.mapOwner === null
+        ? await mayDecide(tx, taskId, starter)
+        : starter.personId === facts.mapOwner;
+    if (!lifts) return refuseStopped();
+    if (!(await researchLifted(tx, taskId, starter.actorId))) {
+      return refuseCommand('TRANSITION_NOT_PERMITTED', ['stopped'], [UNRECORDED_FIX]);
+    }
   }
   return undefined;
+}
+
+/**
+ * WF-7 at pickup: a stopped research ticket's run is not picked up, whoever
+ * approved it. A pickup is no one's word, so it never lifts the stop.
+ */
+export async function pickupStopRefusal(
+  tx: TenantQuery,
+  taskId: string,
+): Promise<CommandRefusal | undefined> {
+  if ((await wayfinderFacts(tx, taskId))?.type !== 'research') return undefined;
+  return (await isStopped(tx, taskId)) ? refuseStopped() : undefined;
+}
+
+/** Asked about the ticket, or failed twice since its last lift. */
+async function isStopped(tx: TenantQuery, taskId: string): Promise<boolean> {
+  return (await openAsk(tx, taskId)) !== undefined || (await failedTwice(tx, taskId));
 }
 
 /**
@@ -158,6 +182,8 @@ const RUN_WRITE_FIX = 'Starting a research run needs run:write on the ticket; as
 const STOPPED_FIX =
   "This research failed twice: its map's owner starts it again, or if it has none, " +
   'a person who may decide on the ticket.';
+const UNRECORDED_FIX =
+  'This business has no comment type to record the lift on the ticket, so the stop holds.';
 const CLAIMED_FIX = 'Someone else has claimed this ticket; its run is theirs to start.';
 const ASSIGN_FIX =
   'Starting the run claims the ticket, which needs task:assign; ask for it, or for the claim.';

@@ -180,6 +180,7 @@
     "WF-7 stopped (SL14-15, U40) splits tests/wayfinder/wf-7-stopped.test.ts from wf-7-inbox.test.ts (393 lines, over the ratchet's max-lines): after the second failure a new run waits on the map owner, the owner's start clears it, two more failures ask again, no map owner asks no one, another map's owner and another business cannot start it; the shared cases in wf-7-failures.ts.",
     "WF-7 stopped every start (SL14-15, U40) adds tests/wayfinder/wf-7-stopped-every-start.test.ts (after the second failure, a run proposed before it is not picked up, and another decider's restart begins no run, while the map owner is asked).",
     "WF-7 stopped with no owner (SL14-15, U40, ORCH52-SL14R) adds tests/wayfinder/wf-7-stopped-no-owner.test.ts (twice failed stops a research ticket whose map has no owner, or no map: no one is asked, a start without task:decide on the ticket is refused and writes nothing, a decide-holder's start lifts it, two more failures stop it again; another ticket's or business's decide-holder lifts nothing).",
+    "WF-7 stopped pickup, lift and withdraw (SL14-15, U40, ORCH52-SL14R) add tests/wayfinder/wf-7-stopped-pickup.test.ts (an approval given before the stop begins no run after it, with or without a map owner), wf-7-stopped-lift.test.ts (a decide-holder's lift passes another's claim; a comment that reads like the lift lifts nothing; once the map has an owner, only the owner lifts it) and wf-7-stopped-withdraw.test.ts (the stop withdraws runs no one picked up, so the owner's start begins one run; a lift with no comment type to record it begins none).",
     "WF-7 audit readback (SL14-14, U40) adds tests/wayfinder/wf-7-audit.test.ts (a proof: the map owner reads back through task.read the run started, picked up and resolved on its research ticket, each by its actor, and a run failed twice as both starts, both handbacks in the chain by operation id and the report comment; another business's run reads back NOT_FOUND with only the refused probe in this chain; a person without the ticket reads nothing; the chain verifies).",
     "WF-7 skill pinned by digest (SL14-14, ORCH47 (b)8) adds tests/wayfinder/wf-7-pin.test.ts (a person starting a research run pins the vendored research skill on the run in the same transaction: one bootstrap_file pin, SKILL.md, with the folder's manifest; a tampered skill refuses DEFINITION_DIGEST_MISMATCH with no run, proposal, pin or claim written; an agent's research start, its delegation reaching run and the ticket unclaimed, is refused DELEGATION_EXCLUDES_ACTIVATION in Stage 1 (ORCH49-R2) and writes nothing; the pin helper by hand on an unpinned run: the upstream digest pinned, one byte changed refused, the bytes pinned the bytes checked) as conformance.",
     "WF-7 restart (SL14-15, U40) adds tests/wayfinder/wf-7-restart.test.ts (task.restart of a research ticket's run asks run:write and pins the research skill on the new run as a start does; a tampered skill refuses DEFINITION_DIGEST_MISMATCH; each refusal writes nothing) as conformance."
@@ -583,6 +584,9 @@
     "tests/wayfinder/wf-7-stopped.test.ts",
     "tests/wayfinder/wf-7-stopped-every-start.test.ts",
     "tests/wayfinder/wf-7-stopped-no-owner.test.ts",
+    "tests/wayfinder/wf-7-stopped-pickup.test.ts",
+    "tests/wayfinder/wf-7-stopped-lift.test.ts",
+    "tests/wayfinder/wf-7-stopped-withdraw.test.ts",
     "tests/wayfinder/wf-7-claim.test.ts",
     "tests/wayfinder/wf-7-resolve.test.ts",
     "tests/wayfinder/wf-7-isolation.test.ts",
