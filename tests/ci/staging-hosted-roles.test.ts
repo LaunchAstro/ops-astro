@@ -108,11 +108,16 @@ function withHostedRoles(): void {
   });
 
   afterAll(async () => {
+    const leaked: string[] = [];
     await server(async (admin) => {
       for (const role of created.splice(0))
         // oxlint-disable-next-line no-await-in-loop
-        await admin.execute(`drop role if exists "${role}"`);
+        await admin.execute(`drop role if exists "${role}"`).catch(() => leaked.push(role));
     });
+    if (leaked.length > 0)
+      throw new Error(
+        `staging-hosted-roles: made and left ${leaked.join(', ')}; drop them by hand`,
+      );
   });
 }
 
