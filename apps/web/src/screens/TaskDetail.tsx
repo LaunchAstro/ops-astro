@@ -220,8 +220,6 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   const [proposeDraft, setProposeDraft] = useHeld<ProposeDraft>(identity, denied);
   const [topUpNote, setTopUpNote] = useHeld<TopUpNote>(identity, denied);
   const [perspective, setPerspective] = useHeld<Perspective>(identity, denied);
-  // Remembered per person in the preference store (MP-4-4, CS-4.27).
-  const [showFinished, setShowFinished] = useShowFinished(client);
   const [showAllTime, setShowAllTime] = useHeld<boolean>(identity, denied);
 
   return (
@@ -261,8 +259,6 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
                 onTopUpNote={setTopUpNote}
                 perspective={perspective ?? 'team'}
                 onPerspective={setPerspective}
-                showFinished={showFinished}
-                onShowFinished={setShowFinished}
                 showAllTime={showAllTime ?? false}
                 onShowAllTime={setShowAllTime}
                 onOpenPanel={props.onOpenPanel}
@@ -562,8 +558,6 @@ interface LoadedProps {
   readonly perspective: Perspective;
   readonly onPerspective: (next: Perspective) => void;
   /** Whether the finished subtasks are unfolded, held above the read (MP-4-4). */
-  readonly showFinished: boolean;
-  readonly onShowFinished: (next: boolean) => void;
   /** Whether every time entry shows, not only the latest three, held above the read (MP-4-6). */
   readonly showAllTime: boolean;
   readonly onShowAllTime: (next: boolean) => void;
@@ -597,6 +591,9 @@ function Loaded(props: LoadedProps): ReactElement {
     isEmpty: (value) => (value.outages ?? []).length === 0,
     deps: [],
   });
+  // Remembered per person in the preference store (MP-4-4, CS-4.27); the
+  // shared view never reaches here, so an outside reader reads only task.read.
+  const [showFinished, setShowFinished] = useShowFinished(client);
 
   // Where this edit began. An existing draft keeps its own starting point; a
   // first keystroke takes the record as it stands right now.
@@ -715,7 +712,7 @@ function Loaded(props: LoadedProps): ReactElement {
 
             <DescriptionSection description={task.description} />
 
-            <TeamSubtasks {...props} />
+            <TeamSubtasks {...props} showFinished={showFinished} onShowFinished={setShowFinished} />
 
             <Comments
               client={client}
