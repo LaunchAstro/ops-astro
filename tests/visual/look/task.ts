@@ -113,6 +113,13 @@ export const TASK: LookScreen = {
       app: { ...APP, selector: '.tpr__band .sb__state' },
       props: TYPE,
     }),
+    // S5, TT-06: a door to the dock task panel, DS-PRIM-1 `--text` in DS-TOK-124.
+    probe({
+      id: 'task.panel-door',
+      mockup: { ...PAGE, selector: '.tt__more[data-tp-panel]' },
+      app: { ...APP, selector: '.tt__more[data-panel-door]' },
+      props: [...TYPE, 'text-align'],
+    }),
     // S1, DP-18 to DP-25: the panel's two-column field grid and its selects.
     probe({
       id: 'task.panel-grid',

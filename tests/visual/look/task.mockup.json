@@ -184,6 +184,68 @@
         "color": "rgba(248,248,248,184)"
       }
     },
+    "task.panel-door": {
+      "1480-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "400",
+        "line-height": "18.6px",
+        "letter-spacing": "normal",
+        "text-transform": "none",
+        "color": "rgba(107,99,93,255)",
+        "text-align": "center"
+      },
+      "1480-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "400",
+        "line-height": "18.6px",
+        "letter-spacing": "normal",
+        "text-transform": "none",
+        "color": "rgba(248,248,248,184)",
+        "text-align": "center"
+      },
+      "900-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "400",
+        "line-height": "18.6px",
+        "letter-spacing": "normal",
+        "text-transform": "none",
+        "color": "rgba(107,99,93,255)",
+        "text-align": "center"
+      },
+      "900-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "400",
+        "line-height": "18.6px",
+        "letter-spacing": "normal",
+        "text-transform": "none",
+        "color": "rgba(248,248,248,184)",
+        "text-align": "center"
+      },
+      "390-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "400",
+        "line-height": "18.6px",
+        "letter-spacing": "normal",
+        "text-transform": "none",
+        "color": "rgba(107,99,93,255)",
+        "text-align": "center"
+      },
+      "390-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "400",
+        "line-height": "18.6px",
+        "letter-spacing": "normal",
+        "text-transform": "none",
+        "color": "rgba(248,248,248,184)",
+        "text-align": "center"
+      }
+    },
     "task.panel-grid": {
       "1480-light": {
         "display": "grid",
