@@ -87,7 +87,7 @@ export function Inbox(props: InboxProps): ReactElement {
   };
 
   return (
-    <section className="card inbox" aria-labelledby="inbox-heading">
+    <section className="card card--flush inbox" aria-labelledby="inbox-heading">
       <Owed client={client} grantKey={props.grantKey} follow={props.follow} />
       <RecordState
         state={list.state}
@@ -129,12 +129,14 @@ function Owed(props: {
   useEffect(() => follow?.(count.reload), [follow, count.reload]);
   const owed = count.state.outcome === 'ready' ? count.state.value.owed : null;
   return (
-    <>
-      <h2 id="inbox-heading" className="card__title">
-        Inbox <CountBadge count={owed ?? 0} title="Waiting for you" />
-      </h2>
-      <OwedLine state={count.state} onRetry={count.reload} />
-    </>
+    <div className="card__head">
+      <div>
+        <h2 id="inbox-heading" className="card__title">
+          Inbox <CountBadge count={owed ?? 0} title="Waiting for you" />
+        </h2>
+        <OwedLine state={count.state} onRetry={count.reload} />
+      </div>
+    </div>
   );
 }
 
