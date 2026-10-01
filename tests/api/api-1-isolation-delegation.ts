@@ -74,6 +74,8 @@ export function delegationCrossing(): void {
       'task.observe': () => ({ ...notOwnLease, attemptId: randomUUID(), outcome: 'completed' }),
       'task.queue': () => null,
       'session.capabilities': () => null,
+      // A credential's create (API-2): a pickup's one-task delegation never reaches it.
+      'task.create': () => ({ fields: { title: 'made-up' } }),
     };
     expect(Object.keys(target).toSorted()).toEqual(agentRows.map((row) => row.command).toSorted());
     // The lease: the delegation's one task is not the other lease's. The pickup: one live
@@ -84,6 +86,7 @@ export function delegationCrossing(): void {
       'task.dispatch': 'DELEGATION_OUT_OF_PURPOSE',
       'task.observe': 'DELEGATION_OUT_OF_PURPOSE',
       'task.pickup': 'DELEGATION_ALREADY_LIVE',
+      'task.create': 'DELEGATION_OUT_OF_PURPOSE',
     };
     for (const row of agentRows) {
       for (const [businessKey, other] of [

@@ -54,6 +54,7 @@ import { createApi, type LiveOptions, type ReadAdmitter, type ReadExecutor } fro
 import { createAlerts, faultCode, sinkFrom, type Alerts } from './alerts/sink.ts';
 import {
   executeAgentCommand,
+  executeCredentialCommand,
   executeCommand,
   executeRead as readExecutor,
   admitReads,
@@ -66,7 +67,9 @@ import {
   withRuntimeKeys,
 } from '../../packages/core-runtime/src/index.ts';
 import type { RuntimeKeys } from '../../packages/core-runtime/src/index.ts';
+import type { AgentLimits } from './auth/agent-quota.ts';
 import { createGoTrueFactors } from './auth/factors.ts';
+import { errorSinkLink, type ErrorSinkLink } from './health/error-sink-link.ts';
 import { createLangfuseHealth } from './health/tracing.ts';
 import { goTrueLogins, providerAdminKey } from './auth/provider-logins.ts';
 import {
@@ -187,6 +190,8 @@ export interface ApiConfig {
   readonly providerAdminKey?: () => Promise<string>;
   /** Langfuse's URL, `LANGFUSE_HOST` (C34); absent is tracing switched off. */
   readonly tracingUrl?: string;
+  /** The error sink's web address, `OPS_ERROR_SINK_URL` (C55); absent is no link. */
+  readonly errorSink?: ErrorSinkLink;
   /**
    * The read half of the surface. Absent means `reads/execute.ts`, imported
    * statically, so a module that fails to load stops the server rather than
@@ -203,6 +208,8 @@ export interface ApiConfig {
   readonly live?: Omit<LiveOptions, 'admit'> & { readonly admit?: ReadAdmitter };
   /** The error sink and the security detections (ticket S0-2); absent without a sink. */
   readonly alerts?: Alerts;
+  /** The agent credential's limits in this process (API-2); absent, the defaults. */
+  readonly agentLimits?: AgentLimits;
 }
 
 export interface ComposedApi {
@@ -296,6 +303,9 @@ export function composeApi(config: ApiConfig): ComposedApi {
     '/',
     createApi({
       database,
+      ...(config.agentLimits === undefined
+        ? {}
+        : { agentCredentials: { limits: config.agentLimits } }),
       verify: createSupabaseVerifier({
         ...config.signIn,
         // The reason alone: an answer the provider sent is never repeated.
@@ -307,6 +317,7 @@ export function composeApi(config: ApiConfig): ComposedApi {
       executeRead,
       executeCommand,
       executeAgentCommand,
+      executeCredentialCommand,
       ...(config.live === undefined
         ? {}
         : { live: { ...config.live, admit: config.live.admit ?? admitReads } }),
@@ -327,6 +338,7 @@ export function composeApi(config: ApiConfig): ComposedApi {
         config.tracingUrl === undefined
           ? {}
           : { tracing: createLangfuseHealth({ baseUrl: config.tracingUrl }) },
+      ...(config.errorSink === undefined ? {} : { errorSink: config.errorSink }),
       ...(config.alerts === undefined ? {} : { observe: config.alerts.observe }),
     }),
   );
@@ -405,6 +417,13 @@ async function main(): Promise<void> {
   const listenUrl = environment['DATABASE_LISTEN_URL'] ?? (databaseUrl as string);
   const topics = await startLiveTopics(connectListener(listenUrl));
   const alerts = alertsFrom(environment);
+  let errorSink: ErrorSinkLink;
+  try {
+    errorSink = errorSinkLink(environment);
+  } catch (error) {
+    console.error(`api: ${(error as Error).message}`);
+    process.exit(1);
+  }
 
   // Wiring only: nothing here runs a statement or binds a port, so building it
   // before recovery changes nothing recovery sees, and recovery resolves its
@@ -418,6 +437,7 @@ async function main(): Promise<void> {
     live: { topics, presence: createLivePresence() },
     ...(adminKey === undefined ? {} : { providerAdminKey: adminKey }),
     ...(tracingUrl === undefined || tracingUrl === '' ? {} : { tracingUrl }),
+    errorSink,
     ...(alerts === undefined ? {} : { alerts }),
   });
 

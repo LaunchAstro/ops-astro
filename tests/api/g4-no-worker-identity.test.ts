@@ -44,6 +44,8 @@ const OTHERS = [
   'POST /api/session/end',
 ];
 const SETTINGS = [
+  // API-2: the function's instance ceiling, a number that divides the agent limits.
+  'AGENT_QUOTA_INSTANCES',
   'ALERT_SCOPE_KEY',
   'DATABASE_LOOKUP_URL',
   'DATABASE_URL',
@@ -54,6 +56,8 @@ const SETTINGS = [
   'GOTRUE_URL',
   'OPS_ASTRO_CRASH_POINT',
   'OPS_ENVIRONMENT',
+  // C55: the error sink's web address, never its DSN (ORCH49).
+  'OPS_ERROR_SINK_URL',
   'OPS_RELEASE',
   'RECOVERY_BUSINESS_KEYS',
   'SERVED_HOST',

@@ -3,24 +3,21 @@
 // Made-up answers for the width-and-theme harness (UI-POLISH).
 //
 // The harness serves the app with its API at a dead port, so every data
-// screen used to be photographed on its "could not be read" state: no
-// sideways scroll proven on an error, nothing about the look. These answers
-// let each screen draw rows. They are typed against the wire contract's own
-// read shapes, so a changed read fails the typecheck here rather than drawing
-// a screen from a shape the API no longer sends. Test side only: the page
-// asks the same addresses it asks the real API; nothing here is a back end.
+// screen was photographed on its "could not be read" state, proving nothing
+// about the look. These answers let each screen draw rows. They are typed against the wire
+// contract's own read shapes, so a changed read fails the typecheck here rather than drawing
+// a screen from a shape the API no longer sends. Test side only: the page asks the same
+// addresses it asks the real API; nothing here is a back end.
 //
 // The rows follow the pinned mockup's Projects board, so a capture reads
 // against the mockup's page. Every name and client is made up.
 
 import type {
-  AccessReadResult,
   CapabilitiesResult,
   InboxCountResult,
   InboxReadResult,
   InternalTaskDetail,
   InternalTaskRead,
-  OperationsReadResult,
   PersonListResult,
   QueueResult,
   SessionPersonResult,
@@ -35,6 +32,7 @@ import type {
 } from '../../packages/core-wire/src/index.ts';
 import type { BrowserContext } from 'playwright';
 import type { ReadName } from '../../apps/web/src/operations/read-names.ts';
+import { ACCESS, HARBOUR, MERIDIAN, MIA, NATHAN, OPERATIONS } from './made-up-access.ts';
 
 const STATE = {
   active: { id: 's-active', key: 'active', label: 'Active', machineCategory: 'started' },
@@ -46,9 +44,6 @@ const STATE = {
   },
   hold: { id: 's-hold', key: 'hold', label: 'On hold', machineCategory: 'unstarted' },
 } as const satisfies Record<string, TaskStateView>;
-
-const NATHAN = { personId: 'p-nathan', name: 'Nathan' };
-const MIA = { personId: 'p-mia', name: 'Mia' };
 
 const task = (
   n: number,
@@ -81,13 +76,14 @@ export const TASKS: readonly TaskSummary[] = [
   task(33, 'Paid social rebuild', STATE.hold, null),
 ];
 
+const BY_NATHAN = { actorId: NATHAN.personId, personId: NATHAN.personId };
 const DETAIL: InternalTaskDetail = {
   ...(TASKS[0] as TaskSummary),
   description:
     'Pull the signed scope, the two variations and the renewal terms into one pack for review.',
   history: [
-    { at: '2026-09-24T01:10:00.000Z', actorId: NATHAN.personId, operation: 'task.create' },
-    { at: '2026-09-25T03:40:00.000Z', actorId: NATHAN.personId, operation: 'task.update' },
+    { at: '2026-09-24T01:10:00.000Z', ...BY_NATHAN, operation: 'task.create' },
+    { at: '2026-09-25T03:40:00.000Z', ...BY_NATHAN, operation: 'task.update' },
   ],
   comments: [
     {
@@ -106,9 +102,6 @@ const DETAIL: InternalTaskDetail = {
   envelope: null,
   alerts: [],
 };
-
-const HARBOUR = { clientId: 'c-harbour', name: 'Harbour Physio' };
-const MERIDIAN = { clientId: 'c-meridian', name: 'Meridian Dental' };
 
 /** The Work log's two days, newest first, as `task.ledger` answers them (MP-8-4). */
 const LEDGER: TaskLedgerResult = {
@@ -207,6 +200,7 @@ const READS = {
         seenAt: null,
         lastDelivery: 'delivered',
         task: { key: 'T-9', title: 'Sign off the Meridian ad run rate, 29% over budget' },
+        client: MERIDIAN,
       },
       {
         id: 'i-2',
@@ -220,6 +214,7 @@ const READS = {
         seenAt: '2026-09-25T21:00:00.000Z',
         lastDelivery: 'delivered',
         task: { key: 'T-13', title: 'Approve the four review replies before they go out' },
+        client: HARBOUR,
       },
       {
         id: 'i-3',
@@ -251,21 +246,8 @@ const READS = {
     ok: true,
     hits: TASKS.slice(0, 3).map(({ id, key, title }) => ({ id, key, title })),
   } satisfies TaskSearchResult,
-  'access.read': {
-    ok: true,
-    team: [
-      { ...NATHAN, permissions: [], grants: [] },
-      { ...MIA, permissions: [], grants: [] },
-    ],
-    clients: [],
-    agents: [],
-    clientRecords: [HARBOUR, MERIDIAN],
-  } satisfies AccessReadResult,
-  'operations.read': {
-    ok: true,
-    privacyIncidents: [],
-    breachRunbook: null,
-  } satisfies OperationsReadResult,
+  'access.read': ACCESS,
+  'operations.read': OPERATIONS,
 } as const satisfies Partial<Record<ReadName, unknown>>;
 
 /** The reads the harness answers; a read missing here draws its "could not be read" state. */

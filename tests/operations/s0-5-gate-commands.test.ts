@@ -30,7 +30,7 @@ import {
   type Attempt,
   type GateWorld,
 } from './s0-5-gate-world.ts';
-import { CLOSING_LINES, closingLine, tableRefusals } from './s0-5-gate-lines.ts';
+import { CLOSING_LINES, closingLine, procedureHeldOpen, tableRefusals } from './s0-5-gate-lines.ts';
 
 if (serverUrl === undefined) {
   console.warn('operations/s0-5-gate-commands: DATABASE_URL is unset, so nothing below ran.');
@@ -122,6 +122,11 @@ describe.skipIf(serverUrl === undefined)('S0-5 gate commands', () => {
 
   it('S0-5 closing lines, held by the table too: a receipt for the opt-in, or any line with no owner line, is refused by the database itself', async () => {
     expect(await tableRefusals(gate)).toStrictEqual(['refused', 'refused', 'refused', 'refused']);
+  });
+
+  // Leaves the procedure line open; the mode case below records it with its link.
+  it("S0-5 privacy procedure: item 3's tested manual privacy-request procedure has its evidence link, or the gate stays shut", async () => {
+    expect(await procedureHeldOpen(gate)).toStrictEqual([]);
   });
 
   it('S0-5 installation mode changed: made-up to real by the operator only while every item is done; never back; the app role writes nothing else directly', async () => {

@@ -7,6 +7,7 @@
 
 import {
   EFFECTIVE,
+  askedFor,
   type Action,
   type Scope,
   type ScopeKind,
@@ -23,9 +24,10 @@ import type { TenantQuery } from '../tenancy/database.ts';
  */
 export async function grantedScopes(
   tx: TenantQuery,
-  subjects: readonly Subject[],
+  every: readonly Subject[],
   request: { readonly collection: string; readonly action: Action },
 ): Promise<readonly Scope[]> {
+  const subjects = askedFor(every, request);
   const rows = await tx.query<{ readonly kind: ScopeKind; readonly id: string | null }>(
     `${EFFECTIVE}
      select distinct e.scope_kind as kind, e.scope_id as id

@@ -16,7 +16,7 @@
 // a new reader starts again from the newest days, and a page that arrives for
 // a first page no longer drawn is dropped rather than drawn under it.
 
-import { useState, type ReactElement } from 'react';
+import { useRef, useState, type ReactElement } from 'react';
 import { Button, Empty, Ledger, SearchBox } from '@launchastro/ui';
 import type {
   LedgerDayView,
@@ -31,10 +31,19 @@ import {
 import { useRead } from '../../data/use-read.ts';
 import { describeFailure } from '../../records/submit.ts';
 import { RecordState } from '../../views/record-state.tsx';
+import { PageTip } from '../../views/page-tip.tsx';
 import { pathTo } from '../../routes.ts';
 import { passing, queryOf, readingLine, readSearch, type LedgerSearch } from './ledger-search.ts';
 
 const UTC = 'UTC';
+
+/** The Work log's section tip (MP-9-1): a tab of the Projects page, named by that route. */
+export const WORK_LOG_TIP = {
+  page: 'agency:projects-board',
+  id: 'work-log',
+  version: 1,
+  text: 'Every change to a task you can see, newest day first. Search by a name, a kind of change or any words.',
+} as const;
 
 /** The first page, the zone it was read in, and the search words it was read for. */
 interface LedgerRead {
@@ -113,24 +122,26 @@ export function WorkLog(props: WorkLogProps): ReactElement {
     setWords(words);
     writeTyped(words);
   };
-  const [known, setKnown] = useState<readonly LedgerDayView[]>([]);
-  const search = readSearch(typed, known);
+  // The first page the read last accepted. The people in view are read from
+  // it alone: an answer the read dropped names nobody, and the words it was
+  // searched for stay words, so its own answer cannot turn them into people.
+  const [answer, setAnswer] = useState<LedgerRead | null>(null);
+  const search = readSearch(typed, answer?.ledger.days ?? [], answer?.query ?? null);
   const query = queryOf(search);
   const { state, reload } = useRead<LedgerRead>({
     grantKey,
-    run: async () => {
-      const read = await readNewest(client, ownZone(), query);
-      if (!isRefusal(read) && !isUnavailable(read)) setKnown(read.value.ledger.days);
-      return read;
-    },
+    run: () => readNewest(client, ownZone(), query),
     deps: [query],
   });
-  const pages = useEarlierDays(client);
+  const accepted = state.outcome === 'ready' || state.outcome === 'empty' ? state.value : null;
+  if (accepted !== null && accepted !== answer) setAnswer(accepted);
+  const pages = useEarlierDays(client, answer);
   const clear = (): void => {
     setTyped('');
   };
   return (
     <div className="act__page">
+      <PageTip client={client} grantKey={grantKey} tip={WORK_LOG_TIP} />
       <div className="fieldrow act__find">
         <SearchBox
           label="Search the work log"
@@ -167,9 +178,11 @@ interface EarlierDays {
  * is disabled while one is on its way. Each is kept against the first page it
  * continues, so one that arrives after the first page changed is never drawn.
  */
-function useEarlierDays(client: OperationsClient): EarlierDays {
+function useEarlierDays(client: OperationsClient, answer: LedgerRead | null): EarlierDays {
   const [more, setMore] = useState<Earlier>(NONE);
   const [asking, setAsking] = useState<LedgerRead | null>(null);
+  const current = useRef(answer);
+  current.current = answer;
 
   const loadEarlier = (from: LedgerRead, days: readonly LedgerDayView[]): void => {
     const last = days.at(-1);
@@ -182,6 +195,8 @@ function useEarlierDays(client: OperationsClient): EarlierDays {
       );
       setAsking((now) => (now === from ? null : now));
       setMore((now) => {
+        // For a first page no longer current: dropped, and the current one's days kept.
+        if (current.current !== from) return now;
         const kept = now.from === from ? now : { ...NONE, from };
         if (isRefusal(result) || isUnavailable(result)) {
           return { ...kept, failed: describeFailure(result) };
@@ -197,11 +212,14 @@ function useEarlierDays(client: OperationsClient): EarlierDays {
 /**
  * What the search was read as, and how many events pass of those in view.
  * No time is tracked in the ledger yet, so the count line never sums any.
+ * `partial`: the search's matches go past what it reads (C1's bound, 500),
+ * so some are not listed and the count says so.
  */
 function SearchLines(props: {
   readonly reading: string | null;
   readonly passed: number;
   readonly inView: number;
+  readonly partial: boolean;
 }): ReactElement {
   return (
     <>
@@ -211,8 +229,13 @@ function SearchLines(props: {
         </p>
       )}
       {props.inView === 0 ? null : (
-        <p className="act__count" data-ledger-count>
+        <p
+          className="act__count"
+          data-ledger-count
+          data-ledger-more-matches={props.partial ? '' : undefined}
+        >
           {`${String(props.passed)} of ${String(props.inView)} entries`}
+          {props.partial ? '; more match than the search reads (500+)' : null}
         </p>
       )}
     </>
@@ -234,9 +257,10 @@ function LedgerPages(props: {
   const passed = shown.reduce((sum, day) => sum + day.events.length, 0);
   const inView = days.reduce((sum, day) => sum + day.events.length, 0);
   const reading = readingLine(search, passed);
+  const partial = first.query !== null && first.ledger.more === true;
   return (
     <>
-      <SearchLines reading={reading} passed={passed} inView={inView} />
+      <SearchLines reading={reading} passed={passed} inView={inView} partial={partial} />
       {reading !== null && passed === 0 ? (
         <Empty
           title="Nothing matches that."

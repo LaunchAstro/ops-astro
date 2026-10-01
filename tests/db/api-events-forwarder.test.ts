@@ -155,6 +155,8 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)(
     inFlightSignalCase();
     missingHeartbeatCase();
     lateCommitAlertRetryCase();
+    alertLogCase();
+    alertLogRollbackCase();
   },
 );
 
@@ -575,5 +577,62 @@ function lockCases() {
     await Promise.all([forwarder(first).once(), b.once()]).finally(() => other.close());
     expect([...first.alerts(), ...second.alerts()]).toEqual(['cross-scope-burst']);
     expect(await count()).toBe(0);
+  });
+}
+
+function alertLogCase() {
+  it('C55 security alerts listed: logs a raised alert in its pass; a failed pass logs nothing, a sent one stays', async () => {
+    await clear();
+    const logged = async () =>
+      await fixture.db.admin.execute<{ kind: string; at: Date }>(
+        'select kind, at from ops.security_alert_log order by seq',
+      );
+    const before = (await logged()).length;
+    const outbox = connectOutbox(fixture.db.appUrl, { source: 'runtime' });
+    const alerts = createOutboxAlerts({ outbox, key: KEY, where: 'staging', root: ROOT });
+    await alerts.fault(new TypeError(CANARY));
+    alerts.observe({ kind: 'secret-scan-failed' });
+    await alerts.settled();
+    await outbox.close();
+    // The error's send fails before the pass raises anything, so nothing is logged;
+    // the next case fails a pass after it raised the alert.
+    await expect(forwarder(sink(true)).once()).rejects.toThrow();
+    expect((await logged()).length).toBe(before);
+    await forwarder(sink()).once();
+    await forwarder(sink()).once();
+    const rows = (await logged()).slice(before);
+    expect(rows.map((row) => row.kind)).toEqual(['secret-scan-failed']);
+    expect(await fixture.db.admin.execute('select 1 from ops.api_alerts')).toHaveLength(0);
+  });
+}
+
+function alertLogRollbackCase() {
+  it('C55 security alerts listed: a pass that fails after it raised an alert leaves no log row and no kept alert', async () => {
+    await clear();
+    const logged = async () =>
+      (await fixture.db.admin.execute('select kind from ops.security_alert_log')).length;
+    const before = await logged();
+    await fixture.db.admin.execute(`insert into ops.api_events (kind) values ('secret-scan-failed')`);
+    // The pass's last statement deletes the counted signal; refusing it fails the
+    // pass after the alert and its log row were written.
+    await fixture.db.admin.execute(
+      `create function ops.refuse_signal_delete() returns trigger language plpgsql
+         as $$ begin raise exception 'signal delete refused'; end $$`,
+    );
+    await fixture.db.admin.execute(
+      `create trigger refuse_signal_delete before delete on ops.api_events
+         for each row execute function ops.refuse_signal_delete()`,
+    );
+    try {
+      await expect(forwarder(sink()).once()).rejects.toThrow(/signal delete refused/u);
+    } finally {
+      await fixture.db.admin.execute('drop trigger refuse_signal_delete on ops.api_events');
+      await fixture.db.admin.execute('drop function ops.refuse_signal_delete()');
+    }
+    expect(await logged()).toBe(before);
+    expect(await fixture.db.admin.execute('select 1 from ops.api_alerts')).toHaveLength(0);
+    // The retry raises it once and logs it once.
+    await forwarder(sink()).once();
+    expect(await logged()).toBe(before + 1);
   });
 }
