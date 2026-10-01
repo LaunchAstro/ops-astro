@@ -26,7 +26,8 @@
 //   is a backstop to stopping the application, not the
 //   stop: an idle application that holds no connection passes it
 //   (docs/local/DATA.md, "Upgrade"). A role that cannot read every session is
-//   refused rather than trusted to have seen nobody.
+//   refused rather than trusted to have seen nobody. Hosted Supabase's own
+//   service logins, named one by one, are not counted: they never stop.
 
 import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
@@ -117,11 +118,30 @@ const OTHER_SESSIONS = `select pid, usename::text as usename, application_name,
    and pid <> pg_backend_pid()
  order by pid`;
 
+/**
+ * Hosted Supabase's own services, which stay connected while the application
+ * is stopped, by the exact login each uses and never a pattern. Data API
+ * (`authenticator`), Auth (`supabase_auth_admin`), Storage
+ * (`supabase_storage_admin`) and Realtime (`supabase_admin`):
+ * supabase/supabase docker/docker-compose.yml at be976be. The pooler's auth
+ * query (`pgbouncer`): supabase/postgres
+ * ansible/files/pgbouncer_config/pgbouncer.ini.j2 at 9b0996e. None of these
+ * roles exists on the local install, where GoTrue connects as `postgres`.
+ */
+const HOSTED_SERVICE_LOGINS: ReadonlySet<string> = new Set([
+  'authenticator',
+  'pgbouncer',
+  'supabase_admin',
+  'supabase_auth_admin',
+  'supabase_storage_admin',
+]);
+
 async function otherSessions(
   execute: AdminConnection['execute'],
 ): Promise<readonly ConnectedSession[]> {
   await execute(`select pg_stat_clear_snapshot()`);
-  return await execute<ConnectedSession>(OTHER_SESSIONS);
+  const sessions = await execute<ConnectedSession>(OTHER_SESSIONS);
+  return sessions.filter((s) => s.usename === null || !HOSTED_SERVICE_LOGINS.has(s.usename));
 }
 
 /** Refuse, naming what is connected, when anything but this backend is. */

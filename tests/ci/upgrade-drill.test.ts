@@ -217,7 +217,9 @@ describe('S0-3 upgrade drill in CI', () => {
       workflow.indexOf('\n  database-lookahead:'),
     );
     const step = job.slice(job.indexOf('- name: The upgrade drill'));
-    expect(step).toContain("if: github.event_name == 'pull_request'");
+    // CI-QUEUE: on a pull request and on a merge group, from main as it stands.
+    expect(step).toContain("if: github.event_name != 'push'");
+    expect(step).toContain('BASE_SHA="$(node scripts/merge-group.mjs base)"');
     expect(step).toContain('git diff --name-only --diff-filter=A "$BASE_SHA" HEAD -- migrations/');
     expect(step).toContain('git ls-tree --name-only "$BASE_SHA" migrations/');
     expect(step).toContain(

@@ -24,12 +24,14 @@
 // declaration checked before the deploy, not a region Vercel reported back.
 // The CLI gets only PATH, HOME, TMPDIR and the two project ids, so no sign-in
 // value or database login reaches it. The folder, `.vercel` and all, is
-// removed whatever happens. Before Vercel is asked, the sign-in server
-// reports its version (`/health` under GOTRUE_URL, staging's own sign-in
-// address, with the publishable key when set); no answer, no deploy. Only a
-// deploy read back ready on production returns its record: the version, the
-// artefact, the digest, the deployment, the region, the function runtime and
-// the sign-in server's version (`S0-6 image pins`).
+// removed whatever happens.
+//
+// Before Vercel is asked, the sign-in server reports its version (`/health`
+// under GOTRUE_URL, staging's own sign-in address, with the publishable key
+// when set); no answer, no deploy. Only a deploy read back ready on production
+// returns its record: the version, the artefact, the digest, the deployment,
+// the region, the function runtime and the sign-in server's version (`S0-6
+// image pins`).
 //
 // The maintenance page (`deployMaintenance`, `maintenance.ts`) goes out the
 // same prebuilt way, with no database asked, so a broken database never keeps
@@ -43,7 +45,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildOutputProblems, outputDigest } from './build-output.ts';
 import { writeMaintenanceOutput } from './maintenance.ts';
-import { storedArtefact } from './promotion.ts';
+import { type StoredArtefact, storedArtefact } from './promotion.ts';
 
 type Environment = Readonly<Record<string, string | undefined>>;
 
@@ -190,12 +192,10 @@ function deployCopy(
   folder: string,
   env: Environment,
   version: string,
-  selected: { path: string; name: string },
+  selected: StoredArtefact,
   authVersion: string,
 ): WebDeployOutcome {
-  const { digest } = JSON.parse(readFileSync(join(selected.path, 'build.json'), 'utf8')) as {
-    digest: string;
-  };
+  const { digest } = selected;
   const output = join(folder, '.vercel', 'output');
   cpSync(selected.path, output, { recursive: true });
   const problems = buildOutputProblems(output);
@@ -210,7 +210,7 @@ function deployCopy(
   if (!inspected.ok || !readyOnProduction(inspected.out, deployment)) {
     return {
       kind: 'failed',
-      reason: `Vercel did not report ${deployment} ready on production, so its syd1 output is not confirmed live; it is not recorded: remove it from the dashboard and look`,
+      reason: `Vercel did not report ${deployment} ready on production, so its syd1 output is not confirmed live. It is not recorded. Remove it from the dashboard and find out why.`,
     };
   }
   const record = { action: 'deploy recorded', version, artefact: selected.name, digest } as const;

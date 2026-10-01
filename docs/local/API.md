@@ -28,8 +28,8 @@ container name, pinned digest, port and volume `db-up.sh` uses, so the two
 converge whichever runs first. Like `db-up.sh`, it replaces a container on
 another image or volume (one made before the local database moved to
 Postgres 17) and keeps every volume. Whenever it starts Postgres afresh, it
-starts GoTrue afresh too, so GoTrue migrates schema `auth` on the new cluster. Neither script touches the Hub's `supabase_*`
-containers.
+starts GoTrue afresh too, so GoTrue migrates schema `auth` on the new cluster.
+Neither script touches the Hub's `supabase_*` containers.
 
 `.local/` holds `db.env`, `auth.env`, `synthetic-users.json`,
 `synthetic-agents.json` and `gate.env`. It is gitignored and never enters a
@@ -234,22 +234,23 @@ signature and `exp` against GoTrue's published key set
 secret that can make a token.
 
 A browser holds no token (S0-6c). It posts the token once to
-`POST /api/session`, which verifies it, answers `{ ok: true, session }` and
-sets it as an `HttpOnly`, `Secure`, `SameSite=Lax` cookie scoped to `/api/b/`,
-one per sign-in, named from `session` (a digest of the token, not a secret).
-Its `Max-Age` is what is left of the session's 12-hour absolute limit from the
-first sign-in (below), never more than the 12 (`cookieMaxAge`, C58); a token
-past the limit gets no cookie, and a cookie whose token is past it is
-`AUTH_SESSION_EXPIRED` 401. A cookie-carried request needs
-`x-ops-astro-csrf: 1` and no cross-site `Sec-Fetch-Site` (else
-`AUTH_CROSS_SITE` 403), and reads only the cookie of the sign-in its
-`x-ops-astro-session` names; session cookies with none named are
+`POST /api/session`, which verifies it and answers `{ ok: true, session }`.
+It sets the token as an `HttpOnly`, `Secure`, `SameSite=Lax` cookie scoped to
+`/api/b/`, one per sign-in, named from `session` (a digest of the token, not a
+secret). Its `Max-Age` is what is left of the session's 12-hour absolute limit
+from the first sign-in (below), never more than the 12 (`cookieMaxAge`, C58).
+A token past the limit gets no cookie, and a cookie whose token is past it is
+`AUTH_SESSION_EXPIRED` 401. A request that carries the cookie needs
+`x-ops-astro-csrf: 1` and no cross-site `Sec-Fetch-Site`, or it is
+`AUTH_CROSS_SITE` 403. The API reads only the cookie of the sign-in the
+request's `x-ops-astro-session` names. Session cookies with none named are
 `AUTH_SESSION_MISMATCH` 403. `/api/session/end` clears only the named
 sign-in's cookie, so a late sign-out ends no other. When that cookie's token
 verifies and names a provider session, it first ends that session for every
-business (below) and asks the provider to sign it out (`scope=local`); a
-bearer beside it, a forged or lapsed token ends nothing but the cookie, and
-the answer is `{ ok: true }` whatever the provider says. A bearer is read first.
+business (below) and asks the provider to sign it out (`scope=local`). A
+bearer beside it, or a forged or lapsed token, ends nothing but the cookie,
+and the answer is `{ ok: true }` whatever the provider says. A bearer is read
+first.
 
 Nothing else reaches identity. Not a body field, not a host or forwarded
 header, not an `apikey`, not a query parameter. A request carrying `actorId` or
@@ -348,20 +349,25 @@ passes it with no cast.
 `apps/api/server.ts` exports `composeApi(config)`. It builds the served app
 with `/api/health`, the boundary and the fault mapping (`server.onError`), and
 returns it with the app's business resolver. Every answer under `/api`, a
-refusal, a fault and a missing route included, is sent `Cache-Control: private,
-no-store`, since the API is served behind Vercel's edge network (`S0-6 no edge
-caching`, `tests/api/api-answers-never-cached.test.ts`). It reads no environment, opens no
-socket and starts no process. `main()` runs only as the process entry
-(`import.meta.main`). It reads the environment, calls `composeApi`, runs
-restart recovery through that same resolver, and only then binds the port.
-`apps/api/function.ts` is the Vercel function entry: it builds the same
+refusal, a fault and a missing route included, carries
+`Cache-Control: private, no-store`, because Vercel's edge network serves the
+API (`S0-6 no edge caching`, `tests/api/api-answers-never-cached.test.ts`).
+`composeApi` reads no environment, opens no socket and starts no process.
+`main()` runs only as the process entry (`import.meta.main`). It reads the
+environment, calls `composeApi`, runs restart recovery through that same
+resolver, and only then binds the port.
+`apps/api/function.ts` is the Vercel function entry. It builds the same
 `composeApi` from the function's settings, with no identity route or live
-channel, which belong to a long-running process. It owns recovery: before a request
-it runs the reconciliation pass for each business `RECOVERY_BUSINESS_KEYS` names,
-which a named environment (`OPS_ENVIRONMENT`) must set, if only to `none`. It holds no admin login: the business key is read on `DATABASE_LOOKUP_URL`, a login in the lookup identity (migration 0046; unset, every key is refused), and the entry refuses to start with `DATABASE_ADMIN_URL` set. It answers only
-requests whose `Host` and URL both name `SERVED_HOST`, the environment's own host; any other,
-a deployment's generated address included, is refused 421 before anything is
-read, so a promotion leaves the previous deployment serving nothing
+channel, since those belong to a long-running process. It owns recovery:
+before a request it runs the reconciliation pass for each business
+`RECOVERY_BUSINESS_KEYS` names, which a named environment (`OPS_ENVIRONMENT`)
+must set, if only to `none`. It has no admin login. It reads the business key
+on `DATABASE_LOOKUP_URL`, a login in the lookup identity (migration 0046), and
+with that unset refuses every key. It refuses to start with
+`DATABASE_ADMIN_URL` set. It answers only requests whose `Host` and URL both
+name `SERVED_HOST`, the environment's own host. Any other, a deployment's
+generated address included, is refused 421 before anything is read, so a
+promotion leaves the previous deployment serving nothing
 (`tests/api/function-entry.test.ts`).
 Tests build the server with `composeApi` (`compose` in `tests/api/fixture.ts`),
 so they run the wiring the server listens with rather than a copy of it. A
@@ -487,7 +493,7 @@ no route written by hand.
 | `preset.plan`                      | `/preset/plan`                      | `recordTypeKey`, `presetKey`, `fields[]`                                                       | `FIELD_VALUE_INVALID` 422 for an absent or mistyped operand, `SCOPE_NOT_GRANTED` 403, `PRESET_FIELD_UNCLASSIFIED` 422, `PRESET_TYPE_UNKNOWN` 404, `PRESET_FIELD_UNPLACEABLE` 409, `PRESET_FIELD_DUPLICATE` 422                                                                                                                                                                                                                                                                                         |
 | `settings.set_four_eyes_threshold` | `/settings/set_four_eyes_threshold` | `operationId`, `value` (number or `null`), `expectedRevision?`                                 | `SCOPE_NOT_GRANTED` 403 (it asks `spend:decide`), `STEP_UP_REQUIRED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                                                                                               |
 | `settings.set_client_sign_off`     | `/settings/set_client_sign_off`     | `operationId`, `value` (boolean), `expectedRevision?`                                          | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                                                                                                                                                |
-| `settings.set_money_step_up`       | `/settings/set_money_step_up`       | `operationId`, `value` (boolean), `expectedRevision?`                                          | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                                                                                                                                                |
+| `settings.set_money_step_up`       | `/settings/set_money_step_up`       | `operationId`, `value` (boolean), `expectedRevision?`                                          | `SCOPE_NOT_GRANTED` 403, `STEP_UP_REQUIRED` 403 (switching it off), `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                                                                                                     |
 | `settings.set_conversation_window` | `/settings/set_conversation_window` | `operationId`, `value` (whole days), `expectedRevision?`                                       | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                                                                                                                                                |
 | `settings.set_retention_window`    | `/settings/set_retention_window`    | `operationId`, `value` (whole days), `expectedRevision?`                                       | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                                                                                                                                                |
 
@@ -1443,12 +1449,12 @@ case (g) carries the rows. The server declares the two answers as
 (`packages/core-wire/src/views.ts`), and the web imports that type
 rather than keeping a copy; the two are told apart by the key.
 
-| Read                   | Route                   | Body                     | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Refusals it can answer                                                                                     |
-| ---------------------- | ----------------------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `settings.read`        | `/settings/read`        | `{}`; it takes no fields | `{ ok: true, settings: [{ key, value, valueType, revision, updatedAt, updatedByActorId }] }`                                                                                                                                                                                                                                                                                                                                                                                                  | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403                                |
-| `session.capabilities` | `/session/capabilities` | `{}`; it takes no fields | `{ ok: true, personId, businessKey, grants: [{ collection, action }] }`                                                                                                                                                                                                                                                                                                                                                                                                                       | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403, `AUTH_SESSION_EXPIRED` 401    |
-| `access.read`          | `/access/read`          | `{}`; it takes no fields | `{ ok: true, team, clients, agents, clientRecords }` (`clientRecords`: every client `{ clientId, name }`): each person `{ personId, name, permissions: [{ collection, action, scope, stepUp }], grants: [{ grantId, collection, action, scope }] }` (`stepUp`: the money step-up is asked before that key, by `asksMoneyStepUp`, C59; `grants`: their live grant rows in this business, each revocable by `access.revoke`), each agent its `person`, `purpose`, `expiresAt` and `permissions` | `SCOPE_NOT_GRANTED` 403 without `access:manage`, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403        |
-| `session.person`       | `/session/person`       | `{}`; it takes no fields | `{ ok: true, person: { name } }`, the caller's own name                                                                                                                                                                                                                                                                                                                                                                                                                                       | `FIELD_NOT_WRITABLE` 422, `COMMAND_BODY_INVALID` 400, `AUTH_NO_MEMBERSHIP` 403, `AUTH_SESSION_EXPIRED` 401 |
+| Read                   | Route                   | Body                     | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Refusals it can answer                                                                                     |
+| ---------------------- | ----------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `settings.read`        | `/settings/read`        | `{}`; it takes no fields | `{ ok: true, settings: [{ key, value, valueType, revision, updatedAt, updatedByActorId }] }`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403                                |
+| `session.capabilities` | `/session/capabilities` | `{}`; it takes no fields | `{ ok: true, personId, businessKey, grants: [{ collection, action }] }`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403, `AUTH_SESSION_EXPIRED` 401    |
+| `access.read`          | `/access/read`          | `{}`; it takes no fields | `{ ok: true, team, clients, agents, clientRecords }` (`clientRecords`: every client `{ clientId, name }`): each person `{ personId, name, permissions: [{ collection, action, scope, stepUp }], grants: [{ grantId, collection, action, scope }] }` (`stepUp`: per key, the money step-up is asked before that key, by `asksMoneyStepUp`, C59; switching the money step-up off is asked on its own and is not marked; `grants`: their live grant rows in this business, each revocable by `access.revoke`), each agent its `person`, `purpose`, `expiresAt` and `permissions` | `SCOPE_NOT_GRANTED` 403 without `access:manage`, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403        |
+| `session.person`       | `/session/person`       | `{}`; it takes no fields | `{ ok: true, person: { name } }`, the caller's own name                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | `FIELD_NOT_WRITABLE` 422, `COMMAND_BODY_INVALID` 400, `AUTH_NO_MEMBERSHIP` 403, `AUTH_SESSION_EXPIRED` 401 |
 
 `session.person` and the command `session.end` are the person menu's (C23).
 Neither asks the grant model: `session.person` answers anyone signed in with
@@ -1677,7 +1683,10 @@ A command whose declared key is in the money set (every `billing` key,
 factor verified in the last 60 minutes, a client a sign-in in the last 60
 minutes, or it is refused `STEP_UP_REQUIRED` 403. While the business setting
 `money_step_up_required` is `false` a live session is enough; only
-`settings:manage` switches it, through `settings.set_money_step_up`. An agent
+`settings:manage` switches it, through `settings.set_money_step_up`, which is
+judged the same way when switching it off, whatever the setting holds, so a
+stale sign-in cannot switch the step-up off to move money. Switching it on
+asks nothing, so a person without a factor can always turn it back on. An agent
 credential never holds a money key (`credential.issue` below), so none is
 judged later on an agent's behalf. Settings ▸ Access marks each such key
 in a person's preview (`access.read`'s `stepUp`) by the same predicate,

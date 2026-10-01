@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines -- the one home of effective scope and its fingerprints */
 //
 // Effective scope, computed inside the transaction that serves the call.
 //
@@ -151,6 +152,29 @@ export async function grantFingerprint(
     [asked.map((s) => s.kind), asked.map((s) => s.id), asked.map((s) => s.key)],
   );
   if (row === undefined) throw new Error('grant fingerprint answered no row');
+  return row.fingerprint;
+}
+
+/**
+ * Every grant row naming the subjects, revoked ones too, and the transaction
+ * that last wrote each. The app role cannot delete a grant, so an issue adds a
+ * row and a revoke rewrites one: a grant issued and revoked between two reads
+ * moves this even when it leaves `grantFingerprint` where it was.
+ */
+export async function grantRowsFingerprint(
+  tx: TenantQuery,
+  subjects: readonly Subject[],
+): Promise<string> {
+  const [row] = await tx.query<{ readonly fingerprint: string }>(
+    `select encode(sha256(convert_to(coalesce(
+              string_agg(g.id::text || ':' || g.xmin::text, ',' order by g.id), ''),
+            'UTF8')), 'hex') as fingerprint
+       from public.grants g
+      where exists (select 1 from unnest($1::text[], $2::uuid[]) as s (kind, id)
+                     where s.kind = g.subject_kind and s.id = g.subject_id)`,
+    [subjects.map((subject) => subject.kind), subjects.map((subject) => subject.id)],
+  );
+  if (row === undefined) throw new Error('grant rows fingerprint answered no row');
   return row.fingerprint;
 }
 
