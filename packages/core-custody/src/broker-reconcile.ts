@@ -20,9 +20,17 @@
 // nothing, so a hung provider costs the pass one timeout, not one per call or
 // per business, and cannot stall every business's sweep. A release writes
 // `model.call_released` with its reason, as the settlement's release does.
+//
+// A lookup goes out under the gate a model call takes (`atCeiling`, AW-01):
+// the business's own ceiling for the operation, then the route's ceiling and
+// the business's fair share of it. With no room the lookup waits: nothing is
+// sent and nothing written, so the next pass asks again. The gate is read in
+// its own transaction just before the lookup; the lookup holds no row of its
+// own, so the pass sends one at a time.
 
 import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
 import { proofOf, reconcileModeOf, type Proof } from './broker-fault.ts';
+import { atCeiling } from './broker-reserve.ts';
 import type { Broker } from './broker-types.ts';
 
 /** The most a lookup answer is read: one short code. */
@@ -48,6 +56,9 @@ interface Asked {
 
 const nothing = (reason: string): Proof => ({ proved: false, reason });
 
+/** A lookup with no room on its route: not sent, and nothing written on the call. */
+const WAITS = "its route has no room for this business's lookup; the next pass asks again";
+
 /** How the call is reconciled; a call the sweep held from a lost worker learns it here. */
 function modeOf(broker: Broker, call: Asked): 'provider_lookup' | 'person' {
   const operation = broker.operations.get(call.operation_key);
@@ -55,8 +66,16 @@ function modeOf(broker: Broker, call: Asked): 'provider_lookup' | 'person' {
   return reconcileModeOf(operation, broker.providers.get(operation.provider));
 }
 
-/** Ask the call's provider whether it began the call. Never throws: a failure is no proof. */
-async function ask(broker: Broker, call: Asked): Promise<Proof> {
+/**
+ * Ask the call's provider whether it began the call, or `waits` when the
+ * route has no room for it. A failed lookup is no proof, never a throw.
+ */
+async function ask(
+  database: Database,
+  businessId: BusinessId,
+  broker: Broker,
+  call: Asked,
+): Promise<Proof | 'waits'> {
   const operation = broker.operations.get(call.operation_key);
   const adapter = operation === undefined ? undefined : broker.providers.get(operation.provider);
   if (operation === undefined || adapter?.lookup === undefined || !adapter.readLookup) {
@@ -68,6 +87,11 @@ async function ask(broker: Broker, call: Asked): Promise<Proof> {
   if (route.credentialKind === 'subscription') {
     return nothing("the route's credential is a person's own; a person records the outcome");
   }
+  const full = await database.withBusiness(
+    businessId,
+    async (tx) => await atCeiling(tx, operation, route),
+  );
+  if (full) return 'waits';
   const request = adapter.lookup(call.id);
   try {
     const outcome = await broker.custody.dispatch(route.credentialRef, {
@@ -147,18 +171,22 @@ export async function reconcileProviderCalls(
   const proofs: ProviderProof[] = [];
   for (const call of asked) {
     const provider = broker.operations.get(call.operation_key)?.provider ?? '';
-    // Sequential: one lookup at a time keeps the pass inside the route's ceiling.
+    // Sequential: one lookup at a time, each through the route's gate.
     const proof = unanswered.has(provider)
       ? nothing('its provider gave an earlier lookup in this pass no answer')
       : // eslint-disable-next-line no-await-in-loop
-        await ask(broker, call);
-    if (!proof.proved && proof.silent === true) unanswered.add(provider);
-    // eslint-disable-next-line no-await-in-loop
-    const recorded = await database.withBusiness(
-      businessId,
-      async (tx) => await record(tx, call, proof, broker),
-    );
-    proofs.push(recorded);
+        await ask(database, businessId, broker, call);
+    if (proof === 'waits') {
+      proofs.push({ callId: call.id, proved: false, reason: WAITS });
+    } else {
+      if (!proof.proved && proof.silent === true) unanswered.add(provider);
+      // eslint-disable-next-line no-await-in-loop
+      const recorded = await database.withBusiness(
+        businessId,
+        async (tx) => await record(tx, call, proof, broker),
+      );
+      proofs.push(recorded);
+    }
   }
   return proofs;
 }
