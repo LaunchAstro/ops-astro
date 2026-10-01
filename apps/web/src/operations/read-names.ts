@@ -75,3 +75,11 @@ export type ReadName = OnSurface<typeof READ_NAMES>[number];
  * something only the running caller knows.
  */
 export type NotARead<Name extends CommandName> = [Name] extends [ReadName] ? never : Name;
+
+/**
+ * The person's own account routes (C58) the browser calls, at `/account/<route>`
+ * on the person prefix. They are not surface operations: the body is always
+ * empty and the server takes the person and this session from the credential,
+ * so no caller can name another person, session or agent in one.
+ */
+export type AccountRoute = 'sessions/list' | 'sessions/end-others';

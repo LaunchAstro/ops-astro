@@ -206,6 +206,7 @@ async function roleClasses(
                  when r.rolname = 'ops_astro_backup_restore' then 'backup restore'
                  when r.rolname = 'ops_astro_lookup' then 'lookup'
                  when r.rolname = 'ops_astro_forwarder' then 'forwarder'
+                 when r.rolname = 'ops_astro_restore_drill' then 'restore drill'
                  when r.rolcanlogin and not r.rolbypassrls and not r.rolcreaterole
                       and not r.rolcreatedb then 'outsider'
                  else 'unclassified' end as class
@@ -286,6 +287,9 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     // S0-2: the outbox forwarder reads and deletes ops.api_events and keeps its raised alerts in
     // ops.api_alerts (0048), proved in tests/db/api-events.test.ts.
     expect(classes['forwarder']).toStrictEqual(['ops_astro_forwarder']);
+    // C55: the restore drill stamps the date of the last tested restore through
+    // ops.record_tested_restore() (0068), proved in tests/operations/c55-last-tested-restore.test.ts.
+    expect(classes['restore drill']).toStrictEqual(['ops_astro_restore_drill']);
     expect(classes['application login']).toContain(world.db.loginRole);
     expect(classes['outsider']).toContain(world.db.restrictedRole);
   });
@@ -444,16 +448,22 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
   describe('the security definer function', () => {
     const definers = (): readonly CatalogueFunction[] => functions.filter((fn) => fn.definer);
 
-    it('is exactly one, a trigger on handback_reports with its search path pinned', () => {
+    it('is exactly two, a trigger on handback_reports and the drill stamp, each path pinned', () => {
       expect(definers().map((fn) => fn.signature)).toStrictEqual([
         'handback_reports_append_only()',
+        'ops.record_tested_restore()',
       ]);
-      const [fn] = definers();
+      const [fn, stamp] = definers();
       expect(fn?.trigger).toBe(true);
       expect(fn?.config).toStrictEqual(['search_path=pg_catalog, public']);
       expect(fn?.firedBy).toStrictEqual([
         { table: 'public.handback_reports', events: 'delete update' },
       ]);
+      // 0068 (C55): no argument, so it writes only now(); only the drill's
+      // identity executes it (c55-last-tested-restore), refused above to every caller here.
+      expect(stamp?.trigger).toBe(false);
+      expect(stamp?.argumentTypes).toStrictEqual([]);
+      expect(stamp?.config).toStrictEqual(['search_path=pg_catalog']);
     });
   });
 

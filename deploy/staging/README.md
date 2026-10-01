@@ -101,7 +101,9 @@ Each drill it runs, passed or failed, leaves a receipt in the backup store
 (`backups.drills`: time, outcome, stage, majors, table count, stage timings
 and the operator; no record data, key, credential, fingerprint or path) and a
 line in the operator's record folder. The receipt names the date of the last
-tested restore. The daily upkeep job (`backup.mjs expire`) pings the restore
+tested restore, and a pass the store took also stamps that date on staging's
+database (`ops.last_tested_restore`, migration 0068), where the operations
+view reads it; a failed drill stamps nothing. The daily upkeep job (`backup.mjs expire`) pings the restore
 heartbeat only while a drill passed within `backups.settings.restore_days`
 (35 to start); once none has, the watcher mails the owner and the second
 operator that the restore drill is out of date.
@@ -231,6 +233,7 @@ addresses are private, set in the environment at run time:
 | `OPS_ALERT_TEST_EMAIL`                                     | `alerts.mjs plan --test`                     | the test address agreed before case R8's proof                                                                                                             |
 | `OPS_WATCH_STAGING_URL`, `OPS_WATCH_PRODUCTION_URL`        | `alerts.mjs plan`                            | the public https addresses watched; production's from the first promotion                                                                                  |
 | `OPS_ERROR_SINK_DSN`                                       | the forwarder, `alerts.mjs`, the secret scan | the sink's DSN, at a public https address (a private one is refused, a redirect not followed); never the Vercel function's (it refuses to start beside it) |
+| `OPS_ERROR_SINK_URL`                                       | the API                                      | the sink's web address, the operations view's link (C55); no secret, never the DSN (an address with a user part stops the API)                             |
 | `OPS_ENVIRONMENT`, `OPS_RELEASE`                           | the API, the forwarder, `alerts.mjs test`    | `staging` or `production`; the build stamp                                                                                                                 |
 | `ALERT_SCOPE_KEY`                                          | the API (the Vercel function)                | at least 32 bytes as hex (`openssl rand -hex 32`), one per environment, every instance the same; required once `OPS_ENVIRONMENT` is set                    |
 | `DATABASE_FORWARDER_URL`                                   | `forwarder.mjs`                              | a login that is a member of `ops_astro_forwarder` alone                                                                                                    |

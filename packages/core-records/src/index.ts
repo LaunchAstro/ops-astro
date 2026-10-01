@@ -131,6 +131,7 @@ export {
   type PrivacyIncident,
   type PrivacyIncidentFacts,
 } from './operations/privacy-incidents.ts';
+export { readSecurityAlerts, type SecurityAlert } from './operations/security-alerts.ts';
 export {
   draftBreachNotices,
   type BreachNotice,

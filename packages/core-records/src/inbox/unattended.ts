@@ -23,8 +23,8 @@
 //
 // Escalation is parked (the owner, C33-1): no fallback person is named, this
 // read raises nothing for anyone, and it writes no item, grant or decision.
-// The list is the operations view's (C55) and, until that lands, the API's
-// and the command line's `inbox.unattended`, behind `operations:read`.
+// The list is the operations view's (C55) and the API's and the command
+// line's `inbox.unattended`, both behind `operations:read`.
 
 import { standsOnShares } from '../identity/login-resolution.ts';
 import type { TenantQuery } from '../tenancy/database.ts';

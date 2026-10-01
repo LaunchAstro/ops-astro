@@ -70,6 +70,7 @@ agency | Settings
   emails | Emails | settings/emails/ | MP-2-10
   workflow-triggers | Workflow triggers | settings/workflow-triggers/ | MP-2-10
   telemetry | Telemetry | @agency:telemetry | C34
+  operations | Operations | @agency:operations | C55
   cal | Cal | settings/cal/ | MP-2-10
 clients | Overview
   brief | Brief | | MP-10-2 | /agency/brief/

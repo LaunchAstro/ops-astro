@@ -152,19 +152,23 @@ function zeroHorizontalOverflow(): void {
   });
 }
 
+// The registry's pages: wave 0's four, the public legal page (C81), Settings ▸
+// Access, Telemetry (U14) and Operations (C55), and the component gallery (MP-1-3, U04).
+const BUILT_PAGES = [
+  'agency:sign-in',
+  'agency:legal',
+  'agency:projects-board',
+  'agency:task-detail',
+  'agency:settings',
+  'agency:access',
+  'agency:telemetry',
+  'agency:operations',
+  'agency:gallery',
+];
+
 function everyPageBuiltSoFar(): void {
   it('MP-1-7 every page built so far: each registered route has a picture at each width', () => {
-    // The registry's pages: wave 0's four, Settings ▸ Access and Telemetry
-    // (U14), and the component gallery (MP-1-3, U04).
-    expect(builtPages()).toEqual([
-      'agency:sign-in',
-      'agency:projects-board',
-      'agency:task-detail',
-      'agency:settings',
-      'agency:access',
-      'agency:telemetry',
-      'agency:gallery',
-    ]);
+    expect(builtPages()).toEqual(BUILT_PAGES);
     const all = report(packet, builtPages(), everyShot(packet.widths));
     expect(all.failed).toBe(0);
     expect(all.lines.at(-1)).toBe(

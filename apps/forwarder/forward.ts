@@ -14,9 +14,10 @@
 //   allowlist (`rebuiltError`) under an id fixed by its row, and counts the
 //   signals under the detector's own rules, each row's time the clock and its
 //   keyed digest the scope;
-// - keeps each alert raised, its sink id fixed then (0048), and deletes the
-//   errors sent, the signals an alert counted and the signals past their
-//   rule's window; a send that fails rolls the pass back;
+// - keeps each alert raised, its sink id fixed then (0048), logs its kind and
+//   time for the operations view (0067), and deletes the errors sent, the
+//   signals an alert counted and the signals past their rule's window; a send
+//   that fails rolls the pass back;
 // - then sends the kept alerts, each deleted only once the sink took it, so a
 //   retry after a lost answer sends the same id whatever commits later;
 // - pings its heartbeat once that has committed, and fails if the ping did.
@@ -166,11 +167,14 @@ export function createForwarder(options: ForwarderOptions): {
     const now = stale?.now.getTime() ?? Date.now();
     const { handled, spent } = await replay(execute, options, now, raised);
     // Each alert is kept with its id, fixed now, as the signals it counted go: a
-    // send that fails leaves it to the next pass under the same id (0048).
+    // send that fails leaves it to the next pass under the same id (0048). One
+    // newly kept is logged by kind and time for the operations view (0067), in
+    // this statement, and stays there after the sink takes it.
     await execute(
-      `insert into ops.api_alerts (id, kind)
+      `with kept as (insert into ops.api_alerts (id, kind)
          select id, kind from unnest($1::text[], $2::text[]) with ordinality as a(id, kind, n)
-         order by n on conflict (id) do nothing`,
+         order by n on conflict (id) do nothing returning kind)
+       insert into ops.security_alert_log (kind) select kind from kept`,
       [raised.map((alert) => alert.id), raised.map((alert) => alert.kind)],
     );
     await execute('delete from ops.api_events where id = any($1::bigint[])', [spent]);

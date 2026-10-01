@@ -1641,10 +1641,14 @@ empty body counts as done; a 200, any body, a refusal, a redirect (never
 followed), an oversized or slow answer is `signedOutAtProvider: false`, the
 local end stands, and asking again is safe. The provider's words go nowhere.
 
+In the web app, Settings ▸ General's "Your sessions" panel calls the first two,
+ending the others only once confirmed, then listing again; it draws no session
+id (`apps/web/src/screens/settings/sessions.tsx`).
+
 ## The operations view and privacy incidents (C55)
 
-`operations.read` answers `{ ok, privacyIncidents, serviceHealth }` to a holder of
-`operations:read` (install default: the owner and administrators). It is
+`operations.read` answers `{ ok, unattended, privacyIncidents, breachRunbook, securityAlerts, serviceHealth, errorSink, lastTestedRestore }`
+to a holder of `operations:read` (install default: the owner and administrators). It is
 never an agent's: on the agent prefix it is `DELEGATION_EXCLUDES_OPERATION` 403. Each incident carries its day-0 facts, its status and `assessBy`, 30 days
 after `foundAt` (the breach runbook's assessment limit), most recently found
 first, at most 200. The clock starts at `foundAt`, day 0, whenever the record
@@ -1652,6 +1656,34 @@ was made. `overdue` is true while an incident is open past `assessBy`, judged
 on the database's clock (C81 breach drill). `breachRunbook` is what every
 incident record links to: the breach runbook published most recently, as
 `{ version, digest, publishedAt, body }`, or `null` until one is published.
+`unattended` is INB-1's list, read for the same caller: exactly what
+`inbox.unattended` answers them, built by the same read (no second list).
+
+**Security alerts (TR-SEC-9).** `securityAlerts` lists the alerts S0-2's
+forwarder raised, newest first, at most 50, each `{ kind, at, concerns }`:
+the alert's kind, the time it was raised (ISO 8601) and fixed plain words for
+what it concerns (`An alert of an unknown kind` for a kind the view has no
+words for). It is read from the forwarder's log (`ops.security_alert_log`,
+0067), written in the pass that raises the alert, so an alert stays listed
+after the sink took it and its `ops.api_alerts` row is gone. No id, scope,
+business, person, secret or record content is in it. An alert names no
+business and the detector counts every business's signals together, so the
+list is the installation's: only the business that operates it
+(`ops.installation.operator_business_id`) reads it, and every other business,
+or every business while none is set, reads `[]`.
+
+`lastTestedRestore` is `{ at, stale }`: `at` the date of the last successful
+tested restore (ISO 8601), or `null` while no drill has passed, and `stale`
+true once that date is older than the store's restore window
+(`backups.settings.restore_days`, the window past which the restore
+heartbeat is withheld and the restore alert fires), or while none has passed.
+The drill's receipt stays in the backup store, which the API cannot reach; a
+pass the store took also stamps the date on the installation's database
+(`ops.last_tested_restore`, [DATA.md](DATA.md)), and that is what this reads.
+The service-health section is read outside the serving transaction, so the
+age alone decides `stale`; nothing here asks the watcher a second time. The
+date is installation state, the same in every business's answer, and carries
+no business, person, archive or path.
 
 `privacy.record_incident` is the tracked action `privacy incident recorded`,
 under `privacy:manage` and never an agent's. Its body is
@@ -1700,6 +1732,13 @@ minute ahead) is a read failure, and none of its services is shown. A client's
 own site (`scope: 'client-site'`) is that client's and never shown here. The
 source's own words go nowhere.
 
+**Error sink link (C55).** `errorSink` is `{ url }`, the sink's web address
+from `OPS_ERROR_SINK_URL`, or `null` when that is unset; the API adds it beside
+`serviceHealth`, so a read made in-process carries none. The setting holds no
+secret and is never derived from `OPS_ERROR_SINK_DSN`, whose user part is the
+sink's key: an address that is not https, or that has a user part (a DSN
+pasted there), stops the API at start, naming the setting and never its value.
+
 The port is `HealthSource` (`reads/service-health.ts`). Tracing is Langfuse,
 `LANGFUSE_HOST`, read at `GET /api/public/health` with no credential
 (`apps/api/health/tracing.ts`): one destination, no redirect, a time and a size
@@ -1709,7 +1748,7 @@ and the error sink (GlitchTip, C29-3) are their adapters, filled in at the same
 port when they land.
 
 Held until their parts land (each placed here as its owner's read, never a
-second list): unattended items (INB-1), security alerts (S0-2), the last tested
+second list): security alerts (S0-2), the last tested
 restore (S0-3) and the error-sink link.
 
 ## Legal documents (C81)

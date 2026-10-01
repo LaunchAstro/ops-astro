@@ -41,10 +41,10 @@ import type {
   SharedTaskRead,
   TaskBoardResult,
   TaskDetail,
+  UnattendedView,
 } from '../../../core-wire/src/index.ts';
 import type { TaskExecution } from './execution.ts';
 import type { Receipt } from '../../../core-runtime/src/index.ts';
-import type { UnattendedEntry } from './inbox.ts';
 
 // The result types live in `views.ts`, which the clients import; the server's
 // own modules keep importing them from here.
@@ -158,4 +158,4 @@ export type ReadResult =
   | BreachNoticesResult
   | InboxReadResult
   | InboxCountResult
-  | { readonly ok: true; readonly unattended: readonly UnattendedEntry[] };
+  | { readonly ok: true; readonly unattended: readonly UnattendedView[] };

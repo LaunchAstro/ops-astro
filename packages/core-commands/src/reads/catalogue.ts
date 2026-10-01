@@ -420,14 +420,15 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     },
   },
   // C55. The business's own operations, so no subject record; it asks
-  // `read` on `operations`, which no agent holds.
+  // `read` on `operations`, which no agent holds. Its unattended items are
+  // `inbox.unattended`'s, read for the same caller.
   'operations.read': {
     identifiers: [],
     parse: NONE,
     spine: false,
     authority: 'declared',
     outsiderNotFound: false,
-    serve: async (tx) => ({ ok: true, ...(await readOperations(tx)) }),
+    serve: async (tx, session) => ({ ok: true, ...(await readOperations(tx, session.personId)) }),
   },
   // C81's breach drill. It asks `manage` on `privacy`, the key the incident is
   // recorded under, which no agent holds. The incident is looked up in the

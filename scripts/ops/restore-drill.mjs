@@ -29,10 +29,11 @@
 // (`operator.ts`, with OPS_ASTRO_TOKEN, OPS_ASTRO_BUSINESS and the rest the
 // runbook sets) answers before the key, the store or Docker is touched, and a
 // refusal writes nothing. A drill that ran, passed or failed, leaves one
-// receipt in the store (`backups.drills`, where the operations view reads the
-// date of the last tested restore) and one line in the operator's record
-// folder, with the fields `RECEIPT_FIELDS` (drill-receipt.mjs) names and no
-// other.
+// receipt in the store (`backups.drills`) and one line in the operator's
+// record folder, with the fields `RECEIPT_FIELDS` (drill-receipt.mjs) names
+// and no other. A pass the store took also stamps its date on the
+// installation's database (`ops.last_tested_restore`, migration 0068), where
+// the operations view reads it (C55); a failed drill stamps nothing.
 //
 // The clean-host leg (S0-3e, recovery contract D-3) runs off the machine,
 // where the store has no route: `--export` writes the newest sealed backup
