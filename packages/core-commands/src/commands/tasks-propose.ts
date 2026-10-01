@@ -12,6 +12,7 @@ import { applied, refused, type HandlerOutcome, type Refused } from './outcome.t
 import { EXPIRY_FIX, expiryFrom } from './expiry.ts';
 import { invalid, isFieldMap } from './operands.ts';
 import { claimUnclaimed, researchStartRefusal } from './research-run.ts';
+import { pinResearchSkillOnStart } from './research-skill.ts';
 import { readBusinessCapId, readProjectedPlan } from '../../../core-runtime/src/index.ts';
 
 export interface ProposeFields {
@@ -249,6 +250,20 @@ export async function proposeFor(
   if (unplanned !== undefined) return unplanned;
   const result = await proposeUnderLocks(tx, proposal, held);
   if (!result.ok) return refused(result.refusal);
+  // WF-7 skill pinned by digest (ORCH47 (b)8): a person's research run pins
+  // the vendored research skill on the run it planned, in this transaction.
+  // A skill that is not the locked one refuses the start, and the refusal
+  // rolls back the run and proposal above with it. An agent's start
+  // (`delegation` set) is refused in Stage 1 (ORCH49-R2): an agent may not
+  // activate an instruction file (`admitActivation`), so it pins nothing;
+  // an agent pinning the skill on its own start is a later-stage line.
+  if (research) {
+    const pinned = await pinResearchSkillOnStart(tx, {
+      runId: result.value.runId,
+      starter: { kind: delegation === undefined ? 'person' : 'agent', actorId },
+    });
+    if (!pinned.ok) return refused(pinned.refusal);
+  }
   const revision = research ? await claimUnclaimed(tx, current, starter) : current.revision;
   await raiseDecision(tx, { taskId: target.id, gateId: result.value.gateId });
 

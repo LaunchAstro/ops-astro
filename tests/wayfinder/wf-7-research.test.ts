@@ -3,25 +3,18 @@
 // WF-7 (#640) on its own broker operation (ORCH47 ruling (b)8): a research
 // run's model call is `model.research_compose`, catalogued in the API's
 // broker beside the conversation's, its question bound to the run's own
-// ticket. Four of the ticket's lines ride on it: `WF-7 holds no credential`,
-// `WF-7 canary`, `WF-7 hostile provider` and `WF-7 skill pinned by digest`.
-// The run is wf-7-egress's: a research ticket charted on a map, started by a
-// person holding `run:write`, approved by another, picked up by the agent.
+// ticket. Three of the ticket's lines ride on it: `WF-7 holds no credential`,
+// `WF-7 canary` and `WF-7 hostile provider`. The run is wf-7-egress's: a
+// research ticket charted on a map, started by a person holding `run:write`,
+// approved by another, picked up by the agent. `WF-7 skill pinned by digest`
+// is `wf-7-pin.test.ts`.
 
-import { createHash, randomUUID } from 'node:crypto';
-import { readdirSync, readFileSync } from 'node:fs';
-import { join, relative, sep } from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { expect, it as vitestIt, vi } from 'vitest';
 import { BROKER_OPERATIONS } from '../../apps/api/model-broker.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
-import { pinResearchSkill, RESEARCH_SKILL } from '../../packages/core-commands/src/index.ts';
 import { RESEARCH_COMPOSE, type ReplayMode } from '../../packages/core-connectors/src/index.ts';
 import type { Broker, ModelCallField } from '../../packages/core-custody/src/index.ts';
-import {
-  admitActivation,
-  directorySource,
-  type InstructionSource,
-} from '../../packages/core-runtime/src/index.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
 import {
   appliedDetail,
@@ -42,7 +35,6 @@ import {
   useBrokerWorld,
   world,
 } from '../broker/broker-world.ts';
-import { skillFolderHash } from './skill-digest.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
 
@@ -156,6 +148,7 @@ it('WF-7 holds no credential: the research call goes through its catalogued oper
   ).toMatchObject({ ok: false });
   expect(world.provider.seen.length).toBe(seen);
   for (const text of await leftBehind()) expect(text).not.toContain(world.canary);
+  expect(world.custody.stderr()).not.toContain(world.canary);
 });
 
 it("WF-7 canary: the ticket's words reach the provider as the question and nowhere else, and a planted answer reaches no row or log", async () => {
@@ -182,7 +175,7 @@ it("WF-7 canary: the ticket's words reach the provider as the question and nowhe
     for (const spy of spies) spy.mockRestore();
   }
   expect(world.provider.seen.at(-1)?.body).toContain(canary);
-  for (const text of [...(await leftBehind()), ...said]) {
+  for (const text of [...(await leftBehind()), ...said, world.custody.stderr()]) {
     expect(text).not.toContain(canary);
     expect(text).not.toContain(planted);
   }
@@ -225,76 +218,4 @@ it('WF-7 hostile provider: a hostile answer to a research call is held at its ma
   } finally {
     world.provider.mode('answer');
   }
-});
-
-const SKILL_FOLDER = join(import.meta.dirname, '../..', RESEARCH_SKILL.folder);
-
-function filesUnder(at: string): readonly string[] {
-  return readdirSync(at, { withFileTypes: true }).flatMap((entry) =>
-    entry.isDirectory()
-      ? filesUnder(join(at, entry.name))
-      : [relative(SKILL_FOLDER, join(at, entry.name)).split(sep).join('/')],
-  );
-}
-
-const pinsOf = async (work: Work) =>
-  await s.db.admin.execute<Record<string, unknown>>(
-    `select ref_kind, path, manifest from public.run_definition_pins where run_id = $1`,
-    [work.proposal['runId']],
-  );
-
-/** The skill pinned on the run's record, by the person who started it, from `source`. */
-const pinOn = async (work: Work, source: InstructionSource) => {
-  const admitted = admitActivation({
-    mode: 'manual',
-    activator: { kind: 'person', actorId: s.decider.actorId },
-  });
-  if (!admitted.ok) throw new Error('the starter is a person, by hand');
-  const runId = String(work.proposal['runId']);
-  const files = filesUnder(SKILL_FOLDER);
-  return await s.db.app.withBusiness(s.business, async (tx) => {
-    return await pinResearchSkill(tx, admitted.value, { runId, source, files });
-  });
-};
-
-it('WF-7 skill pinned by digest: a research run pins the upstream research skill, unmodified, on its record', async () => {
-  const lock = JSON.parse(
-    readFileSync(join(import.meta.dirname, '../../skills-lock.json'), 'utf8'),
-  ) as { skills: Record<string, { computedHash: string }> };
-  expect(RESEARCH_SKILL.digest).toBe(lock.skills['research']?.computedHash);
-  expect(skillFolderHash(SKILL_FOLDER)).toBe(RESEARCH_SKILL.digest);
-
-  const work = await researchRun('which skill does the run follow?');
-  const entry = readFileSync(join(SKILL_FOLDER, RESEARCH_SKILL.entry));
-  expect(await pinOn(work, directorySource(SKILL_FOLDER))).toStrictEqual({
-    ok: true,
-    value: {
-      path: RESEARCH_SKILL.entry,
-      digest: createHash('sha256').update(entry).digest('hex'),
-      size: entry.byteLength,
-    },
-  });
-  const [pin] = await pinsOf(work);
-  expect(pin).toMatchObject({ ref_kind: 'bootstrap_file', path: RESEARCH_SKILL.entry });
-  const manifest = (pin?.['manifest'] ?? []) as readonly { readonly path: string }[];
-  expect(manifest.map((file) => file.path).toSorted()).toStrictEqual(
-    [...filesUnder(SKILL_FOLDER)].toSorted(),
-  );
-});
-
-it('WF-7 skill pinned by digest: one byte changed is another skill, refused, and nothing is pinned', async () => {
-  const work = await researchRun('and a changed skill?');
-  const edited: InstructionSource = {
-    read: async (path) => {
-      const bytes = await directorySource(SKILL_FOLDER).read(path);
-      return path === RESEARCH_SKILL.entry && bytes !== undefined
-        ? new Uint8Array([...bytes, 0x0a])
-        : bytes;
-    },
-  };
-  expect(await pinOn(work, edited)).toMatchObject({
-    ok: false,
-    refusal: { code: 'DEFINITION_DIGEST_MISMATCH' },
-  });
-  expect(await pinsOf(work)).toHaveLength(0);
 });

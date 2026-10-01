@@ -14,16 +14,14 @@
 //   SL11 stack, and it is `wf-7-egress.test.ts`.
 // - Twice failed and the waiting item under the lease are `wf-7-inbox.test.ts`;
 //   canary, hostile provider and holds no credential are `wf-7-research.test.ts`.
-//   The skill pinned by digest waits on the run start writing the pin.
 // - The ceiling approval's recent sign-in: C59's step-up (S0-5's sweep).
 // - The run's lease and checks (SL12 U31, MP-6-1) came with the SL12 stack;
 //   the lines that ride on the run are still to build on it.
 // - `ticket resolved (answer, gist)` inside the delegation and
 //   `WF-7 refusal task:write` are `wf-7-resolve.test.ts`; `WF-7 isolation`
 //   is `wf-7-isolation.test.ts`; `WF-7 CLI parity` is `wf-7-cli.test.ts`.
-// - The skill pinned by digest: the digest is settled (the `skills` CLI's
-//   folder hash, `skill-digest.ts`; the research skill matches its pin), but
-//   the line is the run pinning it, so it waits on the run (U37, U100).
+// - The skill pinned by digest is no longer held: a person's research run
+//   start pins it, and it is `wf-7-pin.test.ts`.
 // - `WF-7 audit readback` is `wf-7-audit.test.ts` for what is built (run
 //   started, ticket resolved, the failures); `ceiling approved (map,
 //   research)` is read back with the ceiling, beside its refusal below.
@@ -35,7 +33,6 @@ describe('WF-7 held (to build on the run; LEANS-ON the research ceiling, SL04 U9
   it.todo('WF-7 refusal billing:decide');
   it.todo('WF-7 reserve before a priced call');
   it.todo('WF-7 no ceiling stops and asks');
-  it.todo('WF-7 skill pinned by digest');
   it.todo(
     'WF-7 owner check: Run on a research ticket with a small approved ceiling claims it, posts a cited answer and closes it; with no ceiling it stops and asks',
   );
