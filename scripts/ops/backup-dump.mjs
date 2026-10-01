@@ -53,9 +53,17 @@ export function pgDump(sourceUrl) {
   return printed(child);
 }
 
+/** Settles once `child` has exited and its pipes have closed. */
+function closed(child) {
+  return new Promise((resolve) => {
+    child.once('close', resolve);
+  });
+}
+
 /**
  * A child's printed pieces, read as they come and paused while a few wait,
- * once it has printed something; stops the child if the reader stops first.
+ * once it has printed something; stops the child and waits for it to exit if
+ * the reader stops first.
  */
 function printed(child) {
   const waiting = [];
@@ -93,7 +101,13 @@ function printed(child) {
       }
       done = true;
     } finally {
-      if (!done) child.kill?.();
+      if (!done) {
+        // Stopped early: stop pg_dump, drop what it still prints so its pipe
+        // can close, and wait until it has exited.
+        child.kill?.();
+        child.stdout.removeAllListeners?.('data').resume?.();
+        if (exit === null) await closed(child);
+      }
     }
     if (exit !== 0) throw new Error('pg_dump failed');
   }
