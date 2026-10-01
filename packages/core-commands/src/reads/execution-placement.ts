@@ -9,7 +9,7 @@
 // event carries its run's own placement instead:
 //
 //   the plan's run  the run a bound record was accepted on, or a run of that
-//                   run's lineage: the plan itself, never work outside it;
+//                   run's lineage proposed once it was bound: the plan itself;
 //   a work run      the newest bound record that existed when the run was
 //                   proposed (bound at or before the run's `created_at`, the
 //                   record `task.propose` checked the step key against under
@@ -82,8 +82,13 @@ export function placeEvents<E extends { readonly runId: string }>(
   const lineageOf = new Map(runs.map((run) => [run.runId, run.lineageId]));
   const byId = new Map(plans.map((plan) => [plan.planRecordId, plan]));
   const placementOf = (run: PlacementFact): EventPlacement => {
-    // Oldest first, so a later record on the same lineage leaves the run's own.
-    const own = plans.findLast((plan) => lineageOf.get(plan.runId) === run.lineageId);
+    // A record accepted later on this run's lineage is not the plan it ran in.
+    const own = plans.findLast(
+      (plan) =>
+        plan.runId === run.runId ||
+        (run.boundBefore.includes(plan.planRecordId) &&
+          lineageOf.get(plan.runId) === run.lineageId),
+    );
     if (own !== undefined) return { planRecordId: own.planRecordId, stepKey: null, planRun: true };
     const under = run.boundBefore.find((id) => byId.has(id));
     return { planRecordId: under ?? null, stepKey: run.planStepKey, planRun: false };
