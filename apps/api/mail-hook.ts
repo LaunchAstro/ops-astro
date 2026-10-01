@@ -23,12 +23,37 @@ import { bodyLimit } from 'hono/body-limit';
 import {
   EMAIL_HOOK_MAX_BYTES,
   EMAIL_HOOK_TOLERANCE_S,
+  isEmailHookSecret,
   verifyEmailHook,
 } from '../../packages/core-connectors/src/index.ts';
 import { landEmailEvent, type EmailHookOutcome } from '../../packages/core-custody/src/index.ts';
 import type { BusinessId, Database } from '../../packages/core-records/src/index.ts';
 
 export const MAIL_HOOK_PATH = '/api/hooks/email';
+
+/** The hook secret's one setting, read by `main` at start. */
+export const EMAIL_HOOK_SECRET_SETTING = 'EMAIL_HOOK_SECRET';
+
+export type MailHookSettings =
+  | { readonly kind: 'absent' }
+  | { readonly kind: 'invalid'; readonly problem: string }
+  | { readonly kind: 'configured'; readonly secret: string };
+
+/** The hook's setting from the environment. */
+export function mailHookSettings(
+  environment: Readonly<Record<string, string | undefined>>,
+): MailHookSettings {
+  const secret = environment[EMAIL_HOOK_SECRET_SETTING] ?? '';
+  if (secret === '') return { kind: 'absent' };
+  // The problem names the setting only: the value is a secret, wrong or not.
+  if (!isEmailHookSecret(secret)) {
+    return {
+      kind: 'invalid',
+      problem: `${EMAIL_HOOK_SECRET_SETTING} is not a provider hook secret (whsec_ and its key)`,
+    };
+  }
+  return { kind: 'configured', secret };
+}
 
 export interface MailHookOptions {
   /** The hook secret, `whsec_...`, read once at start; never logged. */

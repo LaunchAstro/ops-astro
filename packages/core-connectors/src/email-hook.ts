@@ -48,6 +48,11 @@ const SECRET = /^whsec_[A-Za-z0-9+/]{24,}={0,2}$/u;
 const MESSAGE_ID = /^[A-Za-z0-9-]{1,64}$/u;
 const TYPE = /^[a-z_]{1,32}\.[a-z_]{1,32}$/u;
 
+/** Whether a hook secret is in the provider's form, `whsec_` and its base64 key. */
+export function isEmailHookSecret(secret: string): boolean {
+  return SECRET.test(secret);
+}
+
 /** The hook secret's key bytes, or undefined for a secret not in the provider's form. */
 function keyOf(secret: string): Buffer | undefined {
   return SECRET.test(secret) ? Buffer.from(secret.slice('whsec_'.length), 'base64') : undefined;

@@ -47,6 +47,7 @@ export {
 export {
   EMAIL_HOOK_MAX_BYTES,
   EMAIL_HOOK_TOLERANCE_S,
+  isEmailHookSecret,
   verifyEmailHook,
   type EmailHookEvent,
   type EmailHookRefusal,
