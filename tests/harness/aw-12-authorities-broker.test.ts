@@ -260,7 +260,7 @@ describe('AW-12 authorities: a framework holds none of the eight authorities', (
   );
   it('A5 effect authority: an uncatalogued tool is refused and recorded', effectAuthority);
   it(
-    'Sol proof, FIXR4: a call reserved before a sibling dropped unknown is released unsent at start',
+    'a call reserved before a sibling dropped unknown is released unsent at start',
     siblingHeldUnknown,
   );
 });

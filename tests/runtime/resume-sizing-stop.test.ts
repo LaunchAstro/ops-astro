@@ -35,7 +35,7 @@ const it = noDatabase ? vitestIt.skip : vitestIt;
 
 useBrokerWorld('resizestop');
 
-it('Sol proof, FIXMONEY: a spent-whole hold whose open call settles lower before pickup is re-held at what remains, with no ask', async () => {
+it('a spent-whole hold whose open call settles lower before pickup is re-held at what remains, with no ask', async () => {
   const work = await liveWork(s, `resize lower ${randomUUID()}`, 500);
   world.provider.mode('answer');
   const { broker: slow, open } = gated();
@@ -104,7 +104,7 @@ const ended = async (work: Work) => ({
   asks: (await asksOn(work)).length,
 });
 
-it('Sol proof, FIXMONEY: a spent-whole stop after the consolidated ask ends the run and alerts a person', async () => {
+it('a spent-whole stop after the consolidated ask ends the run and alerts a person', async () => {
   const work = await spentWhole('consolidated');
   await asksSpent(work);
 
