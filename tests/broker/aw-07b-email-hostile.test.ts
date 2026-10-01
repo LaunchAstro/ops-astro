@@ -58,12 +58,12 @@ it('AW-07b hostile provider: oversized, redirected, malformed and slow answers a
   w.provider.mode('accept');
   expect(await send(slow)).toEqual({ ok: false, code: 'EMAIL_MAY_HAVE_GONE' });
   expect(w.provider.received.length).toBe(received);
-  // A redirect proves the provider took nothing: the next send may go.
+  // A redirect is an answer from a provider that had the message: no second send.
   const redirected = await itemFor(w.task, 'incident');
   w.provider.mode('redirect');
   await send(redirected);
   w.provider.mode('accept');
-  expect(await send(redirected)).toMatchObject({ ok: true, state: 'accepted' });
+  expect(await send(redirected)).toEqual({ ok: false, code: 'EMAIL_MAY_HAVE_GONE' });
 });
 
 // eslint-disable-next-line max-lines-per-function -- one capture around every path the canary could leak by

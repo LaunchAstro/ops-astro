@@ -1,4 +1,4 @@
-// Sol proof (SL12 take, 5930cc2): the ratchet split must not drop a positive
+// From the take's interim review (5930cc2): the ratchet split must not drop a positive
 // control recipe. Every recipe is reached with a context whose every call
 // throws a sentinel; a declaration with a recipe throws the sentinel, one
 // without throws "no positive control recipe".
@@ -14,7 +14,7 @@ const reached = async (): Promise<never> => {
 
 describe('SL12 take ratchet split', () => {
   it.each(['task.heartbeat', 'task.dispatch'] as const)(
-    'Sol proof, criterion 4: the positive control still has a recipe for %s',
+    'the positive control still has a recipe for %s',
     async (name) => {
       const declaration = COMMAND_SURFACE.find((each) => each.name === name);
       expect(declaration, name).toBeDefined();

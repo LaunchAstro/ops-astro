@@ -145,7 +145,7 @@
   text-transform: var(--type-eyebrow-case);
 }
 .sb__k {
-  color: var(--text);
+  color: var(--text-muted);
 }
 .sb__meta {
   color: var(--ink-faint);

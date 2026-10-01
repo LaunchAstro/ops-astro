@@ -24,17 +24,16 @@ import type { InboxReason, TenantQuery } from '../../core-records/src/index.ts';
 export type MailClass = 'staff' | 'transactional' | 'relationship';
 
 /**
- * Failures that prove the provider took nothing: it never reached them, or
- * refused before sending. Any other fault may have sent, so it is never
- * followed by a second send, and it spends its window.
+ * Failures that prove the provider took nothing: custody never reached it.
+ * Any answer from the provider, a redirect or an error status included, may
+ * have sent, so it is never followed by a second send (the broker's rule),
+ * and it spends its window.
  */
 export const NOTHING_SENT: ReadonlySet<string> = new Set([
   'refused',
   'unlisted',
   'bad_path',
   'forbidden',
-  'redirect',
-  'status',
 ]);
 
 export const DAY_MS: number = 24 * 60 * 60 * 1000;

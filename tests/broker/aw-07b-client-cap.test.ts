@@ -84,7 +84,8 @@ it('AW-07b client cap: a second sender to the same client waits for the first an
   const first = await clientItem(w.task, 'agent');
   const second = await clientItem(w.task, 'agent', extra.clientA2);
   // A sender to client A has checked the week and recorded its ask, not yet committed.
-  const sender = await heldOpen(async (tx) => await askOne(tx, first));
+  // The concurrency ceiling is not what this case holds, so the sender always has room.
+  const sender = await heldOpen(async (tx) => await askOne(tx, first, async () => true));
   // Another of the client's people is batched meanwhile: it waits on the client's lock.
   const racing = batch(extra.clientA2);
   const waited = await stillWaiting(racing);

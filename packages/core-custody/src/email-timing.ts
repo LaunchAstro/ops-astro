@@ -40,6 +40,7 @@ import {
   type CheckedItem,
   type EmailResult,
   type MailSettings,
+  type Room,
 } from './broker-email.ts';
 import { DAY_MS, WEEK_MS, windowSpent } from './email-class.ts';
 
@@ -64,7 +65,8 @@ export type BatchResult =
   | { readonly ok: true; readonly items: number; readonly attemptIds: readonly string[] }
   | {
       readonly ok: false;
-      readonly code: 'NOTHING_WAITING' | 'BATCH_ALREADY_SENT' | 'OPERATION_NOT_CATALOGUED';
+      readonly code:
+        'NOTHING_WAITING' | 'BATCH_ALREADY_SENT' | 'EMAIL_AT_CEILING' | 'OPERATION_NOT_CATALOGUED';
     }
   | { readonly ok: false; readonly code: 'EMAIL_FAILED'; readonly fault: string };
 
@@ -75,7 +77,7 @@ export async function emailAtOnce(
   itemId: string,
   timing: EmailTiming,
 ): Promise<EmailResult | { readonly ok: false; readonly code: 'NOT_AT_ONCE' }> {
-  const sent = await deliver(database, businessId, timing.broker, timing.mail, async (tx) => {
+  const sent = await deliver(database, businessId, timing.broker, timing.mail, async (tx, room) => {
     const [item] = await tx.query<{ readonly recipient: string; readonly reason: InboxReason }>(
       `select recipient_person_id as recipient, reason from public.inbox_items
         where business_id = $1 and id = $2 and work_state = 'open'`,
@@ -88,7 +90,7 @@ export async function emailAtOnce(
     ) {
       return 'NOT_AT_ONCE';
     }
-    return await askOne(tx, itemId);
+    return await askOne(tx, itemId, room);
   });
   return emailResult(sent);
 }
@@ -145,13 +147,15 @@ export async function emailDailyBatch(
 ): Promise<BatchResult> {
   const ask = async (
     tx: TenantQuery,
-  ): Promise<Asked | 'NOTHING_WAITING' | 'BATCH_ALREADY_SENT'> => {
+    room: Room,
+  ): Promise<Asked | 'NOTHING_WAITING' | 'BATCH_ALREADY_SENT' | 'EMAIL_AT_CEILING'> => {
     if (await windowSpent(tx, { person: personId }, timing.dayMs ?? DAY_MS)) {
       return 'BATCH_ALREADY_SENT';
     }
     const items = await withinCap(tx, await batchable(tx, personId, timing.preferences));
     const [first] = items;
     if (first === undefined) return 'NOTHING_WAITING';
+    if (!(await room())) return 'EMAIL_AT_CEILING';
     await recordAsked(tx, items, true);
     return {
       itemIds: items.map((item) => item.itemId),

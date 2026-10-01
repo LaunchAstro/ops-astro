@@ -23,6 +23,7 @@ import { isOperandRefusal, type AgentOperation, type TypedOperation } from './ag
 import { isRefused } from './outcome.ts';
 import type { AgentCall } from './agent-call.ts';
 import { PICKUP_REPLAY_FIXES, pickupReceiptBinding } from './pickup-receipt.ts';
+import { replayChildHandback, replayChildPickup } from './agent-child.ts';
 
 /**
  * The stored success as the rights held now release it: the answer to hand
@@ -41,6 +42,14 @@ export async function releaseReplay(
       return await operation.open(async (row) => await replayCapabilities(tx, call, row));
     case 'settledHandback':
       return await replaySettledHandback(tx, call, stored);
+    case 'childPickup':
+      return await operation.open(async (row) => {
+        const authorised = await authorise(tx, call, row);
+        if ('refusal' in authorised) return authorised.refusal;
+        return await replayChildPickup(tx, call, stored);
+      });
+    case 'childHandback':
+      return await replayChildHandback(tx, call, stored);
     case 'reauthorise':
       return await operation.open(async (row) => {
         const authorised = await authorise(tx, call, row);

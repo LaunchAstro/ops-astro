@@ -64,6 +64,20 @@ const asAgent = async (name: string, body: Record<string, unknown>, credential?:
     ...(credential === undefined ? {} : { [DELEGATION_HEADER]: credential }),
   });
 
+/** AW-11's two, well formed, so the answer before a pickup is the exclusion. */
+const AW_11_OPERANDS: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
+  'run.delegate_child': {
+    leaseId: randomUUID(),
+    fence: 1,
+    helperActorId: randomUUID(),
+    purpose: 'helper',
+    collections: ['task'],
+    actions: ['read'],
+    expiresInSeconds: 60,
+  },
+  'run.child_handback': { outcome: 'completed' },
+};
+
 const detail = (answer: Answer): Record<string, unknown> =>
   (answer.body['detail'] as Record<string, unknown> | undefined) ?? answer.body;
 
@@ -134,6 +148,7 @@ describe.skipIf(serverUrl === undefined)(
                 fields: [],
               }
             : {}),
+          ...AW_11_OPERANDS[declaration.name],
         });
         answers.set(declaration.name, { status: answer.status, code: answer.body['code'] });
       }
@@ -145,7 +160,9 @@ describe.skipIf(serverUrl === undefined)(
             code:
               name === 'task.decide'
                 ? 'DELEGATION_EXCLUDES_DECISION'
-                : 'DELEGATION_EXCLUDES_OPERATION',
+                : name === 'task.triage'
+                  ? 'DELEGATION_EXCLUDES_INTAKE'
+                  : 'DELEGATION_EXCLUDES_OPERATION',
           },
         ]),
       );

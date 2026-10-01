@@ -1,4 +1,4 @@
-// Sol proof (SL12 take, 5930cc2): SL11/SL12's column-grant contract
+// From the take's interim review (5930cc2): SL11/SL12's column-grant contract
 // (restricted-calls-cases.ts) auto-merged beside batch 1's migrations 0046 and
 // 0047, which make column grants of their own (the lookup identity's
 // SELECT (id, key) on businesses, the outbox's INSERT of four columns).
@@ -28,7 +28,7 @@ describe.skipIf(serverUrl === undefined)('SL12 take: column grants', () => {
     await db?.drop();
   });
 
-  it("Sol proof, criterion 2: the column-grant contract names batch 1's column grants", async () => {
+  it("the column-grant contract names batch 1's column grants", async () => {
     const held = await catalogueColumnGrants(db.admin);
     // oxlint-disable-next-line unicorn/prefer-set-has -- the reviewer's proof, kept as written
     const wanted = [

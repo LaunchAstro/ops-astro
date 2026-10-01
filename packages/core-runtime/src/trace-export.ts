@@ -155,8 +155,8 @@ const FAULT_GAP: Readonly<Record<string, GapCode>> = {
   network: 'target_unreachable',
 };
 
-/** Null for a landed delivery; otherwise the gap's fixed code. */
-function gapOf(answer: Delivered): GapCode | null {
+/** Null for a landed delivery; otherwise the gap's fixed code. Retention reads its deletes the same way. */
+export function gapOf(answer: Delivered): GapCode | null {
   if (!answer.ok) return FAULT_GAP[answer.fault] ?? 'target_unreachable';
   if (answer.status < 200 || answer.status > 299) return 'target_refused';
   try {

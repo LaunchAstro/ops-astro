@@ -7,8 +7,8 @@
 // controls that recipe file leaves to other cases: `grant.revoke` revokes a
 // grant minted for this cell, and `delegation.revoke` revokes the delegation a
 // fresh agent pickup just opened. With those, every operation a person
-// surface serves has a positive control in this file; `model.call`, the
-// agent's alone, runs its cells in `d06-agent.test.ts`. That includes the person's own lease work
+// surface serves has a positive control in this file; `model.call` and AW-11's two, the
+// agent's alone, run their cells in `d06-agent.test.ts`. That includes the person's own lease work
 // (EX-01, `handlers.ts`): `task.pickup` claims a fresh approved reservation,
 // and `task.heartbeat` and `task.handback` name a lease the person's own
 // pickup of fresh approved work just took (`role-case-bodies.ts` `ownLease`).

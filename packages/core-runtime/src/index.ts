@@ -41,6 +41,46 @@ export {
   type InstructionSource,
 } from './definitions.ts';
 export {
+  acceptPlan,
+  type PlanAccepted,
+  type PlanAcceptRequest,
+  type PlanAcceptResult,
+} from './plan-accept.ts';
+export {
+  delegateChild,
+  type ChildPickup,
+  type ChildWorkResult,
+  type DelegateChildRequest,
+} from './child-work.ts';
+export {
+  childResults,
+  childStateOf,
+  handBackChild,
+  type ChildHandback,
+  type ChildResult,
+  type ChildStanding,
+} from './child-handback.ts';
+export {
+  boundPlanOf,
+  planRecordOf,
+  PLAN_TEXT_LIMIT,
+  type BoundPlan,
+  type PlanRecord,
+  type PlanRefusal,
+  type PlanStep,
+} from './plan-record.ts';
+export {
+  PLAN_CANDIDATES,
+  projectedPlan,
+  readProjectedPlan,
+  type ProjectedPlan,
+} from './plan-binding.ts';
+export {
+  configuredInstructionSource,
+  directorySource,
+  INSTRUCTION_ROOT_VARIABLE,
+} from './instruction-root.ts';
+export {
   readPinned,
   type PinnedRead,
   type ReadAuditNote,
@@ -58,7 +98,7 @@ export { dispatch, EFFECT_OPERATIONS, type Dispatched, type DispatchRequest } fr
 export { observe, type AppliedEffect, type Observed, type ObserveRequest } from './observe.ts';
 export { readReceipt, receiptTask, type Receipt } from './receipt.ts';
 export { readAlerts, type Alert } from './alerts.ts';
-export { priceUsage, SYNTHETIC_PRICES, type Usage } from './price-book.ts';
+export { PRICE_BOOK_CURRENCY, priceUsage, SYNTHETIC_PRICES, type Usage } from './price-book.ts';
 export { openEnvelopeOf, topUp, type Settlement, type TopUp, type TopUpRequest } from './budget.ts';
 export { CRASH_POINT_VARIABLE, crashPointAfterCommit, crashSeamProblem } from './crash-point.ts';
 export {
@@ -200,3 +240,11 @@ export {
   type GapCode,
   type TraceDatabase,
 } from './trace-export.ts';
+export {
+  EXPIRY_PAGE,
+  expireOnce,
+  TRACE_WINDOW_DAYS,
+  type ExpiryCode,
+  type ExpiryPorts,
+  type RetentionBatch,
+} from './trace-retention.ts';

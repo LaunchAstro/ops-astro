@@ -19,8 +19,12 @@
 // is read here, from a file only its owner may read: the exporter derives
 // the ids, and the target never holds it.
 //
+// **Retention is the same custody's.** The destination names the fixed
+// ingestion-version header and the two routes retention needs (the delete
+// and the read that confirms it); custody sets and allows nothing else.
+//
 // The export runs on an interval, over the deployment's businesses, after
-// the port is bound, beside the sweep. Each tick exports every business
+// the port is bound, beside the sweep; retention runs hourly the same way. Each tick exports every business
 // until it is caught up or a gap is recorded; a failure is logged with its
 // kind only and the next tick tries again. No run waits on it.
 
@@ -32,10 +36,14 @@ import {
   type Destination,
 } from '../../packages/core-custody/src/index.ts';
 import {
+  expireOnce,
   exportOnce,
   type Deliver,
+  type Delivered,
+  type ExpiryPorts,
   type TraceDatabase,
 } from '../../packages/core-runtime/src/index.ts';
+import type { CustodyOutcome } from '../../packages/core-custody/src/index.ts';
 
 export const TRACE_EXPORT_SWITCH = 'TRACE_EXPORT';
 export const TRACE_EXPORT_SETTINGS = [
@@ -49,8 +57,20 @@ export const TRACE_DESTINATION = 'trace_target';
 export const TRACE_CREDENTIAL = 'trace_key';
 /** The OpenTelemetry trace path of the pinned profile's target. */
 export const TRACE_PATH = '/api/public/otel/v1/traces';
+/** The target's trace deletion (a list of ids), and one trace read back by id beneath it. */
+export const TRACE_EXPIRY_PATH = '/api/public/traces';
+/**
+ * The ingestion-version header the contract wants on every request (Langfuse
+ * CONTRACT line 375); the value is the vendor's documented one for its v4
+ * data model. Custody sets it from this destination, never from a caller.
+ */
+export const TRACE_HEADERS: Readonly<Record<string, string>> = {
+  'x-langfuse-ingestion-version': '4',
+};
 
 const EVERY_MS = 30_000;
+/** Retention runs hourly: its window is days, and each pass is paged and confirmed. */
+const RETAIN_EVERY_MS = 60 * 60_000;
 /** Batches per business per tick, so one busy business cannot hold the others. */
 const BATCHES_PER_TICK = 20;
 
@@ -80,9 +100,7 @@ export function traceExportSettings(
   if (missing.length > 0) {
     return invalid(`trace export is on but not set: ${missing.join(', ')}`);
   }
-  const parsed = parseDestinations([
-    { key: TRACE_DESTINATION, origin: value('TRACE_EXPORT_ORIGIN') },
-  ]);
+  const parsed = parseDestinations([traceDestination(value('TRACE_EXPORT_ORIGIN'))]);
   const destination = parsed.ok ? parsed.destinations.get(TRACE_DESTINATION) : undefined;
   if (destination === undefined) {
     return invalid('TRACE_EXPORT_ORIGIN is not a bare http(s) origin');
@@ -123,19 +141,70 @@ function keyFrom(file: string): Buffer | undefined {
   }
 }
 
+/**
+ * The trace destination as custody lists it: the origin, the fixed header,
+ * and the two routes beyond the export's POST that retention needs.
+ */
+export function traceDestination(origin: string): Destination {
+  return {
+    key: TRACE_DESTINATION,
+    origin,
+    headers: TRACE_HEADERS,
+    routes: [
+      { method: 'DELETE', path: TRACE_EXPIRY_PATH },
+      { method: 'GET', path: `${TRACE_EXPIRY_PATH}/*` },
+    ],
+  };
+}
+
+/** Custody's answer as the exporter and retention read it. */
+function outboundOf(outcome: CustodyOutcome): Delivered {
+  if (outcome.kind === 'answered') return outcome.outbound;
+  return { ok: false, fault: outcome.kind === 'refused' ? 'forbidden' : 'network', status: null };
+}
+
 /** Delivery through custody's egress to the one trace destination. */
 export function deliverThrough(custody: Custody, timeoutMs = 5_000): Deliver {
-  return async (body) => {
-    const outcome = await custody.dispatch(TRACE_CREDENTIAL, {
-      destination: TRACE_DESTINATION,
-      path: TRACE_PATH,
-      method: 'POST',
-      body,
-      timeoutMs,
-      maxResponseBytes: 4_096,
-    });
-    if (outcome.kind === 'answered') return outcome.outbound;
-    return { ok: false, fault: outcome.kind === 'refused' ? 'forbidden' : 'network', status: null };
+  return async (body) =>
+    outboundOf(
+      await custody.dispatch(TRACE_CREDENTIAL, {
+        destination: TRACE_DESTINATION,
+        path: TRACE_PATH,
+        method: 'POST',
+        body,
+        timeoutMs,
+        maxResponseBytes: 4_096,
+      }),
+    );
+}
+
+/**
+ * Retention's delete and read-back through the same custody. A read that
+ * answers 404 is the one proof of absence; any 2xx, even one too large to
+ * read whole, is a trace still there; anything else proves nothing.
+ */
+export function expiryThrough(custody: Custody, timeoutMs = 5_000): ExpiryPorts {
+  const ask = async (method: 'DELETE' | 'GET', path: string, body: string): Promise<Delivered> =>
+    outboundOf(
+      await custody.dispatch(TRACE_CREDENTIAL, {
+        destination: TRACE_DESTINATION,
+        path,
+        method,
+        body,
+        timeoutMs,
+        maxResponseBytes: 4_096,
+      }),
+    );
+  return {
+    expire: async (traceIds) =>
+      await ask('DELETE', TRACE_EXPIRY_PATH, JSON.stringify({ traceIds })),
+    present: async (traceId) => {
+      const read = await ask('GET', `${TRACE_EXPIRY_PATH}/${traceId}`, '');
+      if (read.status === 404) return 'absent';
+      return read.status !== null && read.status >= 200 && read.status < 300
+        ? 'present'
+        : 'unknown';
+    },
   };
 }
 
@@ -155,7 +224,39 @@ export async function exportDeployment(
   }
 }
 
-/** Custody's own process for the target, started, and the interval over it. */
+/** One retention pass over every business; one business's failure does not stop the next. */
+export async function retainDeployment(
+  database: TraceDatabase,
+  businesses: () => Promise<readonly string[]>,
+  key: Buffer,
+  ports: ExpiryPorts,
+): Promise<void> {
+  for (const businessId of await businesses()) {
+    // eslint-disable-next-line no-await-in-loop -- one business after another
+    await expireOnce(database, businessId, key, ports);
+  }
+}
+
+/** A job on an interval that never overlaps itself and logs a failure by its kind only. */
+function every(ms: number, what: string, job: () => Promise<void>): NodeJS.Timeout {
+  let running = false;
+  const timer = setInterval(() => {
+    if (running) return;
+    running = true;
+    void job()
+      .catch((cause: unknown) => {
+        // The kind only: a database error's text can carry a value.
+        console.error(`api: ${what} failed: ${cause instanceof Error ? cause.name : 'unknown'}`);
+      })
+      .finally(() => {
+        running = false;
+      });
+  }, ms);
+  timer.unref();
+  return timer;
+}
+
+/** Custody's own process for the target, started, and the export and retention intervals over it. */
 export async function startTraceExporter(
   settings: Extract<TraceExportSettings, { kind: 'on' }>,
   database: TraceDatabase,
@@ -167,25 +268,18 @@ export async function startTraceExporter(
     destinations: [settings.destination],
   });
   const deliver = deliverThrough(custody);
-  let running = false;
-  const timer = setInterval(() => {
-    if (running) return;
-    running = true;
-    void exportDeployment(database, businesses, settings.key, deliver)
-      .catch((cause: unknown) => {
-        // The kind only: a database error's text can carry a value.
-        console.error(
-          `api: trace export failed: ${cause instanceof Error ? cause.name : 'unknown'}`,
-        );
-      })
-      .finally(() => {
-        running = false;
-      });
-  }, everyMs);
-  timer.unref();
+  const ports = expiryThrough(custody);
+  const timers = [
+    every(everyMs, 'trace export', async () => {
+      await exportDeployment(database, businesses, settings.key, deliver);
+    }),
+    every(RETAIN_EVERY_MS, 'trace retention', async () => {
+      await retainDeployment(database, businesses, settings.key, ports);
+    }),
+  ];
   return {
     stop: async () => {
-      clearInterval(timer);
+      for (const timer of timers) clearInterval(timer);
       await custody.stop();
     },
   };

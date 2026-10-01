@@ -484,12 +484,16 @@
   margin: 0;
   padding: var(--s-2) var(--s-5) 0;
   color: var(--text-muted);
-  font-size: var(--text-overline);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
 }
 .aip__cites {
   margin: 0.4rem 0 0;
   padding-left: 1rem;
-  font-size: var(--text-overline);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
 }
 .aip__msg--failed {
   border-color: var(--danger);

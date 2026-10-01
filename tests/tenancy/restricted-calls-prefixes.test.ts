@@ -162,6 +162,24 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     manifest_digest: SEED_DIGEST,
     pinned_by_actor_id: randomUUID(),
   },
+  // AW-04: nothing binds a plan before a plan accept.
+  'public.plan_records': {
+    id: randomUUID(),
+    gate_id: randomUUID(),
+    decision_id: randomUUID(),
+    run_id: randomUUID(),
+    plan_text: 'restricted calls seed',
+    text_digest: SEED_DIGEST,
+    record: { steps: [] },
+    record_digest: SEED_DIGEST,
+    bound_by_actor_id: randomUUID(),
+  },
+  // AW-04 (U10): no planning reply is priced before a cap is set.
+  'public.planning_envelopes': {
+    cap_id: randomUUID(),
+    conversation_id: randomUUID(),
+    owner_person_id: randomUUID(),
+  },
   'public.bootstrap_reads': {
     run_id: randomUUID(),
     sequence: 1,
@@ -200,6 +218,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   // AW-13: nothing starts the exporter on the journey.
   'public.trace_export_cursors': {},
   'public.trace_export_gaps': { code: 'target_unreachable', events: 1 },
+  'public.trace_expiry_batches': { window_days: 30, runs: 1, expired_run_ids: [randomUUID()] },
   'public.bootstrap_bytes': {
     content_digest: SEED_DIGEST,
     content_size: 4,

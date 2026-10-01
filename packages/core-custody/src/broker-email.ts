@@ -25,6 +25,7 @@
 // moves the item (`recordDeliveryAttempt`).
 
 import {
+  hasRoom,
   recordDeliveryAttempt,
   taskAccess,
   type BusinessId,
@@ -60,7 +61,8 @@ export type EmailRefusal =
   | 'ITEM_SEEN'
   | 'NO_ADDRESS'
   | 'EMAIL_MAY_HAVE_GONE'
-  | 'CLIENT_CAP_SPENT';
+  | 'CLIENT_CAP_SPENT'
+  | 'EMAIL_AT_CEILING';
 
 export type EmailResult =
   | { readonly ok: true; readonly attemptId: string; readonly state: 'accepted' }
@@ -71,6 +73,35 @@ export type EmailResult =
       readonly attemptId: string;
       readonly fault: string;
     };
+
+/** Emails in flight for this business: items whose last email observation is still `asked`. */
+async function emailsInFlight(tx: TenantQuery): Promise<number> {
+  const [flight] = await tx.query<{ readonly n: number }>(
+    `select count(*)::int as n from (
+       select distinct on (item_id) state from public.inbox_delivery_attempts
+        where business_id = $1 and channel = 'email'
+        order by item_id, observed_seq desc) last
+      where state = 'asked'`,
+    [tx.businessId],
+  );
+  return flight?.n ?? 0;
+}
+
+/**
+ * The catalogued concurrency, as a durable limit: an ask counts until its
+ * outcome is kept. Checked under the limit's lock just before `asked` is
+ * written, so a refusal writes nothing.
+ */
+export type Room = () => Promise<boolean>;
+
+function roomFor(tx: TenantQuery, operation: ModelOperation): Room {
+  const limit = {
+    name: `email:${operation.key}`,
+    limit: operation.concurrency,
+    count: emailsInFlight,
+  };
+  return async () => await hasRoom(tx, [limit]);
+}
 
 interface Routed {
   readonly operation: ModelOperation;
@@ -174,8 +205,12 @@ export async function recordAsked(
   }
 }
 
-/** One item, sent on its own: every check, the client's weekly cap, then `asked`. */
-export async function askOne(tx: TenantQuery, itemId: string): Promise<Asked | EmailRefusal> {
+/** One item, sent on its own: every check, the client's weekly cap, the ceiling, then `asked`. */
+export async function askOne(
+  tx: TenantQuery,
+  itemId: string,
+  room: Room,
+): Promise<Asked | EmailRefusal> {
   const item = await checkItem(tx, itemId);
   if (typeof item === 'string') return item;
   if (
@@ -185,6 +220,7 @@ export async function askOne(tx: TenantQuery, itemId: string): Promise<Asked | E
   ) {
     return 'CLIENT_CAP_SPENT';
   }
+  if (!(await room())) return 'EMAIL_AT_CEILING';
   await recordAsked(tx, [item], false);
   return { itemIds: [itemId], to: item.to, link: itemId };
 }
@@ -234,12 +270,15 @@ export async function deliver<R extends string>(
   businessId: BusinessId,
   broker: Broker,
   mail: MailSettings,
-  ask: (tx: TenantQuery) => Promise<Asked | R>,
+  ask: (tx: TenantQuery, room: Room) => Promise<Asked | R>,
 ): Promise<Delivered<R>> {
   const found = routed(broker);
   if (found === undefined) return { ok: false, code: 'OPERATION_NOT_CATALOGUED' };
   const { operation, route, adapter } = found;
-  const asked = await database.withBusiness(businessId, ask);
+  const asked = await database.withBusiness(
+    businessId,
+    async (tx) => await ask(tx, roomFor(tx, operation)),
+  );
   if (typeof asked === 'string') return { ok: false, code: asked };
   const path = asked.link === null ? '/inbox' : `/inbox/${encodeURIComponent(asked.link)}`;
   const address = new URL(path, mail.appOrigin).href;
@@ -277,7 +316,7 @@ export async function sendInboxEmail(
     businessId,
     broker,
     mail,
-    async (tx) => await askOne(tx, itemId),
+    async (tx, room) => await askOne(tx, itemId, room),
   );
   return emailResult(sent);
 }
