@@ -142,9 +142,11 @@ function useFocusAndOneEscape(
       event.stopPropagation();
       onClose();
     };
-    document.addEventListener('keydown', onKey, true);
+    // On the window, whose capture runs before the document's: the palette is
+    // the top layer, so its Escape comes before a drawer's opened under it.
+    window.addEventListener('keydown', onKey, true);
     return () => {
-      document.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('keydown', onKey, true);
     };
   }, [onClose]);
 }
