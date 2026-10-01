@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
 // MP-6-2's positive control for `run.revise_state` (role-case-positive-body):
 // the planned run a proposal made, its state revised by a holder of run:write
 // on its task (the harness tops the admin up).
