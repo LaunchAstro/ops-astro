@@ -12,6 +12,8 @@
 
 import type { ReactElement } from 'react';
 import type { AssistantCite, AssistantMessage } from './types.ts';
+import { SourceRegion } from '../../kit/treatments.tsx';
+import { CorrectionCard } from './correction-card.tsx';
 
 /** A path inside the product: one leading slash, then no slash or backslash, no space or control. */
 export const ownHref = (href: string): boolean =>
@@ -38,7 +40,10 @@ function Cites(props: { readonly cites: readonly AssistantCite[] }): ReactElemen
 
 export function Transcript(props: {
   readonly messages: readonly AssistantMessage[];
+  /** C80: read a correction's decision again, by the line it hangs from. */
+  readonly onCheck?: ((messageId: string) => void) | undefined;
 }): ReactElement {
+  const { onCheck } = props;
   return (
     <div className="aip__scroll" role="log" aria-live="polite" aria-label="Conversation">
       {props.messages.map((message) => (
@@ -47,10 +52,18 @@ export function Transcript(props: {
           className={`aip__msg ${ROLE_CLASS[message.role]}`}
           data-message-role={message.role}
         >
-          {message.body}
-          {message.role === 'ai' && message.cites.length > 0 ? (
-            <Cites cites={message.cites} />
-          ) : null}
+          <SourceRegion provenance={message.provenance ?? 'real'}>
+            {message.body}
+            {message.role === 'ai' && message.cites.length > 0 ? (
+              <Cites cites={message.cites} />
+            ) : null}
+            {message.correction === undefined ? null : (
+              <CorrectionCard
+                correction={message.correction}
+                onCheck={onCheck === undefined ? undefined : () => onCheck(message.id)}
+              />
+            )}
+          </SourceRegion>
         </div>
       ))}
     </div>

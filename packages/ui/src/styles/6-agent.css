@@ -448,6 +448,56 @@
   letter-spacing: var(--type-caption-tracking);
   text-transform: var(--type-caption-case);
 }
+/* C80: the sidebar chat's one-word site correction, a card under the
+   agent's line. The state is words in its tone (`.smark`); the word struck
+   before and inserted after; values wrap, never truncate. */
+.aip__fix {
+  display: grid;
+  gap: var(--s-2);
+  margin-top: var(--s-2);
+  padding: var(--s-3);
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.aip__fixhead {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--s-1) var(--s-3);
+}
+.aip__fixtitle,
+.aip__fixfacts dt,
+.aip__fixk {
+  color: var(--text-muted);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
+}
+.aip__fixfacts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.15rem var(--s-3);
+  margin: 0;
+}
+.aip__fixfacts dd {
+  margin: 0;
+  word-break: break-word;
+}
+.aip__fixline {
+  margin: 0;
+  word-break: break-word;
+}
+.aip__fixk {
+  margin-right: var(--s-2);
+}
+.aip__fixline del {
+  color: var(--danger);
+}
+.aip__fixline ins {
+  color: var(--success);
+  text-decoration: underline;
+}
 .convrec {
   display: grid;
   gap: var(--s-4);

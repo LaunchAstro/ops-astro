@@ -3,6 +3,8 @@
 // MP-7-11: the drawer's shapes, in one module its parts and its caller share,
 // so no part imports the panel that imports it.
 
+import type { AssistantCorrection } from './correction-card.tsx';
+
 export type AssistantRole = 'user' | 'ai' | 'note' | 'failed';
 
 export interface AssistantCite {
@@ -15,6 +17,10 @@ export interface AssistantMessage {
   readonly role: AssistantRole;
   readonly body: string;
   readonly cites: readonly AssistantCite[];
+  /** C80: a one-word site correction this line asked for, drawn as its card. */
+  readonly correction?: AssistantCorrection;
+  /** Made-up data where the back end is not joined: marked; absent is real. */
+  readonly provenance?: 'mock';
 }
 
 export interface AssistantPage {
@@ -69,4 +75,6 @@ export interface AssistantPanelProps {
   readonly onAddPage: (key: string) => void;
   readonly onSend: (key: string, text: string) => void;
   readonly onClose: () => void;
+  /** C80: read a correction's decision again, where the caller can. */
+  readonly onCheckCorrection?: (key: string, messageId: string) => void;
 }

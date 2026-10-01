@@ -37,6 +37,11 @@ export type {
   AssistantRole,
   AssistantSubjectView,
 } from './assistant/types.ts';
+export type {
+  AssistantCorrection,
+  AssistantCorrectionState,
+} from './assistant/correction-card.tsx';
+export { wordAt } from './assistant/correction-card.tsx';
 
 const NO_MESSAGES: readonly AssistantMessage[] = [];
 
@@ -158,7 +163,14 @@ export function AssistantPanel(props: AssistantPanelProps): ReactElement {
         </p>
       )}
       <Provenance address={props.address ?? null} citation={props.citation} />
-      <Transcript messages={chat?.messages ?? NO_MESSAGES} />
+      <Transcript
+        messages={chat?.messages ?? NO_MESSAGES}
+        onCheck={
+          chat === undefined || props.onCheckCorrection === undefined
+            ? undefined
+            : (id) => props.onCheckCorrection?.(chat.key, id)
+        }
+      />
       <Asker
         // A new draft, or another tab, starts the field again.
         key={`${props.selected} ${props.citation?.id ?? ''} ${props.draft}`}
