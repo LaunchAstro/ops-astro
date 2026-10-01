@@ -80,6 +80,8 @@ import { mountAuthEmailHook, type AuthEmailHookOptions } from './auth-email-hook
 import { mailHookSettings, mountMailHook, type MailHookOptions } from './mail-hook.ts';
 import { brokerSettings, startModelBroker } from './model-broker.ts';
 import { mailDeliverySettings, startMailDelivery } from './mail-delivery.ts';
+import { enrolmentSettings, startEnrolment } from './enrolment-broker.ts';
+import type { EnrolmentOptions } from './enrolment.ts';
 import { startTraceExporter, traceExportSettings } from './trace-exporter.ts';
 import {
   describeRecovered,
@@ -196,6 +198,8 @@ export interface ApiConfig {
   readonly mailHook?: MailHookOptions;
   /** The login provider's Send Email hook (C39-T); absent, the hook route is not mounted. */
   readonly authEmailHook?: AuthEmailHookOptions;
+  /** C39-T's `POST /api/enrol` (`enrolment-broker.ts`); absent, the route is not mounted. */
+  readonly enrolment?: EnrolmentOptions;
   /** `model.call` through the credential broker; absent where none is configured. */
   readonly executeModelCall?: ModelCallExecutor;
   /** AW-03's exchange through the same broker; absent where none is configured. */
@@ -316,6 +320,7 @@ export function composeApi(config: ApiConfig): ComposedApi {
         ? {}
         : { answerConversation: config.answerConversation }),
       ...(config.alerts === undefined ? {} : { observe: config.alerts.observe }),
+      ...(config.enrolment === undefined ? {} : { enrolment: config.enrolment }),
     }),
   );
 
@@ -411,6 +416,13 @@ async function main(): Promise<void> {
     console.error(`api: ${mailConfig.problem}`);
     process.exit(1);
   }
+  // C39-T: the enrolment route, off unless `ENROLMENT=on`; on with a setting
+  // missing or malformed, the server stops here.
+  const enrolConfig = enrolmentSettings(environment);
+  if (enrolConfig.kind === 'invalid') {
+    console.error(`api: ${enrolConfig.problem}`);
+    process.exit(1);
+  }
   const broker =
     brokerConfig.kind === 'configured' ? await startModelBroker(brokerConfig) : undefined;
   console.log(`api: credential broker ${broker === undefined ? 'not configured' : 'started'}`);
@@ -422,9 +434,15 @@ async function main(): Promise<void> {
     console.error(`api: ${hookConfig.problem}`);
     process.exit(1);
   }
-  // The hook's events land over the businesses restart recovery resolves, set
-  // below before the port is bound.
-  let hookBusinesses: readonly BusinessId[] = [];
+  // The hook's events land, and enrolment tokens are looked for, over the
+  // businesses restart recovery resolves, set below before the port is bound.
+  let deployed: readonly BusinessId[] = [];
+  // The login provider's custody, started before the port is bound like the broker's.
+  const enrolment =
+    enrolConfig.kind === 'on'
+      ? await startEnrolment(enrolConfig, async () => await Promise.resolve(deployed))
+      : undefined;
+  console.log(`api: enrolment ${enrolment === undefined ? 'off' : 'on'}`);
 
   // Wiring only: nothing here runs a statement or binds a port, so building it
   // before recovery changes nothing recovery sees, and recovery resolves its
@@ -444,10 +462,11 @@ async function main(): Promise<void> {
       ? {
           mailHook: {
             secret: hookConfig.secret,
-            businesses: async () => await Promise.resolve(hookBusinesses),
+            businesses: async () => await Promise.resolve(deployed),
           },
         }
       : {}),
+    ...(enrolment === undefined ? {} : { enrolment: enrolment.options }),
   });
   console.log(`api: email hook ${hookConfig.kind === 'configured' ? 'mounted' : 'not mounted'}`);
 
@@ -466,7 +485,8 @@ async function main(): Promise<void> {
   const recovered = await withRuntimeKeys(keys, recovery);
   if (!recovered.ok) {
     console.error(`api: ${recovered.problem}`);
-    await Promise.allSettled([database.close(), admin.close(), topics.close(), broker?.stop()]);
+    const started = [topics.close(), broker?.stop(), enrolment?.stop()];
+    await Promise.allSettled([database.close(), admin.close(), ...started]);
     process.exit(1);
   }
   for (const business of recovered.businesses) console.log(describeRecovered(business));
@@ -475,7 +495,7 @@ async function main(): Promise<void> {
   // an interval; nothing on the wire reaches it. Started before the port is
   // bound, so a custody that cannot start stops the server first.
   const traced = recovered.businesses.map((business) => business.businessId);
-  hookBusinesses = traced;
+  deployed = traced;
   const tracer =
     traceConfig.kind === 'on'
       ? await startTraceExporter(traceConfig, database, async () => await Promise.resolve(traced))
@@ -510,9 +530,9 @@ async function main(): Promise<void> {
 
   const stop = (): void => {
     sweeper.stop();
-    // The live streams and the mail worker's running pass first: a question
-    // or a send in flight ends before its pool does.
-    void Promise.allSettled([topics.close(), mail?.stop()])
+    // The live streams, the mail worker's running pass and the login
+    // provider's custody first: a question or a send ends before its pool does.
+    void Promise.allSettled([topics.close(), mail?.stop(), enrolment?.stop()])
       .then(
         async () =>
           await Promise.allSettled([

@@ -34,6 +34,7 @@ export {
   AUTH_EXISTS_STATUS,
   AUTH_NOT_FOUND_STATUS,
   AUTH_UPDATE_USER,
+  AUTH_USERS_PATH,
   authUserAdapter,
   authUserUpdateAdapter,
   readAuthUserAnswer,
