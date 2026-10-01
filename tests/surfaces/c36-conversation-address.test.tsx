@@ -149,6 +149,17 @@ describe('C36 conversation address', () => {
     expect(page.find('[data-conversation="wrap-up"]')).toBeNull();
   });
 
+  it('the transcript wears the drawer message look (AI-09), each speaker still named to a reader', async () => {
+    const { page } = await address(`/agent/${ID}`, LIVE);
+    const looks = page
+      .all('[data-conversation="transcript"] > li')
+      .map((each) => [...each.classList].filter((name) => name.startsWith('aip__msg')).join(' '));
+    expect(looks).toStrictEqual(['aip__msg aip__msg--user', 'aip__msg aip__msg--ai']);
+    const who = page.all('.convrec__who');
+    expect(who.map((each) => each.textContent)).toStrictEqual(['You', 'Agent']);
+    expect(who.every((each) => each.classList.contains('visually-hidden'))).toBe(true);
+  });
+
   it('after the body purges, the address shows the wrap-up with working links, never a transcript', async () => {
     const { page } = await address(`/agent/${ID}`, PURGED);
     expect(page.find('[data-conversation="transcript"]')).toBeNull();
