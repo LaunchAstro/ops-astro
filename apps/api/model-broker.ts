@@ -12,6 +12,7 @@
 // reviewed, never configured: the replay provider is the only one until the
 // real-provider run (AW-RP).
 
+import { readFileSync } from 'node:fs';
 import {
   catalogue,
   CONVERSATION_ANSWER,
@@ -127,6 +128,12 @@ export function brokerSettings(
     );
   }
 
+  // DO NOT MERGE mutation (REVIEW-3A-11): the API reads the credential file itself.
+  try {
+    readFileSync(value('MODEL_BROKER_CREDENTIALS_FILE'), 'utf8');
+  } catch {
+    // mutation only
+  }
   return {
     kind: 'configured',
     custody: {
