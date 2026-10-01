@@ -42,6 +42,7 @@ import { checkAuthorityAt, classifyUnderLocks, endLease, holdCoveringGrants } fr
 import { lockRediscovered } from './rediscovery.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 import { appendRunEvent, type RunEvent } from './run-events.ts';
+import { remainingOf, stopAtSpentHold } from './budget-stop.ts';
 
 export interface QueueEntry {
   readonly reservationId: string;
@@ -413,7 +414,8 @@ async function recheckClaim(
  * expired-lease lifecycle. It fences the old lease and classifies the old hold
  * under the locks it already holds. The abandoned reservation is never
  * revived; a replacement is a new row with a new attempt, on the
- * still-approved version.
+ * still-approved version, holding what the old hold had left; nothing left
+ * stops the run at its budget (`stopSpentWhole`).
  */
 async function claimHold(
   tx: TenantQuery,
@@ -450,13 +452,7 @@ async function claimHold(
     [tx.businessId, reservationId],
   );
   const heldMinor = BigInt(state.held_minor) - BigInt(old?.spent ?? '0');
-  if (heldMinor <= 0n) {
-    return refuse(
-      'RESERVATION_NOT_CLAIMABLE',
-      'the model calls on this reservation spent its whole approved hold',
-      'Nothing is left to hold: a new proposal asks for more.',
-    );
-  }
+  if (heldMinor <= 0n) return await stopSpentWhole(tx, reservationId, found);
   return await reserve(tx, {
     envelopeId: found.envelope_id,
     versionId: found.version_id,
@@ -464,6 +460,31 @@ async function claimHold(
     stepId: found.step_id,
     heldMinor,
   });
+}
+
+const SPENT_WHOLE_HOLD =
+  "this step's calls spent its whole hold, so nothing is left to hold for it";
+
+/**
+ * AW-05: a step whose calls spent its whole hold has nothing left to hold, so
+ * the run stops at its budget and asks a person, a refusal that keeps the ask;
+ * after the run's last ask it ends the run and tells a person
+ * (`stopAtSpentHold`). Never a refusal nothing answers.
+ */
+async function stopSpentWhole(
+  tx: TenantQuery,
+  reservationId: string,
+  found: Found,
+): Promise<RuntimeResult<never>> {
+  const words = await stopAtSpentHold(tx, {
+    runId: found.run_id,
+    reservationId,
+    versionId: found.version_id,
+    delegationId: null,
+    remaining: await remainingOf(tx, reservationId),
+  });
+  const refusal = refuseCommand('BUDGET_UNAVAILABLE', [], [SPENT_WHOLE_HOLD, words]);
+  return { ok: false, refusal, retains: true };
 }
 
 /**
