@@ -187,17 +187,28 @@ describe.skipIf(serverUrl === undefined)('a lease is taken only through the pick
     expect(await take(s.business, free)).toMatchObject({ accepted: true });
   });
 
-  it('the pickup path runs as its definer, pinned, and only the application group calls it', async () => {
+  it('the pickup path runs as its own role, pinned, under row security, and only the application group calls it', async () => {
     const [fn] = await s.db.admin.execute<Record<string, unknown>>(
-      `select p.prosecdef as definer, p.proconfig as config,
+      `select p.prosecdef as definer, p.proconfig as config, r.rolname as owner,
+              r.rolsuper or r.rolbypassrls as past_row_security,
+              pg_has_role(r.oid, (select datdba from pg_database
+                                   where datname = current_database()), 'member') as owner_member,
+              pg_has_role('ops_astro_app', r.oid, 'member') as application_becomes,
               has_function_privilege('public', p.oid, 'EXECUTE') as public,
               has_function_privilege('ops_astro_app', p.oid, 'EXECUTE') as application,
               has_function_privilege('ops_astro_worker', p.oid, 'EXECUTE') as worker
-         from pg_proc p where p.oid = 'public.take_lease'::regproc`,
+         from pg_proc p join pg_roles r on r.oid = p.proowner
+        where p.oid = 'public.take_lease'::regproc`,
     );
+    // Its own role: the made-up guard and row security judge its write as the
+    // application's, never as the owner's, and the application cannot take it.
     expect(fn).toStrictEqual({
       definer: true,
       config: ['search_path=pg_catalog, pg_temp'],
+      owner: 'ops_astro_lease_path',
+      past_row_security: false,
+      owner_member: false,
+      application_becomes: false,
       public: false,
       application: true,
       worker: false,
