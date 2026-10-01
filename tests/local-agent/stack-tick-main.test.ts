@@ -17,6 +17,7 @@ const env = (overrides: Record<string, string | undefined> = {}) => ({
   OPS_LOCAL_AGENT_BUSINESS_ID: BUSINESS,
   OPS_LOCAL_AGENT_AGENT_SUBJECT: 'agent-local-1',
   OPS_LOCAL_AGENT_WORKER_ACTOR_ID: WORKER,
+  OPS_LOCAL_AGENT_HOME: '/var/empty/la1-agent',
   ...overrides,
 });
 
@@ -29,9 +30,32 @@ it('the tick process reads its business, agent, worker and interval from the env
       agent: { provider: 'supabase', subject: 'agent-local-1' },
       workerActorId: WORKER,
       intervalMs: 30_000,
+      gate: { home: '/var/empty/la1-agent', capUsd: 10, usageFile: null },
     },
   });
   expect(tickSettings(env())).toMatchObject({ ok: true, settings: { intervalMs: 60_000 } });
+});
+
+it("the tick process reads the runner's cap and seat the way the runner does", () => {
+  expect(
+    tickSettings(
+      env({
+        OPS_LOCAL_AGENT_CAP_USD: '7.50',
+        OPS_LOCAL_AGENT_SEAT: 'hey',
+        OPS_LOCAL_AGENT_SEAT_USAGE_FILE: '/var/empty/usage.json',
+      }),
+    ),
+  ).toMatchObject({
+    ok: true,
+    settings: {
+      gate: {
+        home: '/var/empty/la1-agent',
+        capUsd: 7.5,
+        seat: 'hey',
+        usageFile: '/var/empty/usage.json',
+      },
+    },
+  });
 });
 
 it.each([
@@ -44,6 +68,9 @@ it.each([
   ['no agent', { OPS_LOCAL_AGENT_AGENT_SUBJECT: '' }, 'SETTING_MISSING'],
   ['no worker', { OPS_LOCAL_AGENT_WORKER_ACTOR_ID: undefined }, 'SETTING_MISSING'],
   ['an interval under 10 s', { OPS_LOCAL_AGENT_TICK_SECONDS: '5' }, 'SETTING_MISSING'],
+  ['a runner folder that is not absolute', { OPS_LOCAL_AGENT_HOME: 'agent' }, 'SETTING_MISSING'],
+  ['a cap that is not dollars', { OPS_LOCAL_AGENT_CAP_USD: 'ten' }, 'SETTING_MISSING'],
+  ['a cap of nothing', { OPS_LOCAL_AGENT_CAP_USD: '0' }, 'SETTING_MISSING'],
 ])('the tick process refuses with %s', (_, overrides, code) => {
   expect(tickSettings(env(overrides))).toMatchObject({ ok: false, code });
 });

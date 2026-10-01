@@ -146,6 +146,31 @@ export async function fireSchedules(
   return { ok: true, fired };
 }
 
+/** A lease the tick holds work under, as its pickup returned it. */
+export interface HeldLease {
+  readonly leaseId: string;
+  readonly fence: number;
+  readonly credential: string;
+}
+
+/**
+ * The local approval gate's two moments in a task pass. The tick process fills
+ * it from approval.ts (tick-main.ts); it is handed in so this file never
+ * imports approval.ts, which imports this one.
+ */
+export interface TickGate {
+  /** Work of this purpose is the gate's own and never goes to the model. */
+  readonly purpose: string;
+  /** Before the queue is read: approved approvals applied, so the pass runs under them. */
+  readonly beforeTasks: () => Promise<void>;
+  /**
+   * A model step that came back released, its work still under the lease.
+   * The code the gate handed the work back under, or undefined when the
+   * release is not the gate's and the tick goes on as without one.
+   */
+  readonly onReleased: (lease: HeldLease) => Promise<string | undefined>;
+}
+
 export interface TaskTick {
   readonly environment: Environment;
   readonly database: Database;
@@ -159,6 +184,8 @@ export interface TaskTick {
   /** The step's fields for this work, each bound to a row or stated with its source (S3). */
   readonly fieldsFor: (entry: QueueEntry) => readonly unknown[];
   readonly leaseSeconds?: number;
+  /** The local approval gate; without one a released step is handed back as before. */
+  readonly gate?: TickGate;
 }
 
 export interface Ran {

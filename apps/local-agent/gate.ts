@@ -30,12 +30,20 @@ export const REFUSAL_MESSAGES: Readonly<Record<CallRefusal, string>> = {
   LOCAL_CLAUDE_FAILED: 'The local Claude Code call did not complete.',
 };
 
+/**
+ * What the gate reads: the runner's own folder and cap, and the seat reading
+ * when one is kept. The tick process asks the same gate without the runner's key.
+ */
+export type GateSettings = Pick<RunnerSettings, 'home' | 'capUsd'> &
+  Partial<Pick<RunnerSettings, 'seat' | 'usageFile'>>;
+
 /** The seat's reading, when the operator keeps one; past the stop for this seat refuses. */
-function seatOverStop(settings: RunnerSettings): boolean {
-  if (settings.usageFile === null) return false;
+function seatOverStop(settings: GateSettings): boolean {
+  const usageFile = settings.usageFile ?? null;
+  if (usageFile === null) return false;
   let reading: unknown;
   try {
-    reading = JSON.parse(readFileSync(settings.usageFile, 'utf8'));
+    reading = JSON.parse(readFileSync(usageFile, 'utf8'));
   } catch {
     return false;
   }
@@ -52,7 +60,7 @@ export type Decision =
   | { readonly ok: false; readonly code: CallRefusal };
 
 /** Checked in this order, every call, before anything is spawned. */
-export function decide(settings: RunnerSettings, model: string): Decision {
+export function decide(settings: GateSettings, model: string): Decision {
   const approved = readApprovals(settings.home);
   if (model !== DEFAULT_MODEL && !approved.models.includes(model)) {
     return { ok: false, code: 'LOCAL_MODEL_NOT_APPROVED' };

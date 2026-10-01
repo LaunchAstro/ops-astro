@@ -10,12 +10,35 @@
 // OPS_AGENT_PROVIDER=local-claude, or without a database, a business id, the
 // agent's login subject and the business's worker. It never prints a setting's
 // value.
+//
+// The approval gate (approval.ts) runs in each pass: approved approvals are
+// written before the task pass, and a model step that comes back released is
+// checked against the runner's own gate (gate.ts) on the runner's folder and
+// cap, read from the runner's settings (OPS_LOCAL_AGENT_HOME, _CAP_USD,
+// _SEAT, _SEAT_USAGE_FILE; set them as the runner was started). The broker
+// does not say why a call was released; at the cap, or on a model the owner
+// has not approved, the work is handed back asking the owner, and any other
+// release raises nothing.
 
+import { homedir } from 'node:os';
+import { isAbsolute, join } from 'node:path';
 import { brokerSettings, startModelBroker } from '../api/model-broker.ts';
-import { LOCAL_CLAUDE_COMPOSE } from '../../packages/core-connectors/src/index.ts';
+import {
+  LOCAL_CLAUDE_COMPOSE,
+  LOCAL_CLAUDE_DEFAULT_MODEL,
+} from '../../packages/core-connectors/src/index.ts';
 import { connect, isBusinessId, type BusinessId } from '../../packages/core-records/src/index.ts';
 import type { VerifiedSubject } from '../../packages/core-records/src/identity/verified-subject.ts';
-import { localOnly, startTicking, type Tick } from './tick.ts';
+import {
+  APPROVAL_PURPOSE,
+  applyApprovals,
+  needOf,
+  raiseApproval,
+  type ApprovalOptions,
+} from './approval.ts';
+import { decide, type GateSettings } from './gate.ts';
+import { DEFAULT_CAP_USD, SEATS } from './settings.ts';
+import { localOnly, startTicking, type Tick, type TickGate } from './tick.ts';
 
 export interface TickProcessSettings {
   readonly databaseUrl: string;
@@ -23,6 +46,8 @@ export interface TickProcessSettings {
   readonly agent: VerifiedSubject;
   readonly workerActorId: string;
   readonly intervalMs: number;
+  /** The runner's folder and cap, for the approval gate. */
+  readonly gate: GateSettings;
 }
 
 export type TickSettings =
@@ -61,6 +86,8 @@ export function tickSettings(env: Readonly<Record<string, string | undefined>>):
   if (!Number.isSafeInteger(seconds) || seconds < 10)
     return missing('OPS_LOCAL_AGENT_TICK_SECONDS');
   const provider = env['OPS_LOCAL_AGENT_AGENT_PROVIDER'] || 'supabase';
+  const gate = gateSettings(env);
+  if (typeof gate === 'string') return missing(gate);
   return {
     ok: true,
     settings: {
@@ -69,6 +96,46 @@ export function tickSettings(env: Readonly<Record<string, string | undefined>>):
       agent: { provider, subject },
       workerActorId,
       intervalMs: seconds * 1000,
+      gate,
+    },
+  };
+}
+
+/** The runner's gate settings as the runner reads them, or the name of the one that is not valid. */
+function gateSettings(env: Readonly<Record<string, string | undefined>>): GateSettings | string {
+  const home = env['OPS_LOCAL_AGENT_HOME'] || join(homedir(), '.ops-astro-local-agent');
+  if (!isAbsolute(home)) return 'OPS_LOCAL_AGENT_HOME';
+  const cap = env['OPS_LOCAL_AGENT_CAP_USD'] ?? '';
+  if (cap !== '' && !/^\d{1,5}(\.\d{1,2})?$/u.test(cap)) return 'OPS_LOCAL_AGENT_CAP_USD';
+  const capUsd = cap === '' ? DEFAULT_CAP_USD : Number(cap);
+  if (capUsd <= 0) return 'OPS_LOCAL_AGENT_CAP_USD';
+  const seat = SEATS.find((known) => known === env['OPS_LOCAL_AGENT_SEAT']);
+  const usageFile = env['OPS_LOCAL_AGENT_SEAT_USAGE_FILE'] || null;
+  return { home, capUsd, ...(seat === undefined ? {} : { seat }), usageFile };
+}
+
+/**
+ * The approval gate for the tick, on approval.ts and the runner's own gate.
+ * A release the gate explains (the cap, an unapproved model) hands the work
+ * back asking the owner, once while the ask is open; any other raises nothing.
+ */
+export function localGate(
+  approval: ApprovalOptions,
+  settings: GateSettings,
+  model: string = LOCAL_CLAUDE_DEFAULT_MODEL,
+): TickGate {
+  return {
+    purpose: APPROVAL_PURPOSE,
+    beforeTasks: async () => {
+      await applyApprovals(approval);
+    },
+    onReleased: async (lease) => {
+      const decision = decide(settings, model);
+      if (decision.ok) return undefined;
+      const { code } = decision;
+      if (code !== 'LOCAL_CAP_REACHED' && code !== 'LOCAL_MODEL_NOT_APPROVED') return undefined;
+      const raised = await raiseApproval(approval, lease, needOf(code, model));
+      return raised.ok ? code : raised.code;
     },
   };
 }

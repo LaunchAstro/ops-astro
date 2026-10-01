@@ -33,7 +33,7 @@ import type {
 import { queue, type QueueEntry } from '../../packages/core-runtime/src/index.ts';
 import { DEFAULT_MODEL, MODEL_NAME } from './gate.ts';
 import { readApprovals } from './settings.ts';
-import { localOnly, type Environment, type Refused } from './tick.ts';
+import { localOnly, type Environment, type HeldLease, type Refused } from './tick.ts';
 
 export const APPROVAL_PURPOSE = 'local_agent_approval';
 
@@ -66,11 +66,7 @@ export interface ApprovalOptions {
 }
 
 /** The lease the refused work is held under, as its pickup returned it. */
-export interface HeldLease {
-  readonly leaseId: string;
-  readonly fence: number;
-  readonly credential: string;
-}
+export type { HeldLease };
 
 export type Raised =
   | { readonly ok: true; readonly raised: boolean }
