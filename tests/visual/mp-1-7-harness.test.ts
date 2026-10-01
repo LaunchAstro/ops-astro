@@ -152,22 +152,24 @@ function zeroHorizontalOverflow(): void {
   });
 }
 
+// The route registry's four, the gallery (MP-1-3), Connections & signal
+// (MP-14-7a), the agent cost log (MP-14-6), onboarding (C41-A) and a
+// conversation's own address (C36), in route order.
+const PAGES_BUILT_SO_FAR = [
+  'agency:sign-in',
+  'agency:projects-board',
+  'agency:task-detail',
+  'agency:connections',
+  'agency:executive',
+  'agency:onboarding',
+  'agency:settings',
+  'agency:gallery',
+  'agency:agent-conversation',
+];
+
 function everyPageBuiltSoFar(): void {
   it('MP-1-7 every page built so far: each registered route has a picture at each width', () => {
-    // The route registry's four, the gallery (MP-1-3), Connections & signal
-    // (MP-14-7a), the agent cost log (MP-14-6), onboarding (C41-A) and a
-    // conversation's own address (C36).
-    expect(builtPages()).toEqual([
-      'agency:sign-in',
-      'agency:projects-board',
-      'agency:task-detail',
-      'agency:connections',
-      'agency:executive',
-      'agency:onboarding',
-      'agency:settings',
-      'agency:gallery',
-      'agency:agent-conversation',
-    ]);
+    expect(builtPages()).toEqual(PAGES_BUILT_SO_FAR);
     const all = report(packet, builtPages(), everyShot(packet.widths));
     expect(all.failed).toBe(0);
     expect(all.lines.at(-1)).toBe(
