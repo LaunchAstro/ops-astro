@@ -111,6 +111,8 @@
     "tests/reads/c1-search-past-cap.test.ts",
     "tests/reads/c23-isolation.test.ts",
     "tests/api/api-1-isolation.test.ts",
+    "tests/web/mp-3-1-isolation-api.test.tsx",
+    "tests/web/dock-door-isolation-api.test.tsx",
     "tests/api/leaked-client-read-isolation-assertion.test.ts",
     "tests/db/inbox-records.test.ts",
     "tests/reads/inbox.test.ts",

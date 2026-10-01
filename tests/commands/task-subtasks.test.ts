@@ -7,9 +7,12 @@
 // The seeded world is `tests/reads/steps-world.ts`.
 
 import { randomUUID } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import { verifyAuditChain } from '../../packages/core-commands/src/commands/audit.ts';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { connect, type Database } from '../../packages/core-records/src/index.ts';
 import { codeOf } from './agent-fixture.ts';
 import {
   serverUrl,
@@ -40,6 +43,16 @@ beforeAll(async () => {
 }, 180_000);
 
 afterAll(dropSteps);
+
+/** `task.set_party` on a task, which must apply. */
+async function moveTo(task: string, client: string): Promise<void> {
+  await command(alpha, owner, {
+    command: 'task.set_party',
+    recordId: task,
+    expectedRevision: await revisionOf(task),
+    fields: { client },
+  });
+}
 
 describe.skipIf(serverUrl === undefined)('MP-4-4 parent scope', () => {
   it('a subtask takes its parent’s client when it is made', async () => {
@@ -94,6 +107,9 @@ describe.skipIf(serverUrl === undefined)('MP-4-4 parent scope', () => {
   // client is locked once it has one, and its subtree keeps the client it had.
   it('the parent’s client is locked once it has subtasks, and nothing moves down', async () => {
     const parent = await make(alpha, owner, 'moving', 'Rebrand', { client: CLIENT_A });
+    // The control: before it has a subtask, the same change applies.
+    await moveTo(parent, CLIENT_B);
+    await moveTo(parent, CLIENT_A);
     const child = await make(alpha, owner, 'movingChild', 'Logo', { parentId: parent });
     const grandchild = await make(alpha, owner, 'movingGrand', 'Colours', { parentId: child });
     const answer = await send(alpha, owner, {
@@ -106,6 +122,113 @@ describe.skipIf(serverUrl === undefined)('MP-4-4 parent scope', () => {
     expect(await clientOf(parent)).toBe(CLIENT_A);
     expect(await clientOf(child)).toBe(CLIENT_A);
     expect(await clientOf(grandchild)).toBe(CLIENT_A);
+  });
+});
+
+describe.skipIf(serverUrl === undefined)('MP-4-4 parent scope, a trashed subtask', () => {
+  // The lock counts a trashed subtask: carry-down walks live rows and restore
+  // asks no client, so a parent that moved would get it back on the old one.
+  it('a parent whose only subtask is in the trash keeps its client', async () => {
+    const parent = await make(alpha, owner, 'binned', 'Brochure', { client: CLIENT_A });
+    const child = await make(alpha, owner, 'binnedChild', 'Proofs', { parentId: parent });
+    const trashed = await command(alpha, owner, {
+      command: 'task.trash',
+      recordId: child,
+      expectedRevision: await revisionOf(child),
+    });
+    const answer = await send(alpha, owner, {
+      command: 'task.set_party',
+      recordId: parent,
+      expectedRevision: await revisionOf(parent),
+      fields: { client: CLIENT_B },
+    });
+    expect(codeOf(answer)).toBe('CLIENT_LOCKED');
+    await command(alpha, owner, { command: 'task.restore', batchId: trashed.detail['batchId'] });
+    expect([await clientOf(parent), await clientOf(child)]).toEqual([CLIENT_A, CLIENT_A]);
+  });
+});
+
+/** A promise and the one call that settles it. */
+function latch(): { readonly promise: Promise<void>; readonly open: () => void } {
+  let settle: (() => void) | undefined;
+  const promise = new Promise<void>((resolve) => {
+    settle = resolve;
+  });
+  return { promise, open: () => settle?.() };
+}
+
+/** A connection of its own whose transactions stay open after their work until `held` opens. */
+function heldOpen(url: string, worked: () => void, held: Promise<void>): Database {
+  const database = connect(url, { source: 'runtime' });
+  return {
+    log: database.log,
+    close: async () => await database.close(),
+    withBusiness: async (business, run) =>
+      await database.withBusiness(business, async (tx) => {
+        const out = await run(tx);
+        worked();
+        await held;
+        return out;
+      }),
+  };
+}
+
+/** Until some session in this database waits on a lock. */
+async function untilOneWaits(): Promise<void> {
+  for (let tries = 0; tries < 500; tries += 1) {
+    // eslint-disable-next-line no-await-in-loop -- polling, one look at a time
+    const [row] = await seeded().admin.execute<{ readonly waiting: boolean }>(
+      `select exists (select 1 from pg_locks where not granted and pid in
+         (select pid from pg_stat_activity where datname = current_database())) as waiting`,
+    );
+    if (row?.waiting === true) return;
+    // eslint-disable-next-line no-await-in-loop
+    await delay(20);
+  }
+  throw new Error('no session ever waited on a lock');
+}
+
+describe.skipIf(serverUrl === undefined)('MP-4-4 parent scope, raced', () => {
+  // T1 moves an empty parent to B, held open; a reparent of an A task under it must see B.
+  it('a reparent racing the parent’s client change never leaves a child on another client', async () => {
+    const parent = await make(alpha, owner, 'racedParent', 'Campaign', { client: CLIENT_A });
+    const moving = await make(alpha, owner, 'racedChild', 'Banner', { client: CLIENT_A });
+    const under = await make(alpha, owner, 'racedGrand', 'Sizes', { parentId: moving });
+    const [worked, gate] = [latch(), latch()];
+    const held = heldOpen(seeded().appUrl, worked.open, gate.promise);
+    const changing = executeCommand(held, alpha, owner.presented, 'api', {
+      operationId: randomUUID(),
+      command: 'task.set_party',
+      recordId: parent,
+      expectedRevision: await revisionOf(parent),
+      fields: { client: CLIENT_B },
+    } as never);
+    let reparenting: ReturnType<typeof send> | undefined;
+    try {
+      await worked.promise;
+      reparenting = send(alpha, owner, {
+        command: 'task.reparent',
+        recordId: moving,
+        expectedRevision: await revisionOf(moving),
+        parentId: parent,
+      });
+      await untilOneWaits();
+    } finally {
+      gate.open();
+    }
+    expect(isCommandRefusal(await changing)).toBe(false);
+    await held.close();
+    const answer = await reparenting;
+    const [placed] = await seeded().admin.execute<{ readonly parent: string | null }>(
+      `select data ->> 'parent' as parent from public.records where id = $1`,
+      [moving],
+    );
+    if (placed?.parent === parent) {
+      expect([await clientOf(moving), await clientOf(under)]).toEqual([CLIENT_B, CLIENT_B]);
+    } else {
+      expect(codeOf(answer)).toBe('PLACEMENT_IS_DERIVED');
+      expect(await clientOf(moving)).toBe(CLIENT_A);
+    }
   });
 });
 

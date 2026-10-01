@@ -15,8 +15,9 @@ const WIDTHS = [1480, 900, 390] as const;
 const WIDE = [1480, 900] as const;
 const TYPE = ['font-family', 'font-size', 'font-weight', 'letter-spacing', 'text-transform'];
 
-/** The first task row, in the mockup and the app. */
+/** The first task row: the mockup marks it `data-taskrow`, the board machine `data-row`. */
 const ROW = 'tbody tr[data-taskrow]';
+const APP_ROW = 'tbody tr[data-row]';
 
 const probe = (
   id: string,
@@ -28,6 +29,10 @@ const probe = (
 
 // DR-10 folded the dark muted ink to 55 percent; the mockup drew 46.
 const MUTED_DARK = { at: 'color@dark', want: 'rgba(248,248,248,140)', why: 'DR-10' } as const;
+
+/** R53: the measured styles snap to the canonical type scale; the value it holds, in both themes. */
+const R53 = (prop: string, want: string) =>
+  (['light', 'dark'] as const).map((theme) => ({ at: `${prop}@${theme}`, want, why: 'R53' }));
 
 const BOARD_PROBES: readonly LookProbe[] = [
   // DS-COMP-2: the tab row and its tabs.
@@ -88,27 +93,37 @@ const BOARD_PROBES: readonly LookProbe[] = [
     { ...PROJECTS, selector: '.cbd__tbl th:nth-child(2) .cbd__th' },
     '.cbd__tbl th:nth-child(2) .cbd__th',
     [...TYPE, 'color', 'padding-top', 'padding-left', 'box.height'],
-    { widths: WIDE, ruled: [MUTED_DARK] },
+    // The head is --type-eyebrow, light (R53); the mockup drew it at 400.
+    { widths: WIDE, ruled: [MUTED_DARK, ...R53('font-weight', '300')] },
   ),
   probe(
     'board.head-rule',
     { ...PROJECTS, selector: '.cbd__tbl th:nth-child(2)' },
     '.cbd__tbl th:nth-child(2)',
     ['border-bottom-color', 'border-bottom-width'],
-    { widths: WIDE },
+    {
+      widths: WIDE,
+      // One table head (MP-1-3): the kit's --rule, where the mockup's board drew --border-strong.
+      ruled: [
+        { at: 'border-bottom-color@light', want: 'rgba(0,0,0,255)', why: 'MP-1-3' },
+        { at: 'border-bottom-color@dark', want: 'rgba(255,255,255,61)', why: 'MP-1-3' },
+      ],
+    },
   ),
   // Group headings: the first sits tight under the head, the rest carry a rule.
   probe(
     'board.group-first',
     { ...PROJECTS, selector: 'tr.cbd__grp[data-grp="Active"] > td' },
-    'tr.cbd__grp[data-grp="Active"] > td',
+    // The mockup's first group is Active; the machine's group rows carry no name.
+    'tr.cbd__grp:first-child > td',
     ['box.height', 'padding-top', 'padding-left', 'background-color'],
     { widths: WIDE },
   ),
   probe(
     'board.group',
     { ...PROJECTS, selector: 'tr.cbd__grp[data-grp="On hold"] > td' },
-    'tr.cbd__grp[data-grp="On hold"] > td',
+    // A later group, ruled off the one above, as On hold is in the mockup.
+    'tr.cbd__grp:not(:first-child) > td',
     ['box.height', 'padding-top', 'padding-bottom', 'border-top-color', 'background-color'],
     { widths: WIDE },
   ),
@@ -117,58 +132,60 @@ const BOARD_PROBES: readonly LookProbe[] = [
     { ...PROJECTS, selector: '.cbd__grpb' },
     '.cbd__grpb',
     [...TYPE, 'color'],
-    { widths: WIDE },
+    // --type-subheading (R53): 16 and tracked tight, where the mockup drew 16.8 untracked.
+    { widths: WIDE, ruled: [...R53('font-size', '16px'), ...R53('letter-spacing', '-0.16px')] },
   ),
   probe(
     'board.group-reason',
     { ...PROJECTS, selector: '.cbd__grpr' },
     '.cbd__grpr',
     ['font-size', 'color', 'padding-left', 'border-left-color'],
-    { widths: WIDE },
+    // --type-caption (R53): 12, where the mockup drew 12.5.
+    { widths: WIDE, ruled: R53('font-size', '12px') },
   ),
   // Rows and cells.
-  probe('board.row', { ...PROJECTS, selector: ROW }, ROW, ['box.height', 'background-color'], {
+  probe('board.row', { ...PROJECTS, selector: ROW }, APP_ROW, ['box.height', 'background-color'], {
     widths: WIDE,
   }),
   probe(
     'board.cell',
     { ...PROJECTS, selector: `${ROW} td:nth-child(4)` },
-    `${ROW} td:nth-child(3)`,
+    `${APP_ROW} td:nth-child(3)`,
     ['padding-left', 'border-bottom-color', ...TYPE, 'color'],
     { widths: WIDE },
   ),
   probe(
     'board.rank',
     { ...PROJECTS, selector: `${ROW} .cbd__rank` },
-    `${ROW} .cbd__rank`,
+    `${APP_ROW} .cbd__rank`,
     ['font-family', 'font-size', 'color'],
     { widths: WIDE, ruled: [MUTED_DARK] },
   ),
   probe(
     'board.name',
     { ...PROJECTS, selector: `${ROW} td:nth-child(2) .cbd__nm` },
-    `${ROW} td:nth-child(2) .cbd__nm`,
+    `${APP_ROW} td:nth-child(2) .cbd__nm`,
     [...TYPE, 'color', 'text-decoration-line'],
     { widths: WIDE },
   ),
   probe(
     'board.avatar',
     { ...PROJECTS, selector: `${ROW} .cbd__av--p` },
-    `${ROW} .av--person`,
+    `${APP_ROW} .av--person`,
     ['box.width', 'box.height', 'border-top-left-radius'],
     { widths: WIDE },
   ),
   probe(
     'board.assignee',
     { ...PROJECTS, selector: `${ROW} .cbd__cell .cbd__nm` },
-    `${ROW} .av--person + .cbd__nm`,
+    `${APP_ROW} .av--person + .cbd__nm`,
     [...TYPE, 'color'],
     { widths: WIDE },
   ),
   probe(
     'board.due',
     { ...PROJECTS, selector: `${ROW} .tl__due` },
-    `${ROW} .tl__due`,
+    `${APP_ROW} .tl__due`,
     [...TYPE, 'color'],
     { widths: WIDE },
   ),
@@ -177,7 +194,8 @@ const BOARD_PROBES: readonly LookProbe[] = [
     { ...PROJECTS, selector: '.tl__due.is-bad' },
     '.tl__due.is-bad',
     ['font-family', 'font-weight', 'color'],
-    { widths: WIDE },
+    // --type-data (R53): an overdue date keeps the regular weight; the danger ink says it.
+    { widths: WIDE, ruled: R53('font-weight', '400') },
   ),
   probe(
     'board.due-today',
@@ -189,7 +207,7 @@ const BOARD_PROBES: readonly LookProbe[] = [
   probe(
     'board.chip',
     { ...PROJECTS, selector: `${ROW} .cbd__chip` },
-    `${ROW} .cbd__chip`,
+    `${APP_ROW} .cbd__chip`,
     [
       'font-family',
       'font-size',
@@ -200,12 +218,14 @@ const BOARD_PROBES: readonly LookProbe[] = [
       'color',
       'box.height',
     ],
-    { widths: WIDE },
+    // --type-caption (R53): 12, where the mockup drew the chip at 11.
+    { widths: WIDE, ruled: R53('font-size', '12px') },
   ),
   probe(
     'board.dash',
     { ...PROJECTS, selector: `${ROW} td:last-child .cbd__dim, tbody .cbd__dim` },
-    `${ROW} td:last-child .cbd__dim`,
+    // The mockup's own fallback: the first row's last cell carries a value here.
+    `${APP_ROW} td:last-child .cbd__dim, tbody .cbd__dim`,
     ['font-size', 'color'],
     { widths: WIDE },
   ),
@@ -227,6 +247,8 @@ const BOARD_PROBES: readonly LookProbe[] = [
     { path: '/agency/executive/', selector: '.card--flush .card__title' },
     'section.inbox .card__title',
     [...TYPE, 'color', 'line-height'],
+    // --type-card-title (R53): the title line is 1.1, where the mockup drew 1.2.
+    { ruled: R53('line-height', '16.5px') },
   ),
   probe(
     'board.inbox-sub',
@@ -237,38 +259,11 @@ const BOARD_PROBES: readonly LookProbe[] = [
 ];
 
 /**
- * Probes whose markup UI-POLISH's board polish builds (its FORKS line 04:17Z: the
- * board waits on SL07's, batch 2). Picked onto b0/SL07 with the probes (590b55c)
- * but not the markup, so they are held here and run once the polish lands; the
- * rest already hold. Empty this list as each part is built.
+ * Probes held off until UI-POLISH's shared components move. None: the board's
+ * own markup is built, and where the build holds a ruled value off the mockup
+ * the probe names it (`ruled`).
  */
-const AWAITING_POLISH: ReadonlySet<string> = new Set([
-  'board.tabrow',
-  'board.tab',
-  'board.tab-current',
-  'board.create-field',
-  'board.create-button',
-  'board.inbox-card',
-  'board.inbox-head',
-  'board.inbox-title',
-  'board.head',
-  'board.head-rule',
-  'board.group',
-  'board.group-first',
-  'board.group-label',
-  'board.group-reason',
-  'board.row',
-  'board.rank',
-  'board.name',
-  'board.chip',
-  'board.cell',
-  'board.assignee',
-  'board.avatar',
-  'board.due',
-  'board.due-today',
-  'board.due-overdue',
-  'board.dash',
-]);
+const AWAITING_POLISH: ReadonlySet<string> = new Set([]);
 
 export const BOARD: LookScreen = {
   id: 'board',

@@ -112,8 +112,13 @@ const placesOf = (probe: LookProbe): { width: number; theme: Theme }[] =>
 
 /** One element's values on one side, at one width and theme; the side is closed after. */
 async function measureOn(side: Side, url: string, probe: LookProbe, on: 'mockup' | 'app') {
+  const { open, store, drag } = probe[on];
   try {
-    const page = await load(side, packet, url, { open: probe[on].open });
+    if (store !== undefined)
+      await side.context.addInitScript((entries: [string, string][]) => {
+        for (const [name, value] of entries) localStorage.setItem(name, value);
+      }, Object.entries(store));
+    const page = await load(side, packet, url, { open });
     // An app element drawn from its own read (the panel's Project select asks
     // task.board) comes after the first paint: wait for it, so a slow answer
     // is not read as "draws no"; one never drawn is still null after 5s.
@@ -122,6 +127,24 @@ async function measureOn(side: Side, url: string, probe: LookProbe, on: 'mockup'
         .waitForSelector(probe.app.selector, { state: 'attached', timeout: 5000 })
         .catch(() => null);
     }
+    const grip = drag === undefined ? null : await page.locator(drag.selector).boundingBox();
+    if (drag !== undefined && grip === null) return null;
+    if (drag !== undefined && grip !== null) {
+      const y = grip.y + grip.height / 2;
+      await page.mouse.move(grip.x + grip.width / 2, y);
+      await page.mouse.down();
+      await page.mouse.move(grip.x + grip.width / 2 + drag.by, y, { steps: 4 });
+      await page.mouse.up();
+    }
+    // Measured at rest: every transition the preparation started has landed.
+    await page.evaluate(() =>
+      Promise.all(
+        document
+          .getAnimations()
+          .filter((each) => each instanceof CSSTransition)
+          .map((each) => each.finished.catch(() => each)),
+      ),
+    );
     return await page.evaluate(measure, { selector: probe[on].selector, props: probe.props });
   } finally {
     await side.context.close();

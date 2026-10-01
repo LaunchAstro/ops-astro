@@ -1193,8 +1193,11 @@ the task it names: it is the one stop-and-log step every closing surface
 calls (R77), and it logs the elapsed minutes rounded up, never fewer than
 one. A running entry is stopped before it can be deleted. Each is audited
 under its own name (`time entry started`, `time entry created`,
-`time entry note changed`, `time entry deleted`). No agent reaches them
-yet, although the key catalogue allows `time:write` inside a delegation.
+`time entry note changed`, `time entry deleted`), with no subject record
+and `recordId: null` in the answer, so no time event is in a task's
+`history` or in `task.ledger`: those name who acted and when, which would
+be another person's time. No agent reaches them yet, although the key
+catalogue allows `time:write` inside a delegation.
 
 ## The description and the agent brief
 
@@ -1971,6 +1974,10 @@ dismissed without an audit event (CS-2.8, MP-2-11a, MP-2-11). A successful
 and a refused one is audited like any other. The surface row's `audited: false`
 says so; nothing else skips the chain.
 
+**The layout is four keys of the one store** (MP-2-3, MP-3-2, MP-3-3):
+`rail.width`, `dock.width` and `dock.sheetHeight` take a whole number of pixels
+from 1 to 10,000, and `rail.collapsed` takes `true` or `false`.
+
 **Guided tips are two keys of the one store** (MP-2-11). `tips.enabled` takes
 `true` or `false` through `preference.save`. `tips.dismissed` holds one entry
 per dismissed tip, `"<page>#<tip>": <version>`; a save of it takes only `{}`,
@@ -2400,7 +2407,8 @@ commands.
 `task.set_party` changes a task's client only while the task is empty: its
 history (applied audit events about it) holds nothing beyond its creation and
 earlier client changes, and no row names it (a subtask naming it as its parent, a
-proposal, a planned run, an envelope, a lease, an alert). Otherwise it is
+proposal, a planned run, an envelope, a lease, an alert, or a time entry,
+deleted or not). Otherwise it is
 refused `CLIENT_LOCKED` 409 and writes nothing, on the API and the command
 line alike. The check runs under the task's row lock, so a content write
 holding that lock lands wholly before it (the change is refused) or wholly

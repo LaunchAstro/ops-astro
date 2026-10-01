@@ -68,7 +68,7 @@ agency | Projects
   projects | Projects | @agency:projects-board | MP-5-8 | /agency/projects/
   reviews | Reviews | projects/reviews/ | MP-8-1
 agency | Clients
-  clients | Clients | clients/ | MP-8-5 | /agency/clients/
+  clients | Clients | @agency:clients | MP-8-5 | /agency/clients/
   forms | Forms | clients/forms/ | MP-12-6
 agency | Connections & signal
   connections | Connections & signal | connections/ | MP-14-7 | /agency/connections-and-signal/

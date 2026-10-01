@@ -20,7 +20,7 @@ afterEach(unmountAll);
 
 describe('MP-7-1 the Projects dock panel', () => {
   it('the dock carries a Projects panel at an address of its own', () => {
-    const panel = PANELS.find((entry) => entry.id === 'todos');
+    const panel = PANELS.todos;
     expect(panel?.label).toBe('Projects');
     expect(panel?.route).toBe('agency:todos');
     expect(matchRoute(pathTo('agency:todos'))?.id).toBe('agency:todos');

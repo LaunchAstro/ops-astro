@@ -14,6 +14,7 @@ import { resolve } from 'node:path';
 import { act, type ReactElement } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { Shell, type Freshness } from '../../packages/ui/src/index.ts';
+import { dockOf } from '../surfaces/dock-props.ts';
 import { mount } from '../surfaces/mount.tsx';
 import { open } from './mp-2-1-support.tsx';
 
@@ -100,9 +101,7 @@ const headerWith = (freshness: Freshness): ReactElement => (
     here="/projects/"
     title="Projects"
     freshness={freshness}
-    dock={[]}
-    onDockTab={() => {}}
-    seated={false}
+    dock={dockOf([])}
   >
     {null}
   </Shell>

@@ -11,7 +11,7 @@ import type { ReactElement } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { dockTabs } from '../../apps/web/src/panels.ts';
-import { matchRoute } from '../../apps/web/src/routes.ts';
+import { matchRoute, pathTo } from '../../apps/web/src/routes.ts';
 import { SCREENS } from '../../apps/web/src/screen-registry.tsx';
 import { mount, settle, type Mounted } from './mount.tsx';
 
@@ -112,9 +112,9 @@ describe('MP-7-3 inbox one list', () => {
     expect(opened).toEqual(['/task/T-1']);
   });
 
-  it("the dock's Notifications tab reaches /inbox/, and is open there", () => {
-    const tab = dockTabs('/inbox/').find((each) => each.id === 'notifications');
-    expect(tab).toMatchObject({ label: 'Notifications', icon: 'bell', open: true });
-    expect(dockTabs('/team').find((each) => each.id === 'notifications')?.open).toBe(false);
+  it("the dock's Notifications tab opens the inbox, the screen at /inbox/", () => {
+    const tab = dockTabs().find((each) => each.id === 'notifs');
+    expect(tab).toMatchObject({ label: 'Notifications', icon: 'bell', route: 'agency:inbox' });
+    expect(tab === undefined ? null : pathTo(tab.route)).toBe('/inbox/');
   });
 });
