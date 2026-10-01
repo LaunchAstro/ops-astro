@@ -18,13 +18,13 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { runCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import { withSession } from '../../packages/core-records/src/identity/login-resolution.ts';
 import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
 import type { Member } from '../commands/fixture.ts';
 import {
   addressFor,
   c,
-  codeOf,
   invitationRow,
   invite,
   noDatabase,
@@ -106,7 +106,7 @@ async function act(
       who.presented,
       async (tx, session) => await runCommand(tx, session, 'api', request),
     );
-    return 'refused' in result ? 'LOGIN_REFUSED' : codeOf(result);
+    return isCommandRefusal(result) ? result.code : 'applied';
   } catch (cause) {
     return `threw ${String((cause as { code?: unknown }).code)}`;
   }
