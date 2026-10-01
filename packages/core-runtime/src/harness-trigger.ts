@@ -61,18 +61,37 @@ export interface WorkShape {
   readonly delegationDepth: number;
 }
 
-/** The trigger's reading of `shape`. Throws on a shape that is not one. */
+const MADE = new WeakSet<object>();
+
+const whole = (value: unknown, most: number): value is number =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= most;
+
+/** The trigger's reading of `shape`, frozen. Throws on a shape that is not one. */
 export function readTrigger(shape: WorkShape): TriggerReading {
-  const figures: TriggerFigures = {
-    reading: {
+  if (!whole(shape.readingBytes, Number.MAX_SAFE_INTEGER)) {
+    throw new RangeError('readTrigger: the reading is a whole number of bytes');
+  }
+  if (!whole(shape.delegationDepth, DELEGATION_DEPTH_BUILT)) {
+    throw new RangeError(`readTrigger: a depth from 0 to ${String(DELEGATION_DEPTH_BUILT)}`);
+  }
+  const figures: TriggerFigures = Object.freeze({
+    reading: Object.freeze({
       units: shape.readingBytes,
-      unit: 'utf8_byte',
+      unit: 'utf8_byte' as const,
       windowUnits: HARNESS_PINNED_WINDOW.contextUnits,
       model: HARNESS_PINNED_WINDOW.model,
-    },
-    delegation: { depth: shape.delegationDepth, builtDepth: DELEGATION_DEPTH_BUILT },
-  };
-  return { result: 'fired', figures };
+    }),
+    delegation: Object.freeze({ depth: shape.delegationDepth, builtDepth: DELEGATION_DEPTH_BUILT }),
+  });
+  const missing: TriggerLimb[] = [];
+  if (shape.readingBytes <= HARNESS_PINNED_WINDOW.contextUnits) missing.push('reading');
+  if (shape.delegationDepth < 1) missing.push('delegation');
+  const reading: TriggerReading =
+    missing.length === 0
+      ? Object.freeze({ result: 'fired', figures })
+      : Object.freeze({ result: 'not_yet', missing: Object.freeze(missing), figures });
+  MADE.add(reading);
+  return reading;
 }
 
 export type CandidateEntry<T> =
@@ -90,5 +109,9 @@ export function enterCandidates<T>(
   trigger: TriggerReading,
   candidates: readonly T[],
 ): CandidateEntry<T> {
-  return { trigger: { ...trigger, result: 'fired' } as never, entered: candidates };
+  if (!MADE.has(trigger)) {
+    throw new Error('enterCandidates: read the trigger first; this reading was not made by it');
+  }
+  if (trigger.result === 'not_yet') return Object.freeze({ trigger, entered: [] as const });
+  return Object.freeze({ trigger, entered: Object.freeze([...candidates]) });
 }
