@@ -1807,9 +1807,10 @@ Each create and each resend allows one email: `sendInvitation`
 invitation is pending and has an applied act no send has answered, takes a
 fresh enrolment token, keeps its SHA-256 alone and records the attempt
 against it, under `email.send`'s one ceiling with the inbox's emails. The
-token is the login provider's invite link's hashed token, generated through
-custody under the catalogued `auth.invite_link` (the service key stays in
-custody) when the broker catalogues it, and minted here when it does not.
+token is always minted here (32 random bytes); the login provider is never
+asked at send time, so nothing derived from a provider value is stored and an
+address with a login elsewhere is invited like any other. The login is made
+when the invitation is accepted.
 
 `POST /api/hooks/auth-email` is the login provider's Send Email hook, mounted
 by `composeApi` when it is given the hook's secret (`AUTH_EMAIL_HOOK_SECRET`,
