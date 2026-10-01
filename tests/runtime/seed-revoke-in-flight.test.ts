@@ -270,7 +270,6 @@ describe.skipIf(serverUrl === undefined)('the seed and a pickup in flight', () =
         claimant: 'person',
         personId: noah.personId,
         actorId: noah.actorId,
-        // The approving person, as `tasks.pickup` names them; noah's write is his own.
         authorisedByPersonId: ada.personId,
         reservationId,
         collection: TASK_COLLECTION,
