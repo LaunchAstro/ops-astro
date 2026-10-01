@@ -13,26 +13,30 @@ client: client-facing agent work stays on the API.
 
 ## Start it
 
-1. The runner (`apps/local-agent/main.ts`), in its own terminal:
+1. The stack (`apps/local-agent/stack.ts`), in its own terminal:
 
    ```sh
-   OPS_ENVIRONMENT=local \
-   OPS_LOCAL_AGENT_SEAT=hey \
-   OPS_LOCAL_AGENT_KEY=$(openssl rand -hex 24) \
-   node apps/local-agent/main.ts
+   OPS_ENVIRONMENT=local OPS_LOCAL_AGENT_SEAT=hey node apps/local-agent/stack.ts
    ```
 
-   It prints its loopback origin. Keep the key: custody needs the same value.
+   It makes a runner key, starts the runner, files the key for custody in
+   `credentials.json` and writes `api.env`, both 0600 under
+   `OPS_LOCAL_AGENT_HOME`. It prints the runner's origin and the `api.env` path,
+   never the key.
 
-2. The API, with the broker pointed at the runner: `OPS_ENVIRONMENT=local`,
-   `OPS_AGENT_PROVIDER=local-claude`, and the four `MODEL_BROKER_*` settings: a
-   credentials file holding the runner key for destination `local_claude`, that
-   destination's origin, one route `{ key: "local_claude", reach: "local",
-provider: "local_claude", credentialKind: "subscription", ... }`, and the
-   installation. `tests/local-agent/real-haiku.e2e.test.ts` builds exactly this.
-3. The local tick (`apps/local-agent/tick.ts`) picks up queued task work and
-   fires due schedules, as an interval in a long-lived process or once per call
-   from the owner's crontab.
+2. The API, in a terminal that has run `source <home>/api.env` first. That file
+   sets `OPS_ENVIRONMENT=local`, `OPS_AGENT_PROVIDER=local-claude` and the four
+   `MODEL_BROKER_*` settings: the credentials file, the runner as destination
+   `local_claude`, and one route `local_claude` (reach `local`, kind
+   `subscription`). The side panel is then answered by the local session.
+
+3. The tick (`apps/local-agent/tick-main.ts`), in a terminal that has also
+   sourced `api.env`, with `DATABASE_URL`, `OPS_LOCAL_AGENT_BUSINESS_ID`, the
+   agent's login subject (`OPS_LOCAL_AGENT_AGENT_SUBJECT`) and the business's
+   worker (`OPS_LOCAL_AGENT_WORKER_ACTOR_ID`). Every
+   `OPS_LOCAL_AGENT_TICK_SECONDS` (60 by default, 10 at least) it fires due
+   schedules and runs queued task work, and prints counts and refusal codes,
+   never the model's words.
 
 ## What holds it
 
