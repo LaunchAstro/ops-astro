@@ -223,7 +223,8 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'budget.write_off': writing(client('attempts', 'reservations', 'task_envelopes')),
   // SL12's commands, carried in by the merge of main a352c11 (S0-5 needs an
   // entry for every command); each is held to its rows by s0-5-effect-metadata.
-  // AW-04: the plan accept decides the plan's gate and binds its plan record.
+  // AW-04: the plan accept decides the plan's gate, pins the run's bootstrap
+  // file and binds its plan record.
   'task.accept_plan': writing(
     client(
       'attempts',
@@ -232,6 +233,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
       'inbox_items',
       'plan_records',
       'reservations',
+      'run_definition_pins',
       'task_envelopes',
     ),
   ),
@@ -243,7 +245,8 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.check': writing(client('run_checks')),
   // AW-03: a person's conversation with the agent, and MP-7-11's tab row.
   'conversation.start': writing(client('conversations', 'conversation_messages')),
-  'conversation.message': writing(client('conversation_messages')),
+  // A message stamps its conversation's last activity.
+  'conversation.message': writing(client('conversations', 'conversation_messages')),
   'conversation.read': READ,
   'conversation.list': READ,
   'conversation.rename': writing(client('conversations')),
@@ -259,9 +262,9 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   ),
   // MP-6-2: a run's state, a new version.
   'run.revise_state': writing(client('run_states')),
-  // AW-11: the child's delegation, minted and handed back.
-  'run.delegate_child': writing(business('delegations')),
-  'run.child_handback': writing(business('delegations')),
+  // AW-11: the child's delegation, minted and handed back, each a run event.
+  'run.delegate_child': writing([...client('run_events'), ...business('delegations')]),
+  'run.child_handback': writing([...client('run_events'), ...business('delegations')]),
   // C39-T: a team invitation and its one-time link. A team member is not an
   // outside person (the `access` rule above), so it admits no one here.
   'invitation.create': writing(business('invitations', 'people', 'enrolment_tokens')),
