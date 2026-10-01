@@ -11,8 +11,14 @@
 // and `unavailable` are refusals and faults, and `loading` is the client's.
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
-import { PLAN_CANDIDATES, projectedPlan } from '../../../core-runtime/src/index.ts';
+import { PLAN_CANDIDATES, boundPlans } from '../../../core-runtime/src/index.ts';
 import { projectGraph, type ExecutionGraph } from './execution-graph.ts';
+import {
+  PLACEMENT_FACTS,
+  placeEvents,
+  type EventPlacement,
+  type PlacedPlan,
+} from './execution-placement.ts';
 import { DEFINITION_FACTS } from './execution-definition.ts';
 import { HELPER_FACTS } from './execution-helpers.ts';
 
@@ -40,7 +46,11 @@ export interface ExecutionEvent {
   readonly actorId: string;
   readonly detail: Readonly<Record<string, unknown>>;
   readonly at: string;
+  /** The plan its run was proposed under, as recorded (MP-6-2, `execution-placement.ts`). */
+  readonly placement: EventPlacement;
 }
+
+type StoredEvent = Omit<ExecutionEvent, 'placement'>;
 
 export interface TaskExecution {
   readonly outcome: 'ready' | 'no-run' | 'stale';
@@ -55,6 +65,8 @@ export interface TaskExecution {
   readonly events: readonly ExecutionEvent[];
   /** Planned and observed, per run (AW-06, `execution-graph.ts`). */
   readonly graph: ExecutionGraph;
+  /** The steps of every bound plan record a run of the task was proposed under. */
+  readonly plans: readonly PlacedPlan[];
 }
 
 export async function readTaskExecution(
@@ -62,9 +74,15 @@ export async function readTaskExecution(
   taskId: string,
   cursor: number,
 ): Promise<TaskExecution> {
-  const { runs, sourceRevision, events, facts, plans } = await snapshot(tx, taskId, cursor);
+  const { runs, sourceRevision, events, facts, plans, placements } = await snapshot(
+    tx,
+    taskId,
+    cursor,
+  );
   const last = events.at(-1)?.position ?? cursor;
   const complete = last >= sourceRevision;
+  const bound = boundPlans(plans);
+  const placed = placeEvents(placements, bound, events);
   return {
     outcome: runs.length === 0 ? 'no-run' : cursor > sourceRevision ? 'stale' : 'ready',
     taskId,
@@ -72,8 +90,9 @@ export async function readTaskExecution(
     complete,
     next: complete ? null : last,
     runs,
-    events,
-    graph: projectGraph(facts, projectedPlan(plans), sourceRevision, complete),
+    events: placed.events,
+    graph: projectGraph(facts, bound[0] ?? null, sourceRevision, complete),
+    plans: placed.plans,
   };
 }
 
@@ -129,35 +148,28 @@ const RUN_FACTS = `coalesce((select json_agg(json_build_object(
       order by ev.position desc limit 1) last on true
  where run.business_id = $1 and run.task_id = $2), '[]')`;
 
+interface Snapshot {
+  readonly runs: readonly ExecutionRun[];
+  readonly sourceRevision: number;
+  readonly events: readonly StoredEvent[];
+  readonly facts: unknown;
+  readonly plans: unknown;
+  readonly placements: unknown;
+}
+
 /**
  * The runs, the event head, one page of events, each run's facts for the
- * graph and the task's plan records (`PLAN_CANDIDATES`, bound or not, checked
- * by `projectedPlan`), read by one statement so all five come from one
- * snapshot: separate
- * reads could see a successor's events without its run, or a hand-back's
+ * graph, the task's plan records (`PLAN_CANDIDATES`, bound or not, checked
+ * by `boundPlans`) and each run's placement (`PLACEMENT_FACTS`), read by one
+ * statement so all six come from one snapshot: separate reads could see a
+ * successor's events without its run, or a hand-back's
  * event without its settled attempt. The facts read the whole run, never the
  * page, so a condition does not depend on the cursor; `lastKind` stops at the
  * head, as the page does. Counters come back as
  * `float8`, exact to 2^53 as a JS number is, so the rows need no mapping.
  */
-async function snapshot(
-  tx: TenantQuery,
-  taskId: string,
-  cursor: number,
-): Promise<{
-  readonly runs: readonly ExecutionRun[];
-  readonly sourceRevision: number;
-  readonly events: readonly ExecutionEvent[];
-  readonly facts: unknown;
-  readonly plans: unknown;
-}> {
-  const rows = await tx.query<{
-    readonly runs: readonly ExecutionRun[];
-    readonly sourceRevision: number;
-    readonly events: readonly ExecutionEvent[];
-    readonly facts: unknown;
-    readonly plans: unknown;
-  }>(
+async function snapshot(tx: TenantQuery, taskId: string, cursor: number): Promise<Snapshot> {
+  const rows = await tx.query<Snapshot>(
     `with head as (
        select coalesce(max(position), 0) as n
          from public.run_events where business_id = $1 and task_id = $2
@@ -181,7 +193,8 @@ async function snapshot(
               order by position)
               from page), '[]') as events,
             ${RUN_FACTS} as facts,
-            ${PLAN_CANDIDATES} as plans`,
+            ${PLAN_CANDIDATES} as plans,
+            ${PLACEMENT_FACTS} as placements`,
     [tx.businessId, taskId, cursor, EXECUTION_PAGE],
   );
   const [row] = rows;

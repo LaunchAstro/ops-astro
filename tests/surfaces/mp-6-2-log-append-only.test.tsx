@@ -33,8 +33,19 @@ const FIRST = event(1, 'run-1', 'claimed', '2026-09-30T10:00:00.000Z');
 const SECOND = event(2, 'run-1', 'handed_back', '2026-09-30T10:42:00.000Z');
 const THIRD = event(3, 'run-2', 'claimed', '2026-09-30T11:05:00.000Z');
 
+/** The read's shape: each event placed under the step whose runs name its run, in one plan. */
 const logOf = async (events: readonly ReturnType<typeof event>[], steps = STEPS) =>
-  await pane({ lineages: [lineage()], activity: { steps, events } });
+  await pane({
+    lineages: [lineage()],
+    activity: {
+      plans: [{ planRecordId: 'plan', steps }],
+      events: events.map((each) => {
+        const step = steps.find((one) => one.runIds.includes(each.runId));
+        const stepKey = step?.key ?? null;
+        return { ...each, placement: { planRecordId: 'plan', stepKey, planRun: false } };
+      }),
+    },
+  });
 
 const rows = (page: Awaited<ReturnType<typeof pane>>) => [
   ...(page.find('[data-agent="log"]')?.querySelectorAll('[data-log="row"]') ?? []),
@@ -77,7 +88,7 @@ describe('MP-6-2 log append-only', () => {
   it('MP-6-2 log append-only: no run, and a run with no event, each say so', async () => {
     const none = await pane({
       lineages: [lineage({ versions: [version({ runId: null })] })],
-      activity: { steps: [], events: [] },
+      activity: { plans: [], events: [] },
     });
     expect(none.find('[data-agent="log"]')?.textContent).toContain(
       'No run, so there is nothing operational to log yet.',
