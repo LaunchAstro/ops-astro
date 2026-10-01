@@ -43,8 +43,10 @@
 // **The agent quota is per instance (API-2).** Its counts live in one
 // process's memory and every instance starts its own, so each holds the
 // installation's limits divided by the deployment's instance ceiling,
-// `AGENT_QUOTA_INSTANCES` (10 unset; set it to the function's maximum
-// instances). Together they stay within what one server holds.
+// `AGENT_QUOTA_INSTANCES` (4 unset; set it to the function's maximum
+// instances), rounded down. A ceiling above the smallest limit would round a
+// share up to one, so the entry refuses it at start-up. Together they stay
+// within what one server holds.
 
 import { join } from 'node:path';
 import {
@@ -135,14 +137,28 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
   };
 }
 
-const INSTANCES_UNSET = 10;
+/** The most instances the limits split across with at least one of each. */
+const INSTANCES_MOST = Math.min(
+  ...[
+    DEFAULT_AGENT_LIMITS.requests,
+    DEFAULT_AGENT_LIMITS.concurrent,
+    DEFAULT_AGENT_LIMITS.exports,
+  ].flatMap((all) => Object.values(all)),
+  DEFAULT_AGENT_LIMITS.refused,
+);
+const INSTANCES_UNSET = INSTANCES_MOST;
 
-/** The default limits split across the instance ceiling, never below one of each. */
+/** The default limits split across the instance ceiling, rounded down. */
 function perInstance(setting: string | undefined): AgentLimits {
   const given = setting === undefined || setting === '' ? String(INSTANCES_UNSET) : setting;
   const instances = /^\d+$/u.test(given) ? Number(given) : 0;
   if (instances < 1) throw new Error('AGENT_QUOTA_INSTANCES is not a whole number of instances.');
-  const share = (limit: number): number => Math.max(1, Math.floor(limit / instances));
+  if (instances > INSTANCES_MOST) {
+    throw new Error(
+      `AGENT_QUOTA_INSTANCES is above ${INSTANCES_MOST}, the smallest agent limit, so a share would round up.`,
+    );
+  }
+  const share = (limit: number): number => Math.floor(limit / instances);
   const tiers = (all: Tiers): Tiers => ({
     credential: share(all.credential),
     person: share(all.person),
