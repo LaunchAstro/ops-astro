@@ -111,6 +111,38 @@ async function tickIdentity(
   };
 }
 
+/** The one credential custody files for the broker: the runner's key. */
+function credentialOf(seat: string, key: string) {
+  return {
+    ref: CREDENTIAL_REF,
+    kind: 'api_key',
+    account: `seat-${seat}`,
+    destination: DESTINATION,
+    header: 'authorization',
+    value: key,
+  };
+}
+
+// The runner takes the home before anything is written: a second start on a
+// live home is refused with the filed key still the one the first runner serves.
+async function claimHome(
+  settings: Parameters<typeof createRunner>[0],
+  print: (line: string) => void,
+): Promise<{ ok: true; runner: Runner } | Extract<StackStart, { ok: false }>> {
+  try {
+    return { ok: true, runner: await createRunner(settings, print) };
+  } catch (error) {
+    if (String(error).includes('LOCAL_HOME_IN_USE')) {
+      return {
+        ok: false,
+        code: 'LOCAL_HOME_IN_USE',
+        message: 'another runner holds this OPS_LOCAL_AGENT_HOME',
+      };
+    }
+    throw error;
+  }
+}
+
 export async function startStack(
   env: Readonly<Record<string, string | undefined>>,
   userHome: string = homedir(),
@@ -138,33 +170,13 @@ export async function startStack(
   if (statSync(settings.home).uid !== process.getuid?.()) {
     return { ok: false, code: 'HOME_NOT_OWNED', message: 'OPS_LOCAL_AGENT_HOME is not yours' };
   }
-  // The runner takes the home before anything is written: a second start on a
-  // live home is refused with the filed key still the one the first runner serves.
-  let runner: Runner;
-  try {
-    runner = await createRunner(settings, print);
-  } catch (error) {
-    if (String(error).includes('LOCAL_HOME_IN_USE')) {
-      return {
-        ok: false,
-        code: 'LOCAL_HOME_IN_USE',
-        message: 'another runner holds this OPS_LOCAL_AGENT_HOME',
-      };
-    }
-    throw error;
-  }
+  const claimed = await claimHome(settings, print);
+  if (!claimed.ok) return claimed;
+  const { runner } = claimed;
   const credentialsFile = join(settings.home, 'credentials.json');
-  const credential = {
-    ref: CREDENTIAL_REF,
-    kind: 'api_key',
-    account: `seat-${settings.seat}`,
-    destination: DESTINATION,
-    header: 'authorization',
-    value: key,
-  };
   const apiEnvFile = join(settings.home, 'api.env');
   try {
-    writeOwnerFile(credentialsFile, JSON.stringify([credential]));
+    writeOwnerFile(credentialsFile, JSON.stringify([credentialOf(settings.seat, key)]));
     writeApiEnv(apiEnvFile, {
       ...apiEnvOf(runner.origin, credentialsFile, installation),
       ...tick.env,

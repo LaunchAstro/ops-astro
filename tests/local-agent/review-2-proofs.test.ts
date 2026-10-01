@@ -67,7 +67,7 @@ it('Sol proof, races: a second stack start on a home a runner holds leaves the f
   // No key in the environment: each start makes its own, as the documented command does.
   const first = await stackOn(world, { OPS_LOCAL_AGENT_KEY: undefined });
   if (!first.ok) throw new Error(`first stack refused: ${first.code}`);
-  const second = await stackOn(world, { OPS_LOCAL_AGENT_KEY: undefined }).catch(() => undefined);
+  const second = await stackOn(world, { OPS_LOCAL_AGENT_KEY: undefined }).catch(() => null);
   // The second start is refused (LOCAL_HOME_IN_USE), by result or by throw.
   expect(second?.ok ?? false).toBe(false);
   // A custody started now (the tick, or the API after a restart) reads this file.

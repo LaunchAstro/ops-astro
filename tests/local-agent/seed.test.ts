@@ -39,9 +39,9 @@ async function seedAgent(app: Database, businessId: string, subject: string): Pr
   });
 }
 
-// eslint-disable-next-line max-lines-per-function -- one database, the cases that share it
 describe.skipIf(serverUrl === undefined)(
   'LA-1 local stack: the tick identity from the seed',
+  // eslint-disable-next-line max-lines-per-function -- one database, the cases that share it
   () => {
     let db: FreshDatabase;
     let alpha: string;

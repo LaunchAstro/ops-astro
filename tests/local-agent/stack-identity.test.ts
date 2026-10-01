@@ -36,9 +36,9 @@ afterEach(async () => {
 
 const seeded =
   (read: IdentityRead) =>
-  async (env: Readonly<Record<string, string | undefined>>): Promise<IdentityRead> => {
+  (env: Readonly<Record<string, string | undefined>>): Promise<IdentityRead> => {
     asked.push(env['OPS_LOCAL_AGENT_BUSINESS'] ?? '');
-    return read;
+    return Promise.resolve(read);
   };
 
 const found: IdentityRead = {
