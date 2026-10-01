@@ -92,6 +92,7 @@ import type { LiveSignal, LiveTopics } from './live.ts';
 import { markOf, presenceAskOf, type LivePresence, type SeatAsk } from './live-presence.ts';
 import {
   BOARD,
+  endsWithRequest,
   follow as followTopics,
   RECHECK_MS,
   sharesOf,
@@ -472,6 +473,7 @@ export function createApi(options: ApiOptions): Hono {
       if (typeof taskId !== 'string') return refuse(context, taskId);
       // Batch 1's dedicated task stream: its frames carry no identifier (REVB1ENDFIXAPID).
       return streamSSE(context, async (stream) => {
+        endsWithRequest(stream, context.req.raw.signal);
         await follow(
           stream,
           live,
@@ -510,6 +512,7 @@ export function createApi(options: ApiOptions): Hono {
       if (none && refused !== undefined && isCommandRefusal(refused))
         return refuse(context, refused);
       return streamSSE(context, async (stream) => {
+        endsWithRequest(stream, context.req.raw.signal);
         for (const watch of tasks.filter((each) => !watched.includes(each))) {
           // eslint-disable-next-line no-await-in-loop -- written in the order named.
           await stream.writeSSE({ event: 'closed', data: watch.label });
@@ -692,6 +695,7 @@ async function boardStream(
   const joined = await mayJoinBoard(options, context, businessId);
   if (isCommandRefusal(joined)) return refuse(context, joined);
   return streamSSE(context, async (stream) => {
+    endsWithRequest(stream, context.req.raw.signal);
     await followBoardOn(stream, options, live, context, businessId, joined);
   });
 }
