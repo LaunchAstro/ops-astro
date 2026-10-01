@@ -55,6 +55,8 @@ function reachCases1() {
     const def = load();
     const args = reachArgs(def.networks.staging.name);
     expect(args.slice(0, 3)).toStrictEqual(['run', '--rm', '-i']);
+    // Nothing psql prints reaches the daemon's log on the host's disk (o2-4).
+    expect(args).toContain('--log-driver=none');
     expect(args).toContain(`--network=${def.networks.staging.name}`);
     expect(args).toContain(def.services['backups']?.image);
     expect(args.slice(args.indexOf(def.services['backups']?.image ?? '') + 1)).toStrictEqual([
