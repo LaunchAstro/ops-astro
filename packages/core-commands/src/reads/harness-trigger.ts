@@ -81,11 +81,10 @@ export async function readHarnessTrigger(
   ]);
   const row = rows[0];
   if (row === undefined) return refuseNotFound();
-  if (Number(row.uncounted) > 0) {
+  const readingBytes = Number(row.reading);
+  // A sum past an exact whole number is no more a figure than a missing size.
+  if (Number(row.uncounted) > 0 || !Number.isSafeInteger(readingBytes)) {
     return refuseCommand('DEFINITION_UNAVAILABLE', [], UNCOUNTED_FIXES);
   }
-  return readTrigger({
-    readingBytes: Number(row.reading),
-    delegationDepth: row.delegated ? 1 : 0,
-  });
+  return readTrigger({ readingBytes, delegationDepth: row.delegated ? 1 : 0 });
 }
