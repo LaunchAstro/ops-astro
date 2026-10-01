@@ -14,9 +14,16 @@
 // because a denied list is not a success with nothing in it. The deadline is
 // the database's `now()` with the decide path's inclusive boundary, so the list
 // never offers a gate the decision would refuse `GATE_EXPIRED`.
+//
+// Of the gates the grant reaches, it lists only those `task.decide` would let
+// the caller decide, asked with decide's own checks rather than a copy of them:
+// never one on a task assigned to the caller (four eyes, T2g, `assignedTo`),
+// and an escalated one only to a holder of `decide` across the business (T3a,
+// `escalatedDecider`).
 
 import { coveredScopes, subjectsOf } from '../../../core-records/src/index.ts';
 import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
+import { assignedTo, escalatedDecider, lockedInstant } from '../../../core-runtime/src/index.ts';
 import type { AwaitingReviewView } from '../../../core-wire/src/index.ts';
 import { refuseCommand, type CommandRefusal } from '../commands/refusal.ts';
 
@@ -32,11 +39,16 @@ interface PendingRow {
   readonly currency: string;
   readonly round: number;
   readonly expires_at: Date;
+  readonly escalated: boolean;
 }
 
 const PENDING = `select g.id as gate_id, ver.id as version_id, ver.version::text as version,
             lin.id as lineage_id, r.id as task_id, r.txt_4 as title, ver.purpose,
-            ver.maximum_minor::text as maximum_minor, ver.currency, g.round, g.expires_at
+            ver.maximum_minor::text as maximum_minor, ver.currency, g.round, g.expires_at,
+            -- Read through the row, as recheckGate in decide reads it: a
+            -- database upgraded only as far as an earlier migration has no 0041
+            -- column, and a gate there was never escalated.
+            (to_jsonb(g) ->> 'escalated_at') is not null as escalated
        from public.gates g
        join public.proposal_versions ver
          on ver.business_id = g.business_id and ver.id = g.version_id
@@ -60,7 +72,8 @@ export async function readAwaitingReview(
   taskTypeId: string,
   collection: string,
 ): Promise<readonly AwaitingReviewView[] | CommandRefusal> {
-  const scopes = await coveredScopes(tx, subjectsOf(session), { collection, action: 'decide' });
+  const subjects = subjectsOf(session);
+  const scopes = await coveredScopes(tx, subjects, { collection, action: 'decide' });
   if (!scopes.business && scopes.records.length === 0) {
     return refuseCommand(
       'SCOPE_NOT_GRANTED',
@@ -74,17 +87,36 @@ export async function readAwaitingReview(
     scopes.business,
     scopes.records,
   ]);
-  return rows.map((row) => ({
-    gateId: row.gate_id,
-    versionId: row.version_id,
-    version: Number(row.version),
-    lineageId: row.lineage_id,
-    taskId: row.task_id,
-    taskTitle: row.title ?? '',
-    purpose: row.purpose,
-    maximumMinor: Number(row.maximum_minor),
-    currency: row.currency,
-    round: row.round,
-    expiresAt: new Date(row.expires_at).toISOString(),
-  }));
+  // The escalation role is one question for every escalated row: decide at
+  // business scope, asked as `task.decide` asks it.
+  const ask = {
+    subjects,
+    collection,
+    decision: 'approve',
+    decidedByPersonId: session.personId,
+    decidedByActorId: session.actorId,
+  };
+  const wider =
+    rows.some((row) => row.escalated) &&
+    (await escalatedDecider(tx, ask, true, await lockedInstant(tx))).ok;
+  const open = rows.filter((row) => !row.escalated || wider);
+  // One transaction's statements, queued on its one connection in this order.
+  const mine = await Promise.all(
+    open.map(async (row) => await assignedTo(tx, row.task_id, session.personId)),
+  );
+  return open
+    .filter((_, index) => !mine[index])
+    .map((row) => ({
+      gateId: row.gate_id,
+      versionId: row.version_id,
+      version: Number(row.version),
+      lineageId: row.lineage_id,
+      taskId: row.task_id,
+      taskTitle: row.title ?? '',
+      purpose: row.purpose,
+      maximumMinor: Number(row.maximum_minor),
+      currency: row.currency,
+      round: row.round,
+      expiresAt: new Date(row.expires_at).toISOString(),
+    }));
 }
