@@ -452,6 +452,7 @@
     "tests/commands/task-trash-commands.test.ts",
     "tests/identity/identifier-resolution.test.ts",
     "tests/identity/login-resolution.test.ts",
+    "tests/identity/login-resolution-before-0065.test.ts",
     "tests/records/records-integrity.test.ts",
     "tests/records/slot-law.test.ts",
     "tests/tasks/task-model.test.ts",
