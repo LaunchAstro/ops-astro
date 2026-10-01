@@ -13,7 +13,7 @@ import {
   insertMapping,
   insertPerson,
 } from '../identity/fixture.ts';
-import { enrol, grantTo, installSpine, type Member } from './fixture.ts';
+import { addClient, enrol, grantTo, installSpine, type Member } from './fixture.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
@@ -208,6 +208,8 @@ export async function seedConversation(prefix: string): Promise<void> {
     await grantTo(tx, who.colleague, 'comment');
     await grantTo(tx, who.reader, 'read');
   });
+  await addClient(who.world.db.app, who.world.business, clientA, who.decider);
+  await addClient(who.world.db.app, who.world.business, clientB, who.decider);
   ids['a'] = await task(clientA);
   ids['b'] = await task(clientB);
   who.clientPerson = await onClient(clientA, ids['a']);

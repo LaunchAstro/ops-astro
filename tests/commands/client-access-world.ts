@@ -21,7 +21,7 @@ import {
   type FreshDatabase,
 } from '../support/fresh-database.ts';
 
-import { enrol, grantTo, installSpine, type Member } from './fixture.ts';
+import { addClient, enrol, grantTo, installSpine, type Member } from './fixture.ts';
 
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 
@@ -147,6 +147,19 @@ export const fresh: (
   return recordId;
 };
 
+/**
+ * The task put on `client` behind every command's back: the state a command
+ * can no longer reach (S0-5 locks a task's client once it has content, and
+ * C32 refuses a client of another business), held by older rows all the same.
+ */
+export const placeBehind = async (recordId: string, client: string): Promise<void> => {
+  await db.admin.execute(
+    `update public.records set data = jsonb_set(data, '{client}', to_jsonb($2::text))
+      where id = $1`,
+    [recordId, client],
+  );
+};
+
 export const toggle: (
   business: BusinessId,
   by: Member,
@@ -267,6 +280,8 @@ export async function setUp(): Promise<void> {
     }
     await grantTo(tx, bravoAdmin, 'share', undefined, false, 'access');
   });
+  await addClient(db.app, alpha, clientA, admin);
+  await addClient(db.app, alpha, clientB, admin);
   clientAPeople = [
     await clientPerson(alpha, clientA, admin),
     await clientPerson(alpha, clientA, admin),

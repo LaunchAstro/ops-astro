@@ -122,3 +122,23 @@ export async function shareWithClient(
     return { personId, actorId, presented: { provider: 'supabase', subject } };
   });
 }
+
+/**
+ * A client of this business under a chosen id (C32): `task.set_party` and a
+ * party-scoped grant name only a client the business holds, so a world that
+ * puts tasks on clients makes them as rows first, through the application role.
+ */
+export async function addClient(
+  database: Database,
+  businessId: string,
+  clientId: string,
+  by: Member,
+): Promise<void> {
+  await database.withBusiness(businessId, async (tx) => {
+    await tx.query(
+      `insert into public.clients (business_id, id, name, created_by_actor_id)
+       values ($1, $2, $3, $4)`,
+      [tx.businessId, clientId, `client ${clientId}`, by.actorId],
+    );
+  });
+}
