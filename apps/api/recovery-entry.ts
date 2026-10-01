@@ -296,17 +296,23 @@ export async function passDeployment(
   keys: readonly string[],
   lookup: EffectLookup,
   // AW-10: the provider phase, after the sweep and before the answers.
-  providers?: (database: Database, businessId: BusinessId) => Promise<unknown>,
+  providers?: (
+    database: Database,
+    businessId: BusinessId,
+    unanswered: Set<string>,
+  ) => Promise<unknown>,
 ): Promise<RecoveryOutcome> {
   const swept = await sweepDeployment(database, resolveBusiness, keys);
   if (!swept.ok) return swept;
   const replayed = await recoverDeployment(database, resolveBusiness, keys);
   if (!replayed.ok) return replayed;
   if (providers !== undefined) {
+    // One set for the pass: a provider silent in one business is not asked again in the next.
+    const unanswered = new Set<string>();
     for (const business of swept.businesses) {
       // One business at a time, each in its own transactions.
       // eslint-disable-next-line no-await-in-loop
-      await providers(database, business.businessId);
+      await providers(database, business.businessId, unanswered);
     }
   }
   const answered = await eachBusiness(

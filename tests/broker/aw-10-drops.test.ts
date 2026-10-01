@@ -150,3 +150,20 @@ it("AW-10 fault from evidence: a timeout is undetermined, a hostile answer the p
     ]);
   }
 });
+
+it("AW-10 a heartbeat provider start is not cleared by a call's absence proof: the step's own provider may have acted, so the pass leaves it unanswered and the hold whole", async () => {
+  world.provider.lookupMode('honest');
+  const work = await workerLost(s, true);
+  const swept = await pass();
+  // The positive proof released the silent call, and that proves nothing about the step's provider.
+  expect(await callsOf(s, work)).toMatchObject([{ state: 'released', outcome: null }]);
+  const reconciled = swept.ok ? (swept.businesses[0]?.reconciled ?? []) : [];
+  expect(reconciled.filter((one) => one.attemptId === work.picked['attemptId'])).toMatchObject([
+    { answer: 'unanswered' },
+  ]);
+  // The plan's attempt, then the launched one: held whole, and no attempt resumed after it.
+  expect(await attemptsOf(s, work)).toMatchObject([
+    { state: 'abandoned' },
+    { id: work.picked['attemptId'], state: 'liability_unknown', marked: true, held: 'held' },
+  ]);
+});

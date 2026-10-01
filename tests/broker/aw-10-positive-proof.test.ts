@@ -26,6 +26,7 @@ import {
   world,
   type Dropped,
 } from './aw-10-world.ts';
+import { rows } from '../runtime/schedules-harness.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
 
@@ -122,4 +123,40 @@ it('AW-10 hostile provider: a provider silent to one lookup is not asked again i
     expect(seen).toMatchObject({ resumed: false, call: 'liability_unknown' });
     expect(String(seen.note)).toMatch(/^could establish nothing: /u);
   }
+});
+
+/** The business's `model.call_released` events, oldest first, with who wrote each. */
+const releasedEvents = async () =>
+  await rows<{ readonly actor_id: string }>(
+    s,
+    `select actor_id from public.audit_events
+      where business_id = $1 and command = 'model.call_released' order by seq`,
+    [s.business],
+  );
+
+/** How many calls a provider's proof has released in the business. */
+const provedReleases = async (): Promise<number> =>
+  (
+    await rows(
+      s,
+      `select 1 from public.model_calls where business_id = $1 and state = 'released'
+          and reconcile_note like 'proved nothing happened: %'`,
+      [s.business],
+    )
+  ).length;
+
+it("AW-10 audit: each call a provider's proof releases writes one model.call_released event, as the agent whose call it was", async () => {
+  world.provider.lookupMode('honest');
+  const run = await dropped('unavailable');
+  const events = (await releasedEvents()).length;
+  const proved = await provedReleases();
+  await pass();
+  expect(await after(run)).toMatchObject({ resumed: true, call: 'released' });
+  // Earlier cases' held calls may be proved in the same pass: one event for each release, no more.
+  const released = (await provedReleases()) - proved;
+  const written = (await releasedEvents()).slice(events);
+  expect(released).toBeGreaterThan(0);
+  expect(written).toStrictEqual(
+    Array.from({ length: released }, () => ({ actor_id: s.agentActorId })),
+  );
 });

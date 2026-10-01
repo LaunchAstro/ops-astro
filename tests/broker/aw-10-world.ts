@@ -21,6 +21,7 @@ import {
   callModel,
   reconcileProviderCalls,
   type Broker,
+  type ModelCallRequest,
   type ModelCallResult,
 } from '../../packages/core-custody/src/index.ts';
 import { readCallDrops, type CallDrop } from '../../packages/core-runtime/src/index.ts';
@@ -39,7 +40,9 @@ import {
   type Work,
 } from '../runtime/schedules-harness.ts';
 import { openBilling } from '../runtime/t3d1-harness.ts';
+import { launched } from '../runtime/aw-08-world.ts';
 import { writeAuditEvent } from '../../packages/core-commands/src/commands/audit.ts';
+import { callerAudit } from '../../packages/core-commands/src/index.ts';
 import {
   broker,
   caller,
@@ -84,6 +87,7 @@ export const callIn = async (
   on: Schedules,
   work: Work,
   with_: Broker = faultBroker(),
+  overrides: Partial<ModelCallRequest> = {},
 ): Promise<ModelCallResult> => {
   await stepOf(work);
   const asked = { ...caller(work), actorId: on.agentActorId };
@@ -98,7 +102,10 @@ export const callIn = async (
       attempted: note.outcome === 'refused' ? note.detail : null,
     });
   };
-  return await callModel(on.db.app, on.business, asked, requestFor(work), { ...with_, audit });
+  return await callModel(on.db.app, on.business, asked, requestFor(work, overrides), {
+    ...with_,
+    audit,
+  });
 };
 
 /**
@@ -144,21 +151,43 @@ export async function dropped(mode: ReplayMode, on: Schedules = s): Promise<Drop
   return { work, result };
 }
 
-/** A worker lost mid-call: custody took the call and never answers, and the lease runs out. */
-export async function workerLost(on: Schedules = s): Promise<Work> {
-  const work = await liveWork(on, `aw10 lost ${randomUUID()}`, 2_000);
+/**
+ * A worker lost mid-call: custody took the call and never answers, and the
+ * lease runs out. `providerStarted`: launched work whose worker first marked
+ * the step and recorded its own provider's start (T3e1), as the real worker does.
+ */
+export async function workerLost(on: Schedules = s, providerStarted = false): Promise<Work> {
+  const work = providerStarted
+    ? await startedWork(on)
+    : await liveWork(on, `aw10 lost ${randomUUID()}`, 2_000);
   await room(on, work);
   const silent: Broker = {
     ...faultBroker(),
     custody: { ...faultBroker().custody, dispatch: async () => await new Promise(() => {}) },
   };
-  void callIn(on, work, silent);
+  // A dispatched task is no longer business-internal (S3), so the call binds no field of it.
+  void callIn(on, work, silent, providerStarted ? { fields: [] } : {});
   await expectStarted(on, work);
   await on.db.admin.execute(
     `update public.leases set expires_at = clock_timestamp() - interval '1 second' where id = $1`,
     [work.picked['leaseId']],
   );
   return work;
+}
+
+/** Launched work (AW-08) whose step is marked and whose provider start is recorded. */
+async function startedWork(on: Schedules): Promise<Work> {
+  const { taskId, plan, handedBack, picked } = await launched(on, 'aw10 started');
+  const lease = { leaseId: picked['leaseId'], fence: picked['fence'] };
+  for (const body of [
+    { command: 'task.dispatch' },
+    { command: 'task.heartbeat', providerStarting: true },
+  ]) {
+    const sent = { ...body, operationId: randomUUID(), ...lease };
+    // eslint-disable-next-line no-await-in-loop
+    appliedDetail(await asAgent(on, sent, String(picked['credential'])), body.command);
+  }
+  return { taskId, proposal: plan, decision: handedBack, picked };
 }
 
 async function expectStarted(on: Schedules, work: Work): Promise<void> {
@@ -178,18 +207,25 @@ async function expectStarted(on: Schedules, work: Work): Promise<void> {
   throw new Error('the silent call never started');
 }
 
-/** The reconciliation pass over `on`'s business, as the API runs it, provider phase included. */
+/** The reconciliation pass over `on`'s businesses, as the API runs it (`startModelBroker`), provider phase included. */
 export async function pass(
-  on: Schedules = s,
+  on: Schedules | readonly Schedules[] = s,
   with_: Broker = faultBroker(),
 ): ReturnType<typeof passDeployment> {
+  const all: readonly Schedules[] = 'db' in on ? [on] : on;
   return await passDeployment(
-    on.db.app,
-    async (key) => await Promise.resolve(key === 'here' ? on.business : undefined),
-    ['here'],
+    s.db.app,
+    async (key) => await Promise.resolve(all[Number(key)]?.business),
+    all.map((_, at) => String(at)),
     registerEffectLookup,
-    async (database, businessId) =>
-      await reconcileProviderCalls(database, businessId as BusinessId, with_),
+    async (database, businessId, unanswered) =>
+      await reconcileProviderCalls(
+        database,
+        businessId as BusinessId,
+        // The pass's events as the API writes them: as the agent whose call it was.
+        { ...with_, audit: callerAudit },
+        unanswered,
+      ),
   );
 }
 

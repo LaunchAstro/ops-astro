@@ -12,6 +12,7 @@ export { type AgentRequest } from './commands/agent-call.ts';
 export { agentAnswer, executeAgentCommand } from './commands/agent-envelope.ts';
 export { describeFault, executeCommand } from './commands/envelope.ts';
 export {
+  callerAudit,
   modelCallExecutor,
   type ModelBroker,
   type ModelCallExecutor,

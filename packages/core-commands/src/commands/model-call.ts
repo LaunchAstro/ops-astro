@@ -147,6 +147,25 @@ function auditAs(actorId: string): Broker['audit'] {
   };
 }
 
+/**
+ * AW-10: the reconciliation pass's broker events, as the agent whose
+ * delegation made the call. The pass is system work and has no caller of
+ * its own, so a call its provider proved never began is released in the
+ * name of the agent that held it.
+ */
+export const callerAudit: Broker['audit'] = async (tx, note) => {
+  const [call] = await tx.query<{ readonly actor_id: string }>(
+    `select d.agent_actor_id as actor_id
+       from public.model_calls c
+       join public.delegations d
+         on d.business_id = c.business_id and d.id = coalesce(c.caller_delegation_id, c.delegation_id)
+      where c.business_id = $1 and c.id = $2`,
+    [tx.businessId, note.detail['callId']],
+  );
+  if (call === undefined) throw new Error('the call has no agent to write its event as');
+  await auditAs(call.actor_id)(tx, note);
+};
+
 /** A reserve refusal, made in the register's shape by the broker. One that recorded its step keeps it. */
 function refusalOf(reservation: Extract<Reservation, { ok: false }>): Refused {
   return reservation.callId === null

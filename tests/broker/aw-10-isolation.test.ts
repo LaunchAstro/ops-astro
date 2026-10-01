@@ -11,6 +11,7 @@
 
 import { beforeAll, expect, it as vitestIt } from 'vitest';
 import { executeCommand } from '../../packages/core-commands/src/index.ts';
+import { REPLAY_LOOKUP_PATH } from '../../packages/core-connectors/src/index.ts';
 import { readCallDrops } from '../../packages/core-runtime/src/index.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
 import { appliedDetail, asAgent, codeOf, type Schedules } from '../runtime/schedules-harness.ts';
@@ -144,4 +145,21 @@ it('AW-10 isolation: an agent under its live delegation records no outcome, and 
   // The positive control: the person holding budget permission records it.
   appliedDetail(await outcome(s, run.work, 'nothing_happened'), 'budget.record_outcome');
   expect(await stateOf(s, run)).toStrictEqual(['released']);
+});
+
+/** How many lookups the stand-in has been sent. */
+const asked = (): number =>
+  world.provider.seen.filter((one) => one.path === REPLAY_LOOKUP_PATH).length;
+
+it('AW-10 hostile provider: two businesses on one hung provider cost the pass one lookup, not one per business', async () => {
+  world.provider.lookupMode('slow');
+  const runs = [await dropped('unavailable', s), await dropped('unavailable', other)];
+  const before = asked();
+  await pass([s, other]);
+  expect(asked() - before).toBe(1);
+  // Neither business's call moved: each says the pass established nothing.
+  expect([
+    await stateOf(s, runs[0] as Dropped),
+    await stateOf(other, runs[1] as Dropped),
+  ]).toStrictEqual([['liability_unknown'], ['liability_unknown']]);
 });
