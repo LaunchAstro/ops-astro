@@ -85,7 +85,7 @@ export async function c80PositiveBody(name: CommandName, context: BodyContext): 
     return { exception: 'this harness seeds no live correction (C80)' };
   }
   const correction = await context.seedCorrection();
-  // The decision read: that request, read back under the admin's run:read.
+  // The decision read: that request, read back under the admin's run:write.
   if (name === 'live_correction.read') return { body: { correctionId: correction.correctionId } };
   const named = await context.asPerson('settings.set_live_correction_approver', {
     value: context.adminPersonId,

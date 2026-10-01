@@ -5,14 +5,14 @@
 // who decided it by name (null until then) and the version, and nothing the
 // card already holds: no word, path, page or line comes back.
 //
-// The grant is `run:read`, the request's own collection, asked at the
-// correction's party inside the query (`readCoveredDecision`), so a party
-// grant on one client's site reads no other client's correction. A caller
-// holding `run:read` nowhere is refused `SCOPE_NOT_GRANTED` before any id is
-// looked at; for everyone else, not there, in another business, out of reach
-// or malformed is one `NOT_FOUND`, so the read confirms no id. It is the
-// team's, as `task.execution` is, and never an agent's: a delegation holds
-// `run` to `write` (`delegations.ts`, CEILING).
+// The grant is `run:write`, the request's own key (ORCH33: the only key on
+// `run`), asked at the correction's party inside the query
+// (`readCoveredDecision`), so a party grant on one client's site reads no other
+// client's correction. A caller holding `run:write` nowhere is refused
+// `SCOPE_NOT_GRANTED` before any id is looked at; for everyone else, not
+// there, in another business, out of reach, a client's or malformed is one
+// `NOT_FOUND`, so the read confirms no id. It is the team's, as
+// `task.execution` is, and never an agent's (`agent: 'never'`, `surface.ts`).
 
 import {
   holdsAnywhere,
@@ -29,7 +29,7 @@ import { isInternalReader } from './tasks.ts';
 
 type Operands = { readonly correctionId: string };
 
-const NO_RUN_READ = refuseCommand(
+const NO_RUN_WRITE = refuseCommand(
   'SCOPE_NOT_GRANTED',
   [],
   ['no live grant covers it', 'ask a holder who may delegate'],
@@ -51,8 +51,8 @@ export async function serveCorrectionRead(
   session: Session,
   { correctionId }: Operands,
 ): Promise<LiveCorrectionReadResult | CommandRefusal> {
-  const covering = { subjects: subjectsOf(session), collection: RUN_COLLECTION, action: 'read' };
-  if (!(await holdsAnywhere(tx, covering))) return NO_RUN_READ;
+  const covering = { subjects: subjectsOf(session), collection: RUN_COLLECTION, action: 'write' };
+  if (!(await holdsAnywhere(tx, covering))) return NO_RUN_WRITE;
   if (!isInternalReader(session.roleKey) || !isUuid(correctionId)) return refuseNotFound();
   const correction = await readCoveredDecision(tx, correctionId, covering);
   return correction === undefined ? refuseNotFound() : { ok: true, correction };

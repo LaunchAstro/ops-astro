@@ -449,7 +449,7 @@ fields and client-audience comments only".
 - **The seed enrols one.** `scripts/local-seed.mjs` adds an entry with
   `role: 'external'` to `.local/synthetic-users.json` and creates its GoTrue
   user (`:667-703`, run at `:832-840`). It gets a login and an acting identity,
-  and no membership and no business grant (`:138-141`, `:291-293`). The seed
+  and no membership and no business grant (`:135-138`, `:288-290`). The seed
   makes no task, so it shares one only when rerun with `LOCAL_SEED_SHARE_TASK`
   naming a task, through `shareRecord` under the admin's own `share` grant
   (`:710-734`, `:874-884`).
@@ -782,9 +782,10 @@ owner and administrators. It is not in the agent's reach.
 
 MP-6-2's `run.revise_state` asks `write` on `run` of the task named in
 `recordId` (ORCH33: `run:write` is the only key on `run`; its reads stay
-`task:read`). The handler refuses a run on another task with the bytes a
-made-up run gets. An agent reaches it only under a delegation minted with
-`run`, which pickup mints where the delegating person holds `run:write` and
+`task:read`; C80's `live_correction.read` asks the request's own `run:write`
+at the correction's party). The handler refuses a run on another task with the
+bytes a made-up run gets. An agent reaches it only under a delegation minted
+with `run`, which pickup mints where the delegating person holds `run:write` and
 holds to `write` alone; the agent is the recorded actor. The seed gives
 `run:write` to the owner and administrators, beside `conversation:write`
 (ORCH38).

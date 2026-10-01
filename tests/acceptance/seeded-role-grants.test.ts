@@ -94,7 +94,7 @@ describe('the acceptance cast against the seed', () => {
     ]);
   });
 
-  it('gives the fixture admin every grant the seeded admin holds but run', () => {
+  it('gives the fixture admin every grant the seeded admin holds but run:write', () => {
     const cast = new Set(
       ADMIN_COLLECTIONS.flatMap((collection) =>
         ADMIN_ACTIONS.map((action) => `${collection}:${action}`),
@@ -102,9 +102,6 @@ describe('the acceptance cast against the seed', () => {
     );
     // The one difference (ORCH38): a fixture admin holds no run, so its
     // pickups mint the task delegation the agent suites pin.
-    expect(held('admin').filter((pair) => !cast.has(pair))).toStrictEqual([
-      'run:read',
-      'run:write',
-    ]);
+    expect(held('admin').filter((pair) => !cast.has(pair))).toStrictEqual(['run:write']);
   });
 });

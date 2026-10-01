@@ -790,9 +790,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // C80, each asked at the correction's party (`prepare.ts`, TARGET_LOOKUPS; the
   // read inside its query), so one client's grant reaches no other client's
   // correction. The request is `run:write`, an agent's inside its delegation; the
-  // read `run:read` and the approval `gate:decide`, never an agent's (a delegation
-  // holds run to write), and only the configured approver who is not the requester.
-  read('live_correction.read', RUN_COLLECTION),
+  // read asks the request's own `run:write` (ORCH33) and the approval `gate:decide`,
+  // never an agent's, and only the configured approver who is not the requester.
+  read('live_correction.read', RUN_COLLECTION, { action: 'write' }),
   declare('live_correction.request', 'write', {
     collection: RUN_COLLECTION,
     targetsExistingRecord: false,

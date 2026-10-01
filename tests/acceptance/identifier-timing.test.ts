@@ -146,12 +146,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
 
   beforeAll(async () => {
     w = await createIdentWorld('ident_timing');
-    // MP-6-2's revision asks run:write, and C80's decision read run:read, which
-    // the cast's admin holds on no run; on the whole business, so a foreign
-    // task or correction is judged by the handler.
+    // MP-6-2's revision and C80's decision read ask run:write, which the cast's
+    // admin holds on no run; on the whole business, so a foreign task or
+    // correction is judged by the handler.
     await w.h.world.db.app.withBusiness(w.h.world.alpha, async (tx) => {
       await grantTo(tx, w.h.world.ada as Member, 'write', undefined, false, 'run');
-      await grantTo(tx, w.h.world.ada as Member, 'read', undefined, false, 'run');
     });
   }, 180_000);
   afterAll(async () => {
