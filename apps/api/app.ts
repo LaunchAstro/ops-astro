@@ -815,13 +815,6 @@ async function mayShowInbox(
   return await shownInbox(options.database, businessId, presented, personId);
 }
 
-/**
- * The person's own second factor (C59): `account/factor/enrol`, `verify` and
- * `remove`; and their own sessions (C58): `account/sessions/list`,
- * `end-others` and `sign-out`. Each goes through the same door as every
- * person route. The bearer goes to the provider as the person's own; the body
- * is the code, or nothing.
- */
 const noop = (): void => {};
 const RANK = { check: 0, invalidate: 1, resync: 2 } as const;
 
