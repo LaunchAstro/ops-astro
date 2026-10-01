@@ -187,6 +187,7 @@
     "tests/api/preference-write-client-user.test.ts",
     "tests/db/lease-pickup-path.test.ts",
     "tests/db/take-lease-path.test.ts",
-    "tests/broker/aw-10-lookup-slot-isolation.test.ts"
+    "tests/broker/aw-10-lookup-slot-isolation.test.ts",
+    "tests/pickup/pickup-stop-at-spent-hold-lease.test.ts"
   ]
 }
