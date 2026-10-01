@@ -4,9 +4,8 @@
 // MP-4-8 (TR-A-4, carried from MP-4-3, MP-4-5 and MP-4-16): the task page's
 // doors open the dock task panel on the matching perspective, the reply door
 // on the same conversation tab, and a change made in the panel shows at once on
-// the page. Driven through the real application: the address, the page, the
-// shell's panel slot. The dock frame the panel will sit in is MP-3-1's (SL06
-// U08, not on main); until then it is the shell's panel slot.
+// the page. Driven through the real application: the address, the page, and
+// the dock, which draws the panel as its Task panel (dock-task-panel.test.tsx).
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { App } from '../../apps/web/src/App.tsx';

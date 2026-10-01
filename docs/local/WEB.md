@@ -208,14 +208,10 @@ is the actor's identifier until the read carries a name. The dock task panel
 folds the trail behind "Show all N changes" and "Hide the trail"; keeping that
 choice as the person's preference waits on a preference model.
 
-The dock has two tabs (`PANELS` in `apps/web/src/panels.ts`): Settings goes to
-The dock's tabs are `PANELS` in `apps/web/src/panels.ts`: Notifications goes to
-`/inbox/`, Settings to `/settings`, Projects to `/todos` (the reader's own
-to-dos, MP-7-1, `screens/todos/Todos.tsx`) and Team to `/team`. An open dock tab is announced as "Close Settings"
-(`aria-expanded="true"`, `Shell` in `packages/ui/src/surfaces/Shell.tsx`) and
-leaves its address for the board when pressed (`dockTabGo` in
-`apps/web/src/panels.ts`). The to-dos list reads `task.todos`: each row's name
-opens the task in the dock task panel beside its page door, its tick sends
+The dock's Projects tab (`todos` in `PANELS`) opens the reader's own to-dos
+(MP-7-1, `screens/todos/Todos.tsx`) in its panel, whose door is `/todos`. The
+to-dos list reads `task.todos`: each row's name opens the task in the dock's
+Task panel beside its page door, its tick sends
 `task.complete` at the row's revision, and its due reads as Overdue, Today,
 Tomorrow, This week or Later on the business day (`todo-list.ts`, one today,
 overdue included, for the words and the today scope). Typed tokens scope it by
@@ -227,8 +223,14 @@ priority cell yields under a 380px list (a container rule in
 
 The dock task panel (`screens/task/Panel.tsx`, MP-4-8) is where a task is
 changed beside its page. A page door opens it (`useTaskPanel` in
-`screens/task/panel-host.ts`, held by `App`) in the shell's panel slot, since
-the dock frame that seats, floats and closes panels (MP-3-1) is not on main.
+`screens/task/panel-host.ts`, held by `App`) and the dock draws it as its
+`task` panel (`apps/web/src/dock/task-dock.ts`): the Task tab shows while a
+task or a draft is open, the dock's head names the panel and its door is the
+task's page, and it takes its place in the rank, the seated track, Escape's
+order and the phone's one panel. The dock's close, Close all and Escape close
+it through its own close (the timer's stop, focus back on its door), and its
+own close takes it out of the dock. A link inside it is followed, never a walk
+of the dock. Storage and the dock's history never reopen it.
 It reads the task through `task.read` as the page does and draws the same
 facts, rank, calc line and Team and Agent counts; the live Ad hoc and Client
 access ticks; the description on Team and the agent brief on Agent as
@@ -236,7 +238,7 @@ editable fields; the subtasks and time without their doors; the conversation
 on the tab the reply door named; and the folded trail. The Agent tab says it
 is not connected until the assistant is. Its head names the task, links to
 its page and opens a new-task draft (MP-4-13, `screens/task/DraftPanel.tsx`)
-in the same slot: name, due, estimate, tags, subtasks, time spent and a note,
+in the same panel: name, due, estimate, tags, subtasks, time spent and a note,
 kept in this browser under the business and the person until Create or Cancel
 (X and Escape keep it). Create sends `task.create`, then the client from the
 page's scope (none from the panel yet: the task's client is not on the wire),

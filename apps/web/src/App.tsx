@@ -161,7 +161,9 @@ export function App(props: AppProps): ReactElement {
       }),
     [props.apiOrigin, props.fetch, session],
   );
-  const docked = useDockShell(client, session, props.storage, props);
+  const grantKey = grantKeyOf(session);
+  const taskDock = useDockPanel({ client, grantKey, session, storage: props.storage });
+  const docked = useDockShell(client, session, props.storage, props, taskDock.panel);
 
   // Sign-out (C23). The tab forgets the session first, so a server that never
   // answers cannot keep it. Then, with the ended session's own client:
@@ -191,8 +193,6 @@ export function App(props: AppProps): ReactElement {
   };
 
   const bare = here.split(/[?#]/u)[0] ?? here;
-  const grantKey = grantKeyOf(session);
-  const taskDock = useDockPanel({ client, grantKey, session, storage: props.storage });
   const screen = { client, grantKey, storage: props.storage, navigate, taskPanel: taskDock.host };
   const { match, at, refused, rail, tabs, identity, face } = frameAt(
     bare,
@@ -275,7 +275,6 @@ export function App(props: AppProps): ReactElement {
             docked,
             session === null || face === 'client' ? null : { ...screen, notice: null },
           )}
-          taskPanel={taskDock.panel}
         >
           <FaceProvider face={face}>{content}</FaceProvider>
         </Shell>
