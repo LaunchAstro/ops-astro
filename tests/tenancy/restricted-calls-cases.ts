@@ -50,19 +50,13 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // kept and never read back by a run role.
   ['si', 'bootstrap_reads run_definition_pins'],
   ['i', 'bootstrap_bytes'],
-  // AW-04: the plan a decision approved is bound once and never rewritten.
-  ['si', 'plan_records'],
-  // AW-04 (U10): a planning envelope is opened once and never moved.
-  ['si', 'planning_envelopes'],
-  // AW-05: a budget ask is the persisted count and is never rewritten.
-  ['si', 'budget_asks'],
-  // AW-05: an answer and its approvals are never rewritten.
-  ['si', 'budget_answers budget_approvals'],
-  // AW-13: the export's cursor moves; its gaps are facts and never rewritten.
+  // AW-04: a bound plan and a planning envelope (U10) are written once, never moved.
+  ['si', 'plan_records planning_envelopes'],
+  // AW-05: a budget ask (the persisted count), an answer and its approvals: never rewritten.
+  ['si', 'budget_asks budget_answers budget_approvals'],
+  // AW-13: the export's cursor moves; its gaps and retention batches are facts, never rewritten.
   ['siu', 'trace_export_cursors'],
-  ['si', 'trace_export_gaps'],
-  // AW-13: a retention batch is a fact, never rewritten.
-  ['si', 'trace_expiry_batches'],
+  ['si', 'trace_export_gaps trace_expiry_batches'],
   // 0042: an attempt and a seen stamp are observations, never rewritten (INB-1a).
   ['si', 'inbox_attention inbox_delivery_attempts'],
   ['siu', 'inbox_items'],
