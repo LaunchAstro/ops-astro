@@ -38,7 +38,10 @@ const CAPABILITIES = {
     ok: true,
     personId: 'p',
     businessKey: 'alpha',
-    grants: [{ collection: 'settings', action: 'manage' }],
+    grants: [
+      { collection: 'settings', action: 'manage' },
+      { collection: 'spend', action: 'decide' },
+    ],
   },
 };
 const CONFIRMED = { ok: true, value: { recordId: 'row', revision: null, detail: { value: 7777 } } };

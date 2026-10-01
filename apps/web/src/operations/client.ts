@@ -51,10 +51,10 @@ import {
   pathOf,
 } from '../../../../packages/core-wire/src/index.ts';
 import type { CommandName, CommandRefusal } from '../../../../packages/core-wire/src/index.ts';
-import type { NotARead, ReadName } from './read-names.ts';
+import type { AccountRoute, NotARead, ReadName } from './read-names.ts';
 
 export { READ_NAMES } from './read-names.ts';
-export type { NotARead, ReadName } from './read-names.ts';
+export type { AccountRoute, NotARead, ReadName } from './read-names.ts';
 
 /** What a mutation returns when it worked: a durable handle and a new revision. */
 export interface CommandOutcome {
@@ -175,6 +175,11 @@ export class OperationsClient {
       payload['expectedRevision'] = options.expectedRevision;
     }
     return await this.#post<CommandOutcome>(pathOf(name), payload);
+  }
+
+  /** The person's own account route (C58), always with an empty body: see `AccountRoute`. */
+  async account<T>(route: AccountRoute): Promise<CallResult<T>> {
+    return await this.#post<T>(`/account/${route}`, {});
   }
 
   /** The person's own availability (MP-7-10), on the path the surface names. */

@@ -1,0 +1,54 @@
+{
+  "about": "Mockup values for tests/visual/look/team.ts, from look.ts --measure.",
+  "mockup": "7066bad7402c97b8a039447ad87f387cd719208c",
+  "probes": {
+    "team.strip": {
+      "1480-light": {
+        "column-gap": "12px",
+        "padding-bottom": "12px",
+        "border-bottom-color": "rgba(0,0,0,31)",
+        "border-bottom-width": "1px"
+      },
+      "1480-dark": {
+        "column-gap": "12px",
+        "padding-bottom": "12px",
+        "border-bottom-color": "rgba(245,245,245,26)",
+        "border-bottom-width": "1px"
+      }
+    },
+    "team.person": {
+      "1480-light": {
+        "row-gap": "4px",
+        "padding-top": "1.6px",
+        "align-items": "center"
+      },
+      "1480-dark": {
+        "row-gap": "4px",
+        "padding-top": "1.6px",
+        "align-items": "center"
+      }
+    },
+    "team.face": {
+      "1480-light": {
+        "box.width": "36",
+        "box.height": "36"
+      },
+      "1480-dark": {
+        "box.width": "36",
+        "box.height": "36"
+      }
+    },
+    "team.name": {
+      "1480-light": {
+        "font-family": "Funnel Sans",
+        "font-size": "11px",
+        "color": "rgba(140,133,127,255)"
+      },
+      "1480-dark": {
+        "font-family": "Funnel Sans",
+        "font-size": "11px",
+        "color": "rgba(248,248,248,140)"
+      }
+    }
+  }
+}

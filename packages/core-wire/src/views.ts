@@ -328,7 +328,13 @@ export interface Capability {
  * client reach through one more level for three fields.
  */
 export interface SessionCapabilities {
+  /** The signed-in person, or under an agent credential the person it acts for. */
   readonly personId: string;
+  /**
+   * Under an agent credential (API-2) only: the acting identity, its agent
+   * actor, and then `grants` are the ticked keys the person still holds.
+   */
+  readonly agentActorId?: string;
   /** The business's key, which is what a path and a screen both name it by. */
   readonly businessKey: string;
   /** Distinct pairs, sorted. A pair held at two scopes appears once. */
@@ -694,20 +700,56 @@ export interface ServiceHealthSection {
 }
 
 /**
+ * One security alert S0-2's forwarder raised, as the operations view lists it
+ * (C55): its kind, the time it was raised (ISO 8601) and fixed plain
+ * words for what it concerns; 'An alert of an unknown kind' for a kind the
+ * view has no words for. Never an id, a secret or record content.
+ */
+export interface SecurityAlertView {
+  readonly kind: string;
+  readonly at: string;
+  readonly concerns: string;
+}
+
+/**
  * `operations.read`'s answer (C55). The privacy incidents are this business's
  * own records. The service-health section (C34) is the installation's
  * watcher, error sink and optional tracing, read by the API after the grant
- * check and outside the serving transaction. Unattended items (INB-1), security
- * alerts (S0-2) and the last tested restore (S0-3) join it as those parts
- * land; each is its owner's read, placed here, never a second copy.
+ * check and outside the serving transaction. The unattended items are INB-1's
+ * own read (`inbox.unattended`'s answer). `operations.read` serves the
+ * security alerts (S0-2) from the forwarder's log (0069), newest first, at
+ * most 50, to the business that operates the installation alone; every other
+ * business reads an empty list. The last tested restore (C55, carried from
+ * S0-3) is the date a passed drill stamps (0070), served on every answer. The
+ * API adds the error sink's web address, `OPS_ERROR_SINK_URL`, beside the
+ * service-health section; each is its owner's read, placed here, never a
+ * second copy.
  */
 export interface OperationsReadResult {
   readonly ok: true;
+  /** INB-1's unattended items whose task the caller reads: every path to a person broken. */
+  readonly unattended: readonly UnattendedView[];
   readonly privacyIncidents: readonly PrivacyIncidentView[];
   /** What every incident record links to; `null` until a breach runbook is published. */
   readonly breachRunbook: BreachRunbookLink | null;
   /** Present on every answer the API serves; absent from a read made in-process. */
   readonly serviceHealth?: ServiceHealthSection;
+  readonly securityAlerts?: readonly SecurityAlertView[];
+  /**
+   * The last tested restore a passed drill stamped (0070); `stale` past the
+   * store's restore window or while no drill has passed.
+   */
+  readonly lastTestedRestore?: LastTestedRestoreView;
+  /** The error sink's web address; `null` with none set; absent from an in-process read. */
+  readonly errorSink?: { readonly url: string } | null;
+}
+
+/** The drill receipt's last successful tested restore (S0-3). */
+export interface LastTestedRestoreView {
+  /** ISO 8601, or null when no restore has been tested. */
+  readonly at: string | null;
+  /** The restore alert has fired since. */
+  readonly stale: boolean;
 }
 
 /** One notice the breach runbook's template drafts; nothing sends it (owner line 54). */
@@ -758,10 +800,26 @@ export interface InboxEntry {
   /** Who closed it, by name: a cleared decision names who decided. */
   readonly closedBy?: PersonView | null;
   /**
+   * The task's client (MP-7-3's group), only where the caller reaches that
+   * client as `client.list` does; a caller holding the task alone is not told.
+   */
+  readonly client?: { readonly clientId: string; readonly name: string };
+  /**
    * T2h's alert on the run a readable item points at: the same record the task
    * page and the queue read show (INB-1, the alert's third and last place).
    */
   readonly alert?: InboxAlert;
+}
+
+/** An item no path reaches (INB-1e): its recipient, reason and task, never the task's words. */
+export interface UnattendedView {
+  readonly id: string;
+  readonly recipientPersonId: string;
+  readonly subjectRecordId: string;
+  readonly reason: InboxReason;
+  readonly factKind: InboxFactKind;
+  readonly factId: string;
+  readonly raisedAt: string;
 }
 
 /** `inbox.read`'s answer: the caller's open items and newest page of closed ones, oldest raised first. */

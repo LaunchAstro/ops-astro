@@ -31,10 +31,19 @@ import {
 import { useRead } from '../../data/use-read.ts';
 import { describeFailure } from '../../records/submit.ts';
 import { RecordState } from '../../views/record-state.tsx';
+import { PageTip } from '../../views/page-tip.tsx';
 import { pathTo } from '../../routes.ts';
 import { passing, queryOf, readingLine, readSearch, type LedgerSearch } from './ledger-search.ts';
 
 const UTC = 'UTC';
+
+/** The Work log's section tip (MP-9-1): a tab of the Projects page, named by that route. */
+export const WORK_LOG_TIP = {
+  page: 'agency:projects-board',
+  id: 'work-log',
+  version: 1,
+  text: 'Every change to a task you can see, newest day first. Search by a name, a kind of change or any words.',
+} as const;
 
 /** The first page, the zone it was read in, and the search words it was read for. */
 interface LedgerRead {
@@ -132,6 +141,7 @@ export function WorkLog(props: WorkLogProps): ReactElement {
   };
   return (
     <div className="act__page">
+      <PageTip client={client} grantKey={grantKey} tip={WORK_LOG_TIP} />
       <div className="fieldrow act__find">
         <SearchBox
           label="Search the work log"
@@ -202,11 +212,14 @@ function useEarlierDays(client: OperationsClient, answer: LedgerRead | null): Ea
 /**
  * What the search was read as, and how many events pass of those in view.
  * No time is tracked in the ledger yet, so the count line never sums any.
+ * `partial`: the search's matches go past what it reads (C1's bound, 500),
+ * so some are not listed and the count says so.
  */
 function SearchLines(props: {
   readonly reading: string | null;
   readonly passed: number;
   readonly inView: number;
+  readonly partial: boolean;
 }): ReactElement {
   return (
     <>
@@ -216,8 +229,13 @@ function SearchLines(props: {
         </p>
       )}
       {props.inView === 0 ? null : (
-        <p className="act__count" data-ledger-count>
+        <p
+          className="act__count"
+          data-ledger-count
+          data-ledger-more-matches={props.partial ? '' : undefined}
+        >
           {`${String(props.passed)} of ${String(props.inView)} entries`}
+          {props.partial ? '; more match than the search reads (500+)' : null}
         </p>
       )}
     </>
@@ -239,9 +257,10 @@ function LedgerPages(props: {
   const passed = shown.reduce((sum, day) => sum + day.events.length, 0);
   const inView = days.reduce((sum, day) => sum + day.events.length, 0);
   const reading = readingLine(search, passed);
+  const partial = first.query !== null && first.ledger.more === true;
   return (
     <>
-      <SearchLines reading={reading} passed={passed} inView={inView} />
+      <SearchLines reading={reading} passed={passed} inView={inView} partial={partial} />
       {reading !== null && passed === 0 ? (
         <Empty
           title="Nothing matches that."

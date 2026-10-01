@@ -70,14 +70,16 @@ export function GiveAccess(props: {
           />
           <Choice field="key" label="Permission" value={key} onChange={setKey} options={KEYS} />
           <Choice field="scope" label="Over" value={scope} onChange={setScope} options={over} />
-          <Button
-            type="submit"
-            variant="primary"
-            busy={props.busy ? 'Giving access…' : undefined}
-            disabled={chosen === undefined || key === ''}
-          >
-            Give access
-          </Button>
+          <div className="btnrow">
+            <Button
+              type="submit"
+              variant="primary"
+              busy={props.busy ? 'Giving access…' : undefined}
+              disabled={chosen === undefined || key === ''}
+            >
+              Give access
+            </Button>
+          </div>
         </form>
       </Card>
     </div>

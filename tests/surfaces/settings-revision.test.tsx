@@ -79,7 +79,10 @@ function server(
           ok: true,
           personId: 'p-ada',
           businessKey: 'alpha',
-          grants: [{ collection: 'settings', action: 'manage' }],
+          grants: [
+            { collection: 'settings', action: 'manage' },
+            { collection: 'spend', action: 'decide' },
+          ],
         }),
       );
     }
