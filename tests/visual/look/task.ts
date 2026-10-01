@@ -10,23 +10,19 @@
 // DS-PRIM-5 field select, so it is held to the panel's.
 
 import type { LookProbe, LookScreen } from './probe.ts';
-
-const WIDTHS = [1480, 900, 390] as const;
-const PAGE = { path: '/agency/task/?task=proj-grove-hours-copy' } as const;
-const PANEL = { ...PAGE, open: '[data-tp-panel]' } as const;
-const APP = { page: 'agency:task-detail' } as const;
-const APP_PANEL = { ...APP, open: '[data-panel-door="open"]' } as const;
-
-/** A text style: every one maps to a declared type step (MP-1-4). */
-const TYPE = [
-  'font-family',
-  'font-size',
-  'font-weight',
-  'line-height',
-  'letter-spacing',
-  'text-transform',
-  'color',
-] as const;
+import {
+  APP,
+  APP_PANEL,
+  bothThemes,
+  FAINT_DARK,
+  GATE_NOTE_RULED,
+  PAGE,
+  PAGE_PROBES,
+  PANEL,
+  probe,
+  type Ruled,
+  TYPE,
+} from './task-page.ts';
 
 /** DS-PRIM-5, the field select. */
 const SELECT = [
@@ -45,10 +41,6 @@ const SELECT = [
 // the shell's, the panel's width the dock's); the gaps and the frame are ours.
 const GRID = ['display', 'column-gap', 'row-gap'] as const;
 
-type Ruled = NonNullable<LookProbe['ruled']>;
-const bothThemes = (prop: string, want: string, why: string): Ruled =>
-  (['light', 'dark'] as const).map((theme) => ({ at: `${prop}@${theme}`, want, why }));
-
 /**
  * The field label (`.tf__k`): the mockup draws it Mono 12/1.55 400, which
  * TOKENS' type map drops to DS-TOK-126 `--type-eyebrow` (row 8, drift); its
@@ -59,16 +51,6 @@ const LABEL_RULED: Ruled = [
   ...bothThemes('line-height', '16.8px', 'TOKENS type row 8, DS-TOK-126'),
   { at: 'color@dark', want: 'rgba(248,248,248,140)', why: 'DR-10' },
 ];
-
-/** The gate step's note: TASK-PAGE DT-04 names DS-TOK-124 `--type-data`, not the drawn eyebrow. */
-const GATE_NOTE_RULED: Ruled = [
-  ...bothThemes('font-weight', '400', 'TASK-PAGE DT-04, DS-TOK-124'),
-  ...bothThemes('line-height', '18.6px', 'TASK-PAGE DT-04, DS-TOK-124'),
-  ...bothThemes('letter-spacing', 'normal', 'TASK-PAGE DT-04, DS-TOK-124'),
-  ...bothThemes('text-transform', 'none', 'TASK-PAGE DT-04, DS-TOK-124'),
-];
-
-const probe = (one: Omit<LookProbe, 'widths'>): LookProbe => ({ ...one, widths: WIDTHS });
 
 const select = (
   id: string,
@@ -163,7 +145,7 @@ export const TASK: LookScreen = {
       mockup: { ...PANEL, selector: '.dpanel .sb__sect--hist .sb__k' },
       app: { ...APP_PANEL, selector: 'aside.dtp [data-history] .sb__k' },
       props: TYPE,
-      ruled: [{ at: 'color@dark', want: 'rgba(248,248,248,140)', why: 'DR-10' }],
+      ruled: FAINT_DARK,
     }),
     probe({
       id: 'task.panel-history-latest',
@@ -191,5 +173,6 @@ export const TASK: LookScreen = {
       app: { ...APP_PANEL, selector: 'aside.dtp .dtp__link [data-page-link="value"]' },
       props: TYPE,
     }),
+    ...PAGE_PROBES,
   ],
 };
