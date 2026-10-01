@@ -41,6 +41,7 @@ const EMPTY: readonly CommandName[] = [
 
 export const FIXED_BODIES: Readonly<Partial<Record<CommandName, Body>>> = {
   ...Object.fromEntries(EMPTY.map((name) => [name, {}])),
+  'task.create': { fields: { title: 'the admin creates a task' } },
   'task.board': { board: null },
   'task.ledger': { timeZone: 'UTC' },
   'preference.save': { preference: 'appearance', value: 'dark' },

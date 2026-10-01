@@ -256,28 +256,7 @@ export {
 } from './register-gate.ts';
 export { UNPRODUCED_CODES } from './register-unproduced.ts';
 export * from './tasks/content.ts';
-export {
-  CONVERSATION_TYPE_KEY,
-  directConversation,
-  isStaff,
-  listConversations,
-  moveReadMarker,
-  readConversation,
-  readConversationTypes,
-  type ConversationMessage,
-  type ConversationSummary,
-  type ConversationTypes,
-} from './team/conversations.ts';
-export {
-  allStaff,
-  changeGroupMembers,
-  GROUP_NAME_LIMIT,
-  groupNameOf,
-  lockGroup,
-  renameGroup,
-  startGroup,
-  type GroupMembership,
-} from './team/groups.ts';
+export * from './team/chat.ts';
 export {
   DERIVED_ON_CREATE,
   deriveSource,

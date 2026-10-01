@@ -46,11 +46,8 @@ export function createPositiveBody(
     };
     const fixed = FIXED_BODIES[declaration.name];
     if (fixed !== undefined) return { body: { ...fixed } };
-    // Team conversations (C71-D, C71-G): `role-case-chat-bodies.ts`.
     if (isChatName(declaration.name)) return await chatBody(declaration.name, context);
     switch (declaration.name) {
-      case 'task.create':
-        return { body: { fields: { title: 'the admin creates a task' } } };
       case 'task.update':
         return { body: { ...(await target()), fields: { title: 'edited by the admin' } } };
       case 'task.start':
