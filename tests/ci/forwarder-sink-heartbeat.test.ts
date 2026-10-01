@@ -5,12 +5,12 @@
 // heartbeat only on a yes, whatever the pass did. The real process, its sink
 // and heartbeat served by a loopback stand-in for `example.test`.
 
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 const asked: string[] = [];
 let health = 200;
@@ -67,5 +67,38 @@ describe('S0-2 heartbeats: the error sink', () => {
     health = 503;
     await once();
     expect(asked).toEqual(['/_health/']);
+  });
+});
+
+// The process paces (OPS_HEARTBEAT_EVERY_MS): many passes inside one gap, one sink ping.
+describe('S0-2 heartbeats: the error sink, paced', () => {
+  it('the forwarder process paces the sink heartbeat: many passes, one ping', async () => {
+    asked.length = 0;
+    health = 200;
+    const child = spawn(process.execPath, ['scripts/ops/forwarder.mjs'], {
+      env: {
+        PATH: process.env['PATH'] ?? '',
+        NODE_OPTIONS: `--import=${resolve('tests/support/sink-at-loopback.mjs')}`,
+        TEST_SINK_PORT: port,
+        DATABASE_FORWARDER_URL: 'postgres://nobody:nothing@127.0.0.1:1/none',
+        OPS_ERROR_SINK_DSN: 'https://sinkkey@example.test/7',
+        OPS_ENVIRONMENT: 'staging',
+        OPS_SINK_HEARTBEAT_URL: 'https://example.test/sink-beat',
+        OPS_FORWARDER_INTERVAL_MS: '10',
+        OPS_HEARTBEAT_EVERY_MS: '1800000',
+        OPS_EGRESS_POOLER_HOST: '127.0.0.1',
+        OPS_EGRESS_POOLER_PORT: '1',
+        OPS_EGRESS_SINK_HOST: 'example.test',
+        OPS_EGRESS_HEARTBEAT_HOST: 'example.test',
+      },
+    });
+    const exited = new Promise((done) => child.once('exit', done));
+    await vi.waitFor(
+      () => expect(asked.filter((u) => u === '/_health/').length).toBeGreaterThanOrEqual(4),
+      { timeout: 20_000 },
+    );
+    child.kill();
+    await exited;
+    expect(asked.filter((u) => u === '/sink-beat')).toHaveLength(1);
   });
 });
