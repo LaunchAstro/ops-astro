@@ -118,6 +118,7 @@ export {
   type SessionEndReason,
 } from './identity/sessions.ts';
 export {
+  asksMoneyStepUp,
   isMoneyKey,
   judgeStepUp,
   MONEY_STEP_UP_SETTING,

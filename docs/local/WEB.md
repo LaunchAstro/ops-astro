@@ -85,8 +85,10 @@ deactivates their login and ends their memberships, but their bearer still
 verifies until its hour is up, so the API answers their next call 403
 `AUTH_NO_MEMBERSHIP`. A login that was never a member gets the same answer, and
 for it that is a denial to draw (the browser's N2 row). So the client remembers
-whether its bearer has had an answer, and only a bearer that has ends its
-session on that refusal, with the same notice. A person who signs out in the tab
+whether its bearer has had an answer only a member gets: a success, or a refusal
+decided past login resolution such as `SCOPE_NOT_GRANTED` (a 401 or a door
+refusal proves nothing). Only a bearer that has ends its session on that
+refusal, with the same notice. A person who signs out in the tab
 lands on `/sign-in` with a notice of its own (`data-reason="signed-out"`) saying
 that any edit they had not saved was not saved. In every ending the draft lived
 only in the screen's state, so it goes with the screen: no browser storage holds

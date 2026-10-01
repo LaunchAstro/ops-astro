@@ -81,6 +81,25 @@ describe('C32 Settings ▸ Access', () => {
   });
 });
 
+describe('Settings ▸ Access money step-up', () => {
+  it('says a money permission is usable only after a second factor in the last 60 minutes', async () => {
+    const whole = { kind: 'business', id: null };
+    const payer = {
+      ...MIA,
+      permissions: [
+        { collection: 'billing', action: 'decide', scope: whole, stepUp: true },
+        { collection: 'task', action: 'read', scope: whole, stepUp: false },
+      ],
+    };
+    const view = await open(server([json(access([ADA, payer]))]).fetch);
+    const row = rowOf(view, MIA.personId);
+    expect(row).toContain(
+      'billing:decide · whole business · after a second factor in the last 60 minutes',
+    );
+    expect(row.match(/in the last 60 minutes/gu)).toHaveLength(1);
+  });
+});
+
 describe('C32 grants and revocations on Settings ▸ Access', () => {
   it('C32 whole business: a grant with no client sends a null client', async () => {
     const api = server([json(access([ADA, MIA]))]);

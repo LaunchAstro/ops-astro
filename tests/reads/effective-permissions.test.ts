@@ -105,11 +105,11 @@ describe.skipIf(serverUrl === undefined)('C32 one people list', () => {
 describe.skipIf(serverUrl === undefined)('C32 one people list', () => {
   it("shows a client-scoped grant on that client only, and on nobody else's preview", async () => {
     const answer = await access();
-    const onA = [{ collection: 'task', action: 'read', scope: CLIENT_A }];
+    const onA = [{ collection: 'task', action: 'read', scope: CLIENT_A, stepUp: false }];
     expect(previewOf(answer, ben.personId)).toStrictEqual(onA);
     expect(previewOf(answer, carla)).toStrictEqual(onA);
     expect(previewOf(answer, dev)).toStrictEqual([
-      { collection: 'task', action: 'read', scope: CLIENT_B },
+      { collection: 'task', action: 'read', scope: CLIENT_B, stepUp: false },
     ]);
   });
 
@@ -167,7 +167,7 @@ describe.skipIf(serverUrl === undefined)('C32 one people list', () => {
     });
     const after = await access();
     expect(previewOf(after, ada.personId)).toStrictEqual([
-      { collection: 'task', action: 'read', scope: WHOLE },
+      { collection: 'task', action: 'read', scope: WHOLE, stepUp: false },
     ]);
     expect(after.agents[0]?.permissions.map((permission) => permission.action)).toStrictEqual([
       'read',

@@ -102,7 +102,7 @@ export async function enrolSecondFactor(
     // An enrolment never completed is replaced, not stacked: the newest
     // unverified factor is the one the first code completes.
     if (live !== undefined) {
-      await recordFactorRemoved(tx, { personId: session.personId, factorId: live.id });
+      await recordFactorRemoved(tx, ownFactor(caller, session, live.id));
     }
     await recordFactorEnrolled(tx, {
       personId: session.personId,
@@ -157,7 +157,7 @@ export async function verifySecondFactor(
     // The first good code completes an enrolment, which is a factor change;
     // a later one is a step-up and changes nothing.
     if (live.status !== 'verified') ended = await endOthersOnChange(tx, session, caller.presented);
-    await recordFactorVerified(tx, { personId: session.personId, factorId: live.id });
+    await recordFactorVerified(tx, ownFactor(caller, session, live.id));
     return undefined;
   });
   if (recorded !== undefined || !verified.ok)
@@ -214,7 +214,7 @@ export async function removeSecondFactor(
     const live = await liveFactor(tx, session.personId, { lock: true });
     if (live?.id !== target.id) return refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES);
     ended = await endOthersOnChange(tx, session, caller.presented);
-    await recordFactorRemoved(tx, { personId: session.personId, factorId: live.id });
+    await recordFactorRemoved(tx, ownFactor(caller, session, live.id));
     return undefined;
   });
   if (recorded !== undefined || !proved.ok)
@@ -224,6 +224,13 @@ export async function removeSecondFactor(
     otherSessions: await signOutOthers(provider, proved.value.accessToken, ended),
   };
 }
+
+/** The caller's factor, and the login's subject that holds it in every business (0064). */
+const ownFactor = (caller: FactorCaller, session: Session, factorId: string) => ({
+  personId: session.personId,
+  factorId,
+  subject: caller.presented.subject,
+});
 
 /**
  * One transaction on the factor path: resolve the caller (their factor is not

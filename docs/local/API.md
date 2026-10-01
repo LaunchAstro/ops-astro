@@ -164,7 +164,7 @@ refusal writes an audit row. A business with no such row is `NOT_FOUND` naming
 more, is `FIELD_VALUE_INVALID`. There is no default, floor or ceiling.
 `tests/commands/purge-retention.test.ts` holds it.
 
-**The two windows are written by a command each** (MP-2-11, 0067):
+**The two windows are written by a command each** (MP-2-11, 0068):
 `settings.set_retention_window` and `settings.set_conversation_window`, under
 `settings:manage`, against the revision `settings.read` handed back. The
 conversation window is seven days or more and never longer than the retention
@@ -268,8 +268,9 @@ with the expiry check off, before it answers `AUTH_SESSION_EXPIRED`
 **Sessions (C58).** A session has no idle limit and an absolute limit of 12
 hours from the first sign-in, `SESSION_ABSOLUTE_SECONDS`
 (`core-records/src/identity/verified-subject.ts`), set there and nowhere else.
-The first sign-in is the `amr` first-factor time GoTrue stamps, which a refresh
-carries unchanged; never `iat`, which every refresh moves. A verified bearer
+The first sign-in is the earliest `amr` first-factor time GoTrue stamps, which a
+refresh carries unchanged, so a later re-sign-in in the same session never
+extends the 12; never `iat`, which every refresh moves. A verified bearer
 one second past the limit, with no first-sign-in time, or with one more than a
 minute ahead of the server's clock, is `AUTH_SESSION_EXPIRED` 401
 (`pastAbsoluteLimit`). A session left alone for hours inside the 12 is still
@@ -354,8 +355,10 @@ socket and starts no process. `main()` runs only as the process entry
 (`import.meta.main`). It reads the environment, calls `composeApi`, runs
 restart recovery through that same resolver, and only then binds the port.
 `apps/api/function.ts` is the Vercel function entry: it builds the same
-`composeApi` from the function's settings, with no identity route, live channel,
-recovery or sweeper, which belong to a long-running process, and no admin login: the business key is read on `DATABASE_LOOKUP_URL`, a login in the lookup identity (migration 0046; unset, every key is refused), and the entry refuses to start with `DATABASE_ADMIN_URL` set. It answers only
+`composeApi` from the function's settings, with no identity route or live
+channel, which belong to a long-running process. It owns recovery: before a request
+it runs the reconciliation pass for each business `RECOVERY_BUSINESS_KEYS` names,
+which a named environment (`OPS_ENVIRONMENT`) must set, if only to `none`. It holds no admin login: the business key is read on `DATABASE_LOOKUP_URL`, a login in the lookup identity (migration 0046; unset, every key is refused), and the entry refuses to start with `DATABASE_ADMIN_URL` set. It answers only
 requests whose `Host` and URL both name `SERVED_HOST`, the environment's own host; any other,
 a deployment's generated address included, is refused 421 before anything is
 read, so a promotion leaves the previous deployment serving nothing
@@ -1427,11 +1430,11 @@ case (g) carries the rows. The server declares the two answers as
 (`packages/core-wire/src/views.ts`), and the web imports that type
 rather than keeping a copy; the two are told apart by the key.
 
-| Read                   | Route                   | Body                     | Answer                                                                                                                                                                                                                                                       | Refusals it can answer                                                                                     |
-| ---------------------- | ----------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
-| `settings.read`        | `/settings/read`        | `{}`; it takes no fields | `{ ok: true, settings: [{ key, value, valueType, revision, updatedAt, updatedByActorId }] }`                                                                                                                                                                 | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403                                |
-| `session.capabilities` | `/session/capabilities` | `{}`; it takes no fields | `{ ok: true, personId, businessKey, grants: [{ collection, action }] }`                                                                                                                                                                                      | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403, `AUTH_SESSION_EXPIRED` 401    |
-| `access.read`          | `/access/read`          | `{}`; it takes no fields | `{ ok: true, team, clients, agents, clientRecords }` (`clientRecords`: every client `{ clientId, name }`): each person `{ personId, name, permissions: [{ collection, action, scope }] }`, each agent its `person`, `purpose`, `expiresAt` and `permissions` | `SCOPE_NOT_GRANTED` 403 without `access:manage`, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403        |
+| Read                   | Route                   | Body                     | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Refusals it can answer                                                                                  |
+| ---------------------- | ----------------------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `settings.read`        | `/settings/read`        | `{}`; it takes no fields | `{ ok: true, settings: [{ key, value, valueType, revision, updatedAt, updatedByActorId }] }`                                                                                                                                                                                                                                                                                                                                                                                                  | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403                             |
+| `session.capabilities` | `/session/capabilities` | `{}`; it takes no fields | `{ ok: true, personId, businessKey, grants: [{ collection, action }] }`                                                                                                                                                                                                                                                                                                                                                                                                                       | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403, `AUTH_SESSION_EXPIRED` 401 |
+| `access.read`          | `/access/read`          | `{}`; it takes no fields | `{ ok: true, team, clients, agents, clientRecords }` (`clientRecords`: every client `{ clientId, name }`): each person `{ personId, name, permissions: [{ collection, action, scope, stepUp }], grants: [{ grantId, collection, action, scope }] }` (`stepUp`: the money step-up is asked before that key, by `asksMoneyStepUp`, C59; `grants`: their live grant rows in this business, each revocable by `access.revoke`), each agent its `person`, `purpose`, `expiresAt` and `permissions` | `SCOPE_NOT_GRANTED` 403 without `access:manage`, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403     |
 | `session.person`       | `/session/person`       | `{}`; it takes no fields | `{ ok: true, person: { name } }`, the caller's own name                                                                                                                                                                                                      | `FIELD_NOT_WRITABLE` 422, `COMMAND_BODY_INVALID` 400, `AUTH_NO_MEMBERSHIP` 403, `AUTH_SESSION_EXPIRED` 401 |
 
 `session.person` and the command `session.end` are the person menu's (C23).
@@ -1642,13 +1645,18 @@ a case that cannot run yet prints `unrun` with its reason.
 
 The sign-in adapter (`apps/api/auth/supabase.ts`) passes the provider's
 assurance through beside `sub`: the level (`aal`), and from `amr` the time of
-the session's first sign-in and of its second factor. A refresh carries the
+the session's first sign-in (the earliest first factor) and of its latest
+second factor. A refresh carries the
 `amr` times unchanged, so the factor time is never renewed by one. A claim the
 adapter cannot read is the lowest level, `aal1` with no factor time.
 
-Login resolution refuses `AUTH_SECOND_FACTOR_REQUIRED` 401 when the person has
-a verified second factor and the sign-in is below `aal2`. That holds on every
-person route except the three below, which are how the sign-in gets its code.
+Login resolution refuses `AUTH_SECOND_FACTOR_REQUIRED` 401 when the sign-in
+login has a verified second factor and the sign-in is below `aal2`. The factor
+is the login's: verified through one business, it is required in every
+business the login reaches, and removing it clears it in every one
+(`ops.second_factor_subjects`, 0064, keyed by SHA-256 digests of the subject
+and the provider's factor id). That holds on every person route except the
+three below, which are how the sign-in gets its code.
 
 A command whose declared key is in the money set (every `billing` key,
 `offer:decide`, `mandate:manage`, `spend:decide`) is judged once, in
@@ -1657,8 +1665,10 @@ factor verified in the last 60 minutes, a client a sign-in in the last 60
 minutes, or it is refused `STEP_UP_REQUIRED` 403. While the business setting
 `money_step_up_required` is `false` a live session is enough; only
 `settings:manage` switches it, through `settings.set_money_step_up`. An agent
-credential whose scope holds a money key is judged the same way when it is
-issued (`credential.issue`), since the agent using it is not asked again.
+credential never holds a money key (`credential.issue` below), so none is
+judged later on an agent's behalf. Settings ▸ Access marks each such key
+in a person's preview (`access.read`'s `stepUp`) by the same predicate,
+`asksMoneyStepUp` (`authority/step-up.ts`), so the setting moves both at once.
 The four-eyes threshold is one of these: `settings.set_four_eyes_threshold`
 asks `spend:decide`, not `settings:manage` (MP-2-11).
 
@@ -1902,7 +1912,8 @@ neither the key nor the owner login, and the endings loop (`pnpm endings`,
 every owed step each `ACCESS_ENDING_RETRY_SECONDS` (60): it reads business ids
 and the shared check on the owner login only, and settles business by
 business on the application login under each one's tenancy
-(`retryAccessEndings`). It refuses to start without `DATABASE_URL`,
+(`retryAccessEndings`). `pnpm endings --once` runs one pass and exits 1 if it
+failed, so a scheduler sees the backlog. It refuses to start without `DATABASE_URL`,
 `DATABASE_ADMIN_URL`, `GOTRUE_URL` (https or loopback) and
 `SUPABASE_SERVICE_KEY`. A 30-second claim on the row stops two retries
 calling the provider at once, and a step done is stamped once and never asked
@@ -1952,14 +1963,16 @@ and never an agent's (an agent is refused `DELEGATION_EXCLUDES_OPERATION`):
   `{ operationId, scope, expiresAt, purpose }` and issues a credential of the
   caller's own. `scope` is 1 to 32 distinct `{ collection, action }` keys, each
   held by the caller at business scope (otherwise `CREDENTIAL_SCOPE_WIDENS` 403) and never `decide`, `share` or `manage` (`CREDENTIAL_ACTION_EXCLUDED`
-  403). A scope holding a money key (C59's set) is issued only on a sign-in
-  inside the money window, as a money command is (otherwise `STEP_UP_REQUIRED`
-  403). `expiresAt` is an ISO 8601 UTC time after now and at most 90 days out.
+  403). It never holds a money key (C59's set, `billing:read` included): an
+  agent may hold none (`docs/design-system/CAPABILITY-SLICES.md`), so a scope
+  with one is `CREDENTIAL_MONEY_KEY_EXCLUDED` 403 on any sign-in. `expiresAt` is an ISO 8601 UTC time after now and at most 90 days out.
   `purpose` is 1 to 200 characters. Its detail is
   `{ credentialId, agentActorId, scope, expiresAt, credential }`.
   `credential` is the secret, in this answer only; the register keeps it null.
   The same operation replayed by the issuer answers the same secret while the
-  credential is live, and `credential: null` once it is revoked or expired.
+  credential is live, and `credential: null` once it is revoked or expired; a
+  live one holding a money key, issued before that rule, is
+  `CREDENTIAL_MONEY_KEY_EXCLUDED` 403.
 - `credential.revoke` (`agent credential revoked`) takes
   `{ operationId, credentialId }`. The issuer revokes their own; anyone else
   needs `access:manage` too. A credential of another business, a made-up one,
