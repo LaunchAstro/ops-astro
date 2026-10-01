@@ -108,6 +108,7 @@ export {
 } from './identity/second-factor.ts';
 export {
   endOtherSeenSessions,
+  endProviderSession,
   endOwnSession,
   listSeenSessions,
   type SeenSession,

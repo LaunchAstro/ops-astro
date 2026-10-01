@@ -37,6 +37,7 @@ import { deleteCookie, setCookie } from 'hono/cookie';
 import {
   NO_MEMBERSHIP_FIXES,
   NO_AGENT_FIXES,
+  endProviderSession,
   EXPIRED_FIXES,
   PUBLIC_LEGAL_DOCUMENTS,
   readPublishedLegal,
@@ -611,6 +612,29 @@ function mountPublicLegal(api: Hono, options: ApiOptions): void {
  * person route. The bearer goes to the provider as the person's own; the body
  * is the code, or nothing.
  */
+/**
+ * C58: a sign-out this business refused (it no longer admits the person, say)
+ * still ends the verified token's own session in every business, then at the
+ * provider. The door has checked the token and the cross-site rule; a token
+ * naming no session ends nothing, and the refusal is still answered.
+ */
+async function signOutRefused(
+  options: ApiOptions,
+  caller: {
+    readonly businessId: string;
+    readonly presented: VerifiedSubject;
+    readonly accessToken: string;
+  },
+  factors: FactorProvider,
+): Promise<void> {
+  const { sessionId } = caller.presented;
+  if (sessionId === undefined) return;
+  await options.database.withBusiness(caller.businessId, async (tx) => {
+    await endProviderSession(tx, sessionId);
+  });
+  await factors.signOut(caller.accessToken, 'local');
+}
+
 function mountFactorRoutes(api: Hono, options: ApiOptions, factors: FactorProvider): void {
   const routes = new Hono();
   type Caller = Parameters<typeof enrolSecondFactor>[0];
@@ -642,7 +666,12 @@ function mountFactorRoutes(api: Hono, options: ApiOptions, factors: FactorProvid
         accessToken,
       };
       const result = await act(caller, admitted.body);
-      if (isCommandRefusal(result)) return refuse(context, result);
+      if (isCommandRefusal(result)) {
+        if (name === 'sessions/sign-out' && result.code !== 'COMMAND_BODY_INVALID') {
+          await signOutRefused(options, caller, factors);
+        }
+        return refuse(context, result);
+      }
       return context.json(result, 200);
     });
   }

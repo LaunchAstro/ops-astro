@@ -99,6 +99,14 @@ export async function endOtherSeenSessions(
   return await endSessions(tx, personId, others, reason);
 }
 
+/**
+ * End one provider session in every business (0065), with no person: a
+ * sign-out the business no longer admits still ends its verified session.
+ */
+export async function endProviderSession(tx: TenantQuery, sessionId: string): Promise<void> {
+  await tx.query(END_PROVIDER_SESSIONS, [[sessionId]]);
+}
+
 /** End the one session the person is signing out of. */
 export async function endOwnSession(
   tx: TenantQuery,
