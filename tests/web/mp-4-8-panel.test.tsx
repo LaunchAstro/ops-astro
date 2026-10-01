@@ -5,7 +5,8 @@
 // MP-4-5, MP-4-7, MP-4-10 and MP-4-16 built for it. The frame it sits in
 // (seat line, float, sheet, back and forward, its one close path) is MP-3-1's;
 // the captures wait on MP-1-7; the name, assignee and due edits are
-// mp-4-8-panel-fields and mp-4-8-date-picker, and the client and the duplicate
+// mp-4-8-panel-fields and mp-4-8-date-picker, the trail fold kept as the
+// person's preference is mp-4-8-trail-fold, and the client and the duplicate
 // are later steps of MP-4-8.
 
 import { afterEach, describe, expect, it } from 'vitest';
@@ -191,10 +192,6 @@ describe('MP-4-8 trail folded', () => {
     expect(view.find('[data-task-panel] [data-history="trail"]')).toBeNull();
     await view.unmount();
   });
-
-  it.todo(
-    'MP-4-16 preference saved: the fold is the person’s saved preference (no preference model yet)',
-  );
 });
 
 describe('MP-4-8 head', () => {

@@ -69,7 +69,22 @@ describe('MP-4-1 crumb', () => {
     await withheld.unmount();
   });
 
-  it.todo('reads the category after the board (LEANS-ON: no section or category is named on main)');
+  it('names the task’s category after the board, by its label', async () => {
+    const view = await page('Proj-Verity-Pacing', found({ category: 'seo' }));
+    const parts = view.all('[data-crumb]').map((part) => (part as HTMLElement).dataset['crumb']);
+    expect(parts).toStrictEqual(['projects', 'board', 'category', 'key', 'state']);
+    expect(view.find('[data-crumb="category"]')?.textContent).toBe('SEO');
+    await view.unmount();
+  });
+
+  it('draws no category where the task has none or the read does not carry one', async () => {
+    const none = await page('Proj-Verity-Pacing', found({ category: null }));
+    expect(none.find('[data-crumb="category"]')).toBeNull();
+    await none.unmount();
+    const uncarried = await page('Proj-Verity-Pacing', found());
+    expect(uncarried.find('[data-crumb="category"]')).toBeNull();
+    await uncarried.unmount();
+  });
 });
 
 describe('MP-4-1 copy address tick', () => {
