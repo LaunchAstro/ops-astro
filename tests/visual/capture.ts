@@ -256,11 +256,18 @@ export async function load(
   if (drawn !== null && drawn !== side.theme) {
     throw new Error(`visual: ${url} drew in ${String(drawn)}, not ${side.theme}`);
   }
+  // A tab is measured once it is the chosen one, not while the click lands.
   // oxlint-disable-next-line no-await-in-loop -- opened as a person would, each control in turn
-  for (const control of [prep.open ?? []].flat()) await page.locator(control).first().click();
+  for (const control of [prep.open ?? []].flat()) await openOne(page.locator(control).first());
   await settled(page);
   return page;
 }
+
+const openOne = async (target: ReturnType<Page['locator']>): Promise<void> => {
+  await target.click();
+  if ((await target.getAttribute('role')) === 'tab')
+    await target.and(target.page().locator('[aria-selected="true"]')).waitFor({ timeout: 5000 });
+};
 
 /** One PNG per region, content-masked; a region missing from the page refuses. */
 export async function shoot(
