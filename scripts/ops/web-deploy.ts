@@ -14,14 +14,17 @@
 // Vercel is asked twice, through the person's own `vercel` sign-in, never a
 // token: `vercel deploy --prebuilt --prod` (its answer on stdout is the new
 // deployment's own address) and `vercel inspect <address> --format json`, which
-// must report that same address `READY` on `production`. The CLI's JSON names
-// no region (Vercel CLI 54.17.3 prints id, name, url, target, readyState,
-// createdAt and, when present, aliases, builds, routes, contextName), so the
-// region recorded is the one the deployed bytes declare: `buildOutputProblems`
-// has already held every function to `syd1` alone (`S0-6 functions in
-// Sydney`). The CLI gets only PATH, HOME, TMPDIR and the two project ids, so
-// no sign-in value or database login reaches it. The folder, `.vercel` and
-// all, is removed whatever happens. Before Vercel is asked, the sign-in server
+// must report that same address `READY` on `production`. Only its url, target
+// and readyState are read. Vercel CLI 54.17.3 prints id, name, url, target,
+// readyState, createdAt and, when present, aliases, builds, routes and
+// contextName; a reported build's lambda output can name the regions it was
+// deployed to (`deployedTo`), but that is not read. The region recorded is the
+// one the built output declares: `buildOutputProblems` has already held every
+// function to `syd1` alone (`S0-6 functions in Sydney`), so `syd1` is a
+// declaration checked before the deploy, not a region Vercel reported back.
+// The CLI gets only PATH, HOME, TMPDIR and the two project ids, so no sign-in
+// value or database login reaches it. The folder, `.vercel` and all, is
+// removed whatever happens. Before Vercel is asked, the sign-in server
 // reports its version (`/health` under GOTRUE_URL, staging's own sign-in
 // address, with the publishable key when set); no answer, no deploy. Only a
 // deploy read back ready on production returns its record: the version, the
