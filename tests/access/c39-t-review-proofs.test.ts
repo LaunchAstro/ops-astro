@@ -48,7 +48,7 @@ async function clearAttempts(): Promise<void> {
   await w.db.admin.execute('delete from public.inbox_delivery_attempts');
 }
 
-it("Sol proof, criterion correctness: a dead send's ask stops holding the invitation ceiling past custody's timeout and the grace", async () => {
+it("C39-T invitation ceiling: a dead send's ask stops holding the invitation ceiling past custody's timeout and the grace", async () => {
   await clearAttempts();
   w.provider.mode('accept');
   const lost = await lostSends(EMAIL_SEND.concurrency);
@@ -64,7 +64,7 @@ it("Sol proof, criterion correctness: a dead send's ask stops holding the invita
   expect(await send(lost[0] ?? '')).toEqual({ ok: false, code: 'NO_SEND_ACT' });
 });
 
-it('Sol proof, criterion correctness: inbox emails in flight count against the catalogued email.send ceiling an invitation send takes', async () => {
+it('C39-T invitation ceiling: inbox emails in flight count against the catalogued email.send ceiling an invitation send takes', async () => {
   await clearAttempts();
   w.provider.mode('accept');
   // The catalogued ceiling's worth of inbox emails, asked and still with the provider.

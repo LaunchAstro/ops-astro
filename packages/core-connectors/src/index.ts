@@ -28,16 +28,7 @@ export {
   type RouteChoice,
   type RouteReach,
 } from './data-class.ts';
-export {
-  AUTH_ACTIONS,
-  AUTH_EMAIL_EXISTS,
-  AUTH_INVITE_LINK,
-  AUTH_LINK_PATH,
-  authLinkAdapter,
-  readAuthLinkAnswer,
-  readAuthMessage,
-  type AuthMessage,
-} from './auth-link.ts';
+export { readAuthMessage, type AuthMessage } from './auth-message.ts';
 export {
   EMAIL_NOTHING_HAPPENED,
   EMAIL_PATH,

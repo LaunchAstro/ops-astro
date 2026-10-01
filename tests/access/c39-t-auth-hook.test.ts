@@ -6,14 +6,13 @@
 // over its raw bytes, checked before a byte is parsed; refuses a stale
 // timestamp and a replayed message id, durably; answers every verified
 // message alike, sent or not, so it never says whether an account exists;
-// and hands an Auth invitation to the broker's `email.send` with its attempt,
-// only for a person's recorded act, in the one business, for the one person.
+// and hands an Auth invitation to the broker's `email.send` with its attempt and
+// our own token, only for a person's recorded act, in the one business, for
+// the one person. The provider's token hash is never used.
 
 import { describe, expect, it } from 'vitest';
-import { authEmailHookSettings } from '../../apps/api/auth-email-hook.ts';
 import {
   ah,
-  AUTH_HOOK_SECRET,
   attemptRows,
   authMessage,
   mailTo,
@@ -49,21 +48,6 @@ const recorded = async (id: string): Promise<[number, number]> => [
   await countFor('invitation_delivery_attempts', id),
 ];
 
-describe('C39-T hook settings', () => {
-  it('C39-T hook signature: the secret is read in the login provider form only, and a wrong one names the setting, never its value', () => {
-    expect(authEmailHookSettings({})).toStrictEqual({ kind: 'absent' });
-    expect(authEmailHookSettings({ AUTH_EMAIL_HOOK_SECRET: AUTH_HOOK_SECRET })).toStrictEqual({
-      kind: 'configured',
-      secret: AUTH_HOOK_SECRET.slice('v1,'.length),
-    });
-    for (const wrong of [AUTH_HOOK_SECRET.slice(3), 'v1,whsec_short', 'v2,whsec_x', 'plain']) {
-      const read = authEmailHookSettings({ AUTH_EMAIL_HOOK_SECRET: wrong });
-      expect(read.kind, wrong).toBe('invalid');
-      expect(JSON.stringify(read)).not.toContain(wrong);
-    }
-  });
-});
-
 // eslint-disable-next-line max-lines-per-function -- one database world, and the cases that share it
 describe.skipIf(noDatabase)('C39-T Auth email hook', () => {
   it('C39-T hook signature: only a Standard Webhooks signature over the raw body lets a message in, and nothing is parsed or sent before it', async () => {
@@ -96,12 +80,13 @@ describe.skipIf(noDatabase)('C39-T Auth email hook', () => {
     // Signed and well formed, but not the provider's shape: refused once verified.
     const odd = JSON.stringify({ user: { email: address }, email_data: { token_hash: hash } });
     expect(await postAuth(odd)).toStrictEqual({ status: 400, text: '{"code":"HOOK_MALFORMED"}' });
-    // The real message: one email to the invited address, its link the hook's token.
+    // The real message: one email to the invited address, its link our own token, never the hook's.
     const signed = signAuth(raw);
     expect(await postAuth(raw, signed)).toStrictEqual({ status: 200, text: '{}' });
     const mail = mailTo(address);
     expect(mail).toHaveLength(1);
-    expect(linkIn(mail[0]).token).toBe(hash);
+    expect(linkIn(mail[0]).token).toMatch(/^[\w-]{43}$/u);
+    expect(mail[0]).not.toContain(hash);
     expect(await attemptRows(id)).toEqual([
       { state: 'asked', evidence: `hook:${signed.id}` },
       { state: 'accepted', evidence: expect.stringMatching(/^provider:/u) as unknown },

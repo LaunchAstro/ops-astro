@@ -3,12 +3,13 @@
 // A stand-in for the login provider's admin route (C39-T, piece P2): answers
 // `POST /auth/v1/admin/generate_link` on loopback the way Supabase Auth does,
 // a flat user object with the link's properties beside it. Each accepted
-// answer carries a fresh hashed token and a planted one-time code, both kept
-// here so a case can look for them everywhere else. Its hostile modes are
-// the answers a real provider can give: refused, oversized, redirected,
-// malformed and slow.
+// answer carries a fresh hashed token and one-time code in GoTrue's shape,
+// both kept here so a case can look for them everywhere else. Its hostile
+// modes are the answers a real provider can give: refused, oversized,
+// redirected, malformed and slow. An invitation's send never asks it (the
+// SL12-19 ruling); the cases count its requests to show that.
 
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomInt, randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
@@ -62,6 +63,12 @@ function answer(email: string, hashed: string, otp: string, type = 'invite'): ob
   };
 }
 
+/** GoTrue's hashed token: hex SHA-224 of the address and the six-digit one-time code. */
+const gotrueHash = (email: string, otp: string): string =>
+  createHash('sha224')
+    .update(email + otp)
+    .digest('hex');
+
 function respond(
   mode: FakeAuthMode,
   email: string,
@@ -72,8 +79,8 @@ function respond(
     response.writeHead(status, { 'content-type': 'application/json' });
     response.end(JSON.stringify(body));
   };
-  const hashed = randomBytes(28).toString('hex');
-  const otp = `otp${randomBytes(6).toString('hex')}`;
+  const otp = String(randomInt(0, 1_000_000)).padStart(6, '0');
+  const hashed = gotrueHash(email, otp);
   kept.issued.push({ hashed, otp });
   switch (mode) {
     case 'accept':
