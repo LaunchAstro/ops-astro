@@ -77,7 +77,7 @@ it('reservation_before_dispatch_through_broker', async () => {
   ]);
 });
 
-it('AW-01 reservation and settlement: held at the maximum, settled at the price, the rest released', async () => {
+it('AW-01 settlement releases the difference: held at the maximum, settled at the price, the rest released', async () => {
   const work = await liveWork(s, `one priced call ${PLANTED_PROMPT}`, 2_000);
   world.provider.mode('answer');
   const result = await call(work);
@@ -120,7 +120,7 @@ it('AW-01 reservation and settlement: held at the maximum, settled at the price,
   expect(events).toEqual([{ command: 'model.call_dispatched', outcome: 'applied' }]);
 });
 
-it('AW-01 observed above the hold: refused, the amount recorded and audited, held at the maximum', async () => {
+it('AW-01 cost above reservation: refused, the amount recorded and audited, held at the maximum', async () => {
   // 1 000 held for the run: the held 500 leaves room for one more call, not two.
   const work = await liveWork(s, 'a costly answer', 1_000);
   world.provider.mode('costly');
