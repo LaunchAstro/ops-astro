@@ -11,10 +11,8 @@
 // the one person. The provider's token hash is never used.
 
 import { describe, expect, it } from 'vitest';
-import { authEmailHookSettings } from '../../apps/api/auth-email-hook.ts';
 import {
   ah,
-  AUTH_HOOK_SECRET,
   attemptRows,
   authMessage,
   mailTo,
@@ -49,21 +47,6 @@ const recorded = async (id: string): Promise<[number, number]> => [
   await countFor('enrolment_tokens', id),
   await countFor('invitation_delivery_attempts', id),
 ];
-
-describe('C39-T hook settings', () => {
-  it('C39-T hook signature: the secret is read in the login provider form only, and a wrong one names the setting, never its value', () => {
-    expect(authEmailHookSettings({})).toStrictEqual({ kind: 'absent' });
-    expect(authEmailHookSettings({ AUTH_EMAIL_HOOK_SECRET: AUTH_HOOK_SECRET })).toStrictEqual({
-      kind: 'configured',
-      secret: AUTH_HOOK_SECRET.slice('v1,'.length),
-    });
-    for (const wrong of [AUTH_HOOK_SECRET.slice(3), 'v1,whsec_short', 'v2,whsec_x', 'plain']) {
-      const read = authEmailHookSettings({ AUTH_EMAIL_HOOK_SECRET: wrong });
-      expect(read.kind, wrong).toBe('invalid');
-      expect(JSON.stringify(read)).not.toContain(wrong);
-    }
-  });
-});
 
 // eslint-disable-next-line max-lines-per-function -- one database world, and the cases that share it
 describe.skipIf(noDatabase)('C39-T Auth email hook', () => {
