@@ -89,7 +89,9 @@ async function approvedApproval(
       payload,
       step,
     };
-    expect(codeOf(await asAgent(s, handbackBody(work.picked, successor)))).toBe('applied');
+    // Handed back failed with its ask, as raiseApproval does.
+    const handback = { ...handbackBody(work.picked, successor), outcome: 'failed' };
+    expect(codeOf(await asAgent(s, handback))).toBe('applied');
   } else {
     const taskId = await createTask(s, title);
     const proposed = await asPerson(s, {
