@@ -1591,6 +1591,8 @@ A person's own factor has three routes on the person prefix only. Each is
 served only when the composition root passes a `factors` provider
 (`apps/api/auth/factors.ts`, GoTrue's MFA endpoints called with the person's own
 bearer). Each writes one audit event, applied or refused, named by the act.
+`enrol` is refused `FACTOR_ALREADY_ENROLLED` while the login holds a verified
+factor through any business it reaches (0083), not only this one.
 
 | Route                    | Body                   | Answer                                                                                             | Refusals                                                                                                                                                                       |
 | ------------------------ | ---------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |

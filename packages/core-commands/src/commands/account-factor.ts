@@ -20,6 +20,7 @@
 
 import {
   liveFactor,
+  loginHasVerifiedFactor,
   recordFactorEnrolled,
   recordFactorRemoved,
   recordFactorVerified,
@@ -71,7 +72,8 @@ const LOCKED_FIXES: readonly string[] = [
 /**
  * First enrolment: a person with no factor, after a fresh password sign-in
  * inside the step-up window (TR-A2-2). A person who already has a verified
- * factor replaces it by removing it first, with a code.
+ * factor, here or through any business the login reaches (0083), replaces it
+ * by removing it first, with a code.
  */
 export async function enrolSecondFactor(
   caller: FactorCaller,
@@ -82,8 +84,7 @@ export async function enrolSecondFactor(
     caller,
     act,
     async (tx, session) => {
-      const live = await liveFactor(tx, session.personId);
-      if (live?.status === 'verified')
+      if (await holdsVerified(tx, caller, await liveFactor(tx, session.personId)))
         return refuseCommand('FACTOR_ALREADY_ENROLLED', [], ENROLLED_FIXES);
       return (await freshSignIn(tx, session))
         ? undefined
@@ -97,7 +98,7 @@ export async function enrolSecondFactor(
   const recorded = await judged(caller, act, async (tx, session) => {
     if (!issued.ok) return providerRefusal(issued.fault, 'answer');
     const live = await liveFactor(tx, session.personId, { lock: true });
-    if (live?.status === 'verified')
+    if (await holdsVerified(tx, caller, live))
       return refuseCommand('FACTOR_ALREADY_ENROLLED', [], ENROLLED_FIXES);
     // An enrolment never completed is replaced, not stacked: the newest
     // unverified factor is the one the first code completes.
@@ -224,6 +225,13 @@ export async function removeSecondFactor(
     otherSessions: await signOutOthers(provider, proved.value.accessToken, ended),
   };
 }
+
+/** A verified factor here, or one the login holds through any business (0083). */
+const holdsVerified = async (
+  tx: TenantQuery,
+  caller: FactorCaller,
+  live: { readonly status: string } | undefined,
+) => live?.status === 'verified' || (await loginHasVerifiedFactor(tx, caller.presented.subject));
 
 /** The caller's factor, and the login's subject that holds it in every business (0083). */
 const ownFactor = (caller: FactorCaller, session: Session, factorId: string) => ({
