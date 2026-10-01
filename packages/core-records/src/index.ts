@@ -21,19 +21,21 @@ export {
 export {
   CREDENTIAL_EXCLUDED_ACTIONS,
   CREDENTIAL_MAX_DAYS,
-  credentialSubject,
   deriveAgentCredential,
-  isAgentCredentialForm,
-  isAgentCredentialLive,
   issueAgentCredential,
   lockAgentCredential,
-  recordCredentialRefusal,
-  resolveAgentCredential,
   revokeAgentCredential,
   type AgentCredential,
   type CredentialKey,
-  type CredentialStanding,
 } from './authority/agent-credentials.ts';
+export {
+  credentialSubject,
+  isAgentCredentialForm,
+  isAgentCredentialLive,
+  recordCredentialRefusal,
+  resolveAgentCredential,
+  type CredentialStanding,
+} from './authority/agent-credential-standing.ts';
 export { readEnvFile } from './env-file.ts';
 export {
   checkDelegatedAuthority,
