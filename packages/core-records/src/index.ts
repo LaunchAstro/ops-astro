@@ -295,5 +295,6 @@ export {
   type OnboardingStepRow,
   type StepState,
 } from './onboarding/onboardings.ts';
+export { closeStepMove, raiseStepMoves } from './onboarding/moves.ts';
 export { hasRoom, type DurableLimit } from './tenancy/limit.ts';
 export { connectOutbox, type ApiEvent, type Outbox } from './tenancy/outbox.ts';
