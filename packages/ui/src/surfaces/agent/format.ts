@@ -2,18 +2,13 @@
 //
 // The Agent pane's small formatters, shared by its parts.
 
-export const shortDigest = (digest: string): string => digest.slice(0, 12);
+import { minorDigits } from '../../../../core-wire/src/index.ts';
 
-/**
- * The currency's minor digits: 2 for AUD, 0 for JPY. The server's own rule
- * (core-runtime `four-eyes.ts` minorDigits), so a figure means the same here.
- */
-export function minorDigits(currency: string): number {
-  return (
-    new Intl.NumberFormat('en', { style: 'currency', currency }).resolvedOptions()
-      .maximumFractionDigits ?? 2
-  );
-}
+// A currency's minor digits come from the ISO 4217 table the server reads too
+// (core-runtime `four-eyes.ts`), so a figure means the same in both.
+export { minorDigits };
+
+export const shortDigest = (digest: string): string => digest.slice(0, 12);
 
 /** Minor units as the currency's major figure, with its own digits: 2500 AUD is 25.00. */
 export const major = (minor: number, currency: string): string => {

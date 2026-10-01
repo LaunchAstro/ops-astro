@@ -18,6 +18,7 @@
 // figure they must match, and the words of its refusals.
 
 import type { Subject, TenantQuery } from '../../core-records/src/index.ts';
+import { minorDigits as iso4217Digits } from '../../core-wire/src/index.ts';
 import { AffectedSetChanged } from './rediscovery.ts';
 import { holdCoveringGrants } from './recovery/classifier.ts';
 
@@ -35,10 +36,7 @@ export const SHIPPED_FOUR_EYES_BAND = 500;
 
 /** The currency's minor digits: 2 for AUD, 0 for JPY. */
 export function minorDigits(currency: string): number {
-  return (
-    new Intl.NumberFormat('en', { style: 'currency', currency }).resolvedOptions()
-      .maximumFractionDigits ?? 2
-  );
+  return iso4217Digits(currency);
 }
 
 /** The band in the currency's minor units, read under the caller's locks; null is off. */
