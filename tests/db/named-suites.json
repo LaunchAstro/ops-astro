@@ -184,7 +184,9 @@
     "FIX-2B1 RS2 names fix-2b1-rs2-left-at-door-real-routes (a tab that leaves while each real live route awaits its door ends its stream: T2f, C4 topics and the board, through composeApi).",
     "FIX-B1 (review round 1, rs-6) adds inbox-unattended-escalated (an escalated gate's recipient who keeps decide across the business is a path to the decision, so the item is not listed unattended) and names review-p03-unattended-escalated-decider (REVIEW-MAIN-B1 p03-1's proof: the recipient keeps task-scope decide only, and the item is listed), both invariants.",
     "FIX-B1 (REVIEW-MAIN-B1 p02-1) adds forwarder-export-ageout-false-signals-dropped-review (an export signal under its threshold ages out of the forwarder's table without a false signals-dropped alert: the sweep window outlasts every rule's).",
-    "STAGING-FIX-2 adds staging-hosted-roles (a hosted Supabase reset: the migration runner applies with only the platform's own service logins connected, authenticator, pgbouncer, supabase_admin, supabase_auth_admin and supabase_storage_admin, and still refuses a look-alike, differently cased or unnamed Supabase login, naming only it; made-up-only accepts a definer function owned by supabase_admin and still refuses one owned by a look-alike superuser or supabase_etl_admin)."
+    "STAGING-FIX-2 adds staging-hosted-roles (a hosted Supabase reset: the migration runner applies with only the platform's own service logins connected, authenticator, pgbouncer, supabase_admin, supabase_auth_admin and supabase_storage_admin, and still refuses a look-alike, differently cased or unnamed Supabase login, naming only it; made-up-only accepts a definer function owned by supabase_admin and still refuses one owned by a look-alike superuser or supabase_etl_admin).",
+    "FIX-2A (review RP-1) adds c81-privacy-find-copies-links (the runbook's finder lists every row naming the person through an id of their own: found by name, their sign-in's logins row and a grant held by their acting identity; found by the email they wrote from, their membership), named as an isolation suite too.",
+    "FIX-2A (review RP-2) names c81-breach-drill-subject beside c81-breach-drill and c81-breach-drill-clock (the template's subject line filled per recipient through privacy.draft_breach_notices, a placeholder the drill cannot fill in it BREACH_TEMPLATE_UNFILLED 409 with nothing drafted), named as an isolation suite too."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -433,6 +435,7 @@
     "tests/operations/c81-data-classes.test.ts",
     "tests/operations/c81-data-classes-isolation.test.ts",
     "tests/operations/c81-privacy-runbook.test.ts",
+    "tests/operations/c81-privacy-find-copies-links.test.ts",
     "tests/identity/c59-second-factor-commands.test.ts",
     "tests/identity/c59-step-up-person.test.ts",
     "tests/api/c59-factor-routes-hostile.test.ts",
@@ -447,6 +450,7 @@
     "tests/operations/c81-legal-documents-access.test.ts",
     "tests/operations/c81-register-isolation.test.ts",
     "tests/operations/c81-breach-drill-clock.test.ts",
+    "tests/operations/c81-breach-drill-subject.test.ts",
     "tests/api/api-2-agent-credential.test.ts",
     "tests/api/api-2-agent-credential-revoke.test.ts",
     "tests/api/api-2-agent-credential-use.test.ts",
