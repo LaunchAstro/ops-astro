@@ -212,7 +212,11 @@ it('AW-01 expired lease: the cost settles and the work is refused', async () => 
   );
   world.provider.mode('answer');
   const result = await pending;
-  expect(result).toMatchObject({ ok: false });
+  expect(result).toEqual({ ok: false, code: 'LEASE_EXPIRED', callId: expect.any(String) });
+  // Slow mode answers usage 1/1, priced 1 + 2 * 1 = 3: settled, not held.
+  expect(await rowsOf((result as { callId: string }).callId)).toMatchObject([
+    { state: 'settled', actual_minor: '3' },
+  ]);
 });
 
 it('AW-01 recovery: custody lost mid-dispatch holds the maximum as dropped_worker_lost, fault ours, never resent', async () => {
