@@ -38,18 +38,11 @@ import { deleteCookie, setCookie } from 'hono/cookie';
 import {
   NO_MEMBERSHIP_FIXES,
   NO_AGENT_FIXES,
-  endProviderSession,
   EXPIRED_FIXES,
-  PUBLIC_LEGAL_DOCUMENTS,
-  readPublishedLegal,
   recordBodyRefusal,
   statusOf,
 } from '../../packages/core-records/src/index.ts';
-import type {
-  Database,
-  LegalDocument,
-  VerifiedSubject,
-} from '../../packages/core-records/src/index.ts';
+import type { Database, VerifiedSubject } from '../../packages/core-records/src/index.ts';
 import {
   agentAnswer,
   endOtherSessions,
@@ -80,7 +73,6 @@ import {
   COMMAND_SURFACE,
   DELEGATION_HEADER,
   PREFIX,
-  PUBLIC_PREFIX,
   SESSION_PATH,
   pathOf,
 } from '../../packages/core-wire/src/index.ts';
@@ -110,6 +102,7 @@ import {
   type Watching,
 } from './live-follow.ts';
 import { followBoard } from './live-board.ts';
+import { mountPublicLegal, signOutRefused } from './account-routes.ts';
 import { signalOf, type Outcome, type SecuritySignal } from './alerts/detect.ts';
 import {
   bearerOf,
@@ -761,61 +754,12 @@ async function mayShowInbox(
 }
 
 /**
- * A business's published legal documents (C81), read with no sign-in: the
- * version published most recently, its words and their digest. No business,
- * nothing published, the breach runbook (the operators' own) and a name that
- * is no document are one answer, so the address tells an outsider nothing
- * about which businesses exist or what they have drafted.
- */
-function mountPublicLegal(api: Hono, options: ApiOptions): void {
-  const PUBLIC: ReadonlySet<string> = new Set(PUBLIC_LEGAL_DOCUMENTS);
-  api.get(`${PUBLIC_PREFIX}:businessKey/legal/:document`, async (context) => {
-    const document = context.req.param('document');
-    const businessId = PUBLIC.has(document)
-      ? await options.resolveBusiness(context.req.param('businessKey'))
-      : undefined;
-    const published =
-      businessId === undefined
-        ? undefined
-        : await options.database.withBusiness(
-            businessId,
-            async (tx) => await readPublishedLegal(tx, document as LegalDocument),
-          );
-    if (published === undefined) return context.json({ code: 'NOT_FOUND' }, 404);
-    return context.json({ ...published, publishedAt: published.publishedAt.toISOString() }, 200);
-  });
-}
-
-/**
  * The person's own second factor (C59): `account/factor/enrol`, `verify` and
  * `remove`; and their own sessions (C58): `account/sessions/list`,
  * `end-others` and `sign-out`. Each goes through the same door as every
  * person route. The bearer goes to the provider as the person's own; the body
  * is the code, or nothing.
  */
-/**
- * C58: a sign-out this business refused (it no longer admits the person, say)
- * still ends the verified token's own session in every business, then at the
- * provider. The door has checked the token and the cross-site rule; a token
- * naming no session ends nothing, and the refusal is still answered.
- */
-async function signOutRefused(
-  options: ApiOptions,
-  caller: {
-    readonly businessId: string;
-    readonly presented: VerifiedSubject;
-    readonly accessToken: string;
-  },
-  factors: FactorProvider,
-): Promise<void> {
-  const { sessionId } = caller.presented;
-  if (sessionId === undefined) return;
-  await options.database.withBusiness(caller.businessId, async (tx) => {
-    await endProviderSession(tx, sessionId);
-  });
-  await factors.signOut(caller.accessToken, 'local');
-}
-
 function mountFactorRoutes(api: Hono, options: ApiOptions, factors: FactorProvider): void {
   const routes = new Hono();
   type Caller = Parameters<typeof enrolSecondFactor>[0];

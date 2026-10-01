@@ -24,7 +24,7 @@ import { dockTabs, dockTarget } from './panels.ts';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, type Interruption, type Session, type SessionStore } from './session/token.ts';
 import { SignIn } from './screens/SignIn.tsx';
-import { signOut } from './session/sign-in.ts';
+import { signOutOf } from './session/sign-in.ts';
 import { PagePresenceProvider, StripPresence } from './views/presence.tsx';
 import { PageFreshnessProvider, StripFreshness } from './views/freshness.tsx';
 
@@ -174,14 +174,7 @@ export function App(props: AppProps): ReactElement {
     props.navigate(pathTo('agency:sign-in'));
     if (ended === null) return;
     void client.mutate('session.end', {});
-    // The business key too, so the API ends the session where its cookie is
-    // sent (C58).
-    void signOut({
-      apiOrigin: props.apiOrigin,
-      fetch: props.fetch,
-      ...(ended.sessionId === undefined ? {} : { sessionId: ended.sessionId }),
-      businessKey: ended.businessKey,
-    });
+    void signOutOf(props, ended);
   };
 
   const personName = usePersonName(client, session, props.storage);
