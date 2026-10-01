@@ -47,6 +47,20 @@ const TASK = {
   comments: [],
 };
 
+/** The same task as the board's row: its rank, placement and the reader's comment counts. */
+const BOARD_ROW = {
+  ...TASK,
+  board: null,
+  rank: { number: null, score: null, calc: '' },
+  adHoc: false,
+  clientAccess: false,
+  stage: null,
+  clientSet: false,
+  steps: [],
+  time: null,
+  comments: { client: 0, mentions: 0, latest: null },
+};
+
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
@@ -78,7 +92,7 @@ function server(options: { readonly neverAMember?: boolean } = {}) {
     if (at.endsWith('/person/list'))
       return json({ ok: true, persons: [{ personId: 'p1', name: 'Mia Alpha' }] });
     if (at.endsWith('/task/read')) return json({ ok: true, task: TASK });
-    if (at.endsWith('/task/board')) return json({ ok: true, tasks: [TASK] });
+    if (at.endsWith('/task/board')) return json({ ok: true, tasks: [BOARD_ROW] });
     // The board's inbox above it (INB-1g) reads on its own.
     if (at.endsWith('/inbox/read')) return json({ ok: true, inbox: [] });
     if (at.endsWith('/inbox/count')) return json({ ok: true, owed: 0 });
