@@ -38,6 +38,8 @@ const TRANSPORTS = new Map([
   ],
   // asks where to sign in before there is a session, and hands the app its fetch
   ['main.tsx', ["window.fetch('/api/sign-in')", 'window.fetch.bind(window)']],
+  // wraps that fetch for the sign-in address only, adding the public key: a session, not a record
+  ['session/provider-key.ts', ['fetcher: typeof fetch', '): typeof fetch {', 'as typeof fetch']],
 ]);
 // A named call keeps its shape and loses its request: `fetch` and `/api/` read as nothing. Its
 // first occurrence in code counts; one on a comment line is passed over (at worst, a false alarm).
