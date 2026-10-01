@@ -192,6 +192,28 @@ needsServer(
   },
 );
 
+needsServer(
+  'API-2 quota at the door: a cold burst of made-up bearers writes at most the door’s count of attempt rows, and a live credential in it is served',
+  async () => {
+    const { api } = limited({ refused: 2 });
+    const live = await issued();
+    const before = await attemptsIn(harness.world.alpha);
+    const made = async (): Promise<Answer> =>
+      await readWith(api, randomBytes(32).toString('base64url'));
+    // Every bearer knocks before any lookup finishes.
+    const burst = await Promise.all([
+      ...Array.from({ length: 12 }, made),
+      readWith(api, live.secret),
+      ...Array.from({ length: 12 }, made),
+    ]);
+    expect(burst[12]?.code, 'the live credential is served').toBe('ok');
+    const codes = codesOf(burst.filter((_, index) => index !== 12));
+    expect(codes.filter((code) => code === 'DELEGATION_NOT_LIVE')).toHaveLength(2);
+    expect(codes.filter((code) => code === 'AGENT_QUOTA_EXCEEDED')).toHaveLength(22);
+    expect(await attemptsIn(harness.world.alpha)).toBe(before + 2);
+  },
+);
+
 /** The world's pool, keeping each business transaction's statements. */
 function counted(): { database: Database; opened: () => readonly (readonly string[])[] } {
   const opened: string[][] = [];
