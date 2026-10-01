@@ -63,13 +63,24 @@ export function readDeclarations(directory, applying, before, Refused) {
   return declarations;
 }
 
-/** The rows each declaration's predicate picks before the upgrade, in the snapshot's form. */
+/**
+ * The rows each declaration's predicate picks before the upgrade, in the
+ * snapshot's form. A predicate is a migration's own SQL, read as the owner, so
+ * it is read in a read-only transaction one command at a time: a predicate that
+ * smuggled in a write or a second statement is refused, never run.
+ */
 export async function declaredRows(admin, declarations) {
   for (const declaration of declarations) {
     // oxlint-disable-next-line no-await-in-loop
-    const rows = await admin.execute(
-      `select to_jsonb(t)::text as row from ${quote(declaration.schema)}.${quote(declaration.relname)} t
-        where (${declaration.where})`,
+    const rows = await admin.transaction(
+      async (execute) => {
+        await execute('set transaction read only');
+        return await execute(
+          `select to_jsonb(t)::text as row from ${quote(declaration.schema)}.${quote(declaration.relname)} t
+            where (${declaration.where})`,
+        );
+      },
+      { oneCommandEach: true },
     );
     declaration.picks = new Map();
     for (const { row } of rows) declaration.picks.set(row, (declaration.picks.get(row) ?? 0) + 1);
