@@ -621,8 +621,12 @@ a fresh agent actor of theirs, with no lease and no run
 `credential:write` and is always the caller's own. Its scope is the ticked
 `collection:action` keys, each one the caller holds at business scope when it
 is issued, by the grant check's own walk (`CREDENTIAL_SCOPE_WIDENS` otherwise),
-and never decide, share or manage (`CREDENTIAL_ACTION_EXCLUDED`). Its expiry is
-at most `CREDENTIAL_MAX_DAYS` (90) from issue, set in that one constant.
+and never decide, share or manage (`CREDENTIAL_ACTION_EXCLUDED`). A scope
+holding a money key (C59's set, `isMoneyKey`) is issued only when the issuer's
+sign-in meets the money step-up a money command of their own would
+(`refuseStaleMoneyStep`, after the grant walk), otherwise `STEP_UP_REQUIRED`:
+the agent using it is not asked again. Its expiry is at most
+`CREDENTIAL_MAX_DAYS` (90) from issue, set in that one constant.
 
 The secret is derived as a delegation's credential is, under the delegation
 credential key, in its own domain (`AGENT_CREDENTIAL_DOMAIN`), so it can never

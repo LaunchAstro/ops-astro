@@ -1575,7 +1575,9 @@ A command whose declared key is in the money set (every `billing` key,
 factor verified in the last 60 minutes, a client a sign-in in the last 60
 minutes, or it is refused `STEP_UP_REQUIRED` 403. While the business setting
 `money_step_up_required` is `false` a live session is enough; only
-`settings:manage` switches it, through `settings.set_money_step_up`.
+`settings:manage` switches it, through `settings.set_money_step_up`. An agent
+credential whose scope holds a money key is judged the same way when it is
+issued (`credential.issue`), since the agent using it is not asked again.
 
 A person's own factor has three routes on the person prefix only. Each is
 served only when the composition root passes a `factors` provider
@@ -1865,6 +1867,8 @@ and never an agent's (an agent is refused `DELEGATION_EXCLUDES_OPERATION`):
   `{ operationId, scope, expiresAt, purpose }` and issues a credential of the
   caller's own. `scope` is 1 to 32 distinct `{ collection, action }` keys, each
   held by the caller at business scope (otherwise `CREDENTIAL_SCOPE_WIDENS` 403) and never `decide`, `share` or `manage` (`CREDENTIAL_ACTION_EXCLUDED`
+  403). A scope holding a money key (C59's set) is issued only on a sign-in
+  inside the money window, as a money command is (otherwise `STEP_UP_REQUIRED`
   403). `expiresAt` is an ISO 8601 UTC time after now and at most 90 days out.
   `purpose` is 1 to 200 characters. Its detail is
   `{ credentialId, agentActorId, scope, expiresAt, credential }`.
