@@ -116,12 +116,9 @@ export type CommandName =
   | 'budget.record_outcome'
   // A person closes an unknown hold at an amount, with a reason (T3c).
   | 'budget.write_off'
-  // C80, the first controlled live website correction. The request is run
-  // work an agent may ask for inside its delegation; the approval is a person's
-  // decision on the exact version; the approver is a setting a named command
-  // owns, like the two above, because it decides who must agree before a live
-  // effect. The publish, the revert and `receipt written` are system writes
-  // under the worker lease, so none of them is a row here.
+  // C80's live correction: an agent may request it inside its delegation, a
+  // person decides the exact version, a named setting names who; the publish,
+  // revert and receipt are system writes under the worker lease, never rows here.
   | 'live_correction.request'
   | 'live_correction.decide'
   | 'settings.set_live_correction_approver'
@@ -789,14 +786,11 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     untargetedIdentifiers: [],
   }),
-
-  // C80. Both are asked at the correction's party (`prepare.ts`,
-  // TARGET_LOOKUPS): the request at the party it names, the approval at the
-  // party of the correction it names, so a party-scoped grant on one client's
-  // site reaches no other client's correction. The request is `run:write`, in
-  // an agent's reach inside its delegation; the approval is `gate:decide`,
-  // never an agent's (contract 2.3 to 2.6), and only the configured approver
-  // who is not the requester passes the handler.
+  // C80, both asked at the correction's party (`prepare.ts`, TARGET_LOOKUPS), so
+  // one client's grant reaches no other client's correction. The request is
+  // `run:write`, an agent's inside its delegation; the approval `gate:decide`,
+  // never an agent's (contract 2.3 to 2.6); the handler admits only the
+  // configured approver who is not the requester.
   declare('live_correction.request', 'write', {
     collection: RUN_COLLECTION,
     targetsExistingRecord: false,

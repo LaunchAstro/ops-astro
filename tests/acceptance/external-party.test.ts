@@ -21,9 +21,8 @@ import {
   TEAM_NOTE,
   TITLE,
 } from './external-party-records.ts';
-import { childProbe } from './role-case-bodies.ts';
+import { childProbe, taskBodyContext } from './role-case-bodies.ts';
 import { createPositiveBody } from './role-case-positive-body.ts';
-import { seedLiveCorrection } from './c80-bodies.ts';
 import {
   bearer,
   call,
@@ -221,11 +220,8 @@ describe.skipIf(serverUrl === undefined)('R4: the external party over HTTP', () 
     // body check's. Each is sent as it is (against a sibling the admin made, or
     // the business) and again aimed at the shared record itself.
     const positiveBody = createPositiveBody({
-      alphaTaskId: shared,
+      ...taskBodyContext(world, shared),
       assigneePersonId: world.ada.personId as string,
-      adminPersonId: world.ada.personId as string,
-      seedCorrection: async () =>
-        await seedLiveCorrection(world.db.app, world.alpha, shared, world.mia),
       asPerson: async (name, body) =>
         await as(world.ada, name, { operationId: randomUUID(), ...body }),
       freshTask: async (title) => {

@@ -35,11 +35,10 @@ import {
   type Answer,
   type Caller,
 } from './world.ts';
-import { PROPOSAL, childProbe, type Task } from './role-case-bodies.ts';
+import { PROPOSAL, childProbe, taskBodyContext, type Task } from './role-case-bodies.ts';
 import { createPositiveBody } from './role-case-positive-body.ts';
 import { plainRows, seedFixtureClients } from './role-case-clients.ts';
 import { pairFor, targetKeyOf, type Harness } from './role-case-harness-shape.ts';
-import { seedLiveCorrection } from './c80-bodies.ts';
 
 export { pairFor, targetKeyOf, type Harness } from './role-case-harness-shape.ts';
 
@@ -284,11 +283,8 @@ export async function createHarness(part: string): Promise<Harness> {
     freshTask,
     probeBody,
     positiveBody: createPositiveBody({
-      alphaTaskId: alphaTask.id,
+      ...taskBodyContext(world, alphaTask.id),
       assigneePersonId: world.mia.personId as string,
-      adminPersonId: world.ada.personId as string,
-      seedCorrection: async () =>
-        await seedLiveCorrection(world.db.app, world.alpha, alphaTask.id, world.mia),
       asPerson: async (name, body) => await asPerson(name, body),
       asAgent,
       freshTask,
