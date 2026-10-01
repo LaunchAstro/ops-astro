@@ -218,9 +218,9 @@ const read = (...statements: string[]) => {
   return shapeOf(log.entries);
 };
 
-describe('the shape reader catches each thing it is for', () => {
-  const local = `select set_config('app.business_id', $1, true)`;
+const local = `select set_config('app.business_id', $1, true)`;
 
+describe('the shape reader catches each thing it is for', () => {
   it('reads a clean transaction as clean', () => {
     expect(read('begin', local, 'select 1', 'commit')).toMatchObject({
       transactions: 1,
@@ -266,7 +266,9 @@ describe('the shape reader catches each thing it is for', () => {
     expect(shape.afterBegin).toStrictEqual(['select 1']);
     expect(shape.sessionWide).toHaveLength(2);
   });
+});
 
+describe('the shape reader catches each thing it is for', () => {
   it('reports schema changes, opaque ones included', () => {
     const shape = read(
       'begin',

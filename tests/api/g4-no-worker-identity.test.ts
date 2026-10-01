@@ -30,7 +30,16 @@ const OTHERS = [
   'ALL /*',
   'ALL /api/*',
   'GET /api/health',
+  // C81: the published legal documents, public by design.
+  'GET /api/public/b/:businessKey/legal/:document',
   'GET /api/sign-in',
+  // C59 and C58: the person's own factor and sessions, each admitted as that person.
+  'POST /api/b/:businessKey/account/factor/enrol',
+  'POST /api/b/:businessKey/account/factor/remove',
+  'POST /api/b/:businessKey/account/factor/verify',
+  'POST /api/b/:businessKey/account/sessions/end-others',
+  'POST /api/b/:businessKey/account/sessions/list',
+  'POST /api/b/:businessKey/account/sessions/sign-out',
   'POST /api/session',
   'POST /api/session/end',
 ];
@@ -63,7 +72,8 @@ it("G4: every route the API serves is a person's or an agent's command, or one o
   const routes = [...new Set(app.routes.map((route) => `${route.method} ${route.path}`))];
   expect(routes.filter((route) => COMMAND.test(route)).length).toBeGreaterThan(40);
   expect(routes.filter((route) => !COMMAND.test(route)).toSorted()).toStrictEqual(OTHERS);
-  expect(routes.filter((route) => /worker|service/iu.test(route))).toStrictEqual([]);
+  // A name that starts with either word; `privacy/set_overseas_service` (C81) is a command's own name.
+  expect(routes.filter((route) => /(?<![a-z_])(?:worker|service)/iu.test(route))).toStrictEqual([]);
 });
 
 it('G4: the function entry reads no setting that could hold a worker identity', () => {

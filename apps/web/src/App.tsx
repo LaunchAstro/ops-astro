@@ -41,12 +41,11 @@ export interface AppProps {
 export function App(props: AppProps): ReactElement {
   const [session, setSession] = useState<Session | null>(props.sessions.session);
 
-  // The root address is not a screen and it is not a mistake either: it is how
-  // a person arrives. It leads to the board when there is a session and to
-  // sign-in when there is not, and the address bar is corrected to say so, so
-  // a reload lands on the same place a link would.
-  // A legacy address is answered with its canonical one the same way, so the
-  // address bar, the rail and a remembered interruption never hold a legacy one.
+  // The root address is not a screen and it is not a mistake either: it is how a person arrives. It
+  // leads to the board when there is a session and to sign-in when there is not, and the address
+  // bar is corrected to say so, so a reload lands on the same place a link would. A legacy address
+  // is answered with its canonical one the same way, so the address bar, the rail and a remembered
+  // interruption never hold a legacy one.
   const here =
     canonicalOf(props.path) ??
     (props.path === '/'
@@ -64,6 +63,8 @@ export function App(props: AppProps): ReactElement {
     readonly held: Interruption;
     readonly offer: HeldOffer | null;
   } | null>(null);
+  // The person signed out here, so sign-in says their unsaved edit went with it (C58).
+  const [signedOut, setSignedOut] = useState(false);
 
   const onSignedIn = useCallback(
     (next: Session) => {
@@ -73,17 +74,16 @@ export function App(props: AppProps): ReactElement {
       props.sessions.set(next);
       setSession(next);
       setNotice(null);
+      setSignedOut(false);
       if (back === null) {
         props.navigate(pathTo('agency:projects-board'));
         return;
       }
-      // **The held address only means anything in the business it was held
-      // in.** A task key is business-local, so replaying the string under a
-      // different business does not reopen the task the person was promised:
-      // it refuses, or -- worse, because it looks like success -- it draws an
-      // unrelated record that happens to share the key. A deliberate change of
-      // business is not a mistake, so it is not refused; it goes to that
-      // business's board and says why.
+      // **The held address only means anything in the business it was held in.** A task key is
+      // business-local, so replaying the string under a different business does not reopen the task
+      // the person was promised: it refuses, or -- worse, because it looks like success -- it draws
+      // an unrelated record that happens to share the key. A deliberate change of business is not a
+      // mistake, so it is not refused; it goes to that business's board and says why.
       if (back.businessKey === next.businessKey) {
         props.navigate(back.address);
         return;
@@ -106,34 +106,33 @@ export function App(props: AppProps): ReactElement {
   );
 
   const onSignOut = useCallback(() => {
-    const sessionId = props.sessions.session?.sessionId;
+    const { sessionId, businessKey } = props.sessions.session ?? {};
     void signOut({
       apiOrigin: props.apiOrigin,
       fetch: props.fetch,
       ...(sessionId === undefined ? {} : { sessionId }),
+      ...(businessKey === undefined ? {} : { businessKey }),
     });
     props.sessions.clear();
     setSession(null);
     setNotice(null);
+    setSignedOut(true);
     props.navigate(pathTo('agency:sign-in'));
   }, [props]);
 
-  // **The session ending is a fact about the application, not about a screen.**
-  // The client raises it once, from wherever the refusal arrived, and this is
-  // the only handler. Held in a ref rather than closed over by the client's
-  // memo: the address changes on every navigation and the client must not,
-  // because a new client is a new read of everything on the page.
+  // **The session ending is a fact about the application, not about a screen.** The client raises
+  // it once, from wherever the refusal arrived, and this is the only handler. Held in a ref rather
+  // than closed over by the client's memo: the address changes on every navigation and the client
+  // must not, because a new client is a new read of everything on the page.
   //
-  // **A refusal belongs to the session that made the request.** A client keeps
-  // the bearer it was built with, and a call can be answered long after that
-  // bearer stopped being anybody's session: two reads leave together, the first
-  // 401 sends the person to sign-in, they sign in, and then the second arrives.
-  // Acting on it would clear the session that replaced the one it was refusing
-  // — signing the person out of a session no server ever refused. So the
-  // session the client was built with comes back with the notification and the
-  // whole action, not only the storage clear, is gated on it still being the
-  // one in hand. Identity is the test: `setSession` is the only way a session
-  // gets here, and every sign-in mints a new object.
+  // **A refusal belongs to the session that made the request.** A client keeps the bearer it was
+  // built with, and a call can be answered long after that bearer stopped being anybody's session:
+  // two reads leave together, the first 401 sends the person to sign-in, they sign in, and then the
+  // second arrives. Acting on it would clear the session that replaced the one it was refusing —
+  // signing the person out of a session no server ever refused. So the session the client was built
+  // with comes back with the notification and the whole action, not only the storage clear, is
+  // gated on it still being the one in hand. Identity is the test: `setSession` is the only way a
+  // session gets here, and every sign-in mints a new object.
   const endedRef = useRef<(from: Session, refusal: WireRefusal) => void>(() => {});
   const hereRef = useRef(here);
   hereRef.current = here;
@@ -194,6 +193,7 @@ export function App(props: AppProps): ReactElement {
       fetch={props.fetch}
       onSignedIn={onSignedIn}
       ended={props.sessions.interruption}
+      signedOut={signedOut}
     />
   );
 

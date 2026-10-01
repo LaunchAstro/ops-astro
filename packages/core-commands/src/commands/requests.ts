@@ -24,6 +24,7 @@
 
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import { OPERATION_ID } from './register-store.ts';
+import type { PrivacyRequest } from './requests-privacy.ts';
 
 export type FieldValues = Readonly<Record<string, unknown>>;
 
@@ -208,6 +209,13 @@ export type CommandRequest =
       readonly value: boolean;
       readonly expectedRevision?: number;
     } & Envelope)
+  | ({
+      readonly command: 'settings.set_money_step_up';
+      readonly value: boolean;
+      readonly expectedRevision?: number;
+    } & Envelope)
+  // C32, C55, C58, C81, API-2 and S0-5, in their own file.
+  | PrivacyRequest<Envelope>
   // The support controls. Revocation names the row it revokes; the time is the
   // server's. Cancel and restart name the task and the lineage on it, so the
   // task is where the work-control authority is asked and the lineage is

@@ -8,6 +8,8 @@
     "tests/ci/staging-archive-restores-guards.test.ts",
     "tests/ci/staging-backup-reach-live.test.ts",
     "tests/ci/staging-containment.test.ts",
-    "tests/ci/staging-egress.test.ts"
+    "tests/ci/staging-egress.test.ts",
+    "tests/operations/s0-5-client-lock.test.ts",
+    "tests/operations/s0-5-lock-order.test.ts"
   ]
 }

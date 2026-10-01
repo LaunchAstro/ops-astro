@@ -181,7 +181,7 @@ describe.skipIf(serverUrl === undefined)(
     beforeAll(async () => {
       fixture = await createApiFixture('t3e1s');
       api = fixture.compose(undefined, readIdentity(ROOT));
-      personToken = await tokenFor(fixture.member.presented.subject);
+      personToken = await tokenFor(fixture.member.presented.subject, { secondFactor: true });
       agentToken = await tokenFor(fixture.agent.subject);
       await fixture.db.admin.execute(
         'update public.budget_caps set limit_minor = 1000000000 where business_id = $1',

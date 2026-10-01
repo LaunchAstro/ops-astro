@@ -110,6 +110,17 @@ export const BUSINESS_SETTINGS: readonly SettingDefinition[] = [
     visibilityClass: 'shared',
   },
   {
+    // C59: the money step-up, on by default (the owner, 28 September 2026).
+    // Owned by an operation for the reason the two above are: it changes what
+    // must be true before money moves.
+    key: 'money_step_up_required',
+    label: 'Money actions need a recent second-factor sign-in',
+    valueType: 'boolean',
+    value: true,
+    writeMode: 'operation',
+    owningOperations: ['settings.set_money_step_up'],
+  },
+  {
     key: 'retention_window_days',
     label: 'Retention window (days)',
     valueType: 'numeric',

@@ -25,8 +25,13 @@
 // the bug would live in the client.
 
 import type { PresetField } from '../../../core-records/src/index.ts';
+import type { BreachNoticeOperands } from './operations.ts';
 import type {
+  AccessReadResult,
+  BreachNoticesResult,
+  ClientListResult,
   CapabilitiesResult,
+  OperationsReadResult,
   InboxCountResult,
   InboxReadResult,
   PersonListResult,
@@ -105,6 +110,16 @@ export interface ReadOperands {
   readonly 'session.capabilities': NoOperands;
   /** What an observed effect came from, asked on its attempt (T2c2). */
   readonly 'task.receipt': { readonly attemptId: string };
+  /** Who may do what here: Team, Clients and Agents with their previews (C32). */
+  readonly 'access.read': NoOperands;
+  readonly 'client.list': NoOperands;
+  /** What needs the operator's eye: privacy incidents first (C55). */
+  readonly 'operations.read': NoOperands;
+  /**
+   * The breach drill's notices from the published runbook (C81), for the
+   * recipients named. It writes nothing and sends nothing, so it is a read.
+   */
+  readonly 'privacy.draft_breach_notices': BreachNoticeOperands;
   /** The caller's own inbox items, each with its access derived now (INB-1d). */
   readonly 'inbox.read': NoOperands;
   /** The caller's owed count: the counted entries of `inbox.read`. */
@@ -137,6 +152,10 @@ export type ReadResult =
   | { readonly ok: true; readonly execution: TaskExecution }
   | { readonly ok: true; readonly receipt: Receipt }
   | CapabilitiesResult
+  | AccessReadResult
+  | ClientListResult
+  | OperationsReadResult
+  | BreachNoticesResult
   | InboxReadResult
   | InboxCountResult
   | { readonly ok: true; readonly unattended: readonly UnattendedEntry[] };
