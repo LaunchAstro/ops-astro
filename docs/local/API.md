@@ -1716,9 +1716,14 @@ audit event only when it refuses; the act's own event is written after the
 call, beside the record it changes, and carries the sent code's id as its
 `operation_id`; an answer other than a wrong code is recorded as answered
 there too, so a good code stops counting once it is answered. GoTrue served under a path (`/auth/v1`) is called
-under that path. The record step locks the person's own row (`for no key
-update`), so two tabs enrolling at once queue: the later enrolment replaces the
-earlier unverified one, and one live factor remains.
+under that path. The record step locks the login (a transaction-scoped
+advisory lock, `second-factor-subject:` and its subject's digest), then the
+person's own row (`for no key update`), so two tabs enrolling at once queue: the
+later enrolment replaces the earlier unverified one, and one live factor
+remains. Two businesses completing enrolments for one login at once queue too:
+the later is refused `FACTOR_ALREADY_ENROLLED`, and the factor the provider has
+just verified for it is removed there, best effort, so the login holds one
+verified factor.
 
 `PROVIDER_ANSWER_INVALID` names only the kind of fault (`malformed`,
 `oversized`, `slow`, `unreachable` or `refused`), never the provider's words.
