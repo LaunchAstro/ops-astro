@@ -51,7 +51,11 @@ export type BrokerSettings =
     }
   | { readonly kind: 'invalid'; readonly problem: string };
 
-const OPERATIONS = catalogue([REPLAY_COMPOSE, CONVERSATION_ANSWER]);
+/** Every operation the broker serves, in code (WF-7's research call among them). */
+export const BROKER_OPERATIONS: ReturnType<typeof catalogue> = catalogue([
+  REPLAY_COMPOSE,
+  CONVERSATION_ANSWER,
+]);
 const PROVIDERS = new Map([['replay', { build: replayAdapter, price: replayCostMinor }]]);
 
 const REACHES: ReadonlySet<string> = new Set(['local', 'cloud']);
@@ -149,7 +153,7 @@ export async function startModelBroker(
   const custody = await startCustody(settings.custody);
   const broker = {
     custody,
-    operations: OPERATIONS,
+    operations: BROKER_OPERATIONS,
     providers: PROVIDERS,
     routes: settings.routes,
     installation: settings.installation,

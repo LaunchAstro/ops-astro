@@ -42,3 +42,4 @@ export {
   type ReplayProvider,
   type SeenRequest,
 } from './replay.ts';
+export { RESEARCH_COMPOSE } from './research.ts';
