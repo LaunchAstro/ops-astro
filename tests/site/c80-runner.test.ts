@@ -249,7 +249,7 @@ describe.skipIf(serverUrl === undefined)('C80 revert runner', () => {
     const ports = doubles();
     await publish(id, ports);
     expect(await revert(id, ports)).toMatchObject({ kind: 'recorded', state: 'reverted' });
-    expect([ports.seen.reverted, await w.receiptsOf(id)]).toEqual([1, 2]);
+    expect([ports.seen.reverted, await w.receiptsOf(id)]).toEqual([1, 3]);
     const observed = await receipt(id, 'revert');
     expect(observed['published_revision']).toEqual({ observed: 'rev-3' });
     expect(Number(observed['revert_interval_ms']?.observed)).toBeGreaterThan(0);
@@ -282,6 +282,6 @@ describe.skipIf(serverUrl === undefined)('C80 revert runner', () => {
         Promise.resolve({ kind: 'ok', value: { revision: 'rev-2', served: true } }),
     });
     expect(await revert(id, pending)).toMatchObject({ kind: 'recorded', state: 'live' });
-    expect(await w.receiptsOf(id)).toBe(2);
+    expect(await w.receiptsOf(id)).toBe(3);
   });
 });

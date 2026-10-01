@@ -9,10 +9,13 @@
 // reverts is the publish the register holds, and the provider's acceptance is
 // registered the moment it answers, with the time it was decided. A revert the
 // register holds is observed again and timed from that decision, never sent
-// again; an unknown revert the register does not hold waits on a person.
+// again; an unknown revert the register does not hold waits on a person. So
+// that a revert whose answer never reached the register is never sent blind
+// again, its receipt says unknown under the lease before it is sent.
 
 import {
   readCorrectionForRun,
+  recordObservedResult,
   type Database,
   type LiveCorrection,
   type ReceiptOutcome,
@@ -132,6 +135,20 @@ function revertPorts(
   };
 }
 
+/**
+ * The revert's receipt, unknown, under the lease before an unregistered revert
+ * is sent: a lease or worker lost before its answer is registered leaves the
+ * next run waiting on a person. A later receipt or the register overrides it.
+ */
+async function unknownUntilAnswered(db: Database, run: CorrectionRun, correctionId: string) {
+  const observations = { effect_operation_id: seen(correctionEffectId(correctionId, 'revert')) };
+  return await db.withBusiness(
+    run.business,
+    async (tx) =>
+      await recordObservedResult(tx, { ...run, step: 'revert', outcome: 'unknown', observations }),
+  );
+}
+
 /** Revert a live correction forward, observed and timed (case 8). */
 export async function runLiveRevert(
   db: Database,
@@ -145,6 +162,10 @@ export async function runLiveRevert(
   if (reverted === undefined && held.leftUnknown) return refused('OUTCOME_UNKNOWN');
   const unfenced = await pageRefused(correction, ports);
   if (unfenced !== undefined) return unfenced;
+  if (reverted === undefined) {
+    const marked = await unknownUntilAnswered(db, run, correction.id);
+    if (!marked.ok) return refused(marked.code);
+  }
   const outcome = await revertCorrection(
     { publishedRevision: published.revision, target: targetOf(correction), seam: correction.seam },
     revertPorts(db, run, { correction, ...(reverted ? { reverted } : {}) }, ports),

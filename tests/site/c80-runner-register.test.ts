@@ -188,7 +188,7 @@ describe.skipIf(serverUrl === undefined)('C80 revert on the effect register', ()
     expect(await revert(id, lost)).toMatchObject({ kind: 'recorded', state: 'live' });
     expect(lost.seen.raised).toEqual(['PROVIDER_TIMEOUT']);
     expect(await revert(id, lost)).toEqual({ kind: 'refused', code: 'OUTCOME_UNKNOWN' });
-    expect([lost.seen.reverted, await w.receiptsOf(id)]).toEqual([1, 2]);
+    expect([lost.seen.reverted, await w.receiptsOf(id)]).toEqual([1, 3]);
   });
 });
 

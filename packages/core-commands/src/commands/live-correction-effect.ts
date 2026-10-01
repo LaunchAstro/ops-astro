@@ -22,7 +22,7 @@
 import { randomUUID } from 'node:crypto';
 import { payloadDigest } from '../../../core-digest/src/index.ts';
 import type { Database, LiveCorrection, TenantQuery } from '../../../core-records/src/index.ts';
-import type { Accepted } from '../../../core-connectors/src/index.ts';
+import { dispatchToken, type Accepted } from '../../../core-connectors/src/index.ts';
 import { effectOperationId } from '../../../core-wire/src/index.ts';
 
 export type EffectStep = 'publish' | 'revert';
@@ -79,29 +79,34 @@ export async function readCorrectionEffect(
   const revision = text(detail?.['revision']);
   const deploymentId = text(detail?.['deploymentId']);
   if (revision === undefined || deploymentId === undefined) return undefined;
-  const dispatchToken = text(detail?.['dispatchToken']);
+  const token = text(detail?.['dispatchToken']);
   const decidedAt = text(detail?.['decidedAt']);
   return {
     operationId,
     revision,
     deploymentId,
-    ...(dispatchToken === undefined ? {} : { dispatchToken }),
+    ...(token === undefined ? {} : { dispatchToken: token }),
     ...(decidedAt === undefined ? {} : { decidedAt }),
   };
 }
 
-/** The accepted publish the register holds, rebuilt for observing it again. */
+/**
+ * The accepted publish the register holds, rebuilt for observing it again; or
+ * nothing when the entry names a token other than the one this correction's
+ * approved version dispatches with, so it is not this publish's acceptance.
+ */
 export function acceptedOf(
-  correction: Pick<LiveCorrection, 'pageUrl'>,
+  correction: Pick<LiveCorrection, 'pageUrl' | 'versionDigest'>,
   effect: RegisteredEffect,
 ): Accepted | undefined {
-  if (effect.dispatchToken === undefined) return undefined;
+  const sent = dispatchToken('site.publish', correction.versionDigest);
+  if (effect.dispatchToken !== sent) return undefined;
   return {
     state: 'accepted',
     revision: effect.revision,
     deploymentId: effect.deploymentId,
     liveUrl: correction.pageUrl,
-    dispatchToken: effect.dispatchToken,
+    dispatchToken: sent,
   };
 }
 
