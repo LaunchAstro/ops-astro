@@ -115,14 +115,16 @@ export const IN_FLIGHT_GRACE_MS = 60_000;
  * Emails in flight for this business: asks younger than the bound whose item's
  * last email observation is still `asked`. One email is one provider call: a
  * daily batch's asks share their person and their transaction's `now()`, so
- * they count once; an email sent at once covers one item.
+ * they count once; an email sent at once covers one item. A team
+ * invitation's email (C39-T) is one call per enrolment token, counted the
+ * same way under the same ceiling.
  */
 function emailsInFlight(boundMs: number): (tx: TenantQuery) => Promise<number> {
   return async (tx) => {
     const [flight] = await tx.query<{ readonly n: number }>(
-      `select count(distinct case when last.evidence like 'batch:daily%'
+      `select (select count(distinct case when last.evidence like 'batch:daily%'
                                   then 'batch:' || last.recipient || ':' || last.observed_at::text
-                                  else 'item:' || last.item_id::text end)::int as n
+                                  else 'item:' || last.item_id::text end)
          from (select distinct on (a.item_id) a.item_id, a.state, a.evidence, a.observed_at,
                       i.recipient_person_id::text as recipient
                  from public.inbox_delivery_attempts a
@@ -130,7 +132,13 @@ function emailsInFlight(boundMs: number): (tx: TenantQuery) => Promise<number> {
                 where a.business_id = $1 and a.channel = 'email'
                   and a.observed_at > now() - make_interval(secs => $2::double precision / 1000)
                 order by a.item_id, a.observed_seq desc) last
-        where last.state = 'asked'`,
+        where last.state = 'asked')::int
+       + (select count(*)
+            from (select distinct on (token_id) state from public.invitation_delivery_attempts
+                   where business_id = $1
+                     and observed_at > now() - make_interval(secs => $2::double precision / 1000)
+                   order by token_id, observed_seq desc) invited
+           where invited.state = 'asked')::int as n`,
       [tx.businessId, boundMs],
     );
     return flight?.n ?? 0;

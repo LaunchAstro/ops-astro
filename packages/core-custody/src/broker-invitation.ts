@@ -9,30 +9,36 @@
 //    send has answered yet. The acts are `invitation.create` and
 //    `invitation.resend` as the audit chain holds them applied, so a row no
 //    person's act made, or a refused act, sends nothing; each act sends once.
-//    Then a fresh enrolment token is minted and kept as its SHA-256 alone,
-//    and the attempt is recorded `asked` against it. A refusal writes nothing.
+//    Then the link's token is found (below) and kept as its SHA-256 alone,
+//    and, with room under `email.send`'s one ceiling, the attempt is
+//    recorded `asked` against it. A refusal writes nothing.
 // 2. Send, through custody, the adapter's message: the address the invitation
 //    names and one link, the enrolment page carrying the token.
 // 3. Record what came back as the attempt's next observation, read as the
 //    inbox send reads it; an answer carrying the token is malformed. Nothing
 //    returned or written holds the token.
 //
-// The concurrency ceiling is the catalogued one, counted over invitation
-// attempts in flight under a lock of their own.
+// The token (piece P2) is the login provider's invite link's hashed token:
+// generated through custody under the catalogued `auth.invite_link` when the
+// broker catalogues it (`broker-auth-link.ts`), or handed over by the
+// provider's Send Email hook (`broker-auth-email.ts`), whose message id is
+// then the `asked` evidence, so a replayed message is refused under the
+// invitation's lock. A deployment with no login provider catalogued mints
+// its own. A failed generation sends and keeps nothing.
 
 import { createHash, randomBytes } from 'node:crypto';
 import {
-  hasRoom,
   isUuid,
   type BusinessId,
   type Database,
   type TenantQuery,
 } from '../../core-records/src/index.ts';
 import type { ModelOperation } from '../../core-connectors/src/index.ts';
-import { observed, sendRoute } from './broker-email-route.ts';
+import { inviteToken, linkRoute, type LinkRoute } from './broker-auth-link.ts';
+import { observed, sendRoute, type Routed } from './broker-email-route.ts';
 import type { MailSettings } from './broker-email.ts';
 import type { Broker } from './broker-types.ts';
-import type { DeliverRefusal } from './email-class.ts';
+import { roomFor, type DeliverRefusal } from './email-class.ts';
 
 /** The acts an invitation's send answers, one email each. */
 export const INVITATION_SEND_ACTS: readonly string[] = ['invitation.create', 'invitation.resend'];
@@ -41,17 +47,27 @@ export const INVITATION_SEND_ACTS: readonly string[] = ['invitation.create', 'in
 export const ENROL_PATH = '/enrol/';
 
 export type InvitationSendRefusal =
-  DeliverRefusal | 'INVITATION_NOT_PENDING' | 'NO_SEND_ACT' | 'EMAIL_AT_CEILING';
+  DeliverRefusal | 'INVITATION_NOT_PENDING' | 'NO_SEND_ACT' | 'EMAIL_AT_CEILING' | 'REPLAYED';
 
 export type InvitationSendResult =
   | { readonly ok: true; readonly attemptId: string; readonly state: 'accepted' }
   | { readonly ok: false; readonly code: InvitationSendRefusal }
+  | { readonly ok: false; readonly code: 'AUTH_LINK_FAILED'; readonly fault: string }
   | {
       readonly ok: false;
       readonly code: 'EMAIL_FAILED';
       readonly attemptId: string;
       readonly fault: string;
     };
+
+/** A token the login provider's hook handed over, and the hook message's id. */
+export interface HookedToken {
+  readonly token: string;
+  readonly hookId: string;
+}
+
+/** Where the link's token comes from: the hook, the login provider, or minted here. */
+type TokenFrom = HookedToken | { readonly link: LinkRoute | undefined };
 
 interface Asked {
   readonly invitationId: string;
@@ -60,21 +76,12 @@ interface Asked {
   readonly token: string;
 }
 
-async function inFlight(tx: TenantQuery): Promise<number> {
-  const [row] = await tx.query<{ n: number }>(
-    `select count(*)::int as n from (
-       select distinct on (token_id) state from invitation_delivery_attempts
-        where business_id = $1 order by token_id, observed_seq desc) last
-      where state = 'asked'`,
-    [tx.businessId],
-  );
-  return row?.n ?? 0;
-}
+type AskFailed = InvitationSendRefusal | { readonly fault: string };
 
 async function recordAttempt(
   tx: TenantQuery,
   asked: Pick<Asked, 'invitationId' | 'tokenId'>,
-  seen: { readonly state: string; readonly evidence?: string },
+  seen: { readonly state: string; readonly evidence?: string | null },
 ): Promise<string> {
   const [row] = await tx.query<{ id: string }>(
     `insert into invitation_delivery_attempts
@@ -85,12 +92,12 @@ async function recordAttempt(
   return row?.id ?? '';
 }
 
-/** Step 1: every check, the token's hash and the `asked` observation. */
-async function ask(
+/** The act checks under the invitation's lock: its address, or why nothing may send. */
+async function pendingAct(
   tx: TenantQuery,
   invitationId: string,
-  operation: ModelOperation,
-): Promise<Asked | InvitationSendRefusal> {
+  hookId: string | undefined,
+): Promise<{ readonly address: string; readonly expires: Date } | InvitationSendRefusal> {
   if (!isUuid(invitationId)) return 'INVITATION_NOT_PENDING';
   const [invitation] = await tx.query<{ address: string; expires_at: Date }>(
     `select address, expires_at from invitations
@@ -99,49 +106,59 @@ async function ask(
     [tx.businessId, invitationId],
   );
   if (invitation === undefined) return 'INVITATION_NOT_PENDING';
-  const [tally] = await tx.query<{ acts: number; sends: number }>(
+  const [tally] = await tx.query<{ acts: number; sends: number; replayed: boolean }>(
     `select (select count(*) from audit_events
               where business_id = $1 and subject_record_id = $2 and outcome = 'applied'
                 and command = any($3::text[]))::int as acts,
             (select count(*) from enrolment_tokens
-              where business_id = $1 and invitation_id = $2)::int as sends`,
-    [tx.businessId, invitationId, INVITATION_SEND_ACTS],
+              where business_id = $1 and invitation_id = $2)::int as sends,
+            exists (select 1 from invitation_delivery_attempts
+                     where business_id = $1 and evidence = $4) as replayed`,
+    [tx.businessId, invitationId, INVITATION_SEND_ACTS, `hook:${hookId ?? ''}`],
   );
+  if (hookId !== undefined && tally?.replayed === true) return 'REPLAYED';
   if ((tally?.sends ?? 0) >= (tally?.acts ?? 0)) return 'NO_SEND_ACT';
-  const limit = { name: `invitation-email:${operation.key}`, limit: operation.concurrency };
-  if (!(await hasRoom(tx, [{ ...limit, count: inFlight }]))) return 'EMAIL_AT_CEILING';
-  const token = randomBytes(32).toString('base64url');
+  return { address: invitation.address, expires: invitation.expires_at };
+}
+
+/** Step 1: every check, the token's hash and the `asked` observation. */
+async function ask(
+  tx: TenantQuery,
+  invitationId: string,
+  operation: ModelOperation,
+  from: TokenFrom,
+): Promise<Asked | AskFailed> {
+  const hookId = 'hookId' in from ? from.hookId : undefined;
+  const act = await pendingAct(tx, invitationId, hookId);
+  if (typeof act === 'string') return act;
+  let token = randomBytes(32).toString('base64url');
+  if ('token' in from) token = from.token;
+  else if (from.link !== undefined) {
+    const made = await inviteToken(from.link, act.address);
+    if (!made.ok) return { fault: made.fault };
+    token = made.token;
+  }
+  if (!(await roomFor(tx, operation)())) return 'EMAIL_AT_CEILING';
   const [minted] = await tx.query<{ id: string }>(
     `insert into enrolment_tokens (business_id, id, invitation_id, token_hash, expires_at)
      values ($1, gen_random_uuid(), $2, $3, $4) returning id`,
-    [
-      tx.businessId,
-      invitationId,
-      createHash('sha256').update(token).digest('hex'),
-      invitation.expires_at,
-    ],
+    [tx.businessId, invitationId, createHash('sha256').update(token).digest('hex'), act.expires],
   );
-  const asked = { invitationId, tokenId: minted?.id ?? '', to: invitation.address, token };
-  await recordAttempt(tx, asked, { state: 'asked' });
+  const asked = { invitationId, tokenId: minted?.id ?? '', to: act.address, token };
+  const evidence = hookId === undefined ? null : `hook:${hookId}`;
+  await recordAttempt(tx, asked, { state: 'asked', evidence });
   return asked;
 }
 
-/** Email an invitation's link after an act that asked for it, through the broker only. */
-export async function sendInvitation(
+/** Steps 2 and 3: the message through custody, and what came back as the next observation. */
+async function deliver(
   database: Database,
   businessId: BusinessId,
-  invitationId: string,
   broker: Broker,
-  mail: MailSettings,
+  { operation, route, adapter }: Routed,
+  sent: { readonly mail: MailSettings; readonly asked: Asked },
 ): Promise<InvitationSendResult> {
-  const found = sendRoute(broker, mail);
-  if (typeof found === 'string') return { ok: false, code: found };
-  const { operation, route, adapter } = found;
-  const asked = await database.withBusiness(
-    businessId,
-    async (tx) => await ask(tx, invitationId, operation),
-  );
-  if (typeof asked === 'string') return { ok: false, code: asked };
+  const { mail, asked } = sent;
   const link = new URL(`${ENROL_PATH}${asked.token}`, mail.appOrigin).href;
   const built = adapter.build({ to: asked.to, from: mail.from, address: link });
   const outcome = await broker.custody.dispatch(route.credentialRef, {
@@ -163,4 +180,30 @@ export async function sendInvitation(
   );
   if (seen.state === 'accepted') return { ok: true, attemptId, state: 'accepted' };
   return { ok: false, code: 'EMAIL_FAILED', attemptId, fault: seen.evidence };
+}
+
+/**
+ * Email an invitation's link after an act that asked for it, through the
+ * broker only. `hooked` is the token the login provider's hook handed over.
+ */
+export async function sendInvitation(
+  database: Database,
+  businessId: BusinessId,
+  invitationId: string,
+  broker: Broker,
+  mail: MailSettings,
+  hooked?: HookedToken,
+): Promise<InvitationSendResult> {
+  const found = sendRoute(broker, mail);
+  if (typeof found === 'string') return { ok: false, code: found };
+  const link = linkRoute(broker);
+  if (link === 'OPERATION_NOT_CATALOGUED') return { ok: false, code: link };
+  const from: TokenFrom = hooked ?? { link };
+  const asked = await database.withBusiness(
+    businessId,
+    async (tx) => await ask(tx, invitationId, found.operation, from),
+  );
+  if (typeof asked === 'string') return { ok: false, code: asked };
+  if ('fault' in asked) return { ok: false, code: 'AUTH_LINK_FAILED', fault: asked.fault };
+  return await deliver(database, businessId, broker, found, { mail, asked });
 }

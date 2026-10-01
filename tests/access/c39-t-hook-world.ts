@@ -25,7 +25,7 @@ export const ah: { app: Hono; clock: number } = {
 export function mountAuthHook(businesses: readonly string[] = [w.alpha, w.bravo]): Hono {
   ah.app = new Hono();
   mountAuthEmailHook(ah.app, w.db.app, {
-    secret: AUTH_HOOK_SECRET,
+    secret: AUTH_HOOK_SECRET.slice('v1,'.length),
     businesses: async () => await Promise.resolve(businesses),
     broker: w.broker,
     mail: MAIL,
