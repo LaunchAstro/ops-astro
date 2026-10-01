@@ -141,10 +141,12 @@
 .mstrip__bucket {
   font: var(--type-small-strong);
   letter-spacing: var(--type-small-strong-tracking);
+  text-transform: var(--type-small-strong-case);
 }
 .mstrip__rank {
   font: var(--type-data);
   letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
   font-variant-numeric: tabular-nums;
 }
 .mstrip__v--none {
@@ -205,6 +207,7 @@
   padding: 0;
   font: var(--type-data);
   letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
   color: var(--text-muted);
 }
 .cmtabs.is-placing .cmtabs__mark {
