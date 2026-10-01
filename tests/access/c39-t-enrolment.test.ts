@@ -49,10 +49,18 @@ useEnrolWorld();
 const REFUSED = { status: 404, body: { code: 'ENROLMENT_LINK_INVALID' }, cookie: null };
 const SIGN_IN = { status: 200, body: { state: 'sign_in' }, cookie: null };
 
-/** The login a provider subject resolves to in one business, or the refusal's code. */
-async function sessionOf(business: string, subject: string): Promise<Session | string> {
+/**
+ * The login a provider subject resolves to in one business, or the refusal's
+ * code, asked as the factor routes ask it (`enrolling`): the binding, not the
+ * content gate `c39-t-second-factor-first` proves. `required` asks the gate.
+ */
+async function sessionOf(
+  business: string,
+  subject: string,
+  rule: 'required' | 'enrolling' = 'enrolling',
+): Promise<Session | string> {
   return await w.db.app.withBusiness(business, async (tx) => {
-    const resolved = await resolveLogin(tx, { provider: 'supabase', subject });
+    const resolved = await resolveLogin(tx, { provider: 'supabase', subject }, rule);
     return 'code' in resolved ? resolved.code : resolved;
   });
 }
@@ -107,6 +115,8 @@ describe.skipIf(noDatabase)('C39-T enrolment', () => {
     const session = await sessionOf(w.alpha, subject);
     expect(session).toMatchObject({ businessId: w.alpha, personId: await personOf(id) });
     expect(session).toMatchObject({ roleKey: 'member' });
+    // Bound, and no content yet: the first sign-in sets up the second factor.
+    expect(await sessionOf(w.alpha, subject, 'required')).toBe('AUTH_SECOND_FACTOR_SETUP_REQUIRED');
     const audit = await auditOf(id);
     expect(audit.map((row) => row.command)).toStrictEqual([
       'invitation.create',
