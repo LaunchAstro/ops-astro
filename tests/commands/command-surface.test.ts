@@ -41,9 +41,9 @@ if (serverUrl === undefined) {
 
 /** The surface's reads, sorted: every other declaration is a write. */
 const DECLARED_READS = [
-  'conversation.allowance',
   'access.read',
   'client.list',
+  'conversation.allowance',
   'conversation.list',
   'conversation.read',
   'definition.attribution',

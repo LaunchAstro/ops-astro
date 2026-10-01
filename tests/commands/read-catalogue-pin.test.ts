@@ -25,13 +25,13 @@ const OUTSIDER_NOT_FOUND = rows.filter(([, row]) => row.outsiderNotFound).map(([
 
 /** How each read reaches its answer: spine, a resolved subject, and how authority is asked. */
 const PINNED_SHAPE = {
+  'access.read': { spine: false, subject: false, authority: 'declared' },
+  'client.list': { spine: false, subject: false, authority: 'holds-any-grant' },
   'conversation.allowance': { spine: false, subject: false, authority: 'holds-any-grant' },
   'conversation.list': { spine: false, subject: false, authority: 'holds-any-grant' },
   'conversation.read': { spine: false, subject: false, authority: 'holds-any-grant' },
   'definition.attribution': { spine: true, subject: false, authority: 'holds-any-grant' },
   'gate.pending': { spine: true, subject: false, authority: 'holds-any-grant' },
-  'access.read': { spine: false, subject: false, authority: 'declared' },
-  'client.list': { spine: false, subject: false, authority: 'holds-any-grant' },
   'inbox.count': { spine: false, subject: false, authority: 'self' },
   'inbox.read': { spine: false, subject: false, authority: 'self' },
   'inbox.unattended': { spine: false, subject: false, authority: 'declared' },
@@ -50,13 +50,13 @@ const PINNED_SHAPE = {
 };
 
 const PINNED_IDENTIFIERS = {
+  'access.read': [],
+  'client.list': [],
   'conversation.allowance': ['conversationId'],
   'conversation.list': [],
   'conversation.read': ['conversationId'],
   'definition.attribution': [],
   'gate.pending': [],
-  'access.read': [],
-  'client.list': [],
   'inbox.count': [],
   'inbox.read': [],
   'inbox.unattended': [],
@@ -194,7 +194,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same twenty-one reads', () => {
+  it('names the same twenty-two reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 

@@ -189,8 +189,19 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   // call itself goes through the credential broker).
   'model.call': writing(client('model_calls', 'run_events')),
   // AW-05: the two answers at the budget stop, and MP-6-2's state revised.
-  'run.top_up': writing(client('budget_answers', 'budget_approvals', 'run_events')),
-  'run.end_at_budget_stop': writing(client('budget_answers', 'run_events')),
+  'run.top_up': writing(
+    client(
+      'budget_answers',
+      'budget_approvals',
+      'run_events',
+      'planned_runs',
+      'reservations',
+      'task_envelopes',
+    ),
+  ),
+  'run.end_at_budget_stop': writing(
+    client('budget_answers', 'run_events', 'planned_runs', 'reservations', 'task_envelopes'),
+  ),
   'run.revise_state': writing(client('run_states', 'run_events')),
   // MP-6-1's check on a task's run.
   'task.check': writing(client('run_checks', 'run_events')),

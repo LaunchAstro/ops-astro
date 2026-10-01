@@ -157,13 +157,42 @@ export function columnUpdatesAt(at?: string): readonly string[] {
  * reads a task's revision for 0032's trigger (AW-01 J, 0203); batch 1's lookup
  * reads a business's id and key (0046); the application inserts the outbox (0047).
  */
-const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: string }[] = (
-  [
-    ['0203', `${OCCURRENCE_ROLE} SELECT public.records`, ['business_id', 'id', 'revision']],
-    ['0046', 'ops_astro_lookup SELECT public.businesses', ['id', 'key']],
-    ['0047', 'ops_astro_app INSERT ops.api_events', ['event', 'kind', 'scope', 'weight']],
-  ] as const
-).flatMap(([from, grant, columns]) => columns.map((c) => ({ from, line: `${grant}.${c}` })));
+const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: string }[] = [
+  ...['business_id', 'id', 'revision'].map((column) => ({
+    from: '0203',
+    line: `${OCCURRENCE_ROLE} SELECT public.records.${column}`,
+  })),
+  ...['event', 'kind', 'scope', 'weight'].map((column) => ({
+    from: '0047',
+    line: `ops_astro_app INSERT ops.api_events.${column}`,
+  })),
+  { from: '0046', line: 'ops_astro_lookup SELECT public.businesses.id' },
+  { from: '0046', line: 'ops_astro_lookup SELECT public.businesses.key' },
+  // S0-5 (0059): the gate's installation mode, alone (no business column).
+  { from: '0059', line: 'ops_astro_app UPDATE ops.installation.mode' },
+  // Batch 2a's provider-step queues (C58, C59): the application inserts and
+  // reads them column by column.
+  ...['INSERT', 'SELECT'].map((act) => ({
+    from: '0061',
+    line: `ops_astro_app ${act} ops.ended_provider_sessions.session_id`,
+  })),
+  ...[
+    ['INSERT', 'kept_session'],
+    ['INSERT', 'subject_digest'],
+    ['SELECT', 'ended_before'],
+    ['SELECT', 'kept_session'],
+    ['SELECT', 'subject_digest'],
+  ].map(([act, column]) => ({
+    from: '0063',
+    line: `ops_astro_app ${act} ops.ended_subject_sessions.${column}`,
+  })),
+  ...['INSERT', 'SELECT'].flatMap((act) =>
+    ['factor_digest', 'state', 'subject_digest'].map((column) => ({
+      from: '0064',
+      line: `ops_astro_app ${act} ops.second_factor_subjects.${column}`,
+    })),
+  ),
+];
 
 export function roleColumnGrantsAt(at?: string): readonly string[] {
   return ROLE_COLUMN_GRANTS.filter((grant) => at === undefined || at.slice(0, 4) >= grant.from)
