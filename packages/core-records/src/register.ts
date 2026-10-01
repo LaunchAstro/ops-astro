@@ -5,8 +5,7 @@
 //
 // This is T1f's register. It does not replace the modules' own refusal
 // unions, because a module keeps the codes it can produce and that keeps its
-// own types narrow. It is the one place
-// that says a code exists, what it means, which contract row owns it, which
+// own types narrow. It is the one place that says a code exists, what it means, which contract row owns it, which
 // HTTP status carries it, and whether a caller may see it at all. A code is
 // declared once, as a row: `RefusalCode` is read off the rows, the runtime's
 // own union is read off the rows marked `runtime`, and the HTTP door reads the
@@ -948,10 +947,7 @@ export function refuseCommand<C extends RefusalCode>(
   return { refused: true, code, names, fixes };
 }
 
-/**
- * The gate codes' production constructors (T2g, build plan section 5), so each
- * producer raises its code one way and a test can name the constructor.
- */
+// The gate codes' constructors (T2g, build plan 5): one way to raise each code.
 
 /** Completing a task while a gate on it is open (contract 4.3, `task.complete`). */
 export function gatePending(): CommandRefusal<'GATE_PENDING'> {
