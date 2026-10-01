@@ -38,7 +38,11 @@ const BOOKKEEPING: ReadonlySet<string> = new Set([
 ]);
 
 /** Commands no person path reaches, so this person-path proof cannot run them. */
-const AGENT_ONLY: ReadonlySet<string> = new Set(['model.call']);
+const AGENT_ONLY: ReadonlySet<string> = new Set([
+  'model.call',
+  'run.delegate_child',
+  'run.child_handback',
+]);
 
 let harness: Harness;
 
@@ -132,7 +136,7 @@ function declaredFaults(
 async function runFaults(declaration: CommandDeclaration): Promise<string[]> {
   const { name } = declaration;
   const prepared = await bodyFor(declaration);
-  // `model.call` answers on the agent prefix only (AW-01); the person path this
+  // `model.call` and AW-11's child work answer on the agent prefix only; the person path this
   // proof drives refuses it by design, so its writes are not proved here
   // (batch 3a join; an agent-path proof is owed, SOL-OWED).
   if ('exception' in prepared && AGENT_ONLY.has(name)) return [];

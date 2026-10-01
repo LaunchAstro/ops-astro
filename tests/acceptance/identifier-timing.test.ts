@@ -433,11 +433,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 49 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 54 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(49);
-    expect(names).toHaveLength(49);
+    expect(new Set(names).size, 'distinct operations').toBe(54);
+    expect(names).toHaveLength(54);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();
