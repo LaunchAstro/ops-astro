@@ -108,25 +108,58 @@ export function localRoute(
   return carry.ok ? { ok: true, route } : { ok: false, code: carry.code };
 }
 
+/** A map's client link, the map held `for share`; nothing for a parent that is no map. */
+const HOLD_MAP = `select ${slotOf(TASK_SPINE, 'client')}::text as client from public.records
+      where business_id = $1 and id = $2 and data ->> 'type' = 'map'
+      for share`;
+
 /**
- * The client link of the task the conversation is scoped to (C60), held
- * `for share` until the row is written, as the ticket path holds its run's
- * task, so a `task.set_party` or `map.scope` in flight is waited on. A map
- * is a task, and `map.scope` writes its client on the map and every ticket
- * under it (WF-6). No row, or no scope: no client.
+ * A task's client for egress (C60, WF-6, WF-7): its own client link, else its
+ * map's. `task.reparent` and `task.set_party` can leave a scoped map's ticket
+ * with no link of its own, or another client's, and the map's still covers
+ * it. `query(lock)` reads the task's `client` and `parent` (a ticket's map is
+ * its parent): read once unheld, then the map is held `for share` before the
+ * task, the order `map.scope` takes them in. A parent that moved in between
+ * is held after the task, whose parent is fixed from then on.
  */
-const SCOPED_CLIENT = `select t.${slotOf(TASK_SPINE, 'client')}::text as client
-       from public.conversations c
-       join public.records t on t.business_id = c.business_id and t.id = c.scope_record_id
-      where c.business_id = $1 and c.id = $2
-      for share of t`;
+export async function withMapClient<
+  Row extends { readonly client: string | null; readonly parent: string | null },
+>(
+  tx: TenantQuery,
+  query: (lock: string) => string,
+  parameters: readonly unknown[],
+): Promise<{ readonly row: Row; readonly clientId: string | null } | undefined> {
+  const holdMap = async (id: string | null): Promise<string | null> => {
+    if (id === null) return null;
+    const [map] = await tx.query<{ readonly client: string | null }>(HOLD_MAP, [tx.businessId, id]);
+    return map?.client ?? null;
+  };
+  const [peek] = await tx.query<Row>(query(''), parameters);
+  const parent = peek?.parent ?? null;
+  const before = await holdMap(parent);
+  const [row] = await tx.query<Row>(query('for share of t'), parameters);
+  if (row === undefined) return undefined;
+  const map = row.parent === parent ? before : await holdMap(row.parent);
+  return { row, clientId: row.client ?? map };
+}
+
+/**
+ * The task the conversation is scoped to (C60), held as the ticket path holds
+ * its run's task, so a `task.set_party`, `task.reparent` or `map.scope` in
+ * flight is waited on. A map is a task; a ticket's client is its own or its
+ * map's (WF-6). No row, or no scope: no client.
+ */
+const scopedTask = (lock: string): string =>
+  `select t.${slotOf(TASK_SPINE, 'client')}::text as client,
+          t.${slotOf(TASK_SPINE, 'parent')}::text as parent
+     from public.conversations c
+     join public.records t on t.business_id = c.business_id and t.id = c.scope_record_id
+    where c.business_id = $1 and c.id = $2
+    ${lock}`;
 
 async function scopedClient(tx: TenantQuery, conversationId: string): Promise<string | null> {
-  const [row] = await tx.query<{ readonly client: string | null }>(SCOPED_CLIENT, [
-    tx.businessId,
-    conversationId,
-  ]);
-  return row?.client ?? null;
+  const held = await withMapClient(tx, scopedTask, [tx.businessId, conversationId]);
+  return held?.clientId ?? null;
 }
 
 /** The row, started: nothing held, the conversation and no task fact. */

@@ -161,3 +161,40 @@ it('WF-7 egress off makes no call: a map whose client is cleared lets its resear
   const answer = await call(await runOn(ticket), {}, withRoutes([CLOUD]));
   expect(answer).toMatchObject({ ok: true });
 }, 180_000);
+
+it('Sol proof, criterion WF-7 egress: a research ticket moved under a client map, or cleared by set_party, makes no call', async () => {
+  const { map } = await chartMap('sol wf7 client map');
+  await scope(map, randomUUID());
+  // (a) reparented in from a map no client is on: its own client link stays empty.
+  const { ticket: moved } = await chartMap('sol wf7 loose map');
+  appliedDetail(
+    await asPerson(s, {
+      command: 'task.reparent',
+      operationId: randomUUID(),
+      recordId: moved,
+      expectedRevision: await revisionOf(s, moved),
+      parentId: map,
+    }),
+    'task.reparent',
+  );
+  expect(await linkOf(moved)).toBeNull();
+  await expectNoCall(await runOn(moved));
+  // (b) a ticket of a client map, its own client link cleared by set_party.
+  const { map: second, ticket: cleared } = await chartMap('sol wf7 second');
+  await scope(second, randomUUID());
+  await s.db.app.withBusiness(s.business, async (tx) => {
+    await grantTo(tx, s.decider, 'share', { kind: 'record', id: cleared });
+  });
+  appliedDetail(
+    await asPerson(s, {
+      command: 'task.set_party',
+      operationId: randomUUID(),
+      recordId: cleared,
+      expectedRevision: await revisionOf(s, cleared),
+      fields: { client: null },
+    }),
+    'task.set_party',
+  );
+  expect(await linkOf(cleared)).toBeNull();
+  await expectNoCall(await runOn(cleared));
+}, 180_000);

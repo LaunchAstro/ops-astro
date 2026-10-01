@@ -66,26 +66,36 @@ const scope = async (map: string, client: string | null): Promise<void> => {
   );
 };
 
-/** The sidebar's question on a record: a conversation scoped to it, and the exchange's answer. */
-async function askOn(
+/** The sidebar's question on a record, asked but not yet answered: a conversation scoped to it. */
+async function openOn(
   record: string,
   body: string,
-): Promise<{ conversationId: string; reply: ConversationReply | null }> {
+): Promise<{ conversationId: string; messageId: string }> {
   const opened = await executeCommand(s.db.app, s.business, s.decider.presented, 'api', {
     command: 'conversation.start',
     operationId: randomUUID(),
     body,
     scope: { kind: 'task', id: record },
   } as never);
-  const asked = appliedDetail(opened, 'conversation.start') as {
+  return appliedDetail(opened, 'conversation.start') as {
     conversationId: string;
     messageId: string;
   };
-  const reply = await model.exchange(s.db.app, s.business, s.decider.presented, {
-    conversationId: asked.conversationId,
-    messageId: asked.messageId,
-  });
-  return { conversationId: asked.conversationId, reply };
+}
+
+const answer = async (asked: {
+  conversationId: string;
+  messageId: string;
+}): Promise<ConversationReply | null> =>
+  await model.exchange(s.db.app, s.business, s.decider.presented, asked);
+
+/** The sidebar's question on a record: a conversation scoped to it, and the exchange's answer. */
+async function askOn(
+  record: string,
+  body: string,
+): Promise<{ conversationId: string; reply: ConversationReply | null }> {
+  const asked = await openOn(record, body);
+  return { conversationId: asked.conversationId, reply: await answer(asked) };
 }
 
 const rowsIn = async (conversationId: string): Promise<{ calls: number; replies: number }> => {
@@ -135,4 +145,78 @@ it('WF-6 egress off: a map with no client, or its client cleared, is answered by
   const cleared = await askOn(map, 'And now?');
   expect(cleared.reply).toMatchObject({ answered: true });
   expect(await rowsIn(cleared.conversationId)).toStrictEqual({ calls: 1, replies: 1 });
+}, 180_000);
+
+it('Sol proof, criterion WF-6 egress: a ticket moved under a client map, or cleared by set_party, asks no model', async () => {
+  const { map } = await chartMap('sol client map');
+  await scope(map, randomUUID());
+  // (a) reparented in from a map no client is on: its own client link stays empty.
+  const { ticket: moved } = await chartMap('sol loose map');
+  appliedDetail(
+    await asPerson(s, {
+      command: 'task.reparent',
+      operationId: randomUUID(),
+      recordId: moved,
+      expectedRevision: await revisionOf(s, moved),
+      parentId: map,
+    }),
+    'task.reparent',
+  );
+  await expectNoCall(moved, 'sol loose map');
+  // (b) a ticket of a client map, its own client link cleared by set_party.
+  const { map: second, ticket: cleared } = await chartMap('sol second');
+  await scope(second, randomUUID());
+  await s.db.app.withBusiness(s.business, async (tx) => {
+    await grantTo(tx, s.decider, 'share', { kind: 'record', id: cleared });
+  });
+  appliedDetail(
+    await asPerson(s, {
+      command: 'task.set_party',
+      operationId: randomUUID(),
+      recordId: cleared,
+      expectedRevision: await revisionOf(s, cleared),
+      fields: { client: null },
+    }),
+    'task.set_party',
+  );
+  await expectNoCall(cleared, 'sol second');
+}, 180_000);
+
+it('Sol proof, criterion WF-6 egress: a scope in flight is waited on, never missed', async () => {
+  const { map } = await chartMap('sol scope in flight');
+  const body = `CANARY-${randomUUID()} about the scope in flight`;
+  const asked = await openOn(map, body);
+  const sent = model.provider.seen.length;
+  let pending: Promise<ConversationReply | null> | undefined;
+  await s.db.admin.transaction(async (execute) => {
+    await execute(
+      `update public.records set data = data || jsonb_build_object('client', $2::uuid)
+        where id = $1`,
+      [map, randomUUID()],
+    );
+    pending = answer(asked);
+    // Held, not answered: the exchange's backend waits on the map's row lock.
+    for (let tries = 0; ; tries += 1) {
+      if (tries === 200) throw new Error('the exchange never waited on the scope');
+      // oxlint-disable-next-line no-await-in-loop
+      await execute('select pg_stat_clear_snapshot()');
+      // oxlint-disable-next-line no-await-in-loop
+      const [row] = await execute<{ n: string }>(
+        `select count(*)::text as n from pg_stat_activity
+          where datname = current_database() and pid <> pg_backend_pid()
+            and wait_event_type = 'Lock' and query like '%for share%'`,
+      );
+      if (Number(row?.n) >= 1) break;
+      // oxlint-disable-next-line no-await-in-loop
+      await new Promise((resolve) => {
+        setTimeout(resolve, 25);
+      });
+    }
+    expect(model.provider.seen.length).toBe(sent);
+  });
+  const reply = await pending;
+  expect(reply).toMatchObject({ answered: false, code: 'CLIENT_MODEL_USE_OFF' });
+  expect(JSON.stringify(reply)).not.toContain(body);
+  expect(model.provider.seen.length).toBe(sent);
+  expect(await rowsIn(asked.conversationId)).toStrictEqual({ calls: 0, replies: 0 });
 }, 180_000);
