@@ -24,6 +24,13 @@ import { TEST_ONLY_MARKER } from '../support/marker.ts';
 
 const COMMAND = new URL('../../scripts/ops/staging-logins.mjs', import.meta.url).pathname;
 const POOLER_AT_LOOPBACK = new URL('../support/pooler-at-loopback.mjs', import.meta.url).pathname;
+/**
+ * The one test-only allowance: the throwaway server serves no TLS, so this
+ * preload lets the command reach it in plain text on loopback while its admin
+ * address still says `sslmode=require` and is judged as on staging.
+ */
+const PLAINTEXT_AT_LOOPBACK = new URL('../support/plaintext-at-loopback.mjs', import.meta.url)
+  .pathname;
 const MIGRATIONS = new URL('../../migrations/', import.meta.url).pathname;
 const POOLER = 'aws-0-ap-southeast-2.pooler.supabase.com';
 const STAGING = Array.from(randomBytes(20), (byte) => String.fromCodePoint(97 + (byte % 26))).join(
@@ -44,8 +51,13 @@ let db: EmptyDatabase | undefined;
 let scratch = '';
 let adminUrl = '';
 
-function run(step: string, folder: string): { status: number; printed: string } {
-  const result = spawnSync(process.execPath, [`--import=${POOLER_AT_LOOPBACK}`, COMMAND, step], {
+function run(
+  step: string,
+  folder: string,
+  allowance: readonly string[] = [`--import=${PLAINTEXT_AT_LOOPBACK}`],
+): { status: number; printed: string } {
+  const preloads = [`--import=${POOLER_AT_LOOPBACK}`, ...allowance];
+  const result = spawnSync(process.execPath, [...preloads, COMMAND, step], {
     encoding: 'utf8',
     env: {
       PATH: process.env['PATH'] ?? '',
@@ -108,6 +120,7 @@ beforeAll(async () => {
   url.username = ADMIN;
   url.password = OWN_PASSWORD;
   url.pathname = `/${db.name}`;
+  url.search = '?sslmode=require';
   adminUrl = url.toString();
 }, 60_000);
 
@@ -144,6 +157,14 @@ describeLive('S0-1 staging logins before the reset, run for real', () => {
       "select current_user as me, pg_has_role('ops_astro_app', 'usage') as app",
     );
     expect(row).toEqual({ me: 'ops_astro_api', app: true });
+  });
+
+  it('without the test-only allowance it will not reach a server in plain text', () => {
+    const folder = join(scratch, 'no-allowance');
+    const { status, printed } = run('before-reset', folder, []);
+    expect(status).toBe(1);
+    expect(printed).toContain('staging-logins: stopped while the check');
+    expect(existsSync(folder)).toBe(false);
   });
 
   it('refuses a folder that exists, so an address already given out keeps working', async () => {
