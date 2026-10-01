@@ -6,6 +6,15 @@
    294-295, 613-676, 2912-2955, 8878-8953, 8999-9037, 9046-9118) onto the
    product's tokens; only the rules for what these sections draw. */
 
+/* A page's title (Connections, Executive, Onboarding) in the declared page-title style
+   (DS-TOK-109, h1.t-title). */
+.page__head .t-title {
+  margin: 0;
+  font: var(--type-title);
+  letter-spacing: var(--type-title-tracking);
+  text-transform: var(--type-title-case);
+}
+
 .sec__meta {
   display: flex;
   align-items: baseline;
@@ -27,8 +36,9 @@
 }
 
 .connmore .pginfo {
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
   color: var(--ink-faint);
 }
 
@@ -41,11 +51,10 @@
   display: flex;
   gap: var(--s-4);
   flex-wrap: wrap;
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
   color: var(--text-2);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-label);
 }
 
 .legend span {
@@ -77,12 +86,10 @@
 
 .conn thead th {
   text-align: left;
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-label);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
   color: var(--ink-faint);
-  font-weight: 400;
   padding: 0.55rem var(--s-5);
   border-bottom: 1px solid var(--border);
 }
@@ -99,7 +106,9 @@
 .conn__row td {
   padding: 0.45rem var(--s-5);
   vertical-align: middle;
-  font-size: 0.9rem;
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
 }
 
 /* Only the sorted column: the table marks the others aria-sort="none". */
@@ -156,14 +165,17 @@
 }
 
 .grl__count {
-  font-size: var(--fs-lead);
+  font: var(--type-subheading);
+  letter-spacing: var(--type-subheading-tracking);
+  text-transform: var(--type-subheading-case);
   color: var(--text);
   margin: 0;
 }
 
 .grl__count b {
-  font-family: var(--font-mono);
-  font-size: var(--text-num-md);
+  font: var(--type-num-md);
+  letter-spacing: var(--type-num-md-tracking);
+  text-transform: var(--type-num-md-case);
 }
 
 .grl__grp + .grl__grp {
@@ -285,7 +297,6 @@
    a shade smaller and on the surface (app.css:2951). */
 .connctrls .facet {
   background: var(--surface);
-  font-size: 0.82rem;
 }
 
 /* The connector table scrolls inside its card at a narrow width, never the
@@ -297,6 +308,8 @@
 /* A phone draws the fleet's tile numbers a size down (app.css:677). */
 @media (max-width: 640px) {
   .statrow .stat__num {
-    font-size: 1.75rem;
+    font: var(--type-num-md);
+    letter-spacing: var(--type-num-md-tracking);
+    text-transform: var(--type-num-md-case);
   }
 }

@@ -7,7 +7,7 @@
 // exists yet. The rows follow the mockup's channels and exceptions.
 
 import type { ReactElement } from 'react';
-import { MockRegion } from '@launchastro/ui';
+import { SourceRegion } from '@launchastro/ui';
 
 const NOT_BUILT = 'Not built yet (MP-14-10b).';
 
@@ -53,7 +53,7 @@ const EXCEPTIONS = [
 
 export function ChannelsMock(): ReactElement {
   return (
-    <MockRegion word>
+    <SourceRegion provenance="mock">
       <div className="card card--flush">
         <div className="chan">
           {CHANNELS.map((one) => (
@@ -77,13 +77,13 @@ export function ChannelsMock(): ReactElement {
           ))}
         </div>
       </div>
-    </MockRegion>
+    </SourceRegion>
   );
 }
 
 export function ExceptionsMock(): ReactElement {
   return (
-    <MockRegion word>
+    <SourceRegion provenance="mock">
       <div className="card card--flush">
         <div className="exc">
           {EXCEPTIONS.map((one) => (
@@ -110,6 +110,6 @@ export function ExceptionsMock(): ReactElement {
           ))}
         </div>
       </div>
-    </MockRegion>
+    </SourceRegion>
   );
 }

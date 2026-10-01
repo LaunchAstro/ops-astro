@@ -74,7 +74,7 @@ export function delegationCrossing(): void {
       'task.observe': () => ({ ...notOwnLease, attemptId: randomUUID(), outcome: 'completed' }),
       'task.queue': () => null,
       'session.capabilities': () => null,
-      // The stack's run and model operations (as b0/SL11 f4fd674, without the two
+      // The stack's run and model operations (as b0/SL11 has them, without the two
       // child-run operations SL13 does not carry): the lease ones at the other
       // person's lease, the run's state on the crossing's task.
       'task.check': () => ({ ...notOwnLease, name: 'made-up check', outcome: 'passed' }),

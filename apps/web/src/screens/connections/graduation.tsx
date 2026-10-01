@@ -173,7 +173,7 @@ function Shown(props: {
     return <p className="approval__meta">No client has a graduation record yet.</p>;
   }
   const scoped = (
-    <span className="t-2" data-scope-client>
+    <span className="marker sec__aside" data-scope-client>
       {client.label}
     </span>
   );
@@ -181,7 +181,7 @@ function Shown(props: {
     <>
       <ScopeBar clients={region.clients} chosen={client.id} choose={choose} />
       <section className="gradsec" data-section="010" id="graduation">
-        <h2>010 Graduation {scoped}</h2>
+        <h2 className="sec__head">010 Graduation {scoped}</h2>
         {props.said === null ? null : (
           <p role="alert" data-region-said>
             {props.said}
@@ -200,11 +200,11 @@ function Shown(props: {
         />
       </section>
       <section className="gradsec" data-section="011" data-mock="channels">
-        <h2>011 Channels {scoped}</h2>
+        <h2 className="sec__head">011 Channels {scoped}</h2>
         <ChannelsMock />
       </section>
       <section className="gradsec" data-section="012" data-mock="exceptions">
-        <h2>012 Exceptions {scoped}</h2>
+        <h2 className="sec__head">012 Exceptions {scoped}</h2>
         <ExceptionsMock />
       </section>
     </>
