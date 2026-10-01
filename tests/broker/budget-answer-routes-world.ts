@@ -81,7 +81,7 @@ export const asPerson = async (
   key: string = alphaKey,
 ): Promise<Answer> =>
   await post(`b/${key}`, path, body, {
-    authorization: `Bearer ${await tokenFor(member.presented.subject)}`,
+    authorization: `Bearer ${await tokenFor(member.presented.subject, { secondFactor: true })}`,
   });
 
 export const topUpBody = (taskId: string, runId: string): Record<string, unknown> => ({
