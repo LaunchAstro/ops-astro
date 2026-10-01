@@ -106,9 +106,9 @@ describe.skipIf(noDatabase)('C39-T enrolment signed in, its edges', () => {
         where l.subject = $1 and pl.active order by pl.business_id = $2`,
       [subject, w.alpha],
     );
-    expect(mapped).toStrictEqual([
-      { business_id: w.bravo, person_id: (bravoSession as Session).personId },
-      { business_id: w.alpha, person_id: person },
+    expect(mapped.map((row) => [row.business_id, row.person_id])).toStrictEqual([
+      [w.bravo, (bravoSession as Session).personId],
+      [w.alpha, person],
     ]);
     // The role and the client: the invited role, not bravo's, and no grant anywhere.
     expect(await sessionOf(w.alpha, subject)).toMatchObject({ roleKey: 'member' });
