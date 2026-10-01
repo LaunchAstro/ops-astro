@@ -1800,7 +1800,12 @@ and codes, never a sentence, to a trace target an operator reads.
   `expiry_unconfirmed`). A failed delete confirms nothing; an unconfirmed run
   is due again next pass. Two passes at once are harmless: deletion by
   derived id is idempotent. The server runs it hourly beside the export.
-  The operator readers (`operations:read`) are AW-13's remaining line.
+- Readers: `trace.read` serves a task's runs' spans from `run_events`
+  (`readTaskTrace`), held to the same allowlist without the ids
+  (`traceCells`), behind `operations:read` and the task's own read
+  ([AUTHORITY.md](AUTHORITY.md#trace-readers-aw-13)). The trace target's own
+  logins (the owner, and the second operator after the timed restore
+  rehearsal) are the installation's, not the product's.
 
 ## An automation occurrence's run
 

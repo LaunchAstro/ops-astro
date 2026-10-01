@@ -55,6 +55,8 @@ export const READ_NAMES = [
   // Items no path reaches (INB-1e), for `operations:read`; the operations view
   // (C55) draws them.
   'inbox.unattended',
+  // A task's runs' trace (AW-13 readers), for `operations:read`.
+  'trace.read',
 ] as const;
 
 /**

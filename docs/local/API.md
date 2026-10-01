@@ -1380,6 +1380,17 @@ caller's task `read` inside the statement, as `gate.pending` filters by
 `decide`, and a trashed task's runs are not listed. No agent route
 (`reads/attribution.ts`; `tests/runtime/aw-04-attribution.test.ts`).
 
+`trace.read` (AW-13 readers) is a task's runs' diagnostic trace (`{ recordId }`):
+each run event as the export sends it, less the two ids only the exporter's
+key derives (stage, sequence, start and duration in whole milliseconds, a
+bounded error code, the transform version), with its run and whether it is
+behind the export's cursor; at most 1,000, `complete` saying whether that
+reached the end. It asks `operations:read` (the owner and administrators by
+install default, never a member, never an agent) at the task's record scope;
+a holder without `read` on the task, a task of another business and a trashed
+one are `NOT_FOUND`, and a member without the key `SCOPE_NOT_GRANTED`. No agent
+route (`tests/runtime/aw-13-readers.test.ts`; [RUNTIME.md](RUNTIME.md#the-diagnostic-trace-export)).
+
 A `task.read` answer's gate states, decisions and reservations come from one
 database snapshot. `readTaskProposals` (`reads/proposals.ts`) takes the
 versions, gates and reservations in the same statement that reads the decision
@@ -1761,8 +1772,8 @@ yet: the recent sign-in a money action asks (C59).
 
 `task.read`, `task.board`, `task.queue`, `gate.pending`, `person.list`,
 `preset.plan`, `settings.read`, `session.capabilities`, `conversation.read`,
-`conversation.list`, `definition.attribution`, `inbox.read`, `inbox.count` and
-`inbox.unattended` are declared in `COMMAND_SURFACE` with `kind: 'read'`. The boundary branches on that and calls the executor the
+`conversation.list`, `definition.attribution`, `inbox.read`, `inbox.count`,
+`inbox.unattended` and `trace.read` are declared in `COMMAND_SURFACE` with `kind: 'read'`. The boundary branches on that and calls the executor the
 composition root supplies:
 
 ```ts

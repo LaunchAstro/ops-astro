@@ -8,7 +8,7 @@
 //
 // Crossings, each with its control: another business; another client in the
 // same business (a reader whose task grant covers client one's task, and
-// client two's own external person); another person, an agent under a live
+// client one's own external person); another person, an agent under a live
 // delegation.
 
 import { randomUUID } from 'node:crypto';
@@ -18,7 +18,7 @@ import { executeAgentCommand, executeRead } from '../../packages/core-commands/s
 import { COMMAND_SURFACE } from '../../packages/core-wire/src/surface.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
 import { cq8World } from './cq-8-world.ts';
-import { codeOf, liveWork, rows, type Schedules } from './schedules-harness.ts';
+import { codeOf, liveWork, rows, type Schedules, type Work } from './schedules-harness.ts';
 import { drain, noDatabase, t, useAw13World } from './aw-13-world.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
@@ -109,75 +109,71 @@ it('AW-13 readers: no agent reaches trace.read, and its row says so', () => {
   expect(row?.agent).toBe('never');
 });
 
-it('AW-13 readers isolation: another business, another client in the same business and another person under a live delegation each read nothing', async () => {
-  const { alpha, bravo } = t;
+/** Work in alpha whose title is a canary, exported, and the ids a crossing must not show. */
+async function canaryWork(): Promise<{ canary: string; work: Work; ids: string[] }> {
   const canary = `aw13-read-iso-${randomUUID()}`;
-  const one = await liveWork(alpha, `${canary}-one`, 1_000);
-  const two = await liveWork(alpha, `${canary}-two`, 1_000);
-  const foreign = await liveWork(bravo, `aw13-read-bravo-${randomUUID()}`, 1_000);
-  await drain(alpha);
-  await drain(bravo);
-  const alphaIds = [one, two].flatMap((w) => [w.taskId, String(w.picked['runId'])]);
+  const work = await liveWork(t.alpha, canary, 1_000);
+  await drain(t.alpha);
+  return { canary, work, ids: [work.taskId, String(work.picked['runId'])] };
+}
 
-  // Another business: bravo's owner, with operations:read in bravo, asks alpha's task.
-  const bravoOwner = await reader(bravo, 'aw13-bravo-owner');
-  const crossedBusiness = await traceRead(bravo, bravoOwner.presented, one.taskId);
-  expect(crossedBusiness).toMatchObject({ code: 'NOT_FOUND' });
-  namesNothing(crossedBusiness, [canary, ...alphaIds]);
+it('AW-13 readers isolation: another business, its owner holding operations:read, reads nothing of alpha', async () => {
+  const { canary, work, ids } = await canaryWork();
+  const foreign = await liveWork(t.bravo, `aw13-read-bravo-${randomUUID()}`, 1_000);
+  await drain(t.bravo);
+  const bravoOwner = await reader(t.bravo, 'aw13-bravo-owner');
+  const crossed = await traceRead(t.bravo, bravoOwner.presented, work.taskId);
+  expect(crossed).toMatchObject({ code: 'NOT_FOUND' });
+  namesNothing(crossed, [canary, ...ids]);
   // Control: bravo's own task answers.
-  expect(
-    spansOf(await traceRead(bravo, bravoOwner.presented, foreign.taskId)).length,
-  ).toBeGreaterThan(0);
+  const own = await traceRead(t.bravo, bravoOwner.presented, foreign.taskId);
+  expect(spansOf(own).length).toBeGreaterThan(0);
+});
 
-  // Another client in the same business: a reader whose task grant is client
-  // one's task alone, and client two's own external person.
-  const scoped = await reader(alpha, 'aw13-scoped-owner', one.taskId);
-  const crossedClient = await traceRead(alpha, scoped.presented, two.taskId);
-  expect(crossedClient).toMatchObject({ code: 'NOT_FOUND' });
-  namesNothing(crossedClient, [canary, two.taskId, String(two.picked['runId'])]);
-  expect(spansOf(await traceRead(alpha, scoped.presented, one.taskId)).length).toBeGreaterThan(0);
-  await alpha.db.app.withBusiness(alpha.business, async (tx) => {
-    await grantTo(tx, alpha.decider, 'share');
+it('AW-13 readers isolation: another client in the same business reads nothing of the first client’s task', async () => {
+  const { canary, work: two, ids } = await canaryWork();
+  const one = await liveWork(t.alpha, `aw13-read-one-${randomUUID()}`, 1_000);
+  await drain(t.alpha);
+  // A reader whose task grant is client one's task alone.
+  const scoped = await reader(t.alpha, 'aw13-scoped-owner', one.taskId);
+  const crossed = await traceRead(t.alpha, scoped.presented, two.taskId);
+  expect(crossed).toMatchObject({ code: 'NOT_FOUND' });
+  namesNothing(crossed, [canary, ...ids]);
+  expect(spansOf(await traceRead(t.alpha, scoped.presented, one.taskId)).length).toBeGreaterThan(0);
+  // Client one's own external person, shared on its task, holds no operations key.
+  await t.alpha.db.app.withBusiness(t.alpha.business, async (tx) => {
+    await grantTo(tx, t.alpha.decider, 'share');
   });
-  const clientTwo = await cq8World(alpha).client(
-    alpha.business,
-    alpha.decider,
-    'aw13-read-two',
-    two.taskId,
-  );
+  const world = cq8World(t.alpha);
+  const clientOne = await world.client(t.alpha.business, t.alpha.decider, 'aw13-one', one.taskId);
   for (const taskId of [one.taskId, two.taskId]) {
     // eslint-disable-next-line no-await-in-loop -- one crossing at a time
-    const external = await traceRead(alpha, clientTwo.presented, taskId);
+    const external = await traceRead(t.alpha, clientOne.presented, taskId);
     expect(external, taskId).toMatchObject({ code: 'NOT_FOUND' });
-    namesNothing(external, [canary, ...alphaIds]);
+    namesNothing(external, [canary, ...ids]);
   }
+});
 
-  // Another person: the agent under its own live delegation reaches no trace.
-  const credential = String(one.picked['credential']);
+it('AW-13 readers isolation: another person, an agent under a live delegation, reaches no trace', async () => {
+  const { canary, work, ids } = await canaryWork();
+  const credential = String(work.picked['credential']);
   const live = await rows<{ state: string }>(
-    alpha,
-    `select case when revoked_at is null and settled_at is null and expires_at > now() then 'live' else 'ended' end as state
+    t.alpha,
+    `select case when revoked_at is null and settled_at is null and expires_at > now()
+                 then 'live' else 'ended' end as state
        from public.delegations where business_id = $1 and id = $2`,
-    [alpha.business, one.picked['delegationId']],
+    [t.alpha.business, work.picked['delegationId']],
   );
   expect(live[0]?.state).toBe('live');
-  const own = await executeAgentCommand(alpha.db.app, alpha.business, alpha.agent, credential, {
-    command: 'task.read',
-    operationId: randomUUID(),
-    recordId: one.taskId,
-  } as never);
-  expect(codeOf(own as never)).toBe('applied');
-  const agentAnswer = (await executeAgentCommand(
-    alpha.db.app,
-    alpha.business,
-    alpha.agent,
-    credential,
-    {
-      command: 'trace.read',
+  const asAgent = async (command: string): Promise<Answer> =>
+    (await executeAgentCommand(t.alpha.db.app, t.alpha.business, t.alpha.agent, credential, {
+      command,
       operationId: randomUUID(),
-      recordId: one.taskId,
-    } as never,
-  )) as unknown as Answer;
-  expect(codeOf(agentAnswer as never)).toBe('DELEGATION_EXCLUDES_OPERATION');
-  namesNothing(agentAnswer, [canary, String(one.picked['runId'])]);
+      recordId: work.taskId,
+    } as never)) as unknown as Answer;
+  // Control: the delegation reads its own task.
+  expect(codeOf((await asAgent('task.read')) as never)).toBe('applied');
+  const answer = await asAgent('trace.read');
+  expect(codeOf(answer as never)).toBe('DELEGATION_EXCLUDES_OPERATION');
+  namesNothing(answer, [canary, ids[1] ?? '']);
 });

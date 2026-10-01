@@ -276,6 +276,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'task.receipt',
   'task.restart',
   'task.restore',
+  'trace.read',
 ];
 
 const PINNED_AGENT_SURFACE = [

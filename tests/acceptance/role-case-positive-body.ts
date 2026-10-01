@@ -126,8 +126,11 @@ export function createPositiveBody(
         // The person's own lease, handed back by that person. The agent's
         // own-lease handback is case (h), `k-handback` rows.
         return { body: { ...(await ownLease(context)), outcome: 'completed' } };
+      // `trace.read` (AW-13 readers) asks `operations:read`, which the seed
+      // grants the admin (C55).
       case 'task.read':
       case 'task.execution':
+      case 'trace.read':
         return { body: { recordId: context.alphaTaskId } };
       case 'task.board':
         return { body: { board: null } };

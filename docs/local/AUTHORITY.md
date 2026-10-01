@@ -813,6 +813,17 @@ holding no `read` on tasks get `SCOPE_NOT_GRANTED`, never an empty list. An
 agent has no route to it (`DELEGATION_EXCLUDES_OPERATION`). Every row is
 labelled pre-review; see [API.md](API.md).
 
+## Trace readers (AW-13)
+
+`trace.read` asks `operations:read` at the task's record scope, then the task's
+own `read` (`taskAccess`), so a reader whose task grant covers one client's
+task gets `NOT_FOUND` for another client's. The key is the catalogue's C55 row:
+seeded to the owner and administrators, never a member, never an agent. The
+ticket's "the second owner after a timed restore rehearsal" is the trace
+target's Owner login (the Langfuse contract's recovery operator), an
+installation step in the runbook like the export switch; the product keeps no
+rehearsal record and asks none.
+
 ## What is not here
 
 This file is the model modules. What calls them is elsewhere, and on this head

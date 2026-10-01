@@ -22,7 +22,9 @@ import {
   TRANSFORM_VERSION,
   derivedId,
   otlp,
+  traceCells,
   traceSpan,
+  type TraceCells,
   type TraceSpan,
 } from './trace-span.ts';
 
@@ -105,16 +107,19 @@ export async function exportOnce(
     : { kind: 'gap', code, spans: spans.length };
 }
 
-async function pending(tx: TenantQuery): Promise<readonly Row[]> {
-  return await tx.query<Row>(
-    `select ev.id, ev.run_id as "runId", ev.kind, ev.position::float8 as position,
+/** What a span is made of, per event `ev`: the export's read and `trace.read`'s. */
+const EVENT_CELLS = `ev.id, ev.run_id as "runId", ev.kind, ev.position::float8 as position,
             (extract(epoch from ev.created_at) * 1000)::float8 as "atMs",
             (select (extract(epoch from prev.created_at) * 1000)::float8
                from public.run_events prev
               where prev.business_id = ev.business_id and prev.run_id = ev.run_id
                 and prev.position < ev.position
               order by prev.position desc limit 1) as "previousMs",
-            ev.detail ->> 'cause' as cause
+            ev.detail ->> 'cause' as cause`;
+
+async function pending(tx: TenantQuery): Promise<readonly Row[]> {
+  return await tx.query<Row>(
+    `select ${EVENT_CELLS}
        from public.run_events ev
        left join public.trace_export_cursors c on c.business_id = ev.business_id
       where ev.business_id = $1
@@ -127,10 +132,17 @@ async function pending(tx: TenantQuery): Promise<readonly Row[]> {
 }
 
 function spanOf(key: Buffer, businessId: string, row: Row): TraceSpan {
-  const startedAtMs = Math.floor(row.atMs);
   return traceSpan({
     traceId: derivedId(key, ['trace', businessId, row.runId], 32),
     spanId: derivedId(key, ['span', businessId, row.id], 16),
+    ...cellsOf(row),
+  });
+}
+
+/** An event's cells, unchecked: `traceSpan` and `traceCells` hold them to the allowlist. */
+function cellsOf(row: Row): Readonly<Record<string, unknown>> {
+  const startedAtMs = Math.floor(row.atMs);
+  return {
     stage: row.kind,
     transformVersion: TRANSFORM_VERSION,
     startedAtMs,
@@ -141,7 +153,45 @@ function spanOf(key: Buffer, businessId: string, row: Row): TraceSpan {
       row.cause !== null && (TRACE_ERRORS as readonly string[]).includes(row.cause)
         ? row.cause
         : null,
-  });
+  };
+}
+
+/** The most events one `trace.read` returns; `complete` says whether it reached the end. */
+export const TRACE_READ_LIMIT = 1_000;
+
+/** A span as `trace.read` shows it: the allowlist's cells, its run, and whether it has left. */
+export type ReadSpan = TraceCells & { readonly runId: string; readonly exported: boolean };
+
+/**
+ * One task's trace as an operator reads it (AW-13 readers, `trace.read`): each
+ * event of its runs as the export sends it, less the two ids only the
+ * exporter's key derives, and whether it is behind the cursor. The grant is
+ * asked before this, by the read's row (`operations:read`, then the task's own
+ * read); the task is the query's, under the business's tenancy.
+ */
+export async function readTaskTrace(
+  tx: TenantQuery,
+  taskId: string,
+): Promise<{ readonly spans: readonly ReadSpan[]; readonly complete: boolean }> {
+  const rows = await tx.query<Row & { readonly exported: boolean }>(
+    `select ${EVENT_CELLS},
+            coalesce((ev.tx, ev.id) <= (c.after_tx, c.after_id), false) as exported
+       from public.run_events ev
+       join public.planned_runs run on run.business_id = ev.business_id and run.id = ev.run_id
+       left join public.trace_export_cursors c on c.business_id = ev.business_id
+      where ev.business_id = $1 and run.task_id = $2
+      order by ev.position, ev.id
+      limit $3`,
+    [tx.businessId, taskId, TRACE_READ_LIMIT + 1],
+  );
+  return {
+    spans: rows
+      .slice(0, TRACE_READ_LIMIT)
+      .map((row): ReadSpan =>
+        Object.assign({ runId: row.runId, exported: row.exported }, traceCells(cellsOf(row))),
+      ),
+    complete: rows.length <= TRACE_READ_LIMIT,
+  };
 }
 
 const FAULT_GAP: Readonly<Record<string, GapCode>> = {
