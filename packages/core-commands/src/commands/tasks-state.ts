@@ -27,6 +27,7 @@
 
 import {
   gatePending,
+  isClientHere,
   readFieldDefinitions,
   isLive,
   isRecordsRefusal,
@@ -54,8 +55,8 @@ import { lockSteps, moveSteps, type StepMove } from './tasks-steps.ts';
  *
  * Named rather than derived, because nothing on a field definition says what a
  * uuid link points at, and a list here is a visible diff where a silent
- * derivation would not be. `client` is not in it: a party link resolves against
- * the party model, which this unit does not carry.
+ * derivation would not be. `client` is not in it: it names a client record,
+ * not a person, and `refuseClientNotHere` checks it.
  */
 const PERSON_LINK_FIELDS: readonly string[] = ['assignee', 'delegate'];
 
@@ -118,10 +119,36 @@ async function refusePersonNotHere(
   ]);
 }
 
-/** Person links lower-cased; `refusePersonNotHere` has already said each is a member here. */
+/**
+ * Refuse a client link that names no client of this business (C32). The link
+ * is the party a party-scoped grant resolves against, so a task pointing at
+ * another business's client, or at none, is a task whose audience nobody can
+ * read off it. `NOT_FOUND` for both, as for a person link.
+ */
+async function refuseClientNotHere(
+  tx: TenantQuery,
+  fields: FieldValues,
+): Promise<CommandRefusal | undefined> {
+  const client = fields['client'];
+  if (typeof client !== 'string') return undefined;
+  if (await isClientHere(tx, client.toLowerCase())) return undefined;
+  return refuseCommand(
+    'NOT_FOUND',
+    ['client'],
+    [
+      'No client of this business carries that identifier.',
+      'Read client.list for the clients this business has.',
+    ],
+  );
+}
+
+/**
+ * Person and client links lower-cased; `refusePersonNotHere` and
+ * `refuseClientNotHere` have already said each is here.
+ */
 function canonicalPersonLinks(fields: FieldValues): FieldValues {
   const out: Record<string, unknown> = { ...fields };
-  for (const key of PERSON_LINK_FIELDS) {
+  for (const key of [...PERSON_LINK_FIELDS, 'client']) {
     const value = out[key];
     if (typeof value === 'string') out[key] = value.toLowerCase();
   }
@@ -384,6 +411,8 @@ export async function writeOwnedFields(
 
   const absent = await refusePersonNotHere(tx, fields);
   if (absent !== undefined) return refused(absent);
+  const noClient = await refuseClientNotHere(tx, fields);
+  if (noClient !== undefined) return refused(noClient);
 
   // Stored in the spelling the uuid cast answers, so the task names the
   // person in the one form every read and join compares against.

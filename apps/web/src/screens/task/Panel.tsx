@@ -34,6 +34,7 @@ import type {
   TaskReadResult,
   TaskStateView,
 } from '../../../../../packages/core-wire/src/index.ts';
+import { hubOf } from '../../data/live.ts';
 import { useRead } from '../../data/use-read.ts';
 import { pathTo } from '../../routes.ts';
 import { RecordState } from '../../views/record-state.tsx';
@@ -87,7 +88,11 @@ export function TaskPanel(props: TaskPanelProps): ReactElement {
     grantKey: props.grantKey,
     run: () => client.read<TaskReadResult>('task.read', { recordId: opening.taskKey }),
     deps: [opening.taskKey, props.changes ?? 0],
-    live: (signal) => client.openLive(opening.taskKey, signal),
+    // The task's topic on the tab's one live stream (C4), as the task page reads it.
+    live: {
+      hub: hubOf(client),
+      topic: (read) => ('task' in read ? `task:${read.task.id}` : undefined),
+    },
   });
   const onKeyDown = (event: KeyboardEvent<HTMLElement>): void => {
     if (event.key !== 'Escape' || event.defaultPrevented) return;

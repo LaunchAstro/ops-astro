@@ -12,11 +12,15 @@ import type { ReactElement, ReactNode } from 'react';
 import { Gallery } from '@launchastro/ui';
 import type { AuthenticatedRouteId, ParamsOf, RouteMatch } from './routes.ts';
 import type { OperationsClient } from './operations/client.ts';
+import { AccessScreen } from './screens/Access.tsx';
+import { InboxScreen } from './screens/Inbox.tsx';
 import { Projects } from './screens/Projects.tsx';
-import { SettingsScreen } from './screens/Settings.tsx';
+import { SettingsGeneralScreen } from './screens/SettingsGeneral.tsx';
 import { TaskDetailScreen } from './screens/TaskDetail.tsx';
 import { TaskUnnamed } from './screens/task/Absent.tsx';
 import { TodosScreen } from './screens/todos/Todos.tsx';
+import { TeamScreen } from './screens/Team.tsx';
+import { TelemetryScreen } from './screens/Telemetry.tsx';
 import type { ConversationTab, PanelDoor } from './screens/task/Perspectives.tsx';
 
 /** The dock task panel as a screen reaches it (MP-4-8): open it, and read its change count. */
@@ -37,6 +41,8 @@ export interface ScreenContext<Id extends AuthenticatedRouteId = AuthenticatedRo
   readonly storage: Storage | null;
   /** Absent where no panel can open, and then a door cannot be pressed. */
   readonly taskPanel?: TaskPanelHost;
+  /** Goes to an address inside the application. */
+  readonly navigate: (path: string) => void;
 }
 
 export const SCREENS: {
@@ -52,20 +58,28 @@ export const SCREENS: {
       <Projects
         client={context.client}
         grantKey={context.grantKey}
-        {...(context.taskPanel === undefined
-          ? {}
-          : {
-              onOpen: (key: string) => {
-                context.taskPanel?.open(key, 'open');
-              },
-              changes: context.taskPanel.changes,
-            })}
+        navigate={context.navigate}
+        {...(context.taskPanel === undefined ? {} : { taskPanel: context.taskPanel })}
       />
     </>
   ),
   'agency:gallery': () => <Gallery />,
   'agency:settings': (context) => (
-    <SettingsScreen client={context.client} grantKey={context.grantKey} storage={context.storage} />
+    <SettingsGeneralScreen
+      client={context.client}
+      grantKey={context.grantKey}
+      storage={context.storage}
+    />
+  ),
+  'agency:inbox': (context) => (
+    <InboxScreen client={context.client} grantKey={context.grantKey} navigate={context.navigate} />
+  ),
+  'agency:team': (context) => <TeamScreen client={context.client} grantKey={context.grantKey} />,
+  'agency:access': (context) => (
+    <AccessScreen client={context.client} grantKey={context.grantKey} />
+  ),
+  'agency:telemetry': (context) => (
+    <TelemetryScreen client={context.client} grantKey={context.grantKey} />
   ),
   'agency:task-detail': (context) => (
     <TaskDetailScreen

@@ -86,6 +86,12 @@ async function awaitBlockedOnLock(
 /** How long the interleaving is given to appear. Generous, and finite. */
 const WITHIN = 10_000;
 
+/** The conversation window and its own command, which owns the row since 0063 (MP-2-11). */
+const WINDOW = {
+  key: 'conversation_window_days',
+  owningOperation: 'settings.set_conversation_window',
+} as const;
+
 const serverUrl = databaseUrlFromEnvironment();
 
 describe.skipIf(serverUrl === undefined)('business settings', () => {
@@ -110,6 +116,7 @@ describe.skipIf(serverUrl === undefined)('business settings', () => {
       'client_sign_off_required',
       'conversation_window_days',
       'four_eyes_threshold',
+      'money_step_up_required',
       'retention_window_days',
     ]);
   });
@@ -171,19 +178,20 @@ describe.skipIf(serverUrl === undefined)('business settings', () => {
         ['client_sign_off_required', 1],
         ['conversation_window_days', 1],
         ['four_eyes_threshold', 1],
+        ['money_step_up_required', 1],
         ['retention_window_days', 1],
       ]);
     });
 
     it('counts up once per write, and the read hands back the new one', async () => {
       const first = await db.app.withBusiness(business, (tx) =>
-        writeBusinessSetting(tx, { key: 'conversation_window_days', value: 45 }),
+        writeBusinessSetting(tx, { ...WINDOW, value: 45 }),
       );
       expect(isSettingRevisionStale(first ?? {})).toBe(false);
       expect(first).toMatchObject({ key: 'conversation_window_days', value: 45, revision: 2 });
 
       const second = await db.app.withBusiness(business, (tx) =>
-        writeBusinessSetting(tx, { key: 'conversation_window_days', value: 60 }),
+        writeBusinessSetting(tx, { ...WINDOW, value: 60 }),
       );
       expect(second).toMatchObject({ value: 60, revision: 3 });
 
@@ -198,7 +206,7 @@ describe.skipIf(serverUrl === undefined)('business settings', () => {
         readBusinessSetting(tx, 'conversation_window_days'),
       );
       const written = await db.app.withBusiness(business, (tx) =>
-        writeBusinessSetting(tx, { key: 'conversation_window_days', value: 61 }),
+        writeBusinessSetting(tx, { ...WINDOW, value: 61 }),
       );
       expect(written).toMatchObject({ value: 61, revision: (before?.revision ?? 0) + 1 });
     });
@@ -211,7 +219,7 @@ describe.skipIf(serverUrl === undefined)('business settings', () => {
       );
       const stale = await db.app.withBusiness(business, (tx) =>
         writeBusinessSetting(tx, {
-          key: 'conversation_window_days',
+          ...WINDOW,
           value: 999,
           expectedRevision: (before?.revision ?? 0) - 1,
         }),
@@ -238,7 +246,7 @@ describe.skipIf(serverUrl === undefined)('business settings', () => {
       );
       const written = await db.app.withBusiness(business, (tx) =>
         writeBusinessSetting(tx, {
-          key: 'conversation_window_days',
+          ...WINDOW,
           value: 15,
           expectedRevision: before?.revision ?? 0,
         }),
@@ -317,6 +325,7 @@ describe.skipIf(serverUrl === undefined)('business settings', () => {
       const first = db.app.withBusiness(business, async (tx) => {
         const outcome = await writeBusinessSetting(tx, {
           key: 'retention_window_days',
+          owningOperation: 'settings.set_retention_window',
           value: 111,
           expectedRevision: revision,
         });
@@ -333,6 +342,7 @@ describe.skipIf(serverUrl === undefined)('business settings', () => {
       const other = second.withBusiness(business, (tx) =>
         writeBusinessSetting(tx, {
           key: 'retention_window_days',
+          owningOperation: 'settings.set_retention_window',
           value: 222,
           expectedRevision: revision,
         }),
@@ -420,7 +430,12 @@ describe.skipIf(serverUrl === undefined)(
 
     it('counts up from 1 for a business that was upgraded', async () => {
       const written = await db.app.withBusiness(business, (tx) =>
-        writeBusinessSetting(tx, { key: 'retention_window_days', value: 7, expectedRevision: 1 }),
+        writeBusinessSetting(tx, {
+          key: 'retention_window_days',
+          owningOperation: 'settings.set_retention_window',
+          value: 7,
+          expectedRevision: 1,
+        }),
       );
       expect(written).toMatchObject({ value: 7, revision: 2 });
     });

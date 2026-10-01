@@ -41,7 +41,7 @@ const MIA = '22222222-2222-4222-8222-222222222222';
  */
 const stubDatabase = (): Database =>
   ({
-    log: { record: () => undefined, statements: () => [] },
+    log: { record: () => {}, statements: () => [] },
     withBusiness: async (businessId: string, run: (tx: unknown) => Promise<unknown>) =>
       await run({
         businessId,
@@ -89,6 +89,8 @@ const tokenFor = async (subject: string): Promise<string> =>
     iss: ISSUER,
     role: 'authenticated',
     exp: Math.floor(Date.now() / 1000) + 600,
+    // The first sign-in, as GoTrue stamps it (C58's 12-hour limit is measured from it).
+    amr: [{ method: 'password', timestamp: Math.floor(Date.now() / 1000) }],
   });
 
 describe('a refusal crossing the boundary into the browser client', () => {

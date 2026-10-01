@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// `/projects/`. The caller's inbox, the board of the business's unboarded
-// tasks, and the form that makes one.
+// `/projects/`. Two tabs: the caller's inbox above the board of the
+// business's unboarded tasks with the form that makes one (CreateTask.tsx),
+// and the Work log (MP-8-4), reached by `#worklog` as the mockup's
+// `/projects/#worklog` is. The Work log reads nothing until it is first
+// opened, and stays drawn once it has been, as every tab pane does.
 //
 // The read is `task.board` with `board: null`, which the contract defines as
 // the business's unboarded tasks — the acceptance case creates a task
@@ -16,8 +19,8 @@
 // as such: the client's name (the client model), the comment counts (INB-1)
 // and starring (P-20). The actual is the time logged (MP-4-6).
 
-import { useState, type FormEvent, type ReactElement } from 'react';
-import { Empty, ProjectsBoard, type ProjectRow } from '@launchastro/ui';
+import { useState, type ReactElement } from 'react';
+import { Empty, ProjectsBoard, TabPanel, TabStrip, type ProjectRow } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
 import { assigneeOf, rowActions, type BoardPanelHost, type RowOpened } from './projects-row.ts';
 import { titleOf } from '../views/task-title.ts';
@@ -34,41 +37,70 @@ import {
 import { useRead } from '../data/use-read.ts';
 import { useBoardLive } from '../data/board-live.ts';
 import { RecordState } from '../views/record-state.tsx';
-import { useCommand } from '../records/use-command.ts';
 import { pathTo } from '../routes.ts';
 import { Inbox } from '../views/inbox.tsx';
-
-/** A create whose outcome is not known, held so the retry is the same attempt. */
-interface PendingCreate {
-  readonly operationId: string;
-  readonly title: string;
-}
+import { CreateTask } from './projects/CreateTask.tsx';
+import { WorkLog } from './projects/WorkLog.tsx';
 
 export interface ProjectsProps {
   readonly client: OperationsClient;
   readonly grantKey: string;
+  /** Goes to an address inside the application. */
+  readonly navigate: (path: string) => void;
   /** The dock task panel (MP-4-8): rows open beside the board through it. Absent, they open the task page. */
   readonly taskPanel?: BoardPanelHost;
 }
 
+type ProjectsTab = 'board' | 'worklog';
+
+const TABS = [
+  { id: 'board', label: 'Board' },
+  { id: 'worklog', label: 'Work log' },
+] as const;
+
+const WORK_LOG = '#worklog';
+
+const tabInAddress = (): ProjectsTab =>
+  globalThis.location?.hash === WORK_LOG ? 'worklog' : 'board';
+
+/** Keeps the address on the open tab, so a reload lands on it. */
+function writeTab(tab: ProjectsTab): void {
+  const here = globalThis.location;
+  if (here === undefined) return;
+  const address = `${here.pathname}${here.search}${tab === 'worklog' ? WORK_LOG : ''}`;
+  globalThis.history.replaceState(globalThis.history.state, '', address);
+}
+
 export function Projects(props: ProjectsProps): ReactElement {
+  const [tab, setTab] = useState<ProjectsTab>(tabInAddress);
+  const [workLogOpened, setWorkLogOpened] = useState(tab === 'worklog');
+  const select = (id: string): void => {
+    const next: ProjectsTab = id === 'worklog' ? 'worklog' : 'board';
+    setTab(next);
+    if (next === 'worklog') setWorkLogOpened(true);
+    writeTab(next);
+  };
+  return (
+    <div className="stack">
+      <TabStrip label="Projects" name="projects" tabs={TABS} selected={tab} onSelect={select} />
+      <TabPanel name="projects" tab="board" selected={tab}>
+        <ProjectBoard
+          client={props.client}
+          grantKey={props.grantKey}
+          {...(props.taskPanel === undefined ? {} : { taskPanel: props.taskPanel })}
+        />
+      </TabPanel>
+      <TabPanel name="projects" tab="worklog" selected={tab}>
+        {workLogOpened ? (
+          <WorkLog client={props.client} grantKey={props.grantKey} navigate={props.navigate} />
+        ) : null}
+      </TabPanel>
+    </div>
+  );
+}
+
+function ProjectBoard(props: Omit<ProjectsProps, 'navigate'>): ReactElement {
   const client = props.client;
-  // While this is true the create is in flight and the form is not editable:
-  // the input, the submit and `Start a different task` are all disabled. A
-  // person who can type a second title during the first create is a person
-  // whose second title a delayed success will wipe.
-  //
-  // `locked` adds `closed`: `task.create` is this form's one command, so a
-  // refusal about this reader's authority closes the form rather than letting
-  // it ask again, as the comment box and the propose form do.
-  const { busy: creating, because, locked, run, reset } = useCommand();
-  const [title, setTitle] = useState('');
-  // The attempt whose outcome nobody knows. A create that ended `unavailable`
-  // may well have committed on the server, so its identity and its exact
-  // payload are kept here and presented again on the next submission. Minting
-  // a fresh id instead would make the server's replay register unreachable and
-  // the retry would create a second task.
-  const [pending, setPending] = useState<PendingCreate | null>(null);
   // The row open beside the board and the door it was opened by (MP-5-8).
   const [opened, setOpened] = useState<RowOpened | null>(null);
   const panel = props.taskPanel;
@@ -94,111 +126,11 @@ export function Projects(props: ProjectsProps): ReactElement {
   // INB-1f: one stream for the tab, shared by the board and the inbox panels.
   const followInbox = useBoardLive(client, props.grantKey, reload);
 
-  // The same attempt while the asked-for task is the same one, a new attempt
-  // when the person has changed what they are asking for. Retrying an unknown
-  // outcome and deliberately starting a second task are different intentions
-  // and the title is what tells them apart; `startNew` below says it outright.
-  const attemptFor = (asked: string): PendingCreate =>
-    pending !== null && pending.title === asked
-      ? pending
-      : { operationId: client.newOperationId(), title: asked };
-
-  const onCreate = (event: FormEvent<HTMLFormElement>): void => {
-    event.preventDefault();
-    const asked = title.trim();
-    if (locked || asked === '') return;
-    const attempt = attemptFor(asked);
-    setPending(attempt);
-    run(
-      // `board: null` is explicit. The acceptance case is a task with no board,
-      // and leaving the field out would let a server default decide.
-      () =>
-        client.mutate(
-          'task.create',
-          { fields: { title: attempt.title }, board: null },
-          { operationId: attempt.operationId },
-        ),
-      (settlement) => {
-        // The one case the attempt is kept for. The task may or may not exist.
-        if (settlement.kind === 'unknown') return;
-        // Anything else is a known outcome and the attempt is over: a refusal
-        // is a decision, and holding it would resend an identity the server
-        // has settled.
-        setPending(null);
-        if (settlement.kind !== 'ok') return;
-        // Clear only the text this create was for. The input is disabled while
-        // the request is in flight so there should be nothing newer, but a
-        // settlement that clears whatever happens to be in the box is the same
-        // defect as the task form's: a late success erasing the next task's
-        // title. Bind it to what was submitted and it cannot.
-        setTitle((current) => (current.trim() === attempt.title ? '' : current));
-        reload();
-      },
-    );
-  };
-
-  /** Abandon an unresolved attempt and ask for a genuinely different task. */
-  const startNew = (): void => {
-    setPending(null);
-    reset();
-    setTitle('');
-  };
-
-  const retrying = pending !== null && pending.title === title.trim();
-
   return (
     <div className="stack">
       {/* The inbox lives inside Tasks (INB-1g): the working minimum above the board. */}
       <Inbox client={client} grantKey={props.grantKey} follow={followInbox} />
-      <form className="taskform projects__create" onSubmit={onCreate}>
-        <div className="field">
-          <label className="tf__k" htmlFor="create-title">
-            New task
-          </label>
-          <input
-            id="create-title"
-            className="input"
-            type="text"
-            required
-            placeholder="What needs doing"
-            disabled={locked}
-            value={title}
-            onChange={(event) => {
-              setTitle(event.target.value);
-            }}
-          />
-        </div>
-        <button
-          className="btn btn--primary"
-          type="submit"
-          data-attempt={retrying ? 'retry' : 'new'}
-          disabled={locked || title.trim() === ''}
-        >
-          {creating ? 'Creating…' : retrying ? 'Retry create' : 'Create task'}
-        </button>
-        {pending === null ? null : (
-          <button
-            className="btn"
-            type="button"
-            data-attempt="discard"
-            disabled={creating}
-            onClick={startNew}
-          >
-            Start a different task
-          </button>
-        )}
-        {because === null ? null : (
-          <p className="field__error" role="alert" data-voice="input-wrong">
-            {because}
-          </p>
-        )}
-        {pending === null || because === null ? null : (
-          <p className="card__sub" data-attempt="unresolved">
-            This task may already have been created. Retrying sends the same attempt, so the server
-            answers with the original result rather than making a second task.
-          </p>
-        )}
-      </form>
+      <CreateTask client={client} onCreated={reload} />
 
       <RecordState
         state={state}
@@ -219,6 +151,7 @@ export function Projects(props: ProjectsProps): ReactElement {
             changedAt={value.changedAt ?? null}
             stages={STAGE_LABELS}
             viewer={value.viewer ?? null}
+            {...(value.owed === undefined ? {} : { owed: value.owed })}
             href={(row) => pathTo('agency:task-detail', { key: row.key })}
             actions={rowActions({
               client,
@@ -248,9 +181,9 @@ const STAGE_LABELS = TASK_STAGES.list().map((stage) => stage.label);
 
 /** One task from the read as a Projects board row (MP-5-8). */
 function rowOf(task: BoardTask): ProjectRow {
-  // A read from a server that predates Assign to AI or the category carries
-  // none of them: none.
-  const read: Partial<Pick<BoardTask, 'agent' | 'myAgents' | 'category'>> = task;
+  // A read from a server that predates Assign to AI, the category or the
+  // comment counts carries none of them: none.
+  const read: Partial<Pick<BoardTask, 'agent' | 'myAgents' | 'category' | 'comments'>> = task;
   const agent = read.agent ?? null;
   const category = read.category ?? null;
   return {
@@ -288,6 +221,7 @@ function rowOf(task: BoardTask): ProjectRow {
     // A stored link that is not an address inside the product is never a
     // door (MP-4-12); the door is then the task's own page.
     ...(isInProductLink(task.pageLink) ? { page: task.pageLink } : {}),
-    comments: { client: 0, mentions: 0, latest: null },
+    // The reader's own waiting client signals and mentions (MP-5-8).
+    comments: read.comments ?? { client: 0, mentions: 0, latest: null },
   };
 }

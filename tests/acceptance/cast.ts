@@ -24,6 +24,7 @@ import { grantTo, WHOLE_BUSINESS } from '../commands/fixture.ts';
 import type { BusinessId, TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 import type { Action } from '../../packages/core-records/src/authority/grants.ts';
 import type { VerifiedSubject } from '../../packages/core-records/src/identity/login-resolution.ts';
+import type { Assurance } from '../../packages/core-records/src/identity/verified-subject.ts';
 import { signBearer, TEST_ISSUER } from '../support/sign-in.ts';
 
 /**
@@ -60,7 +61,7 @@ export const ACCEPTANCE_ISSUER: string = TEST_ISSUER;
  * The grants the fixture gives each role. They are not a copy of
  * `GRANTS_BY_ROLE` in the seed: the fixture member holds `task:comment` and not
  * `person:read` or `settings:read`, and the fixture admin holds every action on
- * four collections where the seed names ten pairs. `seeded-role-grants.test.ts`
+ * six collections where the seed names twelve pairs. `seeded-role-grants.test.ts`
  * pins that difference and checks the seed's roles against the surface.
  *
  * `noah` is absent on purpose and that absence is the whole of case N2: a
@@ -96,8 +97,19 @@ export const ADMIN_COLLECTIONS: readonly string[] = [
   'preset',
   // `budget.top_up` asks `decide` on `billing` (T2e), as the seed's admin holds it.
   'billing',
-  // `inbox.unattended` asks `operations:read` (INB-1e, C55).
+  'access',
+  // C55: the operations view and the privacy incident record, whose install
+  // default is the owner and administrators. `inbox.unattended` asks
+  // `operations:read` (INB-1e, C55).
   'operations',
+  'privacy',
+  // API-2: an agent credential, issued and revoked on the holder's own account.
+  'credential',
+  // C32: the client record (`record:write`), whose install default is the
+  // owner and administrators.
+  'record',
+  // MP-2-11: the four-eyes threshold asks `spend:decide`, a money action.
+  'spend',
 ];
 
 /**
@@ -118,15 +130,64 @@ export const ADMIN_EXTRA_PAIRS: readonly (readonly [string, Action])[] = [
 
 export async function tokenFor(
   subject: string,
-  options: { readonly expiresIn?: number } = {},
+  options: {
+    readonly expiresIn?: number;
+    readonly secondFactor?: boolean;
+    /** When the factors were given; now by default (S0-5's step-up sweep backdates it). */
+    readonly signedInAt?: number;
+  } = {},
 ): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
+  const at = options.signedInAt ?? now;
   return await signBearer({
     sub: subject,
     aud: 'authenticated',
     iss: ACCEPTANCE_ISSUER,
     role: 'authenticated',
     exp: now + (options.expiresIn ?? 3600),
+    // The first sign-in, as GoTrue stamps it: the session's 12-hour limit
+    // is measured from here (C58). With `secondFactor`, the code was given
+    // at the same moment, so a money action is inside C59's step-up window.
+    ...(options.secondFactor === true
+      ? {
+          aal: 'aal2',
+          amr: [
+            { method: 'password', timestamp: at },
+            { method: 'totp', timestamp: at },
+          ],
+        }
+      : { amr: [{ method: 'password', timestamp: at }] }),
+  });
+}
+
+/** A sign-in with the second factor, both factors given now (C59's step-up window). */
+function steppedUpNow(): Assurance {
+  const now = Math.floor(Date.now() / 1000);
+  return { level: 'aal2', signedInAt: now, factorAt: now };
+}
+
+/** Every collection × action pair, then the extra pairs, one grant each, in that order. */
+async function grantPairs(
+  db: FreshDatabase,
+  businessId: BusinessId,
+  member: Parameters<typeof grantTo>[1],
+  options: {
+    readonly actions: readonly Action[];
+    readonly collections: readonly string[];
+    readonly extraPairs?: readonly (readonly [string, Action])[];
+  },
+): Promise<void> {
+  const pairs = [
+    ...options.collections.flatMap((collection) =>
+      options.actions.map((action) => [collection, action] as const),
+    ),
+    ...(options.extraPairs ?? []),
+  ];
+  await db.app.withBusiness(businessId, async (tx: TenantQuery) => {
+    for (const [collection, action] of pairs) {
+      // eslint-disable-next-line no-await-in-loop -- one grant at a time reads as a list
+      await grantTo(tx, member, action, WHOLE_BUSINESS, false, collection);
+    }
   });
 }
 
@@ -141,6 +202,8 @@ export async function enrolCaller(
     readonly collections: readonly string[];
     /** Single pairs beyond `collections` × `actions`. */
     readonly extraPairs?: readonly (readonly [string, Action])[];
+    /** Signed in with the second factor just now (C59's money step-up). */
+    readonly secondFactor?: boolean;
   },
 ): Promise<Caller> {
   const subject = `${name}-${randomUUID()}`;
@@ -155,28 +218,19 @@ export async function enrolCaller(
     return { personId, actorId };
   });
   const member = { ...identity, presented: { provider: 'supabase', subject } as VerifiedSubject };
-  if (options.actions.length > 0) {
-    await db.app.withBusiness(businessId, async (tx: TenantQuery) => {
-      for (const collection of options.collections) {
-        for (const action of options.actions) {
-          // eslint-disable-next-line no-await-in-loop -- one grant at a time reads as a list
-          await grantTo(tx, member, action, WHOLE_BUSINESS, false, collection);
-        }
-      }
-      for (const [collection, action] of options.extraPairs ?? []) {
-        // eslint-disable-next-line no-await-in-loop
-        await grantTo(tx, member, action, WHOLE_BUSINESS, false, collection);
-      }
-    });
-  }
+  if (options.actions.length > 0) await grantPairs(db, businessId, member, options);
   return {
     name,
     businessKey,
     personId: identity.personId,
     actorId: identity.actorId,
     subject,
-    presented: member.presented,
-    token: await tokenFor(subject),
+    // In process, the same sign-in: the assurance the token's claims carry.
+    presented:
+      options.secondFactor === true
+        ? { ...member.presented, assurance: steppedUpNow() }
+        : member.presented,
+    token: await tokenFor(subject, { secondFactor: options.secondFactor === true }),
   };
 }
 

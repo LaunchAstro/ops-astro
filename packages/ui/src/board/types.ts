@@ -69,6 +69,8 @@ export interface Facet<Row> {
   /** The words a typed query recognises as this facet. */
   readonly words?: readonly string[];
   readonly test: (row: Row) => boolean;
+  /** Made-up data behind the mock label (DS-PRIM-32): a category before its catalogue. */
+  readonly mock?: boolean;
 }
 
 /** A named shortcut over one or more facets, counted unless it says not (B-07). */
@@ -84,6 +86,8 @@ export interface Preset {
   readonly flag?: string;
   /** The viewer's own pinned chip (P-11) or a category chip (P-13). */
   readonly variant?: 'viewer' | 'cat';
+  /** Made-up data behind the mock label (DS-PRIM-32): a category before its catalogue. */
+  readonly mock?: boolean;
 }
 
 /** An alternative surface over the same rows (B-09). */

@@ -44,7 +44,9 @@ function server(): { readonly fetch: typeof globalThis.fetch; readonly reads: ()
       return Promise.resolve(json({ ok: true, queue: [], alerts: [], outages: [] }));
     }
     if (where.endsWith('/task/execution')) return Promise.resolve(json({ ok: false }));
-    if (where.includes('/live/task/')) return Promise.resolve(new Response(null, { status: 404 }));
+    // The tab's one live stream (C4), unavailable here.
+    if (/\/live(\/task\/|\?|$)/u.test(where))
+      return Promise.resolve(new Response(null, { status: 404 }));
     if (where.endsWith('/task/read')) {
       reads += 1;
       return Promise.resolve(json({ ok: true, task: task({ adHoc }) }));

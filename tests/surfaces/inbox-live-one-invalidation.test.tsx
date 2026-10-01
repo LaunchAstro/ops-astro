@@ -74,7 +74,9 @@ describe('SL04 live Tasks screen', () => {
       signedIn: true,
       fetch,
     });
-    const view = await mount(<Projects client={client} grantKey="alpha:recipient" />);
+    const view = await mount(
+      <Projects client={client} grantKey="alpha:recipient" navigate={() => {}} />,
+    );
     try {
       await settle();
       expect((view.find('[data-inbox-count]') as HTMLElement | null)?.dataset['inboxCount']).toBe(
@@ -84,7 +86,7 @@ describe('SL04 live Tasks screen', () => {
 
       changed = true;
       for (const stream of streams) {
-        stream.enqueue(new TextEncoder().encode('event: invalidate\ndata: task-1\n\n'));
+        stream.enqueue(new TextEncoder().encode('event: invalidate\ndata: board\n\n'));
       }
       await vi.waitFor(
         async () => {

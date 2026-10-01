@@ -109,6 +109,24 @@ commands a principal may call, and through which surface. That discovery is
 replaced by the catalogue, not ported. The required check `command parity`
 runs `node scripts/command-parity.mjs --check`.
 
+**Amended 30 September 2026** (S0-5, its first part). Each catalogue row
+carries the command's data effects (`packages/core-wire/src/data-effects.ts`):
+the tables it writes with their scope, its intake, outside effects and
+whether it admits an outside person. Its class (`invitation`, `client-data`
+or `made-up-safe`) is derived from them, never set by hand. A command with
+no entry does not compile, and each entry is proved against the rows its
+fixture changes. The readiness check reads the class (S0-5, its second
+part): a real-data installation refuses every `client-data` and `invitation`
+command `GATE_SHUT` 409 while any of the eight gate items or three closing
+lines (migration 0064) is open, on the person and agent routes, after
+authority and before the handler. The mode
+and the items live in `ops` (migration 0058); the mode moves one way, from
+made-up to real, only while every item is done. Recording an item and changing
+the mode are commands under `operations:manage` in the business that operates
+the installation (migration 0062); accepting a finding is not built yet.
+`task.set_party` refuses `CLIENT_LOCKED` 409 once the task has content (its
+history or a row naming it), under the task's row lock.
+
 No external engineer review, legal opinion, security assessment, hosted enforcement,
 mailbox delivery, or service deployment is certified here. A public technical
 evidence digest with adjudicated verdicts remains outstanding. The

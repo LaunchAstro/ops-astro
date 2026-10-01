@@ -89,12 +89,6 @@
   margin-block-end: 0;
 }
 
-.topbar__who {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s-2);
-}
-
 /* 390: the narrowest pinned comparison width. The create form stacks rather
    than scrolling sideways, because a horizontal scroll on a form is a control
    a thumb cannot reach. */
@@ -146,5 +140,79 @@
 @container (max-width: 379px) {
   .todo__priority {
     display: none;
+  }
+}
+
+/* C2 presence (SH-15, DS-COMP-1): who else is on this page, as the kit's
+   AvatarStack (overlapping circles, each named); hidden at 640 and under. */
+.presence-strip {
+  display: inline-flex;
+  align-items: center;
+  margin-inline-end: 8px;
+}
+
+@media (width <= 640px) {
+  .presence-strip {
+    display: none;
+  }
+}
+
+.presence-task {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-muted);
+}
+
+/* MP-2-11 Settings General: the mockup's row (DS-COMP-13), a label and one
+   quiet sentence on the left, the control on the right; stacked at 640. */
+.setrow {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  justify-content: space-between;
+  padding-block: 12px;
+  border-block-end: 1px solid var(--border);
+}
+
+.setrow__text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.setrow__k {
+  color: var(--text);
+  font: var(--type-body-strong);
+  letter-spacing: var(--type-body-strong-tracking);
+  text-transform: var(--type-body-strong-case);
+}
+
+.setrow__control {
+  flex: none;
+}
+
+@media (width <= 640px) {
+  .setrow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+/* MP-2-11: a chosen appearance crossfades for 500ms; the marker is on only
+   while it does, and a person who asks for less motion gets none. */
+[data-theme-fade],
+[data-theme-fade] * {
+  transition:
+    background-color 500ms ease,
+    color 500ms ease,
+    border-color 500ms ease,
+    fill 500ms ease !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-theme-fade],
+  [data-theme-fade] * {
+    transition: none !important;
   }
 }

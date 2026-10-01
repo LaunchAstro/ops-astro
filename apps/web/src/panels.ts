@@ -26,7 +26,7 @@
 // the tab has somewhere to arrive.
 
 import type { GlyphName } from '@launchastro/ui';
-import type { StaticRouteId } from './routes.ts';
+import { pathTo, type StaticRouteId } from './routes.ts';
 
 export interface PanelRegistration {
   /** Frozen. The label above it is not. */
@@ -42,6 +42,13 @@ export interface PanelRegistration {
 
 export const PANELS: readonly PanelRegistration[] = [
   {
+    id: 'notifications',
+    label: 'Notifications',
+    ariaLabel: 'Notifications: what is waiting on you',
+    route: 'agency:inbox',
+    icon: 'bell',
+  },
+  {
     id: 'settings',
     label: 'Settings',
     ariaLabel: 'Business settings',
@@ -55,4 +62,42 @@ export const PANELS: readonly PanelRegistration[] = [
     route: 'agency:todos',
     icon: 'briefcase',
   },
+  {
+    id: 'team',
+    label: 'Team',
+    ariaLabel: 'Team: who is here and who is away',
+    route: 'agency:team',
+    icon: 'comments',
+  },
 ];
+
+/**
+ * The dock's tabs at `here`. The panel registry is the dock. Each registration
+ * names the address that draws its surface, and the tab navigates there rather
+ * than opening a drawer over the page: the surface has a real address, and an
+ * address a person can quote is worth more than a panel they cannot. The
+ * client face has no dock (R17).
+ */
+export const dockTabs = (
+  here: string,
+): { id: string; label: string; icon: GlyphName; open: boolean }[] =>
+  PANELS.map((panel) => ({
+    id: panel.id,
+    label: panel.label,
+    icon: panel.icon,
+    open: panel.route !== null && here === pathTo(panel.route),
+  }));
+
+/**
+ * What pressing a dock tab at `here` does: go to its panel's address. An open
+ * tab is announced as "Close", so pressing it leaves the address for the board
+ * rather than pushing the same address again.
+ */
+export const dockTabGo =
+  (here: string, navigate: (path: string) => void) =>
+  (id: string): void => {
+    const panel = PANELS.find((entry) => entry.id === id);
+    if (panel === undefined || panel.route === null) return;
+    const target = pathTo(panel.route);
+    navigate(here === target ? pathTo('agency:projects-board') : target);
+  };

@@ -5,7 +5,6 @@
 // Split from that file so each stays under the per-file cap; the seam is the
 // same one: this is still the matrix's only knowledge of what a task is.
 
-import { randomUUID } from 'node:crypto';
 import { type CommandDeclaration } from '../../packages/core-wire/src/surface.ts';
 import {
   PROPOSAL,
@@ -23,12 +22,18 @@ import {
 import { commentChangeBody } from './role-case-comment-bodies.ts';
 import { tagRecipes } from './tag-recipes.ts';
 import { timeRecipes } from './time-recipes.ts';
+import { privacyBody } from './role-case-privacy-bodies.ts';
+import { credentialBody } from './role-case-credential-bodies.ts';
+import { accessBody, madeClient } from './role-case-access-bodies.ts';
+import { createGateBody } from './role-case-gate-bodies.ts';
+import { FIXED_BODIES } from './role-case-fixed-bodies.ts';
 
 export function createPositiveBody(
   context: BodyContext,
 ): (declaration: CommandDeclaration, author?: unknown) => Promise<Prepared> {
   const time = timeRecipes(context);
   const tags = tagRecipes(context);
+  const gateBody = createGateBody(context);
   // eslint-disable-next-line max-lines-per-function -- one recipe per declaration reads as a table
   return async function positiveBody(
     declaration: CommandDeclaration,
@@ -38,6 +43,8 @@ export function createPositiveBody(
       const task = await context.freshTask(`a task for ${declaration.name}`);
       return { recordId: task.id, expectedRevision: task.revision };
     };
+    const fixed = FIXED_BODIES[declaration.name];
+    if (fixed !== undefined) return { body: { ...fixed } };
     switch (declaration.name) {
       case 'task.create':
         return { body: { fields: { title: 'the admin creates a task' } } };
@@ -109,13 +116,9 @@ export function createPositiveBody(
       case 'task.revoke_client_share':
         return { body: await target() };
       case 'task.set_party':
-        // The party link takes a uuid and nothing in this tree resolves one:
-        // the party model is not installed, and `tasks-state.ts` says so where
-        // it excludes `client` from the person links it checks. So this is the
-        // operation succeeding on a well-formed identifier, which is the whole
-        // of what it claims to check — written down so a reader is not left
-        // believing a party was proved to exist.
-        return { body: { ...(await target()), fields: { client: randomUUID() } } };
+        // The party link names a client of this business (C32), so the admin
+        // makes one first.
+        return { body: { ...(await target()), fields: { client: await madeClient(context) } } };
       case 'task.reparent':
         return { body: { ...(await target()), parentId: null } };
       case 'task.move':
@@ -164,29 +167,11 @@ export function createPositiveBody(
       case 'task.read':
       case 'task.execution':
         return { body: { recordId: context.alphaTaskId } };
-      case 'task.board':
-        return { body: { board: null } };
-      case 'task.queue':
-      case 'person.list':
-      // Both take an empty body and neither carries an `expectedRevision`:
-      // `settings.read` because `business_settings` has no revision column to
-      // be stale against, `session.capabilities` because it reports the
-      // caller's own grants and there is nothing of the caller's to be stale.
-      // `settings.read` needs `settings:read`, which the seed grants the
-      // admin; `session.capabilities` needs a live grant of any kind, which
-      // the admin holds, so the admin reaches both here.
-      case 'settings.read':
-      case 'session.capabilities':
-      case 'inbox.read':
-      case 'inbox.count':
-      case 'inbox.unattended':
-        // The caller's own inbox (INB-1d) needs a live grant of any kind, as
-        // above; `inbox.unattended` needs `operations:read`, which the seed
-        // grants the admin (INB-1e, C55).
-        return { body: {} };
-      case 'notifications.set_channel':
-        // Self-scoped (INB-1e): in-app is always on, the one mode it takes.
-        return { body: { channel: 'in_app', mode: 'on' } };
+      case 'client.create':
+      case 'access.grant':
+      case 'access.revoke':
+      case 'access.end':
+        return await accessBody(declaration.name, context);
       case 'inbox.seen': {
         // The caller's own item: a proposal raises a decision item for every
         // decide holder, the admin among them, read back from their inbox.
@@ -195,12 +180,24 @@ export function createPositiveBody(
         const items = listed.body['inbox'] as readonly Record<string, unknown>[];
         return { body: { itemId: String(items.at(-1)?.['id']) } };
       }
-      case 'preset.plan':
-        return { body: { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] } };
-      case 'settings.set_four_eyes_threshold':
-        return { body: { value: 1200 } };
-      case 'settings.set_client_sign_off':
-        return { body: { value: true } };
+      // C81: the admin holds `privacy:manage`, as the owner does.
+      case 'legal.draft_version':
+      case 'legal.approve_version':
+      case 'legal.publish_version':
+      case 'privacy.set_overseas_service':
+      case 'privacy.set_data_class':
+      case 'privacy.draft_breach_notices':
+      case 'privacy.record_incident':
+        return await privacyBody(declaration.name, context);
+      // API-2: the admin holds `credential:write`, as the owner does.
+      case 'credential.issue':
+      case 'credential.revoke':
+        return await credentialBody(declaration.name, context);
+      // S0-5: the admin holds `operations:manage` in alpha, which operates the
+      // harness's installation.
+      case 'operations.record_gate_item':
+      case 'operations.change_installation_mode':
+        return await gateBody(declaration.name);
       case 'budget.top_up':
         // The admin approved the plan and holds billing, so a top-up under
         // the band is hers alone (T2e).
@@ -275,9 +272,6 @@ export function createPositiveBody(
       case 'task.remove_tag':
       case 'tag.list':
         return await tags[declaration.name]();
-      case 'task.todos':
-        // The reader's own to-dos (MP-7-1): no operand.
-        return { body: {} };
       case 'task.dispatch':
         // The person marks their own lease's step dispatched (T2c1).
         return { body: await ownLease(context) };

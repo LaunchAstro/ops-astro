@@ -25,6 +25,21 @@ import type {
   SettingValueType,
 } from '../../core-records/src/index.ts';
 
+export type {
+  PrivacyIncidentView,
+  BreachRunbookLink,
+  HealthSourceName,
+  HealthSourceState,
+  HealthFault,
+  ServiceHealthState,
+  HealthSourceView,
+  ServiceHealthView,
+  ServiceHealthSection,
+  OperationsReadResult,
+  BreachNoticeDraft,
+  BreachNoticesResult,
+} from './views-operations.ts';
+
 /** The task state a task points at. The machine category is what a board groups on. */
 export interface TaskStateView {
   readonly id: string;
@@ -562,6 +577,19 @@ export interface BoardTask extends TaskSummary {
   readonly agent: AgentAssigneeView | null;
   /** The reader's own live agents that reach the task, as `task.read` sends them; never anyone else's. */
   readonly myAgents: readonly AgentOfferView[];
+  /** The reader's own waiting client signals and mentions on the task (MP-5-8); never anyone else's. */
+  readonly comments: BoardComments;
+}
+
+/**
+ * A board row's comment badge (MP-5-8, P-22): of the reader's own open inbox
+ * items (INB-1) about the task, how many are `client_comment` and how many
+ * `mention`, and when the newest of them was raised; null when there are none.
+ */
+export interface BoardComments {
+  readonly client: number;
+  readonly mentions: number;
+  readonly latest: string | null;
 }
 
 /**
@@ -595,6 +623,57 @@ export interface TaskBoardResult {
   readonly changedAt: string | null;
   /** The caller's own person id, which the viewer preset narrows to (MP-5-12). */
   readonly viewer: string;
+  /** The caller's owed count, INB-1's one count, as `inbox.count` gives it: Review's count (MP-5-12). */
+  readonly owed: number;
+}
+
+/**
+ * One applied write to a task, as the activity ledger lists it (MP-8-4). The
+ * actor is named, never identified: the ledger is read by people, and an
+ * actor's identifier tells them nothing a name does not.
+ */
+export interface LedgerEventView {
+  readonly id: string;
+  readonly at: string;
+  /** The person who acted, or what kind of actor it was when no person did. */
+  readonly actorName: string;
+  /** The command that was applied, by its surface name. */
+  readonly operation: string;
+  readonly task: { readonly key: string; readonly title: string | null };
+}
+
+/** One day in the reader's zone and every event on it, newest first. */
+export interface LedgerDayView {
+  /** `YYYY-MM-DD` in the zone the reader asked for. */
+  readonly day: string;
+  readonly events: readonly LedgerEventView[];
+}
+
+/**
+ * `task.ledger`'s answer: whole days, newest first, never split across pages.
+ * `earlier` says whether a day before the last one here has events.
+ */
+export interface TaskLedgerResult {
+  readonly ok: true;
+  readonly days: readonly LedgerDayView[];
+  readonly earlier: boolean;
+}
+
+/** A teammate on the Team panel's people strip (MP-7-10): no row is available. */
+export interface TeamMemberView {
+  readonly personId: string;
+  readonly name: string;
+  readonly availability: {
+    readonly state: 'available' | 'away';
+    readonly reason: string | null;
+  } | null;
+}
+
+export interface TeamListResult {
+  readonly ok: true;
+  /** The reader's own person, so the panel knows which entry is theirs. */
+  readonly you: string;
+  readonly people: readonly TeamMemberView[];
 }
 
 export interface PersonListResult {
@@ -642,6 +721,21 @@ export interface OutageView {
 export interface PresetPlanResult {
   readonly ok: true;
   readonly plan: PresetPlan;
+}
+
+/** One task a search found: enough to list it and to open it. */
+export interface SearchHit {
+  readonly id: string;
+  readonly key: string;
+  readonly title: string | null;
+}
+
+/** `task.search`'s answer. No match in scope is `[]`, and there is no count. */
+export interface TaskSearchResult {
+  readonly ok: true;
+  readonly hits: readonly SearchHit[];
+  /** Only for a server caller that passed a limit: its own matches go past it. */
+  readonly more?: boolean;
 }
 
 export interface SettingsReadResult {
@@ -711,6 +805,75 @@ export interface ReceiptResult {
         }
       | { readonly state: string; readonly heldMinor: number };
   };
+}
+
+/**
+ * Who is signed in (C23): the caller's own name, for the person menu, and
+ * nothing else about anybody. No identifier: the menu needs none, and an answer
+ * that carries only a name cannot carry someone else's.
+ */
+export interface SessionPersonResult {
+  readonly ok: true;
+  readonly person: { readonly name: string };
+}
+
+/** One permission in effect: an action on a collection, over the scope it reaches. */
+export interface AccessPermission {
+  readonly collection: string;
+  readonly action: Action;
+  /** `id` is null exactly at business scope; a client is a `party`. */
+  readonly scope: { readonly kind: 'business' | 'party' | 'record'; readonly id: string | null };
+}
+
+/** One live grant row naming a person or their acting identity: what `access.revoke` takes. */
+export interface AccessGrant extends AccessPermission {
+  readonly grantId: string;
+}
+
+/**
+ * A person on Team or Clients, with the preview of what they may do now and
+ * the live grants behind it, each by id, so one can be revoked.
+ */
+export interface AccessPerson extends PersonView {
+  readonly permissions: readonly AccessPermission[];
+  readonly grants: readonly AccessGrant[];
+}
+
+/** An agent on a live delegation, under the person record it draws on. */
+export interface AccessAgent {
+  readonly agentActorId: string;
+  readonly delegationId: string;
+  readonly purpose: string;
+  readonly person: PersonView;
+  readonly expiresAt: string;
+  /** Its delegation's narrowing of its person's grants, on the one record it is for. */
+  readonly permissions: readonly AccessPermission[];
+}
+
+/**
+ * `access.read`'s answer (C32). The three lists are one set of `people` rows:
+ * Team is the assignee list, Clients the people without a membership who
+ * stand on a live grant, and each agent names its person rather than copying it.
+ */
+export interface AccessReadResult {
+  readonly ok: true;
+  readonly team: readonly AccessPerson[];
+  readonly clients: readonly AccessPerson[];
+  readonly agents: readonly AccessAgent[];
+  /** The business's client records, which a `party` scope in a preview names. */
+  readonly clientRecords: readonly ClientView[];
+}
+
+/** One client record (C32): an organisation the business works for. */
+export interface ClientView {
+  readonly clientId: string;
+  readonly name: string;
+}
+
+/** `client.list`'s answer: the clients the caller's live grants reach. */
+export interface ClientListResult {
+  readonly ok: true;
+  readonly clients: readonly ClientView[];
 }
 
 /**

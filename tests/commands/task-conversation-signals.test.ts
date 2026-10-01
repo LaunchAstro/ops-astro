@@ -16,7 +16,7 @@ import {
   readConversation,
   type ConversationLevel,
   type ConversationRead,
-} from '../../packages/core-commands/src/reads/conversation.ts';
+} from '../../packages/core-commands/src/reads/task-conversation.ts';
 import type { TenantQuery } from '../../packages/core-records/src/index.ts';
 import { enrol } from './fixture.ts';
 import { codeOf } from './agent-fixture.ts';

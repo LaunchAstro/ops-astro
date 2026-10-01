@@ -68,7 +68,7 @@ function catalogueMatchesCode(): void {
       );
       expect(row.cli).toBe(row.command);
       expect(row.api.person).toMatch(/^\/api\/b\/:businessKey\//u);
-      expect(row.dataEffects).toBeNull();
+      expect(row.dataEffects, 'S0-5 fills it').not.toBeNull();
     }
     const party = rows.find((row) => row.command === 'task.set_party');
     expect(party?.rule).toContain('CLIENT_LOCKED (409)');
@@ -159,6 +159,18 @@ function commandsTheAppCalls(): Set<string> {
   return called;
 }
 
+/** Where the app names `task.create` and `task.start`, as the catalogue computes it. */
+const CREATE_UI = [
+  'agency:projects-board (screens/projects/CreateTask.tsx)',
+  'agency:task-detail (screens/task/History.tsx)',
+  'agency:task-detail (screens/task/Subtasks.tsx)',
+  'app shell (screens/task/task-draft.ts)',
+];
+const START_UI = [
+  'agency:task-detail (screens/task/History.tsx)',
+  'agency:task-detail (screens/task/Lifecycle.tsx)',
+];
+
 function exemptAndMergedTickets(): void {
   it('API-1 exempt list: view-only actions are exempt with a reason, and nothing that writes a record is', () => {
     expect(VIEW_ONLY_EXEMPT.length).toBeGreaterThan(0);
@@ -183,16 +195,8 @@ function exemptAndMergedTickets(): void {
       expect(row?.ui.length, command).toBeGreaterThan(0);
     }
     const ui = (name: string) => rows.find((row) => row.command === name)?.ui ?? [];
-    expect(ui('task.create')).toEqual([
-      'agency:projects-board (screens/Projects.tsx)',
-      'agency:task-detail (screens/task/History.tsx)',
-      'agency:task-detail (screens/task/Subtasks.tsx)',
-      'app shell (screens/task/task-draft.ts)',
-    ]);
-    expect(ui('task.start')).toEqual([
-      'agency:task-detail (screens/task/History.tsx)',
-      'agency:task-detail (screens/task/Lifecycle.tsx)',
-    ]);
+    expect(ui('task.create')).toEqual(CREATE_UI);
+    expect(ui('task.start')).toEqual(START_UI);
     expect(ui('settings.set_client_sign_off')).toEqual([
       'agency:settings (screens/settings/use-settings.ts)',
     ]);

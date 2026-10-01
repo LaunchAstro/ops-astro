@@ -91,7 +91,7 @@ describe('MP-5-9 the row’s commands from the Projects screen', () => {
       newOperationId: () => 'operation-1',
     });
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1480 });
-    mounted = await mount(<Projects client={client} grantKey="alpha:ada" />);
+    mounted = await mount(<Projects navigate={() => {}} client={client} grantKey="alpha:ada" />);
     await settle();
     await mounted.click(`tr[data-row="${TASK_ID}"] input.cbd__tick`);
     await settle();
@@ -134,7 +134,7 @@ describe('MP-5-9 the hover box holds timer, add subtask and a door: the timer fr
       newOperationId: () => 'operation-1',
     });
     Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1480 });
-    mounted = await mount(<Projects client={client} grantKey="alpha:ada" />);
+    mounted = await mount(<Projects navigate={() => {}} client={client} grantKey="alpha:ada" />);
     await settle();
     await mounted.click(`tr[data-row="${TASK_ID}"] [data-route="timer"]`);
     await settle();

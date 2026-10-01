@@ -8,7 +8,14 @@
 import { expect } from 'vitest';
 import { type Harness } from './role-case-harness.ts';
 import { isUuid } from '../../packages/core-records/src/tenancy/ids.ts';
-import { type Body, EVIDENCE_TABLES } from './ident-audit-cases.ts';
+import { type Body } from './ident-audit-cases.ts';
+
+/** Evidence of attempts, which a committed refusal writes by contract (T1). */
+export const EVIDENCE_TABLES: ReadonlySet<string> = new Set([
+  'audit_events',
+  'operations',
+  'authentication_attempts',
+]);
 
 /**
  * One digest per business over every other tenant table, every row, every

@@ -8,7 +8,9 @@
 // - `task.add_tag` and `task.remove_tag`: the envelope has asked `task:write`
 //   of the task the body names. A tag that is not in this business's
 //   vocabulary is `NOT_FOUND` on `tagId`, the answer a tag that does not exist
-//   gets, so a refusal never says whether another business has it.
+//   gets, so a refusal never says whether another business has it. Both answer
+//   with the task, so the audit event's subject is the task: a tag on it, or
+//   one taken off, is the task's content to the client lock (S0-5).
 //
 // Choosing a tag is always one of these commands: typed text is never a tag
 // until it is created or chosen.
@@ -78,7 +80,7 @@ export async function addTagToTask(
       refuseCommand('UNIQUE_VALUE_TAKEN', ['tagId'], ['This task already carries that tag.']),
     );
   }
-  return applied(null, null, { tagId });
+  return applied(taskId, null, { tagId });
 }
 
 /** `task.remove_tag`: the tag off this task; the vocabulary keeps it. */
@@ -91,5 +93,5 @@ export async function removeTagFromTask(
   const removed = await removeTaskTag(tx, { taskId, tagId });
   if (removed === 'no-task') return NO_TASK;
   if (removed === 'not-carried') return NO_TAG;
-  return applied(null, null, { tagId });
+  return applied(taskId, null, { tagId });
 }

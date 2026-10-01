@@ -428,7 +428,7 @@ has the interface and the tests.
 
 ## The reads
 
-Eight reads are declared in `COMMAND_SURFACE` with `kind: 'read'` and served by
+Nine reads are declared in `COMMAND_SURFACE` with `kind: 'read'` and served by
 `packages/core-commands/src/reads/`. Four of them are this file's:
 
 - `task.read { recordId }` → the task, its state, its assignee and its history
@@ -443,9 +443,13 @@ Eight reads are declared in `COMMAND_SURFACE` with `kind: 'read'` and served by
 - `task.todos {}` → the reader's own open tasks on any board, with their tags
   and the client messages owed a reply (MP-7-1), for a reader of the
   business's tasks
+- `team.list {}` → the staff with an active membership and each one's
+  availability (`person_availability`, 0060, set only by that person), for the
+  Team panel; a client of the business is answered `NOT_FOUND`
 
-The other four, `task.queue`, `preset.plan`, `settings.read` and
-`session.capabilities`, are listed with their answers under "Reads" in
+The other six, `task.queue`, `task.ledger`, `preset.plan`, `settings.read`,
+`session.capabilities` and `access.read` (Settings ▸ Access, C32, under
+`access:manage`), are listed with their answers under "Reads" in
 [API.md](API.md#reads).
 
 On the person prefix a read carries no `operation_id` and no
@@ -511,3 +515,121 @@ Identity comes from `.local/synthetic-users.json`, which `auth:seed`
 (`scripts/local/auth-seed.mjs`) writes because the GoTrue subjects are its to
 mint. Until that file exists the seed writes a placeholder with random subjects
 and says on every run that those identities cannot sign in.
+
+## Second factors (0049, C59)
+
+`second_factors` records that a person has a second factor at the sign-in
+provider, which one (the provider's factor id, a bounded identifier, never a
+secret) and where it stands: `unverified` from enrolment until the first code
+completes it, `verified`, then `removed` when it is replaced or taken away.
+One live factor per person (`second_factors_one_live`). The application may
+select, insert and update; nothing deletes a row, so a person's factor history
+stays readable. The authenticator secret and the codes a person types are
+never written here. Whether a person has a verified factor is mirrored onto
+`people.second_factor_verified` by the same writers in the same transaction
+(`identity/second-factor.ts`), so login resolution reads it inside the one
+query it already makes and refuses a sign-in without the second factor. It
+reads the column through the row's json, so on a database from before 0049,
+which has no such column, the answer is no factor.
+
+## Privacy incidents (0050, C55)
+
+`privacy_incidents` holds the breach runbook's day-0 record: what happened,
+when it was found (`found_at`, day 0), who found it, which clients and people
+(`affected`), and the kinds of information from a closed list of seven. The
+assessment limit is derived from `found_at` where the row is read, so no stored
+date can drift from it. Status is `open` or `closed`. The application may
+select, insert and update; nothing deletes a row. The table is tenancy-keyed
+with the restrictive policy like every business table, and it is not a
+`records` row, so no share, search or export reaches it. The audit chain and
+the operation register hold a digest and the new row's id, never the words.
+
+## Legal documents (0051, C81)
+
+`legal_document_versions` holds every version of a business's legal documents:
+the document, its `major.minor` label (one per document), the words, and
+`body_digest`, the SHA-256 of the words, set by the database on insert. The
+approval (`approved_at`, by whom, and the digest approved, which must equal
+`body_digest`) and the publication are each set once. A guard refuses any
+change to the drafted columns, and any change or clearing of an approval or a
+publication once set, so a published version's bytes never change in place.
+The application may select, insert and update; nothing deletes a row. The
+table is tenancy-keyed with the restrictive policy. The audit chain and the
+operation register hold a digest and the version's id, never the words.
+
+## Clients (0055, C32)
+
+`clients` holds one row per client of the business: its `name` (1 to 200
+characters, trimmed, one per business in any letter case, `clients_one_name`)
+and who made it and when. It is the party a party-scoped grant names in
+`grants.scope_id` and a task names in its `client` link (`records.uuid_7`).
+Neither carries a foreign key to it, so `access.grant` and `task.set_party`
+check a client is of this business before writing its id. The application may
+select and insert; nothing updates or deletes a row. Tenancy-keyed with the
+restrictive policy.
+
+## Access endings (0056, C58)
+
+`access_endings` holds one row per login of a person whose access was ended
+(`access.end`): who ended it and when, and the two provider steps it owed,
+each stamped once when done (`sessions_ended_at`, `login_deactivated_at`).
+`attempts`, `attempt_started_at` (a retry's 30-second claim) and `last_fault`
+(the kind of the last failure, one of five words, never the provider's text)
+record the retries. The application may select, insert and update; nothing
+deletes a row. Tenancy-keyed with the restrictive policy. The partial index
+`access_endings_owed` is what the server's retry looks for.
+
+## Ended sessions (0057, C58)
+
+`authentication_attempts.session_id` is the provider session a resolved
+attempt came in on (null on a refusal, and for a token that names none); a
+person's session list reads it through `authentication_attempts_person_sessions`.
+`ended_sessions` holds one row per session a person ended: signed out
+(`sign_out`), ended from another session (`end_others`) or by a second-factor
+change (`factor_change`). Unique on business, person and session; login
+resolution refuses a session named here for that person. The application may
+select and insert; nothing changes or deletes a row. Tenancy-keyed with the
+restrictive policy.
+
+## Overseas-services register (0052, C81)
+
+`overseas_services` holds one row per outside service that receives personal
+information (SP-25): the service, what it receives, where it is stored
+(`stored_where`), whether it trains on it, the contract, `to_confirm` and
+`in_use`, with who changed it last and when. One row per service in any letter
+case (`overseas_services_one_service`). The application may select, insert and
+update; nothing deletes a row. Tenancy-keyed with the restrictive policy.
+
+0052 also gives `legal_document_versions` two columns, `register` (the rows in
+use as a JSON array) and `register_digest` (SHA-256 over those rows and their
+`to_confirm` marks, in order). A privacy-policy version has both, and no other
+document has either (`legal_document_versions_register_policy_only`). The
+written-once guard now covers them with the rest of the draft.
+
+## Data-class register (0053, C81)
+
+`data_classes` holds one row per class of personal information: the class
+(`data_class`), its purpose, its normal disclosures, its retention and its
+deletion, each required by a check, with `in_use` and who changed it last and
+when. One row per class in any letter case (`data_classes_one_class`). The
+application may select, insert and update; nothing deletes a row.
+Tenancy-keyed with the restrictive policy.
+
+0053 also gives `legal_document_versions` `data_classes` (the classes in use
+as a JSON array) and `data_classes_digest` (SHA-256 over their words, in
+order). A privacy-policy version has both, and no other document has either
+(`legal_document_versions_data_classes_policy_only`). The written-once guard
+covers them with the rest of the draft.
+
+## Agent credentials (0054, API-2)
+
+`agent_credentials` holds one row per agent credential: the fresh agent actor
+it is for (`agent_actor_id`, one credential per agent actor), the person and
+actor who issued it, its purpose, its scope as `collection:action` keys (1 to
+32, never decide, share or manage, by `agent_credentials_scope_shape`), the
+SHA-256 of its secret (`credential_hash`), the scheme (`hmac-sha256-v1`) and
+the key id, when it was issued and when it expires (after issue), and the
+revocation (`revoked_at` with `revoked_by_actor_id`, both or neither). The
+secret itself is stored nowhere. A guard keeps every issued column as written
+and lets the revocation be set once. The application may select, insert and
+update; nothing deletes a row. Tenancy-keyed with the restrictive policy.

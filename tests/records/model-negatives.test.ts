@@ -48,7 +48,7 @@ import { executeCommand } from '../../packages/core-commands/src/commands/envelo
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { createCli } from '../../apps/cli/client.ts';
-import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
+import { enrol, grantTo, WHOLE_BUSINESS, installSpine, type Member } from '../commands/fixture.ts';
 import { BUSINESS_KEY, createApiFixture, tokenFor, type ApiFixture } from '../api/fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
@@ -217,6 +217,8 @@ interface OwnerWorld {
   readonly freshTask: (title: string) => Promise<{ id: string; revision: number }>;
   /** A live delegation of the writer's own, minted for this task (the agent assignee). */
   readonly ownAgent: (taskId: string) => Promise<string>;
+  /** A client of this business (C32): the party link names a real one. */
+  readonly madeClient: () => Promise<string>;
 }
 
 /** The success an owner must be seen to produce. */
@@ -264,10 +266,9 @@ const OWNER_CASES: Readonly<Record<string, OwnerCase>> = {
     stored: () => 'accepted',
   },
   client: {
-    // A well-formed identifier and nothing more: the party model is not
-    // installed, so no party is proved to exist (role-case-positive-body.ts says so).
+    // The party link names a client of this business (C32), made first.
     command: 'task.set_party',
-    payload: () => ({ fields: { client: randomUUID() } }),
+    payload: async (world) => ({ fields: { client: await world.madeClient() } }),
     stored: (payload) => fieldOf(payload, 'client'),
   },
   client_visible: {
@@ -317,6 +318,35 @@ const OWNER_CASES: Readonly<Record<string, OwnerCase>> = {
   },
 };
 
+/** A live delegation of the writer's own, minted for one task (the agent assignee). */
+async function mintOwnAgent(
+  db: FreshDatabase,
+  business: string,
+  worker: Member,
+  taskId: string,
+): Promise<string> {
+  return await db.app.withBusiness(business, async (tx) => {
+    const agentActorId = randomUUID();
+    await tx.query(`insert into public.actors (business_id, id, kind) values ($1, $2, 'agent')`, [
+      business,
+      agentActorId,
+    ]);
+    const made = await mintDelegation(tx, {
+      agentActorId,
+      delegatePersonId: worker.personId,
+      mintedByActorId: worker.actorId,
+      purpose: `owner_${randomUUID().slice(0, 8)}`,
+      collections: ['task'],
+      // The writer holds write, assign and share here, and a mint never widens.
+      actions: ['write'],
+      purposeScope: { kind: 'record', id: taskId },
+      expiresAt: new Date(Date.now() + 3_600_000),
+    });
+    if (!made.ok) throw new Error(`model negatives: mint refused ${made.refusal.code}`);
+    return made.value.delegation.id;
+  });
+}
+
 describe.skipIf(serverUrl === undefined)('D04: every owner writes the field it owns', () => {
   let db: FreshDatabase;
   let business: string;
@@ -357,30 +387,12 @@ describe.skipIf(serverUrl === undefined)('D04: every owner writes the field it o
         // oxlint-disable-next-line no-await-in-loop
         await grantTo(tx, worker, action);
       }
+      // `client.create` asks for record:write (C32), for the party link's client.
+      await grantTo(tx, worker, 'write', WHOLE_BUSINESS, false, 'record');
     });
     world = {
       other,
-      ownAgent: async (taskId) =>
-        await db.app.withBusiness(business, async (tx) => {
-          const agentActorId = randomUUID();
-          await tx.query(
-            `insert into public.actors (business_id, id, kind) values ($1, $2, 'agent')`,
-            [business, agentActorId],
-          );
-          const made = await mintDelegation(tx, {
-            agentActorId,
-            delegatePersonId: worker.personId,
-            mintedByActorId: worker.actorId,
-            purpose: `owner_${randomUUID().slice(0, 8)}`,
-            collections: ['task'],
-            // The writer holds write, assign and share here, and a mint never widens.
-            actions: ['write'],
-            purposeScope: { kind: 'record', id: taskId },
-            expiresAt: new Date(Date.now() + 3_600_000),
-          });
-          if (!made.ok) throw new Error(`model negatives: mint refused ${made.refusal.code}`);
-          return made.value.delegation.id;
-        }),
+      ownAgent: async (taskId) => await mintOwnAgent(db, business, worker, taskId),
       freshTask: async (title) => {
         const made = await run({
           command: 'task.create',
@@ -389,6 +401,15 @@ describe.skipIf(serverUrl === undefined)('D04: every owner writes the field it o
         });
         if (isCommandRefusal(made)) throw new Error(`create refused ${made.code}`);
         return { id: made.recordId ?? '', revision: made.revision ?? 0 };
+      },
+      madeClient: async () => {
+        const made = await run({
+          command: 'client.create',
+          operationId: randomUUID(),
+          name: `model negatives ${randomUUID()}`,
+        } as Parameters<typeof executeCommand>[4]);
+        if (isCommandRefusal(made)) throw new Error(`client.create refused ${made.code}`);
+        return String((made.detail as Record<string, unknown> | undefined)?.['clientId'] ?? '');
       },
     };
   }, 60_000);

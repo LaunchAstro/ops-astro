@@ -32,6 +32,7 @@ const attention = (row: ProjectRow): boolean =>
 export function projectPresets(
   rows: readonly ProjectRow[],
   viewer: string | null,
+  mockCategories = false,
 ): readonly Preset[] {
   const categories = [...new Set(rows.map((row) => row.category))]
     .filter((category): category is string => category !== null)
@@ -46,6 +47,7 @@ export function projectPresets(
       uncounted: true,
       variant: 'cat',
     };
+    if (mockCategories) Object.assign(chip, { mock: true });
     return flagged ? Object.assign(chip, { flag: WAITING }) : chip;
   });
   if (viewer === null) return chips;
@@ -69,11 +71,23 @@ export function openWithViewer(address: string, viewer: string | null): string {
   return params.toString();
 }
 
-/** The Review chip's live count and what it says. */
-export function reviewBadge(rows: readonly ProjectRow[]): {
+/**
+ * The Review chip's live count and what it says: `owed`, INB-1's one count
+ * (MP-5-12), when the read sent it, else the rows waiting on the viewer's gate.
+ */
+export function reviewBadge(
+  rows: readonly ProjectRow[],
+  owed?: number,
+): {
   readonly count: number;
   readonly title: string;
 } {
+  if (owed !== undefined) {
+    return {
+      count: owed,
+      title: owed === 0 ? 'Nothing waiting for you' : `${String(owed)} waiting for you`,
+    };
+  }
   const count = rows.filter((row) => row.awaitingDecision).length;
   return {
     count,

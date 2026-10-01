@@ -15,10 +15,10 @@ import { describe, expect, it } from 'vitest';
 import {
   CALLER_VISIBLE,
   REFUSAL_REGISTER,
-  UNPRODUCED_CODES,
   registeredRefusal,
   type RefusalCode,
 } from '../../packages/core-records/src/register.ts';
+import { UNPRODUCED_CODES } from '../../packages/core-records/src/register-unproduced.ts';
 import {
   asCallerVisible,
   refuseCommand,

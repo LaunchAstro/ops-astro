@@ -21,11 +21,12 @@
 // through this one function, so arming a new one is a declaration and a case
 // rather than a fourth place to edit.
 
-import { withSession } from '../../../core-records/src/index.ts';
+import { withSession, withStanding } from '../../../core-records/src/index.ts';
 import type { BusinessId, Database, VerifiedSubject } from '../../../core-records/src/index.ts';
 import { asCallerVisible, isCommandRefusal, type CommandRefusal } from '../commands/refusal.ts';
 import type { ReadRequest, ReadResult } from './requests.ts';
-import { runRead } from './dispatch.ts';
+import { admitRead, runRead } from './dispatch.ts';
+import { isInternalReader } from './tasks.ts';
 
 export async function executeRead(
   database: Database,
@@ -42,3 +43,69 @@ export async function executeRead(
   if (isCommandRefusal(outcome)) return asCallerVisible(outcome);
   return outcome;
 }
+
+/** Where an admission is asked: when a stream is opened, or again on it. */
+export type AdmissionAt = 'door' | 'recheck';
+
+/**
+ * Whether the session may make each read, as `executeRead` would decide it,
+ * in one transaction and without serving or auditing any of them.
+ *
+ * For the live channel, whose checks show the person nothing (C4 live-sync 6).
+ * At the `door` the login is resolved as every request's is, and its one
+ * authentication attempt is recorded; a `recheck` resolves the same standing
+ * and records nothing. A refused login is the one answer for every read.
+ */
+export async function admitReads(
+  database: Database,
+  businessId: BusinessId,
+  presented: VerifiedSubject,
+  requests: readonly ReadRequest[],
+  at: AdmissionAt,
+): Promise<readonly Admission[] | CommandRefusal> {
+  const within = at === 'door' ? withSession : withStanding;
+  const outcome = await within(database, businessId, presented, async (tx, session) => {
+    const admissions: Admission[] = [];
+    for (const request of requests) {
+      // eslint-disable-next-line no-await-in-loop -- one transaction, one statement at a time.
+      const admitted = await admitRead(tx, session, request);
+      admissions.push(isCommandRefusal(admitted) ? asCallerVisible(admitted) : admitted);
+    }
+    return admissions;
+  });
+  return isCommandRefusal(outcome) ? asCallerVisible(outcome) : outcome;
+}
+
+/** Who a live-channel caller is, for presence (C2): staff or not, and the name teammates see. */
+export interface Viewer {
+  readonly personId: string;
+  readonly name: string;
+  readonly staff: boolean;
+}
+
+/**
+ * The caller's standing, resolved as a `recheck` resolves it: nothing is
+ * recorded. For presence on a stream already admitted at the door, and for
+ * the presence routes, which show nothing and store nothing (C2).
+ */
+export async function viewerOf(
+  database: Database,
+  businessId: BusinessId,
+  presented: VerifiedSubject,
+): Promise<Viewer | CommandRefusal> {
+  const outcome = await withStanding(database, businessId, presented, async (tx, session) => {
+    const [person] = await tx.query<{ readonly display_name: string }>(
+      'select display_name from public.people where business_id = $1 and id = $2',
+      [tx.businessId, session.personId],
+    );
+    return {
+      personId: session.personId,
+      name: person?.display_name ?? '',
+      staff: isInternalReader(session.roleKey),
+    };
+  });
+  return isCommandRefusal(outcome) ? asCallerVisible(outcome) : outcome;
+}
+
+/** One read admitted, and the record it is about; or the refusal it would have met. */
+export type Admission = { readonly recordId: string | undefined } | CommandRefusal;

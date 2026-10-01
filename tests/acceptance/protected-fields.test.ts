@@ -490,6 +490,9 @@ describe.skipIf(serverUrl === undefined)('a protected field is protected on ever
      * is why `completed_at` cannot be set apart from the transition that earns
      * it, and why the last two assertions here are the whole of row D04.
      */
+  });
+
+  describe('the operation that owns the field writes it', () => {
     it('moves the lifecycle through start, complete and reopen', async () => {
       const made = await createTask('lifecycle');
       const started = await command('task.start', {

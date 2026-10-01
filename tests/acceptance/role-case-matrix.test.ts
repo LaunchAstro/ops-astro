@@ -49,6 +49,14 @@ import type { FixtureClient } from './role-case-clients.ts';
 import { alternativeFor } from './cd-alternatives.ts';
 import { PROPOSAL } from './role-case-bodies.ts';
 
+/** The inbox's `self` rows (INB-1d, INB-1e); the account's (C23) take the branch after. */
+const INBOX_SELF: ReadonlySet<string> = new Set([
+  'inbox.read',
+  'inbox.count',
+  'inbox.seen',
+  'notifications.set_channel',
+]);
+
 if (serverUrl === undefined) {
   console.warn('acceptance/matrix: DATABASE_URL is unset, so nothing below ran.');
 }
@@ -226,7 +234,7 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
           );
           continue;
         }
-        if (declaration.authorisedOn === 'self' && grants !== undefined) {
+        if (INBOX_SELF.has(declaration.name) && grants !== undefined) {
           // The caller's own inbox (INB-1d). The stamp is `preference:write`,
           // self-scoped and held by every signed-in person, so nobody is R2
           // for it; another person's item is NOT_FOUND (INB-1 seen
@@ -261,6 +269,80 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
             none ? refusal('SCOPE_NOT_GRANTED') : SUCCESS,
           );
           expect(own.body['refused'] === true, `${caller.name}/${declaration.name}`).toBe(none);
+          continue;
+        }
+        if (declaration.collection === 'preference' && grants !== undefined) {
+          // The caller's own preferences (MP-2-11a). A save, and a tip dismissed
+          // (MP-2-11), are every signed-in person's, on their own row only. The read is self-scoped too but
+          // asks a live grant of any kind, as `session.capabilities` does:
+          // `noah`, holding nothing, is refused it; a member holding any grant
+          // is served their own row, which names nobody else.
+          const save = declaration.name === 'preference.save';
+          const dismiss = declaration.name === 'preference.dismiss_tip';
+          // eslint-disable-next-line no-await-in-loop
+          const own = await call(
+            harness.world.api,
+            personPath('alpha', pathOf(declaration.name)),
+            {
+              ...harness.probeBody(declaration),
+              ...(save ? { preference: 'appearance', value: 'dark' } : {}),
+              ...(dismiss ? { page: 'agency:inbox', tip: 'triage', version: 1 } : {}),
+            },
+            bearer(caller.token),
+          );
+          const expected =
+            save || dismiss || grants.size > 0 ? SUCCESS : refusal('SCOPE_NOT_GRANTED');
+          observe(caller.name, 'e-no-grant', declaration.name, own, expected);
+          expect(JSON.stringify(own.body), caller.name).not.toContain(
+            String(harness.world.ada.personId),
+          );
+          continue;
+        }
+        if (declaration.authorisedOn === 'self' && grants !== undefined) {
+          // The person menu's two (C23): `account:write` and the caller's own
+          // name are every signed-in person's, on their own account only, so a
+          // member holding no grant is not R2 for them. `noah`'s row is the
+          // control: served, and the answer names him alone. `orphan` and `bea`
+          // are not in `heldBy` and fall through below, refused at admission.
+          // eslint-disable-next-line no-await-in-loop
+          const own = await call(
+            harness.world.api,
+            personPath('alpha', pathOf(declaration.name)),
+            harness.probeBody(declaration),
+            bearer(caller.token),
+          );
+          observe(caller.name, 'e-no-grant', declaration.name, own, SUCCESS);
+          expect(own.body['refused'], `${caller.name}/${declaration.name}`).toBeUndefined();
+          expect(JSON.stringify(own.body), caller.name).not.toContain(
+            String(harness.world.ada.personId),
+          );
+          continue;
+        }
+        if (declaration.name === 'client.list' && grants !== undefined) {
+          // C32: the clients a caller's live grants reach, so like
+          // `session.capabilities` the grant it takes is holding one at all.
+          // `noah` holds nothing and is refused; `mia` holds the task keys
+          // over the whole business, so her row is a 200 listing clients.
+          // eslint-disable-next-line no-await-in-loop
+          const listed = await call(
+            harness.world.api,
+            personPath('alpha', pathOf(declaration.name)),
+            harness.probeBody(declaration),
+            bearer(caller.token),
+          );
+          if (grants.size === 0) {
+            observe(
+              caller.name,
+              'e-no-grant',
+              declaration.name,
+              listed,
+              refusal('SCOPE_NOT_GRANTED'),
+            );
+            expect(listed.body['clients'], caller.name).toBeUndefined();
+            continue;
+          }
+          observe(caller.name, 'e-no-grant', declaration.name, listed, SUCCESS);
+          expect(Array.isArray(listed.body['clients']), caller.name).toBe(true);
           continue;
         }
         if (declaration.name === 'session.capabilities' && grants !== undefined) {

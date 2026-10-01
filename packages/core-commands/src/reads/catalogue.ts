@@ -15,15 +15,22 @@
 // inventory read. This row says only how the check is asked.
 
 import {
+  clientsReached,
   planPresetSync,
   isUuid,
   listTags,
   readableScope,
+  readPreferences,
   subjectsOf,
 } from '../../../core-records/src/index.ts';
 import { readAlerts, readOutages } from '../../../core-runtime/src/index.ts';
 import type { TenantQuery, Session, PresetField } from '../../../core-records/src/index.ts';
-import { refuseCommand, refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
+import {
+  isCommandRefusal,
+  refuseCommand,
+  refuseNotFound,
+  type CommandRefusal,
+} from '../commands/refusal.ts';
 import type { TaskSpine } from '../commands/context.ts';
 import type { ReadOperands, ReadRequest, ReadResult } from './requests.ts';
 import {
@@ -34,15 +41,18 @@ import {
   resolveTaskId,
 } from './tasks.ts';
 import { readStateChoices } from './task-states.ts';
-import { listPeople } from './people.ts';
+import { listPeople, listTeam, readAccess, readOwnName } from './people.ts';
 import { readTodos } from './todos.ts';
 import { readQueue } from './queue.ts';
 import { readTaskExecution } from './execution.ts';
 import { readSettings } from './settings.ts';
 import { readCapabilities } from './capabilities.ts';
 import { parseReceipt, receiptSubject, serveReceipt } from './receipts.ts';
+import { searchTasks, wordsOf } from './search.ts';
+import { parseBreachNotices, readBreachNotices, readOperations } from './operations.ts';
 import { countOwed, readInbox, readUnattendedInbox } from './inbox.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
+import { isKnownTimeZone, readLedger } from './ledger.ts';
 
 export type ReadName = ReadRequest['read'];
 
@@ -86,7 +96,8 @@ interface RowBase<K extends ReadName> {
    * a business grant answers every record with the withheld count (B-22), a
    * grant on some records answers those and no count (a client login, owner
    * answer 22), no grant is refused.
-   * `self`: no grant is asked; the read serves the caller's own rows only and
+   * `self`: no grant is asked; the answer is about the caller alone and names
+   * nobody else (`session.person`), or serves the caller's own rows only and
    * derives access on each (the inbox).
    */
   readonly authority:
@@ -130,6 +141,12 @@ export interface SpineRow<K extends ReadName> extends RowBase<K> {
     spine: TaskSpine,
     operands: ReadOperands[K],
   ) => Promise<string | undefined>;
+  /**
+   * The row's own gate, asked after the grant and before `serve`: false is
+   * `NOT_FOUND`. It is apart from `serve` so a check that shows the person
+   * nothing can ask it without serving (`admitRead`).
+   */
+  readonly admits?: (tx: TenantQuery, session: Session, found: Found) => Promise<boolean>;
   readonly serve: (
     tx: TenantQuery,
     session: Session,
@@ -174,6 +191,32 @@ function parsed<T>(operands: T): { readonly ok: true; readonly operands: T } {
 
 const NONE = (): { readonly ok: true; readonly operands: Readonly<Record<never, never>> } =>
   parsed({});
+
+/** The longest query a search takes, which is longer than anything typed into ⌘K. */
+const QUERY_LENGTH = 200;
+const QUERY_FIX = `Send query as up to ${String(QUERY_LENGTH)} characters with a word in them.`;
+
+/** A search's words: a string no longer than the limit, with a word in it. */
+const isQuery = (query: unknown): query is string =>
+  typeof query === 'string' && query.length <= QUERY_LENGTH && wordsOf(query).length > 0;
+
+/**
+ * A zone name as the zone database spells one: letters, digits and `_+-`, in
+ * `/`-separated parts. The shape keeps anything else from reaching the
+ * lookup; whether the server knows the zone is `serve`'s question.
+ */
+const ZONE_SHAPE = /^[A-Za-z][A-Za-z0-9_+-]{0,31}(?:\/[A-Za-z0-9_+-]{1,32}){0,2}$/u;
+const ZONE_FIX = 'Send timeZone as a zone name the server knows, such as Australia/Brisbane.';
+const BEFORE_FIX = 'Send before as a day, YYYY-MM-DD, or leave it out for the newest days.';
+
+/** A real day from 1970 on, written `YYYY-MM-DD`: no time, no other shape. */
+function isCalendarDay(value: unknown): value is string {
+  if (typeof value !== 'string' || !/^(19[7-9]\d|[2-9]\d{3})-\d{2}-\d{2}$/u.test(value)) {
+    return false;
+  }
+  const day = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(day.getTime()) && day.toISOString().slice(0, 10) === value;
+}
 
 /** The planner reads each preset field as an object; which keys it needs is its own question. */
 const PRESET_FIELDS_FIX = 'Send fields as an array of field objects, which may be empty.';
@@ -297,11 +340,62 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       // at all, not a filtered one (SL07-B22-ANSWER).
       // The stamp is the newest of the rows served, so it is in scope (MP-5-7).
       // `viewer` is the caller's own person, the one the viewer preset
-      // narrows to (MP-5-12): never anyone else's identifier.
-      const viewer = session.personId;
+      // narrows to (MP-5-12), and `owed` their own count as `inbox.count` gives it.
+      const [viewer, owed] = [session.personId, await countOwed(tx, session.personId)];
       return scope.business
-        ? { ok: true, tasks, changedAt, viewer, withheld: 0 }
-        : { ok: true, tasks, changedAt, viewer };
+        ? { ok: true, tasks, changedAt, viewer, owed, withheld: 0 }
+        : { ok: true, tasks, changedAt, viewer, owed };
+    },
+  },
+  // The grant is asked by the search, not here: a record-scoped reader is
+  // refused a business-scope check and still may search what they hold, so the
+  // scopes they hold are what the statement is handed (`reads/search.ts`).
+  'task.search': {
+    identifiers: [],
+    parse: ({ query }) => (isQuery(query) ? parsed({ query }) : rejected('query', QUERY_FIX)),
+    spine: true,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session, operands, { spine }) =>
+      await searchTasks(tx, session, { taskTypeId: spine.taskTypeId, query: operands.query }),
+  },
+  // No subject record, for the reason `task.queue` gives: the ledger is about
+  // every task the business has, and naming one would make "who read this
+  // record" false for the rest.
+  'task.ledger': {
+    identifiers: [],
+    parse({ before, timeZone, query }) {
+      if (typeof timeZone !== 'string' || !ZONE_SHAPE.test(timeZone)) {
+        return rejected('timeZone', ZONE_FIX);
+      }
+      if (before !== undefined && before !== null && !isCalendarDay(before)) {
+        return rejected('before', BEFORE_FIX);
+      }
+      if (query !== undefined && query !== null && !isQuery(query)) {
+        return rejected('query', QUERY_FIX);
+      }
+      return parsed({ before: before ?? null, timeZone, query: query ?? null });
+    },
+    spine: true,
+    authority: 'declared',
+    // An outsider standing on one shared task is not told the business keeps
+    // a ledger of the rest (minimum contract 8.2 case 7, as for the board).
+    outsiderNotFound: true,
+    async serve(tx, session, operands, { spine }) {
+      // Staff's alone: `task.read` shows anyone else a task's shared view,
+      // which carries no history, and the ledger is nothing but history. The
+      // answer is the outsider's, so it says nothing about what is kept.
+      if (!isInternalReader(session.roleKey)) return refuseNotFound();
+      if (!(await isKnownTimeZone(tx, operands.timeZone))) return invalid('timeZone', ZONE_FIX);
+      // A search is C1's one service: the ledger reads the events of the tasks it
+      // found, within its own twenty best, and runs no second search.
+      const found =
+        operands.query === null
+          ? null
+          : await searchTasks(tx, session, { taskTypeId: spine.taskTypeId, query: operands.query });
+      if (found !== null && isCommandRefusal(found)) return found;
+      const taskIds = found === null ? null : found.hits.map((hit) => hit.id);
+      return { ok: true, ...(await readLedger(tx, spine.taskTypeId, { ...operands, taskIds })) };
     },
   },
   'person.list': {
@@ -336,6 +430,19 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       ok: true,
       todos: await readTodos(tx, spine, session.personId),
     }),
+  },
+  // The Team panel (MP-7-10) is staff only: a client holding `person:read`
+  // still meets NOT_FOUND, and the list names staff alone.
+  'team.list': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'declared',
+    outsiderNotFound: true,
+    serve: async (tx, session) =>
+      isInternalReader(session.roleKey)
+        ? { ok: true, you: session.personId, people: await listTeam(tx) }
+        : refuseNotFound(),
   },
   // No subject record: the queue is about the business's outstanding work
   // rather than about one task, and naming one of the tasks on it in the
@@ -374,15 +481,13 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     subject: (tx, spine, operands) => resolveTaskId(tx, spine.taskTypeId, operands.recordId),
     authority: 'declared',
     outsiderNotFound: true,
-    async serve(tx, session, operands, { spine, recordId }) {
-      // Not there, in another business or trashed: one answer, as `task.read` gives.
-      if (
-        recordId === undefined ||
-        !isInternalReader(session.roleKey) ||
-        !(await liveTask(tx, spine.taskTypeId, recordId))
-      ) {
-        return refuseNotFound();
-      }
+    // Not there, in another business or trashed: one answer, as `task.read` gives.
+    admits: async (tx, session, { spine, recordId }) =>
+      recordId !== undefined &&
+      isInternalReader(session.roleKey) &&
+      (await liveTask(tx, spine.taskTypeId, recordId)),
+    async serve(tx, _session, operands, { recordId }) {
+      if (recordId === undefined) return refuseNotFound();
       return { ok: true, execution: await readTaskExecution(tx, recordId, operands.cursor) };
     },
   },
@@ -477,6 +582,84 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     authority: 'declared',
     outsiderNotFound: true,
     serve: serveReceipt,
+  },
+  // The person menu's name (C23). Answered to anyone signed in, a member with
+  // no grant and a client outside the business included, because it is only
+  // ever their own: the statement reads the caller's own person row and takes
+  // no operand that could name another.
+  'session.person': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'self',
+    outsiderNotFound: false,
+    serve: async (tx, session) => ({
+      ok: true,
+      person: { name: await readOwnName(tx, session.personId) },
+    }),
+  },
+  // The caller's own preferences (MP-2-11a): the query names the caller, so
+  // nothing else is reachable. A caller holding no live grant is refused.
+  'preference.read': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'self',
+    outsiderNotFound: false,
+    serve: async (tx, session) =>
+      (await holdsAnyGrant(tx, session))
+        ? { ok: true, preferences: await readPreferences(tx, session.personId) }
+        : NO_GRANT_AT_ALL,
+  },
+  // Every person's authority, so it asks the key that changes it: `manage` on
+  // `access`, which no agent holds. No subject record, as for `task.queue`.
+  'access.read': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'declared',
+    outsiderNotFound: false,
+    serve: async (tx) => ({ ok: true, ...(await readAccess(tx)) }),
+  },
+  // C32. The clients the caller's live grants reach, asked inside the query:
+  // every client for a business-wide grant of any key, one client for a grant
+  // over it. No one collection is asked, and a caller holding nothing is
+  // refused rather than shown an empty list.
+  'client.list': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    async serve(tx, session) {
+      const clients = await clientsReached(tx, subjectsOf(session));
+      if (clients === null) return NO_GRANT_AT_ALL;
+      return { ok: true, clients };
+    },
+  },
+  // C55. The business's own operations, so no subject record; it asks
+  // `read` on `operations`, which no agent holds.
+  'operations.read': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'declared',
+    outsiderNotFound: false,
+    serve: async (tx) => ({ ok: true, ...(await readOperations(tx)) }),
+  },
+  // C81's breach drill. It asks `manage` on `privacy`, the key the incident is
+  // recorded under, which no agent holds. The incident is looked up in the
+  // business's own rows, so another business's id is NOT_FOUND like a made-up one.
+  'privacy.draft_breach_notices': {
+    identifiers: [],
+    parse(body) {
+      const operands = parseBreachNotices(body);
+      return isCommandRefusal(operands) ? { ok: false, refusal: operands } : parsed(operands);
+    },
+    spine: false,
+    authority: 'declared',
+    outsiderNotFound: false,
+    serve: async (tx, _session, operands) => await readBreachNotices(tx, operands),
   },
   // The caller's own items: the query names the caller as recipient and each
   // item's access is asked of their live grants, which is the permission

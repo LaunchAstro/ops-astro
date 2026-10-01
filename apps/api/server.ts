@@ -40,6 +40,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
+import { sign } from 'hono/jwt';
 import {
   connect,
   connectAsAdmin,
@@ -49,12 +50,16 @@ import {
   readEnvFile,
 } from '../../packages/core-records/src/index.ts';
 import type { AdminConnection, Database } from '../../packages/core-records/src/index.ts';
-import { createApi, type LiveOptions, type ReadExecutor } from './app.ts';
+import { createApi, type LiveOptions, type ReadAdmitter, type ReadExecutor } from './app.ts';
 import { createAlerts, faultCode, sinkFrom, type Alerts } from './alerts/sink.ts';
 import {
   executeAgentCommand,
   executeCommand,
   executeRead as readExecutor,
+  admitReads,
+  settleAccessEndings,
+  type LoginProvider,
+  type ProviderAnswer,
 } from '../../packages/core-commands/src/index.ts';
 import {
   CRASH_POINT_VARIABLE,
@@ -63,12 +68,16 @@ import {
   withRuntimeKeys,
 } from '../../packages/core-runtime/src/index.ts';
 import type { RuntimeKeys } from '../../packages/core-runtime/src/index.ts';
+import { createGoTrueFactors } from './auth/factors.ts';
+import { createLangfuseHealth } from './health/tracing.ts';
+import { createGoTrueLogins } from './auth/logins.ts';
 import {
   createSupabaseVerifier,
   keySetUrlFor,
   type SupabaseVerifierOptions,
 } from './auth/supabase.ts';
 import { startLiveTopics } from './live.ts';
+import { createLivePresence } from './live-presence.ts';
 import { isLoopback, migrationHead, readIdentity, type ServedIdentity } from './identity.ts';
 import {
   describeRecovered,
@@ -171,6 +180,14 @@ export interface ApiConfig {
   /** The signing key and delegation keyring `main` read, never put in `process.env`. */
   readonly keys: RuntimeKeys;
   /**
+   * The secret the provider's administrative bearers are minted with,
+   * `SUPABASE_JWT_SECRET`, for C58's calls on an ended login only; sign-in
+   * never reads it. Absent, those calls are not sent and stay owed.
+   */
+  readonly providerSecret?: string;
+  /** Langfuse's URL, `LANGFUSE_HOST` (C34); absent is tracing switched off. */
+  readonly tracingUrl?: string;
+  /**
    * The read half of the surface. Absent means `reads/execute.ts`, imported
    * statically, so a module that fails to load stops the server rather than
    * turning every read into `DEPENDENCY_NOT_LANDED`. A test hands in its own
@@ -179,8 +196,11 @@ export interface ApiConfig {
   readonly executeRead?: ReadExecutor;
   /** Read once at process start (`identity.ts`); absent, the identity route is not mounted. */
   readonly identity?: ServedIdentity;
-  /** The live task channel, started by `main`; absent, the event route is not mounted. */
-  readonly live?: LiveOptions;
+  /**
+   * The live task channel, started by `main`; absent, the event route is not
+   * mounted. Its check is `admitReads` unless a test hands in its own to count.
+   */
+  readonly live?: Omit<LiveOptions, 'admit'> & { readonly admit?: ReadAdmitter };
   /** The error sink and the security detections (ticket S0-2); absent without a sink. */
   readonly alerts?: Alerts;
 }
@@ -188,6 +208,8 @@ export interface ApiConfig {
 export interface ComposedApi {
   /** The served app: `/api/health`, the boundary, and the fault mapping. */
   readonly app: Hono;
+  /** The sign-in provider's calls for an ended login (C58), for the retry. */
+  readonly logins: LoginProvider;
   /**
    * The app's own business resolver. Restart recovery resolves its keys
    * through it before the port is bound, so the recovery and the requests that
@@ -203,6 +225,7 @@ export interface ComposedApi {
 export function composeApi(config: ApiConfig): ComposedApi {
   const { database, admin } = config;
   const executeRead = config.executeRead ?? readExecutor;
+  const logins = goTrueLogins(config.providerSecret, config.signIn.issuer);
   const resolveBusiness = createBusinessResolver(admin);
   const server = new Hono();
   // S0-6 no edge caching: the API is served behind Vercel's edge network, so
@@ -281,7 +304,17 @@ export function composeApi(config: ApiConfig): ComposedApi {
       executeRead,
       executeCommand,
       executeAgentCommand,
-      ...(config.live === undefined ? {} : { live: config.live }),
+      ...(config.live === undefined
+        ? {}
+        : { live: { ...config.live, admit: config.live.admit ?? admitReads } }),
+      // The provider GoTrue is: the one destination its factor calls reach.
+      factors: createGoTrueFactors({ baseUrl: config.signIn.issuer }),
+      logins,
+      // C34: tracing where switched on; the watcher and error sink are C29's.
+      health:
+        config.tracingUrl === undefined
+          ? {}
+          : { tracing: createLangfuseHealth({ baseUrl: config.tracingUrl }) },
       ...(config.alerts === undefined ? {} : { observe: config.alerts.observe }),
     }),
   );
@@ -301,7 +334,72 @@ export function composeApi(config: ApiConfig): ComposedApi {
     return context.json({ code: 'SERVICE_UNAVAILABLE', names: [], fixes: [RETRY] }, 503);
   });
 
-  return { app: server, resolveBusiness };
+  return { app: server, logins, resolveBusiness };
+}
+
+/** How often the server retries the provider steps an access ending owes (C58). */
+export const ACCESS_ENDING_RETRY_SECONDS = 60;
+
+/** A provider call not sent: the step stays owed. */
+const notSent = async (): Promise<ProviderAnswer<void>> =>
+  await Promise.resolve({ ok: false, fault: 'unreachable' });
+
+/**
+ * GoTrue's calls for an ended login, with the two bearers they need minted
+ * here from `SUPABASE_JWT_SECRET`: an
+ * administrative one for the deactivation, and one naming the login's own
+ * subject for its global sign-out. Each lives a minute and is never stored.
+ */
+function goTrueLogins(secret: string | undefined, issuer: string): LoginProvider {
+  // Sign-in no longer holds the secret (S0-6b): without one named, nothing is
+  // sent, and each ending's provider steps stay owed for the retry.
+  if (secret === undefined || secret === '') return { endSessions: notSent, deactivate: notSent };
+  const mint = async (claims: Readonly<Record<string, unknown>>): Promise<string> => {
+    const now = Math.floor(Date.now() / 1000);
+    return await sign(
+      { ...claims, aud: 'authenticated', iss: issuer, iat: now, exp: now + 60 },
+      secret,
+      'HS256',
+    );
+  };
+  return createGoTrueLogins({
+    baseUrl: issuer,
+    adminToken: async () => await mint({ role: 'service_role' }),
+    subjectToken: async (subject) => await mint({ sub: subject, role: 'authenticated' }),
+  });
+}
+
+/**
+ * One retry pass (C58): every business with an access ending that still owes
+ * the provider a step, each settled under its own tenancy. The owner's
+ * connection reads business ids and nothing else; the endings themselves are
+ * read and stamped on the application connection, inside the business.
+ * Answers how many endings still owe a step.
+ */
+export async function retryAccessEndings(
+  admin: AdminConnection,
+  database: Database,
+  logins: LoginProvider,
+  /** A test's shorter claim; the settle's own otherwise. */
+  claimSeconds?: number,
+): Promise<number> {
+  const rows = await admin.execute<{ readonly business_id: string }>(
+    `select distinct business_id from public.access_endings
+      where sessions_ended_at is null or login_deactivated_at is null`,
+  );
+  let owed = 0;
+  for (const row of rows) {
+    if (!isBusinessId(row.business_id)) continue;
+    const settle = settleAccessEndings(
+      database,
+      row.business_id,
+      logins,
+      claimSeconds === undefined ? {} : { claimSeconds },
+    );
+    // eslint-disable-next-line no-await-in-loop -- one business at a time, each under its own tenancy
+    owed += (await settle).owed;
+  }
+  return owed;
 }
 
 async function main(): Promise<void> {
@@ -321,6 +419,8 @@ async function main(): Promise<void> {
   const databaseUrl = environment['DATABASE_URL'];
   const adminUrl = environment['DATABASE_ADMIN_URL'];
   const issuer = environment['GOTRUE_URL'];
+  const tracingUrl = environment['LANGFUSE_HOST'];
+  const providerSecret = environment['SUPABASE_JWT_SECRET'];
 
   // A test's stand-in set, for a loopback issuer only: a hosted issuer's
   // tokens are checked against that provider's own published set, always.
@@ -362,13 +462,15 @@ async function main(): Promise<void> {
   // Wiring only: nothing here runs a statement or binds a port, so building it
   // before recovery changes nothing recovery sees, and recovery resolves its
   // keys through the same resolver the requests will.
-  const { app, resolveBusiness } = composeApi({
+  const { app, logins, resolveBusiness } = composeApi({
     identity: readIdentity(ROOT),
     database,
     admin,
     signIn: { issuer: issuer as string, keySetUrl },
     keys,
-    live: { topics },
+    live: { topics, presence: createLivePresence() },
+    ...(providerSecret === undefined || providerSecret === '' ? {} : { providerSecret }),
+    ...(tracingUrl === undefined || tracingUrl === '' ? {} : { tracingUrl }),
     ...(alerts === undefined ? {} : { alerts }),
   });
 
@@ -408,8 +510,18 @@ async function main(): Promise<void> {
       }),
   );
 
+  // C58: the provider steps an access ending still owes, retried until each
+  // is done. A failed pass is logged by its kind and tried again next time.
+  const retry = setInterval(() => {
+    retryAccessEndings(admin, database, logins).catch((cause: unknown) => {
+      console.error(`api: access ending retry failed (${faultCode(cause)}); next pass retries`);
+    });
+  }, ACCESS_ENDING_RETRY_SECONDS * 1000);
+  retry.unref();
+
   const stop = (): void => {
     sweeper.stop();
+    clearInterval(retry);
     // The live streams first: a question one has in flight ends before its pool does.
     void Promise.allSettled([topics.close()])
       .then(async () => await Promise.allSettled([database.close(), admin.close()]))

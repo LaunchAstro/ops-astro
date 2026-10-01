@@ -162,7 +162,11 @@ describe.skipIf(serverUrl === undefined)('trash, purge and cancel', () => {
     rhea = await enrol(db.app, business, 'rhea');
     await db.app.withBusiness(business, async (tx) => {
       await installBusinessSettings(tx);
-      await writeBusinessSetting(tx, { key: 'retention_window_days', value: 0 });
+      await writeBusinessSetting(tx, {
+        key: 'retention_window_days',
+        owningOperation: 'settings.set_retention_window',
+        value: 0,
+      });
       for (const action of ['read', 'write', 'decide', 'assign', 'comment', 'manage'] as const) {
         // Sequential: `issueGrant` reads the granter's own rows.
         // eslint-disable-next-line no-await-in-loop

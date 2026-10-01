@@ -29,6 +29,16 @@ export const SETTINGS_MANAGE = { collection: 'settings', action: 'manage' } as c
 
 export const FOUR_EYES = 'four_eyes_threshold';
 export const SIGN_OFF = 'client_sign_off_required';
+export const CONVERSATION_WINDOW = 'conversation_window_days';
+export const RETENTION_WINDOW = 'retention_window_days';
+
+/** Each row of the screen and the setting key it draws. */
+export const KEY = {
+  'four-eyes': FOUR_EYES,
+  'sign-off': SIGN_OFF,
+  conversation: CONVERSATION_WINDOW,
+  retention: RETENTION_WINDOW,
+} as const;
 
 /**
  * The rows in hand: the answer, or while a reread is in flight the previous

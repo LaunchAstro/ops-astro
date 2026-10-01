@@ -45,8 +45,12 @@ export interface ProjectsBoardProps {
   readonly viewport?: number;
   /** The signed-in person, whose own tasks the viewer preset narrows to. */
   readonly viewer?: string | null;
+  /** The reader's owed count (INB-1), Review's count; the rows' own count when not given. */
+  readonly owed?: number;
   /** Whether the viewer preset is on at load: agency-wide yes, a client's board no. */
   readonly viewerOn?: boolean;
+  /** The categories are made up (no catalogue yet): their chips carry the mock label. */
+  readonly mockCategories?: boolean;
   /** What a row can do (MP-5-9); the page owns the commands. */
   readonly actions?: RowActions;
 }
@@ -66,12 +70,18 @@ const REVIEW_EMPTY = {
 };
 
 /** The chip row's presets and the Review mode with its live count (MP-5-12). */
-function useChips(rows: readonly ProjectRow[], viewer: string | null, now: Date) {
-  const facets = useMemo(() => projectFacets(rows, now, viewer), [rows, now, viewer]);
-  const presets = useMemo(() => projectPresets(rows, viewer), [rows, viewer]);
+function useChips(
+  rows: readonly ProjectRow[],
+  viewer: string | null,
+  now: Date,
+  board: Pick<ProjectsBoardProps, 'owed' | 'mockCategories'>,
+) {
+  const { owed, mockCategories: mock = false } = board;
+  const facets = useMemo(() => projectFacets(rows, now, viewer, mock), [rows, now, viewer, mock]);
+  const presets = useMemo(() => projectPresets(rows, viewer, mock), [rows, viewer, mock]);
   const modes = useMemo(
-    () => [{ ...REVIEW_MODE, badge: reviewBadge(rows), empty: REVIEW_EMPTY }],
-    [rows],
+    () => [{ ...REVIEW_MODE, badge: reviewBadge(rows, owed), empty: REVIEW_EMPTY }],
+    [rows, owed],
   );
   return { facets, presets, modes };
 }
@@ -110,7 +120,7 @@ export function ProjectsBoard(props: ProjectsBoardProps): ReactElement {
     () => sortRows(props.rows, WORK_ORDER, projectColumns({ stages: props.stages })),
     [props.rows, props.stages],
   );
-  const { facets, presets, modes } = useChips(props.rows, viewer, now);
+  const { facets, presets, modes } = useChips(props.rows, viewer, now, props);
   const cells = useCells(props, now);
   const statuses = useMemo(() => statusOrder(props.rows), [props.rows]);
   return (

@@ -19,6 +19,7 @@ import type { Browser } from 'playwright';
 import { createServer } from 'vite';
 import { load, openSide, shoot, type Catalogue, type Side } from './capture.ts';
 import { scrollMetrics } from './drift.ts';
+import { answerMadeUp } from './made-up-api.ts';
 import type { Packet, Theme } from './packet.ts';
 import { addressOf, builtPages, needsSession, overflowOf, type PageShot } from './report.ts';
 
@@ -59,6 +60,8 @@ export async function captureBuiltPages(options: {
   widths: readonly number[];
   themes: readonly Theme[];
   out: string;
+  /** Only these pages (a ticket's own capture); every built page when left out. */
+  pages?: readonly string[];
 }): Promise<PageShot[]> {
   const { browser, packet, app, session } = options;
   const { mask } = JSON.parse(
@@ -71,6 +74,7 @@ export async function captureBuiltPages(options: {
       // A public page (sign-in) is drawn signed out, a working page signed in.
       const signedOut = await openSide(browser, packet, width, { app, colorScheme: theme });
       const signedIn = await openSide(browser, packet, width, { app, session, colorScheme: theme });
+      await answerMadeUp(signedIn.context);
       try {
         const sides = { signedOut, signedIn };
         shots.push(...(await capturePages(sides, { ...options, mask, width, theme })));
@@ -94,11 +98,19 @@ export function screenOf(): string {
 /** Every built page at one width in one theme, each on the side its route asks for. */
 async function capturePages(
   sides: { signedOut: Side; signedIn: Side },
-  at: { packet: Packet; app: URL; width: number; theme: Theme; mask: string[]; out: string },
+  at: {
+    packet: Packet;
+    app: URL;
+    width: number;
+    theme: Theme;
+    mask: string[];
+    out: string;
+    pages?: readonly string[];
+  },
 ): Promise<PageShot[]> {
   const { packet, app, width, theme, mask, out } = at;
   const shots: PageShot[] = [];
-  for (const id of builtPages()) {
+  for (const id of at.pages ?? builtPages()) {
     const name = `${id}@${width}-${theme}`;
     const address = addressOf(id, { key: 'T-1' }) ?? '/';
     const side = needsSession(id) ? sides.signedIn : sides.signedOut;

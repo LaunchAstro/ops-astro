@@ -222,11 +222,12 @@
             "    api.get(`${PREFIX.person}:businessKey/live/task/:recordId`, async (context) => {",
             "      const admitted = await admit(options, context, PERSON, false);",
             "      if (admitted instanceof Response) return admitted;",
-            "      const may = async () => await mayWatch(options, context, admitted.businessId);",
-            "      const taskId = await may();",
+            "      const asks = watching(options, live, context, admitted.businessId);",
+            "      const [taskId] = await asks.atDoor([context.req.param('recordId')]);",
+            "      if (taskId === undefined) throw new Error('the door answered no topic');",
             "      if (typeof taskId !== 'string') return refuse(context, taskId);",
             "      return streamSSE(context, async (stream) => {",
-            "        await follow(stream, live, admitted.businessId, taskId, may);",
+            "        await follow(stream, live, [{ label: taskId, taskId }], asks);",
             "      });",
             "    });"
           ]

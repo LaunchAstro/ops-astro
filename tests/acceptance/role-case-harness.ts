@@ -19,13 +19,13 @@
 import { randomUUID } from 'node:crypto';
 import {
   COMMAND_SURFACE,
+  DELEGATION_HEADER,
   pathOf,
   type CommandDeclaration,
   type CommandName,
 } from '../../packages/core-wire/src/surface.ts';
 import { issueGrant, type Action } from '../../packages/core-records/src/authority/grants.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
-import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
 import {
   agentPath,
   bearer,
@@ -35,8 +35,10 @@ import {
   type Answer,
   type Caller,
 } from './world.ts';
+import { enrol } from '../commands/fixture.ts';
 import { PROPOSAL, type Task } from './role-case-bodies.ts';
 import { createPositiveBody } from './role-case-positive-body.ts';
+import { probeOperands } from './role-case-fixed-bodies.ts';
 import { ownTaskRecipes } from './role-case-own-tasks.ts';
 import { plainRows, seedFixtureClients } from './role-case-clients.ts';
 import { pairFor, targetKeyOf, type Harness } from './role-case-harness-shape.ts';
@@ -182,12 +184,7 @@ export async function createHarness(part: string): Promise<Harness> {
       operationId: randomUUID(),
       ...(targetKeyOf(declaration) === 'recordId' ? { recordId: alphaTask.id } : {}),
       ...(targeted ? { expectedRevision: alphaTask.revision } : {}),
-      ...(declaration.name === 'task.board' ? { board: null } : {}),
-      ...(declaration.name === 'task.receipt' ? { attemptId: randomUUID() } : {}),
-      ...(declaration.name === 'task.set_state' ? { stateId: randomUUID() } : {}),
-      ...(declaration.name === 'preset.plan'
-        ? { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] }
-        : {}),
+      ...probeOperands(declaration.name),
     };
   }
 
@@ -284,6 +281,11 @@ export async function createHarness(part: string): Promise<Harness> {
       freshTask,
       clientTask,
       ownComment: async (author) => await ownComment(author as { readonly token: string }),
+      freshMember: async () =>
+        (await enrol(world.db.app, world.alpha, `ended-${randomUUID().slice(0, 8)}`)).personId,
+      clearGateItem: async (item) => {
+        await world.db.admin.execute('delete from ops.gate_items where item = $1', [item]);
+      },
     }),
     approvedReservation,
     reserve,
