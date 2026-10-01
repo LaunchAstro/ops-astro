@@ -71,44 +71,53 @@ const readableAround = (around: {
   };
 };
 
-describe.skipIf(serverUrl === undefined)('FIX-2B1 RS proof 2: rollup grant issued and revoked in one compute', () => {
-  beforeAll(async () => {
-    s = await openSchedules('fx2b1rs2', 1_000_000);
-    other = connect(s.db.appUrl, { source: 'racer' });
-    alpha = await cq8World(s).party(`rs2-${randomUUID().slice(0, 8)}`);
-  }, 180_000);
+describe.skipIf(serverUrl === undefined)(
+  'FIX-2B1 RS proof 2: rollup grant issued and revoked in one compute',
+  () => {
+    beforeAll(async () => {
+      s = await openSchedules('fx2b1rs2', 1_000_000);
+      other = connect(s.db.appUrl, { source: 'racer' });
+      alpha = await cq8World(s).party(`rs2-${randomUUID().slice(0, 8)}`);
+    }, 180_000);
 
-  afterAll(async () => {
-    await other?.close();
-    await s?.db.drop();
-  });
-
-  it('FIX-2B1-RS-2: a grant issued and revoked while compute runs does not leave the wider answer held under the unchanged fingerprint', async () => {
-    const cache = createRollupCache({ lifetimeMs: 60_000, capacity: 100, now: () => 0 });
-    const [a1, a2] = tasksOf(alpha);
-    const viewer: Member = await enrol(s.db.app, alpha.id, `rs2-${randomUUID().slice(0, 8)}`);
-    await s.db.app.withBusiness(alpha.id, async (tx) => {
-      await grantTo(tx, viewer, 'read', { kind: 'record', id: a1 }, true);
+    afterAll(async () => {
+      await other?.close();
+      await s?.db.drop();
     });
 
-    let wide: string | undefined;
-    const rollup = readableAround({
-      before: async () => {
-        wide = await other.withBusiness(alpha.id, async (tx) => await grantTo(tx, viewer, 'read'));
-      },
-      after: async () => {
-        await other.withBusiness(alpha.id, async (tx) => await revokeGrant(tx, wide ?? ''));
-      },
+    it('FIX-2B1-RS-2: a grant issued and revoked while compute runs does not leave the wider answer held under the unchanged fingerprint', async () => {
+      const cache = createRollupCache({ lifetimeMs: 60_000, capacity: 100, now: () => 0 });
+      const [a1, a2] = tasksOf(alpha);
+      const viewer: Member = await enrol(s.db.app, alpha.id, `rs2-${randomUUID().slice(0, 8)}`);
+      await s.db.app.withBusiness(alpha.id, async (tx) => {
+        await grantTo(tx, viewer, 'read', { kind: 'record', id: a1 }, true);
+      });
+
+      let wide: string | undefined;
+      const rollup = readableAround({
+        before: async () => {
+          wide = await other.withBusiness(
+            alpha.id,
+            async (tx) => await grantTo(tx, viewer, 'read'),
+          );
+        },
+        after: async () => {
+          await other.withBusiness(alpha.id, async (tx) => await revokeGrant(tx, wide ?? ''));
+        },
+      });
+
+      const racing = await readRollup(s.db.app, alpha.id, viewer.presented, rollup, cache);
+      if (isCommandRefusal(racing)) throw new Error(`rollup refused ${racing.code}`);
+      // The race happened: compute saw the business-wide grant (setup check).
+      expect(racing).toEqual(expect.arrayContaining([a1, a2]));
+
+      // Same clock, inside the lifetime: the grant is revoked, the viewer holds a1 alone.
+      const after = await readRollup(s.db.app, alpha.id, viewer.presented, rollup, cache);
+      if (isCommandRefusal(after)) throw new Error(`rollup refused ${after.code}`);
+      expect(
+        after,
+        'a revoked grant met the wider answer held under the unchanged fingerprint',
+      ).toEqual([a1]);
     });
-
-    const racing = await readRollup(s.db.app, alpha.id, viewer.presented, rollup, cache);
-    if (isCommandRefusal(racing)) throw new Error(`rollup refused ${racing.code}`);
-    // The race happened: compute saw the business-wide grant (setup check).
-    expect(racing).toEqual(expect.arrayContaining([a1, a2]));
-
-    // Same clock, inside the lifetime: the grant is revoked, the viewer holds a1 alone.
-    const after = await readRollup(s.db.app, alpha.id, viewer.presented, rollup, cache);
-    if (isCommandRefusal(after)) throw new Error(`rollup refused ${after.code}`);
-    expect(after, 'a revoked grant met the wider answer held under the unchanged fingerprint').toEqual([a1]);
-  });
-});
+  },
+);

@@ -66,27 +66,37 @@ describe('FIX-2B1 RS proof 1: a tab that leaves before the stream is built', () 
     ['after the stream started (control)', 'stream'],
   ] as const)(
     'FIX-2B1-RS-1: a tab that leaves %s ends its follow and frees its presence seat',
+    // oxlint-disable-next-line max-lines-per-function -- one harness, two cases
     async (_when, leaves) => {
       const topics = await topicsNow();
       const presence = createLivePresence();
+      // oxlint-disable-next-line unicorn/consistent-function-scoping -- replaced by the resolver below
       let entered = (): void => {};
       const inDoor = new Promise<void>((resolve) => {
         entered = resolve;
       });
+      // oxlint-disable-next-line unicorn/consistent-function-scoping -- replaced by the resolver below
       let open = (): void => {};
       const doorOpens = new Promise<void>((resolve) => {
         open = resolve;
       });
+      // oxlint-disable-next-line unicorn/consistent-function-scoping -- replaced by the resolver below
       let started = (): void => {};
       const following = new Promise<void>((resolve) => {
         started = resolve;
       });
       let running: Promise<void> | undefined;
-      const session = { sessionId: 'seat-1', personId: person, name: 'Ana', side: 'staff' as const };
+      const session = {
+        sessionId: 'seat-1',
+        personId: person,
+        name: 'Ana',
+        side: 'staff' as const,
+      };
 
       const app = new Hono();
       app.get('/live', async (context) => {
         entered();
+        // oxlint-disable-next-line no-inline-comments -- the reviewer's note on the step
         await doorOpens; // as app.ts awaits asks.atDoor / mayJoinBoard
         return streamSSE(context, async (stream) => {
           running = follow(
@@ -110,6 +120,7 @@ describe('FIX-2B1 RS proof 1: a tab that leaves before the stream is built', () 
       await inDoor;
       if (leaves === 'door') {
         socket.destroy();
+        // oxlint-disable-next-line no-inline-comments -- the reviewer's note on the step
         await setTimeout(150); // the server sees the socket close
         open();
         await following;
