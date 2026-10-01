@@ -620,8 +620,8 @@ a fresh agent actor of theirs, with no lease and no run
 (`authority/agent-credentials.ts`, migration 0054). `credential.issue` is
 `credential:write` and is always the caller's own. Its scope is the ticked
 `collection:action` keys, each one the caller holds at business scope when it
-is issued, by the grant check's own walk (`CREDENTIAL_SCOPE_WIDENS` otherwise),
-and never decide, share or manage (`CREDENTIAL_ACTION_EXCLUDED`). It never
+is issued, by the grant check's own walk under the access lock
+(`CREDENTIAL_SCOPE_WIDENS` otherwise), and never decide, share or manage (`CREDENTIAL_ACTION_EXCLUDED`). It never
 holds a money key either (C59's set, `isMoneyKey`, `billing:read` included):
 the permission key catalogue (`docs/design-system/CAPABILITY-SLICES.md`) says
 an agent may hold none, and every credential is an agent's, so a scope with
@@ -662,7 +662,9 @@ active membership, over the whole business or over one client of it
 
 Every change to who may do what takes the business's one access lock first
 (`lockAccess`, `access:<business>`), before any grant row: a grant given, a
-grant revoked on either route, and ending a person's access (C58). So the same
+grant revoked on either route, ending a person's access (C58), and an agent
+credential issued, before its grant walk. So an issue racing an ending is
+refused, or lands first and is revoked by it. The same
 grant given twice is one row, and two revocations that would each leave one
 holder of business-wide `access:manage` cannot both apply: the second is
 `ACCESS_LAST_MANAGER`.
