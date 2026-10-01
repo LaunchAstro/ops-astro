@@ -156,17 +156,17 @@ describe.skipIf(serverUrl === undefined)('a lease is taken only through the pick
     expect(await take(s.business, notTheApprover)).toMatchObject({ accepted: true });
   });
 
-  it('a person with live write takes work another person approved, under their own name only', async () => {
+  it('a person with live write takes work another person approved, naming that approver', async () => {
     const colleague = await enrol(s.db.app, s.business, 'colleague');
     await s.db.app.withBusiness(s.business, async (tx) => await grantTo(tx, colleague, 'write'));
     const reservation = (await approvedWork(s))['reservationId'];
-    const own = { reservation, holder: colleague.actorId, authorisedBy: colleague.personId };
-    // Named under another person's name (here the approver's), the claim is not theirs.
-    expect(await take(s.business, { ...own, authorisedBy: s.decider.personId })).toMatchObject(
+    const claim = { reservation, holder: colleague.actorId };
+    // Named as authorised by themselves, who did not approve it, the claim is refused.
+    expect(await take(s.business, { ...claim, authorisedBy: colleague.personId })).toMatchObject(
       NOT_COVERED,
     );
-    // Their own live write on the task covers it; approving is not a pickup's authority.
-    expect(await take(s.business, own)).toMatchObject({ accepted: true, rows: [{ fence: 1 }] });
+    // Their own live write covers it, under the approval as `tasks.pickup` names it.
+    expect(await take(s.business, claim)).toMatchObject({ accepted: true, rows: [{ fence: 1 }] });
   });
 
   it('the pickup path refuses work that is not claimable, or a lease past its lifetime', async () => {
