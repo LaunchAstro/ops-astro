@@ -59,12 +59,11 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'trace_export_gaps trace_expiry_batches'],
   // 0042, 0222: an attempt, a seen stamp and a token are written once (INB-1a, C39-T).
   ['si', 'inbox_attention inbox_delivery_attempts enrolment_tokens invitation_delivery_attempts'],
-  ['siu', 'inbox_items invitations'],
+  ['siu', 'inbox_items'],
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
   ['siu', 'leases planned_steps proposal_lineages proposal_versions'],
-  // AW-02: a historical run is never rewritten; the application moves its
-  // state alone, by the column grant in COLUMN_UPDATES.
-  ['si', 'planned_runs'],
+  // AW-02, C39-T: a run and an invitation move only by their column grants in COLUMN_UPDATES.
+  ['si', 'planned_runs invitations'],
   ['siu', 'outage_reports outage_runs reservations task_envelopes'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
   // 0028 revokes delete on these two: identity history is kept (0002).
@@ -99,6 +98,7 @@ const COLUMN_UPDATES: Readonly<
   Record<string, { readonly from: string; readonly columns: readonly string[] }>
 > = {
   'public.planned_runs': { from: '0192', columns: ['state'] },
+  'public.invitations': { from: '0222', columns: ['ended_at', 'expires_at', 'revision', 'state'] },
 };
 
 /** The `table.column` pairs the application group may update after `at`, or at the full schema. */
