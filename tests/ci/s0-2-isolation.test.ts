@@ -107,6 +107,9 @@ function world() {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
+          // The agent prefix reads its caller from the bearer alone (API-2); this is
+          // no agent credential, so the verifier above answers from x-subject.
+          authorization: 'Bearer agent-delegation-token',
           'x-subject': agent,
           [DELEGATION_HEADER]: `delegation-for-${person}`,
         },
