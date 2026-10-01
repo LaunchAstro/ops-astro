@@ -12,9 +12,12 @@
 // in `approvals.json` names a higher one. A refusal names the setting, never
 // its value: the runner key is one of them.
 
-import { readFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir, userInfo } from 'node:os';
 import { isAbsolute, join } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
+import type { Need } from './approval.ts';
 
 export const SEATS = ['hey', 'nathan'] as const;
 export type Seat = (typeof SEATS)[number];
@@ -93,6 +96,50 @@ export function readApprovals(home: string): Approvals {
       ? models.filter((model): model is string => typeof model === 'string')
       : [],
   };
+}
+
+// Held across a pass's pickups, writes and hand-backs, so two ticks on one home never
+// lose an entry. One left by a writer that died is never taken over (two could both
+// take it): after LOCK_WAIT_MS nothing is picked up, and the pass refuses APPROVALS_LOCKED.
+const LOCK_WAIT_MS = 2_000;
+
+function lockTaken(lock: string): boolean {
+  try {
+    writeFileSync(lock, String(process.pid), { mode: 0o600, flag: 'wx' });
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') return false;
+    throw error;
+  }
+}
+
+/** approvals.json.lock taken, and its release; undefined while another holds it. */
+export async function lockApprovals(home: string): Promise<(() => void) | undefined> {
+  mkdirSync(home, { recursive: true });
+  const lock = join(home, 'approvals.json.lock');
+  const giveUp = Date.now() + LOCK_WAIT_MS;
+  while (!lockTaken(lock)) {
+    if (Date.now() > giveUp) return undefined;
+    // eslint-disable-next-line no-await-in-loop -- one wait at a time
+    await sleep(20);
+  }
+  return () => rmSync(lock, { force: true });
+}
+
+/** approvals.json with the need added, written whole to a private file and renamed into place. */
+export function addApproval(home: string, need: Need): void {
+  const current = readApprovals(home);
+  const models =
+    need.kind === 'model' && !current.models.includes(need.model)
+      ? [...current.models, need.model]
+      : [...current.models];
+  const capUsd = need.kind === 'cap' ? need.capUsd : current.capUsd;
+  const next = capUsd === null ? { models } : { capUsd, models };
+  const file = join(home, 'approvals.json');
+  // A fresh name opened exclusively: nothing already there is written through.
+  const staged = `${file}.${randomUUID()}.tmp`;
+  writeFileSync(staged, `${JSON.stringify(next)}\n`, { mode: 0o600, flag: 'wx' });
+  renameSync(staged, file);
 }
 
 /** A cap as the owner writes it: dollars and cents, above nothing. */

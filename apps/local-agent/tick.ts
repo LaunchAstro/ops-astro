@@ -15,9 +15,9 @@
 // - A task's agent run. Approved work in the queue is picked up by the agent
 //   through the production agent entry (`task.pickup`), its one model step
 //   goes through the broker's executor (`model.call`, the server's own
-//   wiring), and the run is handed back completed (`task.handback`). The
-//   model's words are returned to the caller once and never stored: the
-//   handback's report says only that the step answered.
+//   wiring), and the run is handed back (`task.handback`): completed, or failed
+//   for a step released unexplained. The model's words are returned to the
+//   caller once and never stored: the report says only whether it answered.
 //
 // Both refuse unless OPS_ENVIRONMENT is exactly `local`, before any read or
 // write. Each works in the one business it is given, through that business's
@@ -227,14 +227,18 @@ async function runOne(options: TaskTick, entry: QueueEntry): Promise<Ran> {
   return { taskId: entry.taskId, outcome, reply, refusal: null };
 }
 
+/** A task pass: the work it ran, and the approval gate's refusal code when it gave one. */
+export interface TaskPass {
+  readonly ok: true;
+  readonly ran: readonly Ran[];
+  readonly approvals?: string;
+}
+
 /** One pass over the business's queue: each approved piece of work run once, in order. */
-export async function runQueuedTasks(
-  options: TaskTick,
-): Promise<{ readonly ok: true; readonly ran: readonly Ran[] } | Refused> {
+export async function runQueuedTasks(options: TaskTick): Promise<TaskPass | Refused> {
   const refused = localOnly(options.environment);
   if (refused !== undefined) return refused;
-  const { gate } = options;
-  await gate?.beforeTasks();
+  const approvals = await options.gate?.beforeTasks();
   const entries = await options.database.withBusiness(
     options.businessId,
     async (tx) => await queue(tx),
@@ -246,18 +250,12 @@ export async function runQueuedTasks(
     // eslint-disable-next-line no-await-in-loop
     ran.push(await runOne(options, entry));
   }
-  return { ok: true, ran };
+  return approvals === undefined ? { ok: true, ran } : { ok: true, ran, approvals };
 }
 
 export type TickOptions = ScheduleTick & TaskTick;
 
-export type Tick =
-  | {
-      readonly ok: true;
-      readonly fired: readonly Fired[];
-      readonly ran: readonly Ran[];
-    }
-  | Refused;
+export type Tick = (TaskPass & { readonly fired: readonly Fired[] }) | Refused;
 
 /** One whole pass: schedules first, so a run they start is in the queue the task pass reads. */
 export async function tick(options: TickOptions): Promise<Tick> {
@@ -265,7 +263,7 @@ export async function tick(options: TickOptions): Promise<Tick> {
   if (!fired.ok) return fired;
   const ran = await runQueuedTasks(options);
   if (!ran.ok) return ran;
-  return { ok: true, fired: fired.fired, ran: ran.ran };
+  return { ...ran, fired: fired.fired };
 }
 
 /**

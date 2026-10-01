@@ -134,7 +134,8 @@ export function localGate(
 ): TickGate {
   return {
     beforeTasks: async () => {
-      await applyApprovals(approval);
+      const applied = await applyApprovals(approval);
+      return applied.ok ? undefined : applied.code;
     },
     onReleased: async (lease) => {
       const decision = decide(settings, model);
@@ -157,6 +158,7 @@ function reportOf(print: (line: string) => void) {
       return;
     }
     const refused = pass.ran.filter((ran) => ran.refusal !== null).map((ran) => ran.refusal?.code);
+    if (pass.approvals !== undefined) refused.unshift(pass.approvals);
     print(
       `local tick: fired ${String(pass.fired.length)}, ran ${String(pass.ran.length)}` +
         (refused.length > 0 ? `, refused ${refused.join(' ')}` : ''),

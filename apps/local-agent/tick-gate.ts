@@ -19,8 +19,11 @@ export interface HeldLease {
  * the tick process fills it from approval.ts (tick-main.ts).
  */
 export interface TickGate {
-  /** Before the queue is read: approved approvals applied, so the pass runs under them. */
-  readonly beforeTasks: () => Promise<void>;
+  /**
+   * Before the queue is read: approved approvals applied, so the pass runs under
+   * them. A code when they could not be (APPROVALS_LOCKED); the pass still runs.
+   */
+  readonly beforeTasks: () => Promise<string | undefined>;
   /**
    * A model step that came back released, its work still under the lease.
    * The code the gate handed the work back under, or undefined when the

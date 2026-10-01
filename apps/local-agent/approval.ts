@@ -21,13 +21,11 @@
 // order, so the approval's own work is never sent to the model.
 //
 // Both refuse unless OPS_ENVIRONMENT is exactly `local`, before any read.
-// The open-need check and the handback are not one transaction: the local
-// tick runs one piece of work at a time, so two raises never race there.
+// The open-need check and the handback are not one transaction: two ticks on
+// one business can both raise the same ask, one extra inbox item at most.
 
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { setTimeout as sleep } from 'node:timers/promises';
 import { executeAgentCommand, isCommandRefusal } from '../../packages/core-commands/src/index.ts';
 import type {
   BusinessId,
@@ -36,7 +34,7 @@ import type {
 } from '../../packages/core-records/src/index.ts';
 import { queue, type QueueEntry } from '../../packages/core-runtime/src/index.ts';
 import { DEFAULT_MODEL, MODEL_NAME } from './gate.ts';
-import { readApprovals } from './settings.ts';
+import { addApproval, lockApprovals } from './settings.ts';
 import { APPROVAL_PURPOSE, type HeldLease } from './tick-gate.ts';
 import { localOnly, type Environment, type Refused } from './tick.ts';
 
@@ -78,7 +76,10 @@ export type Raised =
   | Refused
   | { readonly ok: false; readonly code: string };
 
-export type Applied = { readonly ok: true; readonly applied: readonly Need[] } | Refused;
+export type Applied =
+  | { readonly ok: true; readonly applied: readonly Need[] }
+  | Refused
+  | { readonly ok: false; readonly code: 'APPROVALS_LOCKED' };
 
 const askOf = (need: Need): string =>
   need.kind === 'cap'
@@ -164,54 +165,17 @@ export async function raiseApproval(
   return { ok: true, raised };
 }
 
-// Held across approvals.json's read and rename, so two ticks on one home never lose
-// an entry. One left by a writer that died is never taken over (two could both take
-// it): after LOCK_WAIT_MS the writer refuses with APPROVALS_LOCKED, naming the file.
-const LOCK_WAIT_MS = 2_000;
-
-function lockTaken(lock: string): boolean {
-  try {
-    writeFileSync(lock, String(process.pid), { mode: 0o600, flag: 'wx' });
-    return true;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'EEXIST') return false;
-    throw error;
-  }
-}
-
-async function underLock(home: string, work: () => void): Promise<void> {
-  const lock = join(home, 'approvals.json.lock');
-  const giveUp = Date.now() + LOCK_WAIT_MS;
-  while (!lockTaken(lock)) {
-    if (Date.now() > giveUp)
-      throw new Error(`APPROVALS_LOCKED: ${lock} is held; remove it if no tick runs`);
-    // eslint-disable-next-line no-await-in-loop -- one wait at a time
-    await sleep(20);
-  }
-  try {
-    work();
-  } finally {
-    rmSync(lock, { force: true });
-  }
-}
-
-/** approvals.json with the need added, written whole to a private file and renamed into place. */
+/** addApproval under the lock; a held lock throws APPROVALS_LOCKED, naming it. */
 export async function writeApproval(home: string, need: Need): Promise<void> {
-  mkdirSync(home, { recursive: true });
-  await underLock(home, () => {
-    const current = readApprovals(home);
-    const models =
-      need.kind === 'model' && !current.models.includes(need.model)
-        ? [...current.models, need.model]
-        : [...current.models];
-    const capUsd = need.kind === 'cap' ? need.capUsd : current.capUsd;
-    const next = capUsd === null ? { models } : { capUsd, models };
-    const file = join(home, 'approvals.json');
-    // A fresh name opened exclusively: nothing already there is written through.
-    const staged = `${file}.${randomUUID()}.tmp`;
-    writeFileSync(staged, `${JSON.stringify(next)}\n`, { mode: 0o600, flag: 'wx' });
-    renameSync(staged, file);
-  });
+  const release = await lockApprovals(home);
+  if (release === undefined) {
+    throw new Error(`APPROVALS_LOCKED: ${join(home, 'approvals.json.lock')} is held`);
+  }
+  try {
+    addApproval(home, need);
+  } finally {
+    release();
+  }
 }
 
 interface ProposedRow {
@@ -245,7 +209,17 @@ function trustedNeed(payload: unknown): Need | undefined {
   return ask === askOf(need) ? need : undefined;
 }
 
-/** The agent doing one approved approval: pick it up, write it, hand it back. */
+/** Why the need was not written, as a code with no path in it; undefined once written. */
+function unwritten(home: string, need: Need): string | undefined {
+  try {
+    addApproval(home, need);
+    return undefined;
+  } catch (error) {
+    return `APPROVALS_UNWRITTEN ${(error as NodeJS.ErrnoException).code ?? 'write failed'}`;
+  }
+}
+
+/** The agent doing one approved approval, under the lock: pick it up, write it, hand it back. */
 async function applyOne(options: ApprovalOptions, entry: QueueEntry): Promise<Need | undefined> {
   const { database, businessId, agent } = options;
   const picked = await executeAgentCommand(database, businessId, agent, undefined, {
@@ -266,22 +240,26 @@ async function applyOne(options: ApprovalOptions, entry: QueueEntry): Promise<Ne
       ]),
   );
   const need = row?.by_agent === true ? trustedNeed(row.payload) : undefined;
-  if (need !== undefined) await writeApproval(options.home, need);
+  // A write that fails after the pickup hands the approval back failed, never under its lease.
+  const failed =
+    need === undefined ? 'the approval named nothing usable' : unwritten(options.home, need);
   await executeAgentCommand(database, businessId, agent, String(picked.detail['credential']), {
     command: 'task.handback',
     operationId: randomUUID(),
     leaseId: picked.detail['leaseId'],
     fence: picked.detail['fence'],
-    outcome: need === undefined ? 'failed' : 'completed',
-    report: {
-      summary: need === undefined ? 'the approval named nothing usable' : 'approval recorded',
-    },
+    outcome: failed === undefined ? 'completed' : 'failed',
+    report: { summary: failed ?? 'approval recorded' },
     actualMinor: null,
   } as never);
-  return need;
+  return failed === undefined ? need : undefined;
 }
 
-/** One pass: every approved local-agent approval written once, in order. */
+/**
+ * One pass: every approved local-agent approval written once, in order. The
+ * lock is taken before the first pickup; while another holds it nothing is
+ * picked up, every yes stays queued, and the pass refuses APPROVALS_LOCKED.
+ */
 export async function applyApprovals(options: ApprovalOptions): Promise<Applied> {
   const refused = localOnly(options.environment);
   if (refused !== undefined) return refused;
@@ -289,12 +267,20 @@ export async function applyApprovals(options: ApprovalOptions): Promise<Applied>
     options.businessId,
     async (tx) => await queue(tx),
   );
+  const approvals = entries.filter((queued) => queued.purpose === APPROVAL_PURPOSE);
+  if (approvals.length === 0) return { ok: true, applied: [] };
+  const release = await lockApprovals(options.home);
+  if (release === undefined) return { ok: false, code: 'APPROVALS_LOCKED' };
   const applied: Need[] = [];
-  for (const entry of entries.filter((queued) => queued.purpose === APPROVAL_PURPOSE)) {
-    // Sequential: each writes approvals.json in turn.
-    // eslint-disable-next-line no-await-in-loop
-    const need = await applyOne(options, entry);
-    if (need !== undefined) applied.push(need);
+  try {
+    for (const entry of approvals) {
+      // Sequential: each writes approvals.json in turn.
+      // eslint-disable-next-line no-await-in-loop
+      const need = await applyOne(options, entry);
+      if (need !== undefined) applied.push(need);
+    }
+  } finally {
+    release();
   }
   return { ok: true, applied };
 }
