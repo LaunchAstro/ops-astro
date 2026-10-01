@@ -81,20 +81,31 @@ const STEP_UP_FIXES: readonly string[] = [
 ];
 
 /**
+ * Whether a command on this key is asked the step-up now: a key in the money
+ * set while the setting is on. An absent setting row is read as on, so a
+ * business that never installed it is not quietly exempt. Settings ▸ Access
+ * marks its preview by this same answer (`reads/people.ts`).
+ */
+export async function asksMoneyStepUp(
+  tx: TenantQuery,
+  key: { readonly collection: string; readonly action: Action },
+): Promise<boolean> {
+  if (!isMoneyKey(key.collection, key.action)) return false;
+  const setting = await readBusinessSetting(tx, MONEY_STEP_UP_SETTING);
+  return setting === undefined || setting.value !== false;
+}
+
+/**
  * The envelope's step-up, asked after the grant check has passed. Nothing for
- * a key outside the money set or while the setting is off; otherwise the
- * judgement against the database's own clock, inside the serving transaction.
- * An absent setting row is read as on, so a business that never installed it
- * is not quietly exempt.
+ * a key `asksMoneyStepUp` passes over; otherwise the judgement against the
+ * database's own clock, inside the serving transaction.
  */
 export async function refuseStaleMoneyStep(
   tx: TenantQuery,
   standing: Standing,
   key: { readonly collection: string; readonly action: Action },
 ): Promise<CommandRefusal | undefined> {
-  if (!isMoneyKey(key.collection, key.action)) return undefined;
-  const setting = await readBusinessSetting(tx, MONEY_STEP_UP_SETTING);
-  if (setting !== undefined && setting.value === false) return undefined;
+  if (!(await asksMoneyStepUp(tx, key))) return undefined;
   // Whole seconds, as the token's times are: the boundary is one second either
   // side of sixty minutes, and a fraction of the clock is not a second.
   const rows = await tx.query<{ readonly now: number }>(

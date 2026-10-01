@@ -13,6 +13,7 @@
 // of another business is not filtered out -- they are not visible to filter.
 
 import {
+  asksMoneyStepUp,
   heldPermissions,
   listAllClients,
   standsOnShares,
@@ -22,6 +23,7 @@ import type {
   AccessAgent,
   AccessPermission,
   AccessPerson,
+  AccessPreview,
   AccessReadResult,
 } from '../../../core-wire/src/index.ts';
 import type { PersonView } from './requests.ts';
@@ -68,7 +70,8 @@ interface DelegationRow {
  * sign-in would admit: one with standing and an active acting identity. The
  * grant check runs only behind sign-in, so a person it refuses (for instance
  * `ACTOR_INACTIVE`) is shown no permission. It cannot say more than the check
- * grants.
+ * grants. Each previewed permission carries `stepUp`, the command path's own
+ * `asksMoneyStepUp`, so a money key is not shown usable on any sign-in.
  */
 export async function readAccess(tx: TenantQuery): Promise<Omit<AccessReadResult, 'ok'>> {
   const team = await listPeople(tx);
@@ -103,11 +106,10 @@ export async function readAccess(tx: TenantQuery): Promise<Omit<AccessReadResult
       order by d.granted_at, d.id`,
     [tx.businessId],
   );
+  const preview = await previewsOf(tx, held);
   const withPreview = (person: PersonView): AccessPerson => ({
     ...person,
-    permissions: admitted.has(person.personId)
-      ? once(held.filter((permission) => permission.personId === person.personId))
-      : [],
+    permissions: admitted.has(person.personId) ? preview(person.personId) : [],
     grants: held
       .filter((permission) => permission.personId === person.personId)
       .map(({ grantId, collection, action, scope }) => ({ grantId, collection, action, scope })),
@@ -118,6 +120,31 @@ export async function readAccess(tx: TenantQuery): Promise<Omit<AccessReadResult
     agents: delegations.map((row) => agentOf(row, held)),
     clientRecords: await listAllClients(tx),
   };
+}
+
+/**
+ * A person's preview: their held permissions once each, every one marked with
+ * `asksMoneyStepUp`, the command path's own answer, asked once per key.
+ */
+async function previewsOf(
+  tx: TenantQuery,
+  held: readonly HeldPermission[],
+): Promise<(personId: string) => AccessPreview[]> {
+  const asked = new Map<string, boolean>();
+  for (const { collection, action } of held) {
+    const key = `${collection}:${action}`;
+    // oxlint-disable-next-line no-await-in-loop
+    if (!asked.has(key)) asked.set(key, await asksMoneyStepUp(tx, { collection, action }));
+  }
+  return (personId) =>
+    once(held.filter((permission) => permission.personId === personId)).map(
+      ({ collection, action, scope }) => ({
+        collection,
+        action,
+        scope,
+        stepUp: asked.get(`${collection}:${action}`) === true,
+      }),
+    );
 }
 
 /** Each permission once, whether the grant names the person or their acting identity. */
