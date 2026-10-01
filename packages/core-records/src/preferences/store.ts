@@ -17,11 +17,16 @@ import type { TenantQuery } from '../tenancy/database.ts';
 const isLength = (value: unknown): boolean =>
   typeof value === 'number' && Number.isInteger(value) && value > 0 && value <= 10_000;
 
+/** How many column ids one `columns.widths` row holds, and how long each may be. */
+const COLUMNS_MAX = 64;
+const COLUMN_ID_MAX = 64;
+
 const isColumnWidths = (value: unknown): boolean =>
   typeof value === 'object' &&
   value !== null &&
   !Array.isArray(value) &&
-  Object.values(value).every((width) => isLength(width));
+  Object.keys(value).length <= COLUMNS_MAX &&
+  Object.entries(value).every(([id, width]) => id.length <= COLUMN_ID_MAX && isLength(width));
 
 export type PreferenceKey =
   | 'appearance'

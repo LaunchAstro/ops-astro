@@ -72,6 +72,13 @@
 // server's `VERSION_STALE` and the task is read again, and the quote is held
 // here because that reread unmounts the page below the read.
 //
+// **The page shows one side of the task at a time** (MP-4-3,
+// `task/Perspectives.tsx`): Team holds the person's work (the lifecycle, the
+// assignee, the details, subtasks, time, comments and history) and Agent the
+// proposals and their gates. Both panes stay mounted, so a draft typed on one
+// survives a switch, and the side showing is held above the read like the
+// refusals below, so a write's reread does not jump back to Team.
+//
 // **A reader outside the business gets the shared view, not this page with
 // holes in it.** Its `task.read` answers `sharedTask` instead of `task`, and
 // that key alone picks `SharedTaskDetail`: the screen never guesses from a
@@ -87,7 +94,6 @@ import type {
   QueueResult,
   TaskReadResult,
 } from '../../../../packages/core-wire/src/index.ts';
-import { Empty } from '@launchastro/ui';
 import { useRead } from '../data/use-read.ts';
 import type { ReadState } from '../data/authorised-read.ts';
 import { hubOf } from '../data/live.ts';
@@ -95,13 +101,21 @@ import { usePresence } from '../data/presence.ts';
 import { TaskPresence, useShowOnPage } from '../views/presence.tsx';
 import { useFreshOnPage } from '../views/freshness.tsx';
 import { Proposals, type DecisionNote } from '../views/proposals.tsx';
+import { ConflictNotice, MovedNotice, UnsavedBar, changedSince } from './task/Notices.tsx';
+import { TaskHeader } from './task/Header.tsx';
+import { TaskFacts } from './task/Facts.tsx';
+import { TaskUnknown } from './task/Absent.tsx';
+import { withPageDefaults } from './task/read-defaults.ts';
+import { AssignToAI } from './task/AssignToAI.tsx';
 import {
-  ConflictNotice,
-  MovedNotice,
-  TaskHeader,
-  UnsavedBar,
-  changedSince,
-} from './task/Notices.tsx';
+  PanelDoorButton,
+  perspectiveCounts,
+  Perspectives,
+  stepMarks,
+  type PanelOpener,
+  type Perspective,
+} from './task/Perspectives.tsx';
+import { TeamSubtasks } from './task/Subtasks.tsx';
 
 import type { ProposeDraft, TopUpNote } from '../views/propose-form.tsx';
 import { RunProgress } from '../views/run-progress.tsx';
@@ -111,16 +125,21 @@ import { useCommand } from '../records/use-command.ts';
 import { SharedTaskDetail } from './SharedTaskDetail.tsx';
 import { Alerts } from './task/Alerts.tsx';
 import { Comments, type CommentDraft } from './task/Comments.tsx';
+import type { RowEdit } from './task/Thread.tsx';
 import { DetailsForm } from './task/DetailsForm.tsx';
+import { BriefSection, DescriptionSection } from './task/Writing.tsx';
 import { History } from './task/History.tsx';
 import { Outages } from './task/Outages.tsx';
-import { Perspectives, type Perspective } from './task/Perspectives.tsx';
 import { Assignee, Lifecycle, type LifecycleCommand } from './task/Lifecycle.tsx';
 
 export interface TaskDetailProps {
   readonly client: OperationsClient;
   readonly grantKey: string;
   readonly taskKey: string;
+  /** The dock task panel's opener, where edits happen (MP-4-8). Absent, a door cannot be pressed. */
+  readonly onOpenPanel?: PanelOpener;
+  /** The host's count of changes made in the panel: a new count reads the task again (MP-4-8). */
+  readonly changes?: number;
 }
 
 /** Where an unsaved edit began: the revision, and the values as they stood. */
@@ -160,7 +179,7 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   const { state, reload } = useRead<TaskReadResult>({
     grantKey: props.grantKey,
     run: () => client.read<TaskReadResult>('task.read', { recordId: props.taskKey }),
-    deps: [props.taskKey],
+    deps: [props.taskKey, props.changes ?? 0],
     live: {
       hub,
       topic: (read) => ('task' in read ? `task:${read.task.id}` : undefined),
@@ -196,97 +215,109 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   const [proposeRefusal, setProposeRefusal] = useHeld<string>(identity, denied);
   const [moved, setMoved] = useHeld<string>(identity, denied);
   const [commentDraft, setCommentDraft] = useHeld<CommentDraft>(identity, denied);
+  const [commentEdit, setCommentEdit] = useHeld<RowEdit>(identity, denied);
   const [proposeDraft, setProposeDraft] = useHeld<ProposeDraft>(identity, denied);
   const [topUpNote, setTopUpNote] = useHeld<TopUpNote>(identity, denied);
-  // The open perspective is the reading's: a write's reread keeps the side
-  // its refusal or answer is drawn on (Perspectives.tsx).
   const [perspective, setPerspective] = useHeld<Perspective>(identity, denied);
+  const [showFinished, setShowFinished] = useHeld<boolean>(identity, denied);
+  const [showAllTime, setShowAllTime] = useHeld<boolean>(identity, denied);
 
   return (
     <div className="stack">
-      {/* The failed read draws its own Try again; a second button above it
-          is the stray one the mockup never draws (UI-TRACK B4). */}
-      {state.outcome === 'unavailable' ? null : (
-        <RefreshRow held={held !== null} onRefresh={reload} />
-      )}
-      <RecordState state={state} subject="task" onRetry={reload} keep={held !== null}>
-        {(value) =>
-          'sharedTask' in value ? (
-            <SharedTaskDetail task={value.sharedTask} />
-          ) : (
-            <Loaded
-              client={client}
-              grantKey={props.grantKey}
-              task={value.task}
-              draft={held}
-              note={note}
-              onDecided={setNote}
-              commentRefusal={commentRefusal}
-              onCommentRefused={setCommentRefusal}
-              proposeRefusal={proposeRefusal}
-              onProposeRefused={setProposeRefusal}
-              moved={moved}
-              onMoved={setMoved}
-              commentDraft={commentDraft}
-              onCommentDraft={setCommentDraft}
-              proposeDraft={proposeDraft}
-              onProposeDraft={setProposeDraft}
-              topUpNote={topUpNote}
-              onTopUpNote={setTopUpNote}
-              perspective={perspective ?? 'team'}
-              onPerspective={setPerspective}
-              onAttempt={(attempt) => {
-                setDraft((current) =>
-                  current !== null && current.identity === identity
-                    ? { ...current, attempt }
-                    : current,
-                );
-              }}
-              onDraft={(next, base) => {
-                if (next === null) {
+      <RefreshRow held={held !== null} outcome={state.outcome} onRefresh={reload} />
+      {/*
+        An id nothing is filed under is said as that, quoting the id as typed
+        (MP-4-1). Every other refusal is the denied state, quoting its code.
+      */}
+      {state.outcome === 'denied' && state.refusal.code === 'NOT_FOUND' ? (
+        <TaskUnknown typed={props.taskKey} refusal={state.refusal} />
+      ) : (
+        <RecordState state={state} subject="task" onRetry={reload} keep={held !== null}>
+          {(value) =>
+            'sharedTask' in value ? (
+              <SharedTaskDetail task={value.sharedTask} />
+            ) : (
+              <Loaded
+                client={client}
+                grantKey={props.grantKey}
+                task={withPageDefaults(value.task)}
+                draft={held}
+                note={note}
+                onDecided={setNote}
+                commentRefusal={commentRefusal}
+                onCommentRefused={setCommentRefusal}
+                proposeRefusal={proposeRefusal}
+                onProposeRefused={setProposeRefusal}
+                moved={moved}
+                onMoved={setMoved}
+                commentDraft={commentDraft}
+                onCommentDraft={setCommentDraft}
+                commentEdit={commentEdit}
+                onCommentEdit={setCommentEdit}
+                proposeDraft={proposeDraft}
+                onProposeDraft={setProposeDraft}
+                topUpNote={topUpNote}
+                onTopUpNote={setTopUpNote}
+                perspective={perspective ?? 'team'}
+                onPerspective={setPerspective}
+                showFinished={showFinished ?? false}
+                onShowFinished={setShowFinished}
+                showAllTime={showAllTime ?? false}
+                onShowAllTime={setShowAllTime}
+                onOpenPanel={props.onOpenPanel}
+                onAttempt={(attempt) => {
+                  setDraft((current) =>
+                    current !== null && current.identity === identity
+                      ? { ...current, attempt }
+                      : current,
+                  );
+                }}
+                onDraft={(next, base) => {
+                  if (next === null) {
+                    setDraft(null);
+                    return;
+                  }
+                  setDraft((current) =>
+                    current !== null && current.identity === identity
+                      ? {
+                          ...current,
+                          title: next.title,
+                          due: next.due,
+                          generation: current.generation + 1,
+                        }
+                      : {
+                          identity,
+                          generation: 1,
+                          base,
+                          title: next.title,
+                          due: next.due,
+                          attempt: null,
+                        },
+                  );
+                }}
+                onSaved={(generation) => {
+                  // Only the generation that was submitted. A save that settles
+                  // after further typing has answered a question nobody is asking
+                  // any more, and clearing the newer draft here would make the
+                  // person's newer text disappear.
+                  setDraft((current) =>
+                    current !== null &&
+                    current.identity === identity &&
+                    current.generation === generation
+                      ? null
+                      : current,
+                  );
+                }}
+                onDiscard={() => {
                   setDraft(null);
-                  return;
-                }
-                setDraft((current) =>
-                  current !== null && current.identity === identity
-                    ? {
-                        ...current,
-                        title: next.title,
-                        due: next.due,
-                        generation: current.generation + 1,
-                      }
-                    : {
-                        identity,
-                        generation: 1,
-                        base,
-                        title: next.title,
-                        due: next.due,
-                        attempt: null,
-                      },
-                );
-              }}
-              onSaved={(generation) => {
-                // Only the generation that was submitted. A save that settles
-                // after further typing has answered a question nobody is asking
-                // any more, and clearing the newer draft here would make the
-                // person's newer text disappear.
-                setDraft((current) =>
-                  current !== null &&
-                  current.identity === identity &&
-                  current.generation === generation
-                    ? null
-                    : current,
-                );
-              }}
-              onDiscard={() => {
-                setDraft(null);
-                reload();
-              }}
-              onChanged={reload}
-            />
-          )
-        }
-      </RecordState>
+                  reload();
+                }}
+                onChanged={reload}
+              />
+            )
+          }
+        </RecordState>
+      )}
     </div>
   );
 }
@@ -301,8 +332,13 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
 /** The task page's Refresh, and why it waits while an edit is unsaved. */
 function RefreshRow(props: {
   readonly held: boolean;
+  /** The read's outcome: a failed read draws its own Try again. */
+  readonly outcome: ReadState<TaskReadResult>['outcome'];
   readonly onRefresh: () => void;
-}): ReactElement {
+}): ReactElement | null {
+  // The failed read draws its own Try again; a second button above it is the
+  // stray one the mockup never draws (UI-TRACK B4).
+  if (props.outcome === 'unavailable') return null;
   return (
     <>
       {/*
@@ -519,14 +555,24 @@ interface LoadedProps {
   /** The unsent comment and proposal, held so a reread keeps what was typed. */
   readonly commentDraft: CommentDraft | null;
   readonly onCommentDraft: (next: CommentDraft | null) => void;
+  /** The edit open on one of the reader's comments, held so a stale reread keeps it. */
+  readonly commentEdit: RowEdit | null;
+  readonly onCommentEdit: (next: RowEdit | null) => void;
   readonly proposeDraft: ProposeDraft | null;
   readonly onProposeDraft: (next: ProposeDraft | null) => void;
   /** The last top-up's answer, held so a reread keeps it (T2e). */
   readonly topUpNote: TopUpNote | null;
   readonly onTopUpNote: (note: TopUpNote | null) => void;
-  /** Which side of the task this reading has open, held above the read. */
+  /** Which side of the task this reading shows, held above the read (MP-4-3). */
   readonly perspective: Perspective;
   readonly onPerspective: (next: Perspective) => void;
+  /** Whether the finished subtasks are unfolded, held above the read (MP-4-4). */
+  readonly showFinished: boolean;
+  readonly onShowFinished: (next: boolean) => void;
+  /** Whether every time entry shows, not only the latest three, held above the read (MP-4-6). */
+  readonly showAllTime: boolean;
+  readonly onShowAllTime: (next: boolean) => void;
+  readonly onOpenPanel: PanelOpener | undefined;
   /** Record, or forget, the draft save whose outcome is unknown. */
   readonly onAttempt: (attempt: SaveAttempt | null) => void;
   readonly onDraft: (next: { title: string; due: string } | null, base: DraftBase) => void;
@@ -549,6 +595,14 @@ function Loaded(props: LoadedProps): ReactElement {
   // live re-read that keeps this mounted still shows the newest value.
   const title = props.draft?.title ?? saved.title;
   const due = props.draft?.due ?? saved.due;
+  // T3e2: the outage reports are the team's, read once from the queue.
+  const outages = useRead<QueueResult>({
+    grantKey: props.grantKey,
+    run: () => client.read<QueueResult>('task.queue', {}),
+    isEmpty: (value) => (value.outages ?? []).length === 0,
+    deps: [],
+  });
+
   // Where this edit began. An existing draft keeps its own starting point; a
   // first keystroke takes the record as it stands right now.
   const base: DraftBase = props.draft?.base ?? {
@@ -588,43 +642,44 @@ function Loaded(props: LoadedProps): ReactElement {
     deps: [],
   });
 
+  // The subtasks the read carries (MP-4-4); no staged output until the
+  // agent's output lands, when it follows the same rule.
+  const counts = perspectiveCounts({
+    steps: stepMarks(task.steps),
+    proposals: task.proposals ?? [],
+    stagedOutput: false,
+  });
+
   return (
     <div className="stack" data-task={task.id} data-revision={task.revision}>
       <TaskHeader task={task} />
+      <TaskFacts task={task} />
       <TaskPresence seen={presence.seen} />
 
-      {because === null ? null : (
-        <p className="field__error" role="alert" data-voice="input-wrong">
-          {because}
-        </p>
-      )}
-
-      <MovedNotice because={props.moved} />
-
-      <ConflictNotice
+      <EditNotices
+        because={because}
+        moved={props.moved}
         conflict={conflict}
         base={base.revision}
         title={title}
         due={due}
-        onDiscard={props.onDiscard}
-      />
-
-      <UnsavedBar
         dirty={dirty}
+        busy={busy}
         changed={
           props.draft === null ? null : changedSince(props.draft.base.task, task, namesOf(people))
         }
-        busy={busy}
         onDiscard={props.onDiscard}
       />
 
+      <PanelDoorButton door="open" onOpenPanel={props.onOpenPanel} />
+
       <Perspectives
+        counts={counts}
         selected={props.perspective}
         onSelect={props.onPerspective}
-        proposals={task.proposals}
         team={
           <>
-            <Description text={task.description} />
+            <DescriptionSection description={task.description} />
 
             <Lifecycle
               disabled={busy || dirty}
@@ -640,6 +695,14 @@ function Loaded(props: LoadedProps): ReactElement {
               onAssign={onAssign}
             />
 
+            <AssignToAI
+              client={client}
+              task={task}
+              scope="page"
+              disabled={busy || dirty}
+              onChanged={props.onChanged}
+            />
+
             <DetailsForm
               formRef={fields}
               busy={busy}
@@ -650,25 +713,18 @@ function Loaded(props: LoadedProps): ReactElement {
               onSubmit={onFields}
             />
 
-            <Comments
-              client={client}
-              comments={task.comments}
-              recordId={task.id}
-              revision={task.revision}
-              refusal={props.commentRefusal}
-              onRefused={props.onCommentRefused}
-              onPosted={props.onChanged}
-              draft={props.commentDraft}
-              onDraft={props.onCommentDraft}
-            />
+            <TeamSubtasks {...props} />
+
+            <TeamComments {...props} />
 
             <History history={task.history} />
           </>
         }
         agent={
-          <AgentPane
-            {...props}
+          <AgentSide
+            props={props}
             persons={people.state.outcome === 'ready' ? people.state.value.persons : []}
+            outages={<Outages state={outages.state} taskId={task.id} />}
           />
         }
       />
@@ -676,26 +732,90 @@ function Loaded(props: LoadedProps): ReactElement {
   );
 }
 
-/**
- * DS-TASK-15: the Agent side, the run and its gate in the main column, the
- * standing facts about the task's run (its alerts, the team's outages) beside.
- */
-function AgentPane(
-  props: LoadedProps & { readonly persons: PersonListResult['persons'] },
-): ReactElement {
+/** The team side's conversation, with its draft, open edit and refusal held above the read. */
+function TeamComments(props: LoadedProps): ReactElement {
   const { client, task } = props;
-  // T3e2: the outage reports are the team's, read once from the queue.
-  const outages = useRead<QueueResult>({
-    grantKey: props.grantKey,
-    run: () => client.read<QueueResult>('task.queue', {}),
-    isEmpty: (value) => (value.outages ?? []).length === 0,
-    deps: [],
-  });
+  return (
+    <Comments
+      client={client}
+      comments={task.comments}
+      recordId={task.id}
+      revision={task.revision}
+      refusal={props.commentRefusal}
+      onRefused={props.onCommentRefused}
+      onPosted={props.onChanged}
+      onOpenPanel={props.onOpenPanel}
+      draft={props.commentDraft}
+      onDraft={props.onCommentDraft}
+      editing={props.commentEdit}
+      onEditing={props.onCommentEdit}
+    />
+  );
+}
+
+/** Above both sides: the write's refusal, a stale press, a conflict and the unsaved edit. */
+function EditNotices(props: {
+  readonly because: string | null;
+  readonly moved: string | null;
+  readonly conflict: Parameters<typeof ConflictNotice>[0]['conflict'];
+  readonly base: number;
+  readonly title: string;
+  readonly due: string;
+  readonly dirty: boolean;
+  readonly busy: boolean;
+  readonly changed: Parameters<typeof UnsavedBar>[0]['changed'];
+  readonly onDiscard: () => void;
+}): ReactElement {
+  return (
+    <>
+      {props.because === null ? null : (
+        <p className="field__error" role="alert" data-voice="input-wrong">
+          {props.because}
+        </p>
+      )}
+
+      <MovedNotice because={props.moved} />
+
+      <ConflictNotice
+        conflict={props.conflict}
+        base={props.base}
+        title={props.title}
+        due={props.due}
+        onDiscard={props.onDiscard}
+      />
+
+      <UnsavedBar
+        dirty={props.dirty}
+        changed={props.changed}
+        busy={props.busy}
+        onDiscard={props.onDiscard}
+      />
+    </>
+  );
+}
+
+/**
+ * The Agent side of the task (MP-4-3): the brief (MP-4-7), the proposals and
+ * their gates with the top-up (T2e), and the run as it goes (T2a progress,
+ * T2h alerts, T3e2 outages). DS-TASK-15 lays it out: the brief, the run and
+ * its gate in the main column, the standing facts about the task's run (its
+ * alerts, the team's outages) beside.
+ */
+function AgentSide({
+  props,
+  persons,
+  outages,
+}: {
+  readonly props: LoadedProps;
+  readonly persons: PersonListResult['persons'];
+  readonly outages: ReactElement;
+}): ReactElement {
+  const { client, task } = props;
   return (
     <div className="tpg">
       <div className="tpg__main">
+        <BriefSection brief={task.agentBrief} />
         <RunProgress client={client} grantKey={props.grantKey} readOf={task} taskKey={task.key} />
-
         <Proposals
           capCurrency={task.capCurrency}
           client={client}
@@ -706,7 +826,7 @@ function AgentPane(
           proposeRefusal={props.proposeRefusal}
           proposeDraft={props.proposeDraft}
           onProposeDraft={props.onProposeDraft}
-          persons={props.persons}
+          persons={persons}
           proposals={task.proposals}
           envelope={task.envelope ?? null}
           topUpNote={props.topUpNote}
@@ -717,27 +837,8 @@ function AgentPane(
       </div>
       <aside className="tpg__side">
         <Alerts alerts={task.alerts} />
-        <Outages state={outages.state} taskId={task.id} />
+        {outages}
       </aside>
     </div>
-  );
-}
-
-/** TT-01: the description as prose, or the sentence that there is none. */
-function Description(props: { readonly text: string | null | undefined }): ReactElement {
-  const text = (props.text ?? '').trim();
-  return (
-    <section className="sb__sect">
-      <div className="sb__sh">
-        <span className="sb__k">Description</span>
-      </div>
-      {text === '' ? (
-        <Empty look="inline" title="No description on this one yet." />
-      ) : (
-        <p className="card__body" data-task-description="">
-          {text}
-        </p>
-      )}
-    </section>
   );
 }

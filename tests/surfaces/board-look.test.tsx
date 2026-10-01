@@ -8,7 +8,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import { Board, type BoardRow } from '../../packages/ui/src/index.ts';
-import { dayOf } from '../../apps/web/src/screens/Projects.tsx';
+import { dueWords } from '../../packages/ui/src/board/project-words.ts';
 
 const row = (over: Partial<BoardRow> & Pick<BoardRow, 'id'>): BoardRow => ({
   rank: null,
@@ -70,7 +70,9 @@ describe('B2 the Projects board draws the mockup parts', () => {
   });
 
   it('writes a due day as the mockup does: day and short month, no year', () => {
-    expect(dayOf('2026-09-30T00:00:00.000Z')).toBe('30 Sep');
-    expect(dayOf('2026-10-07')).toBe('7 Oct');
+    // The Projects board's due cell (MP-5-8) says the day through `dueWords`.
+    const before = new Date(2026, 0, 1);
+    expect(dueWords('2026-09-30T00:00:00.000Z', false, before).text).toBe('30 Sep');
+    expect(dueWords('2026-10-07', false, before).text).toBe('7 Oct');
   });
 });

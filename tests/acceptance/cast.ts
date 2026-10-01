@@ -112,6 +112,22 @@ export const ADMIN_COLLECTIONS: readonly string[] = [
   'spend',
 ];
 
+/**
+ * Pairs the administrator holds beyond the collections above, one each. Client
+ * access (MP-4-10) asks `access:share`, which the key catalogue gives the owner
+ * and administrators; the rest of `access` is not theirs by this fixture, and
+ * `ADMIN_COLLECTIONS` also sizes agent delegations, which never hold `share`.
+ * Time tracking (MP-4-6) asks `time:write`, the owner's and administrators'
+ * and a member's where granted; no agent reaches the `time.*` commands yet.
+ * Tags (MP-4-11) ask `tag:write` for a new name in the vocabulary, the
+ * owner's and administrators' and a member's where granted.
+ */
+export const ADMIN_EXTRA_PAIRS: readonly (readonly [string, Action])[] = [
+  ['access', 'share'],
+  ['time', 'write'],
+  ['tag', 'write'],
+];
+
 export async function tokenFor(
   subject: string,
   options: {
@@ -150,6 +166,31 @@ function steppedUpNow(): Assurance {
   return { level: 'aal2', signedInAt: now, factorAt: now };
 }
 
+/** Every collection × action pair, then the extra pairs, one grant each, in that order. */
+async function grantPairs(
+  db: FreshDatabase,
+  businessId: BusinessId,
+  member: Parameters<typeof grantTo>[1],
+  options: {
+    readonly actions: readonly Action[];
+    readonly collections: readonly string[];
+    readonly extraPairs?: readonly (readonly [string, Action])[];
+  },
+): Promise<void> {
+  const pairs = [
+    ...options.collections.flatMap((collection) =>
+      options.actions.map((action) => [collection, action] as const),
+    ),
+    ...(options.extraPairs ?? []),
+  ];
+  await db.app.withBusiness(businessId, async (tx: TenantQuery) => {
+    for (const [collection, action] of pairs) {
+      // eslint-disable-next-line no-await-in-loop -- one grant at a time reads as a list
+      await grantTo(tx, member, action, WHOLE_BUSINESS, false, collection);
+    }
+  });
+}
+
 export async function enrolCaller(
   db: FreshDatabase,
   businessId: BusinessId,
@@ -159,6 +200,8 @@ export async function enrolCaller(
     readonly membership: boolean;
     readonly actions: readonly Action[];
     readonly collections: readonly string[];
+    /** Single pairs beyond `collections` × `actions`. */
+    readonly extraPairs?: readonly (readonly [string, Action])[];
     /** Signed in with the second factor just now (C59's money step-up). */
     readonly secondFactor?: boolean;
   },
@@ -175,16 +218,7 @@ export async function enrolCaller(
     return { personId, actorId };
   });
   const member = { ...identity, presented: { provider: 'supabase', subject } as VerifiedSubject };
-  if (options.actions.length > 0) {
-    await db.app.withBusiness(businessId, async (tx: TenantQuery) => {
-      for (const collection of options.collections) {
-        for (const action of options.actions) {
-          // eslint-disable-next-line no-await-in-loop -- one grant at a time reads as a list
-          await grantTo(tx, member, action, WHOLE_BUSINESS, false, collection);
-        }
-      }
-    });
-  }
+  if (options.actions.length > 0) await grantPairs(db, businessId, member, options);
   return {
     name,
     businessKey,

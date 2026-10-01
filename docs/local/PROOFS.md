@@ -1245,9 +1245,10 @@ login, and is green 3 of 3 (FR8-0031).
 
 - **The R4 client-comment ruling.** An external party holding an explicitly
   provisioned comment grant may write a client-audience comment and nothing
-  else, and a read share alone writes nothing. That is the lead's ruling, not
-  Nathan's, and he may overturn it with an empty `EXTERNAL_WRITES` in
-  `commands/prepare.ts`
+  else of the business's, and a read share alone writes nothing of the
+  business's (its own session, inbox stamp and preference rows aside). That is
+  the lead's ruling, not Nathan's, and he may overturn it by dropping
+  `task.comment` from `EXTERNAL_WRITES` in core-wire `surface.ts`
   ([AUTHORITY.md, "The external party (R4)"](AUTHORITY.md#the-external-party-r4)).
 - **U7 T10, stopping without confirmation.** Either a one-click "Stop the work
   here" with no in-chat confirmation stands, or AW-05 draws a confirm
