@@ -186,7 +186,8 @@
     "REVIEW-BATCH-2 #313 batch 3b adds review-3b-2-accept-clears-inbox (task.accept_plan clears the gate's inbox decision items in its own transaction, naming the decider, and inbox.count drops, as task.decide does) as conformance.",
     "REVIEW-BATCH-2 #313 batch 3b adds review-3b-3-set-planning-cap-step-up (budget.set_planning_cap under C59's money step-up: a second factor past sixty minutes and a factorless sign-in each refused STEP_UP_REQUIRED with budget_caps unchanged, then the same body applies on a fresh sign-in) as conformance.",
     "REVIEW-BATCH-2 #313 batch 3b adds review-3b-4-parent-end-drops-helper (a parent revoked, or handed back, while its helper never handed back: the merged result shows the helper dropped with its fault, DELEGATION_REVOKED for the revocation, never working) as conformance.",
-    "REVIEW-BATCH-2 #313 batch 3b adds review-3b-5-delegate-child-lease-id (run.delegate_child with a leaseId that is not a uuid, a number or missing is refused LEASE_NOT_OWNED or FIELD_VALUE_INVALID with no child written, never a 22P02 fault) as conformance."
+    "REVIEW-BATCH-2 #313 batch 3b adds review-3b-5-delegate-child-lease-id (run.delegate_child with a leaseId that is not a uuid, a number or missing is refused LEASE_NOT_OWNED or FIELD_VALUE_INVALID with no child written, never a 22P02 fault) as conformance.",
+    "REVIEW-BATCH-2 #313 batch 3b adds review-3b-1-planning-hold-released (a failed planning reply held liability_unknown is released by the pass or a person's outcome, and the planning allowance gets its hold back) as conformance; its fix adds planfix-3b-1-planning-outcome (a planning reply whose operation declares a lookup is released by the pass alone; another person of the business and another business's owner naming the owner's conversation and call are refused NOT_FOUND with nothing written; the owner's outcome settles it once)."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -684,6 +685,8 @@
     "tests/runtime/review-3b-2-accept-clears-inbox.test.ts",
     "tests/broker/review-3b-3-set-planning-cap-step-up.test.ts",
     "tests/runtime/review-3b-4-parent-end-drops-helper.test.ts",
-    "tests/runtime/review-3b-5-delegate-child-lease-id.test.ts"
+    "tests/runtime/review-3b-5-delegate-child-lease-id.test.ts",
+    "tests/broker/review-3b-1-planning-hold-released.test.ts",
+    "tests/broker/planfix-3b-1-planning-outcome.test.ts"
   ]
 }

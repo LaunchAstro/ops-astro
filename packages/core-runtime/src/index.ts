@@ -171,7 +171,12 @@ export {
   type RecordedOutcome,
 } from './recovery/outcome.ts';
 export { writeOff, type WriteOffRequest, type WrittenOff } from './recovery/write-off.ts';
-export { readCallDrops, withProviderCalls, type CallDrop } from './recovery/broker-effect.ts';
+export {
+  readCallDrops,
+  recordPlanningOutcome,
+  withProviderCalls,
+  type CallDrop,
+} from './recovery/broker-effect.ts';
 export {
   cancelAndClassify,
   classifyUnderLocks,
