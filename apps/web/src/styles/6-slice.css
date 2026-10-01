@@ -216,3 +216,11 @@
     transition: none !important;
   }
 }
+
+/* The to-dos panel's scope switch (MP-7-2): its controls wrap in a narrow panel. */
+.todos__scope {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}

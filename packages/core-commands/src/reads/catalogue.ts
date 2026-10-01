@@ -232,6 +232,31 @@ const NO_GRANT_AT_ALL = refuseCommand(
   ['no live grant covers it', 'ask a holder who may delegate'],
 );
 
+/**
+ * `task.todos`'s scope (MP-7-2): none, one teammate or one client, each a
+ * well-formed identifier. A malformed one is refused rather than read as no
+ * scope, which would answer the reader's own list to a question about someone
+ * else's.
+ */
+function parseTodoScope({
+  person,
+  client,
+}: Readonly<Record<string, unknown>>): Parsed<'task.todos'> {
+  if (person !== undefined && client !== undefined) {
+    return rejected('client', 'Send a person or a client, not both.');
+  }
+  if (person !== undefined && !(typeof person === 'string' && isUuid(person))) {
+    return rejected('person', 'Send person as a teammate’s person identifier.');
+  }
+  if (client !== undefined && !(typeof client === 'string' && isUuid(client))) {
+    return rejected('client', 'Send client as the client’s identifier.');
+  }
+  return parsed({
+    ...(typeof person === 'string' ? { person: person.toLowerCase() } : {}),
+    ...(typeof client === 'string' ? { client: client.toLowerCase() } : {}),
+  });
+}
+
 export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
   'task.read': {
     identifiers: ['recordId'],
@@ -419,17 +444,30 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
   },
   // The reader's own to-dos (MP-7-1), asked at the business (`task:read`) like
   // the tag vocabulary: a reader held to one client's records is refused, and
-  // the list is filtered by the reader's person inside the query.
+  // the list is filtered by the reader's person inside the query. Scoped to a
+  // teammate or a client (MP-7-2) under the same key, and no other: the key
+  // already reaches every task in the business, so a scope narrows what the
+  // reader may read and never widens it, and the reader held to some records
+  // is refused before any person is looked up, told no count.
   'task.todos': {
-    identifiers: [],
-    parse: NONE,
+    identifiers: ['person', 'client'],
+    parse: parseTodoScope,
     spine: true,
     authority: 'declared',
     outsiderNotFound: false,
-    serve: async (tx, session, _operands, { spine }) => ({
-      ok: true,
-      todos: await readTodos(tx, spine, session.personId),
-    }),
+    async serve(tx, session, { person, client }, { spine }) {
+      // A teammate is an active member here, the people `person.list` offers.
+      // Another business's person, a former member and a made-up id are one
+      // answer, and nothing is listed.
+      if (
+        person !== undefined &&
+        !(await listPeople(tx)).some((each) => each.personId === person)
+      ) {
+        return refuseNotFound();
+      }
+      const scope = client === undefined ? { person: person ?? session.personId } : { client };
+      return { ok: true, todos: await readTodos(tx, spine, scope) };
+    },
   },
   // The Team panel (MP-7-10) is staff only: a client holding `person:read`
   // still meets NOT_FOUND, and the list names staff alone.

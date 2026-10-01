@@ -452,7 +452,8 @@ Nine reads are declared in `COMMAND_SURFACE` with `kind: 'read'` and served by
   reader of the business's tasks
 - `task.todos {}` → the reader's own open tasks on any board, with their tags
   and the client messages owed a reply (MP-7-1), for a reader of the
-  business's tasks
+  business's tasks; `{ person }` a teammate's, `{ client }`
+  every one under that client (MP-7-2), under the same key
 - `team.list {}` → the staff with an active membership and each one's
   availability (`person_availability`, 0060, set only by that person), for the
   Team panel; a client of the business is answered `NOT_FOUND`

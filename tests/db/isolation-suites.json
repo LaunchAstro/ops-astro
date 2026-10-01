@@ -72,6 +72,8 @@
     "tests/commands/task-tags-isolation.test.ts",
     "tests/commands/task-todos.test.ts",
     "tests/commands/task-todos-isolation.test.ts",
+    "tests/commands/task-todos-scope.test.ts",
+    "tests/commands/task-todos-scope-isolation.test.ts",
     "tests/commands/task-assign-ai.test.ts",
     "tests/commands/task-assign-ai-isolation.test.ts",
     "tests/commands/task-complete-agent.test.ts",

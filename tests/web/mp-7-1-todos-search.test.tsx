@@ -93,14 +93,18 @@ describe('MP-7-1 Sort by task, due and priority', () => {
 });
 
 describe('MP-7-1 not audited: reads, search and sort send no write', () => {
-  it('typing, scoping and sorting send nothing but the one read', async () => {
+  it('typing, scoping and sorting send nothing but the reads', async () => {
     const server = serving();
     const { view } = await todos({ client: server.client });
     await typeInto(view, SEARCH, 'tag:legal');
     await view.click('[data-todos="clear"]');
     await view.choose('#todos-sort', 'priority');
     await view.click('[data-todo-row="Proj-Alpha"] [data-todo-comments]');
-    expect(server.sent.map((one) => one.to)).toStrictEqual(['/task/todos']);
+    // The list's one read, and the scope switch's teammates (MP-7-2).
+    expect(server.sent.map((one) => one.to).toSorted()).toStrictEqual([
+      '/person/list',
+      '/task/todos',
+    ]);
   });
 });
 
