@@ -7,10 +7,11 @@
 // aw-08 suites prove that path through the commands. Suites about the effect
 // itself (marks, replay, reconcile, sweeps, alerts, drops) start from an
 // approved lease, so they seed the mark the handback would have written on the
-// version that lease works under, and keep their own money figures. The row
-// goes through the same table and trigger: a version and lease on one lineage.
+// version that lease works under, and keep their own money figures. The owner
+// writes the row with triggers off: 0213's trigger admits only a version newer
+// than its lease's work (the successor a handback writes), and here the lease
+// works under the very version it dispatches.
 
-import type { TenantQuery } from '../../packages/core-records/src/index.ts';
 import type { AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
 import type { Detail, Schedules } from './schedules-harness.ts';
 
@@ -32,12 +33,11 @@ export async function seedLaunchOn(
   business: string,
   leaseId: unknown,
 ): Promise<void> {
-  one(await admin.execute(MARK, [business, leaseId] as never), leaseId);
-}
-
-/** The same, in the caller's tenant transaction, as the handback writes it. */
-export async function seedLaunchIn(tx: TenantQuery, leaseId: string): Promise<void> {
-  one(await tx.query(MARK, [tx.businessId, leaseId]), leaseId);
+  const marked = await admin.transaction(async (execute) => {
+    await execute('set local session_replication_role = replica');
+    return await execute(MARK, [business, leaseId] as never);
+  });
+  one(marked, leaseId);
 }
 
 /** The schedules' own business: the version `picked`'s lease works under, launched. */
