@@ -122,6 +122,7 @@
     "tests/reads/c23-isolation.test.ts",
     "tests/api/c4-notifications-live.test.ts",
     "tests/reads/mp-7-3-client-groups.test.ts",
-    "tests/api/mp-9-1-tip-dismiss-security.test.ts"
+    "tests/api/mp-9-1-tip-dismiss-security.test.ts",
+    "tests/db/lease-pickup-path.test.ts"
   ]
 }
