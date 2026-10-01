@@ -106,12 +106,7 @@ function Tick(props: { readonly label: string; readonly on: boolean }): ReactEle
   return (
     <span className="mstrip__c">
       <span className="mstrip__k">{props.label}</span>
-      <span
-        className="check"
-        role="img"
-        aria-checked={props.on}
-        aria-label={`${props.label}: ${props.on ? 'yes' : 'no'}`}
-      >
+      <span className="check" role="img" aria-label={`${props.label}: ${props.on ? 'yes' : 'no'}`}>
         {props.on ? <Icon name="check" size="sm" /> : null}
       </span>
     </span>

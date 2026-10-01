@@ -258,7 +258,9 @@ describe('B4 the sample facts, inside the mock label and nowhere else', () => {
 
     const strip = page.find('.mstrip');
     expect(strip?.querySelector('button, input, select')).toBeNull();
-    expect(strip?.querySelectorAll('[role="img"][aria-checked]').length).toBe(2);
+    // A picture carries its state in its name; aria-checked is not allowed on role img.
+    expect(strip?.querySelectorAll('[role="img"][aria-label]').length).toBe(2);
+    expect(strip?.querySelectorAll('[aria-checked]').length).toBe(0);
     await page.unmount();
   });
 });
