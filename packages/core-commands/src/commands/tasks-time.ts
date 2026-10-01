@@ -14,6 +14,11 @@
 //   delete naming another person's entry is `NOT_FOUND` too: the store looks
 //   an entry up by its id and its person together.
 //
+// Start, stop and log answer with the task they name, so the audit event's
+// subject is the task: a time entry is the task's content, and the client lock
+// (S0-5, `task-client-lock.ts`) reads the task's applied history. A note or a
+// delete names an entry that one of those already put in that history.
+//
 // Stop is the one stop-and-log step every closing surface calls (R77): it
 // stops only this person's timer on the task it names, so closing one task's
 // panel never stops a timer running against another.
@@ -97,7 +102,7 @@ export async function startTime(
       ),
     );
   }
-  return applied(null, null, { entryId: started.entryId, startedAt: started.startedAt });
+  return applied(taskId, null, { entryId: started.entryId, startedAt: started.startedAt });
 }
 
 /** `time.stop`: stop the person's timer on this task and log its minutes (R77). */
@@ -114,7 +119,7 @@ export async function stopTime(
       refuseCommand('NOT_FOUND', ['timer'], ['No timer of yours is running on this task.']),
     );
   }
-  return applied(null, null, { entryId: stopped.entryId, minutes: stopped.minutes });
+  return applied(taskId, null, { entryId: stopped.entryId, minutes: stopped.minutes });
 }
 
 /** `time.log`: a finished entry typed by hand, ending now. */
@@ -141,7 +146,7 @@ export async function logTimeEntry(
   if (unreadable !== undefined) return unreadable;
   const logged = await logTime(tx, { taskId, ...person(context), minutes, note: text });
   if (logged.kind === 'no-task') return NO_TASK;
-  return applied(null, null, { entryId: logged.entryId, minutes });
+  return applied(taskId, null, { entryId: logged.entryId, minutes });
 }
 
 /** `time.set_note`: the note on one of the person's own entries. */
