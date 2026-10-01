@@ -69,10 +69,11 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'inbox_attention inbox_delivery_attempts'],
   ['siu', 'inbox_items'],
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
-  ['siu', 'leases planned_steps proposal_lineages proposal_versions'],
-  // AW-02: a historical run is never rewritten; the application moves its
-  // state alone, by the column grant in COLUMN_UPDATES.
+  ['siu', 'planned_steps proposal_lineages proposal_versions'],
+  // AW-02 and SL11-30: a historical run and a lease's holder are never rewritten; the
+  // application moves their states by COLUMN_UPDATES, and takes a lease by take_lease.
   ['si', 'planned_runs'],
+  ['s', 'leases'],
   ['siu', 'outage_reports outage_runs reservations task_envelopes'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
   // 0028 revokes delete on these two: identity history is kept (0002).
@@ -88,15 +89,15 @@ export const APPLICATION_GRANTS: Readonly<Record<string, string>> = Object.fromE
 );
 
 /**
- * Grants a later migration took back, so a prefix before it still holds them.
- * Keyed by table; the version is the first migration that no longer grants the
- * letters. 0028 revokes delete on identity history (R1-AUTHORITY-55).
+ * Grants a later migration took back, keyed by table, from the first migration without the
+ * letters; an earlier prefix still holds them. 0028: identity history (R1-AUTHORITY-55).
  */
 const REVOKED: Readonly<Record<string, { readonly from: string; readonly letters: string }>> = {
   'public.person_logins': { from: '0028', letters: 'd' },
   'public.person_merges': { from: '0028', letters: 'd' },
-  // 0192 takes back update on the whole run and grants it on `state` alone.
+  // 0192 and 0220 take back update on the whole row (0220 insert too) and grant it by column.
   'public.planned_runs': { from: '0192', letters: 'u' },
+  'public.leases': { from: '0220', letters: 'iu' },
 };
 
 /** Update granted by column: table, columns, first migration. Any other column grant is outside. */
@@ -104,6 +105,7 @@ const COLUMN_UPDATES: Readonly<
   Record<string, { readonly from: string; readonly columns: readonly string[] }>
 > = {
   'public.planned_runs': { from: '0192', columns: ['state'] },
+  'public.leases': { from: '0220', columns: ['expires_at', 'released_at', 'state'] },
 };
 
 /** The `table.column` pairs the application group may update after `at`, or at the full schema. */
@@ -115,9 +117,8 @@ export function columnUpdatesAt(at?: string): readonly string[] {
 }
 
 /**
- * Every other column grant, from the migration that made it: the occurrence role
- * reads a task's revision for 0032's trigger (AW-01 J, 0203); batch 1's lookup
- * reads a business's id and key (0046); the application inserts the outbox (0047).
+ * Every other column grant, from its migration: the occurrence role reads a task's revision
+ * (AW-01 J, 0203); batch 1's lookup a business's id and key (0046); the outbox insert (0047).
  */
 const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: string }[] = (
   [
@@ -148,10 +149,7 @@ export async function catalogueColumnGrants(admin: AdminConnection): Promise<rea
   return rows.map((row) => row.line);
 }
 
-/**
- * What the application group holds on a table after the migration `at` (its
- * version, `0001_tenancy` and so on), or at the full schema when `at` is absent.
- */
+/** What the application group holds on a table after migration `at`, or at the full schema. */
 export function applicationGrantsAt(qualified: string, at?: string): string | undefined {
   const granted = APPLICATION_GRANTS[qualified];
   const revoked = REVOKED[qualified];
@@ -163,6 +161,7 @@ export function applicationGrantsAt(qualified: string, at?: string): string | un
 export const APPLICATION_EXECUTES: readonly string[] = [
   'public.app_business_id',
   'public.audit_event_hash',
+  'public.take_lease',
 ];
 
 export interface CatalogueTable {
