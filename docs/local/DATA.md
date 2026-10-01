@@ -304,7 +304,7 @@ trustworthy as those rows; the delegation mint behind this path is the next step
 role, `ops_astro_lease_path` (no login, no bypass, not the owner, and the
 application group cannot set it), so row security and the made-up guard judge
 its one insert as the application's; its search path is `pg_catalog, pg_temp`, PUBLIC may not execute it, and a call naming
-nothing answers null. `tests/db/lease-pickup-path.test.ts` and
+nothing answers null. `tests/db/take-lease-path.test.ts` and
 `tests/db/lease-holder-guard.test.ts` prove it.
 
 `ops_astro_occurrence` (migration 0203, AW-01 J) follows the same pattern
