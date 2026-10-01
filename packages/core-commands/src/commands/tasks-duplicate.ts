@@ -11,7 +11,7 @@
 // thing of the old task, its type; the old task is untouched.
 //
 // Both parts of the authority are asked here, inside the transaction that
-// creates the task, against the grants live now: `task:write` for the chosen
+// creates the task, with the caller's task grants held for share: `task:write` for the chosen
 // client (party scope, or the business when there is none) and `task:read` on
 // the old task, at record scope as `task.read` asks it. So a read revoked after
 // the draft opened refuses the create. An agent never reaches this: the row is
@@ -28,7 +28,6 @@
 // old task (`reads/tasks.ts`), so the new client's people learn nothing of it.
 
 import {
-  checkAuthority,
   deriveSource,
   isRecordsRefusal,
   isUuid,
@@ -37,6 +36,11 @@ import {
   subjectsOf,
 } from '../../../core-records/src/index.ts';
 import type { Scope, TenantQuery } from '../../../core-records/src/index.ts';
+import {
+  checkAuthorityAt,
+  holdCoveringGrants,
+  lockedInstant,
+} from '../../../core-runtime/src/index.ts';
 import { randomUUID } from 'node:crypto';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import { storableText } from './values.ts';
@@ -151,7 +155,13 @@ async function namingFields(
     .toSorted();
 }
 
-/** Both parts of the authority, against the grants live now. */
+/**
+ * Both parts of the authority, asked with the caller's task grants held for
+ * share, before the old task's row is locked (grants before records, as
+ * `task.decide` holds them): a revocation that committed first is seen, and
+ * one that comes second waits for this transaction. Asked at the clock after
+ * the hold, so a grant that lapsed while this waited no longer counts.
+ */
 async function refuseAuthority(
   tx: TenantQuery,
   context: CommandContext,
@@ -161,17 +171,21 @@ async function refuseAuthority(
   const subjects = subjectsOf(context.session);
   const there: Scope =
     client === null ? { kind: 'business', id: null } : { kind: 'party', id: client };
-  const reads = await checkAuthority(tx, subjects, {
-    collection: 'task',
-    action: 'read',
-    scope: { kind: 'record', id: oldId },
-  });
+  await holdCoveringGrants(tx, subjects, 'task');
+  const at = await lockedInstant(tx);
+  const reads = await checkAuthorityAt(
+    tx,
+    subjects,
+    { collection: 'task', action: 'read', scope: { kind: 'record', id: oldId } },
+    at,
+  );
   if (!reads.ok) return reads.refusal;
-  const writes = await checkAuthority(tx, subjects, {
-    collection: 'task',
-    action: 'write',
-    scope: there,
-  });
+  const writes = await checkAuthorityAt(
+    tx,
+    subjects,
+    { collection: 'task', action: 'write', scope: there },
+    at,
+  );
   return writes.ok ? undefined : writes.refusal;
 }
 
