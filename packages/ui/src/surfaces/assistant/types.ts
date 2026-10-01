@@ -3,7 +3,28 @@
 // MP-7-11: the drawer's shapes, in one module its parts and its caller share,
 // so no part imports the panel that imports it.
 
-export type AssistantRole = 'user' | 'ai' | 'note' | 'failed';
+export type AssistantRole = 'user' | 'ai' | 'note' | 'failed' | 'plan';
+
+/**
+ * AW-04: a plan version drawn as a card in the chat. `offered` carries the one
+ * accept; `accepting` while the click is in flight; `approved` once the server
+ * kept the words; `stale` once a newer version replaced it in this chat.
+ */
+export type PlanCardState = 'offered' | 'accepting' | 'approved' | 'stale';
+
+export interface AssistantPlan {
+  readonly version: number;
+  readonly steps: readonly string[];
+  readonly ceilingMinor: number;
+  readonly spendMinor: number;
+  readonly currency: string;
+  readonly state: PlanCardState;
+  /** The version that replaced this one, on a stale card. */
+  readonly replacedBy: number | null;
+  /** The server's refusal of the last click, quoted as it came. */
+  readonly refusal: string | null;
+  readonly task: { readonly label: string; readonly href: string };
+}
 
 export interface AssistantCite {
   readonly label: string;
@@ -15,6 +36,8 @@ export interface AssistantMessage {
   readonly role: AssistantRole;
   readonly body: string;
   readonly cites: readonly AssistantCite[];
+  /** On a `plan` message: the card. */
+  readonly plan?: AssistantPlan;
 }
 
 export interface AssistantPage {
@@ -68,5 +91,7 @@ export interface AssistantPanelProps {
   readonly onModel: (key: string, model: string) => void;
   readonly onAddPage: (key: string) => void;
   readonly onSend: (key: string, text: string) => void;
+  /** AW-04: the one click on a plan card, by tab and message. Absent, no accept is drawn. */
+  readonly onAccept?: (key: string, messageId: string) => void;
   readonly onClose: () => void;
 }

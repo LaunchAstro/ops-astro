@@ -27,6 +27,7 @@ import {
   type RecordedOutcome,
   type RunActivity,
 } from '@launchastro/ui';
+import { askDrawer, newAttemptAsk } from '../assistant/asks.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import type {
   PersonView,
@@ -222,9 +223,18 @@ export function AgentSection(props: AgentSectionProps): ReactElement {
         onEndAtStop={controls.endAtStop}
         stopAwaiting={controls.stopAwaiting}
         {...(activity === undefined ? {} : { activity })}
+        onStartAttempt={() => {
+          askDrawer(newAttemptAsk({ id: props.recordId, title: titleOf(props), clientId: null }));
+        }}
       />
     </section>
   );
+}
+
+/** The task's title as the read gave it, or its key while it has none. */
+function titleOf(props: AgentSectionProps): string {
+  const read = props.readOf as { readonly title?: unknown } | null;
+  return typeof read?.title === 'string' && read.title !== '' ? read.title : props.taskKey;
 }
 
 /** The log's rows: the execution read's events and its bound plan's steps, once read. */

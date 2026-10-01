@@ -28,7 +28,7 @@ import { grantKeyOf, type Interruption, type Session, type SessionStore } from '
 import { signOut } from './session/sign-in.ts';
 import { SignIn } from './screens/SignIn.tsx';
 import { drawScreen } from './screen-registry.tsx';
-import { AssistantView } from './views/assistant.tsx';
+import { AssistantView, useAgentDrawer } from './views/assistant.tsx';
 
 export interface AppProps {
   /** The address the application is drawing. Owned here, not read from a global. */
@@ -73,7 +73,7 @@ export function App(props: AppProps): ReactElement {
     readonly offer: HeldOffer | null;
   } | null>(null);
   // The Agent drawer (MP-7-11): open over the page, never an address.
-  const [agentOpen, setAgentOpen] = useState(false);
+  const [agentOpen, setAgentOpen] = useAgentDrawer();
 
   const onSignedIn = useCallback(
     (next: Session) => {

@@ -48,7 +48,11 @@ import {
   SESSION_HEADER,
   pathOf,
 } from '../../../../packages/core-wire/src/index.ts';
-import type { CommandName, CommandRefusal } from '../../../../packages/core-wire/src/index.ts';
+import type {
+  CommandName,
+  CommandRefusal,
+  PlanOffer,
+} from '../../../../packages/core-wire/src/index.ts';
 import type { NotARead, ReadName } from './read-names.ts';
 
 export { READ_NAMES } from './read-names.ts';
@@ -78,7 +82,13 @@ export interface CommandOutcome {
 }
 
 export type ConversationReply =
-  | { readonly answered: true; readonly messageId: string; readonly body: string }
+  | {
+      readonly answered: true;
+      readonly messageId: string;
+      readonly body: string;
+      /** AW-04: the plan version a planning reply composed, drawn as a card. */
+      readonly plan?: PlanOffer;
+    }
   | { readonly answered: false; readonly code: string; readonly words: string };
 
 /**
