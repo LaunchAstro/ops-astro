@@ -1620,7 +1620,7 @@ id (`apps/web/src/screens/settings/sessions.tsx`).
 
 ## The operations view and privacy incidents (C55)
 
-`operations.read` answers `{ ok, unattended, privacyIncidents, breachRunbook, securityAlerts, serviceHealth, lastTestedRestore }`
+`operations.read` answers `{ ok, unattended, privacyIncidents, breachRunbook, securityAlerts, serviceHealth, errorSink, lastTestedRestore }`
 to a holder of `operations:read` (install default: the owner and administrators). It is
 never an agent's: on the agent prefix it is `DELEGATION_EXCLUDES_OPERATION` 403. Each incident carries its day-0 facts, its status and `assessBy`, 30 days
 after `foundAt` (the breach runbook's assessment limit), most recently found
@@ -1704,6 +1704,13 @@ over-long name, a control character, a time that is no time or more than a
 minute ahead) is a read failure, and none of its services is shown. A client's
 own site (`scope: 'client-site'`) is that client's and never shown here. The
 source's own words go nowhere.
+
+**Error sink link (C55).** `errorSink` is `{ url }`, the sink's web address
+from `OPS_ERROR_SINK_URL`, or `null` when that is unset; the API adds it beside
+`serviceHealth`, so a read made in-process carries none. The setting holds no
+secret and is never derived from `OPS_ERROR_SINK_DSN`, whose user part is the
+sink's key: an address that is not https, or that has a user part (a DSN
+pasted there), stops the API at start, naming the setting and never its value.
 
 The port is `HealthSource` (`reads/service-health.ts`). Tracing is Langfuse,
 `LANGFUSE_HOST`, read at `GET /api/public/health` with no credential

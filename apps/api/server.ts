@@ -68,6 +68,7 @@ import {
 } from '../../packages/core-runtime/src/index.ts';
 import type { RuntimeKeys } from '../../packages/core-runtime/src/index.ts';
 import { createGoTrueFactors } from './auth/factors.ts';
+import { errorSinkLink, type ErrorSinkLink } from './health/error-sink-link.ts';
 import { createLangfuseHealth } from './health/tracing.ts';
 import { createGoTrueLogins } from './auth/logins.ts';
 import {
@@ -185,6 +186,8 @@ export interface ApiConfig {
   readonly providerSecret?: string;
   /** Langfuse's URL, `LANGFUSE_HOST` (C34); absent is tracing switched off. */
   readonly tracingUrl?: string;
+  /** The error sink's web address, `OPS_ERROR_SINK_URL` (C55); absent is no link. */
+  readonly errorSink?: ErrorSinkLink;
   /**
    * The read half of the surface. Absent means `reads/execute.ts`, imported
    * statically, so a module that fails to load stops the server rather than
@@ -308,6 +311,7 @@ export function composeApi(config: ApiConfig): ComposedApi {
         config.tracingUrl === undefined
           ? {}
           : { tracing: createLangfuseHealth({ baseUrl: config.tracingUrl }) },
+      ...(config.errorSink === undefined ? {} : { errorSink: config.errorSink }),
       ...(config.alerts === undefined ? {} : { observe: config.alerts.observe }),
     }),
   );
@@ -451,6 +455,13 @@ async function main(): Promise<void> {
   const listenUrl = environment['DATABASE_LISTEN_URL'] ?? (databaseUrl as string);
   const topics = await startLiveTopics(connectListener(listenUrl));
   const alerts = alertsFrom(environment);
+  let errorSink: ErrorSinkLink;
+  try {
+    errorSink = errorSinkLink(environment);
+  } catch (error) {
+    console.error(`api: ${(error as Error).message}`);
+    process.exit(1);
+  }
 
   // Wiring only: nothing here runs a statement or binds a port, so building it
   // before recovery changes nothing recovery sees, and recovery resolves its
@@ -464,6 +475,7 @@ async function main(): Promise<void> {
     live: { topics },
     ...(providerSecret === undefined || providerSecret === '' ? {} : { providerSecret }),
     ...(tracingUrl === undefined || tracingUrl === '' ? {} : { tracingUrl }),
+    errorSink,
     ...(alerts === undefined ? {} : { alerts }),
   });
 

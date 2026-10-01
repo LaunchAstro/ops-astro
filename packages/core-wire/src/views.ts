@@ -622,9 +622,9 @@ export interface SecurityAlertView {
  * most 50, to the business that operates the installation alone; every other
  * business reads an empty list. The last tested restore (C55, carried from
  * S0-3) is the date a passed drill stamps (0068), served on every answer. The
- * error sink link joins it as that part lands; each is its owner's read,
- * placed here, never a second copy. Until then the server leaves it out and
- * the view draws a made-up value, labelled Mock.
+ * API adds the error sink's web address, `OPS_ERROR_SINK_URL`, beside the
+ * service-health section; each is its owner's read, placed here, never a
+ * second copy.
  */
 export interface OperationsReadResult {
   readonly ok: true;
@@ -641,7 +641,7 @@ export interface OperationsReadResult {
    * store's restore window or while no drill has passed.
    */
   readonly lastTestedRestore?: LastTestedRestoreView;
-  /** Where the error sink is read; `null` with none configured. Not yet served. */
+  /** The error sink's web address; `null` with none set; absent from an in-process read. */
   readonly errorSink?: { readonly url: string } | null;
 }
 

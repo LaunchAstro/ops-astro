@@ -36,6 +36,7 @@ import { connect, connectAsAdmin, connectOutbox } from '../../packages/core-reco
 import { crashSeamProblem, runtimeKeys } from '../../packages/core-runtime/src/index.ts';
 import { createOutboxAlerts, scopeKey } from './alerts/outbox.ts';
 import type { Alerts } from './alerts/sink.ts';
+import { errorSinkLink } from './health/error-sink-link.ts';
 import { keySetUrlFor } from './auth/supabase.ts';
 import { composeApi } from './server.ts';
 
@@ -79,12 +80,14 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
     throw new Error(`delegation credential keys: ${keys.delegation.problem}`);
   }
   const alerts = outboxAlerts(settings, databaseUrl, required);
+  const errorSink = errorSinkLink(settings);
 
   const { app } = composeApi({
     database: connect(databaseUrl, { source: 'runtime' }),
     admin: connectAsAdmin(lookupUrl, { source: 'lookup' }),
     signIn: { issuer, keySetUrl },
     keys,
+    errorSink,
     ...(alerts === undefined ? {} : { alerts }),
   });
 

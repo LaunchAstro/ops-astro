@@ -89,6 +89,7 @@ import type { Verifier } from './auth/supabase.ts';
 import type { LiveSignal, LiveTopics } from './live.ts';
 import { followBoard } from './live-board.ts';
 import { signalOf, type Outcome, type SecuritySignal } from './alerts/detect.ts';
+import type { ErrorSinkLink } from './health/error-sink-link.ts';
 import {
   bearerOf,
   cookieNameFor,
@@ -168,6 +169,8 @@ export interface ApiOptions {
    * grant check, outside the serving transaction.
    */
   readonly health?: HealthSources;
+  /** The error sink's web address (C55), served by `operations.read`; absent is null. */
+  readonly errorSink?: ErrorSinkLink;
   /**
    * The sign-in provider's calls for a login whose access has ended (C58),
    * `auth/logins.ts` in a deployment. `access.end` ends access locally either
@@ -359,7 +362,7 @@ export function createApi(options: ApiOptions): Hono {
       // holds a transaction open.
       if (name === 'operations.read') {
         const serviceHealth = await readServiceHealth(options.health ?? {}, new Date());
-        return context.json({ ...read, serviceHealth }, 200);
+        return context.json({ ...read, serviceHealth, errorSink: options.errorSink ?? null }, 200);
       }
       return context.json(read, 200);
     }
