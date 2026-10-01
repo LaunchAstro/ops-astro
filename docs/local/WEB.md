@@ -44,6 +44,20 @@ and announces it in a `role="alert"` region (`apps/web/src/screens/SignIn.tsx`).
 The synthetic credentials live in the gitignored `.local/synthetic-users.json`,
 which `auth:seed` writes.
 
+### Signing out
+
+The person menu (C23) is the circle at the far right of the app strip, on both
+faces: it shows who is signed in (their name from `session.person`, the email
+until that answers), a link to `/settings` and Sign out
+(`packages/ui/src/surfaces/PersonMenu.tsx`). Sign out forgets the session in
+the tab first, so a server that never answers cannot keep anyone signed in,
+then sends two calls naming the ended sign-in's own session id: `session.end`,
+which records the sign-out on the audit chain, and the API's `/api/session/end`,
+which clears this sign-in's session cookie and leaves the person's others alone
+(`apps/web/src/App.tsx`, `signOut` in `session/sign-in.ts`). The page holds no
+token (S0-6c), so it asks the identity provider for nothing.
+Neither answer is waited for.
+
 ### When the session ends
 
 A local access token lives for one hour. The API refuses a bearer it will not
@@ -65,6 +79,20 @@ was on, and goes to `/sign-in`. There a notice (`role="status"`,
 own code so the person can repeat it, and says that anything unsaved was not
 saved. Signing in again returns to the remembered address, so a task page stays
 a task page. With nothing remembered it goes to `/projects/`.
+
+**Ended access is the third way a session ends (C58).** Ending a person's access
+deactivates their login and ends their memberships, but their bearer still
+verifies until its hour is up, so the API answers their next call 403
+`AUTH_NO_MEMBERSHIP`. A login that was never a member gets the same answer, and
+for it that is a denial to draw (the browser's N2 row). So the client remembers
+whether its bearer has had an answer, and only a bearer that has ends its
+session on that refusal, with the same notice. A person who signs out in the tab
+lands on `/sign-in` with a notice of its own (`data-reason="signed-out"`) saying
+that any edit they had not saved was not saved. In every ending the draft lived
+only in the screen's state, so it goes with the screen: no browser storage holds
+record content for a signed-out tab (`C58 no draft after session end`). ND1 to
+ND3 in `tests/browser/cases-c58-no-draft.mjs` show it in a real browser against
+the real API, reading IndexedDB, Cache Storage and every cookie as well.
 
 **The refusal belongs to the session that made the request.** A client keeps the
 bearer it was built with, so a call can be answered after that bearer has
@@ -103,13 +131,14 @@ browser.
 
 ## Addresses
 
-| Address      | What it draws                                                                                    |
-| ------------ | ------------------------------------------------------------------------------------------------ |
-| `/sign-in`   | Credentials and the business selector                                                            |
-| `/projects/` | `task.board` for the unboarded tasks (`board: null`), and the create form                        |
-| `/task/:key` | `task.read`: state buttons, the assignee select, title and due date, comments, history, revision |
-| `/task/`     | No task named: says so and offers the board (MP-4-1), and reads nothing                          |
-| `/settings`  | The two operation-classified business settings, from `settings.read` and `session.capabilities`  |
+| Address      | What it draws                                                                                                                                                                                                                    |
+| ------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/sign-in`   | Credentials and the business selector                                                                                                                                                                                            |
+| `/projects/` | Board tab: `task.board` for the unboarded tasks (`board: null`), and the create form. Work log tab (`#worklog`): `task.ledger` in the reader's zone, read on first opening; its search words live in the address as `?q=` (L-01) |
+| `/task/:key` | `task.read`: state buttons, the assignee select, title and due date, comments, history, revision                                                                                                                                 |
+| `/task/`     | No task named: says so and offers the board (MP-4-1), and reads nothing                                                                                                                                                          |
+| `/settings`  | Settings General: You and Notifications (the person's own preferences) and This business (the two operation-classified settings, from `settings.read` and `session.capabilities`)                                                |
+| `/inbox/`    | The Notifications list in full-page form (MP-7-3): `inbox.read` and `inbox.count` drawn by the kit's `InboxPage`, one list and one owed count                                                                                    |
 
 `/task/:key` is a real address. A hard reload lands on it because the dev server
 falls back to `index.html`, and everything on the page is reread from the API.
@@ -166,11 +195,12 @@ folds the trail behind "Show all N changes" and "Hide the trail"; keeping that
 choice as the person's preference waits on a preference model.
 
 The dock has two tabs (`PANELS` in `apps/web/src/panels.ts`): Settings goes to
-`/settings`, and Projects to `/todos`, the reader's own to-dos (MP-7-1,
-`screens/todos/Todos.tsx`). An open dock tab is announced as "Close Settings"
+The dock's tabs are `PANELS` in `apps/web/src/panels.ts`: Notifications goes to
+`/inbox/`, Settings to `/settings`, Projects to `/todos` (the reader's own
+to-dos, MP-7-1, `screens/todos/Todos.tsx`) and Team to `/team`. An open dock tab is announced as "Close Settings"
 (`aria-expanded="true"`, `Shell` in `packages/ui/src/surfaces/Shell.tsx`) and
-leaves its address for the board when pressed (`onDockTab` in
-`apps/web/src/App.tsx`). The to-dos list reads `task.todos`: each row's name
+leaves its address for the board when pressed (`dockTabGo` in
+`apps/web/src/panels.ts`). The to-dos list reads `task.todos`: each row's name
 opens the task in the dock task panel beside its page door, its tick sends
 `task.complete` at the row's revision, and its due reads as Overdue, Today,
 Tomorrow, This week or Later on the business day (`todo-list.ts`, one today,
@@ -455,7 +485,31 @@ What this screen does not read back, and cannot:
 
 ## The settings screen
 
-`/settings` draws the two settings the model classifies `operation`:
+`/settings` is Settings General (MP-2-11, `screens/SettingsGeneral.tsx`), three
+groups in one row pattern: a label, one quiet sentence, the control on the right.
+**You** holds Appearance (Light, Dark or System, default System) and Guided tips
+(on or off, and "Bring back N dismissed tips", its count derived with
+`dismissedTipCount`, closed with its reason when tips are off or none are
+dismissed), read with `preference.read` and written with `preference.save`, the
+caller's own row only. **Notifications** writes nothing: in-app is drawn on and
+locked, email is drawn not connected until AW-07b, and decisions and incidents
+are drawn as never silenced. **This business** is the screen below, whose
+`STEP_UP_REQUIRED` refusal shows its fix (sign in again), never the code, with
+two more rows: the conversation and retention windows in whole days, each
+written through its own command (`settings.set_conversation_window`,
+`settings.set_retention_window`) with the same revision, conflict and refusal
+handling (`settings/windows.tsx`).
+
+The appearance is applied at once (`appearance.ts`): `data-theme-preference` on
+the root, which MP-1-1's before-paint step turns into `data-theme`, with a 500ms
+crossfade while `data-theme-fade` is on. Signed in, the frame reads the person's
+preferences once (beside the person menu's `session.person`) and applies the
+stored appearance; the tab keeps a copy in `sessionStorage` as
+`ops-astro.appearance`, which the before-paint step replays on a reload. Signed
+out, the copy is dropped, so one person's appearance never opens the next
+person's session.
+
+This business draws the two settings the model classifies `operation`:
 `four_eyes_threshold` and `client_sign_off_required`. Each is written through
 the command that owns it, `settings.set_four_eyes_threshold` or
 `settings.set_client_sign_off`, with an `operationId`, and with an
@@ -628,6 +682,7 @@ changed without reading the rest:
 | `cases-create-retry.mjs`   | R1, retrying a create whose answer was lost                                                                                                                |
 | `cases-task-drafts.mjs`    | D1, the explicit Save or Discard of an unsaved detail                                                                                                      |
 | `cases-session-expiry.mjs` | SX1 to SX3, an ended session reaching sign-in and returning to the same task                                                                               |
+| `cases-c58-no-draft.mjs`   | ND1 to ND3, an unsaved edit in no browser store after access ended, the 12-hour limit and signing out                                                      |
 | `cases-b6-b7.mjs`          | the API down, the process and database restart, and a pending gate, a lease and an attempt across it                                                       |
 | `cases-comments.mjs`       | C1 a comment posted and reloaded, C2 a member refused once                                                                                                 |
 | `cases-settings.mjs`       | S1 the screen's provenance, S2 a member stopped, S3 the value comes from the read, S4 closed by capability with no request, S5 a stale write as a conflict |

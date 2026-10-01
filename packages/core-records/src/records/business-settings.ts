@@ -83,9 +83,10 @@ export interface SettingDefinition {
  * `four_eyes_threshold` and `client_sign_off_required` are owned by
  * operations: both change who has to agree before something happens, which is
  * an authority change wearing configuration's clothes — the same category of
- * field the task spine protects. The two windows are `generic`: they are
- * retention policy an administrator sets, and no transition depends on the
- * value being what it was a moment ago.
+ * field the task spine protects. The two windows are owned by a command each
+ * too (MP-2-11, 0063): no generic editor exists, and the conversation window's
+ * ceiling is the retention window (C122-1), a rule across two rows that a
+ * generic write could not hold.
  */
 export const BUSINESS_SETTINGS: readonly SettingDefinition[] = [
   {
@@ -110,22 +111,35 @@ export const BUSINESS_SETTINGS: readonly SettingDefinition[] = [
     visibilityClass: 'shared',
   },
   {
+    // C59: the money step-up, on by default (the owner, 28 September 2026).
+    // Owned by an operation for the reason the two above are: it changes what
+    // must be true before money moves.
+    key: 'money_step_up_required',
+    label: 'Money actions need a recent second-factor sign-in',
+    valueType: 'boolean',
+    value: true,
+    writeMode: 'operation',
+    owningOperations: ['settings.set_money_step_up'],
+  },
+  {
     key: 'retention_window_days',
     label: 'Retention window (days)',
     valueType: 'numeric',
     // Thirty days, the accepted default. The purge applies no floor or
     // ceiling of its own, and no accepted source names one for this window.
     value: 30,
-    writeMode: 'generic',
-    owningOperations: [],
+    writeMode: 'operation',
+    owningOperations: ['settings.set_retention_window'],
   },
   {
+    // C122-1: thirty days from last activity, floor seven, ceiling the
+    // retention window above.
     key: 'conversation_window_days',
     label: 'Conversation window (days)',
     valueType: 'numeric',
     value: 30,
-    writeMode: 'generic',
-    owningOperations: [],
+    writeMode: 'operation',
+    owningOperations: ['settings.set_conversation_window'],
   },
 ];
 

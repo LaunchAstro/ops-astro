@@ -1,16 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// INB-1f: closing the live topics stops every live stream, a board's or a
-// task's, and resolves only once no question one asked is still in flight.
-// The pool closes after it, so a recheck that was running can never send its
+// INB-1f: closing the live topics stops every live stream, a board's, a
+// task's or a tab's C4 stream of several topics, and resolves only once no
+// question one asked is still in flight. The pool closes after it, so a recheck that was running can never send its
 // next statement down a connection that has already ended.
 
 import type { SSEStreamingApi } from 'hono/streaming';
 import { setTimeout } from 'node:timers/promises';
 import { describe, expect, it, vi } from 'vitest';
+import type { CommandRefusal } from '../../packages/core-commands/src/index.ts';
 import type { Listener } from '../../packages/core-records/src/index.ts';
-import { follow } from '../../apps/api/app.ts';
 import { followBoard } from '../../apps/api/live-board.ts';
+import { follow, type Watching } from '../../apps/api/live-follow.ts';
 import { startLiveTopics, type LiveTopics } from '../../apps/api/live.ts';
 
 const noop = (): void => {};
@@ -37,6 +38,7 @@ function abortable(): SSEStreamingApi {
 const business = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const person = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const task = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+const other = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 
 const reads = (): Promise<boolean> => Promise.resolve(true);
 const shown = (): Promise<string> => Promise.resolve('inbox');
@@ -64,10 +66,31 @@ const streams: [
         await ask();
         return task;
       };
-      await follow(stream, { topics, recheckMs: 5 }, business, task, may);
+      const watches = [{ label: task, taskId: task }];
+      await follow(stream, { topics, recheckMs: 5 }, watches, answering(may));
+    },
+  ],
+  [
+    'C4 topics',
+    async (topics, stream, ask) => {
+      const may = async (): Promise<string> => {
+        await ask();
+        return task;
+      };
+      const watches = [task, other].map((id) => ({ label: `task:${id}`, taskId: id }));
+      await follow(stream, { topics, recheckMs: 5 }, watches, answering(may));
     },
   ],
 ];
+
+/** A stream's questions, every one answered by `may`. */
+function answering(may: () => Promise<string>): Watching {
+  return {
+    businessId: business,
+    atDoor: async (taskIds) => await Promise.all(taskIds.map(async () => await may())),
+    again: may,
+  };
+}
 
 // eslint-disable-next-line max-lines-per-function -- both stop orders for both stream kinds
 describe('INB-1 live stream stop', () => {
@@ -146,6 +169,45 @@ describe('INB-1 live stream stop', () => {
       expect(stoppedAtClose).toBe(true);
     },
   );
+
+  it('a C4 stream that has closed one topic is still stopped by close, which waits for its question', async () => {
+    const topics = await startLiveTopics({
+      listen: (_channel: string, _payload: unknown, onListening: () => void) => {
+        onListening();
+        return Promise.resolve();
+      },
+      close: () => Promise.resolve(),
+    } as unknown as Listener);
+    const stream = abortable();
+    let finish = noop;
+    const held = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    let heldAsks = 0;
+    const refused = { code: 'NOT_FOUND' } as unknown as CommandRefusal;
+    // The other topic is refused on its first recheck, so it closes alone; the task's question is held open.
+    const asks: Watching = {
+      businessId: business,
+      atDoor: async (taskIds) => await Promise.resolve(taskIds),
+      async again(taskId) {
+        if (taskId === other) return refused;
+        heldAsks += 1;
+        await held;
+        return task;
+      },
+    };
+    const watches = [other, task].map((id) => ({ label: `task:${id}`, taskId: id }));
+    const running = follow(stream, { topics, recheckMs: 5 }, watches, asks);
+    await vi.waitFor(() => expect(heldAsks).toBe(1));
+
+    const closing = topics.close();
+    const first = await Promise.race([closing.then(() => 'closed'), setTimeout(50, 'waiting')]);
+    expect(stream.aborted, 'close ends the stream').toBe(true);
+    expect(first, 'close waits for the question in flight').toBe('waiting');
+    finish();
+    await closing;
+    await running;
+  });
 
   it('a stream admitted once closing is stopped at once, asks nothing, and close waits for it', async () => {
     const topics = await startLiveTopics({

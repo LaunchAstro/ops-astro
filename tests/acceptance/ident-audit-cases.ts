@@ -23,6 +23,7 @@ import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { pathOf } from '../../packages/core-wire/src/surface.ts';
 import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
 import { ADMIN_ACTIONS, ADMIN_COLLECTIONS, enrolAgent, enrolCaller } from './cast.ts';
+import { bravoRecords } from './ident-audit-bravo-rows.ts';
 import { createHarness, type Harness } from './role-case-harness.ts';
 import { PROPOSAL, type Task } from './role-case-bodies.ts';
 import {
@@ -80,6 +81,9 @@ export interface IdentWorld {
     grantId: string;
     /** A time entry of bravo's admin on bravo's task (MP-4-6). */
     entryId: string;
+    legalVersionId: string;
+    credentialId: string;
+    clientId: string;
   }>;
   /** The second alpha agent's live pickup. */
   readonly otherPicked: Picked;
@@ -243,6 +247,9 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
     [world.bravo, world.bea.personId],
   );
 
+  // bravo's own legal version, agent credential and client (C81, API-2, C32).
+  const bravoRows = await bravoRecords(world);
+
   // alpha's second agent, with a live lease of its own.
   const secondAgent = await enrolAgent(world.db, world.alpha, world.ada.actorId as string);
   const otherPicked = await pickUpAs(world.ada, secondAgent, 'the second agent’s work', 'alpha');
@@ -272,6 +279,7 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
       batchId: String(trashed['batchId']),
       grantId: String(bravoGrants[0]?.id),
       entryId: bravoEntry.entryId,
+      ...bravoRows,
     },
     otherPicked,
     rhea,

@@ -2,8 +2,8 @@
 //
 // A read's target, checked by the read that has one (root ruling 3, I14-SEAM U1).
 //
-// Five reads name no record: `task.queue`, `person.list`, `preset.plan`,
-// `settings.read` and `session.capabilities`. Each accepted a `recordId` and
+// Six reads name no record: `task.queue`, `task.ledger`, `person.list`,
+// `preset.plan`, `settings.read` and `session.capabilities`. Each accepted a `recordId` and
 // ignored it, which is the command path's old mistake on the read half: a body
 // whose identifier the server quietly drops is a body the caller believes was
 // honoured. They now refuse it `COMMAND_BODY_INVALID`, as an untargeted command
@@ -42,10 +42,12 @@ type Command = Parameters<typeof executeCommand>[4];
 /** The target-free reads and a valid body for each. */
 const TARGET_FREE: readonly (readonly [CommandName, Record<string, unknown>])[] = [
   ['task.queue', {}],
+  ['task.ledger', { timeZone: 'UTC' }],
   ['person.list', {}],
   ['preset.plan', { recordTypeKey: 'task', presetKey: 'boundary', fields: [] }],
   ['settings.read', {}],
   ['session.capabilities', {}],
+  ['task.search', { query: 'boundary' }],
 ];
 
 describe.skipIf(serverUrl === undefined)('read targets at the request boundary', () => {

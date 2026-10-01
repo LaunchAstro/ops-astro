@@ -47,7 +47,7 @@ describe('the create form, refused on authority', () => {
       signedIn: true,
       fetch: api.fetch,
     });
-    const view = await mount(<Projects client={client} grantKey="alpha:mia" />);
+    const view = await mount(<Projects client={client} grantKey="alpha:mia" navigate={() => {}} />);
     await settle();
 
     await view.type('#create-title', 'Wire the board to the API');

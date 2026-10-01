@@ -70,6 +70,15 @@ function recorder(handler: string) {
   };
 }
 
+vi.mock('../../packages/core-commands/src/commands/session-end.ts', async (original) => ({
+  ...(await original<object>()),
+  endOwnSession: recorder('endOwnSession'),
+}));
+vi.mock('../../packages/core-commands/src/commands/preference-save.ts', async (original) => ({
+  ...(await original<object>()),
+  saveOwnPreference: recorder('saveOwnPreference'),
+  dismissOwnTip: recorder('dismissOwnTip'),
+}));
 vi.mock('../../packages/core-commands/src/commands/tasks-write.ts', async (original) => ({
   ...(await original<object>()),
   createTask: recorder('createTask'),
@@ -125,6 +134,34 @@ vi.mock('../../packages/core-commands/src/commands/settings-write.ts', async (or
   setBusinessSetting: recorder('setBusinessSetting'),
   setNotificationChannel: recorder('setNotificationChannel'),
 }));
+vi.mock('../../packages/core-commands/src/commands/privacy-write.ts', async (original) => ({
+  ...(await original<object>()),
+  recordIncident: recorder('recordIncident'),
+}));
+vi.mock('../../packages/core-commands/src/commands/overseas-write.ts', async (original) => ({
+  ...(await original<object>()),
+  setService: recorder('setService'),
+}));
+vi.mock('../../packages/core-commands/src/commands/data-class-write.ts', async (original) => ({
+  ...(await original<object>()),
+  setClass: recorder('setClass'),
+}));
+vi.mock('../../packages/core-commands/src/commands/credential-write.ts', async (original) => ({
+  ...(await original<object>()),
+  issueCredential: recorder('issueCredential'),
+  revokeCredential: recorder('revokeCredential'),
+}));
+vi.mock('../../packages/core-commands/src/commands/gate-write.ts', async (original) => ({
+  ...(await original<object>()),
+  recordGateItem: recorder('recordGateItem'),
+  changeInstallationMode: recorder('changeInstallationMode'),
+}));
+vi.mock('../../packages/core-commands/src/commands/legal-write.ts', async (original) => ({
+  ...(await original<object>()),
+  draftVersion: recorder('draftVersion'),
+  approveVersion: recorder('approveVersion'),
+  publishVersion: recorder('publishVersion'),
+}));
 vi.mock('../../packages/core-commands/src/commands/tasks-propose.ts', async (original) => ({
   ...(await original<object>()),
   proposeOnTask: recorder('proposeOnTask'),
@@ -157,6 +194,16 @@ vi.mock('../../packages/core-commands/src/commands/authority-controls.ts', async
   ...(await original<object>()),
   revokeDelegationAsManager: recorder('revokeDelegationAsManager'),
   revokeGrantAsManager: recorder('revokeGrantAsManager'),
+  revokeGrantOnAccess: recorder('revokeGrantOnAccess'),
+}));
+vi.mock('../../packages/core-commands/src/commands/access-write.ts', async (original) => ({
+  ...(await original<object>()),
+  createClientRecord: recorder('createClientRecord'),
+  grantOnAccess: recorder('grantOnAccess'),
+}));
+vi.mock('../../packages/core-commands/src/commands/access-end.ts', async (original) => ({
+  ...(await original<object>()),
+  endAccessOnSettings: recorder('endAccessOnSettings'),
 }));
 vi.mock('../../packages/core-commands/src/commands/tasks-time.ts', async (original) => ({
   ...(await original<object>()),
@@ -206,12 +253,32 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'budget.record_outcome': ['recordId', 'attemptId'],
   'budget.top_up': ['recordId'],
   'budget.write_off': ['recordId', 'attemptId'],
+  'access.grant': ['holderId', 'clientId'],
+  'access.revoke': ['grantId'],
+  'access.end': ['holderId'],
+  'client.create': [],
   'delegation.revoke': [],
+  'credential.issue': [],
+  'credential.revoke': ['credentialId'],
   'grant.revoke': [],
+  'preference.save': [],
+  'preference.dismiss_tip': [],
+  'session.end': [],
+  'legal.approve_version': ['versionId'],
+  'legal.draft_version': [],
+  'legal.publish_version': ['versionId'],
+  'operations.change_installation_mode': [],
+  'operations.record_gate_item': [],
+  'privacy.set_overseas_service': [],
+  'privacy.set_data_class': [],
+  'privacy.record_incident': [],
   'inbox.seen': ['itemId'],
   'notifications.set_channel': [],
   'settings.set_client_sign_off': [],
   'settings.set_four_eyes_threshold': [],
+  'settings.set_money_step_up': [],
+  'settings.set_conversation_window': [],
+  'settings.set_retention_window': [],
   'task.cancel': ['recordId', 'lineageId'],
   'task.create': ['parentId', 'board', 'boardSection'],
   'task.decide': ['gateId', 'versionId'],
@@ -234,22 +301,48 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
 };
 
 const PINNED_NEEDS_NO_EXPECTED_REVISION = [
+  'access.end',
+  'access.grant',
+  'access.read',
+  'access.revoke',
   'budget.record_outcome',
   'budget.top_up',
   'budget.write_off',
+  'client.create',
+  'client.list',
+  'credential.issue',
+  'credential.revoke',
   'delegation.revoke',
   'grant.revoke',
   'inbox.count',
   'inbox.read',
   'inbox.seen',
   'inbox.unattended',
+  'legal.approve_version',
+  'legal.draft_version',
+  'legal.publish_version',
   'notifications.set_channel',
+  'operations.change_installation_mode',
+  'operations.read',
+  'operations.record_gate_item',
   'person.list',
+  'preference.dismiss_tip',
+  'preference.read',
+  'preference.save',
   'preset.plan',
+  'privacy.draft_breach_notices',
+  'privacy.record_incident',
+  'privacy.set_data_class',
+  'privacy.set_overseas_service',
   'session.capabilities',
+  'session.end',
+  'session.person',
   'settings.read',
   'settings.set_client_sign_off',
+  'settings.set_conversation_window',
   'settings.set_four_eyes_threshold',
+  'settings.set_money_step_up',
+  'settings.set_retention_window',
   'tag.create',
   'tag.list',
   'task.add_tag',
@@ -261,6 +354,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'task.execution',
   'task.handback',
   'task.heartbeat',
+  'task.ledger',
   'task.observe',
   'task.pickup',
   'task.purge',
@@ -270,7 +364,9 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'task.remove_tag',
   'task.restart',
   'task.restore',
+  'task.search',
   'task.todos',
+  'team.list',
   'time.delete',
   'time.log',
   'time.set_note',
@@ -374,6 +470,63 @@ const REQUESTS: readonly CommandRequest[] = [
     expectedRevision: 3,
   },
   { command: 'settings.set_client_sign_off', operationId: 'op', value: true },
+  { command: 'settings.set_money_step_up', operationId: 'op', value: false },
+  { command: 'settings.set_conversation_window', operationId: 'op', value: 14 },
+  { command: 'settings.set_retention_window', operationId: 'op', value: 90 },
+  {
+    command: 'privacy.record_incident',
+    operationId: 'op',
+    whatHappened: 'w',
+    foundAt: 'f',
+    foundBy: 'b',
+    affected: 'a',
+    informationKinds: ['other'],
+  },
+  { command: 'legal.draft_version', operationId: 'op', document: 'd', version: 'v', body: 'b' },
+  { command: 'legal.approve_version', operationId: 'op', versionId: 'version', digest: 'x' },
+  { command: 'legal.publish_version', operationId: 'op', versionId: 'version' },
+  {
+    command: 'privacy.set_overseas_service',
+    operationId: 'op',
+    service: 's',
+    receives: 'r',
+    where: 'w',
+    trainsOnIt: 't',
+    contract: 'c',
+    toConfirm: false,
+    inUse: true,
+  },
+  {
+    command: 'privacy.set_data_class',
+    operationId: 'op',
+    dataClass: 'd',
+    purpose: 'p',
+    disclosures: 'd',
+    retention: 'r',
+    deletion: 'd',
+    inUse: true,
+  },
+  {
+    command: 'credential.issue',
+    operationId: 'op',
+    scope: [{ collection: 'task', action: 'read' }],
+    expiresAt: 'e',
+    purpose: 'p',
+  },
+  { command: 'credential.revoke', operationId: 'op', credentialId: 'credential' },
+  { command: 'operations.record_gate_item', operationId: 'op', item: 'i', evidence: 'e' },
+  { command: 'operations.change_installation_mode', operationId: 'op', mode: 'm' },
+  { command: 'client.create', operationId: 'op', name: 'n' },
+  {
+    command: 'access.grant',
+    operationId: 'op',
+    holderId: 'person',
+    collection: 'task',
+    action: 'read',
+    clientId: null,
+  },
+  { command: 'access.revoke', operationId: 'op', grantId: 'grant' },
+  { command: 'access.end', operationId: 'op', holderId: 'person' },
   { command: 'grant.revoke', operationId: 'op', grantId: 'grant' },
   { command: 'delegation.revoke', operationId: 'op', delegationId: 'delegation' },
   { command: 'task.cancel', operationId: 'op', recordId: 'r', lineageId: 'lin', reason: 'stop' },
@@ -411,6 +564,15 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'tag.create', operationId: 'op', name: 'n-tag' },
   { command: 'task.add_tag', operationId: 'op', recordId: 'r-add', tagId: 'g-add' },
   { command: 'task.remove_tag', operationId: 'op', recordId: 'r-remove', tagId: 'g-remove' },
+  { command: 'session.end', operationId: 'op' },
+  { command: 'preference.save', operationId: 'op', preference: 'appearance', value: 'dark' },
+  {
+    command: 'preference.dismiss_tip',
+    operationId: 'op',
+    page: 'agency:inbox',
+    tip: 'triage',
+    version: 1,
+  },
   { command: 'inbox.seen', operationId: 'op', itemId: 'item' },
   { command: 'notifications.set_channel', operationId: 'op', channel: 'in_app', mode: 'on' },
 ];
@@ -465,6 +627,38 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
     true,
     undefined,
   ],
+  'settings.set_money_step_up': [
+    'setBusinessSetting',
+    'settings.set_money_step_up',
+    false,
+    undefined,
+  ],
+  'settings.set_conversation_window': [
+    'setBusinessSetting',
+    'settings.set_conversation_window',
+    14,
+    undefined,
+  ],
+  'settings.set_retention_window': [
+    'setBusinessSetting',
+    'settings.set_retention_window',
+    90,
+    undefined,
+  ],
+  'privacy.record_incident': ['recordIncident', 'request'],
+  'legal.draft_version': ['draftVersion', 'request'],
+  'legal.approve_version': ['approveVersion', 'request'],
+  'legal.publish_version': ['publishVersion', 'request'],
+  'privacy.set_overseas_service': ['setService', 'request'],
+  'privacy.set_data_class': ['setClass', 'request'],
+  'credential.issue': ['issueCredential', 'request'],
+  'credential.revoke': ['revokeCredential', 'request'],
+  'operations.record_gate_item': ['recordGateItem', 'request'],
+  'operations.change_installation_mode': ['changeInstallationMode', 'request'],
+  'client.create': ['createClientRecord', 'request'],
+  'access.grant': ['grantOnAccess', 'request'],
+  'access.revoke': ['revokeGrantOnAccess', 'grant'],
+  'access.end': ['endAccessOnSettings', 'request'],
   'grant.revoke': ['revokeGrantAsManager', 'grant'],
   'delegation.revoke': ['revokeDelegationAsManager', 'delegation'],
   'task.cancel': ['cancelOnTask', 'request'],
@@ -483,6 +677,9 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'tag.create': ['createTagNamed', 'n-tag'],
   'task.add_tag': ['addTagToTask', 'r-add', 'g-add'],
   'task.remove_tag': ['removeTagFromTask', 'r-remove', 'g-remove'],
+  'session.end': ['endOwnSession', 'request'],
+  'preference.save': ['saveOwnPreference', 'appearance', 'dark'],
+  'preference.dismiss_tip': ['dismissOwnTip', 'request'],
   'inbox.seen': ['stampOwnSeen', 'item'],
   'notifications.set_channel': ['setNotificationChannel', 'request'],
 };
@@ -524,7 +721,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same forty-one from an expected revision', () => {
+  it('exempts the same sixty-nine from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );
@@ -546,7 +743,9 @@ describe('the per-command requests and handlers at 06ab232', () => {
     expect(REQUESTS.map((request) => request.command).toSorted()).toStrictEqual(writes.toSorted());
     expect(Object.keys(PINNED_HANDLERS).toSorted()).toStrictEqual(writes.toSorted());
   });
+});
 
+describe('the per-command tables at 06ab232', () => {
   it.each(REQUESTS.map((request) => [request.command, request] as const))(
     'hands %s to the same handler with the same operands',
     async (name, request) => {

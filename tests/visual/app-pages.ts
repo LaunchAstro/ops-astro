@@ -60,6 +60,8 @@ export async function captureBuiltPages(options: {
   widths: readonly number[];
   themes: readonly Theme[];
   out: string;
+  /** Only these pages (a ticket's own capture); every built page when left out. */
+  pages?: readonly string[];
 }): Promise<PageShot[]> {
   const { browser, packet, app, session } = options;
   const { mask } = JSON.parse(
@@ -96,11 +98,19 @@ export function screenOf(): string {
 /** Every built page at one width in one theme, each on the side its route asks for. */
 async function capturePages(
   sides: { signedOut: Side; signedIn: Side },
-  at: { packet: Packet; app: URL; width: number; theme: Theme; mask: string[]; out: string },
+  at: {
+    packet: Packet;
+    app: URL;
+    width: number;
+    theme: Theme;
+    mask: string[];
+    out: string;
+    pages?: readonly string[];
+  },
 ): Promise<PageShot[]> {
   const { packet, app, width, theme, mask, out } = at;
   const shots: PageShot[] = [];
-  for (const id of builtPages()) {
+  for (const id of at.pages ?? builtPages()) {
     const name = `${id}@${width}-${theme}`;
     const address = addressOf(id, { key: 'T-1' }) ?? '/';
     const side = needsSession(id) ? sides.signedIn : sides.signedOut;

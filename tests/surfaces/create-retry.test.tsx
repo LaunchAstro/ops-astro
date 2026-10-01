@@ -135,7 +135,7 @@ function client(fetch: typeof globalThis.fetch): OperationsClient {
 }
 
 const screen = (fetch: typeof globalThis.fetch) => (
-  <Projects client={client(fetch)} grantKey="alpha:mia" />
+  <Projects client={client(fetch)} grantKey="alpha:mia" navigate={() => {}} />
 );
 
 describe('a create whose response was lost', () => {

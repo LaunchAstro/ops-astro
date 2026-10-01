@@ -86,6 +86,16 @@ function storage(seed: Record<string, string> = {}): {
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
+/** The frame's reads on every screen: C23's name, and MP-2-11's appearance (none stored). */
+const FRAME: Readonly<Record<string, unknown>> = {
+  '/session/person': { ok: true, person: { name: 'Mia Hart' } },
+  '/preference/read': { ok: true, preferences: {} },
+};
+const frame = (at: string): Promise<Response> | undefined => {
+  const end = Object.keys(FRAME).find((path) => at.endsWith(path));
+  return end === undefined ? undefined : Promise.resolve(json(FRAME[end]));
+};
+
 // Each refusal is minted per call and never shared. A `Response` body is read
 // once, and a second reader of the same object gets an empty one -- which the
 // client correctly reports as the API failing rather than refusing, and which
@@ -132,6 +142,8 @@ function server(options: { readonly reads?: 'ok' | 'ended' | 'scope' } = {}) {
       mutations = 'ok';
       return Promise.resolve(json({ access_token: 'ops-astro-test-only-a-fresh-token' }));
     }
+    const framed = frame(at);
+    if (framed !== undefined) return framed;
     if (at.endsWith('/person/list')) return Promise.resolve(json({ ok: true, persons: PEOPLE }));
     if (at.endsWith('/task/read') || at.endsWith('/task/board')) {
       if (reads === 'ended') return Promise.resolve(unknownLogin());
@@ -324,6 +336,9 @@ function byBearer(): {
     }
     const stale = cookie === OLD_TOKEN;
 
+    // The frame's reads (C23's name, MP-2-11's appearance) answer on either cookie.
+    const framed = frame(at);
+    if (framed !== undefined) return framed;
     if (at.endsWith('/task/read')) return Promise.resolve(json({ ok: true, task: TASK }));
     if (at.endsWith('/person/list')) {
       // The old token's people read never comes back on its own. The test
@@ -431,6 +446,8 @@ function perBusiness(): typeof globalThis.fetch {
 
     const business = /\/b\/([^/]+)\//u.exec(at)?.[1] ?? '?';
     const task = { ...TASK, title: `The ${business} task called TSK-1` };
+    const framed = frame(at);
+    if (framed !== undefined) return framed;
     if (at.endsWith('/person/list')) return Promise.resolve(json({ ok: true, persons: PEOPLE }));
     if (at.endsWith('/task/read')) return Promise.resolve(json({ ok: true, task }));
     if (at.endsWith('/task/board')) return Promise.resolve(json({ ok: true, tasks: [task] }));

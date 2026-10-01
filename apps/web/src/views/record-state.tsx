@@ -46,10 +46,27 @@ export interface RecordStateProps<T> {
   readonly placeholder?: ReactNode;
   /** Offered on the failures a person can do something about. */
   readonly onRetry?: () => void;
+  /**
+   * Keep the last answer drawn while its re-read is in flight, so a page
+   * holding an unsaved edit stays mounted under a live change (C4 live-sync
+   * 4). That answer did succeed, under this grant: a new grant starts a new
+   * read with none, and a denial or an outage has already dropped it.
+   */
+  readonly keep?: boolean;
 }
 
 export function RecordState<T>(props: RecordStateProps<T>): ReactElement {
   const state = props.state;
+
+  if (state.outcome === 'loading' && props.keep === true && state.previous !== null) {
+    // The same element as the ready rendering below, so React keeps what is
+    // under it, focus and caret included.
+    return (
+      <div className="readstate" data-outcome="loading" aria-busy="true">
+        {props.children(state.previous)}
+      </div>
+    );
+  }
 
   if (state.outcome === 'loading') {
     return (

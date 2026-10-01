@@ -81,6 +81,7 @@ describe.skipIf(serverUrl === undefined)(
       await db.app.withBusiness(business[who], async (tx) => {
         const written = await writeBusinessSetting(tx, {
           key: 'retention_window_days',
+          owningOperation: 'settings.set_retention_window',
           value: days,
         });
         if (written === undefined || 'refused' in written) throw new Error('window not written');

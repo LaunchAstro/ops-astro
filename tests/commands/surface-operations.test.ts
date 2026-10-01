@@ -97,6 +97,8 @@ describe.skipIf(serverUrl === undefined)('the operations L2 made possible', () =
       // cases plan the `task` family, so that is the grant they need.
       await grantTo(tx, mia, 'manage', { kind: 'business', id: null }, false, 'task');
       await grantTo(tx, mia, 'manage', { kind: 'business', id: null }, false, 'settings');
+      // MP-2-11: the four-eyes threshold is a money action, `spend:decide`.
+      await grantTo(tx, mia, 'decide', { kind: 'business', id: null }, false, 'spend');
     });
 
     const created = await run({

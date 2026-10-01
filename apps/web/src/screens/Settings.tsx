@@ -39,6 +39,7 @@ import { Empty } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
 import { CapabilityBanner, ConflictBlock, ReadBanner, ValueLine } from './settings/panels.tsx';
 import { useSettings, type StorageLike, type Which } from './settings/use-settings.ts';
+import { WindowRow } from './settings/windows.tsx';
 
 export type { StorageLike } from './settings/use-settings.ts';
 
@@ -113,9 +114,9 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
       <header className="tpr">
         <h2 className="tpr__title">Settings for {businessKey}</h2>
         <div className="card__sub">
-          Two settings the model classifies <code>operation</code>: each has a command of its own
-          and neither is reachable through an ordinary edit. Both are stored and shown here; no
-          operation applies either one yet.
+          Settings the model classifies <code>operation</code>: each has a command of its own and
+          none is reachable through an ordinary edit. The four-eyes threshold is applied to money;
+          the others are stored and shown here.
         </div>
       </header>
 
@@ -245,6 +246,9 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
           {model.busy === 'sign-off' ? 'Saving…' : 'Save sign-off'}
         </button>
       </section>
+
+      <WindowRow which="conversation" model={model} conflict={conflictFor('conversation')} />
+      <WindowRow which="retention" model={model} conflict={conflictFor('retention')} />
     </div>
   );
 }

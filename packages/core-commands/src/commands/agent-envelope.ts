@@ -67,6 +67,7 @@ import { asCallerVisible, isCommandRefusal, refuseCommand } from './refusal.ts';
 import { crashPointAfterCommit } from '../../../core-runtime/src/index.ts';
 import { registerAttempt, type CommandHandle, type CommandResult } from './register-store.ts';
 import { enter, retryOnce, settle } from './envelope.ts';
+import { firstClientGate } from './first-client-gate.ts';
 import { isRefused } from './outcome.ts';
 import { authorise } from './agent-authority.ts';
 import { releaseReplay } from './agent-replay.ts';
@@ -229,16 +230,16 @@ async function runRow<O extends object>(
     await operation.onRefused?.(tx, call, operands, refusal);
     return await settle(tx, session, request, digest, refusal, 'register', attempted);
   }
-  // The body against its surface row, as the person prefix parses it and at
-  // the same point: after authority, before the savepoint and any command
-  // code. The row's own parser above has already read what it types.
-  // A field the row does not describe, after `authorise` as on the person
-  // prefix: the delegation's answers come first
-  // (`tests/commands/agent-operation-order.test.ts` pins that order).
+  // After `authorise`, as on the person prefix: a field the row does not
+  // describe, the body against its surface row, then S0-5's first-client gate,
+  // all before the savepoint and any command code. The delegation's answers
+  // come first (`tests/commands/agent-operation-order.test.ts` pins that order).
   const undescribed = refuseUndescribed(request, call.declaration);
   if (undescribed !== undefined) return await settle(tx, session, request, digest, undescribed);
   const parsed = parseRequest(request, call.declaration);
   if ('refusal' in parsed) return await settle(tx, session, request, digest, parsed.refusal);
+  const shut = await firstClientGate(tx, call.declaration.name);
+  if (shut !== undefined) return await settle(tx, session, request, digest, shut);
 
   await tx.query('savepoint agent_work');
   const outcome = await authorised.run(operands);

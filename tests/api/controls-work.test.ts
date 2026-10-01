@@ -97,7 +97,9 @@ describe.skipIf(serverUrl === undefined)('task.cancel, task.restart and task.hea
       });
       expect(resumed.body['code']).toBe('LINEAGE_TERMINAL');
     });
+  });
 
+  describe('task.cancel', () => {
     it('refuses a second cancellation, a lineage on another task, and a caller without write', async () => {
       const work = await approvedLineage('cancel_twice');
       const body = { recordId: work.taskId, lineageId: work.lineageId, reason: 'stop' };

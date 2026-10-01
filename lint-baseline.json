@@ -1,9 +1,8 @@
 {
   "rules": {
     "eslint(max-classes-per-file)": 1,
-    "eslint(max-lines-per-function)": 624,
+    "eslint(max-lines-per-function)": 623,
     "eslint(max-lines)": 149,
-    "eslint(no-fallthrough)": 1,
     "eslint(no-inline-comments)": 17,
     "eslint(no-loop-func)": 34,
     "eslint(no-negated-condition)": 11,
@@ -21,7 +20,6 @@
     "unicorn(prefer-dom-node-dataset)": 66,
     "unicorn(prefer-import-meta-properties)": 5,
     "unicorn(prefer-native-coercion-functions)": 1,
-    "unicorn(prefer-query-selector)": 1,
     "unicorn(prefer-single-call)": 1,
     "unicorn(prefer-string-replace-all)": 7
   }

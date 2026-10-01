@@ -24,7 +24,7 @@
 // more. Several belong to gates, leases and delegations, which land in later
 // parts. Registering them now costs a line each; leaving them out means the
 // part that builds those commands invents its own spelling of a code the
-// contract already named. `UNPRODUCED_CODES` names them, so a later part
+// contract already named. `UNPRODUCED_CODES` (`register-unproduced.ts`) names them, so a later part
 // closing one shows as a diff to this file rather than as nothing at all.
 
 export type Visibility = 'caller' | 'audit';
@@ -49,7 +49,7 @@ export type Visibility = 'caller' | 'audit';
  * 501, the operation is declared and what it rests on is not built. 402 and
  * 410 are the runtime's, and the rows that carry them say why.
  */
-export type RefusalStatus = 400 | 401 | 402 | 403 | 404 | 409 | 410 | 422 | 501;
+export type RefusalStatus = 400 | 401 | 402 | 403 | 404 | 409 | 410 | 422 | 429 | 501 | 502;
 
 /**
  * A row as it is declared. `visibility` is `caller` unless the row says
@@ -296,6 +296,198 @@ const ROWS = [
     status: 401,
     meaning: 'The verified token has expired; sign in again',
     source: 'L2 AUTHORITY.md',
+  },
+  // C59. A person with a verified second factor who presents a sign-in
+  // without it is not yet signed in: 401, the door that asks for the code.
+  // A money command asked of a sign-in older than the step-up window is signed
+  // in and not recent enough: 403, like any other authority refusal.
+  {
+    code: 'AUTH_SECOND_FACTOR_REQUIRED',
+    status: 401,
+    meaning: 'This person has a second factor and the sign-in did not use it',
+    source: 'C59 LF-4',
+  },
+  {
+    code: 'STEP_UP_REQUIRED',
+    status: 403,
+    meaning: 'A money action needs a sign-in with the second factor inside the step-up window',
+    source: 'C59 TR-SEC4-6',
+  },
+  // C59, a person's own factor. A first enrolment needs a password sign-in
+  // inside the step-up window; a second one needs the first removed; a code is
+  // checked by the provider, and a provider answer that is malformed,
+  // oversized, slow or unreachable is refused by its kind (502: the fault is
+  // upstream, and nothing was changed).
+  {
+    code: 'FRESH_SIGN_IN_REQUIRED',
+    status: 403,
+    meaning: 'Setting up a second factor needs a password sign-in inside the step-up window',
+    source: 'C59 TR-A2-2',
+  },
+  {
+    code: 'FACTOR_ALREADY_ENROLLED',
+    status: 409,
+    meaning: 'This person already has a verified second factor',
+    source: 'C59 TR-A2-2',
+  },
+  {
+    code: 'FACTOR_NOT_ENROLLED',
+    status: 409,
+    meaning: 'This person has no second factor to verify or remove',
+    source: 'C59 TR-A2-2',
+  },
+  {
+    code: 'SECOND_FACTOR_INVALID',
+    status: 422,
+    meaning: 'The code was not accepted by the sign-in provider',
+    source: 'C59 TR-A2-2',
+  },
+  {
+    code: 'SECOND_FACTOR_LOCKED',
+    status: 429,
+    meaning: 'Too many wrong codes in fifteen minutes; the provider is not asked again yet',
+    source: 'C59 TR-A2-2',
+  },
+  {
+    code: 'PROVIDER_ANSWER_INVALID',
+    status: 502,
+    meaning: 'The sign-in provider answered malformed, oversized, slowly or not at all',
+    source: 'C59 TR-SEC4R-5',
+  },
+  // C81, the legal documents. A version is written once, approved as the
+  // bytes the approver read, and published only once that exact version is
+  // approved (standing gate 5). Each is a state the caller can fix by
+  // drafting or approving, so 409; a foreign or made-up version is NOT_FOUND.
+  {
+    code: 'LEGAL_VERSION_EXISTS',
+    status: 409,
+    meaning: 'This document already has this version; a change is a new version',
+    source: 'C81 CS-16.20',
+  },
+  {
+    code: 'LEGAL_DIGEST_MISMATCH',
+    status: 409,
+    meaning: 'The approval names bytes other than this version holds',
+    source: 'C81 TR-S-B2-2',
+  },
+  {
+    code: 'LEGAL_ALREADY_APPROVED',
+    status: 409,
+    meaning: 'This version is already approved',
+    source: 'C81 CS-16.20',
+  },
+  {
+    code: 'LEGAL_NOT_APPROVED',
+    status: 409,
+    meaning: 'Only a version the owner approved can be published',
+    source: 'C81 TR-S-B2-2',
+  },
+  {
+    code: 'LEGAL_ALREADY_PUBLISHED',
+    status: 409,
+    meaning: 'This version is already published',
+    source: 'C81 CS-16.20',
+  },
+  // C81: a privacy policy reads the overseas-services register (SP-25).
+  {
+    code: 'LEGAL_REGISTER_CHANGED',
+    status: 409,
+    meaning: 'The overseas-services register changed since this policy was drafted',
+    source: 'C81 SP-25',
+  },
+  {
+    code: 'LEGAL_REGISTER_UNCONFIRMED',
+    status: 409,
+    meaning: 'A service on the overseas-services register is still to confirm',
+    source: 'C81 SP-25',
+  },
+  // S0-5: a task's client is locked once the task has content (owner line 75).
+  {
+    code: 'CLIENT_LOCKED',
+    status: 409,
+    meaning: 'This task has content, so its client is locked',
+    source: 'S0-5 owner line 75',
+  },
+  // S0-5: a real-data installation refuses client data and invitations until
+  // every gate item is done.
+  {
+    code: 'GATE_SHUT',
+    status: 409,
+    meaning:
+      'This installation takes no real client data or client invitation until every gate item is done',
+    source: 'S0-5 TR-SEC5-1',
+  },
+  // S0-5: the gate's own commands (0062).
+  {
+    code: 'GATE_ITEM_ALREADY_RECORDED',
+    status: 409,
+    meaning: 'This gate item is already done; its evidence stays as first recorded',
+    source: 'S0-5 ORCH38',
+  },
+  {
+    code: 'INSTALLATION_NOT_READY',
+    status: 409,
+    meaning: 'The installation moves to real data only once every gate item is done',
+    source: 'S0-5 mode one way',
+  },
+  {
+    code: 'INSTALLATION_MODE_ONE_WAY',
+    status: 409,
+    meaning: 'An installation moves from made-up to real data only, never back',
+    source: 'S0-5 mode one way',
+  },
+  // C81: a privacy policy reads the data-class register.
+  {
+    code: 'LEGAL_DATA_CLASSES_CHANGED',
+    status: 409,
+    meaning: 'The data-class register changed since this policy was drafted',
+    source: 'C81 CS-16.20',
+  },
+  // C81: the breach drill drafts notices from the published breach runbook.
+  {
+    code: 'BREACH_RUNBOOK_UNPUBLISHED',
+    status: 409,
+    meaning: 'No breach runbook is published to draft the notices from',
+    source: 'C81 TR-SEC-11',
+  },
+  {
+    code: 'BREACH_TEMPLATE_UNFILLED',
+    status: 409,
+    meaning: 'The published breach runbook has no notice template the drill can fill',
+    source: 'C81 TR-SEC-11',
+  },
+  // API-2, the agent credential: never wider than its issuer, never decide,
+  // share or manage (403), and revoked once (409).
+  {
+    code: 'CREDENTIAL_SCOPE_WIDENS',
+    status: 403,
+    meaning: 'A ticked key is one the issuer does not hold at business scope',
+    source: 'API-2',
+  },
+  {
+    code: 'CREDENTIAL_ACTION_EXCLUDED',
+    status: 403,
+    meaning: 'An agent credential never carries decide, share or manage',
+    source: 'API-2',
+  },
+  {
+    code: 'CREDENTIAL_ALREADY_REVOKED',
+    status: 409,
+    meaning: 'This agent credential is already revoked',
+    source: 'API-2',
+  },
+  // C32: the client record and Settings ▸ Access.
+  {
+    code: 'CLIENT_NAME_TAKEN',
+    status: 409,
+    meaning: 'This business already has a client of that name',
+    source: 'C32 CS-2.15',
+  },
+  {
+    code: 'ACCESS_LAST_MANAGER',
+    status: 409,
+    meaning: 'It would leave the business with nobody who can change access',
+    source: 'C32 CS-2.15',
   },
   // S0-6c. 403s: the session may be good, and ending it would hand the sign-out to others.
   {
@@ -803,108 +995,3 @@ export function fourEyesRequired(): CommandRefusal<'FOUR_EYES_REQUIRED'> {
 export function isCommandRefusal(value: object): value is CommandRefusal {
   return 'refused' in value && value.refused === true;
 }
-
-/**
- * Registered, and nothing in the tree can produce one yet.
- *
- * Why each is unreachable is written beside its row below.
- *
- * Three budget codes are not on the list. `BUDGET_EXHAUSTED` is what the
- * enforcing path returns when an attempt would cross a ceiling a person
- * approved (`core-runtime/src/budget.ts`). `GATE_NOT_APPROVED` and
- * `FOUR_EYES_REQUIRED` belong to the gated money decisions, a top-up and a
- * write-off. The write-off is deferred, so nothing in `apps/` or `packages/`
- * returns `GATE_NOT_APPROVED`: it is registered, unproduced and not on this
- * list, so this list is not every code nothing produces. `FOUR_EYES_REQUIRED`
- * is produced by the top-up (T2e, `core-runtime/src/budget.ts`) and, since
- * T2g, by the gate: the task's assignee is refused a decision on its gate.
- * Asserted by name in `tests/commands/refusal-register.test.ts`, so a part
- * that closes one has to come here and take it off the list.
- * `AUTH_UNKNOWN_LOGIN` was on this list until a review pointed out that the
- * HTTP boundary produces it: a request nothing verified is refused with it
- * before any command runs.
- *
- * **`WRONG_BUSINESS` is on this list by contract, not as a gap.** Minimum
- * contract 4.4 (`research/minimum-contract-2026-09-10/CONTRACT.md:365-371`,
- * corrected 14 September 2026) registers it as unproducible and struck the
- * requirement that the audit record it; 8.2 case 1 (`:491`) repeats the
- * correction. Telling "another business holds this identifier" from "no such
- * identifier" needs a read that is not scoped to the caller's business, and
- * the tenancy law forbids one: row security is forced, the application role
- * owns nothing, and a definer-rights function that answered the question is
- * exactly what case T1-N14 exists to attack. So a cross-business probe is
- * refused `NOT_FOUND` to the caller and audited as `NOT_FOUND` in the prober's
- * own business, and the probed business is not told (the known limit the
- * contract records at `:371`). The code stays registered and unreachable;
- * `tests/tenancy/production-lookup.test.ts` asserts it absent from the audit.
- */
-export const UNPRODUCED_CODES: ReadonlySet<RefusalCode> = new Set([
-  'WRONG_BUSINESS',
-  // Delegation codes no reachable operation raises. `DELEGATION_NARROWED` is
-  // not on this list: `grant.revoke` reaches it by revoking the delegating
-  // person's grant between a pickup and the agent's next call.
-  // `DELEGATION_WIDENS` is reached on the same route, one step earlier: the
-  // mint reads the approver's live grants when the agent picks the work up, not
-  // when the person approved it, so a grant revoked or expired in between
-  // leaves the pickup asking for authority the approver no longer holds
-  // (`tests/commands/delegation-widens.test.ts`). These
-  // three name a delegation lifecycle (intake, expiry as its own answer, an
-  // explicit revocation) that this head's one-task purpose does not
-  // distinguish.
-  // `DELEGATION_ALREADY_LIVE` is not on this list:
-  // `authority/delegations.ts` refuses a second mint under a purpose the agent
-  // already holds live, and `task.pickup` reaches it as a 409 rather than the
-  // unique index's 503. Nor is `DELEGATION_EXCLUDES_OPERATION`:
-  // `agent-envelope.ts` refuses with it any operation outside
-  // `AGENT_SURFACE`, and `tests/commands/unproduced-reach.test.ts` reaches it.
-  'DELEGATION_EXCLUDES_INTAKE',
-  'DELEGATION_EXPIRED',
-  'DELEGATION_REVOKED',
-  // `GATE_PENDING` left the list with T2g, which raises it on completing a
-  // task whose gate is open; `PROPOSAL_SUPERSEDED` and
-  // `PROPOSAL_SCOPE_EXCEEDED` left it with T3a, which gave each its producer.
-  'TASK_NOT_PICKABLE',
-  // The two runtime codes that need something no caller can reach.
-  //
-  // `EVIDENCE_MISMATCH` needs a gate whose stored digest and version's own
-  // disagree, and `propose` writes both from one value, so only an amended row
-  // produces it. `LEASE_EXPIRED` needs a handback on a lease that has expired
-  // or left `live`, and the agent path meets something else first: `pickup`
-  // mints the delegation with the lease's own expiry, so an expired lease
-  // arrives as `DELEGATION_NOT_LIVE`; a newer pickup answers
-  // `LEASE_NOT_OWNED`; and the handback that settles a lease settles its
-  // delegation too.
-  //
-  // `GATE_EXPIRED` and `CHANGE_ROUNDS_EXHAUSTED` are not on this list: a
-  // command case reaches each (`tests/commands/unproduced-reach.test.ts`):
-  // `task.propose` takes `expiresInSeconds`, so a one-second window closes
-  // before the decision, and `task.propose` on a lineage plus `task.decide`
-  // reach the third round. `LEASE_HELD` is reached the same way
-  // (`tests/commands/lease-held-reach.test.ts`). A second pickup of the *same*
-  // reservation meets `RESERVATION_NOT_CLAIMABLE` first, but pickup keeps a
-  // reservation `held`, and a handback releases its hold without closing the
-  // task's envelope, so two new lineages approved on one task give two held
-  // reservations: the second pickup meets the first one's live lease.
-  'EVIDENCE_MISMATCH',
-  'LEASE_EXPIRED',
-  // Three codes are deliberately **not** on this list, and each is a command
-  // path rather than a module one.
-  //
-  // `LINEAGE_NOT_ON_TASK`: `task.propose` takes `lineageId` from the caller,
-  // so naming a live lineage opened on another task of the same business is an
-  // ordinary request, and R3 refuses it. `task.cancel` and `task.restart`
-  // answer it from `lineageOnTask` (`tasks-controls.ts`) before the runtime.
-  //
-  // `CAP_BINDING_MISMATCH`: `decide` still raises it, as the second barrier
-  // behind the proposal, and no command case reaches it. The cap half of R2 is
-  // not command-reachable, since `readBusinessCapId` hands every decision on a
-  // business the same cap. Nor is the currency half: `task.propose` checks
-  // the currency against the task's
-  // cap (its envelope's, else the business cap) before the first write, and
-  // refuses another currency `PROPOSAL_SCOPE_EXCEEDED`, so no version in another
-  // currency reaches a decision. It stays off this list because the runtime
-  // produces it; the list names codes nothing produces.
-  //
-  // `ACTUAL_EXPENDITURE_UNSUPPORTED`: `task.handback` refuses any non-null
-  // `actualMinor`, so a caller reporting a cost — including zero — produces it.
-]);
