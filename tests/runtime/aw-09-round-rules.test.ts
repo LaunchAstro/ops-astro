@@ -117,7 +117,7 @@ describe.skipIf(serverUrl === undefined)('AW-09 the round over agent output', ()
     expect(await gate(next['gateId'])).toMatchObject({ state: 'pending', decisions: 0 });
 
     // Under the locks the approval is rechecked too: only the version moved,
-    // with the lease still live, is DECISION_STALE.
+    // with the lease still live, is PROPOSAL_SUPERSEDED (AW-08's dispatch facts).
     const held = await leased((await agentOutput(s, undefined, dispatchable)).output);
     await s.db.admin.execute(
       `update public.proposal_versions set superseded_at = now()
@@ -125,7 +125,7 @@ describe.skipIf(serverUrl === undefined)('AW-09 the round over agent output', ()
                                           where business_id = $1 and id = $2)`,
       [s.business, held['reservationId']],
     );
-    expect(codeOf(await dispatched(held))).toBe('DECISION_STALE');
+    expect(codeOf(await dispatched(held))).toBe('PROPOSAL_SUPERSEDED');
     expect(await marked(held)).toEqual([{ marker: false }]);
   });
 

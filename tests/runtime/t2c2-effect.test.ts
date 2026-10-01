@@ -182,6 +182,7 @@ describe.skipIf(serverUrl === undefined)('T2c2 the effect, its observation and r
         decidedAt: expect.any(String),
       },
       version: { id: w.proposal['versionId'], number: w.proposal['version'] },
+      link: null,
       effect: {
         kind: 'synthetic_comment',
         operationId: effectOperationId(w.attemptId),

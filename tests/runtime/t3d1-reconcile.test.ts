@@ -229,7 +229,9 @@ describe.skipIf(url === undefined)('T3d1: the reconciliation pass', { timeout: 6
     );
     const before = await h.t3b.snapshot();
     const dispatched = await h.t2d.held(next, { command: 'task.dispatch' });
-    expect(codeOf(dispatched), move).toBe('DECISION_STALE');
+    expect(codeOf(dispatched), move).toBe(
+      move === 'superseded' ? 'PROPOSAL_SUPERSEDED' : 'LINEAGE_TERMINAL',
+    );
     expect(await h.t3b.snapshot(), move).toStrictEqual(before);
     expect(await h.effects(w), move).toBe(0);
     const receipts = await rows(

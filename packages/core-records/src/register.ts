@@ -571,11 +571,9 @@ const ROWS_HEAD = [
     source: 'L4 RUNTIME.md',
     runtime: true,
   },
-  // This and `CAP_BINDING_MISMATCH` are "something on this task has already been
-  // bound and does not match", not a malformed request: the lineage belongs to
-  // another task and the envelope draws on another cap or another currency. Re-
-  // reading the task and naming what it is actually bound to is the way forward,
-  // which is what a 409 tells a caller and a 422 would not.
+  // This and `CAP_BINDING_MISMATCH` are "something on this task is bound and
+  // does not match" (a lineage of another task, an envelope on another cap or
+  // currency), not a malformed request: re-reading the task is the way forward.
   {
     code: 'LINEAGE_NOT_ON_TASK',
     status: 409,

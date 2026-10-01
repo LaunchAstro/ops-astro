@@ -1,0 +1,165 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// AW-08 (b)'s shared steps over AW-04's world (two businesses, one database):
+// work proposed with the synthetic effect, approved either as the launch of a
+// reviewed output (the plan approved, worked and handed back with its
+// successor, then `task.decide` on that successor) or as a plan (the real
+// accept), picked up by the agent and dispatched through the agent's own
+// command entry.
+
+import { randomUUID } from 'node:crypto';
+import { expect } from 'vitest';
+import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
+import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
+import { enrol, grantTo } from '../commands/fixture.ts';
+import { insertLogin } from '../identity/fixture.ts';
+import { acceptAs, acceptRequest } from './aw-04-world.ts';
+import { handBack, proposeEffect } from './aw-08-world.ts';
+import {
+  appliedDetail,
+  approve,
+  approveBody,
+  asAgent,
+  asPerson,
+  createTask,
+  freshPurpose,
+  pickup,
+  proposeBody,
+  revisionOf,
+  rows,
+  type Detail,
+  type Schedules,
+} from './schedules-harness.ts';
+
+export const EFFECT = { kind: 'synthetic_comment', payload: {} } as const;
+
+export interface Leased {
+  readonly taskId: string;
+  readonly proposal: Detail;
+  readonly picked: Detail;
+  readonly credential: string;
+}
+
+/** A task with the synthetic effect proposed on it; the title carries `canary` when given. */
+export async function proposedEffect(
+  s: Schedules,
+  canary = 'aw08',
+): Promise<Detail & { taskId: string }> {
+  const taskId = await createTask(s, `${canary}-${randomUUID()}`);
+  const body = {
+    ...proposeBody(taskId, await revisionOf(s, taskId), { purpose: freshPurpose() }),
+    step: EFFECT,
+  };
+  return { ...appliedDetail(await asPerson(s, body), 'task.propose'), taskId };
+}
+
+/** The plan approved, worked and handed back: its successor, the reviewed output. */
+export async function reviewed(
+  s: Schedules,
+  canary = 'aw08',
+): Promise<{ taskId: string; proposal: Detail }> {
+  const { taskId, plan } = await proposeEffect(s, canary);
+  const handed = await handBack(s, await pickup(s, (await approve(s, plan))['reservationId']));
+  const proposal = { gateId: handed['successorGateId'], versionId: handed['successorVersionId'] };
+  return { taskId, proposal };
+}
+
+/** Approved as `how` (`proposal` is the version approved) and picked up by the agent. */
+export async function leased(
+  s: Schedules,
+  how: 'launch' | 'plan',
+  canary?: string,
+): Promise<Leased> {
+  let reservationId: unknown;
+  let taskId: string;
+  let proposal: Detail;
+  if (how === 'launch') {
+    ({ taskId, proposal } = await reviewed(s, canary));
+    reservationId = appliedDetail(await asPerson(s, approveBody(proposal)), 'task.decide')[
+      'reservationId'
+    ];
+  } else {
+    ({ taskId, ...proposal } = await proposedEffect(s, canary));
+    const accepted = await acceptAs(s, acceptRequest(s, { taskId, proposal }));
+    if (!accepted.ok) throw new Error(`accept refused ${accepted.refusal.code}`);
+    reservationId = accepted.value.reservationId;
+  }
+  const picked = await pickup(s, reservationId);
+  return { taskId, proposal, picked, credential: String(picked['credential']) };
+}
+
+/** `task.dispatch` on the work's lease, as the agent under the given credential. */
+export async function dispatchAs(
+  s: Schedules,
+  work: Leased,
+  credential: string = work.credential,
+): Promise<CommandResult> {
+  return await asAgent(
+    s,
+    {
+      command: 'task.dispatch',
+      operationId: randomUUID(),
+      leaseId: work.picked['leaseId'],
+      fence: work.picked['fence'],
+    },
+    credential,
+  );
+}
+
+/** Steps of the task's runs a dispatch has marked. */
+export async function marked(s: Schedules, taskId: string): Promise<number> {
+  const found = await rows<{ n: string }>(
+    s,
+    `select count(*)::text as n from public.planned_steps st
+       join public.planned_runs run on run.business_id = st.business_id and run.id = st.run_id
+      where run.business_id = $1 and run.task_id = $2 and st.dispatch_marked`,
+    [s.business, taskId],
+  );
+  return Number(found[0]?.n);
+}
+
+/** The business's `client_sign_off_required`, set as its owner connection would. */
+export async function setSignOff(s: Schedules, on: boolean): Promise<void> {
+  await s.db.app.withBusiness(s.business, async (tx) => {
+    await installBusinessSettings(tx);
+  });
+  await s.db.admin.execute(
+    `update public.business_settings set value = ($2::text)::jsonb
+      where business_id = $1 and key = 'client_sign_off_required'`,
+    [s.business, JSON.stringify(on)],
+  );
+  const read = await rows<{ v: unknown }>(
+    s,
+    `select value as v from public.business_settings
+      where business_id = $1 and key = 'client_sign_off_required'`,
+    [s.business],
+  );
+  expect(read[0]?.v).toBe(on);
+}
+
+/**
+ * Another person of `s`'s business, with an agent of their own: the same world
+ * seen from them, so `leased` gives their work under their own live delegation.
+ */
+export async function otherPerson(s: Schedules, key: string): Promise<Schedules> {
+  const decider = await enrol(s.db.app, s.business, key);
+  const subject = `agent-${randomUUID()}`;
+  const agentActorId = randomUUID();
+  await s.db.app.withBusiness(s.business, async (tx) => {
+    for (const action of ['read', 'write', 'decide', 'assign', 'comment'] as const) {
+      // Sequential: `issueGrant` reads the granter's own rows.
+      // eslint-disable-next-line no-await-in-loop
+      await grantTo(tx, decider, action, undefined, true);
+    }
+    await tx.query(`insert into public.actors (business_id, id, kind) values ($1, $2, 'agent')`, [
+      s.business,
+      agentActorId,
+    ]);
+    await tx.query(
+      `insert into public.actor_logins (business_id, id, login_id, actor_id, linked_by_actor_id)
+       values ($1, $2, $3, $4, $5)`,
+      [s.business, randomUUID(), await insertLogin(tx, subject), agentActorId, decider.actorId],
+    );
+  });
+  return { ...s, decider, agent: { provider: 'supabase', subject }, agentActorId };
+}
