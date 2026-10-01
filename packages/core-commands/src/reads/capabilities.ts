@@ -123,7 +123,7 @@ export async function readCapabilities(
 
   const held = new Map<string, Capability>();
   for (const candidate of candidates) {
-    // R4 is shown its shares' pairs and the one write it can reach, never a
+    // R4 is shown its shares' pairs and the writes `EXTERNAL_WRITES` admits, never a
     // provisioned row the external gate refuses on every operation.
     if (session.roleKey === null && !usableOutside(candidate.collection, candidate.action)) {
       continue;

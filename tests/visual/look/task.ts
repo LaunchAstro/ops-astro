@@ -7,6 +7,7 @@
 // The perspective tabs, the fact strip (sample values behind the mock label)
 // and the receipt box (`.sout`, the mockup's live task) follow.
 
+import { MOCKUP_TASK_KEY } from '../made-up-api.ts';
 import type { LookProbe, LookScreen } from './probe.ts';
 
 const MOCK = { path: '/agency/task/?task=proj-meridian-hero-copy' } as const;
@@ -212,12 +213,17 @@ export const TASK: LookScreen = {
       '.mstrip [data-mstrip-fact="whose-move"] .mstrip__v',
       TYPE,
     ),
-    probe(
-      'strip-rank',
-      { ...MOCK, selector: '.mstrip .mstrip__v--none' },
-      '.mstrip .mstrip__v--none',
-      ['font-size', 'font-style', 'color'],
-    ),
+    {
+      ...probe(
+        'strip-rank',
+        { ...MOCK, selector: '.mstrip .mstrip__v--none' },
+        '.mstrip .mstrip__v--none',
+        ['font-size', 'font-style', 'color'],
+      ),
+      // The mockup's task has no rank yet; the app reads the same task unranked
+      // under the mockup's key (made-up-api.ts), so the strip draws 'not ranked'.
+      app: { ...APP, path: `/task/${MOCKUP_TASK_KEY}`, selector: '.mstrip .mstrip__v--none' },
+    },
     // DS-TASK-6, live: the receipt of an attempt (states.json `receipt`).
     probe('receipt-box', { ...LIVE, selector: '.sout .sout__box' }, '.sout .sout__box', [
       'border-top-color',

@@ -6,7 +6,7 @@
 // **Did it happen? The register answers.** A step the sweep held
 // `liability_unknown` (dispatched, never confirmed, its lease no longer live)
 // is asked about under its step lock, the lock the effect's own write takes
-// (`tasks-comment.ts`). An effect committing meanwhile is waited for and then
+// (`tasks-comment-effect.ts`). An effect committing meanwhile is waited for and then
 // seen, and one arriving after is refused, because the attempt is no longer
 // `dispatched`: that refusal is the old identity's fence.
 //
@@ -206,9 +206,16 @@ export const settle = async (
  * beside the replacement (0037); a hold a person has just settled needs no
  * mark. A replacement the envelope or cap has no room for, or whose approval
  * moved, is not reserved, and the step keeps its stop (the savepoint takes the
- * mark back with it, so the next pass asks again).
+ * mark back with it, so the next pass asks again). `actorId` is the person whose
+ * recorded outcome resumed it, whom the clear of the old identity's agent from
+ * the task names; null on the pass's own paths, which no person ran.
  */
-export async function resume(tx: TenantQuery, row: Unknown, keep: boolean): Promise<string> {
+export async function resume(
+  tx: TenantQuery,
+  row: Unknown,
+  keep: boolean,
+  actorId: string | null = null,
+): Promise<string> {
   if (!row.approval_current) return 'not resumed: the approval behind it is no longer current';
   await tx.query('savepoint t3d1_resume');
   if (keep) {
@@ -236,6 +243,8 @@ export async function resume(tx: TenantQuery, row: Unknown, keep: boolean): Prom
   // delegation its worker held is revoked, as `retireWork` retires superseded
   // work, so a worker woken now is refused and the purpose is free for the
   // replacement's pickup.
-  if (row.delegation_id !== null) await revokeDelegation(tx, row.delegation_id, 'work_retired');
+  if (row.delegation_id !== null) {
+    await revokeDelegation(tx, row.delegation_id, 'work_retired', actorId);
+  }
   return `resumed as attempt ${replaced.value.attemptId}; the old identity is fenced`;
 }

@@ -19,13 +19,13 @@
 import { randomUUID } from 'node:crypto';
 import {
   COMMAND_SURFACE,
+  DELEGATION_HEADER,
   pathOf,
   type CommandDeclaration,
   type CommandName,
 } from '../../packages/core-wire/src/surface.ts';
 import { issueGrant, type Action } from '../../packages/core-records/src/authority/grants.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
-import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
 import {
   agentPath,
   bearer,
@@ -36,8 +36,10 @@ import {
   type Caller,
 } from './world.ts';
 import { enrol } from '../commands/fixture.ts';
-import { PROPOSAL, breachDrillBody, type Task } from './role-case-bodies.ts';
+import { PROPOSAL, type Task } from './role-case-bodies.ts';
 import { createPositiveBody } from './role-case-positive-body.ts';
+import { probeOperands } from './role-case-fixed-bodies.ts';
+import { ownTaskRecipes } from './role-case-own-tasks.ts';
 import { plainRows, seedFixtureClients } from './role-case-clients.ts';
 import { pairFor, targetKeyOf, type Harness } from './role-case-harness-shape.ts';
 
@@ -158,6 +160,8 @@ export async function createHarness(part: string): Promise<Harness> {
     return Number(rows[0]?.revision ?? '0');
   }
 
+  const { clientTask, ownComment } = ownTaskRecipes({ world, freshTask, asPerson, revisionOf });
+
   const alphaTask = await freshTask('a task every case can name');
   const inBravo = await asPerson('task.create', { fields: { title: 'a bravo task' } }, 'bravo', {
     token: world.bea.token,
@@ -180,14 +184,7 @@ export async function createHarness(part: string): Promise<Harness> {
       operationId: randomUUID(),
       ...(targetKeyOf(declaration) === 'recordId' ? { recordId: alphaTask.id } : {}),
       ...(targeted ? { expectedRevision: alphaTask.revision } : {}),
-      ...(declaration.name === 'task.board' ? { board: null } : {}),
-      ...(declaration.name === 'task.receipt' ? { attemptId: randomUUID() } : {}),
-      ...(declaration.name === 'task.search' ? { query: 'brochure' } : {}),
-      ...(declaration.name === 'task.ledger' ? { timeZone: 'UTC' } : {}),
-      ...(declaration.name === 'preset.plan'
-        ? { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] }
-        : {}),
-      ...(declaration.name === 'privacy.draft_breach_notices' ? breachDrillBody() : {}),
+      ...probeOperands(declaration.name),
     };
   }
 
@@ -282,6 +279,8 @@ export async function createHarness(part: string): Promise<Harness> {
       assigneePersonId: world.mia.personId as string,
       asPerson: async (name, body) => await asPerson(name, body),
       freshTask,
+      clientTask,
+      ownComment: async (author) => await ownComment(author as { readonly token: string }),
       freshMember: async () =>
         (await enrol(world.db.app, world.alpha, `ended-${randomUUID().slice(0, 8)}`)).personId,
       clearGateItem: async (item) => {

@@ -46,11 +46,26 @@ const TASK = {
   completedAt: null,
   revision: 3,
   history: [],
+  // The board row's fields (MP-5-8): this stub answers task.board too.
+  board: null,
+  rank: { number: null, score: null, calc: '' },
+  adHoc: false,
+  clientAccess: false,
+  stage: null,
+  clientSet: false,
+  steps: [],
+  time: null,
   // `task.read` carries the task's comments. This stub is not about them, so
   // the list is the empty one the read gives a task nobody has spoken on — an
   // absent key would be a shape the API never sends.
   comments: [],
 };
+
+/** The board's row for a task: its comments are the reader's open counts (MP-5-8). */
+const boardRow = <T extends object>(task: T) => ({
+  ...task,
+  comments: { client: 0, mentions: 0, latest: null },
+});
 
 const PEOPLE = [{ personId: 'p1', name: 'Mia Alpha' }];
 
@@ -142,7 +157,7 @@ function server(options: { readonly reads?: 'ok' | 'ended' | 'scope' } = {}) {
       return Promise.resolve(
         at.endsWith('/task/read')
           ? json({ ok: true, task: TASK })
-          : json({ ok: true, tasks: [TASK] }),
+          : json({ ok: true, tasks: [boardRow(TASK)] }),
       );
     }
     // Every mutation: create, assign, the three lifecycle commands, update.
@@ -441,7 +456,9 @@ function perBusiness(): typeof globalThis.fetch {
     if (framed !== undefined) return framed;
     if (at.endsWith('/person/list')) return Promise.resolve(json({ ok: true, persons: PEOPLE }));
     if (at.endsWith('/task/read')) return Promise.resolve(json({ ok: true, task }));
-    if (at.endsWith('/task/board')) return Promise.resolve(json({ ok: true, tasks: [task] }));
+    if (at.endsWith('/task/board')) {
+      return Promise.resolve(json({ ok: true, tasks: [boardRow(task)] }));
+    }
     return Promise.resolve(json({ recordId: TASK.id, revision: TASK.revision + 1 }));
   }) as unknown as typeof globalThis.fetch;
 }

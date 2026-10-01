@@ -6,22 +6,15 @@
 // is never audited. Each test is named after its ticket line: the isolation
 // case crosses another business, another client of this business and an
 // agent under a live delegation; a dismissal naming another person is refused
-// and writes nothing; a caller without `preference:write` (a person with no
-// membership, an agent) is refused; an applied dismissal and a read add no
-// audit event. The world is MP-2-11's preference world.
+// and writes nothing; an agent, which holds no `preference:write`, is refused;
+// an applied dismissal and a read add no audit event. The world is MP-2-11's preference world.
 
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { dismissedTipCount, tipKey } from '../../packages/core-wire/src/tips.ts';
 import { createClient } from '../../packages/core-records/src/index.ts';
-import {
-  insertActor,
-  insertBusiness,
-  insertLogin,
-  insertMapping,
-  insertPerson,
-} from '../identity/fixture.ts';
+import { insertBusiness } from '../identity/fixture.ts';
 import { enrol, grantTo, installSpine } from '../commands/fixture.ts';
 import { tokenFor } from './fixture.ts';
 import {
@@ -176,22 +169,9 @@ function ownPreferenceOnly(): void {
 }
 
 function writeRefused(): void {
-  it('MP-9-1 preference:write refused: a person with no membership and an agent dismiss no tip', async () => {
-    const outsider = await fixture.db.app.withBusiness(fixture.business, async (tx) => {
-      // A mapped person with no membership (R4): no role key, so no preference:write.
-      const personId = await insertPerson(tx, 'Olive Tip');
-      const actorId = await insertActor(tx, personId);
-      const subject = `outside-${randomUUID()}`;
-      await insertMapping(tx, await insertLogin(tx, subject), personId, actorId);
-      const member = { personId, actorId, presented: { provider: 'supabase', subject } } as const;
-      await grantTo(tx, member, 'read', { kind: 'party', id: randomUUID() });
-      return { personId, subject };
-    });
-    const refused = await dismiss({ ...TIP, version: 1 }, await tokenFor(outsider.subject));
-    expect(refused.status).toBe(403);
-    expect(refused.body['code']).toBe('SCOPE_NOT_GRANTED');
-    expect(await rowsOf(outsider.personId)).toStrictEqual([]);
-
+  // A person with no membership (a client user) writes their own preferences
+  // (ORCH50's ruling on the catalogue): preference-write-client-user.test.ts.
+  it('MP-9-1 preference:write refused: an agent under a live delegation dismisses no tip', async () => {
     const credential = await agentCredential('tip_refused');
     const principalRows = await rowsOf(c.manager.personId);
     const asAgent = await c.asAgent(

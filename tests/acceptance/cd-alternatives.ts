@@ -2,13 +2,14 @@
 //
 // Root ruling 3 (ROOT-906613f-RULINGS.md, section 3) and ledger I03: every
 // declared operation stays in the matrix. The (c) and (d) cells swap a task
-// `recordId`, which reaches 16 of the 35. For each of the other 19 this file
+// `recordId`, which reaches 16 of the 44. For each of the other 28 this file
 // names where its target comparison is executed instead, or why it has none,
 // once, so the matrix row and the case it points at cannot drift apart:
 // `identifier-negatives.test.ts` titles its cases from `CASE` below.
 //
 // A harness, not a suite: nothing here runs on its own.
 
+import { randomUUID } from 'node:crypto';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 
 type Body = Readonly<Record<string, unknown>>;
@@ -20,11 +21,13 @@ export const CASE = {
   board: 'refuses a board read on a foreign or fabricated board, never an empty success',
   agent: 'refuses the agent alike on foreign, fabricated and in-business operands',
   pickup: 'refuses a pickup alike on a foreign, a fabricated and a claimed reservation',
+  time: 'refuses a foreign and a fabricated task or time entry alike on the time commands',
+  tag: 'refuses a foreign and a fabricated task alike on the tag commands',
   targetFree: 'refuses a target a target-free operation has no use for (SC2 reading)',
 } as const;
 
 /**
- * The thirty-four operations that name no identifier, each with a minimal valid body.
+ * The thirty-seven operations that name no identifier, each with a minimal valid body.
  *
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed
  * at bravo is refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line
@@ -56,6 +59,11 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['preset.plan', { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] }],
   ['settings.read', {}],
   ['session.capabilities', {}],
+  // A name the vocabulary takes once, so each run makes its own (MP-4-11).
+  ['tag.create', { name: `tag ${randomUUID().slice(0, 8)}` }],
+  ['tag.list', {}],
+  // The reader's own to-dos (MP-7-1).
+  ['task.todos', {}],
   ['task.search', { query: 'brochure' }],
   // The person menu's two (C23): the caller's own account, naming nobody.
   ['session.person', {}],
@@ -128,7 +136,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['notifications.set_channel', { channel: 'in_app', mode: 'on' }],
 ];
 
-/** The twenty-three identifier-bearing operations outside (c) and (d): operand and executed case. */
+/** The thirty identifier-bearing operations outside (c) and (d): operand and executed case. */
 export const IDENTIFIER_BEARING: Readonly<
   Partial<Record<CommandName, readonly [operand: string, kase: keyof typeof CASE]>>
 > = {
@@ -148,6 +156,13 @@ export const IDENTIFIER_BEARING: Readonly<
   'budget.top_up': ['recordId', 'control'],
   'budget.record_outcome': ['attemptId', 'control'],
   'budget.write_off': ['attemptId', 'control'],
+  'time.start': ['taskId', 'time'],
+  'time.stop': ['taskId', 'time'],
+  'time.log': ['taskId', 'time'],
+  'time.set_note': ['entryId', 'time'],
+  'time.delete': ['entryId', 'time'],
+  'task.add_tag': ['recordId', 'tag'],
+  'task.remove_tag': ['recordId', 'tag'],
   'legal.approve_version': ['versionId', 'control'],
   'legal.publish_version': ['versionId', 'control'],
   'credential.revoke': ['credentialId', 'control'],

@@ -49,6 +49,20 @@ const TASK = {
   comments: [],
 };
 
+/** The same task as the board's row: its rank, placement and the reader's comment counts. */
+const BOARD_ROW = {
+  ...TASK,
+  board: null,
+  rank: { number: null, score: null, calc: '' },
+  adHoc: false,
+  clientAccess: false,
+  stage: null,
+  clientSet: false,
+  steps: [],
+  time: null,
+  comments: { client: 0, mentions: 0, latest: null },
+};
+
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
@@ -80,7 +94,7 @@ function server(options: { readonly neverAMember?: boolean } = {}) {
     if (at.endsWith('/person/list'))
       return json({ ok: true, persons: [{ personId: 'p1', name: 'Mia Alpha' }] });
     if (at.endsWith('/task/read')) return json({ ok: true, task: TASK });
-    if (at.endsWith('/task/board')) return json({ ok: true, tasks: [TASK] });
+    if (at.endsWith('/task/board')) return json({ ok: true, tasks: [BOARD_ROW] });
     // The board's inbox above it (INB-1g) reads on its own.
     if (at.endsWith('/inbox/read')) return json({ ok: true, inbox: [] });
     if (at.endsWith('/inbox/count')) return json({ ok: true, owed: 0 });
@@ -265,28 +279,17 @@ describe('C58 no draft after session end', () => {
 });
 
 describe('C58 no draft after session end, the browser run', () => {
-  it('the browser case ND3 signs out through a control the shell draws', async () => {
-    // ND3 in `tests/browser/cases-c58-no-draft.mjs` presses one selector to sign
-    // out. A selector the shell no longer draws times the case out and ends the
-    // whole browser run, so it must find the sign-out on the page this test draws.
-    const script = readFileSync(resolve('tests/browser/cases-c58-no-draft.mjs'), 'utf8');
-    const signedOutCase = /async function signedOut\([^)]*\) \{([\s\S]*?)\n\}/u.exec(script)?.[1];
-    const pressed = /page\.click\('([^']+)'\)/u.exec(signedOutCase ?? '')?.[1] ?? '';
-    expect(pressed).not.toBe('');
-    const { view } = await openMidEdit();
-    // A template, not the bare name: `find` here is the host's querySelector.
-    expect(view.find(`${pressed}`), `ND3 presses '${pressed}' to sign out`).not.toBeNull();
-  });
-
+  // ND3 in `tests/browser/cases-c58-no-draft.mjs` presses its controls to sign
+  // out. A selector the shell no longer draws times the case out and ends the
+  // whole browser run, so each must be found, in order, on the page drawn here.
   it('every control ND3 presses, in order, is drawn and the last one signs out', async () => {
     const script = readFileSync(resolve('tests/browser/cases-c58-no-draft.mjs'), 'utf8');
-    const signedOutCase = /async function signedOut\([^)]*\) \{([\s\S]*?)\n\}/u.exec(script)?.[1];
-    const presses = [...(signedOutCase ?? '').matchAll(/page\.click\('([^']+)'\)/gu)].map(
-      (match) => match[1] ?? '',
-    );
-    expect(presses.length).toBeGreaterThan(0);
+    const nd3 = /async function signedOut\([^)]*\) \{([\s\S]*?)\n\}/u.exec(script)?.[1] ?? '';
+    const presses = [...nd3.matchAll(/page\.click\('([^']+)'\)/gu)].map((hit) => hit[1] ?? '');
+    expect(presses[0] ?? '', 'ND3 presses a control to sign out').not.toBe('');
     const { view } = await openMidEdit();
     for (const pressed of presses) {
+      // A template, not the bare name: `find` here is the host's querySelector.
       expect(view.find(`${pressed}`), `ND3 presses '${pressed}'`).not.toBeNull();
       // oxlint-disable-next-line no-await-in-loop
       await view.click(pressed);
