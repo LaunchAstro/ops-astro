@@ -22,6 +22,8 @@ import type { Hono, MiddlewareHandler } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import {
   requestPasswordReset,
+  RESET_SOURCE_LIMIT,
+  RESET_WINDOW_SECONDS,
   setPasswordByRecovery,
   type PasswordProvider,
 } from '../../packages/core-commands/src/index.ts';
@@ -35,6 +37,9 @@ export const PASSWORD_RESET_PATH = '/api/password/reset';
 
 /** Asks one process works on at once; past it an ask is dropped, answered alike. */
 export const RESET_IN_FLIGHT = 4;
+
+/** Client addresses the in-memory gate keeps at once; past it the oldest is forgotten. */
+const RESET_SOURCES_KEPT = 10_000;
 
 /** A password and room for its JSON, no more. */
 const SET_MAX_BYTES = 1024;
@@ -81,7 +86,9 @@ function sourceOf(env: unknown): string {
   // A dotted IPv4 at the end fills two groups.
   const filled = before.length + after.length + (peer.includes('.') ? 1 : 0);
   const groups =
-    tail === undefined ? before : [...before, ...Array(8 - filled).fill('0'), ...after];
+    tail === undefined
+      ? before
+      : [...before, ...Array.from({ length: 8 - filled }, () => '0'), ...after];
   return `${groups
     .slice(0, 4)
     .map((group) => Number.parseInt(group, 16).toString(16))
@@ -121,21 +128,62 @@ export function mountPasswordSet(
   });
 }
 
+/** One client address's asks in the window, as the in-memory gate counts them. */
+interface Gated {
+  readonly since: number;
+  asks: number;
+  busy: boolean;
+}
+
+/**
+ * The asks let onto the database: an ask from a client address past
+ * `RESET_SOURCE_LIMIT` in the window, or with an ask of its own still on the
+ * database, is dropped, then one past `RESET_IN_FLIGHT`. Each ask let on gets
+ * its release, to run once its database work is over; dropped asks are counted
+ * too. The database's counts stay the authority.
+ */
+function resetGate(): (source: string) => (() => void) | undefined {
+  let inFlight = 0;
+  const gate = new Map<string, Gated>();
+  return (source) => {
+    const now = Date.now();
+    let gated = gate.get(source);
+    if (gated === undefined || now - gated.since > RESET_WINDOW_SECONDS * 1000) {
+      // A new window goes to the back of the line, so the oldest is forgotten first.
+      gate.delete(source);
+      gated = { since: now, asks: 0, busy: false };
+      gate.set(source, gated);
+      const [oldest] = gate.keys();
+      if (gate.size > RESET_SOURCES_KEPT && oldest !== undefined) gate.delete(oldest);
+    }
+    gated.asks += 1;
+    if (gated.busy || gated.asks > RESET_SOURCE_LIMIT || inFlight >= RESET_IN_FLIGHT) return;
+    const held = gated;
+    held.busy = true;
+    inFlight += 1;
+    return () => {
+      if (!held.busy) return;
+      held.busy = false;
+      inFlight -= 1;
+    };
+  };
+}
+
 /**
  * `POST /api/password/reset` (C40, the ask): `{ address }`, no sign-in. The
  * address goes to the login provider through custody (`requestPasswordReset`)
  * after the answer is given, unless the client address or the address is past
- * its limit, or `RESET_IN_FLIGHT` asks are already being worked on, so every
- * request, for a known address, an unknown one or none, limited, dropped or
- * not, is answered 200 `{}` at once, and its time says nothing either. A
- * failure is nobody's to hear, and nothing is logged.
+ * its limit, or the in-memory gate (`resetGate`) drops it, so every request,
+ * for a known address, an unknown one or none, limited, dropped or not, is
+ * answered 200 `{}` at once, and its time says nothing either. A failure is
+ * nobody's to hear, and nothing is logged.
  */
 export function mountPasswordReset(server: Hono, database: Database, broker: Broker): void {
   const tooLarge = bodyLimit({
     maxSize: SET_MAX_BYTES,
     onError: (context) => context.json({ code: 'RESET_TOO_LARGE' }, 413),
   });
-  let inFlight = 0;
+  const admit = resetGate();
   // The peer is read before the body limit reads the body, while the socket is surely there.
   const sources = new WeakMap<object, string>();
   const peerFirst: MiddlewareHandler = async (context, next) => {
@@ -154,14 +202,12 @@ export function mountPasswordReset(server: Hono, database: Database, broker: Bro
     } catch {
       address = undefined;
     }
-    // One held database connection serves the whole API: past the cap, the ask is dropped.
-    if (inFlight < RESET_IN_FLIGHT) {
-      inFlight += 1;
-      void requestPasswordReset(database, broker, { address, source })
+    // One held database connection serves the whole API: a slot is held for the database work only.
+    const release = admit(source);
+    if (release !== undefined) {
+      void requestPasswordReset(database, broker, { address, source }, release)
         .catch(() => {})
-        .finally(() => {
-          inFlight -= 1;
-        });
+        .finally(release);
     }
     return context.json({}, 200);
   });

@@ -108,16 +108,26 @@ async function withinLimits(database: Database, source: string, address: string)
   );
 }
 
-/** Hand one address to the login provider; nothing is said back, whatever happened. */
+/**
+ * Hand one address to the login provider; nothing is said back, whatever
+ * happened. `counted` runs once the database work is over, before the provider
+ * is asked, whatever the outcome.
+ */
 export async function requestPasswordReset(
   database: Database,
   broker: Broker,
   asking: ResetAsk,
+  counted: () => void = () => {},
 ): Promise<void> {
-  if (typeof asking.address !== 'string') return;
-  const asked = asking.address.trim().toLowerCase();
-  if (!ADDRESS.test(asked)) return;
-  if (!(await withinLimits(database, digest(asking.source), digest(asked)))) return;
+  let asked: string;
+  try {
+    if (typeof asking.address !== 'string') return;
+    asked = asking.address.trim().toLowerCase();
+    if (!ADDRESS.test(asked)) return;
+    if (!(await withinLimits(database, digest(asking.source), digest(asked)))) return;
+  } finally {
+    counted();
+  }
   await askRecovery(broker, asked);
 }
 
