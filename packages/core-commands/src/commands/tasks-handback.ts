@@ -155,6 +155,20 @@ export function refuseActualMinor(actualMinor: unknown): Refused {
   );
 }
 
+/**
+ * Whether the gate is still pending on a live lineage: a research stop in the
+ * same handback withdraws the successor's lineage, and its gate is no decision.
+ */
+async function decidable(tx: TenantQuery, gateId: string): Promise<boolean> {
+  const rows = await tx.query<{ readonly id: string }>(
+    `select g.id from public.gates g
+       join public.proposal_lineages l on l.business_id = g.business_id and l.id = g.lineage_id
+      where g.business_id = $1 and g.id = $2 and g.state = 'pending' and l.state = 'live'`,
+    [tx.businessId, gateId],
+  );
+  return rows.length > 0;
+}
+
 async function settle(
   tx: TenantQuery,
   fields: HandbackFields,
@@ -245,7 +259,7 @@ async function settle(
   await raiseIncident(tx, [
     { reservationId: settled.reservationId, state: settled.reservationState },
   ]);
-  if (settled.successorGateId !== null) {
+  if (settled.successorGateId !== null && (await decidable(tx, settled.successorGateId))) {
     await raiseDecision(tx, { taskId, gateId: settled.successorGateId });
   }
   return applied(null, null, {
