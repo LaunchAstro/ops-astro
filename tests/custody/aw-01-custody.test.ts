@@ -52,6 +52,49 @@ function importGraph(entry: string): readonly string[] {
   return [...seen].map((file) => file.replace(`${ROOT}/`, ''));
 }
 
+const CUSTODY_MAIN = 'packages/core-custody/src/custody-main.ts';
+
+/**
+ * Tracked source files under packages/ and apps/ with a file read whose
+ * argument carries a `*_CREDENTIALS_FILE` setting, directly or through a name
+ * assigned from one. Only custody's own process may read a credential file.
+ */
+function credentialFileReaders(): readonly string[] {
+  const files = execFileSync('git', ['ls-files', '--', 'packages', 'apps'], {
+    cwd: ROOT,
+    encoding: 'utf8',
+  })
+    .trim()
+    .split('\n')
+    .filter((file) => /\.[cm]?[jt]sx?$/u.test(file));
+  return files.filter((file) => {
+    const source = readFileSync(join(ROOT, file), 'utf8');
+    const names = [
+      ...source.matchAll(/([\w$]+)\s*[=:][^;\n]*(?:_CREDENTIALS_FILE|credentialsFile)\b/gu),
+    ]
+      .map((match) => match[1] ?? '')
+      .concat('credentialsFile');
+    const carries = new RegExp(
+      `_CREDENTIALS_FILE\\b|(?<![\\w$])(?:${names.map((name) => name.replaceAll('$', '\\$')).join('|')})(?![\\w$])`,
+      'u',
+    );
+    return [
+      ...source.matchAll(
+        /\b(?:readFileSync|readFile|createReadStream|openSync|open|opendir)\s*\(/gu,
+      ),
+    ].some((read) => {
+      let depth = 0;
+      let end = (read.index ?? 0) + read[0].length - 1;
+      do {
+        if (source[end] === '(') depth += 1;
+        if (source[end] === ')') depth -= 1;
+        end += 1;
+      } while (depth > 0 && end < source.length);
+      return carries.test(source.slice((read.index ?? 0) + read[0].length, end));
+    });
+  });
+}
+
 let world: CustodyWorld;
 
 beforeAll(async () => {
@@ -79,6 +122,8 @@ it("AW-01 custody 2: the broker's process never holds the key", async () => {
   const outcome = await world.custody.dispatch('replay_key', world.request());
   expect(JSON.stringify(outcome)).not.toContain(world.canary);
   expect(JSON.stringify(process.env)).not.toContain(world.canary);
+  // Nor does any of its code read a credential file: custody's own read is the only one.
+  expect(credentialFileReaders()).toEqual([CUSTODY_MAIN]);
   // The request the broker built carries no credential and no origin.
   expect(JSON.stringify(world.request())).not.toContain(world.canary);
   expect(JSON.stringify(world.request())).not.toContain(world.provider.origin);
@@ -212,5 +257,6 @@ it('AW-01 custody 10: no key is reachable from a worker or a configuration file 
     'packages/core-custody/src/custody-main.ts',
     'packages/core-custody/src/custody.ts',
   ]);
+  expect(credentialFileReaders()).toEqual([CUSTODY_MAIN]);
   expect(gitGrep('core-custody', 'apps/worker', 'apps/cli', 'apps/web')).toEqual([]);
 });
