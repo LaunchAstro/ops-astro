@@ -16,6 +16,7 @@ export const WORKER_UNIT: Readonly<Record<string, string>> = {
   STAGING_RELEASE: '0123456789ab',
   STAGING_FORWARDER_HEARTBEAT_URL: 'https://beat.example.test/f',
   STAGING_SINK_HEARTBEAT_URL: 'https://beat.example.test/s',
+  STAGING_HEARTBEAT_EVERY_MS: '1800000',
   STAGING_EGRESS_API_HOST: 'api.example.test',
   STAGING_EGRESS_POOLER_HOST: POOLER,
   STAGING_EGRESS_POOLER_PORT: '6543',
