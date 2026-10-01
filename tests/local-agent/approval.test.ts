@@ -207,6 +207,8 @@ it("the owner's yes writes approvals.json and the next call runs past the old ca
   }
 }, 120_000);
 
+let queuedApproval: Promise<void> | undefined;
+
 it.each([
   ['staging', { OPS_ENVIRONMENT: 'staging' }],
   ['production', { OPS_ENVIRONMENT: 'production' }],
@@ -214,6 +216,19 @@ it.each([
 ])(
   'refused outside OPS_ENVIRONMENT=local (%s): no item, no file',
   async (_, environment) => {
+    // An approved approval waits in the queue, so an unfenced pass would write it (review 2 M7).
+    queuedApproval ??= (async () => {
+      const asked = await liveWork(s, `Local queued ${randomUUID().slice(0, 8)}`, 2_000);
+      await raiseApproval(options(), leaseOf(asked), needOf('LOCAL_MODEL_NOT_APPROVED', 'opus'));
+      const open = (await pending()).find(
+        (gate) => (gate.payload['localAgentApproval'] as { model?: string }).model === 'opus',
+      );
+      if (open === undefined) throw new Error('no opus gate');
+      expect(codeOf(await decide(s, open, 'approve'))).toBe('applied');
+    })();
+    await queuedApproval;
+    const file = join(world.agentHome, 'approvals.json');
+    const bytes = readFileSync(file);
     const before = (await pending()).length;
     const work = await liveWork(s, `Local fenced ${randomUUID().slice(0, 8)}`, 2_000);
     const raised = await raiseApproval(
@@ -227,6 +242,7 @@ it.each([
       code: 'LOCAL_ONLY',
     });
     expect(await pending()).toHaveLength(before);
+    expect(readFileSync(file).equals(bytes)).toBe(true);
   },
   120_000,
 );
