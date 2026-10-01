@@ -189,10 +189,15 @@ function outboxAlerts(
 
 let handler: ((request: Request) => Promise<Response>) | undefined;
 
-/** The admin login, the sink's key and the backup and restore credentials: the M5's and the operator's. */
+/**
+ * The admin login, the sink's key, the provider's admin key (C58's endings
+ * loop, `apps/endings`) and the backup and restore credentials: the
+ * environment machine's and the operator's.
+ */
 const HELD_ELSEWHERE = [
   'DATABASE_ADMIN_URL',
   'OPS_ERROR_SINK_DSN',
+  'SUPABASE_SERVICE_KEY',
   'BACKUP_SOURCE_URL',
   'BACKUP_RETENTION_URL',
   'BACKUP_STORE_URL',
@@ -205,7 +210,7 @@ async function handle(request: Request): Promise<Response> {
   const held = HELD_ELSEWHERE.filter((name) => (process.env[name] ?? '') !== '');
   if (held.length > 0) {
     throw new Error(
-      `${held.join(', ')} set: the function never holds the admin login, the sink key or a backup credential.`,
+      `${held.join(', ')} set: the function never holds the admin login, the sink key, the provider's admin key or a backup credential.`,
     );
   }
   handler ??= createFunctionHandler(process.env);

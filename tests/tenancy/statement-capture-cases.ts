@@ -75,7 +75,8 @@ export interface Observed {
  * `rebuildApi` is the same composition, but it opens its connection without a
  * log, so this is that function's body with the one option it lacks.
  */
-export function observe(world: World): Observed {
+/** `execute` is the shipped envelope unless a mutation proof hands in its copy's. */
+export function observe(world: World, execute: typeof executeCommand = executeCommand): Observed {
   const log = createStatementLog();
   const database = connect(world.db.appUrl, { source: 'runtime', log, max: 1 });
   const byKey: Readonly<Record<string, string>> = { alpha: world.alpha, bravo: world.bravo };
@@ -83,7 +84,7 @@ export function observe(world: World): Observed {
     database,
     verify: createSupabaseVerifier(testSignIn(ACCEPTANCE_ISSUER)),
     resolveBusiness: (key: string) => Promise.resolve(byKey[key]),
-    executeCommand,
+    executeCommand: execute,
     executeRead,
     executeAgentCommand,
   });

@@ -3,7 +3,6 @@
     "eslint(max-classes-per-file)": 1,
     "eslint(max-lines-per-function)": 624,
     "eslint(max-lines)": 149,
-    "eslint(no-fallthrough)": 1,
     "eslint(no-inline-comments)": 17,
     "eslint(no-loop-func)": 34,
     "eslint(no-negated-condition)": 11,

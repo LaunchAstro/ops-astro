@@ -102,10 +102,20 @@ const GRANTS_BY_ROLE = {
     // A top-up is a money decision on `billing` (T2e, the permission
     // catalogue's `billing:decide`): the owner and administrators hold it.
     ['billing', 'decide'],
-    // The operations view's key (C55): owner and administrators by install
-    // default, never a member, never an agent. `inbox.unattended` asks it
-    // (INB-1e), and it names other people's items.
+    // Settings ▸ Access (C32): the owner and administrators hold
+    // `access:manage` on install (the key catalogue's default holders).
+    ['access', 'manage'],
+    // The operations view and the privacy incident record (C55): the owner
+    // and administrators hold both on install, and no agent ever does.
+    // `inbox.unattended` asks `operations:read` too (INB-1e), and it names
+    // other people's items.
     ['operations', 'read'],
+    ['privacy', 'manage'],
+    // An agent credential of their own (API-2): the owner and administrators
+    // hold `credential:write` on install.
+    ['credential', 'write'],
+    // The client record (C32): the owner and administrators make clients.
+    ['record', 'write'],
   ],
   member: [
     ['task', 'read'],
@@ -733,6 +743,11 @@ try {
     businessIds[tag] = await businessIdFor(admin, key);
     console.log(`local-seed: business ${key} ${businessIds[tag]}`);
   }
+  // S0-5 (0062): business A operates this installation, as provisioning sets it.
+  await admin.execute(
+    'update ops.installation set operator_business_id = $1 where operator_business_id is null',
+    [businessIds.A],
+  );
 
   for (const tag of Object.keys(BUSINESS_KEYS)) {
     // oxlint-disable-next-line no-await-in-loop

@@ -11,6 +11,7 @@
 
 import { createHash } from 'node:crypto';
 import type { Context } from 'hono';
+import { SESSION_ABSOLUTE_SECONDS } from '../../../packages/core-records/src/index.ts';
 import {
   CSRF_HEADER,
   PREFIX,
@@ -30,6 +31,16 @@ export const SESSION_COOKIE_OPTIONS: {
   secure: true,
   sameSite: 'Lax',
 } as const;
+
+/**
+ * The cookie's `Max-Age` (C58): what is left of the session's 12-hour absolute
+ * limit, `SESSION_ABSOLUTE_SECONDS`, from its first sign-in, never more than
+ * the whole limit. A session with no first-sign-in time gets none of it.
+ */
+export function cookieMaxAge(signedInAt: number | null, now: number): number {
+  const left = signedInAt === null ? 0 : signedInAt + SESSION_ABSOLUTE_SECONDS - now;
+  return Math.min(SESSION_ABSOLUTE_SECONDS, Math.max(0, left));
+}
 
 /** `Authorization: Bearer <token>`, and nothing else counts as one. */
 export function bearerOf(request: Context['req']): string | undefined {

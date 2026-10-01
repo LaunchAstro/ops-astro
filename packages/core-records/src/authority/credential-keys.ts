@@ -48,6 +48,12 @@ export const LEGACY_SCHEME = 'legacy-random';
 
 /** The domain and version, first in the encoding. Changing it changes every credential. */
 export const CREDENTIAL_DOMAIN = 'ops-astro/delegation-credential/v1';
+/**
+ * The domain an agent credential (API-2) is derived in. Its own, so no agent
+ * credential's bytes can ever be a delegation's; a delegation leaves `domain`
+ * out and its encoding is unchanged.
+ */
+export const AGENT_CREDENTIAL_DOMAIN = 'ops-astro/agent-credential/v1';
 
 /** The environment names a deployment configures its keyring with. */
 export const ACTIVE_KEY_VARIABLE = 'DELEGATION_CREDENTIAL_KEY_ID';
@@ -61,7 +67,9 @@ const KEY_ID = /^[A-Za-z0-9._@/-]{1,64}$/u;
 export interface CredentialIdentity {
   readonly businessId: string;
   readonly agentActorId: string;
+  /** The delegation's id, or an agent credential's id in its own domain. */
   readonly delegationId: string;
+  readonly domain?: typeof AGENT_CREDENTIAL_DOMAIN;
 }
 
 /**
@@ -84,7 +92,7 @@ export type CredentialKeysDecision =
 /** The exact bytes the HMAC is computed over. Exported so the encoding can be asserted. */
 export function credentialEncoding(keyId: string, identity: CredentialIdentity): string {
   return JSON.stringify([
-    CREDENTIAL_DOMAIN,
+    identity.domain ?? CREDENTIAL_DOMAIN,
     keyId,
     identity.businessId,
     identity.agentActorId,

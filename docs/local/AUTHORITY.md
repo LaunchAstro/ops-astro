@@ -19,11 +19,12 @@ A person's login, an agent login and a delegation credential are distinct
 identity model exists to prevent. It arrives one layer up from the failure
 migration 0002 guards.
 
-| Credential   | Resolves through               | To                                | Confers                                             |
-| ------------ | ------------------------------ | --------------------------------- | --------------------------------------------------- |
-| A person's   | `identity/login-resolution.ts` | `Session` (person, actor, role)   | membership, and nothing else; authority is `grants` |
-| An agent's   | `identity/agent-login.ts`      | `AgentSession` (actor, no person) | nothing at all                                      |
-| A delegation | `authority/delegations.ts`     | `Delegation`                      | nothing stored; an intersection computed per call   |
+| Credential                  | Resolves through                 | To                                          | Confers                                                                      |
+| --------------------------- | -------------------------------- | ------------------------------------------- | ---------------------------------------------------------------------------- |
+| A person's                  | `identity/login-resolution.ts`   | `Session` (person, actor, role)             | membership, and nothing else; authority is `grants`                          |
+| An agent's                  | `identity/agent-login.ts`        | `AgentSession` (actor, no person)           | nothing at all                                                               |
+| A delegation                | `authority/delegations.ts`       | `Delegation`                                | nothing stored; an intersection computed per call                            |
+| An agent credential (API-2) | `authority/agent-credentials.ts` | its row, a fresh agent actor and its issuer | the ticked keys, standing, until expiry or revocation; not served yet (S0-6) |
 
 A login is in `person_logins` or in `actor_logins`, never both. Two triggers in
 0008 hold that from either side, because a login in both would make the order in
@@ -215,6 +216,14 @@ code on this head, and where that is shown.
 | ---------------------------------------------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------- |
 | `AUTH_NO_AGENT_IDENTITY`                                                     | 401    | yes                                                                                                                    |
 | `AUTH_SESSION_EXPIRED`                                                       | 401    | yes, on both prefixes; this is the re-login path                                                                       |
+| `AUTH_SECOND_FACTOR_REQUIRED`                                                | 401    | yes, on the person prefix, for a person with a verified second factor signed in below `aal2` (C59)                     |
+| `STEP_UP_REQUIRED`                                                           | 403    | not yet: no command on this head holds a money key; wave 0's `budget.*` commands will (C59)                            |
+| `FRESH_SIGN_IN_REQUIRED`                                                     | 403    | yes, on `/account/factor/enrol` (C59)                                                                                  |
+| `FACTOR_ALREADY_ENROLLED`                                                    | 409    | yes, on `/account/factor/enrol` (C59)                                                                                  |
+| `FACTOR_NOT_ENROLLED`                                                        | 409    | yes, on `/account/factor/verify` and `/remove` (C59)                                                                   |
+| `SECOND_FACTOR_INVALID`                                                      | 422    | yes, on `/account/factor/verify` and `/remove` (C59)                                                                   |
+| `SECOND_FACTOR_LOCKED`                                                       | 429    | yes, after five wrong codes in fifteen minutes (C59)                                                                   |
+| `PROVIDER_ANSWER_INVALID`                                                    | 502    | yes, on the three factor routes (C59)                                                                                  |
 | `DELEGATION_EXCLUDES_DECISION`                                               | 403    | yes                                                                                                                    |
 | `DELEGATION_EXCLUDES_OPERATION`                                              | 403    | yes; see below                                                                                                         |
 | `DELEGATION_OUT_OF_PURPOSE`                                                  | 403    | yes                                                                                                                    |
@@ -368,11 +377,11 @@ fields and client-audience comments only".
   its content and the next call is `AUTH_NO_MEMBERSHIP`.
 - **The seed enrols one.** `scripts/local-seed.mjs` adds an entry with
   `role: 'external'` to `.local/synthetic-users.json` and creates its GoTrue
-  user (`:654-690`, run at `:819-827`). It gets a login and an acting identity,
-  and no membership and no business grant (`:122-125`, `:275-277`). The seed
+  user (`:664-700`, run at `:834-842`). It gets a login and an acting identity,
+  and no membership and no business grant (`:132-135`, `:285-287`). The seed
   makes no task, so it shares one only when rerun with `LOCAL_SEED_SHARE_TASK`
   naming a task, through `shareRecord` under the admin's own `share` grant
-  (`:697-721`, `:861-871`).
+  (`:707-731`, `:876-886`).
 - **Standing checks raw liveness.** Resolution asks whether a share grant is
   revoked or expired, not the `EFFECTIVE` chain in `grants.ts`. `shareRecord`
   issues root grants only, so the two agree today; a derived share under a
@@ -504,12 +513,13 @@ than as an answer about the preset. D05 says so, and the test counts
 landed contracts read without having. `records/business-settings.ts` produces
 the named rows:
 
-| Key                        | Default             | Write mode  | Why                                                              |
-| -------------------------- | ------------------- | ----------- | ---------------------------------------------------------------- |
-| `four_eyes_threshold`      | `500`, `null` = off | `operation` | changes who must agree before money moves                        |
-| `client_sign_off_required` | `false`             | `operation` | changes who must agree before work completes                     |
-| `retention_window_days`    | `30`                | `generic`   | policy an administrator sets; read by `task.purge` as its window |
-| `conversation_window_days` | `30`                | `generic`   | policy an administrator sets                                     |
+| Key                        | Default             | Write mode  | Why                                                               |
+| -------------------------- | ------------------- | ----------- | ----------------------------------------------------------------- |
+| `four_eyes_threshold`      | `500`, `null` = off | `operation` | changes who must agree before money moves                         |
+| `client_sign_off_required` | `false`             | `operation` | changes who must agree before work completes                      |
+| `money_step_up_required`   | `true`              | `operation` | whether a money action needs a recent second-factor sign-in (C59) |
+| `retention_window_days`    | `30`                | `generic`   | policy an administrator sets; read by `task.purge` as its window  |
+| `conversation_window_days` | `30`                | `generic`   | policy an administrator sets                                      |
 
 The classification matters here, not the values. A setting that decides
 whether a second approver is needed changes authority, the same category the
@@ -555,6 +565,112 @@ every row (`SettingView.revision`, filled by `readSettings` in
 `tests/records/business-settings.test.ts` holds the writer, including two
 administrators writing at once (its `describe` at `:287`), and
 `tests/commands/settings-revision.test.ts` holds the command path.
+
+## The operations view (C55)
+
+Two keys, each on its own collection, neither ever an agent's:
+`operations:read` opens the operations view (`operations.read`) and
+`privacy:manage` records a privacy incident (`privacy.record_incident`). A
+holder of one is not a holder of the other. An agent under a live delegation
+from a person who holds both is refused both, `DELEGATION_EXCLUDES_OPERATION`,
+because neither is in the agent's operation set. The install defaults (the
+owner and administrators) are C32's role presets.
+
+The breach drill's notices (`privacy.draft_breach_notices`, C81) are a read
+under `privacy:manage`, the incident's own key, so a holder of
+`operations:read` alone sees an incident overdue but cannot draft its notices.
+The read looks the incident up in the business's own rows and sends nothing.
+
+## Legal documents (C81)
+
+Drafting, approving and publishing a legal document's version are each
+`privacy:manage`, the key C55's privacy incident uses, and none is ever an
+agent's: an agent under a live delegation from a holder is refused
+`DELEGATION_EXCLUDES_OPERATION`. Publishing takes only a version approved as
+the bytes it holds (standing gate 5); approval and publication each lock the
+version's row and decide from what they read under it. The public read of a
+published version asks no key: it is published.
+
+Setting a row of the overseas-services register
+(`privacy.set_overseas_service`) is `privacy:manage` too, never an agent's.
+The register has one lock per business, taken by every change to it and by
+each draft, approval and publication of a privacy policy before it reads the
+register, so a change and a policy decision apply in one order. Approval and
+publication take the version's row lock first and the register's second; a
+change takes only the register's, so the two never wait in a cycle.
+
+Setting a class of the data-class register (`privacy.set_data_class`) is
+`privacy:manage` too, never an agent's. It takes the same per-business lock as
+the overseas-services register, and a policy's draft, approval and publication
+read the classes under it, so the order above holds for both registers.
+
+`operations:manage` moves the first-client gate (S0-5): a gate item recorded
+(`operations.record_gate_item`) and the installation's one-way change to real
+data (`operations.change_installation_mode`). Both are a person's, never an
+agent's. The gate is the installation's, so the grant counts only in the
+business that operates it (`ops.installation.operator_business_id`); the same
+key in another business on the installation is refused `SCOPE_NOT_GRANTED`.
+Each takes the installation's row lock before it checks that, so a refusal
+writes nothing.
+
+## Agent credentials (API-2)
+
+An agent credential is a standing delegation from the person who issues it to
+a fresh agent actor of theirs, with no lease and no run
+(`authority/agent-credentials.ts`, migration 0054). `credential.issue` is
+`credential:write` and is always the caller's own. Its scope is the ticked
+`collection:action` keys, each one the caller holds at business scope when it
+is issued, by the grant check's own walk (`CREDENTIAL_SCOPE_WIDENS` otherwise),
+and never decide, share or manage (`CREDENTIAL_ACTION_EXCLUDED`). Its expiry is
+at most `CREDENTIAL_MAX_DAYS` (90) from issue, set in that one constant.
+
+The secret is derived as a delegation's credential is, under the delegation
+credential key, in its own domain (`AGENT_CREDENTIAL_DOMAIN`), so it can never
+equal a delegation's. It is in the issue answer only: the row keeps its SHA-256,
+the scheme and the key id, the register keeps the answer with the credential
+null, and the issuer's replay of the same operation derives it again while the
+credential is theirs and live.
+
+`credential.revoke` is `credential:write` too. The issuer revokes their own;
+anyone else needs `access:manage` as well, and without it another person's
+credential is `NOT_FOUND`, as a foreign or made-up one is. It locks the row,
+decides under the lock, sets the revocation once (`CREDENTIAL_ALREADY_REVOKED`
+after) and deactivates the agent actor. Neither command is ever an agent's: an
+agent under a live delegation is refused `DELEGATION_EXCLUDES_OPERATION`.
+
+Using the credential on the agent route (bearer only, revocation on the next
+call, expiry either side, the actor and the person recorded, the quota) waits
+on S0-6's bearer scheme and is not served yet.
+
+## Settings ▸ Access (C32)
+
+Giving and revoking a grant on Settings ▸ Access (`access.grant`,
+`access.revoke`) is `access:manage`, the owner's and the administrators' key,
+never an agent's. A grant given here is a root grant, to a person with an
+active membership, over the whole business or over one client of it
+(`scope_kind = 'party'`, `scope_id` the client). Making a client
+(`client.create`) is `record:write`, never an agent's.
+
+Every change to who may do what takes the business's one access lock first
+(`lockAccess`, `access:<business>`), before any grant row: a grant given, a
+grant revoked on either route, and ending a person's access (C58). So the same
+grant given twice is one row, and two revocations that would each leave one
+holder of business-wide `access:manage` cannot both apply: the second is
+`ACCESS_LAST_MANAGER`.
+
+Ending a person's access (`access.end`, C58) is `access:manage` too, never an
+agent's. After the access lock it locks every live grant the person holds, in
+id order, before any runtime lock (the order one revocation and `task.pickup`
+take), then revokes them and every delegation the person gave in one
+authority-loss classification (`endPersonAuthority`,
+`commands/authority-controls.ts`), and ends the membership and the person's
+acting identity. The delegations lose their ceiling with the grants and are
+revoked with the cause `authority_lost`. Nobody ends the last business-wide
+`access:manage` of a person who can sign in.
+
+A party-scoped grant is checked at party scope. The task reads and writes ask
+record scope, so they do not yet resolve a grant over a client through the
+task's `client` link; `client.list` and the preview do read it.
 
 ## Revocation
 

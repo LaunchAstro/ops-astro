@@ -16,7 +16,7 @@ import { type AdminConnection } from '../../packages/core-records/src/tenancy/da
 export const WORKER_ROLE = 'ops_astro_worker';
 
 /**
- * The contract: what 0001-0048 grant the application group, table by table,
+ * The contract: what the migrations grant the application group, table by table,
  * as `s` select, `i` insert, `u` update, `d` delete. Read from the `grant`
  * lines of the migrations, not from the catalogue this suite then checks.
  */
@@ -29,6 +29,19 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 0048: the forwarder's kept alerts; the application holds nothing on them.
   ['', 'ops.api_alerts'],
   ['s', 'ops.slots'],
+  // 0058 (S0-5): the installation's mode and the gate items are read by the
+  // application through first_client_readiness().
+  // 0062 (S0-5, ORCH38): the gate's own commands write through the app, so it
+  // may insert a gate item, and update `mode` alone on the installation. A
+  // column grant is not a table letter: this suite's update sets the first
+  // column, which stays refused; s0-5-gate-commands proves the column.
+  ['s', 'ops.installation'],
+  ['si', 'ops.gate_items'],
+  // 0065 (C58): an ended provider session, installation-wide; the application
+  // inserts and reads its id column alone, and changes or removes nothing.
+  ['si', 'ops.ended_provider_sessions'],
+  // 0069 (C58): other sessions ended in every business, by subject digest.
+  ['si', 'ops.ended_subject_sessions'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],
   ['si', 'alerts handback_reports operations run_events'],
   // 0042: an attempt and a seen stamp are observations, never rewritten (INB-1a).
@@ -37,6 +50,28 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
   ['siu', 'leases planned_runs planned_steps proposal_lineages proposal_versions'],
   ['siu', 'outage_reports outage_runs reservations task_envelopes'],
+  // 0049 (C59): a factor is written and moved on, never deleted.
+  ['siu', 'second_factors'],
+  // 0050 (C55): a privacy incident is recorded and moved on, never deleted.
+  ['siu', 'privacy_incidents'],
+  // 0051 (C81): a legal document version is drafted, then approved and
+  // published by update; never deleted.
+  ['siu', 'legal_document_versions'],
+  // 0052 (C81): a row of the overseas-services register is set by insert or
+  // update; never deleted.
+  ['siu', 'overseas_services'],
+  // 0053 (C81): a data class is set by insert or update; never deleted.
+  ['siu', 'data_classes'],
+  // 0054 (API-2): an agent credential is issued by insert and revoked by
+  // update; never deleted.
+  ['siu', 'agent_credentials'],
+  // 0055 (C32): a client is written once; never updated or deleted.
+  ['si', 'clients'],
+  // 0056 (C58): an access ending is written, then its provider steps are
+  // stamped by update; never deleted.
+  ['siu', 'access_endings'],
+  // 0057 (C58): an ended session is written once; never changed or deleted.
+  ['si', 'ended_sessions'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
   // 0028 revokes delete on these two: identity history is kept (0002).
   ['siu', 'person_logins person_merges'],
@@ -61,20 +96,34 @@ const REVOKED: Readonly<Record<string, { readonly from: string; readonly letters
 };
 
 /**
+ * Grants a later migration added, so a prefix before it does not hold them yet.
+ * 0062 grants the gate's own insert (S0-5, ORCH38).
+ */
+const ADDED: Readonly<Record<string, { readonly from: string; readonly letters: string }>> = {
+  'ops.gate_items': { from: '0062', letters: 'i' },
+};
+
+/**
  * What the application group holds on a table after the migration `at` (its
  * version, `0001_tenancy` and so on), or at the full schema when `at` is absent.
  */
 export function applicationGrantsAt(qualified: string, at?: string): string | undefined {
   const granted = APPLICATION_GRANTS[qualified];
+  if (granted === undefined || at === undefined) return granted;
+  const version = at.slice(0, 4);
   const revoked = REVOKED[qualified];
-  if (granted === undefined || revoked === undefined || at === undefined) return granted;
-  return at.slice(0, 4) < revoked.from ? granted + revoked.letters : granted;
+  const added = ADDED[qualified];
+  if (revoked !== undefined && version < revoked.from) return granted + revoked.letters;
+  if (added !== undefined && version < added.from) return granted.replace(added.letters, '');
+  return granted;
 }
 
 /** The functions the application group may execute. Every other one is refused to it. */
 export const APPLICATION_EXECUTES: readonly string[] = [
   'public.app_business_id',
   'public.audit_event_hash',
+  // 0058 (S0-5): security invoker, so it reads no more than the caller may.
+  'public.first_client_readiness',
 ];
 
 export interface CatalogueTable {

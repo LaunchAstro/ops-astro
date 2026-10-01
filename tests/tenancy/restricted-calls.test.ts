@@ -71,6 +71,63 @@ const UNREACHED: Readonly<Record<string, string>> = {
        join public.people p on p.business_id = a.business_id
        join public.actors actor on actor.business_id = a.business_id
       order by p.id, actor.id limit 1 returning 1`,
+  // C59: no journey enrols a second factor, so one is written here.
+  'public.second_factors': `insert into public.second_factors
+       (business_id, id, person_id, provider, provider_factor_id)
+     select business_id, gen_random_uuid(), id, 'supabase', 'restricted-calls-seed'
+       from public.people where business_id = $1 order by id limit 1 returning 1`,
+  // C55: no journey records a privacy incident, so one is written here.
+  'public.privacy_incidents': `insert into public.privacy_incidents
+       (business_id, id, what_happened, found_at, found_by, affected, information_kinds,
+        recorded_by_actor)
+     select business_id, gen_random_uuid(), 'restricted calls seed', now(), 'seed', 'nobody',
+            array['other'], id
+       from public.actors where business_id = $1 order by id limit 1 returning 1`,
+  // C81: no journey drafts a legal document version, so one is written here.
+  'public.legal_document_versions': `insert into public.legal_document_versions
+       (business_id, id, document, version, body, body_digest, drafted_by_actor)
+     select business_id, gen_random_uuid(), 'breach-runbook', '0.1', 'restricted calls seed', '',
+            id
+       from public.actors where business_id = $1 order by id limit 1 returning 1`,
+  // C81: no journey sets a register row, so one is written here.
+  'public.overseas_services': `insert into public.overseas_services
+       (business_id, id, service, receives, stored_where, trains_on_it, contract, to_confirm,
+        in_use, updated_by_actor)
+     select business_id, gen_random_uuid(), 'restricted calls seed', 'nothing', 'nowhere', 'no',
+            'none', false, true, id
+       from public.actors where business_id = $1 order by id limit 1 returning 1`,
+  // C81: no journey sets a data class, so one is written here.
+  'public.data_classes': `insert into public.data_classes
+       (business_id, id, data_class, purpose, disclosures, retention, deletion, in_use,
+        updated_by_actor)
+     select business_id, gen_random_uuid(), 'restricted calls seed', 'nothing', 'no one',
+            'a day', 'deleted', true, id
+       from public.actors where business_id = $1 order by id limit 1 returning 1`,
+  // API-2: no journey issues an agent credential, so one is written here.
+  'public.agent_credentials': `insert into public.agent_credentials
+       (business_id, id, agent_actor_id, issued_by_person_id, issued_by_actor_id, purpose, scope,
+        credential_hash, credential_scheme, credential_key_id, expires_at)
+     select business_id, gen_random_uuid(), id, person_id, id, 'restricted calls seed',
+            array['task:read'], repeat('0', 64), 'hmac-sha256-v1', 'seed', now() + interval '1 day'
+       from public.actors where business_id = $1 and kind = 'person'
+      order by id limit 1 returning 1`,
+  // C32: no journey makes a client, so one is written here.
+  'public.clients': `insert into public.clients (business_id, id, name, created_by_actor_id)
+     select business_id, gen_random_uuid(), 'restricted calls seed', id
+       from public.actors where business_id = $1 order by id limit 1 returning 1`,
+  // C58: no journey ends a person's access, so an ending is written here for a
+  // person's own login, as `access.end` writes one.
+  'public.access_endings': `insert into public.access_endings
+       (business_id, person_id, login_id, ended_by_actor_id)
+     select pl.business_id, pl.person_id, pl.login_id, a.id
+       from public.person_logins pl
+       join public.actors a on a.business_id = pl.business_id and a.person_id = pl.person_id
+      where pl.business_id = $1 order by pl.login_id limit 1 returning 1`,
+  // C58: an ended session, as signing out writes one for a person's own session.
+  'public.ended_sessions': `insert into public.ended_sessions
+       (business_id, person_id, session_id, reason)
+     select business_id, id, gen_random_uuid(), 'sign_out'
+       from public.people where business_id = $1 order by id limit 1 returning 1`,
   'public.record_links': `insert into public.record_links
        (business_id, id, link_type, from_record_id, to_record_id)
      select a.business_id, gen_random_uuid(), 'restricted_calls', a.id, b.id
@@ -363,7 +420,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(inserting.length).toBeGreaterThan(0);
   }, 120_000);
 
-  it('calls every function as every caller, and only the granted two run', async () => {
+  it('calls every function as every caller, and only the granted three run', async () => {
     const wrong: string[] = [];
     for (const fn of functions) {
       for (const caller of [...TABLE_CALLERS, 'owner'] as const) {

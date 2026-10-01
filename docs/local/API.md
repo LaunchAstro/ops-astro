@@ -69,7 +69,8 @@ through `admit` (`apps/api/app.ts`), which asks in this order:
 
 1. A missing, forged, unsigned or subject-less bearer is `AUTH_UNKNOWN_LOGIN` 401.
 2. An expired bearer is `AUTH_SESSION_EXPIRED` 401, before the business key or
-   the body is read.
+   the body is read. So is a session past its 12-hour absolute limit (C58,
+   "Sessions" below).
 3. A body that is not a JSON object is `COMMAND_BODY_INVALID` 400, whatever
    business the key names. Admission writes one `authentication_attempts` row
    only when the key resolved to a business. Its owner is `person_login` or
@@ -135,8 +136,11 @@ naming `lineageId`, and the `COMMAND_BODY_INVALID` branch in `proposeOnTask`
 
 **A free operand the stores cannot hold is refused by name.** A comment
 `body`, a cancel `reason`, a decision `note`, a proposal's `purpose`,
-`currency`, `payload` and `step`, and a handback's `report` and `successor`
-holding U+0000 or an unpaired surrogate, in any string or key, are
+`currency`, `payload` and `step`, a handback's `report` and `successor`, a
+privacy incident's `whatHappened`, `foundBy` and `affected`, a legal
+document version's `body`, an overseas service's `service`, `receives`,
+`where`, `trainsOnIt` and `contract`, a data class's `dataClass`,
+`purpose`, `disclosures`, `retention` and `deletion`, and a client's `name`, holding U+0000 or an unpaired surrogate, in any string or key, are
 `FIELD_VALUE_INVALID` 422 naming the operand. A successor is named by its inner
 key (`successor.<key>`). The check runs after authority and before the target
 is read, and nothing is written (`FREE_OPERANDS` and
@@ -224,11 +228,19 @@ A browser holds no token (S0-6c). It posts the token once to
 `POST /api/session`, which verifies it, answers `{ ok: true, session }` and
 sets it as an `HttpOnly`, `Secure`, `SameSite=Lax` cookie scoped to `/api/b/`,
 one per sign-in, named from `session` (a digest of the token, not a secret).
-A cookie-carried request needs `x-ops-astro-csrf: 1` and no cross-site
-`Sec-Fetch-Site` (else `AUTH_CROSS_SITE` 403), and reads only the cookie of
-the sign-in its `x-ops-astro-session` names; session cookies with none named
-are `AUTH_SESSION_MISMATCH` 403. `/api/session/end` clears only the named
-sign-in's cookie, so a late sign-out ends no other. A bearer is read first.
+Its `Max-Age` is what is left of the session's 12-hour absolute limit from the
+first sign-in (below), never more than the 12 (`cookieMaxAge`, C58); a token
+past the limit gets no cookie, and a cookie whose token is past it is
+`AUTH_SESSION_EXPIRED` 401. A cookie-carried request needs
+`x-ops-astro-csrf: 1` and no cross-site `Sec-Fetch-Site` (else
+`AUTH_CROSS_SITE` 403), and reads only the cookie of the sign-in its
+`x-ops-astro-session` names; session cookies with none named are
+`AUTH_SESSION_MISMATCH` 403. `/api/session/end` clears only the named
+sign-in's cookie, so a late sign-out ends no other. When that cookie's token
+verifies and names a provider session, it first ends that session for every
+business (below) and asks the provider to sign it out (`scope=local`); a
+bearer beside it, a forged or lapsed token ends nothing but the cookie, and
+the answer is `{ ok: true }` whatever the provider says. A bearer is read first.
 
 Nothing else reaches identity. Not a body field, not a host or forwarded
 header, not an `apikey`, not a query parameter. A request carrying `actorId` or
@@ -243,6 +255,33 @@ verify is `AUTH_UNKNOWN_LOGIN` whatever its `exp` says. `hono/jwt` checks `exp`
 before the signature, so the adapter verifies a bearer Hono calls expired again,
 with the expiry check off, before it answers `AUTH_SESSION_EXPIRED`
 (`signatureVerifies`, `apps/api/auth/supabase.ts`).
+
+**Sessions (C58).** A session has no idle limit and an absolute limit of 12
+hours from the first sign-in, `SESSION_ABSOLUTE_SECONDS`
+(`core-records/src/identity/verified-subject.ts`), set there and nowhere else.
+The first sign-in is the `amr` first-factor time GoTrue stamps, which a refresh
+carries unchanged; never `iat`, which every refresh moves. A verified bearer
+one second past the limit, with no first-sign-in time, or with one more than a
+minute ahead of the server's clock, is `AUTH_SESSION_EXPIRED` 401
+(`pastAbsoluteLimit`). A session left alone for hours inside the 12 is still
+served.
+
+A session is GoTrue's `session_id` claim, read by the verifier only when it is
+a UUID (`VerifiedSubject.sessionId`), and kept by every refresh. A session the
+person has ended (signed out of, ended from another session, or ended by a
+factor change) is refused at login resolution from that commit,
+`AUTH_SESSION_EXPIRED` 401, before the second-factor check, whatever the
+token's own `exp` says. The ending holds in every business the login reaches,
+whichever route asked (`ops.ended_provider_sessions`, 0065; each business's
+own record is `ended_sessions`, 0057). Ending the other sessions, or a factor
+change, also ends every session of the login but the kept one in every
+business, seen here or not: a token whose first sign-in (`amr`) is at or
+before that ending is refused; a sign-in after it is served
+(`ops.ended_subject_sessions`, 0069, keyed by a SHA-256 digest of the
+subject). The provider's sign-out, which revokes
+the refresh tokens, comes after and cannot undo it. A sign-out this business refuses (it no
+longer admits the person) still ends the verified token's own session in
+every business and at the provider, and answers the refusal.
 
 The business is named by the path and verified by login resolution. A business
 the caller is not a member of and a business that does not exist both answer
@@ -433,6 +472,7 @@ no route written by hand.
 | `preset.plan`                      | `/preset/plan`                      | `recordTypeKey`, `presetKey`, `fields[]`                                                       | `FIELD_VALUE_INVALID` 422 for an absent or mistyped operand, `SCOPE_NOT_GRANTED` 403, `PRESET_FIELD_UNCLASSIFIED` 422, `PRESET_TYPE_UNKNOWN` 404, `PRESET_FIELD_UNPLACEABLE` 409, `PRESET_FIELD_DUPLICATE` 422                                                                                                                                                                                                                                                                                         |
 | `settings.set_four_eyes_threshold` | `/settings/set_four_eyes_threshold` | `operationId`, `value` (number or `null`), `expectedRevision?`                                 | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                                                                                                                                                |
 | `settings.set_client_sign_off`     | `/settings/set_client_sign_off`     | `operationId`, `value` (boolean), `expectedRevision?`                                          | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                                                                                                                                                |
+| `settings.set_money_step_up`       | `/settings/set_money_step_up`       | `operationId`, `value` (boolean), `expectedRevision?`                                          | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                                                                                                                                                |
 
 A settings `value` of any other type, including a string, an object or an
 array, is `FIELD_VALUE_INVALID` naming `value` before any write
@@ -930,6 +970,7 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `session.capabilities`             | `readCapabilities` (`reads/capabilities.ts`)                                              | served under a live delegation (`authorise`, `capabilitiesOf`)                                  |
 | `settings.set_four_eyes_threshold` | `setBusinessSetting` (`commands/settings-write.ts`)                                       | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `settings.set_client_sign_off`     | `setBusinessSetting` (`commands/settings-write.ts`)                                       | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `settings.set_money_step_up`       | `setBusinessSetting` (`commands/settings-write.ts`)                                       | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 
 "Served under a live delegation" means an agent call with no credential is
 refused `DELEGATION_EXCLUDES_OPERATION` (see "The agent's own entry point").
@@ -1107,7 +1148,7 @@ exactly the one task it was minted for.
 | Answer                          | Status | When                                                                                                                                                                                                                                                     |
 | ------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `AUTH_NO_AGENT_IDENTITY`        | 401    | the login is not an agent login in this business                                                                                                                                                                                                         |
-| `AUTH_SESSION_EXPIRED`          | 401    | the bearer's signature verifies and its `exp` has passed                                                                                                                                                                                                 |
+| `AUTH_SESSION_EXPIRED`          | 401    | the bearer's signature verifies and its `exp` has passed, or its session is past the 12-hour limit or was ended (C58)                                                                                                                                    |
 | `DELEGATION_NOT_LIVE`           | 401    | a presented credential that answers to no live delegation                                                                                                                                                                                                |
 | `DELEGATION_OUT_OF_PURPOSE`     | 403    | a sibling task, a collection or an action the purpose does not carry                                                                                                                                                                                     |
 | `DELEGATION_NARROWED`           | 403    | the purpose reaches the call and the person's live grants no longer cover it, or the delegation was revoked for `authority_lost`                                                                                                                         |
@@ -1261,7 +1302,7 @@ it, and the first holder again is `FOUR_EYES_REQUIRED`. A retry under the same
 ## Reads
 
 `task.read`, `task.board`, `task.queue`, `person.list`, `preset.plan`,
-`settings.read`, `session.capabilities`, `inbox.read`, `inbox.count` and
+`settings.read`, `session.capabilities`, `access.read`, `inbox.read`, `inbox.count` and
 `inbox.unattended` are declared in `COMMAND_SURFACE` with `kind: 'read'`. The boundary branches on that and calls the executor the
 composition root supplies:
 
@@ -1359,10 +1400,11 @@ case (g) carries the rows. The server declares the two answers as
 (`packages/core-wire/src/views.ts`), and the web imports that type
 rather than keeping a copy; the two are told apart by the key.
 
-| Read                   | Route                   | Body                     | Answer                                                                                       | Refusals it can answer                                                                                  |
-| ---------------------- | ----------------------- | ------------------------ | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `settings.read`        | `/settings/read`        | `{}`; it takes no fields | `{ ok: true, settings: [{ key, value, valueType, revision, updatedAt, updatedByActorId }] }` | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403                             |
-| `session.capabilities` | `/session/capabilities` | `{}`; it takes no fields | `{ ok: true, personId, businessKey, grants: [{ collection, action }] }`                      | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403, `AUTH_SESSION_EXPIRED` 401 |
+| Read                   | Route                   | Body                     | Answer                                                                                                                                                                                                                                                                                                                                                                                               | Refusals it can answer                                                                                  |
+| ---------------------- | ----------------------- | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `settings.read`        | `/settings/read`        | `{}`; it takes no fields | `{ ok: true, settings: [{ key, value, valueType, revision, updatedAt, updatedByActorId }] }`                                                                                                                                                                                                                                                                                                         | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403                             |
+| `session.capabilities` | `/session/capabilities` | `{}`; it takes no fields | `{ ok: true, personId, businessKey, grants: [{ collection, action }] }`                                                                                                                                                                                                                                                                                                                              | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403, `AUTH_SESSION_EXPIRED` 401 |
+| `access.read`          | `/access/read`          | `{}`; it takes no fields | `{ ok: true, team, clients, agents, clientRecords }` (`clientRecords`: every client `{ clientId, name }`): each person `{ personId, name, permissions: [{ collection, action, scope }], grants: [{ grantId, collection, action, scope }] }` (`grants`: their live grant rows in this business, each revocable by `access.revoke`), each agent its `person`, `purpose`, `expiresAt` and `permissions` | `SCOPE_NOT_GRANTED` 403 without `access:manage`, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403     |
 
 `settings.read` takes `read` on `settings` while the two settings commands take
 `manage` on the same collection. The asymmetry is deliberate. A setting is a
@@ -1458,8 +1500,8 @@ the audit row's `attempted` column and never to the response.
 
 **A read takes only its own identifier.** `task.read` takes `recordId` and
 `task.board` takes `board`; `task.queue`, `person.list`, `preset.plan`,
-`settings.read` and `session.capabilities` take none. Any other identifier
-field, a `recordId` on those five included, is `COMMAND_BODY_INVALID` 400 naming
+`settings.read`, `session.capabilities` and `access.read` take none. Any other
+identifier field, a `recordId` on those six included, is `COMMAND_BODY_INVALID` 400 naming
 it, audited, and the same answer for an own, a foreign and a fabricated id
 (the row's `identifiers` in `READ_CATALOGUE`, `reads/catalogue.ts`, checked in
 `serveRead` after the system fields, `reads/dispatch.ts`).
@@ -1514,3 +1556,389 @@ identity, a reused one, a stale revision, generic writes to protected fields, a
 spoofed system field, and a body and headers carrying an actor and a business
 that reach nothing. One line per case with the status and the code it observed;
 a case that cannot run yet prints `unrun` with its reason.
+
+## The second factor and the money step-up (C59)
+
+The sign-in adapter (`apps/api/auth/supabase.ts`) passes the provider's
+assurance through beside `sub`: the level (`aal`), and from `amr` the time of
+the session's first sign-in and of its second factor. A refresh carries the
+`amr` times unchanged, so the factor time is never renewed by one. A claim the
+adapter cannot read is the lowest level, `aal1` with no factor time.
+
+Login resolution refuses `AUTH_SECOND_FACTOR_REQUIRED` 401 when the person has
+a verified second factor and the sign-in is below `aal2`. That holds on every
+person route except the three below, which are how the sign-in gets its code.
+
+A command whose declared key is in the money set (every `billing` key,
+`offer:decide`, `mandate:manage`, `spend:decide`) is judged once, in
+`prepare.ts`, straight after its grant check: a team member needs a second
+factor verified in the last 60 minutes, a client a sign-in in the last 60
+minutes, or it is refused `STEP_UP_REQUIRED` 403. While the business setting
+`money_step_up_required` is `false` a live session is enough; only
+`settings:manage` switches it, through `settings.set_money_step_up`.
+
+A person's own factor has three routes on the person prefix only. Each is
+served only when the composition root passes a `factors` provider
+(`apps/api/auth/factors.ts`, GoTrue's MFA endpoints called with the person's own
+bearer). Each writes one audit event, applied or refused, named by the act.
+
+| Route                    | Body                   | Answer                                                                                             | Refusals                                                                                                                                                                       |
+| ------------------------ | ---------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `/account/factor/enrol`  | `{}`                   | `{ factorId, qrCode, secret, uri }`, shown once                                                    | `FRESH_SIGN_IN_REQUIRED` 403 (no password sign-in in the last 60 minutes), `FACTOR_ALREADY_ENROLLED` 409, `PROVIDER_ANSWER_INVALID` 502                                        |
+| `/account/factor/verify` | `{ code }`, six digits | `{ accessToken, refreshToken, expiresIn }` at `aal2`; completing an enrolment adds `otherSessions` | `COMMAND_BODY_INVALID` 400, `FACTOR_NOT_ENROLLED` 409, `SECOND_FACTOR_INVALID` 422 (recorded as the failed attempt), `SECOND_FACTOR_LOCKED` 429, `PROVIDER_ANSWER_INVALID` 502 |
+| `/account/factor/remove` | `{ code }`, six digits | `{ removed: true, otherSessions }`                                                                 | `COMMAND_BODY_INVALID` 400, `FACTOR_NOT_ENROLLED` 409, `SECOND_FACTOR_INVALID` 422, `SECOND_FACTOR_LOCKED` 429, `PROVIDER_ANSWER_INVALID` 502                                  |
+
+Five wrong codes in fifteen minutes, counted from the person's own refused
+attempts in the audit chain, answer `SECOND_FACTOR_LOCKED` 429 on `verify` and
+`remove` without asking the provider, so a caller holding only the password
+cannot walk the six digits. The check before a provider call writes an audit
+event only when it refuses; the act's own event is written after the call,
+beside the record it changes. GoTrue served under a path (`/auth/v1`) is called
+under that path. The record step locks the person's own row (`for no key
+update`), so two tabs enrolling at once queue: the later enrolment replaces the
+earlier unverified one, and one live factor remains.
+
+`PROVIDER_ANSWER_INVALID` names only the kind of fault (`malformed`,
+`oversized`, `slow`, `unreachable` or `refused`), never the provider's words.
+The authenticator secret is in the enrol answer and nowhere else: not a log,
+not an audit event, not the `second_factors` row.
+
+A factor change (the first good code completing an enrolment, or a removal)
+ends the person's other sessions (C58): here, in the change's own
+transaction, then at GoTrue with `POST /logout?scope=others` and the `aal2`
+session the code has just raised, the one kept. `otherSessions` is
+`{ ended, signedOutAtProvider }`. A later code on a verified factor is a
+step-up and ends nothing. A password change is made in the browser straight
+with GoTrue; the sign-in surface ends the other sessions after it with the
+route below.
+
+A person's own sessions have three more routes beside these, on the person
+prefix only, each with the body `{}` (anything else is `COMMAND_BODY_INVALID`
+400). The list is the distinct sessions this business has served the person
+in the last 12 hours, less the ended ones (GoTrue gives a person no list of
+their own); nobody else's is ever read.
+
+| Route                          | Answer                                                                                      | Served at                        | Audit event                   |
+| ------------------------------ | ------------------------------------------------------------------------------------------- | -------------------------------- | ----------------------------- |
+| `/account/sessions/list`       | `{ sessions: [{ sessionId, current, firstSeenAt, lastSeenAt }] }`, newest first, at most 50 | a full sign-in                   | none (a read of one's own)    |
+| `/account/sessions/end-others` | `{ ended, signedOutAtProvider }`                                                            | a full sign-in                   | `account.sessions_end_others` |
+| `/account/sessions/sign-out`   | `{ ended, signedOutAtProvider }`                                                            | any sign-in, before the code too | `account.sign_out`            |
+
+Ending is recorded first, with its audit event, so the ended sessions are
+refused from the commit. Then GoTrue's `POST /logout` is asked, with
+`scope=others` or `scope=local` and the person's own bearer. Only a 204 with an
+empty body counts as done; a 200, any body, a refusal, a redirect (never
+followed), an oversized or slow answer is `signedOutAtProvider: false`, the
+local end stands, and asking again is safe. The provider's words go nowhere.
+
+## The operations view and privacy incidents (C55)
+
+`operations.read` answers `{ ok, privacyIncidents, serviceHealth }` to a holder of
+`operations:read` (install default: the owner and administrators). It is
+never an agent's: on the agent prefix it is `DELEGATION_EXCLUDES_OPERATION` 403. Each incident carries its day-0 facts, its status and `assessBy`, 30 days
+after `foundAt` (the breach runbook's assessment limit), most recently found
+first, at most 200. The clock starts at `foundAt`, day 0, whenever the record
+was made. `overdue` is true while an incident is open past `assessBy`, judged
+on the database's clock (C81 breach drill). `breachRunbook` is what every
+incident record links to: the breach runbook published most recently, as
+`{ version, digest, publishedAt, body }`, or `null` until one is published.
+
+`privacy.record_incident` is the tracked action `privacy incident recorded`,
+under `privacy:manage` and never an agent's. Its body is
+`{ operationId, whatHappened, foundAt, foundBy, affected, informationKinds }`:
+text of 1 to 4000, 1 to 200 and 1 to 2000 characters, `foundAt` an ISO 8601
+time no later than the server's clock (with five minutes' drift), and one or
+more distinct kinds from `contact`, `identity`, `financial`, `health`,
+`credentials`, `client-files`, `other`. A bad field is `FIELD_VALUE_INVALID`
+422 naming the field alone; an undeclared one is `COMMAND_BODY_INVALID` 400.
+The answer's detail is `{ incidentId, assessBy }`. The envelope audits the act
+as a digest; the words are in `privacy_incidents` and nowhere else.
+
+`privacy.draft_breach_notices` (C81 breach drill) is a read under
+`privacy:manage`, never an agent's. It takes `{ incidentId, oaic, people,
+containment, steps }`: `oaic` a recipient, `people` 1 to 500 of them, each
+`{ name, address }` (1 to 200 and 1 to 500 characters, not blank), and
+`containment` and `steps` 1 to 4,000 characters. It fills the published breach
+runbook's "Template: notice to affected people" once for the OAIC (the runbook
+says its statement carries the same content) and once per person, and answers
+`{ ok, runbook: { version, digest }, notices }`, each notice `{ to: 'oaic' |
+'person', name, address, subject, body }`, the OAIC's first. The date is the
+day found, as the record holds it (UTC); the kinds are the incident's. It
+writes nothing beyond its one audit event, which carries no recipient, and
+sends nothing: the owner decides what is sent (owner line 54). A recipient or
+address missing is `FIELD_VALUE_INVALID` 422 naming `oaic` or `people`, another
+business's incident and a made-up one are `NOT_FOUND` 404, no published
+runbook is `BREACH_RUNBOOK_UNPUBLISHED` 409, and a runbook with no template, or
+one with a placeholder other than name, date, plain description, kinds,
+containment and steps, is `BREACH_TEMPLATE_UNFILLED` 409.
+
+**Service health (C34).** `serviceHealth` is the installation's watcher, error
+sink and, where switched on, tracing: `{ checkedAt, sources, services }`. It is
+read by the API only after the grant check lets the caller in, and outside the
+serving transaction, so a refused caller asks no source; a read made in-process
+(`executeRead`) carries none. Each source (`watcher`, `error-sink`, `tracing`)
+is `read`, `read-failure` with its fault by kind (`unconfigured`, `refused`,
+`malformed`, `oversized`, `slow`, `unreachable`), or `off`: tracing unset is
+off, never a failure; the watcher and the error sink are not optional, so unset
+is `read-failure` `unconfigured`. Each service a readable source reports is
+`healthy`, `service-failure`, `stale` (last seen more than 15 minutes ago,
+`HEALTH_STALE_SECONDS`, whatever it said then) or `never-observed`, with
+`lastObservedAt`. A source is shown whole or not at all: an answer that throws,
+takes over its time limit (3 seconds), or holds one bad entry (an empty or
+over-long name, a control character, a time that is no time or more than a
+minute ahead) is a read failure, and none of its services is shown. A client's
+own site (`scope: 'client-site'`) is that client's and never shown here. The
+source's own words go nowhere.
+
+The port is `HealthSource` (`reads/service-health.ts`). Tracing is Langfuse,
+`LANGFUSE_HOST`, read at `GET /api/public/health` with no credential
+(`apps/api/health/tracing.ts`): one destination, no redirect, a time and a size
+limit; `{ status: "OK" }` on a 2xx is healthy, a status word on a 5xx is a
+service failure, anything else a read failure. The watcher (UptimeRobot, C29-1)
+and the error sink (GlitchTip, C29-3) are their adapters, filled in at the same
+port when they land.
+
+Held until their parts land (each placed here as its owner's read, never a
+second list): unattended items (INB-1), security alerts (S0-2), the last tested
+restore (S0-3) and the error-sink link.
+
+## Legal documents (C81)
+
+Each document is a run of versions: `client-terms`, `privacy-policy` (with its
+collection notices), `data-handling` and `breach-runbook`. Three tracked
+actions, each under `privacy:manage` and never an agent's:
+
+- `legal.draft_version` (`legal document version drafted`) takes
+  `{ operationId, document, version, body }`: a version `major.minor` and 1 to
+  200,000 characters of words. Its detail is `{ versionId, digest }`, the
+  digest being the SHA-256 of the words as stored. A version a document already
+  has is `LEGAL_VERSION_EXISTS` 409: a change is a new version.
+- `legal.approve_version` (`legal document version approved`) takes
+  `{ operationId, versionId, digest }`. The digest is of the words the approver
+  read; other words are `LEGAL_DIGEST_MISMATCH` 409, and a second approval is
+  `LEGAL_ALREADY_APPROVED` 409.
+- `legal.publish_version` (`legal document published`) takes
+  `{ operationId, versionId }` and publishes only an approved version:
+  otherwise `LEGAL_NOT_APPROVED` 409, and a second time
+  `LEGAL_ALREADY_PUBLISHED` 409.
+
+A bad field is `FIELD_VALUE_INVALID` 422 naming the field alone. A version of
+another business and a made-up one are both `NOT_FOUND` 404.
+
+`GET /api/public/b/<businessKey>/legal/<document>` needs no sign-in. It answers
+the version of `client-terms`, `privacy-policy` or `data-handling` published
+most recently, as `{ document, version, body, digest, publishedAt }`. No such
+business, nothing published, the breach runbook and any other name all answer
+`{ code: 'NOT_FOUND' }` 404. The privacy policy's answer also carries
+`services`: the overseas-services register's rows in use when that version was
+drafted, each `{ service, receives, where, trainsOnIt, contract }`, in the
+register's order, and `dataClasses`: the data-class register's classes in use
+when it was drafted, each `{ dataClass, purpose, disclosures, retention,
+deletion }`, in the register's order.
+
+### The client record and grants on Settings ▸ Access (C32)
+
+`client.create` takes `{ operationId, name }` under `record:write`, never an
+agent's, and answers `{ clientId }`. `name` is 1 to 200 characters, trimmed; a
+name the business already has in any letter case is `CLIENT_NAME_TAKEN` 409. A
+client is never renamed or deleted here.
+
+`client.list` (`/client/list`, `{}`) answers `{ ok: true, clients: [{ clientId,
+name }] }`: the clients the caller's live grants reach, asked inside the
+query. A grant of any key over the whole business reaches every client; a grant
+over one client reaches that client and no other, and the answer never counts
+the rest. A caller holding no live grant is `SCOPE_NOT_GRANTED` 403; one whose
+grants reach no client (a client person on a share) is answered an empty list.
+Never an agent's.
+
+`access.grant` takes `{ operationId, holderId, collection, action, clientId? }`
+under `access:manage`, never an agent's, and answers `{ grantId }`. `holderId`
+is a person of the business with an active membership; `clientId` is a client
+of the business, or absent or null for the whole business. `collection:action`
+must be a key of the permission key catalogue
+(`packages/core-wire/src/permission-keys.ts`); the self-scoped `account`,
+`credential` and `preference` keys are never granted. A malformed or unknown
+field is `FIELD_VALUE_INVALID` 422 naming it; a person or client not of this
+business is `NOT_FOUND` 404 naming `holderId` or `clientId`. The same key and
+scope given again answers the live grant already held.
+
+`access.revoke` takes `{ operationId, grantId }` under `access:manage`, never
+an agent's, and answers `{ grantId, revokedAt, classifiedHolds }` as
+`grant.revoke` does, with the same authority-loss classification. A grant not
+live in this business is `NOT_FOUND` 404. The last business-wide
+`access:manage` of a person who can sign in is `ACCESS_LAST_MANAGER` 409, on
+this route and on `grant.revoke`.
+
+`task.set_party`'s `client` must name a client of this business: another
+business's or a made-up one is `NOT_FOUND` 404 naming `client`.
+
+### Ending a person's access (C58)
+
+`access.end` takes `{ operationId, holderId }` under `access:manage`, never an
+agent's: the tracked action `access ended (person: login, sessions, grants)`,
+audited. In one transaction, under the access lock, the person's membership
+and acting identity end, every live grant they hold and every delegation they
+gave are revoked with one authority-loss classification, and one access ending
+is written per login mapped to them. It answers `{ personId, grantsRevoked,
+delegationsRevoked, classifiedHolds, endingIds }`. A person with no active
+membership in this business, another business's included, is `NOT_FOUND` 404
+naming `holderId`; a malformed id is `FIELD_VALUE_INVALID` 422. Ending the last
+business-wide `access:manage` of a person who can sign in is
+`ACCESS_LAST_MANAGER` 409.
+
+From the commit the person's next call is `AUTH_NO_MEMBERSHIP` 403, whatever
+the sign-in provider has done. Each ending owes the provider two steps, never
+taken inside a transaction: end every session of the login, then deactivate
+the login. Both are a 100-year ban through GoTrue's admin API
+(`PUT /admin/users/<id>`), each done once the ban holds: GoTrue has no admin
+call that ends a user's sessions, and it refuses a banned user's every refresh
+and sign-in, so the ban is the session end (ORCH46). What access token is left
+runs out within the hour and is refused here from the commit. GoTrue keeps a
+banned user's sessions and refresh tokens, so an unban would revive them:
+restoring access is a new login, never an unban (ORCH46). A provider user is
+one person's across every business, while a login is one business's: while the
+subject still has a live login in another business (mapped, its access not
+ended there), both steps are stamped done with the reason `shared` and nothing
+is sent, so ending access here never ends it there; the business that ends it
+last bans (`loginLiveElsewhere`, on the owner's connection, answers yes or no). The calls carry the
+admin key, `SUPABASE_SERVICE_KEY` (hosted, the project's service key; with none
+set on a local stack, a five-minute `service_role` bearer signed with the local
+auth key, minted per call); with neither, nothing is sent and both steps stay
+owed. Sign-in never reads the key (`apps/api/server.ts`, `providerAdminKey`,
+`goTrueLogins`). Every answer is shaped as C59's are
+(`apps/api/auth/logins.ts`): one destination, no redirect, a time limit the
+answer cannot stretch, a size limit, a shape per call; anything else is a fault
+by its kind and the step stays owed. Where the server holds the provider key (the local server), the route tries
+the act's own endings as soon as it commits. Hosted, the Vercel function holds
+neither the key nor the owner login, and the endings loop (`pnpm endings`,
+`apps/endings`, on the environment's machine beside the forwarder) asks for
+every owed step each `ACCESS_ENDING_RETRY_SECONDS` (60): it reads business ids
+and the shared check on the owner login only, and settles business by
+business on the application login under each one's tenancy
+(`retryAccessEndings`). It refuses to start without `DATABASE_URL`,
+`DATABASE_ADMIN_URL`, `GOTRUE_URL` (https or loopback) and
+`SUPABASE_SERVICE_KEY`. A 30-second claim on the row stops two retries
+calling the provider at once, and a step done is stamped once and never asked
+again (`settleAccessEndings`, `commands/access-end.ts`).
+
+### The overseas-services register (C81, SP-25)
+
+`privacy.set_overseas_service` takes `{ operationId, service, receives, where,
+trainsOnIt, contract, toConfirm, inUse }`, every field each time, under
+`privacy:manage` and never an agent's. It sets the row of that service (its
+name matched in any letter case) and answers `{ serviceId }`; each change is
+its own audited operation. `service` is 1 to 120 characters, `receives` 1 to
+2,000, the other three 1 to 1,000; `toConfirm` and `inUse` are booleans. A bad
+field is `FIELD_VALUE_INVALID` 422 naming the field alone. A service no longer
+used is set `inUse: false` and kept.
+
+A privacy-policy draft takes the register's rows in use and their digest with
+it. Approving or publishing that version is `LEGAL_REGISTER_CHANGED` 409 once
+the register has changed since the draft (draft again), and
+`LEGAL_REGISTER_UNCONFIRMED` 409 while any of its rows is `toConfirm`. The
+other documents do not read the register.
+
+### The data-class register (C81)
+
+`privacy.set_data_class` takes `{ operationId, dataClass, purpose,
+disclosures, retention, deletion, inUse }`, every field each time, under
+`privacy:manage` and never an agent's. It sets the row of that class of
+personal information (its name matched in any letter case) and answers
+`{ dataClassId }`; each change is its own audited operation. `dataClass` is 1
+to 120 characters and the other four 1 to 2,000 each, all required, so a class
+missing its purpose, disclosures, retention or deletion is refused; `inUse` is
+a boolean. A bad field is `FIELD_VALUE_INVALID` 422 naming the field alone. A
+class no longer held is set `inUse: false` and kept.
+
+A privacy-policy draft takes the classes in use and their digest with it.
+Approving or publishing that version is `LEGAL_DATA_CLASSES_CHANGED` 409 once
+the classes have changed since the draft (draft again). The other documents do
+not read the classes. C62's retention table and the privacy-request workflows
+read the same rows through the records package (`readDataClasses`).
+
+## Agent credentials (API-2)
+
+Two tracked actions on the person prefix only, each under `credential:write`
+and never an agent's (an agent is refused `DELEGATION_EXCLUDES_OPERATION`):
+
+- `credential.issue` (`agent credential issued`) takes
+  `{ operationId, scope, expiresAt, purpose }` and issues a credential of the
+  caller's own. `scope` is 1 to 32 distinct `{ collection, action }` keys, each
+  held by the caller at business scope (otherwise `CREDENTIAL_SCOPE_WIDENS` 403) and never `decide`, `share` or `manage` (`CREDENTIAL_ACTION_EXCLUDED`
+  403). `expiresAt` is an ISO 8601 UTC time after now and at most 90 days out.
+  `purpose` is 1 to 200 characters. Its detail is
+  `{ credentialId, agentActorId, scope, expiresAt, credential }`.
+  `credential` is the secret, in this answer only; the register keeps it null.
+  The same operation replayed by the issuer answers the same secret while the
+  credential is live, and `credential: null` once it is revoked or expired.
+- `credential.revoke` (`agent credential revoked`) takes
+  `{ operationId, credentialId }`. The issuer revokes their own; anyone else
+  needs `access:manage` too. A credential of another business, a made-up one,
+  and another person's without `access:manage` are all `NOT_FOUND` 404; a
+  second revocation is `CREDENTIAL_ALREADY_REVOKED` 409. Its detail is
+  `{ credentialId }`.
+
+A bad field is `FIELD_VALUE_INVALID` 422 naming the field alone; no refusal,
+detail or audit event carries the purpose or the secret. Using a credential on
+the agent route waits on S0-6's bearer scheme.
+
+## The first-client gate (S0-5)
+
+An installation is made-up or real (`ops.installation`, migration 0058).
+Every command the catalogue classes `client-data` or `invitation` reads
+`public.first_client_readiness()` inside its own transaction, after
+authority and before the handler, on the person and agent routes. On a
+real-data installation with any gate item open it is refused `GATE_SHUT` 409,
+naming the open items, and writes nothing. A made-up-data installation, the
+test harness and staging included, runs them. An installation with no mode
+row refuses them too, naming `installation`, and one whose readiness function
+is gone fails them. Only a database from before 0058, with neither the
+function nor `ops.installation`, runs them, as 0058 provisions it made-up.
+
+The eight items are `ops.gate_items` rows, each with an `https` evidence link:
+`tested-backups`, `second-factor`, `legal-basics`, `privacy-act-statement`,
+`overseas-register`, `breach-runbook`, `security-pass`, `phone-alerts`. Three
+closing lines are rows too (migration 0064), each with the owner's one line
+(`statement`, at most 500 characters, no line breaks) as well as its link, and
+open until recorded like any item: `privacy-opt-in` (the link is the OAIC's
+public Privacy Opt-In Register page, where the entry is listed; a lodged form
+or a receipt is refused; the line says the published policy matches it),
+`cloudflare-rolled` (the link shows the old credential refused; the line
+records the new one in custody) and `training-line` (item 5's dated line that
+model training is off on both model accounts, carrying a real `YYYY-MM-DD`
+date, with its evidence link). The eight items carry no line. The table holds
+the same rules. The mode moves from made-up to real only while every item and
+line is done, and never back; the row cannot be deleted.
+
+Two commands move the gate (migration 0062), each a person's under
+`operations:manage` in the business that operates the installation
+(`ops.installation.operator_business_id`, set at provisioning), never an
+agent's or a delegation's; any other caller, and every caller while no business
+operates it, is refused `SCOPE_NOT_GRANTED` 403 and writes nothing:
+
+- `operations.record_gate_item` takes `{ operationId, item, evidence,
+statement? }`: one of the eight items or three closing lines, one `https`
+  link of at most 2000 characters with no spaces, and the owner's line on a
+  closing line only, each refused `FIELD_VALUE_INVALID` 422 naming the field. An item is
+  recorded once; a second record is refused `GATE_ITEM_ALREADY_RECORDED` 409
+  and the first evidence stays.
+- `operations.change_installation_mode` takes `{ operationId, mode: 'real' }`.
+  While any item is open it is refused `INSTALLATION_NOT_READY` 409 naming
+  them; `mode: 'made-up'` is refused `INSTALLATION_MODE_ONE_WAY` 409; an
+  installation already real answers `ok` and changes nothing.
+
+The application's role reads both tables; it may insert a gate item and update
+the mode alone, and nothing else, and it writes them only through these two
+commands.
+
+## A task's client is locked once it has content (S0-5)
+
+`task.set_party` changes a task's client only while the task is empty: its
+history (applied audit events about it) holds nothing beyond its creation and
+earlier client changes, and no row names it (a subtask naming it as its parent, a
+proposal, a planned run, an envelope, a lease, an alert). Otherwise it is
+refused `CLIENT_LOCKED` 409 and writes nothing, on the API and the command
+line alike. The check runs under the task's row lock, so a content write
+holding that lock lands wholly before it (the change is refused) or wholly
+after it (the write is stale against the change's revision and retried). A
+trashed task still answers `NOT_FOUND`.
