@@ -7,9 +7,9 @@
 // on a login that is a member of `ops_astro_forwarder` alone, and takes that
 // role in its own transaction, under one lock whichever forwarder runs. The
 // counts are the table's rows, never one process's memory. Each pass:
-// - drops rows older than the window uncounted and raises one
-//   `signals-dropped` alert for them, so a stopped forwarder leaves a bounded
-//   table once it runs again;
+// - drops rows older than the retention window (longer than every rule's)
+//   uncounted and raises one `signals-dropped` alert for them, so a stopped
+//   forwarder leaves a bounded table once it runs again;
 // - reads every row left, in order: sends each error rebuilt from its
 //   allowlist (`rebuiltError`) under an id fixed by its row, and counts the
 //   signals under the detector's own rules, each row's time the clock and its
@@ -29,8 +29,14 @@ import type { AlertKind, Where } from '../api/alerts/catalogue.ts';
 import { createDetector, RULES, type SecuritySignal } from '../api/alerts/detect.ts';
 import { alertEvent, rebuiltError, type Transport } from '../api/alerts/sink.ts';
 
-/** Rows older than this are dropped uncounted: the longest rule's window (export volume). */
-export const WINDOW_MS: number = 60 * 60_000;
+/**
+ * Rows older than this are dropped uncounted: the longest rule's window (export
+ * volume) and a quarter of an hour more. A pass clears each signal once it is past
+ * its rule's window, so only a forwarder that ran no pass in that quarter hour
+ * leaves a row for the sweep.
+ */
+export const WINDOW_MS: number =
+  Math.max(...Object.values(RULES).map((rule) => rule.windowMs)) + 15 * 60_000;
 const BATCH = 500;
 
 export interface ForwarderOptions {
