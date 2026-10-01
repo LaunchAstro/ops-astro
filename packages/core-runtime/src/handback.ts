@@ -50,6 +50,7 @@ import { acquire, type LockSet } from './locks.ts';
 import { only, RuntimeInvariantError } from './only.ts';
 import { AffectedSetChanged } from './rediscovery.ts';
 import { classifyUnderLocks, endLease, type Classification } from './recovery.ts';
+import { modelCallsOn } from './recovery/classifier.ts';
 import { recordDrop, type DropCause } from './recovery/drop.ts';
 import { roundsUsed, writeProposal } from './proposal-writer.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
@@ -418,7 +419,10 @@ interface Settled {
  * admits no marker in `handed_back`, so writing
  * `handed_back` over it would abort the transaction before the classifier
  * could run. A marked attempt is left to the classifier, which quarantines it
- * and keeps the full hold for the recorded reconciliation owner.
+ * and keeps the full hold for the recorded reconciliation owner. So is one
+ * whose hold has a model call sent and not settled (AW-01): the classifier
+ * holds it unknown, and its outcome is the person's to record (0014 records
+ * an outcome once).
  *
  * No reported cost, because R6 refused every other case. The classifier
  * decides, under the locks this transaction already holds, whether the hold
@@ -456,7 +460,8 @@ async function settle(
       [tx.businessId, found.run_id],
     );
   }
-  if (!attempt.marked && dropCause === undefined) {
+  const callOpen = (await modelCallsOn(tx, found.reservation_id)).open;
+  if (!attempt.marked && !callOpen && dropCause === undefined) {
     await tx.query(
       `update public.attempts set state = 'handed_back', outcome = $3
         where business_id = $1 and id = $2`,
