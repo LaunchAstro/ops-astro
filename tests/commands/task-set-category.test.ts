@@ -120,17 +120,13 @@ describe.skipIf(serverUrl === undefined)('MP-4-8 CS-4.16 task category', () => {
     expect(row?.category).toBe('website-edits');
   });
 
-  it('clears with null: the field is gone and the read says null', async () => {
+  it('reads null never labelled, and clears with null: the field is gone', async () => {
     const task = await fresh(alpha, writer, 'cleared');
+    expect(await readCategory(alpha, writer, task.recordId)).toBeNull();
     await setCategory(alpha, writer, task, 'seo');
     const answer = await setCategory(alpha, writer, await current(task), null);
     expect(outcomeOf(answer)).toStrictEqual({ applied: true });
     expect((await stored(task.recordId)).category).toBeNull();
-    expect(await readCategory(alpha, writer, task.recordId)).toBeNull();
-  });
-
-  it('a task never labelled reads null', async () => {
-    const task = await fresh(alpha, writer, 'unlabelled');
     expect(await readCategory(alpha, writer, task.recordId)).toBeNull();
   });
 });
@@ -199,6 +195,19 @@ describe.skipIf(serverUrl === undefined)('MP-4-8 CS-4.16 task category', () => {
     expect(outcomeOf(late)).toMatchObject({ code: 'VERSION_STALE' });
     expect((await stored(task.recordId)).category).toBe('branding');
   });
+
+  it('two writers at one revision: one applies, the other is refused stale', async () => {
+    const task = await fresh(alpha, writer, 'raced');
+    const answers = await Promise.all([
+      setCategory(alpha, writer, task, 'seo'),
+      setCategory(alpha, writer, task, 'content'),
+    ]);
+    const codes = answers.map((one) => outcomeOf(one)['code'] ?? 'applied');
+    expect(codes.toSorted()).toStrictEqual(['VERSION_STALE', 'applied']);
+    const won = codes[0] === 'applied' ? 'seo' : 'content';
+    const after = await stored(task.recordId);
+    expect([after.category, after.revision]).toStrictEqual([won, task.revision + 1]);
+  });
 });
 
 describe.skipIf(serverUrl === undefined)('MP-4-8 CS-4.16 task category', () => {
@@ -265,8 +274,7 @@ describe.skipIf(serverUrl === undefined)('MP-4-8 CS-4.16 task category', () => {
       const before = await stored(foreign.recordId);
       const answer = await setCategory(alpha, writer, await current(foreign), 'seo');
       expect(outcomeOf(answer)).toMatchObject({ code: 'NOT_FOUND' });
-      expect(JSON.stringify(answer)).not.toContain(CANARY);
-      expect(JSON.stringify(answer)).not.toContain('videography');
+      expect(JSON.stringify(answer)).not.toMatch(new RegExp(`${CANARY}|videography`, 'u'));
       expect(await stored(foreign.recordId)).toStrictEqual(before);
       expect(await readCategory(alpha, writer, foreign.recordId)).toBe('NOT_FOUND');
     });
