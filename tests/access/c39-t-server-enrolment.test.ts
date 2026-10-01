@@ -8,8 +8,8 @@
 // outside the deployment's businesses, is not found and asks nothing. Unset,
 // there is no such route. On with a setting missing, or any other value, the
 // server stops before it listens. The broker it builds catalogues the login
-// provider's three operations and nothing else, and custody sends the one PUT
-// and the one GET.
+// provider's two operations and nothing else, and custody sends the one POST
+// and the one GET, never a PUT.
 
 import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -149,7 +149,7 @@ it("C39-T enrolment settings: the login provider's origin is a bare https origin
   expect(enrolmentSettings({ ...enrolmentOn(), ENROLMENT: 'off' }).kind).toBe('off');
 });
 
-it("C39-T enrolment broker: it catalogues auth.create_user, auth.update_user and auth.read_user and nothing else, its custody sends the login provider no other PUT or GET, and the key stays out of this process's settings and environment", async () => {
+it("C39-T enrolment broker: it catalogues auth.create_user and auth.read_user and nothing else, its custody sends the login provider no PUT and no other GET, and the key stays out of this process's settings and environment", async () => {
   const settings = enrolmentSettings(enrolmentOn());
   if (settings.kind !== 'on') throw new Error(`enrolment settings: ${settings.kind}`);
   expect(settings.destination).toStrictEqual({
@@ -157,7 +157,6 @@ it("C39-T enrolment broker: it catalogues auth.create_user, auth.update_user and
     origin: e.users.origin,
     routes: [
       { method: 'POST', path: '/auth/v1/admin/users' },
-      { method: 'PUT', path: '/auth/v1/admin/users/*' },
       { method: 'GET', path: '/auth/v1/admin/users/*' },
     ],
   });
@@ -167,15 +166,15 @@ it("C39-T enrolment broker: it catalogues auth.create_user, auth.update_user and
     expect([...broker.operations.keys()].toSorted()).toStrictEqual([
       'auth.create_user',
       'auth.read_user',
-      'auth.update_user',
     ]);
     expect(broker.routes.map((route) => [route.provider, route.credentialRef])).toStrictEqual([
       ['supabase_auth', 'auth_key'],
-      ['supabase_auth_update', 'auth_key'],
       ['supabase_auth_read', 'auth_key'],
     ]);
     const asked = e.users.received.length;
-    const unrouted: readonly [Method, string][] = [
+    // A PUT is no method custody sends, the one user's path among them.
+    const unrouted: readonly [string, string][] = [
+      ['PUT', `/auth/v1/admin/users/${randomUUID()}`],
       ['PUT', '/auth/v1/admin/users'],
       ['PUT', '/auth/v1/admin/factors/one'],
       ['DELETE', `/auth/v1/admin/users/${randomUUID()}`],
@@ -183,10 +182,11 @@ it("C39-T enrolment broker: it catalogues auth.create_user, auth.update_user and
       ['GET', '/auth/v1/admin/factors/one'],
     ];
     for (const [method, path] of unrouted) {
-      const request = { method, path, body: '{}', timeoutMs: 600, maxResponseBytes: 1024 };
+      const request = { path, body: '{}', timeoutMs: 600, maxResponseBytes: 1024 };
       // oxlint-disable-next-line no-await-in-loop -- one request at a time
       const outcome = await broker.custody.dispatch('auth_key', {
         destination: 'auth',
+        method: method as Method,
         ...request,
       });
       expect(outcome.kind === 'answered' && outcome.outbound.ok, `${method} ${path}`).toBe(false);

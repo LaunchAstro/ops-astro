@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C39-T, custody's side of a login create and update: the login provider's
-// admin route makes a user with a POST on `/auth/v1/admin/users` and updates
-// one with a PUT on `/auth/v1/admin/users/<id>`. Custody sends a PUT only on a
-// route its destination lists, and a PUT route is only ever one `/*` segment
-// under a prefix, never an exact path (AW-13's routes, beside the trace
-// store's DELETE and GET). A destination that lists POST paths takes a POST on
-// those exact paths alone. Anything else is refused before a socket exists.
+// C39-T, custody's side of a login create: the login provider's admin route
+// makes a user with a POST on `/auth/v1/admin/users`, and would update one
+// with a PUT on `/auth/v1/admin/users/<id>`. Custody never sends a PUT: no
+// destination may list a PUT route, and a PUT on any path, the one user's
+// among them, is refused before a socket exists (AW-13's routes, beside the
+// trace store's DELETE and GET). A destination that lists POST paths takes a
+// POST on those exact paths alone.
 
 import { randomBytes } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -57,10 +57,7 @@ beforeAll(async () => {
     value: `key-${randomBytes(18).toString('hex')}`,
   };
   writeFileSync(credentialsFile, JSON.stringify([credential]), { mode: 0o600 });
-  const routes = [
-    { method: 'POST', path: USERS },
-    { method: 'PUT', path: `${USERS}/*` },
-  ];
+  const routes = [{ method: 'POST', path: USERS }];
   custody = await startCustody({
     credentialsFile,
     destinations: [{ key: 'users_target', origin, routes } as Destination],
@@ -76,26 +73,33 @@ afterAll(async () => {
   rmSync(folder, { recursive: true, force: true });
 });
 
-const put = async (path: string, method: 'POST' | 'PUT' = 'PUT'): Promise<unknown> =>
+const put = async (path: string, method = 'PUT'): Promise<unknown> =>
   await custody.dispatch('users_key', {
     destination: 'users_target',
     path,
-    method,
+    method: method as 'POST',
     body: '{}',
     timeoutMs: 2_000,
     maxResponseBytes: 4_096,
   });
 
-it('C39-T custody update route: a PUT is listed only as one segment under a prefix, never an exact path', () => {
-  expect(load(`${USERS}/*`)).toMatchObject({ ok: true });
-  for (const path of [USERS, `${USERS}/${USER_ID}`, '/auth/*/users/*', '/*', `${USERS}/*/*`]) {
+it('C39-T custody update route: a PUT is never listed, as one segment under a prefix or an exact path', () => {
+  for (const path of [
+    `${USERS}/*`,
+    USERS,
+    `${USERS}/${USER_ID}`,
+    '/auth/*/users/*',
+    '/*',
+    `${USERS}/*/*`,
+  ]) {
     expect(load(path), path).toMatchObject({ ok: false, code: 'DESTINATION_MALFORMED' });
   }
 });
 
-it('C39-T custody update route: a PUT goes only to one segment under its destination’s own PUT prefix', async () => {
+it('C39-T custody update route: custody sends no PUT, not even on the one user’s path under the login provider’s create', async () => {
   seen.length = 0;
   const refused = [
+    `${USERS}/${USER_ID}`,
     `/auth/v1/admin/other/${USER_ID}`,
     `/auth/v1/admin/users2/${USER_ID}`,
     `${USERS}/${USER_ID}/factors`,
@@ -114,11 +118,6 @@ it('C39-T custody update route: a PUT goes only to one segment under its destina
     });
   }
   expect(seen).toHaveLength(0);
-  expect(await put(`${USERS}/${USER_ID}`)).toMatchObject({
-    kind: 'answered',
-    outbound: { ok: true },
-  });
-  expect(seen).toStrictEqual([['PUT', `${USERS}/${USER_ID}`]]);
 });
 
 it('C39-T custody create route: a POST is listed only as an exact plain path', () => {
