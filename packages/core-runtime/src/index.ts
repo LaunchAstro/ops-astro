@@ -77,6 +77,8 @@ export {
   type DecideRequest,
   type DecisionKind,
 } from './decide.ts';
+// `gate.pending` asks who may decide a gate with decide's own checks (MP-6-1).
+export { assignedTo, escalatedDecider } from './escalation.ts';
 export {
   pickup,
   queue,
