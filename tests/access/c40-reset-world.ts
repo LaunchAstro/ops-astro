@@ -64,12 +64,19 @@ export const recoveryFor = (login: Login, hash: string = tokenHash(), otp = '305
 export const mailsTo = (address: string): readonly string[] =>
   w.provider.received.map((one) => one.body).filter((body) => body.includes(`"${address}"`));
 
-/** The provider's recover, counted: a custody stand-in answering every dispatch 200. */
-export function recoverCounted(): { broker: Broker; recovered: string[] } {
+/**
+ * The provider's recover, counted: a custody stand-in answering every dispatch
+ * 200, after `then` (the provider's own work, such as posting the hook) ends.
+ */
+export function recoverCounted(then: () => Promise<unknown> = async () => {}): {
+  broker: Broker;
+  recovered: string[];
+} {
   const recovered: string[] = [];
   const custody = {
     dispatch: async (_ref: string, request: { readonly path: string; readonly body: string }) => {
       recovered.push(`${request.path} ${request.body}`);
+      await then();
       return await Promise.resolve<CustodyOutcome>({
         kind: 'answered',
         started: true,

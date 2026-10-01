@@ -55,7 +55,8 @@ function grantsOn(
  * four columns alone (S0-2, 0047), and the lookup reads a business's id and key (G2, 0046).
  * Main's installation-wide tables, granted by column: the gate moves the installation's
  * mode (S0-5, 0059), ended sessions (C58, 0061, 0063), second factors and their codes
- * (C59, 0064, 0072), the forwarder's alert log (C55, 0069) and reset mail (C40, 0225).
+ * (C59, 0064, 0072), the forwarder's alert log (C55, 0069), reset mail (C40, 0225) and
+ * reset asks (C40, 0226, 0227).
  */
 const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: string }[] = [
   { from: '0059', line: 'ops_astro_app UPDATE ops.installation.mode' },
@@ -87,6 +88,7 @@ const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: strin
     ['source_digest', 'recorded_at'],
     ['source_digest'],
   ),
+  ...grantsOn('0227', 'ops.password_reset_asks', ['address_digest'], ['address_digest']),
   ...['business_id', 'id', 'revision'].map((column) => ({
     from: '0203',
     line: `${OCCURRENCE_ROLE} SELECT public.records.${column}`,

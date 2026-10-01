@@ -10,9 +10,10 @@
 // answer nor its time says whether an account exists. Asking mints a token
 // that voids the last mailed link, and spends the provider's mail and custody
 // budget, so the limits are counted first and a refused ask never reaches the
-// provider: the ask's source (`RESET_SOURCE_LIMIT`, 0226, refused asks
-// included) and the address's reset mail (`RESET_LIMIT`, 0225), in the last
-// hour.
+// provider: the asks from the ask's source (`RESET_SOURCE_LIMIT`, 0226) and
+// for its address (`RESET_LIMIT`, 0227), refused asks included, and the
+// address's reset mail (`RESET_LIMIT`, 0225), in the last hour. Each ask's
+// own transaction sweeps up to `RESET_SWEEP` asks older than the hour.
 //
 // **The mail** (`sendPasswordReset`), system work under the hook's verified
 // signature. The message's login is looked for in each of the deployment's
@@ -50,6 +51,8 @@ export const RESET_LIMIT = 3;
 export const RESET_WINDOW_SECONDS: number = 60 * 60;
 /** Reset asks per client address in `RESET_WINDOW_SECONDS`, refused ones included. */
 export const RESET_SOURCE_LIMIT = 10;
+/** Asks older than the window one ask deletes, at most (0227's policy admits no newer one). */
+const RESET_SWEEP = 100;
 
 /** An address as the provider keeps one: no space, one `@`, bounded. */
 const ADDRESS = /^[^@\s]{1,64}@[^@\s]{1,189}$/u;
@@ -65,26 +68,44 @@ export interface ResetAsk {
 /** The ask names no business: its rows (0225, 0226) are the installation's. */
 const NO_BUSINESS: BusinessId = '00000000-0000-0000-0000-000000000000';
 
-/** Whether an ask is within both limits; its own row is written, and committed, first. */
+/** Whether an ask is within its limits; its own row is written, and committed, first. */
 async function withinLimits(database: Database, source: string, address: string): Promise<boolean> {
-  // Committed before the count, so of asks racing from one source at most the
-  // limit see a count within it: the last one to commit counts every other.
+  // Committed before the count, so of asks racing from one source, or for one
+  // address, at most the limit see a count within it: the last one to commit
+  // counts every other. The same transaction sweeps a bounded few old asks.
   await database.withBusiness(NO_BUSINESS, async (tx) => {
-    await tx.query('insert into ops.password_reset_asks (source_digest) values ($1)', [source]);
+    await tx.query(
+      'insert into ops.password_reset_asks (source_digest, address_digest) values ($1, $2)',
+      [source, address],
+    );
+    await tx.query(
+      `delete from ops.password_reset_asks
+        where recorded_at < now() - make_interval(secs => $1)
+          and recorded_at <= coalesce((select recorded_at from ops.password_reset_asks
+                where recorded_at < now() - make_interval(secs => $1)
+                order by recorded_at offset $2 limit 1), 'infinity')`,
+      [RESET_WINDOW_SECONDS, RESET_SWEEP - 1],
+    );
   });
   const [counted] = await database.withBusiness(
     NO_BUSINESS,
     async (tx) =>
-      await tx.query<{ source: number; address: number }>(
+      await tx.query<{ source: number; asks: number; mails: number }>(
         `select (select count(*) from ops.password_reset_asks where source_digest = $1
                    and recorded_at > now() - make_interval(secs => $3))::int as source,
+                (select count(*) from ops.password_reset_asks where address_digest = $2
+                   and recorded_at > now() - make_interval(secs => $3))::int as asks,
                 (select count(*) from ops.password_reset_attempts where state = 'asked'
                    and address_digest = $2
-                   and recorded_at > now() - make_interval(secs => $3))::int as address`,
+                   and recorded_at > now() - make_interval(secs => $3))::int as mails`,
         [source, address, RESET_WINDOW_SECONDS],
       ),
   );
-  return (counted?.source ?? 0) <= RESET_SOURCE_LIMIT && (counted?.address ?? 0) < RESET_LIMIT;
+  return (
+    (counted?.source ?? 0) <= RESET_SOURCE_LIMIT &&
+    (counted?.asks ?? 0) <= RESET_LIMIT &&
+    (counted?.mails ?? 0) < RESET_LIMIT
+  );
 }
 
 /** Hand one address to the login provider; nothing is said back, whatever happened. */

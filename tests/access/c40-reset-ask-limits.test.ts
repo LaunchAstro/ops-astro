@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C40, the ask's limits: per address (the reset mail the address got in the
-// hour, 0225) and per source (the asks one client address made in the hour,
-// 0226), both counted in the database before the login provider is asked to
-// mint a token, so a refused ask never voids the last mailed link. The
-// provider's recover is a custody stand-in that counts each dispatch, over
-// C39-T's hook world.
+// C40, the ask's limits: per address (the asks for it and the reset mail it
+// got in the hour, 0227 and 0225) and per source (the asks one client address
+// made in the hour, 0226), counted in the database before the login provider
+// is asked to mint a token, so a refused ask never voids the last mailed link.
+// Asks older than the hour are swept, a bounded few per ask. The provider's
+// recover is a custody stand-in that counts each dispatch, over C39-T's hook
+// world.
 
 import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
@@ -13,11 +14,21 @@ import { describe, expect, it } from 'vitest';
 import { mountPasswordReset, PASSWORD_RESET_PATH } from '../../apps/api/password-set.ts';
 import {
   requestPasswordReset,
+  RESET_LIMIT,
   RESET_SOURCE_LIMIT,
 } from '../../packages/core-commands/src/index.ts';
 import type { Broker } from '../../packages/core-custody/src/index.ts';
 import { noDatabase, useInvitationWorld, w } from './c39-t-world.ts';
-import { digest, freshSource, loginIn, mailedOut, recoverCounted } from './c40-reset-world.ts';
+import { mountAuthHook, postAuth } from './c39-t-hook-world.ts';
+import {
+  digest,
+  freshSource,
+  loginIn,
+  mailedOut,
+  mailsTo,
+  recoverCounted,
+  recoveryFor,
+} from './c40-reset-world.ts';
 
 useInvitationWorld({ auth: true });
 
@@ -60,7 +71,8 @@ C40('C40 password reset, the ask: per source', () => {
     // A second source is served.
     await requestPasswordReset(w.db.app, broker, { address: addressNo(100), source: two });
     expect(recovered).toHaveLength(RESET_SOURCE_LIMIT + 1);
-    // The source is kept as a digest only, and no address with it.
+    // The source is kept as its digest, a key and not a secret (an unsalted
+    // digest of an IPv4 is found by trying them all), and no address with it.
     const kept = await w.db.admin.execute<{ row: string }>(
       'select to_jsonb(a)::text as row from ops.password_reset_asks a',
     );
@@ -68,6 +80,71 @@ C40('C40 password reset, the ask: per source', () => {
     expect(stored).toContain(digest(one));
     expect(stored).not.toContain(one);
     expect(stored).not.toContain('@example.test');
+  });
+});
+
+C40('C40 password reset, the ask: concurrent asks for one address', () => {
+  it('C40 reset per-address ask limit: concurrent asks reach the provider at most RESET_LIMIT times', async () => {
+    mountAuthHook();
+    w.provider.mode('accept');
+    const login = await loginIn([w.alpha]);
+    // The provider posts the hook for each recover after 50 ms, as it would.
+    const { broker, recovered } = recoverCounted(async () => {
+      await new Promise((resolve) => {
+        setTimeout(resolve, 50);
+      });
+      await postAuth(recoveryFor(login));
+    });
+    await Promise.all(
+      Array.from(
+        { length: RESET_LIMIT + 3 },
+        async () =>
+          await requestPasswordReset(w.db.app, broker, {
+            address: login.address,
+            source: freshSource(),
+          }),
+      ),
+    );
+    expect(recovered.length).toBeLessThanOrEqual(RESET_LIMIT);
+    // Every token the provider minted was mailed: no mailed link was voided by a refused one.
+    expect(mailsTo(login.address)).toHaveLength(recovered.length);
+  });
+});
+
+C40('C40 password reset, the ask: retention', () => {
+  it('C40 reset asks retention: an ask sweeps a bounded few asks older than the hour, no newer one', async () => {
+    const { broker } = recoverCounted();
+    const old = freshSource();
+    // The owner writes 150 asks from a month ago, the oldest there are, and one from a minute ago.
+    await w.db.admin.execute(
+      `insert into ops.password_reset_asks (source_digest, recorded_at)
+       select $1, now() - interval '30 days' - make_interval(secs => n) from generate_series(1, 150) n
+       union all select $1, now() - interval '1 minute'`,
+      [digest(old)],
+    );
+    const left = async (): Promise<readonly number[]> =>
+      (
+        await w.db.admin.execute<{ old: number; fresh: number }>(
+          `select count(*) filter (where recorded_at < now() - interval '1 hour')::int as old,
+                  count(*) filter (where recorded_at >= now() - interval '1 hour')::int as fresh
+             from ops.password_reset_asks where source_digest = $1`,
+          [digest(old)],
+        )
+      ).flatMap((row) => [row.old, row.fresh]);
+    await requestPasswordReset(w.db.app, broker, { address: addressNo(1), source: freshSource() });
+    expect(await left()).toEqual([50, 1]);
+    await requestPasswordReset(w.db.app, broker, { address: addressNo(2), source: freshSource() });
+    expect(await left()).toEqual([0, 1]);
+    // The application may delete only asks older than the window, whatever it asks.
+    const deleted = await w.db.app.withBusiness(
+      '00000000-0000-0000-0000-000000000000',
+      async (tx) =>
+        await tx.query('delete from ops.password_reset_asks where source_digest = $1 returning 1', [
+          digest(old),
+        ]),
+    );
+    expect(deleted).toEqual([]);
+    expect(await left()).toEqual([0, 1]);
   });
 });
 
@@ -113,5 +190,9 @@ C40('C40 password reset, the ask: no oracle when limited', () => {
     }
     expect(answers.size).toBe(1);
     expect([...answers][0]).toMatch(/^200 .* \{\}$/u);
+    // The asks run on after their answers: let them end before the world closes the database.
+    await new Promise((resolve) => {
+      setTimeout(resolve, 500);
+    });
   });
 });
