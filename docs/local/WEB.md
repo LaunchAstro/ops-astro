@@ -187,7 +187,16 @@ name, `tag:` and `due:today`, read back on the "Reading this as" line; a
 comment count scopes it to that task; the sort (due, task, priority with P1
 first) lasts the session until the preference store holds it (MP-2-11a). The
 priority cell yields under a 380px list (a container rule in
-`styles/6-slice.css`).
+`styles/6-slice.css`). A scope switch (MP-7-2, `TodoScopeSwitch.tsx`,
+`todo-scope.ts`) replaces the list with a teammate's (picked from
+`person.list`) or a client's (`task.todos` with `person` or `client`; the
+server filters), a client's waiting comments (that answer's tasks with
+messages owed, counted from the same rows) or a client's route family; each
+choice replaces the last and a new scope mounts a new read, so no row of the
+last is drawn. A door opens the panel already scoped through its `scope` prop.
+The clients are made-up behind `ClientSource` and drawn under the shared mock
+label until family B's client list (C32); a route family does not yet narrow
+the list (tasks carry no route family on this base).
 
 The dock task panel (`screens/task/Panel.tsx`, MP-4-8) is where a task is
 changed beside its page. A page door opens it (`useTaskPanel` in

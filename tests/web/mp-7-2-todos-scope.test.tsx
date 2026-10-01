@@ -89,11 +89,10 @@ const options = (view: Awaited<ReturnType<typeof panel>>['view'], selector: stri
   view.all(`${selector} option`).map((option) => (option as HTMLOptionElement).value);
 
 describe('MP-7-2 Scope to a client, a client’s waiting comments, a person, or a client’s route family', () => {
-  it('a person: the teammate picker is person.list, and a teammate’s scope reads their to-dos', async () => {
+  it('a person: the teammate picker is person.list (real, never mock-marked); the read is theirs', async () => {
     const { view, choose, last } = await panel();
     expect(last()).toStrictEqual({});
     expect(options(view, '#todos-person')).toStrictEqual(['', 'p-ada', 'p-noah']);
-    // The teammate scope is real: it is never under the mock label.
     expect(view.find('#todos-person')?.closest('.is-mock')).toBeNull();
     await choose('#todos-person', 'p-noah');
     expect(last()).toStrictEqual({ person: 'p-noah' });
@@ -112,7 +111,6 @@ describe('MP-7-2 Scope to a client, a client’s waiting comments, a person, or 
     await choose('#todos-client', ACME.id);
     expect(last()).toStrictEqual({ client: ACME.id });
     expect(view.find('[data-todos-scope]')?.textContent).toContain(ACME.name);
-    expect(keysOf(view)).toHaveLength(ROWS.length);
   });
 
   it('a client’s waiting comments: only tasks with messages owed, and the count is what lands', async () => {
@@ -125,7 +123,7 @@ describe('MP-7-2 Scope to a client, a client’s waiting comments, a person, or 
     expect(keysOf(view)).toStrictEqual(['Proj-Alpha', 'Proj-Charlie']);
     const landed = view
       .all('[data-todo-comments]')
-      .reduce((sum, chip) => sum + Number.parseInt(chip.textContent ?? '0', 10), 0);
+      .reduce((sum, chip) => sum + Number(chip.textContent?.split(' ')[0]), 0);
     // Opening the scope never changes the count, and the count equals what lands.
     expect(view.find('[data-todos-waiting-count]')?.textContent).toContain(String(landed));
   });

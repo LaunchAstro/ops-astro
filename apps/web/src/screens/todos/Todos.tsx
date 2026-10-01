@@ -4,7 +4,9 @@
 // open tasks assigned to the reader (`task.todos`), each a real task whose
 // name opens it in the dock task panel and whose tick completes it through
 // `task.complete`, the one completion transition. The list's logic (due
-// urgency, the typed scope, the sorts) is `todo-list.ts`.
+// urgency, the typed scope, the sorts) is `todo-list.ts`. Scoped (MP-7-2) to a
+// teammate or a client by the switch or by the door that opened it
+// (`todo-scope.ts`, `TodoScopeSwitch.tsx`).
 //
 // **Reading writes nothing.** Search, the today scope, the comment-count
 // scope and the sort are view state and send nothing; only the tick writes.
@@ -24,7 +26,18 @@ import { todayOn } from '../task/due-dates.ts';
 import { readingOf, scopeOf, scoped, sorted, type SortKey } from './todo-list.ts';
 import { TodoRow, type TodoRowProps } from './TodoRow.tsx';
 import { TodoTools } from './TodoTools.tsx';
-import type { TodoScope } from './todo-scope.ts';
+import { TodoScopeSwitch } from './TodoScopeSwitch.tsx';
+import {
+  MINE,
+  MOCK_CLIENTS,
+  bodyOf,
+  narrowed,
+  readKeyOf,
+  waitingOf,
+  wordsOf,
+  type ClientSource,
+  type TodoScope,
+} from './todo-scope.ts';
 
 export interface TodosScreenProps {
   readonly client: OperationsClient;
@@ -35,23 +48,58 @@ export interface TodosScreenProps {
   readonly changes?: number;
   /** The clock the business day is read on; the real one unless a test fixes it. */
   readonly now?: () => Date;
-  /** The scope a door opens the panel with (MP-7-2); the reader's own list when absent. */
+  /**
+   * The scope a door opens the panel with (MP-7-2): the seam the Team and
+   * Clients panels call. The reader's own list when absent.
+   */
   readonly scope?: TodoScope;
+  /** The clients the scope offers; made-up until family B's list (C32). */
+  readonly clients?: ClientSource;
 }
 
 export function TodosScreen(props: TodosScreenProps): ReactElement {
-  const { client } = props;
+  const [scope, setScope] = useState<TodoScope>(props.scope ?? MINE);
+  return (
+    <section className="todos stack" aria-label={wordsOf(scope) ?? 'My to-dos'}>
+      <TodoScopeSwitch
+        client={props.client}
+        grantKey={props.grantKey}
+        scope={scope}
+        onScope={setScope}
+        clients={props.clients ?? MOCK_CLIENTS}
+      />
+      <ScopedTodos key={readKeyOf(scope)} {...props} scope={scope} />
+    </section>
+  );
+}
+
+/** One scope's read: a new scope mounts a new one, so no row of the last is ever drawn. */
+function ScopedTodos(props: TodosScreenProps & { readonly scope: TodoScope }): ReactElement {
+  const { client, scope } = props;
   const { state, reload } = useRead<TaskTodosResult>({
     grantKey: props.grantKey,
-    run: () => client.read<TaskTodosResult>('task.todos', {}),
+    run: () => client.read<TaskTodosResult>('task.todos', bodyOf(scope)),
     deps: [props.changes ?? 0],
   });
   return (
-    <section className="todos stack" aria-label="My to-dos">
-      <RecordState state={state} subject="to-dos" onRetry={reload}>
-        {(value) => <TodoList {...props} todos={value.todos} reload={reload} />}
-      </RecordState>
-    </section>
+    <RecordState state={state} subject="to-dos" onRetry={reload}>
+      {(value) => (
+        <>
+          <WaitingCount scope={scope} waiting={waitingOf(value.todos)} />
+          <TodoList {...props} todos={narrowed(value.todos, scope)} reload={reload} />
+        </>
+      )}
+    </RecordState>
+  );
+}
+
+/** A client's messages owed a reply, from the list's own read; absent at zero. */
+function WaitingCount(props: { readonly scope: TodoScope; readonly waiting: number }) {
+  if (props.scope.kind !== 'client' || props.waiting === 0) return null;
+  return (
+    <p className="card__sub" data-todos-waiting-count>
+      {props.waiting} {props.waiting === 1 ? 'message' : 'messages'} waiting on us
+    </p>
   );
 }
 
