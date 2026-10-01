@@ -78,10 +78,11 @@ describe('the surface as a table', () => {
     // and `privacy` are C55's view and its incident record, and `legal` is C81's
     // documents, asked of `privacy`. `credential` is API-2's agent credential.
     // `time` is MP-4-6's: a person's time entries, which are rows beside a task.
-    // `tag` is MP-4-11's: the business's tag vocabulary.
+    // `tag` is MP-4-11's: the business's tag vocabulary. `chat` is C71-D's
+    // team conversations.
     expect(
       paths.every((path) =>
-        /^\/(?:task|team|person|preset|settings|session|grant|delegation|budget|time|tag|preference|access|operations|privacy|legal|credential|client|inbox|notifications)\/[a-z_]+$/u.test(
+        /^\/(?:task|team|person|preset|settings|session|grant|delegation|budget|time|tag|preference|access|operations|privacy|legal|credential|client|inbox|notifications|chat)\/[a-z_]+$/u.test(
           path,
         ),
       ),
@@ -92,6 +93,8 @@ describe('the surface as a table', () => {
 /** The reads the surface declares, sorted. */
 const DECLARED_READS = [
   'access.read',
+  'chat.conversations',
+  'chat.messages',
   'client.list',
   'inbox.count',
   'inbox.read',
@@ -117,7 +120,7 @@ const DECLARED_READS = [
 ];
 
 describe('the surface as a table', () => {
-  it('declares the twenty-three reads as reads, and everything else as a write', () => {
+  it('declares the twenty-five reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual(DECLARED_READS);
     for (const command of COMMAND_SURFACE) {
       expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));

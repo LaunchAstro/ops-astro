@@ -133,6 +133,8 @@ export type {
   TaskTimeView,
   TimeEntryView,
 } from './views.ts';
+// the team conversation reads' answers (C71-D)
+export type * from './views-chat.ts';
 // the command catalogue and its parity check (API-1)
 export * from './catalogue.ts';
 // each command's data effects and its class, read by the first-client gate (S0-5)

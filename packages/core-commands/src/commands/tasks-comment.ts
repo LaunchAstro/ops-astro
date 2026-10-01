@@ -230,6 +230,20 @@ async function dispatchedToAuthor(
 }
 
 /**
+ * A comment's body, or its refusal: words in it, and storable. Shared by every
+ * comment writer, a team conversation's message (C71) among them.
+ */
+export function commentBodyOf(body: unknown): string | HandlerOutcome {
+  if (typeof body !== 'string' || body.trim() === '') {
+    return refused(refuseCommand('FIELD_VALUE_INVALID', ['body'], BODY_FIXES));
+  }
+  // The person path refuses this at the door (`prepare.ts`); the agent entry
+  // does not pass that door, and reaches here. Past this line, Postgres would
+  // raise on a NUL and the driver would write an unpaired surrogate as U+FFFD.
+  return storableText(body) ? body : refused(refuseUnstorable(['body']));
+}
+
+/**
  * The comment itself, shared by the person path above and the agent path. It
  * validates the body, the audience and the type, and commits the comment with
  * its own identity, which is the answer's `commentId`.
@@ -261,13 +275,8 @@ export async function writeTaskComment(
     );
   }
 
-  if (typeof body !== 'string' || body.trim() === '') {
-    return refused(refuseCommand('FIELD_VALUE_INVALID', ['body'], BODY_FIXES));
-  }
-  // The person path refuses this at the door (`prepare.ts`); the agent entry
-  // does not pass that door, and reaches here. Past this line, Postgres would
-  // raise on a NUL and the driver would write an unpaired surrogate as U+FFFD.
-  if (!storableText(body)) return refused(refuseUnstorable(['body']));
+  const words = commentBodyOf(body);
+  if (typeof words !== 'string') return words;
   if (typeof audience !== 'string' || !AUDIENCES.has(audience)) {
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['audience'], AUDIENCE_FIXES));
   }
@@ -304,7 +313,7 @@ export async function writeTaskComment(
     authorActorId: on.authorActorId,
     commentType: (commentType as CommentType | undefined) ?? DEFAULT_TYPE,
     audience: audience as CommentAudience,
-    body,
+    body: words,
     source: on.entryPoint,
     parentId: parent,
   });

@@ -28,6 +28,8 @@ import type { PresetField } from '../../../core-records/src/index.ts';
 import type { BreachNoticeOperands } from './operations.ts';
 import type {
   AccessReadResult,
+  ChatConversationsResult,
+  ChatMessagesResult,
   BreachNoticesResult,
   ClientListResult,
   CapabilitiesResult,
@@ -155,6 +157,10 @@ export interface ReadOperands {
   readonly 'inbox.count': NoOperands;
   /** The business's items no path reaches, for `operations:read` (INB-1e). */
   readonly 'inbox.unattended': NoOperands;
+  /** The reader's team conversations, each with its unread (C71-D). */
+  readonly 'chat.conversations': NoOperands;
+  /** One conversation's messages, the reader's own member row the filter. */
+  readonly 'chat.messages': { readonly conversationId: string };
 }
 
 /** A read about the business as a whole, which takes nothing. */
@@ -194,4 +200,6 @@ export type ReadResult =
   | BreachNoticesResult
   | InboxReadResult
   | InboxCountResult
-  | { readonly ok: true; readonly unattended: readonly UnattendedView[] };
+  | { readonly ok: true; readonly unattended: readonly UnattendedView[] }
+  | ChatConversationsResult
+  | ChatMessagesResult;
