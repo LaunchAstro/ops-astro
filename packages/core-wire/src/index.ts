@@ -48,6 +48,7 @@ export type {
   AccessGrant,
   AccessPermission,
   AccessPerson,
+  AccessPreview,
   AccessReadResult,
   AttemptView,
   BreachNoticeDraft,

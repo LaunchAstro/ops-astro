@@ -126,3 +126,33 @@ it('C58 cookie lifetime: a token one second past the limit is given no cookie', 
   expect(await answer.json()).toMatchObject({ refused: true, code: 'AUTH_SESSION_EXPIRED' });
   expect(answer.headers.get('set-cookie')).toBeNull();
 });
+
+/** A token whose session holds a first sign-in and a later re-sign-in, both in `amr`. */
+async function reSignedIn(first: number, later: number): Promise<string> {
+  return await signBearer({
+    sub: 'mia',
+    aud: 'authenticated',
+    iss: ISSUER,
+    role: 'authenticated',
+    iat: NOW,
+    exp: NOW + 600,
+    amr: [
+      { method: 'password', timestamp: first },
+      { method: 'otp', timestamp: later },
+    ],
+  });
+}
+
+it('C58 absolute limit: a later re-sign-in in the same session does not extend its 12 hours', async () => {
+  const { api, executeRead } = build();
+
+  // First signed in 12 hours and a second ago, signed in again a minute ago.
+  const past = await asTab(api, await reSignedIn(NOW - SESSION_ABSOLUTE_SECONDS - 1, NOW - 60));
+  expect(past.status).toBe(401);
+  expect(await past.json()).toMatchObject({ refused: true, code: 'AUTH_SESSION_EXPIRED' });
+  expect(executeRead).not.toHaveBeenCalled();
+
+  // Inside the limit, the cookie lives what is left from the first sign-in.
+  const cookie = cookieOf(await trade(api, await reSignedIn(NOW - 3 * 3600, NOW - 60)));
+  expect(cookie.attributes).toContain(`max-age=${String(SESSION_ABSOLUTE_SECONDS - 3 * 3600)}`);
+});

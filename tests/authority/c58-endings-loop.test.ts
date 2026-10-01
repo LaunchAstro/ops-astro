@@ -10,6 +10,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
+import { main as endingsLoop } from '../../apps/endings/loop.ts';
 import { endingsSettings, retryAccessEndings } from '../../apps/endings/pass.ts';
 import { composeApi } from '../../apps/api/server.ts';
 import type { AdminConnection } from '../../packages/core-records/src/index.ts';
@@ -130,5 +131,10 @@ describe('C58 endings loop: its settings', () => {
     expect(answer).toMatchObject({ ok: false });
     expect(JSON.stringify(answer)).toContain('GOTRUE_URL');
     expect(JSON.stringify(answer)).not.toContain('loop-canary-1a');
+  });
+
+  it('C58 endings loop: a single pass that fails exits non-zero, so a scheduler sees the backlog', async () => {
+    // Port 1 refuses: the pass cannot read what is owed and settles nothing.
+    expect(await endingsLoop(['--once'], settings)).not.toBe(0);
   });
 });

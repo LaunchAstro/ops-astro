@@ -35,6 +35,7 @@ type Refusal = CommandRefusal<IdentityRefusalCode>;
 const refuse = (code: IdentityRefusalCode, fixes: readonly string[]): Refusal =>
   refuseCommand(code, [], fixes);
 import { recordAuthenticationAttempt } from './authentication-attempts.ts';
+import { loginHasVerifiedFactor } from './second-factor.ts';
 import { NO_ASSURANCE, type Assurance, type VerifiedSubject } from './verified-subject.ts';
 
 export type { VerifiedSubject } from './verified-subject.ts';
@@ -75,6 +76,8 @@ interface ResolutionRow {
   readonly actor_id: string | null;
   /** 'true' once the person has a verified second factor; null before 0049. */
   readonly second_factor_verified: string | null;
+  /** Whether the login's factors are kept by subject (0064), so every business reads them. */
+  readonly by_subject: boolean;
 }
 
 export const NO_MEMBERSHIP_FIXES = [
@@ -103,7 +106,8 @@ const RESOLUTION = `
          a.id as actor_id,
          -- Read through the row's json so this one query serves a database
          -- from before 0049, which has no such column and so no factor.
-         to_jsonb(p) ->> 'second_factor_verified' as second_factor_verified
+         to_jsonb(p) ->> 'second_factor_verified' as second_factor_verified,
+         to_regclass('ops.second_factor_subjects') is not null as by_subject
     from public.logins l
     left join public.person_logins pl
       on pl.business_id = l.business_id and pl.login_id = l.id and pl.active
@@ -163,12 +167,17 @@ export async function standingOf(
     return refuse('AUTH_SESSION_EXPIRED', ENDED_FIXES);
   }
 
-  // After the person is known and active, because only a person has a factor,
-  // and before anything is served: a sign-in that stopped at the password is
-  // not yet a sign-in for someone who enrolled a second factor (C59, LF-4).
+  // After the person is known and active, and before anything is served: a
+  // sign-in that stopped at the password is not yet a sign-in for a login
+  // that verified a second factor, in any business (C59, LF-4).
   const assurance = presented.assurance ?? NO_ASSURANCE;
-  if (rule === 'required' && stoppedAtPassword(assurance, found)) {
-    return refuse('AUTH_SECOND_FACTOR_REQUIRED', SECOND_FACTOR_FIXES);
+  const short = assurance.level !== 'aal2';
+  if (rule === 'required' && short && (await factorHeld(tx, presented.subject, found))) {
+    return await recordRefusal(
+      tx,
+      presented,
+      refuse('AUTH_SECOND_FACTOR_REQUIRED', SECOND_FACTOR_FIXES),
+    );
   }
 
   return {
@@ -181,9 +190,10 @@ export async function standingOf(
   };
 }
 
-/** A sign-in short of `aal2` for a person whose second factor is verified (C59, LF-4). */
-function stoppedAtPassword(assurance: Assurance, found: ResolutionRow): boolean {
-  return assurance.level !== 'aal2' && found.second_factor_verified === 'true';
+/** A factor verified through this business (the mirror) or, from 0064, any (C59, LF-4). */
+async function factorHeld(tx: TenantQuery, subject: string, found: ResolutionRow) {
+  if (found.second_factor_verified === 'true') return true;
+  return found.by_subject && (await loginHasVerifiedFactor(tx, subject));
 }
 
 /**

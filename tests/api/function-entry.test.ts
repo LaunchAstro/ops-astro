@@ -58,6 +58,7 @@ describe('S0-6 the function entry answers only its own host', () => {
   hostCase();
   settingsCase();
   alertSettingsCase();
+  recoveryScopeCase();
   adminCase();
 });
 
@@ -140,7 +141,7 @@ function settingsCase() {
 function alertSettingsCase() {
   it('appends alerts only under a well-formed ALERT_SCOPE_KEY and OPS_ENVIRONMENT, naming the setting', () => {
     const key = randomBytes(32).toString('hex');
-    const staging = { ...unreachable, OPS_ENVIRONMENT: 'staging' };
+    const staging = { ...unreachable, OPS_ENVIRONMENT: 'staging', RECOVERY_BUSINESS_KEYS: 'none' };
     expect(() => createFunctionHandler({ ...staging, ALERT_SCOPE_KEY: key })).not.toThrow();
     const refused: readonly [Settings, string][] = [
       [staging, 'ALERT_SCOPE_KEY'],
@@ -155,6 +156,20 @@ function alertSettingsCase() {
       expect(start, name).toThrow(name);
       expect(start).not.toThrow(key.slice(2, 20));
     }
+  });
+}
+
+// #287 A8: a named environment's function is its recovery's one owner, so it
+// names its businesses or `none`; only the local world may leave it out.
+function recoveryScopeCase() {
+  it('a hosted function in a named environment refuses to start without RECOVERY_BUSINESS_KEYS', () => {
+    const named = { ...unreachable, OPS_ENVIRONMENT: 'staging', ALERT_SCOPE_KEY: 'ab'.repeat(32) };
+    for (const value of [undefined, '']) {
+      const start = () => createFunctionHandler({ ...named, RECOVERY_BUSINESS_KEYS: value });
+      expect(start, String(value)).toThrow('RECOVERY_BUSINESS_KEYS');
+    }
+    expect(() => createFunctionHandler({ ...named, RECOVERY_BUSINESS_KEYS: 'none' })).not.toThrow();
+    expect(() => createFunctionHandler(unreachable)).not.toThrow();
   });
 }
 
