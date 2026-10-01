@@ -190,5 +190,9 @@ C40('C40 password reset, the ask: no oracle when limited', () => {
     }
     expect(answers.size).toBe(1);
     expect([...answers][0]).toMatch(/^200 .* \{\}$/u);
+    // The asks run on after their answers: let them end before the world closes the database.
+    await new Promise((resolve) => {
+      setTimeout(resolve, 500);
+    });
   });
 });
