@@ -1573,7 +1573,7 @@ Login resolution refuses `AUTH_SECOND_FACTOR_REQUIRED` 401 when the sign-in
 login has a verified second factor and the sign-in is below `aal2`. The factor
 is the login's: verified through one business, it is required in every
 business the login reaches, and removing it clears it in every one
-(`ops.second_factor_subjects`, 0083, keyed by SHA-256 digests of the subject
+(`ops.second_factor_subjects`, 0064, keyed by SHA-256 digests of the subject
 and the provider's factor id). That holds on every person route except the
 three below, which are how the sign-in gets its code.
 

@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0083 a verified second factor holds in every business (C59). The provider
+-- 0064 a verified second factor holds in every business (C59). The provider
 -- holds one set of factors per sign-in login, so a factor verified through
 -- one business is the login's factor in every business it reaches.
 --

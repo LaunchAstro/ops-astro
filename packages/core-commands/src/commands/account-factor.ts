@@ -225,7 +225,7 @@ export async function removeSecondFactor(
   };
 }
 
-/** The caller's factor, and the login's subject that holds it in every business (0083). */
+/** The caller's factor, and the login's subject that holds it in every business (0064). */
 const ownFactor = (caller: FactorCaller, session: Session, factorId: string) => ({
   personId: session.personId,
   factorId,

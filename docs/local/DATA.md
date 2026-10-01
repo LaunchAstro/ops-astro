@@ -504,7 +504,7 @@ never written here. Whether a person has a verified factor is mirrored onto
 query it already makes and refuses a sign-in without the second factor. It
 reads the column through the row's json, so on a database from before 0049,
 which has no such column, the answer is no factor. The same writers record
-the verification and the removal by subject for every business (0083, below).
+the verification and the removal by subject for every business (0064, below).
 
 ## Privacy incidents (0050, C55)
 
@@ -584,7 +584,7 @@ the kept one and whose first sign-in is at or before the ending. The
 application may insert the digest and the kept session and read the three
 columns; nothing changes or deletes a row.
 
-## Second factors by subject (0083, C59)
+## Second factors by subject (0064, C59)
 
 `ops.second_factor_subjects` holds one row per second factor verified or
 removed through any business: a SHA-256 digest of the login's subject, one of
@@ -592,7 +592,7 @@ the provider's factor id, and `verified` or `removed`. Installation-wide, no
 business, person or reason. Login resolution refuses a sign-in below `aal2`
 in every business the login reaches while one of its factors is verified and
 not removed; a removed factor is never verified again, so the rows need no
-order. Before 0083 the person's mirror alone answers. The application may
+order. Before 0064 the person's mirror alone answers. The application may
 insert and read the three columns; nothing changes or deletes a row.
 
 ## Overseas-services register (0052, C81)

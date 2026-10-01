@@ -9,7 +9,7 @@
 // because login resolution asks it on every call and reads it inside the one
 // query it already makes (`login-resolution.ts`). The factor is the login's,
 // not the business's, so a verification and a removal are also written
-// installation-wide by subject (0083), where resolution in every business the
+// installation-wide by subject (0064), where resolution in every business the
 // login reaches finds them. Every function takes the serving transaction, so
 // the record and the audit event of the act that caused it commit together.
 
@@ -104,7 +104,7 @@ interface FactorOfLogin {
 const DIGEST = (text: string) => `encode(sha256(convert_to(${text}, 'UTF8')), 'hex')`;
 
 /**
- * The factor's new state, by subject, for every business (0083): `$1` the
+ * The factor's new state, by subject, for every business (0064): `$1` the
  * subject, `changed` the factor rows the statement moved, which it answers.
  * A verification a step-up repeats is written once.
  */
@@ -148,7 +148,7 @@ export async function recordFactorRemoved(tx: TenantQuery, factor: FactorOfLogin
 
 /**
  * Whether the login has a factor verified, and not removed, through any
- * business (0083). A removed factor is never verified again, so no order.
+ * business (0064). A removed factor is never verified again, so no order.
  */
 export async function loginHasVerifiedFactor(tx: TenantQuery, subject: string): Promise<boolean> {
   const rows = await tx.query<{ readonly held: boolean }>(

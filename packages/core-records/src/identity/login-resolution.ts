@@ -76,7 +76,7 @@ interface ResolutionRow {
   readonly actor_id: string | null;
   /** 'true' once the person has a verified second factor; null before 0049. */
   readonly second_factor_verified: string | null;
-  /** Whether the login's factors are kept by subject (0083), so every business reads them. */
+  /** Whether the login's factors are kept by subject (0064), so every business reads them. */
   readonly by_subject: boolean;
 }
 
@@ -182,7 +182,7 @@ export async function resolveLogin(
   return session;
 }
 
-/** A factor verified through this business (the mirror) or, from 0083, any (C59, LF-4). */
+/** A factor verified through this business (the mirror) or, from 0064, any (C59, LF-4). */
 async function factorHeld(tx: TenantQuery, subject: string, found: ResolutionRow) {
   if (found.second_factor_verified === 'true') return true;
   return found.by_subject && (await loginHasVerifiedFactor(tx, subject));
