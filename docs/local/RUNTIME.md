@@ -935,7 +935,9 @@ read the row, never rewrite it, and row security keeps it to its business. A
 trigger, after the row so row security answers another business first, checks
 the version and the lease's run are both on the named lineage, and the version
 is newer than the one the lease worked under: a handback cannot mark another
-lineage's version, and no lease marks its own plan. Only the lease's own work
+lineage's version, and no lease marks its own plan. Since 0218 it also checks
+the lease's holder proposed the version, so a direct insert cannot mark a
+person's version, or another actor's, as an agent's output. Only the lease's own work
 is marked: the handback marks the successor it has just written, and `propose`
 an agent's revision only when the lease's holder proposed it, so a person's
 newer version on the agent's lineage is never marked.

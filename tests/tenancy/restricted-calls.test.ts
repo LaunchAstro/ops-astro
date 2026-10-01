@@ -194,11 +194,11 @@ const UNREACHED: Readonly<Record<string, string>> = {
        left join public.gates g on g.business_id = d.business_id and g.id = d.gate_id
      returning 1`,
   // AW-08: the mark rides on a lease the journey made and a version newer than
-  // its work on its run's lineage (0213's trigger), which the owner writes
-  // beside it, superseded, since the journey hands nothing back for review. A
+  // its work on its run's lineage, proposed by its holder (0213, 0218), which the
+  // owner writes beside it, superseded, since the journey hands nothing back. A
   // business with none gets made-up ids, written with foreign keys off.
   'public.reviewed_outputs': `with picked as (
-       select l.id as lease_id, r.lineage_id from public.leases l
+       select l.id as lease_id, l.holder_actor_id, r.lineage_id from public.leases l
          join public.planned_runs r on r.business_id = l.business_id and r.id = l.run_id
         where l.business_id = $1 order by l.id limit 1),
      newer as (
@@ -207,7 +207,7 @@ const UNREACHED: Readonly<Record<string, string>> = {
               superseded_at)
        select v.business_id, gen_random_uuid(), v.lineage_id, v.version + 1, v.payload,
               v.payload_digest, v.purpose, v.maximum_minor, v.currency,
-              v.proposed_by_actor_id, now()
+              p.holder_actor_id, now()
          from picked p join public.proposal_versions v
            on v.business_id = $1 and v.lineage_id = p.lineage_id
         order by v.version desc limit 1

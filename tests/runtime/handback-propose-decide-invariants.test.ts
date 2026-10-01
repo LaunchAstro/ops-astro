@@ -119,10 +119,10 @@ function assertApproved<R extends { readonly value: Decided }>(
     throw new Error(`expected an approval, got ${decided.value.decision}`);
 }
 
-/** The bounded successor the R4 cases ask for. Inside the cap and in its currency. */
+/** The bounded successor the R4 cases ask for: the lease holder's, in the cap and its currency. */
 function successorFor(fixture: RuntimeFixture) {
   return {
-    proposedByActorId: fixture.decider.actorId,
+    proposedByActorId: fixture.agentActorId,
     purpose: 'draft_the_second_round',
     maximumMinor: 4_000,
     currency: 'AUD',
