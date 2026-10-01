@@ -24,6 +24,7 @@ import type { TenantQuery } from '../tenancy/database.ts';
 import { refuse, type RecordsRefusal } from '../records/refusals.ts';
 import { slotOf, TASK_SPINE } from './spine.ts';
 import { COMMENT_SPINE } from './comments.ts';
+import { detachTaskTime } from './time.ts';
 
 const PARENT = slotOf(TASK_SPINE, 'parent');
 const BOARD = slotOf(TASK_SPINE, 'board');
@@ -536,14 +537,13 @@ export async function purgeTrashedRecords(
       returning id`,
     [tx.businessId, gone],
   );
-  // A task's time entries (0078) and its tags (0081) are its work too, each
-  // keyed to `records` without a cascade: left behind, they fault the delete
-  // below and roll back the whole business's purge. The tag stays in the
-  // vocabulary; only the task's carrying of it goes.
+  // Time entries (0078) and task tags (0081) key to `records` with no cascade:
+  // left naming the task, they fault the delete below and roll back the whole
+  // purge. Entries are kept, detached (ORCH58: own retention, billing); a tag
+  // stays in the vocabulary and only the task's carrying of it goes.
+  await detachTaskTime(tx, ids);
   await tx.query(
-    `with entries as (delete from public.time_entries
-                       where business_id = $1 and task_id = any ($2::uuid[]))
-     delete from public.task_tags where business_id = $1 and task_id = any ($2::uuid[])`,
+    `delete from public.task_tags where business_id = $1 and task_id = any ($2::uuid[])`,
     [tx.businessId, ids],
   );
   if (commentIds.length > 0) {

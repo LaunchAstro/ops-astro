@@ -10,10 +10,13 @@
 // **The page reads; the dock task panel writes** (TT-06). The page draws the
 // description as prose and the brief as rendered markdown with what was asked
 // for under it. The two fields below are the panel's, each written whole
-// through `task.update` under `task:write`, against the revision it was read
-// at: leaving the field or Ctrl/Cmd+Enter saves a change, Escape puts the
-// saved text back, and an emptied field clears the value rather than storing
-// blank text. A refused save keeps the typing and quotes the server.
+// through `task.update` under `task:write`, against the revision its text was
+// based on: a re-read is taken up while the field is not being edited, and an
+// edit keeps the revision it started from (or its own last save's), so a
+// colleague's change since answers VERSION_STALE rather than being
+// overwritten. Leaving the field or Ctrl/Cmd+Enter saves a change, Escape puts
+// the saved text back, and an emptied field clears the value rather than
+// storing blank text. A refused save keeps the typing and quotes the server.
 //
 // **The brief is always present.** An empty brief still draws its section,
 // saying none has been written, and its field, with the placeholder.
@@ -86,7 +89,7 @@ export function BriefSection(props: { readonly brief: string | null }): ReactEle
 export interface TextFieldProps {
   readonly client: OperationsClient;
   readonly recordId: string;
-  /** The revision the value was read at, which the save is sent against. */
+  /** The revision the value was read at; an edit is sent against the one it started from. */
   readonly revision: number;
   readonly value: string | null;
   /** Stored: the panel reads the task again. */
@@ -114,10 +117,18 @@ interface TextEdit {
 /** One field's text, its save through `task.update`, and its keys. */
 function useTextEdit(props: TextFieldProps, key: FieldShape['key']): TextEdit {
   // What the server holds as far as this field knows: the value it was read
-  // with, then each text it has stored, so a save is never sent twice.
+  // with, then each text it has stored, so a save is never sent twice; and
+  // the revision that value is from.
   const [saved, setSaved] = useState(props.value ?? '');
   const [text, setText] = useState(saved);
+  const [base, setBase] = useState(props.revision);
   const command = useCommand();
+  // A newer read than the field's text is taken up while nobody is typing.
+  if (props.revision > base && text === saved && !command.busy) {
+    setBase(props.revision);
+    setSaved(props.value ?? '');
+    setText(props.value ?? '');
+  }
 
   const save = (): void => {
     if (text === saved || (blank(text) && blank(saved))) return;
@@ -127,12 +138,14 @@ function useTextEdit(props: TextFieldProps, key: FieldShape['key']): TextEdit {
         submitEdit(props.client, {
           command: 'task.update',
           recordId: props.recordId,
-          expectedRevision: props.revision,
+          expectedRevision: base,
           fields: { [key]: blank(text) ? null : text },
         }),
       (settlement) => {
         if (settlement.kind !== 'ok') return;
         setSaved(sent);
+        // Typing on before the re-read is based on what this save stored.
+        setBase(settlement.value.revision);
         props.onSaved();
       },
     );

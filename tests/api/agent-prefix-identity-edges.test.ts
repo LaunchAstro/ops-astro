@@ -238,6 +238,8 @@ describe.skipIf(serverUrl === undefined)('identity edges on the agent prefix', (
     const { task } = agent.body['detail'] as { task: { history: unknown } };
     expect(JSON.stringify(task.history)).toContain('"personId":null');
     expect(JSON.stringify(task.history)).not.toContain('"personId":"');
+    expect(JSON.stringify(task.history)).toContain('"actorName":null');
+    expect(JSON.stringify(task.history)).not.toContain('"actorName":"');
   });
 });
 

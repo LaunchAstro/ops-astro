@@ -62,7 +62,8 @@ export const isOpened = (
 /** The name as a link, or, after a double-click, the rename input. */
 function NameOrRename(props: ProjectNameProps): ReactElement {
   const { row, href, actions } = props;
-  const [renaming, setRenaming] = useState(false);
+  // The row as the rename opened on it: its name is typed over that one.
+  const [renaming, setRenaming] = useState<ProjectRow | null>(null);
   const opening = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stopOpening = (): void => {
     if (opening.current !== null) clearTimeout(opening.current);
@@ -70,13 +71,13 @@ function NameOrRename(props: ProjectNameProps): ReactElement {
   };
   useEffect(() => stopOpening, []);
 
-  if (renaming) {
+  if (renaming !== null) {
     return (
       <Rename
-        row={row}
+        row={renaming}
         onDone={(title) => {
-          setRenaming(false);
-          if (title !== null) actions?.onRename?.(row, title);
+          setRenaming(null);
+          if (title !== null) actions?.onRename?.(renaming, title);
         }}
       />
     );
@@ -101,7 +102,7 @@ function NameOrRename(props: ProjectNameProps): ReactElement {
         if (actions?.onRename === undefined) return;
         event.preventDefault();
         stopOpening();
-        setRenaming(true);
+        setRenaming(row);
       }}
     >
       {row.name}

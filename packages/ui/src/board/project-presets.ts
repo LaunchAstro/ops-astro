@@ -14,7 +14,7 @@
 
 import type { Preset, RowMode } from './types.ts';
 import type { ProjectRow } from './project-row.ts';
-import { categorySlug, viewerFacetId } from './project-facets.ts';
+import { facetId, viewerFacetId } from './project-facets.ts';
 
 export const REVIEW_MODE: RowMode<ProjectRow> = {
   id: 'review',
@@ -28,6 +28,19 @@ const WAITING = 'A client or a mention is waiting here';
 const attention = (row: ProjectRow): boolean =>
   row.comments.client > 0 || row.comments.mentions > 0;
 
+/**
+ * A category chip's id: its words, lower-case and hyphenated, numbered when an
+ * earlier chip has them ("Smith & Co" then "Smith Co"). It names the chip on
+ * this draw only; the filter it presses is the category's own facet id.
+ */
+function chipId(category: string, taken: Set<string>): string {
+  const words = category.toLowerCase().replaceAll(/[^\p{L}\p{N}]+/gu, '-');
+  let id = `cat-${words}`;
+  for (let n = 2; taken.has(id); n += 1) id = `cat-${words}-${String(n)}`;
+  taken.add(id);
+  return id;
+}
+
 /** The viewer's chip, then one chip per category in scope, by name. */
 export function projectPresets(
   rows: readonly ProjectRow[],
@@ -37,13 +50,14 @@ export function projectPresets(
   const categories = [...new Set(rows.map((row) => row.category))]
     .filter((category): category is string => category !== null)
     .toSorted();
+  const taken = new Set<string>();
   const chips = categories.map((category): Preset => {
     const flagged = rows.some((row) => row.category === category && attention(row));
     const chip: Preset = {
-      id: `cat-${categorySlug(category)}`,
+      id: chipId(category, taken),
       label: category,
       icon: 'tag',
-      facetIds: [`category:${categorySlug(category)}`],
+      facetIds: [facetId('Category', category)],
       uncounted: true,
       variant: 'cat',
     };
@@ -63,7 +77,11 @@ export function projectPresets(
   ];
 }
 
-/** The address a board opens on: the viewer preset on when it names no filter. */
+/**
+ * The address a board opens on: the viewer preset on when it has no `f` at
+ * all. An empty `f` is a view with every filter off, written by the board
+ * (`writeView`), and stays off.
+ */
 export function openWithViewer(address: string, viewer: string | null): string {
   const params = new URLSearchParams(address.startsWith('?') ? address.slice(1) : address);
   if (viewer === null || params.has('f')) return params.toString();

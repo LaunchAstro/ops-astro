@@ -4,8 +4,11 @@
 // A1-1). `time_entries` (0078) and `task_tags` (0081) each carry a key to
 // `records` that does not cascade, and the purge once neither checked nor
 // removed them: one aged trashed task with a time entry or a tag faulted
-// the delete and rolled back the business's whole purge, every run. The rows
-// are the task's work, so they go with it, like its comments and links.
+// the delete and rolled back the business's whole purge, every run. A task's
+// tags go with it, like its comments and links. Its time entries stay
+// (ORCH58): they keep their own retention (CS-16.12) and feed billing, so the
+// purge detaches them, and a timer left running is stopped first, so its
+// person can start another.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { insertActor, insertBusiness, insertPerson } from '../identity/fixture.ts';
@@ -16,7 +19,7 @@ import {
 } from '../support/fresh-database.ts';
 import { installTaskSpine } from '../../packages/core-records/src/tasks/install.ts';
 import { purgeTrashedRecords, trashSubtree } from '../../packages/core-records/src/tasks/trash.ts';
-import { logTime, startTimer } from '../../packages/core-records/src/tasks/time.ts';
+import { logTime, readTaskTime, startTimer } from '../../packages/core-records/src/tasks/time.ts';
 import { addTaskTag, createTag } from '../../packages/core-records/src/tasks/tags.ts';
 import { isRecordsRefusal } from '../../packages/core-records/src/records/refusals.ts';
 import type { TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
@@ -65,7 +68,25 @@ async function seedTrash(tx: TenantQuery) {
   await trash(timed);
   await trash(running);
   await trash(plain);
-  return { taskTypeId: spine.taskTypeId, ids: [timed, running, plain], tagId: tag.tag.id };
+  const ids = [timed, running, plain];
+  const entries = await entriesOf(tx, personId);
+  return { spine, person, taskTypeId: spine.taskTypeId, ids, tagId: tag.tag.id, entries };
+}
+
+interface EntryRow {
+  readonly id: string;
+  readonly task_id: string | null;
+  readonly ended_at: Date | null;
+  readonly minutes: number | null;
+}
+
+/** A person's time entries, every column, oldest first. */
+function entriesOf(tx: TenantQuery, personId: string) {
+  return tx.query<EntryRow & Record<string, unknown>>(
+    `select * from public.time_entries where business_id = $1 and person_id = $2
+      order by started_at, id`,
+    [tx.businessId, personId],
+  );
 }
 
 /** What of `ids` is left: records, time entries, task tags, and the tag vocabulary. */
@@ -102,7 +123,7 @@ afterAll(async () => {
 });
 
 describe.skipIf(serverUrl === undefined)('the purge and a task’s time and tags', () => {
-  it('purge removes an aged trashed task that has a time entry and a tag; the rest of the business purges', async () => {
+  it('purge removes an aged trashed task and its tag but keeps its time entries, detached and otherwise unchanged', async () => {
     if (db === undefined) throw new Error('no database');
     const seen = await db.app.withBusiness(businessId, async (tx) => {
       const seeded = await seedTrash(tx);
@@ -110,13 +131,40 @@ describe.skipIf(serverUrl === undefined)('the purge and a task’s time and tags
         recordTypeId: seeded.taskTypeId,
         trashedBefore: new Date(Date.now() + 1000),
       });
-      return { ...seeded, purged, left: await leftOf(tx, seeded.ids) };
+      const after = await entriesOf(tx, seeded.person.personId);
+      // The running timer was stopped, so its person starts another, and the
+      // detached minutes show under no other task.
+      const next = await createTask(tx, seeded.spine, { title: 'next', parentId: null });
+      const started = await startTimer(tx, { ...seeded.person, taskId: next });
+      const nextTime = await readTaskTime(tx, next, seeded.person.personId);
+      return { ...seeded, purged, after, started, nextTime, left: await leftOf(tx, seeded.ids) };
     });
     if (isRecordsRefusal(seen.purged)) throw new Error(seen.purged.code);
     expect(seen.purged.recordIds).toStrictEqual(seen.ids.toSorted());
     expect(seen.purged.retainedIds).toStrictEqual([]);
+    // No record, no tag link, and no entry still naming a purged task.
     expect(seen.left.rows).toStrictEqual([0, 0, 0]);
     // The tag stays in the vocabulary; only the task's carrying of it goes.
     expect(seen.left.vocabulary).toStrictEqual([seen.tagId]);
+    // Both entries survive the purge (not deleted), with no task.
+    expect(seen.after.map((row) => row.id)).toStrictEqual(seen.entries.map((row) => row.id));
+    expect(seen.after.map((row) => row.task_id)).toStrictEqual([null, null]);
+    const [loggedBefore, runningBefore] = seen.entries;
+    const [loggedAfter, runningAfter] = seen.after;
+    // The logged entry: every field but the task link unchanged.
+    expect({ ...loggedAfter, task_id: loggedBefore?.task_id }).toStrictEqual(loggedBefore);
+    // The running one: stopped with its elapsed minutes, the rest unchanged.
+    expect(runningBefore?.ended_at).toBeNull();
+    expect(runningAfter?.ended_at).toBeInstanceOf(Date);
+    expect(runningAfter?.minutes).toBe(1);
+    expect({
+      ...runningAfter,
+      task_id: runningBefore?.task_id,
+      ended_at: null,
+      minutes: null,
+    }).toStrictEqual(runningBefore);
+    expect(seen.started.kind).toBe('started');
+    expect(seen.nextTime.totalMinutes).toBe(0);
+    expect(seen.nextTime.entries).toHaveLength(1);
   });
 });

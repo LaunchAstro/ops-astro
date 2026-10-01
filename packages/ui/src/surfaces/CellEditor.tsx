@@ -11,6 +11,10 @@
 // DS-PRIM-5 defect); Enter or a click chooses. A day typed into the date field
 // waits for Enter, so a half-typed year is never saved; a day picked from the
 // picker saves at once. Choosing the value already there saves nothing.
+//
+// **An open editor is the row it opened on.** Its value and its choose are
+// kept from the moment it opened, so a re-read under it (a live change) does
+// not turn a choice made against the old value into one sent as the new.
 
 import {
   useCallback,
@@ -42,21 +46,23 @@ export interface EditableCellProps {
   readonly children: ReactNode;
 }
 
+type Opened = Pick<EditableCellProps, 'editor' | 'onChoose'>;
+
 export function EditableCell(props: EditableCellProps): ReactElement {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState<Opened | null>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const refocus = useRef(false);
   useEffect(() => {
-    if (!open && refocus.current) trigger.current?.focus();
+    if (open === null && refocus.current) trigger.current?.focus();
     refocus.current = false;
   }, [open]);
 
   const onClose = useCallback((focusBack: boolean): void => {
     refocus.current = focusBack;
-    setOpen(false);
+    setOpen(null);
   }, []);
 
-  if (open) return <OpenCell {...props} onClose={onClose} />;
+  if (open !== null) return <OpenCell {...props} {...open} onClose={onClose} />;
   return (
     <div className="cbd__cell">
       <button
@@ -66,7 +72,7 @@ export function EditableCell(props: EditableCellProps): ReactElement {
         aria-label={props.label}
         aria-haspopup={props.editor.kind === 'menu' ? 'listbox' : undefined}
         onClick={() => {
-          setOpen(true);
+          setOpen({ editor: props.editor, onChoose: props.onChoose });
         }}
       >
         {props.children}

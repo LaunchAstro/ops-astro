@@ -124,9 +124,9 @@ describe('MP-5-12 category chips are flagged by an unanswered client signal or o
       ['SEO', true, null],
     ]);
     expect(chips.map((chip) => chip.facetIds)).toStrictEqual([
-      ['category:admin'],
-      ['category:branding'],
-      ['category:seo'],
+      ['category:"Admin"'],
+      ['category:"Branding"'],
+      ['category:"SEO"'],
     ]);
   });
 
@@ -146,16 +146,16 @@ describe('MP-5-12 Review mode drops assignee filters', () => {
   it('opening Review drops every assignee filter and keeps the rest', () => {
     const context = contextOf(ROWS);
     const start = initialMachine({
-      ids: [`assignee:${ME}`, `assignee:${ADA}`, 'category:seo'],
+      ids: [`assignee:${ME}`, `assignee:${ADA}`, 'category:"SEO"'],
       text: ['copy'],
       sort: null,
       mode: null,
       widths: null,
     });
     const review = reduceBoard(start, { type: 'mode', id: 'review' }, context);
-    expect(review.view).toMatchObject({ mode: 'review', ids: ['category:seo'], text: ['copy'] });
+    expect(review.view).toMatchObject({ mode: 'review', ids: ['category:"SEO"'], text: ['copy'] });
     const back = reduceBoard(review, { type: 'mode', id: 'review' }, context);
-    expect(back.view).toMatchObject({ mode: null, ids: ['category:seo'] });
+    expect(back.view).toMatchObject({ mode: null, ids: ['category:"SEO"'] });
     expect(reduceBoard(back, { type: 'undo' }, context).view.mode).toBe('review');
   });
 
