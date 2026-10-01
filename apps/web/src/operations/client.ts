@@ -33,8 +33,7 @@
 // offered. It arrives at whichever call happens to be next, so recognising it
 // in each screen would be one rule written five times and forgotten in the
 // sixth; here it is one signal, and `onSessionEnded` is how the application
-// hears it. The refusal is still returned unchanged: this module reports, it
-// does not swallow.
+// hears it. The refusal is still returned unchanged: reported, not swallowed.
 //
 // **Access ended is the third way a session ends (C58).** Ending a person's
 // access deactivates their login and ends their memberships, but the bearer in
@@ -277,8 +276,7 @@ export class OperationsClient {
  *
  * They are two because the API tells them apart on purpose (`AUTH_UNKNOWN_LOGIN`
  * says nothing of which guess was closer; `AUTH_SESSION_EXPIRED` goes only to a
- * bearer this deployment signed). The difference is for the person reading the
- * notice, not for this client.
+ * bearer this deployment signed). The difference is for the reader, not this client.
  */
 const SESSION_ENDED = new Set(['AUTH_UNKNOWN_LOGIN', 'AUTH_SESSION_EXPIRED']);
 
