@@ -276,9 +276,11 @@ describe('MP-4-8 duplicate opens the new task', () => {
 });
 
 describe('MP-4-8 client field marks made-up data mock', () => {
-  it('the made-up client list and duplicate carry the one Mock label', async () => {
-    const view = await panel(serving(SHELL).client);
-    expect(view.find('[data-panel-field="client"] .mocktag')?.textContent).toBe('Mock');
+  it('the made-up duplicate carries the one Mock label; the real client field does not', async () => {
+    const listed = [{ clientId: A.id, name: A.name }];
+    const over = { ...SHELL, client: A.id, clientSet: true, hasContent: true };
+    const view = await panel(serving(over, [], [], [], listed).client);
+    expect(view.find('[data-panel-field="client"] .mocktag')).toBeNull();
     await view.click('[data-panel-field="duplicate"]');
     expect(view.find('[data-duplicate-form] .mocktag')?.textContent).toBe('Mock');
     await view.unmount();

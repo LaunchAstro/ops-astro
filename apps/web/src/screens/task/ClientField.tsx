@@ -12,19 +12,19 @@
 //
 // **Its sources are seams.** The client list, which client the task is under,
 // whether it has content, and the duplicate's sender come through
-// `client-seam.ts`; an absent one is the made-up one. A made-up source draws
-// the one Mock corner label (`SourceRegion`) over what it fills; a real one
-// draws nothing extra.
+// `client-seam.ts`. Absent, the facts are the real ones (`client.list` and
+// `task.read`) and the sender the made-up one; a made-up source draws the one
+// Mock corner label (`SourceRegion`) over what it fills, a real one nothing.
 
-import { useState, type ReactElement } from 'react';
+import { useMemo, useState, type ReactElement } from 'react';
 import { SourceRegion } from '@launchastro/ui';
 import type { OperationsClient } from '../../operations/client.ts';
 import type { InternalTaskDetail as Task } from '../../../../../packages/core-wire/src/index.ts';
 import { useCommand } from '../../records/use-command.ts';
 import { RecordState } from '../../views/record-state.tsx';
 import {
-  MOCK_CLIENT_FACTS,
   MOCK_DUPLICATE,
+  realClientFacts,
   type ClientSeams,
   type DuplicateSource,
   type TaskClientFacts,
@@ -146,7 +146,8 @@ function DuplicateSection(props: {
 }
 
 export function ClientField(props: ClientFieldProps): ReactElement {
-  const source = props.clientFacts ?? MOCK_CLIENT_FACTS;
+  const real = useMemo(() => realClientFacts(props.client), [props.client]);
+  const source = props.clientFacts ?? real;
   const duplicate = props.duplicate ?? MOCK_DUPLICATE;
   const facts = source.useFacts(props.task, props.grantKey);
   const known = 'value' in facts.state ? facts.state.value : null;
