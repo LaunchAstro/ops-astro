@@ -240,7 +240,8 @@ describe.skipIf(serverUrl === undefined)('C80 revert on the effect register', ()
     const commands = (await entries(id)).map((entry) => entry.command);
     expect(commands).toEqual(['site.publish', 'site.revert']);
     const decidedAt = (await receipt(id, 'revert'))['decided_at'];
-    const later = doubles();
+    // The site as the first revert left it: the page shows the original word.
+    const later = doubles({}, pending.capture);
     expect(await revert(id, later)).toMatchObject({ kind: 'recorded', state: 'reverted' });
     expect([pending.seen.reverted, later.seen.reverted]).toEqual([1, 0]);
     const observed = await receipt(id, 'revert');

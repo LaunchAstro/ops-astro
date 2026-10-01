@@ -22,6 +22,7 @@
 import { randomUUID } from 'node:crypto';
 import { payloadDigest } from '../../../core-digest/src/index.ts';
 import type { Database, LiveCorrection, TenantQuery } from '../../../core-records/src/index.ts';
+import type { Accepted } from '../../../core-connectors/src/index.ts';
 import { effectOperationId } from '../../../core-wire/src/index.ts';
 
 export type EffectStep = 'publish' | 'revert';
@@ -86,6 +87,21 @@ export async function readCorrectionEffect(
     deploymentId,
     ...(dispatchToken === undefined ? {} : { dispatchToken }),
     ...(decidedAt === undefined ? {} : { decidedAt }),
+  };
+}
+
+/** The accepted publish the register holds, rebuilt for observing it again. */
+export function acceptedOf(
+  correction: Pick<LiveCorrection, 'pageUrl'>,
+  effect: RegisteredEffect,
+): Accepted | undefined {
+  if (effect.dispatchToken === undefined) return undefined;
+  return {
+    state: 'accepted',
+    revision: effect.revision,
+    deploymentId: effect.deploymentId,
+    liveUrl: correction.pageUrl,
+    dispatchToken: effect.dispatchToken,
   };
 }
 

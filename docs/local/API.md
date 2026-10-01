@@ -475,7 +475,15 @@ at the party it names, the approval at the party of the correction it names,
 so a party-scoped grant reaches no other client's correction. The publish, the
 revert and `receipt written` are system writes under the worker lease
 (`recordObservedResult`, `core-records/src/site/live-corrections.ts`), not
-operations on this surface.
+operations on this surface. They ride the effect register all the same
+(`commands/live-correction-effect.ts`): a publish or revert the provider
+accepted is an applied `operations` row, command `site.publish` or
+`site.revert`, under the identity derived from the correction and its step
+(`effectOperationId`), written under the dispatching lease's holder as soon as
+the provider answers. A later run asks the register before it sends: an effect
+it holds is observed again, never sent again, and an unknown outcome it does
+not hold answers `OUTCOME_UNKNOWN` and waits on a person. Receipt L stays in
+`live_correction_receipts` beside the entry and names it (`effect_operation_id`).
 
 | Operation                               | Route                                    | Body                                                                                                            | Refusals it can answer                                                                                                                                                                                                                              |
 | --------------------------------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
