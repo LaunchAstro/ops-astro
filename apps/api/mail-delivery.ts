@@ -12,7 +12,7 @@
 // for the subdomain `MAIL_FROM` names) and every person's email choice
 // (MP-2-11's setting is not in yet; anything not told at once waits for the
 // daily batch). A real provider is a new switch value with a real sender
-// source, never `mock` pointed elsewhere.
+// source, never `mock` pointed elsewhere: mock takes a provider on this machine only.
 //
 // **Delivery is custody's egress**, as the trace export's is: a custody
 // process of its own holds the provider key for the one `email` destination,
@@ -89,6 +89,10 @@ function originOf(value: string): string | undefined {
   }
 }
 
+function onThisMachine(origin: string | undefined): string | undefined {
+  return origin !== undefined && LOOPBACK.test(new URL(origin).hostname) ? origin : undefined;
+}
+
 export function mailDeliverySettings(
   environment: Readonly<Record<string, string | undefined>>,
 ): MailDeliverySettings {
@@ -101,11 +105,14 @@ export function mailDeliverySettings(
   const missing = MAIL_DELIVERY_SETTINGS.filter((name) => value(name) === '');
   if (missing.length > 0)
     return invalid(`mail delivery is mock but not set: ${missing.join(', ')}`);
-  const origin = originOf(value('MAIL_PROVIDER_ORIGIN'));
+  // A made-up sender check may only ever reach a made-up provider on this machine.
+  const origin = onThisMachine(originOf(value('MAIL_PROVIDER_ORIGIN')));
   const parsed = parseDestinations([{ key: RESEND_DESTINATION.key, origin }]);
   const destination = parsed.ok ? parsed.destinations.get(RESEND_DESTINATION.key) : undefined;
   if (origin === undefined || destination === undefined) {
-    return invalid('MAIL_PROVIDER_ORIGIN is not a bare https origin (or http on this machine)');
+    return invalid(
+      'MAIL_PROVIDER_ORIGIN is not a bare origin on this machine (mock reaches no real provider)',
+    );
   }
   const appOrigin = originOf(value('MAIL_APP_ORIGIN'));
   if (appOrigin === undefined) {
