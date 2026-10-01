@@ -13,21 +13,29 @@
 //
 // Vercel is asked twice, through the person's own `vercel` sign-in, never a
 // token: `vercel deploy --prebuilt --prod` (its answer on stdout is the new
-// deployment's own address) and `vercel inspect <address> --format json`, whose
-// `regions` must be `syd1` alone (`S0-6 functions in Sydney`). The CLI gets only
-// PATH, HOME, TMPDIR and the two project ids, so no sign-in value or database
-// login reaches it. The folder, `.vercel` and all, is removed whatever happens.
-// Before Vercel is asked, the sign-in server reports its version (`/health`
-// under GOTRUE_URL, staging's own sign-in address, with the publishable key
-// when set); no answer, no deploy. Only a deploy read back in Sydney returns
-// its record: the version, the artefact, the digest, the deployment, the
-// region, the function runtime and the sign-in server's version (`S0-6 image
-// pins`).
+// deployment's own address) and `vercel inspect <address> --format json`, which
+// must report that same address `READY` on `production`. Only its url, target
+// and readyState are read. Vercel CLI 54.17.3 prints id, name, url, target,
+// readyState, createdAt and, when present, aliases, builds, routes and
+// contextName; a reported build's lambda output can name the regions it was
+// deployed to (`deployedTo`), but that is not read. The region recorded is the
+// one the built output declares: `buildOutputProblems` has already held every
+// function to `syd1` alone (`S0-6 functions in Sydney`), so `syd1` is a
+// declaration checked before the deploy, not a region Vercel reported back.
+// The CLI gets only PATH, HOME, TMPDIR and the two project ids, so no sign-in
+// value or database login reaches it. The folder, `.vercel` and all, is
+// removed whatever happens. Before Vercel is asked, the sign-in server
+// reports its version (`/health` under GOTRUE_URL, staging's own sign-in
+// address, with the publishable key when set); no answer, no deploy. Only a
+// deploy read back ready on production returns its record: the version, the
+// artefact, the digest, the deployment, the region, the function runtime and
+// the sign-in server's version (`S0-6 image pins`).
 //
 // The maintenance page (`deployMaintenance`, `maintenance.ts`) goes out the
 // same prebuilt way, with no database asked, so a broken database never keeps
-// it off; it holds no function, so there is no region to read back. Deploying
-// a version again takes it off.
+// it off; it holds no function, so it declares no region, and it is recorded
+// on the deploy's answer alone, without `vercel inspect`. Deploying a version
+// again takes it off.
 
 import { spawnSync } from 'node:child_process';
 import { cpSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -82,12 +90,21 @@ function vercel(args: readonly string[], env: Environment, cwd: string) {
   return { ok: result.status === 0, out: (result.stdout ?? '').trim() };
 }
 
-/** The region list Vercel reports for a deployment, or undefined when it reports none. */
-function regionsOf(answer: string): unknown {
+/** Whether `vercel inspect --format json` reports `deployment` ready on production. */
+function readyOnProduction(answer: string, deployment: string): boolean {
   try {
-    return (JSON.parse(answer) as { regions?: unknown } | null)?.regions;
+    const reported = JSON.parse(answer) as {
+      url?: unknown;
+      target?: unknown;
+      readyState?: unknown;
+    };
+    return (
+      `https://${String(reported.url)}` === deployment &&
+      reported.target === 'production' &&
+      reported.readyState === 'READY'
+    );
   } catch {
-    return undefined;
+    return false;
   }
 }
 
@@ -190,11 +207,10 @@ function deployCopy(
   const deployment = deployPrebuilt(folder, env);
   if (deployment === undefined) return NO_ADDRESS;
   const inspected = vercel(['inspect', deployment, '--format', 'json'], env, folder);
-  const regions = inspected.ok ? regionsOf(inspected.out) : undefined;
-  if (!Array.isArray(regions) || regions.length !== 1 || regions[0] !== 'syd1') {
+  if (!inspected.ok || !readyOnProduction(inspected.out, deployment)) {
     return {
       kind: 'failed',
-      reason: `Vercel did not report ${deployment} in syd1 alone; it is not recorded: remove it from the dashboard and look`,
+      reason: `Vercel did not report ${deployment} ready on production, so its syd1 output is not confirmed live; it is not recorded: remove it from the dashboard and look`,
     };
   }
   const record = { action: 'deploy recorded', version, artefact: selected.name, digest } as const;

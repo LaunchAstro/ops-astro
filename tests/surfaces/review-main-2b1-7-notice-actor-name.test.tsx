@@ -1,12 +1,28 @@
 // @vitest-environment jsdom
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C4 live-sync 4 (LIVE-SYNC.md, acceptance 4): B has an unsaved title edit
-// when A renames the task. B's text is untouched, B sees that the task
-// changed, and B's save meets `VERSION_STALE`: an edit begun at revision N is
-// offered at N, and nothing is merged for B. The regions B is not editing
-// (the status, the comments) keep updating under the draft, and the notice
-// says who changed what, from the re-read.
+// REVIEW-MAIN-2B1-7, red proof: "Changed since you started editing by ..."
+// never names anyone.
+//
+// changedSince (apps/web/src/screens/task/Notices.tsx) looks each new history
+// entry's `actorId` up in `namesOf` (apps/web/src/screens/TaskDetail.tsx), a
+// map keyed by personId from person.list. A history entry's `actorId` is
+// audit_events.actor_id (packages/core-commands/src/reads/tasks.ts), an
+// actors.id, and an actor has its own random id, not its person's
+// (scripts/local-seed.mjs). So every lookup misses and the notice says
+// "someone". c4-live-sync-4 passes only because its fixture uses one string
+// for both ids. Here Ana Bell is person 'p-ana' acting as actor 'a-ana'.
+//
+// What the read exposes today: HistoryEntry (packages/core-wire/src/views.ts)
+// is { at, actorId, operation } and PersonView is { personId, name }, so
+// nothing on the wire ties an actor to a person and the web cannot fix this
+// alone. A fix needs the history projection to carry the actor's person (join
+// public.actors on actor_id and return actors.person_id, null for a non-person
+// actor) and changedSince to name by that person id. This fixture already
+// sends that as `personId` on each history entry, so the test passes once the
+// fix exposes it under that name; if the fix names the field otherwise, rename
+// it here. (Person.list exposing each person's actor id would also work, and
+// would need the PEOPLE fixture changed to match.)
 
 import { act } from 'react';
 import { expect, it } from 'vitest';
@@ -25,15 +41,8 @@ const PEOPLE = [
   { personId: 'p-bo', name: 'Bo Reyes' },
 ];
 
-/** Bo made the task: his actor, which the audit records, is not his person. */
-const CREATED = {
-  at: '2026-09-29T09:00:00Z',
-  actorId: 'a-bo',
-  personId: 'p-bo',
-  operation: 'task.create',
-};
-
 /** One task, a stream the case writes into, and an update checked against the revision. */
+// oxlint-disable-next-line max-lines-per-function -- the stand-in API is one table of routes
 function server() {
   const task = {
     id: ID,
@@ -46,7 +55,9 @@ function server() {
     priority: null,
     completedAt: null,
     revision: 1,
-    history: [CREATED],
+    history: [
+      { at: '2026-09-29T09:00:00Z', actorId: 'a-bo', personId: 'p-bo', operation: 'task.create' },
+    ] as Record<string, unknown>[],
     comments: [] as Record<string, unknown>[],
   };
   const offered: number[] = [];
@@ -85,11 +96,6 @@ function server() {
   return { fetch, offered, task, invalidate };
 }
 
-function rename(api: ReturnType<typeof server>, title: string): void {
-  api.task.title = title;
-  api.invalidate();
-}
-
 /** Ana moves the task on and says so, recorded as the server would. */
 function moveOn(api: ReturnType<typeof server>): void {
   const { task } = api;
@@ -103,7 +109,7 @@ function moveOn(api: ReturnType<typeof server>): void {
     body: 'Moved it on',
   });
   task.history.push(
-    // Ana's actor, which the audit records, is not her person: named by the person.
+    // Ana Bell is person p-ana; her actor, which the audit records, is a-ana.
     { at: '2026-09-30T01:00:00Z', actorId: 'a-ana', personId: 'p-ana', operation: 'task.move' },
     // Someone this reader cannot list: named as nobody in particular.
     {
@@ -130,7 +136,7 @@ async function until(say: string, check: () => boolean, deadline = Date.now() + 
   await until(say, check, deadline);
 }
 
-it('C4 live-sync 4: an unsaved edit is untouched, the change is shown, and its save meets VERSION_STALE', async () => {
+it('REVIEW-MAIN-2B1-7: the changed-since notice names the person behind a history actor id (actor a-ana is Ana Bell, person p-ana)', async () => {
   const api = server();
   const client = new OperationsClient({
     origin: '',
@@ -140,70 +146,17 @@ it('C4 live-sync 4: an unsaved edit is untouched, the change is shown, and its s
   });
   const page = await mount(<TaskDetailScreen client={client} grantKey="b:g" taskKey={ID} />);
   await until('the page', () => page.find('#task-title') !== null);
-  const title = (): string => (page.find('#task-title') as HTMLInputElement).value;
 
   await page.type('#task-title', 'My unsaved title');
-  expect(page.find('[data-live="changed"]')).toBeNull();
-  rename(api, 'Somebody renamed it');
-  await until('B sees that it changed', () => page.find('[data-live="changed"]') !== null);
-  expect(title()).toBe('My unsaved title');
-
-  await page.click('[data-draft-resolve="save"]');
-  await until(
-    'the save meets VERSION_STALE',
-    () => page.find('[data-conflict="version"]') !== null,
-  );
-  expect(api.offered).toEqual([1]);
-  expect(title()).toBe('My unsaved title');
-  await page.unmount();
-});
-
-it('C4 live-sync 4: regions not being edited keep updating under a draft, and the notice says who changed what', async () => {
-  const api = server();
-  const client = new OperationsClient({
-    origin: '',
-    businessKey: 'b',
-    signedIn: true,
-    fetch: api.fetch,
-  });
-  const page = await mount(<TaskDetailScreen client={client} grantKey="b:g" taskKey={ID} />);
-  await until('the page', () => page.find('#task-title') !== null);
-  const title = (): string => (page.find('#task-title') as HTMLInputElement).value;
-
-  await page.type('#task-title', 'My unsaved title');
-  const input = page.find('#task-title');
   moveOn(api);
   await until(
     'the comment arrives under the draft',
     () => page.find('[data-comment-id="c-ana"]') !== null,
   );
-  expect(title()).toBe('My unsaved title');
-  // The same input: the page stayed mounted under the re-read.
-  expect(page.find('#task-title')).toBe(input);
-  expect(page.find('[data-draft-resolve="choice"]')).not.toBeNull();
-  expect(page.host.textContent).toContain('Done');
-  expect(page.find('[data-live-who]')?.textContent).toBe('Ana Bell, someone');
   expect(page.find('[data-live-what]')?.textContent).toBe('status, a comment');
-  await page.unmount();
-});
-
-it('C4 live-sync 4: an edit typed back to where it began is no edit, and the form shows the task as last read', async () => {
-  const api = server();
-  const client = new OperationsClient({
-    origin: '',
-    businessKey: 'b',
-    signedIn: true,
-    fetch: api.fetch,
-  });
-  const page = await mount(<TaskDetailScreen client={client} grantKey="b:g" taskKey={ID} />);
-  await until('the page', () => page.find('#task-title') !== null);
-  const title = (): string => (page.find('#task-title') as HTMLInputElement).value;
-
-  await page.type('#task-title', 'My unsaved title');
-  rename(api, 'Somebody renamed it');
-  await until('B sees that it changed', () => page.find('[data-live="changed"]') !== null);
-  await page.type('#task-title', 'As it began');
-  await until('no unsaved edit', () => page.find('[data-draft-resolve="choice"]') === null);
-  expect(title()).toBe('Somebody renamed it');
+  expect(
+    page.find('[data-live-who]')?.textContent,
+    'the notice names Ana Bell, whose actor id differs from her person id',
+  ).toBe('Ana Bell, someone');
   await page.unmount();
 });

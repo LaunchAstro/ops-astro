@@ -9,11 +9,12 @@
 // login resolution asks: an active login, standing as a member or on a share,
 // and an active acting identity), can read the task, and for a decision still
 // holds `task:decide` on it, since a decider without authority is no path to
-// the decision. In-app is the only channel on this head and it is always on,
-// so a recipient who signs in and reads is reached; an email path joins with
-// AW-07b. A decision or an incident is one obligation shared by everyone
-// raised an item on it, and any one of them keeps it attended. Anything else
-// is its recipient's own.
+// the decision. An escalated gate is decided only with decide across the
+// business (T3a), so for its decision that is the grant asked. In-app is the
+// only channel on this head and it is always on, so a recipient who signs in
+// and reads is reached; an email path joins with AW-07b. A decision or an
+// incident is one obligation shared by everyone raised an item on it, and any
+// one of them keeps it attended. Anything else is its recipient's own.
 //
 // Reached only by breaking every path, never inferred: the state is derived
 // from those stored facts at every read, as access is (`items.ts`), and never
@@ -28,7 +29,7 @@
 
 import { standsOnShares } from '../identity/login-resolution.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
-import { holdsOnTask, REACH } from './access.ts';
+import { holdsAcrossBusiness, holdsOnTask, REACH } from './access.ts';
 import type { InboxFactKind, InboxReason } from './items.ts';
 
 export interface UnattendedItem {
@@ -48,6 +49,7 @@ type OpenRow = UnattendedItem & {
   readonly clientId: string | null;
   readonly member: boolean;
   readonly loginAndActor: boolean;
+  readonly escalated: boolean;
 };
 
 /**
@@ -73,7 +75,13 @@ export async function readUnattended(
                        and pl.active)
             and exists (select 1 from public.actors a
                          where a.business_id = i.business_id and a.person_id = i.recipient_person_id
-                           and a.kind = 'person' and a.active) as "loginAndActor"
+                           and a.kind = 'person' and a.active) as "loginAndActor",
+            -- Read through the row as decide.ts reads it: a database short of
+            -- the 0041 column has no escalated gate.
+            i.fact_kind = 'gate'
+            and exists (select 1 from public.gates g
+                         where g.business_id = i.business_id and g.id = i.fact_id
+                           and (to_jsonb(g) ->> 'escalated_at') is not null) as escalated
        from public.inbox_items i
        join public.records r
          on r.business_id = i.business_id and r.id = i.subject_record_id and r.deleted_at is null
@@ -105,13 +113,17 @@ function obligationOf(item: UnattendedItem): string {
     : item.id;
 }
 
-/** One recipient's path: they sign in, read the task, and decide a decision. */
+/**
+ * One recipient's path: they sign in, read the task, and decide a decision,
+ * an escalated gate's across the business.
+ */
 async function reaches(tx: TenantQuery, row: OpenRow): Promise<boolean> {
   if (!row.loginAndActor) return false;
   if (!row.member && !(await standsOnShares(tx, row.recipientPersonId))) return false;
   const task = { id: row.subjectRecordId, clientId: row.clientId };
   if (!(await holdsOnTask(tx, row.recipientPersonId, task, 'read'))) return false;
-  return (
-    row.reason !== 'decision' || (await holdsOnTask(tx, row.recipientPersonId, task, 'decide'))
-  );
+  if (row.reason !== 'decision') return true;
+  return row.escalated
+    ? await holdsAcrossBusiness(tx, row.recipientPersonId, 'decide')
+    : await holdsOnTask(tx, row.recipientPersonId, task, 'decide');
 }
