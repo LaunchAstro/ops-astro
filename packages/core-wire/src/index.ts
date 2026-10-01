@@ -12,9 +12,12 @@ export {
   declarationOf,
   effectAttemptOf,
   effectOperationId,
+  EXTERNAL_WRITES,
+  admitsSelfWrite,
   DELEGATION_HEADER,
   pathOf,
   PREFIX,
+  PUBLIC_PREFIX,
   READS,
   SESSION_COOKIE,
   SESSION_PATH,
@@ -25,11 +28,19 @@ export {
   type OperandKind,
   type OperandSpec,
 } from './surface.ts';
+// The keys a grant may carry (C32).
+export { GRANTABLE_KEYS, isGrantableKey, SELF_SCOPED_COLLECTIONS } from './permission-keys.ts';
 // The one refusal shape, for the clients that parse it off the wire. Type-only,
 // so no records code reaches a bundle.
 export type { CommandRefusal } from '../../core-records/src/index.ts';
 // What the reads answer, declared once for the server and every client.
 export type {
+  AccessAgent,
+  AccessGrant,
+  AccessPermission,
+  AccessPerson,
+  AccessPreview,
+  AccessReadResult,
   AttemptView,
   AwaitingReviewResult,
   ConversationMessageView,
@@ -43,8 +54,22 @@ export type {
   CheckView,
   RunPinView,
   RunReadView,
+  BreachNoticeDraft,
+  BreachNoticesResult,
+  BreachRunbookLink,
+  HealthFault,
+  HealthSourceName,
+  HealthSourceState,
+  HealthSourceView,
+  OperationsReadResult,
+  PrivacyIncidentView,
+  ServiceHealthSection,
+  ServiceHealthState,
+  ServiceHealthView,
   Capability,
   CapabilitiesResult,
+  ClientListResult,
+  ClientView,
   CommentView,
   DecisionLink,
   EvidenceView,
@@ -94,3 +119,5 @@ export type {
 } from './views.ts';
 // the command catalogue and its parity check (API-1)
 export * from './catalogue.ts';
+// each command's data effects and its class, read by the first-client gate (S0-5)
+export * from './data-effects.ts';

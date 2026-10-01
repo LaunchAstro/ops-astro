@@ -51,7 +51,8 @@ const url = new URL(path, 'https://api.github.invalid/');
 let answer;
 if (url.pathname === '/repos/o/r/pulls/9') {
   if (!may('pull-requests')) fail('HTTP 403: Resource not accessible by integration');
-  answer = { body: process.env.STUB_BODY };
+  const labels = (process.env.STUB_LABELS ?? '').split(',').filter(Boolean);
+  answer = { body: process.env.STUB_BODY, labels: labels.map((name) => ({ name })) };
 } else if (url.pathname === '/repos/o/r/issues') {
   const state = url.searchParams.get('state') ?? 'open';
   const rows = [
@@ -85,7 +86,7 @@ afterAll(() => {
 });
 
 /** The job's fetch step, then its check step, for a body naming `issue` as the follow-up. */
-function runJob(issue: number) {
+function runJob(issue: number, labels = '', text = body(issue)) {
   const dir = mkdtempSync(join(tmpdir(), 'fu151-'));
   made.push(dir);
   writeFileSync(join(dir, 'gh'), GH);
@@ -93,7 +94,7 @@ function runJob(issue: number) {
   // Nothing from the machine running the cases answers for the job.
   const env = Object.fromEntries(
     Object.entries(process.env).filter(
-      ([k]) => !/^(GH_|GITHUB_|OPEN_ISSUES$|PR_BODY$|BASE_SHA$|CHANGED_FILES$)/u.test(k),
+      ([k]) => !/^(GH_|GITHUB_|OPEN_ISSUES$|PR_BODY$|PR_LABELS$|BASE_SHA$|CHANGED_FILES$)/u.test(k),
     ),
   );
   const perms = Object.entries(granted()).map(([k, v]) => `${k}:${v}`);
@@ -110,7 +111,8 @@ function runJob(issue: number) {
     REPO: 'o/r',
     PR_NUMBER: '9',
     STUB_GRANTED: perms.join(','),
-    STUB_BODY: body(issue),
+    STUB_BODY: text,
+    STUB_LABELS: labels,
   });
   const checked = bash(BINDS, {
     HEAD_SHA: HEAD,
@@ -159,5 +161,21 @@ describe('FU-151 the review-evidence job reads open issues', () => {
     const { fetched, checked } = runJob(issue);
     const output = [fetched, checked].flatMap((r) => [r.stdout, r.stderr]).join('\n');
     expect(output).not.toContain(CANARY);
+  });
+});
+
+describe('owed mark: the review-evidence job reads the labels', () => {
+  // Owner, 1 October 2026: the `needs-sol` label and a `Sol-owed:` line stand in for the record.
+  const owed = body(5).replace(/Reviewer:[\s\S]*$/u, 'Sol-owed: stage1/SOL-OWED.md MAIN-GATE-1');
+  it('owed mark: the job reads the label GitHub shows and accepts the mark', () => {
+    const { fetched, checked } = runJob(5, 'mock,needs-sol', owed);
+    expect(fetched.status).toBe(0);
+    expect(checked.status).toBe(0);
+  });
+
+  it('owed mark: without the label on the pull request the job refuses the mark', () => {
+    const { checked } = runJob(5, 'mock', owed);
+    expect(checked.status).toBe(1);
+    expect(checked.stderr).toContain('not the `needs-sol` label');
   });
 });

@@ -36,8 +36,9 @@ export interface UseReadResult<T> {
 }
 
 /**
- * Run the read and offer its answer. An answer the projection cannot take
- * (its emptiness test throws) shows as unavailable instead of escaping.
+ * Run the read and offer its answer. An answer the read or the projection
+ * cannot take (a malformed body the read rejects on, an emptiness test that
+ * throws) shows as unavailable instead of escaping.
  */
 async function offer<T>(
   projection: AuthorisedRead<T>,
@@ -45,9 +46,8 @@ async function offer<T>(
   run: () => Promise<CallResult<T>>,
   grantKey: string,
 ): Promise<void> {
-  const result = await run();
   try {
-    projection.accept(generation, result, grantKey);
+    projection.accept(generation, await run(), grantKey);
   } catch {
     const because = 'The API answered with something this screen could not read.';
     projection.accept(generation, { unavailable: true, because }, grantKey);

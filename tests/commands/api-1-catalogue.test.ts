@@ -68,7 +68,7 @@ function catalogueMatchesCode(): void {
       );
       expect(row.cli).toBe(row.command);
       expect(row.api.person).toMatch(/^\/api\/b\/:businessKey\//u);
-      expect(row.dataEffects).toBeNull();
+      expect(row.dataEffects, 'S0-5 fills it').not.toBeNull();
     }
     const party = rows.find((row) => row.command === 'task.set_party');
     expect(party?.rule).toContain('CLIENT_LOCKED (409)');

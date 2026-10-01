@@ -20,7 +20,10 @@
 // end the session the same way, so the notice says what holds for both: the
 // session has ended, this is the word the server used, and anything unsaved is
 // gone. The code is printed because a refusal a person cannot quote is a refusal
-// they cannot get help with -- the same rule the read states follow.
+// they cannot get help with -- the same rule the read states follow. Ended
+// access (C58) is the third ending and arrives as 403 `AUTH_NO_MEMBERSHIP` to a
+// bearer that had been a member's; it takes the same notice. A person who
+// signs out here is told the same about their unsaved edit, without a code.
 //
 // **A failed sign-in is paired with the password control and announced.** The
 // control carries `aria-invalid` and points at the message with
@@ -39,6 +42,8 @@ export interface SignInProps {
   readonly onSignedIn: (session: Session) => void;
   /** Set when the person was put here by a session that ended under them. */
   readonly ended: Interruption | null;
+  /** True when the person signed out in this tab. */
+  readonly signedOut?: boolean;
 }
 
 const BUSINESSES: readonly { readonly key: string; readonly label: string }[] = [
@@ -90,6 +95,11 @@ export function SignIn(props: SignInProps): ReactElement {
             in to <strong>{props.ended.businessKey}</strong> will take you back to where you were.
           </p>
         )}
+        {props.ended === null && props.signedOut === true ? (
+          <p className="signin__ended" role="status" data-reason="signed-out">
+            You have signed out. Any edit you had not saved was not saved.
+          </p>
+        ) : null}
         <div className="field">
           <label className="tf__k" htmlFor="signin-email">
             Email

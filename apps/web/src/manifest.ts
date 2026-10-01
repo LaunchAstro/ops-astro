@@ -66,10 +66,10 @@ agency | Docs
 agency | Settings
   general | General | @agency:settings | MP-2-11
   keys | Keys | settings/keys/ | MP-2-10
-  access | Access | settings/access/ | MP-2-10
+  access | Access | @agency:access | C32
   emails | Emails | settings/emails/ | MP-2-10
   workflow-triggers | Workflow triggers | settings/workflow-triggers/ | MP-2-10
-  telemetry | Telemetry | settings/telemetry/ | MP-2-10
+  telemetry | Telemetry | @agency:telemetry | C34
   cal | Cal | settings/cal/ | MP-2-10
 clients | Overview
   brief | Brief | | MP-10-2 | /agency/brief/

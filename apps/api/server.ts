@@ -44,6 +44,7 @@ import {
   connect,
   connectAsAdmin,
   connectListener,
+  loginLiveElsewhere,
   isBusinessId,
   KEY_FILE_VARIABLE,
   readEnvFile,
@@ -57,6 +58,7 @@ import {
   executeRead as readExecutor,
   type ConversationExchange,
   type ModelCallExecutor,
+  type LoginProvider,
 } from '../../packages/core-commands/src/index.ts';
 import {
   CRASH_POINT_VARIABLE,
@@ -65,6 +67,9 @@ import {
   withRuntimeKeys,
 } from '../../packages/core-runtime/src/index.ts';
 import type { RuntimeKeys } from '../../packages/core-runtime/src/index.ts';
+import { createGoTrueFactors } from './auth/factors.ts';
+import { createLangfuseHealth } from './health/tracing.ts';
+import { goTrueLogins, providerAdminKey } from './auth/provider-logins.ts';
 import {
   createSupabaseVerifier,
   keySetUrlFor,
@@ -172,8 +177,18 @@ export interface ApiConfig {
   readonly admin: AdminConnection;
   /** The issuer and published key set bearers are checked against: public keys only. */
   readonly signIn: Omit<SupabaseVerifierOptions, 'onRefusal'>;
+  /** The provider's publishable key the page sends with a sign-in: public; '' or absent, none. */
+  readonly providerKey?: string;
   /** The signing key and delegation keyring `main` read, never put in `process.env`. */
   readonly keys: RuntimeKeys;
+  /**
+   * The provider admin API's key (`providerAdminKey`), for C58's calls on an
+   * ended login only; sign-in never reads it. Absent, those calls are not sent
+   * and stay owed.
+   */
+  readonly providerAdminKey?: () => Promise<string>;
+  /** Langfuse's URL, `LANGFUSE_HOST` (C34); absent is tracing switched off. */
+  readonly tracingUrl?: string;
   /**
    * The read half of the surface. Absent means `reads/execute.ts`, imported
    * statically, so a module that fails to load stops the server rather than
@@ -196,6 +211,8 @@ export interface ApiConfig {
 export interface ComposedApi {
   /** The served app: `/api/health`, the boundary, and the fault mapping. */
   readonly app: Hono;
+  /** The sign-in provider's calls for an ended login (C58), for the retry. */
+  readonly logins: LoginProvider;
   /**
    * The app's own business resolver. Restart recovery resolves its keys
    * through it before the port is bound, so the recovery and the requests that
@@ -211,6 +228,7 @@ export interface ComposedApi {
 export function composeApi(config: ApiConfig): ComposedApi {
   const { database, admin } = config;
   const executeRead = config.executeRead ?? readExecutor;
+  const logins = goTrueLogins(config.providerAdminKey, config.signIn.issuer);
   const resolveBusiness = createBusinessResolver(admin);
   const server = new Hono();
   // S0-6 no edge caching: the API is served behind Vercel's edge network, so
@@ -257,7 +275,10 @@ export function composeApi(config: ApiConfig): ComposedApi {
 
   // G3: the page reads its sign-in address here, so one web build serves every
   // environment. The issuer is public, and nothing is read to answer it.
-  server.get('/api/sign-in', (context) => context.json({ issuer: config.signIn.issuer }));
+  // The hosted provider also wants its publishable key, public too (S0-6).
+  const key = config.providerKey ?? '';
+  const signInAnswer = { issuer: config.signIn.issuer, ...(key === '' ? {} : { key }) };
+  server.get('/api/sign-in', (context) => context.json(signInAnswer));
 
   const { identity } = config;
   if (identity !== undefined) {
@@ -296,6 +317,23 @@ export function composeApi(config: ApiConfig): ComposedApi {
       ...(config.answerConversation === undefined
         ? {}
         : { answerConversation: config.answerConversation }),
+      // The provider GoTrue is: the one destination its factor calls reach.
+      factors: createGoTrueFactors({ baseUrl: config.signIn.issuer }),
+      logins,
+      // Only where a provider key is held (the local server): the Vercel
+      // function has none, so it asks the owner nothing and leaves every
+      // provider step to the endings loop (ORCH47).
+      ...(config.providerAdminKey === undefined
+        ? {}
+        : {
+            sharedLogin: async (subject: string, businessId: string) =>
+              await loginLiveElsewhere(admin, subject, businessId),
+          }),
+      // C34: tracing where switched on; the watcher and error sink are C29's.
+      health:
+        config.tracingUrl === undefined
+          ? {}
+          : { tracing: createLangfuseHealth({ baseUrl: config.tracingUrl }) },
       ...(config.alerts === undefined ? {} : { observe: config.alerts.observe }),
     }),
   );
@@ -315,7 +353,7 @@ export function composeApi(config: ApiConfig): ComposedApi {
     return context.json({ code: 'SERVICE_UNAVAILABLE', names: [], fixes: [RETRY] }, 503);
   });
 
-  return { app: server, resolveBusiness };
+  return { app: server, logins, resolveBusiness };
 }
 
 async function main(): Promise<void> {
@@ -335,6 +373,8 @@ async function main(): Promise<void> {
   const databaseUrl = environment['DATABASE_URL'];
   const adminUrl = environment['DATABASE_ADMIN_URL'];
   const issuer = environment['GOTRUE_URL'];
+  const tracingUrl = environment['LANGFUSE_HOST'];
+  const adminKey = providerAdminKey(environment, join(ROOT, '.local'));
 
   // A test's stand-in set, for a loopback issuer only: a hosted issuer's
   // tokens are checked against that provider's own published set, always.
@@ -403,6 +443,8 @@ async function main(): Promise<void> {
     ...(broker === undefined
       ? {}
       : { executeModelCall: broker.executor, answerConversation: broker.answerConversation }),
+    ...(adminKey === undefined ? {} : { providerAdminKey: adminKey }),
+    ...(tracingUrl === undefined || tracingUrl === '' ? {} : { tracingUrl }),
     ...(alerts === undefined ? {} : { alerts }),
   });
 
@@ -451,6 +493,8 @@ async function main(): Promise<void> {
         return await passDeployment(database, resolveBusiness, scope.keys, registerEffectLookup);
       }),
   );
+
+  // C58: what the act could not settle, the endings loop retries (`apps/endings`).
 
   const stop = (): void => {
     sweeper.stop();

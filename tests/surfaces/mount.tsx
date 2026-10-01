@@ -68,10 +68,13 @@ export async function mount(element: ReactElement): Promise<Mounted> {
       if (target === null) throw new Error(`nothing matches ${selector}`);
       // React installs its own value setter on the element, so assigning
       // `.value` directly is invisible to it. The prototype setter plus a
-      // bubbling `input` event is what a keystroke actually looks like.
-      const field = target as HTMLInputElement;
+      // bubbling `input` event is what a keystroke actually looks like. The
+      // setter is the element's own kind's, so a textarea types as one.
+      const field = target as HTMLInputElement | HTMLTextAreaElement;
       const setter = Object.getOwnPropertyDescriptor(
-        window.HTMLInputElement.prototype,
+        field instanceof window.HTMLTextAreaElement
+          ? window.HTMLTextAreaElement.prototype
+          : window.HTMLInputElement.prototype,
         'value',
       )?.set;
       await act(async () => {

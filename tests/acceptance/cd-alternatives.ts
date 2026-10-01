@@ -26,7 +26,7 @@ export const CASE = {
 } as const;
 
 /**
- * The sixteen operations that name no identifier, each with a minimal valid body.
+ * The twenty-seven operations that name no identifier, each with a minimal valid body.
  *
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed
  * at bravo is refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line
@@ -38,6 +38,17 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['task.purge', {}],
   ['settings.set_four_eyes_threshold', { value: 1300 }],
   ['settings.set_client_sign_off', { value: false }],
+  ['settings.set_money_step_up', { value: true }],
+  [
+    'privacy.record_incident',
+    {
+      whatHappened: 'A made-up incident recorded while bravo is watched.',
+      foundAt: new Date(Date.now() - 60_000).toISOString(),
+      foundBy: 'The matrix',
+      affected: 'Nobody; it is made up.',
+      informationKinds: ['other'],
+    },
+  ],
   ['task.queue', {}],
   ['gate.pending', {}],
   ['person.list', {}],
@@ -46,6 +57,64 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['session.capabilities', {}],
   ['conversation.start', { body: 'a conversation started while bravo is watched' }],
   ['conversation.list', {}],
+  ['access.read', {}],
+  ['operations.read', {}],
+  ['client.list', {}],
+  ['client.create', { name: 'A made-up client made while bravo is watched' }],
+  [
+    'privacy.draft_breach_notices',
+    {
+      incidentId: '00000000-0000-4000-8000-000000000000',
+      oaic: { name: 'A made-up regulator', address: 'regulator@example.test' },
+      people: [{ name: 'A made-up person', address: 'person@example.test' }],
+      containment: 'Nothing real happened.',
+      steps: 'Nothing to do.',
+    },
+  ],
+  [
+    'legal.draft_version',
+    {
+      document: 'breach-runbook',
+      version: '9.0',
+      body: 'A made-up runbook drafted while bravo is watched.',
+    },
+  ],
+  [
+    'privacy.set_overseas_service',
+    {
+      service: 'A made-up service set while bravo is watched',
+      receives: 'nothing real',
+      where: 'nowhere',
+      trainsOnIt: 'no',
+      contract: 'none',
+      toConfirm: false,
+      inUse: true,
+    },
+  ],
+  [
+    'privacy.set_data_class',
+    {
+      dataClass: 'A made-up class set while bravo is watched',
+      purpose: 'nothing real',
+      disclosures: 'no one',
+      retention: 'a day',
+      deletion: 'deleted',
+      inUse: true,
+    },
+  ],
+  [
+    'credential.issue',
+    {
+      scope: [{ collection: 'task', action: 'read' }],
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      purpose: 'A made-up credential issued while bravo is watched',
+    },
+  ],
+  [
+    'operations.record_gate_item',
+    { item: 'tested-backups', evidence: 'https://evidence.example/tested-backups' },
+  ],
+  ['operations.change_installation_mode', { mode: 'real' }],
   ['inbox.read', {}],
   ['inbox.count', {}],
   ['inbox.unattended', {}],
@@ -53,6 +122,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
 ];
 
 /** The identifier-bearing operations outside (c) and (d): operand and executed case. */
+/** The twenty-three identifier-bearing operations outside (c) and (d): operand and executed case. */
 export const IDENTIFIER_BEARING: Readonly<
   Partial<Record<CommandName, readonly [operand: string, kase: keyof typeof CASE]>>
 > = {
@@ -81,6 +151,12 @@ export const IDENTIFIER_BEARING: Readonly<
   'run.top_up': ['runId and recordId', 'control'],
   'run.end_at_budget_stop': ['runId and recordId', 'control'],
   'run.revise_state': ['runId and recordId', 'control'],
+  'legal.approve_version': ['versionId', 'control'],
+  'legal.publish_version': ['versionId', 'control'],
+  'credential.revoke': ['credentialId', 'control'],
+  'access.grant': ['holderId and clientId', 'control'],
+  'access.revoke': ['grantId', 'control'],
+  'access.end': ['holderId', 'control'],
   'inbox.seen': ['itemId', 'control'],
 };
 

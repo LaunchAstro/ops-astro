@@ -16,7 +16,7 @@
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { APP_IMAGE_PLACEHOLDER, deploy, imagePinProblems } from '../../scripts/ops/deploy.ts';
+import { deploy, imagePinProblems } from '../../scripts/ops/deploy.ts';
 import {
   definition,
   record,
@@ -65,12 +65,9 @@ describe('S0-6 services unchanged', () => {
     const watched = effects();
     const outcome = await deploy({ version: STAGED, store: store() }, watched, clean);
     expect(outcome.kind, JSON.stringify(outcome)).toBe('deployed');
-    const pinned =
-      Object.keys(definition.services).length -
-      (definition['x-ops-astro'].appServices ?? []).length;
+    const pinned = Object.keys(definition.services).length;
     expect(watched.calls).toStrictEqual([
       'snapshot',
-      'buildImage',
       'up',
       'runningImages',
       ...Array.from({ length: pinned }, () => 'imageId'),
@@ -114,24 +111,9 @@ describe('S0-6 services unchanged', () => {
 function imagePinsCases1() {
   it('every service staging runs, the worker unit included, is named by a recorded digest', () => {
     expect(imagePinProblems(definition, record)).toStrictEqual([]);
-    const pinned = Object.entries(definition.services).filter(
-      ([name]) => !(definition['x-ops-astro'].appServices ?? []).includes(name),
-    );
-    expect(pinned.map(([name]) => name)).toEqual(
+    expect(Object.keys(definition.services)).toEqual(
       expect.arrayContaining(['backups', 'worker', 'forwarder']),
     );
-  });
-
-  it('an app service is named only by the image the deploy builds', () => {
-    expect(
-      imagePinProblems(withImages({ db: PG, api: APP_IMAGE_PLACEHOLDER }), record),
-    ).toStrictEqual([]);
-    for (const image of ['node:24', `node:24@sha256:${'b'.repeat(64)}`, undefined]) {
-      expect(
-        imagePinProblems(withImages({ db: PG, api: image }), record),
-        String(image),
-      ).not.toStrictEqual([]);
-    }
   });
 }
 
@@ -156,16 +138,13 @@ function imagePinsCases2() {
       `\${IMAGE:-postgres:17-alpine@sha256:${digest}}`,
       `postgres:17-alpine@sha256:${digest}@sha256:${digest}`,
       `pоstgres:17-alpine@sha256:${digest}`,
-      APP_IMAGE_PLACEHOLDER,
+      '${OPS_ASTRO_STAGING_APP_IMAGE:?set by scripts/ops/deploy.mjs}',
       42,
       null,
       undefined,
     ];
     for (const image of hostile) {
-      const problems = imagePinProblems(
-        withImages({ db: image, api: APP_IMAGE_PLACEHOLDER }),
-        record,
-      );
+      const problems = imagePinProblems(withImages({ db: image }), record);
       expect(problems, JSON.stringify(image)).toHaveLength(1);
       expect(problems[0], JSON.stringify(image)).toMatch(/^db: /u);
     }
@@ -173,7 +152,7 @@ function imagePinsCases2() {
 
   it('a service Compose would build, or one with a platform override, is refused', () => {
     for (const extra of [{ build: '.' }, { platform: 'linux/amd64' }, { pull_policy: 'build' }]) {
-      const def = withImages({ db: PG, api: APP_IMAGE_PLACEHOLDER });
+      const def = withImages({ db: PG });
       Object.assign(def.services['db']!, extra);
       expect(imagePinProblems(def, record), JSON.stringify(extra)).toHaveLength(1);
     }
@@ -183,9 +162,7 @@ function imagePinsCases2() {
 function imagePinsCases3() {
   it('a digest recorded only in prose, not in a pin row, is not recorded', () => {
     const prose = `The table below lists pins. postgres 17-alpine sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24.`;
-    expect(
-      imagePinProblems(withImages({ db: PG, api: APP_IMAGE_PLACEHOLDER }), prose),
-    ).toHaveLength(1);
+    expect(imagePinProblems(withImages({ db: PG }), prose)).toHaveLength(1);
   });
 
   it('a container found on another image fails the deploy, and nothing is recorded', async () => {
