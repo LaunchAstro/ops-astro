@@ -234,6 +234,24 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   },
   'public.inbox_attention': { item_id: randomUUID(), person_id: randomUUID() },
   'public.inbox_delivery_attempts': { item_id: randomUUID(), channel: 'in_app', state: 'asked' },
+  // C39-T: nothing on the journey invites anyone.
+  'public.invitations': {
+    person_id: randomUUID(),
+    role_key: 'member',
+    address: 'invitee@example.test',
+    expires_at: '2099-01-01T00:00:00Z',
+    created_by_actor_id: randomUUID(),
+  },
+  'public.enrolment_tokens': {
+    invitation_id: randomUUID(),
+    token_hash: '0'.repeat(64),
+    expires_at: '2099-01-01T00:00:00Z',
+  },
+  'public.invitation_delivery_attempts': {
+    invitation_id: randomUUID(),
+    token_id: randomUUID(),
+    state: 'asked',
+  },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;

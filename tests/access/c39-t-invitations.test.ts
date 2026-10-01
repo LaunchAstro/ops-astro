@@ -138,7 +138,8 @@ describe.skipIf(noDatabase)('C39-T invitations', () => {
       'select token_hash, spent_at from public.enrolment_tokens where invitation_id = $1',
       [id],
     );
-    expect(tokens).toStrictEqual([
+    // The driver answers its own array type; the rows are compared, strictly.
+    expect([...tokens]).toStrictEqual([
       { token_hash: createHash('sha256').update(token).digest('hex'), spent_at: null },
     ]);
     const attempts = await w.db.admin.execute<{ state: string; evidence: string | null }>(
