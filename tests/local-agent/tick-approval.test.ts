@@ -14,7 +14,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, beforeAll, expect, it as vitestIt } from 'vitest';
 import type { ModelCallExecutor } from '../../packages/core-commands/src/index.ts';
-import { APPROVAL_PURPOSE } from '../../apps/local-agent/approval.ts';
+import { APPROVAL_PURPOSE, needOf, raiseApproval } from '../../apps/local-agent/approval.ts';
 import { runQueuedTasks, type TaskTick, type TickGate } from '../../apps/local-agent/tick.ts';
 import { localGate } from '../../apps/local-agent/tick-main.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
@@ -24,6 +24,7 @@ import {
   codeOf,
   createTask,
   freshPurpose,
+  liveWork,
   openSchedules,
   propose,
   rows,
@@ -56,7 +57,7 @@ const gateFor = (home: string): TickGate =>
     { home, capUsd: 10 },
   );
 
-const taskTick = (gate: TickGate): TaskTick => ({
+const taskTick = (gate?: TickGate): TaskTick => ({
   environment: LOCAL,
   database: s.db.app,
   businessId: s.business,
@@ -64,7 +65,7 @@ const taskTick = (gate: TickGate): TaskTick => ({
   executeModelCall: released,
   operation: 'model.local_claude_compose',
   fieldsFor: () => [],
-  gate,
+  ...(gate === undefined ? {} : { gate }),
 });
 
 const queued = async (): Promise<string> => {
@@ -170,4 +171,39 @@ it('approvals are applied before the task pass', async () => {
     models: [],
   });
   expect(await pending()).toHaveLength(0);
+}, 120_000);
+
+it("an approval's own work never reaches the model, with or without the gate (review 2 M2)", async () => {
+  const work = await liveWork(s, `Local model ask ${randomUUID().slice(0, 8)}`, 2_000);
+  const raised = await raiseApproval(
+    {
+      environment: LOCAL,
+      database: s.db.app,
+      businessId: s.business,
+      agent: s.agent,
+      home: world.agentHome,
+    },
+    {
+      leaseId: String(work.picked['leaseId']),
+      fence: Number(work.picked['fence']),
+      credential: String(work.picked['credential']),
+    },
+    needOf('LOCAL_MODEL_NOT_APPROVED', 'sonnet'),
+  );
+  expect(raised).toEqual({ ok: true, raised: true });
+  const [gate] = await pending();
+  if (gate === undefined) throw new Error('no pending gate');
+  const decided = await asPerson(s, {
+    command: 'task.decide',
+    operationId: randomUUID(),
+    gateId: gate.gate_id,
+    versionId: gate.version_id,
+    decision: 'approve',
+    note: "the owner's yes on another model",
+  });
+  expect(codeOf(decided)).toBe('applied');
+  const before = calls;
+  // No gate: the task pass alone still leaves the approval's work for the gate.
+  expect(await runQueuedTasks(taskTick())).toEqual({ ok: true, ran: [] });
+  expect(calls).toBe(before);
 }, 120_000);
