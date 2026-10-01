@@ -11,6 +11,7 @@
 
 import { createHash } from 'node:crypto';
 import type { Context } from 'hono';
+import { SESSION_ABSOLUTE_SECONDS } from '../../../packages/core-records/src/index.ts';
 import {
   CSRF_HEADER,
   PREFIX,
@@ -30,6 +31,16 @@ export const SESSION_COOKIE_OPTIONS: {
   secure: true,
   sameSite: 'Lax',
 } as const;
+
+/**
+ * The cookie's `Max-Age` (C58): what is left of the session's 12-hour absolute
+ * limit, `SESSION_ABSOLUTE_SECONDS`, from its first sign-in, never more than
+ * the whole limit. A session with no first-sign-in time gets none of it.
+ */
+export function cookieMaxAge(signedInAt: number | null, now: number): number {
+  const left = signedInAt === null ? 0 : signedInAt + SESSION_ABSOLUTE_SECONDS - now;
+  return Math.min(SESSION_ABSOLUTE_SECONDS, Math.max(0, left));
+}
 
 /** `Authorization: Bearer <token>`, and nothing else counts as one. */
 export function bearerOf(request: Context['req']): string | undefined {
@@ -65,6 +76,11 @@ export function sessionCookieOf(request: Context['req']): string | undefined {
   const held = sessionCookies(request).filter(([name]) => name === cookieNameFor(id ?? ''));
   const token = held.length === 1 ? held[0]?.[1] : undefined;
   return token !== undefined && sessionIdOf(token) === id ? token : undefined;
+}
+
+/** Any `Authorization` header or session cookie, good or not: a sign-in attempt. */
+export function presentsCredential(request: Context['req']): boolean {
+  return request.header('authorization') !== undefined || sessionCookies(request).length > 0;
 }
 
 /** `CSRF_HEADER` present, and no `Sec-Fetch-Site` naming another site. */

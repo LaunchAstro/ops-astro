@@ -1379,7 +1379,7 @@ under a dedicated delegation credential key
   or the gitignored 0600 file `.local/delegation.env`
   (`credential-keys.ts:120-165`, `:177-211`). `scripts/local-seed.mjs` or the
   first use creates that file once, with a fresh random key id, and never
-  rewrites it (`local-seed.mjs:788-799`). With neither setting present, the
+  rewrites it (`local-seed.mjs:797-808`). With neither setting present, the
   file is read, and created if absent (`configuredCredentialKeys`, `:220-230`).
   `DELEGATION_CREDENTIAL_KEY_FILE` names another file to use in its place
   (`KEY_FILE_VARIABLE`, `:53`). With `DELEGATION_CREDENTIAL_KEY_FILE` set in the
@@ -1445,8 +1445,11 @@ both tenancy-scoped with row security forced, and the fair share's count
   foreign key joins with its table at the batch 3 join. The broker refuses
   before writing anything: another business's conversation, another person's,
   or any delegation (`AUTHORITY_LOST`); a cloud route (`LOCAL_MODEL_REQUIRED`,
-  AW-03 egress off). AW-01's ceilings count it in flight. A priced answer is
-  above a hold of nothing and is held as unknown liability; the sweep holds a
+  AW-03 egress off). AW-03's exchange is its one caller (the person path,
+  after a message is kept; API.md). AW-01's ceilings count it in flight. A
+  priced answer is above a hold of nothing and is held as unknown liability
+  (on the stand-in stack, whose replay provider prices every answer, so the
+  exchange shows no answer there until a local provider prices at nothing); the sweep holds a
   call still started ten minutes on (five times custody's longest wait). Its
   state is `reserved`, `dispatched`, `settled`, `released`, `refused` or
   `liability_unknown`, and constraints tie each state to its amounts, facts
@@ -1557,6 +1560,10 @@ itself is never rewritten either: 0192 takes back the application's update on
 `planned_runs` (granted whole by 0010) and grants it on `state` alone, so a
 run keeps its version, task and lineage. Restricted calls pin the column grant
 at the full schema and every prefix.
+
+`task.read` carries each proposal version's run pin and ledger rows as stored
+(MP-6-2, `core-commands/src/reads/proposals.ts`), in the business and on that
+run; never the manifest or the audit copy.
 
 The audit copy may hold client material, so it retains as the run records it
 copies (skill-migration contract 4.4; #27 row 5, retained and never deleted):

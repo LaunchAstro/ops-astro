@@ -39,24 +39,25 @@ describe.skipIf(serverUrl === undefined)('S0-1 operator only', () => {
   operatorOnlyCases7();
 });
 
-/** A docker that answers the deploy's own calls: a build that prints `built`, Compose and inspects. */
-function fakeDocker(path: string, calls: string, built: string): void {
+/**
+ * A docker that answers the deploy's own calls: Compose and inspects. The
+ * unit's containers run their pinned images only once `compose up` has run.
+ */
+function fakeDocker(path: string, calls: string): void {
   const pinned = `sha256:${'e'.repeat(64)}`;
   const bin = join(path.split(':')[0]!);
+  const up = `${calls}.up`;
   writeFileSync(
     join(bin, 'docker'),
     [
       '#!/bin/sh',
       `echo "docker $*" >> '${calls}'`,
       'case "$1 $2" in',
-      `  "build "*) echo ${built} ;;`,
-      '  "compose "*) ;;',
+      `  "compose "*) case "$*" in *" up --detach --wait"*) touch '${up}' ;; esac ;;`,
       `  "image inspect") echo ${pinned} ;;`,
       '  "inspect --format")',
       '    shift 3',
-      '    for c in "$@"; do',
-      `      case "$c" in *-api|*-web) echo "/$c ${built}" ;; *) echo "/$c ${pinned}" ;; esac`,
-      '    done ;;',
+      `    [ -f '${up}' ] && for c in "$@"; do echo "/$c ${pinned}"; done ;;`,
       '  "ps "*) echo api-id ;;',
       `  "inspect "*) printf '%s\\n' '[{"Name":"/prod-api","State":{"Running":true,"StartedAt":"t1"},"HostConfig":{}}]' ;;`,
       '  *) exit 2 ;;',
@@ -68,11 +69,10 @@ function fakeDocker(path: string, calls: string, built: string): void {
 
 // eslint-disable-next-line max-lines-per-function -- one test, its body kept byte for byte
 function operatorOnlyCases6() {
-  it('the operator deploys a stored build to staging: one record names the version, the image and the operator', async () => {
+  it('the operator deploys the staging unit without building an image: one record names the version and the operator', async () => {
     const fake = manager(false);
     const at = marks(fake);
-    const built = `sha256:${'a'.repeat(64)}`;
-    fakeDocker(fake.path, at.calls, built);
+    fakeDocker(fake.path, at.calls);
     // Staging's database, as its seed leaves it: marked made-up, so the preflight passes.
     await markMadeUp(db.admin, []);
     const signIn = await token(subjects.operator);
@@ -82,17 +82,17 @@ function operatorOnlyCases6() {
     );
     expect(result.status, result.out).toBe(0);
     const calls = readFileSync(at.calls, 'utf8');
-    expect(calls).toMatch(/^docker build .*Dockerfile/mu);
+    expect(calls).not.toMatch(/^docker build/mu);
     expect(calls).toMatch(/^docker compose .*compose\.json.* up --detach --wait/mu);
     const records = readFileSync(join(at.records, 'deployments.jsonl'), 'utf8').trim().split('\n');
     expect(records).toHaveLength(1);
     expect(JSON.parse(records[0]!)).toMatchObject({
       action: 'deploy recorded',
       version: STAGED,
-      image: built,
       business: 'alpha',
       operator: operatorPerson,
     });
+    expect(JSON.parse(records[0]!)).not.toHaveProperty('image');
     expect(records[0]).not.toContain(signIn);
     expect(result.out).not.toContain(signIn);
   }, 60_000);

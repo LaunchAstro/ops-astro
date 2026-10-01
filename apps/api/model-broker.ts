@@ -15,6 +15,7 @@
 import {
   catalogue,
   readReplayLookup,
+  CONVERSATION_ANSWER,
   REPLAY_COMPOSE,
   replayAdapter,
   replayCostMinor,
@@ -31,7 +32,9 @@ import {
   type Destination,
 } from '../../packages/core-custody/src/index.ts';
 import {
+  conversationExchange,
   modelCallExecutor,
+  type ConversationExchange,
   type ModelCallExecutor,
 } from '../../packages/core-commands/src/index.ts';
 
@@ -52,7 +55,7 @@ export type BrokerSettings =
     }
   | { readonly kind: 'invalid'; readonly problem: string };
 
-const OPERATIONS = catalogue([REPLAY_COMPOSE]);
+const OPERATIONS = catalogue([REPLAY_COMPOSE, CONVERSATION_ANSWER]);
 const PROVIDERS = new Map([
   [
     'replay',
@@ -150,13 +153,14 @@ export function brokerSettings(
   };
 }
 
-/** Custody's own process, started, and the executor over it. */
+/** Custody's own process, started, and the executor and the conversation exchange over it. */
 export async function startModelBroker(
   settings: Extract<BrokerSettings, { kind: 'configured' }>,
 ): Promise<{
   readonly executor: ModelCallExecutor;
   /** AW-10: the reconciliation pass's provider phase for one business. */
   readonly reconcile: (database: Database, businessId: BusinessId) => Promise<unknown>;
+  readonly answerConversation: ConversationExchange;
   readonly stop: () => Promise<void>;
 }> {
   const custody = await startCustody(settings.custody);
@@ -171,6 +175,7 @@ export async function startModelBroker(
     executor: modelCallExecutor(broker),
     reconcile: async (database, businessId) =>
       await reconcileProviderCalls(database, businessId, broker),
+    answerConversation: conversationExchange(broker),
     stop: async () => await custody.stop(),
   };
 }

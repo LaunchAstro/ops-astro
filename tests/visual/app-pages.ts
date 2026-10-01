@@ -19,14 +19,12 @@ import type { Browser } from 'playwright';
 import { createServer } from 'vite';
 import { load, openSide, shoot, type Catalogue, type Side } from './capture.ts';
 import { scrollMetrics } from './drift.ts';
-import { answerMadeUp, CONVERSATION_ID } from './made-up-api.ts';
+import { CONVERSATION_ID } from './made-up-agent.ts';
+import { answerMadeUp } from './made-up-api.ts';
 import type { Packet, Theme } from './packet.ts';
 import { addressOf, builtPages, needsSession, overflowOf, type PageShot } from './report.ts';
 
-/**
- * The value each page parameter takes in the harness: a task page draws T-1,
- * a conversation's address the made-up conversation, never `/`.
- */
+/** The value each route parameter takes in the harness: the made-up reads' own records. */
 export const PAGE_PARAMS: Readonly<Record<string, string>> = {
   key: 'T-1',
   conversation: CONVERSATION_ID,
@@ -93,9 +91,12 @@ export async function captureBuiltPages(options: {
   return shots;
 }
 
-/** Which screen the app drew: its sign-in form, a gate, or the page itself. */
+/** Which screen the app drew: its sign-in form, a gate, its server error, or the page itself. */
 export function screenOf(): string {
   if (document.querySelector('.signin__form') !== null) return 'the sign-in form';
+  // main.tsx draws one bare paragraph when it cannot reach the server.
+  const bare = document.querySelector('#app > p:only-child')?.textContent ?? '';
+  if (bare.includes('cannot reach its server')) return 'the server error';
   const title = document.querySelector('.readstate .empty__title')?.textContent ?? '';
   if (title.startsWith('You are already signed in')) return 'the already-signed-in gate';
   if (title.startsWith('No screen is registered')) return 'the not-found gate';

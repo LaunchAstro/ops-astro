@@ -87,6 +87,14 @@ export type CommandName =
   // why it takes no grant beyond membership: every pair in it is a pair the
   // caller already holds, so returning them confers nothing.
   | 'session.capabilities'
+  // Settings ▸ Access (C32): Team, Clients and Agents from the one set of
+  // person records, each with what its grants and delegations allow now.
+  | 'access.read'
+  | 'client.list'
+  // C55: the operations view, the one read of what needs the operator's eye.
+  | 'operations.read'
+  // C81: the breach drill's notices, drafted from the published runbook.
+  | 'privacy.draft_breach_notices'
   // The two settings the model classifies `operation`. A setting that decides
   // who must agree before money moves or before work completes is an authority
   // change wearing configuration's clothes, so it is not reachable through a
@@ -94,11 +102,36 @@ export type CommandName =
   // `business_settings` rows already cite in `owning_operation`.
   | 'settings.set_four_eyes_threshold'
   | 'settings.set_client_sign_off'
+  // C59: whether a money action needs a recent second-factor sign-in.
+  | 'settings.set_money_step_up'
+  // C55: the breach runbook's day-0 record, `privacy incident recorded`.
+  | 'privacy.record_incident'
+  // C81: the legal documents' versions, drafted, approved as those exact
+  // bytes, and published.
+  | 'legal.draft_version'
+  | 'legal.approve_version'
+  | 'legal.publish_version'
+  // API-2: an agent credential, issued and revoked by a person on their own
+  // account.
+  | 'credential.issue'
+  | 'credential.revoke'
+  // C81: the overseas-services register the privacy policy reads.
+  | 'privacy.set_overseas_service'
+  // C81: the data-class register the privacy policy reads.
+  | 'privacy.set_data_class'
+  // S0-5: the first-client gate's own acts, `gate item recorded` and
+  // `installation mode changed`.
+  | 'operations.record_gate_item'
+  | 'operations.change_installation_mode'
   // The support controls the contract ledger requires through owning
   // production interfaces: revocation of an existing grant or delegation,
   // cancellation of a run's lineage, an authorised restart as a new lineage,
   // and the lease owner's heartbeat. None is a new actor power; each asks for
   // authority the caller already holds (see each row below).
+  | 'client.create'
+  | 'access.grant'
+  | 'access.revoke'
+  | 'access.end'
   | 'grant.revoke'
   | 'delegation.revoke'
   | 'task.cancel'
@@ -348,9 +381,11 @@ function read(
     readonly action?: Action;
     readonly agent?: CommandDeclaration['agent'];
     readonly authorisedOn?: 'record' | 'business' | 'self';
+    readonly authority?: readonly string[];
   } = {},
 ): CommandDeclaration {
   return {
+    ...(options.authority === undefined ? {} : { authority: options.authority }),
     name,
     kind: 'read',
     collection,
@@ -443,6 +478,42 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'task.purge': { olderThanDays: 'any' },
   'settings.set_four_eyes_threshold': { value: 'any', expectedRevision: 'any' },
   'settings.set_client_sign_off': { value: 'any', expectedRevision: 'any' },
+  'settings.set_money_step_up': { value: 'any', expectedRevision: 'any' },
+  'privacy.record_incident': {
+    whatHappened: 'any',
+    foundAt: 'any',
+    foundBy: 'any',
+    affected: 'any',
+    informationKinds: 'any',
+  },
+  'legal.draft_version': { document: 'any', version: 'any', body: 'any' },
+  'legal.approve_version': { versionId: 'id', digest: 'any' },
+  'legal.publish_version': { versionId: 'id' },
+  'credential.issue': { scope: 'any', expiresAt: 'any', purpose: 'any' },
+  'credential.revoke': { credentialId: 'id' },
+  'privacy.set_overseas_service': {
+    service: 'any',
+    receives: 'any',
+    where: 'any',
+    trainsOnIt: 'any',
+    contract: 'any',
+    toConfirm: 'any',
+    inUse: 'any',
+  },
+  'privacy.set_data_class': {
+    dataClass: 'any',
+    purpose: 'any',
+    disclosures: 'any',
+    retention: 'any',
+    deletion: 'any',
+    inUse: 'any',
+  },
+  'operations.record_gate_item': { item: 'any', evidence: 'any', statement: 'any?' },
+  'operations.change_installation_mode': { mode: 'any' },
+  'client.create': { name: 'any' },
+  'access.grant': { holderId: 'id', collection: 'any', action: 'any', clientId: 'id?|null' },
+  'access.revoke': { grantId: 'id' },
+  'access.end': { holderId: 'id' },
   'grant.revoke': { grantId: 'any' },
   'delegation.revoke': { delegationId: 'any' },
   'task.cancel': { recordId: 'any', lineageId: 'any', reason: 'any' },
@@ -618,7 +689,24 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // An agent reaches it only under a delegation, where it answers the
   // delegation's purpose; before a pickup it is refused like every other
   // operation outside the two (minimum contract 8.2 case 9).
-  read('session.capabilities', SESSION_COLLECTION, { agent: 'delegated' }),
+  // It asks no grant of its own (`authority: []`), so discovery lists it for any holder.
+  read('session.capabilities', SESSION_COLLECTION, { agent: 'delegated', authority: [] }),
+  // `manage` on `access`, the key the Access screen's grants are changed under
+  // (C32): the answer is every person's authority, so reading it is not a
+  // member's everyday read. An agent never holds it.
+  read('access.read', 'access', { action: 'manage' }),
+  // C32: the clients the caller's live grants reach, filtered inside the
+  // query, never an agent's. Like `session.capabilities` it asks no one
+  // collection (`reads/catalogue.ts`, `holds-any-grant`), so it carries that
+  // read's pair for the route generator and the surface inventory, and like it
+  // asks no grant at the door (`authority: []`).
+  read('client.list', SESSION_COLLECTION, { authority: [] }),
+  // C55: `operations:read` (install default owner and administrators), never
+  // an agent's.
+  read('operations.read', 'operations'),
+  // C81's breach drill: `privacy:manage`, the incident's own key, never an
+  // agent's. It drafts notices and sends nothing, so it is a read.
+  read('privacy.draft_breach_notices', 'privacy', { action: 'manage' }),
 
   // AW-03. `conversation:write` is the owner's key for their own conversation;
   // the handler refuses a message into anyone else's. The read names its own
@@ -668,6 +756,112 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     collection: SETTINGS_COLLECTION,
     targetsExistingRecord: false,
     untargetedIdentifiers: [],
+  }),
+  // C59: the money step-up, switched only by `settings:manage` (the owner or
+  // an administrator), never by an agent, and audited by the envelope.
+  declare('settings.set_money_step_up', 'manage', {
+    collection: SETTINGS_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+  }),
+  // C55: a privacy incident is recorded under `privacy:manage` (the owner and
+  // administrators), never by an agent, and audited by the envelope as a
+  // digest of the act.
+  declare('privacy.record_incident', 'manage', {
+    collection: 'privacy',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+  }),
+  // C81: each step of a legal document's version is `privacy:manage` (the
+  // owner and administrators), never an agent's. Approval and publication
+  // name the version; a foreign or made-up one is NOT_FOUND.
+  declare('legal.draft_version', 'manage', {
+    collection: 'privacy',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+  }),
+  declare('legal.approve_version', 'manage', {
+    collection: 'privacy',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['versionId'],
+  }),
+  declare('legal.publish_version', 'manage', {
+    collection: 'privacy',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['versionId'],
+  }),
+  // C81: a row of the overseas-services register is set under
+  // `privacy:manage`, never by an agent; every change is audited by the
+  // envelope.
+  declare('privacy.set_overseas_service', 'manage', {
+    collection: 'privacy',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+  }),
+  // C81: a class of the data-class register is set under `privacy:manage`,
+  // never by an agent; every change is audited by the envelope.
+  declare('privacy.set_data_class', 'manage', {
+    collection: 'privacy',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+  }),
+  // S0-5: the first-client gate moves only under `operations:manage` in the
+  // business that operates the installation (`gate-write.ts`), never by an
+  // agent; each act is audited by the envelope.
+  declare('operations.record_gate_item', 'manage', {
+    collection: 'operations',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+  }),
+  declare('operations.change_installation_mode', 'manage', {
+    collection: 'operations',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+  }),
+
+  // API-2: an agent credential is a person's own, so both are `credential:write`
+  // and never an agent's. A revocation of another person's credential asks
+  // `access:manage` too, under the row's lock (`credential-write.ts`).
+  declare('credential.issue', 'write', {
+    collection: 'credential',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+  }),
+  declare('credential.revoke', 'write', {
+    collection: 'credential',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['credentialId'],
+  }),
+
+  // C32: the client record, the tracked action `record created (client)`
+  // under `record:write`, never an agent's. C41's one record-create command
+  // takes it over (RC-13).
+  declare('client.create', 'write', {
+    collection: 'record',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+  }),
+  // C32: the tracked action `grant changed` on Settings ▸ Access, under
+  // `access:manage` (the owner and administrators), never an agent's. A grant
+  // names a person of the business and a client of it, or the whole business;
+  // a revocation names any grant of the business.
+  declare('access.grant', 'manage', {
+    collection: 'access',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['holderId', 'clientId'],
+  }),
+  declare('access.revoke', 'manage', {
+    collection: 'access',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['grantId'],
+  }),
+  // C58: the tracked action `access ended (person: login, sessions, grants)`
+  // on Settings ▸ Access, under `access:manage`, never an agent's. It names a
+  // person of the business; the provider steps it owes run after it commits.
+  declare('access.end', 'manage', {
+    collection: 'access',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['holderId'],
   }),
 
   // The grant manager's authority, which is `manage` on the task family this
@@ -939,6 +1133,13 @@ export function pathOf(name: CommandName): string {
 export const PREFIX = { person: '/api/b/', agent: '/api/a/b/' } as const;
 
 /**
+ * C81: where a business's published legal documents are read with no sign-in,
+ * as `${PUBLIC_PREFIX}<businessKey>/legal/<document>`. Nothing else is served
+ * under it.
+ */
+export const PUBLIC_PREFIX = '/api/public/b/';
+
+/**
  * The header an agent presents its delegation credential in.
  *
  * A header rather than a body field for the same reason the bearer token is
@@ -959,6 +1160,17 @@ export const CSRF_HEADER = 'x-ops-astro-csrf';
 export const SESSION_HEADER = 'x-ops-astro-session';
 
 /** The reads, which no caller may reach through the command envelope. */
+/**
+ * The writes an external party (R4) may reach: a comment, only in the client audience, and
+ * opening their own inbox item. `commands/prepare.ts` refuses every other write to a person
+ * without a membership, and `session.capabilities` and discovery read this same list.
+ */
+export const EXTERNAL_WRITES: readonly CommandName[] = ['task.comment', 'inbox.seen'];
+
+/** Whether a person of this standing may send this write: the envelope and discovery ask it. */
+export const admitsSelfWrite = (member: boolean, command: CommandName): boolean =>
+  member || EXTERNAL_WRITES.includes(command);
+
 export const READS: readonly CommandName[] = COMMAND_SURFACE.filter(
   (command) => command.kind === 'read',
 ).map((command) => command.name);

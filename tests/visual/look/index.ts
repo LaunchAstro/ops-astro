@@ -7,15 +7,16 @@
 // is the one place its look is asserted, so two screens never share a list.
 
 import { AGENT_DRAWER } from './agent-drawer.ts';
+import { AGENT_PANE } from './agent-pane.ts';
 import { BOARD } from './board.ts';
 import { CONVERSATION } from './conversation.ts';
 import { SETTINGS } from './settings.ts';
 import { SHELL } from './shell.ts';
 import { SIGN_IN } from './sign-in.ts';
 import { TASK } from './task.ts';
-import type { LookScreen } from './types.ts';
+import type { LookScreen } from './probe.ts';
 
-export type { LookProbe, LookScreen } from './types.ts';
+export type { LookProbe, LookScreen } from './probe.ts';
 
 export const LOOK_SCREENS: readonly LookScreen[] = [
   SHELL,
@@ -24,5 +25,6 @@ export const LOOK_SCREENS: readonly LookScreen[] = [
   SETTINGS,
   SIGN_IN,
   AGENT_DRAWER,
+  AGENT_PANE,
   CONVERSATION,
 ];

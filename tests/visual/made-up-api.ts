@@ -16,8 +16,6 @@
 import type {
   AllowanceResult,
   CapabilitiesResult,
-  ConversationListResult,
-  ConversationReadResult,
   InboxCountResult,
   InboxReadResult,
   InternalTaskDetail,
@@ -32,6 +30,7 @@ import type {
 } from '../../packages/core-wire/src/index.ts';
 import type { BrowserContext } from 'playwright';
 import type { ReadName } from '../../apps/web/src/operations/read-names.ts';
+import { AGENT_LEDGER, AGENT_PROPOSALS, AGENT_READS } from './made-up-agent.ts';
 
 const STATE = {
   active: { id: 's-active', key: 'active', label: 'Active', machineCategory: 'started' },
@@ -98,54 +97,11 @@ const DETAIL: InternalTaskDetail = {
       source: 'app',
     },
   ],
-  proposals: [],
+  proposals: AGENT_PROPOSALS,
   capCurrency: 'AUD',
   envelope: null,
   alerts: [],
-  ledger: null,
-};
-
-/** The made-up conversation the harness draws at its own address (C36). */
-export const CONVERSATION_ID = '00000000-0000-4000-8000-00000000c001';
-const CONVERSATION_AT = `/agent/${CONVERSATION_ID}`;
-
-const CONVERSATION: ConversationReadResult = {
-  ok: true,
-  conversation: {
-    id: CONVERSATION_ID,
-    address: CONVERSATION_AT,
-    title: 'Meridian run rate',
-    subject: 'T-9 Sign off the Meridian ad run rate, 29% over budget',
-    scope: { kind: 'task', id: TASKS[2]?.id ?? '' },
-    page: null,
-    createdAt: '2026-09-25T22:10:00.000Z',
-    lastActivityAt: '2026-09-25T22:14:00.000Z',
-    bodyPurgedAt: null,
-  },
-  messages: [
-    {
-      id: 'm-1',
-      role: 'person',
-      body: 'Why is the Meridian run rate 29% over budget this month?',
-      createdAt: '2026-09-25T22:10:00.000Z',
-    },
-    {
-      id: 'm-2',
-      role: 'agent',
-      body:
-        'Two things stacked: Search took the $480 moved out of Meta mid-month, and the ' +
-        'implants campaign kept its launch bid for nine days longer than planned.',
-      createdAt: '2026-09-25T22:11:00.000Z',
-    },
-    {
-      id: 'm-3',
-      role: 'person',
-      body: 'Draft the sign-off note for the client.',
-      createdAt: '2026-09-25T22:14:00.000Z',
-    },
-  ],
-  wrapUp: null,
-  wrapUpHistory: [],
+  ledger: AGENT_LEDGER,
 };
 
 const READS = {
@@ -192,7 +148,7 @@ const READS = {
       events: [],
       complete: true,
       next: null,
-      graph: { plan: 'unbound', sourceRevision: 0, complete: true, nodes: [] },
+      graph: { plan: 'unbound', sourceRevision: 1, complete: true, nodes: [] },
     },
   } satisfies TaskExecutionResult,
   'inbox.read': {
@@ -227,19 +183,7 @@ const READS = {
     ],
   } satisfies InboxReadResult,
   'inbox.count': { ok: true, owed: 2 } satisfies InboxCountResult,
-  'conversation.read': CONVERSATION,
-  'conversation.list': {
-    ok: true,
-    conversations: [
-      {
-        id: CONVERSATION_ID,
-        address: CONVERSATION_AT,
-        title: CONVERSATION.conversation.title,
-        lastActivityAt: CONVERSATION.conversation.lastActivityAt,
-        bodyPurged: false,
-      },
-    ],
-  } satisfies ConversationListResult,
+  ...AGENT_READS,
   'conversation.allowance': {
     ok: true,
     allowance: {

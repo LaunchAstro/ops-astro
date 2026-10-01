@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The shapes a look probe and a screen take. A leaf module, so each screen's
-// file can name them without importing the barrel that lists the screens.
+// What a look probe is (UI-POLISH). Its own module, so the screen files and
+// the list in index.ts each import it and never each other.
 
 export interface LookProbe {
   /** `<screen>.<element>`, unique across screens. */

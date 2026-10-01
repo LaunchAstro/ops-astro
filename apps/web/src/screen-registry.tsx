@@ -13,9 +13,11 @@ import { Gallery } from '@launchastro/ui';
 import type { AuthenticatedRouteId, ParamsOf, RouteMatch } from './routes.ts';
 import type { OperationsClient } from './operations/client.ts';
 import { ConversationScreen } from './screens/Conversation.tsx';
+import { AccessScreen } from './screens/Access.tsx';
 import { Projects } from './screens/Projects.tsx';
 import { SettingsScreen } from './screens/Settings.tsx';
 import { TaskDetailScreen } from './screens/TaskDetail.tsx';
+import { TelemetryScreen } from './screens/Telemetry.tsx';
 
 /** What the application hands whichever screen the address resolves to. */
 export interface ScreenContext<Id extends AuthenticatedRouteId = AuthenticatedRouteId> {
@@ -51,6 +53,12 @@ export const SCREENS: {
   'agency:gallery': () => <Gallery />,
   'agency:settings': (context) => (
     <SettingsScreen client={context.client} grantKey={context.grantKey} storage={context.storage} />
+  ),
+  'agency:access': (context) => (
+    <AccessScreen client={context.client} grantKey={context.grantKey} />
+  ),
+  'agency:telemetry': (context) => (
+    <TelemetryScreen client={context.client} grantKey={context.grantKey} />
   ),
   'agency:task-detail': (context) => (
     <TaskDetailScreen

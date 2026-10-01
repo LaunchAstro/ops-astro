@@ -50,6 +50,13 @@ export const READ_NAMES = [
   'conversation.allowance',
   // Which runs read an instruction file, by digest: pre-review (AW-04).
   'definition.attribution',
+  // Settings ▸ Access (C32), under `access:manage` on the server.
+  'access.read',
+  'client.list',
+  // The operations view (C55), under `operations:read` on the server.
+  'operations.read',
+  // The breach drill's notices (C81), under `privacy:manage` on the server.
+  'privacy.draft_breach_notices',
   // The caller's own inbox and owed count (INB-1d), the same read the API and
   // the command line serve; the working minimum draws them in INB-1g.
   'inbox.read',

@@ -215,7 +215,7 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return { foreign, fabricated };
   }
 
-  /** The 43 cells: the record-targeted operations, then those with their own operand. */
+  /** The cells: the record-targeted operations, then those with their own operand. */
   // eslint-disable-next-line max-lines-per-function -- one table, built in one place
   async function cells(): Promise<readonly Cell[]> {
     const ada: Presenter = { kind: 'person', caller: w.h.world.ada };
@@ -305,8 +305,23 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     }));
     byAda('task.restore', 'batchId', f.batchId, (batchId) => ({ batchId }));
     byAda('grant.revoke', 'grantId', f.grantId, (grantId) => ({ grantId }));
+    byAda('access.revoke', 'grantId', f.grantId, (grantId) => ({ grantId }));
+    byAda('access.grant', 'holderId', f.admin.personId as string, (holderId) => ({
+      holderId,
+      collection: 'task',
+      action: 'read',
+    }));
+    byAda('access.end', 'holderId', f.admin.personId as string, (holderId) => ({ holderId }));
     byAda('delegation.revoke', 'delegationId', f.picked.delegationId, (delegationId) => ({
       delegationId,
+    }));
+    byAda('legal.approve_version', 'versionId', f.legalVersionId, (versionId) => ({
+      versionId,
+      digest: '0'.repeat(64),
+    }));
+    byAda('legal.publish_version', 'versionId', f.legalVersionId, (versionId) => ({ versionId }));
+    byAda('credential.revoke', 'credentialId', f.credentialId, (credentialId) => ({
+      credentialId,
     }));
     const own = await w.propose('a lineage the timing cells name');
     byAda('task.cancel', 'lineageId', f.proposal.lineageId, (lineageId) => ({
@@ -418,11 +433,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 48 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 49 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(48);
-    expect(names).toHaveLength(48);
+    expect(new Set(names).size, 'distinct operations').toBe(49);
+    expect(names).toHaveLength(49);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

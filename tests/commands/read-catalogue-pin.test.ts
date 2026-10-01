@@ -30,11 +30,15 @@ const PINNED_SHAPE = {
   'conversation.read': { spine: false, subject: false, authority: 'holds-any-grant' },
   'definition.attribution': { spine: true, subject: false, authority: 'holds-any-grant' },
   'gate.pending': { spine: true, subject: false, authority: 'holds-any-grant' },
+  'access.read': { spine: false, subject: false, authority: 'declared' },
+  'client.list': { spine: false, subject: false, authority: 'holds-any-grant' },
   'inbox.count': { spine: false, subject: false, authority: 'self' },
   'inbox.read': { spine: false, subject: false, authority: 'self' },
   'inbox.unattended': { spine: false, subject: false, authority: 'declared' },
+  'operations.read': { spine: false, subject: false, authority: 'declared' },
   'person.list': { spine: false, subject: false, authority: 'declared' },
   'preset.plan': { spine: false, subject: false, authority: 'from the request' },
+  'privacy.draft_breach_notices': { spine: false, subject: false, authority: 'declared' },
   'session.capabilities': { spine: false, subject: false, authority: 'holds-any-grant' },
   'settings.read': { spine: false, subject: false, authority: 'declared' },
   'task.board': { spine: true, subject: false, authority: 'declared' },
@@ -51,11 +55,15 @@ const PINNED_IDENTIFIERS = {
   'conversation.read': ['conversationId'],
   'definition.attribution': [],
   'gate.pending': [],
+  'access.read': [],
+  'client.list': [],
   'inbox.count': [],
   'inbox.read': [],
   'inbox.unattended': [],
+  'operations.read': [],
   'person.list': [],
   'preset.plan': [],
+  'privacy.draft_breach_notices': [],
   'session.capabilities': [],
   'settings.read': [],
   'task.board': ['board'],
@@ -103,6 +111,11 @@ const plan = (name: string) => ({
   names: [name],
   fixes: [`Send ${name} as a non-empty string.`],
 });
+const INCIDENT_ID = {
+  code: 'FIELD_VALUE_INVALID',
+  names: ['incidentId'],
+  fixes: ['Send incidentId as the id of a privacy incident.'],
+};
 const PLAN_FIELDS = {
   code: 'FIELD_VALUE_INVALID',
   names: ['fields'],
@@ -163,6 +176,10 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
     names: ['digest'],
     fixes: ['Send digest as the file’s sha-256, 64 lowercase hex characters.'],
   })),
+  'access.read': BODIES.map(() => null),
+  'operations.read': BODIES.map(() => null),
+  'privacy.draft_breach_notices': BODIES.map(() => INCIDENT_ID),
+  'client.list': BODIES.map(() => null),
   'inbox.read': BODIES.map(() => null),
   'inbox.count': BODIES.map(() => null),
   'inbox.unattended': BODIES.map(() => null),
@@ -177,7 +194,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same seventeen reads', () => {
+  it('names the same twenty-one reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 

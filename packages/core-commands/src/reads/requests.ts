@@ -25,9 +25,14 @@
 // the bug would live in the client.
 
 import type { PresetField } from '../../../core-records/src/index.ts';
+import type { BreachNoticeOperands } from './operations.ts';
 import type {
   AttributionResult,
+  AccessReadResult,
+  BreachNoticesResult,
+  ClientListResult,
   CapabilitiesResult,
+  OperationsReadResult,
   InboxCountResult,
   InboxReadResult,
   PersonListResult,
@@ -123,6 +128,16 @@ export interface ReadOperands {
   readonly 'conversation.allowance': { readonly conversationId: unknown };
   /** The runs that read one file, by its digest: pre-review (AW-04). */
   readonly 'definition.attribution': { readonly digest: string };
+  /** Who may do what here: Team, Clients and Agents with their previews (C32). */
+  readonly 'access.read': NoOperands;
+  readonly 'client.list': NoOperands;
+  /** What needs the operator's eye: privacy incidents first (C55). */
+  readonly 'operations.read': NoOperands;
+  /**
+   * The breach drill's notices from the published runbook (C81), for the
+   * recipients named. It writes nothing and sends nothing, so it is a read.
+   */
+  readonly 'privacy.draft_breach_notices': BreachNoticeOperands;
   /** The caller's own inbox items, each with its access derived now (INB-1d). */
   readonly 'inbox.read': NoOperands;
   /** The caller's owed count: the counted entries of `inbox.read`. */
@@ -160,6 +175,10 @@ export type ReadResult =
   | CapabilitiesResult
   | ConversationReadResult
   | ConversationListResult
+  | AccessReadResult
+  | ClientListResult
+  | OperationsReadResult
+  | BreachNoticesResult
   | AllowanceResult
   | AttributionResult
   | InboxReadResult

@@ -16,7 +16,18 @@ export {
   LEGACY_SCHEME,
   withCredentialKeys,
   type CredentialKeysDecision,
+  type DelegationCredentialKeys,
 } from './authority/credential-keys.ts';
+export {
+  CREDENTIAL_EXCLUDED_ACTIONS,
+  CREDENTIAL_MAX_DAYS,
+  deriveAgentCredential,
+  issueAgentCredential,
+  lockAgentCredential,
+  revokeAgentCredential,
+  type AgentCredential,
+  type CredentialKey,
+} from './authority/agent-credentials.ts';
 export { readEnvFile } from './env-file.ts';
 export {
   checkDelegatedAuthority,
@@ -52,6 +63,23 @@ export {
   type Subject,
 } from './authority/grants.ts';
 export { coveredScopes } from './authority/covered-scopes.ts';
+export { heldPermissions, type HeldPermission } from './authority/held-permissions.ts';
+export {
+  grantAccess,
+  lastManager,
+  lockAccess,
+  otherManagers,
+  type AccessGrant,
+} from './authority/access.ts';
+export {
+  clientsReached,
+  CLIENT_NAME_MOST,
+  createClient,
+  isClientHere,
+  listAllClients,
+  type AccessDecision,
+  type ClientRow,
+} from './clients/clients.ts';
 export {
   EXPIRED_FIXES,
   NO_AGENT_FIXES,
@@ -61,11 +89,84 @@ export {
 export { recordBodyRefusal } from './identity/authentication-attempts.ts';
 export {
   NO_MEMBERSHIP_FIXES,
+  standsOnShares,
   resolveLogin,
   withSession,
+  type SecondFactorRule,
   type Session,
   type VerifiedSubject,
 } from './identity/login-resolution.ts';
+export {
+  NO_ASSURANCE,
+  SESSION_ABSOLUTE_SECONDS,
+  type Assurance,
+  type AssuranceLevel,
+} from './identity/verified-subject.ts';
+export {
+  liveFactor,
+  recordFactorEnrolled,
+  recordFactorRemoved,
+  recordFactorVerified,
+  type FactorStatus,
+  type SecondFactor,
+} from './identity/second-factor.ts';
+export {
+  endOtherSeenSessions,
+  endProviderSession,
+  endOwnSession,
+  listSeenSessions,
+  type SeenSession,
+  type SessionEndReason,
+} from './identity/sessions.ts';
+export {
+  asksMoneyStepUp,
+  isMoneyKey,
+  judgeStepUp,
+  MONEY_STEP_UP_SETTING,
+  refuseStaleMoneyStep,
+  STEP_UP_WINDOW_SECONDS,
+} from './authority/step-up.ts';
+export {
+  INFORMATION_KINDS,
+  readPrivacyIncident,
+  readPrivacyIncidents,
+  recordPrivacyIncident,
+  type InformationKind,
+  type PrivacyIncident,
+  type PrivacyIncidentFacts,
+} from './operations/privacy-incidents.ts';
+export {
+  draftBreachNotices,
+  type BreachNotice,
+  type BreachNoticeInput,
+  type NoticeRecipient,
+} from './operations/breach-notices.ts';
+export {
+  LEGAL_DOCUMENTS,
+  PUBLIC_LEGAL_DOCUMENTS,
+  approveLegalVersion,
+  draftLegalVersion,
+  publishLegalVersion,
+  readPublishedLegal,
+  type DraftedVersion,
+  type LegalDocument,
+  type PublishedVersion,
+  type VersionRefusal,
+} from './operations/legal-documents.ts';
+export {
+  readDataClasses,
+  setDataClass,
+  type DataClass,
+  type DataClassesState,
+  type ListedDataClass,
+} from './operations/data-classes.ts';
+export {
+  readRegister,
+  setOverseasService,
+  type ListedService,
+  type OverseasService,
+  type RegisterState,
+} from './operations/overseas-services.ts';
 export {
   readInboxItems,
   countOwedItems,
@@ -95,7 +196,7 @@ export {
   raiseIncident,
   raiseRunSettled,
 } from './inbox/raise.ts';
-export { raiseMentions, readMentions, type Mentioned } from './inbox/mentions.ts';
+export { raiseMentions, readMentions, seenBy, type Mentioned } from './inbox/mentions.ts';
 export { clearDecision, withdrawEndedGates } from './inbox/clear.ts';
 export { readUnattended, type UnattendedItem } from './inbox/unattended.ts';
 export {
@@ -124,6 +225,7 @@ export {
   type RefusalCode,
   type RuntimeRefusalCode,
 } from './register.ts';
+export { UNPRODUCED_CODES } from './register-unproduced.ts';
 export {
   COMMENT_TYPE_KEY,
   externalCommentProjection,
@@ -165,3 +267,4 @@ export {
 export { isUuid } from './tenancy/ids.ts';
 export { hasRoom, type DurableLimit } from './tenancy/limit.ts';
 export { connectOutbox, type ApiEvent, type Outbox } from './tenancy/outbox.ts';
+export { loginLiveElsewhere } from './identity/shared-login.ts';
