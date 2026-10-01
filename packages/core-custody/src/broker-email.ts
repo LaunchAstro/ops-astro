@@ -33,13 +33,12 @@ import {
   type TenantQuery,
 } from '../../core-records/src/index.ts';
 import type { SenderReport } from '../../core-connectors/src/index.ts';
-import { observed, routed } from './broker-email-route.ts';
+import { observed, sendRoute } from './broker-email-route.ts';
 import type { Broker } from './broker-types.ts';
 import {
   askedEvidence,
   classOf,
   type DeliverRefusal,
-  fromVerifiedSender,
   mayStillSend,
   roomFor,
   WEEK_MS,
@@ -204,10 +203,8 @@ export async function deliver<R extends string>(
   mail: MailSettings,
   ask: (tx: TenantQuery, room: Room) => Promise<Asked | R>,
 ): Promise<Delivered<R>> {
-  if (!fromVerifiedSender(mail.from, mail.sender))
-    return { ok: false, code: 'SENDER_NOT_VERIFIED' };
-  const found = routed(broker);
-  if (found === undefined) return { ok: false, code: 'OPERATION_NOT_CATALOGUED' };
+  const found = sendRoute(broker, mail);
+  if (typeof found === 'string') return { ok: false, code: found };
   const { operation, route, adapter } = found;
   const asked = await database.withBusiness(
     businessId,

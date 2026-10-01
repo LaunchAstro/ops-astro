@@ -3,9 +3,10 @@
 // C39-T: an invitation's email, through the broker's catalogued `email.send`
 // and custody only, as AW-07b sends an inbox item's.
 //
-// 1. Check, in the invitation's business: the operation is catalogued and
-//    routed, the invitation is pending and inside its lifetime, and it has an
-//    act no send has answered yet. The acts are `invitation.create` and
+// 1. Check, in the invitation's business: the mail is from the verified
+//    sending subdomain, the operation is catalogued and routed, the
+//    invitation is pending and inside its lifetime, and it has an act no
+//    send has answered yet. The acts are `invitation.create` and
 //    `invitation.resend` as the audit chain holds them applied, so a row no
 //    person's act made, or a refused act, sends nothing; each act sends once.
 //    Then a fresh enrolment token is minted and kept as its SHA-256 alone,
@@ -13,7 +14,8 @@
 // 2. Send, through custody, the adapter's message: the address the invitation
 //    names and one link, the enrolment page carrying the token.
 // 3. Record what came back as the attempt's next observation, read as the
-//    inbox send reads it. Nothing returned or written holds the token.
+//    inbox send reads it; an answer carrying the token is malformed. Nothing
+//    returned or written holds the token.
 //
 // The concurrency ceiling is the catalogued one, counted over invitation
 // attempts in flight under a lock of their own.
@@ -27,9 +29,10 @@ import {
   type TenantQuery,
 } from '../../core-records/src/index.ts';
 import type { ModelOperation } from '../../core-connectors/src/index.ts';
-import { observed, routed } from './broker-email-route.ts';
+import { observed, sendRoute } from './broker-email-route.ts';
 import type { MailSettings } from './broker-email.ts';
 import type { Broker } from './broker-types.ts';
+import type { DeliverRefusal } from './email-class.ts';
 
 /** The acts an invitation's send answers, one email each. */
 export const INVITATION_SEND_ACTS: readonly string[] = ['invitation.create', 'invitation.resend'];
@@ -38,7 +41,7 @@ export const INVITATION_SEND_ACTS: readonly string[] = ['invitation.create', 'in
 export const ENROL_PATH = '/enrol/';
 
 export type InvitationSendRefusal =
-  'OPERATION_NOT_CATALOGUED' | 'INVITATION_NOT_PENDING' | 'NO_SEND_ACT' | 'EMAIL_AT_CEILING';
+  DeliverRefusal | 'INVITATION_NOT_PENDING' | 'NO_SEND_ACT' | 'EMAIL_AT_CEILING';
 
 export type InvitationSendResult =
   | { readonly ok: true; readonly attemptId: string; readonly state: 'accepted' }
@@ -131,8 +134,8 @@ export async function sendInvitation(
   broker: Broker,
   mail: MailSettings,
 ): Promise<InvitationSendResult> {
-  const found = routed(broker);
-  if (found === undefined) return { ok: false, code: 'OPERATION_NOT_CATALOGUED' };
+  const found = sendRoute(broker, mail);
+  if (typeof found === 'string') return { ok: false, code: found };
   const { operation, route, adapter } = found;
   const asked = await database.withBusiness(
     businessId,
@@ -149,7 +152,11 @@ export async function sendInvitation(
     timeoutMs: operation.timeoutMs,
     maxResponseBytes: operation.maxResponseBytes,
   });
-  const seen = observed(outcome, operation);
+  // An answer is evidence about the message, never a place the link's token is kept.
+  const read = observed(outcome, operation);
+  const seen = read.evidence.includes(asked.token)
+    ? ({ state: 'failed', evidence: 'malformed' } as const)
+    : read;
   const attemptId = await database.withBusiness(
     businessId,
     async (tx) => await recordAttempt(tx, asked, seen),

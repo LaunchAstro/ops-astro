@@ -1,30 +1,38 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The two pieces every broker email send shares (the inbox item's in
-// `broker-email.ts`, C39-T's invitation in `broker-invitation.ts`): the
+// What every broker email send shares (the inbox item's in `broker-email.ts`,
+// C39-T's invitation in `broker-invitation.ts`): the sender check, the
 // catalogued `email.send` and its route, and the one reading of what the
 // provider answered. Nothing here sends or writes.
 
 import type { ModelOperation } from '../../core-connectors/src/index.ts';
+import type { MailSettings } from './broker-email.ts';
 import type { BrokerRoute, Broker, ProviderAdapter } from './broker-types.ts';
 import type { CustodyOutcome } from './custody.ts';
+import { fromVerifiedSender, type DeliverRefusal } from './email-class.ts';
 
 /** The catalogued name the send dispatches by. */
 export const EMAIL_OPERATION = 'email.send';
 
-export interface Routed {
+interface Routed {
   readonly operation: ModelOperation;
   readonly route: BrokerRoute;
   readonly adapter: ProviderAdapter;
 }
 
 /** The catalogued send, its route and its adapter, or nothing when any is missing. */
-export function routed(broker: Broker): Routed | undefined {
+function routed(broker: Broker): Routed | undefined {
   const operation = broker.operations.get(EMAIL_OPERATION);
   if (operation === undefined) return undefined;
   const route = broker.routes.find((entry) => entry.provider === operation.provider);
   const adapter = broker.providers.get(operation.provider);
   return route === undefined || adapter === undefined ? undefined : { operation, route, adapter };
+}
+
+/** The route for one email from the verified sender only, or why there is none. */
+export function sendRoute(broker: Broker, mail: MailSettings): Routed | DeliverRefusal {
+  if (!fromVerifiedSender(mail.from, mail.sender)) return 'SENDER_NOT_VERIFIED';
+  return routed(broker) ?? 'OPERATION_NOT_CATALOGUED';
 }
 
 /** What came back: the provider's message id, or the fault's kind. Never the answer's body. */
