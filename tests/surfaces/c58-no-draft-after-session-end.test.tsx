@@ -20,6 +20,8 @@
 // It is a stub for the API and the identity provider, like
 // `session-ended.test.tsx`; the refusals are the bodies C58's own suites pin.
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { act, useState, type ReactElement } from 'react';
 import { App } from '../../apps/web/src/App.tsx';
@@ -256,5 +258,20 @@ describe('C58 no draft after session end', () => {
     expect(view.text()).toContain('AUTH_NO_MEMBERSHIP');
     expect(view.find('#signin-email')).toBeNull();
     expect(sessions.session).not.toBeNull();
+  });
+});
+
+describe('C58 no draft after session end, the browser run', () => {
+  it('the browser case ND3 signs out through a control the shell draws', async () => {
+    // ND3 in `tests/browser/cases-c58-no-draft.mjs` presses one selector to sign
+    // out. A selector the shell no longer draws times the case out and ends the
+    // whole browser run, so it must find the sign-out on the page this test draws.
+    const script = readFileSync(resolve('tests/browser/cases-c58-no-draft.mjs'), 'utf8');
+    const signedOutCase = /async function signedOut\([^)]*\) \{([\s\S]*?)\n\}/u.exec(script)?.[1];
+    const pressed = /page\.click\('([^']+)'\)/u.exec(signedOutCase ?? '')?.[1] ?? '';
+    expect(pressed).not.toBe('');
+    const { view } = await openMidEdit();
+    // A template, not the bare name: `find` here is the host's querySelector.
+    expect(view.find(`${pressed}`), `ND3 presses '${pressed}' to sign out`).not.toBeNull();
   });
 });
