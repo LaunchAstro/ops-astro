@@ -129,10 +129,13 @@ and draws no card. With it, the request goes to a desk and comes back as a card
 under the agent's line (`packages/ui/src/surfaces/assistant/correction-card.tsx`):
 the page, the word, its replacement, the line before and after, and the state
 (waiting for the configured approver, approved, refused). The live desk sends
-`live_correction.request` (`apps/web/src/assistant/correction-desks.ts`). Until
-the site read that locates the word and a read of a correction's decision
-join, the drawer uses the made-up desk: one made-up About line and a made-up
-approver, nothing sent, and every line it draws wears the kit's mock mark.
+`live_correction.request` (`apps/web/src/assistant/correction-desks.ts`), and
+while its card waits, "Check again" reads the decision back through
+`live_correction.read` (the state, the deciding approver by name, the version)
+and redraws the card in place. The decision read has joined; the site read
+that locates the word has not, so the drawer still uses the made-up desk until
+it does: one made-up About line and a made-up approver, nothing sent, and every
+line it draws wears the kit's mock mark.
 
 The route registry is the router. `SCREENS` in `apps/web/src/screen-registry.tsx`
 looks each screen up by route id and is keyed by `AuthenticatedRouteId`, so an

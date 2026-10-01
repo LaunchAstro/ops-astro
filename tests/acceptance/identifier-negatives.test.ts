@@ -78,10 +78,12 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
 
   beforeAll(async () => {
     w = await createIdentWorld('ident_negatives');
-    // MP-6-2's revision asks run:write, which the cast's admin holds on no
-    // run; on the whole business, so a foreign task is judged by the handler.
+    // MP-6-2's revision asks run:write, and C80's decision read run:read, which
+    // the cast's admin holds on no run; on the whole business, so a foreign
+    // task or correction is judged by the handler.
     await w.h.world.db.app.withBusiness(w.h.world.alpha, async (tx) => {
       await grantTo(tx, w.h.world.ada as Member, 'write', undefined, false, 'run');
+      await grantTo(tx, w.h.world.ada as Member, 'read', undefined, false, 'run');
     });
     alpha = w.h.world.alpha;
     bravo = w.h.world.bravo;
@@ -386,6 +388,10 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
       await refuses('live_correction.decide', 'correctionId', ada, 'NOT_FOUND', {
         foreign: { ...theirs, ...decision },
         fabricated: { correctionId: randomUUID(), versionId: randomUUID(), ...decision },
+      });
+      await refuses('live_correction.read', 'correctionId', ada, 'NOT_FOUND', {
+        foreign: { correctionId: theirs.correctionId },
+        fabricated: { correctionId: randomUUID() },
       });
       const request = { ...C80_REQUEST, partyId: randomUUID() };
       await refuses('live_correction.request', 'taskId', ada, 'NOT_FOUND', {

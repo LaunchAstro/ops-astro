@@ -254,6 +254,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'inbox.seen',
   'inbox.unattended',
   'live_correction.decide',
+  'live_correction.read',
   'live_correction.request',
   'model.call',
   'notifications.set_channel',
@@ -582,7 +583,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same fifty-two from an expected revision', () => {
+  it('exempts the same fifty-three from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

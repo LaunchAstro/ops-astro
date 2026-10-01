@@ -174,13 +174,13 @@ export async function createHarness(part: string): Promise<Harness> {
    * authority one the case is about.
    */
   function probeBody(declaration: CommandDeclaration): Readonly<Record<string, unknown>> {
-    const targeted = declaration.targetsExistingRecord;
     return {
       operationId: randomUUID(),
       ...(targetKeyOf(declaration) === 'recordId' ? { recordId: alphaTask.id } : {}),
-      ...(targeted ? { expectedRevision: alphaTask.revision } : {}),
+      ...(declaration.targetsExistingRecord ? { expectedRevision: alphaTask.revision } : {}),
       ...(declaration.name === 'task.board' ? { board: null } : {}),
       ...(declaration.name === 'task.receipt' ? { attemptId: randomUUID() } : {}),
+      ...(declaration.name === 'live_correction.read' ? { correctionId: randomUUID() } : {}),
       ...(declaration.name === 'definition.attribution' ? { digest: 'a'.repeat(64) } : {}),
       ...(declaration.name === 'preset.plan'
         ? { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] }

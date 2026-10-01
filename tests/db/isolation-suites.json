@@ -11,6 +11,7 @@
     "tests/fixture/snapshot/snapshot-clone-and-privileges.test.ts",
     "tests/site/c80-isolation.test.ts",
     "tests/site/c80-agent-request.test.ts",
+    "tests/site/c80-decision-read.test.ts",
     "tests/api/mp-6-1-isolation.test.ts",
     "tests/api/mp-6-4-isolation.test.ts",
     "tests/api/aw-03-isolation.test.ts",

@@ -70,7 +70,7 @@ export const taskBodyContext = (
     await seedLiveCorrection(world.db.app, world.alpha, taskId, world.mia),
 });
 
-/** The matrix's positive bodies for C80's three commands (`role-case-positive-body.ts`). */
+/** The matrix's positive bodies for C80's four operations (`role-case-positive-body.ts`). */
 export async function c80PositiveBody(name: CommandName, context: BodyContext): Promise<Prepared> {
   if (name === 'settings.set_live_correction_approver') {
     return { body: { value: context.assigneePersonId } };
@@ -85,6 +85,8 @@ export async function c80PositiveBody(name: CommandName, context: BodyContext): 
     return { exception: 'this harness seeds no live correction (C80)' };
   }
   const correction = await context.seedCorrection();
+  // The decision read: that request, read back under the admin's run:read.
+  if (name === 'live_correction.read') return { body: { correctionId: correction.correctionId } };
   const named = await context.asPerson('settings.set_live_correction_approver', {
     value: context.adminPersonId,
   });

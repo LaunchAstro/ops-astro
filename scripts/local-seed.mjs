@@ -115,6 +115,9 @@ const GRANTS_BY_ROLE = {
     // MP-6-2's `state revised` (ORCH33, ORCH38): `run:write`, a person's own
     // and an agent's inside its delegation; the owner and administrators hold it.
     ['run', 'write'],
+    // C80's decision read (`live_correction.read`) asks `run:read` at the
+    // correction's party: whoever requests a correction reads its decision.
+    ['run', 'read'],
     // The operations view's key (C55): owner and administrators by install
     // default, never a member, never an agent. `inbox.unattended` asks it
     // (INB-1e), and it names other people's items.

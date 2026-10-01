@@ -32,6 +32,7 @@ const PINNED_SHAPE = {
   'inbox.count': { spine: false, subject: false, authority: 'self' },
   'inbox.read': { spine: false, subject: false, authority: 'self' },
   'inbox.unattended': { spine: false, subject: false, authority: 'declared' },
+  'live_correction.read': { spine: false, subject: false, authority: 'holds-any-grant' },
   'person.list': { spine: false, subject: false, authority: 'declared' },
   'preset.plan': { spine: false, subject: false, authority: 'from the request' },
   'session.capabilities': { spine: false, subject: false, authority: 'holds-any-grant' },
@@ -51,6 +52,7 @@ const PINNED_IDENTIFIERS = {
   'inbox.count': [],
   'inbox.read': [],
   'inbox.unattended': [],
+  'live_correction.read': ['correctionId'],
   'person.list': [],
   'preset.plan': [],
   'session.capabilities': [],
@@ -152,6 +154,12 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'inbox.read': BODIES.map(() => null),
   'inbox.count': BODIES.map(() => null),
   'inbox.unattended': BODIES.map(() => null),
+  // C80: the correction, which none of these bodies carries.
+  'live_correction.read': BODIES.map(() => ({
+    code: 'FIELD_VALUE_INVALID',
+    names: ['correctionId'],
+    fixes: ['Send correctionId as the correction.'],
+  })),
 };
 
 /** The refusal without its `refused` flag, or null. */
@@ -163,7 +171,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same sixteen reads', () => {
+  it('names the same seventeen reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 

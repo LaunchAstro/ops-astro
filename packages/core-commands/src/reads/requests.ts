@@ -30,6 +30,7 @@ import type {
   CapabilitiesResult,
   InboxCountResult,
   InboxReadResult,
+  LiveCorrectionReadResult,
   PersonListResult,
   PresetPlanResult,
   QueueResult,
@@ -126,6 +127,8 @@ export interface ReadOperands {
   readonly 'inbox.count': NoOperands;
   /** The business's items no path reaches, for `operations:read` (INB-1e). */
   readonly 'inbox.unattended': NoOperands;
+  /** One live correction's decision, read again for its card (C80). */
+  readonly 'live_correction.read': { readonly correctionId: string };
 }
 
 /** A read about the business as a whole, which takes nothing. */
@@ -158,4 +161,5 @@ export type ReadResult =
   | AttributionResult
   | InboxReadResult
   | InboxCountResult
+  | LiveCorrectionReadResult
   | { readonly ok: true; readonly unattended: readonly UnattendedEntry[] };

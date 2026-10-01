@@ -11,7 +11,7 @@
 // waited for, never half-read.
 //
 // The system write that records an observed publish or revert with its
-// receipt is `correction-receipts.ts`.
+// receipt is `correction-receipts.ts`; the decision read, `correction-decisions.ts`.
 
 import { randomUUID } from 'node:crypto';
 import { EFFECTIVE, type Subject } from '../authority/grants.ts';
@@ -166,20 +166,20 @@ export async function lockCorrectionForSystem(
   return row === undefined ? undefined : correctionFrom(row);
 }
 
-const COVERED = `exists (
+export const COVERED = `exists (
     select 1 from effective e
      where e.collection = $2 and e.action = $3
        and exists (select 1 from unnest($4::text[], $5::uuid[]) as s (kind, id)
                     where s.kind = e.subject_kind and s.id = e.subject_id)
        and (e.scope_kind = 'business' or (e.scope_kind = 'party' and e.scope_id = c.party_id)))`;
 
-interface Covering {
+export interface Covering {
   readonly subjects: readonly Subject[];
   readonly collection: string;
   readonly action: string;
 }
 
-const coveringParameters = (covering: Covering): readonly unknown[] => [
+export const coveringParameters = (covering: Covering): readonly unknown[] => [
   covering.collection,
   covering.action,
   covering.subjects.map((subject) => subject.kind),

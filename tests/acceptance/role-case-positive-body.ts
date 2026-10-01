@@ -177,6 +177,7 @@ export function createPositiveBody(
       case 'settings.set_live_correction_approver':
       case 'live_correction.request':
       case 'live_correction.decide':
+      case 'live_correction.read':
         return await c80PositiveBody(declaration.name, context);
       case 'budget.top_up':
       case 'budget.record_outcome':

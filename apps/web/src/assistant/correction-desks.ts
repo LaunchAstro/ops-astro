@@ -4,17 +4,19 @@
 //
 // **The live desk** sends `live_correction.request` with the target its
 // `locate` port finds (party, task, file, page address, base revision and the
-// line the word sits in) and draws the state the server answered. Its
-// decision cannot be read again from here: no read of a correction is on the
-// surface yet, so its card offers no "Check again".
+// line the word sits in) and draws the state the server answered. While the
+// card waits it offers "Check again", which reads the decision back through
+// `live_correction.read` (the state, the deciding approver by name and the
+// version, nothing more) and redraws the card it already holds in place.
 //
-// **The made-up desk** is what the drawer uses until two back ends join: the
-// site read that locates a word on a catalogued page (the capture catalogue,
-// C35's placement) and a read of a correction's decision. It answers from one
+// **The made-up desk** is what the drawer uses until the site read that
+// locates a word on a catalogued page (the capture catalogue, C35's placement)
+// joins: the decision read has, the locate read has not. It answers from one
 // made-up About page and a made-up approver, sends nothing, and its
 // `provenance` is `mock`, so every line it draws wears the kit's mock mark.
 
 import type { AssistantCorrection, AssistantCorrectionState } from '@launchastro/ui';
+import type { LiveCorrectionReadResult } from '../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import { settle } from '../records/use-command.ts';
 import {
@@ -41,6 +43,7 @@ function stateOf(state: unknown): AssistantCorrectionState | null {
 }
 
 export function liveDesk(client: OperationsClient, locate: Locate): CorrectionDesk {
+  const asked = new Map<string, AssistantCorrection>();
   return {
     provenance: 'real',
     request: async (ask) => {
@@ -60,12 +63,30 @@ export function liveDesk(client: OperationsClient, locate: Locate): CorrectionDe
       const id = settled.value.detail?.['correctionId'];
       const state = stateOf(settled.value.detail?.['state']);
       if (typeof id !== 'string' || state === null) return refused('No correction came back.');
-      const correction = { ...ask, before: target.before, after, state };
-      return {
-        kind: 'card',
-        correctionId: id,
-        correction: { ...correction, approver: null, checkable: false },
+      const checkable = state === 'waiting';
+      const correction = { ...ask, before: target.before, after, state, approver: null, checkable };
+      asked.set(id, correction);
+      return { kind: 'card', correctionId: id, correction };
+    },
+    // The card this desk drew, with the decision as the server reads it now.
+    recheck: async (correctionId) => {
+      const known = asked.get(correctionId);
+      if (known === undefined) return refused('No such request was made here.');
+      const settled = settle(
+        await client.read<LiveCorrectionReadResult>('live_correction.read', { correctionId }),
+      );
+      if (settled.kind !== 'ok') return refused(settled.because);
+      const read = settled.value.correction;
+      const state = stateOf(read.state);
+      if (state === null) return refused('No decision came back.');
+      const correction = {
+        ...known,
+        state,
+        approver: read.approver,
+        checkable: state === 'waiting',
       };
+      asked.set(correctionId, correction);
+      return { kind: 'card', correctionId, correction };
     },
   };
 }

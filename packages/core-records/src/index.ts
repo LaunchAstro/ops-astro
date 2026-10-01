@@ -160,6 +160,11 @@ export {
   type NewLiveCorrection,
 } from './site/live-corrections.ts';
 export {
+  holdsAnywhere,
+  readCoveredDecision,
+  type CorrectionDecision,
+} from './site/correction-decisions.ts';
+export {
   readCorrectionForRun,
   recordObservedResult,
   type HeldForRun,

@@ -57,6 +57,7 @@ export type {
   InboxCountResult,
   InboxEntry,
   InboxReadResult,
+  LiveCorrectionReadResult,
   InternalCommentView,
   InternalTaskDetail,
   InternalTaskRead,

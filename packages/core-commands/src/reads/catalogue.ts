@@ -38,6 +38,7 @@ import { parseReceipt, receiptSubject, serveReceipt } from './receipts.ts';
 import { listConversations, readConversation } from './conversation.ts';
 import { DIGEST, readAttribution } from './attribution.ts';
 import { countOwed, readInbox, readUnattendedInbox } from './inbox.ts';
+import { parseCorrectionRead, serveCorrectionRead } from './live-correction.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
 
 export type ReadName = ReadRequest['read'];
@@ -493,6 +494,18 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       ok: true,
       unattended: await readUnattendedInbox(tx, session.personId),
     }),
+  },
+  // C80: one correction's decision, for its card. No subject record, as
+  // `gate.pending`: the door asks for any grant, and the read filters by the
+  // caller's `run:read` at the correction's own party inside its query, so a
+  // correction out of reach and one that does not exist are one answer.
+  'live_correction.read': {
+    identifiers: ['correctionId'],
+    parse: parseCorrectionRead,
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: serveCorrectionRead,
   },
 };
 
