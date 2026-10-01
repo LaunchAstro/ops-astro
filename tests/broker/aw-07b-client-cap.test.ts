@@ -8,6 +8,7 @@
 // person, each checked by what was mailed and what was written.
 
 import { expect, it as vitestIt } from 'vitest';
+import { askOne } from '../../packages/core-custody/src/broker-email.ts';
 import { emailDailyBatch } from '../../packages/core-custody/src/index.ts';
 import { raiseInboxItem } from '../../packages/core-records/src/index.ts';
 import { attemptsOf, itemFor, noDatabase, useEmailWorld, w } from './email-world.ts';
@@ -16,6 +17,8 @@ import {
   commentBy,
   extra,
   freshInbox,
+  heldOpen,
+  stillWaiting,
   timing,
   useTimingWorld,
 } from './email-timing-world.ts';
@@ -75,14 +78,22 @@ it('AW-07b client cap: one relationship email a week per client; a person-writte
   expect(w.provider.outbox.length).toBe(sent + 4);
 });
 
-it('AW-07b client cap: two batches racing for one person and client send one email', async () => {
+it('AW-07b client cap: a second sender to the same client waits for the first and holds its item', async () => {
   await freshInbox();
   const sent = w.provider.outbox.length;
-  const item = await clientItem(w.task, 'agent');
-  const results = await Promise.all([batch(w.person), batch(w.person)]);
-  expect(results.filter((result) => result.ok)).toHaveLength(1);
-  expect(w.provider.outbox.length).toBe(sent + 1);
-  expect((await attemptsOf(item)).map((row) => row.state)).toEqual(['asked', 'accepted']);
+  const first = await clientItem(w.task, 'agent');
+  const second = await clientItem(w.task, 'agent', extra.clientA2);
+  // A sender to client A has checked the week and recorded its ask, not yet committed.
+  const sender = await heldOpen(async (tx) => await askOne(tx, first));
+  // Another of the client's people is batched meanwhile: it waits on the client's lock.
+  const racing = batch(extra.clientA2);
+  const waited = await stillWaiting(racing);
+  await sender.release();
+  expect(waited).toBe(true);
+  expect(await racing).toEqual({ ok: false, code: 'NOTHING_WAITING' });
+  expect(w.provider.outbox.length).toBe(sent);
+  expect(await attemptsOf(second)).toEqual([]);
+  expect(await asked(first)).toEqual({ state: 'asked', evidence: 'class:relationship' });
 });
 
 it('AW-07b isolation (batch): another business, another client and another person are never batched', async () => {

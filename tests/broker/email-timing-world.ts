@@ -15,6 +15,7 @@ import type {
 import { writeComment, type InboxReason } from '../../packages/core-records/src/index.ts';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { installTaskSpine } from '../../packages/core-records/src/tasks/install.ts';
+import type { TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 import { insertActor, insertAgentActor, insertPerson } from '../identity/fixture.ts';
 import { MAIL, w } from './email-world.ts';
 
@@ -24,6 +25,8 @@ export const extra = {} as {
   agentAuthor: string;
   /** A second client's person in the first business: read on `otherTask` only. */
   clientB: string;
+  /** A second person of the first client: read on `task` only. */
+  clientA2: string;
 };
 
 /** The choices a case sets; anything unset is the daily batch. Mock: MP-2-11 is not built here. */
@@ -80,35 +83,77 @@ export async function seenCount(items: readonly string[]): Promise<number> {
   return Number(row?.n ?? '-1');
 }
 
+/** A client's person in the first business: read on that task's client, a confirmed address. */
+async function clientPerson(tx: TenantQuery, name: string, task: string): Promise<string> {
+  const person = await insertPerson(tx, name);
+  const actor = await insertActor(tx, person);
+  const [row] = await tx.query<{ client: string }>(
+    'select uuid_7 as client from public.records where business_id = $1 and id = $2',
+    [tx.businessId, task],
+  );
+  const granted = await issueGrant(tx, [], {
+    subject: { kind: 'person', id: person },
+    scope: { kind: 'party', id: row?.client ?? '' },
+    collection: 'task',
+    action: 'read',
+    parentGrantId: null,
+    grantedByActorId: actor,
+  });
+  if (!granted.ok) throw new Error('timing world: a client grant was refused');
+  await tx.query(
+    `insert into public.person_identifiers
+       (business_id, id, person_id, kind, value, observed_value, source_system, review_state)
+     values ($1, gen_random_uuid(), $2, 'email', $3, $3, 'test', 'confirmed')`,
+    [tx.businessId, person, `client${randomBytes(4).toString('hex')}@example.test`],
+  );
+  return person;
+}
+
 /** Register after `useEmailWorld()`, so it runs once the world stands. */
 export function useTimingWorld(): void {
   beforeAll(async () => {
     await w.db.app.withBusiness(w.alpha, async (tx) => {
       extra.commentType = (await installTaskSpine(tx)).taskCommentTypeId;
-      const author = await insertPerson(tx, 'Staff author');
-      extra.personAuthor = await insertActor(tx, author);
+      extra.personAuthor = await insertActor(tx, await insertPerson(tx, 'Staff author'));
       extra.agentAuthor = await insertAgentActor(tx);
-      extra.clientB = await insertPerson(tx, 'Client B person');
-      const actor = await insertActor(tx, extra.clientB);
-      const [task] = await tx.query<{ client: string }>(
-        'select uuid_7 as client from public.records where business_id = $1 and id = $2',
-        [tx.businessId, w.otherTask],
-      );
-      const granted = await issueGrant(tx, [], {
-        subject: { kind: 'person', id: extra.clientB },
-        scope: { kind: 'party', id: task?.client ?? '' },
-        collection: 'task',
-        action: 'read',
-        parentGrantId: null,
-        grantedByActorId: actor,
-      });
-      if (!granted.ok) throw new Error('timing world: the client B grant was refused');
-      await tx.query(
-        `insert into public.person_identifiers
-           (business_id, id, person_id, kind, value, observed_value, source_system, review_state)
-         values ($1, gen_random_uuid(), $2, 'email', $3, $3, 'test', 'confirmed')`,
-        [tx.businessId, extra.clientB, `clientb${randomBytes(4).toString('hex')}@example.test`],
-      );
+      extra.clientB = await clientPerson(tx, 'Client B person', w.otherTask);
+      extra.clientA2 = await clientPerson(tx, 'Second client A person', w.task);
     });
   }, 60_000);
+}
+
+/**
+ * Another sender mid-send: `work` runs in its own transaction, which stays
+ * open, its writes uncommitted and its locks held, until `release`.
+ */
+export async function heldOpen(
+  work: (tx: TenantQuery) => Promise<unknown>,
+): Promise<{ release: () => Promise<void> }> {
+  let finish = (): void => {};
+  const gate = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  let started = (): void => {};
+  const ready = new Promise<void>((resolve) => {
+    started = resolve;
+  });
+  const done = w.db.app.withBusiness(w.alpha, async (tx) => {
+    await work(tx);
+    started();
+    await gate;
+  });
+  await ready;
+  return {
+    release: async () => {
+      finish();
+      await done;
+    },
+  };
+}
+
+/** Whether a promise is still pending after a short wait. */
+export async function stillWaiting(promise: Promise<unknown>): Promise<boolean> {
+  const pending = Symbol('pending');
+  const timer = new Promise((resolve) => setTimeout(() => resolve(pending), 400));
+  return (await Promise.race([promise, timer])) === pending;
 }

@@ -8,13 +8,17 @@
 // real process and the fake provider on loopback.
 
 import { expect, it as vitestIt } from 'vitest';
+import { checkItem, recordAsked } from '../../packages/core-custody/src/broker-email.ts';
+import { DAY_MS, windowSpent } from '../../packages/core-custody/src/email-class.ts';
 import { emailAtOnce, emailDailyBatch } from '../../packages/core-custody/src/index.ts';
 import { attemptsOf, itemFor, MAIL, masked, noDatabase, useEmailWorld, w } from './email-world.ts';
 import {
   aged,
   choices,
   freshInbox,
+  heldOpen,
   seenCount,
+  stillWaiting,
   timing,
   useTimingWorld,
 } from './email-timing-world.ts';
@@ -61,6 +65,27 @@ it('AW-07b daily batch: several waiting items other than decisions and incidents
   await aged('25 hours');
   expect(await batch()).toMatchObject({ ok: true, items: 1 });
   expect(w.provider.outbox.length).toBe(before + 2);
+});
+
+it('AW-07b daily batch: a second batch for one person waits for the first and is told the day is spent', async () => {
+  await freshInbox();
+  const sent = w.provider.outbox.length;
+  const first = await itemFor(w.task, 'mention');
+  // A batch for this person has read the day and recorded its ask, not yet committed.
+  const sender = await heldOpen(async (tx) => {
+    await windowSpent(tx, { person: w.person }, DAY_MS);
+    const item = await checkItem(tx, first);
+    if (typeof item === 'string') throw new Error(`the first item was refused: ${item}`);
+    await recordAsked(tx, [item], true);
+  });
+  const later = await itemFor(w.task, 'assignment');
+  const racing = batch();
+  const waited = await stillWaiting(racing);
+  await sender.release();
+  expect(waited).toBe(true);
+  expect(await racing).toEqual({ ok: false, code: 'BATCH_ALREADY_SENT' });
+  expect(w.provider.outbox.length).toBe(sent);
+  expect(await attemptsOf(later)).toEqual([]);
 });
 
 it('AW-07b daily batch: a single comment makes one email', async () => {
