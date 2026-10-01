@@ -14,6 +14,7 @@ import {
 } from '../../packages/core-wire/src/index.ts';
 import type { Harness } from '../acceptance/role-case-harness.ts';
 import { both, refusedAlike } from '../cli/cli-parity.ts';
+import { type Call, ON_THE_PICKUP, pickupCalls } from './s0-5-readiness-agent-calls.ts';
 
 /** Bookkeeping every call writes; never content of its own. */
 const BOOKKEEPING: ReadonlySet<string> = new Set([
@@ -29,6 +30,12 @@ const NOT_CONTENT: Readonly<Record<string, string>> = {
   'client.create': 'writes a client, not a task',
   'task.purge': 'removes the task; nothing is left to change the client of',
   'inbox.seen': "the caller's own seen stamp on an item, not the task's content",
+  // AW-03: a person's own thread with the assistant. A task it cites is its
+  // scope; the task holds nothing of it, and its events name no task.
+  'conversation.start': "the caller's own conversation, not the task's content",
+  'conversation.message': "a message in the caller's own conversation",
+  'conversation.rename': "the caller's own conversation's title",
+  'conversation.set_scope': 'which task the conversation cites, not content of that task',
 };
 
 export const CONTENT: readonly CommandDeclaration[] = COMMAND_SURFACE.filter(
@@ -89,6 +96,23 @@ function changed(
   );
 }
 
+/** The agent's own calls (model.call, the hand-over and handback), made on one pickup. */
+let onThePickup: ReadonlyMap<string, Call> | undefined;
+
+async function callFor(
+  declaration: CommandDeclaration,
+): Promise<Call & { readonly names?: Record<string, unknown> }> {
+  if (declaration.name === 'delegation.revoke' || !ON_THE_PICKUP.has(declaration.name)) {
+    return { body: await bodyFor(declaration) };
+  }
+  // Made when first needed, after the revoke above has ended its own pickup.
+  onThePickup ??= await pickupCalls(harness);
+  const call = onThePickup.get(declaration.name)!;
+  // The child's handback names nothing; its task is the parent's lease's, as the model call names it.
+  if (declaration.name !== 'run.child_handback') return call;
+  return { ...call, names: onThePickup.get('model.call')!.body };
+}
+
 async function bodyFor(declaration: CommandDeclaration): Promise<Record<string, unknown>> {
   if (declaration.name === 'delegation.revoke') {
     const task = await harness.freshTask(`s0-5 lock ${randomUUID()}`);
@@ -145,6 +169,16 @@ const MARKER_HELD: ReadonlySet<string> = new Set([
   'budget.top_up',
   'budget.record_outcome',
   'budget.write_off',
+  // SL12's: the plan's acceptance, the check, the run's worker and its stop,
+  // each writing rows of its own beside the task.
+  'task.accept_plan',
+  'task.check',
+  'model.call',
+  'run.top_up',
+  'run.end_at_budget_stop',
+  'run.revise_state',
+  'run.delegate_child',
+  'run.child_handback',
 ]);
 
 /** Per task, a digest of every row that names it, in the tables the lock reads. */
@@ -186,10 +220,13 @@ async function taskNamedBy(body: Record<string, unknown>): Promise<string | unde
 /** Runs one content command's fixture; what is wrong with its marker, if anything. */
 export async function markerFaults(declaration: CommandDeclaration): Promise<string[]> {
   const { name } = declaration;
-  const body = await bodyFor(declaration);
+  const { body, credential, names } = await callFor(declaration);
   const [revisions, named, seq] = [await taskRevisions(), await rowsNaming(), await lastSeq()];
-  const named0 = await taskNamedBy(body);
-  const answer = await harness.asPerson(name, body);
+  const named0 = await taskNamedBy(names ?? body);
+  const answer =
+    credential === undefined
+      ? await harness.asPerson(name, body)
+      : await harness.asAgent(name, body, credential);
   if (answer.code !== 'ok') return [`${name}: its fixture was refused ${answer.code}`];
   const marked = await admin<{ subject: string }>(
     `select distinct a.subject_record_id::text as subject from audit_events a

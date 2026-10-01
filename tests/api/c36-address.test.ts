@@ -14,7 +14,7 @@ import { purgeConversation, writeWrapUp } from '../../packages/core-commands/src
 import { writeBusinessSetting } from '../../packages/core-records/src/index.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { shareWithClient } from '../commands/fixture.ts';
-import { CODE_REVISION } from './aw-03-fixture.ts';
+import { CODE_REVISION, WINDOW_SETTING } from './aw-03-fixture.ts';
 import { addressWorld, carriesNothing, conversationOf, type AddressWorld } from './c36-fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
@@ -63,7 +63,7 @@ describe.skipIf(serverUrl === undefined)('C36 address refusals', () => {
     const { db, business } = x.w.fixture;
     const conversationId = conversationOf(x.address);
     await db.app.withBusiness(business, async (tx) => {
-      await writeBusinessSetting(tx, { key: 'conversation_window_days', value: 7 });
+      await writeBusinessSetting(tx, { ...WINDOW_SETTING, value: 7 });
     });
     // The scoped task is still open, so it is completed first: open work holds the body.
     const task = await x.w.as(x.w.owner, 'task.read', { recordId: x.taskOne });
