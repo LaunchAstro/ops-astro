@@ -24,6 +24,7 @@ import { todayOn } from '../task/due-dates.ts';
 import { readingOf, scopeOf, scoped, sorted, type SortKey } from './todo-list.ts';
 import { TodoRow, type TodoRowProps } from './TodoRow.tsx';
 import { TodoTools } from './TodoTools.tsx';
+import type { TodoScope } from './todo-scope.ts';
 
 export interface TodosScreenProps {
   readonly client: OperationsClient;
@@ -34,6 +35,8 @@ export interface TodosScreenProps {
   readonly changes?: number;
   /** The clock the business day is read on; the real one unless a test fixes it. */
   readonly now?: () => Date;
+  /** The scope a door opens the panel with (MP-7-2); the reader's own list when absent. */
+  readonly scope?: TodoScope;
 }
 
 export function TodosScreen(props: TodosScreenProps): ReactElement {
