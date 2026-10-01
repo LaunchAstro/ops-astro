@@ -83,6 +83,14 @@ export function server(
   let read = 0;
   const fetch = ((url: string | URL, init?: RequestInit) => {
     const at = String(url);
+    // The frame's person menu (C23) asks who is signed in, and the frame reads
+    // the person's appearance (MP-2-11); neither is this screen's call.
+    if (at.endsWith('/session/person')) return Promise.resolve(json({ ok: true, person: {} }));
+    if (at.endsWith('/preference/read'))
+      return Promise.resolve(json({ ok: true, preferences: {} }));
+    // The dock bell's owed count (MP-7-3) and its board topic are the frame's too.
+    if (at.endsWith('/inbox/count')) return Promise.resolve(json({ ok: true, owed: 0 }));
+    if (at.includes('/live?')) return Promise.resolve(new Response(null, { status: 503 }));
     calls.push({
       url: at,
       body: JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>,

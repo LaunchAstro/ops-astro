@@ -27,8 +27,7 @@
 
 import { effectiveGrants, subjectsOf } from '../../../core-records/src/index.ts';
 import type { TenantQuery, Session, Action, ScopeKind } from '../../../core-records/src/index.ts';
-import { declarationOf } from '../../../core-wire/src/index.ts';
-import type { CommandName } from '../../../core-wire/src/index.ts';
+import { declarationOf, EXTERNAL_WRITES } from '../../../core-wire/src/index.ts';
 import type { Capability, SessionCapabilities } from '../../../core-wire/src/index.ts';
 
 /**
@@ -67,15 +66,13 @@ export interface AgentCapabilities {
 /**
  * The writes an external party (R4) may reach, as the pairs they ask for.
  *
- * The R4 gate in `commands/prepare.ts` (`EXTERNAL_WRITES`) refuses every other
+ * The R4 gate in `commands/prepare.ts` refuses every write outside `EXTERNAL_WRITES`
  * write before any grant row is read, so a scoped `write` or `assign` row a
  * share would never carry is authority the party cannot use. Showing it would
  * tell a client it could do the thing and let the 403 say otherwise, which is
- * what this read exists to prevent. The gate's set is not exported, so its
- * names are repeated here, and `party-capability-reads.test.ts` holds the
- * two together over HTTP.
+ * what this read exists to prevent. The gate and this read share core-wire's list, and
+ * `party-capability-reads.test.ts` holds the two together over HTTP.
  */
-const EXTERNAL_WRITES: readonly CommandName[] = ['task.comment', 'inbox.seen'];
 
 const EXTERNAL_PAIRS: ReadonlySet<string> = new Set(
   EXTERNAL_WRITES.map((name) => {

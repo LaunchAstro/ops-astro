@@ -96,7 +96,7 @@ export async function fetchLatest(storeUrl, file, reach = stagingReach, operator
 
 /**
  * `act` once a pass the store took is dated where the operations view reads
- * it (C55, migration 0068), through the gate (operator.ts). A failed drill, a
+ * it (C55, migration 0070), through the gate (operator.ts). A failed drill, a
  * carried one still pending and a receipt the store refused stamp nothing.
  */
 async function stampIfPassed(gate, act) {

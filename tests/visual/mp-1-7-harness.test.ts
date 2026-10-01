@@ -153,7 +153,8 @@ function zeroHorizontalOverflow(): void {
 }
 
 // The registry's pages: wave 0's four, the public legal page (C81), Settings ▸
-// Access, Telemetry (U14) and Operations (C55), and the component gallery (MP-1-3, U04).
+// Access, Telemetry (U14), Operations (C55), MP-7-3's inbox, the component
+// gallery (MP-1-3, U04) and MP-7-10's Team.
 const BUILT_PAGES = [
   'agency:sign-in',
   'agency:legal',
@@ -163,7 +164,9 @@ const BUILT_PAGES = [
   'agency:access',
   'agency:telemetry',
   'agency:operations',
+  'agency:inbox',
   'agency:gallery',
+  'agency:team',
 ];
 
 function everyPageBuiltSoFar(): void {

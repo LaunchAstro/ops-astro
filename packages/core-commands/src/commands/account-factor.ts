@@ -72,7 +72,7 @@ const LOCKED_FIXES: readonly string[] = [
 /**
  * First enrolment: a person with no factor, after a fresh password sign-in
  * inside the step-up window (TR-A2-2). A person who already has a verified
- * factor, here or through any business the login reaches (0083), replaces it
+ * factor, here or through any business the login reaches (0064), replaces it
  * by removing it first, with a code.
  */
 export async function enrolSecondFactor(
@@ -226,14 +226,14 @@ export async function removeSecondFactor(
   };
 }
 
-/** A verified factor here, or one the login holds through any business (0083). */
+/** A verified factor here, or one the login holds through any business (0064). */
 const holdsVerified = async (
   tx: TenantQuery,
   caller: FactorCaller,
   live: { readonly status: string } | undefined,
 ) => live?.status === 'verified' || (await loginHasVerifiedFactor(tx, caller.presented.subject));
 
-/** The caller's factor, and the login's subject that holds it in every business (0083). */
+/** The caller's factor, and the login's subject that holds it in every business (0064). */
 const ownFactor = (caller: FactorCaller, session: Session, factorId: string) => ({
   personId: session.personId,
   factorId,

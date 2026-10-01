@@ -53,6 +53,7 @@ export {
   checkAuthority,
   EFFECTIVE as EFFECTIVE_GRANTS,
   effectiveGrants,
+  grantFingerprint,
   OPERATIONS_MANAGE,
   revokeGrant,
   subjectsOf,
@@ -64,6 +65,7 @@ export {
   type ScopeRequest,
   type Subject,
 } from './authority/grants.ts';
+export { heldScopes } from './authority/held-scopes.ts';
 export { heldPermissions, type HeldPermission } from './authority/held-permissions.ts';
 export {
   grantAccess,
@@ -100,6 +102,7 @@ export {
   type Session,
   type VerifiedSubject,
 } from './identity/login-resolution.ts';
+export { withStanding } from './identity/standing.ts';
 export {
   NO_ASSURANCE,
   SESSION_ABSOLUTE_SECONDS,
@@ -174,6 +177,15 @@ export {
   type RegisterState,
 } from './operations/overseas-services.ts';
 export {
+  admitsPreference,
+  dismissTip,
+  isPreferenceKey,
+  PREFERENCE_KEYS,
+  readPreferences,
+  savePreference,
+  type PreferenceKey,
+} from './preferences/store.ts';
+export {
   readInboxItems,
   countOwedItems,
   INBOX_HISTORY_PAGE,
@@ -194,7 +206,7 @@ export {
   type InboxWorkState,
   type RaiseInboxItem,
 } from './inbox/items.ts';
-export { taskAccess } from './inbox/access.ts';
+export { readScopes, taskAccess } from './inbox/access.ts';
 export {
   raiseAssignment,
   raiseDecision,
@@ -202,7 +214,7 @@ export {
   raiseIncident,
   raiseRunSettled,
 } from './inbox/raise.ts';
-export { raiseMentions, readMentions, type Mentioned } from './inbox/mentions.ts';
+export { raiseMentions, readMentions, seenBy, type Mentioned } from './inbox/mentions.ts';
 export { clearDecision, withdrawEndedGates } from './inbox/clear.ts';
 export { readUnattended, type UnattendedItem } from './inbox/unattended.ts';
 export {
@@ -253,6 +265,7 @@ export {
   wouldCloseParentLoop,
   type EntryPoint,
 } from './tasks/placement.ts';
+export { changesSince, type ChangesSince, type TaskChange } from './tasks/changes.ts';
 export { slotOf, TASK_SPINE, TASK_TYPE_KEY } from './tasks/spine.ts';
 export { readTaskStates, setTaskState, type TaskStateRow } from './tasks/state.ts';
 export { TASK_STATE_TYPE_KEY, type MachineCategory } from './tasks/states.ts';

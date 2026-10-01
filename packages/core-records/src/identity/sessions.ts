@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // A person's own sessions (C58, 0057): the ones this business has served them
-// lately, less the ones ended anywhere (0065).
+// lately, less the ones ended anywhere (0061).
 //
 // The sign-in provider gives a person no list of their sessions, so the list
 // is what the door has seen: the distinct `session_id`s of the person's
@@ -22,7 +22,7 @@ export interface SeenSession {
 }
 
 /**
- * Ends provider sessions installation-wide (0065): login resolution refuses a
+ * Ends provider sessions installation-wide (0061): login resolution refuses a
  * token whose session is named there, in every business. Asking again changes
  * nothing.
  */
@@ -79,7 +79,7 @@ export async function endOtherSeenSessions(
   personId: string,
   keep: string | undefined,
   reason: Exclude<SessionEndReason, 'sign_out'>,
-  /** The login's provider subject: the ending holds in every business (0069). */
+  /** The login's provider subject: the ending holds in every business (0063). */
   subject: string,
 ): Promise<number> {
   await tx.query(
@@ -100,7 +100,7 @@ export async function endOtherSeenSessions(
 }
 
 /**
- * End one provider session in every business (0065), with no person: a
+ * End one provider session in every business (0061), with no person: a
  * sign-out the business no longer admits still ends its verified session.
  */
 export async function endProviderSession(tx: TenantQuery, sessionId: string): Promise<void> {
@@ -130,7 +130,7 @@ async function endSessions(
      returning 1`,
     [tx.businessId, personId, sessionIds, reason],
   );
-  // Ended in every business the login reaches, not only this one (0065).
+  // Ended in every business the login reaches, not only this one (0061).
   await tx.query(END_PROVIDER_SESSIONS, [sessionIds]);
   return rows.length;
 }

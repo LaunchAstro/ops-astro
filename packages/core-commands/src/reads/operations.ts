@@ -5,7 +5,7 @@
 // unattended items are INB-1's `readUnattendedInbox`, as the caller reads
 // them); the privacy incidents are the part that is this view's own record, and each
 // links the breach runbook published most recently (C81). The security alerts
-// are the forwarder's log (S0-2, 0067), each with fixed words for its kind.
+// are the forwarder's log (S0-2, 0069), each with fixed words for its kind.
 //
 // Beside it, the breach drill's notices (C81): drafted from that runbook for
 // the recipients the caller names, answered and never sent.
@@ -30,7 +30,7 @@ import { refuseCommand, refuseNotFound, type CommandRefusal } from '../commands/
 
 /**
  * What each alert kind the forwarder raises concerns, in fixed words: never a
- * value from the alert, which holds none (0067).
+ * value from the alert, which holds none (0069).
  */
 const ALERT_CONCERNS: ReadonlyMap<string, string> = new Map(
   Object.entries({
@@ -68,7 +68,7 @@ const RESTORE_FRESH_DAYS = 35;
 
 /**
  * The date of the last tested restore (C55, carried from S0-3), from the row
- * a passed drill stamps (migration 0068): `at` null while no drill has
+ * a passed drill stamps (migration 0070): `at` null while no drill has
  * passed, and stale past the window, or while none has, since the restore
  * alert fires then too. The service-health section, which could report the
  * restore heartbeat itself, is read by the API outside this transaction and

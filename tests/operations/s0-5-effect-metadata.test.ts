@@ -6,8 +6,9 @@
 // kinds it declares. An undeclared write fails; so does a kind declared
 // business-internal whose table reaches a task or a client through its
 // foreign keys, since a row holding a task's id is a client-scoped write.
-// The act's own bookkeeping (its audit event, its operation row and the
-// bearer's verification) is the same for every call and is not a record kind.
+// The act's own bookkeeping (its audit event, its operation row, the bearer's
+// verification and the live change record) is the same for every call and is
+// not a record kind.
 // A declared kind that is no table fails too, so a misspelt one cannot pass. Two commands have no
 // recipe of their own (a grant id, a live delegation) and get one here.
 
@@ -29,12 +30,15 @@ if (serverUrl === undefined) {
 
 /**
  * Written for every call as the record of the act, never a record kind of its
- * own: the audit event, the operation row, and the bearer's verification.
+ * own: the audit event, the operation row, the bearer's verification, and the
+ * live change record (0065, C4), stamped by a task write's own triggers with
+ * only which task and the writing transaction.
  */
 const BOOKKEEPING: ReadonlySet<string> = new Set([
   'audit_events',
   'operations',
   'authentication_attempts',
+  'live_changes',
 ]);
 
 let harness: Harness;
@@ -156,8 +160,10 @@ async function runFaults(declaration: CommandDeclaration): Promise<string[]> {
 const NO_CHANGE: Readonly<Record<string, string>> = {
   'task.purge':
     'a fresh trash is inside the retention window; the purge is tests/commands/purge-retention.test.ts',
+  'session.end':
+    'a sign-out writes only its audit event; the browser ends the credential (tests/commands/c23-session-end.test.ts)',
   'notifications.set_channel':
-    'in-app is always on, so its one mode stores nothing; the rule is tests/commands/inbox-unattended.test.ts',
+    'in-app is always on and email waits on AW-07b, so nothing is stored yet (tests/commands/inbox-escalation-settings.test.ts)',
 };
 
 describe.skipIf(serverUrl === undefined)('S0-5 gate coverage: the effect metadata, proved', () => {

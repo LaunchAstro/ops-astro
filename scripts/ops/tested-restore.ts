@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The date of the last tested restore on the installation's database (ticket
-// C55, carried from S0-3; migration 0068). The drill's receipt stays in the
+// C55, carried from S0-3; migration 0070). The drill's receipt stays in the
 // backup store, which the API cannot reach; a pass the store took is also
 // stamped here, where `operations.read` reads it. The operator gate hands this
 // to the drill (operator.ts, `recordTestedRestore`), and drill-acts.mjs calls
@@ -9,7 +9,7 @@
 
 import { connectAsAdmin } from '../../packages/core-records/src/index.ts';
 
-/** The restore drill's identity on the installation's database (migration 0068). */
+/** The restore drill's identity on the installation's database (migration 0070). */
 const RESTORE_DRILL_ROLE = 'ops_astro_restore_drill';
 
 /**

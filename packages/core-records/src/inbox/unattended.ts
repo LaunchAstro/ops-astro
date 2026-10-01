@@ -28,7 +28,7 @@
 
 import { standsOnShares } from '../identity/login-resolution.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
-import { holdsOnTask, readScopes } from './access.ts';
+import { holdsOnTask, REACH } from './access.ts';
 import type { InboxFactKind, InboxReason } from './items.ts';
 
 export interface UnattendedItem {
@@ -52,17 +52,17 @@ type OpenRow = UnattendedItem & {
 
 /**
  * Every unattended item of this business whose task the viewer can read now.
- * The viewer's read scopes filter inside the query, so no row of a task they
- * cannot read (another client's) is ever returned to this read: that is the
- * client separation, and the business's is the tenancy every query runs under.
+ * The viewer's read scopes, walked in the same statement (`REACH`), filter it,
+ * so no row of a task they cannot read (another client's) is ever returned to
+ * this read: that is the client separation, and the business's is the tenancy every query runs under.
  */
 export async function readUnattended(
   tx: TenantQuery,
   viewerPersonId: string,
 ): Promise<readonly UnattendedItem[]> {
-  const viewer = await readScopes(tx, viewerPersonId);
   const rows = await tx.query<OpenRow>(
-    `select i.id, i.recipient_person_id as "recipientPersonId",
+    `${REACH}
+     select i.id, i.recipient_person_id as "recipientPersonId",
             i.subject_record_id as "subjectRecordId", i.reason, i.fact_kind as "factKind",
             i.fact_id as "factId", i.raised_at as "raisedAt", r.uuid_7 as "clientId",
             exists (select 1 from public.memberships m
@@ -78,9 +78,10 @@ export async function readUnattended(
        join public.records r
          on r.business_id = i.business_id and r.id = i.subject_record_id and r.deleted_at is null
       where i.business_id = $1 and i.work_state = 'open'
-        and ($2::boolean or r.id = any($3::uuid[]) or r.uuid_7 = any($4::uuid[]))
+        and ((select business from reach) or r.id = any((select records from reach)::uuid[])
+             or r.uuid_7 = any((select parties from reach)::uuid[]))
       order by i.raised_at, i.id`,
-    [tx.businessId, viewer.business, viewer.records, viewer.parties],
+    [tx.businessId, viewerPersonId],
   );
   const attended = new Set<string>();
   for (const row of rows) {

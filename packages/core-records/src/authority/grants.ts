@@ -11,6 +11,7 @@
 // effective and still covers it, up to a root grant. So the subset relation is
 // re-checked here at use time, not trusted from grant time.
 
+import { EFFECTIVE } from './effective.ts';
 import { refuseCommand, type CommandRefusal } from '../register.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 import type { Session } from '../identity/login-resolution.ts';
@@ -85,38 +86,7 @@ export function subjectsOf(session: Session): readonly Subject[] {
   ];
 }
 
-// The one expression of "live, and still covered by its granter", and the
-// authority. A row written around `issueGrant` is judged by this and nothing
-// else, which is what lets the issue-time check name a reason without being
-// the barrier.
-//
-// The depth guard is not decoration. `parent_grant_id` sits under the same
-// UPDATE privilege that writes `revoked_at`, so a cycle is reachable, and an
-// unbounded recursive term that meets a cycle does not return.
-export const EFFECTIVE = `
-  with recursive effective as (
-    select g.*, 1 as depth
-      from public.grants g
-     where g.parent_grant_id is null
-       and g.revoked_at is null
-       and (g.expires_at is null or g.expires_at > now())
-    union all
-    select c.*, p.depth + 1
-      from public.grants c
-      join effective p on p.id = c.parent_grant_id
-     where p.depth < 8
-       and c.revoked_at is null
-       and (c.expires_at is null or c.expires_at > now())
-       and p.can_delegate
-       and c.collection = p.collection
-       and c.action = p.action
-       and (p.scope_kind = 'business'
-            or (c.scope_kind = p.scope_kind and c.scope_id is not distinct from p.scope_id))
-       and (not c.can_delegate or p.may_permit_delegation)
-       and not c.may_permit_delegation
-       and (p.expires_at is null
-            or (c.expires_at is not null and c.expires_at <= p.expires_at))
-  )`;
+export { EFFECTIVE };
 
 /** The subjects that may be asked about this key: every one not held within other keys. */
 export function askedFor(
@@ -153,6 +123,29 @@ export async function effectiveGrants(
       request.scope.id,
     ],
   );
+}
+
+/**
+ * Every grant the subjects hold right now, as one opaque value. It changes
+ * whenever one of them is issued, revoked or expires, or loses the parent it
+ * was delegated under, so a cache keyed by it never outlives the authority it
+ * was worked out under (C4 rollup scope).
+ */
+export async function grantFingerprint(
+  tx: TenantQuery,
+  subjects: readonly Subject[],
+): Promise<string> {
+  const [row] = await tx.query<{ readonly fingerprint: string }>(
+    `${EFFECTIVE}
+     select encode(sha256(convert_to(coalesce(string_agg(e.id::text, ',' order by e.id), ''),
+                                     'UTF8')), 'hex') as fingerprint
+       from effective e
+      where exists (select 1 from unnest($1::text[], $2::uuid[]) as s (kind, id)
+                     where s.kind = e.subject_kind and s.id = e.subject_id)`,
+    [subjects.map((subject) => subject.kind), subjects.map((subject) => subject.id)],
+  );
+  if (row === undefined) throw new Error('grant fingerprint answered no row');
+  return row.fingerprint;
 }
 
 /**

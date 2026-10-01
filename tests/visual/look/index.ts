@@ -8,11 +8,15 @@
 
 import { ACCESS } from './access.ts';
 import { BOARD } from './board.ts';
+import { FRAME } from './frame.ts';
+import { INBOX } from './inbox.ts';
 import { SETTINGS } from './settings.ts';
 import { SHELL } from './shell.ts';
 import { SIGN_IN } from './sign-in.ts';
 import { TASK } from './task.ts';
+import { TEAM } from './team.ts';
 import { TELEMETRY } from './telemetry.ts';
+import { WORKLOG } from './worklog.ts';
 import type { LookScreen } from './probe.ts';
 
 export { RULED_PAINT, type LookProbe, type LookScreen } from './probe.ts';
@@ -25,4 +29,8 @@ export const LOOK_SCREENS: readonly LookScreen[] = [
   SIGN_IN,
   ACCESS,
   TELEMETRY,
+  INBOX,
+  TEAM,
+  WORKLOG,
+  FRAME,
 ];

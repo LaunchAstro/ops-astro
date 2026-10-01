@@ -378,11 +378,11 @@ fields and client-audience comments only".
   its content and the next call is `AUTH_NO_MEMBERSHIP`.
 - **The seed enrols one.** `scripts/local-seed.mjs` adds an entry with
   `role: 'external'` to `.local/synthetic-users.json` and creates its GoTrue
-  user (`:664-700`, run at `:834-842`). It gets a login and an acting identity,
-  and no membership and no business grant (`:132-135`, `:285-287`). The seed
+  user (`:668-709`, run at `:843-851`). It gets a login and an acting identity,
+  and no membership and no business grant (`:136-139`, `:289-291`). The seed
   makes no task, so it shares one only when rerun with `LOCAL_SEED_SHARE_TASK`
   naming a task, through `shareRecord` under the admin's own `share` grant
-  (`:707-731`, `:876-886`).
+  (`:711-740`, `:880-890`).
 - **Standing checks raw liveness.** Resolution asks whether a share grant is
   revoked or expired, not the `EFFECTIVE` chain in `grants.ts`. `shareRecord`
   issues root grants only, so the two agree today; a derived share under a
@@ -514,13 +514,13 @@ than as an answer about the preset. D05 says so, and the test counts
 landed contracts read without having. `records/business-settings.ts` produces
 the named rows:
 
-| Key                        | Default             | Write mode  | Why                                                               |
-| -------------------------- | ------------------- | ----------- | ----------------------------------------------------------------- |
-| `four_eyes_threshold`      | `500`, `null` = off | `operation` | changes who must agree before money moves                         |
-| `client_sign_off_required` | `false`             | `operation` | changes who must agree before work completes                      |
-| `money_step_up_required`   | `true`              | `operation` | whether a money action needs a recent second-factor sign-in (C59) |
-| `retention_window_days`    | `30`                | `generic`   | policy an administrator sets; read by `task.purge` as its window  |
-| `conversation_window_days` | `30`                | `generic`   | policy an administrator sets                                      |
+| Key                        | Default             | Write mode  | Why                                                                     |
+| -------------------------- | ------------------- | ----------- | ----------------------------------------------------------------------- |
+| `four_eyes_threshold`      | `500`, `null` = off | `operation` | changes who must agree before money moves                               |
+| `client_sign_off_required` | `false`             | `operation` | changes who must agree before work completes                            |
+| `money_step_up_required`   | `true`              | `operation` | whether a money action needs a recent second-factor sign-in (C59)       |
+| `retention_window_days`    | `30`                | `operation` | read by `task.purge` as its window; never below the conversation window |
+| `conversation_window_days` | `30`                | `operation` | seven days or more, never past the retention window (C122-1)            |
 
 The classification matters here, not the values. A setting that decides
 whether a second approver is needed changes authority, the same category the

@@ -125,6 +125,16 @@ export const ROUTES = {
     surface: 'none',
     authenticated: true,
   },
+  // The inbox (MP-7-3, CS-7.39): the Notifications panel's list in full-page
+  // form, drawn from INB-1's `inbox.read` and `inbox.count`. The dock's
+  // Notifications tab reaches it until the dock's drawers (MP-3-1) exist.
+  'agency:inbox': {
+    namespace: 'agency',
+    path: '/inbox/',
+    title: 'Inbox',
+    surface: 'none',
+    authenticated: true,
+  },
   // The component gallery (MP-1-3): every piece of the kit in its states,
   // for the owner's checks and the width-and-theme harness. It draws sample
   // words and no record; it asks for a session like every working page, and
@@ -134,6 +144,16 @@ export const ROUTES = {
     namespace: 'agency',
     path: '/gallery/',
     title: 'Component gallery',
+    surface: 'none',
+    authenticated: true,
+  },
+  // The Team panel (MP-7-10): reached from its dock tab, drawn at an address
+  // of its own until the dock's drawers (MP-3-1) draw it in place. The route
+  // manifest has no page for it, so it has no rail entry.
+  'agency:team': {
+    namespace: 'agency',
+    path: '/team',
+    title: 'Team',
     surface: 'none',
     authenticated: true,
   },

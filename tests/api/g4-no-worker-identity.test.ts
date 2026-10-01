@@ -57,8 +57,11 @@ const SETTINGS = [
   // C55: the error sink's web address, never its DSN (ORCH49).
   'OPS_ERROR_SINK_URL',
   'OPS_RELEASE',
+  'RECOVERY_BUSINESS_KEYS',
   'SERVED_HOST',
   'SUPABASE_KEY_SET_URL',
+  // S0-6: the provider's publishable key, public, for the page's sign-in.
+  'SUPABASE_PUBLISHABLE_KEY',
 ];
 
 it("G4: every route the API serves is a person's or an agent's command, or one of the named few", () => {
@@ -84,6 +87,7 @@ it('G4: the function entry reads no setting that could hold a worker identity', 
     SERVED_HOST: 'ops.example.test',
     OPS_ENVIRONMENT: 'staging',
     ALERT_SCOPE_KEY: 'ab'.repeat(32),
+    RECOVERY_BUSINESS_KEYS: 'none',
   };
   const settings = new Proxy(given, {
     get: (target, name) => {

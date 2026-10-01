@@ -77,7 +77,7 @@ const GRANTS_BY_ROLE = {
     ['task', 'share'],
     ['task', 'manage'],
     ['person', 'read'],
-    // The two settings commands take `manage` on the `settings` collection
+    // The settings commands took `manage` on the `settings` collection
     // (`core-wire/src/surface.ts`), and the admin had six task actions and
     // `person:read`, so as seeded nobody could write either setting: WEB-COMMENTS
     // observed `POST /settings/set_four_eyes_threshold` as the admin answering
@@ -116,6 +116,10 @@ const GRANTS_BY_ROLE = {
     ['credential', 'write'],
     // The client record (C32): the owner and administrators make clients.
     ['record', 'write'],
+    // The four-eyes threshold is a money action (MP-2-11, owner line 71):
+    // `spend:decide`, so C59's step-up judges it. Client sign-off and the
+    // step-up switch stay `settings:manage` above.
+    ['spend', 'decide'],
   ],
   member: [
     ['task', 'read'],
@@ -743,7 +747,7 @@ try {
     businessIds[tag] = await businessIdFor(admin, key);
     console.log(`local-seed: business ${key} ${businessIds[tag]}`);
   }
-  // S0-5 (0062): business A operates this installation, as provisioning sets it.
+  // S0-5 (0059): business A operates this installation, as provisioning sets it.
   await admin.execute(
     'update ops.installation set operator_business_id = $1 where operator_business_id is null',
     [businessIds.A],

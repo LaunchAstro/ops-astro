@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// S0-5's three closing lines (migration 0064) and item 3's procedure line
-// (0070) as `s0-5-gate-commands.test.ts` runs them: each try that must keep a
+// S0-5's three closing lines (migration 0060) and item 3's procedure line
+// (0071) as `s0-5-gate-commands.test.ts` runs them: each try that must keep a
 // line shut, the record that closes it, and the rows the table refuses by itself.
 
 import {

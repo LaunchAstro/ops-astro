@@ -419,8 +419,11 @@ Eight reads are declared in `COMMAND_SURFACE` with `kind: 'read'` and served by
   which is where a task created without a board lives
 - `person.list {}` → the people with an active membership, which is the set
   `task.assign` will accept
+- `team.list {}` → the staff with an active membership and each one's
+  availability (`person_availability`, 0066, set only by that person), for the
+  Team panel; a client of the business is answered `NOT_FOUND`
 
-The other five, `task.queue`, `preset.plan`, `settings.read`,
+The other six, `task.queue`, `task.ledger`, `preset.plan`, `settings.read`,
 `session.capabilities` and `access.read` (Settings ▸ Access, C32, under
 `access:manage`), are listed with their answers under "Reads" in
 [API.md](API.md#reads).
@@ -504,7 +507,7 @@ never written here. Whether a person has a verified factor is mirrored onto
 query it already makes and refuses a sign-in without the second factor. It
 reads the column through the row's json, so on a database from before 0049,
 which has no such column, the answer is no factor. The same writers record
-the verification and the removal by subject for every business (0083, below).
+the verification and the removal by subject for every business (0064, below).
 
 ## Privacy incidents (0050, C55)
 
@@ -518,7 +521,7 @@ with the restrictive policy like every business table, and it is not a
 `records` row, so no share, search or export reaches it. The audit chain and
 the operation register hold a digest and the new row's id, never the words.
 
-## Security alert log (0067, C55)
+## Security alert log (0069, C55)
 
 `ops.security_alert_log` holds each alert S0-2's forwarder raised, by its kind
 and the database's time alone: no sink id, scope, business, client, person,
@@ -532,7 +535,7 @@ to no business, so the operations view reads it only for the business that
 operates the installation (`ops.installation.operator_business_id`), newest
 first, at most 50 (`operations/security-alerts.ts`).
 
-## The last tested restore (0068, C55)
+## The last tested restore (0070, C55)
 
 `ops.last_tested_restore` holds one row, the date of the last successful
 tested restore, and nothing else: no business, person, archive, path or key.
@@ -581,7 +584,7 @@ each stamped once when done (`sessions_ended_at`, `login_deactivated_at`).
 (the kind of the last failure, one of five words, never the provider's text)
 record the retries. The application may select, insert and update; nothing
 deletes a row. Tenancy-keyed with the restrictive policy. The partial index
-`access_endings_owed` is what the server's retry looks for. `provider_steps_skipped` (0066) is `shared` where both steps were stamped done without a call because the subject was still live in another business.
+`access_endings_owed` is what the server's retry looks for. `provider_steps_skipped` (0062) is `shared` where both steps were stamped done without a call because the subject was still live in another business.
 
 ## Ended sessions (0057, C58)
 
@@ -594,7 +597,7 @@ change (`factor_change`). Unique on business, person and session. The
 application may select and insert; nothing changes or deletes a row.
 Tenancy-keyed with the restrictive policy.
 
-## Ended provider sessions (0065, C58)
+## Ended provider sessions (0061, C58)
 
 `ops.ended_provider_sessions` holds the id of every provider session ended
 anywhere: each `ended_sessions` row, and the browser's sign-out at
@@ -604,7 +607,7 @@ is here in every business, and a person's session list leaves it out. The
 application may insert and read the id column; nothing changes or deletes a
 row.
 
-## Other sessions ended by subject (0069, C58)
+## Other sessions ended by subject (0063, C58)
 
 `ops.ended_subject_sessions` holds one row per "end my other sessions" or
 factor change: a SHA-256 digest of the login's subject, the session kept
@@ -614,7 +617,7 @@ the kept one and whose first sign-in is at or before the ending. The
 application may insert the digest and the kept session and read the three
 columns; nothing changes or deletes a row.
 
-## Second factors by subject (0083, C59)
+## Second factors by subject (0064, C59)
 
 `ops.second_factor_subjects` holds one row per second factor verified or
 removed through any business: a SHA-256 digest of the login's subject, one of
@@ -622,7 +625,7 @@ the provider's factor id, and `verified` or `removed`. Installation-wide, no
 business, person or reason. Login resolution refuses a sign-in below `aal2`
 in every business the login reaches while one of its factors is verified and
 not removed; a removed factor is never verified again, so the rows need no
-order. Before 0083 the person's mirror alone answers. The application may
+order. Before 0064 the person's mirror alone answers. The application may
 insert and read the three columns; nothing changes or deletes a row.
 
 ## Overseas-services register (0052, C81)

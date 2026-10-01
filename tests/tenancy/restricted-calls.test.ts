@@ -137,6 +137,16 @@ const UNREACHED: Readonly<Record<string, string>> = {
   // T3e2: the journey drops nothing, so one report and one of its runs.
   'public.outage_reports': `insert into public.outage_reports (business_id, id, cause)
      values ($1, gen_random_uuid(), 'worker_lost') returning 1`,
+  // Nothing in the journey saves a preference (MP-2-11a adds the command).
+  'public.person_preferences': `insert into public.person_preferences
+       (business_id, person_id, key, value)
+     select business_id, id, 'appearance', '"dark"'::jsonb from public.people
+      where business_id = $1 order by id limit 1 returning 1`,
+  // 0043: set by a person in the Team panel (MP-7-10), which the journey never opens.
+  'public.person_availability': `insert into public.person_availability
+       (business_id, person_id, state, reason)
+     select business_id, id, 'away', 'restricted calls seed'
+       from public.people where business_id = $1 order by id limit 1 returning 1`,
   // Nothing in the journey raises an inbox item yet (INB-1b does), so one item,
   // its recipient's attention row and one attempt are written here, in order.
   'public.inbox_items': `insert into public.inbox_items
@@ -288,7 +298,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     // ops.api_alerts (0048), proved in tests/db/api-events.test.ts.
     expect(classes['forwarder']).toStrictEqual(['ops_astro_forwarder']);
     // C55: the restore drill stamps the date of the last tested restore through
-    // ops.record_tested_restore() (0068), proved in tests/operations/c55-last-tested-restore.test.ts.
+    // ops.record_tested_restore() (0070), proved in tests/operations/c55-last-tested-restore.test.ts.
     expect(classes['restore drill']).toStrictEqual(['ops_astro_restore_drill']);
     expect(classes['application login']).toContain(world.db.loginRole);
     expect(classes['outsider']).toContain(world.db.restrictedRole);
@@ -459,7 +469,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
       expect(fn?.firedBy).toStrictEqual([
         { table: 'public.handback_reports', events: 'delete update' },
       ]);
-      // 0068 (C55): no argument, so it writes only now(); only the drill's
+      // 0070 (C55): no argument, so it writes only now(); only the drill's
       // identity executes it (c55-last-tested-restore), refused above to every caller here.
       expect(stamp?.trigger).toBe(false);
       expect(stamp?.argumentTypes).toStrictEqual([]);

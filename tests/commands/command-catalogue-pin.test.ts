@@ -48,6 +48,15 @@ function recorder(handler: string) {
   };
 }
 
+vi.mock('../../packages/core-commands/src/commands/session-end.ts', async (original) => ({
+  ...(await original<object>()),
+  endOwnSession: recorder('endOwnSession'),
+}));
+vi.mock('../../packages/core-commands/src/commands/preference-save.ts', async (original) => ({
+  ...(await original<object>()),
+  saveOwnPreference: recorder('saveOwnPreference'),
+  dismissOwnTip: recorder('dismissOwnTip'),
+}));
 vi.mock('../../packages/core-commands/src/commands/tasks-write.ts', async (original) => ({
   ...(await original<object>()),
   createTask: recorder('createTask'),
@@ -192,6 +201,9 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'credential.issue': [],
   'credential.revoke': ['credentialId'],
   'grant.revoke': [],
+  'preference.save': [],
+  'preference.dismiss_tip': [],
+  'session.end': [],
   'legal.approve_version': ['versionId'],
   'legal.draft_version': [],
   'legal.publish_version': ['versionId'],
@@ -205,6 +217,8 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'settings.set_client_sign_off': [],
   'settings.set_four_eyes_threshold': [],
   'settings.set_money_step_up': [],
+  'settings.set_conversation_window': [],
+  'settings.set_retention_window': [],
   'task.cancel': ['recordId', 'lineageId'],
   'task.create': ['parentId', 'board', 'boardSection'],
   'task.decide': ['gateId', 'versionId'],
@@ -244,16 +258,23 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'operations.read',
   'operations.record_gate_item',
   'person.list',
+  'preference.dismiss_tip',
+  'preference.read',
+  'preference.save',
   'preset.plan',
   'privacy.draft_breach_notices',
   'privacy.record_incident',
   'privacy.set_data_class',
   'privacy.set_overseas_service',
   'session.capabilities',
+  'session.end',
+  'session.person',
   'settings.read',
   'settings.set_client_sign_off',
+  'settings.set_conversation_window',
   'settings.set_four_eyes_threshold',
   'settings.set_money_step_up',
+  'settings.set_retention_window',
   'task.board',
   'task.cancel',
   'task.create',
@@ -262,6 +283,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'task.execution',
   'task.handback',
   'task.heartbeat',
+  'task.ledger',
   'task.observe',
   'task.pickup',
   'task.purge',
@@ -270,6 +292,8 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'task.receipt',
   'task.restart',
   'task.restore',
+  'task.search',
+  'team.list',
 ];
 
 const PINNED_AGENT_SURFACE = [
@@ -349,6 +373,8 @@ const REQUESTS: readonly CommandRequest[] = [
   },
   { command: 'settings.set_client_sign_off', operationId: 'op', value: true },
   { command: 'settings.set_money_step_up', operationId: 'op', value: false },
+  { command: 'settings.set_conversation_window', operationId: 'op', value: 14 },
+  { command: 'settings.set_retention_window', operationId: 'op', value: 90 },
   {
     command: 'privacy.record_incident',
     operationId: 'op',
@@ -432,6 +458,15 @@ const REQUESTS: readonly CommandRequest[] = [
     amountMinor: 0,
     reason: 'why',
   },
+  { command: 'session.end', operationId: 'op' },
+  { command: 'preference.save', operationId: 'op', preference: 'appearance', value: 'dark' },
+  {
+    command: 'preference.dismiss_tip',
+    operationId: 'op',
+    page: 'agency:inbox',
+    tip: 'triage',
+    version: 1,
+  },
   { command: 'inbox.seen', operationId: 'op', itemId: 'item' },
   { command: 'notifications.set_channel', operationId: 'op', channel: 'in_app', mode: 'on' },
 ];
@@ -477,6 +512,18 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
     false,
     undefined,
   ],
+  'settings.set_conversation_window': [
+    'setBusinessSetting',
+    'settings.set_conversation_window',
+    14,
+    undefined,
+  ],
+  'settings.set_retention_window': [
+    'setBusinessSetting',
+    'settings.set_retention_window',
+    90,
+    undefined,
+  ],
   'privacy.record_incident': ['recordIncident', 'request'],
   'legal.draft_version': ['draftVersion', 'request'],
   'legal.approve_version': ['approveVersion', 'request'],
@@ -501,6 +548,9 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'budget.top_up': ['topUpOnTask', 'request'],
   'budget.record_outcome': ['recordOutcomeOnTask', 'request'],
   'budget.write_off': ['writeOffOnTask', 'request'],
+  'session.end': ['endOwnSession', 'request'],
+  'preference.save': ['saveOwnPreference', 'appearance', 'dark'],
+  'preference.dismiss_tip': ['dismissOwnTip', 'request'],
   'inbox.seen': ['stampOwnSeen', 'item'],
   'notifications.set_channel': ['setNotificationChannel', 'request'],
 };
@@ -542,7 +592,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same forty-nine from an expected revision', () => {
+  it('exempts the same fifty-nine from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

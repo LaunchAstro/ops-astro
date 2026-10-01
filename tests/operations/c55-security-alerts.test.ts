@@ -6,7 +6,7 @@
 //
 // The forwarder deletes an alert from `ops.api_alerts` once the sink took it
 // (0048), so it also writes the alert's kind and time to
-// `ops.security_alert_log` (0067) in the transaction that raises it, and the
+// `ops.security_alert_log` (0069) in the transaction that raises it, and the
 // view reads that log. An installation-level alert names no business, and the
 // detector counts every business's signals, so the log is the installation's:
 // only the business that operates it (`ops.installation.operator_business_id`,

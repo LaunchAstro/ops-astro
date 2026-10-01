@@ -50,13 +50,14 @@ import {
   readEnvFile,
 } from '../../packages/core-records/src/index.ts';
 import type { AdminConnection, Database } from '../../packages/core-records/src/index.ts';
-import { createApi, type LiveOptions, type ReadExecutor } from './app.ts';
+import { createApi, type LiveOptions, type ReadAdmitter, type ReadExecutor } from './app.ts';
 import { createAlerts, faultCode, sinkFrom, type Alerts } from './alerts/sink.ts';
 import {
   executeAgentCommand,
   executeCredentialCommand,
   executeCommand,
   executeRead as readExecutor,
+  admitReads,
   type LoginProvider,
 } from '../../packages/core-commands/src/index.ts';
 import {
@@ -76,6 +77,7 @@ import {
   type SupabaseVerifierOptions,
 } from './auth/supabase.ts';
 import { startLiveTopics } from './live.ts';
+import { createLivePresence } from './live-presence.ts';
 import { isLoopback, migrationHead, readIdentity, type ServedIdentity } from './identity.ts';
 import {
   describeRecovered,
@@ -175,6 +177,8 @@ export interface ApiConfig {
   readonly admin: AdminConnection;
   /** The issuer and published key set bearers are checked against: public keys only. */
   readonly signIn: Omit<SupabaseVerifierOptions, 'onRefusal'>;
+  /** The provider's publishable key the page sends with a sign-in: public; '' or absent, none. */
+  readonly providerKey?: string;
   /** The signing key and delegation keyring `main` read, never put in `process.env`. */
   readonly keys: RuntimeKeys;
   /**
@@ -196,8 +200,11 @@ export interface ApiConfig {
   readonly executeRead?: ReadExecutor;
   /** Read once at process start (`identity.ts`); absent, the identity route is not mounted. */
   readonly identity?: ServedIdentity;
-  /** The live task channel, started by `main`; absent, the event route is not mounted. */
-  readonly live?: LiveOptions;
+  /**
+   * The live task channel, started by `main`; absent, the event route is not
+   * mounted. Its check is `admitReads` unless a test hands in its own to count.
+   */
+  readonly live?: Omit<LiveOptions, 'admit'> & { readonly admit?: ReadAdmitter };
   /** The error sink and the security detections (ticket S0-2); absent without a sink. */
   readonly alerts?: Alerts;
 }
@@ -269,7 +276,10 @@ export function composeApi(config: ApiConfig): ComposedApi {
 
   // G3: the page reads its sign-in address here, so one web build serves every
   // environment. The issuer is public, and nothing is read to answer it.
-  server.get('/api/sign-in', (context) => context.json({ issuer: config.signIn.issuer }));
+  // The hosted provider also wants its publishable key, public too (S0-6).
+  const key = config.providerKey ?? '';
+  const signInAnswer = { issuer: config.signIn.issuer, ...(key === '' ? {} : { key }) };
+  server.get('/api/sign-in', (context) => context.json(signInAnswer));
 
   const { identity } = config;
   if (identity !== undefined) {
@@ -302,7 +312,9 @@ export function composeApi(config: ApiConfig): ComposedApi {
       executeCommand,
       executeAgentCommand,
       executeCredentialCommand,
-      ...(config.live === undefined ? {} : { live: config.live }),
+      ...(config.live === undefined
+        ? {}
+        : { live: { ...config.live, admit: config.live.admit ?? admitReads } }),
       // The provider GoTrue is: the one destination its factor calls reach.
       factors: createGoTrueFactors({ baseUrl: config.signIn.issuer }),
       logins,
@@ -416,7 +428,7 @@ async function main(): Promise<void> {
     admin,
     signIn: { issuer: issuer as string, keySetUrl },
     keys,
-    live: { topics },
+    live: { topics, presence: createLivePresence() },
     ...(adminKey === undefined ? {} : { providerAdminKey: adminKey }),
     ...(tracingUrl === undefined || tracingUrl === '' ? {} : { tracingUrl }),
     errorSink,

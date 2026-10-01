@@ -24,32 +24,32 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['', 'ops.schema_migrations'],
   // 0045: the installation's operating business; the application reads it only.
   ['s', 'ops.operating_business'],
-  // 0068 (C55): the date of the last tested restore; the application reads it
+  // 0070 (C55): the date of the last tested restore; the application reads it
   // only, and the drill writes it through ops.record_tested_restore().
   ['s', 'ops.last_tested_restore'],
   // 0047: the API's outbox; the application inserts its four columns, and reads nothing.
   ['i', 'ops.api_events'],
   // 0048: the forwarder's kept alerts; the application holds nothing on them.
   ['', 'ops.api_alerts'],
-  // 0067 (C55): the forwarder's alert log; the application selects its kind
+  // 0069 (C55): the forwarder's alert log; the application selects its kind
   // and time columns alone, and changes nothing. A column grant: this suite's
   // `select 1` needs one column, and c55-security-alerts proves which.
   ['s', 'ops.security_alert_log'],
   ['s', 'ops.slots'],
   // 0058 (S0-5): the installation's mode and the gate items are read by the
   // application through first_client_readiness().
-  // 0062 (S0-5, ORCH38): the gate's own commands write through the app, so it
+  // 0059 (S0-5, ORCH38): the gate's own commands write through the app, so it
   // may insert a gate item, and update `mode` alone on the installation. A
   // column grant is not a table letter: this suite's update sets the first
   // column, which stays refused; s0-5-gate-commands proves the column.
   ['s', 'ops.installation'],
   ['si', 'ops.gate_items'],
-  // 0065 (C58): an ended provider session, installation-wide; the application
+  // 0061 (C58): an ended provider session, installation-wide; the application
   // inserts and reads its id column alone, and changes or removes nothing.
   ['si', 'ops.ended_provider_sessions'],
-  // 0069 (C58): other sessions ended in every business, by subject digest.
+  // 0063 (C58): other sessions ended in every business, by subject digest.
   ['si', 'ops.ended_subject_sessions'],
-  // 0083 (C59): a second factor verified or removed, by subject digest, for every business.
+  // 0064 (C59): a second factor verified or removed, by subject digest, for every business.
   ['si', 'ops.second_factor_subjects'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],
   ['si', 'alerts handback_reports operations run_events'],
@@ -81,6 +81,12 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['siu', 'access_endings'],
   // 0057 (C58): an ended session is written once; never changed or deleted.
   ['si', 'ended_sessions'],
+  // 0065: the live change record, stamped by the writes' own triggers (C4).
+  ['siu', 'live_changes'],
+  // 0066: a person's own availability, set by them alone (MP-7-10).
+  ['siu', 'person_availability'],
+  // 0067: a second save of a key replaces its value; nothing deletes one (MP-2-11a).
+  ['siu', 'person_preferences'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
   // 0028 revokes delete on these two: identity history is kept (0002).
   ['siu', 'person_logins person_merges'],
@@ -106,10 +112,10 @@ const REVOKED: Readonly<Record<string, { readonly from: string; readonly letters
 
 /**
  * Grants a later migration added, so a prefix before it does not hold them yet.
- * 0062 grants the gate's own insert (S0-5, ORCH38).
+ * 0059 grants the gate's own insert (S0-5, ORCH38).
  */
 const ADDED: Readonly<Record<string, { readonly from: string; readonly letters: string }>> = {
-  'ops.gate_items': { from: '0062', letters: 'i' },
+  'ops.gate_items': { from: '0059', letters: 'i' },
 };
 
 /**

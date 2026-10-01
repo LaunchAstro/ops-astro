@@ -15,7 +15,7 @@
 //   signals under the detector's own rules, each row's time the clock and its
 //   keyed digest the scope;
 // - keeps each alert raised, its sink id fixed then (0048), logs its kind and
-//   time for the operations view (0067), and deletes the errors sent, the
+//   time for the operations view (0069), and deletes the errors sent, the
 //   signals an alert counted and the signals past their rule's window; a send
 //   that fails rolls the pass back;
 // - then sends the kept alerts, each deleted only once the sink took it, so a
@@ -168,7 +168,7 @@ export function createForwarder(options: ForwarderOptions): {
     const { handled, spent } = await replay(execute, options, now, raised);
     // Each alert is kept with its id, fixed now, as the signals it counted go: a
     // send that fails leaves it to the next pass under the same id (0048). One
-    // newly kept is logged by kind and time for the operations view (0067), in
+    // newly kept is logged by kind and time for the operations view (0069), in
     // this statement, and stays there after the sink takes it.
     await execute(
       `with kept as (insert into ops.api_alerts (id, kind)
@@ -186,7 +186,10 @@ export function createForwarder(options: ForwarderOptions): {
     await options.database.transaction(async (execute) => await deliver(execute, options));
     const beat = await options.heartbeat?.();
     // Only a ping the watcher took completes a pass: failed, refused or not set is silence.
-    if (beat !== undefined && beat !== 'sent') throw new Error(`the heartbeat was ${String(beat)}`);
+    // `not due` is a paced pass inside its wait (OPS_HEARTBEAT_EVERY_MS): complete, no ping.
+    if (beat !== undefined && beat !== 'sent' && beat !== 'not due') {
+      throw new Error(`the heartbeat was ${String(beat)}`);
+    }
     return done;
   }
 

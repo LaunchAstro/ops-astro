@@ -246,7 +246,12 @@ export function expectedShape(
           ],
     schemaChanging: [],
     sessionWide: [],
-    audited: outcome === 'unresolved' ? 'authentication_attempts' : 'audit_events',
+    // An applied save of a person's own preference joins no chain (CS-2.8):
+    // the door's `authentication_attempts` row is the only record written.
+    audited:
+      outcome === 'unresolved' || (outcome === 'applied' && !declaration.audited)
+        ? 'authentication_attempts'
+        : 'audit_events',
   };
 }
 

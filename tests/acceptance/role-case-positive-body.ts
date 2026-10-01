@@ -5,7 +5,6 @@
 // Split from that file so each stays under the per-file cap; the seam is the
 // same one: this is still the matrix's only knowledge of what a task is.
 
-import { randomUUID } from 'node:crypto';
 import { type CommandDeclaration } from '../../packages/core-wire/src/surface.ts';
 import {
   PROPOSAL,
@@ -22,19 +21,8 @@ import {
 } from './role-case-bodies.ts';
 import { privacyBody } from './role-case-privacy-bodies.ts';
 import { credentialBody } from './role-case-credential-bodies.ts';
+import { accessBody, madeClient } from './role-case-access-bodies.ts';
 import { createGateBody } from './role-case-gate-bodies.ts';
-
-/** Clients made by the matrix, each under a name of its own (one name per business). */
-let clientsMade = 0;
-const nextClientName = (): string =>
-  `A made-up client ${String((clientsMade += 1))} ${randomUUID()}`;
-
-/** A client of the context's business, made by its admin (C32). */
-async function madeClient(context: BodyContext): Promise<string> {
-  const made = await context.asPerson('client.create', { name: nextClientName() });
-  if (made.code !== 'ok') throw new Error(`matrix: client.create refused ${made.code}`);
-  return String((made.body['detail'] as Record<string, unknown>)['clientId']);
-}
 
 export function createPositiveBody(
   context: BodyContext,
@@ -136,49 +124,43 @@ export function createPositiveBody(
         return { body: { recordId: context.alphaTaskId } };
       case 'task.board':
         return { body: { board: null } };
+      case 'task.ledger':
+        return { body: { timeZone: 'UTC' } };
       // An empty body, and no `expectedRevision`: `business_settings` has no revision column,
       // and `session.capabilities` reports the caller's own grants. The admin holds what each
       // asks: `settings:read`, `access:manage` and `operations:read` (C55, INB-1e), and a live
       // grant of any kind for `session.capabilities`, `client.list` (C32) and the inbox (INB-1d).
+      // The person menu's two (C23) and the caller's own preferences (MP-2-11a) are its own.
       case 'task.queue':
       case 'person.list':
+      case 'team.list':
       case 'settings.read':
       case 'session.capabilities':
+      case 'session.person':
+      case 'session.end':
+      case 'preference.read':
       case 'access.read':
       case 'operations.read':
       case 'client.list':
       case 'inbox.read':
       case 'inbox.count':
       case 'inbox.unattended':
+        // The caller's own inbox (INB-1d) needs a live grant of any kind, as
+        // above; `inbox.unattended` needs `operations:read`, which the seed
+        // grants the admin (INB-1e, C55).
         return { body: {} };
-      // C32: `record:write`, a name no other call has used.
+      case 'preference.save':
+        return { body: { preference: 'appearance', value: 'dark' } };
+      case 'preference.dismiss_tip':
+        return { body: { page: 'agency:inbox', tip: 'triage', version: 1 } };
+      case 'task.search':
+        // A word no audit row carries, so digest-only is checked on it.
+        return { body: { query: 'brochure' } };
       case 'client.create':
-        return { body: { name: nextClientName() } };
-      // C32: `access:manage`. The key is one the member already holds over
-      // the whole business, so the answer is that grant and no caller's
-      // holdings change under the cases that read them.
       case 'access.grant':
-        return {
-          body: { holderId: context.assigneePersonId, collection: 'task', action: 'read' },
-        };
-      // C32: a grant the admin has just given over one client, revoked. The
-      // member already holds the same key over the whole business.
-      case 'access.revoke': {
-        const given = await context.asPerson('access.grant', {
-          holderId: context.assigneePersonId,
-          collection: 'task',
-          action: 'read',
-          clientId: await madeClient(context),
-        });
-        if (given.code !== 'ok') throw new Error(`matrix: access.grant refused ${given.code}`);
-        return { body: { grantId: (given.body['detail'] as Record<string, unknown>)['grantId'] } };
-      }
-      // C58: `access:manage`, ending a member made for the case, so no
-      // caller's standing changes under the cases that read it.
-      case 'access.end': {
-        if (context.freshMember === undefined) return { exception: 'no member maker here' };
-        return { body: { holderId: await context.freshMember() } };
-      }
+      case 'access.revoke':
+      case 'access.end':
+        return await accessBody(declaration.name, context);
       case 'notifications.set_channel':
         // Self-scoped (INB-1e): in-app is always on, the one mode it takes.
         return { body: { channel: 'in_app', mode: 'on' } };
@@ -198,6 +180,12 @@ export function createPositiveBody(
         return { body: { value: true } };
       case 'settings.set_money_step_up':
         return { body: { value: true } };
+      // Inside C122-1's bounds whichever runs first: seven or more, and the
+      // retention window never below the conversation window.
+      case 'settings.set_conversation_window':
+        return { body: { value: 14 } };
+      case 'settings.set_retention_window':
+        return { body: { value: 90 } };
       // C81: the admin holds `privacy:manage`, as the owner does.
       case 'legal.draft_version':
       case 'legal.approve_version':

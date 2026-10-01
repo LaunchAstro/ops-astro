@@ -126,7 +126,7 @@ export const tokenFor = async (
   expiresAt: number = now() + 600,
   /**
    * The first sign-in (`amr`), which a refresh keeps. A fresh session by
-   * default: just after now, so an ending earlier in this second (0069)
+   * default: just after now, so an ending earlier in this second (0063)
    * does not reach it. A session that predates an ending names its time.
    */
   signedInAt: number = now() + 1,
@@ -201,8 +201,9 @@ export async function openSessionsWorld(): Promise<void> {
     request.on('end', () => {
       const route = `${request.method} ${request.url}`;
       seen.push({ route, authorization: request.headers.authorization });
-      const reply =
-        new Map(Object.entries(replies)).get(route) ?? json(404, { msg: 'no such route' });
+      // Only a stand-in reply the test planted runs; any other route is a 404.
+      const found = new Map(Object.entries(replies)).get(route);
+      const reply = typeof found === 'function' ? found : json(404, { msg: 'no such route' });
       reply(request, response);
     });
   });

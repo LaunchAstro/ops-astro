@@ -24,7 +24,7 @@ export const CASE = {
 } as const;
 
 /**
- * The twenty-four operations that name no identifier, each with a minimal valid body.
+ * The thirty-four operations that name no identifier, each with a minimal valid body.
  *
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed
  * at bravo is refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line
@@ -37,6 +37,8 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['settings.set_four_eyes_threshold', { value: 1300 }],
   ['settings.set_client_sign_off', { value: false }],
   ['settings.set_money_step_up', { value: true }],
+  ['settings.set_conversation_window', { value: 14 }],
+  ['settings.set_retention_window', { value: 90 }],
   [
     'privacy.record_incident',
     {
@@ -48,10 +50,20 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
     },
   ],
   ['task.queue', {}],
+  ['task.ledger', { timeZone: 'UTC' }],
   ['person.list', {}],
+  ['team.list', {}],
   ['preset.plan', { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] }],
   ['settings.read', {}],
   ['session.capabilities', {}],
+  ['task.search', { query: 'brochure' }],
+  // The person menu's two (C23): the caller's own account, naming nobody.
+  ['session.person', {}],
+  ['session.end', {}],
+  // The caller's own preferences (MP-2-11a).
+  ['preference.read', {}],
+  ['preference.save', { preference: 'appearance', value: 'dark' }],
+  ['preference.dismiss_tip', { page: 'agency:inbox', tip: 'triage', version: 1 }],
   ['access.read', {}],
   ['operations.read', {}],
   ['client.list', {}],

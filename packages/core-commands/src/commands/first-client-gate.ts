@@ -10,7 +10,7 @@
 // open. The mode and the items live in `ops`, which the
 // application's role reads through `public.first_client_readiness()` and
 // writes only through the gate's own commands (`gate-write.ts`, migration
-// 0062); the readiness value itself is derived, never written.
+// 0059); the readiness value itself is derived, never written.
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { COMMAND_EFFECTS, classOf, type CommandName } from '../../../core-wire/src/index.ts';
@@ -18,8 +18,8 @@ import type { DataEffects } from '../../../core-wire/src/index.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 
 /**
- * The eight gate items, the three closing lines (0064) and item 3's
- * privacy-request procedure line (0070), as `ops.gate_items` names them. A
+ * The eight gate items, the three closing lines (0060) and item 3's
+ * privacy-request procedure line (0071), as `ops.gate_items` names them. A
  * closing line carries the owner's one line; the procedure line, its link alone.
  */
 export const GATE_ITEMS = [

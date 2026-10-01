@@ -32,7 +32,7 @@
 // receipt in the store (`backups.drills`) and one line in the operator's
 // record folder, with the fields `RECEIPT_FIELDS` (drill-receipt.mjs) names
 // and no other. A pass the store took also stamps its date on the
-// installation's database (`ops.last_tested_restore`, migration 0068), where
+// installation's database (`ops.last_tested_restore`, migration 0070), where
 // the operations view reads it (C55); a failed drill stamps nothing.
 //
 // The clean-host leg (S0-3e, recovery contract D-3) runs off the machine,

@@ -3,35 +3,36 @@
 // Made-up answers for the width-and-theme harness (UI-POLISH).
 //
 // The harness serves the app with its API at a dead port, so every data
-// screen used to be photographed on its "could not be read" state: no
-// sideways scroll proven on an error, nothing about the look. These answers
-// let each screen draw rows. They are typed against the wire contract's own
-// read shapes, so a changed read fails the typecheck here rather than drawing
-// a screen from a shape the API no longer sends. Test side only: the page
-// asks the same addresses it asks the real API; nothing here is a back end.
+// screen was photographed on its "could not be read" state, proving nothing
+// about the look. These answers let each screen draw rows. They are typed against the wire
+// contract's own read shapes, so a changed read fails the typecheck here rather than drawing
+// a screen from a shape the API no longer sends. Test side only: the page asks the same
+// addresses it asks the real API; nothing here is a back end.
 //
 // The rows follow the pinned mockup's Projects board, so a capture reads
 // against the mockup's page. Every name and client is made up.
 
 import type {
-  AccessGrant,
-  AccessReadResult,
   CapabilitiesResult,
   InboxCountResult,
   InboxReadResult,
   InternalTaskDetail,
   InternalTaskRead,
-  OperationsReadResult,
   PersonListResult,
   QueueResult,
+  SessionPersonResult,
   SettingsReadResult,
   TaskBoardResult,
   TaskExecutionResult,
+  TaskLedgerResult,
+  TaskSearchResult,
   TaskStateView,
   TaskSummary,
+  TeamListResult,
 } from '../../packages/core-wire/src/index.ts';
 import type { BrowserContext } from 'playwright';
 import type { ReadName } from '../../apps/web/src/operations/read-names.ts';
+import { ACCESS, HARBOUR, MERIDIAN, MIA, NATHAN, OPERATIONS } from './made-up-access.ts';
 
 const STATE = {
   active: { id: 's-active', key: 'active', label: 'Active', machineCategory: 'started' },
@@ -43,9 +44,6 @@ const STATE = {
   },
   hold: { id: 's-hold', key: 'hold', label: 'On hold', machineCategory: 'unstarted' },
 } as const satisfies Record<string, TaskStateView>;
-
-const NATHAN = { personId: 'p-nathan', name: 'Nathan' };
-const MIA = { personId: 'p-mia', name: 'Mia' };
 
 const task = (
   n: number,
@@ -104,92 +102,54 @@ const DETAIL: InternalTaskDetail = {
   alerts: [],
 };
 
-const MERIDIAN = { clientId: 'c-meridian', name: 'Meridian Dental' };
-const HARBOUR = { clientId: 'c-harbour', name: 'Harbour Physio' };
-const PRIYA = { personId: 'p-priya', name: 'Priya Shah' };
-
-const grant = (id: string, key: string, client: string | null = null): AccessGrant => {
-  const [collection = '', action = 'read'] = key.split(':');
-  const scope = { kind: client === null ? 'business' : 'party', id: client } as const;
-  return { grantId: `g-${id}`, collection, action: action as AccessGrant['action'], scope };
-};
-
-const withPreview = (grants: readonly AccessGrant[]) => ({
-  grants,
-  // None of the made-up keys is a money key, so none asks the step-up (C59).
-  permissions: grants.map(({ collection, action, scope }) => ({
-    collection,
-    action,
-    scope,
-    stepUp: false,
-  })),
-});
-
-// Settings > Access (C32): two on the team, one client contact, one agent.
-const ACCESS: AccessReadResult = {
+/** The Work log's two days, newest first, as `task.ledger` answers them (MP-8-4). */
+const LEDGER: TaskLedgerResult = {
   ok: true,
-  team: [
+  earlier: true,
+  days: [
     {
-      ...NATHAN,
-      ...withPreview([grant('1', 'access:manage'), grant('2', 'settings:manage')]),
+      day: '2026-09-26',
+      events: [
+        {
+          id: 'e-3',
+          at: '2026-09-26T01:20:00.000Z',
+          actorName: NATHAN.name,
+          operation: 'task.complete',
+          task: { key: 'T-13', title: 'Approve the four review replies before they go out' },
+        },
+        {
+          id: 'e-2',
+          at: '2026-09-25T23:05:00.000Z',
+          actorName: MIA.name,
+          operation: 'task.comment',
+          task: { key: 'T-15', title: 'Ads rebuild: cost per enquiry' },
+        },
+      ],
     },
     {
-      ...MIA,
-      ...withPreview([grant('3', 'task:write', MERIDIAN.clientId), grant('4', 'report:read')]),
-    },
-  ],
-  clients: [{ ...PRIYA, ...withPreview([grant('5', 'review:comment', MERIDIAN.clientId)]) }],
-  agents: [
-    {
-      agentActorId: 'a-reports',
-      delegationId: 'd-reports',
-      purpose: 'Weekly report drafts',
-      person: MIA,
-      expiresAt: '2026-10-10T00:00:00.000Z',
-      permissions: [
-        { collection: 'report', action: 'write', scope: { kind: 'record', id: 'r-1' } },
+      day: '2026-09-25',
+      events: [
+        {
+          id: 'e-1',
+          at: '2026-09-25T03:40:00.000Z',
+          actorName: NATHAN.name,
+          operation: 'task.update',
+          task: { key: 'T-1', title: 'Contract review pack, 31 July' },
+        },
       ],
     },
   ],
-  clientRecords: [MERIDIAN, HARBOUR],
 };
 
-// Settings > Telemetry (C34): each of the four service states and a source switched off.
-const OPERATIONS: OperationsReadResult = {
-  ok: true,
-  unattended: [],
-  privacyIncidents: [],
-  breachRunbook: null,
-  serviceHealth: {
-    checkedAt: '2026-09-26T00:05:00.000Z',
-    sources: [
-      { source: 'watcher', state: 'read', fault: null },
-      { source: 'error-sink', state: 'read', fault: null },
-      { source: 'tracing', state: 'off', fault: null },
-    ],
-    services: [
-      {
-        source: 'watcher',
-        name: 'api',
-        state: 'healthy',
-        lastObservedAt: '2026-09-26T00:04:30.000Z',
-      },
-      {
-        source: 'watcher',
-        name: 'worker',
-        state: 'stale',
-        lastObservedAt: '2026-09-25T21:10:00.000Z',
-      },
-      {
-        source: 'error-sink',
-        name: 'mail relay',
-        state: 'service-failure',
-        lastObservedAt: '2026-09-26T00:01:00.000Z',
-      },
-      { source: 'watcher', name: 'backups', state: 'never-observed', lastObservedAt: null },
-    ],
-  },
-};
+/** One business setting as `settings.read` answers it, last written by Nathan. */
+const setting = (key: string, value: number | boolean, revision: number) => ({
+  key,
+  value,
+  valueType: typeof value === 'boolean' ? ('boolean' as const) : ('numeric' as const),
+  updatedAt: '2026-09-20T00:00:00.000Z',
+  updatedByActorId: NATHAN.personId,
+  revision,
+});
 
 const READS = {
   'task.board': { ok: true, tasks: TASKS } satisfies TaskBoardResult,
@@ -198,24 +158,18 @@ const READS = {
   'settings.read': {
     ok: true,
     settings: [
-      {
-        key: 'four_eyes_threshold',
-        value: 500,
-        valueType: 'numeric',
-        updatedAt: '2026-09-20T00:00:00.000Z',
-        updatedByActorId: NATHAN.personId,
-        revision: 2,
-      },
-      {
-        key: 'client_sign_off_required',
-        value: true,
-        valueType: 'boolean',
-        updatedAt: '2026-09-20T00:00:00.000Z',
-        updatedByActorId: NATHAN.personId,
-        revision: 1,
-      },
+      setting('four_eyes_threshold', 500, 2),
+      setting('client_sign_off_required', true, 1),
+      setting('conversation_window_days', 30, 1),
+      setting('retention_window_days', 365, 1),
     ],
   } satisfies SettingsReadResult,
+  // The person's own store (MP-2-11a): no appearance, so the capture's colour
+  // scheme draws; two dismissals no page draws, so the reset has a count.
+  'preference.read': {
+    ok: true,
+    preferences: { 'tips.dismissed': { 'agency:settings#one': 1, 'agency:settings#two': 1 } },
+  },
   'session.capabilities': {
     ok: true,
     personId: NATHAN.personId,
@@ -245,6 +199,7 @@ const READS = {
         seenAt: null,
         lastDelivery: 'delivered',
         task: { key: 'T-9', title: 'Sign off the Meridian ad run rate, 29% over budget' },
+        client: MERIDIAN,
       },
       {
         id: 'i-2',
@@ -258,10 +213,38 @@ const READS = {
         seenAt: '2026-09-25T21:00:00.000Z',
         lastDelivery: 'delivered',
         task: { key: 'T-13', title: 'Approve the four review replies before they go out' },
+        client: HARBOUR,
+      },
+      {
+        id: 'i-3',
+        reason: 'run_finished',
+        workState: 'open',
+        access: 'readable',
+        owed: false,
+        counted: false,
+        raisedAt: '2026-09-25T18:10:00.000Z',
+        closedAt: null,
+        seenAt: null,
+        lastDelivery: 'delivered',
+        task: { key: 'T-17', title: 'Shopping feed clean-up' },
       },
     ],
   } satisfies InboxReadResult,
   'inbox.count': { ok: true, owed: 2 } satisfies InboxCountResult,
+  'session.person': { ok: true, person: { name: NATHAN.name } } satisfies SessionPersonResult,
+  'team.list': {
+    ok: true,
+    you: NATHAN.personId,
+    people: [
+      { personId: NATHAN.personId, name: NATHAN.name, availability: null },
+      { personId: MIA.personId, name: MIA.name, availability: { state: 'away', reason: 'Leave' } },
+    ],
+  } satisfies TeamListResult,
+  'task.ledger': LEDGER,
+  'task.search': {
+    ok: true,
+    hits: TASKS.slice(0, 3).map(({ id, key, title }) => ({ id, key, title })),
+  } satisfies TaskSearchResult,
   'access.read': ACCESS,
   'operations.read': OPERATIONS,
 } as const satisfies Partial<Record<ReadName, unknown>>;

@@ -62,7 +62,10 @@ describe('S0-6 session cookie', () => {
     }) as typeof globalThis.fetch;
 
     const page = await mount(<Page sessions={sessions} fetch={fetch} />);
-    await page.click('.topbar__who button');
+    // Sign out from the person menu (C23), the header's one place for it.
+    await settle();
+    await page.click('.appbar .who__trigger');
+    await page.click('.who__menu button[role="menuitem"]');
     expect(finishOldSignOut).toBeDefined();
     expect(page.find('#signin-email')).not.toBeNull();
 

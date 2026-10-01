@@ -104,20 +104,21 @@ plain-text 500 when an operand was missing. Each now answers
 `FIELD_VALUE_INVALID` 422, naming the operand, with a fix line
 (`packages/core-commands/src/commands/operands.ts`):
 
-| Operation                                    | Operand                                    | What it has to be                                                                           | Checked at                                                       |
-| -------------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `task.create`                                | `fields`                                   | an object of field keys to values, not an array                                             | `parseRequest`, from `prepareCommand` (`commands/prepare.ts`)    |
-| `task.update` and the five owning operations | `fields`                                   | an object of field keys to values, not an array                                             | `parseRequest`, from `prepareCommand` (`commands/prepare.ts`)    |
-| `task.reparent`                              | `parentId`                                 | a string, or `null` for the top level; absent or any other type is refused                  | `refuseReparentOperands`, from `reparentTask` (`tasks-place.ts`) |
-| `task.restore`                               | `batchId`                                  | a non-empty string, the one `task.trash` answered                                           | `parseRequest`, from `prepareCommand` (`commands/prepare.ts`)    |
-| `task.purge`                                 | none                                       | no window operand, see below                                                                | `refusePurgeOperands`, from `purgeTasks` (`tasks-trash.ts`)      |
-| `task.read`                                  | `recordId`                                 | a string                                                                                    | the row's `parse`, from `serveRead` (`reads/dispatch.ts`)        |
-| `task.board`                                 | `board`                                    | a board task's id, or `null` for tasks on no board                                          | the row's `parse`, from `serveRead` (`reads/dispatch.ts`)        |
-| `preset.plan`                                | `recordTypeKey`, `presetKey`, `fields[]`   | two non-empty strings, and an array of field objects, which may be empty                    | the row's `parse`, from `serveRead` (`reads/dispatch.ts`)        |
-| `task.rank`                                  | `afterId`, `beforeId`                      | each a string or `null`, or absent                                                          | `parseRequest`, from `prepareCommand` (`commands/prepare.ts`)    |
-| `task.propose`                               | `lineageId`                                | a string or `null`, or absent to open a new lineage                                         | `parseRequest`, from `prepareCommand` (`commands/prepare.ts`)    |
-| `task.create`                                | `parentId`, `board`, `boardSection`        | each a string or `null`, or absent                                                          | `parseRequest`, from `prepareCommand` (`commands/prepare.ts`)    |
-| `task.decide`                                | `gateId`, `versionId`, `recipientPersonId` | each a string; absent is refused, except `recipientPersonId`, which may be absent or `null` | `parseRequest`, from `prepareCommand` (`commands/prepare.ts`)    |
+| Operation                                    | Operand                                    | What it has to be                                                                                                                                                                                | Checked at                                                                                         |
+| -------------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| `task.create`                                | `fields`                                   | an object of field keys to values, not an array                                                                                                                                                  | `parseRequest`, from `prepareCommand` (`commands/prepare.ts`)                                      |
+| `task.update` and the five owning operations | `fields`                                   | an object of field keys to values, not an array                                                                                                                                                  | `parseRequest`, from `prepareCommand` (`commands/prepare.ts`)                                      |
+| `task.reparent`                              | `parentId`                                 | a string, or `null` for the top level; absent or any other type is refused                                                                                                                       | `refuseReparentOperands`, from `reparentTask` (`tasks-place.ts`)                                   |
+| `task.restore`                               | `batchId`                                  | a non-empty string, the one `task.trash` answered                                                                                                                                                | `parseRequest`, from `prepareCommand` (`commands/prepare.ts`)                                      |
+| `task.purge`                                 | none                                       | no window operand, see below                                                                                                                                                                     | `refusePurgeOperands`, from `purgeTasks` (`tasks-trash.ts`)                                        |
+| `task.read`                                  | `recordId`                                 | a string                                                                                                                                                                                         | the row's `parse`, from `serveRead` (`reads/dispatch.ts`)                                          |
+| `task.board`                                 | `board`                                    | a board task's id, or `null` for tasks on no board                                                                                                                                               | the row's `parse`, from `serveRead` (`reads/dispatch.ts`)                                          |
+| `task.ledger`                                | `timeZone`, `before?`, `query?`            | a zone name the server knows (`pg_timezone_names`, exact spelling), a day `YYYY-MM-DD` from 1970 or absent/`null` for the newest days, and `task.search`'s query or absent/`null` for every task | the row's `parse` for the shapes, its `serve` for the zone, from `serveRead` (`reads/dispatch.ts`) |
+| `preset.plan`                                | `recordTypeKey`, `presetKey`, `fields[]`   | two non-empty strings, and an array of field objects, which may be empty                                                                                                                         | the row's `parse`, from `serveRead` (`reads/dispatch.ts`)                                          |
+| `task.rank`                                  | `afterId`, `beforeId`                      | each a string or `null`, or absent                                                                                                                                                               | `parseRequest`, from `prepareCommand` (`commands/prepare.ts`)                                      |
+| `task.propose`                               | `lineageId`                                | a string or `null`, or absent to open a new lineage                                                                                                                                              | `parseRequest`, from `prepareCommand` (`commands/prepare.ts`)                                      |
+| `task.create`                                | `parentId`, `board`, `boardSection`        | each a string or `null`, or absent                                                                                                                                                               | `parseRequest`, from `prepareCommand` (`commands/prepare.ts`)                                      |
+| `task.decide`                                | `gateId`, `versionId`, `recipientPersonId` | each a string; absent is refused, except `recipientPersonId`, which may be absent or `null`                                                                                                      | `parseRequest`, from `prepareCommand` (`commands/prepare.ts`)                                      |
 
 `parseRequest` and the two `refuse…Operands` functions are in
 `commands/operands.ts`, beside `isFieldMap` and `invalid`, which the read
@@ -162,6 +163,14 @@ refusal writes an audit row. A business with no such row is `NOT_FOUND` naming
 `retention_window_days`. A row that is not a whole number of days, zero or
 more, is `FIELD_VALUE_INVALID`. There is no default, floor or ceiling.
 `tests/commands/purge-retention.test.ts` holds it.
+
+**The two windows are written by a command each** (MP-2-11, 0068):
+`settings.set_retention_window` and `settings.set_conversation_window`, under
+`settings:manage`, against the revision `settings.read` handed back. The
+conversation window is seven days or more and never longer than the retention
+window (C122-1); either command locks both rows in key order before it
+compares, and a value outside that is `FIELD_VALUE_INVALID` naming `value`.
+`tests/commands/mp-2-11-business-windows.test.ts` holds it.
 
 A window longer than 2,000,000 days (`LONGEST_COMPUTED_WINDOW_DAYS`) purges
 nothing, and it is answered, not refused. No trash is that old, and a long
@@ -273,12 +282,12 @@ person has ended (signed out of, ended from another session, or ended by a
 factor change) is refused at login resolution from that commit,
 `AUTH_SESSION_EXPIRED` 401, before the second-factor check, whatever the
 token's own `exp` says. The ending holds in every business the login reaches,
-whichever route asked (`ops.ended_provider_sessions`, 0065; each business's
+whichever route asked (`ops.ended_provider_sessions`, 0061; each business's
 own record is `ended_sessions`, 0057). Ending the other sessions, or a factor
 change, also ends every session of the login but the kept one in every
 business, seen here or not: a token whose first sign-in (`amr`) is at or
 before that ending is refused; a sign-in after it is served
-(`ops.ended_subject_sessions`, 0069, keyed by a SHA-256 digest of the
+(`ops.ended_subject_sessions`, 0063, keyed by a SHA-256 digest of the
 subject). The provider's sign-out, which revokes
 the refresh tokens, comes after and cannot undo it. A sign-out this business refuses (it no
 longer admits the person) still ends the verified token's own session in
@@ -346,8 +355,10 @@ socket and starts no process. `main()` runs only as the process entry
 (`import.meta.main`). It reads the environment, calls `composeApi`, runs
 restart recovery through that same resolver, and only then binds the port.
 `apps/api/function.ts` is the Vercel function entry: it builds the same
-`composeApi` from the function's settings, with no identity route, live channel,
-recovery or sweeper, which belong to a long-running process, and no admin login: the business key is read on `DATABASE_LOOKUP_URL`, a login in the lookup identity (migration 0046; unset, every key is refused), and the entry refuses to start with `DATABASE_ADMIN_URL` set. It answers only
+`composeApi` from the function's settings, with no identity route or live
+channel, which belong to a long-running process. It owns recovery: before a request
+it runs the reconciliation pass for each business `RECOVERY_BUSINESS_KEYS` names,
+which a named environment (`OPS_ENVIRONMENT`) must set, if only to `none`. It holds no admin login: the business key is read on `DATABASE_LOOKUP_URL`, a login in the lookup identity (migration 0046; unset, every key is refused), and the entry refuses to start with `DATABASE_ADMIN_URL` set. It answers only
 requests whose `Host` and URL both name `SERVED_HOST`, the environment's own host; any other,
 a deployment's generated address included, is refused 421 before anything is
 read, so a promotion leaves the previous deployment serving nothing
@@ -409,12 +420,15 @@ and the agent's one-task check (`namedTaskId`), and `task.rank` its
 | `task.rank`                                                                           | `/task/rank`                           | `operationId`, `recordId`, `expectedRevision`, `afterId?`, `beforeId?`       | `FIELD_VALUE_INVALID` 422 naming `afterId` or `beforeId` when present and neither a string nor `null`, `SCOPE_NOT_GRANTED` 403 when the caller may not write a neighbour (asked before it is looked up), `PLACEMENT_IS_DERIVED` 422 when neither neighbour is sent (naming `board_rank`) and naming `neighbour` when a neighbour is the task itself, both name one task, they are out of order, they are not adjacent (another live sibling sits between them: read the list again) or there is no rank left between them, `NOT_FOUND` 404 naming `neighbour` when one is not a live sibling (same parent, or top level on the same board). With only `afterId` the task goes directly after it, and likewise before `beforeId`; `afterId` and `beforeId` compare case-insensitively, so a uuid in either case names one task                                        |
 | `task.trash`                                                                          | `/task/trash`                          | `operationId`, `recordId`, `expectedRevision`                                | `SCOPE_NOT_GRANTED` 403 when a live descendant is not covered (below); the answer's `detail` carries `batchId`, which `task.restore` takes, and `trashed`, the count                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
 | `task.board`                                                                          | `/task/board`                          | `board`, required: a board id, or `null` for the unboarded tasks             | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404 for a board not live here and for an external party, `FIELD_VALUE_INVALID` 422, `FIELD_NOT_WRITABLE` 422; answers `{ ok: true, tasks }`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `task.ledger`                                                                         | `/task/ledger`                         | `timeZone`, `before?`, `query?`                                              | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404 for an external party and for a member who is not internal (the shared view carries no history), `FIELD_VALUE_INVALID` 422 naming `timeZone`, `before` or `query`, `FIELD_NOT_WRITABLE` 422; answers `{ ok: true, days, earlier }`: up to seven days in the reader's zone, newest first, each with its applied task writes newest first (reads, refusals, replays, `task.heartbeat` and trashed tasks left out), and whether an earlier day has any; with `query`, only the events of the tasks C1's `searchTasks` finds, up to its bound of 500 best, and `more` when the reader's own matches go past it (MP-8-4, `reads/ledger.ts`)                                                                                                                                                                                      |
 | `person.list`                                                                         | `/person/list`                         | `{}`; it takes no fields                                                     | `SCOPE_NOT_GRANTED` 403 without `read` on `person`, `FIELD_NOT_WRITABLE` 422; answers `{ ok: true, persons: [{ personId, name }] }`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `team.list`                                                                           | `/team/list`                           | `{}`; it takes no fields                                                     | `SCOPE_NOT_GRANTED` 403 without `read` on `person`, `NOT_FOUND` 404 for a client of the business (the Team panel is staff only, MP-7-10); answers `{ ok: true, you, people: [{ personId, name, availability }] }`, `you` the reader's own person, staff only, `availability` null or `{ state, reason }`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `account/availability` (person prefix only; not a surface command)                    | `/account/availability`                | `state`, `'available'` or `'away'`; `reason`, 1 to 140 characters, away only | the person's own row, named by the session and never the body; `COMMAND_BODY_INVALID` 400 for any other field, `FIELD_VALUE_INVALID` 422, `NOT_FOUND` 404 for a client; no agent route; audited as `availability.set` with its row in one transaction, and a refusal of a signed-in person audited refused; answers `{ availability }`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
 `task.assign` takes the `assign` action, `task.set_party` and
 `task.set_audience` take `share`, and every other write here takes `write`, all
-on `task` (their `COMMAND_SURFACE` rows). The two reads take `read` on `task`
-and on `person`. A rank is always placed between neighbours and never sent as a
+on `task` (their `COMMAND_SURFACE` rows). The three reads take `read`: the board
+and the ledger on `task`, the list on `person`. A rank is always placed between neighbours and never sent as a
 number. The handlers are the cases of the same name in `commands/handlers.ts`
 and `reads/dispatch.ts`; the manifest below cites each one. On the agent prefix
 all of these answer `DELEGATION_EXCLUDES_OPERATION` 403.
@@ -471,9 +485,11 @@ no route written by hand.
 | ---------------------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `task.comment`                     | `/task/comment`                     | `operationId`, `recordId`, `expectedRevision`, `body`, `audience`, `commentType?`, `mentions?` | `SCOPE_NOT_GRANTED` 403, `FIELD_VALUE_INVALID` 422 (naming `body` when it is absent, blank or holds a NUL or an unpaired surrogate, or `audience`, `comment_type` or `mentions`), `AUDIENCE_NOT_PERMITTED` 422 (an external party writing `internal`; the agent prefix writing `client`), `MENTION_NOT_READABLE` 422 (naming each person mentioned who cannot read the comment; nothing saves), `NOT_FOUND` 404, `VERSION_STALE` 409, `DEPENDENCY_NOT_LANDED` 501 where a business has no comment type |
 | `preset.plan`                      | `/preset/plan`                      | `recordTypeKey`, `presetKey`, `fields[]`                                                       | `FIELD_VALUE_INVALID` 422 for an absent or mistyped operand, `SCOPE_NOT_GRANTED` 403, `PRESET_FIELD_UNCLASSIFIED` 422, `PRESET_TYPE_UNKNOWN` 404, `PRESET_FIELD_UNPLACEABLE` 409, `PRESET_FIELD_DUPLICATE` 422                                                                                                                                                                                                                                                                                         |
-| `settings.set_four_eyes_threshold` | `/settings/set_four_eyes_threshold` | `operationId`, `value` (number or `null`), `expectedRevision?`                                 | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                                                                                                                                                |
+| `settings.set_four_eyes_threshold` | `/settings/set_four_eyes_threshold` | `operationId`, `value` (number or `null`), `expectedRevision?`                                 | `SCOPE_NOT_GRANTED` 403 (it asks `spend:decide`), `STEP_UP_REQUIRED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                                                                                               |
 | `settings.set_client_sign_off`     | `/settings/set_client_sign_off`     | `operationId`, `value` (boolean), `expectedRevision?`                                          | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                                                                                                                                                |
 | `settings.set_money_step_up`       | `/settings/set_money_step_up`       | `operationId`, `value` (boolean), `expectedRevision?`                                          | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                                                                                                                                                |
+| `settings.set_conversation_window` | `/settings/set_conversation_window` | `operationId`, `value` (whole days), `expectedRevision?`                                       | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                                                                                                                                                |
+| `settings.set_retention_window`    | `/settings/set_retention_window`    | `operationId`, `value` (whole days), `expectedRevision?`                                       | `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422 (`value`, or an `expectedRevision` that is not a whole number), `NOT_FOUND` 404                                                                                                                                                                                                                                                                                                                                                |
 
 A settings `value` of any other type, including a string, an object or an
 array, is `FIELD_VALUE_INVALID` naming `value` before any write
@@ -964,14 +980,21 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `task.purge`                       | `purgeTasks`, window read by `retentionWindowDays` (`commands/tasks-trash.ts`)            | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `task.read`                        | `readTaskDetail`, or `readSharedTask` for a reader who is not internal (`reads/tasks.ts`) | served under a live delegation (`serve`)                                                        |
 | `task.board`                       | `readBoard` (`reads/tasks.ts`)                                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `task.ledger`                      | `readLedger` (`reads/ledger.ts`)                                                          | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `task.queue`                       | `readQueue` (`reads/queue.ts`)                                                            | served before a pickup (`BEFORE_PICKUP`, `serve`)                                               |
 | `person.list`                      | `listPeople` (`reads/people.ts`)                                                          | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `task.search`                      | `searchTasks` (`reads/search.ts`)                                                         | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `team.list`                        | `listTeam` (`reads/people.ts`)                                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `preset.plan`                      | `planPresetSync` (`records/preset-plan.ts`)                                               | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `settings.read`                    | `readSettings` (`reads/settings.ts`)                                                      | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `session.capabilities`             | `readCapabilities` (`reads/capabilities.ts`)                                              | served under a live delegation (`authorise`, `capabilitiesOf`)                                  |
 | `settings.set_four_eyes_threshold` | `setBusinessSetting` (`commands/settings-write.ts`)                                       | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `settings.set_client_sign_off`     | `setBusinessSetting` (`commands/settings-write.ts`)                                       | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `session.person`                   | `readOwnName` (`reads/people.ts`)                                                         | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `session.end`                      | `endOwnSession` (`commands/session-end.ts`)                                               | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 | `settings.set_money_step_up`       | `setBusinessSetting` (`commands/settings-write.ts`)                                       | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `settings.set_conversation_window` | `setBusinessSetting` (`commands/settings-write.ts`)                                       | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
+| `settings.set_retention_window`    | `setBusinessSetting` (`commands/settings-write.ts`)                                       | refused `DELEGATION_EXCLUDES_OPERATION`                                                         |
 
 "Served under a live delegation" means an agent call with no credential is
 refused `DELEGATION_EXCLUDES_OPERATION` (see "The agent's own entry point").
@@ -1312,9 +1335,10 @@ it, and the first holder again is `FOUR_EYES_REQUIRED`. A retry under the same
 
 ## Reads
 
-`task.read`, `task.board`, `task.queue`, `person.list`, `preset.plan`,
-`settings.read`, `session.capabilities`, `access.read`, `inbox.read`, `inbox.count` and
-`inbox.unattended` are declared in `COMMAND_SURFACE` with `kind: 'read'`. The boundary branches on that and calls the executor the
+`task.read`, `task.board`, `task.queue`, `task.ledger`, `task.search`, `person.list`,
+`team.list`, `preset.plan`, `settings.read`, `session.capabilities`, `access.read`,
+`inbox.read`, `inbox.count` and `inbox.unattended` are
+declared in `COMMAND_SURFACE` with `kind: 'read'`. The boundary branches on that and calls the executor the
 composition root supplies:
 
 ```ts
@@ -1344,13 +1368,20 @@ T2h's latest alert on that run (the same record, `id`, `kind`,
 `waitingReason` and `raisedAt`, that the task page and the queue read show);
 no other read carries it. A readable entry carries its pointers, its task's `key` and `title`,
 and `closedBy`, the decider's `personId` and `name` once it is cleared, all
-read in the same transaction, so the item stores none of them. A gone entry
+read in the same transaction, so the item stores none of them. It carries
+`client`, its task's `clientId` and `name`, only where the caller reaches that
+client as `client.list` does (MP-7-3's groups): a caller who holds the task
+alone is not told its client. A gone entry
 carries its own identity and axes and nothing of the task. The board screen
 draws both reads above the board (`apps/web/src/views/inbox.tsx`, INB-1g).
 
-The board screen follows one event stream per tab (INB-1f),
-`GET <person prefix><business>/live`, beside T2f's `/live/task/:recordId`
-and through the same door (`apps/api/app.ts`, `apps/api/live-board.ts`). The
+The board's stream (INB-1f) is `GET <person prefix><business>/live` naming no
+`topic`, or the same stream as the topic `board` on C4's one stream per tab
+(`?topic=board` beside `task:<id>` topics, `apps/api/live-follow.ts`), where
+every frame it sends is labelled `board` and names no task, and it ends alone
+as a task topic does; the rest of this paragraph is its frames on its own route.
+It sits beside T2f's
+`/live/task/:recordId` and through the same door (`apps/api/app.ts`, `apps/api/live-board.ts`). The
 join is `joinLiveBoard` (`reads/live-join.ts`): a person inside the business,
 never an external reader or an agent, holding a live grant. It sends `resync`
 on connect and after the listener reconnects, `invalidate` whose data is a
@@ -1366,9 +1397,10 @@ the previous person's topic is dropped unsaid, the new one's is heard, and the
 stream says nothing until its next recheck sends `resync`. The inbox topic is
 `business:inbox:person`, sent at commit by migration 0043's trigger on
 `inbox_items`, and the fan-out (`apps/api/live.ts`) hands it only to that
-person's streams in that business. The page re-reads the board on
-`invalidate` and the inbox list and count on `inbox`; while the stream is
-down its 30-second floor re-reads both (`apps/web/src/data/board-live.ts`).
+person's streams in that business. The web follows the `board` topic through the tab's one
+hub: the board screen re-reads the board on `invalidate` and the inbox list and
+count on `inbox`, the Inbox screen re-reads on either, and while the stream is
+down the hub's 30-second floor re-reads them (`apps/web/src/data/board-live.ts`).
 
 `task.read` carries the task's comments. An internal reader, meaning a
 membership role of `owner`, `admin` or `member`, is given every comment in full.
@@ -1411,11 +1443,26 @@ case (g) carries the rows. The server declares the two answers as
 (`packages/core-wire/src/views.ts`), and the web imports that type
 rather than keeping a copy; the two are told apart by the key.
 
-| Read                   | Route                   | Body                     | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Refusals it can answer                                                                                  |
-| ---------------------- | ----------------------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `settings.read`        | `/settings/read`        | `{}`; it takes no fields | `{ ok: true, settings: [{ key, value, valueType, revision, updatedAt, updatedByActorId }] }`                                                                                                                                                                                                                                                                                                                                                                                                  | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403                             |
-| `session.capabilities` | `/session/capabilities` | `{}`; it takes no fields | `{ ok: true, personId, businessKey, grants: [{ collection, action }] }`                                                                                                                                                                                                                                                                                                                                                                                                                       | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403, `AUTH_SESSION_EXPIRED` 401 |
-| `access.read`          | `/access/read`          | `{}`; it takes no fields | `{ ok: true, team, clients, agents, clientRecords }` (`clientRecords`: every client `{ clientId, name }`): each person `{ personId, name, permissions: [{ collection, action, scope, stepUp }], grants: [{ grantId, collection, action, scope }] }` (`stepUp`: the money step-up is asked before that key, by `asksMoneyStepUp`, C59; `grants`: their live grant rows in this business, each revocable by `access.revoke`), each agent its `person`, `purpose`, `expiresAt` and `permissions` | `SCOPE_NOT_GRANTED` 403 without `access:manage`, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403     |
+| Read                   | Route                   | Body                     | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Refusals it can answer                                                                                     |
+| ---------------------- | ----------------------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `settings.read`        | `/settings/read`        | `{}`; it takes no fields | `{ ok: true, settings: [{ key, value, valueType, revision, updatedAt, updatedByActorId }] }`                                                                                                                                                                                                                                                                                                                                                                                                  | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403                                |
+| `session.capabilities` | `/session/capabilities` | `{}`; it takes no fields | `{ ok: true, personId, businessKey, grants: [{ collection, action }] }`                                                                                                                                                                                                                                                                                                                                                                                                                       | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403, `AUTH_SESSION_EXPIRED` 401    |
+| `access.read`          | `/access/read`          | `{}`; it takes no fields | `{ ok: true, team, clients, agents, clientRecords }` (`clientRecords`: every client `{ clientId, name }`): each person `{ personId, name, permissions: [{ collection, action, scope, stepUp }], grants: [{ grantId, collection, action, scope }] }` (`stepUp`: the money step-up is asked before that key, by `asksMoneyStepUp`, C59; `grants`: their live grant rows in this business, each revocable by `access.revoke`), each agent its `person`, `purpose`, `expiresAt` and `permissions` | `SCOPE_NOT_GRANTED` 403 without `access:manage`, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403        |
+| `session.person`       | `/session/person`       | `{}`; it takes no fields | `{ ok: true, person: { name } }`, the caller's own name                                                                                                                                                                                                                                                                                                                                                                                                                                       | `FIELD_NOT_WRITABLE` 422, `COMMAND_BODY_INVALID` 400, `AUTH_NO_MEMBERSHIP` 403, `AUTH_SESSION_EXPIRED` 401 |
+
+`session.person` and the command `session.end` are the person menu's (C23).
+Neither asks the grant model: `session.person` answers anyone signed in with
+their own name, a member holding no grant and a client outside the business
+included, and `session.end` is `account:write` on the caller's own account,
+which every signed-in person holds and nobody holds on another's
+(`authorisedOn: 'self'`, `packages/core-wire/src/surface.ts`). Neither takes an
+identifier, so a body naming a person, an actor or an account is refused rather
+than read. `session.end` takes only `operationId`, answers
+`{ recordId: null, detail: { ended: 'sign-out' } }`, and writes nothing but its
+audit event, `session.end` on the business's chain naming the actor; the
+browser ends the credential itself at the identity provider, with
+`logout?scope=local`, so the person's other sessions stay signed in. Neither is
+an agent's.
 
 `settings.read` takes `read` on `settings` while the two settings commands take
 `manage` on the same collection. The asymmetry is deliberate. A setting is a
@@ -1510,9 +1557,9 @@ lived in the client and the server looked fine. The attempted values go to
 the audit row's `attempted` column and never to the response.
 
 **A read takes only its own identifier.** `task.read` takes `recordId` and
-`task.board` takes `board`; `task.queue`, `person.list`, `preset.plan`,
-`settings.read`, `session.capabilities` and `access.read` take none. Any other
-identifier field, a `recordId` on those six included, is `COMMAND_BODY_INVALID` 400 naming
+`task.board` takes `board`; `task.queue`, `task.ledger`, `task.search`, `person.list`,
+`team.list`, `preset.plan`, `settings.read`, `session.capabilities` and `access.read` take
+none. Any other identifier field, a `recordId` on those nine included, is `COMMAND_BODY_INVALID` 400 naming
 it, audited, and the same answer for an own, a foreign and a fabricated id
 (the row's `identifiers` in `READ_CATALOGUE`, `reads/catalogue.ts`, checked in
 `serveRead` after the system fields, `reads/dispatch.ts`).
@@ -1527,8 +1574,47 @@ successful and refused alike (I13). Its `operation_id` is null: a read has
 nothing to replay. A read of one task carries that task as the subject, which
 is what makes "who looked at this" answerable. The task's own `history`
 excludes the reads, because a history is what happened _to_ the task.
-`settings.read` and `session.capabilities` carry a null subject: neither is
-about one record, and naming one would make "who read this record" false.
+`settings.read`, `session.capabilities` and `task.search` carry a null
+subject: none is about one record, and naming one would make "who read this
+record" false.
+
+**`task.search` puts the caller's scope in the statement that finds
+candidates** (ticket C1). The body is `{ query }`: up to 200 characters with at
+least one word of letters or digits in them, else `FIELD_VALUE_INVALID` 422
+naming `query`. The first eight words reach the index, each as a prefix, all of
+them required; nothing else of the query reaches `to_tsquery`. `heldScopes`
+(`authority/held-scopes.ts`) asks the grant model's own live expression which
+`task:read` scopes the caller holds. The statement is handed the whole business
+or the named records, and never reads a task outside them into the process.
+The answer is `{ ok: true, hits: [{ id, key, title }] }`, at most 20, with no
+count; `[]` means nothing in scope matched. A member holding no `task:read` is
+refused `SCOPE_NOT_GRANTED` 403, never answered with an empty list. An external
+party is refused `SCOPE_NOT_GRANTED` too, before anything is read: the portal
+has no search until a client search is designed. `searchTasks`
+(`reads/search.ts`) is the one function every caller of the index uses.
+`tests/reads/search.test.ts` holds it. A server caller (the ledger's search,
+MP-8-4) may pass `limit`, a whole number from 1 to 500, refused
+`FIELD_VALUE_INVALID` naming `limit` otherwise before anything is read; its
+answer adds `more`, whether the caller's own matches go past the limit, taken
+from the same scoped statement. The `task.search` read passes none and stays
+at 20 (`tests/reads/c1-search-past-cap.test.ts`).
+
+One set is the exception: a person's own preferences are saved, read and
+dismissed without an audit event (CS-2.8, MP-2-11a, MP-2-11). A successful
+`preference.save`, `preference.read` or `preference.dismiss_tip` writes none,
+and a refused one is audited like any other. The surface row's `audited: false`
+says so; nothing else skips the chain.
+
+**Guided tips are two keys of the one store** (MP-2-11). `tips.enabled` takes
+`true` or `false` through `preference.save`. `tips.dismissed` holds one entry
+per dismissed tip, `"<page>#<tip>": <version>`; a save of it takes only `{}`,
+which is the reset. `preference.dismiss_tip` takes `{ page, tip, version }` (a
+route id, a tip id of lower-case words and `-`, each up to 64 characters, and a
+whole number from 1) and merges that one entry into the caller's own row in a
+single upsert, so a dismissal made at the same moment on another device is
+kept. A tip not already held is refused `FIELD_VALUE_INVALID` past 500. A tip
+shows unless tips are off or its entry holds its current text version
+(`tipShown`, `packages/core-wire/src/tips.ts`), so a rewritten tip comes back.
 
 ## Open items
 
@@ -1581,7 +1667,7 @@ Login resolution refuses `AUTH_SECOND_FACTOR_REQUIRED` 401 when the sign-in
 login has a verified second factor and the sign-in is below `aal2`. The factor
 is the login's: verified through one business, it is required in every
 business the login reaches, and removing it clears it in every one
-(`ops.second_factor_subjects`, 0083, keyed by SHA-256 digests of the subject
+(`ops.second_factor_subjects`, 0064, keyed by SHA-256 digests of the subject
 and the provider's factor id). That holds on every person route except the
 three below, which are how the sign-in gets its code.
 
@@ -1596,13 +1682,15 @@ credential never holds a money key (`credential.issue` below), so none is
 judged later on an agent's behalf. Settings ▸ Access marks each such key
 in a person's preview (`access.read`'s `stepUp`) by the same predicate,
 `asksMoneyStepUp` (`authority/step-up.ts`), so the setting moves both at once.
+The four-eyes threshold is one of these: `settings.set_four_eyes_threshold`
+asks `spend:decide`, not `settings:manage` (MP-2-11).
 
 A person's own factor has three routes on the person prefix only. Each is
 served only when the composition root passes a `factors` provider
 (`apps/api/auth/factors.ts`, GoTrue's MFA endpoints called with the person's own
 bearer). Each writes one audit event, applied or refused, named by the act.
 `enrol` is refused `FACTOR_ALREADY_ENROLLED` while the login holds a verified
-factor through any business it reaches (0083), not only this one.
+factor through any business it reaches (0064), not only this one.
 
 | Route                    | Body                   | Answer                                                                                             | Refusals                                                                                                                                                                       |
 | ------------------------ | ---------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -1676,7 +1764,7 @@ forwarder raised, newest first, at most 50, each `{ kind, at, concerns }`:
 the alert's kind, the time it was raised (ISO 8601) and fixed plain words for
 what it concerns (`An alert of an unknown kind` for a kind the view has no
 words for). It is read from the forwarder's log (`ops.security_alert_log`,
-0067), written in the pass that raises the alert, so an alert stays listed
+0069), written in the pass that raises the alert, so an alert stays listed
 after the sink took it and its `ops.api_alerts` row is gone. No id, scope,
 business, person, secret or record content is in it. An alert names no
 business and the detector counts every business's signals together, so the
@@ -1966,7 +2054,7 @@ function nor `ops.installation`, runs them, as 0058 provisions it made-up.
 The eight items are `ops.gate_items` rows, each with an `https` evidence link:
 `tested-backups`, `second-factor`, `legal-basics`, `privacy-act-statement`,
 `overseas-register`, `breach-runbook`, `security-pass`, `phone-alerts`. Three
-closing lines are rows too (migration 0064), each with the owner's one line
+closing lines are rows too (migration 0060), each with the owner's one line
 (`statement`, at most 500 characters, no line breaks) as well as its link, and
 open until recorded like any item: `privacy-opt-in` (the link is the OAIC's
 public Privacy Opt-In Register page, where the entry is listed; a lodged form
@@ -1975,14 +2063,14 @@ or a receipt is refused; the line says the published policy matches it),
 records the new one in custody) and `training-line` (item 5's dated line that
 model training is off on both model accounts, carrying a real `YYYY-MM-DD`
 date, with its evidence link). The eight items carry no line. Item 3's tested
-manual privacy-request procedure has a line of its own (migration 0070),
+manual privacy-request procedure has a line of its own (migration 0071),
 `privacy-procedure`: the procedure's dry run ([PRIVACY-RUNBOOK.md](PRIVACY-RUNBOOK.md)),
 recorded with its `https` link and no owner's line, and open until recorded,
 so item 3 done does not close it. The table holds the same rules. The mode
 moves from made-up to real only while every item and line is done, and never
 back; the row cannot be deleted.
 
-Two commands move the gate (migration 0062), each a person's under
+Two commands move the gate (migration 0059), each a person's under
 `operations:manage` in the business that operates the installation
 (`ops.installation.operator_business_id`, set at provisioning), never an
 agent's or a delegation's; any other caller, and every caller while no business
