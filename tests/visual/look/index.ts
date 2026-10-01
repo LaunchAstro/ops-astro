@@ -11,8 +11,18 @@ import { SETTINGS } from './settings.ts';
 import { SHELL } from './shell.ts';
 import { SIGN_IN } from './sign-in.ts';
 import { TASK } from './task.ts';
+import { TASK_PANEL } from './task-panel.ts';
+import { TODOS } from './todos.ts';
 import type { LookScreen } from './probe.ts';
 
 export { RULED_PAINT, type LookProbe, type LookScreen } from './probe.ts';
 
-export const LOOK_SCREENS: readonly LookScreen[] = [SHELL, BOARD, TASK, SETTINGS, SIGN_IN];
+export const LOOK_SCREENS: readonly LookScreen[] = [
+  SHELL,
+  BOARD,
+  TASK,
+  SETTINGS,
+  SIGN_IN,
+  TODOS,
+  TASK_PANEL,
+];
