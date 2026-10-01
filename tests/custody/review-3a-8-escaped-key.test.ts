@@ -82,15 +82,21 @@ it('REVIEW-3A-8: control, the key echoed verbatim comes back redacted', async ()
   expect(body.includes(key)).toBe(false);
 });
 
+/** One escaped-echo case: the provider echoes the key spelt as `spelling`. */
+const escapedEchoCase = (name: string, spelling: string) => async (): Promise<void> => {
+  // Raw JSON text, so the escape reaches custody as the provider sent it.
+  echo = `{"error":"invalid key ${spelling}"}`;
+  const body = await dispatch();
+  const parsed = JSON.parse(body) as { error?: unknown };
+  expect(String(parsed.error).includes(key), `parsed answer text holds the key (${name})`).toBe(
+    false,
+  );
+  expect(JSON.stringify(parsed).includes(key)).toBe(false);
+};
+
 for (const [name, spelling] of SPELLINGS) {
-  it(`REVIEW-3A-8: a key echoed JSON-escaped (${name}) is not whole again in the parsed answer`, async () => {
-    // Raw JSON text, so the escape reaches custody as the provider sent it.
-    echo = `{"error":"invalid key ${spelling}"}`;
-    const body = await dispatch();
-    const parsed = JSON.parse(body) as { error?: unknown };
-    expect(String(parsed.error).includes(key), `parsed answer text holds the key (${name})`).toBe(
-      false,
-    );
-    expect(JSON.stringify(parsed).includes(key)).toBe(false);
-  });
+  it(
+    `REVIEW-3A-8: a key echoed JSON-escaped (${name}) is not whole again in the parsed answer`,
+    escapedEchoCase(name, spelling),
+  );
 }

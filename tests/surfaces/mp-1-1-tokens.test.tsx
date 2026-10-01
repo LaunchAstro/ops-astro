@@ -26,7 +26,6 @@ const script = `${root}scripts/token-diff.mjs`;
 const styles = `${root}packages/ui/src/styles/`;
 const tokensCss = `${styles}1-tokens.css`;
 const read = (path: string): string => readFileSync(path, 'utf8');
-
 interface Expected {
   readonly groups: Readonly<Record<string, readonly string[]>>;
   readonly light: Readonly<Record<string, string>>;
@@ -101,6 +100,7 @@ const SHEETS = [
   `${styles}2-primitives.css`,
   `${styles}2-forms.css`,
   `${styles}3-shell.css`,
+  `${styles}3-agent-panel.css`,
   `${styles}4-board.css`,
   `${styles}5-task.css`,
   `${root}apps/web/src/styles/6-slice.css`,

@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// AW-01 on the database, continued from aw-01-broker.test.ts: the data-class
-// route, the credential rule, the durable ceiling, the last room in a
-// reservation, revocation and an expired lease.
+// AW-01 on the database, continued from aw-01-broker.test.ts: the data-class route, the
+// credential rule, the durable ceiling, the last room in a reservation, revocation and an
+// expired lease. Every case needs the database; without one the file is skipped.
 
 import { expect, it as vitestIt } from 'vitest';
 import { catalogue, REPLAY_COMPOSE } from '../../packages/core-connectors/src/index.ts';
@@ -34,7 +34,6 @@ import {
   callCount,
 } from './broker-world.ts';
 
-/** Every case needs the database; without one the file is skipped. */
 const it = noDatabase ? vitestIt.skip : vitestIt;
 
 useBrokerWorld('aw01limits');
@@ -92,9 +91,8 @@ it('AW-01 subscription refusal, on the broker: an unattended run on a subscripti
     ok: false,
     code: 'SUBSCRIPTION_UNATTENDED',
   });
-  expect(
-    await call(work, {}, withRoutes([{ ...subscription, installation: 'there' }])),
-  ).toMatchObject({
+  const elsewhere = withRoutes([{ ...subscription, installation: 'there' }]);
+  expect(await call(work, {}, elsewhere)).toMatchObject({
     ok: false,
     code: 'SUBSCRIPTION_OTHER_TENANT',
   });

@@ -72,7 +72,10 @@ beforeAll(async () => {
 afterAll(async () => {
   await echoCustody?.stop();
   await new Promise<void>((done) => {
-    if (echoServer === undefined) return done();
+    if (echoServer === undefined) {
+      done();
+      return;
+    }
     echoServer.close(() => {
       done();
     });
@@ -101,18 +104,24 @@ it('REVIEW-3A-9: a provider echoing the key plainly, the answer text and every r
   expect(await everyRow()).not.toContain(world.canary);
 });
 
+/** One escaped-echo case: the provider echoes the key in the `which` spelling. */
+const escapedEchoCase = (name: string, which: typeof spelling) => async (): Promise<void> => {
+  spelling = which;
+  const work = await liveWork(s, `echo ${which}`, 2_000);
+  const result = await call(work, {}, { ...broker, custody: echoCustody });
+  expect(result.ok, JSON.stringify(result)).toBe(true);
+  if (result.ok) {
+    expect(result.text, `answer text holds the key (${name})`).not.toContain(slashKey);
+  }
+  expect(await everyRow()).not.toContain(slashKey);
+};
+
 for (const [name, which] of [
   ['slash escaped as \\/', 'slash'],
   ['first character escaped as \\u0063', 'u0063'],
 ] as const) {
-  it(`REVIEW-3A-9: a provider echoing the key JSON-escaped (${name}), the answer text and every row hold no key`, async () => {
-    spelling = which;
-    const work = await liveWork(s, `echo ${which}`, 2_000);
-    const result = await call(work, {}, { ...broker, custody: echoCustody });
-    expect(result.ok, JSON.stringify(result)).toBe(true);
-    if (result.ok) {
-      expect(result.text, `answer text holds the key (${name})`).not.toContain(slashKey);
-    }
-    expect(await everyRow()).not.toContain(slashKey);
-  });
+  it(
+    `REVIEW-3A-9: a provider echoing the key JSON-escaped (${name}), the answer text and every row hold no key`,
+    escapedEchoCase(name, which),
+  );
 }

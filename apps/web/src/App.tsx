@@ -10,11 +10,11 @@
 // — the words and tones a state may print — and not as a source of rows.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
-import { Shell, type StripSteps } from '@launchastro/ui';
+import { Shell } from '@launchastro/ui';
 import { FaceProvider } from './face.tsx';
 import { SearchPalette, useSearch, useSearchKey } from './search.tsx';
 import { pathTo } from './routes.ts';
-import { NO_CLIENT_GRANTS, type ClientAccess } from './manifest.ts';
+import { NO_CLIENT_GRANTS } from './manifest.ts';
 import { frameAt } from './route-views.tsx';
 import { drawContent } from './app-content.tsx';
 import { buildStamp, useCanonicalAddress, useOfflineSince, usePersonName } from './app-state.ts';
@@ -22,31 +22,13 @@ import { FrameStrip } from './strip.tsx';
 import { HeldAddressNotice, heldAddressOffer, type HeldOffer } from './held-address.tsx';
 import { useDock } from './dock.ts';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
-import { grantKeyOf, type Interruption, type Session, type SessionStore } from './session/token.ts';
+import { grantKeyOf, type Interruption, type Session } from './session/token.ts';
 import { SignIn } from './screens/SignIn.tsx';
 import { endThenSignOut } from './sign-out.ts';
 import { PagePresenceProvider, StripPresence } from './views/presence.tsx';
 import { PageFreshnessProvider, StripFreshness } from './views/freshness.tsx';
 import { AssistantView } from './views/assistant.tsx';
-
-export interface AppProps {
-  /** The address the application is drawing. Owned here, not read from a global. */
-  readonly path: string;
-  /** `replace` corrects the address of the page already open, adding no history entry. */
-  readonly navigate: (path: string, options?: { readonly replace?: boolean }) => void;
-  /** The tab's Back and Forward, when the entry owns a history (MP-2-5). */
-  readonly steps?: StripSteps;
-  readonly sessions: SessionStore;
-  /** Where the identity provider is. Injected so a test never needs a network. */
-  readonly gotrueUrl: string;
-  /** The API's origin: empty behind the dev proxy, which serves `/api` on the page's own. */
-  readonly apiOrigin: string;
-  readonly fetch: typeof globalThis.fetch;
-  /** This tab's storage, read once by the entry, or null where it is blocked. */
-  readonly storage: Storage | null;
-  /** Which clients the session may open. None until MP-10-1 supplies client records. */
-  readonly clientAccess?: ClientAccess;
-}
+import type { AppProps } from './app-props.ts';
 
 export function App(props: AppProps): ReactElement {
   const [session, setSession] = useState<Session | null>(props.sessions.session);

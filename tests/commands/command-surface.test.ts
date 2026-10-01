@@ -39,6 +39,10 @@ if (serverUrl === undefined) {
   console.warn('command surface: DATABASE_URL is unset, so nothing below ran, nothing is proved.');
 }
 
+/** Every path is a collection and an operation; the collections are named in the case below. */
+const PATH_SHAPE =
+  /^\/(?:task|team|person|preset|settings|session|grant|delegation|budget|gate|conversation|model|run|preference|access|operations|privacy|legal|credential|client|inbox|notifications)\/[a-z_]+$/u;
+
 describe('the surface as a table', () => {
   it('carries the contract’s nine, named', () => {
     expect([...CONTRACT_NINE].toSorted()).toStrictEqual([
@@ -83,13 +87,7 @@ describe('the surface as a table', () => {
     // `operations`
     // and `privacy` are C55's view and its incident record, and `legal` is C81's
     // documents, asked of `privacy`. `credential` is API-2's agent credential.
-    expect(
-      paths.every((path) =>
-        /^\/(?:task|team|person|preset|settings|session|grant|delegation|budget|gate|conversation|model|run|preference|access|operations|privacy|legal|credential|client|inbox|notifications)\/[a-z_]+$/u.test(
-          path,
-        ),
-      ),
-    ).toBe(true);
+    expect(paths.every((path) => PATH_SHAPE.test(path))).toBe(true);
   });
 });
 

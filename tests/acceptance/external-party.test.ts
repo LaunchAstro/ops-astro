@@ -17,6 +17,7 @@ import { enrol } from '../commands/fixture.ts';
 import {
   CLIENT_NOTE,
   DESCRIPTION,
+  revocationBodies,
   seedRecords,
   SIBLING_TITLE,
   TEAM_NOTE,
@@ -201,18 +202,7 @@ describe.skipIf(serverUrl === undefined)('R4: the external party over HTTP', () 
   // time over HTTP, which takes about 5 s alone and ran past the 5 s default
   // while the machine was busy. The assertions are unchanged.
   it('item 3: every write is refused on authority, nothing moves, and every attempt is audited', async () => {
-    const REVOCATION_BODIES: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
-      'grant.revoke': { grantId: randomUUID() },
-      'delegation.revoke': { delegationId: randomUUID() },
-      // No person body either: it is the agent's (AW-01). Sent well formed,
-      // naming a lease, so the answer is authority's.
-      'model.call': {
-        leaseId: randomUUID(),
-        fence: 1,
-        operation: 'model.replay_compose',
-        fields: [],
-      },
-    };
+    const REVOCATION_BODIES = revocationBodies();
     // The matrix's own valid bodies, so a refusal is authority's and not the
     // body check's. Each is sent as it is (against a sibling the admin made, or
     // the business) and again aimed at the shared record itself.

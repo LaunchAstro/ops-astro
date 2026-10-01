@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // A hold's model calls, as the recovery paths and the hand-back read them. Kept out of
-// recovery/classifier.ts so the classifier stays under CQ-8's 600 lines.
+// recovery/classifier.ts so the classifier stays under its 600-line limit.
 
 import type { TenantQuery } from '../../core-records/src/index.ts';
 
