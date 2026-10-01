@@ -5,6 +5,9 @@
 // or hosted service (AW-01). Its hostile modes are the answers a real provider
 // can give: an oversized body, a redirect to an unlisted host, a malformed
 // schema, a reply past the timeout, and an instruction planted in the content.
+// AW-10 adds the faults a provider really has: down (503), rate limited
+// (429), and a connection cut after the request arrived. It also answers a
+// lookup of one operation (`replay-lookup.ts`), honestly or with a hostile answer.
 //
 // The adapter half (`replayAdapter`, `readReplayAnswer`) is what runs in the
 // broker's process: it builds a request with no origin and no credential, and
@@ -19,6 +22,7 @@ import {
   type ModelAnswer,
   type ModelOperationDeclaration,
 } from './operation.ts';
+import { lookupBody, operationOf, REPLAY_LOOKUP_PATH } from './replay-lookup.ts';
 
 /** The model window the replay provider declares, recorded for the harness adoption test (AW-12). */
 export const REPLAY_MODEL_WINDOW: { readonly model: string; readonly contextUnits: number } = {
@@ -31,12 +35,22 @@ export const REPLAY_NOTHING_HAPPENED = 'rejected_before_processing';
 
 export const REPLAY_PATH = '/v1/complete';
 
-/** The adapter: fields in, a request with neither origin nor credential out. */
-export function replayAdapter(values: Readonly<Record<string, string>>): AdapterRequest {
+/**
+ * The adapter: fields in, a request with neither origin nor credential out.
+ * The operation id is the call's own, so a lookup can later name it (AW-10).
+ */
+export function replayAdapter(
+  values: Readonly<Record<string, string>>,
+  operationId?: string,
+): AdapterRequest {
   return {
     path: REPLAY_PATH,
     method: 'POST',
-    body: JSON.stringify({ model: REPLAY_MODEL_WINDOW.model, fields: values }),
+    body: JSON.stringify({
+      model: REPLAY_MODEL_WINDOW.model,
+      fields: values,
+      ...(operationId === undefined ? {} : { operation_id: operationId }),
+    }),
   };
 }
 
@@ -96,7 +110,15 @@ export type ReplayMode =
   | 'nothing_happened'
   | 'costly'
   | 'unnamed_model'
-  | 'bad_model';
+  | 'bad_model'
+  // AW-10: the provider down, rate limiting, or the connection cut. None began the work.
+  | 'unavailable'
+  | 'rate_limited'
+  | 'cut';
+
+/** How the stand-in answers a lookup (AW-10): honestly, or one of the hostile answers. */
+export type ReplayLookupMode =
+  'honest' | 'malformed' | 'oversized' | 'redirect' | 'slow' | 'claims_success' | 'unreachable';
 
 export interface SeenRequest {
   readonly path: string;
@@ -107,7 +129,10 @@ export interface SeenRequest {
 export interface ReplayProvider {
   readonly origin: string;
   readonly seen: readonly SeenRequest[];
+  /** The operation ids whose work the stand-in began: the truth an honest lookup tells. */
+  readonly processed: ReadonlySet<string>;
   mode(next: ReplayMode): void;
+  lookupMode(next: ReplayLookupMode): void;
   close(): Promise<void>;
 }
 
@@ -180,20 +205,66 @@ function respond(
         answer(response, { text: 'late', usage: { input: 1, output: 1 } });
       }, 10_000);
       timers.add(timer);
+      return;
     }
+    default:
+      faulted(mode, response);
+  }
+}
+
+/** The modes in which the stand-in never began the work. */
+const NOT_BEGUN: ReadonlySet<ReplayMode> = new Set([
+  'nothing_happened',
+  'unavailable',
+  'rate_limited',
+  'cut',
+]);
+
+/** AW-10's faults: down, rate limited, or the connection cut with no answer. */
+function faulted(mode: ReplayMode, response: ServerResponse): void {
+  if (mode === 'cut') {
+    response.socket?.destroy();
+    return;
+  }
+  const status = mode === 'rate_limited' ? 429 : 503;
+  response.writeHead(status, { 'content-type': 'application/json', 'retry-after': '5' });
+  response.end(JSON.stringify({ code: mode }));
+}
+
+/** A lookup's answer in each mode: the truth, or something that must never count as proof. */
+function lookedUp(
+  mode: ReplayLookupMode,
+  begun: boolean,
+  response: ServerResponse,
+  timers: Set<NodeJS.Timeout>,
+): void {
+  if (mode === 'honest' || mode === 'claims_success') {
+    answer(response, lookupBody(mode, begun));
+  } else if (mode === 'unreachable') {
+    response.socket?.destroy();
+  } else {
+    respond(mode, response, undefined, timers);
   }
 }
 
 /** Start the stand-in on a loopback port of its own. */
 export async function startReplayProvider(): Promise<ReplayProvider> {
   let current: ReplayMode = 'answer';
+  let lookup: ReplayLookupMode = 'honest';
   const seen: SeenRequest[] = [];
+  const processed = new Set<string>();
   const timers = new Set<NodeJS.Timeout>();
   const server: Server = createServer((request, response) => {
     void (async (): Promise<void> => {
       const body = await readAll(request);
       const authorization = request.headers['authorization'];
       seen.push({ path: request.url ?? '', authorization, body });
+      const operation = operationOf(body);
+      if (request.url === REPLAY_LOOKUP_PATH) {
+        lookedUp(lookup, operation !== null && processed.has(operation), response, timers);
+        return;
+      }
+      if (operation !== null && !NOT_BEGUN.has(current)) processed.add(operation);
       respond(current, response, authorization, timers);
     })();
   });
@@ -204,8 +275,12 @@ export async function startReplayProvider(): Promise<ReplayProvider> {
   return {
     origin: `http://127.0.0.1:${String(port)}`,
     seen,
+    processed,
     mode: (next) => {
       current = next;
+    },
+    lookupMode: (next) => {
+      lookup = next;
     },
     close: async () => {
       for (const timer of timers) clearTimeout(timer);

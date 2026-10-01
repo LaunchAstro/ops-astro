@@ -54,9 +54,12 @@ export {
   type ModelCallField,
   type ModelCallRequest,
   type ModelCallResult,
+  type CallFault,
+  type DropCause as CallDropCause,
   type ProviderAdapter,
   type Reservation,
   type ResolvedField,
   type ReservedCall,
   type ReserveRefusal,
 } from './broker.ts';
+export { reconcileProviderCalls, type ProviderProof } from './broker-reconcile.ts';

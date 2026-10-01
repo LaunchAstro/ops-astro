@@ -87,7 +87,8 @@ export async function hold(
   const { callId, operation, reservedMinor } = reserved;
   await tx.query(
     `update public.model_calls
-        set state = 'liability_unknown', observed_minor = $3, fault = $4, drop_state = $5
+        set state = 'liability_unknown', observed_minor = $3, fault = $4, drop_state = $5,
+            unknown_since = clock_timestamp()
       where business_id = $1 and id = $2`,
     [tx.businessId, callId, observed, drop?.fault ?? 'provider', drop?.drop ?? null],
   );
@@ -110,6 +111,9 @@ export async function hold(
     heldMinor: reservedMinor,
     observedMinor: observed,
     drop: drop?.drop ?? null,
+    cause: null,
+    fault: drop?.fault ?? 'provider',
+    providerCode: null,
   };
 }
 

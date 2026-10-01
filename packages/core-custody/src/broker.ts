@@ -61,7 +61,9 @@ export type {
   BrokerRefusal,
   BoundField,
   BrokerRoute,
+  CallFault,
   ClaimedField,
+  DropCause,
   ModelCaller,
   ModelCallField,
   ModelCallRequest,
@@ -203,7 +205,8 @@ export async function sweepModelCalls(
 ): Promise<{ readonly held: number; readonly released: number }> {
   const held = await tx.query(
     `update public.model_calls c
-        set state = 'liability_unknown', fault = 'ours', drop_state = 'dropped_no_answer'
+        set state = 'liability_unknown', fault = 'ours', drop_state = 'dropped_no_answer',
+            unknown_since = clock_timestamp()
        from public.leases l
       where c.business_id = $1 and l.business_id = c.business_id and l.id = c.lease_id
         and c.state = 'dispatched' and (l.state <> 'live' or l.expires_at <= clock_timestamp())
@@ -215,7 +218,8 @@ export async function sweepModelCalls(
   // so a lost process never leaves it counting as in flight.
   const conversations = await tx.query(
     `update public.model_calls
-        set state = 'liability_unknown', fault = 'ours', drop_state = 'dropped_no_answer'
+        set state = 'liability_unknown', fault = 'ours', drop_state = 'dropped_no_answer',
+            unknown_since = clock_timestamp()
       where business_id = $1 and conversation_id is not null and state = 'dispatched'
         and started_at <= clock_timestamp() - interval '10 minutes'
       returning id`,

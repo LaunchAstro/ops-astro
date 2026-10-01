@@ -294,6 +294,8 @@ export async function passDeployment(
   resolveBusiness: (businessKey: string) => Promise<string | undefined>,
   keys: readonly string[],
   lookup: EffectLookup,
+  // AW-10 scaffold: the provider phase, run between the sweep and the answers.
+  _providers?: (database: Database, businessId: BusinessId) => Promise<readonly unknown[]>,
 ): Promise<RecoveryOutcome> {
   const swept = await sweepDeployment(database, resolveBusiness, keys);
   if (!swept.ok) return swept;
