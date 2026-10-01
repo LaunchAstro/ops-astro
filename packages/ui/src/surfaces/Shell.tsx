@@ -47,12 +47,112 @@ export interface ShellProps {
    * is a build that carries none, and the rail says so rather than going blank.
    */
   readonly build: string | null;
+  /**
+   * The signed-in person and the way out, drawn in the app strip where the
+   * mockup draws the people on the page. Absent when nobody is signed in, and
+   * then there is no app strip: it is the signed-in person's chrome.
+   */
+  readonly person?: ReactNode;
+  /**
+   * The section's tab row (DS-COMP-2), drawn between the app strip and the
+   * page header as the mockup draws it. Absent on a page without siblings.
+   */
+  readonly tabs?: ReactNode;
+  /** Whether the rail's drawer is open at 900 and below. The drawer is shut when absent. */
+  readonly navOpen?: boolean;
+  /** Opens or shuts the rail's drawer; without it no hamburger is drawn. */
+  readonly onNav?: (open: boolean) => void;
+  /** A step back or forward through this tab's pages; without them the pair is not drawn. */
+  readonly onBack?: () => void;
+  readonly onForward?: () => void;
   readonly children: ReactNode;
+}
+
+/**
+ * The app strip (DS-COMP-1): history, search, the face switch and the timer.
+ * Search, the client face and the timer are not built yet, so each is drawn in
+ * the kit's not-yet-built treatment (PLACEHOLDERS.md SH-14, SH-16, SH-17):
+ * disabled, its reason in a tooltip. Presence is left out until live presence
+ * exists (SH-15, R30).
+ */
+function AppStrip(props: ShellProps): ReactElement {
+  return (
+    <header className="appbar">
+      {props.onBack === undefined || props.onForward === undefined ? null : (
+        <div className="appbar__nav">
+          <button type="button" aria-label="Back" onClick={props.onBack}>
+            <Icon name="angle-small-left" size="sm" />
+          </button>
+          <button type="button" aria-label="Forward" onClick={props.onForward}>
+            <Icon name="angle-small-right" size="sm" />
+          </button>
+        </div>
+      )}
+      {props.face === 'agency' ? (
+        <button
+          className="appbar__search"
+          type="button"
+          disabled
+          title="Search is not available yet"
+        >
+          <Icon name="search" size="sm" />
+          <span>Search…</span>
+          <span className="appbar__kbd" aria-hidden="true">
+            ⌘K
+          </span>
+        </button>
+      ) : null}
+      <div className="appbar__r">
+        {props.person}
+        <FaceSwitch face={props.face} />
+        {props.face === 'agency' ? (
+          <button
+            className="appbar__timer"
+            type="button"
+            disabled
+            title="Time tracking is not available yet"
+          >
+            <Icon name="play" size="sm" />
+            <span>Start timer</span>
+          </button>
+        ) : null}
+      </div>
+    </header>
+  );
+}
+
+/** The face switch (SH-16): the face on is pressed; the other is not built yet. */
+function FaceSwitch(props: { readonly face: ShellProps['face'] }): ReactElement {
+  const faces = [
+    { face: 'agency', label: 'Agency', reason: 'The agency view is not available here yet' },
+    { face: 'client', label: 'Client', reason: 'The client view is not available yet' },
+  ] as const;
+  return (
+    <div className="segmented appbar__switch" role="group" aria-label="View">
+      {faces.map((entry) => (
+        <button
+          key={entry.face}
+          className="segmented__opt"
+          type="button"
+          aria-pressed={props.face === entry.face}
+          disabled={props.face !== entry.face}
+          title={props.face === entry.face ? undefined : entry.reason}
+        >
+          {entry.label}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 export function Shell(props: ShellProps): ReactElement {
   return (
-    <div className="shell" data-face={props.face} data-dock={props.seated ? 'seated' : 'floating'}>
+    <div
+      className="shell"
+      data-face={props.face}
+      data-dock={props.seated ? 'seated' : 'floating'}
+      data-nav={props.navOpen === true ? 'open' : undefined}
+    >
       <nav className="rail" aria-label="Sections">
         <div className="rail__brand">
           <BrandMark variant="wordmark" />
@@ -82,13 +182,43 @@ export function Shell(props: ShellProps): ReactElement {
         </p>
       </nav>
 
+      {/* The drawer's backdrop, at 900 and below: a press on it shuts the drawer. */}
+      {props.navOpen === true && props.onNav !== undefined ? (
+        <div
+          className="navbackdrop"
+          aria-hidden="true"
+          onClick={() => {
+            props.onNav?.(false);
+          }}
+        />
+      ) : null}
+
       <main className="main">
-        <header className="topbar">
-          <div className="topbar__title">
-            <h1 className="t-title">{props.title}</h1>
-          </div>
-          {props.meta === undefined ? null : <div className="topbar__meta">{props.meta}</div>}
-        </header>
+        {/* The app strip, the tab row and the page header travel together and
+            stick as one. */}
+        <div className="chrome">
+          {props.person === undefined ? null : <AppStrip {...props} />}
+          {props.tabs}
+          <header className="topbar">
+            {props.onNav === undefined ? null : (
+              <button
+                className="navtoggle"
+                type="button"
+                aria-label={props.navOpen === true ? 'Close navigation' : 'Open navigation'}
+                aria-expanded={props.navOpen === true}
+                onClick={() => {
+                  props.onNav?.(props.navOpen !== true);
+                }}
+              >
+                <span className="navtoggle__bars" aria-hidden="true" />
+              </button>
+            )}
+            <div className="topbar__title">
+              <h1 className="t-title">{props.title}</h1>
+            </div>
+            {props.meta === undefined ? null : <div className="topbar__meta">{props.meta}</div>}
+          </header>
+        </div>
         <div className="content">{props.children}</div>
       </main>
 
