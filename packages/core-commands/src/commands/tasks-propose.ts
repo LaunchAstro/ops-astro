@@ -2,20 +2,16 @@
 //
 // `task.propose`: a proposal on a task, through the runtime's locks.
 
-import {
-  checkAuthority,
-  checkDelegatedAuthority,
-  raiseDecision,
-  subjectsOf,
-} from '../../../core-records/src/index.ts';
+import { raiseDecision, subjectsOf } from '../../../core-records/src/index.ts';
 import type { Delegation, Subject, TenantQuery } from '../../../core-records/src/index.ts';
 import { lockProposal, proposeUnderLocks } from '../../../core-runtime/src/index.ts';
 import type { CommandContext, TaskRow } from './context.ts';
 import { lockTask, REVISION_FIXES } from './prepare.ts';
-import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
+import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { applied, refused, type HandlerOutcome, type Refused } from './outcome.ts';
 import { EXPIRY_FIX, expiryFrom } from './expiry.ts';
 import { invalid, isFieldMap } from './operands.ts';
+import { claimUnclaimed, researchStartRefusal } from './research-run.ts';
 import { readBusinessCapId, readProjectedPlan } from '../../../core-runtime/src/index.ts';
 
 export interface ProposeFields {
@@ -241,15 +237,8 @@ export async function proposeFor(
   // before the revision, so a starter who lost the race is told it is claimed.
   const starter = subjects.find((subject) => subject.kind === 'person')?.id ?? actorId;
   if (research) {
-    const refusal = await researchRunRefusal(tx, target.id, subjects, delegation);
+    const refusal = await researchStartRefusal(tx, current, subjects, delegation, starter);
     if (refusal !== undefined) return refused(refusal);
-    if (claimedByAnother(current, starter)) {
-      return refused(refuseCommand('TRANSITION_NOT_PERMITTED', ['claimed'], [CLAIMED_FIX]));
-    }
-    // Writing the claim asks what `task.claim` asks (ORCH36-WF7-ASSIGN).
-    if (!isSet(current.data['assignee']) && !(await mayAssign(tx, target.id, subjects))) {
-      return refused(refuseCommand('SCOPE_NOT_GRANTED', ['task:assign'], [ASSIGN_FIX]));
-    }
   }
   if (fields.expectedRevision !== current.revision) {
     return refused(
@@ -260,10 +249,7 @@ export async function proposeFor(
   if (unplanned !== undefined) return unplanned;
   const result = await proposeUnderLocks(tx, proposal, held);
   if (!result.ok) return refused(result.refusal);
-  const revision =
-    research && !isSet(current.data['assignee'])
-      ? await claimFor(tx, target.id, starter)
-      : current.revision;
+  const revision = research ? await claimUnclaimed(tx, current, starter) : current.revision;
   await raiseDecision(tx, { taskId: target.id, gateId: result.value.gateId });
 
   // The revision is the task's own and is unchanged: a proposal is a record
@@ -280,61 +266,4 @@ export async function proposeFor(
     gateId: result.value.gateId,
     payloadDigest: result.value.payloadDigest,
   });
-}
-
-/**
- * WF-7: Run on a research ticket starts a research run, which is `run:write`
- * on the ticket beside the row's `task:write`. An agent reaches it only where
- * its delegation does (MP-6-2 mints `run` for a person holding it), and never
- * past its person's grants. Asked under the task lock, as the runtime asks.
- */
-async function researchRunRefusal(
-  tx: TenantQuery,
-  taskId: string,
-  subjects: readonly Subject[],
-  delegation: Delegation | undefined,
-): Promise<CommandRefusal | undefined> {
-  const request = {
-    collection: 'run',
-    action: 'write',
-    scope: { kind: 'record', id: taskId },
-  } as const;
-  if (delegation !== undefined) {
-    const reach = await checkDelegatedAuthority(tx, delegation, request);
-    if (!reach.ok) return reach.refusal;
-  }
-  if ((await checkAuthority(tx, subjects, request)).ok) return undefined;
-  return refuseCommand('SCOPE_NOT_GRANTED', ['run:write'], [RUN_WRITE_FIX]);
-}
-
-const RUN_WRITE_FIX = 'Starting a research run needs run:write on the ticket; ask for it.';
-const CLAIMED_FIX = 'Someone else has claimed this ticket; its run is theirs to start.';
-const ASSIGN_FIX =
-  'Starting the run claims the ticket, which needs task:assign; ask for it, or for the claim.';
-
-const mayAssign = async (tx: TenantQuery, taskId: string, subjects: readonly Subject[]) =>
-  (
-    await checkAuthority(tx, subjects, {
-      collection: 'task',
-      action: 'assign',
-      scope: { kind: 'record', id: taskId },
-    })
-  ).ok;
-
-const isSet = (value: unknown): boolean => value !== undefined && value !== null;
-
-/** Held by a person other than the starter, or by an agent. */
-function claimedByAnother(ticket: TaskRow, starter: string): boolean {
-  const assignee = ticket.data['assignee'];
-  return (isSet(assignee) && assignee !== starter) || isSet(ticket.data['delegate']);
-}
-
-/** The claim `task.claim` writes, in the proposal's transaction under its lock. */
-async function claimFor(tx: TenantQuery, taskId: string, starter: string): Promise<number> {
-  const rows = await tx.query<{ readonly revision: string }>(
-    `update records set data = data || jsonb_build_object('assignee', $3::uuid), updated_at = now()
-      where business_id = $1 and id = $2 returning revision::text as revision`,
-    [tx.businessId, taskId, starter],
-  );
-  return Number(rows[0]?.revision);
 }

@@ -628,10 +628,20 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
       ]);
     });
 
+    it("the second is the fair share's count, fired by nothing and pinned to read every business", () => {
+      const fn = definer('model_route_room(text,integer)');
+      expect(fn?.trigger).toBe(false);
+      expect(fn?.config).toStrictEqual(['search_path=pg_catalog, public', 'row_security=off']);
+      expect(fn?.firedBy).toStrictEqual([]);
+    });
+  });
+
+  // 0281 (WF-1): the map read models' writers, one per table they watch.
+  describe("the map read models' writers", () => {
     it("the map read models' writers fire on their tables, each with its search path pinned", () => {
       // None is executable by an application caller (the call loop above
       // holds that).
-      const maps = definers().filter((fn) => fn.signature.startsWith('map_summary_'));
+      const maps = functions.filter((fn) => fn.definer && fn.signature.startsWith('map_summary_'));
       for (const fn of maps) {
         expect(fn.config, fn.signature).toStrictEqual(['search_path=pg_catalog, public']);
       }
@@ -646,14 +656,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
         { table: 'public.map_components', events: 'insert delete update' },
         { table: 'public.map_versions', events: 'insert' },
       ]);
-      expect(definer('map_summary_refresh(uuid)')?.trigger).toBe(false);
-    });
-
-    it("the second is the fair share's count, fired by nothing and pinned to read every business", () => {
-      const fn = definer('model_route_room(text,integer)');
-      expect(fn?.trigger).toBe(false);
-      expect(fn?.config).toStrictEqual(['search_path=pg_catalog, public', 'row_security=off']);
-      expect(fn?.firedBy).toStrictEqual([]);
+      expect(maps.find((fn) => fn.signature === 'map_summary_refresh(uuid)')?.trigger).toBe(false);
     });
   });
 

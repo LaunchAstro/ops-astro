@@ -31,6 +31,7 @@
 // because the web client imports this table and must not import the database.
 
 import type { Action } from '../../core-records/src/index.ts';
+import { WAYFINDER_OPERANDS } from './surface-wayfinder.ts';
 
 export type CommandName =
   // The contract's nine.
@@ -116,16 +117,13 @@ export type CommandName =
   | 'budget.record_outcome'
   // A person closes an unknown hold at an amount, with a reason (T3c).
   | 'budget.write_off'
-  // Wayfinder (WF-1): the map is a task of type `map` and its tickets are its
-  // subtasks, so these are task commands on the task collection. Retyping a
-  // ticket to or from grilling, prototype or map asks `decide` of the map's
-  // owner inside the handler, on top of the row's `write`.
+  // Wayfinder (WF-1): a map is a task of type `map`, its tickets its subtasks.
+  // Retyping to or from grilling, prototype or map also asks the owner's `decide`.
   | 'task.set_type'
   | 'map.revise'
   | 'map.scope'
   | 'map.view'
-  // Wayfinder (WF-2): charting, blocking, claiming, graduating fog, resolving
-  // and closing out of scope, and the frontier read.
+  // Wayfinder (WF-2, API-4): charting to closing out of scope, and the reads.
   | 'map.chart'
   | 'task.set_blocking'
   | 'task.claim'
@@ -491,30 +489,7 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     usage: 'any',
     outcome: 'any',
   },
-  'task.set_type': { ...TARGET, taskType: 'any' },
-  'map.revise': {
-    ...TARGET,
-    destination: 'any',
-    notes: 'any',
-    addFog: 'any',
-    addOutOfScope: 'any',
-    retire: 'any',
-  },
-  'map.scope': { ...TARGET, client: 'any' },
-  'map.chart': {
-    title: 'any',
-    destination: 'any',
-    notes: 'any',
-    tickets: 'any',
-    fog: 'any',
-    outOfScope: 'any',
-    preAnswers: 'any',
-  },
-  'task.set_blocking': { ...TARGET, blockedBy: 'any' },
-  'task.claim': TARGET,
-  'map.graduate': { ...TARGET, patchId: 'any', tickets: 'any' },
-  'task.resolve': { ...TARGET, answer: 'any', gist: 'any' },
-  'task.close_out_of_scope': { ...TARGET, reason: 'any' },
+  ...WAYFINDER_OPERANDS,
   'task.check': {
     leaseId: 'any',
     recordId: 'any',
@@ -557,11 +532,9 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
 };
 
 /**
- * The key every write to a map's structure serialises on: its components and
- * versions, its client, its blocking graph and its out-of-scope closes. One
- * key, taken before any task row, so a revise, a scope, a graduation and a
- * close never hold a map and a ticket in opposite orders, and two blocking
- * sets cannot each pass the cycle check against the other's uncommitted link.
+ * The key every write to a map's structure serialises on, taken before any
+ * task row: no two writes hold a map and a ticket in opposite orders, and two
+ * blocking sets cannot each pass the cycle check against the other's link.
  */
 const WAYFINDER_MAP_LOCK = 'wayfinder.map';
 
@@ -810,29 +783,25 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     untargetedIdentifiers: ['recordId', 'attemptId'],
   }),
 
-  // Wayfinder (WF-1). The agent's reach to these waits on the agent
-  // credential narrowed from a person's grants (API-2); until it lands an
-  // agent is refused at the surface, which is the retype rule's floor.
+  // Wayfinder (WF-1). No agent reaches these until API-2's narrowed credential
+  // lands, except the run's resolve (WF-7): the retype rule's floor.
   declare('task.set_type', 'write'),
   declare('map.revise', 'write', { serialise: WAYFINDER_MAP_LOCK }),
   declare('map.scope', 'write', { serialise: WAYFINDER_MAP_LOCK }),
   read('map.view', TASK_COLLECTION, { authorisedOn: 'record' }),
   declare('map.chart', 'write', { targetsExistingRecord: false, untargetedIdentifiers: [] }),
   declare('task.set_blocking', 'write', { serialise: WAYFINDER_MAP_LOCK }),
-  // First-come: the envelope locks the ticket and compares its revision, so
-  // a second claim on the same revision is refused VERSION_STALE and one on
-  // the new revision finds it claimed.
+  // First-come: the envelope locks the ticket and compares its revision; a
+  // second claim on one revision is VERSION_STALE, on the next it is claimed.
   declare('task.claim', 'assign'),
   declare('map.graduate', 'write', { serialise: WAYFINDER_MAP_LOCK }),
-  // `write` for research, task and build; the handler asks `decide` and the
-  // map's owner for grilling and prototype. The run's agent resolves the
-  // ticket its delegation is minted for (WF-7), never grilling or prototype.
+  // `write`; grilling and prototype ask the owner's `decide` in the handler.
+  // The run's agent resolves only its delegation's research ticket (WF-7).
   declare('task.resolve', 'write', { agent: 'delegated' }),
   declare('task.close_out_of_scope', 'decide', { serialise: WAYFINDER_MAP_LOCK }),
   read('map.frontier', TASK_COLLECTION, { authorisedOn: 'record' }),
-  // API-4: the frontier, the fog and the counts, one query on the read models.
+  // API-4: frontier, fog and counts in one query; work this ticket in one call.
   read('map.status', TASK_COLLECTION, { authorisedOn: 'record' }),
-  // API-4: work this ticket, the whole bundle in one call and one statement.
   read('task.context', TASK_COLLECTION, { authorisedOn: 'record' }),
   // `billing:decide` on the whole business (AW-04, U10): owners and
   // administrators set the planning cap; no agent route serves it.
