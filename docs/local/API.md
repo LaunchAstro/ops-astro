@@ -279,7 +279,9 @@ business, seen here or not: a token whose first sign-in (`amr`) is at or
 before that ending is refused; a sign-in after it is served
 (`ops.ended_subject_sessions`, 0069, keyed by a SHA-256 digest of the
 subject). The provider's sign-out, which revokes
-the refresh tokens, comes after and cannot undo it.
+the refresh tokens, comes after and cannot undo it. A sign-out this business refuses (it no
+longer admits the person) still ends the verified token's own session in
+every business and at the provider, and answers the refusal.
 
 The business is named by the path and verified by login resolution. A business
 the caller is not a member of and a business that does not exist both answer
