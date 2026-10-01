@@ -200,16 +200,38 @@
 }
 
 .cbd__th {
-  font: inherit;
-  letter-spacing: inherit;
-  text-transform: inherit;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  box-sizing: border-box;
   width: 100%;
+  /* The head's icon box (1rem) holds its height where the icon is not drawn. */
+  min-height: calc(1rem + 1.1rem);
   border: 0;
-  padding: 0;
+  padding: 0.55rem var(--s-3);
+  overflow: hidden;
   background: none;
-  color: inherit;
+  color: var(--text-muted);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
+  /* type-exception DS-COMP-17: the column head is Chivo Mono 12/12 at the regular weight */
+  font-weight: var(--weight-regular);
+  line-height: var(--leading-none);
   text-align: inherit;
+  white-space: nowrap;
   cursor: pointer;
+}
+.cbd__th:hover,
+.cbd__tbl th[aria-sort='ascending'] .cbd__th,
+.cbd__tbl th[aria-sort='descending'] .cbd__th {
+  color: var(--text);
+}
+.cbd__tbl [data-align='end'] > .cbd__th {
+  justify-content: flex-end;
+}
+.cbd__tbl [data-align='center'] > .cbd__th {
+  justify-content: center;
 }
 
 .cbd__tbl [data-align='end'] {
@@ -467,27 +489,40 @@ td[data-tight] {
 .cbd__rank {
   color: var(--ink-faint);
 }
-.cbd__due {
-  font: var(--type-data);
-  letter-spacing: var(--type-data-tracking);
-  text-transform: var(--type-data-case);
+/* The assignee's name beside the person avatar (DS-PRIM-16) is quieter than the task's. */
+.cbd__tbl .av--person + .cbd__nm {
   color: var(--text-2);
 }
-.cbd__due[data-tone='overdue'] {
+/* The due date, in the dock's `.tl__due` dialect: overdue is the danger ink
+   at the medium weight; due today keeps the plain date's ink. */
+.cbd__tbl .tl__due {
+  color: var(--text-2);
+}
+.cbd__tbl .tl__due.is-now:not(.is-bad) {
+  color: var(--text-2);
+}
+.cbd__tbl .tl__due.is-bad {
   color: var(--danger);
+  /* type-exception DS-COMP-17: an overdue date at the medium weight, as the board draws it */
+  font-weight: var(--weight-medium);
 }
-.cbd__due[data-tone='today'] {
-  color: var(--text);
-}
+/* Top-aligned, so the 22px chip sits inside the cell's line and the row keeps 39. */
 .cbd__chip {
   display: inline-block;
-  padding: 1px 6px;
+  vertical-align: top;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0.1rem 0.35rem;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  background: var(--surface);
   font: var(--type-caption);
   letter-spacing: var(--type-caption-tracking);
   text-transform: var(--type-caption-case);
+  /* type-exception DS-COMP-17: the stage chip is sans 11 */
+  font-size: var(--text-overline);
   color: var(--text-2);
+  /* A cell clips at its edge and never shortens its words (MP-5-1). */
+  text-overflow: clip;
   white-space: nowrap;
 }
 .cbd__tok {
