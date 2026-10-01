@@ -17,13 +17,8 @@
 // resend after it, the resend waits on the create's limiter and finds the
 // invitation ended. Either way one invitation for the address is pending.
 
-import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { runCommand } from '../../packages/core-commands/src/commands/envelope.ts';
-import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
-import { withSession } from '../../packages/core-records/src/identity/login-resolution.ts';
-import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
-import type { Member } from '../commands/fixture.ts';
+import { act, delay, holdRow, own, parked, ungranted } from './c39-t-race.ts';
 import {
   addressFor,
   c,
@@ -35,53 +30,6 @@ import {
 } from './c39-t-world.ts';
 
 useInvitationWorld();
-
-const delay = async (ms: number): Promise<void> =>
-  await new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-
-/** A promise the test resolves by hand. */
-function barrier(): { readonly held: Promise<void>; readonly release: () => void } {
-  let release!: () => void;
-  const held = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  return { held, release };
-}
-
-/** Its own connection: one pool's transactions would queue in the pool, not race in the server. */
-const own = (): Database => connect(w.db.appUrl, { source: 'runtime' });
-
-/** A transaction on `database` holding the invitation's row until it is let go. */
-async function holdRow(database: Database, id: string): Promise<() => Promise<void>> {
-  const [row, taken] = [barrier(), barrier()];
-  const holding = database.withBusiness(w.alpha, async (tx) => {
-    await tx.query('select id from invitations where business_id = $1 and id = $2 for update', [
-      tx.businessId,
-      id,
-    ]);
-    taken.release();
-    await row.held;
-  });
-  await taken.held;
-  return async () => {
-    row.release();
-    await holding;
-  };
-}
-
-/** Wait, bounded, until `count` backends of this database are parked on a lock. */
-async function parked(count: number, deadline = Date.now() + 15_000): Promise<void> {
-  const [row] = await w.db.admin.execute<{ n: number }>(
-    `select count(*)::int as n from pg_stat_activity
-      where datname = current_database() and state = 'active' and wait_event_type = 'Lock'`,
-  );
-  if ((row?.n ?? 0) >= count) return;
-  if (Date.now() > deadline) throw new Error(`fewer than ${String(count)} transactions parked`);
-  await delay(25);
-  await parked(count, deadline);
-}
 
 /** Wait until the database clock is past the invitation's expiry. */
 async function lapsed(id: string): Promise<void> {
@@ -103,26 +51,6 @@ async function pendingFor(address: string): Promise<number> {
   return row?.n ?? -1;
 }
 
-/** One act as a person, one transaction on its own connection, so acts race in the server. */
-async function act(
-  database: Database,
-  who: Member,
-  body: Readonly<Record<string, unknown>>,
-): Promise<string> {
-  const request = { operationId: randomUUID(), ...body } as never;
-  try {
-    const result = await withSession(
-      database,
-      w.alpha,
-      who.presented,
-      async (tx, session) => await runCommand(tx, session, 'api', request),
-    );
-    return isCommandRefusal(result) ? result.code : 'applied';
-  } catch (cause) {
-    return `threw ${String((cause as { code?: unknown }).code)}`;
-  }
-}
-
 // eslint-disable-next-line max-lines-per-function -- one database world, and the races that share it
 describe.skipIf(noDatabase)('C39-T invitation lock order', () => {
   it('C39-T rate limit: a resend and a create for the same address, racing at expiry, both finish and the resend wins', async () => {
@@ -134,27 +62,27 @@ describe.skipIf(noDatabase)('C39-T invitation lock order', () => {
     );
     const [holder, resender, creator] = [own(), own(), own()] as const;
     try {
-      const letGo = await holdRow(holder, id);
+      const letGo = await holdRow(holder.db, id);
       // Started while the invitation is live: the resend's own clock says so.
-      const resend = act(resender, c.admin, {
+      const resend = act(resender.db, c.admin, {
         command: 'invitation.resend',
         invitationId: id,
       });
-      await parked(1);
+      await parked(1, [resender.name]);
       await lapsed(id);
-      const create = act(creator, c.second, {
+      const create = act(creator.db, c.second, {
         command: 'invitation.create',
         name: 'Lee Lock',
         email: address,
         role: 'member',
       });
-      await parked(2);
+      await parked(2, [resender.name, creator.name]);
       await letGo();
       expect(await Promise.all([resend, create])).toEqual(['applied', 'UNIQUE_VALUE_TAKEN']);
       expect(await invitationRow(id)).toMatchObject({ state: 'pending', revision: 2 });
       expect(await pendingFor(address)).toBe(1);
     } finally {
-      await Promise.all([holder, resender, creator].map(async (db) => await db.close()));
+      await Promise.all([holder, resender, creator].map(async (one) => await one.db.close()));
     }
   }, 60_000);
 
@@ -167,25 +95,30 @@ describe.skipIf(noDatabase)('C39-T invitation lock order', () => {
     );
     const [holder, resender, creator] = [own(), own(), own()] as const;
     try {
-      const letGo = await holdRow(holder, id);
+      const letGo = await holdRow(holder.db, id);
       await lapsed(id);
       // The create holds the address's limiter and waits on the row to end it as lapsed.
-      const create = act(creator, c.second, {
+      const create = act(creator.db, c.second, {
         command: 'invitation.create',
         name: 'Cy Create',
         email: address,
         role: 'member',
       });
-      await parked(1);
+      await parked(1, [creator.name]);
       // The resend waits on that limiter, before it reaches for the row.
-      const resend = act(resender, c.admin, { command: 'invitation.resend', invitationId: id });
-      await parked(2);
+      const resend = act(resender.db, c.admin, { command: 'invitation.resend', invitationId: id });
+      await parked(2, [creator.name, resender.name]);
+      // One advisory lock ungranted, the resend's: it waits on the limiter, not on the row.
+      const waits = await ungranted([creator.name, resender.name]);
+      expect(waits.filter((lock) => lock.locktype === 'advisory')).toEqual([
+        { name: resender.name, locktype: 'advisory' },
+      ]);
       await letGo();
       expect(await Promise.all([create, resend])).toEqual(['applied', 'TRANSITION_NOT_PERMITTED']);
       expect(await invitationRow(id)).toMatchObject({ state: 'expired' });
       expect(await pendingFor(address)).toBe(1);
     } finally {
-      await Promise.all([holder, resender, creator].map(async (db) => await db.close()));
+      await Promise.all([holder, resender, creator].map(async (one) => await one.db.close()));
     }
   }, 60_000);
 });

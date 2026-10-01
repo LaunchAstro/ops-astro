@@ -33,7 +33,11 @@ import { TEST_EMAIL_SEND } from '../broker/email-world.ts';
 import { mailTo } from './c39-t-hook-world.ts';
 import { startFakeUsers, type FakeUsers } from './c39-t-users-fake.ts';
 import type { Member } from '../commands/fixture.ts';
-import { resolveLogin, type Session } from '../../packages/core-records/src/index.ts';
+import {
+  resolveLogin,
+  type Database,
+  type Session,
+} from '../../packages/core-records/src/index.ts';
 import { c, invite, linkIn, send, useInvitationWorld, w } from './c39-t-world.ts';
 
 /** A short timeout, so a slow provider ends quickly. */
@@ -105,12 +109,12 @@ const verify: Verifier = async (request) => {
   return subject === '' ? undefined : { provider: 'supabase', subject };
 };
 
-/** The routes on their own app, over the businesses named. */
-export function mountOver(businesses: readonly string[]): Hono {
+/** The routes on their own app, over the businesses named, on `database`. */
+export function mountOver(businesses: readonly string[], database: Database = w.db.app): Hono {
   const app = new Hono();
   mountEnrolment(
     app,
-    w.db.app,
+    database,
     { businesses: async () => await Promise.resolve(businesses), broker: w.broker },
     verify,
   );

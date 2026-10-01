@@ -103,12 +103,28 @@ export async function lockLoginId(tx: TenantQuery, address: string): Promise<str
   return id;
 }
 
-/** The token's row and its invitation, when the token is live; locked when `lock`. */
+/**
+ * The token's row and its invitation, when the token is live; with `lock`,
+ * the invitation's row is locked first, in a statement of its own. A
+ * statement that waited on a row lock reads that row again and nothing else
+ * (read committed): one that waited on a resend or a send would see the new
+ * invitation beside the token as it was, unspent and the newest. The check
+ * after it is a statement of its own, and reads what they committed.
+ */
 export async function liveToken(
   tx: TenantQuery,
   hash: string,
   lock: boolean,
 ): Promise<Omit<Found, 'business'> | undefined> {
+  if (lock) {
+    await tx.query(
+      `select 1 from invitations i
+         join enrolment_tokens t on t.business_id = i.business_id and t.invitation_id = i.id
+        where t.business_id = $1 and t.token_hash = $2
+        for update of i`,
+      [tx.businessId, hash],
+    );
+  }
   const [row] = await tx.query<Omit<Found, 'business'> & { live: boolean }>(
     `select t.id as "tokenId", i.id as "invitationId", i.person_id as "personId",
             i.role_key as "roleKey", i.address,
@@ -120,8 +136,7 @@ export async function liveToken(
                                  and n.created_at > t.created_at)) as live
        from enrolment_tokens t
        join invitations i on i.business_id = t.business_id and i.id = t.invitation_id
-      where t.business_id = $1 and t.token_hash = $2
-      ${lock ? 'for update of i' : ''}`,
+      where t.business_id = $1 and t.token_hash = $2`,
     [tx.businessId, hash],
   );
   if (row?.live !== true) return undefined;
