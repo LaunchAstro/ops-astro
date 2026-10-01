@@ -81,13 +81,14 @@ export const TASKS: readonly TaskSummary[] = [
   task(33, 'Paid social rebuild', STATE.hold, null),
 ];
 
+const BY_NATHAN = { actorId: NATHAN.personId, personId: NATHAN.personId };
 const DETAIL: InternalTaskDetail = {
   ...(TASKS[0] as TaskSummary),
   description:
     'Pull the signed scope, the two variations and the renewal terms into one pack for review.',
   history: [
-    { at: '2026-09-24T01:10:00.000Z', actorId: NATHAN.personId, operation: 'task.create' },
-    { at: '2026-09-25T03:40:00.000Z', actorId: NATHAN.personId, operation: 'task.update' },
+    { at: '2026-09-24T01:10:00.000Z', ...BY_NATHAN, operation: 'task.create' },
+    { at: '2026-09-25T03:40:00.000Z', ...BY_NATHAN, operation: 'task.update' },
   ],
   comments: [
     {

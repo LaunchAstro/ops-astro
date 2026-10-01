@@ -41,6 +41,8 @@ export interface PersonView {
 export interface HistoryEntry {
   readonly at: string;
   readonly actorId: string;
+  /** The person the actor is, or null for an agent or a worker, which is no person. */
+  readonly personId: string | null;
   readonly operation: string;
 }
 
