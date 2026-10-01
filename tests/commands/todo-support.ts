@@ -10,7 +10,7 @@ import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import type { BusinessId } from '../../packages/core-records/src/index.ts';
 import type { TaskTodosResult } from '../../packages/core-wire/src/index.ts';
-import type { Member } from './fixture.ts';
+import { grantTo, WHOLE_BUSINESS, type Member } from './fixture.ts';
 import type { TimeWorld } from './time-world.ts';
 
 type Body = Record<string, unknown>;
@@ -49,8 +49,19 @@ export async function commandOk(
   return answer as { readonly recordId: string | null; readonly detail?: Readonly<Body> };
 }
 
-/** A real client of `business` (C32), made by `by`; `task.set_party` names only one of these. */
+const clientMakers = new Set<string>();
+
+/**
+ * A real client of `business` (C32), made by `by`, who is first given
+ * `record:write` there once; `task.set_party` names only a real client.
+ */
 export async function madeClient(w: TimeWorld, business: BusinessId, by: Member): Promise<string> {
+  if (!clientMakers.has(`${business}/${by.personId}`)) {
+    await w.db.app.withBusiness(business, async (tx) => {
+      await grantTo(tx, by, 'write', WHOLE_BUSINESS, false, 'record');
+    });
+    clientMakers.add(`${business}/${by.personId}`);
+  }
   const made = await commandOk(w, business, by, {
     command: 'client.create',
     name: `A made-up client ${randomUUID()}`,
