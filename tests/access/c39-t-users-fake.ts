@@ -1,19 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // A stand-in for the login provider's admin users route (C39-T, piece P3):
-// answers `POST /auth/v1/admin/users` and `PUT /auth/v1/admin/users/<id>` on
+// answers `POST /auth/v1/admin/users` and `GET /auth/v1/admin/users/<id>` on
 // loopback the way Supabase Auth does. A POST makes a user under the id it
-// names, or 422 `email_exists` for an address it already holds; a PUT sets
-// one user's address and password, 404 `user_not_found` for an id it does
-// not hold and 422 for an address another user holds; a GET reads one
-// user, 404 for an id it does not hold. It keeps every
-// request, the users it holds and each one's password, so a case can count
-// what was asked and look for the password everywhere else. Its hostile
+// names, or 422 `email_exists` for an address it already holds; a GET reads
+// one user, 404 for an id it does not hold. No accept sends a PUT (ORCH55),
+// so it sets no user: it keeps every request, a PUT among them, for the
+// cases that count what was asked, the users it holds and each one's
+// password, so a case can look for the password everywhere else. Its hostile
 // modes are the answers a real provider can give: an answer echoing the
 // password, oversized, redirected, malformed, a wrong id, another user's
 // id, a fault and slow. As a real provider does, every mode but `fault`
-// makes or sets the user before it answers; `fault` changes nothing. A case
-// may plant a user made elsewhere, its address confirmed or not.
+// makes the user before it answers; `fault` changes nothing. A case may
+// plant a user made elsewhere, its address confirmed or not.
 
 import { randomUUID } from 'node:crypto';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
@@ -45,7 +44,7 @@ export interface FakeUsers {
   readonly received: readonly UsersRequest[];
   /** The users it holds: address to id. */
   readonly users: ReadonlyMap<string, string>;
-  /** Each user's password as last set: id to password. */
+  /** Each user's password, as made: id to password. */
   readonly passwords: ReadonlyMap<string, string>;
   mode(next: FakeUsersMode): void;
   /** A user made elsewhere, under a new id, its address confirmed or not; its id. */
@@ -94,30 +93,25 @@ interface Asked {
 
 const EXISTS = { status: 422, answer: { code: 422, error_code: 'email_exists', msg: 'exists' } };
 const NOT_FOUND = { status: 404, answer: { code: 404, error_code: 'user_not_found', msg: 'gone' } };
-const UPDATE_PATH = /^\/auth\/v1\/admin\/users\/([\da-f-]{36})$/u;
+const USER_PATH = /^\/auth\/v1\/admin\/users\/([\da-f-]{36})$/u;
 
-/** What an honest provider does: the user made or set, or why not, and its answer. */
+/** What an honest provider does: the user read or made, or why not, and its answer. */
 function honest(asked: Asked, kept: Kept): { status: number; answer: Record<string, unknown> } {
   if (asked.method === 'GET') {
-    const wanted = UPDATE_PATH.exec(asked.path)?.[1];
+    const wanted = USER_PATH.exec(asked.path)?.[1];
     const [address] = [...kept.users].find(([, one]) => one === wanted) ?? [];
     if (wanted === undefined || address === undefined) return NOT_FOUND;
     return { status: 200, answer: user(wanted, address, !kept.unconfirmed.has(wanted)) };
   }
+  // Any other method sets nothing.
+  if (asked.method !== 'POST') return NOT_FOUND;
   const email = String(asked.body['email']);
-  const holder = kept.users.get(email);
-  const held = (id: string): boolean => [...kept.users.values()].includes(id);
-  const update = asked.method === 'PUT';
-  const id = update
-    ? (UPDATE_PATH.exec(asked.path)?.[1] ?? '')
-    : String(asked.body['id'] ?? randomUUID());
-  if (update && !held(id)) return NOT_FOUND;
-  // An address held by a user, another one on an update: nothing is made or set.
-  if (holder !== undefined && (!update || holder !== id)) return EXISTS;
-  if (!update && held(id)) {
+  const id = String(asked.body['id'] ?? randomUUID());
+  // An address a user holds already: nothing is made.
+  if (kept.users.has(email)) return EXISTS;
+  if ([...kept.users.values()].includes(id)) {
     return { status: 500, answer: { code: 500, msg: 'Database error creating new user' } };
   }
-  for (const [address, one] of kept.users) if (one === id) kept.users.delete(address);
   kept.users.set(email, id);
   kept.passwords.set(id, String(asked.body['password']));
   return { status: 200, answer: user(id, email) };

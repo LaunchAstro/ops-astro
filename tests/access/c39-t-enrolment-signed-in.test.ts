@@ -236,7 +236,7 @@ describe.skipIf(noDatabase)('C39-T enrolment signed in', () => {
     }
     expect(e.users.received).toHaveLength(asked);
     expect(await identityRows(w.alpha)).toStrictEqual(rows);
-    expect(await spentOf(older.id)).toStrictEqual({ state: 'pending', spent: 0, tokens: 2 });
+    expect(await spentOf(older.id)).toStrictEqual({ state: 'pending', spent: 1, tokens: 2 });
     expect((await spentOf(expired.id)).spent).toBe(0);
     // The control: the resend's own link is live for the same session.
     expect(await bindVia(newer, older.login)).toStrictEqual(JOINED);
