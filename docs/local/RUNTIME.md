@@ -917,13 +917,16 @@ successor marks it, in the same transaction and under the handback's locks, as
 the reviewed output: one row in `reviewed_outputs` naming the version, its
 lineage and the lease whose work produced it. The application may insert and
 read the row, never rewrite it, and row security keeps it to its business. A
-trigger checks the version and the lease's run are both on the named lineage,
-so a handback cannot mark another lineage's version.
+trigger, after the row so row security answers another business first, checks
+the version and the lease's run are both on the named lineage, so a handback
+cannot mark another lineage's version.
 
 Dispatch reads the mark under its locks, after the four effect-time facts and
 the reconcile mode: a lease whose version has no mark is `LAUNCH_NOT_DECIDED`
 before any dispatch mark, so the plan's approval spends nothing outside its
 hold. The successor's accept is the launch; its lease dispatches as before.
+A person's own lease on a plan is refused the same way: until direct send-live
+is built, a person hands their output back and launches it like an agent's.
 
 ## What the classifier will not do
 
