@@ -52,8 +52,9 @@ export async function launchDecisionRefusal(
   tx: TenantQuery,
   versionId: string,
 ): Promise<RuntimeResult<never> | null> {
-  if (!(await isReviewedOutput(tx, versionId))) return null;
-  return (await holdSignOffSetting(tx)) ? signOffRequired() : null;
+  // The setting first: with it off nothing else is read.
+  if (!(await holdSignOffSetting(tx))) return null;
+  return (await isReviewedOutput(tx, versionId)) ? signOffRequired() : null;
 }
 
 /** The effect-time launch fact: the approval behind the lease launched a reviewed output. */
