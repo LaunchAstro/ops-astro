@@ -109,7 +109,7 @@ const OPEN_SCREENS: {
       business={params.business}
       document={params.document}
       apiOrigin={context.apiOrigin}
-      fetch={context.fetch}
+      read={context.fetch}
     />
   ),
 };
