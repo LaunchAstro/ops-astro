@@ -12,7 +12,9 @@
 //   operations and model.call: SL11 U100 AW-01; the top-up shape AW-05.
 // - Model egress for the map's client is no longer held: C60 came with the
 //   SL11 stack, and it is `wf-7-egress.test.ts`.
-// - The waiting-run inbox item: SL04 U99 (`inbox_items`, the raise).
+// - Twice failed and the waiting item under the lease are `wf-7-inbox.test.ts`;
+//   canary, hostile provider and holds no credential are `wf-7-research.test.ts`.
+//   The skill pinned by digest waits on the run start writing the pin.
 // - The ceiling approval's recent sign-in: C59's step-up (S0-5's sweep).
 // - The run's lease and checks (SL12 U31, MP-6-1) came with the SL12 stack;
 //   the lines that ride on the run are still to build on it.
@@ -26,16 +28,11 @@
 import { describe, it } from 'vitest';
 
 describe('WF-7 held (to build on the run; LEANS-ON the research ceiling, SL04 U99, C59)', () => {
-  it.todo('WF-7 canary');
-  it.todo('WF-7 hostile provider');
   it.todo('WF-7 recent sign-in');
   it.todo('WF-7 refusal billing:decide');
   it.todo('WF-7 reserve before a priced call');
   it.todo('WF-7 no ceiling stops and asks');
-  it.todo('WF-7 holds no credential');
-  it.todo('WF-7 twice failed');
   it.todo('WF-7 skill pinned by digest');
-  it.todo('WF-7 waiting item under the lease');
   it.todo('WF-7 audit readback');
   it.todo(
     'WF-7 owner check: Run on a research ticket with a small approved ceiling claims it, posts a cited answer and closes it; with no ceiling it stops and asks',

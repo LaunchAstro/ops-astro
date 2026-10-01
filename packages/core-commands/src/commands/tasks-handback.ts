@@ -21,6 +21,7 @@ import {
   type HandlerOutcome,
   type Refused,
 } from './outcome.ts';
+import { researchFailed } from './research-failed.ts';
 import { readSuccessor } from './successor.ts';
 import { NO_SUCH_LEASE } from './tasks-lease.ts';
 import { agentClaimant, personClaimant, type Claimant } from './tasks-claimant.ts';
@@ -239,6 +240,8 @@ async function settle(
   // INB-1: the launcher is told, and a successor's gate is a decision to raise.
   const outcome = fields.outcome as 'completed' | 'failed';
   const taskId = await raiseRunSettled(tx, { leaseId: settled.leaseId, outcome });
+  // WF-7: a research ticket's second failed run stops and asks its map's owner.
+  if (outcome === 'failed') await researchFailed(tx, { taskId, leaseId: settled.leaseId });
   await raiseIncident(tx, [
     { reservationId: settled.reservationId, state: settled.reservationState },
   ]);
