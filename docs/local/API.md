@@ -162,6 +162,10 @@ refusal writes an audit row. A business with no such row is `NOT_FOUND` naming
 `retention_window_days`. A row that is not a whole number of days, zero or
 more, is `FIELD_VALUE_INVALID`. There is no default, floor or ceiling.
 `tests/commands/purge-retention.test.ts` holds it.
+The purge clears the scope (`scope_kind` and `scope_record_id` to null) of any
+conversation opened on a task or comment it removes, before the delete; the
+conversation, its body and its wrap-ups are kept (0198's scope reference does
+not cascade).
 
 A window longer than 2,000,000 days (`LONGEST_COMPUTED_WINDOW_DAYS`) purges
 nothing, and it is answered, not refused. No trash is that old, and a long
@@ -374,6 +378,10 @@ provider is the only one until the real-provider run. Each route in
 `MODEL_BROKER_ROUTES` declares its `ceiling`, a whole number of at least 1:
 the calls in flight on that route across every business of the installation,
 at most (the fair share, "The model call" below).
+Two more settings stop the server at start: a `local` route any of whose
+operations sends to a destination that is not a loopback address, and a plain
+http destination off this machine. The route that carries a call is the
+eligible route itself, never another found by its key.
 
 `main()` starts the diagnostic trace export (AW-13, `apps/api/trace-exporter.ts`)
 only when `TRACE_EXPORT=on`, the one change an operator makes once
@@ -1038,7 +1046,11 @@ Both compare a wrap-up's `activity_through` with the conversation's
 `sweepConversations` (`commands/conversation-sweep.ts`) is one pass over one
 business: the wrap-up for each quiet conversation without one, then the purge
 for each whose covering wrap-up existed before the pass, never both in one
-pass. Each conversation is its own transaction under a lock timeout, so a
+pass. The purge candidates page through the wrapped bodies past the floor and
+weigh each with the purge's own `WORK_OPEN` and `NOT_DUE` check (`purgeHold`): a
+held one is reported and passed over, and the page limit counts only those the
+purge would take. A task trashed before it ended counts as ended work at its
+trash time. Each conversation is its own transaction under a lock timeout, so a
 failure is that conversation's alone, reported with its body kept; an
 unreadable window stops the purge for the business and the report says so.
 The purge's operation identity is derived from the conversation and its last
