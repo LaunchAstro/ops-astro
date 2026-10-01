@@ -256,14 +256,16 @@ export async function pickup(
   const { state, plan } = rechecked.value;
 
   const claimed = await claimHold(tx, request.reservationId, found, state, plan, locks);
+  if (!claimed.ok && claimed.retains !== true) return claimed;
+  // A stop at a spent hold meets the task's lease as a pickup does: another
+  // holder's live lease refuses it, and that refusal takes the stop back.
+  const fenced = await fenceLiveLease(tx, found.task_id, taskLeases, locks, lockedAt);
+  if (fenced !== null) return fenced;
   if (!claimed.ok) {
     // A stop at a spent hold keeps its ask, so only a claimant with the authority makes it.
-    if (claimed.retains !== true) return claimed;
     const may = await claimantMayWork(tx, request, found, lockedAt);
     return may.ok ? claimed : may;
   }
-  const fenced = await fenceLiveLease(tx, found.task_id, taskLeases, locks, lockedAt);
-  if (fenced !== null) return fenced;
 
   // From the database instant above, not the process clock. Whole
   // milliseconds, so the `Date` the delegation is minted with and the lease

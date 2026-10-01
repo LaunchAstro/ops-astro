@@ -62,6 +62,7 @@
     "tests/api/inb1f-live-board.test.ts",
     "tests/db/reviewed-output-proposer.test.ts",
     "tests/db/take-lease-path.test.ts",
-    "tests/broker/aw-10-lookup-slot-isolation.test.ts"
+    "tests/broker/aw-10-lookup-slot-isolation.test.ts",
+    "tests/pickup/pickup-stop-at-spent-hold-lease.test.ts"
   ]
 }

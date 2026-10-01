@@ -16,6 +16,7 @@ import {
 } from './schedules-harness.ts';
 import { grantTo } from '../commands/fixture.ts';
 import { broker, call, s } from '../broker/broker-world.ts';
+import type { Broker } from '../../packages/core-custody/src/index.ts';
 
 interface Hold {
   readonly id: string;
@@ -46,11 +47,14 @@ export const revoke = async (work: Work): Promise<void> => {
 };
 
 /** Work whose one call is open at the replay maximum of 500, its whole hold, never answered. */
-export const openAtWhole = async (label: string): Promise<Work> => {
-  const work = await liveWork(s, `resize ${label} ${randomUUID()}`, 500);
+export const openAtWhole = async (label: string): Promise<Work> =>
+  await holdOpenAtWhole(await liveWork(s, `resize ${label} ${randomUUID()}`, 500));
+
+/** `work`, held at 500, with its one call through `base` left open at that whole hold. */
+export const holdOpenAtWhole = async (work: Work, base: Broker = broker): Promise<Work> => {
   const silent = {
-    ...broker,
-    custody: { ...broker.custody, dispatch: async () => await new Promise<never>(() => {}) },
+    ...base,
+    custody: { ...base.custody, dispatch: async () => await new Promise<never>(() => {}) },
   };
   void call(work, {}, silent);
   const openCall = async () =>
