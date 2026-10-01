@@ -136,6 +136,7 @@ async function rows(db: EmptyDatabase): Promise<unknown> {
   return await db.admin.execute(
     `select (select json_agg(to_jsonb(a) - 'drop_cause' - 'provider_started_at' order by a.id) from public.attempts a) as attempts,
             (select json_agg(to_jsonb(s) - 'dispatch_attempt_id' - 'dispatch_marked'
+                             - 'plan_record_id' - 'plan_record_written'
                              order by s.id) from public.planned_steps s) as steps`,
   );
 }
