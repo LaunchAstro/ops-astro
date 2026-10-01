@@ -352,6 +352,18 @@
   margin-left: auto;
   min-width: 0;
 }
+/* The model picker is the head's quiet control (AI-02): the house select with
+   no ground and no edge until it is hovered or focused. */
+select.aip__hmodel {
+  padding: 0.2rem 0.4rem;
+  border: 1px solid transparent;
+  background: none;
+  color: var(--text-muted);
+  font-size: var(--text-label);
+}
+select.aip__hmodel:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
 .aip__acts {
   display: flex;
   align-items: center;
@@ -405,10 +417,10 @@
   padding: 0 var(--s-5) var(--s-3);
 }
 .aip__chip {
-  padding: 0.3em 0.75em;
+  padding: 0.3rem 0.6rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
-  background: var(--surface-2);
+  background: var(--surface);
   color: var(--text-2);
   font: var(--type-caption);
   letter-spacing: var(--type-caption-tracking);
@@ -425,11 +437,22 @@
 .aip__input {
   flex: 1;
   min-width: 0;
-  padding: 0 0.6rem;
+  padding: 0.45rem 0.6rem;
   border: 1px solid var(--border);
   background: var(--paper);
   color: var(--text);
-  font: inherit;
+  font: var(--type-body);
+}
+/* Send stands as tall as the field beside it (AI-12), as the mockup's row does. */
+.aip__inputrow .btn {
+  height: auto;
+}
+.aip__input:focus {
+  border-color: var(--accent);
+}
+.aip__chip:hover {
+  border-color: var(--accent);
+  color: var(--text);
 }
 .aip__tabs {
   padding: var(--s-3) var(--s-5) 0;
@@ -445,11 +468,25 @@
 .aip__tabx,
 .aip__new,
 .aip__act {
+  display: inline-flex;
+  align-items: center;
   border: 0;
   background: none;
   color: var(--text-dim);
   font: inherit;
   cursor: pointer;
+}
+/* The head's eye and close (AI-03, AI-05): muted, the close a 1.6rem square. */
+.aip__act {
+  padding: 0.25rem 0.35rem;
+  color: var(--text-muted);
+  line-height: 1;
+}
+.aip__x {
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
 }
 .aip__tabx {
   opacity: 0;

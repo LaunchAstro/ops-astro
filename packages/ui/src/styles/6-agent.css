@@ -390,8 +390,12 @@
 .convrec__who {
   color: var(--text-muted);
 }
+/* The drawer's transcript at the conversation's own address: its messages
+   wear `.aip__msg` (AI-09), the agent's on the left and the person's on the
+   right, so the column is a flex column as the drawer's is. */
 .convrec__log {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: var(--s-3);
   margin: 0;
   padding: 0;
