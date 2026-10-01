@@ -176,3 +176,26 @@ describe.skipIf(serverMissing)('S0-5 step-up sweep', () => {
     expect(wrong).toEqual([]);
   }, 120_000);
 });
+
+describe.skipIf(serverMissing)('S0-5 step-up sweep, setting absent', () => {
+  it('S0-5 step-up sweep: a business with no step-up setting row still refuses a stale sign-in STEP_UP_REQUIRED on a money command', async () => {
+    const { world } = harness;
+    await harness.world.db.admin.execute(
+      'delete from public.business_settings where business_id = $1 and key = $2',
+      [world.alpha, MONEY_STEP_UP_SETTING],
+    );
+    const setting = await world.db.app.withBusiness(
+      world.alpha,
+      async (tx) => await readBusinessSetting(tx, MONEY_STEP_UP_SETTING),
+    );
+    expect(setting).toBeUndefined();
+    const prepared = await harness.positiveBody(declarationOf('budget.top_up'));
+    if ('exception' in prepared) throw new Error(`budget.top_up: ${prepared.exception}`);
+    const token = await tokenFor(world.ada.subject);
+    const answer = await harness.asPerson('budget.top_up', prepared.body, 'alpha', { token });
+    expect({ status: answer.status, code: answer.code }).toEqual({
+      status: 403,
+      code: 'STEP_UP_REQUIRED',
+    });
+  }, 60_000);
+});
