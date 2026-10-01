@@ -63,7 +63,9 @@ describe('the surface as a table', () => {
       expect(Object.keys(command), command.name).not.toContain('contractNine');
     }
   });
+});
 
+describe('the surface as a table', () => {
   it('gives every command a path nothing else has', () => {
     const paths = COMMAND_SURFACE.map((command) => pathOf(command.name));
     expect(new Set(paths).size).toBe(paths.length);
