@@ -53,6 +53,8 @@ export interface Call {
 }
 export const calls: Call[] = [];
 export const users: Map<string, string> = new Map();
+/** Run once, before the stand-in answers its next call (the reset's first is the key check). */
+export const beforeNextCall: { work?: () => Promise<unknown> } = {};
 let auth: Server;
 let authUrl = '';
 
@@ -61,6 +63,9 @@ function serveAuth(): Promise<void> {
     let text = '';
     request.on('data', (chunk: Buffer) => (text += chunk.toString()));
     request.on('end', async () => {
+      const work = beforeNextCall.work;
+      beforeNextCall.work = undefined;
+      await work?.();
       const body = text === '' ? undefined : (JSON.parse(text) as Record<string, unknown>);
       const path = (request.url ?? '').split('?')[0] ?? '';
       const key = request.headers['apikey'] === KEY;

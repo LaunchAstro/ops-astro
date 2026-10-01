@@ -17,14 +17,14 @@
 // database neither marked made-up nor new is refused, and so are a service key
 // the admin API does not accept (one read) and a record that is not a real
 // file (a `started` line is written to it and read back); then the owner's
-// folder is made; only then empty (the product's schemas and the guard's
-// ledger), mark the database made-up again, migrate, make the sign-ins (the
-// provider keeps them in `auth.users`, where the guard judges each), seed
+// folder is made; only then empty (the product's schemas, and the guard's
+// notes on them), mark the database made-up again, migrate, make the sign-ins
+// (the provider keeps them in `auth.users`, where the guard judges each), seed
 // (`scripts/local-seed.mjs`, which judges the database again and marks it with
-// what it made) and write the installation's
-// operating business once, and append the done line to the same record. Exit 0
-// when done, 1 when refused or stopped. Nothing it prints carries an address,
-// a password, a key or a project reference.
+// what it made) and write the installation's operating business once, and
+// append the done line to the same record. Exit 0 when done, 1 when refused or
+// stopped. Nothing it prints carries an address, a password, a key or a project
+// reference.
 
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -44,7 +44,7 @@ import {
 import { join } from 'node:path';
 import { connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
 import { migrate } from '../../packages/core-records/src/tenancy/migrate.ts';
-import { markMadeUp, resettable } from './made-up-only.ts';
+import { markEmptied, resettable } from './made-up-only.ts';
 import { RECORD_FILE } from './operator.ts';
 import {
   OPERATING_BUSINESS,
@@ -58,7 +58,7 @@ const MIGRATIONS = new URL('../../migrations', import.meta.url).pathname;
 const env = process.env;
 
 const EMPTY = [
-  'drop schema if exists ops, ops_astro_made_up cascade',
+  'drop schema if exists ops cascade',
   'drop schema if exists public cascade',
   'create schema public authorization pg_database_owner',
   'grant usage on schema public to public',
@@ -199,9 +199,9 @@ try {
   step = 'emptying';
   // oxlint-disable-next-line no-await-in-loop -- in order: each builds on the one before
   for (const statement of EMPTY) await admin.execute(statement);
-  // Marked from here on: the guard is back on `auth.users` before a sign-in is
-  // made, guards each table a migration makes, and a stopped run stays resettable.
-  await markMadeUp(admin, []);
+  // Marked from here on: the guard stays on `auth.users`, guards each table a
+  // migration makes, and a stopped run stays resettable.
+  await markEmptied(admin);
   console.log('staging-reset: emptied');
   step = 'migrating';
   const { applied } = await migrate(admin, MIGRATIONS);

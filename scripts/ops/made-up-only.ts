@@ -134,9 +134,9 @@ const SIGN_IN_SIGNS = new Set([SIGNS['auth.users'], SIGNS['guard'], UNGUARDED]);
 /**
  * Whether the staging reset may empty this database: no tenant or sign-in
  * table has ever held a row, or it is marked and its guard vouches for every
- * sign-in. The reset keeps the provider's sign-ins and marks the database again
- * before it makes its own, so the guard judges every sign-in it carries over or
- * makes. Judged from the mark, the guard and storage sizes alone.
+ * sign-in. The reset keeps the provider's sign-ins, their guard and the ledger's
+ * notes on them (`markEmptied`), so the guard judges every sign-in it carries
+ * over or makes. Judged from the mark, the guard and storage sizes alone.
  */
 export async function resettable(admin: OwnerQuery): Promise<boolean> {
   if (await marked(admin))
@@ -238,6 +238,17 @@ export async function guardMadeUp(admin: OwnerQuery): Promise<void> {
     // One table's guard at a time: each is DDL on its own table.
     // oxlint-disable-next-line no-await-in-loop
     await admin.execute('select ops_astro_made_up.protect($1)', [oid]);
+}
+
+/**
+ * After the staging reset empties the product's schemas: the ledger forgets the
+ * emptied tables and keeps its notes on sign-ins and guards, which no reset
+ * empties; then guard and mark. The guard on `auth.users` stands throughout.
+ */
+export async function markEmptied(admin: OwnerQuery): Promise<void> {
+  if (await yes(admin, `to_regclass('${LEDGER}') is not null`))
+    await admin.execute(`delete from ${LEDGER} where relation not in ('auth.users', 'guard')`);
+  await markMadeUp(admin, []);
 }
 
 /** Guard the database, then mark it with the businesses and people the seed made. */
