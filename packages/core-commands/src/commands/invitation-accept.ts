@@ -12,7 +12,15 @@
 //    has (a resend's link replaces the one before), and its invitation is
 //    pending and inside its own lifetime. Every other token, an unknown one
 //    among them, is one answer: `ENROLMENT_LINK_INVALID`.
-// 2. Make the login at the login provider, through custody, for the invited
+// 2. Then, in one transaction for the business that holds it: the lock on
+//    the login id (`lockLoginId`), the invitation's row lock and every check
+//    again, and whether the business has bound a login under that id. Two
+//    accepts for one address, on one link or on a revoked link and a fresh
+//    one, run here one after the other, so one never sets the password of
+//    the login the other bound. The lock order is the login id's key, then
+//    the invitation's row; revoke, resend, send and the expiry never take
+//    the login id's key.
+// 3. Make the login at the login provider, through custody, for the invited
 //    address, with the password the page set and the address confirmed,
 //    under a provider user id that is ours: the same every time for one
 //    address in one business (`loginSubject`). A login this business has
@@ -20,23 +28,24 @@
 //    `sign_in`. Otherwise it is made (`auth.create_user`); when the address
 //    already holds a login, that login is set again under our id
 //    (`auth.update_user`), which adopts one an earlier accept made and never
-//    bound (its answer came too late, or its link died before the bind),
-//    with the password set now. When there is no user under our id, the
-//    address's login is someone else's (another business's, or made
-//    elsewhere): it gets none and its password is not touched, the answer is
-//    `sign_in`, and nothing is spent, so its holder may accept once signed in
-//    (that binding is a follow-up). A fault spends nothing and binds nothing;
-//    a login it stranded is adopted by the next accept.
-// 3. In one transaction, under the invitation's lock and every check again:
-//    spend every unspent token of the invitation, mark it accepted, give its
-//    one enduring person an acting identity, a membership in the invited
-//    role and the confirmed address, map the new login to that person, and
-//    write both audit events. The link then does nothing, and nothing here
-//    opens a session: the person signs in with the login, as anyone does.
+//    bound (its answer came too late), with the password set now. When there
+//    is no user under our id, the address's login is someone else's (another
+//    business's, or made elsewhere): it gets none and its password is not
+//    touched, the answer is `sign_in`, and nothing is spent, so its holder
+//    may accept once signed in (that binding is a follow-up). A fault spends
+//    nothing and binds nothing; a login it stranded is adopted by the next
+//    accept. The transaction is held across the provider's answer, at most
+//    its timeout for each call.
+// 4. Still in that transaction: spend every unspent token of the invitation,
+//    mark it accepted, give its one enduring person an acting identity, a
+//    membership in the invited role and the confirmed address, map the new
+//    login to that person, and write both audit events. The link then does
+//    nothing, and nothing here opens a session: the person signs in with the
+//    login, as anyone does.
 
 import { createHash } from 'node:crypto';
 import { payloadDigest } from '../../../core-digest/src/index.ts';
-import type { Database, TenantQuery } from '../../../core-records/src/index.ts';
+import { advisoryLock, type Database, type TenantQuery } from '../../../core-records/src/index.ts';
 import {
   createLogin,
   updateLogin,
@@ -97,15 +106,25 @@ function loginSubject(business: string, address: string): string {
   ].join('-');
 }
 
+/**
+ * Lock the login id for one address in the transaction's business, and
+ * return it. Taken before the invitation's row by every accept for the
+ * address, so the check that no login is bound under the id and the
+ * provider's calls for it run for one accept at a time.
+ */
+export async function lockLoginId(tx: TenantQuery, address: string): Promise<string> {
+  const id = loginSubject(tx.businessId, address);
+  await advisoryLock(tx, `c39-t-login:${tx.businessId}:${id}`);
+  return id;
+}
+
 /** Whether this business has bound a login under the subject already. */
-async function loginBound(database: Database, business: string, subject: string): Promise<boolean> {
-  return await database.withBusiness(business, async (tx) => {
-    const rows = await tx.query(
-      'select 1 from logins where business_id = $1 and provider = $2 and subject = $3',
-      [tx.businessId, LOGIN_PROVIDER, subject],
-    );
-    return rows.length > 0;
-  });
+async function loginBound(tx: TenantQuery, subject: string): Promise<boolean> {
+  const rows = await tx.query(
+    'select 1 from logins where business_id = $1 and provider = $2 and subject = $3',
+    [tx.businessId, LOGIN_PROVIDER, subject],
+  );
+  return rows.length > 0;
 }
 
 /** The token's row and its invitation, when the token is live; locked when `lock`. */
@@ -185,10 +204,12 @@ async function seat(
   return login?.id ?? null;
 }
 
-/** Step 3: everything the acceptance changes, in one transaction; false when the token died. */
-async function bind(tx: TenantQuery, hash: string, subject: string): Promise<boolean> {
-  const found = await liveToken(tx, hash, true);
-  if (found === undefined) return false;
+/** Step 4: everything the acceptance changes, under the locks `enrol` took. */
+async function bind(
+  tx: TenantQuery,
+  found: Omit<Found, 'business'>,
+  subject: string,
+): Promise<void> {
   const { invitationId, personId, tokenId } = found;
   await tx.query(
     `update enrolment_tokens set spent_at = now()
@@ -217,7 +238,29 @@ async function bind(tx: TenantQuery, hash: string, subject: string): Promise<boo
     subjectRecordId: loginId,
     payloadDigest: payloadDigest({ personId, loginId, businessId: tx.businessId }),
   });
-  return true;
+}
+
+const SIGN_IN = { ok: true, state: 'sign_in' } as const;
+
+/** Steps 2 to 4, in one transaction: nothing is written unless the login is made. */
+async function enrol(
+  tx: TenantQuery,
+  broker: Broker,
+  hash: string,
+  asked: Omit<LoginAsked, 'id'>,
+): Promise<AcceptResult> {
+  const id = await lockLoginId(tx, asked.email);
+  const found = await liveToken(tx, hash, true);
+  if (found === undefined) return { ok: false, code: 'ENROLMENT_LINK_INVALID' };
+  if (await loginBound(tx, id)) return SIGN_IN;
+  const ask = { ...asked, id };
+  let login = await createLogin(broker, ask);
+  if (!login.ok && login.kind === 'refused') login = await updateLogin(broker, ask);
+  if (!login.ok) {
+    return login.kind === 'refused' ? SIGN_IN : { ok: false, code: 'ENROLMENT_UNAVAILABLE' };
+  }
+  await bind(tx, found, login.subject);
+  return { ok: true, state: 'enrolled' };
 }
 
 /** Accept the invitation a one-time enrolment token names, with the password its holder set. */
@@ -234,19 +277,9 @@ export async function acceptInvitation(
   const hash = createHash('sha256').update(request.token).digest('hex');
   const found = TOKEN.test(request.token) ? await find(database, businesses, hash) : undefined;
   if (found === undefined) return { ok: false, code: 'ENROLMENT_LINK_INVALID' };
-  const id = loginSubject(found.business, found.address);
-  if (await loginBound(database, found.business, id)) return { ok: true, state: 'sign_in' };
-  const asked: LoginAsked = { id, email: found.address, password: request.password };
-  let login = await createLogin(broker, asked);
-  if (!login.ok && login.kind === 'refused') login = await updateLogin(broker, asked);
-  if (!login.ok) {
-    return login.kind === 'refused'
-      ? { ok: true, state: 'sign_in' }
-      : { ok: false, code: 'ENROLMENT_UNAVAILABLE' };
-  }
-  const bound = await database.withBusiness(
+  const asked = { email: found.address, password: request.password };
+  return await database.withBusiness(
     found.business,
-    async (tx) => await bind(tx, hash, login.subject),
+    async (tx) => await enrol(tx, broker, hash, asked),
   );
-  return bound ? { ok: true, state: 'enrolled' } : { ok: false, code: 'ENROLMENT_LINK_INVALID' };
 }
