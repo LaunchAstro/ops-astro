@@ -5,12 +5,15 @@
 // mention a person wrote is transactional and outside the cap; one an agent
 // wrote is relationship mail inside it; every client send carries its class.
 // And AW-07b isolation for the batch: two businesses, two clients, another
-// person, each checked by what was mailed and what was written.
+// person, and one person to another under a live delegation, each checked by
+// what was mailed and what was written.
 
 import { expect, it as vitestIt } from 'vitest';
 import { askOne } from '../../packages/core-custody/src/broker-email.ts';
 import { emailDailyBatch } from '../../packages/core-custody/src/index.ts';
 import { raiseInboxItem } from '../../packages/core-records/src/index.ts';
+import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
+import { insertAgentActor } from '../identity/fixture.ts';
 import { attemptsOf, itemFor, noDatabase, useEmailWorld, w } from './email-world.ts';
 import {
   aged,
@@ -120,4 +123,60 @@ it('AW-07b isolation (batch): another business, another client and another perso
   expect((await attemptsOf(mine)).map((row) => row.state)).toEqual(['asked', 'accepted']);
   // In its own business, its own person's batch goes to them alone.
   expect(await batch(w.bravoPerson, w.bravo)).toMatchObject({ ok: true, items: 1 });
+});
+
+/** A live delegation: an agent acting for the world's recipient, which reads `otherTask` itself. */
+async function delegatedAgent(): Promise<string> {
+  return await w.db.app.withBusiness(w.alpha, async (tx) => {
+    const [actor] = await tx.query<{ id: string }>(
+      `select id from public.actors where business_id = $1 and person_id = $2 and kind = 'person'`,
+      [tx.businessId, w.person],
+    );
+    const agent = await insertAgentActor(tx);
+    await tx.query(
+      `insert into public.delegations
+         (business_id, id, agent_actor_id, delegate_person_id, minted_by_actor_id, purpose,
+          collections, actions, credential_hash, expires_at, purpose_scope_kind, purpose_scope_id)
+       values ($1, gen_random_uuid(), $2, $3, $4, 'mail_crossing', array['task'], array['read'],
+               $5, now() + interval '1 hour', 'record', $6)`,
+      [tx.businessId, agent, w.person, actor?.id, 'b'.repeat(64), w.otherTask],
+    );
+    const granted = await issueGrant(tx, [], {
+      subject: { kind: 'actor', id: agent },
+      scope: { kind: 'record', id: w.otherTask },
+      collection: 'task',
+      action: 'read',
+      parentGrantId: null,
+      grantedByActorId: actor?.id ?? '',
+    });
+    if (!granted.ok) throw new Error('the agent grant was refused');
+    return agent;
+  });
+}
+
+it('AW-07b isolation (batch): one person to another under a live delegation, nothing crosses', async () => {
+  await freshInbox();
+  const sent = w.provider.outbox.length;
+  await delegatedAgent();
+  // Two people of one client, both reading the same task, the first with a live delegation.
+  const mine = await itemFor(w.task, 'mention');
+  const theirs = await clientItem(w.task, 'person', extra.clientA2);
+  // What the agent can read lends its person nothing: an item on a task only the agent reads.
+  const agentOnly = await itemFor(w.otherTask, 'assignment');
+  expect(await batch(w.person)).toMatchObject({ ok: true, items: 1 });
+  expect(w.provider.outbox.length).toBe(sent + 1);
+  const toMe = w.provider.outbox.at(-1)?.body ?? '';
+  expect(toMe.includes(w.canary), 'the recipient address').toBe(true);
+  for (const foreign of [theirs, agentOnly, w.otherTask]) {
+    expect(toMe.includes(foreign), 'a foreign id in the email').toBe(false);
+  }
+  expect((await attemptsOf(mine)).map((row) => row.state)).toEqual(['asked', 'accepted']);
+  expect(await attemptsOf(theirs)).toEqual([]);
+  expect(await attemptsOf(agentOnly)).toEqual([]);
+  // The other person's own batch carries their item, to them, never the delegating person.
+  expect(await batch(extra.clientA2)).toMatchObject({ ok: true, items: 1 });
+  const toThem = w.provider.outbox.at(-1)?.body ?? '';
+  expect(toThem.includes(w.canary.split('@')[0] ?? w.canary), 'the delegating person').toBe(false);
+  expect(toThem.includes(mine), 'the item of the delegating person').toBe(false);
+  expect((await attemptsOf(theirs)).map((row) => row.state)).toEqual(['asked', 'accepted']);
 });

@@ -111,6 +111,8 @@ describe('CQ-8 runtime structure', () => {
       'packages/core-commands/src/commands/occurrence-run.ts',
       'packages/core-commands/src/commands/prepare.ts',
       'packages/core-custody/src/broker-reserve.ts',
+      // AW-07b: the mail cap, counted under one lock per business and client or person.
+      'packages/core-custody/src/email-class.ts',
       'packages/core-records/src/tasks/placement.ts',
       'packages/core-records/src/tenancy/database.ts',
       'packages/core-records/src/tenancy/limit.ts',

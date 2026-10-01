@@ -404,6 +404,8 @@
     "tests/broker/aw-07b-email-hostile.test.ts",
     "tests/broker/aw-07b-timing.test.ts",
     "tests/broker/aw-07b-client-cap.test.ts",
+    "tests/broker/aw-07b-in-flight.test.ts",
+    "tests/broker/aw-07b-worker.test.ts",
     "tests/broker/aw-07b-hook.test.ts",
     "tests/broker/aw-07b-hook-isolation.test.ts",
     "tests/broker/aw-07b-hook-canary.test.ts",
