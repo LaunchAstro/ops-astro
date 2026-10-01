@@ -149,6 +149,7 @@ const READS = {
       complete: true,
       next: null,
       graph: { plan: 'unbound', sourceRevision: 1, complete: true, nodes: [] },
+      plans: [],
     },
   } satisfies TaskExecutionResult,
   'inbox.read': {

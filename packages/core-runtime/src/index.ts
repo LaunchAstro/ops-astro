@@ -71,6 +71,7 @@ export {
 } from './plan-record.ts';
 export {
   PLAN_CANDIDATES,
+  boundPlans,
   projectedPlan,
   readProjectedPlan,
   type ProjectedPlan,
