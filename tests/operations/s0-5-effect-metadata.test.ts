@@ -11,6 +11,8 @@
 // not a record kind.
 // A declared kind that is no table fails too, so a misspelt one cannot pass. Two commands have no
 // recipe of their own (a grant id, a live delegation) and get one here.
+// A path a positive fixture misses (SEC3BFINAL) is run on its own and must
+// write nothing undeclared; the money paths are `s0-5-effect-money-paths`.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -18,28 +20,23 @@ import {
   COMMAND_EFFECTS,
   COMMAND_SURFACE,
   type CommandDeclaration,
+  type CommandName,
 } from '../../packages/core-wire/src/index.ts';
 import { createHarness, type Harness } from '../acceptance/role-case-harness.ts';
-import type { Prepared } from '../acceptance/role-case-bodies.ts';
+import { PROPOSAL, type Prepared } from '../acceptance/role-case-bodies.ts';
 import { serverUrl } from '../acceptance/world.ts';
 import { grantTo, type Member } from '../commands/fixture.ts';
+import {
+  changed,
+  fingerprint,
+  pathFaults,
+  undeclared,
+  type EffectPath,
+} from './s0-5-effect-diff.ts';
 
 if (serverUrl === undefined) {
   console.warn('operations/s0-5-effect-metadata: DATABASE_URL is unset, so nothing below ran.');
 }
-
-/**
- * Written for every call as the record of the act, never a record kind of its
- * own: the audit event, the operation row, the bearer's verification, and the
- * live change record (0065, C4), stamped by a task write's own triggers with
- * only which task and the writing transaction.
- */
-const BOOKKEEPING: ReadonlySet<string> = new Set([
-  'audit_events',
-  'operations',
-  'authentication_attempts',
-  'live_changes',
-]);
 
 /** Commands no person path reaches, so this person-path proof cannot run them. */
 const AGENT_ONLY: ReadonlySet<string> = new Set([
@@ -49,29 +46,6 @@ const AGENT_ONLY: ReadonlySet<string> = new Set([
 ]);
 
 let harness: Harness;
-
-/**
- * Each table's rows as one digest, read past row security on the owner's
- * connection: a public table under its own name, an installation table in
- * `ops` as `ops.<name>` (the migration ledger aside).
- */
-async function fingerprint(): Promise<ReadonlyMap<string, string>> {
-  const tables = await harness.world.db.admin.execute<{ readonly name: string }>(
-    `select case n.nspname when 'public' then c.relname else 'ops.' || c.relname end as name
-       from pg_class c join pg_namespace n on n.oid = c.relnamespace
-      where n.nspname in ('public', 'ops') and c.relkind in ('r', 'p')
-        and (n.nspname, c.relname) <> ('ops', 'schema_migrations')
-      order by 1`,
-  );
-  const union = tables
-    .map(
-      ({ name }) =>
-        `select '${name}' as name, md5(coalesce(string_agg(t::text, '|' order by t::text), '')) as digest from ${name.includes('.') ? name : `public.${name}`} t`,
-    )
-    .join(' union all ');
-  const rows = await harness.world.db.admin.execute<{ name: string; digest: string }>(union);
-  return new Map(rows.map((row) => [row.name, row.digest]));
-}
 
 /** Tables that reach `records` (tasks) or `clients` through their foreign keys. */
 async function clientScoped(): Promise<ReadonlySet<string>> {
@@ -157,24 +131,18 @@ async function runFaults(declaration: CommandDeclaration): Promise<string[]> {
   // (batch 3a join; an agent-path proof is owed, SOL-OWED).
   if ('exception' in prepared && AGENT_ONLY.has(name)) return [];
   if ('exception' in prepared) return [`${name}: no fixture (${prepared.exception})`];
-  const before = await fingerprint();
+  const before = await fingerprint(harness.world.db.admin);
   const answer = await harness.asPerson(name, prepared.body);
   if (answer.code !== 'ok') return [`${name}: its fixture was refused ${answer.code}`];
-  const after = await fingerprint();
-  const written = [...after.keys()].filter(
-    (table) => !BOOKKEEPING.has(table) && after.get(table) !== before.get(table),
-  );
-  const declared = COMMAND_EFFECTS[name].writes;
+  const written = changed(before, await fingerprint(harness.world.db.admin));
   return [
     ...(declaration.kind === 'write' && written.length === 0 && !(name in NO_CHANGE)
       ? [`${name}: its fixture changed no row, so its declaration is unproved`]
       : []),
-    ...written
-      .filter((table) => !declared.some((kind) => kind.kind === table))
-      .map((table) => `${name}: wrote ${table}, undeclared`),
+    ...undeclared(name, written),
     ...(EXACT.has(name)
-      ? declared
-          .filter(({ kind }) => !written.includes(kind))
+      ? COMMAND_EFFECTS[name].writes
+          .filter(({ kind }) => !written.includes(kind) && !ON_A_PATH[name]?.includes(kind))
           .map(({ kind }) => `${name}: declares ${kind}, which its fixture did not write`)
       : []),
   ];
@@ -196,6 +164,12 @@ const EXACT: ReadonlySet<string> = new Set([
   'run.revise_state',
 ]);
 
+/** An EXACT command's kind written only on a path its fixture misses, proved there. */
+const ON_A_PATH: Readonly<Record<string, readonly string[]>> = {
+  // At a hold its calls spent whole: `s0-5-effect-money-paths`.
+  'run.top_up': ['attempts'],
+};
+
 /**
  * Write commands whose fixture changes no row, each with where its write is
  * proved instead. Any other write that changes nothing fails: its declaration
@@ -210,6 +184,90 @@ const NO_CHANGE: Readonly<Record<string, string>> = {
     'in-app is always on and email waits on AW-07b, so nothing is stored yet (tests/commands/inbox-escalation-settings.test.ts)',
 };
 
+const detailOf = (answer: { readonly body: Record<string, unknown> }): Record<string, unknown> =>
+  answer.body['detail'] as Record<string, unknown>;
+
+/** The admin's own plan, approved and picked up (EX-01), and its handback with a successor (AW-08). */
+async function ownPlanLease(): Promise<{
+  readonly recordId: string;
+  readonly lineageId: string;
+  readonly handback: Record<string, unknown>;
+}> {
+  const task = await harness.freshTask(`s0-5 path ${randomUUID()}`);
+  const proposed = await harness.asPerson('task.propose', {
+    recordId: task.id,
+    expectedRevision: task.revision,
+    ...PROPOSAL,
+  });
+  const { gateId, versionId, lineageId } = detailOf(proposed);
+  const decided = await harness.asPerson('task.decide', {
+    gateId,
+    versionId,
+    decision: 'approve',
+    note: 'approved so its lease hands back',
+  });
+  const picked = detailOf(
+    await harness.asPerson('task.pickup', { reservationId: detailOf(decided)['reservationId'] }),
+  );
+  const handback = {
+    leaseId: picked['leaseId'],
+    fence: picked['fence'],
+    outcome: 'completed',
+    report: { summary: 'the reviewed output' },
+    successor: PROPOSAL,
+  };
+  return { recordId: task.id, lineageId: String(lineageId), handback };
+}
+
+const codeOf = async (name: CommandName, body: Record<string, unknown>): Promise<string> =>
+  (await harness.asPerson(name, body)).code;
+
+/** SEC3BFINAL L1 to L3: paths the positive fixtures miss, on the person's route. */
+const PATHS: readonly EffectPath[] = [
+  {
+    // The proposal raised a decision item for the admin; the accept clears it.
+    name: 'task.accept_plan',
+    code: 'ok',
+    drives: ['inbox_items'],
+    prepare: async () => {
+      const gate = await bodyFor(COMMAND_SURFACE.find((one) => one.name === 'task.accept_plan')!);
+      if ('exception' in gate) throw new Error(gate.exception);
+      return async () => await codeOf('task.accept_plan', gate.body);
+    },
+  },
+  {
+    // AW-08: the successor a handback writes is the reviewed output.
+    name: 'task.handback',
+    code: 'ok',
+    drives: ['reviewed_outputs'],
+    prepare: async () => {
+      const { handback } = await ownPlanLease();
+      return async () => await codeOf('task.handback', handback);
+    },
+  },
+  {
+    // AW-09: the lease holder's revision after requested changes is its output too.
+    name: 'task.propose',
+    code: 'ok',
+    drives: ['reviewed_outputs'],
+    prepare: async () => {
+      const { recordId, lineageId, handback } = await ownPlanLease();
+      const successor = detailOf(await harness.asPerson('task.handback', handback));
+      const asked = await harness.asPerson('task.decide', {
+        gateId: successor['successorGateId'],
+        versionId: successor['successorVersionId'],
+        decision: 'request_changes',
+        note: 'revise it',
+      });
+      if (asked.code !== 'ok') throw new Error(`request changes refused ${asked.code}`);
+      const read = await harness.asPerson('task.read', { recordId });
+      const expectedRevision = (read.body['task'] as { revision: number }).revision;
+      const body = { recordId, expectedRevision, ...PROPOSAL, lineageId };
+      return async () => await codeOf('task.propose', body);
+    },
+  },
+];
+
 describe.skipIf(serverUrl === undefined)('S0-5 gate coverage: the effect metadata, proved', () => {
   beforeAll(async () => {
     harness = await createHarness('s05_effects');
@@ -221,7 +279,7 @@ describe.skipIf(serverUrl === undefined)('S0-5 gate coverage: the effect metadat
 
   it('S0-5 gate coverage (proved): each command changes only the record kinds it declares, at no narrower scope', async () => {
     const scoped = await clientScoped();
-    const tables = new Set((await fingerprint()).keys());
+    const tables = new Set((await fingerprint(harness.world.db.admin)).keys());
     const found: string[] = [];
     for (const declaration of COMMAND_SURFACE) {
       // One command at a time: the digest before and after must be this one's alone.
@@ -230,4 +288,12 @@ describe.skipIf(serverUrl === undefined)('S0-5 gate coverage: the effect metadat
     }
     expect(found).toStrictEqual([]);
   }, 300_000);
+
+  it.each(PATHS)(
+    'S0-5 gate coverage (paths): $name, writing $drives, declares what it writes',
+    async (path) => {
+      expect(await pathFaults(harness.world.db.admin, path)).toStrictEqual([]);
+    },
+    120_000,
+  );
 });

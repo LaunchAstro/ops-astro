@@ -183,6 +183,7 @@
     "Batch 1 end adds leaked-client-read-isolation-assertion (a leaked client read is visible to the isolation assertion, on the api-1-isolation world) inbox-command-discovery (a task reader discovers the self-scoped inbox commands, on the inbox-clearing world) external-notification-discovery (an external party does not discover a notification setting the API refuses, on the acceptance world) and record-member-notification-discovery (a member holding one record grant discovers their own notification setting, on the API fixture).",
     "API-2's CLI adds api-2-credential-cli (credential.issue and credential.revoke sent through the CLI client and straight to the API as the same caller: the same record bar the minted values, the same refusal word for word per key, business to business, an unknown and a revoked credential, and the agent route; it shares api-2-agent-credential-world).",
     "S0-5 adds s0-5-effect-metadata (every catalogue command run once on its positive fixture through the role-case harness, each public table's rows digested before and after: an undeclared write, a kind scoped narrower than its foreign keys, a kind that is no table, and a write whose fixture changed nothing each fail). Its unit twin, s0-5-effect-classes.test.ts, opens no database and must not be named.",
+    "BATCH3-INTEG LOWS adds s0-5-effect-money-paths (SEC3BFINAL L4 to L7: the spent-hold pickup, the top-up at a spent hold, a held call's recorded outcome and write-off, each run on AW-10's fault world and held to its command's declared writes). s0-5-effect-diff.ts is its helper and is not named.",
     "S0-5 adds s0-5-readiness (the installation's mode and the eight gate items on a real-data installation: every client-data and invitation command refused GATE_SHUT and writing nothing, per item and per command, on the person and agent routes; the mode one way). Its unit twin, s0-5-gate-decision.test.ts, opens no database and must not be named.",
     "S0-5 adds s0-5-client-lock (every task-content command's fixture leaves its marker or a row naming its task; the client change on each such task refused CLIENT_LOCKED alike through the CLI and the API, writing nothing; an empty task's change goes through; a content write and a client change interleaved in both orders). s0-5-client-lock-world.ts is its helper and s0-5-client-lock-held.test.ts holds todos; neither is named.",
     "S0-5 adds s0-5-gate-commands (the gate's own commands, 0059: an item recorded once with its https link and audited, the mode moved to real only while every item is done and never back, only by the operating business's operations:manage; another business, a person without it, a delegated agent and any caller while no business operates the installation refused, writing nothing; every other direct app write to either table denied). s0-5-gate-world.ts is its helper and is not named.",
@@ -286,7 +287,8 @@
     "REVIEW-BATCH-2 #313 batch 3b adds review-3b-3-set-planning-cap-step-up (budget.set_planning_cap under C59's money step-up: a second factor past sixty minutes and a factorless sign-in each refused STEP_UP_REQUIRED with budget_caps unchanged, then the same body applies on a fresh sign-in) as conformance.",
     "REVIEW-BATCH-2 #313 batch 3b adds review-3b-4-parent-end-drops-helper (a parent revoked, or handed back, while its helper never handed back: the merged result shows the helper dropped with its fault, DELEGATION_REVOKED for the revocation, never working) as conformance.",
     "REVIEW-BATCH-2 #313 batch 3b adds review-3b-5-delegate-child-lease-id (run.delegate_child with a leaseId that is not a uuid, a number or missing is refused LEASE_NOT_OWNED or FIELD_VALUE_INVALID with no child written, never a 22P02 fault) as conformance.",
-    "REVIEW-BATCH-2 #313 batch 3b adds review-3b-1-planning-hold-released (a failed planning reply held liability_unknown is released by the pass or a person's outcome, and the planning allowance gets its hold back) as conformance; its fix adds planfix-3b-1-planning-outcome (a planning reply whose operation declares a lookup is released by the pass alone; another person of the business and another business's owner naming the owner's conversation and call are refused NOT_FOUND with nothing written; the owner's outcome settles it once)."
+    "REVIEW-BATCH-2 #313 batch 3b adds review-3b-1-planning-hold-released (a failed planning reply held liability_unknown is released by the pass or a person's outcome, and the planning allowance gets its hold back) as conformance; its fix adds planfix-3b-1-planning-outcome (a planning reply whose operation declares a lookup is released by the pass alone; another person of the business and another business's owner naming the owner's conversation and call are refused NOT_FOUND with nothing written; the owner's outcome settles it once).",
+    "SEC3B F1 (batch 3b security review) adds sec3b-1-ended-owner-planning-release (a planning reply held unknown whose owner's access has since ended is released by the provider phase in the owner's name, as their person actor, and the same pass goes on to release the next business's held reply) as conformance."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -676,6 +678,7 @@
     "tests/api/leaked-client-read-isolation-assertion.test.ts",
     "tests/cli/api-2-credential-cli.test.ts",
     "tests/operations/s0-5-effect-metadata.test.ts",
+    "tests/operations/s0-5-effect-money-paths.test.ts",
     "tests/operations/s0-5-readiness.test.ts",
     "tests/operations/s0-5-client-lock.test.ts",
     "tests/operations/s0-5-gate-commands.test.ts",
@@ -983,6 +986,7 @@
     "tests/runtime/review-3b-4-parent-end-drops-helper.test.ts",
     "tests/runtime/review-3b-5-delegate-child-lease-id.test.ts",
     "tests/broker/review-3b-1-planning-hold-released.test.ts",
-    "tests/broker/planfix-3b-1-planning-outcome.test.ts"
+    "tests/broker/planfix-3b-1-planning-outcome.test.ts",
+    "tests/broker/sec3b-1-ended-owner-planning-release.test.ts"
   ]
 }

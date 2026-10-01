@@ -114,27 +114,25 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   // A comment's own edit and deletion (MP-4-5), on its record.
   'task.edit_comment': writing(client('records')),
   'task.delete_comment': writing(client('records')),
-  'task.propose': PROPOSAL,
+  // AW-09: the lease holder's revision of its output is the reviewed output too.
+  // A restart opens a new lineage, which supersedes nothing, so it marks none.
+  'task.propose': writing([...PROPOSAL.writes, ...client('reviewed_outputs')]),
   'task.decide': writing(
     client('attempts', 'gate_decisions', 'gates', 'inbox_items', 'reservations', 'task_envelopes'),
   ),
-  // An agent's pickup also mints its delegation.
+  // An agent's pickup also mints its delegation. A step whose calls spent its
+  // whole hold stops at its budget instead (AW-05): the ask, and after the
+  // run's last ask a person told on the task.
   'task.pickup': writing([
-    ...client('attempts', 'leases', 'planned_runs', 'reservations', 'run_events'),
+    ...client('alerts', 'attempts', 'budget_asks', 'leases', 'planned_runs', 'reservations'),
+    ...client('run_events'),
     ...business('delegations'),
   ]),
+  // A successor is a proposal on the lineage, and the reviewed output (AW-08).
   'task.handback': writing([
-    ...client(
-      'alerts',
-      'attempts',
-      'handback_reports',
-      'inbox_items',
-      'leases',
-      'planned_runs',
-      'reservations',
-      'run_events',
-      'task_envelopes',
-    ),
+    ...client('alerts', 'attempts', 'evidence_packs', 'gates', 'handback_reports', 'inbox_items'),
+    ...client('leases', 'planned_runs', 'planned_steps', 'proposal_versions', 'reservations'),
+    ...client('reviewed_outputs', 'run_events', 'task_envelopes'),
     ...business('delegations'),
   ]),
   'task.start': TASK,
@@ -248,9 +246,11 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   ),
   // AW-05: the two answers at the budget stop, and MP-6-2's state revised.
   // None of the four below writes `run_events`: only pickup, hand-back and a drop append it.
-  'run.top_up': writing(
-    client('budget_answers', 'budget_approvals', 'planned_runs', 'reservations', 'task_envelopes'),
-  ),
+  // At a hold its calls spent whole, the top-up is the step's fresh hold: a new attempt.
+  'run.top_up': writing([
+    ...client('attempts', 'budget_answers', 'budget_approvals', 'planned_runs', 'reservations'),
+    ...client('task_envelopes'),
+  ]),
   'run.end_at_budget_stop': writing(
     client('budget_answers', 'planned_runs', 'reservations', 'task_envelopes'),
   ),
@@ -306,6 +306,13 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.observe': writing(client('attempts')),
   'task.receipt': READ,
   'budget.top_up': writing(client('task_envelopes')),
-  'budget.record_outcome': writing(client('alerts', 'attempts', 'reservations', 'task_envelopes')),
-  'budget.write_off': writing(client('attempts', 'reservations', 'task_envelopes')),
+  // AW-10: the step's held calls take the outcome. A replacement stopped, or a
+  // resume at a hold its calls spent whole, ends the lease and the delegation
+  // and stops the run at its budget (AW-05).
+  'budget.record_outcome': writing([
+    ...client('alerts', 'attempts', 'budget_asks', 'leases', 'model_calls', 'planned_runs'),
+    ...client('reservations', 'task_envelopes'),
+    ...business('delegations'),
+  ]),
+  'budget.write_off': writing(client('attempts', 'model_calls', 'reservations', 'task_envelopes')),
 };

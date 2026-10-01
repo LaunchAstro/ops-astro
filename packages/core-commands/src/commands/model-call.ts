@@ -153,7 +153,10 @@ export function auditAs(actorId: string): Broker['audit'] {
  * its own, so a call its provider proved never began is released in the
  * name of the agent that held it. A planning reply (AW-04) has no
  * delegation: it is released in the name of its planning envelope's owner,
- * the person who asked for it, as their acting identity.
+ * the person who asked for it, as their acting identity. That identity is
+ * theirs whether or not it is still active: an owner whose access has ended
+ * (C58) is still the one the call was made for, so their active identity is
+ * taken first, then their newest.
  */
 export const callerAudit: Broker['audit'] = async (tx, note) => {
   const [call] = await tx.query<{ readonly actor_id: string | null }>(
@@ -163,9 +166,13 @@ export const callerAudit: Broker['audit'] = async (tx, note) => {
          on d.business_id = c.business_id and d.id = coalesce(c.caller_delegation_id, c.delegation_id)
        left join public.planning_envelopes e
          on e.business_id = c.business_id and e.id = c.planning_envelope_id
-       left join public.actors pa
-         on pa.business_id = e.business_id and pa.person_id = e.owner_person_id
-        and pa.kind = 'person' and pa.active
+       left join lateral (
+         select a.id from public.actors a
+          where a.business_id = e.business_id and a.person_id = e.owner_person_id
+            and a.kind = 'person'
+          order by a.active desc, a.created_at desc
+          limit 1
+       ) pa on true
       where c.business_id = $1 and c.id = $2`,
     [tx.businessId, note.detail['callId']],
   );
