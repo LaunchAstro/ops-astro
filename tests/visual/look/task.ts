@@ -175,11 +175,14 @@ export const TASK: LookScreen = {
       `${TABS} .cmtab[aria-selected="false"]`,
       ['font-size', 'color'],
     ),
+    // Width left out on the mark: it is placed to the selected tab's word, a text
+    // advance Linux Chromium (hosted CI) draws 1px narrower than the Mac that pinned
+    // the mockup (run 36820761849: 31 vs 32). Same treatment as the shell switch.
     probe(
       'tab-mark',
       { ...MOCK, selector: '[data-tp-tabs] .cmtabs__mark' },
       `${TABS} .cmtabs__mark`,
-      ['background-color', 'box.height', 'box.width'],
+      ['background-color', 'box.height'],
     ),
     probe('tab-count', { ...MOCK, selector: '[data-tp-tabs] .cbadge' }, `${TABS} .cbadge`, [
       'font-family',
