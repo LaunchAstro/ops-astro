@@ -7,7 +7,8 @@
 // cookie, one per sign-in, named from an id only that tab is given, so a tab
 // reads only its own session and a late sign-out ends only the one it names. A
 // tab closed without signing out never names its cookie again, so the door
-// clears any other sign-in's cookie whose token has run out (`lapsedSessions`).
+// clears any other sign-in's cookie whose token has run out, and all but the
+// newest few beside the tab's own (`staleSessions`).
 // A cookie is ambient: a request it signs in must carry `CSRF_HEADER` (no other
 // origin can without a preflight this API never answers).
 
@@ -80,26 +81,40 @@ export function sessionCookieOf(request: Context['req']): string | undefined {
   return token !== undefined && sessionIdOf(token) === id ? token : undefined;
 }
 
+/** How many other sign-ins' cookies a request keeps beside its own: the newest. */
+const OTHER_SESSIONS_KEPT = 5;
+
+/** A token's `exp`, read unverified, or undefined when it carries none. */
+function expiryOf(token: string): number | undefined {
+  try {
+    const payload = Buffer.from(token.split('.')[1] ?? '', 'base64url').toString('utf8');
+    const exp: unknown = (JSON.parse(payload) as { exp?: unknown } | null)?.exp;
+    return typeof exp === 'number' ? exp : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
- * The cookies of other sign-ins this request carries whose token's `exp` has
- * passed: a closed tab's, which nothing names again, and which would otherwise
- * ride on every request until the headers are too large to answer. The claim
- * is read unverified because all it decides is that the cookie holding it is
- * cleared, and a token past its `exp` is refused whoever sends it.
+ * The cookies of other sign-ins this request carries that go with its answer:
+ * each whose token's `exp` has passed, and every one beyond the
+ * `OTHER_SESSIONS_KEPT` with the latest `exp`. A closed tab never names its
+ * cookie again, and the cookies of tabs opened faster than their tokens run
+ * out would otherwise ride on every request until the headers are too large to
+ * answer (431), after which no request reaches the door to clear them. A tab
+ * whose cookie goes signs in again. The claim is read unverified because all it
+ * decides is which of the cookies this request carries are cleared.
  */
-export function lapsedSessions(request: Context['req'], now: number): string[] {
+export function staleSessions(request: Context['req'], now: number): string[] {
   const named = cookieNameFor(namedSession(request) ?? '');
-  const lapsed = sessionCookies(request).filter(([name, token]) => {
-    if (name === named) return false;
-    try {
-      const payload = Buffer.from(token.split('.')[1] ?? '', 'base64url').toString('utf8');
-      const exp: unknown = (JSON.parse(payload) as { exp?: unknown } | null)?.exp;
-      return typeof exp === 'number' && exp < now;
-    } catch {
-      return false;
-    }
-  });
-  return [...new Set(lapsed.map(([name]) => name))];
+  const others = sessionCookies(request)
+    .filter(([name]) => name !== named)
+    .map(([name, token]) => [name, expiryOf(token)] as const)
+    .toSorted(([, a = -Infinity], [, b = -Infinity]) => (a === b ? 0 : b - a));
+  const stale = others.filter(
+    ([, exp], rank) => rank >= OTHER_SESSIONS_KEPT || (exp !== undefined && exp < now),
+  );
+  return [...new Set(stale.map(([name]) => name))];
 }
 
 /**

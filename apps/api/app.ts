@@ -111,10 +111,10 @@ import {
   CROSS_SITE_FIXES,
   crossSiteSession,
   fromOwnPages,
-  lapsedSessions,
   MISMATCH_FIXES,
   namedSession,
   sessionIdOf,
+  staleSessions,
   unnamedSession,
   sessionCookieOf,
   SESSION_COOKIE_OPTIONS,
@@ -278,9 +278,10 @@ async function admit(
   // A session cookie from another site's page stops here, before the
   // verifier reads it (`auth/session.ts`).
   if (crossSiteSession(context.req)) return refuse(context, CROSS_SITE());
-  // Other sign-ins' cookies whose tokens have run out go with any answer.
+  // Other sign-ins' cookies whose tokens have run out, and all but the newest
+  // few, go with any answer.
   const now = Math.floor(Date.now() / 1000);
-  for (const name of lapsedSessions(context.req, now)) {
+  for (const name of staleSessions(context.req, now)) {
     deleteCookie(context, name, SESSION_COOKIE_OPTIONS);
   }
   const presented = await options.verify(context.req);
