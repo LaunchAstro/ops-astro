@@ -113,6 +113,17 @@ export interface FactorVerified {
   readonly accessToken?: unknown;
 }
 
+/**
+ * What `account/factor/enrol` answers (`IssuedFactor`): the secret goes to the person once. It
+ * is drawn and dropped, and never stored, logged or put in an error.
+ */
+export interface IssuedFactor {
+  readonly factorId: string;
+  readonly qrCode: string;
+  readonly secret: string;
+  readonly uri: string;
+}
+
 export interface ClientOptions {
   /**
    * Where the API is served from: empty for the page's own origin, an absolute origin in a test.
@@ -203,6 +214,14 @@ export class OperationsClient {
    */
   async verifyFactor(code: string): Promise<CallResult<FactorVerified>> {
     return await this.#post<FactorVerified>('/account/factor/verify', { code });
+  }
+
+  /**
+   * A new authenticator app for the person (C59), on their own account route with an empty body:
+   * the server takes the person from the credential. The first good code completes it.
+   */
+  async enrolFactor(): Promise<CallResult<IssuedFactor>> {
+    return await this.#post<IssuedFactor>('/account/factor/enrol', {});
   }
 
   /** The person's own availability (MP-7-10), on the path the surface names. */
