@@ -69,11 +69,35 @@ export function readApiEnv(text: string): Record<string, string> {
   return env;
 }
 
+/**
+ * The tick's business, agent and worker for api.env, when OPS_LOCAL_AGENT_BUSINESS
+ * names a made-up business the local seed has made; none asked for, none written.
+ */
+async function tickIdentity(
+  env: Readonly<Record<string, string | undefined>>,
+  identityOf: (env: Readonly<Record<string, string | undefined>>) => Promise<IdentityRead>,
+): Promise<
+  | { readonly ok: true; readonly env: Readonly<Record<string, string>> }
+  | { readonly ok: false; readonly code: string; readonly message: string }
+> {
+  if (!env['OPS_LOCAL_AGENT_BUSINESS']) return { ok: true, env: {} };
+  const read = await identityOf(env);
+  if (!read.ok) return read;
+  return {
+    ok: true,
+    env: {
+      OPS_LOCAL_AGENT_BUSINESS_ID: read.identity.businessId,
+      OPS_LOCAL_AGENT_AGENT_SUBJECT: read.identity.agentSubject,
+      OPS_LOCAL_AGENT_WORKER_ACTOR_ID: read.identity.workerActorId,
+    },
+  };
+}
+
 export async function startStack(
   env: Readonly<Record<string, string | undefined>>,
   userHome: string = homedir(),
   print: (line: string) => void = (line) => process.stdout.write(`${line}\n`),
-  _identityOf: (
+  identityOf: (
     env: Readonly<Record<string, string | undefined>>,
   ) => Promise<IdentityRead> = identityFromSeed,
 ): Promise<StackStart> {
@@ -81,6 +105,8 @@ export async function startStack(
   const read = readSettings({ ...env, OPS_LOCAL_AGENT_KEY: key }, userHome);
   if (!read.ok) return { ok: false, code: read.code, message: read.message };
   const { settings } = read;
+  const tick = await tickIdentity(env, identityOf);
+  if (!tick.ok) return tick;
   mkdirSync(settings.home, { recursive: true });
   const credentialsFile = join(settings.home, 'credentials.json');
   const credential = {
@@ -95,7 +121,10 @@ export async function startStack(
   const runner = await createRunner(settings, print);
   const apiEnvFile = join(settings.home, 'api.env');
   const installation = env['OPS_LOCAL_AGENT_INSTALLATION'] || 'local';
-  writeApiEnv(apiEnvFile, apiEnvOf(runner.origin, credentialsFile, installation));
+  writeApiEnv(apiEnvFile, {
+    ...apiEnvOf(runner.origin, credentialsFile, installation),
+    ...tick.env,
+  });
   print(`local agent: runner on ${runner.origin} (seat ${settings.seat})`);
   print(`local agent: source ${apiEnvFile} before starting the API`);
   return {
