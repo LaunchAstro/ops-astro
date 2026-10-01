@@ -3,8 +3,9 @@
 // The enrolment cases' world (C39-T, piece P3), over the invitation world:
 // custody again, holding the mail key and the login provider's made-up
 // service key for the `auth` destination, the stand-in admin users route on
-// loopback (`c39-t-users-fake.ts`), and a broker that catalogues
-// `auth.create_user` beside `email.send`, as a deployment with the login
+// loopback (`c39-t-users-fake.ts`), its update route the one PUT custody
+// sends there, and a broker that catalogues `auth.create_user` and
+// `auth.update_user` beside `email.send`, as a deployment with the login
 // provider configured has. The route is mounted the way the hooks are, on
 // its own app, over the deployment's businesses alpha and bravo.
 
@@ -17,7 +18,9 @@ import { afterAll, beforeAll } from 'vitest';
 import { ENROL_API_PATH, mountEnrolment } from '../../apps/api/enrolment.ts';
 import {
   AUTH_CREATE_USER,
+  AUTH_UPDATE_USER,
   authUserAdapter,
+  authUserUpdateAdapter,
   catalogue,
   emailAdapter,
 } from '../../packages/core-connectors/src/index.ts';
@@ -30,6 +33,7 @@ import { invite, linkIn, send, useInvitationWorld, w } from './c39-t-world.ts';
 
 /** A short timeout, so a slow provider ends quickly. */
 const TEST_CREATE_USER = { ...AUTH_CREATE_USER, timeoutMs: 600 };
+const TEST_UPDATE_USER = { ...AUTH_UPDATE_USER, timeoutMs: 600 };
 
 export const e = {} as { users: FakeUsers; key: string; folder: string; app: Hono };
 
@@ -60,20 +64,26 @@ async function withUsers(): Promise<void> {
     credentialsFile,
     destinations: [
       { key: 'email', origin: w.provider.origin },
-      { key: 'auth', origin: e.users.origin },
+      {
+        key: 'auth',
+        origin: e.users.origin,
+        routes: [{ method: 'PUT', path: '/auth/v1/admin/users/*' }],
+      },
     ],
   });
   w.broker = {
     ...w.broker,
     custody: w.custody,
-    operations: catalogue([TEST_EMAIL_SEND, TEST_CREATE_USER]),
+    operations: catalogue([TEST_EMAIL_SEND, TEST_CREATE_USER, TEST_UPDATE_USER]),
     providers: new Map([
       ['resend', { build: emailAdapter, price: () => 0 }],
       ['supabase_auth', { build: authUserAdapter, price: () => 0 }],
+      ['supabase_auth_update', { build: authUserUpdateAdapter, price: () => 0 }],
     ]),
     routes: [
       route('email', 'resend', 'email_key'),
       route('auth', 'supabase_auth', 'auth_key'),
+      route('auth_update', 'supabase_auth_update', 'auth_key'),
     ] as typeof w.broker.routes,
   };
   e.app = mountOver([w.alpha, w.bravo]);

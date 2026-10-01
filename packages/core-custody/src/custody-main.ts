@@ -16,7 +16,7 @@
 import { readFileSync } from 'node:fs';
 import { parseCredentials, type StoredCredential } from './credentials.ts';
 import { parseDestinations, send, type Destination, type OutboundRequest } from './egress.ts';
-import { METHODS } from './egress-routes.ts';
+import { METHODS, pathAllowed } from './egress-routes.ts';
 
 interface Loaded {
   readonly credentials: ReadonlyMap<string, StoredCredential>;
@@ -86,6 +86,11 @@ function isRequest(value: unknown): value is OutboundRequest {
 
 const loaded = load();
 
+/** A PUT its destination lists no route for: custody never sends one, so it is no request. */
+const unrouted = (asked: OutboundRequest): boolean =>
+  asked.method === 'PUT' &&
+  !pathAllowed(loaded.destinations.get(asked.destination) ?? {}, 'PUT', asked.path);
+
 process.on('uncaughtException', () => fail('internal fault'));
 
 process.on('message', (message: unknown) => {
@@ -103,7 +108,7 @@ process.on('message', (message: unknown) => {
   }
   const request = shape['request'];
   const ref = shape['credentialRef'];
-  if (!isRequest(request)) {
+  if (!isRequest(request) || unrouted(request)) {
     reply({ type: 'refused', code: 'CUSTODY_REQUEST_MALFORMED' });
     return;
   }

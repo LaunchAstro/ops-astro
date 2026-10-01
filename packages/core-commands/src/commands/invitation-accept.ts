@@ -12,13 +12,21 @@
 //    has (a resend's link replaces the one before), and its invitation is
 //    pending and inside its own lifetime. Every other token, an unknown one
 //    among them, is one answer: `ENROLMENT_LINK_INVALID`.
-// 2. Make the login at the login provider, through custody under the
-//    catalogued `auth.create_user` (`createLogin`), for the invited address,
-//    with the password the page set and the address confirmed. An address
-//    that already holds a login (in another business, or one an earlier
-//    accept made) gets none: the answer is `sign_in`, and nothing is spent,
-//    so its holder may accept once signed in (that binding is a follow-up).
-//    A fault spends nothing and keeps nothing.
+// 2. Make the login at the login provider, through custody, for the invited
+//    address, with the password the page set and the address confirmed,
+//    under a provider user id that is ours: the same every time for one
+//    address in one business (`loginSubject`). A login this business has
+//    bound under that id already is never set again: the answer is
+//    `sign_in`. Otherwise it is made (`auth.create_user`); when the address
+//    already holds a login, that login is set again under our id
+//    (`auth.update_user`), which adopts one an earlier accept made and never
+//    bound (its answer came too late, or its link died before the bind),
+//    with the password set now. When there is no user under our id, the
+//    address's login is someone else's (another business's, or made
+//    elsewhere): it gets none and its password is not touched, the answer is
+//    `sign_in`, and nothing is spent, so its holder may accept once signed in
+//    (that binding is a follow-up). A fault spends nothing and binds nothing;
+//    a login it stranded is adopted by the next accept.
 // 3. In one transaction, under the invitation's lock and every check again:
 //    spend every unspent token of the invitation, mark it accepted, give its
 //    one enduring person an acting identity, a membership in the invited
@@ -29,7 +37,12 @@
 import { createHash } from 'node:crypto';
 import { payloadDigest } from '../../../core-digest/src/index.ts';
 import type { Database, TenantQuery } from '../../../core-records/src/index.ts';
-import { createLogin, type Broker } from '../../../core-custody/src/index.ts';
+import {
+  createLogin,
+  updateLogin,
+  type Broker,
+  type LoginAsked,
+} from '../../../core-custody/src/index.ts';
 import { writeAuditEvent } from './audit.ts';
 import { workerActor } from './conversation-lifecycle.ts';
 
@@ -64,6 +77,35 @@ interface Found {
   readonly personId: string;
   readonly roleKey: string;
   readonly address: string;
+}
+
+/**
+ * The provider user id for one address in one business: a UUID (version 8,
+ * RFC 9562) from SHA-256 of a fixed label, the business and the address. The
+ * address, not the person: each invitation makes a new person, and a login an
+ * earlier invitation stranded must be found by the next one for the address.
+ */
+function loginSubject(business: string, address: string): string {
+  const hex = createHash('sha256').update(`ops-astro login|${business}|${address}`).digest('hex');
+  const variant = ((Number.parseInt(hex.charAt(16), 16) & 0x3) | 0x8).toString(16);
+  return [
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    `8${hex.slice(13, 16)}`,
+    `${variant}${hex.slice(17, 20)}`,
+    hex.slice(20, 32),
+  ].join('-');
+}
+
+/** Whether this business has bound a login under the subject already. */
+async function loginBound(database: Database, business: string, subject: string): Promise<boolean> {
+  return await database.withBusiness(business, async (tx) => {
+    const rows = await tx.query(
+      'select 1 from logins where business_id = $1 and provider = $2 and subject = $3',
+      [tx.businessId, LOGIN_PROVIDER, subject],
+    );
+    return rows.length > 0;
+  });
 }
 
 /** The token's row and its invitation, when the token is live; locked when `lock`. */
@@ -192,9 +234,13 @@ export async function acceptInvitation(
   const hash = createHash('sha256').update(request.token).digest('hex');
   const found = TOKEN.test(request.token) ? await find(database, businesses, hash) : undefined;
   if (found === undefined) return { ok: false, code: 'ENROLMENT_LINK_INVALID' };
-  const login = await createLogin(broker, found.address, request.password);
+  const id = loginSubject(found.business, found.address);
+  if (await loginBound(database, found.business, id)) return { ok: true, state: 'sign_in' };
+  const asked: LoginAsked = { id, email: found.address, password: request.password };
+  let login = await createLogin(broker, asked);
+  if (!login.ok && login.kind === 'refused') login = await updateLogin(broker, asked);
   if (!login.ok) {
-    return login.kind === 'exists'
+    return login.kind === 'refused'
       ? { ok: true, state: 'sign_in' }
       : { ok: false, code: 'ENROLMENT_UNAVAILABLE' };
   }

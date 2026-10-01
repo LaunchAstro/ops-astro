@@ -165,7 +165,8 @@
     "SL12-19-COLFIX names sl12-19-plan-record-restart-proof (0223: a run task.restart proposes stores the plan record bound at its proposal, written true) beside the hand-back successor case added to mp-6-2-plan-record-stored, as conformance.",
     "SL12-19-F2 names task-read-client (AW-04 pane client: task.read returns the record's client as clientId, null for internal work, and a reader from another business, client or person learns none of it) as an invariant.",
     "SL12-20-FUP2 names c39-t-invitation-lock-order (C39-T rate limit and expiry, one lock order: a resend started while its invitation is live and a create for the same address started once it lapsed, driven to the same row, both finish, the resend applied and the create refused UNIQUE_VALUE_TAKEN, never a deadlock) as an invariant.",
-    "SL12-19-FUP names aw-07b-server-worker (AW-07b delivery worker started by the server: apps/api/server.ts with MAIL_DELIVERY=mock mails a waiting decision through its own worker and custody and exits 0 on SIGTERM; any other value stops it before it listens; the delivery stopped sends nothing more) as an invariant."
+    "SL12-19-FUP names aw-07b-server-worker (AW-07b delivery worker started by the server: apps/api/server.ts with MAIL_DELIVERY=mock mails a waiting decision through its own worker and custody and exits 0 on SIGTERM; any other value stops it before it listens; the delivery stopped sends nothing more) as an invariant.",
+    "SL12-20-P3FIX names c39-t-enrolment-recovery (C39-T enrolment, C39-T no account oracle and C39-T isolation on the login's recovery: the provider user id is ours for one address in one business, so a login made behind a late answer or a link that died before the bind is adopted by the next accept with the password set then; another business's login or one made elsewhere is never set and answers sign_in; a login bound here already answers sign_in and asks nothing; and C39-T hostile provider, moved here from c39-t-enrolment: a hostile provider answer spends and binds nothing, and the same link then enrols with the login it made) as an invariant."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -494,7 +495,8 @@
     "tests/access/c39-t-review-proofs-p2.test.ts",
     "tests/access/c39-t-invitation-lock-order.test.ts",
     "tests/access/c39-t-enrolment.test.ts",
-    "tests/reads/task-read-client.test.ts"
+    "tests/reads/task-read-client.test.ts",
+    "tests/access/c39-t-enrolment-recovery.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
