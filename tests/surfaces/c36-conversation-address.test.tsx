@@ -14,6 +14,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { ConversationReadResult } from '../../packages/core-wire/src/index.ts';
 import { AssistantView } from '../../apps/web/src/views/assistant.tsx';
 import { drawScreen } from '../../apps/web/src/screen-registry.tsx';
+import { pageAt } from '../../apps/web/src/manifest.ts';
 import { gateOf, matchRoute, pathTo, ROUTES } from '../../apps/web/src/routes.ts';
 import type { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { mount, settle } from './mount.tsx';
@@ -135,7 +136,9 @@ describe('C36 conversation address', () => {
     expect(match?.id).toBe('agency:agent-conversation');
     expect(match?.params).toStrictEqual({ conversation: ID });
     expect(pathTo('agency:agent-conversation', { conversation: ID })).toBe(`/agent/${ID}`);
-    expect(ROUTES['agency:agent-conversation']).toMatchObject({ authenticated: true, rail: false });
+    expect(ROUTES['agency:agent-conversation']).toMatchObject({ authenticated: true });
+    // No rail entry: the manifest, which places the rail, has no page at the address.
+    expect(pageAt(`/agent/${ID}`)).toBeNull();
     expect(gateOf(matchRoute(`/agent/${ID}`), false).kind).toBe('sign-in');
   });
 
