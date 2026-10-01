@@ -101,7 +101,8 @@ const RUN_FACTS = `coalesce((select json_agg(json_build_object(
     'effectObserved', coalesce((select bool_or(a.observed or a.state = 'settled')
       from public.attempts a where a.business_id = $1 and a.run_id = run.id), false),
     'heldMinor', (select sum(res.held_minor)::float8 from public.reservations res
-      where res.business_id = $1 and res.run_id = run.id and res.state = 'held'),
+      where res.business_id = $1 and res.run_id = run.id
+        and res.state in ('held', 'quarantined')),
     'spentMinor', (select sum(res.actual_minor)::float8 from public.reservations res
       where res.business_id = $1 and res.run_id = run.id and res.state = 'actual'),
     'lastKind', last.kind, 'lastFault', last.detail ->> 'fault')
