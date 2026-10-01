@@ -16,6 +16,7 @@
 
 import {
   clientsReached,
+  isClientHere,
   planPresetSync,
   isUuid,
   listTags,
@@ -465,6 +466,9 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       ) {
         return refuseNotFound();
       }
+      // A client is one of this business's; another business's and a made-up
+      // id are one NOT_FOUND, never an empty list (minimum contract 8.2).
+      if (client !== undefined && !(await isClientHere(tx, client))) return refuseNotFound();
       const scope = client === undefined ? { person: person ?? session.personId } : { client };
       return { ok: true, todos: await readTodos(tx, spine, scope) };
     },

@@ -60,14 +60,16 @@ async function readAs(business: BusinessId, member: Member, scope: Record<string
 }
 
 describe.skipIf(serverUrl === undefined)('MP-7-2 isolation: another business', () => {
-  it('another business’s person is not found, and its client’s tasks are never listed', async () => {
+  it('another business’s person and client are not found, and its client’s tasks are never listed', async () => {
     const client = await madeClient(w, w.bravo, w.bravoOwner);
     const foreign = await assignTo(w, w.bravo, w.bravoOwner, CANARY, w.bravoOwner, {}, client);
     const person = await readAs(w.alpha, w.ada, { person: w.bravoOwner.personId });
     expect(person.code).toBe('NOT_FOUND');
     const byClient = await readAs(w.alpha, w.ada, { client });
-    expect(byClient.code).toBe('not-a-refusal');
-    expect(JSON.parse(byClient.text)).toMatchObject({ todos: [] });
+    const madeUp = await readAs(w.alpha, w.ada, { client: randomUUID() });
+    expect(byClient.code).toBe('NOT_FOUND');
+    // One answer for bravo's client and a made-up one: nothing is learned about bravo.
+    expect(byClient.text).toBe(madeUp.text);
     for (const read of [person, byClient]) {
       expect(read.text).not.toContain(CANARY);
       expect(read.text).not.toContain(foreign);
