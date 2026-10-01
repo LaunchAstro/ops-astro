@@ -28,6 +28,8 @@ import { addressOf, builtPages, needsSession, overflowOf, type PageShot } from '
 export const PAGE_PARAMS: Readonly<Record<string, string>> = {
   key: 'T-1',
   conversation: CONVERSATION_ID,
+  // The enrolment page's link (C39-T): drawn as the form, so no API answers it.
+  token: 'made-up-enrolment-link',
 };
 
 /** The app served from source by its own Vite config, at a free local port. */

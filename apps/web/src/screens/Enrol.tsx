@@ -17,6 +17,7 @@
 
 import { useState, type FormEvent, type ReactElement } from 'react';
 import { Banner, Button, FieldError } from '@launchastro/ui';
+import { postOpen, type ClientOptions } from '../operations/client.ts';
 import { pathTo } from '../routes.ts';
 
 /** The API's enrolment route (`apps/api/enrolment.ts`). */
@@ -28,9 +29,8 @@ const MOST = 72;
 const BOUNDS = `Use ${String(LEAST)} to ${String(MOST)} characters.`;
 
 /** What the page needs of the application: where the API is, and where to go next. */
-export interface EnrolApp {
+export interface EnrolApp extends Pick<ClientOptions, 'fetch'> {
   readonly apiOrigin: string;
-  readonly fetch: typeof globalThis.fetch;
   readonly navigate: (path: string) => void;
 }
 
@@ -43,13 +43,10 @@ async function enrol(
   password: string,
 ): Promise<Ended | 'password' | 'unavailable'> {
   try {
-    const answer = await app.fetch(`${app.apiOrigin}${ENROL_API}`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      credentials: 'omit',
-      body: JSON.stringify({ token, password }),
-    });
-    const body = (await answer.json()) as { state?: unknown; code?: unknown };
+    const body = (await postOpen(app, ENROL_API, { token, password })) as {
+      state?: unknown;
+      code?: unknown;
+    };
     if (body.state === 'enrolled' || body.state === 'sign_in') return body.state;
     if (body.code === 'ENROLMENT_LINK_INVALID') return 'invalid';
     return body.code === 'PASSWORD_INVALID' ? 'password' : 'unavailable';
