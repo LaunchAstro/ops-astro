@@ -369,7 +369,7 @@ revoke execute on function backups.read_by_this_login(uuid, text, timestamptz) f
 -- business, the archive's id and who recorded it only: no record data, key,
 -- credential, fingerprint or path. The API has no route here, so a passed
 -- drill also stamps its date on the installation's database, where the
--- operations view reads it (C55, migration 0068). `backups.restore_fresh()` answers only
+-- operations view reads it (C55, migration 0070). `backups.restore_fresh()` answers only
 -- yes or no: whether a drill passed inside the window
 -- `backups.settings.restore_days` sets. The daily upkeep job asks it and pings
 -- the watcher's restore heartbeat only on yes, so a stale restore raises S0-2's

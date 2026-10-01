@@ -172,7 +172,7 @@ const PROCEDURE_TRIES: readonly (readonly [string, object])[] = [
 ];
 
 /**
- * Item 3's privacy-request procedure (0070): with every other item and line
+ * Item 3's privacy-request procedure (0071): with every other item and line
  * done, the procedure line keeps the gate shut until its evidence link is
  * recorded. A record with no https link, or with an owner's line, is refused
  * and leaves it open; the mode change is refused naming it alone.
