@@ -126,8 +126,16 @@ export const DOCK: LookScreen = {
         'padding-left',
         'max-width',
       ],
-      // .78rem snaps to the label step (TOKENS DS-TOK-43: text sizes are tokens).
-      { ruled: both('font-size', '12px', 'DS-TOK-43') },
+      // .78rem snaps to the label step (TOKENS DS-TOK-43: text sizes are tokens);
+      // the 1px edge MP-1-1 holds in dark takes its pixel from the padding, so
+      // the chip's outer size is the mockup's.
+      {
+        ruled: [
+          ...both('font-size', '12px', 'DS-TOK-43'),
+          ...both('padding-top', '4.6px', 'MP-1-1 dock callout edge'),
+          ...both('padding-left', '8.6px', 'MP-1-1 dock callout edge'),
+        ],
+      },
     ),
     // DS-SIDE-5: Close all, with a panel open.
     probe(

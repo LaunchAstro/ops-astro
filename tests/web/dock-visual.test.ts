@@ -8,10 +8,10 @@
 // 1480, 900 and 390 in light and dark (MP-3-1), and every page measured at
 // 390 with the dock at rest and with a panel open (MP-3-3).
 //
-// The mockup-match legs stay todo: the pinned mockup's catalogue
-// (`tests/visual/states.json`) holds no dock state, and `p-clients` and
-// `stack2` draw panels this build does not register (clients, and a second
-// panel to stack).
+// The mockup-match legs, which were todo here, are in
+// dock-mockup-match.test.ts: the rail at rest and a panel head held to the
+// pinned mockup (Team stands in for Clients, which this build does not
+// register), two panels stacked (stack2) and the tab's hover motion.
 
 import type { Page } from 'playwright';
 import { describe, expect, it } from 'vitest';
@@ -24,10 +24,6 @@ import { onDockSides, type DockSide } from './dock-harness.ts';
 const WIDTHS = [1480, 900, 390];
 const REGIONS = ['rail', 'callout', 'closeall', 'head'];
 const TAB = '.dock__tab[data-panel="settings"]';
-
-it.todo(
-  'MP-3-1 visual match: dock-rest and p-clients (head only) at 1480, 900 and 390, light and dark (waits on a catalogued dock state and the clients panel)',
-);
 
 /** The rail and its callout at rest, then Close all and the panel head with Settings open. */
 async function captureDock(at: DockSide): Promise<{ name: string; png: Buffer }[]> {

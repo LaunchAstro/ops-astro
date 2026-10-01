@@ -214,7 +214,8 @@ describe('MP-3-3 height in one store', () => {
     'MP-3-3 own preference only: a write to another person row is refused (waits on MP-2-11)',
   );
   it.todo('MP-3-3 no audit: a preference save and read add no audit event (waits on MP-2-11)');
-  it.todo(
-    'MP-3-3 visual match: stack2 at 1480, 1100, 950, 900 and 390, light and dark (waits on a catalogued dock state and a second registered panel)',
-  );
+  // MP-3-3 visual match, stack2: in a real browser in dock-mockup-match.test.ts
+  // (1700, 1480, 1300, 1100, 900 and 390, the inventory's captured widths; 950
+  // has no capture), with the local picture comparison's evidence under the
+  // roadmap's .local/design-system-2026-09-26/evidence/SL06-dock-mockup-match/.
 });
