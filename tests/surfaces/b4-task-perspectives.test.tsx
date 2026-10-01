@@ -7,6 +7,8 @@
 // read for, drawn from sample values inside the shared mock label and nowhere
 // else; and the receipt drawn as the mockup's evidence box (DS-TASK-6).
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { act } from 'react';
 import { describe, expect, it } from 'vitest';
 import { TaskDetailScreen } from '../../apps/web/src/screens/TaskDetail.tsx';
@@ -160,6 +162,12 @@ const marked = (root: Element | null, selector: string): { mock: string[]; real:
   };
 };
 
+// The task page's sheet: a ticked box in the strip draws in the accent.
+const TASK_SHEET = readFileSync(
+  join(import.meta.dirname, '../../packages/ui/src/styles/5-task.css'),
+  'utf8',
+);
+
 describe('B4 the Team and Agent perspectives', () => {
   it('opens on Team with both panes mounted, and the Agent tab counts the open gate', async () => {
     const { page } = await open();
@@ -252,15 +260,20 @@ describe('B4 the sample facts, inside the mock label and nowhere else', () => {
     await page.unmount();
   });
 
-  it('draws the strip read-only: no control in it, ticks as pictures', async () => {
+  it('draws the strip read-only, ticks as pictures, a ticked one in the accent', async () => {
     const { page } = await open();
     await tick();
 
     const strip = page.find('.mstrip');
     expect(strip?.querySelector('button, input, select')).toBeNull();
-    // A picture carries its state in its name; aria-checked is not allowed on role img.
-    expect(strip?.querySelectorAll('[role="img"][aria-label]').length).toBe(2);
+    // A picture carries its state in its name and data-on; role img takes no aria-checked.
     expect(strip?.querySelectorAll('[aria-checked]').length).toBe(0);
+    const on = (name: string): string | undefined =>
+      strip?.querySelector<HTMLElement>(`[role="img"][aria-label="${name}"]`)?.dataset['on'];
+    expect([on('Client access: yes'), on('Ad hoc: no')]).toEqual(['true', 'false']);
+    expect(TASK_SHEET).toMatch(
+      /\.mstrip \.check\[data-on='true'\]\s*\{[^}]*border-color:\s*var\(--accent\)/u,
+    );
     await page.unmount();
   });
 });

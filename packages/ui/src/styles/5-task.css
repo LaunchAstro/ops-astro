@@ -157,6 +157,10 @@
 .mstrip .check {
   cursor: default;
 }
+/* Its state rides on data-on, since a picture takes no aria-checked. */
+.mstrip .check[data-on='true'] {
+  border-color: var(--accent);
+}
 /* "derived": the calculation-source word after a derived cell's label. */
 .mcalc__src {
   color: var(--text-2);
