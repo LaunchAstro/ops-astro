@@ -130,10 +130,13 @@ function realCrossings(): void {
       // oxlint-disable-next-line no-await-in-loop
       const across = await dismiss({ ...TIP, version: 6 }, token, key === undefined ? {} : { key });
       expect(across.status, JSON.stringify(across.body)).toBe(403);
+      // No standing at that business's key: the session answer, not R4's gate.
+      expect(across.body['code']).toBe('AUTH_NO_MEMBERSHIP');
       expectNoCanary(across);
       // oxlint-disable-next-line no-await-in-loop
       const looked = await call('preference.read', {}, token, key === undefined ? {} : { key });
       expect(looked.status).toBe(403);
+      expect(looked.body['code']).toBe('AUTH_NO_MEMBERSHIP');
       expectNoCanary(looked);
     }
     expect(await rowsOf(bo.personId)).toStrictEqual([]);

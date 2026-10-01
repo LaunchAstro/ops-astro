@@ -353,13 +353,17 @@ fields and client-audience comments only".
   Any other write is `SCOPE_NOT_GRANTED` 403, whatever other grant rows exist.
   With a `comment` grant on the task, an internal comment is
   `AUDIENCE_NOT_PERMITTED` 422. Without one, a comment in either audience is
-  `SCOPE_NOT_GRANTED`, so a read share alone writes nothing.
+  `SCOPE_NOT_GRANTED`, so a read share alone writes nothing of the
+  business's. `notifications.set_channel` shares the `preference:write` key
+  but is not a `person_preferences` row, and stays refused to R4
+  (`tests/commands/external-notification-discovery.test.ts`).
   `tests/authority/non-member-grants.test.ts` proves each case.
 - **The client comment is the lead's ruling, not an owner decision.**
   Coordinator 25 ruled on 24 Sep 2026, reading contract 8.1 R4, that an
   external party holding an explicitly provisioned comment grant may write a
-  client-audience comment and nothing else, and that a read share alone writes
-  nothing. Nathan may overturn it with one line, an empty `EXTERNAL_WRITES`.
+  client-audience comment and nothing else of the business's, and that a read
+  share alone writes nothing of the business's. Nathan may overturn it with
+  one line: drop `task.comment` from `EXTERNAL_WRITES`.
 - **The read is an allowlist.** `task.read` answers `sharedTask`, built from
   the catalogue's `shared` fields and the client comments, never `task` with
   parts cut ([API.md, "Reads"](API.md#reads)). R4 sees the task's `title` and
@@ -369,8 +373,8 @@ fields and client-audience comments only".
   and the board are `NOT_FOUND`.
 - **`session.capabilities`** shows the party its shares' pairs, plus
   `task:comment` when it holds a comment grant. A provisioned `write` or
-  `assign` row is not shown, since the R4 gate refuses every write but
-  `task.comment` (`usableOutside`, `reads/capabilities.ts`). Proved over HTTP,
+  `assign` row is not shown, since the R4 gate refuses every write outside
+  `EXTERNAL_WRITES` (`usableOutside`, `reads/capabilities.ts`). Proved over HTTP,
   with `person.list` refused and naming no member, by
   `tests/authority/party-capability-reads.test.ts`.
 - **Proved** over HTTP by `tests/acceptance/external-party.test.ts`: the
@@ -855,7 +859,7 @@ What is still absent:
 - **No external comment in practice.** `task.comment` already holds a
   non-member to `audience: client`, but only on a `comment` grant for the
   task. A share issues `read` alone and no route issues a `comment` grant, so
-  a shared party writes nothing until someone provisions one through
+  a shared party writes nothing of the business's until someone provisions one through
   `issueGrant` ([The external party](#the-external-party-r4)).
 - **Which task fields are `shared`** is an owner decision. Nathan's I09
   ruling shares the task's `title` and `state` label; every other field is
