@@ -58,7 +58,16 @@ Security review: REPLACE-WITH-OUTCOME
 
 ## Review record
 
-<!-- The cross-company reviewer's four lines for this head, as posted. -->
+<!--
+The cross-company reviewer's four lines for this head, as posted.
+
+While Sol's review is owed (owner, 1 October 2026), the mark stands in for
+them: add the needs-sol label, delete the four lines, and put in their place
+the line  Sol-owed: stage1/SOL-OWED.md <row id or range>  on its own, at the
+margin, naming the row that holds this piece for Sol, as ROW-ID-N or
+<base sha>..<head sha>. The code-review and security-review lines above are
+still required exactly as they are.
+-->
 
 Reviewer: REPLACE-WITH-OUTCOME
 Model: REPLACE-WITH-OUTCOME

@@ -13,7 +13,15 @@
 
 import { rmSync } from 'node:fs';
 import { afterAll, describe, expect, it } from 'vitest';
+import {
+  createFreshDatabase,
+  databaseUrlFromEnvironment,
+  type FreshDatabase,
+} from '../support/fresh-database.ts';
+import { insertBusiness } from '../identity/fixture.ts';
 import { STOP, CANARY, scratch, fake, spawn, untouched } from './service-stop.fixture.ts';
+
+const serverUrl = databaseUrlFromEnvironment();
 
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
@@ -57,3 +65,48 @@ describe('S0-1 gated stop, before any lookup', () => {
     untouched(at);
   });
 });
+
+// The refusals above name an address nothing listens on. Here the address is a
+// live database of the business the caller names: still refused before any
+// lookup, and nothing is written to it.
+describe.skipIf(serverUrl === undefined)(
+  'S0-1 gated stop, before any lookup, beside a live database',
+  () => {
+    let db: FreshDatabase | undefined;
+    afterAll(async () => await db?.drop());
+
+    it('with no sign-in or flagged as an agent, writes no sign-in row to it', async () => {
+      const live = await createFreshDatabase({ part: 's01stop' });
+      db = live;
+      const business = await insertBusiness(live.app, 'alpha');
+      const admin = new URL(serverUrl as string);
+      admin.pathname = `/${live.name}`;
+      const signIns = async (): Promise<number> =>
+        await live.app.withBusiness(business, async (tx) => {
+          const rows = await tx.query<{ n: number }>(
+            'select count(*)::int as n from authentication_attempts where business_id = $1',
+            [tx.businessId],
+          );
+          return rows[0]!.n;
+        });
+      for (const own of [{}, { OPS_ASTRO_AGENT: '1', OPS_ASTRO_TOKEN: CANARY }]) {
+        const at = fake();
+        // oxlint-disable-next-line no-await-in-loop -- one caller after the other
+        const before = await signIns();
+        const result = spawn(STOP, [], {
+          PATH: at.path,
+          OPS_ASTRO_DEPLOYMENTS: at.records,
+          OPS_ASTRO_BUSINESS: 'alpha',
+          DATABASE_URL: live.appUrl,
+          DATABASE_ADMIN_URL: admin.toString(),
+          ...own,
+        });
+        expect(result.status, result.out).toBe(1);
+        expect(result.out).not.toContain(CANARY);
+        untouched(at);
+        // oxlint-disable-next-line no-await-in-loop -- one caller after the other
+        expect(await signIns(), 'a refused stop wrote a sign-in row').toBe(before);
+      }
+    }, 60_000);
+  },
+);

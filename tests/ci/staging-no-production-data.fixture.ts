@@ -21,6 +21,8 @@ export async function emptied(admin: Admin): Promise<void> {
   await admin.execute('drop event trigger if exists ops_astro_made_up_guard');
   await admin.execute('drop schema if exists ops_astro_made_up cascade');
   await admin.execute('delete from public.records');
+  // The live change record's stamps (C4, 0065) hold the business by a key.
+  await admin.execute('delete from public.live_changes');
   await admin.execute('delete from public.record_types');
   await admin.execute('delete from public.people');
   await admin.execute('delete from public.businesses');

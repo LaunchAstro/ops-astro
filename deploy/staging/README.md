@@ -8,10 +8,10 @@ here deploys it: the first deploy is S0-6, once S0-2's alerts reach the owner.
 it without a YAML parser. It holds what staging runs on the machine: the
 backup store (Postgres, on the same major as production's managed
 database, 17) and the worker unit (the worker and its forwarder). Staging's
-database and sign-in are its Supabase project, and the web app and API are on Vercel (the
-Vercel re-plan), so neither has a container here. `x-ops-astro` names what
-other scripts read: the prefix every staging name carries, the production
-major and the artefact the promotion step selects.
+database and sign-in are its Supabase project, and the web app and API are on
+Vercel (the Vercel re-plan), so neither has a container here. `x-ops-astro`
+names what other scripts read: the prefix every staging name carries, the
+production major and the artefact the promotion step selects.
 
 Everything staging owns is named `ops-astro-staging*`: containers, network
 and volume. Every credential is a `${STAGING_*}` placeholder, and Compose
@@ -110,10 +110,13 @@ Each drill it runs, passed or failed, leaves a receipt in the backup store
 (`backups.drills`: time, outcome, stage, majors, table count, stage timings
 and the operator; no record data, key, credential, fingerprint or path) and a
 line in the operator's record folder. The receipt names the date of the last
-tested restore. The daily upkeep job (`backup.mjs expire`) pings the restore
-heartbeat only while a drill passed within `backups.settings.restore_days`
-(35 to start). Once none has, the watcher mails the owner and the second
-operator that the restore drill is out of date.
+tested restore. A pass the store took also stamps that date on staging's
+database (`ops.last_tested_restore`, migration 0070), where the operations
+view reads it; a failed drill stamps nothing. The daily upkeep job
+(`backup.mjs expire`) pings the restore heartbeat only while a drill passed
+within `backups.settings.restore_days` (35 to start). Once none has, the
+watcher mails the owner and the second operator that the restore drill is out
+of date.
 
 A drill can also run on a host with no route to the store (the runbook's
 clean-host leg), under the same gate. Every drill mode acts for the
@@ -180,19 +183,17 @@ product. Before anything starts, staging's database (`DATABASE_ADMIN_URL`)
 must pass the made-up-only preflight, and any sign it finds refuses the
 deploy.
 
-The deploy builds one image from that artefact on the pinned base, with
-nothing from the machine mounted, and Compose runs the app services on that
-image by its id. The base is the staging Dockerfile, which arrives with the
-release artefact in S0-6e; until then the deploy stops at its build and
-records nothing. Every other service is named by a digest with a row in
-`docs/supply-chain-pins.md`, and the deploy refuses a service Compose could
-build or pull another way (`S0-6 image pins`). After Compose is up, each
+The deploy builds no image: the app and API run on Vercel and deploy only
+through `web-deploy.mjs` (below). Compose starts the M5's unit (worker,
+forwarder, backup store, egress), and every service is named by a digest with
+a row in `docs/supply-chain-pins.md`. The deploy refuses a service Compose
+could build or pull another way (`S0-6 image pins`). After Compose is up, each
 container must be on the image it was named by.
 
 The deploy takes the service report's snapshot before and after, and a live
 service that stopped, restarted or changed fails it (`S0-6 services
 unchanged`). Only a deploy that passes both writes `deploy recorded` to the
-operator's record folder: the version, the artefact and the image id.
+operator's record folder: the version and the artefact.
 
 The web app goes to Vercel with `scripts/ops/web-deploy.mjs --version <id>
 --artefacts <store>` (the Vercel re-plan, step 4), beside the deploy above.
@@ -201,13 +202,16 @@ checked. The output is copied into a folder of its own and checked again
 there. It runs `vercel deploy --prebuilt --prod` under the person's own Vercel
 sign-in, into the project that `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` name,
 and hands the CLI nothing else from the environment. It refuses to run with
-`VERCEL_TOKEN` set. Then it reads the deployment's region back with
-`vercel inspect`. Before it asks Vercel, the sign-in server at `GOTRUE_URL`
-must report its version on `/health` (with `SUPABASE_PUBLISHABLE_KEY` as its
-key when set): no version, no deploy. Only a deployment Vercel reports in
-`syd1` alone writes `deploy recorded`: the version, the artefact, the digest,
-the deployment's own address, the region, the function runtime and the sign-in
-server's version. The folder, `.vercel` included, is removed either way.
+`VERCEL_TOKEN` set. Then it asks `vercel inspect` about the deployment it
+made, which must report that same deployment `READY` on `production`. Before
+it asks Vercel, the sign-in server at `GOTRUE_URL` must report its version on
+`/health` (with `SUPABASE_PUBLISHABLE_KEY` as its key when set): no version,
+no deploy. Only a deployment read back that way writes `deploy recorded`: the
+version, the artefact, the digest, the deployment's own address, the region,
+the function runtime and the sign-in server's version. The region is `syd1`,
+the built output's own declaration, which `buildOutputProblems` holds every
+function to before the deploy. It is not a region Vercel reports. The folder,
+`.vercel` included, is removed either way.
 
 `scripts/ops/web-deploy.mjs --maintenance`, behind the same gate, puts the
 maintenance page on the main address the same way (`maintenance recorded`)
@@ -248,20 +252,30 @@ the owner and the second operator at once, from its own mail, in the plain
 words of `apps/api/alerts/catalogue.ts`. The addresses are private, set in the
 environment at run time:
 
-| Variable                                                   | Read by                                      | Holds                                                                                                                                                      |
-| ---------------------------------------------------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `OPS_ALERT_OWNER_EMAIL`, `OPS_ALERT_SECOND_OPERATOR_EMAIL` | `alerts.mjs plan`                            | the two alert addresses                                                                                                                                    |
-| `OPS_ALERT_TEST_EMAIL`                                     | `alerts.mjs plan --test`                     | the test address agreed before case R8's proof                                                                                                             |
-| `OPS_WATCH_STAGING_URL`, `OPS_WATCH_PRODUCTION_URL`        | `alerts.mjs plan`                            | the public https addresses watched; production's from the first promotion                                                                                  |
-| `OPS_ERROR_SINK_DSN`                                       | the forwarder, `alerts.mjs`, the secret scan | the sink's DSN, at a public https address (a private one is refused, a redirect not followed); never the Vercel function's (it refuses to start beside it) |
-| `OPS_ENVIRONMENT`, `OPS_RELEASE`                           | the API, the forwarder, `alerts.mjs test`    | `staging` or `production`; the build stamp                                                                                                                 |
-| `ALERT_SCOPE_KEY`                                          | the API (the Vercel function)                | at least 32 bytes as hex (`openssl rand -hex 32`), one per environment, every instance the same; required once `OPS_ENVIRONMENT` is set                    |
-| `DATABASE_FORWARDER_URL`                                   | `forwarder.mjs`                              | a login that is a member of `ops_astro_forwarder` alone                                                                                                    |
-| `OPS_FORWARDER_HEARTBEAT_URL`                              | `forwarder.mjs`                              | the watcher's forwarder heartbeat, pinged after each pass that completed                                                                                   |
-| `OPS_WORKER_HEARTBEAT_URL`                                 | the worker                                   | the watcher's worker heartbeat, pinged after each pass the API answered                                                                                    |
-| `OPS_SINK_HEARTBEAT_URL`                                   | `forwarder.mjs`                              | the watcher's error sink heartbeat, pinged while the sink's health page answers                                                                            |
-| `OPS_BACKUP_HEARTBEAT_URL`                                 | `backup.mjs run`                             | the watcher's backup heartbeat, pinged once a backup is recorded                                                                                           |
-| `OPS_RESTORE_HEARTBEAT_URL`                                | `backup.mjs expire`                          | the watcher's restore heartbeat, pinged only while a drill is fresh                                                                                        |
+| Variable                                                   | Read by                                      | Holds                                                                                                                                                                                                                                                        |
+| ---------------------------------------------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `OPS_ALERT_OWNER_EMAIL`, `OPS_ALERT_SECOND_OPERATOR_EMAIL` | `alerts.mjs plan`                            | the two alert addresses                                                                                                                                                                                                                                      |
+| `OPS_ALERT_TEST_EMAIL`                                     | `alerts.mjs plan --test`                     | the test address agreed before case R8's proof                                                                                                                                                                                                               |
+| `OPS_WATCH_STAGING_URL`, `OPS_WATCH_PRODUCTION_URL`        | `alerts.mjs plan`                            | the public https addresses watched; production's from the first promotion                                                                                                                                                                                    |
+| `OPS_ERROR_SINK_DSN`                                       | the forwarder, `alerts.mjs`, the secret scan | the sink's DSN, at a public https address (a private one is refused, a redirect not followed); never the Vercel function's (it refuses to start beside it)                                                                                                   |
+| `OPS_ERROR_SINK_URL`                                       | the API                                      | the sink's web address, the operations view's link (C55); no secret, never the DSN (an address with a user part stops the API)                                                                                                                               |
+| `OPS_ENVIRONMENT`, `OPS_RELEASE`                           | the API, the forwarder, `alerts.mjs test`    | `staging` or `production`; the build stamp                                                                                                                                                                                                                   |
+| `ALERT_SCOPE_KEY`                                          | the API (the Vercel function)                | at least 32 bytes as hex (`openssl rand -hex 32`), one per environment, every instance the same; required once `OPS_ENVIRONMENT` is set                                                                                                                      |
+| `RECOVERY_BUSINESS_KEYS`                                   | the API (the Vercel function)                | deployment's business keys, or `none`; the function's recovery (below); unset, the function does not start                                                                                                                                                   |
+| `DATABASE_FORWARDER_URL`                                   | `forwarder.mjs`                              | a login that is a member of `ops_astro_forwarder` alone                                                                                                                                                                                                      |
+| `OPS_FORWARDER_HEARTBEAT_URL`                              | `forwarder.mjs`                              | the watcher's forwarder heartbeat, pinged after each pass that completed                                                                                                                                                                                     |
+| `OPS_WORKER_HEARTBEAT_URL`                                 | the worker                                   | the watcher's worker heartbeat, pinged after each pass the API answered                                                                                                                                                                                      |
+| `OPS_SINK_HEARTBEAT_URL`                                   | `forwarder.mjs`                              | the watcher's error sink heartbeat, pinged while the sink's health page answers                                                                                                                                                                              |
+| `OPS_BACKUP_HEARTBEAT_URL`                                 | `backup.mjs run`                             | the watcher's backup heartbeat, pinged once a backup is recorded                                                                                                                                                                                             |
+| `OPS_RESTORE_HEARTBEAT_URL`                                | `backup.mjs expire`                          | the watcher's restore heartbeat, pinged only while a drill is fresh                                                                                                                                                                                          |
+| `OPS_HEARTBEAT_EVERY_MS`                                   | the worker, `forwarder.mjs`                  | the least milliseconds between two pings to one heartbeat, so a free watcher's budget holds; a few minutes under the watcher's window (a ping lands up to one pass late), at most a day; staging's compose requires it, and unset elsewhere every pass pings |
+
+`RECOVERY_BUSINESS_KEYS` makes the Vercel function recovery's one owner (the
+worker holds no database and sweeps nothing): before the first request each
+minute, it sweeps expired leases, replays and reconciles for those businesses,
+resolving the keys on `DATABASE_LOOKUP_URL`. The operator sets it with `vercel
+env add`; unset or malformed, the function does not start. Each business
+passes on its own, so a key that resolves to no business holds up no other.
 
 `node scripts/ops/alerts.mjs plan` prints the checks, each with its name and
 its alert message in plain words, and the recipients to set up in both

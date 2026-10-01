@@ -75,7 +75,8 @@ export interface Observed {
  * `rebuildApi` is the same composition, but it opens its connection without a
  * log, so this is that function's body with the one option it lacks.
  */
-export function observe(world: World): Observed {
+/** `execute` is the shipped envelope unless a mutation proof hands in its copy's. */
+export function observe(world: World, execute: typeof executeCommand = executeCommand): Observed {
   const log = createStatementLog();
   const database = connect(world.db.appUrl, { source: 'runtime', log, max: 1 });
   const byKey: Readonly<Record<string, string>> = { alpha: world.alpha, bravo: world.bravo };
@@ -83,7 +84,7 @@ export function observe(world: World): Observed {
     database,
     verify: createSupabaseVerifier(testSignIn(ACCEPTANCE_ISSUER)),
     resolveBusiness: (key: string) => Promise.resolve(byKey[key]),
-    executeCommand,
+    executeCommand: execute,
     executeRead,
     executeAgentCommand,
   });
@@ -245,7 +246,12 @@ export function expectedShape(
           ],
     schemaChanging: [],
     sessionWide: [],
-    audited: outcome === 'unresolved' ? 'authentication_attempts' : 'audit_events',
+    // An applied save of a person's own preference joins no chain (CS-2.8):
+    // the door's `authentication_attempts` row is the only record written.
+    audited:
+      outcome === 'unresolved' || (outcome === 'applied' && !declaration.audited)
+        ? 'authentication_attempts'
+        : 'audit_events',
   };
 }
 

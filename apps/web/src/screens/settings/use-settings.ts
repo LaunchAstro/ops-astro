@@ -44,11 +44,11 @@ import type {
 } from '../../../../../packages/core-wire/src/index.ts';
 import { sessionMemory, type Confirmed } from './confirmed.ts';
 import {
-  FOUR_EYES,
+  GRANT,
+  KEY,
   SESSION_CAPABILITIES,
   SETTINGS_READ,
-  SIGN_OFF,
-  holdsManage,
+  holds,
   rowsInHand,
   settingOf,
 } from './reads.ts';
@@ -56,8 +56,8 @@ import {
 export type { StorageLike } from '../../session/token.ts';
 export type { Confirmed } from './confirmed.ts';
 
-/** Which of the two settings a press is about. */
-export type Which = 'four-eyes' | 'sign-off';
+/** Which setting a press is about: the two money and sign-off rows, and MP-2-11's two windows. */
+export type Which = 'four-eyes' | 'sign-off' | 'conversation' | 'retention';
 
 /** What a person can propose. `null` is the band off, and it is a real value. */
 export type Draft = number | boolean | null;
@@ -65,9 +65,9 @@ export type Draft = number | boolean | null;
 const COMMAND = {
   'four-eyes': 'settings.set_four_eyes_threshold',
   'sign-off': 'settings.set_client_sign_off',
+  conversation: 'settings.set_conversation_window',
+  retention: 'settings.set_retention_window',
 } as const;
-
-const KEY = { 'four-eyes': FOUR_EYES, 'sign-off': SIGN_OFF } as const;
 
 /** A write the server would not take because somebody else wrote first. */
 export interface Conflict {
@@ -86,6 +86,8 @@ function remember(which: Which, echo: unknown, value: Draft): Confirmed {
     const fourEyes = isThreshold(echo) ? echo : isThreshold(value) ? value : undefined;
     return fourEyes === undefined ? {} : { fourEyes };
   }
+  // The windows keep no browser memory: only the server's read is drawn for them.
+  if (which !== 'sign-off') return {};
   const signOff = typeof echo === 'boolean' ? echo : typeof value === 'boolean' ? value : undefined;
   return signOff === undefined ? {} : { signOff };
 }
@@ -110,13 +112,17 @@ export interface SettingsModel {
   readonly confirmed: Confirmed;
   readonly closed: boolean;
   readonly busy: Which | null;
+  /** Every row closed; `disabledFor` adds the row's own grant (four-eyes: spend:decide). */
   readonly disabled: boolean;
+  readonly disabledFor: (which: Which) => boolean;
   readonly because: string | null;
   readonly conflict: Conflict | null;
   readonly rowFor: (which: Which) => SettingView | null;
   readonly save: (which: Which, value: Draft) => void;
   /** The second explicit press: the person choosing to overwrite what they saw. */
   readonly writeOver: () => void;
+  /** Asks the settings read again, after it did not come back. */
+  readonly retry: () => void;
   /** Something this screen decided, not the server. Never dressed as a refusal. */
   readonly complain: (text: string) => void;
 }
@@ -169,7 +175,13 @@ export function useSettings(
   const busy = command.busy ? pressed : null;
   // A stale write is the conflict, drawn with its draft, not a reason line.
   const failure = command.failure?.kind === 'stale' ? null : command.failure;
-  const because = complaint ?? failure?.because ?? null;
+  // A stale sign-in on a money setting is answered with the fix alone: the
+  // person signs in again, and the code means nothing to them (MP-2-11).
+  const stepUp =
+    failure?.kind === 'failed' && failure.refusal.code === 'STEP_UP_REQUIRED'
+      ? failure.refusal.fixes.join(' ')
+      : null;
+  const because = complaint ?? stepUp ?? failure?.because ?? null;
 
   const read = settings.state;
   const caps = capabilities.state;
@@ -177,13 +189,12 @@ export function useSettings(
   // screen behaves as it did before the read existed: it offers the controls,
   // asks once, and closes on the server's refusal. Closing on an absence would
   // make the screen unusable against every build that has not landed it yet.
-  const mayManage =
+  const mayFor = (which: Which): boolean =>
     caps.outcome === 'unavailable'
       ? true
       : caps.outcome === 'ready' || caps.outcome === 'empty'
-        ? holdsManage(caps.value.grants)
+        ? holds(caps.value.grants, GRANT[which])
         : false;
-  const shut = command.closed || !mayManage;
   // A conflict's reread still in flight: the row on screen is the one that
   // lost, so a press now would write against a revision nobody has seen.
   const rereading = conflict !== null && read.outcome === 'loading';
@@ -247,7 +258,7 @@ export function useSettings(
   };
 
   const save = (which: Which, value: Draft): void => {
-    if (command.locked || !mayManage) return;
+    if (command.locked || !mayFor(which)) return;
     const revision = rowFor(which)?.revision;
     const options: MutationOptions = revision === undefined ? {} : { expectedRevision: revision };
     setPressed(which);
@@ -261,6 +272,7 @@ export function useSettings(
     );
   };
 
+  const everyRow = busy !== null || command.closed || rereading;
   return {
     read,
     capabilities: caps,
@@ -269,7 +281,8 @@ export function useSettings(
     confirmed,
     closed: command.closed,
     busy,
-    disabled: busy !== null || shut || rereading,
+    disabled: everyRow,
+    disabledFor: (which) => everyRow || !mayFor(which),
     because,
     conflict,
     rowFor,
@@ -281,6 +294,7 @@ export function useSettings(
       setConflict(null);
       save(conflict.which, conflict.draft);
     },
+    retry: settings.reload,
     complain: setComplaint,
   };
 }

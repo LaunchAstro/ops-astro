@@ -149,10 +149,13 @@ describe.skipIf(serverUrl === undefined)('T04/M03 over the whole exported invent
     it.each(OPERATIONS)(
       '%s',
       async (_name, declaration) => {
-        // `session.capabilities` asks for membership and nothing else, so the
-        // member it refuses is the verified login with no membership at all.
-        const caller =
-          declaration.name === 'session.capabilities' ? harness.world.orphan : harness.world.noah;
+        // `session.capabilities` and the operations authorised on the caller's
+        // own account (`self`: C23's `session.person` and `session.end`) ask for
+        // membership and nothing else, so the member they refuse is the
+        // verified login with no membership at all.
+        const membershipOnly =
+          declaration.name === 'session.capabilities' || declaration.authorisedOn === 'self';
+        const caller = membershipOnly ? harness.world.orphan : harness.world.noah;
         const call: CapturedCall = {
           name: declaration.name,
           prefix: 'person',
@@ -218,9 +221,9 @@ const read = (...statements: string[]) => {
   return shapeOf(log.entries);
 };
 
-describe('the shape reader catches each thing it is for', () => {
-  const local = `select set_config('app.business_id', $1, true)`;
+const local = `select set_config('app.business_id', $1, true)`;
 
+describe('the shape reader catches each thing it is for', () => {
   it('reads a clean transaction as clean', () => {
     expect(read('begin', local, 'select 1', 'commit')).toMatchObject({
       transactions: 1,
@@ -266,7 +269,9 @@ describe('the shape reader catches each thing it is for', () => {
     expect(shape.afterBegin).toStrictEqual(['select 1']);
     expect(shape.sessionWide).toHaveLength(2);
   });
+});
 
+describe('the shape reader catches each thing it is for', () => {
   it('reports schema changes, opaque ones included', () => {
     const shape = read(
       'begin',

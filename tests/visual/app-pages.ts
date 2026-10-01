@@ -19,8 +19,16 @@ import type { Browser } from 'playwright';
 import { createServer } from 'vite';
 import { load, openSide, shoot, type Catalogue, type Side } from './capture.ts';
 import { scrollMetrics } from './drift.ts';
+import { answerMadeUp } from './made-up-api.ts';
 import type { Packet, Theme } from './packet.ts';
-import { addressOf, builtPages, needsSession, overflowOf, type PageShot } from './report.ts';
+import {
+  addressOf,
+  builtPages,
+  intendedScreen,
+  needsSession,
+  overflowOf,
+  type PageShot,
+} from './report.ts';
 
 /** The app served from source by its own Vite config, at a free local port. */
 export async function serveApp(): Promise<{ app: URL; close: () => Promise<void> }> {
@@ -59,6 +67,10 @@ export async function captureBuiltPages(options: {
   widths: readonly number[];
   themes: readonly Theme[];
   out: string;
+  /** Only these pages (a ticket's own captures); every built page when not given. */
+  pages?: readonly string[];
+  /** Made-up answers to the app's reads, by the end of the read's address (`operations/read`). */
+  answers?: Readonly<Record<string, unknown>>;
 }): Promise<PageShot[]> {
   const { browser, packet, app, session } = options;
   const { mask } = JSON.parse(
@@ -71,6 +83,9 @@ export async function captureBuiltPages(options: {
       // A public page (sign-in) is drawn signed out, a working page signed in.
       const signedOut = await openSide(browser, packet, width, { app, colorScheme: theme });
       const signedIn = await openSide(browser, packet, width, { app, session, colorScheme: theme });
+      // Made-up reads first; a page's own answers are routed after, so they are asked first.
+      await answerMadeUp(signedIn.context);
+      for (const side of [signedOut, signedIn]) await answer(side, options.answers ?? {});
       try {
         const sides = { signedOut, signedIn };
         shots.push(...(await capturePages(sides, { ...options, mask, width, theme })));
@@ -82,9 +97,27 @@ export async function captureBuiltPages(options: {
   return shots;
 }
 
-/** Which screen the app drew: its sign-in form, a gate, or the page itself. */
+/** The parameters a page's address is filled with: a made-up task, business and document. */
+export const MADE_UP_PARAMS = { key: 'T-1', business: 'alpha', document: 'privacy-policy' };
+
+/** Each read named answers its made-up body; a route added last is asked first. */
+export async function answer(
+  side: Side,
+  answers: Readonly<Record<string, unknown>>,
+): Promise<void> {
+  for (const [read, body] of Object.entries(answers)) {
+    await side.context.route(`**/api/**/${read}`, (route) =>
+      route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(body) }),
+    );
+  }
+}
+
+/** Which screen the app drew: its sign-in form, a gate, its server error, or the page itself. */
 export function screenOf(): string {
   if (document.querySelector('.signin__form') !== null) return 'the sign-in form';
+  // main.tsx draws one bare paragraph when it cannot reach the server.
+  const bare = document.querySelector('#app > p:only-child')?.textContent ?? '';
+  if (bare.includes('cannot reach its server')) return 'the server error';
   const title = document.querySelector('.readstate .empty__title')?.textContent ?? '';
   if (title.startsWith('You are already signed in')) return 'the already-signed-in gate';
   if (title.startsWith('No screen is registered')) return 'the not-found gate';
@@ -94,17 +127,25 @@ export function screenOf(): string {
 /** Every built page at one width in one theme, each on the side its route asks for. */
 async function capturePages(
   sides: { signedOut: Side; signedIn: Side },
-  at: { packet: Packet; app: URL; width: number; theme: Theme; mask: string[]; out: string },
+  at: {
+    packet: Packet;
+    app: URL;
+    width: number;
+    theme: Theme;
+    mask: string[];
+    out: string;
+    pages?: readonly string[] | undefined;
+  },
 ): Promise<PageShot[]> {
   const { packet, app, width, theme, mask, out } = at;
   const shots: PageShot[] = [];
-  for (const id of builtPages()) {
+  for (const id of at.pages ?? builtPages()) {
     const name = `${id}@${width}-${theme}`;
-    const address = addressOf(id, { key: 'T-1' }) ?? '/';
+    const address = addressOf(id, MADE_UP_PARAMS) ?? '/';
     const side = needsSession(id) ? sides.signedIn : sides.signedOut;
     const page = await load(side, packet, new URL(address, app).href);
     // The intended screen is checked before the picture counts.
-    const intended = needsSession(id) ? 'the page' : 'the sign-in form';
+    const intended = intendedScreen(id);
     const drew = await page.evaluate(screenOf);
     const [shot] = await shoot(page, name, { page: 'viewport' }, mask);
     const overflow = overflowOf(await page.evaluate(scrollMetrics));

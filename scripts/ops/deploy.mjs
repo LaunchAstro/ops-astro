@@ -9,11 +9,11 @@
 // The operator gate (`operator.ts`) answers before any argument is read and
 // before Docker is asked; a refusal writes nothing. The live services are read
 // through S0-1a's service report, never a saved one, and compared with its own
-// compare, both imported. The app image is built from the artefact with
-// deploy/staging/Dockerfile and handed to Compose by its id. The deployment
-// record is written only once staging is up on its pinned images with every
-// live service unchanged. Exit 0 when deployed, 1 when refused or failed, 2
-// when the arguments are unusable.
+// compare, both imported. It builds no image: the app is on Vercel
+// (`web-deploy.mjs`), and Compose starts the M5's unit on its pinned images.
+// The deployment record is written only once staging is up on its pinned
+// images with every live service unchanged. Exit 0 when deployed, 1 when
+// refused or failed, 2 when the arguments are unusable.
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -23,7 +23,6 @@ import { recordDeployment, requireOperator } from './operator.ts';
 import { compare, snapshot } from './service-report.mjs';
 
 const DEFINITION = new URL('../../deploy/staging/compose.json', import.meta.url).pathname;
-const DOCKERFILE = new URL('../../deploy/staging/Dockerfile', import.meta.url).pathname;
 
 function usage(message) {
   console.error(`deploy: ${message}`);
@@ -54,16 +53,9 @@ const containers = Object.entries(definition.services).map(([n, s]) => s.contain
 const effects = {
   snapshot,
   compare,
-  buildImage(artefact) {
-    const out = execFileSync('docker', ['build', '--quiet', '--file', DOCKERFILE, artefact], {
-      encoding: 'utf8',
-    });
-    return out.trim();
-  },
-  up(image) {
+  up() {
     execFileSync('docker', ['compose', '--file', DEFINITION, 'up', '--detach', '--wait'], {
       stdio: 'inherit',
-      env: { ...process.env, OPS_ASTRO_STAGING_APP_IMAGE: image },
     });
   },
   imageId(ref) {
@@ -104,5 +96,5 @@ if (outcome.kind !== 'deployed') {
   console.error(`deploy: ${outcome.kind.toUpperCase()}: ${outcome.reason}`);
   process.exit(1);
 }
-console.log(`deploy: staging runs ${outcome.record.artefact} as ${outcome.record.image}`);
+console.log(`deploy: staging's M5 unit runs beside ${outcome.record.artefact}`);
 console.log(JSON.stringify(await recordDeployment(gate, outcome.record)));

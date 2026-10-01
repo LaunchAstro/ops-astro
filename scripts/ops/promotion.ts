@@ -24,7 +24,7 @@
 // here are tested with the effects watched and the command stays thin.
 
 import { readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { resolve } from 'node:path';
 import { outputDigest, recordedStamp } from './build-output.ts';
 
 /** A service as the service manager names it. */
@@ -127,7 +127,8 @@ export function storedArtefact(version: string, store: string): StoredArtefact |
     return `${version} is not a clean build identifier (twelve hex digits, never -dirty)`;
   }
   const name = artefactName(version);
-  const path = join(store, name);
+  // Absolute, so production's link resolves the same from its own folder.
+  const path = resolve(store, name);
   let isDirectory = false;
   try {
     isDirectory = statSync(path).isDirectory();

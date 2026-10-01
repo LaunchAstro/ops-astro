@@ -22,7 +22,6 @@ import { afterAll, beforeAll, expect } from 'vitest';
 import { signBearer, signForged, TEST_ISSUER } from '../support/sign-in.ts';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import type { TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
-import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import {
   insertActor,
   insertLogin,
@@ -48,8 +47,6 @@ export const ISSUER: string = TEST_ISSUER;
 export const CANARY = 'canary-3e91d0-stop-secret';
 
 export const STAGED = '0123456789ab';
-
-export const serverUrl: string | undefined = databaseUrlFromEnvironment();
 
 // Made by the file's first hook, so a file whose tests all skip leaves no folder (temp guard).
 export const scratch: string = join(tmpdir(), `s0-1g-${randomBytes(6).toString('hex')}`);

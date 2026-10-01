@@ -84,6 +84,20 @@ export function store(files: Files = OUTPUT, version: string = STAGED): string {
   return root;
 }
 
+/**
+ * `vercel inspect <url> --format json` for the deployment just made, as Vercel
+ * CLI 54.17.3 prints it: the address without its scheme, ready on production,
+ * no region field.
+ */
+export const INSPECTED: Readonly<Record<string, unknown>> = {
+  id: 'dpl_madeUp0123456789abcdef',
+  name: 'ops-astro-staging',
+  url: URL_MADE.slice('https://'.length),
+  target: 'production',
+  readyState: 'READY',
+  createdAt: 1_759_276_800_000,
+};
+
 interface Answers {
   deploy?: { out: string; status: number };
   inspect?: { out: string; status: number };
@@ -100,10 +114,7 @@ export function fakeVercel(answers: Answers = {}): FakeVercel {
   const bin = folder('bin');
   const log = join(bin, 'calls.log');
   const deploy = answers.deploy ?? { out: URL_MADE, status: 0 };
-  const inspect = answers.inspect ?? {
-    out: JSON.stringify({ url: URL_MADE.slice('https://'.length), regions: ['syd1'] }),
-    status: 0,
-  };
+  const inspect = answers.inspect ?? { out: JSON.stringify(INSPECTED), status: 0 };
   writeFileSync(join(bin, 'deploy.out'), `${deploy.out}\n`);
   writeFileSync(join(bin, 'inspect.out'), `${inspect.out}\n`);
   writeFileSync(

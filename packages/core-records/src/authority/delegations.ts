@@ -608,7 +608,9 @@ export async function revokeDelegation(
   cause: RevocationCause = 'delegation_revoked',
 ): Promise<Date | null> {
   const rows = await tx.query<{ readonly revoked_at: Date }>(
-    `update public.delegations set revoked_at = now(), revocation_cause = $3
+    // No earlier than the delegation itself, as `revokeGrant` stamps a grant:
+    // a revocation that waited on a lock behind it began before it existed.
+    `update public.delegations set revoked_at = greatest(now(), granted_at), revocation_cause = $3
       where business_id = $1 and id = $2 and revoked_at is null and settled_at is null
       returning revoked_at`,
     [tx.businessId, delegationId, cause],
