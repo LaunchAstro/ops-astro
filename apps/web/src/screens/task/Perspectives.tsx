@@ -89,11 +89,11 @@ function usePlacedMark(host: { readonly current: HTMLElement | null }, selected:
       if (snap) row.classList.add('is-placing');
       mark.style.left = `${String(on.offsetLeft)}px`;
       mark.style.width = `${String(on.offsetWidth)}px`;
-      // Off again after the frame that drew it, so only a switch slides.
+      // A snap lands with the transition off: reading a layout value commits
+      // the new place before the class comes away, so only a switch slides.
       if (snap) {
-        setTimeout(() => {
-          row.classList.remove('is-placing');
-        }, 50);
+        void mark.offsetWidth;
+        row.classList.remove('is-placing');
       }
     };
     if (placed.current) {

@@ -42,6 +42,7 @@ const TASK = {
   revision: 3,
   history: [],
   comments: [],
+  alerts: [],
   proposals: [
     {
       lineageId: 'l-1',

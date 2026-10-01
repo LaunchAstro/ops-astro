@@ -521,14 +521,6 @@ function Loaded(props: LoadedProps): ReactElement {
   const saved = { title: task.title ?? '', due: task.due === null ? '' : task.due.slice(0, 10) };
   const [title, setTitle] = useState(props.draft?.title ?? saved.title);
   const [due, setDue] = useState(props.draft?.due ?? saved.due);
-  // T3e2: the outage reports are the team's, read once from the queue.
-  const outages = useRead<QueueResult>({
-    grantKey: props.grantKey,
-    run: () => client.read<QueueResult>('task.queue', {}),
-    isEmpty: (value) => (value.outages ?? []).length === 0,
-    deps: [],
-  });
-
   // Where this edit began. An existing draft keeps its own starting point; a
   // first keystroke takes the record as it stands right now.
   const base: DraftBase = props.draft?.base ?? {
@@ -634,43 +626,59 @@ function Loaded(props: LoadedProps): ReactElement {
           </>
         }
         agent={
-          // DS-TASK-15: the run and its gate in the main column, the standing
-          // facts about the task's run (its alerts, the team's outages) beside.
-          <div className="tpg">
-            <div className="tpg__main">
-              <RunProgress
-                client={client}
-                grantKey={props.grantKey}
-                readOf={task}
-                taskKey={task.key}
-              />
-
-              <Proposals
-                capCurrency={task.capCurrency}
-                client={client}
-                note={props.note}
-                onChanged={props.onChanged}
-                onDecided={props.onDecided}
-                onProposeRefused={props.onProposeRefused}
-                proposeRefusal={props.proposeRefusal}
-                proposeDraft={props.proposeDraft}
-                onProposeDraft={props.onProposeDraft}
-                persons={people.state.outcome === 'ready' ? people.state.value.persons : []}
-                proposals={task.proposals}
-                envelope={task.envelope ?? null}
-                topUpNote={props.topUpNote}
-                onTopUpNote={props.onTopUpNote}
-                recordId={task.id}
-                revision={task.revision}
-              />
-            </div>
-            <aside className="tpg__side">
-              <Alerts alerts={task.alerts} />
-              <Outages state={outages.state} taskId={task.id} />
-            </aside>
-          </div>
+          <AgentPane
+            {...props}
+            persons={people.state.outcome === 'ready' ? people.state.value.persons : []}
+          />
         }
       />
+    </div>
+  );
+}
+
+/**
+ * DS-TASK-15: the Agent side, the run and its gate in the main column, the
+ * standing facts about the task's run (its alerts, the team's outages) beside.
+ */
+function AgentPane(
+  props: LoadedProps & { readonly persons: PersonListResult['persons'] },
+): ReactElement {
+  const { client, task } = props;
+  // T3e2: the outage reports are the team's, read once from the queue.
+  const outages = useRead<QueueResult>({
+    grantKey: props.grantKey,
+    run: () => client.read<QueueResult>('task.queue', {}),
+    isEmpty: (value) => (value.outages ?? []).length === 0,
+    deps: [],
+  });
+  return (
+    <div className="tpg">
+      <div className="tpg__main">
+        <RunProgress client={client} grantKey={props.grantKey} readOf={task} taskKey={task.key} />
+
+        <Proposals
+          capCurrency={task.capCurrency}
+          client={client}
+          note={props.note}
+          onChanged={props.onChanged}
+          onDecided={props.onDecided}
+          onProposeRefused={props.onProposeRefused}
+          proposeRefusal={props.proposeRefusal}
+          proposeDraft={props.proposeDraft}
+          onProposeDraft={props.onProposeDraft}
+          persons={props.persons}
+          proposals={task.proposals}
+          envelope={task.envelope ?? null}
+          topUpNote={props.topUpNote}
+          onTopUpNote={props.onTopUpNote}
+          recordId={task.id}
+          revision={task.revision}
+        />
+      </div>
+      <aside className="tpg__side">
+        <Alerts alerts={task.alerts} />
+        <Outages state={outages.state} taskId={task.id} />
+      </aside>
     </div>
   );
 }
