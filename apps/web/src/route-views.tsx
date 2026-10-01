@@ -163,7 +163,7 @@ export const PagePlaceholder = (props: { readonly page: Page }): ReactElement =>
     data-page={props.page.id}
     data-ticket={props.page.ticket}
   >
-    <div className="empty" data-voice="not-built">
+    <div className="empty empty--block" data-voice="not-built">
       <p className="empty__title">Not here yet</p>
       <p className="empty__desc">This page isn&apos;t built yet.</p>
     </div>

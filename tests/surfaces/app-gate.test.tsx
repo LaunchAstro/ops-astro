@@ -111,7 +111,8 @@ describe('the screens with nothing to draw', () => {
     const view = await open('/dashboard/', true);
     expect(view.find('.topbar__title')?.textContent).toBe('Portfolio');
     expect(view.find('.topbar__meta .chip')).toBeNull();
-    const empty = view.find('[data-outcome="placeholder"] > .empty');
+    // Drawn in the one empty state's block look (DS-PRIM-28), as the mockup's.
+    const empty = view.find('[data-outcome="placeholder"] > .empty.empty--block');
     expect(empty?.matches('[data-voice="not-built"]')).toBe(true);
     expect(empty?.querySelector('.empty__title')?.textContent).toBe('Not here yet');
     expect(empty?.querySelector('.empty__desc')?.textContent).toBe("This page isn't built yet.");
