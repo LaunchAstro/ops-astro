@@ -551,6 +551,18 @@ reads each row's rank, stage and client mark back against `task.read` and
 holds the crossings; `mp-5-8-board-rank-steps.test.ts` reads an archived
 step back.
 
+Each row also carries `client` (the Clients row door): the task's client as
+`{ clientId, name }`, by `task.read`'s and `client.list`'s rule, so only where
+the caller's grants reach that client (a grant across the business, or one on
+the client). A task under a client the caller does not reach reads `null`
+beside `clientSet: true`, never the id or name `client.list` withholds; a task
+under none reads `null`. Asked only of the rows served
+(`commands/task-content.ts` `withBoardClients`). The Projects board names its
+Client column and facet from it, and a Clients row door opens
+`/projects/?f=client:<slug>`. `tests/reads/board-row-client.test.ts` reads it
+back against `task.read` and `client.list` and holds the crossings: another
+business, another client, a task holder without the client, and the agent.
+
 Each row also carries `actualMinutes` (MP-5-8's Actual column): every
 finished minute logged on the task (MP-4-6), summed at read over the rows
 served (`reads/board-time.ts`), the total `task.read`'s `time` answers: one

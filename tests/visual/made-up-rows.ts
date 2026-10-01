@@ -50,6 +50,7 @@ const task = (
   rank: { number: n, score: 100 - n, calc: 'made up' },
   stage: null,
   clientSet: true,
+  client: null,
   actualMinutes: 0,
   estimateMinutes: null,
   pageLink: null,

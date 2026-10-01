@@ -79,6 +79,7 @@ export const SCREENS: {
         grantKey={context.grantKey}
         navigate={context.navigate}
         {...(context.taskPanel === undefined ? {} : { taskPanel: context.taskPanel })}
+        {...(context.address === undefined ? {} : { address: context.address })}
       />
     </>
   ),

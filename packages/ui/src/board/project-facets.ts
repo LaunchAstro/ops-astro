@@ -43,6 +43,10 @@ function byField(
   });
 }
 
+/** The Client filter on one client, by name: the address a Clients row door opens the board at. */
+export const clientFacetId = (name: string): string =>
+  `client:${name.toLowerCase().replaceAll(/[^a-z0-9]+/gu, '-')}`;
+
 /** The assignee filter on one person (the viewer preset's, P-11). */
 export const viewerFacetId = (person: string): string => `assignee:${person}`;
 
