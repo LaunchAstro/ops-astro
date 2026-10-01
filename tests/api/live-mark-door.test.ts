@@ -9,8 +9,8 @@ import { createApi } from '../../apps/api/app.ts';
 import { PREFIX, SESSION_COOKIE } from '../../packages/core-wire/src/index.ts';
 
 const options = {
-  verify: async () => 'absent',
-  resolveBusiness: async () => undefined,
+  verify: () => Promise.resolve('absent'),
+  resolveBusiness: () => Promise.resolve(),
   live: { presence: { mark: () => true, seenBy: () => [] } },
 } as unknown as Parameters<typeof createApi>[0];
 
