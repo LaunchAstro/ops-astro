@@ -15,8 +15,9 @@
 // 2. Make the login at the login provider, through custody, for the invited
 //    address, with the password the page set and the address confirmed,
 //    under a provider user id that is ours: the same every time for one
-//    address in one business (`loginSubject`). A login this business has
-//    bound under that id already is never set again: the answer is
+//    address in one business (`loginSubject`). A login any business has
+//    bound under that id already (a signed-in accept binds one in another
+//    business, `invitation-bind.ts`) is never set again: the answer is
 //    `sign_in`. Otherwise it is made (`auth.create_user`); when the address
 //    already holds a login, that login is set again under our id
 //    (`auth.update_user`), which adopts one an earlier accept made and never
@@ -97,15 +98,26 @@ export function loginSubject(business: string, address: string): string {
   ].join('-');
 }
 
-/** Whether this business has bound a login under the subject already. */
-async function loginBound(database: Database, business: string, subject: string): Promise<boolean> {
-  return await database.withBusiness(business, async (tx) => {
-    const rows = await tx.query(
-      'select 1 from logins where business_id = $1 and provider = $2 and subject = $3',
-      [tx.businessId, LOGIN_PROVIDER, subject],
+/** Whether any of the businesses has bound a login under the subject, each under its own tenancy. */
+async function loginBound(
+  database: Database,
+  businesses: readonly string[],
+  subject: string,
+): Promise<boolean> {
+  let bound = false;
+  for (const business of businesses) {
+    // oxlint-disable-next-line no-await-in-loop -- one business at a time, every one of them
+    const rows = await database.withBusiness(
+      business,
+      async (tx) =>
+        await tx.query(
+          'select 1 from logins where business_id = $1 and provider = $2 and subject = $3',
+          [tx.businessId, LOGIN_PROVIDER, subject],
+        ),
     );
-    return rows.length > 0;
-  });
+    bound ||= rows.length > 0;
+  }
+  return bound;
 }
 
 /** The token's row and its invitation, when the token is live; locked when `lock`. */
@@ -250,7 +262,7 @@ export async function acceptInvitation(
   const found = TOKEN.test(request.token) ? await find(database, businesses, hash) : undefined;
   if (found === undefined) return { ok: false, code: 'ENROLMENT_LINK_INVALID' };
   const id = loginSubject(found.business, found.address);
-  if (await loginBound(database, found.business, id)) return { ok: true, state: 'sign_in' };
+  if (await loginBound(database, businesses, id)) return { ok: true, state: 'sign_in' };
   const asked: LoginAsked = { id, email: found.address, password: request.password };
   let login = await createLogin(broker, asked);
   if (!login.ok && login.kind === 'refused') login = await updateLogin(broker, asked);

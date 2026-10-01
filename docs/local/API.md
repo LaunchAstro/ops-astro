@@ -1845,9 +1845,28 @@ business has bound under our id already, gets none and no password is set:
 `ENROLMENT_LINK_INVALID`, a password outside 12 to 72 bytes 400
 `PASSWORD_INVALID`, and a provider fault or hostile answer 503
 `ENROLMENT_UNAVAILABLE`, nothing spent or bound. The page
-is `/enrol/:token`. Not here yet: the send mounted after the command, the
-hook and the enrolment route wired in `main`, the signed-in accept for an
-address with a login, the second factor first (C59) and the Access screen.
+is `/enrol/:token`.
+
+`POST /api/b/enrol` with `token` alone is the same link accepted by someone
+signed in with the login they hold (`acceptSignedIn`, mounted beside it when
+`createApi` has a verifier). It sits under the person prefix because the
+session cookie is sent there, and the session is resolved as the business
+routes resolve it: no session 401 `AUTH_UNKNOWN_LOGIN`, an expired one 401
+`AUTH_SESSION_EXPIRED`, a cookie from another site 403, each before the
+token is looked at. The login provider is asked, through custody under
+`auth.read_user` (custody routing the one GET `/auth/v1/admin/users/*`),
+for the session's login: only an address it confirmed counts, and it must
+be the invitation's. Then, under the provider-login locks and the
+invitation's lock, a login this business maps to anyone already is refused,
+and otherwise the writes are the token-only accept's, mapping this login:
+200 `{ state: 'joined' }`, no password set and no session opened. Another
+address, an unconfirmed one, a login the provider does not hold, a login
+mapped here already and every dead link are one answer, 404
+`ENROLMENT_LINK_INVALID`, nothing spent; a provider fault 503. A login any
+business has bound is never set again by a token-only accept: it answers
+`sign_in`. Not here yet: the send mounted after the command, the hook and
+the enrolment route wired in `main`, the second factor first (C59) and the
+Access screen.
 
 ## Reads
 
