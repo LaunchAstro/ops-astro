@@ -18,6 +18,12 @@ import { createChatWorld, type ChatWorld } from './c71-d-world.ts';
 
 type Body = Readonly<Record<string, unknown>>;
 
+/** A world id the test needs set; null fails the test where it is read. */
+function present(id: string | null): string {
+  if (id === null) throw new Error('the world left this id unset');
+  return id;
+}
+
 /** A resolver's placeholder until its promise hands over the real one. */
 function noop(): void {}
 
@@ -61,7 +67,12 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('C71-D reviewer proo
         begun = resolve;
       });
       const one = a.withBusiness(world.alpha, async (tx) => {
-        const id = await directConversation(tx, types, world.ada.personId, tess.personId);
+        const id = await directConversation(
+          tx,
+          types,
+          present(world.ada.personId),
+          present(tess.personId),
+        );
         begun();
         await gate;
         return id;
@@ -69,7 +80,12 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('C71-D reviewer proo
       await started;
       let secondDone = false;
       const two = b.withBusiness(world.alpha, async (tx) => {
-        const id = await directConversation(tx, types, tess.personId, world.ada.personId);
+        const id = await directConversation(
+          tx,
+          types,
+          present(tess.personId),
+          present(world.ada.personId),
+        );
         secondDone = true;
         return id;
       });
@@ -118,11 +134,11 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('C71-D reviewer proo
       await tx.query('select 1');
       begun();
       await gate;
-      const id = await directConversation(tx, types, mia.personId, tess.personId);
+      const id = await directConversation(tx, types, present(mia.personId), present(tess.personId));
       await writeComment(tx, types.commentTypeId, {
         taskId: null,
         conversationId: id,
-        authorActorId: mia.actorId,
+        authorActorId: present(mia.actorId),
         commentType: 'note',
         audience: 'direct',
         body: 'sent first, committed last',

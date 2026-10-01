@@ -82,9 +82,23 @@ export async function isStaff(tx: TenantQuery, personId: string): Promise<boolea
 /** The server's now, to the millisecond a comment's `posted_at` carries. */
 const NOW_MS = `date_trunc('milliseconds', now())`;
 
+/** The wall clock to the millisecond, read after the conversation's lock is held. */
+const CLOCK_MS = `date_trunc('milliseconds', clock_timestamp())`;
+
 /**
- * The one direct conversation between two people, found or started. A lock on
- * the pair serialises two first messages, so the pair never has two.
+ * Serialise one conversation's message writes and read-marker moves until the
+ * transaction ends. A message is stamped and a marker capped by the wall clock
+ * under this lock, so a message that commits later is always stamped later
+ * than any marker moved before it, and never hides behind one.
+ */
+async function lockConversation(tx: TenantQuery, conversationId: string): Promise<void> {
+  await advisoryLock(tx, `chat.conversation:${tx.businessId}:${conversationId}`);
+}
+
+/**
+ * The one direct conversation between two people, found or started, with its
+ * lock held for the message about to be written. A lock on the pair
+ * serialises two first messages, so the pair never has two.
  */
 export async function directConversation(
   tx: TenantQuery,
@@ -99,8 +113,12 @@ export async function directConversation(
       where business_id = $1 and record_type_id = $2 and txt_3 = $3 and deleted_at is null`,
     [tx.businessId, types.conversationTypeId, pair],
   );
-  if (found[0] !== undefined) return found[0].id;
+  if (found[0] !== undefined) {
+    await lockConversation(tx, found[0].id);
+    return found[0].id;
+  }
   const id = randomUUID();
+  await lockConversation(tx, id);
   await tx.query(
     `insert into public.records (business_id, id, record_type_id, data)
      values ($1, $2, $3, jsonb_build_object(
@@ -125,10 +143,11 @@ export async function moveReadMarker(
   personId: string,
   upTo: Date | 'now',
 ): Promise<boolean> {
+  await lockConversation(tx, conversationId);
   const moved = await tx.query(
     `update public.team_conversation_members
         set last_read_at = greatest(coalesce(last_read_at, '-infinity'),
-                                    least(coalesce($4::timestamptz, ${NOW_MS}), ${NOW_MS}))
+                                    least(coalesce($4::timestamptz, ${CLOCK_MS}), ${CLOCK_MS}))
       where business_id = $1 and conversation_id = $2 and person_id = $3 and left_at is null
       returning 1`,
     [tx.businessId, conversationId, personId, upTo === 'now' ? null : upTo.toISOString()],

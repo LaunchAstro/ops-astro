@@ -212,6 +212,14 @@ export interface NewComment {
 export const NOW_TEXT: string = `to_char(now() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MSZ')`;
 
 /**
+ * A team conversation message's time: the wall clock when it is written, which
+ * is after its writer took the conversation's lock (conversations.ts). A send
+ * that waited behind another is stamped after it, so no read marker set in
+ * between can pass it unseen; the transaction's start time can.
+ */
+const CLOCK_TEXT = `to_char(clock_timestamp() at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MSZ')`;
+
+/**
  * Write one comment, inside the caller's transaction.
  *
  * The timestamp is the server's, not the caller's: a comment whose posting
@@ -230,7 +238,7 @@ export async function writeComment(
      values ($1, $2, $3, jsonb_strip_nulls(jsonb_build_object(
        'task', $4::text, 'author', $5::text, 'comment_type', $6::text,
        'audience', $7::text, 'body', $8::text, 'source', $9::text,
-       'posted_at', ${NOW_TEXT}, 'parent', $10::text, 'conversation', $11::text)))`,
+       'posted_at', ${comment.conversationId === undefined ? NOW_TEXT : CLOCK_TEXT}, 'parent', $10::text, 'conversation', $11::text)))`,
     [
       tx.businessId,
       id,
