@@ -237,8 +237,9 @@
   border: 0;
   background: none;
   color: var(--text);
-  font: inherit;
-  font-size: 0.8125rem;
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
 
 /* The box draws the focus: its border turns to the accent. */
@@ -250,7 +251,9 @@
   margin: 0;
   padding-top: var(--s-2);
   color: var(--ink-faint);
-  font-size: var(--fs-mono-sm);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 
 .todos__acts {
@@ -298,11 +301,10 @@
   width: 0.95rem;
   height: 0.95rem;
   padding: 0;
+  overflow: hidden;
   border: 1px solid var(--border-strong);
   background: var(--bg);
   color: transparent;
-  font-size: 0.6rem;
-  line-height: 1;
   cursor: pointer;
 }
 
@@ -326,7 +328,9 @@
 
 .todos .tl__t {
   min-width: 0;
-  line-height: 1.3;
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
 }
 
 .todos .tl__t a {
@@ -353,14 +357,13 @@
 
 .todos .tl__due {
   color: var(--text);
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
-  font-weight: var(--weight-regular);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 
 .todos .tl__due.is-now {
   color: var(--text);
-  font-weight: var(--weight-medium);
 }
 
 .todos .tl__due.is-bad {
@@ -372,8 +375,9 @@
   align-items: center;
   gap: 0.3rem;
   color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 
 .todos .tl__pri .sline {
@@ -469,9 +473,10 @@
 
 /* The dock task panel's body (MP-4-8), drawn as the mockup's panel (TASKS S1
    to S3, `assets/app.css` .sb): the name an inline field in the display face,
-   the fact keys tracked wider, the rank in mono, the fields on the paper with
-   regular-weight keys, the description in mono and the subtask add a bare
-   line. Scoped to the panel: the task page draws the same parts its own way. */
+   the rank in mono, the fields on the paper, the description in mono and the
+   subtask add a bare line. Each text snaps to its canonical style (TOKENS.md
+   census, R53). Scoped to the panel: the task page draws the same parts its
+   own way. */
 .dtp .sb__name {
   display: block;
   box-sizing: border-box;
@@ -480,13 +485,10 @@
   border: 1px solid var(--border-strong);
   background: var(--bg);
   color: var(--text);
-  font-family: var(--font-display);
-  font-size: 1.05rem;
-  font-weight: var(--weight-medium);
-  line-height: 1.3;
-  letter-spacing: normal;
+  font: var(--type-subheading);
+  letter-spacing: var(--type-subheading-tracking);
+  text-transform: var(--type-subheading-case);
   text-align: start;
-  text-transform: none;
   cursor: text;
 }
 
@@ -495,39 +497,34 @@
   border-color: var(--accent);
 }
 
-.dtp .tpr__fact .tf__k {
-  letter-spacing: 0.04em;
-}
-
 .dtp [data-fact='rank'] .sb__state {
-  font-family: var(--font-mono);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
 }
 
 .dtp .tpr__tick {
   background: var(--bg);
 }
 
-.dtp .dtp__fields .tf__k {
-  font-weight: var(--weight-regular);
-}
-
-/* A native select sizes to its font's own line, not line-height: the height
-   is set to the mockup's button, one 1.2 line, its padding and its border. */
+/* A native select sizes to its font's own line: the height is set to the
+   mockup's button, a 14.4px 1.2 line, its padding and its border. */
 .dtp .dtp__fields select.input {
   block-size: calc(0.9rem * 1.2 + 1.1rem + 2px);
   padding: 0.55rem var(--s-3);
   border-radius: 0;
   background: var(--bg);
-  font-size: 0.9rem;
-  line-height: 1.2;
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
 }
 
 .dtp .tf__ta {
   padding: 0.5rem var(--s-3);
   background: var(--bg);
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
-  line-height: 1.55;
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 
 .dtp .sb__k {
@@ -541,8 +538,9 @@
   border-bottom: 1px solid transparent;
   background: none;
   color: var(--text);
-  font: inherit;
-  font-size: 0.875rem;
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
 }
 
 .dtp [data-step-add]:focus {

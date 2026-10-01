@@ -24,6 +24,10 @@ const RULE_DARK = {
   want: 'rgba(245,245,245,26)',
   why: 'DS-TOK-10',
 } as const;
+// R53 (TOKENS.md census): each text snaps to its canonical type style, so
+// where the mockup drew off the scale the build holds the style's value.
+const snapped = (prop: string, want: string) =>
+  (['light', 'dark'] as const).map((theme) => ({ at: `${prop}@${theme}`, want, why: 'R53' }));
 const TYPE = ['font-family', 'font-size', 'font-weight', 'letter-spacing', 'text-transform'];
 
 /** The first row, in the mockup's panel and on the app's page. */
@@ -88,19 +92,20 @@ const TODOS_PROBES: readonly LookProbe[] = [
   probe('todos.avatar', `${ROW} .tl__av`, ['box.width', 'box.height', 'border-top-left-radius']),
   // PJ-08: the task name, a link in the ink.
   probe('todos.name', `${ROW} .tl__t a`, [...TYPE, 'color', 'text-decoration-line']),
-  // PJ-10: the due in mono, overdue in danger, today in medium weight.
-  probe('todos.due-overdue', '.tl__due.is-bad', [
-    'font-family',
-    'font-size',
-    'font-weight',
-    'color',
-  ]),
-  probe('todos.due-today', '.tl__due.is-now:not(.is-bad)', [
-    'font-family',
-    'font-size',
-    'font-weight',
-    'color',
-  ]),
+  // PJ-10: the due in mono, overdue in danger (the mockup's medium weight is
+  // drift: `--type-data`).
+  probe(
+    'todos.due-overdue',
+    '.tl__due.is-bad',
+    ['font-family', 'font-size', 'font-weight', 'color'],
+    { ruled: snapped('font-weight', '400') },
+  ),
+  probe(
+    'todos.due-today',
+    '.tl__due.is-now:not(.is-bad)',
+    ['font-family', 'font-size', 'font-weight', 'color'],
+    { ruled: snapped('font-weight', '400') },
+  ),
   // PJ-11: the priority, mono with its line.
   probe('todos.priority', `${ROW} .tl__pri`, ['font-family', 'font-size', 'column-gap']),
 ];
