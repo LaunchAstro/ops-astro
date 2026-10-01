@@ -108,19 +108,59 @@ export function localRoute(
   return carry.ok ? { ok: true, route } : { ok: false, code: carry.code };
 }
 
-/** A map's client link, the map held `for share`; nothing for a parent that is no map. */
-const HOLD_MAP = `select ${slotOf(TASK_SPINE, 'client')}::text as client from public.records
-      where business_id = $1 and id = $2 and data ->> 'type' = 'map'
-      for share`;
+const CLIENT = slotOf(TASK_SPINE, 'client');
 
 /**
- * A task's client for egress (C60, WF-6, WF-7): its own client link, else its
- * map's. `task.reparent` and `task.set_party` can leave a scoped map's ticket
- * with no link of its own, or another client's, and the map's still covers
- * it. `query(lock)` reads the task's `client` and `parent` (a ticket's map is
- * its parent): read once unheld, then the map is held `for share` before the
- * task, the order `map.scope` takes them in. A parent that moved in between
- * is held after the task, whose parent is fixed from then on.
+ * From a task up its parents to the first carrying a client link, or a map,
+ * or the top, top-down: the first row's client covers the task below.
+ * `cycle` ends a reparent loop (no foreign key stops one).
+ */
+const ABOVE = `with recursive up (id, type_id, parent, client, ends, depth) as (
+    select id, record_type_id, ${slotOf(TASK_SPINE, 'parent')}, ${CLIENT}::text,
+           ${CLIENT} is not null or data ->> 'type' = 'map', 0
+      from public.records where business_id = $1 and id = $2
+    union all
+    select r.id, r.record_type_id, r.${slotOf(TASK_SPINE, 'parent')}, r.${CLIENT}::text,
+           r.${CLIENT} is not null or r.data ->> 'type' = 'map', up.depth + 1
+      from up join public.records r
+        on r.business_id = $1 and r.id = up.parent and r.record_type_id = up.type_id
+     where not up.ends
+  ) cycle id set looped using path
+  select id::text, client from up where not looped order by depth desc`;
+
+/**
+ * The client covering everything under `id`, the walk held `for share`
+ * top-down (the order `map.scope` takes them in; the sort comes before the
+ * lock). A row that moved before its hold is walked again.
+ */
+async function clientAbove(tx: TenantQuery, id: string | null): Promise<string | null> {
+  if (id === null) return null;
+  type Step = { readonly id: string; readonly client: string | null };
+  const walk = async () => await tx.query<Step>(ABOVE, [tx.businessId, id]);
+  const held = new Set<string>();
+  let chain = await walk();
+  while (chain.some((row) => !held.has(row.id))) {
+    const ids = chain.map((row) => row.id);
+    // eslint-disable-next-line no-await-in-loop
+    await tx.query(
+      `select 1 from public.records where business_id = $1 and id = any($2::uuid[])
+        order by array_position($2::uuid[], id) for share`,
+      [tx.businessId, ids],
+    );
+    for (const each of ids) held.add(each);
+    // eslint-disable-next-line no-await-in-loop
+    chain = await walk();
+  }
+  return chain[0]?.client ?? null;
+}
+
+/**
+ * A task's client for egress (C60, WF-6, WF-7): its own link, else the nearest
+ * above it up to its map, so a subtask under a map's ticket, or a ticket that
+ * `task.reparent` or `task.set_party` left with no link, is still covered.
+ * `query(lock)` reads the task's `client` and `parent`: once unheld, then the
+ * walk above is held before the task. A parent that moved in between is walked
+ * after the task, whose parent is fixed from then on.
  */
 export async function withMapClient<
   Row extends { readonly client: string | null; readonly parent: string | null },
@@ -129,18 +169,13 @@ export async function withMapClient<
   query: (lock: string) => string,
   parameters: readonly unknown[],
 ): Promise<{ readonly row: Row; readonly clientId: string | null } | undefined> {
-  const holdMap = async (id: string | null): Promise<string | null> => {
-    if (id === null) return null;
-    const [map] = await tx.query<{ readonly client: string | null }>(HOLD_MAP, [tx.businessId, id]);
-    return map?.client ?? null;
-  };
   const [peek] = await tx.query<Row>(query(''), parameters);
   const parent = peek?.parent ?? null;
-  const before = await holdMap(parent);
+  const before = await clientAbove(tx, parent);
   const [row] = await tx.query<Row>(query('for share of t'), parameters);
   if (row === undefined) return undefined;
-  const map = row.parent === parent ? before : await holdMap(row.parent);
-  return { row, clientId: row.client ?? map };
+  const above = row.parent === parent ? before : await clientAbove(tx, row.parent);
+  return { row, clientId: row.client ?? above };
 }
 
 /**
