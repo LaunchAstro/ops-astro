@@ -198,11 +198,15 @@
   }
 }
 .rail__brand {
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
+  position: relative;
 }
+/* The close sits beside the brand, which keeps the mockup's stack: the
+   wordmark over the hub's label. */
 .navclose {
+  position: absolute;
+  top: 50%;
+  right: var(--s-5);
+  translate: 0 -50%;
   align-items: center;
   justify-content: center;
   width: 32px;
