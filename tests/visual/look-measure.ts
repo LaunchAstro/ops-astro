@@ -12,6 +12,20 @@ export type Measured = Readonly<Record<string, string>>;
 export function measure(input: { selector: string; props: readonly string[] }): Measured | null {
   const element = document.querySelector(input.selector);
   if (element === null) return null;
+  // A transition the last style change started reads as where it began until
+  // its frame comes. In the harness the dev server's sheets land after the
+  // body's default style, and reduced motion gives every element a 0.01ms
+  // transition of every property (1-tokens.css), so dark ink could read as
+  // black. getAnimations() starts any pending transition; each is run out, as
+  // a screenshot's disabled animations are. Running out a parent's starts its
+  // children's on the inherited value, one level down per pass.
+  for (let depth = 0; depth < 256; depth += 1) {
+    const running = document
+      .getAnimations()
+      .filter((one) => one instanceof CSSTransition && one.playState !== 'finished');
+    if (running.length === 0) break;
+    for (const one of running) one.finish();
+  }
   const style = getComputedStyle(element);
   const box = element.getBoundingClientRect();
   const canvas = document.createElement('canvas');
