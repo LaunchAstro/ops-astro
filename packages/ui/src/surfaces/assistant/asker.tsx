@@ -7,8 +7,12 @@
 // path sends nothing**: no handler is called, and the drawer says so where the
 // person pressed. The question stays in the field, because nothing happened to
 // it.
+//
+// **A chip pressed while a question from here is still out sends nothing**:
+// a double press is one question, and one paid model call. A second question
+// typed into the input still goes.
 
-import { useState, type ReactElement } from 'react';
+import { useRef, useState, type ReactElement } from 'react';
 
 export const NOT_SENT = 'Nothing was sent: this client’s material waits on a local model.';
 
@@ -20,7 +24,8 @@ export interface AskerProps {
   readonly draft: string;
   /** False while the subject's material may reach no model. */
   readonly sendable: boolean;
-  readonly onSend: (text: string) => void;
+  /** A promise returned is the send being out. */
+  readonly onSend: (text: string) => void | Promise<void>;
 }
 
 function Chips(props: {
@@ -86,6 +91,7 @@ function InputRow(props: {
 export function Asker(props: AskerProps): ReactElement {
   const [value, setValue] = useState(props.draft);
   const [refused, setRefused] = useState(false);
+  const out = useRef(0);
   const send = (text: string, fromInput: boolean): void => {
     const question = text.trim();
     if (question === '') return;
@@ -93,7 +99,11 @@ export function Asker(props: AskerProps): ReactElement {
       setRefused(true);
       return;
     }
-    props.onSend(question);
+    if (!fromInput && out.current > 0) return;
+    out.current += 1;
+    void Promise.resolve(props.onSend(question)).finally(() => {
+      out.current -= 1;
+    });
     if (fromInput) setValue('');
   };
   return (
