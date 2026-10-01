@@ -53,7 +53,7 @@ export async function reportOrphan(
   // refused for it, and the orphan must still be written.
   // Login, person and actor are still resolved and checked as on every call.
   const { sessionId: _ended, ...login } = caller.presented;
-  await withSession(
+  const written = await withSession(
     caller.database,
     caller.businessId,
     login,
@@ -70,9 +70,18 @@ export async function reportOrphan(
           providerFactorId,
         }),
       });
+      return true;
     },
     'enrolling',
   );
+  // Login resolution refused (membership ended, person archived): no row can
+  // be written here, so the server log carries it, digests only (review r12-1).
+  if (written !== true) {
+    console.warn(
+      `${ORPHANED} unrecorded: business=${caller.businessId} operation=${attempt} ` +
+        `subject=${payloadDigest({ command: ORPHANED, subject: caller.presented.subject })}`,
+    );
+  }
 }
 
 /** A verified factor here, or one the login holds through any business (0064). */

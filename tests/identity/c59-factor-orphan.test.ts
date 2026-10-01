@@ -12,7 +12,7 @@
 // records stays there; reconciling strays is issue #300.
 
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import {
   enrolSecondFactor,
   removeSecondFactor,
@@ -490,6 +490,83 @@ describe.skipIf(serverUrl === undefined)(
       expect(orphaned).toHaveLength(1);
       expect(orphaned[0]?.operation_id).not.toBeNull();
       expect(orphaned[0]?.operation_id).toBe(attempt?.operation_id);
+    });
+  },
+);
+
+/** Mia's membership in bravo ends: login resolution there now refuses her. */
+async function endMembership(person: string): Promise<void> {
+  await db.app.withBusiness(bravo, (tx) =>
+    tx.query('update memberships set active = false, ended_at = now() where person_id = $1', [
+      person,
+    ]),
+  );
+}
+
+/** What reached the server log while `act` ran, and whether it names anything in clear. */
+async function logged(act: () => Promise<unknown>): Promise<string[]> {
+  const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  try {
+    await act();
+    return warn.mock.calls.map((call) => call.map(String).join(' '));
+  } finally {
+    warn.mockRestore();
+  }
+}
+
+function expectDigestOnly(lines: string[], subject: string, factorId: string) {
+  const orphaned = lines.filter((line) => line.includes('account.factor_orphaned'));
+  expect(orphaned).toHaveLength(1);
+  const [line = ''] = orphaned;
+  expect(line).toContain(`business=${bravo}`);
+  expect(line).toMatch(/operation=[0-9a-f-]{36}\b/u);
+  expect(line).toMatch(/subject=[0-9a-f]{64}\b/u);
+  for (const clear of [subject, factorId, 'Mia', 'aal1-access-token', 'aal2']) {
+    expect(line).not.toContain(clear);
+  }
+}
+
+describe.skipIf(serverUrl === undefined)(
+  'C59 a stray the record cannot hold is still reported (security review 2b2 r12-1)',
+  () => {
+    it('C59: a good code while the membership is ended reports the orphan to the server log, digest only', async () => {
+      const subject = `sub-${randomUUID()}`;
+      const person = await personIn(bravo, subject);
+      const f = await factorIn(person, subject, false);
+      const { provider, asked } = namingProvider(async () => await endMembership(person));
+      const caller = callerFor(subject);
+      const tab = { ...caller, presented: { ...caller.presented, sessionId: randomUUID() } };
+      let answer: unknown;
+
+      const lines = await logged(async () => {
+        answer = await verifySecondFactor(tab, { code: '123456' }, provider);
+      });
+
+      expect(answer).toHaveProperty('code');
+      expect(asked).toEqual(['verify']);
+      expectDigestOnly(lines, subject, f.providerFactorId);
+    });
+
+    it('C59: a provider removal that fails after the membership ended reports the orphan to the server log, digest only', async () => {
+      const subject = `sub-${randomUUID()}`;
+      const person = await personIn(bravo, subject);
+      const f = await factorIn(person, subject, true);
+      const { provider } = namingProvider();
+      const failing: FactorProvider = {
+        ...provider,
+        remove: async () => {
+          await endMembership(person);
+          return { ok: false, fault: 'unreachable' };
+        },
+      };
+      let answer: unknown;
+
+      const lines = await logged(async () => {
+        answer = await removeSecondFactor(callerFor(subject), { code: '123456' }, failing);
+      });
+
+      expect(answer).toHaveProperty('removed', true);
+      expectDigestOnly(lines, subject, f.providerFactorId);
     });
   },
 );
