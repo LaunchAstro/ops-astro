@@ -54,7 +54,7 @@ beforeAll(async () => {
 }, 180_000);
 afterAll(async () => await s?.db.drop());
 
-it('Sol proof, criterion WF-7 twice failed: after the second failure, a new run waits on the map owner', async () => {
+it('WF-7 twice failed: after the second failure, a new run waits on the map owner', async () => {
   const ticket = await researchOnMap(s, owner, 'wf7 waits on owner');
   await mayRun(s, owner, ticket);
   await failedRun(s, ticket);
@@ -75,7 +75,7 @@ it('Sol proof, criterion WF-7 twice failed: after the second failure, a new run 
   ]);
 }, 180_000);
 
-it('Sol proof, criterion WF-7 twice failed: two more failures after the owner clears the item ask again', async () => {
+it('WF-7 twice failed: two more failures after the owner clears the item ask again', async () => {
   const ticket = await researchOnMap(s, owner, 'wf7 asks again');
   await mayRun(s, owner, ticket);
   await failedRun(s, ticket);

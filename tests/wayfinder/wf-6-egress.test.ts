@@ -147,7 +147,7 @@ it('WF-6 egress off: a map with no client, or its client cleared, is answered by
   expect(await rowsIn(cleared.conversationId)).toStrictEqual({ calls: 1, replies: 1 });
 }, 180_000);
 
-it('Sol proof, criterion WF-6 egress: a ticket moved under a client map, or cleared by set_party, asks no model', async () => {
+it('WF-6 egress: a ticket moved under a client map, or cleared by set_party, asks no model', async () => {
   const { map } = await chartMap('sol client map');
   await scope(map, randomUUID());
   // (a) reparented in from a map no client is on: its own client link stays empty.
@@ -182,7 +182,7 @@ it('Sol proof, criterion WF-6 egress: a ticket moved under a client map, or clea
   await expectNoCall(cleared, 'sol second');
 }, 180_000);
 
-it('Sol proof, criterion WF-6 egress: a scope in flight is waited on, never missed', async () => {
+it('WF-6 egress: a scope in flight is waited on, never missed', async () => {
   const { map } = await chartMap('sol scope in flight');
   const body = `CANARY-${randomUUID()} about the scope in flight`;
   const asked = await openOn(map, body);

@@ -162,7 +162,7 @@ it('WF-7 egress off makes no call: a map whose client is cleared lets its resear
   expect(answer).toMatchObject({ ok: true });
 }, 180_000);
 
-it('Sol proof, criterion WF-7 egress: a research ticket moved under a client map, or cleared by set_party, makes no call', async () => {
+it('WF-7 egress: a research ticket moved under a client map, or cleared by set_party, makes no call', async () => {
   const { map } = await chartMap('sol wf7 client map');
   await scope(map, randomUUID());
   // (a) reparented in from a map no client is on: its own client link stays empty.

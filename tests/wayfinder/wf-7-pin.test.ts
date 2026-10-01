@@ -283,7 +283,7 @@ it('WF-7 research skill digest: the pin helper refuses one byte changed as anoth
   expect(await pinsOn(runId)).toBe(0);
 });
 
-it('Sol proof, criterion WF-7 research skill digest: the bytes pinned are the bytes checked', async () => {
+it('WF-7 research skill digest: the bytes pinned are the bytes checked', async () => {
   const runId = await unpinnedRun('which bytes were pinned?');
   // The entry's first read is an edited file and every later read the upstream one.
   expect(
