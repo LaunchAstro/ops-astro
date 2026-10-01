@@ -147,7 +147,7 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('C71-G group convers
   });
 
   it('only its creator, or the owner and administrators, changes its members or name: the conversation renamed and the members changed are audited', async () => {
-    const { chat, zed, groupName, conversationId, as, start, viewOf, auditOf } = g;
+    const { chat, zed, groupName, conversationId, as, start, viewOf, bodiesOf, auditOf } = g;
     const { world } = chat.harness;
     // Mia, a member holding `chat:comment` alone, did not start it.
     for (const [name, body] of [
@@ -174,13 +174,29 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('C71-G group convers
       await outcomes(chat.tess),
       await outcomes(world.ada),
     ]).toEqual([['refused'], ['applied'], ['applied']]);
-    // An administrator who is not in another group is answered as for one never issued.
+    // An administrator not in another group renames it and changes who else is
+    // in it, and still reads, lists and joins nothing of it.
     const other = await start(chat.tess, [world.mia.personId, zed.personId], 'Without Ada');
     const otherId = String(detailOf(other)['conversationId']);
-    expect(
-      (await as(world.ada, 'chat.rename_group', { conversationId: otherId, name: 'x' })).code,
-    ).toBe('NOT_FOUND');
-    expect((await viewOf(world.mia, otherId))?.name).toBe('Without Ada');
+    const renamedByAdmin = await as(world.ada, 'chat.rename_group', {
+      conversationId: otherId,
+      name: 'Named by Ada',
+    });
+    expect(renamedByAdmin.status, renamedByAdmin.text).toBe(200);
+    expect((await viewOf(world.mia, otherId))?.name).toBe('Named by Ada');
+    const removedByAdmin = await as(world.ada, 'chat.change_members', {
+      conversationId: otherId,
+      remove: [zed.personId],
+    });
+    expect(removedByAdmin.status, removedByAdmin.text).toBe(200);
+    expect((await viewOf(world.mia, otherId))?.members).not.toContain(zed.personId);
+    const selfAdded = await as(world.ada, 'chat.change_members', {
+      conversationId: otherId,
+      add: [world.ada.personId],
+    });
+    expect(selfAdded.code, selfAdded.text).toBe('FIELD_VALUE_INVALID');
+    expect(await viewOf(world.ada, otherId)).toBeUndefined();
+    expect(await bodiesOf(world.ada, otherId)).toEqual([]);
     // No name, no change of members, nobody's audit row holds the words.
     for (const event of await auditOf('chat.rename_group')) {
       expect(event.t).not.toContain('Renamed by Tess');

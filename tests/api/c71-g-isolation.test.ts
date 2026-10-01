@@ -152,28 +152,44 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('C71-G isolation', (
     expect(await state()).toBe(before);
   });
 
-  it('C71-G isolation: another person of the business, an administrator holding chat:manage, never reads, lists, counts or changes a group they are not in', async () => {
+  it('C71-G isolation: another person of the business never reads, lists, counts or changes a group they are not in; an administrator holding chat:manage, not in it, never reads, lists, counts or writes in it', async () => {
     const { world } = chat.harness;
-    const without = groupOf(
+    const withoutMia = groupOf(
+      await as(chat.tess, 'chat.start_group', {
+        name: 'Without Mia',
+        members: [world.ada.personId, world.noah.personId],
+      }),
+    );
+    const withoutAda = groupOf(
       await as(chat.tess, 'chat.start_group', {
         name: 'Without Ada',
         members: [world.mia.personId, world.noah.personId],
       }),
     );
     const before = await state();
-    for (const [name, body] of aimedAt(without, chat.tess.personId)) {
-      const answer = await as(world.ada, name, body);
-      expect(answer.code, `${name} ${answer.text}`).toBe('NOT_FOUND');
-      const fabricated = await as(world.ada, name, { ...body, conversationId: randomUUID() });
-      expect([answer.status, answer.text], name).toStrictEqual([
-        fabricated.status,
-        fabricated.text,
-      ]);
+    const managing = new Set(['chat.rename_group', 'chat.change_members']);
+    for (const [who, group, commands] of [
+      [world.mia, withoutMia, aimedAt(withoutMia, chat.tess.personId)],
+      [
+        world.ada,
+        withoutAda,
+        aimedAt(withoutAda, chat.tess.personId).filter(([name]) => !managing.has(name)),
+      ],
+    ] as const) {
+      for (const [name, body] of commands) {
+        const answer = await as(who, name, body);
+        expect(answer.code, `${name} ${answer.text}`).toBe('NOT_FOUND');
+        const fabricated = await as(who, name, { ...body, conversationId: randomUUID() });
+        expect([answer.status, answer.text], `${name} ${group}`).toStrictEqual([
+          fabricated.status,
+          fabricated.text,
+        ]);
+      }
+      const listed = await as(who, 'chat.conversations');
+      expect(
+        (listed.body['conversations'] as readonly Body[]).map((c) => c['conversationId']),
+      ).not.toContain(group);
     }
-    const listed = await as(world.ada, 'chat.conversations');
-    expect(
-      (listed.body['conversations'] as readonly Body[]).map((c) => c['conversationId']),
-    ).toEqual([alphaGroup]);
     expect(await state()).toBe(before);
   });
 
