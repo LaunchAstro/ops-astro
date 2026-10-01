@@ -25,6 +25,10 @@ const APP = { page: 'agency:todos', open: '[data-todo-open]' } as const;
 const BODY = '[data-task-panel]';
 // DR-10 folded the dark muted ink to 55 percent; the mockup drew 46.
 const MUTED_DARK = { at: 'color@dark', want: 'rgba(248,248,248,140)', why: 'DR-10' } as const;
+// R53 (TOKENS.md census): each text snaps to its canonical type style, so
+// where the mockup drew off the scale the build holds the style's value.
+const snapped = (prop: string, want: string) =>
+  (['light', 'dark'] as const).map((theme) => ({ at: `${prop}@${theme}`, want, why: 'R53' }));
 const TYPE = ['font-family', 'font-size', 'font-weight', 'letter-spacing', 'text-transform'];
 
 const probe = (
@@ -44,14 +48,19 @@ export const TASK_PANEL: LookScreen = {
   id: 'task-panel',
   probes: [
     // DP-08: the name, an inline field in the display face.
-    probe('task-panel.name', { mockup: '.sb__name', app: '[data-panel-field="name"]' }, [
-      ...TYPE,
-      'color',
-      'padding-left',
-      'border-top-color',
-      'border-top-width',
-      'background-color',
-    ]),
+    probe(
+      'task-panel.name',
+      { mockup: '.sb__name', app: '[data-panel-field="name"]' },
+      [
+        ...TYPE,
+        'color',
+        'padding-left',
+        'border-top-color',
+        'border-top-width',
+        'background-color',
+      ],
+      { ruled: [...snapped('font-size', '16px'), ...snapped('letter-spacing', '-0.16px')] },
+    ),
     // DP-11 to DP-13: the Team and Agent tabs and their mark.
     probe(
       'task-panel.tab',
@@ -70,14 +79,17 @@ export const TASK_PANEL: LookScreen = {
       ['background-color', 'box.height'],
     ),
     // DP-14 to DP-17: the fact strip's keys, a derived value and a tick.
-    probe('task-panel.fact-key', { mockup: '.mstrip__k', app: '.tpr__fact .tf__k' }, [
-      ...TYPE,
-      'color',
-    ]),
+    probe(
+      'task-panel.fact-key',
+      { mockup: '.mstrip__k', app: '.tpr__fact .tf__k' },
+      [...TYPE, 'color'],
+      { ruled: snapped('letter-spacing', '0.24px') },
+    ),
     probe(
       'task-panel.fact-rank',
       { mockup: '.mstrip__rank', app: '[data-fact="rank"] .sb__state' },
       ['font-family', 'font-size', 'color'],
+      { ruled: snapped('font-size', '12px') },
     ),
     probe(
       'task-panel.fact-tick',
@@ -89,7 +101,7 @@ export const TASK_PANEL: LookScreen = {
       'task-panel.field-key',
       { mockup: '.sb__grid .tf__k', app: '.dtp__fields .tf__k' },
       [...TYPE, 'color'],
-      { ruled: [MUTED_DARK] },
+      { ruled: [MUTED_DARK, ...snapped('font-weight', '300')] },
     ),
     probe(
       'task-panel.select',
@@ -107,6 +119,7 @@ export const TASK_PANEL: LookScreen = {
         'background-color',
         'box.height',
       ],
+      { ruled: snapped('font-size', '14px') },
     ),
     // DP-35: the description.
     probe(
