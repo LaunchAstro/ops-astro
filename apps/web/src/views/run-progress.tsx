@@ -11,7 +11,7 @@
 // (`drawRunState`'s fallback), never dropped.
 
 import type { ReactElement } from 'react';
-import { drawRunState, Empty, Spill } from '@launchastro/ui';
+import { Banner, drawRunState, Empty, Spill } from '@launchastro/ui';
 import {
   isRefusal,
   isUnavailable,
@@ -63,11 +63,13 @@ export function RunProgress(props: RunProgressProps): ReactElement {
           The server refused this read ({state.refusal.code}), so nothing about the run is shown.
         </p>
       ) : state.outcome === 'unavailable' || !readable ? (
-        <p className="card__sub" data-run="unavailable">
-          The run could not be read
-          {state.outcome === 'unavailable' ? `: ${state.because}` : ''}. That is not a claim that no
-          work ran.
-        </p>
+        // DS-PRIM-30: a read that could not be read is a section error, the bad banner.
+        <div data-run="unavailable">
+          <Banner tone="bad" lead="The run could not be read.">
+            {state.outcome === 'unavailable' ? `${state.because} ` : ''}That is not a claim that no
+            work ran.
+          </Banner>
+        </div>
       ) : value === null ? null : value.outcome === 'no-run' ? (
         <Empty title="No run yet" description="Nothing has been picked up on this task." />
       ) : (
@@ -196,10 +198,11 @@ function AttemptReceipt(props: {
   if (state.outcome === 'loading') return null;
   if (state.outcome !== 'ready' && state.outcome !== 'empty') {
     return (
-      <p className="card__sub" data-receipt="unavailable" data-receipt-attempt={attemptId}>
-        The receipt for attempt {attemptId} could not be read. That is not a claim that no effect
-        happened.
-      </p>
+      <div data-receipt="unavailable" data-receipt-attempt={attemptId}>
+        <Banner tone="bad" lead={`The receipt for attempt ${attemptId} could not be read.`}>
+          That is not a claim that no effect happened.
+        </Banner>
+      </div>
     );
   }
   return <ReceiptBox attemptId={attemptId} receipt={state.value.receipt} />;
