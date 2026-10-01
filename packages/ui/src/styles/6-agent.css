@@ -660,3 +660,10 @@
   letter-spacing: var(--type-small-strong-tracking);
   text-transform: var(--type-small-strong-case);
 }
+.aip__plan-words {
+  margin: 0;
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+  white-space: pre-wrap;
+}

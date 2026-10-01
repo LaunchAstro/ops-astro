@@ -76,6 +76,9 @@ export function PlanCard(props: {
           </li>
         ))}
       </ol>
+      <p className="aip__plan-words" data-plan="words">
+        {plan.text}
+      </p>
       <p className="aip__plan-meta" data-plan="cost">
         Rough cost: up to {money(plan.ceilingMinor, plan.currency)}
       </p>

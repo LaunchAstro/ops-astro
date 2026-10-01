@@ -4,7 +4,9 @@
 // is sent with the version on screen and the words the card showed, and the
 // answer settles the card: approved once the server kept the words, or offered
 // again with the server's refusal quoted as it came (a stale version among
-// them). Nothing else in the drawer moves, and nothing is retried.
+// them). Nothing else in the drawer moves, and nothing is retried. A click
+// after an unknown outcome reuses the attempt's operation id, so a committed
+// accept replays (operations/client.ts); a settled answer ends the attempt.
 
 import type { PlanOffer } from '../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../operations/client.ts';
@@ -19,6 +21,9 @@ export interface CardStore {
   readonly offer: (id: string) => PlanOffer | undefined;
 }
 
+/** The operation id of each card's attempt whose outcome is still unknown. */
+const attempts = new WeakMap<PlanOffer, string>();
+
 export async function acceptPlanCard(
   client: OperationsClient,
   store: CardStore,
@@ -29,9 +34,11 @@ export async function acceptPlanCard(
   if (offer === undefined) return;
   store.update((current) => settlePlan(current, key, id, { state: 'accepting', refusal: null }));
   const conversationId = store.chat(key)?.conversationId ?? null;
-  const settled = settle(
-    await client.mutate('task.accept_plan', acceptBody(offer, conversationId)),
-  );
+  const operationId = attempts.get(offer) ?? client.newOperationId();
+  attempts.set(offer, operationId);
+  const body = acceptBody(offer, conversationId);
+  const settled = settle(await client.mutate('task.accept_plan', body, { operationId }));
+  if (settled.kind !== 'unknown') attempts.delete(offer);
   store.update((current) =>
     settlePlan(current, key, id, {
       state: settled.kind === 'ok' ? 'approved' : 'offered',
