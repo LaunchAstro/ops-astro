@@ -1,16 +1,41 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The Agent pane's earlier attempts (DA-07), each opened in place, and Start a
-// new attempt drawn unavailable until the sidebar chat can plan one.
+// new attempt. A new attempt is a new plan accepted in the sidebar chat, so
+// Start asks the drawer to plan it (AW-04 start from the pane); a host that
+// offers no `onStart` draws it unavailable.
 
 import type { ReactElement } from 'react';
 import type { RunStory } from '../../state/agent-run.ts';
 import { money } from './format.ts';
 
+/** Start a new attempt: live where the host offers the drawer's plan, unavailable otherwise. */
+function Start(props: { readonly onStart: (() => void) | undefined }): ReactElement {
+  if (props.onStart === undefined) {
+    return (
+      <p className="sbact__meta" data-agent="start-unavailable">
+        <button className="btn btn--sm" type="button" disabled data-agent="start">
+          Start a new attempt
+        </button>{' '}
+        Start is unavailable here until the sidebar chat can accept a plan for it.
+      </p>
+    );
+  }
+  return (
+    <p className="sbact__meta">
+      <button className="btn btn--sm" type="button" data-agent="start" onClick={props.onStart}>
+        Start a new attempt
+      </button>{' '}
+      The sidebar chat plans it; accepting the plan starts it.
+    </p>
+  );
+}
+
 export function Attempts(props: {
   readonly stories: readonly RunStory[];
   readonly shown: RunStory;
   readonly onOpen: (lineageId: string | null) => void;
+  readonly onStart?: (() => void) | undefined;
 }): ReactElement | null {
   const current = props.stories.at(-1);
   const restartable =
@@ -40,14 +65,7 @@ export function Attempts(props: {
             : ` · spent ${money(story.actualMinor, story.head.currency)}`}
         </button>
       ))}
-      {restartable ? (
-        <p className="sbact__meta" data-agent="start-unavailable">
-          <button className="btn btn--sm" type="button" disabled data-agent="start">
-            Start a new attempt
-          </button>{' '}
-          Start is unavailable here until the sidebar chat can accept a plan for it.
-        </p>
-      ) : null}
+      {restartable ? <Start onStart={props.onStart} /> : null}
     </div>
   );
 }

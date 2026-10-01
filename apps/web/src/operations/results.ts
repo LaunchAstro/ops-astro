@@ -4,7 +4,7 @@
 // the server's refusal, or no answer at all. Moved whole from that file, which
 // re-exports each, to keep it under the line limit.
 
-import type { CommandRefusal } from '../../../../packages/core-wire/src/index.ts';
+import type { CommandRefusal, PlanOffer } from '../../../../packages/core-wire/src/index.ts';
 
 /** What a mutation returns when it worked: a durable handle and a new revision. */
 export interface CommandOutcome {
@@ -29,7 +29,13 @@ export interface CommandOutcome {
 }
 
 export type ConversationReply =
-  | { readonly answered: true; readonly messageId: string; readonly body: string }
+  | {
+      readonly answered: true;
+      readonly messageId: string;
+      readonly body: string;
+      /** AW-04: the plan version a planning reply composed, drawn as a card. */
+      readonly plan?: PlanOffer;
+    }
   | { readonly answered: false; readonly code: string; readonly words: string };
 
 /**

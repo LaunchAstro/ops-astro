@@ -19,6 +19,7 @@
 
 import { useState, type ReactElement } from 'react';
 import { AgentPane, type GateDecision, type RecordedOutcome } from '@launchastro/ui';
+import { askDrawer, newAttemptAsk } from '../assistant/asks.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import type {
   PersonView,
@@ -32,6 +33,8 @@ import { StepUpPrompt } from './step-up-prompt.tsx';
 export interface AgentSectionProps {
   readonly client: OperationsClient;
   readonly recordId: string;
+  /** The task's title as the read gave it, or its key while it has none: the drawer's ask names it. */
+  readonly title: string;
   readonly proposals: readonly ProposalView[];
   readonly people: readonly PersonView[];
   /** `task.read`'s token ledger (MP-6-5): null for a reader it is not shown to, absent on an older read. */
@@ -217,6 +220,9 @@ export function AgentSection(props: AgentSectionProps): ReactElement {
         onTopUpAtStop={controls.topUpAtStop}
         onEndAtStop={controls.endAtStop}
         stopAwaiting={controls.stopAwaiting}
+        onStartAttempt={() => {
+          askDrawer(newAttemptAsk({ id: props.recordId, title: props.title, clientId: null }));
+        }}
       />
       {controls.stepUp === null ? null : <StepUpPrompt ask={controls.stepUp} />}
     </section>
