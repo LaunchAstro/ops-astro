@@ -43,6 +43,11 @@ export interface DockModel {
   readonly change: (next: (state: DockState) => DockState) => void;
   /** Every click inside the application, for the doors into the dock. */
   readonly onDoor: (event: ReactMouseEvent<HTMLElement>) => void;
+  /**
+   * A door a screen opens itself, by the same law: false, and nothing opened,
+   * where the panel has no tab here.
+   */
+  readonly open: (id: PanelId, beside: boolean, place?: string) => boolean;
   /** Where the whole dock was (MP-3-5), in memory only. */
   readonly history: {
     readonly canBack: boolean;
@@ -154,6 +159,15 @@ export function useDock(
   // the assistant. Plain solos, shift stacks, and a target already open stays
   // open while its view moves. A click another handler took is left alone.
   // Heard on the application's own root, so a door answers to its own dock.
+  const open = useCallback(
+    (id: string, beside: boolean, place?: string): boolean => {
+      if (!isPanelId(id) || !dockTabs({}, registry).some((tab) => tab.id === id)) return false;
+      change((state) => openByGesture(state, id, beside, isOwnAddress(place) ? place : undefined));
+      return true;
+    },
+    [change, registry],
+  );
+
   const onDoor = useCallback(
     (event: ReactMouseEvent<HTMLElement>): void => {
       if (event.defaultPrevented || event.button !== 0) return;
@@ -162,21 +176,18 @@ export function useDock(
           ? event.target.closest<HTMLElement>('[data-dock-open], [data-ask]')
           : null;
       if (door === null) return;
-      const id = door.dataset['dockOpen'] ?? 'ai';
-      if (!isPanelId(id) || !dockTabs({}, registry).some((tab) => tab.id === id)) return;
-      const place = door.dataset['dockPlace'];
-      event.preventDefault();
-      change((state) =>
-        openByGesture(state, id, event.shiftKey, isOwnAddress(place) ? place : undefined),
-      );
+      if (open(door.dataset['dockOpen'] ?? 'ai', event.shiftKey, door.dataset['dockPlace'])) {
+        event.preventDefault();
+      }
     },
-    [change, registry],
+    [open],
   );
 
   return {
     state: current.state,
     change,
     onDoor,
+    open,
     history: {
       canBack: canBack(trail.history),
       canForward: canForward(trail.history),

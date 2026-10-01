@@ -127,3 +127,11 @@
   letter-spacing: var(--type-small-tracking);
   text-transform: var(--type-small-case);
 }
+/* The client the panel was opened at (CS-7.29), above the book: lit as a
+   hovered row stays lit, so it reads as the one chosen. */
+.clbook__opened {
+  margin: 0 0 var(--s-3);
+}
+.clbook__opened[aria-current='true'] {
+  background: var(--surface);
+}
