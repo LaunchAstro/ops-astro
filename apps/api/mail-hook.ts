@@ -13,10 +13,18 @@
 // a malformed verified body 400, a replay 409, an event for no message sent
 // here 404 (so the provider retries one that raced the send's commit), and a
 // fault 503.
+//
+// A replayed event id is refused twice over: by this process for any event
+// it took inside the timestamp window, and by the database for an event that
+// moved an attempt, whichever process took it first.
 
 import type { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
-import { EMAIL_HOOK_MAX_BYTES, verifyEmailHook } from '../../packages/core-connectors/src/index.ts';
+import {
+  EMAIL_HOOK_MAX_BYTES,
+  EMAIL_HOOK_TOLERANCE_S,
+  verifyEmailHook,
+} from '../../packages/core-connectors/src/index.ts';
 import { landEmailEvent, type EmailHookOutcome } from '../../packages/core-custody/src/index.ts';
 import type { BusinessId, Database } from '../../packages/core-records/src/index.ts';
 
@@ -47,7 +55,13 @@ export function mountMailHook(server: Hono, database: Database, options: MailHoo
     maxSize: EMAIL_HOOK_MAX_BYTES,
     onError: (context) => context.json({ code: 'HOOK_TOO_LARGE' }, 413),
   });
+  // Every verified event id this process has taken, kept past the timestamp
+  // window, so any replay inside it is refused here, whatever its type. An
+  // event that landed nowhere or faulted is let go, so the provider's retry
+  // can land. Across processes, a landed event's id is held in the database.
+  const taken = new Map<string, number>();
   server.post(MAIL_HOOK_PATH, tooLarge, async (context) => {
+    let id: string | undefined;
     try {
       const raw = new Uint8Array(await context.req.raw.arrayBuffer());
       const headers = context.req.raw.headers;
@@ -60,9 +74,18 @@ export function mountMailHook(server: Hono, database: Database, options: MailHoo
       if (!verdict.ok) {
         return context.json({ code: verdict.code }, verdict.code === 'HOOK_MALFORMED' ? 400 : 401);
       }
+      const at = Math.floor(now() / 1000);
+      for (const [held, since] of taken) {
+        if (at - since > 2 * EMAIL_HOOK_TOLERANCE_S) taken.delete(held);
+      }
+      if (taken.has(verdict.event.id)) return context.json({ code: 'REPLAYED' }, 409);
+      id = verdict.event.id;
+      taken.set(id, at);
       const landed = await landEmailEvent(database, await options.businesses(), verdict.event);
+      if (landed === 'UNKNOWN_MESSAGE') taken.delete(id);
       return context.json({ code: landed }, STATUS[landed]);
     } catch {
+      if (id !== undefined) taken.delete(id);
       return context.json({ code: 'HOOK_FAULT' }, 503);
     }
   });

@@ -66,10 +66,10 @@ export function sign(
 /** POST to the route: signed headers (or a case's own), the body as given. */
 export async function post(
   raw: Uint8Array | string,
-  signed: Signed | undefined = sign(raw),
+  signed: Signed | null = sign(raw),
   headers: Headers = new Headers(),
 ): Promise<{ readonly status: number; readonly code: string; readonly text: string }> {
-  if (signed !== undefined) {
+  if (signed !== null) {
     headers.set('svix-id', signed.id);
     headers.set('svix-timestamp', signed.timestamp);
     headers.set('svix-signature', signed.signature);

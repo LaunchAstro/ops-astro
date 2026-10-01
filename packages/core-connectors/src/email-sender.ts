@@ -57,25 +57,57 @@ function statusOf(
   return typeof status === 'string' && STATUSES.has(status) ? (status as RecordStatus) : 'missing';
 }
 
-/** Stub (tests first): no policy read. */
+/** The root's DMARC policy from its `_dmarc` TXT records: exactly one `v=DMARC1` with a `p=` tag. */
 export function dmarcPolicy(records: readonly string[]): DmarcPolicy {
-  void records;
-  return 'missing';
+  const dmarc = records.filter((text) => /^v=DMARC1\s*(?:;|$)/u.test(text.trim()));
+  if (dmarc.length === 0) return 'missing';
+  if (dmarc.length > 1) return 'invalid';
+  const tags = (dmarc[0] ?? '').split(';').map((tag) => tag.trim().split('='));
+  const policy = tags
+    .find(([name]) => name?.trim() === 'p')?.[1]
+    ?.trim()
+    .toLowerCase();
+  return policy === 'reject' || policy === 'quarantine' || policy === 'none' ? policy : 'invalid';
 }
 
-/** Stub (tests first): every subdomain verified, nothing read. */
+/**
+ * The setup check: the subdomain's three records as the source answers, and
+ * the root's DMARC policy. Verified only when the answer is for this exact
+ * subdomain of this root and all three records verify. A source that throws
+ * or answers another shape is not verified; nothing it said is returned.
+ */
 export async function checkSender(
   source: SenderSource,
   subdomain: string,
   root: string,
 ): Promise<SenderReport> {
-  void [root, statusOf, STATUSES, HOST];
-  const records = { dkim: 'verified', spf: 'verified', returnPathMx: 'verified' } as const;
-  return await Promise.resolve({
+  const unverified: SenderReport = {
     subdomain,
-    verified: true,
-    records,
+    verified: false,
+    records: { dkim: 'missing', spf: 'missing', returnPathMx: 'missing' },
     dmarc: 'missing',
     mock: source.mock,
-  });
+  };
+  if (!HOST.test(subdomain) || !HOST.test(root) || !subdomain.endsWith(`.${root}`)) {
+    return unverified;
+  }
+  let answer: unknown;
+  let txt: readonly string[];
+  try {
+    [answer, txt] = await Promise.all([source.domain(), source.dmarc(root)]);
+  } catch {
+    return unverified;
+  }
+  const dmarc =
+    Array.isArray(txt) && txt.every((t) => typeof t === 'string') ? dmarcPolicy(txt) : 'invalid';
+  if (typeof answer !== 'object' || answer === null) return { ...unverified, dmarc };
+  const { name, records } = answer as Record<string, unknown>;
+  if (name !== subdomain || !Array.isArray(records)) return { ...unverified, dmarc };
+  const found = {
+    dkim: statusOf(records, 'DKIM', ['TXT', 'CNAME']),
+    spf: statusOf(records, 'SPF', ['TXT']),
+    returnPathMx: statusOf(records, 'SPF', ['MX']),
+  };
+  const verified = Object.values(found).every((status) => status === 'verified');
+  return { subdomain, verified, records: found, dmarc, mock: source.mock };
 }

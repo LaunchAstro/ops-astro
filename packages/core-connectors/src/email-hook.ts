@@ -102,14 +102,27 @@ function eventOf(id: string, raw: Uint8Array): EmailHookEvent | undefined {
   return { id, type, messageId };
 }
 
-/** Stub (tests first): parses the body with no header, timestamp or signature check. */
+/**
+ * Verify one event: the headers, the timestamp, the signature over the raw
+ * body, and only then the body's shape. `nowSeconds` is the server's clock.
+ */
 export function verifyEmailHook(
   raw: Uint8Array,
   header: HeaderOf,
   secret: string,
   nowSeconds: number,
 ): EmailHookVerdict {
-  void [secret, nowSeconds, keyOf, headersOf, signed];
-  const event = eventOf(header('svix-id') ?? '', raw);
+  const key = keyOf(secret);
+  const headers = headersOf(header);
+  if (key === undefined || headers === undefined || raw.byteLength > EMAIL_HOOK_MAX_BYTES) {
+    return { ok: false, code: 'HOOK_HEADERS' };
+  }
+  if (Math.abs(nowSeconds - Number(headers.timestamp)) > EMAIL_HOOK_TOLERANCE_S) {
+    return { ok: false, code: 'HOOK_STALE' };
+  }
+  if (!signed(key, headers.id, headers.timestamp, raw, headers.signatures)) {
+    return { ok: false, code: 'HOOK_SIGNATURE' };
+  }
+  const event = eventOf(headers.id, raw);
   return event === undefined ? { ok: false, code: 'HOOK_MALFORMED' } : { ok: true, event };
 }

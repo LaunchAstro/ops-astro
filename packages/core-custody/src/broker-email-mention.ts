@@ -16,7 +16,7 @@ import type { BusinessId, Database } from '../../core-records/src/index.ts';
 import type { Broker } from './broker-types.ts';
 import { sendInboxEmail, type EmailResult, type MailSettings } from './broker-email.ts';
 
-/** Stub (tests first): nobody is told. */
+/** Email each client a committed comment named. One result per client item, in raised order. */
 export async function tellCommentClients(
   database: Database,
   businessId: BusinessId,
@@ -24,6 +24,21 @@ export async function tellCommentClients(
   broker: Broker,
   mail: MailSettings,
 ): Promise<readonly EmailResult[]> {
-  void [database, businessId, commentId, broker, mail, sendInboxEmail];
-  return await Promise.resolve([]);
+  const items = await database.withBusiness(
+    businessId,
+    async (tx) =>
+      await tx.query<{ readonly id: string }>(
+        `select id from public.inbox_items
+          where business_id = $1 and fact_kind = 'record' and fact_id = $2
+            and reason = 'client_comment' and work_state = 'open'
+          order by raised_at, id`,
+        [tx.businessId, commentId],
+      ),
+  );
+  const results: EmailResult[] = [];
+  for (const item of items) {
+    // oxlint-disable-next-line no-await-in-loop -- one send at a time, each its own attempt
+    results.push(await sendInboxEmail(database, businessId, item.id, broker, mail));
+  }
+  return results;
 }

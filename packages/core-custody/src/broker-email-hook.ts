@@ -80,12 +80,16 @@ async function landIn(
   return move.state === 'delivered' ? 'DELIVERED' : 'BOUNCED';
 }
 
-/** Stub (tests first): nothing lands. */
+/** Land a verified event in whichever of the deployment's businesses sent its message. */
 export async function landEmailEvent(
   database: Database,
   businesses: readonly BusinessId[],
   event: EmailHookEvent,
 ): Promise<EmailHookOutcome> {
-  void [database, businesses, event, landIn];
-  return await Promise.resolve('IGNORED');
+  for (const business of businesses) {
+    // oxlint-disable-next-line no-await-in-loop -- one business at a time, stopping at the holder
+    const landed = await database.withBusiness(business, async (tx) => await landIn(tx, event));
+    if (landed !== undefined) return landed;
+  }
+  return 'UNKNOWN_MESSAGE';
 }

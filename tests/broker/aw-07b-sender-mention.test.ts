@@ -54,7 +54,7 @@ it('AW-07b sender: mail is refused until the sending subdomain verifies DKIM, SP
     ['SPF failed', (s) => void (s.spf = 'failed')],
     ['return-path MX unknown status', (s) => void (s.returnPathMx = 'not_started')],
     ['answer for another subdomain', (s) => void (s.name = 'send.example.com')],
-    ['no answer', (s) => void (s.raw = null)],
+    ['a bare string answer', (s) => void (s.raw = 'verified')],
     ['records not a list', (s) => void (s.raw = { name: SUBDOMAIN, records: 'verified' })],
     [
       'two DKIM records',

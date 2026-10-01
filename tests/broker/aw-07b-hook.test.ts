@@ -73,7 +73,10 @@ it('AW-07b hook signature: a stale or future timestamp and a replayed event id a
   const both = await Promise.all([post(body, signed), post(body, signed)]);
   expect(both.map((answer) => answer.code).toSorted()).toEqual(['DELIVERED', 'REPLAYED']);
   expect(both.find((answer) => answer.code === 'REPLAYED')?.status).toBe(409);
-  // And again later, still inside the window.
+  // And again later, still inside the window, and on a fresh route as another
+  // process would serve it: the landed event's id is held in the database.
+  expect(await post(body, signed)).toMatchObject({ status: 409, code: 'REPLAYED' });
+  mountHook();
   expect(await post(body, signed)).toMatchObject({ status: 409, code: 'REPLAYED' });
   expect(await states(item)).toEqual(['asked', 'accepted', 'delivered']);
 });
@@ -96,10 +99,14 @@ it('AW-07b hook signature: a body altered after signing, a wrong secret and odd 
     ['signed under another secret', body, sign(body, hook.clock, signed.id, otherSecret)],
     ['signed for another id', body, { ...signed, id: `${signed.id}x` }],
     [
-      'base64url signature',
+      'base64url signature, unpadded',
       body,
-      { ...signed, signature: `v1,${mac.replaceAll('+', '-').replaceAll('/', '_')}` },
+      {
+        ...signed,
+        signature: `v1,${mac.replaceAll('+', '-').replaceAll('/', '_').replace(/=+$/u, '')}`,
+      },
     ],
+    ['percent-encoded signature', body, { ...signed, signature: `v1,${encodeURIComponent(mac)}` }],
     ['v1a scheme', body, { ...signed, signature: `v1a,${mac}` }],
     ['uppercase scheme', body, { ...signed, signature: `V1,${mac}` }],
     // Not JSON at all, under a wrong signature: the signature answers, never the parser.
@@ -140,17 +147,18 @@ it('AW-07b hook signature: missing, duplicate and malformed headers are refused'
       if (other === name) twice.append(other, value);
     }
     // oxlint-disable-next-line no-await-in-loop
-    expect(await post(body, undefined, missing), `${name} missing`).toMatchObject({
+    expect(await post(body, null, missing), `${name} missing`).toMatchObject({
       status: 401,
       code: 'HOOK_HEADERS',
     });
     // oxlint-disable-next-line no-await-in-loop
-    expect(await post(body, undefined, twice), `${name} twice`).toMatchObject({ status: 401 });
+    expect(await post(body, null, twice), `${name} twice`).toMatchObject({ status: 401 });
   }
   for (const bent of [
     { ...signed, timestamp: `${signed.timestamp}.0` },
-    { ...signed, timestamp: ` ${signed.timestamp}` },
-    { ...signed, id: `${signed.id}\t` },
+    // HTTP trims a value's ends, so the bends are inside it.
+    { ...signed, timestamp: `+${signed.timestamp}` },
+    { ...signed, id: `${signed.id}\tx` },
     { ...signed, signature: `${signed.signature},` },
     { ...signed, signature: '' },
   ]) {
