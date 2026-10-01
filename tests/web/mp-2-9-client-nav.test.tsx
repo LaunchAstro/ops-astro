@@ -4,7 +4,7 @@
 // MP-2-9, the client workspace sub-navigation: inside a client the rail holds
 // "Back to Clients" and that client's seven sections, and the client's identity
 // sits in the app strip. Looks at 1480, 900 and 390 are measured in a browser
-// by `tests/browser/app-frame.mjs`.
+// by `tests/surfaces/mp-2-8-harness.test.tsx`.
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { open } from './mp-2-1-support.tsx';

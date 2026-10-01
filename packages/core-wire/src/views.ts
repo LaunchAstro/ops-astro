@@ -649,6 +649,11 @@ export interface TaskLedgerResult {
   readonly ok: true;
   readonly days: readonly LedgerDayView[];
   readonly earlier: boolean;
+  /**
+   * Only with `query`: the reader's own matching tasks go past the most the
+   * ledger's search reads (C1's bound, 500), so some are not listed.
+   */
+  readonly more?: boolean;
 }
 
 /** A teammate on the Team panel's people strip (MP-7-10): no row is available. */
@@ -896,6 +901,11 @@ export interface InboxEntry {
   readonly task?: { readonly key: string; readonly title: string | null };
   /** Who closed it, by name: a cleared decision names who decided. */
   readonly closedBy?: PersonView | null;
+  /**
+   * The task's client (MP-7-3's group), only where the caller reaches that
+   * client as `client.list` does; a caller holding the task alone is not told.
+   */
+  readonly client?: { readonly clientId: string; readonly name: string };
   /**
    * T2h's alert on the run a readable item points at: the same record the task
    * page and the queue read show (INB-1, the alert's third and last place).

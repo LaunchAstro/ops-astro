@@ -4,7 +4,7 @@
 // MP-2-7, the page header and sticky chrome. The strip, the tab row and the
 // header travel as one chrome block, sticky at 901 and above and scrolling
 // away at 900 and below; that is measured by scrolling in a browser in
-// `tests/browser/app-frame.mjs`. The freshness marker is the kit's (MP-1-6):
+// `tests/surfaces/mp-2-8-harness.test.tsx`. The freshness marker is the kit's (MP-1-6):
 // an indicator with five states and no sync button (CS-1.1, TR-S-B1R-11).
 
 // oxlint-disable no-await-in-loop

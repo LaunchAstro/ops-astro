@@ -238,6 +238,8 @@ export function App(props: AppProps): ReactElement {
     },
   });
 
+  // Signed out, the page is the form alone: no rail entry opens without a session (B6).
+  if (content === signIn) return signIn;
   return (
     <PageFreshnessProvider>
       <PagePresenceProvider>

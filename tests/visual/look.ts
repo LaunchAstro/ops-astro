@@ -23,7 +23,7 @@ import { launchChromium } from '../support/chromium.ts';
 import { load, MOCKUP_ORIGIN, openSide, type Side } from './capture.ts';
 import { madeUpSession, serveApp } from './app-pages.ts';
 import { answerMadeUp } from './made-up-api.ts';
-import { LOOK_SCREENS, type LookProbe, type LookScreen } from './look/index.ts';
+import { LOOK_SCREENS, RULED_PAINT, type LookProbe, type LookScreen } from './look/index.ts';
 import {
   checkAssets,
   checkMockupTree,
@@ -33,7 +33,7 @@ import {
   readPacket,
   type Theme,
 } from './packet.ts';
-import { addressOf } from './report.ts';
+import { addressOf, needsSession } from './report.ts';
 
 type Measured = Readonly<Record<string, string>>;
 interface Pinned {
@@ -156,7 +156,9 @@ async function checkProbe(
     say(`red ${name}: no mockup value pinned (run --measure)`, true);
     return;
   }
-  const side = await openSide(browser, packet, width, { app, session, colorScheme: theme });
+  // A public page (sign-in) is measured signed out, as the harness draws it.
+  const signedIn = needsSession(probe.app.page) ? { session } : {};
+  const side = await openSide(browser, packet, width, { app, ...signedIn, colorScheme: theme });
   await answerMadeUp(side.context);
   const address = addressOf(probe.app.page, { key: 'T-1' }) ?? '/';
   const got = await measureOn(side, new URL(address, app).href, probe, 'app');
@@ -166,7 +168,9 @@ async function checkProbe(
   }
   // A ruling that moved the build off the mockup names the value it holds instead.
   const wanted = (prop: string): string | undefined =>
-    probe.ruled?.find((r) => r.at === `${prop}@${theme}`)?.want ?? want[prop];
+    probe.ruled?.find((r) => r.at === `${prop}@${theme}`)?.want ??
+    RULED_PAINT.find((r) => r.theme === theme && r.mockup === want[prop])?.want ??
+    want[prop];
   const off = probe.props.filter((prop) => got[prop] !== wanted(prop));
   const why = off.map((p) => `${p} mockup ${String(wanted(p))} app ${String(got[p])}`);
   say(off.length === 0 ? `ok ${name}` : `red ${name}: ${why.join('; ')}`, off.length > 0);
