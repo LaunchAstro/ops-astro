@@ -24,7 +24,8 @@
 // provider's Send Email hook (`broker-auth-email.ts`), whose message id is
 // then the `asked` evidence, so a replayed message is refused under the
 // invitation's lock. A deployment with no login provider catalogued mints
-// its own. A failed generation sends and keeps nothing.
+// its own. The generation runs under the invitation's lock, so two sends for
+// one act never both make a link. A failed generation sends and keeps nothing.
 
 import { createHash, randomBytes } from 'node:crypto';
 import {
