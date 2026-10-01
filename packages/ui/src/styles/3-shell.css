@@ -290,7 +290,9 @@
   display: flex;
   align-items: center;
   gap: var(--s-4);
-  min-height: 45px;
+  /* A 32px row (search, the face switch) inside its padding, as the mockup's
+     44.8: its controls centre on the same half pixel as the mockup's. */
+  min-height: calc(32px + 0.8rem);
   box-sizing: border-box;
   padding: 0.4rem var(--s-4);
   background: var(--app-chrome);
