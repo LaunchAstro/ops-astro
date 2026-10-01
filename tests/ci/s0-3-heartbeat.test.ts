@@ -42,7 +42,7 @@ describe('S0-3 heartbeat', () => {
 });
 
 function heartbeatCases1() {
-  it('pings the address once, following no redirect and with a time limit, and says sent', async () => {
+  it('pings the address once by POST, following no redirect and with a time limit, and says sent', async () => {
     const { ping } = await heartbeat();
     const { get, asked } = answering(200);
     expect(await ping(ADDRESS, get)).toBe('sent');
@@ -50,7 +50,10 @@ function heartbeatCases1() {
     expect(asked[0]?.url).toBe(ADDRESS);
     expect(asked[0]?.init?.redirect).toBe('manual');
     expect(asked[0]?.init?.signal).toBeInstanceOf(AbortSignal);
-    expect(asked[0]?.init?.method ?? 'GET').toBe('GET');
+    // GlitchTip's heartbeat check-in takes POST only (NATHAN-GLITCHTIP 4);
+    // Healthchecks.io and UptimeRobot take it too.
+    expect(asked[0]?.init?.method).toBe('POST');
+    expect(asked[0]?.init?.body ?? '').toBe('');
   });
 
   it('a redirect, an error answer or a failed request is failed, and none is followed', async () => {
