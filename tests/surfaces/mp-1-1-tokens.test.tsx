@@ -170,7 +170,6 @@ describe('MP-1-1 tokens', () => {
     const clean = run();
     expect(clean.stderr).toBe('');
     expect(clean.status).toBe(0);
-
     // A planted drift: one dark colour changed. The diff fails and names it.
     const drifted = read(tokensCss).replace(
       /(\[data-theme='dark'\] \{[\s\S]*?--surface-2: )[^;]+;/u,
