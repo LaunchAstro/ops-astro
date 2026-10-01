@@ -188,6 +188,67 @@ needsServer(
   },
 );
 
+/** The world's pool, counting the business transactions it opens. */
+function counted(): { database: Database; opened: () => number } {
+  let n = 0;
+  const app = harness.world.db.app;
+  const database = new Proxy(app, {
+    get(target, key, receiver) {
+      const value: unknown = Reflect.get(target, key, receiver);
+      if (key !== 'withBusiness' || typeof value !== 'function') return value;
+      return (...args: unknown[]) => {
+        n += 1;
+        return (value as (...a: unknown[]) => unknown).apply(target, args);
+      };
+    },
+  });
+  return { database, opened: () => n };
+}
+
+/** The API as a server socket from `address` reaches it. */
+const from = (api: Api, address: string): Api =>
+  ({
+    fetch: async (request: Request) =>
+      await api.fetch(request, { incoming: { socket: { remoteAddress: address } } }),
+  }) as unknown as Api;
+
+needsServer(
+  'API-2 quota at the door: a made-up bearer already answered not live is limited without a transaction once the door is full',
+  async () => {
+    const { database, opened } = counted();
+    const { api } = limited({ refused: 2 }, database);
+    const again = randomBytes(32).toString('base64url');
+    expect((await readWith(api, again)).code).toBe('DELEGATION_NOT_LIVE');
+    expect((await readWith(api, randomBytes(32).toString('base64url'))).code).toBe(
+      'DELEGATION_NOT_LIVE',
+    );
+    const before = opened();
+    const answer = await readWith(api, again);
+    expect(answer.code).toBe('AGENT_QUOTA_EXCEEDED');
+    expect(opened(), 'no transaction for a bearer known not live').toBe(before);
+  },
+);
+
+needsServer(
+  'API-2 quota at the door: an address past its share of not-live bearers is limited without a transaction, while a live credential is still served from it',
+  async () => {
+    const { database, opened } = counted();
+    const { api } = limited({ refused: 2 }, database);
+    const live = await issued();
+    const flood = from(api, '203.0.113.9');
+    const made = async (): Promise<Answer> =>
+      await readWith(flood, randomBytes(32).toString('base64url'));
+    expect((await readWith(from(api, '198.51.100.1'), live.secret)).code).toBe('ok');
+    await made();
+    await made();
+    const before = opened();
+    const past = await Promise.all([made(), made(), made()]);
+    expect(codesOf(past)).toEqual(Array.from({ length: 3 }, () => 'AGENT_QUOTA_EXCEEDED'));
+    expect(opened(), 'no transaction for the flooding address').toBe(before);
+    expect((await readWith(flood, live.secret)).code).toBe('ok');
+  },
+);
+
 async function attemptsIn(businessId: string): Promise<number> {
   const rows = await harness.world.db.admin.execute<{ readonly n: string }>(
     'select count(*)::text as n from public.authentication_attempts where business_id = $1',
