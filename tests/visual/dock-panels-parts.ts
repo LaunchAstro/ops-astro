@@ -41,7 +41,7 @@ const NOTIF_PARTS = (pane: 'owed' | 'info'): Part[] => {
     { name: 'head', mockup: `${NT} > .dpanel__head`, built: '.topbar' },
     { name: 'title', mockup: `${NT} .dpanel__id span`, built: '.topbar .t-title' },
     { name: 'summary', mockup: '.nt__sum', built: '.nt__sum' },
-    { name: 'tabs', mockup: '.nt__tabs', built: '.nt__tabs .cmtabs' },
+    { name: 'tabs', mockup: '.nt__tabs', built: '.nt__tabs' },
     {
       name: 'tab-selected',
       mockup: '.nt__tabs .cmtab[aria-selected="true"]',
@@ -53,10 +53,12 @@ const NOTIF_PARTS = (pane: 'owed' | 'info'): Part[] => {
       built: '.nt__tabs .cmtab[aria-selected="false"]',
     },
     { name: 'tab-count', mockup: '.nt__tabs .cbadge', built: '.nt__tabs .cbadge' },
+    { name: 'tab-mark', mockup: '.nt__tabs .cmtabs__mark', built: '.nt__tabs .cmtabs__mark' },
     { name: 'group', mockup: `${mPane} .nt__grp`, built: `${bPane} .nt__grp` },
     { name: 'group-name', mockup: `${mPane} .nt__gname`, built: `${bPane} .nt__gname` },
     { name: 'band-head', mockup: `${mPane} .nt__bh`, built: `${bPane} .nt__bh` },
     { name: 'row', mockup: `${mPane} .nt__row`, built: `${bPane} .nt__row` },
+    { name: 'row-mark', mockup: `${mPane} .nt__mark`, built: `${bPane} .nt__mark` },
     { name: 'row-text', mockup: `${mPane} .nt__text`, built: `${bPane} .nt__text` },
     { name: 'row-meta', mockup: `${mPane} .nt__meta`, built: `${bPane} .nt__meta` },
     { name: 'closed', mockup: `${mPane} .nt__summary`, built: `${bPane} .nt__summary` },
@@ -149,7 +151,14 @@ export function measureParts(parts: readonly (readonly [string, string])[]): Par
     }
     const s = getComputedStyle(element);
     const r = element.getBoundingClientRect();
-    const bordered = s.borderTopWidth !== '0px' || s.borderBottomWidth !== '0px';
+    // Each drawn side of the border: the capture tool reads the top alone,
+    // which misses a rule drawn underneath.
+    const side = (at: string, what: string): string => s.getPropertyValue(`border-${at}-${what}`);
+    const drawn = ['top', 'right', 'bottom', 'left'].filter(
+      (at) => side(at, 'width') !== '0px' && side(at, 'style') !== 'none',
+    );
+    const each = (draw: (at: string) => string): string =>
+      drawn.length === 0 ? 'none' : drawn.map((at) => draw(at)).join(', ');
     out[name] = {
       box: [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)],
       style: {
@@ -161,10 +170,8 @@ export function measureParts(parts: readonly (readonly [string, string])[]): Par
         tt: s.textTransform,
         color: hex(s.color),
         bg: hex(s.backgroundColor),
-        border: bordered
-          ? `${s.borderTopWidth} ${s.borderRightWidth} ${s.borderBottomWidth} ${s.borderLeftWidth} ${s.borderTopStyle}`
-          : 'none',
-        borderColor: s.borderTopWidth === '0px' ? 'none' : hex(s.borderTopColor),
+        border: each((at) => `${at} ${side(at, 'width')} ${side(at, 'style')}`),
+        borderColor: each((at) => hex(side(at, 'color'))),
         radius: s.borderRadius,
         pad: s.padding,
         gap: s.gap,
@@ -176,7 +183,42 @@ export function measureParts(parts: readonly (readonly [string, string])[]): Par
 }
 /* oxlint-enable unicorn/consistent-function-scoping, max-lines-per-function */
 
+/** Box properties: within a pixel. `left` is the part's x within its panel. */
+const SLACK = 1;
+
+function boxOf(parts: Parts, name: string): Record<string, number> | null {
+  const part = parts[name];
+  if (part === null || part === undefined) return null;
+  const [x, y, width, height] = part.box;
+  const panel = parts['panel'];
+  if (name === 'panel') return { x, y, width, height };
+  return { width, height, ...(panel ? { left: x - panel.box[0] } : {}) };
+}
+
+const has = (side: Measured | null): string => (side === null ? 'absent' : 'drawn');
+
 /** Every difference between the two sides' parts, each named. None: the panel matches. */
-export function verdictOf(_mockup: Parts, _built: Parts): Difference[] {
-  return [];
+export function verdictOf(mockup: Parts, built: Parts): Difference[] {
+  const names = [...new Set([...Object.keys(mockup), ...Object.keys(built)])];
+  const differences: Difference[] = [];
+  for (const part of names) {
+    const left = mockup[part] ?? null;
+    const right = built[part] ?? null;
+    if (left === null && right === null) continue;
+    if (left === null || right === null) {
+      differences.push({ part, property: 'present', mockup: has(left), built: has(right) });
+      continue;
+    }
+    const [lBox, rBox] = [boxOf(mockup, part) ?? {}, boxOf(built, part) ?? {}];
+    for (const property of Object.keys(lBox)) {
+      const [l, r] = [lBox[property], rBox[property]];
+      if (l === undefined || r === undefined || Math.abs(l - r) <= SLACK) continue;
+      differences.push({ part, property, mockup: `${String(l)}px`, built: `${String(r)}px` });
+    }
+    for (const property of Object.keys(left.style)) {
+      const [l, r] = [left.style[property] ?? '', right.style[property] ?? ''];
+      if (l !== r) differences.push({ part, property, mockup: l, built: r });
+    }
+  }
+  return differences;
 }
