@@ -31,6 +31,8 @@ export type IdentityRefusalCode =
   | 'ACTOR_INACTIVE'
   // C59: a person with a verified second factor signed in without it.
   | 'AUTH_SECOND_FACTOR_REQUIRED'
+  // C39-T: a person an accepted invitation placed has no second factor yet.
+  | 'AUTH_SECOND_FACTOR_SETUP_REQUIRED'
   // C58: a person's session they signed out of or ended from another; the
   // same re-login answer as a token past its time, which it now is.
   | 'AUTH_SESSION_EXPIRED';
