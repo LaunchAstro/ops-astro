@@ -1,0 +1,67 @@
+/* SPDX-License-Identifier: AGPL-3.0-only
+   Layer 2, the kit's form layouts beside `.form` (DS-COMP-26). Its own sheet
+   because 2-primitives.css is at the product-source line limit. */
+
+/* DS-COMP-26, the settings rows (AG-X20, AG-X21; mockup app.css:3250-3283):
+   a label and one sentence beside the row's control, in one card capped at a
+   readable measure rather than run to the grid. The derived line sits with
+   the controls; it reports state, so it is mono. */
+.set__card {
+  max-width: 46rem;
+}
+.set {
+  display: grid;
+  margin-top: var(--s-3);
+}
+.setrow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--s-4);
+  align-items: start;
+  padding: var(--s-4) 0;
+  border-top: 1px solid var(--border);
+}
+.setrow:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+.setrow__k {
+  margin: 0;
+  color: var(--text);
+  font: var(--type-body-strong);
+  letter-spacing: var(--type-body-strong-tracking);
+  text-transform: var(--type-body-strong-case);
+}
+.setrow__note {
+  margin: 0.15rem 0 0;
+  color: var(--text-2);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+.setrow__ctl {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--s-2);
+}
+.setrow__state {
+  margin: 0;
+  color: var(--text-muted);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
+  text-align: right;
+}
+@media (width <= 640px) {
+  .setrow {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--s-3);
+  }
+  .setrow__ctl {
+    align-items: flex-start;
+  }
+  .setrow__state {
+    text-align: left;
+  }
+}

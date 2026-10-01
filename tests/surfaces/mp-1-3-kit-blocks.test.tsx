@@ -198,11 +198,21 @@ it('MP-1-3 the task page assignee field shows the field-shaped placeholder while
   }
 });
 
+it("the mock label sits in the marked region's top-right corner, over no layout", () => {
+  expect(rule('.is-mock > .mocktag')).toMatch(/position:\s*absolute/u);
+  expect(rule('.is-mock > .mocktag')).toMatch(/top:\s*0/u);
+  expect(rule('.is-mock > .mocktag')).toMatch(/right:\s*0/u);
+  expect(html(<MockRegion nested>x</MockRegion>)).toBe(
+    '<div class="is-mock is-mock--nested" data-provenance="mock">x</div>',
+  );
+});
+
 it('MP-1-3 mock mark, locate flash, door card, list row and form layout', async () => {
   expect(html(<MockRegion word>x</MockRegion>)).toBe(
-    '<div class="is-mock"><span class="mocktag">Mock</span>x</div>',
+    '<div class="is-mock" data-provenance="mock"><span class="mocktag">Mock</span>x</div>',
   );
   expect(rule('.is-mock')).toMatch(/box-shadow:\s*inset 0 0 0 1px var\(--mock-edge\)/u);
+  expect(rule('.is-mock')).toMatch(/position:\s*relative/u);
   const target = document.createElement('div');
   document.body.append(target);
   const scroll = vi.fn();

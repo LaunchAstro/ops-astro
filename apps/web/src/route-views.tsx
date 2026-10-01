@@ -85,3 +85,19 @@ export function NotFound(props: { readonly path: string }): ReactElement {
     </div>
   );
 }
+
+/** A signed-in person at `/sign-in`: the one empty state, with the way on. */
+export function SignedInAlready(props: { readonly onGo: () => void }): ReactElement {
+  return (
+    <div className="readstate" data-outcome="ready">
+      <Empty
+        title="You are already signed in."
+        action={
+          <button className="btn btn--primary" type="button" onClick={props.onGo}>
+            Go to Projects
+          </button>
+        }
+      />
+    </div>
+  );
+}

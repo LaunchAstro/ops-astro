@@ -13,7 +13,14 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } 
 import { Shell } from '@launchastro/ui';
 import { gateOf, matchRoute, pathTo } from './routes.ts';
 import { NO_CLIENT_GRANTS, canonicalOf, pageAt, type ClientAccess } from './manifest.ts';
-import { ClientRefused, NotFound, PagePlaceholder, RouteTabs, railFor } from './route-views.tsx';
+import {
+  ClientRefused,
+  NotFound,
+  PagePlaceholder,
+  RouteTabs,
+  SignedInAlready,
+  railFor,
+} from './route-views.tsx';
 import { HeldAddressNotice, heldAddressOffer, type HeldOffer } from './held-address.tsx';
 import { PANELS } from './panels.ts';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
@@ -192,6 +199,11 @@ export function App(props: AppProps): ReactElement {
     (session === null || !clientAccess(session.businessKey, at.client));
   const rail = railFor(at, refused);
 
+  // Compiled in by the build's stamp (`apps/web/vite.config.ts`); absent under a
+  // bundler that did not stamp, and the rail then says the build is unstamped.
+  // Read by name, never by index: an indexed read inlines every VITE_ setting
+  // of the build's environment into the bundle (G3).
+  const build = import.meta.env.VITE_OPS_ASTRO_BUILD ?? '';
   const signIn = (
     <SignIn
       gotrueUrl={props.gotrueUrl}
@@ -199,6 +211,7 @@ export function App(props: AppProps): ReactElement {
       fetch={props.fetch}
       onSignedIn={onSignedIn}
       ended={props.sessions.interruption}
+      build={build === '' ? null : build}
     />
   );
 
@@ -239,11 +252,9 @@ export function App(props: AppProps): ReactElement {
     }
   })();
 
-  // Compiled in by the build's stamp (`apps/web/vite.config.ts`); absent under a
-  // bundler that did not stamp, and the rail then says the build is unstamped.
-  // Read by name, never by index: an indexed read inlines every VITE_ setting
-  // of the build's environment into the bundle (G3).
-  const build = import.meta.env.VITE_OPS_ASTRO_BUILD ?? '';
+  // Signed out, the page is the form alone: every rail entry and dock tab asks
+  // for a session, so the shell would offer nothing a person could open (B6).
+  if (content === signIn) return signIn;
 
   return (
     <Shell
@@ -285,16 +296,5 @@ export function App(props: AppProps): ReactElement {
       {at === null || refused || session === null ? null : <RouteTabs at={at} />}
       {content}
     </Shell>
-  );
-}
-
-function SignedInAlready(props: { readonly onGo: () => void }): ReactElement {
-  return (
-    <div className="readstate" data-outcome="ready">
-      <p className="empty__title">You are already signed in.</p>
-      <button className="btn btn--primary" type="button" onClick={props.onGo}>
-        Go to Projects
-      </button>
-    </div>
   );
 }

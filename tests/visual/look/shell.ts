@@ -4,7 +4,7 @@
 // DS-SIDE-11 to 14, 17), the app strip (DS-COMP-1), the page header (DS-COMP-3), the
 // content's padding and the dock rail at rest (DS-SIDE-1, its look only). PAGE-MAP SH-*.
 
-import type { LookScreen } from './index.ts';
+import type { LookScreen } from './probe.ts';
 
 const BOARD = { path: '/agency/projects/' } as const;
 const APP = { page: 'agency:projects-board' } as const;
@@ -32,8 +32,6 @@ export const SHELL: LookScreen = {
         'text-transform',
         'color',
       ],
-      // DR-10 folded the dark muted ink to 55 percent; the mockup drew 46.
-      ruled: [{ at: 'color@dark', want: 'rgba(248,248,248,140)', why: 'DR-10' }],
     },
     {
       id: 'shell.rail-item',

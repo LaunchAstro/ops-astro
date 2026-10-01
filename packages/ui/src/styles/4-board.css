@@ -28,18 +28,17 @@
 .cbd__tag {
   display: inline-flex;
   align-items: center;
-  gap: 0.3rem;
+  gap: 0.35rem;
   padding: 0.2rem 0.5rem;
-  border: 1px solid var(--border);
+  border: 1px solid var(--accent);
+  background: var(--surface);
+  color: var(--text);
   font: var(--type-caption);
   letter-spacing: var(--type-caption-tracking);
   text-transform: var(--type-caption-case);
 }
 .cbd__tagk {
-  font: var(--type-eyebrow);
-  letter-spacing: var(--type-eyebrow-tracking);
-  text-transform: var(--type-eyebrow-case);
-  color: var(--ink-faint);
+  color: var(--text-dim);
 }
 .cbd__tagx {
   border: 0;
@@ -49,6 +48,44 @@
   font: var(--type-button);
   letter-spacing: var(--type-button-tracking);
   text-transform: var(--type-button-case);
+}
+/* The quick-add field (B-01's field): a bordered box the input sits in
+   borderless, so the box owns the focus state and the input draws nothing. */
+.cbd__field {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 10rem;
+  padding: 0.3rem 0.55rem;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text);
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+}
+.cbd__field:focus-within {
+  border-color: var(--accent);
+}
+.cbd__field .icon {
+  flex: none;
+  color: var(--ink-faint);
+}
+.cbd__field input {
+  width: 100%;
+  min-width: 3rem;
+  padding: 1px 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+.cbd__field input:focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 .cbd__wrap {
   overflow-x: auto;
@@ -73,6 +110,7 @@
   padding: 0.5rem var(--s-3);
   border-bottom: 1px solid var(--border);
   vertical-align: middle;
+  overflow: hidden;
 }
 .cbd__tbl tbody tr:not(.cbd__grp):nth-child(even) {
   background: color-mix(in oklch, var(--ink) 1.6%, var(--paper));
@@ -81,23 +119,32 @@
   background: var(--surface-2);
 }
 /* The group banner is a plain heading: no colour, no count. A board where
-   every row shouts says nothing. */
-.cbd__grp td {
-  padding-top: var(--s-4);
-  border-bottom: 1px solid var(--border-strong);
+   every row shouts says nothing. The first sits tight under the head; each
+   later one opens with a rule. */
+.cbd__tbl .cbd__grp > td {
+  padding: 0.85rem 0.5rem 0.35rem;
+  border-top: 1px solid var(--border);
+  border-bottom: 0;
+  background: var(--paper);
+}
+.cbd__tbl .cbd__grp:first-child > td {
+  padding-top: 0.35rem;
+  border-top: 0;
 }
 .cbd__grpb {
-  font: var(--type-eyebrow);
-  letter-spacing: var(--type-eyebrow-tracking);
-  text-transform: var(--type-eyebrow-case);
+  font: var(--type-subheading);
+  letter-spacing: var(--type-subheading-tracking);
+  text-transform: var(--type-subheading-case);
   color: var(--text);
 }
 .cbd__grpr {
-  margin-left: 0.6rem;
+  margin-left: 0.1rem;
+  padding-left: 0.4rem;
+  border-left: 1px solid var(--border);
   color: var(--text-muted);
-  font: var(--type-data);
-  letter-spacing: var(--type-data-tracking);
-  text-transform: var(--type-data-case);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
 .cbd__name {
   display: flex;
@@ -110,11 +157,24 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font: var(--type-body-strong);
-  letter-spacing: var(--type-body-strong-tracking);
-  text-transform: var(--type-body-strong-case);
+  color: var(--text);
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+}
+/* The task name is the row's link: ink, not link dress (the whole row reads as one). */
+a.cbd__nm {
+  text-decoration: none;
+}
+a.cbd__nm:hover {
+  text-decoration: underline;
+}
+/* The assignee's name sits a step quieter than the task's. */
+.av + .cbd__nm {
+  color: var(--text-2);
 }
 .cbd__rank {
+  color: var(--ink-faint);
   font: var(--type-data);
   letter-spacing: var(--type-data-tracking);
   text-transform: var(--type-data-case);
@@ -122,25 +182,70 @@
 .cbd__dim {
   color: var(--text-dim);
 }
-.cbd__av {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 1.6rem;
-  height: 1.6rem;
-  border: 1px solid var(--border-strong);
-  font: var(--type-badge);
-  letter-spacing: var(--type-badge-tracking);
-  text-transform: var(--type-badge-case);
+/* Stage and state: the board's outline cell chip. */
+.cbd__chips {
+  display: flex;
+  gap: 0.25rem;
+  min-width: 0;
+}
+.cbd__chip {
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0.1rem 0.35rem;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-2);
+  font: var(--type-caption);
+  font-size: var(--text-overline); /* type-exception DS-COMP-17: the 11 px board cell chip */
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The state's own tone stays on the task page; on the board the chip is neutral. */
+.cbd__chip .spill {
+  color: inherit;
 }
 .tl__due {
+  white-space: nowrap;
+  color: var(--text-2);
   font: var(--type-data);
   letter-spacing: var(--type-data-tracking);
   text-transform: var(--type-data-case);
 }
-.tl__due.is-now {
-  color: var(--warning);
-}
 .tl__due.is-bad {
   color: var(--danger);
+  /* type-exception DS-COMP-17: the overdue date carries the medium weight */
+  font-weight: var(--weight-medium);
+}
+/* The reading line under the rows (B-22): how many the board holds. */
+.cbd__read {
+  margin: 0;
+  padding: var(--s-2) var(--s-5);
+  color: var(--text-muted);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+
+/* The width model: below 1280 the estimate and actual columns go and the
+   assignee is their avatar alone (the name stays for a reader); below 900 the
+   stage column goes too. A column's `col` goes with it, so the rest take its
+   share. */
+@media (width < 1280px) {
+  .cbd__tbl [data-hide-below='1280'] {
+    display: none;
+  }
+  .cbd__tbl .av + .cbd__nm {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+}
+@media (width < 900px) {
+  .cbd__tbl [data-hide-below='900'] {
+    display: none;
+  }
 }

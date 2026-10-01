@@ -210,6 +210,13 @@
 .lrow__lead:empty {
   display: none;
 }
+/* A row with no lead slot gives the lead's column (and its gap) to the main one. */
+.lrow:not(:has(> .lrow__lead)) {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.lrow:not(:has(> .lrow__lead)) > * {
+  grid-column: auto;
+}
 .lrow__main {
   display: grid;
   min-width: 0;
@@ -465,24 +472,6 @@
   font: var(--type-small);
   letter-spacing: var(--type-small-tracking);
   text-transform: var(--type-small-case);
-}
-/* DS-PRIM-32: sample data only. The edge is inset so the mark never moves
-   layout, and a marked region inside another keeps only its edge. */
-.is-mock {
-  background: var(--mock-tint);
-  box-shadow: inset 0 0 0 1px var(--mock-edge);
-}
-.is-mock--nested,
-.is-mock .is-mock {
-  background: none;
-}
-.mocktag {
-  padding: 0 0.3rem;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  font: var(--type-eyebrow);
-  letter-spacing: var(--type-eyebrow-tracking);
-  text-transform: var(--type-eyebrow-case);
 }
 /* DS-PRIM-33: one accent ring pulse where a link landed. */
 .flash-target {

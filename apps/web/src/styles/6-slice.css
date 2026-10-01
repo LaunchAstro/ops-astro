@@ -18,14 +18,90 @@
   padding: var(--s-4) 0;
 }
 
+/* A read state with nothing to say (the read answered) takes no room. */
+.readstate:empty {
+  display: none;
+}
+
+/* Sign in, signed out and with no shell (B6): the brand mark over one card
+   of kit fields (DS-COMP-26's labels, DS-PRIM-3's input, DS-PRIM-1's primary),
+   centred on the page ground. */
 .signin {
-  display: flex;
-  justify-content: center;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: var(--s-5);
+  min-height: 100vh;
   padding: var(--s-6) var(--s-4);
+  background: var(--bg);
+  color: var(--text);
 }
 
 .signin__form {
-  width: min(28rem, 100%);
+  width: min(24rem, 100%);
+}
+
+.signin__brand {
+  display: grid;
+  justify-items: start;
+  gap: 0.4rem;
+}
+
+/* The rail's wordmark as it lands: its 176px ceiling in the rail's column. */
+.signin__brand .brand--wordmark {
+  width: 175px;
+  color: var(--text);
+}
+
+.signin .field,
+.setrow .field {
+  margin-block-end: 0;
+}
+
+.signin__build {
+  margin: 0;
+  padding: 0;
+}
+
+.signin__foot {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* The settings rows' own parts (B5): the number and its on and off on one
+   line, the provenance under the explanation, and a lost race across the row. */
+.setrow__line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s-2);
+}
+
+.setrow__num {
+  width: 8rem;
+}
+
+.setrow__meta {
+  margin: var(--s-2) 0 0;
+  color: var(--text-muted);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+  overflow-wrap: anywhere;
+}
+
+.setrow__conflict {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: var(--s-2);
+  justify-items: start;
+}
+
+@media (width <= 640px) {
+  .setrow__line {
+    justify-content: flex-start;
+  }
 }
 
 /* The session-ended notice. Bordered rather than coloured: the surface has one
@@ -77,16 +153,47 @@
   gap: var(--s-2);
 }
 
+/* The create form wears the mockup's quick-add field (`.cbd__field`, layer 4)
+   and its secondary sm button, in one row above the board. */
 .projects__create {
   display: flex;
   flex-wrap: wrap;
-  align-items: flex-end;
+  align-items: center;
   gap: var(--s-3);
 }
 
-.projects__create .field {
-  flex: 1 1 18rem;
-  margin-block-end: 0;
+.projects__create .cbd__field {
+  flex: 0 1 31rem;
+}
+
+.projects__create > p {
+  flex: 1 0 100%;
+  margin: 0;
+}
+
+/* The inbox minimum (INB-1) is a flush list card: the head keeps the card's
+   padding and the rows (the kit's page rows) run to its edges. A state that
+   is not a list (loading, empty, refused) sits inside the card's padding. */
+.inbox > .readstate {
+  padding: 0 var(--s-5) var(--s-5);
+}
+
+.inbox > .readstate[data-outcome='ready'] {
+  padding: 0;
+}
+
+.inbox__list {
+  margin: 0;
+  padding: 0;
+}
+
+.inbox__task {
+  color: inherit;
+  text-decoration: none;
+}
+
+.inbox__task:hover {
+  text-decoration: underline;
 }
 
 /* 390: the narrowest pinned comparison width. The create form stacks rather
@@ -98,7 +205,7 @@
     align-items: stretch;
   }
 
-  .projects__create .field {
+  .projects__create .cbd__field {
     flex: 1 1 auto;
   }
 }

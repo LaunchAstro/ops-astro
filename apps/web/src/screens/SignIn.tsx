@@ -28,7 +28,7 @@
 // in an alert region so a screen reader hears it when it appears.
 
 import { useState, type FormEvent, type ReactElement } from 'react';
-import { FieldError } from '@launchastro/ui';
+import { BrandMark, FieldError } from '@launchastro/ui';
 import { openSession } from '../session/sign-in.ts';
 import type { Interruption, Session } from '../session/token.ts';
 
@@ -39,6 +39,8 @@ export interface SignInProps {
   readonly onSignedIn: (session: Session) => void;
   /** Set when the person was put here by a session that ended under them. */
   readonly ended: Interruption | null;
+  /** The version stamp, drawn where the rail would draw it; null for an unstamped build. */
+  readonly build?: string | null;
 }
 
 const BUSINESSES: readonly { readonly key: string; readonly label: string }[] = [
@@ -79,24 +81,34 @@ export function SignIn(props: SignInProps): ReactElement {
     })();
   };
 
+  // Signed out there is no shell: the rail's pages all ask for a session, so
+  // the page is the brand mark and the form, held to the kit (B6).
   return (
-    <div className="signin">
-      <form className="signin__form taskform" onSubmit={onSubmit}>
-        <h2 className="tpr__title">Sign in</h2>
+    <main className="signin" data-screen="sign-in">
+      <form className="signin__form card" aria-labelledby="signin-title" onSubmit={onSubmit}>
+        <div className="signin__brand">
+          <BrandMark variant="wordmark" />
+          <span className="rail__hub">Ops Astro</span>
+        </div>
+        <h1 className="card__title" id="signin-title">
+          Sign in
+        </h1>
         {props.ended === null ? null : (
-          <p className="signin__ended" role="status" data-reason="session-ended">
-            Your session has ended and you need to sign in again. The server answered{' '}
-            <code>{props.ended.code}</code>. Any edit you had not saved was not saved, and signing
-            in to <strong>{props.ended.businessKey}</strong> will take you back to where you were.
-          </p>
+          <div className="banner banner--warn" role="status" data-reason="session-ended">
+            <p className="banner__body">
+              Your session has ended and you need to sign in again. The server answered{' '}
+              <code>{props.ended.code}</code>. Any edit you had not saved was not saved, and signing
+              in to <strong>{props.ended.businessKey}</strong> will take you back to where you were.
+            </p>
+          </div>
         )}
         <div className="field">
-          <label className="tf__k" htmlFor="signin-email">
+          <label className="field__label" htmlFor="signin-email">
             Email
           </label>
           <input
             id="signin-email"
-            className="input"
+            className="tf"
             type="email"
             autoComplete="username"
             required
@@ -107,12 +119,12 @@ export function SignIn(props: SignInProps): ReactElement {
           />
         </div>
         <div className="field">
-          <label className="tf__k" htmlFor="signin-password">
+          <label className="field__label" htmlFor="signin-password">
             Password
           </label>
           <input
             id="signin-password"
-            className="input"
+            className="tf"
             type="password"
             autoComplete="current-password"
             required
@@ -123,14 +135,19 @@ export function SignIn(props: SignInProps): ReactElement {
               setPassword(event.target.value);
             }}
           />
+          {because === null ? null : (
+            <div role="alert">
+              <FieldError controlId="signin-password" say={because} />
+            </div>
+          )}
         </div>
         <div className="field">
-          <label className="tf__k" htmlFor="signin-business">
+          <label className="field__label" htmlFor="signin-business">
             Business
           </label>
           <select
             id="signin-business"
-            className="input"
+            className="tf"
             value={businessKey}
             onChange={(event) => {
               setBusinessKey(event.target.value);
@@ -143,15 +160,18 @@ export function SignIn(props: SignInProps): ReactElement {
             ))}
           </select>
         </div>
-        {because === null ? null : (
-          <div role="alert">
-            <FieldError controlId="signin-password" say={because} />
-          </div>
-        )}
-        <button className="btn btn--primary" type="submit" disabled={busy}>
-          {busy ? 'Signing in…' : 'Sign in'}
-        </button>
+        <div className="signin__foot">
+          <button className="btn btn--primary" type="submit" disabled={busy} aria-busy={busy}>
+            {busy ? 'Signing in…' : 'Sign in'}
+          </button>
+        </div>
       </form>
-    </div>
+      {/* The version stamp's fixed place when there is no rail (S0-1). */}
+      <p className="rail__build signin__build" data-build={props.build ?? ''}>
+        {props.build === null || props.build === undefined
+          ? 'Build not stamped'
+          : `Build ${props.build}`}
+      </p>
+    </main>
   );
 }
