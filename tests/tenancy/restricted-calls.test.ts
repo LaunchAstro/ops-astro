@@ -362,6 +362,7 @@ async function roleClasses(
                  when r.rolname = 'ops_astro_backup_restore' then 'backup restore'
                  when r.rolname = 'ops_astro_lookup' then 'lookup'
                  when r.rolname = 'ops_astro_forwarder' then 'forwarder'
+                 when r.rolname = 'ops_astro_lease_path' then 'lease path'
                  when r.rolcanlogin and not r.rolbypassrls and not r.rolcreaterole
                       and not r.rolcreatedb then 'outsider'
                  else 'unclassified' end as class
@@ -448,6 +449,9 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     // S0-2: the outbox forwarder reads and deletes ops.api_events and keeps its raised alerts in
     // ops.api_alerts (0048), proved in tests/db/api-events.test.ts.
     expect(classes['forwarder']).toStrictEqual(['ops_astro_forwarder']);
+    // 0220: the pickup path's role owns public.take_lease and inserts leases under row security,
+    // proved in tests/db/take-lease-path.test.ts.
+    expect(classes['lease path']).toStrictEqual(['ops_astro_lease_path']);
     expect(classes['application login']).toContain(world.db.loginRole);
     expect(classes['outsider']).toContain(world.db.restrictedRole);
   });
@@ -620,7 +624,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     // security. It answers one number and no id, and only the broker's role
     // may execute it (tests/broker/aw-01-broker-fair-share.test.ts). The
     // pickup path (SL11-30, 0220) is the one way a lease is written, in the
-    // caller's own business (tests/db/lease-pickup-path.test.ts).
+    // caller's own business (tests/db/take-lease-path.test.ts).
     it('are exactly three, each with its search path pinned', () => {
       expect(definers().map((fn) => fn.signature)).toStrictEqual([
         'handback_reports_append_only()',

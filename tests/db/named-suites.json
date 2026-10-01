@@ -164,7 +164,7 @@
     "SL11-30 GIVEBACK names spend-give-back-late (a call counted at its maximum gives back what it did not spend, once, after a top-up, after the end at a budget stop, and on a person's or a provider's resolution of an unknown liability, only in its own business's envelope) and resume-sizing-stop (FIXMONEY B1 and B2: a spent-whole hold whose open call settled lower is re-held at what remains with no ask, and a spent-whole stop after the consolidated ask ends the run and alerts a person) as invariants.",
     "SL11-30 ROGUARD names reviewed-output-proposer (0218: the database refuses a reviewed_outputs row whose version the named lease's holder did not propose, a person's version or another holder's lease, written straight as the application role; the handback's mark and the agent's revision (N9-M2) are accepted; another business's mark is refused by row security first) as an invariant.",
     "SL11-30 STOPCAUSE names reservation-stop-cause (0219: a hold settled actual at its spend may record its cause, written straight as the application role; an abandoned hold still needs one, and a held or quarantined hold still carries none) as an invariant.",
-    "SL11-30 LEASEGUARD names lease-holder-guard and lease-pickup-path (0220: the application role cannot rewrite a lease's holder or insert a lease, and keeps the three columns the product moves; a lease is taken through public.take_lease, which refuses another business's reservation, unclaimable work, a lease past its lifetime, and a holder the claimant's authority does not cover; pickup, heartbeat, hand-back and fence still work) as invariants."
+    "SL11-30 LEASEGUARD names lease-holder-guard and take-lease-path (0220: the application role cannot rewrite a lease's holder or insert a lease, and keeps the three columns the product moves; a lease is taken through public.take_lease, which refuses another business's reservation, unclaimable work, a lease past its lifetime, and a holder the claimant's authority does not cover; pickup, heartbeat, hand-back and fence still work) as invariants."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -510,7 +510,7 @@
     "tests/db/reviewed-output-proposer.test.ts",
     "tests/db/reservation-stop-cause.test.ts",
     "tests/db/lease-holder-guard.test.ts",
-    "tests/db/lease-pickup-path.test.ts",
+    "tests/db/take-lease-path.test.ts",
     "tests/surfaces/aw-09-reject-header.test.tsx"
   ],
   "conformance": [
