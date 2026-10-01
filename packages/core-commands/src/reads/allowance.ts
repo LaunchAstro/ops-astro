@@ -18,10 +18,12 @@
 //   business's, a made-up id) is `NOT_FOUND`, the same bytes for each. The
 //   spend is also filtered by its owner inside the broker's query.
 
-// RED STUB (SL11-27 fork L): the read refuses every caller until the build commit.
+import { checkAuthority, isUuid, subjectsOf } from '../../../core-records/src/index.ts';
 import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
+import { readPlanningAllowance } from '../../../core-custody/src/index.ts';
 import type { AllowanceResult } from '../../../core-wire/src/index.ts';
-import { refuseCommand, type CommandRefusal } from '../commands/refusal.ts';
+import { refuseCommand, refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
+import { isInternalReader } from './tasks.ts';
 
 const NOT_THE_TEAMS = refuseCommand(
   'SCOPE_NOT_GRANTED',
@@ -33,9 +35,34 @@ const NOT_THE_TEAMS = refuseCommand(
 );
 
 export async function readAllowance(
-  _tx: TenantQuery,
-  _session: Session,
-  _conversationId: unknown,
+  tx: TenantQuery,
+  session: Session,
+  conversationId: unknown,
 ): Promise<AllowanceResult | CommandRefusal> {
-  return await Promise.resolve(NOT_THE_TEAMS);
+  if (!isInternalReader(session.roleKey)) return NOT_THE_TEAMS;
+  const own = await checkAuthority(tx, subjectsOf(session), {
+    collection: 'conversation',
+    action: 'write',
+    scope: { kind: 'business', id: null },
+  });
+  if (!own.ok) return NOT_THE_TEAMS;
+  if (conversationId === undefined || conversationId === null) {
+    return { ok: true, allowance: await readPlanningAllowance(tx, session.personId, null) };
+  }
+  if (!isUuid(conversationId)) {
+    return refuseCommand(
+      'FIELD_VALUE_INVALID',
+      ['conversationId'],
+      ['Send conversationId as your conversation’s identifier, or leave it out.'],
+    );
+  }
+  const mine = await tx.query<{ readonly id: string }>(
+    `select id from conversations where business_id = $1 and id = $2 and owner_actor_id = $3`,
+    [tx.businessId, conversationId, session.actorId],
+  );
+  if (mine.length === 0) return refuseNotFound();
+  return {
+    ok: true,
+    allowance: await readPlanningAllowance(tx, session.personId, conversationId),
+  };
 }
