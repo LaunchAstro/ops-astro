@@ -219,7 +219,8 @@
     "B1-JOIN-FIX (REV187W): service-stop.test.ts's before-lookup refusals also run beside a live database of the named business and write no sign-in row to it; Sol's proof named-service-stop-reaches-database runs that suite alone through the conformance runner, which must see it reach the database.",
     "B1-END-FIX-OPS (batch 1 blind review A1, A5, A8) adds restore-includes-sign-in-tables (the restore drill passes the scheduled public, ops and auth archive), restore-includes-staging-guards (a staging archive restores after the seed installs its made-up guards) and hosted-expired-lease-recovery (the Vercel function runs the reconciliation pass and fences a lost worker's expired lease; fix round 1 adds hosted-recovery-waits-for-pass (every request waits on the pass in flight) and staging-archive-restores-guards (the complete staging archive restores with its guard triggers); round 2 adds restore-drill-keeps-staging-guards (the drill's target keeps the guard triggers).",
     "SL09-2a-f3 adds c58-end-access-credentials (access.end revoking every live agent credential the ended person issued, each agent actor deactivated with it, in the same act; another person's credential in the same business and the same provider user's credential in bravo left live), named as an isolation suite too.",
-    "C71-D (U87) names c71-d-direct-messages and c71-d-isolation as invariants (0341 team conversations: a direct message is a task_comment record with audience direct anchored to the pair's one team_conversation, sent by chat.send_direct under chat:comment and audited applied or refused with no body; no other table holds the body; the reader's own marker, chat.mark_read, moves forward only and adds no audit event; unread derived from it; a third person, a client and an agent refused; a member reads nothing after leaving; isolation across another business, two clients with one grant each, another person and an agent under a live delegation, canaries in no foreign answer)."
+    "C71-D (U87) names c71-d-direct-messages and c71-d-isolation as invariants (0341 team conversations: a direct message is a task_comment record with audience direct anchored to the pair's one team_conversation, sent by chat.send_direct under chat:comment and audited applied or refused with no body; no other table holds the body; the reader's own marker, chat.mark_read, moves forward only and adds no audit event; unread derived from it; a third person, a client and an agent refused; a member reads nothing after leaving; isolation across another business, two clients with one grant each, another person and an agent under a live delegation, canaries in no foreign answer).",
+    "C71-G (U87) names c71-g-group-conversations, c71-g-group-members and c71-g-isolation as invariants (c71-g-world.ts is their helper and is not named) (group conversations on 0341's rows: chat.start_group under chat:comment with two or more staff teammates and a name; messages through chat.send_group with audience group on the one comment record; chat.rename_group and chat.change_members by the creator or a member holding chat:manage; chat.leave for one's own membership; a member added later reads from joining, a removed or departed member nothing after; each command audited; a non-member, a client and an agent refused; isolation across another business, two clients with one grant each, an administrator outside the group and an agent under a live delegation)."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -622,7 +623,10 @@
     "tests/api/c71-d-direct-messages.test.ts",
     "tests/api/c71-d-isolation.test.ts",
     "tests/api/sol-proof-c71a.test.ts",
-    "tests/tasks/sol-proof-c71a-migration.test.ts"
+    "tests/tasks/sol-proof-c71a-migration.test.ts",
+    "tests/api/c71-g-group-conversations.test.ts",
+    "tests/api/c71-g-group-members.test.ts",
+    "tests/api/c71-g-isolation.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
