@@ -1114,8 +1114,11 @@ An agent credential (API-2) is the other bearer this prefix takes: the secret
 a person issued on Settings ▸ Access, as `Authorization: Bearer`, with no agent
 login behind it and no `X-Agent-Delegation`. It is told from a sign-in token by
 its form and never reaches the provider's verifier, and this prefix never reads
-a session cookie. Its calls, reach and refusals are in AUTHORITY.md, "Agent
-credentials (API-2)"; past a limit it answers `AGENT_QUOTA_EXCEEDED` 429.
+a session cookie. Its security signals (S0-2) name it by the digest of its
+digest (`credentialSubject`), the value its refused attempts are stored under,
+never the stored hash or a slice of it. Its calls, reach and refusals are in
+AUTHORITY.md, "Agent credentials (API-2)"; past a limit it answers
+`AGENT_QUOTA_EXCEEDED` 429.
 
 An agent login confers nothing on its own. With no `X-Agent-Delegation` header
 it may read `task.queue` and call `task.pickup` (`BEFORE_PICKUP`,

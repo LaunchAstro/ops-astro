@@ -4,8 +4,9 @@
 // agent route. Each case fails on ca9bd2dbd and names the defect it holds shut.
 // Helpers: `api-2-agent-credential-world.ts`, `-use-world.ts`.
 
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { expect, it } from 'vitest';
+import type { SecuritySignal } from '../../apps/api/alerts/detect.ts';
 import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import { bearer, serverUrl, type Answer } from '../acceptance/world.ts';
 import { harness, issueBody, openWorld, revoke } from './api-2-agent-credential-world.ts';
@@ -23,6 +24,7 @@ openWorld();
 const needsServer = it.skipIf(serverUrl === undefined);
 const WIDE = { credential: 1000, person: 1000, business: 1000 };
 const madeUpCredential = (): string => randomBytes(32).toString('base64url');
+const sha = (text: string): string => createHash('sha256').update(text, 'utf8').digest('hex');
 
 /** Audit events whose actor is this credential's agent, any command, any outcome. */
 async function agentEvents(credentialId: string): Promise<number> {
@@ -165,5 +167,66 @@ needsServer(
     expect(after.n - before.n, 'one refused attempt per call').toBe(2);
     expect(after.text).not.toContain(credential.secret);
     expect(after.text).not.toContain(madeUp);
+    // Each row read whole: owned by the delegation, the digest of the digest, nothing of the caller's.
+    for (const secret of [credential.secret, madeUp]) {
+      // oxlint-disable-next-line no-await-in-loop
+      const rows = await harness.world.db.admin.execute<Record<string, unknown>>(
+        `select owner, provider, outcome, refusal_code, login_id, actor_id, person_id, session_id
+           from public.authentication_attempts
+          where business_id = $1 and subject_digest = $2`,
+        [harness.world.alpha, sha(`agent-credential\u0000${sha(secret)}`)],
+      );
+      expect(rows, 'the attempt row').toStrictEqual([
+        {
+          owner: 'delegation',
+          provider: 'agent-credential',
+          outcome: 'refused',
+          refusal_code: 'DELEGATION_NOT_LIVE',
+          login_id: null,
+          actor_id: null,
+          person_id: null,
+          session_id: null,
+        },
+      ]);
+      // Not the stored credential hash either, so the trail cannot be joined to the row.
+      // oxlint-disable-next-line no-await-in-loop
+      const raw = await harness.world.db.admin.execute<{ readonly n: string }>(
+        `select count(*)::text as n from public.authentication_attempts
+          where subject_digest in ($1, $2)`,
+        [sha(secret), secret],
+      );
+      expect(raw[0]?.n, 'rows holding the secret or its stored hash').toBe('0');
+    }
+  },
+);
+
+needsServer(
+  'API-2 review alert subject: a credential’s security signal names a subject that is no slice of any stored credential hash, the same for one credential and apart for two',
+  async () => {
+    const signals: SecuritySignal[] = [];
+    const api = apiWith({ observe: (signal) => signals.push(signal) });
+    const [one, two] = [await issued(), await issued()];
+    const read = { recordId: harness.alphaTask.id };
+    for (const secret of [one.secret, one.secret, two.secret]) {
+      // oxlint-disable-next-line no-await-in-loop
+      expect((await asCredential('task.read', read, bearer(secret), api)).code).toBe('ok');
+    }
+    const subjects = signals.map((signal) => (signal.kind === 'export' ? signal.who : ''));
+    expect(subjects, 'one export signal per read').toHaveLength(3);
+    const hashes = await harness.world.db.admin.execute<{ readonly credential_hash: string }>(
+      'select credential_hash from public.agent_credentials',
+    );
+    expect(hashes.length).toBeGreaterThan(1);
+    for (const who of subjects) {
+      const subject = who.slice(who.indexOf('\u0000') + 1);
+      expect(who.startsWith('agent-credential\u0000'), who).toBe(true);
+      expect(subject.length, 'a subject, not empty').toBeGreaterThanOrEqual(32);
+      for (const { credential_hash: hash } of hashes) {
+        expect(hash.startsWith(subject), 'the subject is a slice of a stored hash').toBe(false);
+        expect(hash.includes(subject.slice(0, 16)), 'part of a stored hash').toBe(false);
+      }
+    }
+    expect(subjects[0], 'one credential groups together').toBe(subjects[1]);
+    expect(subjects[2], 'two credentials stay apart').not.toBe(subjects[0]);
   },
 );

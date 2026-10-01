@@ -21,6 +21,7 @@ export {
 export {
   CREDENTIAL_EXCLUDED_ACTIONS,
   CREDENTIAL_MAX_DAYS,
+  credentialSubject,
   deriveAgentCredential,
   isAgentCredentialForm,
   issueAgentCredential,

@@ -41,6 +41,7 @@ import {
   EXPIRED_FIXES,
   NO_ASSURANCE,
   PUBLIC_LEGAL_DOCUMENTS,
+  credentialSubject,
   isAgentCredentialForm,
   readPublishedLegal,
   recordBodyRefusal,
@@ -252,7 +253,8 @@ interface Admitted {
  * On the agent prefix a bearer and nothing else: a session cookie is never
  * read there (API-2 bearer only, S0-6). A bearer in the agent credential's
  * form is the product's own scheme and never reaches the sign-in provider's
- * verifier; it stands here as its digest, so no log or detector holds it.
+ * verifier; it stands here as the digest of its digest (`credentialSubject`),
+ * so no log or detector holds it or a slice of its stored hash.
  */
 async function presentedBy(
   options: ApiOptions,
@@ -268,7 +270,7 @@ async function presentedBy(
   if (!isAgentCredentialForm(token)) return { presented: await options.verify(context.req) };
   const digest = {
     provider: 'agent-credential',
-    subject: sessionIdOf(token),
+    subject: credentialSubject(token),
     assurance: NO_ASSURANCE,
   };
   return { presented: digest, credential: token };

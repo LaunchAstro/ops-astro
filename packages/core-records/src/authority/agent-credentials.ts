@@ -20,8 +20,8 @@
 // anyone else needs `access:manage`, which the command asks before this runs.
 
 import { randomUUID } from 'node:crypto';
-import { recordAuthenticationAttempt } from '../identity/authentication-attempts.ts';
-import { NO_ASSURANCE } from '../identity/verified-subject.ts';
+import { recordAuthenticationAttempt, subjectDigest } from '../identity/authentication-attempts.ts';
+import { NO_ASSURANCE, type VerifiedSubject } from '../identity/verified-subject.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 import {
   AGENT_CREDENTIAL_DOMAIN,
@@ -264,6 +264,21 @@ export async function resolveAgentCredential(
   };
 }
 
+/** A credential as presented at the door: its digest, under the credential's provider. */
+const presentedAs = (secret: string): VerifiedSubject => ({
+  provider: 'agent-credential',
+  subject: digestOf(secret),
+  assurance: NO_ASSURANCE,
+});
+
+/**
+ * The subject a credential stands as on the agent route, the security
+ * detections included: the digest of its digest, as the attempt trail holds
+ * it, and never the stored `credential_hash` or a slice of it. One credential
+ * is always one subject, so its alerts count together.
+ */
+export const credentialSubject = (secret: string): string => subjectDigest(presentedAs(secret));
+
 /**
  * A credential turned away is an attempt at the door (I13): recorded against
  * the digest of its digest, never the secret, owned by the delegation, in the
@@ -276,7 +291,7 @@ export async function recordCredentialRefusal(
 ): Promise<void> {
   await recordAuthenticationAttempt(tx, {
     owner: 'delegation',
-    presented: { provider: 'agent-credential', subject: digestOf(secret), assurance: NO_ASSURANCE },
+    presented: presentedAs(secret),
     outcome: 'refused',
     refusalCode,
   });
