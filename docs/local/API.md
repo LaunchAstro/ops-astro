@@ -1572,6 +1572,10 @@ dismissed without an audit event (CS-2.8, MP-2-11a, MP-2-11). A successful
 and a refused one is audited like any other. The surface row's `audited: false`
 says so; nothing else skips the chain.
 
+**The layout is four keys of the one store** (MP-2-3, MP-3-2, MP-3-3):
+`rail.width`, `dock.width` and `dock.sheetHeight` take a whole number of pixels
+from 1 to 10,000, and `rail.collapsed` takes `true` or `false`.
+
 **Guided tips are two keys of the one store** (MP-2-11). `tips.enabled` takes
 `true` or `false` through `preference.save`. `tips.dismissed` holds one entry
 per dismissed tip, `"<page>#<tip>": <version>`; a save of it takes only `{}`,

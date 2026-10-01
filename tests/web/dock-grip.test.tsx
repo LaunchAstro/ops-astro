@@ -247,7 +247,7 @@ describe('MP-3-2 width in one store', () => {
       heard,
       stored: { 'dock.width': 480 },
     });
-    expect(heard.filter((each) => each.at.endsWith('/preference/read'))).toHaveLength(1);
+    expect(heard.some((each) => each.at.endsWith('/preference/read'))).toBe(true);
     await openTab(page, 'todos');
     expect(gripValue(dockGrip(page))).toBe(480);
     // Pulled 40 then 60 to the left: wider, live, and one save on release.

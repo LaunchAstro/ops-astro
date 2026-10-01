@@ -26,6 +26,7 @@ const isColumnWidths = (value: unknown): boolean =>
 export type PreferenceKey =
   | 'appearance'
   | 'rail.width'
+  | 'rail.collapsed'
   | 'dock.width'
   | 'dock.sheetHeight'
   | 'columns.widths'
@@ -36,6 +37,8 @@ export const PREFERENCE_KEYS: { readonly [K in PreferenceKey]: (value: unknown) 
   /** Light, Dark or System; the default, System, is the absence of a row. */
   appearance: (value) => value === 'light' || value === 'dark' || value === 'system',
   'rail.width': isLength,
+  /** The rail folded to its icon strip (MP-2-3); open, the default, is false or no row. */
+  'rail.collapsed': (value) => typeof value === 'boolean',
   'dock.width': isLength,
   'dock.sheetHeight': isLength,
   /** One width per column id. */

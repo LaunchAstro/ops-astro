@@ -49,7 +49,6 @@ export interface AppProps extends DockAppProps {
 
 export function App(props: AppProps): ReactElement {
   const [session, setSession] = useState<Session | null>(props.sessions.session);
-  const docked = useDockShell(session, props.storage, props);
   const navigate = props.navigate;
   const here = useCanonicalAddress(props.path, session !== null, navigate);
 
@@ -161,6 +160,7 @@ export function App(props: AppProps): ReactElement {
       }),
     [props.apiOrigin, props.fetch, session],
   );
+  const docked = useDockShell(client, session, props.storage, props);
 
   // Sign-out (C23). The tab forgets the session first, so a server that never
   // answers cannot keep it. Then, with the ended session's own client:

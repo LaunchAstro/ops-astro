@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // MP-2-3's application harness: the app signed in on the Projects board at a
-// chosen window width, handed the person's rail before its first render and
-// telling a saver when it changes, with the rail's grip and keys to hand.
+// chosen window width, the person's rail kept in the tab's copy of the one
+// preference store before its first render (as a reload finds it), and each
+// `preference.save` of it heard as the rail it leaves, with the rail's grip
+// and keys to hand.
 
 import { act, type ReactElement } from 'react';
 import { App } from '../../apps/web/src/App.tsx';
 import type { PanelRegistry } from '../../apps/web/src/panels.ts';
 import type { RailPreference } from '../../apps/web/src/shell/use-rail.ts';
-import { SessionStore, type StorageLike } from '../../apps/web/src/session/token.ts';
+import { SessionStore, layoutKey, type StorageLike } from '../../apps/web/src/session/token.ts';
 import { mount, type Mounted } from '../surfaces/mount.tsx';
 
 const live: Mounted[] = [];
@@ -47,6 +49,20 @@ export function app(input: {
 }): ReactElement {
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: input.width ?? 1480 });
   const storage = memory();
+  if (input.rail !== undefined) {
+    const layout = { 'rail.collapsed': input.rail.collapsed, 'rail.width': input.rail.width };
+    storage.setItem(layoutKey('alpha'), JSON.stringify({ who: SESSION.email, layout }));
+  }
+  // The rail each save leaves, from where the last one left it.
+  let rail = { collapsed: input.rail?.collapsed === true, width: input.rail?.width ?? 224 };
+  const fetch = (url: string | URL, init?: RequestInit): Promise<Response> => {
+    if (String(url).endsWith('/preference/save')) {
+      const body = JSON.parse(String(init?.body)) as { preference: string; value: never };
+      rail = { ...rail, [body.preference === 'rail.width' ? 'width' : 'collapsed']: body.value };
+      input.saved?.push(rail);
+    }
+    return new Promise<Response>(() => {});
+  };
   return (
     <App
       path="/projects/"
@@ -54,11 +70,9 @@ export function app(input: {
       sessions={new SessionStore(storage)}
       gotrueUrl="http://gotrue.test"
       apiOrigin=""
-      fetch={(() => new Promise<Response>(() => {})) as typeof globalThis.fetch}
+      fetch={fetch as typeof globalThis.fetch}
       storage={storage as Storage}
       panels={REGISTRY}
-      {...(input.rail === undefined ? {} : { railPreference: input.rail })}
-      saveRailPreference={(preference) => input.saved?.push(preference)}
     />
   );
 }

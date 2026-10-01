@@ -12,7 +12,9 @@ import { PANELS, dockTabs, isPanelId, type PanelId, type PanelRegistry } from '.
 import { drawScreen, type ScreenContext } from '../screen-registry.tsx';
 import { closeAll, close, isOwnAddress, press, ranked, visit } from './open-set.ts';
 import type { Session, StorageLike } from '../session/token.ts';
-import { useRail, type RailModel, type RailPreference } from '../shell/use-rail.ts';
+import type { OperationsClient } from '../operations/client.ts';
+import { useLayoutStore } from '../shell/layout-store.ts';
+import { railFrom, useRail, type RailModel } from '../shell/use-rail.ts';
 import { useDock, type DockModel } from './use-dock.ts';
 import { useDockLayout, type DockLayoutModel } from './use-layout.ts';
 
@@ -26,23 +28,26 @@ interface DockShell {
 
 /** What the application takes for the dock and the rail. */
 export interface DockAppProps {
-  /** The person's rail as they left it, read before the first render so it is drawn before paint. */
-  readonly railPreference?: RailPreference;
-  /** Told when the person folds the rail or lets its grip go: the preference to keep. */
-  readonly saveRailPreference?: (preference: RailPreference) => void;
   /** The dock's panels. The shipped registry unless a test hands another. */
   readonly panels?: PanelRegistry;
 }
 
+/** The person's rail and dock sizes come from MP-2-11's one preference store, through `client`. */
 export function useDockShell(
+  client: OperationsClient,
   session: Session | null,
   storage: StorageLike | null,
   props: DockAppProps,
 ): DockShell {
   const registry = props.panels ?? PANELS;
   const dock = useDock(session, storage, registry);
-  const nav = useRail(props.railPreference, props.saveRailPreference);
-  const layout = useDockLayout(dock, registry, nav.drawn);
+  const store = useLayoutStore(client, session, storage);
+  const { layout: kept } = store;
+  const nav = useRail(
+    railFrom({ collapsed: kept['rail.collapsed'], width: kept['rail.width'] }),
+    store.save,
+  );
+  const layout = useDockLayout(dock, registry, nav.drawn, store);
   return { registry, dock, nav, layout };
 }
 
@@ -107,9 +112,10 @@ export function dockProps(input: DockInput): DockProps {
       sheetMax: layout.sheetMax,
     },
     onSheetResize: layout.setSheetHeight,
+    onSheetResizeEnd: layout.keepSheetHeight,
     stamp: layout.stamp,
     onResize: layout.setWidth,
-    onResizeEnd: layout.setWidth,
+    onResizeEnd: layout.keepWidth,
     panels: dockPanels(input),
     ...dockPresses(input, byId),
   };
