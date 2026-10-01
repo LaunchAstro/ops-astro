@@ -71,5 +71,5 @@ it("a plan lease's settled model call is counted on hand-back for review", async
     'select state from public.attempts where reservation_id = $1',
     [reservationId],
   );
-  expect(state, 'the finished work reads as abandoned').toBe('handed_back');
+  expect(state, 'the finished work stays handed_back').toBe('handed_back');
 });

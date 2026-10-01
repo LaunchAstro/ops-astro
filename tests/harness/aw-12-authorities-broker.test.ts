@@ -11,15 +11,23 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it as vitestIt } from 'vitest';
 import { REPLAY_COMPOSE } from '../../packages/core-connectors/src/index.ts';
-import type { ModelCallResult } from '../../packages/core-custody/src/index.ts';
+import {
+  reserveModelCall,
+  sendReservedCall,
+  type ModelCallResult,
+} from '../../packages/core-custody/src/index.ts';
 import { asAgent, handbackBody, liveWork, rows, type Work } from '../runtime/schedules-harness.ts';
 import {
   broker,
   call,
   callCount,
+  caller,
+  gated,
   noDatabase,
+  requestFor,
   rowsOf,
   s,
+  stepOf,
   useBrokerWorld,
   world,
 } from '../broker/broker-world.ts';
@@ -194,6 +202,53 @@ async function effectAuthority(): Promise<void> {
   expect(seen()).toBe(before + 1);
 }
 
+/** A second call on `work`'s attempt, held in its own committed transaction and not yet sent. */
+async function reserved(work: Work) {
+  await stepOf(work);
+  const held = await s.db.app.withBusiness(
+    s.business,
+    async (tx) => await reserveModelCall(tx, caller(work), requestFor(work), broker),
+  );
+  if (!held.ok) throw new Error(`reserve refused ${held.code}`);
+  return held.reserved;
+}
+
+const send = async (work: Work, held: Awaited<ReturnType<typeof reserved>>) =>
+  await sendReservedCall(s.db.app, s.business, caller(work), requestFor(work), held, broker);
+
+async function siblingHeldUnknown(): Promise<void> {
+  // Positive control: with no sibling held unknown, a reserved call starts and is sent.
+  world.provider.mode('answer');
+  const clean = await liveWork(s, 'aw12 no sibling', 2_000);
+  const sent = seen();
+  expect(await send(clean, await reserved(clean))).toMatchObject({ ok: true });
+  expect(seen()).toBe(sent + 1);
+
+  // Call A is in custody's hands when B is held; A then drops with the provider down.
+  const work = await liveWork(s, 'aw12 sibling dropped', 2_000);
+  world.provider.mode('unavailable');
+  const { broker: slow, open } = gated();
+  const first = call(work, {}, slow);
+  const states = async (): Promise<readonly unknown[]> =>
+    await s.db.admin.execute(`select state from public.model_calls where lease_id = $1`, [
+      work.picked['leaseId'],
+    ]);
+  await expect.poll(states, { timeout: 5_000 }).toEqual([{ state: 'dispatched' }]);
+  const second = await reserved(work);
+  open();
+  expect(await first).toMatchObject({ ok: false, code: 'LIABILITY_UNKNOWN' });
+  world.provider.mode('answer');
+  const before = seen();
+
+  expect(await send(work, second)).toEqual({
+    ok: false,
+    code: 'LIABILITY_UNKNOWN',
+    callId: second.callId,
+  });
+  expect(seen()).toBe(before);
+  expect(await rowsOf(second.callId)).toMatchObject([{ state: 'released', started_at: null }]);
+}
+
 describe('AW-12 authorities: a framework holds none of the eight authorities', () => {
   it(
     'A3 budget authority: a framework-initiated model call without a reservation is refused',
@@ -204,4 +259,8 @@ describe('AW-12 authorities: a framework holds none of the eight authorities', (
     credentialAuthority,
   );
   it('A5 effect authority: an uncatalogued tool is refused and recorded', effectAuthority);
+  it(
+    'Sol proof, FIXR4: a call reserved before a sibling dropped unknown is released unsent at start',
+    siblingHeldUnknown,
+  );
 });

@@ -13,7 +13,6 @@
 import { randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';
 import { topUpAtBudgetStop } from '../../packages/core-runtime/src/index.ts';
-import type { Broker } from '../../packages/core-custody/src/index.ts';
 import { sweepLostWorkers } from '../../packages/core-runtime/src/index.ts';
 import {
   appliedDetail,
@@ -24,27 +23,11 @@ import {
   type Work,
 } from '../runtime/schedules-harness.ts';
 import { openBilling } from '../runtime/t3d1-harness.ts';
-import { broker, call, noDatabase, s, useBrokerWorld, world } from './broker-world.ts';
+import { call, gated, noDatabase, s, useBrokerWorld, world } from './broker-world.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
 
 useBrokerWorld('giveback');
-
-/** A broker whose custody waits for `open` before it dispatches for real. */
-const gated = (): { readonly broker: Broker; readonly open: () => void } => {
-  let release: (() => void) | undefined;
-  const gate = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  const dispatch: Broker['custody']['dispatch'] = async (credentialRef, request) => {
-    await gate;
-    return await broker.custody.dispatch(credentialRef, request);
-  };
-  return {
-    broker: { ...broker, custody: { ...broker.custody, dispatch } },
-    open: () => release?.(),
-  };
-};
 
 const reservationOf = (work: Work): string => String(work.decision['reservationId']);
 

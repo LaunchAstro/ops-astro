@@ -35,9 +35,10 @@ export async function holdsWork(
 /**
  * Whether a call of the reservation's attempt failed and is held as unknown
  * liability, a drop (AW-10). It may have acted, so the attempt takes no other
- * call: a framework's own retry is refused at the reserve, and the retry is the
- * product's, a new attempt once the work is handed back and the pass proves
- * nothing happened. An answer above its hold is no drop: the run calls on.
+ * call: a framework's own retry is refused at the reserve, a call held before
+ * the drop is released at its start, and the retry is the product's, a new
+ * attempt once the work is handed back and the pass proves nothing happened.
+ * An answer above its hold is no drop: the run calls on.
  */
 export async function heldUnknown(tx: TenantQuery, reservationId: string): Promise<boolean> {
   const found = await tx.query(
