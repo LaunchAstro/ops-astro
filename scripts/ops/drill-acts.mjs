@@ -7,7 +7,15 @@
 // restore-drill.mjs passes the drill itself in and re-exports each act.
 
 import { createHash, timingSafeEqual } from 'node:crypto';
-import { closeSync, openSync, unlinkSync, writeSync } from 'node:fs';
+import {
+  closeSync,
+  existsSync,
+  openSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+  writeSync,
+} from 'node:fs';
 import { bound, stagingReach, value } from './backup-store-reach.mjs';
 import { readCarried, readCarriedReceipt, writeCarried } from './carried-archive.mjs';
 import { RESTORE_ROLE, recordCarriedDrill, recordDrill } from './drill-receipt.mjs';
@@ -217,6 +225,11 @@ export async function recordCarried({
     );
   }
   const outcome = carried.outcome === 'pending' ? 'passed' : 'failed';
+  // The store takes a receipt once, so a pass it took whose stamp failed is
+  // noted beside the receipt; a re-run of --record writes only the stamp.
+  const owed = `${receiptFile}.stamp-owed`;
+  const noted = outcome === 'passed' ? stampOwed(owed, archiveId) : null;
+  if (noted !== null) return await recordStamp(gate, owed, noted);
   let lastTestedRestore;
   try {
     lastTestedRestore = await recordCarriedDrill(
@@ -231,11 +244,38 @@ export async function recordCarried({
       "the store did not take the receipt: it has it already, it never handed out that archive, with that digest, to this login inside the window, or this login is not the installation's appointed operator",
     );
   }
-  await stampIfPassed(gate, { outcome, lastTestedRestore });
-  return await recordDeployment(gate, {
-    action: 'carried drill recorded',
-    outcome,
-    ranOn: 'carried archive',
-    lastTestedRestore,
-  });
+  if (outcome === 'passed' && lastTestedRestore !== null) {
+    writeFileSync(owed, JSON.stringify({ archiveId, lastTestedRestore }), {
+      flag: 'wx',
+      mode: 0o600,
+    });
+    return await recordStamp(gate, owed, lastTestedRestore);
+  }
+  return await recordDeployment(gate, carriedAct(outcome, lastTestedRestore));
+}
+
+const carriedAct = (outcome, lastTestedRestore) => ({
+  action: 'carried drill recorded',
+  outcome,
+  ranOn: 'carried archive',
+  lastTestedRestore,
+});
+
+/** The date of the pass the store took for `archiveId`, if its stamp is still owed. */
+function stampOwed(owed, archiveId) {
+  if (!existsSync(owed)) return null;
+  const noted = JSON.parse(readFileSync(owed, 'utf8'));
+  if (noted.archiveId !== archiveId) throw new Error('the stamp owed is of another archive');
+  return noted.lastTestedRestore;
+}
+
+/** The stamp of a carried pass the store holds; the note goes once it is written. */
+async function recordStamp(gate, owed, lastTestedRestore) {
+  try {
+    await stampIfPassed(gate, { outcome: 'passed', lastTestedRestore });
+  } catch (error) {
+    throw new Error(`${error.message}: re-run --record to write it`, { cause: error });
+  }
+  unlinkSync(owed);
+  return await recordDeployment(gate, carriedAct('passed', lastTestedRestore));
 }

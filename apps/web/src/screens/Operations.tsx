@@ -135,15 +135,13 @@ export function OperationsScreen(props: OperationsScreenProps): ReactElement {
     run: () => client.read<OperationsReadResult>('operations.read', {}),
     deps: [client],
   });
+  // The top bar names the page; the body is the page kit's sections (PAGE-MAP SH-40 to 44).
   return (
-    <div className="stack" data-screen="operations" data-business={client.businessKey}>
-      <header className="tpr">
-        <h2 className="tpr__title">Operations</h2>
-        <div className="card__sub">
-          What needs an operator in {client.businessKey}: unattended items, privacy incidents and
-          service health.
-        </div>
-      </header>
+    <div className="secs" data-screen="operations" data-business={client.businessKey}>
+      <p className="card__sub" data-page-lead>
+        What needs an operator in {client.businessKey}: unattended items, privacy incidents and
+        service health.
+      </p>
       <RecordState state={state} subject="the operations view" onRetry={reload}>
         {(result) => (
           <>

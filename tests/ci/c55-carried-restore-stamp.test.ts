@@ -79,3 +79,44 @@ it('C55 last tested restore: a carried pass the store took on --record stamps th
 it('C55 last tested restore: a carried failure recorded with --record stamps nothing, though the store answers a date', async () => {
   expect(await carriedThenRecorded('failed')).toStrictEqual({ onDrill: 0, onRecord: 0 });
 });
+
+it('C55 last tested restore: a stamp that failed after the store took a carried pass is written by a re-run of --record, without the store again', async () => {
+  const { file } = await carriedFile();
+  const personId = crypto.randomUUID();
+  const { drillAsOperator, recordCarried } = await drillModule();
+  const receipt = await drillAsOperator({
+    gate: gateOf(personId),
+    archiveFile: file,
+    privateKey: keys.privateKey,
+    scope,
+    drill: async (options: { fetchArchive: () => Promise<unknown> }) => {
+      await options.fetchArchive();
+      return { event: 'restore drill', at: TAKEN, outcome: 'passed', stage: null, ...RESULT };
+    },
+    reach: noStore,
+  });
+  const receiptFile = join(folder('receipt'), 'receipt.json');
+  writeFileSync(receiptFile, JSON.stringify(receipt));
+  let [storeCalls, stamps] = [0, 0];
+  // The store takes a receipt once; a replay is refused (drills_carried_once).
+  const storeOnce = () =>
+    (storeCalls += 1) === 1 ? storeTookIt() : Promise.reject(new Error('refused'));
+  const record = (stamp: () => Promise<string>) =>
+    recordCarried({
+      gate: { ...gateOf(personId), recordTestedRestore: stamp },
+      storeUrl: 'store',
+      receiptFile,
+      archiveFile: file,
+      reach: storeOnce,
+    });
+  await expect(record(() => Promise.reject(new Error('down')))).rejects.toThrow(/re-run --record/u);
+  const retried = await record(() => {
+    stamps += 1;
+    return Promise.resolve(new Date().toISOString());
+  });
+  expect({ storeCalls, stamps, outcome: retried['outcome'] }).toStrictEqual({
+    storeCalls: 1,
+    stamps: 1,
+    outcome: 'passed',
+  });
+});
