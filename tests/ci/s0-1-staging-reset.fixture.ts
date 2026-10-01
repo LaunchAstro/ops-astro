@@ -54,7 +54,7 @@ export interface Call {
 export const calls: Call[] = [];
 export const users: Map<string, string> = new Map();
 /** Run once, before the stand-in answers its next call (the reset's first is the key check). */
-export const beforeNextCall: { work?: () => Promise<unknown> } = {};
+export const beforeNextCall: { work?: (() => Promise<unknown>) | undefined } = {};
 let auth: Server;
 let authUrl = '';
 
