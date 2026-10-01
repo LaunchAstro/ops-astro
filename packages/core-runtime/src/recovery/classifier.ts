@@ -198,21 +198,23 @@ export async function classifyUnderLocks(
   // zero the hold settles at that spend, so the envelope and the cap count it
   // once; abandoning it "at no cost" would hand the spend back to the cap. At
   // zero it is abandoned, with no number: there is no observation to justify
-  // one, not even zero.
+  // one, not even zero. Either way the row records the cause that stopped it
+  // and the cause's identity (T5; 0219 admits a cause on `actual`).
   const spent = await spendToSettle(tx, request.reservationId);
   const changed = await tx.query<{ readonly held_minor: string }>(
-    spent > 0
-      ? `update public.reservations set state = 'actual', actual_minor = $3, terminal_at = now()
-          where business_id = $1 and id = $2 and state = 'held'
-          returning held_minor::text as held_minor`
-      : `update public.reservations
-            set state = 'abandoned', classified_cause = $3, classified_cause_id = $4,
-                terminal_at = now()
-          where business_id = $1 and id = $2 and state = 'held'
-          returning held_minor::text as held_minor`,
-    spent > 0
-      ? [tx.businessId, request.reservationId, spent]
-      : [tx.businessId, request.reservationId, request.cause, request.causeId],
+    `update public.reservations
+        set state = $5, actual_minor = $6, classified_cause = $3, classified_cause_id = $4,
+            terminal_at = now()
+      where business_id = $1 and id = $2 and state = 'held'
+      returning held_minor::text as held_minor`,
+    [
+      tx.businessId,
+      request.reservationId,
+      request.cause,
+      request.causeId,
+      spent > 0 ? 'actual' : 'abandoned',
+      spent > 0 ? spent : null,
+    ],
   );
   const released = changed[0];
   if (released === undefined) {

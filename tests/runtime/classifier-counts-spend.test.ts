@@ -5,7 +5,7 @@
 // the reservation's calls (`spentOn`): settled calls at their actual, calls
 // still open at the maximum they hold. Above zero it settles the hold at that
 // spend, so the envelope and the cap count it once; at zero it abandons as
-// before. Each path that reaches the step is driven through the real process:
+// before. Either way the row records the cause that stopped it (0219). Each path that reaches the step is driven through the real process:
 // the sweep the API runs, a person's cancel, and a dropped hand-back.
 
 import { randomUUID } from 'node:crypto';
@@ -34,6 +34,7 @@ interface Money {
   readonly state: string;
   readonly actual: string | null;
   readonly cause: string | null;
+  readonly cause_id: string | null;
   readonly envelope_held: string;
   readonly envelope_actual: string;
   /** What the envelope's held reservations hold, so a resumed hold beside the old one is counted. */
@@ -44,6 +45,7 @@ const moneyOf = async (work: Work): Promise<Money> => {
   const [row] = await rows<Money>(
     s,
     `select r.state, r.actual_minor::text as actual, r.classified_cause as cause,
+            r.classified_cause_id::text as cause_id,
             e.held_minor::text as envelope_held, e.actual_minor::text as envelope_actual,
             (select coalesce(sum(o.held_minor), 0) from public.reservations o
               where o.business_id = r.business_id and o.envelope_id = r.envelope_id
@@ -98,10 +100,13 @@ const cancel = async (work: Work): ReturnType<typeof asPerson> =>
 const sweep = async (): ReturnType<typeof sweepLostWorkers> =>
   await s.db.app.withBusiness(s.business, async (tx) => await sweepLostWorkers(tx));
 
-/** The hold settled at the calls' spend: the envelope gave back the hold and took the spend. */
-const expectCounted = (before: Money, after: Money, spent: number): void => {
+/**
+ * The hold settled at the calls' spend, under the cause that stopped it: the
+ * envelope gave back the hold and took the spend.
+ */
+const expectCounted = (before: Money, after: Money, spent: number, cause: string): void => {
   expect(spent).toBeGreaterThan(0);
-  expect(after).toMatchObject({ state: 'actual', actual: String(spent), cause: null });
+  expect(after).toMatchObject({ state: 'actual', actual: String(spent), cause });
   expect(Number(after.envelope_actual)).toBe(Number(before.envelope_actual) + spent);
   expect(after.envelope_held).toBe(after.still_held);
 };
@@ -116,7 +121,20 @@ it("a swept lease's settled model call is counted, not abandoned at no cost", as
 
   const mine = swept.filter((one) => one.reservationId === work.decision['reservationId']);
   expect(mine).toMatchObject([{ released: true, state: 'actual' }]);
-  expectCounted(before, await moneyOf(work), spent);
+  expectCounted(before, await moneyOf(work), spent, 'lease_expired_and_fenced');
+});
+
+it('a swept hold settled at its spend records lease_expired_and_fenced', async () => {
+  const work = await settledCall('cause');
+  await expire(work);
+
+  await sweep();
+
+  expect(await moneyOf(work)).toMatchObject({
+    state: 'actual',
+    cause: 'lease_expired_and_fenced',
+    cause_id: String(work.picked['leaseId']),
+  });
 });
 
 it("a lineage cancel counts the calls' spend", async () => {
@@ -125,7 +143,7 @@ it("a lineage cancel counts the calls' spend", async () => {
   const before = await moneyOf(work);
 
   appliedDetail(await cancel(work), 'task.cancel');
-  expectCounted(before, await moneyOf(work), spent);
+  expectCounted(before, await moneyOf(work), spent, 'lineage_cancelled');
 });
 
 it("a dropped hand-back counts the calls' spend", async () => {
@@ -144,7 +162,7 @@ it("a dropped hand-back counts the calls' spend", async () => {
   );
 
   expect(handed['reservationState']).toBe('actual');
-  expectCounted(before, await moneyOf(work), spent);
+  expectCounted(before, await moneyOf(work), spent, 'handback_completed');
   const [attempt] = await rows<{ state: string }>(
     s,
     'select state from public.attempts where reservation_id = $1',
@@ -194,7 +212,7 @@ it('a call still open at the stop is counted at its maximum', async () => {
 
   appliedDetail(await cancel(work), 'task.cancel');
 
-  expectCounted(before, await moneyOf(work), Number(open?.reserved));
+  expectCounted(before, await moneyOf(work), Number(open?.reserved), 'lineage_cancelled');
 });
 
 it('work whose authority was lost after it spent is counted, and picked up again on a fresh hold', async () => {
@@ -211,7 +229,7 @@ it('work whose authority was lost after it spent is counted, and picked up again
   });
 
   appliedDetail(revoked, 'delegation.revoke');
-  expectCounted(before, await moneyOf(work), spent);
+  expectCounted(before, await moneyOf(work), spent, 'authority_revoked');
   // The run went back to planned (R5): the spent hold is history, and the work
   // gets a new one, which must find room beside the spend.
   await openBilling(s);

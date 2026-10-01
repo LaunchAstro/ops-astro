@@ -971,7 +971,9 @@ only a hold with no spend is `abandoned`. A budget top-up already moved the
 spend to date to the envelope's actual (`raiseHold`, `budget-answer.ts`), so a
 topped-up hold counts only the spend the top-up did not move: the ask's
 ceiling and the top-up less the hold now. Below zero, a call counted at its
-maximum came to less, and the envelope gets the difference back.
+maximum came to less, and the envelope gets the difference back. Settled or
+abandoned, the stopped hold records its cause and the cause's identity
+(`0219_reservation_stop_cause`).
 
 A call open when its hold's spend was counted, by this settle, a top-up or the
 end at a budget stop (`budget_stop_ended`), was counted at its maximum. When
