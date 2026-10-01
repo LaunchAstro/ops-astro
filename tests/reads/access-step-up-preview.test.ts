@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // `access.read` marks the permissions the money step-up (C59) stands in front
-// of: a permission previewed as usable now carries `stepUp` exactly when the
-// command path would refuse a stale sign-in `STEP_UP_REQUIRED` on that key,
-// which is the money set while the business setting is on, and an absent
-// setting reads as on.
+// of, per key: a permission previewed as usable now carries `stepUp` exactly
+// when the command path would refuse a stale sign-in `STEP_UP_REQUIRED` on that
+// key, which is the money set while the business setting is on, and an absent
+// setting reads as on. Switching the money step-up off is asked on its own, by
+// command and not by key, so `settings:manage` stays unmarked.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
