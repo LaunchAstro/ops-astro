@@ -115,9 +115,9 @@ export async function refuseStaleMoneyStep(
   tx: TenantQuery,
   standing: Standing,
   key: { readonly name?: string; readonly collection: string; readonly action: Action },
-  request?: { readonly [field: string]: unknown },
+  request: { readonly [field: string]: unknown },
 ): Promise<CommandRefusal | undefined> {
-  const switchesOff = key.name === MONEY_STEP_UP_SWITCH && request?.['value'] === false;
+  const switchesOff = key.name === MONEY_STEP_UP_SWITCH && request['value'] === false;
   if (!switchesOff && !(await asksMoneyStepUp(tx, key))) return undefined;
   // Whole seconds, as the token's times are: the boundary is one second either
   // side of sixty minutes, and a fraction of the clock is not a second.

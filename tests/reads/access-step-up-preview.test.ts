@@ -73,6 +73,7 @@ async function commandPathAsks(permissions: readonly Previewed[]): Promise<boole
                 tx,
                 { roleKey: 'member', assurance: NO_ASSURANCE },
                 permission,
+                {},
               )
             )?.code === 'STEP_UP_REQUIRED',
         ),
