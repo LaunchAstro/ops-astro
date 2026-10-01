@@ -48,6 +48,10 @@ const NETWORK_SITES: Readonly<Record<string, string>> = {
   'apps/api/function.ts': "the hosted function hands each request to the API's own handler",
   'apps/web/build-stamp.ts': 'runs the local git once at build time to stamp the build; no network',
   'apps/web/src/held-address.tsx': "threads the page's fetch to the product's own API",
+  // LA-1 (#859), the owner's laptop only (refused unless OPS_ENVIRONMENT=local):
+  'apps/local-agent/runner.ts': "listens on loopback for custody's dispatch; it calls nothing",
+  'apps/local-agent/claude.ts':
+    'spawns the local `claude` binary, which reaches its vendor with the seat login it holds',
 };
 
 const MODULES =
