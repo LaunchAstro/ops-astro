@@ -23,6 +23,7 @@ export const CASE = {
   pickup: 'refuses a pickup alike on a foreign, a fabricated and a claimed reservation',
   time: 'refuses a foreign and a fabricated task or time entry alike on the time commands',
   tag: 'refuses a foreign and a fabricated task alike on the tag commands',
+  duplicate: 'refuses a duplicate of a foreign and a fabricated task alike',
   targetFree: 'refuses a target a target-free operation has no use for (SC2 reading)',
 } as const;
 
@@ -55,7 +56,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['notifications.set_channel', { channel: 'in_app', mode: 'on' }],
 ];
 
-/** The twenty-four identifier-bearing operations outside (c) and (d): operand and executed case. */
+/** The twenty-five identifier-bearing operations outside (c) and (d): operand and executed case. */
 export const IDENTIFIER_BEARING: Readonly<
   Partial<Record<CommandName, readonly [operand: string, kase: keyof typeof CASE]>>
 > = {
@@ -82,6 +83,7 @@ export const IDENTIFIER_BEARING: Readonly<
   'time.delete': ['entryId', 'time'],
   'task.add_tag': ['recordId', 'tag'],
   'task.remove_tag': ['recordId', 'tag'],
+  'task.duplicate': ['recordId', 'duplicate'],
   'inbox.seen': ['itemId', 'control'],
 };
 

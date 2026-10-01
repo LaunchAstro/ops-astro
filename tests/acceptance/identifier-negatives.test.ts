@@ -334,6 +334,23 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
   );
 
   it(
+    CASE.duplicate,
+    async () => {
+      // MP-4-8: the old task names what is duplicated. Bravo's is foreign and
+      // answers as a fabricated one does; the copy goes to no client.
+      const onOld = (recordId: string) => ({
+        recordId,
+        client: null,
+        title: NOBODY,
+        stepNames: [],
+      });
+      const { operand, forms } = pair('recordId', w.foreign.task.id, onOld);
+      await refuses('task.duplicate', operand, ada, 'NOT_FOUND', forms);
+    },
+    120_000,
+  );
+
+  it(
     CASE.gate,
     async () => {
       // Green at 2507a31, RED at 4757d72 (`GATE_NOT_FOUND`); root ruling 2 confirms `NOT_FOUND`

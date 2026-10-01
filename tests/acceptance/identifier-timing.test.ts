@@ -195,7 +195,7 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return { foreign, fabricated };
   }
 
-  /** The 48 cells: every record-targeted operation, then each with its own operand. */
+  /** The 49 cells: every record-targeted operation, then each with its own operand. */
   // eslint-disable-next-line max-lines-per-function -- one table, built in one place
   async function cells(): Promise<readonly Cell[]> {
     const ada: Presenter = { kind: 'person', caller: w.h.world.ada };
@@ -272,6 +272,13 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     // MP-4-11: the task names what is tagged.
     byAda('task.add_tag', 'recordId', f.task.id, (recordId) => ({ recordId, tagId: TAG }));
     byAda('task.remove_tag', 'recordId', f.task.id, (recordId) => ({ recordId, tagId: TAG }));
+    // MP-4-8: the old task names what is duplicated; the copy goes to no client.
+    byAda('task.duplicate', 'recordId', f.task.id, (recordId) => ({
+      recordId,
+      client: null,
+      title: NOBODY,
+      stepNames: [],
+    }));
     byAda('grant.revoke', 'grantId', f.grantId, (grantId) => ({ grantId }));
     byAda('delegation.revoke', 'delegationId', f.picked.delegationId, (delegationId) => ({
       delegationId,
@@ -344,11 +351,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 48 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 49 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(48);
-    expect(names).toHaveLength(48);
+    expect(new Set(names).size, 'distinct operations').toBe(49);
+    expect(names).toHaveLength(49);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();
