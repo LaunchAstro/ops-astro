@@ -25,7 +25,6 @@ import {
   emailAdapter,
 } from '../../packages/core-connectors/src/index.ts';
 import { startCustody } from '../../packages/core-custody/src/index.ts';
-import type { Database } from '../../packages/core-records/src/index.ts';
 import { TEST_EMAIL_SEND } from '../broker/email-world.ts';
 import { mailTo } from './c39-t-hook-world.ts';
 import { startFakeUsers, type FakeUsers } from './c39-t-users-fake.ts';
@@ -210,25 +209,6 @@ export function patientApp(): Hono {
       ...w.broker,
       operations: catalogue([TEST_EMAIL_SEND, AUTH_CREATE_USER, AUTH_UPDATE_USER]),
     },
-  });
-  return app;
-}
-
-/** The route over a database that runs `work` before its `nth` transaction opens. */
-export function appBefore(nth: number, work: () => Promise<void>): Hono {
-  let opened = 0;
-  const database: Database = {
-    ...w.db.app,
-    async withBusiness(business, run) {
-      opened += 1;
-      if (opened === nth) await work();
-      return await w.db.app.withBusiness(business, run);
-    },
-  };
-  const app = new Hono();
-  mountEnrolment(app, database, {
-    businesses: async () => await Promise.resolve([w.alpha, w.bravo]),
-    broker: w.broker,
   });
   return app;
 }

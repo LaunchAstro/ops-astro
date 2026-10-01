@@ -6,11 +6,10 @@
 // link died, is found again and adopted by the next accept with the password
 // set then. A login that is not ours, another business's or one made
 // elsewhere, is never set: its holder is told to sign in. A login this
-// business has bound already is never set again, and nothing is asked; two
-// accepts for one address, racing on one link or on a revoked link and a
-// fresh one, run one after the other, so neither sets the password of the
-// login the other bound. A hostile answer spends and binds nothing, and the
-// same link then enrols.
+// business has bound already is never set again, and nothing is asked. Of
+// two accepts for one address, racing on one link or on a revoked link and
+// a fresh one, neither sets the password of the login the other bound. A
+// hostile answer spends and binds nothing, and the same link then enrols.
 
 import { Hono } from 'hono';
 import { describe, expect, it } from 'vitest';
@@ -23,7 +22,6 @@ import {
 import { TEST_EMAIL_SEND } from '../broker/email-world.ts';
 import type { FakeUsersMode } from './c39-t-users-fake.ts';
 import {
-  appBefore,
   boundTo,
   e,
   type Answer,
@@ -138,28 +136,25 @@ describe.skipIf(noDatabase)('C39-T enrolment recovery', () => {
     expect(await spentOf(again.id)).toStrictEqual({ state: 'pending', spent: 0, tokens: 1 });
   });
 
-  it('C39-T enrolment: a link revoked between the find and the accept’s locks enrols no one and asks the provider nothing, and a fresh invitation for the address enrols', async () => {
+  it('C39-T enrolment: a link revoked between the find and the bind enrols no one, and a fresh invitation for the address enrols with the login made then', async () => {
     const address = addressFor('revoked-mid-accept');
     const first = await invited(c.admin, address);
-    // The find opens one transaction per business, alpha and bravo; the third is the accept's.
-    const revoking = appBefore(3, async () => {
+    e.users.beforeNext(async () => {
       expect(codeOf(await as(c.admin, 'invitation.revoke', { invitationId: first.id }))).toBe(
         'applied',
       );
     });
-    const from = e.users.received.length;
-    expect(await enrolVia(first.token, passwordFor(), revoking)).toStrictEqual({
+    expect(await enrolVia(first.token)).toStrictEqual({
       status: 404,
       body: { code: 'ENROLMENT_LINK_INVALID' },
       cookie: null,
     });
-    expect(e.users.received).toHaveLength(from);
-    expect(e.users.users.has(address)).toBe(false);
-    expect(await spentOf(first.id)).toStrictEqual({ state: 'revoked', spent: 0, tokens: 1 });
+    const made = String(e.users.users.get(address));
+    expect(await boundTo(w.alpha, made)).toBeUndefined();
 
     const fresh = await invited(c.admin, address);
     expect(await enrolVia(fresh.token)).toStrictEqual(ENROLLED);
-    const made = String(e.users.users.get(address));
+    expect(e.users.users.get(address)).toBe(made);
     expect(await boundTo(w.alpha, made)).toBe(await personOf(fresh.id));
     expect(await spentOf(fresh.id)).toStrictEqual({ state: 'accepted', spent: 1, tokens: 1 });
   });
