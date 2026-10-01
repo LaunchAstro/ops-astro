@@ -92,7 +92,7 @@ describe.skipIf(noDatabase)('C39-T enrolment', () => {
     expect(e.users.received).toHaveLength(asked + 1);
     expect(e.users.received.at(-1)).toMatchObject({
       path: '/auth/v1/admin/users',
-      authorization: e.key,
+      authorization: `Bearer ${e.key}`,
       body: { email: address, password, email_confirm: true },
     });
     const subject = String(e.users.users.get(address));

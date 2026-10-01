@@ -2,10 +2,11 @@
 //
 // `POST /api/enrol` (C39-T, piece P3): the enrolment page sends the link's
 // one-time token and the password its holder set, and the invitation is
-// accepted (`acceptInvitation`). A system route like the Auth email hook
-// (`auth-email-hook.ts`): outside the business prefix, with no sign-in and
+// accepted (`acceptInvitation`). Mounted by `createApi` when it is given the
+// businesses and a broker: outside the business prefix, with no sign-in and
 // no person grant. The token is the authority, and it travels in the body,
-// never in an address a log keeps.
+// never in an address a log keeps. No cookie is read, so there is no ambient
+// credential for another site to ride and no same-site header is asked.
 //
 // The answer opens no session and sets no cookie: 200 `{ state }`, `enrolled`
 // when a login was made, `sign_in` when the address already holds one. Every

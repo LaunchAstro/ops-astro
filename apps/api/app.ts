@@ -71,6 +71,7 @@ import type {
 import type { Verifier } from './auth/supabase.ts';
 import type { LiveSignal, LiveTopics } from './live.ts';
 import { followBoard } from './live-board.ts';
+import { mountEnrolment, type EnrolmentOptions } from './enrolment.ts';
 import { signalOf, type Outcome, type SecuritySignal } from './alerts/detect.ts';
 import {
   bearerOf,
@@ -154,6 +155,13 @@ export interface ApiOptions {
    * with no content. Absent in a deployment without an error sink.
    */
   readonly observe?: (signal: SecuritySignal) => void;
+  /**
+   * C39-T's enrolment route, `POST /api/enrol` (`enrolment.ts`): an invitation
+   * accepted on its one-time link, with no sign-in. Absent where the
+   * composition root has not given it the businesses and a broker that
+   * catalogues the login provider's `auth.create_user`; then it is not mounted.
+   */
+  readonly enrolment?: EnrolmentOptions;
 }
 
 /** The live task channel (T2f); absent, unmounted. `recheckMs`: how often a quiet stream re-asks. */
@@ -279,6 +287,8 @@ export function createApi(options: ApiOptions): Hono {
     }
     return context.json({ ok: true }, 200);
   });
+
+  if (options.enrolment !== undefined) mountEnrolment(api, options.database, options.enrolment);
 
   /** One route per surface declaration under `prefix`, each through the door. */
   function mountSurface(
