@@ -294,8 +294,10 @@ approving person, who is the one named, judged as `EFFECTIVE` judges grants),
 and the expiry is within a lease's
 lifetime. It computes the fence itself. The application role still writes
 delegations, grants, gate decisions and actors, so a new lease is only as
-trustworthy as those rows; the delegation mint behind this path is the next step. It keeps row security on, its search
-path is `pg_catalog, pg_temp`, PUBLIC may not execute it, and a call naming
+trustworthy as those rows; the delegation mint behind this path is the next step. It runs as its own
+role, `ops_astro_lease_path` (no login, no bypass, not the owner, and the
+application group cannot set it), so row security and the made-up guard judge
+its one insert as the application's; its search path is `pg_catalog, pg_temp`, PUBLIC may not execute it, and a call naming
 nothing answers null. `tests/db/lease-pickup-path.test.ts` and
 `tests/db/lease-holder-guard.test.ts` prove it.
 
