@@ -24,8 +24,7 @@
 // because being skipped is a thrown error rather than an absent row.
 
 import { effectOperationId, type CommandName } from '../../packages/core-wire/src/surface.ts';
-import type { Answer, World } from './world.ts';
-import { seedLiveCorrection } from './c80-bodies.ts';
+import type { Answer } from './world.ts';
 
 /**
  * The proposal every case that needs a gate proposes, spelled once. Its step is
@@ -89,20 +88,6 @@ export interface BodyContext {
   ): Promise<Answer>;
   freshTask(title: string): Promise<Task>;
 }
-
-/**
- * The task the recipes name, with C80's approver (`ada`, the admin) and a
- * correction another member (`mia`) requested on that task.
- */
-export const taskBodyContext = (
-  world: Pick<World, 'db' | 'alpha' | 'ada' | 'mia'>,
-  taskId: string,
-): Pick<BodyContext, 'alphaTaskId' | 'adminPersonId' | 'seedCorrection'> => ({
-  alphaTaskId: taskId,
-  adminPersonId: world.ada.personId as string,
-  seedCorrection: async () =>
-    await seedLiveCorrection(world.db.app, world.alpha, taskId, world.mia),
-});
 
 export const batchOf = (answer: Answer): string =>
   String((answer.body['detail'] as Record<string, unknown>)['batchId']);

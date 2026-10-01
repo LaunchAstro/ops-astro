@@ -25,6 +25,8 @@ import { ownConversation } from './foreign-conversation.ts';
 import { answerAtTheStop } from './stopped-run.ts';
 import { revisedRunBody } from './revised-run.ts';
 
+export { taskBodyContext } from './c80-bodies.ts';
+
 export function createPositiveBody(
   context: BodyContext,
 ): (declaration: CommandDeclaration) => Promise<Prepared> {

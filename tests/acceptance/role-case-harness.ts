@@ -35,8 +35,8 @@ import {
   type Answer,
   type Caller,
 } from './world.ts';
-import { PROPOSAL, childProbe, taskBodyContext, type Task } from './role-case-bodies.ts';
-import { createPositiveBody } from './role-case-positive-body.ts';
+import { PROPOSAL, childProbe, type Task } from './role-case-bodies.ts';
+import { createPositiveBody, taskBodyContext } from './role-case-positive-body.ts';
 import { plainRows, seedFixtureClients } from './role-case-clients.ts';
 import { pairFor, targetKeyOf, type Harness } from './role-case-harness-shape.ts';
 
