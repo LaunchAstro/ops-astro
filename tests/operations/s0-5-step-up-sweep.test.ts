@@ -167,7 +167,9 @@ describe.skipIf(serverMissing)('S0-5 step-up sweep', () => {
     }
     expect(wrong).toEqual([]);
   }, 120_000);
+});
 
+describe.skipIf(serverMissing)('S0-5 step-up sweep, setting absent', () => {
   it('S0-5 step-up sweep: a business with no step-up setting row still refuses a stale sign-in STEP_UP_REQUIRED on a money command', async () => {
     const { world } = harness;
     await harness.world.db.admin.execute(
