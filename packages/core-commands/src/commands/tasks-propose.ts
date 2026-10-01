@@ -238,7 +238,7 @@ export async function proposeFor(
   // before the revision, so a starter who lost the race is told it is claimed.
   const starter = subjects.find((subject) => subject.kind === 'person')?.id ?? actorId;
   if (research) {
-    const refusal = await researchStartRefusal(tx, current, subjects, delegation, starter);
+    const refusal = await researchStartRefusal(tx, current, subjects, delegation, starter, actorId);
     if (refusal !== undefined) return refused(refusal);
   }
   if (fields.expectedRevision !== current.revision) {

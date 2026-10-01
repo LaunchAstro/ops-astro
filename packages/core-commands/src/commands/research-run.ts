@@ -14,7 +14,7 @@ import {
 import type { Delegation, Session, Subject, TenantQuery } from '../../../core-records/src/index.ts';
 import type { TaskRow } from './context.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
-import { clearAsk, openAsk } from './research-failed.ts';
+import { clearAsk, failedTwice, openAsk, researchLifted } from './research-failed.ts';
 import { pinResearchSkillOnStart } from './research-skill.ts';
 
 /**
@@ -31,11 +31,12 @@ export async function researchStartRefusal(
   subjects: readonly Subject[],
   delegation: Delegation | undefined,
   starter: string,
+  actorId: string,
 ): Promise<CommandRefusal | undefined> {
   const refusal = await researchRunRefusal(tx, ticket.id, subjects, delegation);
   if (refusal !== undefined) return refusal;
   const asked = await openAsk(tx, ticket.id);
-  const stopped = await stopRefusal(tx, ticket.id, starter);
+  const stopped = await stopRefusal(tx, ticket.id, { personId: starter, actorId });
   if (stopped !== undefined) return stopped;
   if (asked === undefined && claimedByAnother(ticket, starter)) {
     return refuseCommand('TRANSITION_NOT_PERMITTED', ['claimed'], [CLAIMED_FIX]);
@@ -56,27 +57,36 @@ export async function claimUnclaimed(
   return isSet(ticket.data['assignee']) ? ticket.revision : await claimFor(tx, ticket.id, starter);
 }
 
+/** Whose word begins a run: the proposer, the restarter, the approver. */
+export interface Starter {
+  readonly personId: string;
+  readonly actorId: string;
+}
+
 /**
  * WF-7 twice failed, it stops: while the map's owner is asked about a research
- * ticket, a run on it begins only on their word, however it begins. `starter`
- * is whose word begins it: the proposer, the restarter, the approver. The
+ * ticket, a run on it begins only on their word, however it begins. The
  * owner's (or the person asked, if the map has none now) is their decision and
- * clears the ask; anyone else's is refused. Asked under the task lock, which
- * the failed handback raising the ask also takes; a refusal rolls back.
+ * clears the ask; anyone else's is refused. With no one asked, a ticket failed
+ * twice since its last lift begins only on the word of a person holding
+ * task:decide on it, recorded as the lift (ORCH52-SL14R). Asked under the task
+ * lock, which the failed handback also takes; a refusal rolls back.
  */
 export async function stopRefusal(
   tx: TenantQuery,
   taskId: string,
-  starter: string,
+  starter: Starter,
 ): Promise<CommandRefusal | undefined> {
-  const asked = await openAsk(tx, taskId);
-  if (asked === undefined) return undefined;
   const facts = await wayfinderFacts(tx, taskId);
   if (facts?.type !== 'research') return undefined;
-  if (starter !== (facts.mapOwner ?? asked)) {
-    return refuseCommand('TRANSITION_NOT_PERMITTED', ['stopped'], [STOPPED_FIX]);
+  const asked = await openAsk(tx, taskId);
+  if (asked !== undefined) {
+    if (starter.personId !== (facts.mapOwner ?? asked)) return refuseStopped();
+    await clearAsk(tx, taskId, starter.personId);
+  } else if (await failedTwice(tx, taskId)) {
+    if (!(await mayDecide(tx, taskId, starter))) return refuseStopped();
+    await researchLifted(tx, taskId, starter.actorId);
   }
-  await clearAsk(tx, taskId, starter);
   return undefined;
 }
 
@@ -95,7 +105,7 @@ export async function researchRestartRefusal(
   if ((await wayfinderFacts(tx, taskId))?.type !== 'research') return undefined;
   const refusal =
     (await researchRunRefusal(tx, taskId, subjectsOf(restarter))) ??
-    (await stopRefusal(tx, taskId, restarter.personId));
+    (await stopRefusal(tx, taskId, restarter));
   if (refusal !== undefined) return refusal;
   const pinned = await pinResearchSkillOnStart(tx, {
     runId,
@@ -108,7 +118,7 @@ export async function researchRestartRefusal(
 export async function stopRefusalAtGate(
   tx: TenantQuery,
   gateId: string,
-  starter: string,
+  starter: Starter,
 ): Promise<CommandRefusal | undefined> {
   const rows = await tx.query<{ readonly task: string }>(
     `select r.task_id as task from public.gates g
@@ -145,7 +155,9 @@ async function researchRunRefusal(
 }
 
 const RUN_WRITE_FIX = 'Starting a research run needs run:write on the ticket; ask for it.';
-const STOPPED_FIX = "This research failed twice and waits on its map's owner; they start it again.";
+const STOPPED_FIX =
+  "This research failed twice: its map's owner starts it again, or if it has none, " +
+  'a person who may decide on the ticket.';
 const CLAIMED_FIX = 'Someone else has claimed this ticket; its run is theirs to start.';
 const ASSIGN_FIX =
   'Starting the run claims the ticket, which needs task:assign; ask for it, or for the claim.';
@@ -155,6 +167,24 @@ const mayAssign = async (tx: TenantQuery, taskId: string, subjects: readonly Sub
     await checkAuthority(tx, subjects, {
       collection: 'task',
       action: 'assign',
+      scope: { kind: 'record', id: taskId },
+    })
+  ).ok;
+
+const refuseStopped = (): CommandRefusal =>
+  refuseCommand('TRANSITION_NOT_PERMITTED', ['stopped'], [STOPPED_FIX]);
+
+const mayDecide = async (tx: TenantQuery, taskId: string, starter: Starter) =>
+  (
+    await checkAuthority(
+      tx,
+      [
+        { kind: 'person', id: starter.personId },
+        { kind: 'actor', id: starter.actorId },
+      ],
+      {
+      collection: 'task',
+      action: 'decide',
       scope: { kind: 'record', id: taskId },
     })
   ).ok;

@@ -155,7 +155,7 @@ async function claim(
         });
   if (!result.ok) return refused(result.refusal);
   // WF-7: a stopped research ticket's run begins only on its map owner's word.
-  const stopped = await stopRefusal(tx, result.value.taskId, approver.personId);
+  const stopped = await stopRefusal(tx, result.value.taskId, approver);
   if (stopped !== undefined) return refused(stopped);
   return applied(result.value.taskId, null, pickupDetail(result.value));
 }

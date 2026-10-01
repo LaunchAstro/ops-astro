@@ -152,7 +152,7 @@ export async function decideOnGate(
   // WF-7: an approval begins a run, so a stopped research ticket waits on its
   // map's owner here too, under the decision's task lock.
   if (decided.decision === 'approve') {
-    const stopped = await stopRefusalAtGate(tx, decided.gateId, context.session.personId);
+    const stopped = await stopRefusalAtGate(tx, decided.gateId, context.session);
     if (stopped !== undefined) return refused(stopped);
   }
   if (decided.decision === 'escalate') {
