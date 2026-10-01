@@ -9,7 +9,8 @@
 // `tips.dismissed` takes only `{}`, which is the reset, and a dismissal is
 // merged into it by `dismissTip` alone. The widths are reserved here for the parts that
 // draw them (MP-2-3 the rail, MP-3-2 the dock, MP-5-6 the columns), which may
-// narrow their bounds; none of them adds a table.
+// narrow their bounds; none of them adds a table. `agent.jobList` is the Agent
+// pane's job list shown or hidden (MP-6-1, CS-6.2).
 
 import type { TenantQuery } from '../tenancy/database.ts';
 
@@ -30,7 +31,8 @@ export type PreferenceKey =
   | 'dock.sheetHeight'
   | 'columns.widths'
   | 'tips.enabled'
-  | 'tips.dismissed';
+  | 'tips.dismissed'
+  | 'agent.jobList';
 
 export const PREFERENCE_KEYS: { readonly [K in PreferenceKey]: (value: unknown) => boolean } = {
   /** Light, Dark or System; the default, System, is the absence of a row. */
@@ -48,6 +50,8 @@ export const PREFERENCE_KEYS: { readonly [K in PreferenceKey]: (value: unknown) 
     value !== null &&
     !Array.isArray(value) &&
     Object.keys(value).length === 0,
+  /** The Agent pane's job list shown (true) or hidden; hidden is the absence of a row. */
+  'agent.jobList': (value) => typeof value === 'boolean',
 };
 
 export function isPreferenceKey(key: string): key is PreferenceKey {
