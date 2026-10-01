@@ -39,6 +39,10 @@ const SWEPT: readonly string[] = [
   'budget.record_outcome',
   'budget.write_off',
   'settings.set_four_eyes_threshold',
+  // SL12's two `billing:decide` commands: the planning cap (AW-04) and the
+  // top-up at a run's budget stop (C54).
+  'budget.set_planning_cap',
+  'run.top_up',
 ];
 
 /**
