@@ -26,9 +26,17 @@ name: review evidence
 # `labeled` and `unlabeled`: the `needs-sol` label is half of the owed mark
 # that may stand in for Sol's record (owner, 1 October 2026), so a label
 # change can change the verdict too.
+#
+# CI-QUEUE: `merge_group` too, so the check reports on the merge queue's
+# build. A group holds several pull requests and carries none in its event:
+# scripts/merge-group.mjs reads each one from the queue's merge commits, and
+# the check judges every one, each pull request's own body against that pull
+# request's own head, as it does on a pull request. One it cannot read fails
+# the group.
 on:
   pull_request:
     types: [opened, synchronize, reopened, edited, labeled, unlabeled]
+  merge_group:
 
 # Issue 151: `issues: read` lets the job list open issues, so a follow-up
 # outcome can be held to one. Without it GitHub's listing gave this token pull
@@ -73,6 +81,12 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: The checker's own cases
         run: bash tests/ci/review-evidence-cases.sh
+      # One line per pull request this run judges, `<number> <head> <base>`:
+      # on a pull request, itself; on a merge group, each one the group holds.
+      # No token reaches it.
+      - name: The pull requests being judged
+        run: |
+          node scripts/merge-group.mjs list > "${RUNNER_TEMP}/prs.txt"
       # The body and the labels as they stand when they are judged, not the
       # event's copy: a run queued before an edit or a label change must not
       # judge the old ones.
@@ -80,19 +94,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
         # Issue 88: the open issues, read with the same token, so a follow-up
         # outcome can be held to one. The check itself gets no token.
         run: |
-          gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.body // ""' > "${RUNNER_TEMP}/pr-body.md"
-          gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '(.labels // [])[].name' > "${RUNNER_TEMP}/pr-labels.txt"
+          while read -r PR_NUMBER _; do
+            mkdir -p "${RUNNER_TEMP}/pr-${PR_NUMBER}"
+            gh api "repos/${REPO}/pulls/${PR_NUMBER}" > "${RUNNER_TEMP}/pr-${PR_NUMBER}/pull.json"
+          done < "${RUNNER_TEMP}/prs.txt"
           gh api --paginate "repos/${REPO}/issues?state=open&per_page=100" \
             --jq '.[] | select(.pull_request == null) | .number' > "${RUNNER_TEMP}/open-issues.txt"
+      # Each pull request's body and labels come from its record above
+      # (`.body // ""`, one label name per line), and the record must be that
+      # pull request at the head being judged; on a group, open and on the
+      # group's base branch too (scripts/merge-group.mjs).
       - name: The review must cover the head being merged
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           OPEN_ISSUES="$(cat "${RUNNER_TEMP}/open-issues.txt")" \
-            PR_LABELS="$(cat "${RUNNER_TEMP}/pr-labels.txt")" \
-            PR_BODY="$(cat "${RUNNER_TEMP}/pr-body.md")" node scripts/review-evidence-check.mjs
+            node scripts/merge-group.mjs each --pulls "${RUNNER_TEMP}" node scripts/review-evidence-check.mjs

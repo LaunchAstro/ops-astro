@@ -29,6 +29,8 @@ gh api repos/<owner>/<repo>/commits/<sha>               # must return 200
 | `actions/upload-artifact`           | v7.0.1  | `043fb46d1a93c77aae656e7c1c64a875d1fc6a0a` | Tag ref, commit 200                    |
 | `pnpm/action-setup`                 | v6.1.0  | `ea17c68df8912ef543352723c149a84f56e3d413` | Annotated tag dereferenced, commit 200 |
 | `ossf/scorecard-action`             | v2.4.4  | `2d1146689b8cda280b9bc96326124645441f03bc` | Annotated tag dereferenced, commit 200 |
+| `github/codeql-action/init`         | v4.37.9 | `cdf488f595d80d6e07e03d4674febd5ab45fa938` | Annotated tag dereferenced, commit 200 |
+| `github/codeql-action/analyze`      | v4.37.9 | `cdf488f595d80d6e07e03d4674febd5ab45fa938` | Annotated tag dereferenced, commit 200 |
 | `github/codeql-action/upload-sarif` | v4.37.9 | `cdf488f595d80d6e07e03d4674febd5ab45fa938` | Annotated tag dereferenced, commit 200 |
 
 That check establishes that the hash is the commit the publisher's own release

@@ -1,0 +1,14 @@
+{
+  "action": "checks_requested",
+  "merge_group": {
+    "head_sha": "@HEAD@",
+    "head_ref": "@HEAD_REF@",
+    "base_sha": "0000000000000000000000000000000000000000",
+    "base_ref": "@BASE_REF@",
+    "head_commit": {
+      "id": "@HEAD@",
+      "message": "Merge pull request from the queue"
+    }
+  },
+  "repository": { "full_name": "LaunchAstro/ops-astro" }
+}
