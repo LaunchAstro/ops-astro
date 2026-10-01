@@ -6,8 +6,10 @@
 //
 // An issue is always the caller's own. Its scope is the ticked keys, each held
 // by the caller at business scope now, and never decide, share or manage; its
-// expiry is at most `CREDENTIAL_MAX_DAYS` out. The secret is in the issue
-// answer alone: the register keeps the answer with the credential nulled
+// expiry is at most `CREDENTIAL_MAX_DAYS` out. A money key (C59's set) is
+// issued only on a sign-in inside the money window, as the person's own money
+// command is: the agent using it is never asked again. The secret is in the
+// issue answer alone: the register keeps the answer with the credential nulled
 // (`envelope.ts`), and the issuer's replay of the same operation derives it
 // again while the credential is live (`replayIssue`).
 //
@@ -22,8 +24,10 @@ import {
   CREDENTIAL_MAX_DAYS,
   deriveAgentCredential,
   digestOf,
+  isMoneyKey,
   issueAgentCredential,
   lockAgentCredential,
+  refuseStaleMoneyStep,
   revokeAgentCredential,
   subjectsOf,
 } from '../../../core-records/src/index.ts';
@@ -109,21 +113,32 @@ function expiryOf(expiresAt: unknown, now: number): Date | undefined {
   return new Date(at);
 }
 
-/** The first ticked key the caller does not hold at business scope, or undefined. */
-async function widening(
+const WIDENS = refuseCommand(
+  'CREDENTIAL_SCOPE_WIDENS',
+  ['scope'],
+  ['Tick only keys you hold across the whole business.'],
+);
+
+/**
+ * The scope's refusal, or undefined: a ticked key the caller does not hold at
+ * business scope, then C59's step-up after the grant walk, as in `prepare.ts`.
+ * The credential carries a money key past the window, so it is asked at issue.
+ */
+async function refuseScope(
   tx: TenantQuery,
   session: Session,
   keys: readonly CredentialKey[],
-): Promise<CredentialKey | undefined> {
+): Promise<CommandRefusal | undefined> {
   for (const key of keys) {
     // oxlint-disable-next-line no-await-in-loop -- one grant walk per key, in order
     const decision = await checkAuthority(tx, subjectsOf(session), {
       ...key,
       scope: WHOLE_BUSINESS,
     });
-    if (!decision.ok) return key;
+    if (!decision.ok) return WIDENS;
   }
-  return undefined;
+  const money = keys.find((key) => isMoneyKey(key.collection, key.action));
+  return money === undefined ? undefined : await refuseStaleMoneyStep(tx, session, money);
 }
 
 export async function issueCredential(
@@ -149,15 +164,8 @@ export async function issueCredential(
     return invalid('purpose');
   }
   const { session } = context;
-  if ((await widening(tx, session, keys)) !== undefined) {
-    return refused(
-      refuseCommand(
-        'CREDENTIAL_SCOPE_WIDENS',
-        ['scope'],
-        ['Tick only keys you hold across the whole business.'],
-      ),
-    );
-  }
+  const scopeRefusal = await refuseScope(tx, session, keys);
+  if (scopeRefusal !== undefined) return refused(scopeRefusal);
   const held = delegationCredentialKeys();
   if (!held.ok) return refused(NO_KEY);
   const issued = await issueAgentCredential(tx, held.keys, {
