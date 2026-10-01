@@ -165,11 +165,7 @@ export async function standingOf(
   const assurance = presented.assurance ?? NO_ASSURANCE;
   const short = assurance.level !== 'aal2';
   if (rule === 'required' && short && (await factorHeld(tx, presented.subject, found))) {
-    return await recordRefusal(
-      tx,
-      presented,
-      refuse('AUTH_SECOND_FACTOR_REQUIRED', SECOND_FACTOR_FIXES),
-    );
+    return refuse('AUTH_SECOND_FACTOR_REQUIRED', SECOND_FACTOR_FIXES);
   }
 
   return {
