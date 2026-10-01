@@ -8,6 +8,9 @@
 // `created_at`. The run stays in the plan the proposal checked its key
 // against, or in none.
 //
+// A hand-back's successor is written through the same writer under the task
+// lock, and stores the plan bound at the hand-back the same way.
+//
 // The column's security line is `mp-6-2-plan-record-isolation.test.ts`.
 
 import { randomUUID } from 'node:crypto';
@@ -17,10 +20,12 @@ import type { PlanAcceptRequest } from '../../packages/core-runtime/src/index.ts
 import {
   appliedDetail,
   approve,
+  asAgent,
   asPerson,
   awaitParked,
   createTask,
   freshPurpose,
+  handbackBody,
   pickup,
   propose,
   racer,
@@ -174,4 +179,41 @@ it('MP-6-2 placement reads the plan record stored at proposal: a run proposed un
   expect((await placedAs(taskId)).events).toMatchObject([
     { runId: proposal['runId'], placement: { planRecordId: null, stepKey: null, planRun: false } },
   ]);
+});
+
+it('MP-6-2 stored plan record: a hand-back successor stores the plan bound at the hand-back', async () => {
+  const taskId = await createTask(w.s, `mp62-stored-successor-${randomUUID()}`);
+  const plan = await acceptPlanOn(taskId);
+  const proposal = appliedDetail(
+    await proposeStep(taskId, { kind: 'synthetic_comment', payload: {}, planStep: 'draft' }),
+    'propose under draft',
+  );
+  const picked = await pickup(w.s, (await approve(w.s, proposal))['reservationId']);
+  const handed = appliedDetail(
+    await asAgent(
+      w.s,
+      handbackBody(picked, {
+        purpose: 'draft_the_reply',
+        maximumMinor: 200,
+        currency: 'AUD',
+        payload: { instruction: 'a second pass' },
+        step: { kind: 'synthetic_comment', payload: {} },
+      }),
+      String(picked['credential']),
+    ),
+    'task.handback',
+  );
+
+  const steps = await rows<{
+    readonly plan_record_id: string | null;
+    readonly plan_record_written: boolean;
+  }>(
+    w.s,
+    `select st.plan_record_id, st.plan_record_written
+       from public.planned_steps st
+       join public.planned_runs run on run.business_id = st.business_id and run.id = st.run_id
+      where run.version_id = $1 and st.ordinal = 1`,
+    [handed['successorVersionId']],
+  );
+  expect(steps).toEqual([{ plan_record_id: plan.planRecordId, plan_record_written: true }]);
 });
