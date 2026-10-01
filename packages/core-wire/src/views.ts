@@ -488,11 +488,20 @@ export interface AccessGrant extends AccessPermission {
 }
 
 /**
+ * A permission a person may use now, and whether the command path first asks
+ * the money step-up (C59) for it: a recent second factor, or for a client a
+ * recent sign-in. True exactly when `asksMoneyStepUp` is.
+ */
+export interface AccessPreview extends AccessPermission {
+  readonly stepUp: boolean;
+}
+
+/**
  * A person on Team or Clients, with the preview of what they may do now and
  * the live grants behind it, each by id, so one can be revoked.
  */
 export interface AccessPerson extends PersonView {
-  readonly permissions: readonly AccessPermission[];
+  readonly permissions: readonly AccessPreview[];
   readonly grants: readonly AccessGrant[];
 }
 
