@@ -1973,6 +1973,12 @@ kept. A tip not already held is refused `FIELD_VALUE_INVALID` past 500. A tip
 shows unless tips are off or its entry holds its current text version
 (`tipShown`, `packages/core-wire/src/tips.ts`), so a rewritten tip comes back.
 
+**Show finished subtasks is a key of the one store** (MP-4-4, CS-4.27).
+`subtasks.showFinished` takes `true` or `false` through `preference.save`;
+hidden, the default, is no row. The task page and the dock panel read it once
+and save each change; a reader the store refuses keeps the choice for the view
+and sends no save.
+
 ## Open items
 
 Named so they are not read as settled:

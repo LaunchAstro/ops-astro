@@ -30,7 +30,8 @@ export type PreferenceKey =
   | 'dock.sheetHeight'
   | 'columns.widths'
   | 'tips.enabled'
-  | 'tips.dismissed';
+  | 'tips.dismissed'
+  | 'subtasks.showFinished';
 
 export const PREFERENCE_KEYS: { readonly [K in PreferenceKey]: (value: unknown) => boolean } = {
   /** Light, Dark or System; the default, System, is the absence of a row. */
@@ -48,6 +49,8 @@ export const PREFERENCE_KEYS: { readonly [K in PreferenceKey]: (value: unknown) 
     value !== null &&
     !Array.isArray(value) &&
     Object.keys(value).length === 0,
+  /** A task's finished subtasks shown (MP-4-4, CS-4.27); hidden, the default, is no row. */
+  'subtasks.showFinished': (value) => typeof value === 'boolean',
 };
 
 export function isPreferenceKey(key: string): key is PreferenceKey {

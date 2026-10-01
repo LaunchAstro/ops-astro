@@ -132,6 +132,7 @@ import { History } from './task/History.tsx';
 import { Outages } from './task/Outages.tsx';
 import { Assignee, Lifecycle, type LifecycleCommand } from './task/Lifecycle.tsx';
 import { PageStatus } from './task/StatusField.tsx';
+import { useShowFinished } from './task/show-finished.ts';
 
 export interface TaskDetailProps {
   readonly client: OperationsClient;
@@ -219,7 +220,8 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   const [proposeDraft, setProposeDraft] = useHeld<ProposeDraft>(identity, denied);
   const [topUpNote, setTopUpNote] = useHeld<TopUpNote>(identity, denied);
   const [perspective, setPerspective] = useHeld<Perspective>(identity, denied);
-  const [showFinished, setShowFinished] = useHeld<boolean>(identity, denied);
+  // Remembered per person in the preference store (MP-4-4, CS-4.27).
+  const [showFinished, setShowFinished] = useShowFinished(client);
   const [showAllTime, setShowAllTime] = useHeld<boolean>(identity, denied);
 
   return (
@@ -259,7 +261,7 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
                 onTopUpNote={setTopUpNote}
                 perspective={perspective ?? 'team'}
                 onPerspective={setPerspective}
-                showFinished={showFinished ?? false}
+                showFinished={showFinished}
                 onShowFinished={setShowFinished}
                 showAllTime={showAllTime ?? false}
                 onShowAllTime={setShowAllTime}

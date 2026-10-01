@@ -18,9 +18,10 @@
 // in the order the server lists them.
 //
 // **Finished steps fold away.** A done step, and an archived one (it left the
-// count without being done, MP-4-15), sit under "Show finished", which the
-// page holds so a reread keeps it open. An archived step says when and why,
-// and carries no tick: it comes back only when its parent is reopened.
+// count without being done, MP-4-15), sit under "Show finished", the person's
+// own preference (`show-finished.ts`), so a reread keeps it open. An archived
+// step says when and why, and carries no tick: it comes back only when its
+// parent is reopened.
 
 import { useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
 import type { StepView, TaskTimeView } from '../../../../../packages/core-wire/src/index.ts';
