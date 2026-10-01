@@ -443,6 +443,9 @@ describe.skipIf(serverUrl === undefined)(
          from public.attempts att
          join public.leases l on l.business_id = att.business_id and l.id = att.lease_id
          join public.planned_runs run on run.business_id = att.business_id and run.id = att.run_id
+         join public.reservations res
+           on res.business_id = att.business_id and res.id = att.reservation_id
+         ${LAUNCHED}
         where att.business_id = $1 and run.task_id = $2`,
         [fixture.business, taskId],
       );

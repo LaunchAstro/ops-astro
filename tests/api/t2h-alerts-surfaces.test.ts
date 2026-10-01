@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // T2h through the served API and the command line: the worker proposes, a
-// person approves, the worker applies it once and its observed cost settles.
-// That settlement's one alert reads the same through `task.read` over HTTP and
-// `task.queue` through the command line's client. A real second business,
+// person approves, the worker hands the plan's work back and the person
+// launches it (AW-08), and the worker applies it once and its observed cost
+// settles. The task's alerts, that settlement's one among them, read the same
+// through `task.read` over HTTP and `task.queue` through the command line's client. A real second business,
 // read by its own member's token, answers its queue (200) with none of it.
 
 import { randomUUID } from 'node:crypto';
@@ -135,13 +136,12 @@ describe.skipIf(serverUrl === undefined)('T2h: the alert on every surface', () =
 
     const read = await asPerson('task.read', { recordId: taskId });
     const onPage = (read.body['task'] as { alerts: Record<string, unknown>[] }).alerts;
-    expect(onPage).toHaveLength(1);
-    expect(onPage[0]).toMatchObject({
-      taskId,
-      kind: 'settled',
-      waitingReason: null,
-      causeId: applied.applied.attemptId,
-    });
+    // Two transitions (AW-08): the plan's work handed back for review, and the
+    // launch settled; the launch's alert names the attempt the worker applied.
+    expect(onPage).toHaveLength(2);
+    expect(onPage.filter((alert) => alert['causeId'] === applied.applied.attemptId)).toEqual([
+      expect.objectContaining({ taskId, kind: 'settled', waitingReason: null }),
+    ]);
 
     const cli = createCli({ transport, businessKey: BUSINESS_KEY, credential: personToken });
     const queue = await cli.run('task.queue', {});
