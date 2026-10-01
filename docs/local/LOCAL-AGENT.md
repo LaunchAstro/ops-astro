@@ -83,6 +83,12 @@ client: client-facing agent work stays on the API.
   decision item asking for the owner's yes, which it writes to `approvals.json`.
   A cap set in `OPS_LOCAL_AGENT_CAP_USD`, or one already at USD 30, is never
   asked about: a yes could not lift it, so the work is refused as it stands.
+- Anyone the product lets decide the task can give that yes, not only the
+  business's owner, and `approvals.json` belongs to the laptop: a yes in one
+  business lifts the cap or allows the model for every business on that runner.
+  Fine on made-up local data; settle it before anything wider.
+- The yes does not re-run the refused work. It stays handed back failed; queue
+  it again by hand.
 - One runner per home: a second one on the same ledger, or a second stack,
   refuses to start (`LOCAL_HOME_IN_USE`) before it writes a file. The seed's
   worker is found or made under a lock, so two starts on one business share one.

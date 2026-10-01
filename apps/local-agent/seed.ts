@@ -79,7 +79,8 @@ export async function localIdentity(
   return await db.app.withBusiness(business.id, async (tx) => {
     const agents = await tx.query(
       `select 1 from public.actors a
-         join public.actor_logins al on al.business_id = a.business_id and al.actor_id = a.id
+         join public.actor_logins al
+           on al.business_id = a.business_id and al.actor_id = a.id and al.active
          join public.logins l on l.id = al.login_id
         where a.business_id = $1 and a.kind = 'agent' and a.active
           and l.provider = 'supabase' and l.subject = $2`,

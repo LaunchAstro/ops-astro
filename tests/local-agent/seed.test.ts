@@ -19,7 +19,12 @@ import {
 const serverUrl = databaseUrlFromEnvironment();
 
 /** The agent's actor, login and mapping, as scripts/local-seed.mjs writes them. */
-async function seedAgent(app: Database, businessId: string, subject: string): Promise<void> {
+async function seedAgent(
+  app: Database,
+  businessId: string,
+  subject: string,
+  linkActive = true,
+): Promise<void> {
   await app.withBusiness(businessId, async (tx) => {
     const actorId = randomUUID();
     const loginId = randomUUID();
@@ -32,9 +37,10 @@ async function seedAgent(app: Database, businessId: string, subject: string): Pr
       [businessId, loginId, subject],
     );
     await tx.query(
-      `insert into public.actor_logins (business_id, id, login_id, actor_id, linked_by_actor_id)
-       values ($1, $2, $3, $4, $4)`,
-      [businessId, randomUUID(), loginId, actorId],
+      `insert into public.actor_logins
+         (business_id, id, login_id, actor_id, linked_by_actor_id, active, deactivated_at)
+       values ($1, $2, $3, $4, $4, $5, case when $5 then null else now() end)`,
+      [businessId, randomUUID(), loginId, actorId, linkActive],
     );
   });
 }
@@ -98,6 +104,15 @@ describe.skipIf(serverUrl === undefined)(
       const read = await localIdentity(db, 'charlie', alphaAgent);
       expect(read).toMatchObject({ ok: false, code: 'NOT_SEEDED' });
       expect(await workers(charlie)).toHaveLength(0);
+    });
+
+    it('an agent whose login link is inactive is refused and its business gets no worker', async () => {
+      const delta = await insertBusiness(db.app, 'delta');
+      const unlinked = randomUUID();
+      await seedAgent(db.app, delta, unlinked, false);
+      const read = await localIdentity(db, 'delta', unlinked);
+      expect(read).toMatchObject({ ok: false, code: 'NOT_SEEDED' });
+      expect(await workers(delta)).toHaveLength(0);
     });
   },
 );
