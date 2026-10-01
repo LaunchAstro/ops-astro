@@ -5,6 +5,7 @@
 // contract's lock order, and the room already committed out of a reservation.
 
 import { isUuid, slotOf, TASK_SPINE, type TenantQuery } from '../../core-records/src/index.ts';
+import { withMapClient } from './broker-conversation.ts';
 import { holdsWork } from './broker-holds.ts';
 import { LEAVES_ROW_DATA, type TaskSource } from './broker-sources.ts';
 import type { BrokerRefusal, ModelCaller, ModelCallRequest } from './broker-types.ts';
@@ -20,7 +21,7 @@ export interface Facts {
   readonly callerDelegationId: string | null;
   readonly workForPersonId: string | null;
   readonly heldMinor: number;
-  /** The run's task's client link, or null for a task no client is on (C60). */
+  /** The run's task's client link, else its map's; null when neither has one (C60). */
   readonly clientId: string | null;
   /** The run's task as a bound field's source, as held (S3). */
   readonly source: TaskSource;
@@ -44,8 +45,9 @@ interface LeaseRow {
 /** The spine's client slot: the party link `task.set_party` writes. */
 const CLIENT_SLOT = slotOf(TASK_SPINE, 'client');
 
-/** The run's task, with what S3 reads of it as a source (`broker-sources.ts`). */
-const LOCK_TASK = `select t.id::text as id, run.id::text as run_id, t.${CLIENT_SLOT}::text as client,
+/** The run's task, its parent, and what S3 reads of it as a source (`broker-sources.ts`). */
+const runTask = (lock: string): string => `select t.id::text as id, run.id::text as run_id,
+            t.${CLIENT_SLOT}::text as client, t.${slotOf(TASK_SPINE, 'parent')}::text as parent,
             t.deleted_at is null as live, t.data, exists (
               select 1 from public.operations o
                 join public.actors a on a.business_id = o.business_id and a.id = o.actor_id
@@ -56,18 +58,14 @@ const LOCK_TASK = `select t.id::text as id, run.id::text as run_id, t.${CLIENT_S
        join public.planned_runs run on run.business_id = l.business_id and run.id = l.run_id
        join public.records t on t.business_id = run.business_id and t.id = run.task_id
       where l.business_id = $1 and l.id = $2
-      for share of t`;
+      ${lock}`;
 
 /**
- * The run's task, first in the lock order (`task` comes before `lease`), held
- * `for share` so a `task.set_party` cannot move its client while the call is
- * decided, and answering the task's client link (C60) and what a bound
- * field reads of it (S3): a link or an edit in flight is waited on, never
- * missed. The lease names the run and the run its
- * task, read here before the lease's own lock; the run's task is fixed once
- * written (the application may update a run's state only, 0192), and the
- * lease's run is compared again under the lease's lock (`lockFacts`).
- * Unknown to this business answers nothing, refused as a made-up lease is.
+ * The run's task, first in the lock order (its map, then `task`, then `lease`),
+ * held `for share` so its client cannot move while the call is decided, and
+ * answering its or its map's client link (C60, `withMapClient`) and what a
+ * bound field reads of it (S3): a link or an edit in flight is waited on. A run's
+ * task is fixed (0192); `lockFacts` compares the lease's run again. Unknown: nothing.
  */
 async function lockTask(
   tx: TenantQuery,
@@ -76,19 +74,21 @@ async function lockTask(
   | { readonly runId: string; readonly clientId: string | null; readonly source: TaskSource }
   | undefined
 > {
-  const [task] = await tx.query<{
+  const held = await withMapClient<{
     id: string;
     run_id: string;
     client: string | null;
+    parent: string | null;
     live: boolean;
     data: Record<string, unknown>;
     others_wrote: boolean;
-  }>(LOCK_TASK, [tx.businessId, leaseId, LEAVES_ROW_DATA]);
-  if (task === undefined) return undefined;
+  }>(tx, runTask, [tx.businessId, leaseId, LEAVES_ROW_DATA]);
+  if (held === undefined) return undefined;
+  const { row: task } = held;
   const entered = task.data['source'];
   return {
     runId: task.run_id,
-    clientId: task.client,
+    clientId: held.clientId,
     source: {
       id: task.id,
       live: task.live,
