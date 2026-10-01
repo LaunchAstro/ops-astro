@@ -116,3 +116,33 @@ test('RP-1d find-copies by the email a person wrote from lists their membership'
   ).toContain('person_identifiers');
   expect(pairs, 'their membership').toContainEqual(['memberships', membership]);
 });
+
+test('RD-2 find-copies lists a row naming only the agent of a credential the person issued', async () => {
+  const { world } = harness;
+  const name = `qx7agent${randomUUID().slice(0, 8)}`;
+  const ids = await plantSignedInPerson(`Kim ${name}`);
+  const agent = randomUUID();
+  const agentGrant = randomUUID();
+  await world.db.app.withBusiness(world.alpha, async (tx) => {
+    await tx.query(
+      `insert into public.actors (business_id, id, kind, person_id) values ($1, $2, 'agent', null)`,
+      [world.alpha, agent],
+    );
+    await tx.query(
+      `insert into public.agent_credentials
+         (business_id, id, agent_actor_id, issued_by_person_id, issued_by_actor_id, purpose, scope,
+          credential_hash, credential_scheme, credential_key_id, expires_at)
+       values ($1, $2, $3, $4, $5, 'triage', array['tasks:read'], $6, 'hmac-sha256-v1', 'k1',
+               now() + interval '1 day')`,
+      [world.alpha, randomUUID(), agent, ids.person, ids.actor, 'a'.repeat(64)],
+    );
+    await tx.query(
+      `insert into public.grants
+         (business_id, id, subject_kind, subject_id, scope_kind, collection, action, granted_by_actor_id)
+       values ($1, $2, 'actor', $3, 'business', 'tasks', 'read', $3)`,
+      [world.alpha, agentGrant, agent],
+    );
+  });
+  const found = await findCopies(adminUrl, ['--text', name], 'alpha');
+  expect(found.hits.map((hit) => [hit.table, hit.id])).toContainEqual(['grants', agentGrant]);
+});
