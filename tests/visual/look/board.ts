@@ -15,8 +15,9 @@ const WIDTHS = [1480, 900, 390] as const;
 const WIDE = [1480, 900] as const;
 const TYPE = ['font-family', 'font-size', 'font-weight', 'letter-spacing', 'text-transform'];
 
-/** The first task row, in the mockup and the app. */
+/** The first task row: the mockup marks it `data-taskrow`, the board machine `data-row`. */
 const ROW = 'tbody tr[data-taskrow]';
+const APP_ROW = 'tbody tr[data-row]';
 
 const probe = (
   id: string,
@@ -101,14 +102,16 @@ const BOARD_PROBES: readonly LookProbe[] = [
   probe(
     'board.group-first',
     { ...PROJECTS, selector: 'tr.cbd__grp[data-grp="Active"] > td' },
-    'tr.cbd__grp[data-grp="Active"] > td',
+    // The mockup's first group is Active; the machine's group rows carry no name.
+    'tr.cbd__grp:first-child > td',
     ['box.height', 'padding-top', 'padding-left', 'background-color'],
     { widths: WIDE },
   ),
   probe(
     'board.group',
     { ...PROJECTS, selector: 'tr.cbd__grp[data-grp="On hold"] > td' },
-    'tr.cbd__grp[data-grp="On hold"] > td',
+    // A later group, ruled off the one above, as On hold is in the mockup.
+    'tr.cbd__grp:not(:first-child) > td',
     ['box.height', 'padding-top', 'padding-bottom', 'border-top-color', 'background-color'],
     { widths: WIDE },
   ),
@@ -127,48 +130,48 @@ const BOARD_PROBES: readonly LookProbe[] = [
     { widths: WIDE },
   ),
   // Rows and cells.
-  probe('board.row', { ...PROJECTS, selector: ROW }, ROW, ['box.height', 'background-color'], {
+  probe('board.row', { ...PROJECTS, selector: ROW }, APP_ROW, ['box.height', 'background-color'], {
     widths: WIDE,
   }),
   probe(
     'board.cell',
     { ...PROJECTS, selector: `${ROW} td:nth-child(4)` },
-    `${ROW} td:nth-child(3)`,
+    `${APP_ROW} td:nth-child(3)`,
     ['padding-left', 'border-bottom-color', ...TYPE, 'color'],
     { widths: WIDE },
   ),
   probe(
     'board.rank',
     { ...PROJECTS, selector: `${ROW} .cbd__rank` },
-    `${ROW} .cbd__rank`,
+    `${APP_ROW} .cbd__rank`,
     ['font-family', 'font-size', 'color'],
     { widths: WIDE, ruled: [MUTED_DARK] },
   ),
   probe(
     'board.name',
     { ...PROJECTS, selector: `${ROW} td:nth-child(2) .cbd__nm` },
-    `${ROW} td:nth-child(2) .cbd__nm`,
+    `${APP_ROW} td:nth-child(2) .cbd__nm`,
     [...TYPE, 'color', 'text-decoration-line'],
     { widths: WIDE },
   ),
   probe(
     'board.avatar',
     { ...PROJECTS, selector: `${ROW} .cbd__av--p` },
-    `${ROW} .av--person`,
+    `${APP_ROW} .av--person`,
     ['box.width', 'box.height', 'border-top-left-radius'],
     { widths: WIDE },
   ),
   probe(
     'board.assignee',
     { ...PROJECTS, selector: `${ROW} .cbd__cell .cbd__nm` },
-    `${ROW} .av--person + .cbd__nm`,
+    `${APP_ROW} .av--person + .cbd__nm`,
     [...TYPE, 'color'],
     { widths: WIDE },
   ),
   probe(
     'board.due',
     { ...PROJECTS, selector: `${ROW} .tl__due` },
-    `${ROW} .tl__due`,
+    `${APP_ROW} .tl__due`,
     [...TYPE, 'color'],
     { widths: WIDE },
   ),
@@ -189,7 +192,7 @@ const BOARD_PROBES: readonly LookProbe[] = [
   probe(
     'board.chip',
     { ...PROJECTS, selector: `${ROW} .cbd__chip` },
-    `${ROW} .cbd__chip`,
+    `${APP_ROW} .cbd__chip`,
     [
       'font-family',
       'font-size',
@@ -205,7 +208,8 @@ const BOARD_PROBES: readonly LookProbe[] = [
   probe(
     'board.dash',
     { ...PROJECTS, selector: `${ROW} td:last-child .cbd__dim, tbody .cbd__dim` },
-    `${ROW} td:last-child .cbd__dim`,
+    // The mockup's own fallback: the first row's last cell carries a value here.
+    `${APP_ROW} td:last-child .cbd__dim, tbody .cbd__dim`,
     ['font-size', 'color'],
     { widths: WIDE },
   ),
@@ -237,37 +241,13 @@ const BOARD_PROBES: readonly LookProbe[] = [
 ];
 
 /**
- * Probes whose markup UI-POLISH's board polish builds (its FORKS line 04:17Z: the
- * board waits on SL07's, batch 2). Picked onto b0/SL07 with the probes (590b55c)
- * but not the markup, so they are held here and run once the polish lands; the
- * rest already hold. Empty this list as each part is built.
+ * Probes held off until UI-POLISH's shared components move, each with its
+ * reason. The board's own markup (route tabs, the board table, the create
+ * form, the inbox card) is built on b0/SL07 and its probes run.
  */
 const AWAITING_POLISH: ReadonlySet<string> = new Set([
-  'board.tabrow',
-  'board.tab',
-  'board.tab-current',
-  'board.create-field',
-  'board.create-button',
-  'board.inbox-card',
-  'board.inbox-head',
+  // The card title's 1.1 line height is the kit's --type-card-title (DS-COMP-7); the mockup's is 1.2.
   'board.inbox-title',
-  'board.head',
-  'board.head-rule',
-  'board.group',
-  'board.group-first',
-  'board.group-label',
-  'board.group-reason',
-  'board.row',
-  'board.rank',
-  'board.name',
-  'board.chip',
-  'board.cell',
-  'board.assignee',
-  'board.avatar',
-  'board.due',
-  'board.due-today',
-  'board.due-overdue',
-  'board.dash',
 ]);
 
 export const BOARD: LookScreen = {

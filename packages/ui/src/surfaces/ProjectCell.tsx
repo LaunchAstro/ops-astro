@@ -5,7 +5,7 @@
 // words come from `board/project-words.ts`; this draws them. The assignee, due
 // and stage cells edit in place where the page hands in their command
 // (MP-5-10, P-37; CellEditor.tsx), the estimate among them (MP-4-8's
-// `estimated_minutes`, offering the task panel's choices).
+// `estimated_minutes`, offering the task panel's choices); dates in `.tl__due`.
 
 import type { ReactNode } from 'react';
 import {
@@ -18,6 +18,7 @@ import {
   type ProjectRow,
   type RowActions,
 } from '../board/projects.ts';
+import { Avatar } from '../kit/marks.tsx';
 import { EditableCell } from './CellEditor.tsx';
 import { ProjectName, isOpened } from './ProjectName.tsx';
 
@@ -34,13 +35,6 @@ export interface CellContext {
 const UNASSIGNED = 'Unassigned';
 
 const dash = (): ReactNode => <span className="cbd__dim">—</span>;
-
-const initials = (name: string): string =>
-  name
-    .split(/\s+/u)
-    .slice(0, 2)
-    .map((part) => part.slice(0, 1).toUpperCase())
-    .join('');
 
 function Rank(props: { readonly row: ProjectRow }): ReactNode {
   const cell = rankCell(props.row);
@@ -89,9 +83,13 @@ function Assignee(props: { readonly row: ProjectRow }): ReactNode {
   const short = who.name.split(/\s+/u)[0] ?? who.name;
   return (
     <div className="cbd__name" title={who.name}>
-      <span className={who.agent ? 'cbd__av is-agent' : 'cbd__av'} aria-hidden="true">
-        {who.agent ? 'A' : initials(who.name)}
-      </span>
+      {who.agent ? (
+        <span className="cbd__av is-agent" aria-hidden="true">
+          A
+        </span>
+      ) : (
+        <Avatar name={who.name} />
+      )}
       <span className="cbd__nm">{who.agent ? 'AI' : short}</span>
     </div>
   );
@@ -129,12 +127,17 @@ function Actual(props: { readonly row: ProjectRow }): ReactNode {
   );
 }
 
+const DUE_CLASS = new Map([
+  ['overdue', 'tl__due is-bad is-now'],
+  ['today', 'tl__due is-now'],
+]);
+
 function Due(props: { readonly row: ProjectRow; readonly now: Date }): ReactNode {
   const due = dueWords(props.row.due, props.row.completed, props.now);
   return due.tone === 'none' ? (
     dash()
   ) : (
-    <span className="cbd__due" data-tone={due.tone}>
+    <span className={DUE_CLASS.get(due.tone) ?? 'tl__due'} data-tone={due.tone}>
       {due.text}
     </span>
   );

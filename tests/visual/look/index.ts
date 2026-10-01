@@ -15,7 +15,7 @@ import { TASK_PANEL } from './task-panel.ts';
 import { TODOS } from './todos.ts';
 import type { LookScreen } from './probe.ts';
 
-export { RULED_PAINT, type LookProbe, type LookScreen } from './probe.ts';
+export type { LookProbe, LookScreen } from './probe.ts';
 
 export const LOOK_SCREENS: readonly LookScreen[] = [
   SHELL,

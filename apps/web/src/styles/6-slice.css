@@ -89,6 +89,85 @@
   margin-block-end: 0;
 }
 
+/* The title box is the board's quick-add field (DS-COMP-16): the box draws the
+   border and the focus, the input inside it draws nothing. */
+.projects__create .cbd__field {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.3rem 0.55rem;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.projects__create .cbd__field:focus-within {
+  border-color: var(--accent);
+}
+
+.projects__create .cbd__field input {
+  width: 100%;
+  min-width: 3rem;
+  /* The control's own 1px 2px, which the mockup's field keeps: the box is 34 tall. */
+  padding: 1px 2px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+
+/* The Projects page's Board and Work log, drawn as the tab row (DS-COMP-2):
+   43 tall, the tabs 32 apart, the current one in --text at 500 over a 2px
+   accent rule. At 390 the row scrolls sideways with no scrollbar. */
+.routetabs {
+  display: flex;
+  align-items: stretch;
+  gap: var(--s-6);
+  min-width: 0;
+  padding: 0 var(--s-6);
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  scrollbar-width: none;
+}
+
+.routetabs::-webkit-scrollbar {
+  display: none;
+}
+
+.routetabs__t {
+  flex: none;
+  padding: 0.65rem 0 0.525rem;
+  border-bottom: 2px solid transparent;
+  color: var(--text-2);
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.routetabs__t:hover {
+  color: var(--text);
+}
+
+.routetabs__t[aria-current='page'] {
+  border-bottom-color: var(--accent);
+  color: var(--text);
+  font: var(--type-body-strong);
+  letter-spacing: var(--type-body-strong-tracking);
+  text-transform: var(--type-body-strong-case);
+}
+
+/* The inbox is a flush card (DS-COMP-7): its head is padded by the card's
+   rule, and the list and its read states sit inside the same gutter. */
+.inbox > :not(.card__head) {
+  margin: 0;
+  padding: 0 var(--s-5) var(--s-5);
+}
+
 /* 390: the narrowest pinned comparison width. The create form stacks rather
    than scrolling sideways, because a horizontal scroll on a form is a control
    a thumb cannot reach. */

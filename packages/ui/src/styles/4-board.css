@@ -62,8 +62,13 @@
   letter-spacing: var(--type-body-tracking);
   text-transform: var(--type-body-case);
 }
-/* The head cells are the one table head (`.table th`, MP-1-3); the label
-   only adds its ellipsis. */
+/* The head cell is the kit table's head (`.table th`, MP-1-3) with its
+   padding moved onto the label button, which clips (DS-COMP-17, B-15): the
+   cell itself has to let the resize grip sit on its edge. */
+.cbd__tbl th {
+  padding: 0;
+  border-bottom: 1px solid var(--border-strong);
+}
 .cbd__thl {
   display: block;
   overflow: hidden;
@@ -81,23 +86,41 @@
   background: var(--surface-2);
 }
 /* The group banner is a plain heading: no colour, no count. A board where
-   every row shouts says nothing. */
-.cbd__grp td {
-  padding-top: var(--s-4);
-  border-bottom: 1px solid var(--border-strong);
+   every row shouts says nothing. A rule on the cell parts it from the group
+   above; the first group sits tight under the heads with none (DS-COMP-17). */
+.cbd__grp > td {
+  padding: 0.85rem 0.5rem 0.35rem;
+  border-top: 1px solid var(--border);
+  background: var(--paper);
 }
+.cbd__tbl tbody tr.cbd__grp:first-child > td {
+  padding-top: 0.35rem;
+  border-top: 0;
+}
+/* The heading and its wait reasons are two sizes on one line: baselines. */
 .cbd__grpb {
-  font: var(--type-eyebrow);
-  letter-spacing: var(--type-eyebrow-tracking);
-  text-transform: var(--type-eyebrow-case);
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  font: var(--type-subheading);
+  letter-spacing: var(--type-subheading-tracking);
+  text-transform: var(--type-subheading-case);
+  /* type-exception DS-COMP-17: the group row's label is Funnel Display 16.8, untracked, on the body's line */
+  font-size: 1.05rem;
+  line-height: var(--leading-normal);
+  letter-spacing: 0;
   color: var(--text);
 }
 .cbd__grpr {
-  margin-left: 0.6rem;
+  margin-left: 0.1rem;
+  padding-left: 0.4rem;
+  border-left: 1px solid var(--border);
   color: var(--text-muted);
-  font: var(--type-data);
-  letter-spacing: var(--type-data-tracking);
-  text-transform: var(--type-data-case);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
+  /* type-exception DS-COMP-17: the group row's wait reasons at 12.5, beside the label */
+  font-size: 0.78125rem;
 }
 .cbd__name {
   display: flex;
@@ -110,9 +133,12 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font: var(--type-body-strong);
-  letter-spacing: var(--type-body-strong-tracking);
-  text-transform: var(--type-body-strong-case);
+  /* One name weight on every board, the Projects board's 400 (DR-48). */
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+  color: var(--text);
+  text-decoration: none;
 }
 .cbd__rank {
   font: var(--type-data);
