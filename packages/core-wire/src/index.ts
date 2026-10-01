@@ -128,6 +128,7 @@ export type {
   ClientListResult,
   ClientView,
 } from './views-access.ts';
+export type { InvitationListResult, InvitationState, InvitationView } from './views-invitations.ts';
 export type {
   BreachNoticeDraft,
   BreachNoticesResult,

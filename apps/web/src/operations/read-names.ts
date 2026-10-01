@@ -71,6 +71,8 @@ export const READ_NAMES = [
   // Items no path reaches (INB-1e), for `operations:read`; the operations view
   // (C55) draws them.
   'inbox.unattended',
+  // The business's team invitations (C39-T), under `access:share` on the server.
+  'invitation.list',
 ] as const;
 
 /**

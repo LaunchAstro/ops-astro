@@ -34,6 +34,7 @@ const PINNED_SHAPE = {
   'inbox.count': { spine: false, subject: false, authority: 'self' },
   'inbox.read': { spine: false, subject: false, authority: 'self' },
   'inbox.unattended': { spine: false, subject: false, authority: 'declared' },
+  'invitation.list': { spine: false, subject: false, authority: 'declared' },
   'operations.read': { spine: false, subject: false, authority: 'declared' },
   'person.list': { spine: false, subject: false, authority: 'declared' },
   'preference.read': { spine: false, subject: false, authority: 'self' },
@@ -62,6 +63,7 @@ const PINNED_IDENTIFIERS = {
   'inbox.count': [],
   'inbox.read': [],
   'inbox.unattended': [],
+  'invitation.list': [],
   'operations.read': [],
   'person.list': [],
   'preference.read': [],
@@ -204,6 +206,7 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'inbox.read': BODIES.map(() => null),
   'inbox.count': BODIES.map(() => null),
   'inbox.unattended': BODIES.map(() => null),
+  'invitation.list': BODIES.map(() => null),
 };
 
 /** The refusal without its `refused` flag, or null. */
@@ -215,7 +218,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same twenty-five reads', () => {
+  it('names the same twenty-six reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 

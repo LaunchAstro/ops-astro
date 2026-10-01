@@ -137,6 +137,8 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['notifications.set_channel', { channel: 'in_app', mode: 'on' }],
   // C39-T: a new invitation names a person and an address, no record.
   ['invitation.create', { name: 'Invited Ivy', email: 'ivy@example.test', role: 'member' }],
+  // C39-T: the business's invitations, which names no record.
+  ['invitation.list', {}],
 ];
 
 /** The thirty-four identifier-bearing operations outside (c) and (d): operand and executed case. */
