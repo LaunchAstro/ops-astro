@@ -33,6 +33,7 @@
 import { randomUUID } from 'node:crypto';
 import { settleDelegation } from '../../core-records/src/index.ts';
 import type { TenantQuery, Subject } from '../../core-records/src/index.ts';
+import { spentOn } from './budget-answer-facts.ts';
 import { lockedInstant } from './clock.ts';
 import { capCommitted, exceeds } from './budget.ts';
 import {
@@ -406,7 +407,8 @@ function reportOf(
 interface Settled {
   readonly reportId: string;
   readonly attemptId: string;
-  readonly classification: Classification;
+  /** `null` when the hold settled at its calls' spend and nothing was classified. */
+  readonly classification: Classification | null;
 }
 
 /**
@@ -421,11 +423,12 @@ interface Settled {
  * could run. A marked attempt is left to the classifier, which quarantines it
  * and keeps the full hold for the recorded reconciliation owner.
  *
- * No cost and nothing observed, because R6 refused every other case. The
- * classifier decides, under the locks this transaction already holds, whether
- * the hold may be abandoned. No audit row is written here: `audit_events` is
- * the command envelope's, which owns the actor, the operation identity and the
- * chain.
+ * The holder's own figure is refused (R6). The cost is what the broker
+ * recorded on the step's calls: an unmarked step that spent settles its hold
+ * at that spend (`settleAtSpend`). Otherwise the classifier decides, under the
+ * locks this transaction already holds, whether the hold may be abandoned. No
+ * audit row is written here: `audit_events` is the command envelope's, which
+ * owns the actor, the operation identity and the chain.
  */
 async function settle(
   tx: TenantQuery,
@@ -456,18 +459,15 @@ async function settle(
       [tx.businessId, found.run_id],
     );
   }
-  if (!attempt.marked && dropCause === undefined) {
+  const settleable = !attempt.marked && dropCause === undefined;
+  if (settleable) {
     await tx.query(
       `update public.attempts set state = 'handed_back', outcome = $3
         where business_id = $1 and id = $2`,
       [tx.businessId, attempt.id, request.outcome],
     );
   }
-  const classification = await classifyUnderLocks(
-    tx,
-    { reservationId: found.reservation_id, cause: 'handback_completed', causeId: request.leaseId },
-    locks,
-  );
+  const classification = await endHold(tx, request, found, locks, settleable);
   const settled = { reportId, attemptId: attempt.id, classification };
   if (dropCause !== undefined) {
     await recordDrop(tx, { attemptId: attempt.id, cause: dropCause, retire: false, locks });
@@ -494,9 +494,54 @@ function handedBackEvent(request: HandbackRequest, found: Discovered, settled: S
     detail: {
       outcome: request.outcome,
       reportId: settled.reportId,
-      reservationState: settled.classification.state,
+      reservationState: settled.classification?.state ?? 'actual',
     },
   };
+}
+
+/** The hold's end: settled at its calls' spend where it may be and they spent, else classified. */
+async function endHold(
+  tx: TenantQuery,
+  request: HandbackRequest,
+  found: Discovered,
+  locks: LockSet,
+  settleable: boolean,
+): Promise<Classification | null> {
+  if (settleable && (await settleAtSpend(tx, found, locks))) return null;
+  return await classifyUnderLocks(
+    tx,
+    { reservationId: found.reservation_id, cause: 'handback_completed', causeId: request.leaseId },
+    locks,
+  );
+}
+
+/**
+ * A2-B1. A step's calls through the broker record their spend on the calls
+ * alone (`spentOn`), until the step's hold ends. Above zero the hold settles
+ * at that spend, as an observed cost does (`settleAtObserved`): the envelope
+ * gives back the hold and takes the spend, so the cap counts it once. At zero
+ * nothing settles, and the classifier abandons the hold. Under the caller's
+ * envelope and reservation locks.
+ */
+async function settleAtSpend(tx: TenantQuery, found: Discovered, locks: LockSet): Promise<boolean> {
+  locks.require('envelope', found.envelope_id);
+  locks.require('reservation', found.reservation_id);
+  const spent = await spentOn(tx, found.reservation_id);
+  if (spent === 0) return false;
+  const [settled] = await tx.query<{ readonly held_minor: string }>(
+    `update public.reservations set state = 'actual', actual_minor = $3, terminal_at = now()
+      where business_id = $1 and id = $2 and state = 'held'
+      returning held_minor::text as held_minor`,
+    [tx.businessId, found.reservation_id, spent],
+  );
+  if (settled === undefined) return false;
+  await tx.query(
+    `update public.task_envelopes
+        set held_minor = held_minor - $3, actual_minor = actual_minor + $4
+      where business_id = $1 and id = $2`,
+    [tx.businessId, found.envelope_id, settled.held_minor, spent],
+  );
+  return true;
 }
 
 /**
@@ -505,11 +550,11 @@ function handedBackEvent(request: HandbackRequest, found: Discovered, settled: S
  * ended as the holder reported. A successor refused later rolls this back with
  * the rest of the settlement.
  */
-function handedBack(request: HandbackRequest, classification: Classification): Raised {
+function handedBack(request: HandbackRequest, classification: Classification | null): Raised {
   if (request.successor !== undefined) {
     return { kind: 'awaiting_person', waitingReason: 'needs_approval' };
   }
-  if (classification.state === 'quarantined') {
+  if (classification?.state === 'quarantined') {
     return { kind: 'awaiting_person', waitingReason: 'quarantined' };
   }
   return { kind: request.outcome === 'failed' ? 'failed' : 'settled' };
@@ -588,9 +633,9 @@ async function answer(
       attemptId: settled.attemptId,
       // T3b: an unknown liability keeps its reservation held at the whole hold.
       reservationState:
-        settled.classification.state === 'liability_unknown'
+        settled.classification?.state === 'liability_unknown'
           ? 'held'
-          : settled.classification.state,
+          : (settled.classification?.state ?? 'actual'),
       classification: settled.classification,
       envelopeHeldMinor: Number(envelope.held_minor),
       envelopeActualMinor: Number(envelope.actual_minor),
