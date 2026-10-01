@@ -106,7 +106,11 @@ const leftBehind = async (): Promise<readonly string[]> =>
       `select row_to_json(a)::text as row from public.audit_events a
        union all select row_to_json(r)::text from public.operations r
        union all select row_to_json(m)::text from public.model_calls m
-       union all select row_to_json(l)::text from public.leases l`,
+       union all select row_to_json(l)::text from public.leases l
+       union all select row_to_json(h)::text from public.handback_reports h
+       union all select row_to_json(e)::text from public.run_events e
+       union all select row_to_json(x)::text from public.alerts x
+       union all select row_to_json(c)::text from public.copy_registrations c`,
     )
   ).map((row) => row.row);
 

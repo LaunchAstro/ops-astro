@@ -182,10 +182,13 @@ it('WF-6 egress: a ticket moved under a client map, or cleared by set_party, ask
   await expectNoCall(cleared, 'sol second');
 }, 180_000);
 
-it('WF-6 egress: a scope in flight is waited on, never missed', async () => {
-  const { map } = await chartMap('sol scope in flight');
+/**
+ * Asked about `record` while another transaction writes a client on `map`: the
+ * exchange waits on the map's row lock, then sees the client and asks nothing.
+ */
+async function expectWaitedOnScope(map: string, record: string): Promise<void> {
   const body = `CANARY-${randomUUID()} about the scope in flight`;
-  const asked = await openOn(map, body);
+  const asked = await openOn(record, body);
   const sent = model.provider.seen.length;
   let pending: Promise<ConversationReply | null> | undefined;
   await s.db.admin.transaction(async (execute) => {
@@ -219,4 +222,14 @@ it('WF-6 egress: a scope in flight is waited on, never missed', async () => {
   expect(JSON.stringify(reply)).not.toContain(body);
   expect(model.provider.seen.length).toBe(sent);
   expect(await rowsIn(asked.conversationId)).toStrictEqual({ calls: 0, replies: 0 });
+}
+
+it('WF-6 egress: a scope in flight is waited on, never missed', async () => {
+  const { map } = await chartMap('sol scope in flight');
+  await expectWaitedOnScope(map, map);
+}, 180_000);
+
+it("WF-6 egress: a client written on a ticket's map in flight is waited on by a question about the ticket", async () => {
+  const { map, ticket } = await chartMap('sol ticket under a scope in flight');
+  await expectWaitedOnScope(map, ticket);
 }, 180_000);
