@@ -339,8 +339,9 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
     // disagreeing with them. Runs before (f), which takes `mia`'s read away.
     // Person work (EX-01) is a sequence on the member's own lease rather than
     // three independent bodies: the member picks up approved work as
-    // themselves, renews that lease, dispatches its step and hands it back. It is driven once per
-    // member, when the first of the three comes up in the surface's order.
+    // themselves, renews that lease, checks it and hands it back for review; once the admin
+    // launches the reviewed output (AW-08), the member picks the launch up, dispatches and
+    // observes it. It is driven once per member, when the first comes up in the surface's order.
     const personWork = new Set([
       'task.pickup',
       'task.heartbeat',
@@ -368,12 +369,44 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       if ('exception' in prepared) throw new Error('matrix: task.pickup has no body');
       const picked = await harness.asPerson('task.pickup', prepared.body, 'alpha', caller);
       observe(caller.name, 'e-member-positive', 'task.pickup', picked, SUCCESS);
-      const lease = (picked.body['detail'] as Record<string, unknown> | undefined) ?? {};
-      const own = { leaseId: lease['leaseId'], fence: lease['fence'] };
+      const plan = (picked.body['detail'] as Record<string, unknown> | undefined) ?? {};
+      const planLease = { leaseId: plan['leaseId'], fence: plan['fence'] };
       if (grants.has(pairOf('task.heartbeat'))) {
-        const beat = await harness.asPerson('task.heartbeat', own, 'alpha', caller);
+        const beat = await harness.asPerson('task.heartbeat', planLease, 'alpha', caller);
         observe(caller.name, 'e-member-positive', 'task.heartbeat', beat, SUCCESS);
       }
+      if (grants.has(pairOf('task.check'))) {
+        const checked = await harness.asPerson(
+          'task.check',
+          { ...planLease, name: 'the member checks', outcome: 'passed' },
+          'alpha',
+          caller,
+        );
+        observe(caller.name, 'e-member-positive', 'task.check', checked, SUCCESS);
+      }
+      // AW-08: the plan's lease fires nothing. The member hands its work back for
+      // review; the admin's accept of that reviewed output is the launch, and
+      // the member picks the launch up: the lease their dispatch and observe use.
+      const settled = await harness.asPerson(
+        'task.handback',
+        { ...planLease, outcome: 'completed', successor: PROPOSAL },
+        'alpha',
+        caller,
+      );
+      observe(caller.name, 'e-member-positive', 'task.handback', settled, SUCCESS);
+      const handed = (settled.body['detail'] as Record<string, unknown> | undefined) ?? {};
+      const launch = await harness.asPerson('task.decide', {
+        gateId: handed['successorGateId'],
+        versionId: handed['successorVersionId'],
+        decision: 'approve',
+        note: 'launch the reviewed output',
+      });
+      const reservationId = (launch.body['detail'] as Record<string, unknown> | undefined)?.[
+        'reservationId'
+      ];
+      const relaunched = await harness.asPerson('task.pickup', { reservationId }, 'alpha', caller);
+      const lease = (relaunched.body['detail'] as Record<string, unknown> | undefined) ?? {};
+      const own = { leaseId: lease['leaseId'], fence: lease['fence'] };
       if (grants.has(pairOf('task.dispatch'))) {
         const marked = await harness.asPerson('task.dispatch', own, 'alpha', caller);
         observe(caller.name, 'e-member-positive', 'task.dispatch', marked, SUCCESS);
@@ -402,24 +435,7 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
         const seen = await harness.asPerson('task.observe', { ...own, attemptId }, 'alpha', caller);
         observe(caller.name, 'e-member-positive', 'task.observe', seen, SUCCESS);
       }
-      if (grants.has(pairOf('task.check'))) {
-        const checked = await harness.asPerson(
-          'task.check',
-          { ...own, name: 'the member checks', outcome: 'passed' },
-          'alpha',
-          caller,
-        );
-        observe(caller.name, 'e-member-positive', 'task.check', checked, SUCCESS);
-      }
-      if (grants.has(pairOf('task.handback'))) {
-        const settled = await harness.asPerson(
-          'task.handback',
-          { ...own, outcome: 'completed' },
-          'alpha',
-          caller,
-        );
-        observe(caller.name, 'e-member-positive', 'task.handback', settled, SUCCESS);
-      }
+      await harness.asPerson('task.handback', { ...own, outcome: 'completed' }, 'alpha', caller);
     }
     for (const caller of harness.otherCallers) {
       const grants = harness.heldBy.get(caller.name);

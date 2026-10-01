@@ -18,6 +18,7 @@ import { pathOf } from '../../packages/core-wire/src/surface.ts';
 import type { Transport } from '../../apps/cli/client.ts';
 import { createWorker, type WorkerOptions } from '../../apps/worker/worker.ts';
 import type { UsageReporter } from '../../apps/worker/usage.ts';
+import { launchThrough } from '../support/launch-worker.ts';
 import { authorised, BUSINESS_KEY, post, tokenFor, type ApiFixture } from '../api/fixture.ts';
 import { insertBusiness, insertLogin } from '../identity/fixture.ts';
 import { enrol, grantTo, installSpine } from '../commands/fixture.ts';
@@ -249,16 +250,10 @@ export function workerWorld(fixture: ApiFixture, api: Hono): WorkerWorld {
     });
     if (decided.status !== 200) throw new Error(`decide: ${JSON.stringify(decided.body)}`);
     // AW-08: the plan's lease goes back for review; the person's accept of it is the launch.
-    const handed = await worker.applyOnce(taskId);
-    if (!('handedBack' in handed)) throw new Error(`hand back: ${JSON.stringify(handed)}`);
-    const launched = await asPerson('task.decide', {
-      operationId: randomUUID(),
-      gateId: handed.handedBack.gateId,
-      versionId: handed.handedBack.versionId,
-      decision: 'approve',
-      note: 'launch the reviewed output',
+    await launchThrough(worker, taskId, async (body) => {
+      const launched = await asPerson('task.decide', body);
+      if (launched.status !== 200) throw new Error(`launch: ${JSON.stringify(launched.body)}`);
     });
-    if (launched.status !== 200) throw new Error(`launch: ${JSON.stringify(launched.body)}`);
     const applied = await worker.applyOnce(taskId);
     if (!('applied' in applied)) throw new Error(`apply: ${JSON.stringify(applied)}`);
     return taskId;
@@ -275,6 +270,9 @@ export function workerWorld(fixture: ApiFixture, api: Hono): WorkerWorld {
            join public.attempts att on att.business_id = res.business_id and att.reservation_id = res.id
            join public.task_envelopes env on env.business_id = res.business_id and env.id = res.envelope_id
            join public.leases l on l.business_id = res.business_id and l.id = res.lease_id
+           -- The launch's hold (AW-08): the plan's own was handed back for review.
+           join public.reviewed_outputs ro
+             on ro.business_id = res.business_id and ro.version_id = res.version_id
           where res.business_id = $1 and env.task_id = $2`,
         [taskId],
       )

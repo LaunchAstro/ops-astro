@@ -14,13 +14,11 @@ import type { BusinessId } from '../../packages/core-records/src/tenancy/databas
 import { grantTo, type Member } from '../commands/fixture.ts';
 import {
   appliedDetail,
-  approve,
   asAgent,
   asPerson,
   createTask,
   freshPurpose,
   openSchedules,
-  pickup,
   propose,
   proposeBody,
   revisionOf,
@@ -29,6 +27,7 @@ import {
   type Schedules,
 } from './schedules-harness.ts';
 import { acceptAs, acceptRequest, PLAN, PLAN_TEXT } from './aw-04-world.ts';
+import { launched } from './aw-08-world.ts';
 
 export const noDatabase: boolean = process.env['DATABASE_URL'] === undefined;
 
@@ -126,18 +125,12 @@ export async function refusedProposal(title: string): Promise<{ taskId: string }
   return { taskId };
 }
 
-/** Picked-up work on a step the runtime can reconcile, so a dispatch is admitted. */
+/**
+ * Picked-up work on a step the runtime can reconcile, so a dispatch is admitted:
+ * the launched lease (AW-08), whose plan was accepted and handed back for review.
+ */
 export async function reconcilableWork(title: string): Promise<{ taskId: string; picked: Detail }> {
-  const taskId = await createTask(w.s, title);
-  const body = proposeBody(taskId, await revisionOf(w.s, taskId), {
-    maximumMinor: 2_000,
-    purpose: freshPurpose(),
-  });
-  const proposal = appliedDetail(
-    await asPerson(w.s, { ...body, step: { kind: 'synthetic_comment', payload: {} } }),
-    'task.propose',
-  );
-  const picked = await pickup(w.s, (await approve(w.s, proposal))['reservationId']);
+  const { taskId, picked } = await launched(w.s, title);
   return { taskId, picked };
 }
 
