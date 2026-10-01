@@ -77,8 +77,8 @@ async function enrolHere(
 
 async function events(business: string, command: string) {
   return await db.app.withBusiness(business, (tx) =>
-    tx.query<{ outcome: string; refusal_code: string | null }>(
-      'select outcome, refusal_code from audit_events where command = $1 order by seq',
+    tx.query<{ outcome: string; refusal_code: string | null; operation_id: string | null }>(
+      'select outcome, refusal_code, operation_id from audit_events where command = $1 order by seq',
       [command],
     ),
   );
@@ -133,6 +133,57 @@ async function race(removal: ProviderAnswer<void>, endOthers = false) {
   return { code: 'code' in answer ? answer.code : 'verified', asked };
 }
 
+/**
+ * Mia steps up with her verified factor; the code is good at the provider,
+ * but she signed out in another tab while this one held it.
+ */
+async function stepUpAfterSignOut() {
+  const subject = `sub-${randomUUID()}`;
+  const person = await personIn(bravo, subject);
+  await enrolHere(bravo, person, subject, true);
+  const asked: string[] = [];
+  const provider: FactorProvider = {
+    enrol: () => Promise.resolve({ ok: false, fault: 'refused' }),
+    verify: async () => {
+      asked.push('verify');
+      // Signed out in another tab while this one held the code.
+      await db.app.withBusiness(bravo, (tx) =>
+        endOtherSeenSessions(tx, person, randomUUID(), 'factor_change', subject),
+      );
+      return { ok: true, value: { accessToken: 'aal2', refreshToken: 'r', expiresIn: 3600 } };
+    },
+    remove: () => {
+      asked.push('remove');
+      return Promise.resolve({ ok: true, value: undefined });
+    },
+    signOut: () => Promise.resolve({ ok: true, value: undefined }),
+  };
+  const caller: FactorCaller = {
+    database: db.app,
+    businessId: bravo,
+    presented: {
+      provider: 'supabase',
+      subject,
+      sessionId: randomUUID(),
+      assurance: {
+        level: 'aal1',
+        signedInAt: Math.floor(Date.now() / 1000) - 5,
+        factorAt: null,
+      },
+    },
+    accessToken: 'aal1-access-token',
+  };
+
+  const answer = await verifySecondFactor(caller, { code: '123456' }, provider);
+
+  const statuses = await db.app.withBusiness(bravo, (tx) =>
+    tx.query<{ status: string }>('select status from public.second_factors where person_id = $1', [
+      person,
+    ]),
+  );
+  return { code: 'code' in answer ? answer.code : 'verified', asked, statuses };
+}
+
 beforeAll(async () => {
   if (serverUrl === undefined) return;
   db = await createFreshDatabase({ part: 'c59fo' });
@@ -153,9 +204,21 @@ describe.skipIf(serverUrl === undefined)(
       expect(code).toBe('FACTOR_ALREADY_ENROLLED');
       expect(asked).toEqual(['verify', 'remove', 'remove']);
       const orphaned = await events(bravo, 'account.factor_orphaned');
-      expect(orphaned.slice(before)).toEqual([
-        { outcome: 'refused', refusal_code: 'PROVIDER_ANSWER_INVALID' },
-      ]);
+      expect(
+        orphaned.slice(before).map(({ outcome, refusal_code }) => ({ outcome, refusal_code })),
+      ).toEqual([{ outcome: 'refused', refusal_code: 'PROVIDER_ANSWER_INVALID' }]);
+    });
+
+    it('C59: the orphan row carries the operation id of the refused verify attempt', async () => {
+      const before = (await events(bravo, 'account.factor_orphaned')).length;
+
+      await race({ ok: false, fault: 'unreachable' });
+
+      const [orphan] = (await events(bravo, 'account.factor_orphaned')).slice(before);
+      const attempt = (await events(bravo, 'account.factor_verify')).at(-1);
+      expect(attempt?.outcome).toBe('refused');
+      expect(orphan?.operation_id).not.toBeNull();
+      expect(orphan?.operation_id).toBe(attempt?.operation_id);
     });
 
     it('C59: a provider factor removed after a refused enrolment records no orphan', async () => {
@@ -178,9 +241,17 @@ describe.skipIf(serverUrl === undefined)(
         code: 'AUTH_SESSION_EXPIRED',
         asked: ['verify', 'remove', 'remove'],
       });
-      expect((await events(bravo, 'account.factor_orphaned')).slice(before)).toEqual([
+      const orphans = (await events(bravo, 'account.factor_orphaned')).slice(before);
+      expect(orphans.map(({ outcome, refusal_code }) => ({ outcome, refusal_code }))).toEqual([
         { outcome: 'refused', refusal_code: 'PROVIDER_ANSWER_INVALID' },
       ]);
+    });
+    it('C59: a step-up with a good code refused because the session ended keeps the verified factor at the provider', async () => {
+      const { code, asked, statuses } = await stepUpAfterSignOut();
+
+      expect(code).toBe('AUTH_SESSION_EXPIRED');
+      expect(asked).toEqual(['verify']);
+      expect(statuses).toEqual([{ status: 'verified' }]);
     });
   },
 );
