@@ -243,7 +243,10 @@ describe('C58 no draft after session end', () => {
     await view.click('.appbar .who__trigger');
     await view.click('.who__menu button[role="menuitem"]');
     await expectSignedOutWithNoDraft(view, store, sessions);
-    expect(view.find('[data-reason="signed-out"]')).not.toBeNull();
+    // The same card draws both endings in the kit's banner (DS-PRIM-30), as status.
+    expect(
+      view.find('.banner[role="status"][data-reason="signed-out"] .banner__body'),
+    ).not.toBeNull();
     await signInAgainFindsNoDraft(view, true);
   });
 

@@ -188,6 +188,8 @@ export function Shell(props: ShellProps): ReactElement {
                       entry.exact === true ? ('page' as const) : ('location' as const),
                   }
                 : {})}
+              // A press shuts the drawer, on the page already open too (T-R9).
+              onClick={() => onToggle?.(false)}
             >
               {entry.icon === undefined ? null : (
                 <span className="rail__icon" data-glyph={entry.icon} aria-hidden="true">
