@@ -186,6 +186,14 @@ describe('MP-3-1 the Task panel sits in the dock like any other panel', () => {
     expect(view.find(`${TAB}[aria-expanded="true"]`)).not.toBeNull();
   });
 
+  it("the draft draws no close of its own in the dock: the dock's X is its one close", async () => {
+    const view = await opened();
+    await view.click('[data-panel-head="new"]');
+    await tick();
+    expect(view.host.querySelector(`${TASK} [data-draft="close"]`)).toBeNull();
+    expect(view.host.querySelectorAll(`${TASK} [data-act="close"]`)).toHaveLength(1);
+  });
+
   it('a link inside the task panel is its own, never a walk of the dock', async () => {
     const went: string[] = [];
     const view = await opened(1100, went);
