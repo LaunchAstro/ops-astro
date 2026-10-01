@@ -61,7 +61,9 @@ describe.skipIf(serverUrl === undefined)('C39-T second factor first, through the
     for (const headers of [bearer(link), cookie]) {
       // oxlint-disable-next-line no-await-in-loop
       const refused = await call(api, path, { token: link }, headers);
-      expect(refused.status).toBe(401);
+      // Refused at the door, before any factor act: not a session (401) or not this site's (403).
+      expect([401, 403], refused.code).toContain(refused.status);
+      expect(refused.code).toMatch(/^AUTH_/u);
     }
     expect(seen).toEqual([]);
 
