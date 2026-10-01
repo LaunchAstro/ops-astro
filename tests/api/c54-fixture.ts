@@ -29,7 +29,6 @@ import {
   type Answer,
   type World,
 } from '../acceptance/world.ts';
-import { asBrowser } from '../support/sign-in.ts';
 
 /** Someone who can sign in to one business, with the token they present. */
 export interface Signed extends Member {
