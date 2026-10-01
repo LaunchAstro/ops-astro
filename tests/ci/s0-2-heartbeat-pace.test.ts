@@ -137,7 +137,7 @@ describe('S0-2 heartbeats, paced: the worker and forwarder read the setting', ()
 });
 
 // Proofs from the Opus review of 86f3ae0 (handbacks/STAGING-DEPLOY-review-86f3ae0.md), unchanged.
-describe('S0-2 heartbeats, paced: a pass inside the wait, a clock gone back, a pace too long', () => {
+describe('S0-2 heartbeats, paced: a forwarder pass inside the wait', () => {
   it('a paced forwarder pass inside the wait completes, it does not fail', async () => {
     let now = 0;
     const beat = paced(
@@ -157,7 +157,9 @@ describe('S0-2 heartbeats, paced: a pass inside the wait, a clock gone back, a p
     now = 15_000;
     await expect(forwarder.once()).resolves.toEqual({ handled: 0, dropped: 0 });
   });
+});
 
+describe('S0-2 heartbeats, paced: a clock gone back, a pace too long', () => {
   it('the wall clock stepping back does not hold a healthy heartbeat past the gap', async () => {
     let now = 10_000_000;
     let real = 0;
@@ -171,7 +173,8 @@ describe('S0-2 heartbeats, paced: a pass inside the wait, a clock gone back, a p
       () => now,
     );
     await beat(A);
-    now -= 600_000; // the clock steps back ten minutes
+    // The clock steps back ten minutes.
+    now -= 600_000;
     for (let pass = 0; pass < 360; pass += 1) {
       now += 5_000;
       real += 5_000;

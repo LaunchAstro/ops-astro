@@ -50,8 +50,7 @@ function heartbeatCases1() {
     expect(asked[0]?.url).toBe(ADDRESS);
     expect(asked[0]?.init?.redirect).toBe('manual');
     expect(asked[0]?.init?.signal).toBeInstanceOf(AbortSignal);
-    // GlitchTip's heartbeat check-in takes POST only (NATHAN-GLITCHTIP 4);
-    // Healthchecks.io and UptimeRobot take it too.
+    // GlitchTip's check-in takes POST only; Healthchecks.io and UptimeRobot take it too.
     expect(asked[0]?.init?.method).toBe('POST');
     expect(asked[0]?.init?.body ?? '').toBe('');
   });
