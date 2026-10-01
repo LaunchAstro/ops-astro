@@ -323,7 +323,13 @@ export interface Capability {
  * client reach through one more level for three fields.
  */
 export interface SessionCapabilities {
+  /** The signed-in person, or under an agent credential the person it acts for. */
   readonly personId: string;
+  /**
+   * Under an agent credential (API-2) only: the acting identity, its agent
+   * actor, and then `grants` are the ticked keys the person still holds.
+   */
+  readonly agentActorId?: string;
   /** The business's key, which is what a path and a screen both name it by. */
   readonly businessKey: string;
   /** Distinct pairs, sorted. A pair held at two scopes appears once. */

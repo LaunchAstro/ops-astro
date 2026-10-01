@@ -148,6 +148,9 @@ export async function readCapabilities(
 
   return {
     personId: session.personId,
+    // An agent credential's call asks within its ticked keys (`subjectsOf`),
+    // so the pairs above are the credential's; its acting identity is the agent.
+    ...(session.credentialScope === undefined ? {} : { agentActorId: session.actorId }),
     businessKey: await businessKeyOf(tx),
     grants: [...held.keys()].toSorted().map((pair) => held.get(pair) as Capability),
   };

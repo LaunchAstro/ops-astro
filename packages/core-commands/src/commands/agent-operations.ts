@@ -86,7 +86,10 @@ interface AgentOperationRow<O extends object> {
  * - `record`, the operation's own collection and action on the task the call
  *   is about, found where `subjectTask` says, and served on that task;
  * - `decision`, the runtime's `decideAsAgent`, which always refuses, so it has
- * no `serve` at all.
+ * no `serve` at all;
+ * - `business`, the operation's own key over the whole business, which a
+ *   delegation bounded to one task never reaches (`checkDelegatedAuthority`
+ *   refuses it `DELEGATION_OUT_OF_PURPOSE`), so it has no `serve` either.
  */
 export type TypedOperation<O extends object> =
   | (AgentOperationRow<O> & {
@@ -119,7 +122,8 @@ export type TypedOperation<O extends object> =
         taskId: string | undefined,
       ) => Promise<HandlerOutcome>;
     })
-  | (AgentOperationRow<O> & { readonly authority: 'decision' });
+  | (AgentOperationRow<O> & { readonly authority: 'decision' })
+  | (AgentOperationRow<O> & { readonly authority: 'business' });
 
 /**
  * A row, with its operands type closed over.
@@ -603,6 +607,16 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
     'task.decide',
     row({
       authority: 'decision',
+      replay: 'reauthorise',
+      operands: NONE,
+    }),
+  ],
+  // An agent credential adds a task (API-2, `credential-envelope.ts`); a
+  // pickup's delegation is one task, and a new one is outside it.
+  [
+    'task.create',
+    row({
+      authority: 'business',
       replay: 'reauthorise',
       operands: NONE,
     }),

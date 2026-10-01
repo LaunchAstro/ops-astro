@@ -20,10 +20,12 @@
 // assurance, so no money step-up is ever met.
 //
 // **What it reaches.** The surface rows an agent may reach under a delegation
-// that need no lease: not a lease's own work (a claim), not a person-only row
-// and not `session.capabilities`, whose answer would be the person's keys
-// rather than the credential's. Anything else is refused
-// `DELEGATION_EXCLUDES_OPERATION`, recorded against the agent.
+// that need no lease: not a lease's own work (a claim) and not a person-only
+// row. So `task.create`, under the ticked `task:write`, and
+// `session.capabilities`, whose answer is the ticked keys the person's grants
+// still cover (`readCapabilities` asks within them) and the agent actor as the
+// acting identity. Anything else is refused `DELEGATION_EXCLUDES_OPERATION`,
+// recorded against the agent.
 
 import { NO_ASSURANCE, resolveAgentCredential } from '../../../core-records/src/index.ts';
 import type {
@@ -45,10 +47,7 @@ import type { UncheckedRequest } from './requests.ts';
 export const CREDENTIAL_REACH: ReadonlySet<CommandName> = new Set(
   COMMAND_SURFACE.filter(
     (row) =>
-      row.agent === 'delegated' &&
-      row.authorisedOn !== 'claim' &&
-      !profileOf(row).personOnly &&
-      row.name !== 'session.capabilities',
+      row.agent === 'delegated' && row.authorisedOn !== 'claim' && !profileOf(row).personOnly,
   ).map((row) => row.name),
 );
 
@@ -82,7 +81,7 @@ const NOT_LIVE_FIXES: readonly string[] = [
 ];
 
 const OUTSIDE_FIXES: readonly string[] = [
-  'An agent credential reads and comments on tasks and proposes changes, within the keys it was issued for.',
+  'An agent credential reads, adds and comments on tasks, proposes changes and asks what it may do, within the keys it was issued for.',
   'Every other operation belongs to a person.',
 ];
 

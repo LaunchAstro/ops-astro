@@ -657,8 +657,16 @@ names the person it acts for. Every grant check asks the key within the ticked
 ones and the person's grants as they are now (`subjectsOf`, `askedFor`); the
 credential has no sign-in assurance, so a money step-up is never met. It
 reaches the rows an agent may reach under a delegation that need no lease
-(`CREDENTIAL_REACH`: `task.read`, `task.comment`, `task.propose`); anything else
-is `DELEGATION_EXCLUDES_OPERATION`. The app holds a quota per credential, per
+(`CREDENTIAL_REACH`: `task.create`, `task.read`, `task.comment`, `task.propose`
+and `session.capabilities`); anything else is `DELEGATION_EXCLUDES_OPERATION`.
+A create asks the person's business-wide `task:write` within the ticked keys; it
+is audited against the agent and the task's `source` is `agent:api`.
+`session.capabilities` answers the ticked keys the person's grants still cover,
+so a key the person holds and did not tick, or one revoked from them since, is
+not listed; `agentActorId` is the acting identity and `personId` the person it
+acts for (`readCapabilities`). The pickup agent reaches `task.create` too, and
+its one-task delegation never does: `DELEGATION_OUT_OF_PURPOSE`, nothing written
+(`authorise`, the `business` row). The app holds a quota per credential, per
 person and per business on calls a minute, calls at once and records handed out
 a minute (`apps/api/auth/agent-quota.ts`), answered `AGENT_QUOTA_EXCEEDED` 429.
 
