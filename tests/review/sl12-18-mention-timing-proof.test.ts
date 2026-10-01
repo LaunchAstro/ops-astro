@@ -9,8 +9,14 @@
 import { expect, it as vitestIt } from 'vitest';
 import { tellCommentClients } from '../../packages/core-custody/src/index.ts';
 import { raiseInboxItem } from '../../packages/core-records/src/index.ts';
-import { attemptsOf, MAIL, noDatabase, useEmailWorld, w } from '../broker/email-world.ts';
-import { choices, commentBy, freshInbox, useTimingWorld } from '../broker/email-timing-world.ts';
+import { attemptsOf, noDatabase, useEmailWorld, w } from '../broker/email-world.ts';
+import {
+  choices,
+  commentBy,
+  freshInbox,
+  timing,
+  useTimingWorld,
+} from '../broker/email-timing-world.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
 
@@ -32,7 +38,7 @@ it('Sol proof, criterion channel settings (per-category choice in the send path)
   );
   choices.set(`${w.person}/client_comment`, 'off');
   const sent = w.provider.outbox.length;
-  await tellCommentClients(w.db.app, w.alpha, comment, w.broker, MAIL);
+  await tellCommentClients(w.db.app, w.alpha, comment, timing());
   expect(w.provider.outbox.length).toBe(sent);
   expect(await attemptsOf(item)).toEqual([]);
 });
