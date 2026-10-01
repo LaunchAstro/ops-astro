@@ -11,12 +11,10 @@
 // waiting comments keeps, of that same answer, the tasks with messages owed,
 // so the count a door shows and the rows that land are one derivation.
 //
-// **The clients are made-up.** The business's client list and names are
-// family B (C32), not on this base, so they come through `ClientSource`, the
-// seam the real list replaces, marked `mock` so the panel draws them under
-// the one shared mock label. The read they send is the real one.
+// **The clients are the business's own** (`client.list`, C32). A client's
+// route family has no source yet, so the families are made-up and the panel
+// draws them under the one shared mock label; the read they send is the real one.
 
-import type { Provenance } from '@launchastro/ui';
 import type { TodoView } from '../../../../../packages/core-wire/src/index.ts';
 
 export type TodoScope =
@@ -34,38 +32,8 @@ export type TodoScope =
 
 export const MINE: TodoScope = { kind: 'mine' };
 
-/** One client the scope offers: its id (the task's `client`), its name and its route families. */
-export interface ClientChoice {
-  readonly id: string;
-  readonly name: string;
-  readonly families: readonly string[];
-}
-
-/** Where the clients come from, and whether they are real. */
-export interface ClientSource {
-  readonly provenance: Provenance;
-  readonly clients: readonly ClientChoice[];
-}
-
 /** A client's route families (its work board's Agent, Review and Team routes): made-up, no source yet. */
 export const ROUTE_FAMILIES: readonly string[] = ['Agent', 'Review', 'Team'];
-
-// Made-up: the business's client list (family B, C32) replaces these.
-export const MOCK_CLIENTS: ClientSource = {
-  provenance: 'mock',
-  clients: [
-    {
-      id: '0b7d3c1e-5f2a-4c8e-9a61-3d2f7e4b9c01',
-      name: 'Harbour Physio',
-      families: ROUTE_FAMILIES,
-    },
-    {
-      id: '6e2a9f40-1c7b-4d35-8e92-a4b0c5d6e702',
-      name: 'Northside Dental',
-      families: ROUTE_FAMILIES,
-    },
-  ],
-};
 
 /** The `task.todos` body a scope sends. */
 export function bodyOf(scope: TodoScope): Readonly<Record<string, string>> {

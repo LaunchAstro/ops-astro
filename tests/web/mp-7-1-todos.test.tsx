@@ -88,7 +88,9 @@ describe('MP-7-1 The done tick runs the one completion transition', () => {
     await view.click('[data-todo-row="Proj-Bravo"] [data-todo-tick]');
     await tick();
     // The reads (the list, and the scope switch's teammates since MP-7-2) are not writes.
-    const writes = server.sent.filter((one) => !['/task/todos', '/person/list'].includes(one.to));
+    const writes = server.sent.filter(
+      (one) => !['/task/todos', '/person/list', '/client/list'].includes(one.to),
+    );
     expect(
       writes.map((one) => [one.to, one.body['recordId'], one.body['expectedRevision']]),
     ).toStrictEqual([['/task/complete', 'id-Proj-Bravo', 3]]);

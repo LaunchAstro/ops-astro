@@ -29,13 +29,11 @@ import { TodoTools } from './TodoTools.tsx';
 import { TodoScopeSwitch } from './TodoScopeSwitch.tsx';
 import {
   MINE,
-  MOCK_CLIENTS,
   bodyOf,
   narrowed,
   readKeyOf,
   waitingOf,
   wordsOf,
-  type ClientSource,
   type TodoScope,
 } from './todo-scope.ts';
 
@@ -53,8 +51,6 @@ export interface TodosScreenProps {
    * Clients panels call. The reader's own list when absent.
    */
   readonly scope?: TodoScope;
-  /** The clients the scope offers; made-up until family B's list (C32). */
-  readonly clients?: ClientSource;
 }
 
 export function TodosScreen(props: TodosScreenProps): ReactElement {
@@ -66,7 +62,6 @@ export function TodosScreen(props: TodosScreenProps): ReactElement {
         grantKey={props.grantKey}
         scope={scope}
         onScope={setScope}
-        clients={props.clients ?? MOCK_CLIENTS}
       />
       <ScopedTodos key={readKeyOf(scope)} {...props} scope={scope} />
     </section>
