@@ -1,19 +1,21 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // WF-7: what starting a research run asks, and the claim it writes. Called by
-// `task.propose` (`tasks-propose.ts`) under the task lock, in its transaction.
-// The stop is asked again wherever a run begins another way: `task.restart`,
-// `task.decide` and `task.pickup`.
+// `task.propose` (`tasks-propose.ts`) under the task lock, in its transaction,
+// and by `task.restart` (`researchRestartRefusal`). The stop is asked again
+// wherever a run begins another way: `task.decide` and `task.pickup`.
 
 import {
   checkAuthority,
   checkDelegatedAuthority,
+  subjectsOf,
   wayfinderFacts,
 } from '../../../core-records/src/index.ts';
-import type { Delegation, Subject, TenantQuery } from '../../../core-records/src/index.ts';
+import type { Delegation, Session, Subject, TenantQuery } from '../../../core-records/src/index.ts';
 import type { TaskRow } from './context.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { clearAsk, openAsk } from './research-failed.ts';
+import { pinResearchSkillOnStart } from './research-skill.ts';
 
 /**
  * The research checks, in order: `run:write` (`researchRunRefusal`), then a
@@ -78,6 +80,30 @@ export async function stopRefusal(
   return undefined;
 }
 
+/**
+ * WF-7: `task.restart` of a research ticket's run is a person's start (an
+ * agent never restarts): `run:write`, then the stop, then the skill pinned on
+ * the restarted run, as `task.propose` asks them. A restart writes no claim.
+ * Asked once the restart's proposal holds the task lock; a refusal rolls back.
+ */
+export async function researchRestartRefusal(
+  tx: TenantQuery,
+  taskId: string,
+  runId: string,
+  restarter: Session,
+): Promise<CommandRefusal | undefined> {
+  if ((await wayfinderFacts(tx, taskId))?.type !== 'research') return undefined;
+  const refusal =
+    (await researchRunRefusal(tx, taskId, subjectsOf(restarter))) ??
+    (await stopRefusal(tx, taskId, restarter.personId));
+  if (refusal !== undefined) return refusal;
+  const pinned = await pinResearchSkillOnStart(tx, {
+    runId,
+    starter: { kind: 'person', actorId: restarter.actorId },
+  });
+  return pinned.ok ? undefined : pinned.refusal;
+}
+
 /** `stopRefusal` for the ticket a gate's run is on: an approval begins that run. */
 export async function stopRefusalAtGate(
   tx: TenantQuery,
@@ -103,7 +129,7 @@ async function researchRunRefusal(
   tx: TenantQuery,
   taskId: string,
   subjects: readonly Subject[],
-  delegation: Delegation | undefined,
+  delegation?: Delegation,
 ): Promise<CommandRefusal | undefined> {
   const request = {
     collection: 'run',

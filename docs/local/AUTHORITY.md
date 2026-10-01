@@ -803,6 +803,8 @@ with nothing planned. Writing the claim asks what `task.claim` asks,
 `SCOPE_NOT_GRANTED` ['task:assign'] with nothing planned or claimed; a starter
 who already holds the claim needs none. The starter is then the assignee, so T2g's four eyes
 leave the run's gate to another person.
+`task.restart` of a research ticket's run asks the same `run:write` and pins
+the research skill on the new run as the start does; it writes no claim.
 
 WF-7's `ticket resolved (answer, gist)` is `task.resolve`, `task:write`, and
 an agent reaches it inside its delegation (`agent-operations.ts`): only the
