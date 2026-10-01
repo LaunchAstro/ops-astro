@@ -127,3 +127,9 @@ export const INVITATIONS: InvitationListResult = {
     },
   ],
 };
+
+/** Settings ▸ Access's two reads: who may do what, and the invitations. */
+export const ACCESS_READS: {
+  readonly 'access.read': AccessReadResult;
+  readonly 'invitation.list': InvitationListResult;
+} = { 'access.read': ACCESS, 'invitation.list': INVITATIONS };
