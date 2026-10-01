@@ -11,7 +11,7 @@
 // dock. Storage and the history never bring the id back: they hold no task to
 // draw, so the dock restores only panels with a registration.
 
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useLayoutEffect, useRef, type ReactNode } from 'react';
 import type { DockPanel, DockTab } from '@launchastro/ui';
 import { PANEL_RANK, type PanelId } from '../panels.ts';
 import { close, openByGesture } from './open-set.ts';
@@ -37,7 +37,10 @@ export function useTaskDock(dock: DockModel, task: TaskDock | null): void {
   const last = useRef({ open: false, docked: false });
   const { change } = dock;
   const closeTask = task?.close;
-  useEffect(() => {
+  // A layout effect: the dock's close drops the panel in the same commit, and
+  // the panel's unmount clears the timer's stop in the passive phase after,
+  // so the close must run first to send time.stop.
+  useLayoutEffect(() => {
     const was = last.current;
     last.current = { open, docked };
     if (open && !was.open) {

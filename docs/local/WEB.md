@@ -249,8 +249,9 @@ changed beside its page. A page door opens it (`useTaskPanel` in
 task or a draft is open, the dock's head names the panel and its door is the
 task's page, and it takes its place in the rank, the seated track, Escape's
 order and the phone's one panel. The dock's close, Close all and Escape close
-it through its own close (the timer's stop, focus back on its door), and its
-own close takes it out of the dock. A link inside it is followed, never a walk
+it through its own close (the timer's stop, focus back on its door), run in a
+layout effect so a running timer is logged once before the panel unmounts, and
+its own close takes it out of the dock. A link inside it is followed, never a walk
 of the dock. Storage and the dock's history never reopen it.
 Its place is the dock's geometry (`dock/geometry.ts`, MP-3-2), which is the
 seat line (T-D19): it seats only when every open panel at the width asked for
