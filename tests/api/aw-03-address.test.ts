@@ -101,7 +101,11 @@ describe.skipIf(serverUrl === undefined)('AW-03 the conversation outlives its bo
   beforeAll(async () => {
     w = await conversationWorld('aw_03_address');
     await inBusiness(async (tx) => {
-      await writeBusinessSetting(tx, { key: 'conversation_window_days', value: 7 });
+      await writeBusinessSetting(tx, {
+        key: 'conversation_window_days',
+        value: 7,
+        owningOperation: 'settings.set_conversation_window',
+      });
     });
   }, 120_000);
 
@@ -249,13 +253,21 @@ describe.skipIf(serverUrl === undefined)('AW-03 the conversation outlives its bo
     for (const days of [3, 45]) {
       // eslint-disable-next-line no-await-in-loop -- one setting at a time
       await inBusiness(async (tx) => {
-        await writeBusinessSetting(tx, { key: 'conversation_window_days', value: days });
+        await writeBusinessSetting(tx, {
+          key: 'conversation_window_days',
+          value: days,
+          owningOperation: 'settings.set_conversation_window',
+        });
       });
       // eslint-disable-next-line no-await-in-loop
       expect(await purge(conversationId)).toEqual({ ok: false, code: 'WINDOW_UNREADABLE' });
     }
     await inBusiness(async (tx) => {
-      await writeBusinessSetting(tx, { key: 'conversation_window_days', value: 7 });
+      await writeBusinessSetting(tx, {
+        key: 'conversation_window_days',
+        value: 7,
+        owningOperation: 'settings.set_conversation_window',
+      });
     });
     expect((await read(conversationId)).messages).toHaveLength(1);
   });

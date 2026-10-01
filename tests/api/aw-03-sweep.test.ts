@@ -57,7 +57,11 @@ describe.skipIf(serverUrl === undefined)('AW-03 idle sweep', () => {
     );
   const window = async (days: number): Promise<void> => {
     await on(w.fixture.db.app, async (tx) => {
-      await writeBusinessSetting(tx, { key: 'conversation_window_days', value: days });
+      await writeBusinessSetting(tx, {
+        key: 'conversation_window_days',
+        value: days,
+        owningOperation: 'settings.set_conversation_window',
+      });
     });
   };
 

@@ -137,7 +137,11 @@ describe.skipIf(serverUrl === undefined)('AW-03 races and recovery', () => {
     w = await conversationWorld('aw_03_races');
     second = connect(w.fixture.db.appUrl, { source: 'runtime' });
     await on(w.fixture.db.app, async (tx) => {
-      await writeBusinessSetting(tx, { key: 'conversation_window_days', value: 7 });
+      await writeBusinessSetting(tx, {
+        key: 'conversation_window_days',
+        value: 7,
+        owningOperation: 'settings.set_conversation_window',
+      });
     });
   }, 120_000);
 

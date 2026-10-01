@@ -63,7 +63,11 @@ describe.skipIf(serverUrl === undefined)('C36 address refusals', () => {
     const { db, business } = x.w.fixture;
     const conversationId = conversationOf(x.address);
     await db.app.withBusiness(business, async (tx) => {
-      await writeBusinessSetting(tx, { key: 'conversation_window_days', value: 7 });
+      await writeBusinessSetting(tx, {
+        key: 'conversation_window_days',
+        value: 7,
+        owningOperation: 'settings.set_conversation_window',
+      });
     });
     // The scoped task is still open, so it is completed first: open work holds the body.
     const task = await x.w.as(x.w.owner, 'task.read', { recordId: x.taskOne });
