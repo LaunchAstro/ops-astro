@@ -44,7 +44,12 @@ import {
   type IssuedFactor,
   type SessionsEnded,
 } from './account-factor-provider.ts';
-import { removeAtProvider } from './account-factor-orphan.ts';
+import {
+  holdsVerified,
+  ownFactor,
+  removeAtProvider,
+  reportOrphan,
+} from './account-factor-orphan.ts';
 import { endOthersOnChange, signOutOthers } from './account-factor-sessions.ts';
 import { codeOf, freshSignIn, recordCode, wrongCodeLock } from './account-factor-checks.ts';
 import { writeAuditEvent } from './audit.ts';
@@ -81,8 +86,9 @@ export async function enrolSecondFactor(
   provider: FactorProvider,
 ): Promise<IssuedFactor | CommandRefusal> {
   const act = 'account.factor_enrol';
+  const sending = { ...caller, attempt: randomUUID() };
   const precondition = await judged(
-    caller,
+    sending,
     act,
     async (tx, session) => {
       if (await holdsVerified(tx, caller, await liveFactor(tx, session.personId)))
@@ -96,7 +102,7 @@ export async function enrolSecondFactor(
   if (precondition !== undefined) return precondition;
 
   const issued = await provider.enrol(caller.accessToken);
-  const recorded = await judged(caller, act, async (tx, session) => {
+  const recorded = await judged(sending, act, async (tx, session) => {
     if (!issued.ok) return providerRefusal(issued.fault, 'answer');
     const live = await liveFactor(tx, session.personId, { lock: caller.presented.subject });
     if (await holdsVerified(tx, caller, live))
@@ -111,9 +117,11 @@ export async function enrolSecondFactor(
     });
     return undefined;
   });
-  if (recorded !== undefined || !issued.ok)
-    return recorded ?? providerRefusal('malformed', 'answer');
-  return issued.value;
+  if (!issued.ok) return recorded ?? providerRefusal('malformed', 'answer');
+  // Issued there, refused here: the factor stays at the provider, reported (#300).
+  const stray = { providerFactorId: issued.value.factorId };
+  if (recorded !== undefined) await reportOrphan(caller, stray, sending.attempt, recorded.code);
+  return recorded ?? issued.value;
 }
 
 /**
@@ -157,17 +165,23 @@ export async function verifySecondFactor(
     // Removed or replaced by another tab between the two transactions.
     if (live?.id !== target.id) return refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES);
     const elsewhere = await enrolledElsewhere(tx, caller, live);
-    // Decided under the lock: this call's unverified enrolment lost, so it goes.
+    // Decided under the lock: this call's unverified enrolment lost, so it goes,
+    // ended here first so no later code can record it verified (review r11-1).
     unrecorded = elsewhere !== undefined;
-    if (unrecorded) return elsewhere;
+    if (unrecorded) await recordFactorRemoved(tx, ownFactor(caller, session, live.id));
+    if (elsewhere !== undefined) return elsewhere;
     // The first good code completes an enrolment (a factor change); a later one is a step-up.
     if (live.status !== 'verified') ended = await endOthersOnChange(tx, session, caller.presented);
     await recordFactorVerified(tx, ownFactor(caller, session, live.id));
     return undefined;
   });
-  // No other refusal removes at the provider; a stray stays, reported (reconcile: #300).
+  // No other refusal removes at the provider. A good code for an unverified factor
+  // refused here leaves it verified there, reported orphaned; reconcile is #300.
+  // An enrolment replaced by a newer one (enrolSecondFactor) is not reported.
   if (unrecorded && verified.ok)
     await removeAtProvider(caller, provider, verified.value, target, sending.attempt);
+  else if (verified.ok && recorded !== undefined && target.status !== 'verified')
+    await reportOrphan(caller, target, sending.attempt, recorded.code);
   if (recorded !== undefined || !verified.ok)
     return recorded ?? providerRefusal('malformed', 'answer');
   if (ended === undefined) return verified.value;
@@ -229,17 +243,7 @@ export async function removeSecondFactor(
   };
 }
 
-/** A verified factor here, or one the login holds through any business (0064). */
-const holdsVerified = async (
-  tx: TenantQuery,
-  caller: FactorCaller,
-  live: { readonly status: string } | undefined,
-) => live?.status === 'verified' || (await loginHasVerifiedFactor(tx, caller.presented.subject));
-
-/**
- * An enrolment here not yet completed is refused as a new one would be while
- * the login holds a verified factor through any business (0064).
- */
+/** An unverified enrolment is refused while the login holds a verified factor anywhere (0064). */
 const enrolledElsewhere = async (
   tx: TenantQuery,
   caller: FactorCaller,
@@ -248,13 +252,6 @@ const enrolledElsewhere = async (
   live.status !== 'verified' && (await loginHasVerifiedFactor(tx, caller.presented.subject))
     ? refuseCommand('FACTOR_ALREADY_ENROLLED', [], ENROLLED_FIXES)
     : undefined;
-
-/** The caller's factor, and the login's subject that holds it in every business (0064). */
-const ownFactor = (caller: FactorCaller, session: Session, factorId: string) => ({
-  personId: session.personId,
-  factorId,
-  subject: caller.presented.subject,
-});
 
 /**
  * One transaction on the factor path: resolve the caller (their factor is not

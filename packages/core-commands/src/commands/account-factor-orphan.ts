@@ -3,10 +3,13 @@
 // A factor removed at the provider once this product has decided it goes
 // (`account-factor.ts`): an enrolment that lost, under the record lock, to a
 // factor the login verified elsewhere, or a removal the record has committed.
+// And a stray the product leaves there, reported: a factor issued or proven
+// at the provider whose record was then refused (security review 2b2 r11-2).
 // Split from `account-factor.ts` to keep that file under the line limit
 // (security review 2b2, finding 1).
 
-import { withSession } from '../../../core-records/src/index.ts';
+import { loginHasVerifiedFactor, withSession } from '../../../core-records/src/index.ts';
+import type { RefusalCode, Session, TenantQuery } from '../../../core-records/src/index.ts';
 import { payloadDigest } from '../../../core-digest/src/index.ts';
 import type { FactorProvider } from './account-factor-provider.ts';
 import type { FactorCaller } from './account-factor.ts';
@@ -32,6 +35,20 @@ export async function removeAtProvider(
     // oxlint-disable-next-line no-await-in-loop
     if ((await provider.remove(accessToken, providerFactorId)).ok) return;
   }
+  await reportOrphan(caller, { providerFactorId }, attempt, 'PROVIDER_ANSWER_INVALID');
+}
+
+/**
+ * An `account.factor_orphaned` event naming a factor the provider holds and
+ * the record does not, joined to the act by its operation id. Nothing is
+ * removed at the provider.
+ */
+export async function reportOrphan(
+  caller: FactorCaller,
+  { providerFactorId }: { readonly providerFactorId: string },
+  attempt: string,
+  why: RefusalCode,
+): Promise<void> {
   // Without the presented session: the act may have ended it (C58) or been
   // refused for it, and the orphan must still be written.
   // Login, person and actor are still resolved and checked as on every call.
@@ -46,7 +63,7 @@ export async function removeAtProvider(
         command: ORPHANED,
         operationId: attempt,
         outcome: 'refused',
-        refusalCode: 'PROVIDER_ANSWER_INVALID',
+        refusalCode: why,
         payloadDigest: payloadDigest({
           command: ORPHANED,
           person: session.personId,
@@ -57,3 +74,22 @@ export async function removeAtProvider(
     'enrolling',
   );
 }
+
+/** A verified factor here, or one the login holds through any business (0064). */
+export const holdsVerified = async (
+  tx: TenantQuery,
+  caller: FactorCaller,
+  live: { readonly status: string } | undefined,
+): Promise<boolean> =>
+  live?.status === 'verified' || (await loginHasVerifiedFactor(tx, caller.presented.subject));
+
+/** The caller's factor, and the login's subject that holds it in every business (0064). */
+export const ownFactor = (
+  caller: FactorCaller,
+  session: Session,
+  factorId: string,
+): { readonly personId: string; readonly factorId: string; readonly subject: string } => ({
+  personId: session.personId,
+  factorId: factorId,
+  subject: caller.presented.subject,
+});
