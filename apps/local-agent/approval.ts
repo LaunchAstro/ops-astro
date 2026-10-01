@@ -163,7 +163,7 @@ export async function raiseApproval(
   return { ok: true, raised };
 }
 
-/** approvals.json with the need added, written whole and renamed into place. */
+/** approvals.json with the need added, written whole to a private file and renamed into place. */
 function writeApproval(home: string, need: Need): void {
   const current = readApprovals(home);
   const models =
@@ -174,8 +174,9 @@ function writeApproval(home: string, need: Need): void {
   const next = capUsd === null ? { models } : { capUsd, models };
   mkdirSync(home, { recursive: true });
   const file = join(home, 'approvals.json');
-  const staged = `${file}.${String(process.pid)}.tmp`;
-  writeFileSync(staged, `${JSON.stringify(next)}\n`, { mode: 0o600 });
+  // A fresh name opened exclusively: nothing already there is written through.
+  const staged = `${file}.${randomUUID()}.tmp`;
+  writeFileSync(staged, `${JSON.stringify(next)}\n`, { mode: 0o600, flag: 'wx' });
   renameSync(staged, file);
 }
 
