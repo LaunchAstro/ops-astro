@@ -13,7 +13,11 @@
 //   row, audit payload, log or refusal body.
 
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { expect, it as vitestIt, vi } from 'vitest';
+import { RECEIPT_LINK_SHAPE, receiptLinkOf } from '../../packages/core-runtime/src/receipt-link.ts';
+import { pathOf } from '../../packages/core-wire/src/surface.ts';
+import type { Provider } from '../../apps/worker/usage.ts';
 import {
   answering,
   appliedWith,
@@ -65,6 +69,47 @@ it.each([
   const { taskId, receipt } = await appliedWith(linking(link));
   expect(receipt['link']).toBeNull();
   expect(await attempts(taskId)).toMatchObject([{ observed: true, link: null }]);
+});
+
+it('AW-08 receipt link: a link the URL parser keeps but the column refuses is recorded absent and the effect still settles', async () => {
+  const { taskId, receipt } = await appliedWith(
+    answering(200, '{"link":"https://receipts.stand-in.invalid/a|b"}'),
+  );
+  expect(receipt).toMatchObject({ link: null, settlement: { state: 'settled' } });
+  expect(await attempts(taskId)).toMatchObject([{ state: 'settled', observed: true, link: null }]);
+});
+
+vitestIt(
+  'AW-08 receipt link: receiptLinkOf refuses what the URL parser keeps and the column refuses',
+  () => {
+    expect(receiptLinkOf(`https://${HOST}/a|b`, 'synthetic_comment')).toBeNull();
+    expect(receiptLinkOf(`https://${HOST}/a[b]`, 'synthetic_comment')).toBeNull();
+    // Control: the column's own alphabet is still kept.
+    const kept = `https://${HOST}/a-b_c~d%20e!$&'()*+,;=:@/f`;
+    expect(receiptLinkOf(kept, 'synthetic_comment')).toBe(kept);
+    // The pattern is the column's, character for character.
+    const column = RECEIPT_LINK_SHAPE.source.replaceAll('\\/', '/').replaceAll("'", "''");
+    const migration = new URL('../../migrations/0214_attempt_receipt_link.sql', import.meta.url);
+    expect(readFileSync(migration, 'utf8')).toContain(`receipt_link ~ '${column}')`);
+  },
+);
+
+it('AW-08 hostile provider: a null provider answer is handed back as a drop', async () => {
+  const { taskId, credential } = await launched();
+  const sent = vi.spyOn(r.api, 'request');
+  try {
+    const nothing = { call: async () => await Promise.resolve(null) } as unknown as Provider;
+    const outcome = await workerOn(credential, nothing).applyOnce(taskId);
+    expect(outcome).toStrictEqual({ dropped: { taskId, cause: 'provider_unavailable' } });
+    const drops = sent.mock.calls.filter(
+      ([path, init]) =>
+        String(path).endsWith(pathOf('task.handback')) &&
+        String(init?.body).includes('"outcome":"dropped"'),
+    );
+    expect(drops).toHaveLength(1);
+  } finally {
+    sent.mockRestore();
+  }
 });
 
 it.each([
