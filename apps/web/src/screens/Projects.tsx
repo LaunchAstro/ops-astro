@@ -22,7 +22,7 @@
 // the board takes its view from the address it is drawn at, a panel's place
 // included, so the door filters the board in the dock as on the page.
 
-import { useEffect, useRef, useState, type ReactElement } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Empty, ProjectsBoard, TabPanel, clientFiltersIn, type ProjectRow } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
 import { assigneeOf, rowActions, type BoardPanelHost, type RowOpened } from './projects-row.ts';
@@ -153,8 +153,8 @@ function ProjectBoard(props: Omit<ProjectsProps, 'navigate'>): ReactElement {
   const persons = people.state.outcome === 'ready' ? people.state.value.persons : null;
   // Opened at a client filter (a Clients row door), the clients the reader
   // reaches (C32) are each a Client filter even with no row of theirs, and the
-  // board opens again once they answer, so a door to a quiet client keeps its
-  // filter rather than dropping it. Opened at none, nothing more is read.
+  // board waits for them, so a door to a quiet client keeps its filter rather
+  // than dropping it. Opened at none, nothing more is read.
   const query = queryOf(props.address);
   const named = clientFiltersIn(query) > 0;
   const reached = useRead<ClientListResult>({
@@ -165,8 +165,7 @@ function ProjectBoard(props: Omit<ProjectsProps, 'navigate'>): ReactElement {
         : { ok: true as const, value: { ok: true as const, clients: [] } },
     deps: [named],
   });
-  const clients = clientNamesOf(reached.state);
-  const reopen = clients === null && named ? ' (clients out)' : '';
+  const clients = useMemo(() => clientNamesOf(reached.state), [reached.state]);
   // INB-1f: one stream for the tab, shared by the board and the inbox panels.
   const followInbox = useBoardLive(client, props.grantKey, reload);
 
@@ -198,50 +197,57 @@ function ProjectBoard(props: Omit<ProjectsProps, 'navigate'>): ReactElement {
           />
         }
       >
-        {(value) => (
-          <ProjectsBoard
-            // A new place is a new view: the board opens on it afresh.
-            key={props.address === undefined ? undefined : `${query}${reopen}`}
-            rows={value.tasks.map((task) => rowOf(task))}
-            withheld={value.withheld ?? 0}
-            changedAt={value.changedAt ?? null}
-            stages={STAGE_LABELS}
-            viewer={value.viewer ?? null}
-            {...(value.owed === undefined ? {} : { owed: value.owed })}
-            href={(row) => pathTo('agency:task-detail', { key: row.key })}
-            actions={rowActions({
-              client,
-              people: persons,
-              href: (key) => pathTo('agency:task-detail', { key }),
-              reload,
-              onSettled: (text) => {
-                if (live.current === grantKey) setRefused({ grant: grantKey, text });
-              },
-              ...(panel === undefined ? {} : { panel: { host: panel, opened, setOpened } }),
-            })}
-            address={query}
-            clients={clients ?? []}
-            onAddress={(next) => {
-              if (props.inPanel === true) return;
-              window.history.replaceState(
-                window.history.state,
-                '',
-                `${window.location.pathname}${next === '' ? '' : `?${next}`}`,
-              );
-            }}
-          />
-        )}
+        {(value) =>
+          // At a client filter the board waits for the names, so its filter holds.
+          named && clients === null ? null : (
+            <ProjectsBoard
+              // A new place is a new view: the board opens on it afresh.
+              key={props.address === undefined ? undefined : query}
+              rows={value.tasks.map((task) => rowOf(task))}
+              withheld={value.withheld ?? 0}
+              changedAt={value.changedAt ?? null}
+              stages={STAGE_LABELS}
+              viewer={value.viewer ?? null}
+              {...(value.owed === undefined ? {} : { owed: value.owed })}
+              href={(row) => pathTo('agency:task-detail', { key: row.key })}
+              actions={rowActions({
+                client,
+                people: persons,
+                href: (key) => pathTo('agency:task-detail', { key }),
+                reload,
+                onSettled: (text) => {
+                  if (live.current === grantKey) setRefused({ grant: grantKey, text });
+                },
+                ...(panel === undefined ? {} : { panel: { host: panel, opened, setOpened } }),
+              })}
+              address={query}
+              clients={clients ?? NO_CLIENTS}
+              onAddress={(next) => {
+                if (props.inPanel === true) return;
+                window.history.replaceState(
+                  window.history.state,
+                  '',
+                  `${window.location.pathname}${next === '' ? '' : `?${next}`}`,
+                );
+              }}
+            />
+          )
+        }
       </RecordState>
     </div>
   );
 }
+
+const NO_CLIENTS: readonly string[] = [];
 
 /** The reached clients' names; null while the read is out, none when it is refused or fails. */
 function clientNamesOf(state: ReadState<ClientListResult>): readonly string[] | null {
   if (state.outcome === 'loading') return null;
   const answered = state.outcome === 'ready' || state.outcome === 'empty' ? state.value : null;
   // An answer without its list offers none, rather than breaking the board.
-  return Array.isArray(answered?.clients) ? answered.clients.map((one) => one.name) : [];
+  return Array.isArray(answered?.clients) && answered.clients.length > 0
+    ? answered.clients.map((one) => one.name)
+    : NO_CLIENTS;
 }
 
 /** The Stage column's vocabulary and the stage editor's choices, in the list's order. */
