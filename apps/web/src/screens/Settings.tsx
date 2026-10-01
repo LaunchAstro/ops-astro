@@ -152,12 +152,12 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
       {/* DS-COMP-26's settings rows (AG-X20, AG-X21): one card, a row per setting. */}
       <section className="card set__card" aria-labelledby="settings-title">
         <h2 className="card__title" id="settings-title">
-          Settings for {businessKey}
+          This business
         </h2>
         <p className="card__sub">
-          Settings the model classifies <code>operation</code>: each has a command of its own and
-          none is reachable through an ordinary edit. The four-eyes threshold is applied to money;
-          the others are stored and shown here.
+          Settings for {businessKey} the model classifies <code>operation</code>: each has a command
+          of its own and none is reachable through an ordinary edit. The four-eyes threshold is
+          applied to money; the others are stored and shown here.
         </p>
         <div className="set">
           <div className="setrow" data-set="four-eyes">
