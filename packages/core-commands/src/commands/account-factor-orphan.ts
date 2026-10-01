@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // A factor the provider verified but this product refused to record
-// (`account-factor.ts`, any refusal after the provider's yes): removed at the
+// (`account-factor.ts`, an enrolment refused after the provider's yes): removed at the
 // provider, so the login holds one authenticator, not two. Split from `account-factor.ts`
 // to keep that file under the line limit (security review 2b2, finding 1).
 
@@ -23,6 +23,8 @@ export async function removeRefusedFactor(
   provider: FactorProvider,
   { accessToken }: { readonly accessToken: string },
   { providerFactorId }: { readonly providerFactorId: string },
+  /** The refused verify attempt's operation id, so the two rows join. */
+  attempt: string,
 ): Promise<void> {
   for (let asked = 0; asked < 2; asked += 1) {
     // oxlint-disable-next-line no-await-in-loop
@@ -40,6 +42,7 @@ export async function removeRefusedFactor(
       await writeAuditEvent(tx, {
         actorId: session.actorId,
         command: ORPHANED,
+        operationId: attempt,
         outcome: 'refused',
         refusalCode: 'PROVIDER_ANSWER_INVALID',
         payloadDigest: payloadDigest({
