@@ -67,6 +67,12 @@ export interface ProposalWrite {
     readonly payload: Record<string, unknown>;
     readonly planStep?: string;
   };
+  /**
+   * The task's bound plan record as the caller read it under the task lock,
+   * or null when none was bound, stored with the step (MP-6-2, 0223). Absent,
+   * the step is written as before 0223 and its run is placed by time.
+   */
+  readonly planRecordId?: string | null;
   readonly expiresAt: Date;
 }
 
@@ -173,19 +179,30 @@ export async function writeProposal(
   );
 
   const stepId = randomUUID();
-  await tx.query(
-    `insert into public.planned_steps
-       (business_id, id, run_id, ordinal, kind, payload, plan_step_key)
-     values ($1, $2, $3, 1, $4, $5::text::jsonb, $6)`,
-    [
-      tx.businessId,
-      stepId,
-      runId,
-      request.step.kind,
-      JSON.stringify(request.step.payload),
-      request.step.planStep ?? null,
-    ],
-  );
+  const step = [
+    tx.businessId,
+    stepId,
+    runId,
+    request.step.kind,
+    JSON.stringify(request.step.payload),
+    request.step.planStep ?? null,
+  ];
+  // The record's columns only when the caller read one: the upgrade suites
+  // seed a schema without them and propose through this writer with none.
+  await (request.planRecordId === undefined
+    ? tx.query(
+        `insert into public.planned_steps
+           (business_id, id, run_id, ordinal, kind, payload, plan_step_key)
+         values ($1, $2, $3, 1, $4, $5::text::jsonb, $6)`,
+        step,
+      )
+    : tx.query(
+        `insert into public.planned_steps
+           (business_id, id, run_id, ordinal, kind, payload, plan_step_key,
+            plan_record_id, plan_record_written)
+         values ($1, $2, $3, 1, $4, $5::text::jsonb, $6, $7, true)`,
+        [...step, request.planRecordId],
+      ));
 
   // Rendered here, from the rows just written, before the gate exists (G07).
   const pack = await renderEvidence(tx, { versionId, runId });
