@@ -17,7 +17,13 @@
 import { randomUUID } from 'node:crypto';
 import { effectOperationId } from '../../packages/core-wire/src/index.ts';
 import { createCli, isRefusal, type CliAnswer, type Transport } from '../cli/client.ts';
-import { ProviderFault, SYNTHETIC_PROVIDER, type Provider, type UsageReporter } from './usage.ts';
+import {
+  ProviderFault,
+  readProviderAnswer,
+  SYNTHETIC_PROVIDER,
+  type Provider,
+  type UsageReporter,
+} from './usage.ts';
 
 export interface WorkerOptions {
   readonly transport: Transport;
@@ -205,8 +211,11 @@ async function effectOnce(
   // fault, and the provider is not called until the start is recorded.
   const starting = await call('task.heartbeat', { ...lease, providerStarting: true });
   if (!('body' in starting)) return starting;
+  let receiptLink: unknown;
   try {
-    await (options.provider ?? SYNTHETIC_PROVIDER).call(SYNTHETIC_STEP);
+    receiptLink = readProviderAnswer(
+      await (options.provider ?? SYNTHETIC_PROVIDER).call(SYNTHETIC_STEP),
+    );
   } catch (fault) {
     if (!(fault instanceof ProviderFault)) throw fault;
     const drop = { cause: fault.dropCause, operationId: randomUUID() };
@@ -221,7 +230,13 @@ async function effectOnce(
   });
   if (!('body' in effect)) return effect;
   const usage = options.reporter.observe(SYNTHETIC_STEP);
-  const observed = await call('task.observe', { ...lease, attemptId, usage });
+  // The link rides as the provider gave it; observe keeps it only on the declared host.
+  const observed = await call('task.observe', {
+    ...lease,
+    attemptId,
+    usage,
+    ...(typeof receiptLink === 'string' ? { receiptLink } : {}),
+  });
   if (!('body' in observed)) return observed;
   return { applied: { taskId, attemptId, commentId: String(effect.detail['commentId']) } };
 }

@@ -570,11 +570,9 @@ const ROWS_HEAD = [
     source: 'L4 RUNTIME.md',
     runtime: true,
   },
-  // This and `CAP_BINDING_MISMATCH` are "something on this task has already been
-  // bound and does not match", not a malformed request: the lineage belongs to
-  // another task and the envelope draws on another cap or another currency. Re-
-  // reading the task and naming what it is actually bound to is the way forward,
-  // which is what a 409 tells a caller and a 422 would not.
+  // This and `CAP_BINDING_MISMATCH` are "something on this task is bound and
+  // does not match" (a lineage of another task, an envelope on another cap or
+  // currency), not a malformed request: re-reading the task is the way forward.
   {
     code: 'LINEAGE_NOT_ON_TASK',
     status: 409,
@@ -617,9 +615,8 @@ const ROWS_HEAD = [
 // AW-02's and AW-01 J's definition codes sit here, in `register-definitions.ts`.
 
 const ROWS_TAIL = [
-  // T2c1, the dispatch transaction's recheck of the effect-time facts
-  // (`core-runtime/src/dispatch.ts`). Each is 409: the call was well formed,
-  // and state moved under it, so nothing was dispatched.
+  // T2c1 and AW-08, the dispatch recheck of the effect-time facts (`dispatch.ts`,
+  // `launch-gate.ts`). Each is 409: the call was well formed, and state moved.
   {
     code: 'AUTHORITY_LOST',
     status: 409,
@@ -632,6 +629,13 @@ const ROWS_TAIL = [
     status: 409,
     meaning: 'The approval behind the work is no longer current, so its effect is not dispatched',
     source: 'T2 T2c1',
+    runtime: true,
+  },
+  {
+    code: 'CLIENT_SIGNOFF_REQUIRED',
+    status: 409,
+    meaning: 'The business requires the client’s sign-off before this effect goes out',
+    source: 'AW-08',
     runtime: true,
   },
   {

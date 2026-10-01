@@ -74,7 +74,7 @@ export async function acceptPlan(
   const captured = await captureManifest(source, [request.entryPath, ...request.paths]);
   if (!captured.ok) return captured;
 
-  const decided = await decide(tx, { ...request, decision: 'approve' });
+  const decided = await decide(tx, { ...request, decision: 'approve', effectGate: false });
   if (!decided.ok) return decided;
   const approval = decided.value;
   if (approval.decision !== 'approve') throw new Error('acceptPlan: decide answered no approval');

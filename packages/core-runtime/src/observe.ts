@@ -20,6 +20,10 @@
 // against the ceiling. An unpriced or absent report settles nothing. A cost
 // above the hold keeps the whole hold as `liability_unknown`. Observing a
 // settled attempt answers its settlement and charges nothing more.
+//
+// AW-08: the provider's receipt link rides with the first observation of an
+// applied effect and is kept only when `receiptLinkOf` keeps it; otherwise it
+// is recorded absent. A later observation never changes it.
 
 import type { TenantQuery } from '../../core-records/src/index.ts';
 import { lockedInstant } from './clock.ts';
@@ -27,6 +31,7 @@ import { fenceCause, holdsLease, readLease, refuseLease } from './lease-ownershi
 import { acquire } from './locks.ts';
 import { settleAtObserved, settledAt, type Settlement } from './budget.ts';
 import { priceAttempt } from './price-book.ts';
+import { receiptLinkOf } from './receipt-link.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 import type { DispatchRequest } from './dispatch.ts';
 
@@ -45,6 +50,8 @@ export type ObserveRequest = DispatchRequest & {
   readonly usage: unknown;
   /** The worker's word that the step failed: settles its cost with no effect. */
   readonly outcome: 'completed' | 'failed';
+  /** The link the provider answered with, as the worker passed it on; checked here. */
+  readonly receiptLink?: unknown;
 };
 
 export interface Observed {
@@ -114,9 +121,9 @@ export async function observe(
   }
   if (applied && !state.observed) {
     await tx.query(
-      `update public.attempts set observed = true
+      `update public.attempts set observed = true, receipt_link = $3
         where business_id = $1 and id = $2 and dispatch_marker`,
-      [tx.businessId, found.attempt_id],
+      [tx.businessId, found.attempt_id, receiptLinkOf(request.receiptLink, state.step_kind)],
     );
   }
   return {
@@ -213,6 +220,7 @@ interface HeldState {
   readonly price_book: string;
   readonly envelope_id: string;
   readonly currency: string;
+  readonly step_kind: string;
 }
 
 /** The hold, the markers and what settlement reads, re-read under the locks. */
@@ -222,8 +230,9 @@ async function heldState(tx: TenantQuery, attemptId: string, leaseId: string): P
       `select (res.lease_id = $3 and (res.state = 'held' or att.state = 'settled')) as held,
               att.dispatch_marker as marked, att.observed, att.state as attempt_state,
               res.held_minor::text as held_minor, att.actual_minor::text as actual_minor,
-              att.price_book, att.envelope_id, env.currency
+              att.price_book, att.envelope_id, env.currency, step.kind as step_kind
          from public.attempts att
+         join public.planned_steps step on step.business_id = att.business_id and step.id = att.step_id
          join public.reservations res on res.business_id = att.business_id and res.id = att.reservation_id
          join public.task_envelopes env on env.business_id = att.business_id and env.id = att.envelope_id
         where att.business_id = $1 and att.id = $2`,

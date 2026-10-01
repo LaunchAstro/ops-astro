@@ -578,6 +578,7 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
             attemptId: request['attemptId'],
             usage: request['usage'],
             outcome: request['outcome'],
+            receiptLink: request['receiptLink'],
           },
           {
             actorId: session.actorId,

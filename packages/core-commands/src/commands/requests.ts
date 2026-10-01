@@ -262,6 +262,8 @@ export type CommandRequest =
       /** What the step used, priced by the synthetic book (T2d). */
       readonly usage?: { readonly item: string; readonly quantity: number } | null;
       readonly outcome?: 'completed' | 'failed';
+      /** The provider's receipt link, kept only on the step's declared host (AW-08). */
+      readonly receiptLink?: string;
     } & Envelope)
   | BudgetRequest
   | CheckRequest

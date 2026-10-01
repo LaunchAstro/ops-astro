@@ -243,9 +243,18 @@ describe.skipIf(serverUrl === undefined)('T2c1 the dispatch transaction', () => 
     await db?.drop();
   });
 
-  it('enumerates the four effect-time facts in code, and declares the synthetic effect replayable', () => {
+  it('enumerates the effect-time facts in code, and declares the synthetic effect replayable', () => {
     expect([...EFFECT_TIME_FACTS].toSorted()).toStrictEqual(
-      ['approvedVersion', 'authority', 'budget', 'lease'].toSorted(),
+      [
+        'approvedVersion',
+        'authority',
+        'budget',
+        'lease',
+        'superseded',
+        'lineage',
+        'launch',
+        'signOff',
+      ].toSorted(),
     );
     expect(EFFECT_OPERATIONS['synthetic_comment']).toBe('replay');
   });
@@ -341,8 +350,8 @@ describe.skipIf(serverUrl === undefined)('T2c1 the dispatch transaction', () => 
       'delegationId',
     ],
     [
-      'approvedVersion',
-      'DECISION_STALE',
+      'superseded',
+      'PROPOSAL_SUPERSEDED',
       'update public.proposal_versions set superseded_at = now() where id = $1',
       'versionId',
     ],

@@ -37,7 +37,44 @@ export const SYNTHETIC_USAGE: UsageReporter = {
  * register holds only the comment and cannot prove the provider did nothing.
  */
 export interface Provider {
-  readonly call: (step: { readonly kind: string }) => Promise<void>;
+  /** Nothing for the in-app stand-in; otherwise the provider's raw answer (AW-08). */
+  readonly call: (step: { readonly kind: string }) => Promise<ProviderAnswer | undefined | void>;
+}
+
+/** A provider's answer as it arrived: read by `readProviderAnswer`, never trusted. */
+export interface ProviderAnswer {
+  readonly status: number;
+  readonly body: string;
+}
+
+/** The most of an answer the worker reads; more is a hostile answer. */
+export const PROVIDER_ANSWER_MAX = 4_096;
+
+/**
+ * AW-08: the receipt link a provider answered with, or a `ProviderFault` for a
+ * hostile answer: redirected, any other non-success status, oversized, or not
+ * a JSON object. A hostile answer may still have acted, so it is handed back
+ * as a drop and the whole hold stays unknown: no money moves and nothing is
+ * marked live. Its content is never kept, logged or put in the fault.
+ */
+export function readProviderAnswer(answer: ProviderAnswer | undefined | void): unknown {
+  if (answer === undefined) return undefined;
+  const hostile =
+    answer.status < 200 ||
+    answer.status > 299 ||
+    typeof answer.body !== 'string' ||
+    answer.body.length > PROVIDER_ANSWER_MAX;
+  if (hostile) throw new ProviderFault('provider_unavailable');
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(answer.body);
+  } catch {
+    throw new ProviderFault('provider_unavailable');
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new ProviderFault('provider_unavailable');
+  }
+  return (parsed as Record<string, unknown>)['link'];
 }
 
 /** The provider did not answer, or the connection to it was lost. */

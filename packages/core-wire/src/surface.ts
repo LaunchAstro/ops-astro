@@ -470,6 +470,7 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     attemptId: 'any',
     usage: 'any',
     outcome: 'any',
+    receiptLink: 'any',
   },
   'task.check': {
     leaseId: 'any',
@@ -703,7 +704,7 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     agent: 'delegated',
   }),
   // The lease owner's too, asked as heartbeat is; the runtime rechecks the
-  // four effect-time facts under its own locks.
+  // effect-time facts under its own locks.
   declare('task.dispatch', 'write', {
     targetsExistingRecord: false,
     authorisedOn: 'claim',

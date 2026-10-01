@@ -123,6 +123,8 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['DEFINITION_REVOKED', 409, 'caller'],
   ['AUTHORITY_LOST', 409, 'caller'],
   ['DECISION_STALE', 409, 'caller'],
+  // AW-08, the launch gate's client sign-off.
+  ['CLIENT_SIGNOFF_REQUIRED', 409, 'caller'],
   ['EFFECT_NOT_RECONCILABLE', 409, 'caller'],
   ['EFFECT_NOT_DISPATCHED', 409, 'caller'],
   ['EFFECT_NOT_OBSERVED', 409, 'caller'],
@@ -144,8 +146,8 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
 ];
 
 /**
- * The runtime's own thirty-four, as `core-runtime` names them; T2c1 added
- * three, T2c2 one, T2g one, T3d1 one, AW-02 four, AW-01 J four.
+ * The runtime's own thirty-five, as `core-runtime` names them; T2c1 added
+ * three, T2c2 one, T2g one, T3d1 one, AW-02 four, AW-01 J four, AW-08 one.
  */
 const RUNTIME = [
   'ACTIVATION_MODE_NOT_PERMITTED',
@@ -156,6 +158,7 @@ const RUNTIME = [
   'BUDGET_UNAVAILABLE',
   'CAP_BINDING_MISMATCH',
   'CHANGE_ROUNDS_EXHAUSTED',
+  'CLIENT_SIGNOFF_REQUIRED',
   'DECISION_STALE',
   'DEFINITION_DIGEST_MISMATCH',
   'DEFINITION_REVOKED',

@@ -35,6 +35,7 @@ import type {
   Delegation,
 } from '../../core-records/src/index.ts';
 import { lockedInstant } from './clock.ts';
+import { launchDecisionRefusal } from './launch-gate.ts';
 import { capCommitted, capVerdict, envelopeVerdict, openEnvelopeOf } from './budget.ts';
 import { roundsUsed } from './proposal-writer.ts';
 import { only } from './only.ts';
@@ -113,6 +114,8 @@ export interface DecideRequest {
   readonly capId: string;
   /** Escalate's recipient: a person who must hold decide at business scope. */
   readonly recipientPersonId?: string;
+  /** `false` from the plan accept only: its approval launches nothing (AW-08). */
+  readonly effectGate?: false;
 }
 
 interface DecidedCommon {
@@ -221,6 +224,11 @@ export async function decide(tx: TenantQuery, presented: DecideRequest): Promise
   const rechecked = await recheckDecision(tx, request, found.value, locked);
   if (!rechecked.ok) return rechecked;
   const { gate, version, pack } = rechecked.value;
+  // AW-08: the launch of a reviewed output waits on a required client sign-off.
+  if (request.decision === 'approve' && request.effectGate !== false) {
+    const held = await launchDecisionRefusal(tx, gate.version_id);
+    if (held !== null) return held;
+  }
   if (request.decision === 'escalate') return await escalateGate(tx, request, gate);
   const written = await writeDecision(
     tx,
