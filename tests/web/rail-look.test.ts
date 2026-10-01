@@ -163,6 +163,7 @@ describe('MP-2-3 the folded strip, and the drawer at 900 and below', () => {
         await expect(page.locator(FOLD).isVisible(), name).resolves.toBe(false);
         await expect(page.locator('.railgrip').isVisible(), name).resolves.toBe(false);
         await page.locator('.navtoggle').click();
+        await page.locator('nav.rail[role="dialog"]').waitFor({ state: 'visible' });
         await settle(page);
         expect((await boxOf(page, 'nav.rail')).width, name).toBe(Math.min(300, at.width * 0.84));
       }
@@ -172,18 +173,18 @@ describe('MP-2-3 the folded strip, and the drawer at 900 and below', () => {
         const label = (await item.locator('.rail__label').textContent()) ?? '';
         const icon = item.locator('.rail__icon');
         expect(await item.locator('.rail__glyph').count(), `${name} ${label}`).toBe(0);
-        // Folded, the glyph is what shows; in the drawer, the label is.
+        // Folded, the glyph is what shows and the label is clipped to one
+        // pixel; in the drawer, the label is what shows.
         expect(await icon.isVisible(), `${name} ${label}`).toBe(at.width > 900);
-        expect(await item.locator('.rail__label').isVisible(), `${name} ${label}`).toBe(
-          at.width <= 900,
-        );
+        const words = await item.locator('.rail__label').boundingBox();
+        expect((words?.width ?? 0) > 1, `${name} ${label}`).toBe(at.width <= 900);
         if (at.width > 900) {
           const box = await icon.boundingBox();
           expect([box?.width, box?.height], `${name} ${label}`).toStrictEqual([16, 16]);
         }
         // The label stays the link's accessible name, drawn or not.
         const named = page.locator('nav.rail').getByRole('link', { name: label, exact: true });
-        expect(await named.count(), `${name} ${label}`).toBe(1);
+        await expect.poll(() => named.count(), { message: `${name} ${label}` }).toBe(1);
       }
       await page.mouse.move(700, 600);
       pictures.set(name, await page.locator('nav.rail').screenshot({ animations: 'disabled' }));
