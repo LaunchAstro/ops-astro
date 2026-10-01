@@ -1858,8 +1858,9 @@ business has bound under our id already, gets none and no password is set:
 `ENROLMENT_LINK_INVALID`, a password outside 12 to 72 bytes 400
 `PASSWORD_INVALID`, and a provider fault or hostile answer 503
 `ENROLMENT_UNAVAILABLE`, nothing spent or bound. The page
-is `/enrol/:token`. Not here yet: the send mounted after the command, the
-hook and the enrolment route wired in `main`, the signed-in accept for an
+is `/enrol/:token`; `main` mounts its route when `ENROLMENT=on`. Not here
+yet: the send mounted after the command, the hook wired in `main`, the
+signed-in accept for an
 address with a login, the second factor first (C59) and the Access screen.
 
 ## Reads
