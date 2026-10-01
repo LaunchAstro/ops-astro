@@ -61,6 +61,17 @@ export {
   type ChildStanding,
 } from './child-handback.ts';
 export {
+  DELEGATION_DEPTH_BUILT,
+  enterCandidates,
+  HARNESS_PINNED_WINDOW,
+  readTrigger,
+  type CandidateEntry,
+  type TriggerFigures,
+  type TriggerLimb,
+  type TriggerReading,
+  type WorkShape,
+} from './harness-trigger.ts';
+export {
   boundPlanOf,
   planRecordOf,
   PLAN_TEXT_LIMIT,

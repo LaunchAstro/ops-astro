@@ -30,6 +30,7 @@ export { lookupEffect } from './commands/register-store.ts';
 export { executeRead } from './reads/execute.ts';
 export { joinLiveBoard, shownInbox } from './reads/live-join.ts';
 export { isReadName } from './reads/catalogue.ts';
+export { readHarnessTrigger } from './reads/harness-trigger.ts';
 export { type ReadRequest } from './reads/requests.ts';
 export {
   purgeConversation,
