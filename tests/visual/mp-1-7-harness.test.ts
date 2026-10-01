@@ -154,9 +154,7 @@ function zeroHorizontalOverflow(): void {
 
 function everyPageBuiltSoFar(): void {
   it('MP-1-7 every page built so far: each registered route has a picture at each width', () => {
-    // The wave 0 pages and the others already built: the route registry's
-    // four, the bare task address (MP-4-1), the component gallery (MP-1-3,
-    // U04) and the reader's own to-dos (MP-7-1).
+    // Wave 0's four, the bare task address (MP-4-1), the gallery (MP-1-3, U04), the to-dos (MP-7-1).
     expect(builtPages()).toEqual([
       'agency:sign-in',
       'agency:projects-board',

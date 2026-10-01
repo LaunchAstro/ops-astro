@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { Mounted } from '../surfaces/mount.tsx';
 import { found, page, proposalWith } from './task-page-stub.tsx';
+import { unheld } from './task-look.ts';
 
 const withFacts = async (over: Readonly<Record<string, unknown>> = {}) =>
   await page('Proj-Verity-Pacing', found(over));
@@ -184,5 +185,8 @@ describe('MP-4-2 inert marks', () => {
 });
 
 describe('MP-4-2 visual match', () => {
-  it.todo('the rich agent task at 1480, 900 and 390, light and dark (MP-1-7 harness)');
+  it('the facts band is held to the mockup at 1480, 900 and 390, light and dark', () => {
+    const band = ['task.facts-grid', 'task.facts-frame', 'task.facts-label', 'task.facts-value'];
+    expect(unheld(band)).toEqual([]);
+  });
 });
