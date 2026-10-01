@@ -7,7 +7,7 @@
 // the same width, never against a previous run of the app.
 //
 //   MOCKUP_DIR=<clone of the mockup> node tests/visual/run.ts [--app URL [--session FILE] [--task KEY]]
-//     [--prove-drift] [--out DIR]
+//     [--prove-drift] [--made-up] [--out DIR]
 //   node tests/visual/run.ts --app-drift --app URL [--session FILE] [--page ID] [--theme light|dark]
 //     [--out DIR]
 //
@@ -25,7 +25,9 @@
 // in each theme and measured for sideways scroll; the planted drift runs in
 // each theme too (MP-1-1 dark harness bites); --session is a signed-in local
 // fixture session (T4b1) as Playwright storage state, --task the key the task
-// page opens. The report goes to DIR/width-and-theme.txt.
+// page opens. The report goes to DIR/width-and-theme.txt. The width-and-theme
+// pages always draw from the made-up reads (made-up-api.ts); --made-up has the
+// compared states draw from them too, in place of a seeded stack.
 //
 // --app-drift is the app-only drift mode (app-drift.ts): drift proved on one of
 // the app's own pages, with no mockup, so the public CI runs it on Linux (the
@@ -35,6 +37,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { launchChromium } from '../support/chromium.ts';
 import { appDrift } from './app-drift.ts';
+import { answerMadeUp } from './made-up-api.ts';
 import { comparePng } from './compare.ts';
 import { proveDrift, scrollMetrics } from './drift.ts';
 import {
@@ -142,6 +145,7 @@ try {
         app === undefined
           ? undefined
           : await openSide(browser, packet, width, { app, session, colorScheme: theme });
+      if (appSide !== undefined && args.includes('--made-up')) await answerMadeUp(appSide.context);
       sides.push(mockup, ...(appSide === undefined ? [] : [appSide]));
       for (const state of catalogue.states)
         await compareState(width, theme, state, mockup, appSide);

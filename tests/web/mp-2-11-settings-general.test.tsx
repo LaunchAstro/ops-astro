@@ -200,23 +200,23 @@ it('MP-2-11 theme replayed before paint: a reload opens in the appearance this t
   }
 });
 
-it('MP-2-11 tips off: the switch saves tips.enabled false and the reset says why it is closed', async () => {
+it('MP-2-11 tips off: Off saves tips.enabled false and the reset says why it is closed', async () => {
   const api = server({ preferences: { 'tips.dismissed': { 'agency:inbox#triage': 1 } } });
   mounted = await mount(page(api.fetch));
   await tick();
-  const tips = mounted.find('[data-pref="tips"] [role="switch"]');
-  expect(tips?.getAttribute('aria-checked')).toBe('true');
-  await press(tips as HTMLElement);
+  // AG-X23: on and off as the segmented control, the reset and its state line beside it.
+  expect(button(mounted, 'tips', 'On').getAttribute('aria-pressed')).toBe('true');
+  await press(button(mounted, 'tips', 'Off'));
   await tick();
   expect(saves(api)).toContainEqual(
     expect.objectContaining({ preference: 'tips.enabled', value: false }),
   );
-  expect(mounted.find('[data-pref="tips"] [role="switch"]')?.getAttribute('aria-checked')).toBe(
-    'false',
-  );
-  const reset = button(mounted, 'tips-reset', 'Bring back 1 dismissed tip');
+  expect(button(mounted, 'tips', 'Off').getAttribute('aria-pressed')).toBe('true');
+  const reset = button(mounted, 'tips', 'Bring back 1 dismissed tip');
   expect(reset.disabled).toBe(true);
-  expect(mounted.find('[data-pref="tips-reset"]')?.textContent).toContain('Guided tips are off');
+  expect(mounted.find('[data-pref="tips"] .setrow__state')?.textContent).toContain(
+    'Guided tips are off',
+  );
 });
 
 it('MP-2-11 tip reset: the bring-back count is derived from the store and the reset clears it', async () => {
@@ -225,7 +225,7 @@ it('MP-2-11 tip reset: the bring-back count is derived from the store and the re
   });
   mounted = await mount(page(api.fetch));
   await tick();
-  const reset = button(mounted, 'tips-reset', 'Bring back 2 dismissed tips');
+  const reset = button(mounted, 'tips', 'Bring back 2 dismissed tips');
   expect(reset.disabled).toBe(false);
   await press(reset);
   await tick();
@@ -233,9 +233,11 @@ it('MP-2-11 tip reset: the bring-back count is derived from the store and the re
     expect.objectContaining({ preference: 'tips.dismissed', value: {} }),
   );
   // None dismissed now: closed, with its reason.
-  const none = button(mounted, 'tips-reset', 'Bring back 0 dismissed tips');
+  const none = button(mounted, 'tips', 'Bring back 0 dismissed tips');
   expect(none.disabled).toBe(true);
-  expect(mounted.find('[data-pref="tips-reset"]')?.textContent).toContain('No tips are dismissed');
+  expect(mounted.find('[data-pref="tips"] .setrow__state')?.textContent).toContain(
+    'No tips are dismissed',
+  );
 });
 
 it('MP-2-11 decision not silenced: decisions and incidents are drawn always on, with no control', async () => {
