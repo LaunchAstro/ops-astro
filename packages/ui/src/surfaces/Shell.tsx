@@ -193,7 +193,7 @@ export function Shell(props: ShellProps): ReactElement {
         </div>
         {back === undefined ? null : (
           <div className="rail__backrow">
-            <a className="btn btn--primary btn--sm rail__back" href={back.href} title={back.label}>
+            <a className="btn btn--primary btn--sm rail__back" href={back.href}>
               <Chevron towards="start" />
               <span className="rail__label">{back.label}</span>
             </a>
