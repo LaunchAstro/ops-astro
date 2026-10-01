@@ -72,7 +72,10 @@ describe('REVIEW-MAIN-2B1-8 inbox owed figure', () => {
   it('REVIEW-MAIN-2B1-8: the Inbox owed figure is inbox.count, not the owed rows drawn', async () => {
     const draw = drawInbox();
     expect(draw, 'the inbox route has a screen').toBeTypeOf('function');
-    expect(INBOX.filter((row) => row.owed), 'two owed rows are drawn').toHaveLength(2);
+    expect(
+      INBOX.filter((row) => row.owed),
+      'two owed rows are drawn',
+    ).toHaveLength(2);
     const { client } = served(5);
     view = await mount(
       (draw as Draw)({
