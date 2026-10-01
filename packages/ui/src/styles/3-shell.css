@@ -178,7 +178,6 @@
     z-index: 60;
     width: min(300px, 84vw);
     height: 100dvh;
-    background: var(--bg);
     transform: translateX(-100%);
     visibility: hidden;
     transition:
@@ -641,6 +640,7 @@
   min-height: 2.9rem;
   padding: var(--s-3) var(--s-6);
   border-bottom: 1px solid var(--border);
+  background: var(--bg);
 }
 .topbar__title {
   display: flex;
