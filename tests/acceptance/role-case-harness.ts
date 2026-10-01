@@ -18,16 +18,18 @@
 
 import { randomUUID } from 'node:crypto';
 import {
+  DELEGATION_HEADER,
   pathOf,
   type CommandDeclaration,
   type CommandName,
 } from '../../packages/core-wire/src/surface.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
-import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
 import { agentPath, bearer, call, createWorld, personPath, type Answer } from './world.ts';
 import { enrol } from '../commands/fixture.ts';
-import { PROPOSAL, breachDrillBody, type Task } from './role-case-bodies.ts';
+import { PROPOSAL, type Task } from './role-case-bodies.ts';
 import { createPositiveBody } from './role-case-positive-body.ts';
+import { probeOperands } from './role-case-fixed-bodies.ts';
+import { ownTaskRecipes } from './role-case-own-tasks.ts';
 import { plainRows, seedFixtureClients } from './role-case-clients.ts';
 import { pairFor, targetKeyOf, type Harness } from './role-case-harness-shape.ts';
 import { heldByWithAdminTopUp } from './role-case-admin-grants.ts';
@@ -110,6 +112,8 @@ export async function createHarness(part: string): Promise<Harness> {
     return Number(rows[0]?.revision ?? '0');
   }
 
+  const { clientTask, ownComment } = ownTaskRecipes({ world, freshTask, asPerson, revisionOf });
+
   const alphaTask = await freshTask('a task every case can name');
   const inBravo = await asPerson('task.create', { fields: { title: 'a bravo task' } }, 'bravo', {
     token: world.bea.token,
@@ -132,19 +136,8 @@ export async function createHarness(part: string): Promise<Harness> {
       operationId: randomUUID(),
       ...(targetKeyOf(declaration) === 'recordId' ? { recordId: alphaTask.id } : {}),
       ...(targeted ? { expectedRevision: alphaTask.revision } : {}),
-      ...(declaration.name === 'task.board' ? { board: null } : {}),
-      ...(declaration.name === 'task.receipt' ? { attemptId: randomUUID() } : {}),
-      ...(declaration.name === 'task.search' ? { query: 'brochure' } : {}),
-      ...(declaration.name === 'task.ledger' ? { timeZone: 'UTC' } : {}),
-      ...(declaration.name === 'preset.plan'
-        ? { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] }
-        : {}),
-      // Well formed, so what answers is authority: the call's operands are
-      // read by type before the delegation, as a handback's are.
-      ...(declaration.name === 'model.call'
-        ? { leaseId: randomUUID(), fence: 1, operation: 'model.replay_compose', fields: [] }
-        : {}),
-      ...(declaration.name === 'privacy.draft_breach_notices' ? breachDrillBody() : {}),
+      ...probeOperands(declaration.name),
+      ...(declaration.name === 'task.duplicate' ? { recordId: alphaTask.id } : {}),
     };
   }
 
@@ -240,6 +233,8 @@ export async function createHarness(part: string): Promise<Harness> {
       asPerson: async (name, body) => await asPerson(name, body),
       asAgent,
       freshTask,
+      clientTask,
+      ownComment: async (author) => await ownComment(author as { readonly token: string }),
       freshMember: async () =>
         (await enrol(world.db.app, world.alpha, `ended-${randomUUID().slice(0, 8)}`)).personId,
       clearGateItem: async (item) => {

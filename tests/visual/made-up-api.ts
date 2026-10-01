@@ -3,17 +3,19 @@
 // Made-up answers for the width-and-theme harness (UI-POLISH).
 //
 // The harness serves the app with its API at a dead port, so every data
-// screen was photographed on its "could not be read" state, proving nothing
-// about the look. These answers let each screen draw rows. They are typed against the wire
-// contract's own read shapes, so a changed read fails the typecheck here rather than drawing
-// a screen from a shape the API no longer sends. Test side only: the page asks the same
-// addresses it asks the real API; nothing here is a back end.
+// screen used to be photographed on its "could not be read" state: no
+// sideways scroll proven on an error, nothing about the look. These answers
+// let each screen draw rows. They are typed against the wire contract's own
+// read shapes, so a changed read fails the typecheck here rather than drawing
+// a screen from a shape the API no longer sends. Test side only: the page
+// asks the same addresses it asks the real API; nothing here is a back end.
 //
-// The rows follow the pinned mockup's Projects board, so a capture reads
+// The rows (made-up-rows.ts) follow the pinned mockup's Projects board, so a capture reads
 // against the mockup's page. Every name and client is made up.
 
 import type {
   CapabilitiesResult,
+  ClientListResult,
   CommandRefusal,
   InboxCountResult,
   InboxReadResult,
@@ -22,55 +24,20 @@ import type {
   QueueResult,
   SessionPersonResult,
   SettingsReadResult,
+  TagListResult,
   TaskBoardResult,
-  TaskLedgerResult,
   TaskSearchResult,
+  TaskTodosResult,
   TeamListResult,
 } from '../../packages/core-wire/src/index.ts';
 import type { BrowserContext } from 'playwright';
 import type { ReadName } from '../../apps/web/src/operations/read-names.ts';
 import { ACCESS, HARBOUR, MERIDIAN, MIA, NATHAN, OPERATIONS } from './made-up-access.ts';
 import { AGENT_READS } from './made-up-agent.ts';
-import { DETAIL, EXECUTION, RECEIPT, TASKS } from './made-up-data.ts';
+import { EXECUTION, RECEIPT } from './made-up-data.ts';
+import { DETAIL, LEDGER, STATE, TAGS, TASKS, TODOS } from './made-up-rows.ts';
 
-/** The Work log's two days, newest first, as `task.ledger` answers them (MP-8-4). */
-const LEDGER: TaskLedgerResult = {
-  ok: true,
-  earlier: true,
-  days: [
-    {
-      day: '2026-09-26',
-      events: [
-        {
-          id: 'e-3',
-          at: '2026-09-26T01:20:00.000Z',
-          actorName: NATHAN.name,
-          operation: 'task.complete',
-          task: { key: 'T-13', title: 'Approve the four review replies before they go out' },
-        },
-        {
-          id: 'e-2',
-          at: '2026-09-25T23:05:00.000Z',
-          actorName: MIA.name,
-          operation: 'task.comment',
-          task: { key: 'T-15', title: 'Ads rebuild: cost per enquiry' },
-        },
-      ],
-    },
-    {
-      day: '2026-09-25',
-      events: [
-        {
-          id: 'e-1',
-          at: '2026-09-25T03:40:00.000Z',
-          actorName: NATHAN.name,
-          operation: 'task.update',
-          task: { key: 'T-1', title: 'Contract review pack, 31 July' },
-        },
-      ],
-    },
-  ],
-};
+export { TASKS } from './made-up-rows.ts';
 
 /** One business setting as `settings.read` answers it, last written by Nathan. */
 const setting = (key: string, value: number | boolean, revision: number) => ({
@@ -83,8 +50,20 @@ const setting = (key: string, value: number | boolean, revision: number) => ({
 });
 
 const READS = {
-  'task.board': { ok: true, tasks: TASKS } satisfies TaskBoardResult,
-  'task.read': { ok: true, task: DETAIL } satisfies InternalTaskRead,
+  'task.board': {
+    ok: true,
+    tasks: TASKS,
+    changedAt: '2026-09-25T04:00:00.000Z',
+    viewer: NATHAN.personId,
+    owed: 0,
+  } satisfies TaskBoardResult,
+  'task.read': {
+    ok: true,
+    task: DETAIL,
+    states: Object.values(STATE),
+  } satisfies InternalTaskRead,
+  'task.todos': { ok: true, todos: TODOS } satisfies TaskTodosResult,
+  'tag.list': { ok: true, tags: TAGS } satisfies TagListResult,
   'person.list': { ok: true, persons: [NATHAN, MIA] } satisfies PersonListResult,
   'settings.read': {
     ok: true,
@@ -178,6 +157,9 @@ const READS = {
   'access.read': ACCESS,
   'operations.read': OPERATIONS,
   ...AGENT_READS,
+  // The business's clients (C32), as the task's client field and the to-dos'
+  // client scope ask them.
+  'client.list': { ok: true, clients: [HARBOUR, MERIDIAN] } satisfies ClientListResult,
 } as const satisfies Partial<Record<ReadName, unknown>>;
 
 /** The reads the harness answers; a read missing here draws its "could not be read" state. */
@@ -186,7 +168,7 @@ export const MADE_UP_READS: readonly string[] = Object.keys(READS);
 // The collections a variant can answer with no rows: the screens whose empty
 // state a person meets (the board and the inbox).
 const EMPTY: { readonly 'task.board': TaskBoardResult; readonly 'inbox.read': InboxReadResult } = {
-  'task.board': { ok: true, tasks: [] },
+  'task.board': { ok: true, tasks: [], changedAt: null, viewer: NATHAN.personId, owed: 0 },
   'inbox.read': { ok: true, inbox: [] },
 };
 
@@ -216,9 +198,19 @@ export type MadeUpAnswer = { status: number; json?: unknown } | { pending: true 
  * know. `/api/b/<business>/<collection>/<verb>` is a read's path (`pathOf`);
  * the tab's live stream is answered as down, so nothing streams in a capture.
  */
+// The mockup's task page (states.json, look/task.ts) draws its task with no rank
+// yet; the dock panel's mockup draws the same task ranked. task.read answers by
+// the key asked for, so each screen reads the task its mockup draws.
+export const MOCKUP_TASK_KEY = 'proj-meridian-hero-copy';
+const UNRANKED_READ = {
+  ...READS['task.read'],
+  task: { ...DETAIL, rank: { number: null, score: null, calc: 'not ranked: missing ease' } },
+} satisfies InternalTaskRead;
+
 export function madeUpAnswer(
   pathname: string,
   variant: MadeUpVariant = {},
+  body: { readonly recordId?: unknown } = {},
 ): MadeUpAnswer | undefined {
   const match = /^\/api\/b\/[^/]+\/(.+)$/u.exec(pathname);
   if (match === null) return undefined;
@@ -230,6 +222,9 @@ export function madeUpAnswer(
   if (named(variant.unavailable)) return { status: 503 };
   if (named(variant.refused)) return { status: 403, json: REFUSAL };
   if (named(variant.empty)) return { status: 200, json: EMPTY[name as keyof typeof EMPTY] };
+  if (name === 'task.read' && body.recordId === MOCKUP_TASK_KEY) {
+    return { status: 200, json: UNRANKED_READ };
+  }
   if (name in READS) return { status: 200, json: READS[name as keyof typeof READS] };
   return undefined;
 }
@@ -245,7 +240,13 @@ export async function answerMadeUp(
   variant: MadeUpVariant = {},
 ): Promise<void> {
   await context.route('**/api/b/**', async (route) => {
-    const answer = madeUpAnswer(new URL(route.request().url()).pathname, variant);
+    const request = route.request();
+    const body: unknown = request.method() === 'POST' ? request.postDataJSON() : {};
+    const answer = madeUpAnswer(
+      new URL(request.url()).pathname,
+      variant,
+      typeof body === 'object' && body !== null ? body : {},
+    );
     if (answer !== undefined && 'pending' in answer) return;
     await (answer === undefined ? route.fallback() : route.fulfill(answer));
   });

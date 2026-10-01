@@ -413,6 +413,12 @@ const TARGET_LOOKUPS: Readonly<Record<string, ScopeLookup>> = {
       return rows[0] === undefined ? undefined : { kind: 'record', id: rows[0].id };
     },
   ],
+  // MP-4-8: a duplicate is asked of the client it creates for, at party
+  // scope; a body naming no client is asked of the business.
+  'task.duplicate': [
+    'client',
+    (_tx, id) => Promise.resolve({ kind: 'party', id: id.toLowerCase() }),
+  ],
   'delegation.revoke': [
     'delegationId',
     (tx, id) =>
@@ -528,9 +534,9 @@ export async function prepareCommand(
   // its handler, which asks the resolved row's own ceiling.
   const recordId = typeof request['recordId'] === 'string' ? request['recordId'] : undefined;
   // R4 before any grant row. A session with no membership stands on a read
-  // share, and whatever else a row may say it holds, it writes nothing but a
-  // client-audience comment and the seen stamp on its own inbox item (minimum
-  // contract 8.1 R4; the audience is `tasks-comment.ts`'s to narrow).
+  // share, and whatever else a row may say it holds, it writes only what
+  // core-wire's `EXTERNAL_WRITES` lists (minimum contract 8.1 R4; a comment's
+  // audience is `tasks-comment.ts`'s to narrow).
   if (!admitsSelfWrite(session.roleKey !== null, declaration.name)) {
     return refused(refuseCommand('SCOPE_NOT_GRANTED', [], EXTERNAL_FIXES));
   }

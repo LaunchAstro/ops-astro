@@ -31,6 +31,10 @@ export {
 } from './surface.ts';
 // A currency's minor digits, the ISO 4217 table the server and the browser share.
 export { minorDigits } from './currency.ts';
+// What a task's page link may hold, for the server's check and the web's door.
+export { PAGE_LINK_LIMIT, isInProductLink } from './page-link.ts';
+export { TASK_STAGES, type TaskStage } from './task-stages.ts';
+export { TASK_CATEGORIES, type TaskCategory } from './task-categories.ts';
 // The keys a grant may carry (C32).
 export { GRANTABLE_KEYS, isGrantableKey, SELF_SCOPED_COLLECTIONS } from './permission-keys.ts';
 export {
@@ -65,6 +69,7 @@ export type {
   CheckView,
   RunPinView,
   RunReadView,
+  BoardCrumb,
   BreachNoticeDraft,
   BreachNoticesResult,
   BreachRunbookLink,
@@ -104,6 +109,11 @@ export type {
   LedgerDayView,
   LedgerEventView,
   PersonListResult,
+  TagListResult,
+  TagView,
+  AgentAssigneeView,
+  AgentOfferView,
+  BoardComments,
   TeamListResult,
   TeamMemberView,
   PersonView,
@@ -114,6 +124,7 @@ export type {
   CoveringGrantView,
   QueuedWork,
   QueueResult,
+  RankView,
   ReceiptResult,
   ReservationView,
   EnvelopeView,
@@ -128,7 +139,11 @@ export type {
   SharedTaskView,
   TaskAlert,
   OutageView,
+  BoardTask,
+  StepView,
   TaskBoardResult,
+  TaskTodosResult,
+  TodoView,
   TaskDetail,
   TaskEnvelope,
   TaskExecution,
@@ -138,6 +153,8 @@ export type {
   TaskSearchResult,
   TaskStateView,
   TaskSummary,
+  TaskTimeView,
+  TimeEntryView,
 } from './views.ts';
 // the command catalogue and its parity check (API-1)
 export * from './catalogue.ts';

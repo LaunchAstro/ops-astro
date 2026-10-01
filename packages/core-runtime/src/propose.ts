@@ -341,9 +341,10 @@ export async function proposeUnderLocks(
   // R8. The hold the superseded version owns is released here, in the
   // transaction that made it nonclaimable, under the locks discovered for it
   // above. Leaving it for a later unrelated replay is what made the business-
-  // wide sweep from cancellation look necessary.
+  // wide sweep from cancellation look necessary. The proposer ended that
+  // work, so the clear of its agent from the task is audited as theirs.
   if (written.value.supersededVersionId !== null) {
-    await retireWork(tx, liveWork, locks);
+    await retireWork(tx, liveWork, locks, request.proposedByActorId);
     await classifyVersions(
       tx,
       [written.value.supersededVersionId],

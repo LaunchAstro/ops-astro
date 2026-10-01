@@ -11,6 +11,7 @@
 import { act, useState, type ReactElement } from 'react';
 import { describe, expect, it } from 'vitest';
 import { Shell, type ShellProps } from '../../packages/ui/src/surfaces/Shell.tsx';
+import { dockOf } from './dock-props.ts';
 import { mount, type Mounted } from './mount.tsx';
 
 const BASE: ShellProps = {
@@ -27,9 +28,7 @@ const BASE: ShellProps = {
   ],
   here: '/projects/',
   title: 'Projects',
-  dock: [],
-  onDockTab: () => {},
-  seated: false,
+  dock: dockOf([]),
   children: null,
 };
 

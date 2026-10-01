@@ -14,96 +14,123 @@
 // gate would catch, because opening the panel is the act that would make the
 // seam appear.
 //
-// Notifications, Settings and Team are navigation entries rather than drawers:
-// `route` names the route that draws the surface, and the dock tab goes there. `ai`
-// is a drawer (MP-7-11): it has no address of its own, `route` is null, and the
-// tab opens it over the page, carrying that page's standing scope only. Its
-// surface reads AW-03's conversation records.
+// **The rail's order is one declared list, and nothing else orders it.** A
+// registration is keyed by its id and carries no rank, so the order it was
+// written in cannot leak onto the rail. The list is DR-59's, top to bottom,
+// with the mockup's ids (`dock.js` `ORDER` runs bottom to top), and the working
+// slice's `settings` after it.
 //
-// **A registration with a route the router does not serve is the failure this
-// registry has to avoid.** `route` is a `StaticRouteId`, so a registration can
-// only name a route `routes.ts` serves at an address with no parameters, and
-// the tab has somewhere to arrive.
+// **Only a panel with a body gets a tab (R34).** `route` is required and is a
+// `StaticRouteId`, so a registration names a route `routes.ts` serves at an
+// address with no parameters, and the tab has somewhere to arrive. The route
+// must also need a session: an authenticated route has a screen that reads the
+// business's records, and a public one such as sign-in reads none, so a
+// registration pointing there draws no tab. The Agent drawer (MP-7-11), `ai`,
+// has an id and a rank and no registration: it has no address of its own, so
+// the dock draws it itself (`dock/agent-dock.ts`), as it draws `task`.
+//
+// **A count chip is derived as the tab is built**, from the count its store
+// reports, so it paints at load rather than after the first open (D-18), and
+// is printed whole: 120 reads "120", never "99+". No count, or zero, no chip.
 
 import type { GlyphName } from '@launchastro/ui';
-import { pathTo, type StaticRouteId } from './routes.ts';
+import { ROUTES, type StaticRouteId } from './routes.ts';
+
+export const PANEL_RANK = Object.freeze([
+  'ai',
+  'notifs',
+  'team',
+  'clients',
+  'todos',
+  'task',
+  'marks',
+  'notes',
+  'settings',
+] as const);
+
+export type PanelId = (typeof PANEL_RANK)[number];
 
 export interface PanelRegistration {
-  /** Frozen. The label above it is not. */
-  readonly id: string;
   readonly label: string;
   /** Announced on the panel element itself. */
   readonly ariaLabel: string;
-  /** The route that draws the same surface at an address of its own, if any. */
-  readonly route: StaticRouteId | null;
-  /** The dock tab's glyph, the one the mockup registers for this panel. */
-  readonly icon: GlyphName;
+  /** The route that draws the panel's surface at an address of its own. */
+  readonly route: StaticRouteId;
+  /** The dock tab's glyph, the one the mockup registers for this panel; the grid glyph when none is named. */
+  readonly icon?: GlyphName;
+  /** The tenant's own close. */
+  readonly onClose?: () => void;
 }
 
-export const PANELS: readonly PanelRegistration[] = [
-  {
-    id: 'notifications',
+export type PanelRegistry = { readonly [Id in PanelId]?: PanelRegistration };
+
+export interface PanelTab {
+  readonly id: PanelId;
+  readonly label: string;
+  readonly icon: GlyphName | undefined;
+  readonly route: StaticRouteId;
+  /** The chip's text, or null when there is nothing to count. */
+  readonly count: string | null;
+}
+
+export const PANELS: PanelRegistry = {
+  notifs: {
     label: 'Notifications',
     ariaLabel: 'Notifications: what is waiting on you',
     route: 'agency:inbox',
     icon: 'bell',
   },
-  {
-    id: 'settings',
-    label: 'Settings',
-    ariaLabel: 'Business settings',
-    route: 'agency:settings',
-    icon: 'settings-sliders',
-  },
-  {
-    id: 'team',
+  team: {
     label: 'Team',
     ariaLabel: 'Team: who is here and who is away',
     route: 'agency:team',
     icon: 'comments',
   },
-  {
-    id: 'ai',
-    label: 'Agent',
-    ariaLabel: 'Agent',
-    route: null,
-    icon: 'sparkles',
+  // The client book, made up until MP-10-1 (screens/Clients.tsx).
+  clients: {
+    label: 'Clients',
+    ariaLabel: 'Clients: the client book',
+    route: 'agency:clients',
+    icon: 'users',
   },
-];
+  // My to-dos (MP-7-1, SL07): the tab reads Projects, as the mockup's dock does.
+  todos: {
+    label: 'Projects',
+    ariaLabel: 'My to-dos',
+    route: 'agency:todos',
+    icon: 'briefcase',
+  },
+  settings: {
+    label: 'Settings',
+    ariaLabel: 'Business settings',
+    route: 'agency:settings',
+    icon: 'settings-sliders',
+  },
+};
 
-/**
- * The dock's tabs at `here`. The panel registry is the dock. A registration
- * with a route names the address that draws its surface, and the tab navigates
- * there rather than opening a drawer over the page: the surface has a real
- * address, and an address a person can quote is worth more than a panel they
- * cannot. The Agent drawer (MP-7-11) has no address: its tab is open while the
- * drawer is. The client face has no dock (R17).
- */
-export const dockTabs = (
-  here: string,
-  counts: Readonly<Record<string, number | null>> = {},
-  agentOpen = false,
-): { id: string; label: string; icon: GlyphName; open: boolean; count?: number }[] =>
-  PANELS.map((panel) => {
-    const tab: { id: string; label: string; icon: GlyphName; open: boolean; count?: number } = {
-      id: panel.id,
-      label: panel.label,
-      icon: panel.icon,
-      open: panel.route === null ? agentOpen : here === pathTo(panel.route),
-    };
-    const count = counts[panel.id] ?? null;
-    if (count !== null) tab.count = count;
-    return tab;
+const IDS: ReadonlySet<string> = new Set(PANEL_RANK);
+
+/** Parses an id arriving from outside the type system, such as a stored open set. */
+export function isPanelId(value: string): value is PanelId {
+  return IDS.has(value);
+}
+
+export function dockTabs(
+  counts: { readonly [Id in PanelId]?: number } = {},
+  registry: PanelRegistry = PANELS,
+): readonly PanelTab[] {
+  return PANEL_RANK.flatMap((id) => {
+    const panel = registry[id];
+    if (panel === undefined || !ROUTES[panel.route].authenticated) return [];
+    const count = counts[id] ?? 0;
+    return [
+      {
+        id,
+        label: panel.label,
+        icon: panel.icon,
+        route: panel.route,
+        count: count > 0 ? String(count) : null,
+      },
+    ];
   });
-
-/**
- * Where a dock tab goes: the Agent drawer toggles over the page; a routed
- * panel opens its address, or the board when it is already there.
- */
-export function dockTarget(id: string, here: string): 'agent' | string | null {
-  const panel = PANELS.find((entry) => entry.id === id);
-  if (panel === undefined) return null;
-  if (panel.route === null) return 'agent';
-  const target = pathTo(panel.route);
-  return here === target ? pathTo('agency:projects-board') : target;
 }

@@ -47,6 +47,10 @@ export const READ_NAMES = [
   'conversation.read',
   // The caller's own conversations, for the tab row (MP-7-11).
   'conversation.list',
+  // The business's tag vocabulary, which the tag field suggests from (MP-4-11).
+  'tag.list',
+  // The reader's own to-dos, the Projects dock panel's list (MP-7-1).
+  'task.todos',
   // Search over what the caller may read (C1); the ⌘K surface is C1b's.
   'task.search',
   // Who is signed in, for the person menu (C23).

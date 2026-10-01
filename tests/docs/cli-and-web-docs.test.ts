@@ -170,13 +170,14 @@ describe('WEB.md on the decision refusal and Start', () => {
 });
 
 describe('WEB.md on the dock', () => {
-  it('announces an open tab as Close and leaves its address for the board', () => {
-    const shell = read('packages/ui/src/surfaces/Shell.tsx');
-    expect(shell).toContain('aria-expanded={tab.open}');
-    expect(shell).toContain("tab.open ? 'Close' : 'Open'");
-    expect(read('apps/web/src/panels.ts')).toContain(
-      "here === target ? pathTo('agency:projects-board') : target",
-    );
-    expect(folded(read(WEB_DOC))).toContain('An open dock tab is announced as "Close');
+  // Since MP-3-1 the tab opens a panel where the person is; it no longer navigates.
+  it('announces an open tab as Close, and says the tab opens a panel', () => {
+    const dock = read('packages/ui/src/surfaces/Dock.tsx');
+    expect(dock).toContain('aria-expanded={tab.open}');
+    expect(dock).toContain("tab.open ? 'Close' : 'Open'");
+    expect(read('apps/web/src/dock/dock-props.tsx')).toContain('press(state, panel, shift)');
+    const doc = folded(read(WEB_DOC));
+    expect(doc).toContain('An open tab is announced as "Close Settings"');
+    expect(doc).toContain('opens the Settings panel beside the page rather than navigating');
   });
 });

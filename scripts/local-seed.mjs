@@ -115,6 +115,15 @@ const GRANTS_BY_ROLE = {
     // MP-6-2's `state revised` (ORCH33, ORCH38): `run:write`, a person's own
     // and an agent's inside its delegation; the owner and administrators hold it.
     ['run', 'write'],
+    // Client access (MP-4-10) shares a task with its client's people under
+    // `access:share`, which the key catalogue gives the owner and
+    // administrators and never an agent.
+    ['access', 'share'],
+    // Time tracking (MP-4-6) asks `time:write`: the owner's and
+    // administrators', and a member's only where granted.
+    ['time', 'write'],
+    // Tags (MP-4-11) ask `tag:write` for a new name in the vocabulary.
+    ['tag', 'write'],
     // Settings ▸ Access (C32): the owner and administrators hold
     // `access:manage` on install (the key catalogue's default holders).
     ['access', 'manage'],

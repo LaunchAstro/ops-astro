@@ -203,6 +203,20 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     content_size: 4,
     bytes: '\\x73656564',
   },
+  // 0078: no journey step logs time yet.
+  'public.time_entries': {
+    task_id: randomUUID(),
+    person_id: randomUUID(),
+    actor_id: randomUUID(),
+    started_at: '2026-09-30T00:00:00.000Z',
+    ended_at: '2026-09-30T00:01:00.000Z',
+    minutes: 1,
+    ad_hoc: false,
+    source: 'log',
+  },
+  // 0081: no journey step tags a task yet.
+  'public.tags': { name: 'a tag', actor_id: randomUUID() },
+  'public.task_tags': { task_id: randomUUID(), tag_id: randomUUID(), actor_id: randomUUID() },
   // 0042: nothing in the journey raises an inbox item yet (INB-1b does).
   'public.inbox_items': {
     recipient_person_id: randomUUID(),

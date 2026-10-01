@@ -67,6 +67,7 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['SOURCE_SPOOFED', 403, 'caller'],
   ['FIELD_VALUE_INVALID', 422, 'caller'],
   ['TRANSITION_NOT_PERMITTED', 409, 'caller'],
+  ['CARRIED_TEXT_NAMES_CLIENT', 409, 'caller'],
   ['DEPENDENCY_NOT_LANDED', 501, 'caller'],
   ['COMMAND_BODY_INVALID', 400, 'caller'],
   ['WRONG_BUSINESS', 404, 'audit'],

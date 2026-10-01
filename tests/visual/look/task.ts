@@ -5,9 +5,15 @@
 // box on its Agent perspective. The app draws the made-up T-1, whose one
 // proposal waits at an armed gate and whose run has a receipt (made-up-api.ts).
 // The perspective tabs, the fact strip (sample values behind the mock label)
-// and the receipt box (`.sout`, the mockup's live task) follow.
+// and the receipt box (`.sout`, the mockup's live task) follow; then the field
+// band and the dock task panel's fields (task-fields.ts) and the page's own
+// header, steps, writing and thread probes (task-page.ts), on the mockup's
+// Grove Street task.
 
+import { MOCKUP_TASK_KEY } from '../made-up-api.ts';
 import type { LookProbe, LookScreen } from './probe.ts';
+import { FIELD_PROBES } from './task-fields.ts';
+import { PAGE_PROBES } from './task-page.ts';
 
 const MOCK = { path: '/agency/task/?task=proj-meridian-hero-copy' } as const;
 const OPEN_AGENT = '[role=tab]:has-text("Agent")';
@@ -212,12 +218,17 @@ export const TASK: LookScreen = {
       '.mstrip [data-mstrip-fact="whose-move"] .mstrip__v',
       TYPE,
     ),
-    probe(
-      'strip-rank',
-      { ...MOCK, selector: '.mstrip .mstrip__v--none' },
-      '.mstrip .mstrip__v--none',
-      ['font-size', 'font-style', 'color'],
-    ),
+    {
+      ...probe(
+        'strip-rank',
+        { ...MOCK, selector: '.mstrip .mstrip__v--none' },
+        '.mstrip .mstrip__v--none',
+        ['font-size', 'font-style', 'color'],
+      ),
+      // The mockup's task has no rank yet; the app reads the same task unranked
+      // under the mockup's key (made-up-api.ts), so the strip draws 'not ranked'.
+      app: { ...APP, path: `/task/${MOCKUP_TASK_KEY}`, selector: '.mstrip .mstrip__v--none' },
+    },
     // DS-TASK-6, live: the receipt of an attempt (states.json `receipt`).
     probe('receipt-box', { ...LIVE, selector: '.sout .sout__box' }, '.sout .sout__box', [
       'border-top-color',
@@ -237,5 +248,7 @@ export const TASK: LookScreen = {
       'font-size',
       'color',
     ]),
+    ...FIELD_PROBES,
+    ...PAGE_PROBES,
   ],
 };

@@ -4,10 +4,11 @@
 // file to keep it under the line limit.
 
 import type { StripSteps } from '@launchastro/ui';
+import type { DockAppProps } from './dock/dock-props.tsx';
 import type { ClientAccess } from './manifest.ts';
 import type { SessionStore } from './session/token.ts';
 
-export interface AppProps {
+export interface AppProps extends DockAppProps {
   /** The address the application is drawing. Owned here, not read from a global. */
   readonly path: string;
   /** `replace` corrects the address of the page already open, adding no history entry. */

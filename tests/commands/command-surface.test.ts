@@ -41,7 +41,7 @@ if (serverUrl === undefined) {
 
 /** Every path is a collection and an operation; the collections are named in the case below. */
 const PATH_SHAPE =
-  /^\/(?:task|team|person|preset|settings|session|grant|delegation|budget|gate|conversation|model|run|preference|access|operations|privacy|legal|credential|client|inbox|notifications)\/[a-z_]+$/u;
+  /^\/(?:task|team|person|preset|settings|session|grant|delegation|budget|time|tag|gate|conversation|model|run|preference|access|operations|privacy|legal|credential|client|inbox|notifications)\/[a-z_]+$/u;
 
 describe('the surface as a table', () => {
   it('carries the contract’s nine, named', () => {
@@ -87,6 +87,8 @@ describe('the surface as a table', () => {
     // `operations`
     // and `privacy` are C55's view and its incident record, and `legal` is C81's
     // documents, asked of `privacy`. `credential` is API-2's agent credential.
+    // `time` is MP-4-6's: a person's time entries, which are rows beside a task.
+    // `tag` is MP-4-11's: the business's tag vocabulary.
     expect(paths.every((path) => PATH_SHAPE.test(path))).toBe(true);
   });
 });
@@ -109,6 +111,7 @@ const DECLARED_READS = [
   'session.capabilities',
   'session.person',
   'settings.read',
+  'tag.list',
   'task.board',
   'task.execution',
   'task.ledger',
@@ -116,11 +119,12 @@ const DECLARED_READS = [
   'task.read',
   'task.receipt',
   'task.search',
+  'task.todos',
   'team.list',
 ];
 
 describe('the surface as a table', () => {
-  it('declares the twenty-four reads as reads, and everything else as a write', () => {
+  it('declares the twenty-six reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual(DECLARED_READS);
     for (const command of COMMAND_SURFACE) {
       expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));
@@ -243,22 +247,26 @@ describe.skipIf(serverUrl === undefined)('the surface against the installed mode
     expect(missing).toStrictEqual([]);
   });
 
-  it('finds ten of them, which is what makes nine commands too few', () => {
+  it('finds fourteen of them, which is what makes nine commands too few', () => {
     expect(named).toStrictEqual([
       'task.assign',
       'task.complete',
       'task.move',
       'task.reopen',
       'task.reparent',
+      'task.set_adhoc',
       'task.set_audience',
+      'task.set_category',
       'task.set_party',
+      'task.set_scores',
       'task.set_stage',
+      'task.set_state',
       'task.start',
       'task.triage',
     ]);
-    // Ten names, and only two of them — complete and reopen — are among the
-    // contract's nine commands. The other eight are why this part declares
-    // more than nine, and `task.rank` is an eleventh operation the mechanics
+    // Fourteen names, and only two of them — complete and reopen — are among
+    // the contract's nine commands. The other twelve are why this part declares
+    // more than nine, and `task.rank` is a fifteenth operation the mechanics
     // need that neither list carries.
     expect(named.filter((name) => CONTRACT_NINE.includes(name as CommandName))).toStrictEqual([
       'task.complete',

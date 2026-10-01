@@ -10,8 +10,10 @@
 //
 // Rows group under the client each entry names: `inbox.read` names it only
 // where the reader reaches that client, so an entry without one sits under
-// the reader's own work. A client head is a name until the Clients panel
-// exists to open it in.
+// the reader's own work. A client head opens that client in the Clients panel
+// by the gesture law (CS-7.29): plain solos, Shift beside, and where no
+// Clients panel has a tab the head is a link the application follows. The
+// reader's own work is a name.
 
 import type { ReactElement } from 'react';
 import { InboxPage, type InboxGroupRef, type OpenHow } from '@launchastro/ui';
@@ -24,7 +26,8 @@ import { useRead } from '../data/use-read.ts';
 import { hubOf } from '../data/live.ts';
 import { BOARD } from '../data/board-live.ts';
 import { RecordState } from '../views/record-state.tsx';
-import { pathTo } from '../routes.ts';
+import { clientsAt, pathTo } from '../routes.ts';
+import type { PanelId } from '../panels.ts';
 
 /** The group of an entry that names no client: the reader's own work. */
 const OWN_WORK: InboxGroupRef = { key: 'own', name: 'Your work' };
@@ -35,7 +38,16 @@ function groupsByEntry(items: Inbox['items']): (item: { readonly id: string }) =
     items.flatMap((entry) =>
       entry.client === undefined
         ? []
-        : [[entry.id, { key: entry.client.clientId, name: entry.client.name }] as const],
+        : [
+            [
+              entry.id,
+              {
+                key: entry.client.clientId,
+                name: entry.client.name,
+                href: clientsAt(entry.client.clientId),
+              },
+            ] as const,
+          ],
     ),
   );
   return (item) => refs.get(item.id) ?? OWN_WORK;
@@ -61,8 +73,10 @@ export function InboxScreen(props: {
   readonly client: OperationsClient;
   readonly grantKey: string;
   readonly navigate: (path: string) => void;
+  /** The dock's own door, by the gesture law; absent where there is no dock. */
+  readonly openPanel?: (id: PanelId, beside: boolean, place: string) => boolean;
 }): ReactElement {
-  const { client, navigate } = props;
+  const { client, navigate, openPanel } = props;
   const { state, reload } = useRead<Inbox>({
     grantKey: props.grantKey,
     run: async () => await readInbox(client),
@@ -72,6 +86,10 @@ export function InboxScreen(props: {
   });
   // Beside needs the dock's drawers (MP-3-1); until then both open in place.
   const onOpenTask = (key: string, _how: OpenHow): void => navigate(taskHref(key));
+  const onOpenClient = (clientId: string, how: OpenHow): void => {
+    const place = clientsAt(clientId);
+    if (openPanel?.('clients', how.beside, place) !== true) navigate(place);
+  };
   // A live re-read keeps the list drawn, so the tab the person chose holds (C4 live-sync 4).
   return (
     <RecordState state={state} subject="inbox" onRetry={reload} keep>
@@ -82,7 +100,7 @@ export function InboxScreen(props: {
           groupOf={groupsByEntry(inbox.items)}
           taskHref={taskHref}
           onOpenTask={onOpenTask}
-          onOpenClient={() => {}}
+          onOpenClient={onOpenClient}
         />
       )}
     </RecordState>

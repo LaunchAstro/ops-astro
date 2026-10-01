@@ -24,13 +24,10 @@ import { edit, real } from './api-1-catalogue-support.ts';
 const wide = (...keys: string[]) =>
   keys.map((key) => ({ key, scope: { kind: 'business' as const, id: null } }));
 
-/** `task.duplicate` as MP-4-8 will declare it: person only, two-part authority. */
-const DUPLICATE: CommandDeclaration = {
-  ...(COMMAND_SURFACE.find((one) => one.name === 'task.create') as CommandDeclaration),
-  name: 'task.duplicate' as CommandDeclaration['name'],
-  authority: ['task:read', 'task:write'],
-  agent: 'never',
-};
+/** `task.duplicate` as MP-4-8 declares it: person only, two-part authority. */
+const DUPLICATE = COMMAND_SURFACE.find(
+  (one) => one.name === 'task.duplicate',
+) as CommandDeclaration;
 
 describe('API-1 command catalogue', () => {
   replacesDiscovery();
@@ -53,7 +50,10 @@ function replacesDiscovery(): void {
     });
     expect(agent.map((one) => one.command)).toContain('task.handback');
     expect(agent.map((one) => one.command)).not.toContain('task.decide');
-    expect(agent.map((one) => one.command)).not.toContain('task.update');
+    // An agent writes its own task's fields under a delegation (MP-4-7, MP-4-8),
+    // and never trashes a task.
+    expect(agent.map((one) => one.command)).toContain('task.update');
+    expect(agent.map((one) => one.command)).not.toContain('task.trash');
     const withUi = reachableBy(real().rows, {
       kind: 'person',
       grants: wide('task:write'),
@@ -94,9 +94,9 @@ function agentDecideAndPersonOnly(): void {
   });
 
   it('API-1 person-only and two-part authority: a row or surface dropping the marker or a part fails', () => {
-    const declarations = [...COMMAND_SURFACE, DUPLICATE];
+    const declarations = COMMAND_SURFACE;
     const rows = buildCatalogue([], declarations);
-    const duplicate = rows.find((row) => (row.command as string) === 'task.duplicate');
+    const duplicate = rows.find((row) => row.command === 'task.duplicate');
     expect(duplicate?.personOnly).toBe(true);
     expect(duplicate?.authority).toEqual(['task:read', 'task:write']);
     expect(duplicate?.api.agent).toBeNull();

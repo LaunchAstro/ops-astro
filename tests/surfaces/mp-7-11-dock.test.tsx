@@ -60,11 +60,13 @@ describe('MP-7-11 sparkle entry: a direct open from the edge tab', () => {
       'Ask about this page…',
     );
     expect(page.find('[data-assistant="citation"]')).toBeNull();
-    expect(page.find('[aria-label="Close Agent"]')?.getAttribute('aria-expanded')).toBe('true');
+    expect(
+      page.find('[data-panel="ai"][aria-label="Close Agent"]')?.getAttribute('aria-expanded'),
+    ).toBe('true');
     await page.click('[data-assistant="close"]');
     expect(page.find('[data-assistant="panel"]')).toBeNull();
     await page.click('[aria-label="Open Agent"]');
-    await page.click('[aria-label="Close Agent"]');
+    await page.click('[data-panel="ai"][aria-label="Close Agent"]');
     expect(page.find('[data-assistant="panel"]')).toBeNull();
   });
 

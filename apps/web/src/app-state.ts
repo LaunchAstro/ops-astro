@@ -3,7 +3,7 @@
 // State the application's frame keeps that no screen owns: the address as
 // corrected, whether the browser is connected, and the signed-in person's name.
 
-import { useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import { canonicalOf } from './legacy.ts';
 import type { OperationsClient } from './operations/client.ts';
 import { pathTo } from './routes.ts';
@@ -96,6 +96,15 @@ export function usePersonName(
   }, [client, session]);
   return person !== null && person.of === session ? person.name : null;
 }
+
+/**
+ * That same name, for the surfaces that name the viewer (the dock task panel's
+ * own time entries, MP-4-8): the application provides what `usePersonName`
+ * read, so no surface reads it again and none draws a fixed name. Null until
+ * the server names the person.
+ */
+export const SignedInName = createContext<string | null>(null);
+export const useSignedInName = (): string | null => useContext(SignedInName);
 
 /** The name in a `session.person` answer, or null for anything else. */
 function nameIn(value: unknown): string | null {

@@ -44,12 +44,59 @@
   font: var(--type-display);
   letter-spacing: var(--type-display-tracking);
   text-transform: var(--type-display-case);
+  /* A long name wraps at 390 rather than clipping (MP-4-1). */
   overflow-wrap: anywhere;
 }
 /* Refresh sits outside the read (TaskDetail.tsx says why), at the page's end. */
 .tpr__refresh {
   display: flex;
   justify-content: flex-end;
+}
+/* The dock panel's live ticks sit in a strip of their own (MP-4-10). */
+.tpr__strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-4);
+}
+.tpr__fact {
+  display: grid;
+  gap: 0.15rem;
+}
+/* The rank's calculation, under the fact strip (MP-4-2). */
+.tpr__calc {
+  margin: 0;
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+  color: var(--ink-faint);
+}
+/* Inert on the task page: the strip's ticks say what the record says and do
+   nothing, so the cursor is the default one, never the pointer (MP-4-2, D-08).
+   They are the kit's tick box otherwise (`.mstrip .check` below). */
+.tpr__mark {
+  cursor: default;
+}
+/* The live ticks (MP-4-10, DP-16, DP-17): the dock panel's, which do turn. */
+.tpr__tick {
+  display: inline-grid;
+  place-items: center;
+  inline-size: 18px;
+  block-size: 18px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--accent);
+  cursor: pointer;
+}
+.tpr__tick:hover,
+.tpr__tick[aria-checked='true'] {
+  border-color: var(--accent);
+}
+.tpr__tick:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.tpr__tick[aria-disabled='true'] {
+  cursor: progress;
 }
 /* TP-10: the read-only field grid, DS-COMP-26 inline form (5 / 2 / 1). */
 .taskform {
@@ -87,6 +134,7 @@
   text-transform: var(--type-eyebrow-case);
   color: var(--text-muted);
 }
+/* A field's value as words (TP-10): DS-TOK-117 in the secondary ink. */
 .sb__state {
   margin: 0;
   padding: 0.45rem 0;
@@ -95,6 +143,35 @@
   text-transform: var(--type-body-case);
   color: var(--text-2);
   overflow-wrap: anywhere;
+}
+
+/* The dock task panel's field grid (DP-18 to DP-25, `.sb__grid`): label and
+   control pairs, two to a line, one below 641; a field that is more than a
+   pair (Assign to AI, the tags, a refusal) takes the whole line. */
+.dtp__fields {
+  display: grid;
+  grid-template-columns: 4.4rem minmax(0, 1fr) 4.4rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.4rem var(--s-3);
+}
+@media (width <= 640px) {
+  .dtp__fields {
+    grid-template-columns: 4.4rem minmax(0, 1fr);
+  }
+}
+.dtp__fields > :is(.field, .tf__tags, .field__error, p) {
+  grid-column: 1 / -1;
+}
+/* DS-PRIM-5, the field select, on the panel and the page's Status: 37 tall. */
+.dtp__fields select.input,
+[data-task-status] select.input {
+  box-sizing: border-box;
+  block-size: 2.3125rem;
+  padding: 0 var(--s-3);
+  background: var(--paper);
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
 }
 
 /* The page's ruled sections (DS-COMP-22): a rule above, the 24 gutter. The
@@ -162,7 +239,7 @@
   cursor: default;
 }
 /* Its state rides on data-on, since a picture takes no aria-checked. */
-.mstrip .check[data-on='true'] {
+.mstrip .check[data-on='yes'] {
   border-color: var(--accent);
 }
 /* "derived": the calculation-source word after a derived cell's label. */
@@ -256,7 +333,9 @@
   gap: var(--s-3);
 }
 .sb__k,
-.sb__meta {
+.sb__meta,
+.tpr__crumb [data-crumb='key'],
+.sb__steplist [data-step-count] {
   font: var(--type-eyebrow);
   letter-spacing: var(--type-eyebrow-tracking);
   text-transform: var(--type-eyebrow-case);
@@ -273,10 +352,14 @@
   padding: var(--s-2) 0;
   border-bottom: 1px solid var(--border);
 }
-.sbact__meta {
+/* A task key prints as typed (MP-4-14): the data style's case is none. */
+.sbact__meta,
+.tt__more {
   font: var(--type-data);
   letter-spacing: var(--type-data-tracking);
   text-transform: var(--type-data-case);
+}
+.sbact__meta {
   color: var(--ink-faint);
 }
 /* The staged-output rows (DS-TASK-6): a lined box of label-over-value rows. */
@@ -453,4 +536,140 @@
   letter-spacing: var(--type-caption-tracking);
   text-transform: var(--type-caption-case);
   color: var(--text-muted);
+}
+
+/* The panel doors (TT-06): a centred line of mono text across the pane that
+   sends the edit to the dock task panel. Drawn but not pressable while no
+   panel is there to open, and then it looks inert. */
+.tt__more {
+  display: block;
+  width: 100%;
+  padding: var(--s-2) 0;
+  border: 0;
+  background: none;
+  color: var(--ink-muted);
+  text-align: center;
+  cursor: pointer;
+}
+.tt__more:hover:not(:disabled) {
+  color: var(--accent);
+}
+.tt__more:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.tt__more:disabled {
+  cursor: default;
+}
+
+/* The burn bar (MP-4-6, DT-09): logged time against the estimate, capped at
+   the track's end; the fill turns danger only past the estimate. */
+.sb__burn {
+  height: 4px;
+  margin: var(--s-1) 0;
+  background: var(--border);
+}
+.sb__burn > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+.sb__burn[data-danger='true'] > span {
+  background: var(--danger);
+}
+
+/* A gate step (MP-4-4, DT-04): no tick; the note sits right of the title on
+   one line, and at 640 and below drops to a line of its own (D-17). */
+.sb__step[data-gate] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-2);
+}
+.sb__gate-note {
+  margin-inline-start: auto;
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+@media (width <= 640px) {
+  .sb__gate-note {
+    flex-basis: 100%;
+    margin-inline-start: 0;
+    white-space: normal;
+  }
+}
+
+/* -- The description and the agent brief (MP-4-7, DP-34, DP-35, TT-01, TA-10).
+   One font rule (R60): the description is sans on every surface, and so is
+   the rendered brief; mono is kept for the brief's markdown field alone. --- */
+.tt__prose {
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+  color: var(--text-2);
+}
+.md p,
+.md ul,
+.md ol {
+  margin: 0 0 var(--s-2);
+}
+.tf__ta {
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+  width: 100%;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--rule-faint);
+  background: var(--surface);
+  color: var(--text);
+  resize: vertical;
+}
+.tf__ta:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+.tf__ta--md {
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
+
+/* MP-4-5 thread: replies one level under their message (R42); the pencil and
+   the × revealed on hover or keyboard focus, and at rest below 900px where
+   there is no hover (DT-17); the client message signal a label (DT-19). */
+.msg__replies {
+  margin: var(--s-2) 0 0 var(--s-4);
+  padding-left: var(--s-3);
+  border-left: 1px solid var(--border);
+}
+.msg--deleted > .card__body {
+  color: var(--text-muted);
+  font-style: italic;
+}
+.msg__acts {
+  display: flex;
+  gap: var(--s-2);
+}
+.msg__acts [data-comment-act='edit'],
+.msg__acts [data-comment-act='delete'] {
+  opacity: 0;
+}
+.msg:hover > .msg__acts [data-comment-act],
+.msg__acts [data-comment-act]:focus-visible {
+  opacity: 1;
+}
+@media (width < 900px) {
+  .msg__acts [data-comment-act='edit'],
+  .msg__acts [data-comment-act='delete'] {
+    opacity: 1;
+  }
+}
+.msg__signal {
+  color: var(--text-muted);
+}
+.msg__signal[data-signal='owed'] {
+  color: var(--warning);
 }

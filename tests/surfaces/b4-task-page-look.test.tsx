@@ -97,7 +97,7 @@ const withProposal = (versions: readonly ReturnType<typeof version>[]) => () =>
   });
 
 describe('B4 the task page as the mockup draws it', () => {
-  it('draws the read-only field grid in the mockup order, sample values where nothing is built', async () => {
+  it('draws the read-only field grid in the mockup order, every value the record’s', async () => {
     const page = await open(withProposal([]));
     await tick();
 
@@ -116,11 +116,10 @@ describe('B4 the task page as the mockup draws it', () => {
     ]);
     const values = page.all('.tpr__facts .sb__state').map((value) => value.textContent);
     expect(values[0]).toBe('Ada');
-    // No read carries a client on batch/1: a sample value, inside the mock label.
-    expect(values[1]).toBe('Meridian Dental');
-    expect(
-      page.all('.tpr__facts .sb__state')[1]?.closest('[data-provenance="mock"]'),
-    ).not.toBeNull();
+    // The read carries the client (MP-4-2): this task has none on file, and a
+    // field the read carries wears no mock label.
+    expect(values[1]).toBe('not set');
+    expect(page.all('.tpr__facts .sb__state')[1]?.closest('[data-provenance="mock"]')).toBeNull();
     expect(values[2]).toBe('2026-10-07');
     expect(values[7]).toBe('Active');
     await page.unmount();
