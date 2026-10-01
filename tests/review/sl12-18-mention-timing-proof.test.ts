@@ -23,7 +23,7 @@ const it = noDatabase ? vitestIt.skip : vitestIt;
 useEmailWorld();
 useTimingWorld();
 
-it('Sol proof, criterion channel settings (per-category choice in the send path): a client who turned client-comment email off is not mailed on a mention', async () => {
+it('a client who turned client-comment email off is not mailed on a mention', async () => {
   await freshInbox();
   const comment = await commentBy(w.task, 'person');
   const item = await w.db.app.withBusiness(

@@ -23,7 +23,7 @@ beforeAll(() => {
 const states = async (item: string): Promise<readonly string[]> =>
   (await attemptsOf(item)).map((row) => row.state);
 
-it('Sol proof, criterion recovery (bounce outcomes, the daily batch): a bounce of a batch email is recorded on every item it covered', async () => {
+it('a bounce of a batch email is recorded on every item it covered', async () => {
   await freshInbox();
   const items = [await itemFor(w.task, 'mention'), await itemFor(w.task, 'assignment')];
   expect(await emailDailyBatch(w.db.app, w.alpha, w.person, timing())).toMatchObject({
