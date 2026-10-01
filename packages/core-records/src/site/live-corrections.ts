@@ -217,16 +217,14 @@ export interface CorrectionDecision {
 }
 
 /**
- * One correction's decision, when the caller's grant covers it at its party
- * (and, for an agent, it was asked under the delegation's own task), or
- * undefined: absent, in another business, on another task or not covered are
- * one answer. Unlocked: it reads, and decides nothing.
+ * One correction's decision, when the caller's grant covers it at its party,
+ * or undefined: absent, in another business or not covered are one answer.
+ * Unlocked: it reads, and decides nothing.
  */
 export async function readCoveredDecision(
   tx: TenantQuery,
   id: string,
   covering: Covering,
-  taskId: string | null = null,
 ): Promise<CorrectionDecision | undefined> {
   const rows = await tx.query<{
     readonly id: string;
@@ -239,14 +237,31 @@ export async function readCoveredDecision(
        from public.live_corrections c
        left join public.people p
          on p.business_id = c.business_id and p.id = c.decided_by_person_id
-      where c.business_id = $1 and c.id = $6
-        and ($7::uuid is null or c.task_id = $7) and ${COVERED}`,
-    [tx.businessId, ...coveringParameters(covering), id, taskId],
+      where c.business_id = $1 and c.id = $6 and ${COVERED}`,
+    [tx.businessId, ...coveringParameters(covering), id],
   );
   const [row] = rows;
   return row === undefined
     ? undefined
     : { correctionId: row.id, state: row.state, approver: row.approver, versionId: row.version_id };
+}
+
+/**
+ * Whether the caller holds the pair at any scope at all. A caller holding
+ * none is refused rather than told an id names nothing; the answer does not
+ * depend on any id, so it confirms none.
+ */
+export async function holdsAnywhere(tx: TenantQuery, covering: Covering): Promise<boolean> {
+  const rows = await tx.query<{ readonly held: boolean }>(
+    `${EFFECTIVE}
+     select exists (
+       select 1 from effective e
+        where e.collection = $1 and e.action = $2
+          and exists (select 1 from unnest($3::text[], $4::uuid[]) as s (kind, id)
+                       where s.kind = e.subject_kind and s.id = e.subject_id)) as held`,
+    coveringParameters(covering),
+  );
+  return rows[0]?.held === true;
 }
 
 /** Every correction the caller may read, newest first; the grant filters inside the query. */

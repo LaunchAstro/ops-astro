@@ -149,6 +149,7 @@ export {
   APPROVER_SETTING,
   GATE_COLLECTION,
   RUN_COLLECTION,
+  holdsAnywhere,
   insertLiveCorrection,
   isActiveMember,
   listCoveredCorrections,

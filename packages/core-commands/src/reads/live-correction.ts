@@ -7,27 +7,33 @@
 //
 // The grant is `run:read`, the request's own collection, asked at the
 // correction's party inside the query (`readCoveredDecision`), so a party
-// grant on one client's site reads no other client's correction. A person
-// reads as a member of the team, as `task.execution` is read; an agent reads
-// under its delegation, which must carry `run` and `read`, on its own task
-// only, with the delegating person's live grant as the ceiling. Not there, in
-// another business, out of reach, malformed: one `NOT_FOUND`, so the read is
-// no oracle for whether an id exists.
+// grant on one client's site reads no other client's correction. A caller
+// holding `run:read` nowhere is refused `SCOPE_NOT_GRANTED` before any id is
+// looked at; for everyone else, not there, in another business, out of reach
+// or malformed is one `NOT_FOUND`, so the read confirms no id. It is the
+// team's, as `task.execution` is, and never an agent's: a delegation holds
+// `run` to `write` (`delegations.ts`, CEILING).
 
 import {
+  holdsAnywhere,
   isUuid,
   readCoveredDecision,
   RUN_COLLECTION,
   subjectsOf,
 } from '../../../core-records/src/index.ts';
-import type { Delegation, Session, TenantQuery } from '../../../core-records/src/index.ts';
+import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
 import type { LiveCorrectionReadResult } from '../../../core-wire/src/index.ts';
-import { refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
+import { refuseCommand, refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
 import { invalid } from '../commands/operands.ts';
-import { refused, type HandlerOutcome } from '../commands/outcome.ts';
 import { isInternalReader } from './tasks.ts';
 
 type Operands = { readonly correctionId: string };
+
+const NO_RUN_READ = refuseCommand(
+  'SCOPE_NOT_GRANTED',
+  [],
+  ['no live grant covers it', 'ask a holder who may delegate'],
+);
 
 export function parseCorrectionRead(
   body: Readonly<Record<string, unknown>>,
@@ -45,34 +51,9 @@ export async function serveCorrectionRead(
   session: Session,
   { correctionId }: Operands,
 ): Promise<LiveCorrectionReadResult | CommandRefusal> {
+  const covering = { subjects: subjectsOf(session), collection: RUN_COLLECTION, action: 'read' };
+  if (!(await holdsAnywhere(tx, covering))) return NO_RUN_READ;
   if (!isInternalReader(session.roleKey) || !isUuid(correctionId)) return refuseNotFound();
-  const correction = await readCoveredDecision(tx, correctionId, {
-    subjects: subjectsOf(session),
-    collection: RUN_COLLECTION,
-    action: 'read',
-  });
+  const correction = await readCoveredDecision(tx, correctionId, covering);
   return correction === undefined ? refuseNotFound() : { ok: true, correction };
-}
-
-export async function readCorrectionAsAgent(
-  tx: TenantQuery,
-  { correctionId }: Operands,
-  delegation: Delegation,
-): Promise<HandlerOutcome> {
-  const carries =
-    delegation.collections.includes(RUN_COLLECTION) && delegation.actions.includes('read');
-  if (!carries || !isUuid(correctionId)) return refused(refuseNotFound());
-  const correction = await readCoveredDecision(
-    tx,
-    correctionId,
-    {
-      subjects: [{ kind: 'person', id: delegation.delegatePersonId }],
-      collection: RUN_COLLECTION,
-      action: 'read',
-    },
-    delegation.purposeScope.id,
-  );
-  return correction === undefined
-    ? refused(refuseNotFound())
-    : { recordId: null, revision: null, detail: { correction } };
 }

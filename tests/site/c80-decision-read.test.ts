@@ -6,7 +6,8 @@
 // party). Three real crossings, each beside a reader in scope who does see
 // the correction, and each refusal compared byte for byte with the answer to
 // an id that names nothing: another business, another client party in the
-// same business, another person's correction under a live delegation.
+// same business, and an agent under another person's live delegation, which
+// reads none (a delegation holds run to write).
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -103,21 +104,31 @@ describe.skipIf(serverUrl === undefined)('C80 decision read, another client', ()
 describe.skipIf(serverUrl === undefined)(
   'C80 decision read, another person under a delegation',
   () => {
-    it('an agent reads the corrections of its delegated task and of no other', async () => {
+    it('an agent under a live delegation reads no decision, its own task’s included', async () => {
       const picked = await w.world.pickUp(w.ava, 'the about page, read back');
       const made = await w.world.asAgent(
         { ...requestBody(w.partyA, picked.taskId), operationId: randomUUID() },
         picked.credential,
       );
       const own = String(detailOf(made)['correctionId']);
-      const seen = await readAsAgent(own, picked.credential);
-      expect(detailOf(seen)['correction']).toMatchObject({ correctionId: own, state: 'requested' });
-      // Another person's correction, under another task of the same business.
+      // The delegating person reads it: the agent's refusal is the delegation's.
+      expect(readCode(await readAs(w.ava, own))).toBe('not-a-refusal');
       const others = await requested(w.cal);
-      const crossed = await readAsAgent(others.id, picked.credential);
-      expect(codeOf(crossed)).toBe('NOT_FOUND');
-      expect(crossed).toStrictEqual(await readAsAgent(randomUUID(), picked.credential));
+      const onOwn = await readAsAgent(own, picked.credential);
+      expect(codeOf(onOwn)).toBe('DELEGATION_EXCLUDES_OPERATION');
+      expect(await readAsAgent(others.id, picked.credential)).toStrictEqual(onOwn);
+      expect(await readAsAgent(randomUUID(), picked.credential)).toStrictEqual(onOwn);
+      expect(JSON.stringify(onOwn)).not.toContain(own);
       expect(await w.stateOf(others.id)).toBe('requested');
     });
   },
 );
+
+describe.skipIf(serverUrl === undefined)('C80 decision read, no run:read', () => {
+  it('a member holding run:read nowhere is refused alike for a real and an unknown id', async () => {
+    const asked = await requested(w.ava);
+    const refusedReal = await readAs(w.admin, asked.id);
+    expect(readCode(refusedReal)).toBe('SCOPE_NOT_GRANTED');
+    expect(refusedReal).toStrictEqual(await readAs(w.admin, randomUUID()));
+  });
+});

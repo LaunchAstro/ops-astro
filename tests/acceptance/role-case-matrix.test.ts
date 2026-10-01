@@ -31,7 +31,7 @@
 // run's exit code.
 
 import { randomUUID } from 'node:crypto';
-import { C80_REQUEST, seedLiveCorrection } from './c80-bodies.ts';
+import { C80_REQUEST } from './c80-bodies.ts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   COMMAND_SURFACE,
@@ -570,12 +570,6 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
     // `AGENT_SURFACE` is not an agent's to call whatever its purpose, and
     // everything left is the one-task ceiling.
     const table = 'i-after-pickup-table';
-    const siblingCorrection = await seedLiveCorrection(
-      harness.world.db.app,
-      harness.world.alpha,
-      sibling.id,
-      harness.world.mia,
-    );
     for (const declaration of COMMAND_SURFACE) {
       if (BEFORE_PICKUP.has(declaration.name)) {
         // The queue and a pickup are reachable with no delegation at all, so a
@@ -615,13 +609,12 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
         // purpose and the delegating person's effective grants on the task,
         // never the pre-pickup pair and never a pair outside the purpose. The
         // person here holds what the purpose carries, so it is all of it:
-        // the harness admin holds run:write and run:read (C80's decision
-        // read), so the mint reached run, and those two on it (MP-6-2, ORCH34).
+        // the harness admin holds run:write, so the mint reached run, and
+        // write alone on it (MP-6-2, ORCH34).
         const reported = (after['grants'] as readonly { collection: string; action: string }[])
           .map((one) => `${one.collection}:${one.action}`)
           .toSorted();
         expect(reported, declaration.name).toStrictEqual([
-          'run:read',
           'run:write',
           'task:comment',
           'task:read',
@@ -666,13 +659,11 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
           ? 'DELEGATION_EXCLUDES_DECISION'
           : declaration.name === 'run.child_handback'
             ? 'DELEGATION_NOT_LIVE'
-            : declaration.name === 'live_correction.read'
-              ? 'NOT_FOUND'
-              : AGENT_SURFACE.has(declaration.name)
-                ? 'DELEGATION_OUT_OF_PURPOSE'
-                : declaration.name === 'task.triage'
-                  ? 'DELEGATION_EXCLUDES_INTAKE'
-                  : 'DELEGATION_EXCLUDES_OPERATION',
+            : AGENT_SURFACE.has(declaration.name)
+              ? 'DELEGATION_OUT_OF_PURPOSE'
+              : declaration.name === 'task.triage'
+                ? 'DELEGATION_EXCLUDES_INTAKE'
+                : 'DELEGATION_EXCLUDES_OPERATION',
       );
       // A heartbeat, a dispatch, an observe, a check or a model call, like a
       // handback, names its task through the lease and never through a stray
@@ -680,8 +671,6 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       // lease. C80's request names its task through `taskId`, never a stray
       // `recordId`, so the sibling is reached through that operand. AW-11's
       // hand-over goes by the lease too; the helper's handback by its credential.
-      // C80's decision read names a correction on the sibling, answered as an
-      // id that names nothing: telling it apart would say the id exists.
       const probe = harness.probeBody(declaration);
       const body = [
         'task.heartbeat',
@@ -709,9 +698,7 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
           ? probe
           : declaration.name === 'live_correction.request'
             ? { ...probe, ...C80_REQUEST, partyId: randomUUID(), taskId: sibling.id }
-            : declaration.name === 'live_correction.read'
-              ? { correctionId: siblingCorrection.correctionId }
-              : { ...probe, recordId: sibling.id };
+            : { ...probe, recordId: sibling.id };
       // eslint-disable-next-line no-await-in-loop
       const answer = await harness.asAgent(declaration.name, body, credential);
       observe('agent-after-pickup', table, declaration.name, answer, expected);
