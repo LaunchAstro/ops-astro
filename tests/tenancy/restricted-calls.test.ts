@@ -660,7 +660,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(inserting.length).toBeGreaterThan(0);
   }, 120_000);
 
-  it('calls every function as every caller, and only the granted three run', async () => {
+  it('calls every function as every caller, and only the granted four run', async () => {
     const wrong: string[] = [];
     for (const fn of functions) {
       for (const caller of [...TABLE_CALLERS, 'owner'] as const) {
@@ -686,18 +686,21 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     const definer = (signature: string): CatalogueFunction | undefined =>
       definers().find((fn) => fn.signature === signature);
 
-    // Exactly three, each for a named reason. The append-only trigger refuses
+    // Exactly four, each for a named reason. The append-only trigger refuses
     // the owner itself. The fair share's count (AW-01, ORCH-DECISION SL11
     // AW-01) is the one read across businesses: a provider route's ceiling is
     // the installation's, which a tenant transaction cannot count under row
     // security. It answers one number and no id, and only the broker's role
     // may execute it (tests/broker/aw-01-broker-fair-share.test.ts). The drill
-    // stamp (C55) writes only now(), and only the drill's identity runs it.
-    it('are exactly three, each with its search path pinned', () => {
+    // stamp (C55) writes only now(), and only the drill's identity runs it. The
+    // pickup path (SL11-30, 0220) is the one way a lease is written, in the
+    // caller's own business (tests/db/lease-pickup-path.test.ts).
+    it('are exactly four, each with its search path pinned', () => {
       expect(definers().map((fn) => fn.signature)).toStrictEqual([
         'handback_reports_append_only()',
         'model_route_room(text,integer)',
         'ops.record_tested_restore()',
+        'take_lease(uuid,uuid,uuid,uuid,uuid,timestamp with time zone,text)',
       ]);
     });
 
@@ -724,6 +727,13 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
       expect(stamp?.trigger).toBe(false);
       expect(stamp?.argumentTypes).toStrictEqual([]);
       expect(stamp?.config).toStrictEqual(['search_path=pg_catalog']);
+    });
+
+    it('the fourth is the pickup path, fired by nothing and under row security', () => {
+      const fn = definer('take_lease(uuid,uuid,uuid,uuid,uuid,timestamp with time zone,text)');
+      expect(fn?.trigger).toBe(false);
+      expect(fn?.config).toStrictEqual(['search_path=pg_catalog, pg_temp']);
+      expect(fn?.firedBy).toStrictEqual([]);
     });
   });
 

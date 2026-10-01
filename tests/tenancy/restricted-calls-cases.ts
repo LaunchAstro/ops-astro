@@ -93,10 +93,11 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'inbox_attention inbox_delivery_attempts'],
   ['siu', 'inbox_items'],
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
-  ['siu', 'leases planned_steps proposal_lineages proposal_versions'],
-  // AW-02: a historical run is never rewritten; the application moves its
-  // state alone, by the column grant in COLUMN_UPDATES.
+  ['siu', 'planned_steps proposal_lineages proposal_versions'],
+  // AW-02 and SL11-30: a historical run and a lease's holder are never rewritten; the
+  // application moves their states by COLUMN_UPDATES, and takes a lease by take_lease.
   ['si', 'planned_runs'],
+  ['s', 'leases'],
   ['siu', 'outage_reports outage_runs reservations task_envelopes'],
   // 0049 (C59): a factor is written and moved on, never deleted.
   ['siu', 'second_factors'],
@@ -148,8 +149,9 @@ export const APPLICATION_GRANTS: Readonly<Record<string, string>> = Object.fromE
 const REVOKED: Readonly<Record<string, { readonly from: string; readonly letters: string }>> = {
   'public.person_logins': { from: '0028', letters: 'd' },
   'public.person_merges': { from: '0028', letters: 'd' },
-  // 0192 takes back update on the whole run and grants it on `state` alone.
+  // 0192 and 0220 take back update on the whole row (0220 insert too) and grant it by column.
   'public.planned_runs': { from: '0192', letters: 'u' },
+  'public.leases': { from: '0220', letters: 'iu' },
 };
 
 /**
@@ -181,6 +183,8 @@ export const APPLICATION_EXECUTES: readonly string[] = [
   'public.audit_event_hash',
   // 0058 (S0-5): security invoker, so it reads no more than the caller may.
   'public.first_client_readiness',
+  // 0220 (SL11-30): the pickup path, the one way a lease is written.
+  'public.take_lease',
 ];
 
 /** What the server said, reduced to what a contract can name. */
