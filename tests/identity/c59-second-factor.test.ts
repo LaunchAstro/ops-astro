@@ -97,6 +97,23 @@ describe('C59 the adapter passes the assurance through beside sub', () => {
 });
 
 describe('C59 the adapter passes the assurance through beside sub', () => {
+  it('C59 assurance times: the first sign-in is the earliest first factor, the factor the latest', async () => {
+    const token = await tokenWith({
+      aal: 'aal2',
+      amr: [
+        { method: 'otp', timestamp: 1_900_000_150 },
+        { method: 'totp', timestamp: 1_900_000_050 },
+        { method: 'password', timestamp: 1_900_000_000 },
+        { method: 'totp', timestamp: 1_900_000_120 },
+      ],
+    });
+    expect(await verify(requestWith(token))).toMatchObject({
+      assurance: { level: 'aal2', signedInAt: 1_900_000_000, factorAt: 1_900_000_120 },
+    });
+  });
+});
+
+describe('C59 the adapter passes the assurance through beside sub', () => {
   // Every malformed shape is the lowest assurance, never a guess: a claim the
   // adapter cannot read grants nothing a missing claim would not.
   it.each([
