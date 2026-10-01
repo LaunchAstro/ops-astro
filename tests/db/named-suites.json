@@ -402,6 +402,8 @@
     "tests/broker/aw-11-child-graph-isolation.test.ts",
     "tests/harness/aw-12-trigger-read.test.ts",
     "tests/harness/aw-12-isolation.test.ts",
+    "tests/harness/aw-12-authorities.test.ts",
+    "tests/harness/aw-12-authorities-broker.test.ts",
     "tests/runtime/aw-02-pins.test.ts",
     "tests/runtime/aw-02-isolation.test.ts",
     "tests/runtime/aw-02-lease-race.test.ts",

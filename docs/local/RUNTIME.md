@@ -1935,9 +1935,32 @@ adoption is the owner's separate decision.
 
 Tests: `aw-12-trigger`, `aw-12-trigger-read`, `aw-12-isolation`,
 `aw-12-candidates` (with `AW-12 candidates kept out of the product`; the
-candidate audit, a dependency audit at each pinned commit, is part two's) and
-`aw-12-fakes`. The refusal tests, the representative case, the comparison
-families, the ledger and the gates wait on AW-08, AW-09 and AW-10.
+candidate audit, a dependency audit at each pinned commit, is part two's),
+`aw-12-fakes` and `aw-12-authorities` (part two, three files). The
+authorities suite holds the product's side of the eight refusals, the boundary
+any candidate would sit behind, with no candidate run: the trigger reads "not
+yet". A test-only stand-in (`tests/harness/framework-stand-in.ts`) takes a
+worker's place, handed a worker's settings, one model client and tools by
+name, with its own state store and retry setting. One case per authority,
+each with a positive control, and each shown red once against a broken
+boundary in the test world: deleting the stand-in's whole store leaves the
+task, its versions and its history as they were, and its plan is in no
+product row (A1); its own resume from its checkpoint (pickup, heartbeat,
+dispatch, and a decision as the agent) moves nothing until a person decides
+the gate (A2); its own model call with no reservation to cover it, on spent
+work, after the hand-back or on an invented lease, is refused with nothing
+sent (A3); a planted provider key in custody's file reaches the provider
+and nothing the stand-in, the broker's configuration, the environment or the
+ledger holds (A4); a tool the catalogue does not name is refused and
+recorded, as a step at the broker and an audit row on the agent surface (A5);
+its loop over the four fakes needs no egress, and a tool that calls home is
+refused and recorded at the network layer (A6); one failed model call with
+its retries off gives one dropped attempt and exactly one new attempt and
+reservation, the hand-back's replay none more (A7); and the restricted worker
+role, the canary for a harness's role, is refused 42501 on updating the run,
+its steps and its events, which the application role reaches (A8). No product
+code changed for them. The per-candidate refusal runs, the representative
+case, the comparison families, the ledger and the gates wait on the trigger.
 
 ## The agent's output takes its own review round
 
