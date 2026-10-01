@@ -13,7 +13,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { mintDelegation } from '../../packages/core-records/src/authority/delegations.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import { enrol, type Member } from '../commands/fixture.ts';
+import { enrol, grantTo, type Member } from '../commands/fixture.ts';
 import {
   liveWork,
   openSchedules,
@@ -154,6 +154,19 @@ describe.skipIf(serverUrl === undefined)('a lease is taken only through the pick
       accepted: true,
     });
     expect(await take(s.business, notTheApprover)).toMatchObject({ accepted: true });
+  });
+
+  it('a person with live write takes work another person approved, under their own name only', async () => {
+    const colleague = await enrol(s.db.app, s.business, 'colleague');
+    await s.db.app.withBusiness(s.business, async (tx) => await grantTo(tx, colleague, 'write'));
+    const reservation = (await approvedWork(s))['reservationId'];
+    const own = { reservation, holder: colleague.actorId, authorisedBy: colleague.personId };
+    // Named under another person's name (here the approver's), the claim is not theirs.
+    expect(await take(s.business, { ...own, authorisedBy: s.decider.personId })).toMatchObject(
+      NOT_COVERED,
+    );
+    // Their own live write on the task covers it; approving is not a pickup's authority.
+    expect(await take(s.business, own)).toMatchObject({ accepted: true, rows: [{ fence: 1 }] });
   });
 
   it('the pickup path refuses work that is not claimable, or a lease past its lifetime', async () => {
