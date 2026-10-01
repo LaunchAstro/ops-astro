@@ -95,6 +95,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 0081: a tag stays in the vocabulary; a task's tag is a row deleted on removal.
   ['si', 'tags'],
   ['sid', 'task_tags'],
+  // 0341: a conversation member's row; a member leaves by a mark, never a delete.
+  ['siu', 'team_conversation_members'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
   // 0028 revokes delete on these two: identity history is kept (0002).
   ['siu', 'person_logins person_merges'],

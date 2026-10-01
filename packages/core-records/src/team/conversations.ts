@@ -29,13 +29,18 @@ export type ConversationKind = 'direct' | 'group';
 
 const SYSTEM = { writeMode: 'system', owningOperations: [], escalatingOperation: null } as const;
 
-/** Every field is the server's: the command that starts a conversation writes them. */
+/**
+ * Every field is the server's: the command that starts a conversation writes
+ * them. Prefixed, because an installed system key is refused at the top level
+ * of every request body (`prepare.ts`), and `name` there is a tag's and a
+ * client's.
+ */
 export const CONVERSATION_SPINE: readonly SpineField[] = [
-  { key: 'kind', label: 'Kind', valueType: 'text', slot: 'txt_1', ...SYSTEM },
-  { key: 'name', label: 'Name', valueType: 'text', slot: 'txt_2', ...SYSTEM },
+  { key: 'chat_kind', label: 'Kind', valueType: 'text', slot: 'txt_1', ...SYSTEM },
+  { key: 'chat_name', label: 'Name', valueType: 'text', slot: 'txt_2', ...SYSTEM },
   // The two person ids of a direct conversation, in order: the one per pair.
-  { key: 'pair', label: 'Pair', valueType: 'text', slot: 'txt_3', ...SYSTEM },
-  { key: 'creator', label: 'Started by', valueType: 'uuid', slot: 'uuid_1', ...SYSTEM },
+  { key: 'chat_pair', label: 'Pair', valueType: 'text', slot: 'txt_3', ...SYSTEM },
+  { key: 'chat_creator', label: 'Started by', valueType: 'uuid', slot: 'uuid_1', ...SYSTEM },
 ];
 
 /** The record type ids a conversation read needs, or undefined where either is not installed. */
@@ -98,7 +103,8 @@ export async function directConversation(
   const id = randomUUID();
   await tx.query(
     `insert into public.records (business_id, id, record_type_id, data)
-     values ($1, $2, $3, jsonb_build_object('kind', 'direct', 'pair', $4::text, 'creator', $5::text))`,
+     values ($1, $2, $3, jsonb_build_object(
+       'chat_kind', 'direct', 'chat_pair', $4::text, 'chat_creator', $5::text))`,
     [tx.businessId, id, types.conversationTypeId, pair, from],
   );
   await tx.query(

@@ -24,7 +24,9 @@ select t.business_id, gen_random_uuid(), 'team_conversation', 'Team conversation
       where c.business_id = t.business_id and c.key = 'team_conversation'
    );
 
--- The rows `installTaskSpine` writes for a new business: four system fields.
+-- The rows `installTaskSpine` writes for a new business: four system fields,
+-- prefixed because an installed system key is refused at the top level of every
+-- request body, and `name` there is a tag's and a client's.
 insert into public.field_defs
   (business_id, id, record_type_id, key, label, value_type, slot, write_mode,
    owning_operation, escalating_operation, visibility_class, searchable,
@@ -33,10 +35,10 @@ select t.business_id, gen_random_uuid(), t.id, f.key, f.label, f.value_type, f.s
        null, null, 'internal', false, false, 'core'
   from public.record_types t
  cross join (values
-   ('kind', 'Kind', 'text', 'txt_1'),
-   ('name', 'Name', 'text', 'txt_2'),
-   ('pair', 'Pair', 'text', 'txt_3'),
-   ('creator', 'Started by', 'uuid', 'uuid_1')
+   ('chat_kind', 'Kind', 'text', 'txt_1'),
+   ('chat_name', 'Name', 'text', 'txt_2'),
+   ('chat_pair', 'Pair', 'text', 'txt_3'),
+   ('chat_creator', 'Started by', 'uuid', 'uuid_1')
  ) as f (key, label, value_type, slot)
  where t.key = 'team_conversation'
    and not exists (
