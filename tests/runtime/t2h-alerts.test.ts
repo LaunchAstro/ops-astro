@@ -229,6 +229,19 @@ describe.skipIf(serverUrl === undefined)('T2h the alert record', () => {
     },
   );
 
+  // #287 A2: the step went out unobserved, so the hold stays and a person records the outcome.
+  it('a completed handback of a dispatched step raises an awaiting_person liability_unknown alert, as observe does', async () => {
+    const w = await work();
+    await dispatched(w);
+    appliedDetail(
+      await asAgent(s, { ...handbackBody(w.picked), outcome: 'completed' }, w.credential),
+      'task.handback',
+    );
+    expect(await alertsOn(w.taskId)).toStrictEqual([
+      { kind: 'awaiting_person', waiting_reason: 'liability_unknown' },
+    ]);
+  });
+
   it('a cancellation raises one cancelled alert; cancelling twice raises no second', async () => {
     const w = await approved();
     const cancel = () =>
