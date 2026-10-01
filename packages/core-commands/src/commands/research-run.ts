@@ -3,16 +3,23 @@
 // WF-7: what starting a research run asks, and the claim it writes. Called by
 // `task.propose` (`tasks-propose.ts`) under the task lock, in its transaction.
 
-import { checkAuthority, checkDelegatedAuthority } from '../../../core-records/src/index.ts';
+import {
+  checkAuthority,
+  checkDelegatedAuthority,
+  wayfinderFacts,
+} from '../../../core-records/src/index.ts';
 import type { Delegation, Subject, TenantQuery } from '../../../core-records/src/index.ts';
 import type { TaskRow } from './context.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
+import { clearAsk, openAsk } from './research-failed.ts';
 
 /**
  * The research checks, in order: `run:write` (`researchRunRefusal`), then a
- * claim held by someone else, then `task:assign` where the start would write
- * the claim (ORCH36-WF7-ASSIGN). Asked before the revision, so a starter who
- * lost the race is told it is claimed.
+ * stop (WF-7, twice failed: while the map's owner is asked, only they start
+ * it, and their start is their decision, past another's claim), then a claim
+ * held by someone else, then `task:assign` where the start would write the
+ * claim (ORCH36-WF7-ASSIGN). Asked before the revision, so a starter who lost
+ * the race is told it is claimed.
  */
 export async function researchStartRefusal(
   tx: TenantQuery,
@@ -23,7 +30,11 @@ export async function researchStartRefusal(
 ): Promise<CommandRefusal | undefined> {
   const refusal = await researchRunRefusal(tx, ticket.id, subjects, delegation);
   if (refusal !== undefined) return refusal;
-  if (claimedByAnother(ticket, starter)) {
+  const asked = await openAsk(tx, ticket.id);
+  if (asked !== undefined && starter !== (await decidesStop(tx, ticket.id, asked))) {
+    return refuseCommand('TRANSITION_NOT_PERMITTED', ['stopped'], [STOPPED_FIX]);
+  }
+  if (asked === undefined && claimedByAnother(ticket, starter)) {
     return refuseCommand('TRANSITION_NOT_PERMITTED', ['claimed'], [CLAIMED_FIX]);
   }
   // Writing the claim asks what `task.claim` asks.
@@ -33,14 +44,23 @@ export async function researchStartRefusal(
   return undefined;
 }
 
-/** The ticket's revision after the start: claimed for the starter if no one held it. */
+/**
+ * The ticket's revision after the start: claimed for the starter if no one
+ * held it. A start past a stop is the map's owner's (`researchStartRefusal`),
+ * so it is their decision and their open item clears with it.
+ */
 export async function claimUnclaimed(
   tx: TenantQuery,
   ticket: TaskRow,
   starter: string,
 ): Promise<number> {
+  await clearAsk(tx, ticket.id, starter);
   return isSet(ticket.data['assignee']) ? ticket.revision : await claimFor(tx, ticket.id, starter);
 }
+
+/** Who starts a stopped ticket: its map's owner, or the person asked if the map has none now. */
+const decidesStop = async (tx: TenantQuery, taskId: string, asked: string) =>
+  (await wayfinderFacts(tx, taskId))?.mapOwner ?? asked;
 
 /**
  * WF-7: Run on a research ticket starts a research run, which is `run:write`
@@ -68,6 +88,7 @@ async function researchRunRefusal(
 }
 
 const RUN_WRITE_FIX = 'Starting a research run needs run:write on the ticket; ask for it.';
+const STOPPED_FIX = "This research failed twice and waits on its map's owner; they start it again.";
 const CLAIMED_FIX = 'Someone else has claimed this ticket; its run is theirs to start.';
 const ASSIGN_FIX =
   'Starting the run claims the ticket, which needs task:assign; ask for it, or for the claim.';

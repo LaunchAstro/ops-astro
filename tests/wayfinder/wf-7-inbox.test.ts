@@ -93,15 +93,21 @@ const approve = async (w: Schedules, proposal: Detail): Promise<Detail> =>
     'task.decide',
   );
 
+/** Starting a run on the ticket as `by` (the decider unless named), at its live revision. */
+const start = async (w: Schedules, ticket: string, by?: Member) => {
+  const body = proposeBody(ticket, await revisionOf(w, ticket), { purpose: freshPurpose() });
+  return by === undefined
+    ? await asPerson(w, body)
+    : await executeCommand(w.db.app, w.business, by.presented, 'api', body as never);
+};
+
 /** One research run on the ticket, started, approved, picked up by the agent. */
-const runOn = async (w: Schedules, ticket: string): Promise<{ runId: string; picked: Detail }> => {
-  const proposal = appliedDetail(
-    await asPerson(
-      w,
-      proposeBody(ticket, await revisionOf(w, ticket), { purpose: freshPurpose() }),
-    ),
-    'task.propose',
-  );
+const runOn = async (
+  w: Schedules,
+  ticket: string,
+  by?: Member,
+): Promise<{ runId: string; picked: Detail }> => {
+  const proposal = appliedDetail(await start(w, ticket, by), 'task.propose');
   const picked = await pickup(w, (await approve(w, proposal))['reservationId']);
   return { runId: String(proposal['runId']), picked };
 };
@@ -122,8 +128,8 @@ const fail = async (w: Schedules, picked: Detail): Promise<void> => {
   );
 };
 
-const failedRun = async (w: Schedules, ticket: string): Promise<string> => {
-  const { runId, picked } = await runOn(w, ticket);
+const failedRun = async (w: Schedules, ticket: string, by?: Member): Promise<string> => {
+  const { runId, picked } = await runOn(w, ticket, by);
   await fail(w, picked);
   return runId;
 };
@@ -184,6 +190,34 @@ const runsOn = async (w: Schedules, ticket: string): Promise<number> =>
     )
   )[0]?.n ?? 0;
 
+interface Ask {
+  readonly recipient: string;
+  readonly state: string;
+  readonly closedBy: string | null;
+}
+
+/** The map owner's asks on the ticket (items about the ticket itself), oldest first. */
+const asksOn = async (w: Schedules, ticket: string): Promise<Ask[]> => [
+  ...(await w.db.admin.execute<Ask>(
+    `select recipient_person_id as recipient, work_state as state,
+            closed_by_person_id as "closedBy"
+       from public.inbox_items
+      where business_id = $1 and subject_record_id = $2
+        and fact_kind = 'record' and fact_id = $2
+      order by raised_at, id`,
+    [w.business, ticket],
+  )),
+];
+
+/** Run on the ticket for `member` too: the map's owner starts it again after a stop. */
+const mayRun = async (w: Schedules, member: Member, ticket: string): Promise<void> => {
+  await w.db.app.withBusiness(w.business, async (tx) => {
+    await grantTo(tx, member, 'write', { kind: 'record', id: ticket }, false, 'run');
+  });
+};
+
+const STOPPED = { code: 'TRANSITION_NOT_PERMITTED', names: ['stopped'] };
+
 beforeAll(async () => {
   if (noDatabase) return;
   s = await openSchedules('wf7inbox', 1_000_000);
@@ -229,14 +263,6 @@ it("WF-7 twice failed: the second failed run on a research ticket stops, reports
   expect(said).toHaveLength(1);
   expect(said[0]).toMatchObject({ type: 'system', audience: 'internal' });
   expect(said[0]?.body).toMatch(/failed twice/u);
-  // It stops: nothing starts a third run on its own.
-  expect(await runsOn(s, ticket)).toBe(2);
-  // A third failure raises no second item to the owner and no second report.
-  await failedRun(s, ticket);
-  expect(
-    (await itemsOn(s, ticket)).filter((item) => item.recipient === owner.personId),
-  ).toHaveLength(1);
-  expect(await commentsOn(s, ticket)).toHaveLength(1);
 }, 180_000);
 
 it("WF-7 twice failed isolation: a ticket's failures are its own, counted in its own business and told only to its own map's owner", async () => {
@@ -266,4 +292,102 @@ it("WF-7 twice failed isolation: a ticket's failures are its own, counted in its
       (item) => item.recipient === launcher && item.factKind === 'record',
     ),
   ).toStrictEqual([]);
+}, 180_000);
+
+it('Sol proof, criterion WF-7 twice failed: after the second failure, a new run waits on the map owner', async () => {
+  const ticket = await researchOnMap(s, owner, 'wf7 waits on owner');
+  await mayRun(s, owner, ticket);
+  await failedRun(s, ticket);
+  await failedRun(s, ticket);
+  // The decider's third start is refused and writes nothing: no run, no claim, no revision.
+  const before = await revisionOf(s, ticket);
+  expect(await start(s, ticket)).toMatchObject(STOPPED);
+  expect(await runsOn(s, ticket)).toBe(2);
+  expect(await revisionOf(s, ticket)).toBe(before);
+  expect(await asksOn(s, ticket)).toStrictEqual([
+    { recipient: owner.personId, state: 'open', closedBy: null },
+  ]);
+  // The map's owner starts it: that is their decision, and it closes their item.
+  await runOn(s, ticket, owner);
+  expect(await runsOn(s, ticket)).toBe(3);
+  expect(await asksOn(s, ticket)).toStrictEqual([
+    { recipient: owner.personId, state: 'cleared', closedBy: owner.personId },
+  ]);
+}, 180_000);
+
+it('Sol proof, criterion WF-7 twice failed: two more failures after the owner clears the item ask again', async () => {
+  const ticket = await researchOnMap(s, owner, 'wf7 asks again');
+  await mayRun(s, owner, ticket);
+  await failedRun(s, ticket);
+  await failedRun(s, ticket);
+  // The owner looks and runs it again; it fails a third time, once since their decision.
+  await failedRun(s, ticket, owner);
+  expect(await asksOn(s, ticket)).toStrictEqual([
+    { recipient: owner.personId, state: 'cleared', closedBy: owner.personId },
+  ]);
+  expect(await commentsOn(s, ticket)).toHaveLength(1);
+  // Once since is not twice: the decider may start it, and its failure is the second since.
+  await failedRun(s, ticket);
+  expect(await asksOn(s, ticket)).toStrictEqual([
+    { recipient: owner.personId, state: 'cleared', closedBy: owner.personId },
+    { recipient: owner.personId, state: 'open', closedBy: null },
+  ]);
+  const said = await commentsOn(s, ticket);
+  expect(said.map((comment) => comment.type)).toStrictEqual(['system', 'system']);
+  // And it stops again.
+  expect(await start(s, ticket)).toMatchObject(STOPPED);
+  expect(await runsOn(s, ticket)).toBe(4);
+}, 240_000);
+
+it('WF-7 twice failed with no map owner: the report says no one was asked, and nothing waits on anyone', async () => {
+  const created = await asPerson(s, {
+    command: 'task.create',
+    operationId: randomUUID(),
+    fields: { title: 'wf7 no map' },
+    taskType: 'research',
+  });
+  const ticket = String(
+    appliedDetail(created, 'task.create') && (created as { recordId: string }).recordId,
+  );
+  await s.db.app.withBusiness(s.business, async (tx) => {
+    await grantTo(tx, s.decider, 'write', { kind: 'record', id: ticket }, false, 'run');
+  });
+  await failedRun(s, ticket);
+  await failedRun(s, ticket);
+  const said = await commentsOn(s, ticket);
+  expect(said).toHaveLength(1);
+  expect(said[0]?.body).toMatch(/failed twice/u);
+  expect(said[0]?.body).not.toMatch(/owner has been asked/u);
+  expect(await asksOn(s, ticket)).toStrictEqual([]);
+  // No owner to wait on, so the ticket is not held for one.
+  expect(codeOf(await start(s, ticket))).toBe('applied');
+}, 180_000);
+
+it("WF-7 twice failed isolation: another map's owner and another business's cannot start a stopped ticket", async () => {
+  const ticket = await researchOnMap(s, owner, 'wf7 stopped crossing');
+  await failedRun(s, ticket);
+  await failedRun(s, ticket);
+  // Map to map, in one business: the owner of another map, holding run:write here, is refused.
+  const elsewhere = await charter(s, 'map-owner-elsewhere');
+  await researchOnMap(s, elsewhere, 'wf7 stopped elsewhere');
+  await mayRun(s, elsewhere, ticket);
+  expect(await start(s, ticket, elsewhere)).toMatchObject(STOPPED);
+  // Business to business: the other business's map owner reaches nothing here or from there.
+  expect(codeOf(await start(s, ticket, otherOwner))).not.toBe('applied');
+  const fromThere = await executeCommand(
+    other.db.app,
+    other.business,
+    otherOwner.presented,
+    'api',
+    {
+      ...proposeBody(ticket, await revisionOf(s, ticket), { purpose: freshPurpose() }),
+    } as never,
+  );
+  expect(codeOf(fromThere)).not.toBe('applied');
+  // Still stopped, still waiting on this map's owner, and nothing written.
+  expect(await runsOn(s, ticket)).toBe(2);
+  expect(await asksOn(s, ticket)).toStrictEqual([
+    { recipient: owner.personId, state: 'open', closedBy: null },
+  ]);
+  expect(await start(s, ticket)).toMatchObject(STOPPED);
 }, 180_000);
