@@ -158,6 +158,7 @@
     "SL12-17-F names c39-t-invitations (C39-T records, invite a team member, send only on the inviter's act, rate limit: invitation.create, resend and revoke under access:share and expiry by the business's worker each write the invitation and its audit event; each act is one send through the broker's email.send, its enrolment token kept as a SHA-256 only; acts limited per address and per account, counted from the records) and c39-t-invitation-refusals (C39-T refusal access:share and C39-T isolation: no key, a client-scoped key or an agent is refused writing nothing; another business is NOT_FOUND as an unissued id; another client's key reaches nothing; each invitation makes a new person).",
     "SL12-18-F names c39-t-invitation-send (C39-T sender and C39-T token kept as a hash only: an invitation leaves only from the verified sending subdomain, refused before the provider and before a token is minted otherwise; a provider answer echoing the link's token fails the attempt and nothing stored holds the token) as an invariant.",
     "SL12-18-P2 names c39-t-review-proofs (the Opus review's two proofs: an invitation's dead ask stops holding the ceiling past custody's timeout and the grace, and inbox and invitation emails share email.send's one ceiling), c39-t-auth-hook (C39-T hook signature, C39-T no account oracle and C39-T isolation on the login provider's Send Email hook: a Standard Webhooks signature over the raw body before any parse, a stale timestamp and a replayed id refused durably, every verified message answered alike, an Auth invitation sent through email.send with its attempt for one business and one person only) and c39-t-auth-link (C39-T hostile provider and C39-T token canary: the invite link generated through custody under auth.invite_link, a hostile login provider sends and keeps nothing, a planted invitation or reset token reaches no log, answer or stored row) as invariants.",
+    "SL12-19-P2FIX names c39-t-review-proofs-p2 (C39-T token canary and C39-T isolation: the enrolment token kept at rest cannot be rebuilt from the invitation address, and an address holding a login in another business is still invited) as an invariant, and re-reads c39-t-auth-link: the invite link is our own token, the login provider is never asked at send, nothing derived from a provider value is kept, and an address enrolled elsewhere is invited and answered like a new one.",
     "SL12-18-COL names mp-6-2-plan-record-stored (0223, ORCH49: the plan record task.propose checked the step key against is stored with the step; an accept begun before a proposal and bound after it relabels no row, with a prior plan or none) and mp-6-2-plan-record-isolation (a record of another business or another client's task is never stored on a step, a step's record never moves, a forged one reads nothing of the other task) as conformance, the second listed in isolation-suites.json too."
   ],
   "invariant": [
@@ -482,7 +483,8 @@
     "tests/access/c39-t-invitation-send.test.ts",
     "tests/access/c39-t-review-proofs.test.ts",
     "tests/access/c39-t-auth-hook.test.ts",
-    "tests/access/c39-t-auth-link.test.ts"
+    "tests/access/c39-t-auth-link.test.ts",
+    "tests/access/c39-t-review-proofs-p2.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

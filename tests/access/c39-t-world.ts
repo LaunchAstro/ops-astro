@@ -9,21 +9,15 @@
 //
 // With `auth` (piece P2) the world's custody also holds the login provider's
 // service key for the `auth` destination, a stand-in for the provider's admin
-// route on loopback (`c39-t-auth-fake.ts`), and the broker catalogues the
-// invite link's generation beside the send. Without it the send mints its own
-// token, as a deployment with no login provider configured does.
+// route on loopback (`c39-t-auth-fake.ts`), as a deployment with the login
+// provider configured has. The broker catalogues no operation of it: an
+// invitation's send never asks the provider, and the cases show that.
 
 import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll } from 'vitest';
-import {
-  AUTH_INVITE_LINK,
-  authLinkAdapter,
-  catalogue,
-  emailAdapter,
-} from '../../packages/core-connectors/src/index.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
@@ -33,7 +27,7 @@ import {
   type InvitationSendResult,
 } from '../../packages/core-custody/src/index.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
-import { MAIL, TEST_EMAIL_SEND, useEmailWorld, w } from '../broker/email-world.ts';
+import { MAIL, useEmailWorld, w } from '../broker/email-world.ts';
 import { startFakeAuth, type FakeAuth } from './c39-t-auth-fake.ts';
 
 export { MAIL, w };
@@ -53,19 +47,6 @@ export const c = {} as InvitationCast;
 
 /** The login provider's stand-in and the made-up service key custody holds for it. */
 export const auth = {} as { fake: FakeAuth; key: string; folder: string };
-
-/** A short timeout, so a slow provider ends quickly. */
-const TEST_AUTH_LINK = { ...AUTH_INVITE_LINK, timeoutMs: 600 };
-
-const route = (key: string, provider: string, credentialRef: string): object => ({
-  key,
-  reach: 'cloud',
-  provider,
-  credentialRef,
-  credentialKind: 'api_key',
-  installation: 'here',
-  ceiling: 4,
-});
 
 /** Custody again, holding the mail key and the service key, and the broker over it. */
 async function withAuth(): Promise<void> {
@@ -87,19 +68,7 @@ async function withAuth(): Promise<void> {
       { key: 'auth', origin: auth.fake.origin },
     ],
   });
-  w.broker = {
-    ...w.broker,
-    custody: w.custody,
-    operations: catalogue([TEST_EMAIL_SEND, TEST_AUTH_LINK]),
-    providers: new Map([
-      ['resend', { build: emailAdapter, price: () => 0 }],
-      ['supabase_auth', { build: authLinkAdapter, price: () => 0 }],
-    ]),
-    routes: [
-      route('email', 'resend', 'email_key'),
-      route('auth', 'supabase_auth', 'auth_key'),
-    ] as typeof w.broker.routes,
-  };
+  w.broker = { ...w.broker, custody: w.custody };
 }
 
 /** The email world, then the cast; with `auth`, the login provider too. */

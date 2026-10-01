@@ -13,10 +13,11 @@
 // invitation, if any, is noted.
 //
 // - An invitation is sent when exactly one business holds a pending
-//   invitation for the address: through `sendInvitation`, with the
-//   provider's token and the message id, so every check of a person's act
-//   applies and the attempt carries the id. An address pending in two
-//   businesses names neither, and nothing is sent.
+//   invitation for the address: through `sendInvitation`, the same send a
+//   person's act makes, with a token of our own and the message id, so every
+//   check of the act applies and the attempt carries the id. The provider's
+//   tokens are never read. An address pending in two businesses names
+//   neither, and nothing is sent; nor is anything for an act already sent.
 // - Every other action (a reset, a magic link, an address change, a
 //   reauthentication, a sign-up) has no delivery attempt to carry it yet,
 //   so nothing is sent: no mail without its attempt (C40 brings the reset's).
@@ -65,10 +66,14 @@ export async function deliverAuthMessage(
   }
   const [only] = pending;
   if (message.action !== 'invite' || only === undefined || pending.length > 1) return 'NOT_SENT';
-  const sent = await sendInvitation(database, only.business, only.invitation, broker, mail, {
-    token: message.tokenHash,
-    hookId: message.id,
-  });
+  const sent = await sendInvitation(
+    database,
+    only.business,
+    only.invitation,
+    broker,
+    mail,
+    message.id,
+  );
   if (!sent.ok && sent.code === 'REPLAYED') return 'REPLAYED';
   return sent.ok || 'attemptId' in sent ? 'SENT' : 'NOT_SENT';
 }

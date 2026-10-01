@@ -28,7 +28,6 @@ export {
   ENROL_PATH,
   INVITATION_SEND_ACTS,
   sendInvitation,
-  type HookedToken,
   type InvitationSendRefusal,
   type InvitationSendResult,
 } from './broker-invitation.ts';
