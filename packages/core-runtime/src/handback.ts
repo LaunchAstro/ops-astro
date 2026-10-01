@@ -420,9 +420,10 @@ interface Settled {
  * could run. A marked attempt is left to the classifier, which quarantines it
  * and keeps the full hold for the recorded reconciliation owner.
  *
- * No cost and nothing observed, because R6 refused every other case. The
- * classifier decides, under the locks this transaction already holds, whether
- * the hold may be abandoned. No audit row is written here: `audit_events` is
+ * No reported cost, because R6 refused every other case. The classifier
+ * decides, under the locks this transaction already holds, whether the hold
+ * is abandoned, settled at what its model calls cost, or kept for a person
+ * while one of them is unknown (AW-01). No audit row is written here: `audit_events` is
  * the command envelope's, which owns the actor, the operation identity and the
  * chain.
  */

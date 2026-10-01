@@ -26,7 +26,7 @@ export type NonclaimableCause =
 export interface Classification {
   readonly reservationId: string;
   readonly released: boolean;
-  readonly state: 'abandoned' | 'held' | 'quarantined' | 'liability_unknown';
+  readonly state: 'abandoned' | 'actual' | 'held' | 'quarantined' | 'liability_unknown';
   /** Why it was left alone, when it was. A classification with no reason is a guess. */
   readonly reason: string;
 }
@@ -103,7 +103,7 @@ export async function classifyUnderLocks(
     return {
       reservationId: request.reservationId,
       released: false,
-      state: row.state === 'quarantined' ? 'quarantined' : 'abandoned',
+      state: row.state === 'quarantined' || row.state === 'actual' ? row.state : 'abandoned',
       reason: `already ${row.state}; a terminal reservation is never reclassified or revived`,
     };
   }
@@ -187,16 +187,42 @@ export async function classifyUnderLocks(
     };
   }
 
+  // AW-01. The hold's model calls: one sent and not settled may have cost up
+  // to its maximum, so the whole hold stays for a person (0191: never released
+  // by a machine), and what the settled ones cost is the hold's actual.
+  const calls = await modelCallsOn(tx, request.reservationId);
+  if (calls.open) {
+    await tx.query(
+      `update public.attempts set state = 'liability_unknown'
+        where business_id = $1 and id = $2 and state <> 'liability_unknown'`,
+      [tx.businessId, row.attempt_id],
+    );
+    return {
+      reservationId: request.reservationId,
+      released: false,
+      state: 'liability_unknown',
+      reason: `a model call on this hold was sent and never settled; its full hold is kept as an unknown liability under ${request.cause} until a person records its outcome`,
+    };
+  }
+
   // R1. The guarded update reports the row it actually changed, and everything
   // after it is conditional on that row. A classifier whose conditional update
   // affected nothing has lost the race, and it must not then move the attempt
-  // or subtract a hold the winner has already subtracted.
+  // or subtract a hold the winner has already subtracted. Spent, the hold
+  // settles at what it spent (0013: an actual is never zero), with no cause.
+  const spent = calls.spentMinor > 0n;
   const changed = await tx.query<{ readonly held_minor: string }>(
-    `update public.reservations
-        set state = 'abandoned', classified_cause = $3, classified_cause_id = $4, terminal_at = now()
-      where business_id = $1 and id = $2 and state = 'held'
-      returning held_minor::text as held_minor`,
-    [tx.businessId, request.reservationId, request.cause, request.causeId],
+    spent
+      ? `update public.reservations set state = 'actual', actual_minor = $3, terminal_at = now()
+          where business_id = $1 and id = $2 and state = 'held'
+          returning held_minor::text as held_minor`
+      : `update public.reservations
+            set state = 'abandoned', classified_cause = $3, classified_cause_id = $4, terminal_at = now()
+          where business_id = $1 and id = $2 and state = 'held'
+          returning held_minor::text as held_minor`,
+    spent
+      ? [tx.businessId, request.reservationId, calls.spentMinor.toString()]
+      : [tx.businessId, request.reservationId, request.cause, request.causeId],
   );
   const released = changed[0];
   if (released === undefined) {
@@ -212,21 +238,57 @@ export async function classifyUnderLocks(
       where business_id = $1 and id = $2`,
     [tx.businessId, row.attempt_id],
   );
-  // Subtracted once, from the held total only, and by the amount the changed
-  // row carried. Nothing is added to `actual`: there is no observation to
-  // justify a number, not even zero.
+  // Subtracted once, by the amount the changed row carried. Only what the
+  // settled calls cost is added to `actual`: with no observation there is no
+  // number to justify, not even zero.
   await tx.query(
-    `update public.task_envelopes set held_minor = held_minor - $3
+    `update public.task_envelopes set held_minor = held_minor - $3, actual_minor = actual_minor + $4
       where business_id = $1 and id = $2`,
-    [tx.businessId, row.envelope_id, Number(released.held_minor)],
+    [tx.businessId, row.envelope_id, released.held_minor, calls.spentMinor.toString()],
   );
 
+  // Not `released`: pickup's expired-lease replacement re-holds the old hold
+  // whole, so it refuses here, and the sweep's drop resumes the step on what
+  // the hold has left (`resume`, `reconcile.ts`).
+  if (spent) {
+    return {
+      reservationId: request.reservationId,
+      released: false,
+      state: 'actual',
+      reason: `settled under ${request.cause} (${request.causeId}) at the ${calls.spentMinor.toString()} its model calls cost; the rest of the hold was released once`,
+    };
+  }
   return {
     reservationId: request.reservationId,
     released: true,
     state: 'abandoned',
     reason: `abandoned under ${request.cause} (${request.causeId}); the hold was released once and no cost was recorded`,
   };
+}
+
+/**
+ * What a hold's model calls settled at, and whether one was sent and never
+ * settled. A top-up has already moved the hold's spend to date to the
+ * envelope's actual (AW-05, `budget-answer.ts`), so after one there is
+ * nothing more to count.
+ */
+async function modelCallsOn(
+  tx: TenantQuery,
+  reservationId: string,
+): Promise<{ readonly spentMinor: bigint; readonly open: boolean }> {
+  const [calls] = await tx.query<{ readonly spent: string; readonly open: boolean }>(
+    `select coalesce(sum(c.actual_minor) filter (where c.state = 'settled'), 0)::text as spent,
+            coalesce(bool_or(c.state in ('dispatched', 'liability_unknown')), false) as open
+       from public.model_calls c
+      where c.business_id = $1 and c.reservation_id = $2
+        and not exists (select 1 from public.budget_asks k
+                          join public.budget_answers a
+                            on a.business_id = k.business_id and a.ask_id = k.id
+                         where k.business_id = c.business_id and k.reservation_id = c.reservation_id
+                           and a.kind = 'top_up')`,
+    [tx.businessId, reservationId],
+  );
+  return { spentMinor: BigInt(calls?.spent ?? '0'), open: calls?.open ?? false };
 }
 
 interface CauseRow {
