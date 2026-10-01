@@ -32,7 +32,8 @@ export type PreferenceKey =
   | 'columns.widths'
   | 'tips.enabled'
   | 'tips.dismissed'
-  | 'subtasks.showFinished';
+  | 'subtasks.showFinished'
+  | 'history.showTrail';
 
 export const PREFERENCE_KEYS: { readonly [K in PreferenceKey]: (value: unknown) => boolean } = {
   /** Light, Dark or System; the default, System, is the absence of a row. */
@@ -54,6 +55,8 @@ export const PREFERENCE_KEYS: { readonly [K in PreferenceKey]: (value: unknown) 
     Object.keys(value).length === 0,
   /** A task's finished subtasks shown (MP-4-4, CS-4.27); hidden, the default, is no row. */
   'subtasks.showFinished': (value) => typeof value === 'boolean',
+  /** The dock task panel's trail shown (MP-4-8, MP-4-16); folded, the default, is no row. */
+  'history.showTrail': (value) => typeof value === 'boolean',
 };
 
 export function isPreferenceKey(key: string): key is PreferenceKey {

@@ -6,8 +6,8 @@
 // **The crumb is the record's.** "Projects →" goes back to the board, then the
 // task's board as `task.read` names it: its title, "No board", or a board the
 // reader may not open, which the server withholds rather than this screen
-// hiding. The category after it waits on a named section (no board section has
-// a name yet).
+// hiding. After it, the task's category by its label (`TASK_CATEGORIES`, a
+// value off the list as stored); none is drawn when the task has none.
 //
 // **Copy link copies the canonical address** (`/task/<key>` on this origin,
 // the ruled form, never the mockup's `?task=`), and the tick shows only once
@@ -21,10 +21,11 @@
 
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { Spill } from '@launchastro/ui';
-import type {
-  BoardCrumb,
-  InternalTaskDetail,
-  ProposalView,
+import {
+  TASK_CATEGORIES,
+  type BoardCrumb,
+  type InternalTaskDetail,
+  type ProposalView,
 } from '../../../../../packages/core-wire/src/index.ts';
 import { pathTo } from '../../routes.ts';
 import { drawTaskState } from '../../views/task-state.ts';
@@ -43,6 +44,7 @@ export function TaskHeader(props: { readonly task: InternalTaskDetail }): ReactE
           Projects →
         </a>
         <span data-crumb="board">{boardWords(task.board)}</span>
+        <CategoryCrumb category={task.category ?? null} />
         <span aria-hidden="true">·</span>
         <span className="sbact__meta" data-crumb="key">
           {task.key}
@@ -70,6 +72,17 @@ function boardWords(board: BoardCrumb | null): string {
   if (board === null) return 'No board';
   if (!board.readable) return 'A board you cannot open';
   return titleOf(board.title);
+}
+
+/** The task's category after the board, or nothing when it has none. */
+function CategoryCrumb(props: { readonly category: string | null }): ReactElement | null {
+  if (props.category === null) return null;
+  return (
+    <>
+      <span aria-hidden="true">›</span>
+      <span data-crumb="category">{TASK_CATEGORIES.labelOf(props.category)}</span>
+    </>
+  );
 }
 
 export type RunShape = 'running' | 'finished' | 'none';

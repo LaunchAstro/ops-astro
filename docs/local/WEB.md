@@ -158,7 +158,8 @@ storage per business, names the person it was written for, never holds the
 sign-in, and is removed when the tab leaves the business (a switch or sign-out).
 
 The task page's header (`screens/task/Header.tsx`, MP-4-1) is the crumb
-("Projects →", the board `task.read` names, the key, the state), Copy link,
+("Projects →", the board `task.read` names, the task's category by its label
+when it has one, the key, the state), Copy link,
 the title and the run line. Copy link copies this origin plus `/task/<key>`,
 shows its tick for 1.2 s only after the clipboard said yes, and says so in
 words, with the address, when it said no or there is no clipboard. The run
@@ -210,15 +211,20 @@ the task panel", "Start the timer in the task panel", and the conversation's
 the conversation tab showing; with none given they are drawn disabled.
 The time section (`screens/task/Time.tsx`, MP-4-6) draws a burn bar of the
 logged total against the task's estimate, full at the estimate and danger past
-it; with no estimate it draws none.
+it; with no estimate it draws none. Its entries are the reader's own, and each
+names the signed-in person: the name `usePersonName` read (C23), provided by
+the application as `SignedInName` (`app-state.ts`), never a fixed name; none
+until the server names the person.
 
 History (`History.tsx`, MP-4-16) is the transitions on the task's own address
 from `task.read`, with comments left out (they are the conversation's). Its head
 reads the latest change as how long ago, who and what; the page shows the whole
 trail open, and with no change says "Nothing has changed on this one yet." Who
 is the actor's identifier until the read carries a name. The dock task panel
-folds the trail behind "Show all N changes" and "Hide the trail"; keeping that
-choice as the person's preference waits on a preference model.
+folds the trail behind "Show all N changes" and "Hide the trail", and whether
+it shows is the person's own `history.showTrail` preference (`useShowTrail`,
+kept by `screens/task/saved-flag.ts` as show finished is), read above the
+panel's task read so a reread keeps it.
 
 The dock's Projects tab (`todos` in `PANELS`) opens the reader's own to-dos
 (MP-7-1, `screens/todos/Todos.tsx`) in its panel, whose door is `/todos`. The

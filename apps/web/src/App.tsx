@@ -18,6 +18,7 @@ import { NO_CLIENT_GRANTS, type ClientAccess } from './manifest.ts';
 import { frameAt } from './route-views.tsx';
 import { drawContent } from './app-content.tsx';
 import { buildStamp, useCanonicalAddress, useOfflineSince, usePersonName } from './app-state.ts';
+import { SignedInName } from './app-state.ts';
 import { FrameStrip } from './strip.tsx';
 import { HeldAddressNotice, heldAddressOffer, type HeldOffer } from './held-address.tsx';
 import { shellDock, useDockShell, type DockAppProps } from './dock/dock-props.tsx';
@@ -235,60 +236,64 @@ export function App(props: AppProps): ReactElement {
   });
 
   return (
-    <PageFreshnessProvider>
-      <PagePresenceProvider>
-        <Shell
-          face={face}
-          build={buildStamp()}
-          rail={rail}
-          here={bare}
-          strip={
-            <FrameStrip
-              face={face}
-              identity={identity}
-              clientSlug={at?.client ?? null}
-              steps={props.steps}
-              onSearch={searchable ? search.open : null}
-              searchRef={search.box}
-              session={session}
-              personName={personName}
-              navigate={navigate}
-              onSignOut={onSignOut}
-            />
-          }
-          tabs={tabs}
-          nav={{ open: navOpen, onToggle: setNavOpen }}
-          onNavigate={navigate}
-          meta={
-            <>
-              <StripFreshness
-                fallback={
-                  offlineSince === null ? null : { state: 'offline', lastRead: offlineSince }
-                }
+    <SignedInName value={personName}>
+      <PageFreshnessProvider>
+        <PagePresenceProvider>
+          <Shell
+            face={face}
+            build={buildStamp()}
+            rail={rail}
+            here={bare}
+            strip={
+              <FrameStrip
+                face={face}
+                identity={identity}
+                clientSlug={at?.client ?? null}
+                steps={props.steps}
+                onSearch={searchable ? search.open : null}
+                searchRef={search.box}
+                session={session}
+                personName={personName}
+                navigate={navigate}
+                onSignOut={onSignOut}
               />
-              {session === null ? null : <StripPresence />}
-            </>
-          }
-          title={refused ? 'Not available' : (match?.route.title ?? at?.page.label ?? 'Not found')}
-          // The client face has no dock (R17), and nobody signed out has one.
-          {...shellDock(
-            docked,
-            session === null || face === 'client' ? null : { ...screen, notice: null },
-          )}
-        >
-          <FaceProvider face={face}>{content}</FaceProvider>
-        </Shell>
-        {search.showing && searchable ? (
-          <SearchPalette
-            client={client}
-            onOpen={(address) => {
-              search.dismiss();
-              navigate(address);
-            }}
-            onClose={search.close}
-          />
-        ) : null}
-      </PagePresenceProvider>
-    </PageFreshnessProvider>
+            }
+            tabs={tabs}
+            nav={{ open: navOpen, onToggle: setNavOpen }}
+            onNavigate={navigate}
+            meta={
+              <>
+                <StripFreshness
+                  fallback={
+                    offlineSince === null ? null : { state: 'offline', lastRead: offlineSince }
+                  }
+                />
+                {session === null ? null : <StripPresence />}
+              </>
+            }
+            title={
+              refused ? 'Not available' : (match?.route.title ?? at?.page.label ?? 'Not found')
+            }
+            // The client face has no dock (R17), and nobody signed out has one.
+            {...shellDock(
+              docked,
+              session === null || face === 'client' ? null : { ...screen, notice: null },
+            )}
+          >
+            <FaceProvider face={face}>{content}</FaceProvider>
+          </Shell>
+          {search.showing && searchable ? (
+            <SearchPalette
+              client={client}
+              onOpen={(address) => {
+                search.dismiss();
+                navigate(address);
+              }}
+              onClose={search.close}
+            />
+          ) : null}
+        </PagePresenceProvider>
+      </PageFreshnessProvider>
+    </SignedInName>
   );
 }

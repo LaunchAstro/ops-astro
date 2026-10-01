@@ -2004,6 +2004,8 @@ about one record, and naming one would make "who read this record" false.
 hidden, the default, is no row. The task page and the dock panel read it once
 and save each change; a reader the store refuses keeps the choice for the view
 and sends no save.
+The dock panel's trail fold is another (MP-4-8): `history.showTrail` takes
+`true` or `false`; folded, the default, is no row.
 
 ## Open items
 
