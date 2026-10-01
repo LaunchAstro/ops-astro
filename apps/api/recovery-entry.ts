@@ -132,34 +132,28 @@ export async function recoverDeployment(
  * configured businesses, each in its own transaction on the tenancy
  * connection, as system work. `server.ts` runs it on an interval once the port
  * is bound. A business that fails rolls back alone and is named; the next pass
- * sweeps it again, which is the bound. The model-call half (AW-01) runs first,
- * in its own transaction per business: a call sent on a lease that ended is
- * held as unknown liability, one never sent is released, so the hold the
- * classifier then reads has no call left counting as in flight.
+ * sweeps it again, which is the bound. The model-call half (AW-01) runs in
+ * the same transaction, after the lease locks the lost-worker sweep took, the
+ * order the broker's settle takes them in: a call sent on a lease that ended
+ * is held as unknown liability, one never sent is released. The classifier
+ * already kept a hold with a sent call on it whole.
  */
 export async function sweepDeployment(
   database: Database,
   resolveBusiness: (businessKey: string) => Promise<string | undefined>,
   keys: readonly string[],
 ): Promise<RecoveryOutcome> {
-  const calls = await eachBusiness(
-    database,
-    resolveBusiness,
-    keys,
-    'model-call sweep',
-    async (tx) => {
-      await sweepModelCalls(tx);
-      return [];
-    },
-  );
-  if (!calls.ok) return calls;
   return await eachBusiness(
     database,
     resolveBusiness,
     keys,
     'sweep',
     // T3e1: the sweep with its drop step, so a lost worker's work comes back.
-    async (tx) => await sweepLostWorkers(tx),
+    async (tx) => {
+      const classified = await sweepLostWorkers(tx);
+      await sweepModelCalls(tx);
+      return classified;
+    },
   );
 }
 
