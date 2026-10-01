@@ -20,9 +20,11 @@
 
 import {
   AUTH_CREATE_USER,
+  AUTH_READ_USER,
   AUTH_UPDATE_USER,
   AUTH_USERS_PATH,
   authUserAdapter,
+  authUserReadAdapter,
   authUserUpdateAdapter,
   catalogue,
 } from '../../packages/core-connectors/src/index.ts';
@@ -58,7 +60,10 @@ export function authDestination(origin: string): Destination {
   return {
     key: AUTH_CREATE_USER.destination,
     origin,
-    routes: [{ method: 'PUT', path: `${AUTH_USERS_PATH}/*` }],
+    routes: [
+      { method: 'PUT', path: `${AUTH_USERS_PATH}/*` },
+      { method: 'GET', path: `${AUTH_USERS_PATH}/*` },
+    ],
   };
 }
 
@@ -94,16 +99,21 @@ const route = (provider: string): BrokerRoute => ({
   ceiling: AUTH_CREATE_USER.concurrency,
 });
 
-/** The broker over custody: `auth.create_user` and `auth.update_user`, nothing else. */
+/** The broker over custody: `auth.create_user`, `auth.update_user`, `auth.read_user`, nothing else. */
 export function enrolmentBroker(custody: Custody): Broker {
   return {
     custody,
-    operations: catalogue([AUTH_CREATE_USER, AUTH_UPDATE_USER]),
+    operations: catalogue([AUTH_CREATE_USER, AUTH_UPDATE_USER, AUTH_READ_USER]),
     providers: new Map([
       [AUTH_CREATE_USER.provider, { build: authUserAdapter, price: () => 0 }],
       [AUTH_UPDATE_USER.provider, { build: authUserUpdateAdapter, price: () => 0 }],
+      [AUTH_READ_USER.provider, { build: authUserReadAdapter, price: () => 0 }],
     ]),
-    routes: [route(AUTH_CREATE_USER.provider), route(AUTH_UPDATE_USER.provider)],
+    routes: [
+      route(AUTH_CREATE_USER.provider),
+      route(AUTH_UPDATE_USER.provider),
+      route(AUTH_READ_USER.provider),
+    ],
     installation: 'here',
     // The accept records its own audit events in its transaction, never the model audit.
     audit: async () => {},
