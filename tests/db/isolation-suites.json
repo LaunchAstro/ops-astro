@@ -60,6 +60,7 @@
     "tests/commands/inbox-clearing-client-isolation.test.ts",
     "tests/reads/inbox-named.test.ts",
     "tests/api/inb1f-live-board.test.ts",
-    "tests/db/reviewed-output-proposer.test.ts"
+    "tests/db/reviewed-output-proposer.test.ts",
+    "tests/db/lease-pickup-path.test.ts"
   ]
 }
