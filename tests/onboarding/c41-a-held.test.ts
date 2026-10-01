@@ -14,9 +14,11 @@ describe('C41-A held until the work it leans on lands', () => {
   );
   it.todo('C41-A refusal run:write: without it no onboarding run starts (run:write, SL12-B-2)');
 
-  // The inbox raise (`inbox item raised (owns_the_move)`) is INB-1 (SL04, U99).
+  // The person and client-wait steps' inbox raise is `c41-a-inbox-raise.test.ts`.
+  // The agent step parks at its run's approval gate, whose decision item the
+  // gate raises: it waits on the run start (AW-04's accept, via b0/SL12).
   it.todo(
-    'CS-15.4 the onboarding skill parks at every gate with an inbox item to the person whose move it is (INB-1)',
+    'CS-15.4 the agent step parks at its approval gate with a decision item to whoever decides it (run start, AW-04)',
   );
 
   // The client email (`draft email created`) and its one send path are AW-07b

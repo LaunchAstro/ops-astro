@@ -128,3 +128,39 @@
 [data-evidence='digest'] {
   overflow-wrap: anywhere;
 }
+
+/* Settings Keys (C31) and Workflow triggers (C33, C52-A): a DS-COMP-7 list
+   card of DS-COMP-13 page rows, the state or approval a soft chip in the
+   trailing slot beside the row's own buttons. */
+:is([data-settings='keys'], [data-settings='triggers']) .lrows {
+  margin: 0;
+  padding: 0;
+}
+:is([data-settings='keys'], [data-settings='triggers']) .lrow__trail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--s-2);
+}
+:is([data-settings='keys'], [data-settings='triggers']) .card__note {
+  margin: 0;
+  padding: 0 var(--s-5);
+}
+[data-settings='keys'] > .form {
+  border-top: 1px solid var(--border);
+}
+@media (width <= 640px) {
+  :is([data-settings='keys'], [data-settings='triggers']) .lrow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  :is([data-settings='keys'], [data-settings='triggers']) :is(.lrow__main, .lrow__trail) {
+    grid-column: 1;
+  }
+  :is([data-settings='keys'], [data-settings='triggers']) .lrow__trail {
+    justify-content: flex-start;
+  }
+  [data-settings='keys'] .form__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

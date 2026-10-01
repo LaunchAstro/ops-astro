@@ -35,16 +35,20 @@ function Figure(props: { readonly row: SkillCostView }): ReactElement {
   if (figure.kind === 'mean') {
     return (
       <div className="skc__fig" data-figure="mean">
-        <p>
-          <strong>{cost(figure.mean, currency)}</strong> mean
-        </p>
-        <p className="t-2" data-figure-spread>
+        <span className="skc__figv">
+          <span className="skc__n">{cost(figure.mean, currency)}</span>{' '}
+          <span className="skc__u">mean</span>
+        </span>
+        <span className="skc__spread" data-figure-spread>
           {cost(figure.lo, currency)}–{cost(figure.hi, currency)}
-        </p>
+        </span>
         {usage.meanIn === null || usage.meanOut === null ? null : (
-          <p className="t-2" data-figure-units>
-            {units(usage.meanIn)} in · {units(usage.meanOut)} out
-          </p>
+          <span className="skc__io" data-figure-units>
+            <span className="skc__ion">{units(usage.meanIn)}</span>{' '}
+            <span className="skc__iok">in</span> ·{' '}
+            <span className="skc__ion">{units(usage.meanOut)}</span>{' '}
+            <span className="skc__iok">out</span>
+          </span>
         )}
       </div>
     );
@@ -52,18 +56,19 @@ function Figure(props: { readonly row: SkillCostView }): ReactElement {
   if (figure.kind === 'one') {
     return (
       <div className="skc__fig skc__fig--thin" data-figure="one">
-        <p>
-          <strong>{cost(figure.amount, currency)}</strong> one run
-        </p>
-        <p className="t-2">Not an average — this process has run once.</p>
+        <span className="skc__figv">
+          <span className="skc__n">{cost(figure.amount, currency)}</span>{' '}
+          <span className="skc__u">one run</span>
+        </span>{' '}
+        <span className="skc__say">Not an average — this process has run once.</span>
       </div>
     );
   }
   return (
     <div className="skc__fig skc__fig--none" data-figure="none">
-      <p className="t-2">
+      <span className="skc__say">
         No run has used this process on its own, so nothing here can be costed from it.
-      </p>
+      </span>
     </div>
   );
 }
@@ -92,22 +97,28 @@ function SkillRow(props: { readonly row: SkillCostView }): ReactElement {
     figure.kind === 'mean' && figure.finishedMean !== figure.mean ? figure.finishedMean : null;
   return (
     <li className="skc__row" data-skill={row.skillId}>
-      <p>
-        <a data-skill-doc aria-disabled="true" title={row.document.reason}>
+      <div className="skc__head">
+        <a className="skc__what" data-skill-doc aria-disabled="true" title={row.document.reason}>
           {row.name}
         </a>
-      </p>
+      </div>
       <Figure row={row} />
-      <p data-observed>
-        <span className="t-2">Observed</span> {observed(row)}
+      <p className="skc__obs" data-observed>
+        <span className="skc__k">Observed</span> {observed(row)}
       </p>
-      <p data-models>
-        <span className="t-2">On</span> {row.models.ids.join(' ')}
+      <p className="skc__mods" data-models>
+        <span className="skc__k">On</span>{' '}
+        {row.models.ids.map((id, at) => (
+          <span key={id}>
+            {at === 0 ? '' : ' '}
+            <span className="skc__model">{id}</span>
+          </span>
+        ))}
         {unnamed === 0 ? '' : ` · ${plural(unnamed, 'call')} named no model`}
       </p>
       {finished === null ? null : (
-        <p data-finished-only>
-          <span className="t-2">Finished runs only</span> {cost(finished, row.currency)} — the
+        <p className="skc__alt" data-finished-only>
+          <span className="skc__k">Finished runs only</span> {cost(finished, row.currency)} — the
           retried and abandoned runs are in the figure above
         </p>
       )}
@@ -128,22 +139,22 @@ function Split(props: { readonly split: AttributionSplitView }): ReactElement {
     whole === 0 ? 0 : Math.round((Number(minor) / whole) * 100);
   return (
     <div className="skc__foot" data-split={split.currency}>
-      <p data-split-total>
-        Of {cost(split.total, split.currency)} on record, across {plural(split.runs, 'run')}
-      </p>
-      <ul>
+      <p className="skc__split">
+        <span className="skc__k" data-split-total>
+          Of {cost(split.total, split.currency)} on record, across {plural(split.runs, 'run')}
+        </span>
         {BUCKETS.map(([key, said, tail]) => {
           const bucket = split[key];
           return (
-            <li key={key} data-bucket={key} data-minor={bucket.total}>
-              <strong>{cost(bucket.total, split.currency)}</strong> across {bucket.runs} {said}{' '}
-              {tail} ({share(bucket.total)}%)
-            </li>
+            <span className="skc__leg" key={key} data-bucket={key} data-minor={bucket.total}>
+              <b>{cost(bucket.total, split.currency)}</b> across {bucket.runs} {said} {tail} (
+              {share(bucket.total)}%)
+            </span>
           );
         })}
-      </ul>
+      </p>
       {split.unpricedRuns === 0 ? null : (
-        <p className="t-2" data-split-unpriced>
+        <p className="approval__meta" data-split-unpriced>
           {split.unpricedRuns === 1 ? '1 run has' : `${split.unpricedRuns} runs have`} no known cost
           yet: counted in its bucket, adding nothing to the total.
         </p>
@@ -173,7 +184,7 @@ export function SkillCostingSection(props: {
   }, [client]);
   if (costing.state === 'absent') return null;
   return (
-    <section id="costing" data-section="009" data-costing>
+    <section id="costing" className="skcsec" data-section="009" data-costing>
       <h2>
         009 Skill costing <span className="t-2">Fleet · what a process costs to run</span>
       </h2>
@@ -181,14 +192,18 @@ export function SkillCostingSection(props: {
         <p>Skill costing could not be read: {costing.because}</p>
       ) : (
         <>
-          <p className="skc__lede" data-costing-lede>
-            {lede(costing.costing.skills)}
-          </p>
-          <ul className="skc">
-            {costing.costing.skills.map((row) => (
-              <SkillRow key={`${row.skillId}:${row.currency}`} row={row} />
-            ))}
-          </ul>
+          <div className="skc__lede">
+            <p className="skc__count" data-costing-lede>
+              {lede(costing.costing.skills)}
+            </p>
+          </div>
+          <div className="card card--flush">
+            <ul className="skc">
+              {costing.costing.skills.map((row) => (
+                <SkillRow key={`${row.skillId}:${row.currency}`} row={row} />
+              ))}
+            </ul>
+          </div>
           {costing.costing.split.map((split) => (
             <Split key={split.currency} split={split} />
           ))}

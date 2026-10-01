@@ -46,21 +46,23 @@ type ViewProps = Pick<FleetTableProps, 'view' | 'setView'>;
 function Facets(props: ViewProps & Pick<FleetTableProps, 'counts'>): ReactElement {
   const { view, setView } = props;
   return (
-    <div className="facets" role="group" aria-label="Filter connectors by status">
-      {FACETS.map((facet) => (
-        <button
-          key={facet}
-          type="button"
-          className="facet"
-          data-fleet-facet={facet}
-          aria-pressed={view.facet === facet}
-          onClick={() => {
-            setView(withFacet(view, facet));
-          }}
-        >
-          {facet === 'all' ? 'All' : STATUS_WORD[facet]} {props.counts[facet]}
-        </button>
-      ))}
+    <div className="connctrls">
+      <div className="facets" role="group" aria-label="Filter connectors by status">
+        {FACETS.map((facet) => (
+          <button
+            key={facet}
+            type="button"
+            className="facet"
+            data-fleet-facet={facet}
+            aria-pressed={view.facet === facet}
+            onClick={() => {
+              setView(withFacet(view, facet));
+            }}
+          >
+            {facet === 'all' ? 'All' : STATUS_WORD[facet]} {props.counts[facet]}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -124,31 +126,33 @@ export function FleetTable(props: FleetTableProps): ReactElement {
     <>
       <Facets view={view} setView={setView} counts={props.counts} />
       <p className="approval__meta">Click a column heading to sort</p>
-      <table className="conn">
-        <Header view={view} setView={setView} />
-        <tbody>
-          {shown.rows.flatMap((row) => {
-            const open = view.open.has(row.id);
-            const toggle = (): void => {
-              setView(toggleOpen(view, row.id));
-            };
-            const drawn = [<Row key={row.id} row={row} open={open} now={now} toggle={toggle} />];
-            if (open) {
-              drawn.push(
-                <Detail
-                  key={`${row.id}-detail`}
-                  row={row}
-                  columns={COLUMNS.length + 1}
-                  now={now}
-                  repair={props.repair}
-                  said={props.repairSaid[row.id]}
-                />,
-              );
-            }
-            return drawn;
-          })}
-        </tbody>
-      </table>
+      <div className="card card--flush conn__scroll">
+        <table className="conn">
+          <Header view={view} setView={setView} />
+          <tbody>
+            {shown.rows.flatMap((row) => {
+              const open = view.open.has(row.id);
+              const toggle = (): void => {
+                setView(toggleOpen(view, row.id));
+              };
+              const drawn = [<Row key={row.id} row={row} open={open} now={now} toggle={toggle} />];
+              if (open) {
+                drawn.push(
+                  <Detail
+                    key={`${row.id}-detail`}
+                    row={row}
+                    columns={COLUMNS.length + 1}
+                    now={now}
+                    repair={props.repair}
+                    said={props.repairSaid[row.id]}
+                  />,
+                );
+              }
+              return drawn;
+            })}
+          </tbody>
+        </table>
+      </div>
       <Fold view={view} setView={setView} shown={shown.rows.length} total={shown.total} />
       <p className="legend">
         Syncing clean · Degraded, quota or throttle · Broken, data gap accruing · Freshness T-n =

@@ -22,6 +22,7 @@ import type {
 import { isRefusal, isUnavailable, type OperationsClient } from '../../operations/client.ts';
 import { pathTo } from '../../routes.ts';
 import { CeilingChip, GrantsSection } from './signal-grants.tsx';
+import { SectionHead } from './section-head.tsx';
 import { clock, nightLede, plural, stamp, tripwiresLede } from './signal-view.ts';
 
 type Signal =
@@ -83,10 +84,8 @@ function TripwireRow(props: { readonly row: TripwireView }): ReactElement {
 function TripwiresSection(props: { readonly signal: ConnectionSignalResult }): ReactElement {
   const { tripwires, tripwireCounts } = props.signal;
   return (
-    <section id="tripwires" data-section="007">
-      <h2>
-        007 Tripwires <span className="t-2">Fleet · what is watching</span>
-      </h2>
+    <section className="sec" id="tripwires" data-section="007">
+      <SectionHead number="007" title="Tripwires" aside="Fleet · what is watching" />
       <p className="tw__lede">
         {tripwiresLede(tripwireCounts.armed, tripwireCounts.cannotBeArmed)} Anything that fires and
         needs a person is filed in the one attention feed.
@@ -129,7 +128,7 @@ function Cite(props: { readonly cite: NonNullable<NightStepView['cite']> }): Rea
 function NightStep(props: { readonly step: NightStepView }): ReactElement {
   const { step } = props;
   return (
-    <li data-night-step={step.id}>
+    <li className="nr__step" data-night-step={step.id}>
       <time className="mono">{clock(step.at)}</time>{' '}
       <span className="nr__dot" data-tone={step.tone} aria-label={step.tone} />{' '}
       <strong>{step.what}</strong> <span className="t-2">{step.who}</span> {step.say}{' '}
@@ -158,10 +157,8 @@ function Roster(props: { readonly signal: ConnectionSignalResult }): ReactElemen
 function NightSection(props: { readonly signal: ConnectionSignalResult }): ReactElement {
   const round = props.signal.nightRound;
   return (
-    <section id="night-round" data-section="008">
-      <h2>
-        008 The night round <span className="t-2">Fleet · 23:00 to 08:10</span>
-      </h2>
+    <section className="sec" id="night-round" data-section="008">
+      <SectionHead number="008" title="The night round" aside="Fleet · 23:00 to 08:10" />
       {round === null ? (
         <p data-night-lede>No night round has run yet.</p>
       ) : (

@@ -102,6 +102,7 @@ const SHEETS = [
   `${styles}3-shell.css`,
   `${styles}4-board.css`,
   `${styles}5-task.css`,
+  `${styles}7-connections.css`,
   `${root}apps/web/src/styles/6-slice.css`,
 ];
 const lightOnly = (sets: Sets, name: string, css: string): string[] => {

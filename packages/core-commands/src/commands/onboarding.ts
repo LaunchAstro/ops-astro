@@ -11,9 +11,11 @@
 // the steps waiting on it, and a second failure stops the onboarding and says
 // so on the task.
 //
-// Nothing here runs, sends or spends. The agent step's run, the inbox item
-// that parks it at its gate, and the client email's draft and send are the
-// run engine's, the inbox's and the broker's send path's (held by name in
+// A person or client-wait step that opens raises an inbox item to whoever owns
+// its move, and the item closes when its result is recorded. Nothing here
+// runs, sends or spends. The agent step's run, the decision item that parks it
+// at its gate, and the client email's draft and send are the run engine's,
+// the gate's and the broker's send path's (held by name in
 // `tests/onboarding/c41-a-held.test.ts`).
 //
 // Every refusal comes before the first write, so a refused command writes
@@ -22,6 +24,7 @@
 import {
   checkAuthority,
   closeStep,
+  closeStepMove,
   deriveSource,
   failStep,
   insertOnboarding,
@@ -30,6 +33,7 @@ import {
   lockStepOfTask,
   onboardingOfClient,
   ONBOARDING_TEMPLATES,
+  raiseStepMoves,
   stepTaskTitle,
   subjectsOf,
   CLIENT_TYPE_KEY,
@@ -146,6 +150,8 @@ export async function startOnboarding(
     startedBy: context.session.actorId,
     steps,
   });
+  const ready = onboarding.steps.filter((one) => one.state === 'ready').map((one) => one.key);
+  await raiseStepMoves(tx, onboarding.id, ready);
   return applied(request.clientId, null, {
     onboardingId: onboarding.id,
     templateKey: template.key,
@@ -238,6 +244,8 @@ export async function writeStepResult(
   let opened: readonly string[] = [];
   if (outcome === 'done') {
     opened = await closeStep(tx, found.step, found.siblings);
+    await closeStepMove(tx, found.step, author.actorId);
+    await raiseStepMoves(tx, found.step.onboardingId, opened);
   } else {
     stopped = await failStep(tx, found.step);
     if (stopped) await writeComment(tx, commentTypeId, { ...comment, body: STOPPED_REPORT });

@@ -176,6 +176,37 @@ describe('MP-14-10a Connections & signal: client scope bar, graduation and stand
     expect(revoked).toMatchObject({ mandateId: 'm-b', expectedRevision: 1 });
   });
 
+  it('MP-14-10a section 010 lays out as the mockup: the rows in one flush card, then the approvals card', async () => {
+    const { page } = await open();
+    const region = page.find('[data-section="010"]');
+    expect(region?.classList.contains('gradsec')).toBe(true);
+    const cards = page.all('[data-section="010"] > .card');
+    expect(cards.map((card) => card.className)).toEqual(['card card--flush', 'card']);
+    expect(
+      page.all('[data-section="010"] .card--flush > .grad > .grad__row').length,
+    ).toBeGreaterThan(0);
+    expect(page.all('[data-section="010"] [class*="mt-"]')).toHaveLength(0);
+  });
+
+  it('MP-14-10a channels and exceptions draw made-up rows under the shared mock label until MP-14-10b, and act on nothing', async () => {
+    const { page, sent } = await open();
+    const before = sent.length;
+    for (const [section, rows] of [
+      ['011', '.chan__row'],
+      ['012', '.exc__row'],
+    ] as const) {
+      const mock = page.find(`[data-section="${section}"] .is-mock`);
+      expect(mock?.querySelector('.mocktag')?.textContent).toBe('Mock');
+      expect(mock?.querySelectorAll(rows).length).toBeGreaterThan(0);
+      const controls = [...(mock?.querySelectorAll('button') ?? [])];
+      expect(controls.length).toBeGreaterThan(0);
+      expect(controls.every((one) => one.disabled)).toBe(true);
+    }
+    // Real data never carries the label.
+    expect(page.find('[data-section="010"] .is-mock')).toBeNull();
+    expect(sent).toHaveLength(before);
+  });
+
   it('MP-14-10a one select drives all three sections, and choosing a client sends nothing', async () => {
     const { page, sent } = await open();
     expect(page.find('[data-grad="ready"]')).not.toBeNull();

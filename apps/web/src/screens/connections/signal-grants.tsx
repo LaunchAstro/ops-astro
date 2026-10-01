@@ -10,6 +10,7 @@ import type {
   ConnectionSignalResult,
   GrantView,
 } from '../../../../../packages/core-wire/src/index.ts';
+import { SectionHead } from './section-head.tsx';
 import { causeOf, countdownOf, grantsLede, plural, stamp } from './signal-view.ts';
 
 const GROUPS: readonly {
@@ -81,11 +82,11 @@ export function GrantsSection(props: {
 }): ReactElement {
   const { leases, leaseCounts } = props.signal;
   return (
-    <section id="grants" data-section="006">
-      <h2>
-        006 Grants <span className="t-2">Fleet · what is live right now</span>
-      </h2>
-      <p className="grl__lede">{grantsLede(leaseCounts.live, leaseCounts.liveExec)}</p>
+    <section className="sec" id="grants" data-section="006">
+      <SectionHead number="006" title="Grants" aside="Fleet · what is live right now" />
+      <div className="grl__lede">
+        <p className="grl__count">{grantsLede(leaseCounts.live, leaseCounts.liveExec)}</p>
+      </div>
       {leases.length === 0 ? <p>No leases on the ledger.</p> : null}
       {GROUPS.map((group) => {
         const rows = leases.filter((one) => one.state === group.state);
