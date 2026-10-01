@@ -89,6 +89,9 @@ client: client-facing agent work stays on the API.
   Fine on made-up local data; settle it before anything wider.
 - The yes does not re-run the refused work. It stays handed back failed; queue
   it again by hand.
+- The yes is written to `approvals.json` under `approvals.json.lock`. A tick that
+  died holding it leaves the lock behind, and later yeses refuse
+  (`APPROVALS_LOCKED`) until it is deleted by hand with no tick running.
 - One runner per home: a second one on the same ledger, or a second stack,
   refuses to start (`LOCAL_HOME_IN_USE`) before it writes a file. The seed's
   worker is found or made under a lock, so two starts on one business share one.
