@@ -27,7 +27,8 @@
 // estate to maintain, not a capability.
 
 // The package's stylesheets, in their load order: the font faces, then tokens,
-// then primitives, then the shell, then the board, then the task surfaces. They enter through this
+// then primitives, then the shell, then the board, then the task surfaces, the agent
+// pane and Connections & signal. They enter through this
 // file like everything else in the package, and `apps/web/src/main.tsx` imports
 // the package before its own sheet, so the order holds in the bundle.
 import './styles/0-fonts.css';
@@ -38,6 +39,7 @@ import './styles/3-shell.css';
 import './styles/4-board.css';
 import './styles/5-task.css';
 import './styles/6-agent.css';
+import './styles/7-connections.css';
 
 export * from './state/corpus.ts';
 export * from './state/project.ts';
