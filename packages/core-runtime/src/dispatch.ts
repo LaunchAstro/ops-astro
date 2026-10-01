@@ -26,6 +26,12 @@
 // marked attempt writes nothing and answers the first mark, so a lost response
 // is recovered by asking again. The answer carries no secret: the attempt
 // identity is the effect's token (T2c2).
+//
+// **Only the launch releases an effect** (AW-08). The plan accept lets work
+// run and fires nothing: after the four facts and the reconcile mode, the
+// lease's version has to be a reviewed output (`reviewed-output.ts`), the
+// successor a handback wrote, whose accept is the launch. Any other approved
+// version is refused `LAUNCH_NOT_DECIDED` before any mark.
 
 import type { Subject, TenantQuery } from '../../core-records/src/index.ts';
 import { lockedInstant } from './clock.ts';
@@ -41,6 +47,7 @@ import {
 import { acquire, type LockRequest } from './locks.ts';
 import { checkAuthorityAt, holdCoveringGrants } from './recovery.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
+import { isReviewedOutput, launchNotDecided } from './reviewed-output.ts';
 
 /** The facts rechecked at effect time, in the order a moved one is answered. */
 export const EFFECT_TIME_FACTS = ['authority', 'approvedVersion', 'lease', 'budget'] as const;
@@ -83,6 +90,7 @@ interface Found {
   readonly step_id: string;
   readonly lineage_id: string;
   readonly gate_id: string;
+  readonly version_id: string;
   readonly reservation_id: string;
   readonly delegation_id: string | null;
   readonly delegate_person_id: string | null;
@@ -161,6 +169,7 @@ export async function dispatch(
       'Nothing was dispatched. Declare how the effect replays or reconciles; no gate here accepts a duplicate.',
     );
   }
+  if (!(await isReviewedOutput(tx, found.version_id))) return launchNotDecided();
   const dispatchedAt = facts.dispatched_at ?? (await mark(tx, found, facts.attempt_id, lockedAt));
   return {
     ok: true,
@@ -179,7 +188,8 @@ export async function dispatch(
 /** Find: the lease and everything its dispatch touches, in this business only. */
 async function discover(tx: TenantQuery, leaseId: string): Promise<Found | undefined> {
   const rows = await tx.query<Found>(
-    `select l.task_id, att.step_id, run.lineage_id, g.id as gate_id, res.id as reservation_id,
+    `select l.task_id, att.step_id, run.lineage_id, g.id as gate_id, res.version_id,
+            res.id as reservation_id,
             l.delegation_id, d.delegate_person_id
        from public.leases l
        join public.reservations res on res.business_id = l.business_id and res.id = l.reservation_id

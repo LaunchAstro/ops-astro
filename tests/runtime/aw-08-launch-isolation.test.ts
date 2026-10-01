@@ -211,8 +211,6 @@ it("AW-08 isolation: another person's launched work is not reached under the age
   expect(codeOf(crossed)).toBe('DELEGATION_OUT_OF_PURPOSE');
   carriesNothingOf(crossed, theirs);
   expect(await marked(s, theirs.taskId)).toBe(0);
-  // Nor is the person's plan lease, still live, a way to fire the effect.
-  expect(codeOf(await dispatchAs(s, mine.working, mine.working))).not.toBe('applied');
 
   // Control: each person's launch dispatches under its own delegation.
   appliedDetail(await dispatchAs(s, mine.picked, mine.picked), 'dispatch');

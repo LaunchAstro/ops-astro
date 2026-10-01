@@ -28,6 +28,7 @@
 // closing one shows as a diff to this file rather than as nothing at all.
 
 import { DEFINITION_ROWS, UNPRODUCED_DEFINITION_CODES } from './register-definitions.ts';
+import { LAUNCH_ROWS } from './register-launch.ts';
 
 export type Visibility = 'caller' | 'audit';
 
@@ -738,9 +739,10 @@ const ROWS_TAIL = [
 ] as const;
 
 /** Every registered code. Declared by the rows above and nowhere else. */
-/** Every row, in register order: the head, the definition codes, the tail. */
-type Row =
-  (typeof ROWS_HEAD)[number] | (typeof DEFINITION_ROWS)[number] | (typeof ROWS_TAIL)[number];
+/** Every row, in register order: the head, the definition codes, the tail, the launch. */
+type Row = (
+  typeof ROWS_HEAD | typeof DEFINITION_ROWS | typeof ROWS_TAIL | typeof LAUNCH_ROWS
+)[number];
 
 export type RefusalCode = Row['code'];
 
@@ -769,6 +771,7 @@ export const REFUSAL_REGISTER: readonly RegisterEntry[] = [
   ...ROWS_HEAD,
   ...DEFINITION_ROWS,
   ...ROWS_TAIL,
+  ...LAUNCH_ROWS,
 ].map((row: Declared & { readonly code: RefusalCode }) => ({
   code: row.code,
   status: row.status,

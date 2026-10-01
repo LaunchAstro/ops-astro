@@ -193,6 +193,20 @@ const UNREACHED: Readonly<Record<string, string>> = {
                           order by id limit 1)
        left join public.gates g on g.business_id = d.business_id and g.id = d.gate_id
      returning 1`,
+  // AW-08: the mark rides on a lease the journey made, its run's lineage and
+  // that lineage's live version; a business with none gets made-up ids, which
+  // the owner's seed writes with foreign keys off.
+  'public.reviewed_outputs': `insert into public.reviewed_outputs
+       (business_id, version_id, lineage_id, lease_id)
+     select $1, coalesce(v.id, gen_random_uuid()), coalesce(r.lineage_id, gen_random_uuid()),
+            coalesce(l.id, gen_random_uuid())
+       from (select 1) one
+       left join public.leases l on l.business_id = $1
+             and l.id = (select id from public.leases where business_id = $1 order by id limit 1)
+       left join public.planned_runs r on r.business_id = l.business_id and r.id = l.run_id
+       left join public.proposal_versions v on v.business_id = r.business_id
+             and v.lineage_id = r.lineage_id and v.superseded_at is null
+     returning 1`,
   // AW-04 (U10): no planning reply is priced before a cap is set. The row
   // rides on the business's first cap and person; a business with none gets
   // made-up ids, which the owner's seed writes with foreign keys off.
