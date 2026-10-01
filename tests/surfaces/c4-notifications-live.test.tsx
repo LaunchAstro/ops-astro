@@ -71,7 +71,11 @@ function server() {
     if (at.endsWith('/inbox/read')) {
       const answer = json({ ok: true, inbox: [...inbox] });
       if (!state.later) return Promise.resolve(answer);
-      return new Promise<Response>((resolve) => setTimeout(() => resolve(answer), 0));
+      return new Promise<Response>((resolve) => {
+        setTimeout(() => {
+          resolve(answer);
+        }, 0);
+      });
     }
     if (at.endsWith('/inbox/count')) return Promise.resolve(json({ ok: true, owed: state.owed }));
     return Promise.reject(new Error(`unrouted ${at}`));
@@ -181,9 +185,10 @@ it('C4 notifications live (page): a live change re-reads the Inbox under the tab
   view = await mount(<InboxScreen client={api.client} grantKey="alpha:ada" navigate={() => {}} />);
   await settle();
   await settle();
-  const info = '[role="tab"][id$="-tab-info"]';
-  await view.click(info);
-  expect(view.find(info)?.getAttribute('aria-selected')).toBe('true');
+  await view.click('[role="tab"][id$="-tab-info"]');
+  const chosen = (): string | null | undefined =>
+    view?.find('[role="tab"][id$="-tab-info"]')?.getAttribute('aria-selected');
+  expect(chosen()).toBe('true');
 
   api.state.later = true;
   api.inbox.push(entry('2', 'T-2'));
@@ -193,5 +198,5 @@ it('C4 notifications live (page): a live change re-reads the Inbox under the tab
   await pause();
   await settle();
   expect(api.reads.filter((at) => at.endsWith('/inbox/read'))).toHaveLength(2);
-  expect(view.find(info)?.getAttribute('aria-selected')).toBe('true');
+  expect(chosen()).toBe('true');
 });
