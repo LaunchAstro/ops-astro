@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // AW-10: the provider phase of the one reconciliation pass. A call held as
-// unknown liability whose worker has stopped (its step is held unknown too)
-// is asked about at its provider, through custody, by the operation id the
-// call carried. Only an answer that is the operation's declared proof that
+// unknown liability whose worker has stopped (its step is held unknown too),
+// or a planning reply held so (AW-04: it has no step), is asked about at its
+// provider, through custody, by the operation id the call carried. Only an answer that is the operation's declared proof that
 // nothing happened releases the call's hold; the step then resumes through
 // the pass's next phase (`withProviderCalls`, core-runtime). Any other answer,
 // or none, changes nothing but the call's note, which says the pass could
@@ -115,10 +115,11 @@ export async function reconcileProviderCalls(
       await tx.query<Asked>(
         `select c.id, c.operation_key, c.route_key
            from public.model_calls c
-           join public.attempts att
+           left join public.attempts att
              on att.business_id = c.business_id and att.reservation_id = c.reservation_id
           where c.business_id = $1 and c.state = 'liability_unknown' and c.outcome is null
-            and c.reconcile_mode is distinct from 'person' and att.state = 'liability_unknown'
+            and c.reconcile_mode is distinct from 'person'
+            and (att.state = 'liability_unknown' or c.planning_envelope_id is not null)
           order by c.unknown_since, c.id
           limit $2`,
         [tx.businessId, MOST],
