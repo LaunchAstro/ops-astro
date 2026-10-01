@@ -124,7 +124,7 @@ describe.skipIf(noDatabase)('C39-T Auth email hook', () => {
     }
     expect(await recorded(id)).toEqual([0, 0]);
     // A second act, so a replay is refused for being one, not for want of an act.
-    expect(codeOf(await as(c.admin, 'invitation.resend', { id }))).toBe('applied');
+    expect(codeOf(await as(c.admin, 'invitation.resend', { invitationId: id }))).toBe('applied');
     const signed = signAuth(raw, ah.clock - 299);
     const both = await Promise.all([postAuth(raw, signed), postAuth(raw, signed)]);
     expect(both.map((answer) => answer.status).toSorted()).toEqual([200, 409]);
