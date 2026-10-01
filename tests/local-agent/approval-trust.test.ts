@@ -89,9 +89,10 @@ async function approvedApproval(
       payload,
       step,
     };
-    // Handed back failed with its ask, as raiseApproval does.
+    // Handed back failed under the lease's credential with its ask, as raiseApproval does.
     const handback = { ...handbackBody(work.picked, successor), outcome: 'failed' };
-    expect(codeOf(await asAgent(s, handback))).toBe('applied');
+    const credential = String(work.picked['credential']);
+    expect(codeOf(await asAgent(s, handback, credential))).toBe('applied');
   } else {
     const taskId = await createTask(s, title);
     const proposed = await asPerson(s, {
