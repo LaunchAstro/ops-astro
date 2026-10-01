@@ -190,7 +190,7 @@ async function outsideReads(task: string): Promise<[boolean, string]> {
 }
 
 describe.skipIf(serverUrl === undefined)('RS-VAULT-9 isolation: the task’s history', () => {
-  it("Sol proof, criterion RS-VAULT-9: another person's time.* events are not in task.read history or task.ledger", async () => {
+  it("another person's time.* events are not in task.read history or task.ledger", async () => {
     const task = await w.fresh(w.alpha, w.ada, 'shared history');
     await adaAndNoahTime(task);
     // An internal member (Noah): the task's creation shows, Ada's time does not.
@@ -284,7 +284,7 @@ describe.skipIf(serverUrl === undefined)(
       expect(rows.map((row) => [row.note, row.gone])).toStrictEqual([[CANARY, false]]);
     });
 
-    it("Sol proof, criterion RS-VAULT-9: the decider's time.* events are not in the agent's task.read history", async () => {
+    it("the decider's time.* events are not in the agent's task.read history", async () => {
       const operations = await agentHistory(world, picked);
       expect(operations).toContain('task.create');
       expect(operations.filter((operation) => isTime(operation))).toStrictEqual([]);
