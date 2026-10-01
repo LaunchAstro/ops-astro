@@ -113,7 +113,11 @@ export async function hold(
   };
 }
 
-/** Positive proof that nothing happened: the whole hold is released. */
+/**
+ * Positive proof that nothing happened: the whole hold is released. Here and
+ * in a priced settle, a drop the sweep recorded before the answer came is
+ * cleared: the answer is what happened (0191, `model_calls_drop_is_held`).
+ */
 export async function release(
   tx: TenantQuery,
   reserved: ReservedCall,
@@ -122,7 +126,7 @@ export async function release(
 ): Promise<ModelCallResult> {
   const { callId, operation, reservedMinor } = reserved;
   await tx.query(
-    `update public.model_calls set state = 'released', ended_at = clock_timestamp()
+    `update public.model_calls set state = 'released', ended_at = clock_timestamp(), drop_state = null
       where business_id = $1 and id = $2`,
     [tx.businessId, callId],
   );
@@ -147,7 +151,7 @@ export async function settlePriced(
   await tx.query(
     `update public.model_calls
         set state = 'settled', observed_minor = $3, actual_minor = $3, account = $4,
-            credential_kind = $5,
+            credential_kind = $5, drop_state = null,
             completed_at = case when $6 then clock_timestamp() end,
             landed_at = case when $7 then clock_timestamp() end,
             ended_at = clock_timestamp(),
