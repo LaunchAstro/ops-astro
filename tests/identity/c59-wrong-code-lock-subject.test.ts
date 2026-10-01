@@ -108,6 +108,7 @@ function countingProvider() {
     },
     remove: () => done,
     signOut: () => done,
+    list: () => Promise.resolve({ ok: true, value: [] }),
   };
   return { provider, asked, release: open };
 }

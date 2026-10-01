@@ -99,7 +99,10 @@ describe.skipIf(serverUrl === undefined)(
       replies = { 'POST /auth/v1/factors': GOOD['POST /factors'] ?? json(500, {}) };
       const underPath = await act('enrol', await fresh(clientC), {}, build(undefined, '/auth/v1/'));
       expect(underPath.status).toBe(200);
-      expect(seen.map((request) => request.route)).toEqual(['POST /auth/v1/factors']);
+      expect(seen.map((request) => request.route)).toEqual([
+        'GET /auth/v1/user',
+        'POST /auth/v1/factors',
+      ]);
     });
   },
 );

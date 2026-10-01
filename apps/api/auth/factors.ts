@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The sign-in provider's second-factor calls (C59): enrol an authenticator
-// app, prove a code, remove a factor. GoTrue's MFA endpoints, called with the
-// person's own access token, so the provider applies its own rules to the
-// person and this server holds no provider admin key for them.
+// app, prove a code, remove a factor, list the login's factors. GoTrue's MFA
+// endpoints and its user record, called with the person's own access token,
+// so the provider applies its own rules to the person and this server holds
+// no provider admin key for them.
 //
 // Every answer is distrusted until it is shaped (TR-SEC4R-5): one fixed
 // destination, no redirect followed, a time limit, a size limit read off the
@@ -15,6 +16,7 @@ import type {
   FactorProvider,
   FactorSession,
   IssuedFactor,
+  ListedFactor,
   ProviderAnswer,
   ProviderFault,
 } from '../../../packages/core-commands/src/index.ts';
@@ -37,7 +39,7 @@ type Json = Readonly<Record<string, unknown>>;
 
 /** One request to the provider: its answer unread, or a fault if none came. */
 type Request = (
-  method: 'POST' | 'DELETE',
+  method: 'GET' | 'POST' | 'DELETE',
   path: string,
   accessToken: string,
   body?: Json,
@@ -45,7 +47,7 @@ type Request = (
 
 /** One call to the provider, its answer shaped to a JSON object or a fault. */
 type Call = (
-  method: 'POST' | 'DELETE',
+  method: 'GET' | 'POST' | 'DELETE',
   path: string,
   accessToken: string,
   body?: Json,
@@ -68,6 +70,7 @@ export function createGoTrueFactors(options: GoTrueFactorOptions): FactorProvide
     enrol: (accessToken) => enrol(call, accessToken),
     verify: (accessToken, factorId, code) => verify(call, accessToken, factorId, code),
     remove: (accessToken, factorId) => remove(call, accessToken, factorId),
+    list: (accessToken) => list(call, accessToken),
     signOut: (accessToken, scope) => signOut(request, limits, accessToken, scope),
   };
 }
@@ -183,6 +186,33 @@ async function remove(
   return answer.value['id'] === factorId
     ? { ok: true, value: undefined }
     : { ok: false, fault: 'malformed' };
+}
+
+/** At most this many factors are read from one listing; more is a malformed answer. */
+const MAX_LISTED = 20;
+
+// The login's factors, from GoTrue's own user record: `factors` absent or null
+// is none. Each must carry an identifier and one of the two states.
+async function list(
+  call: Call,
+  accessToken: string,
+): Promise<ProviderAnswer<readonly ListedFactor[]>> {
+  const answer = await call('GET', '/user', accessToken);
+  if (!answer.ok) return answer;
+  const factors = answer.value['factors'] ?? [];
+  if (!Array.isArray(factors) || factors.length > MAX_LISTED) {
+    return { ok: false, fault: 'malformed' };
+  }
+  const listed: ListedFactor[] = [];
+  for (const factor of factors as unknown[]) {
+    if (typeof factor !== 'object' || factor === null) return { ok: false, fault: 'malformed' };
+    const { id, status } = factor as Json;
+    if (!isFactorId(id) || (status !== 'verified' && status !== 'unverified')) {
+      return { ok: false, fault: 'malformed' };
+    }
+    listed.push({ factorId: id, status });
+  }
+  return { ok: true, value: listed };
 }
 
 // GoTrue's sign-out (C58): done is a 204 and nothing else, with nothing in

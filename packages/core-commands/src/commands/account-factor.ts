@@ -44,7 +44,8 @@ import {
   type IssuedFactor,
   type SessionsEnded,
 } from './account-factor-provider.ts';
-import { removeRefusedFactor } from './account-factor-orphan.ts';
+import { reconcileFactors } from './account-factor-cleanup.ts';
+import { removeAtProvider } from './account-factor-orphan.ts';
 import { endOthersOnChange, signOutOthers } from './account-factor-sessions.ts';
 import { codeOf, freshSignIn, recordCode, wrongCodeLock } from './account-factor-checks.ts';
 import { writeAuditEvent } from './audit.ts';
@@ -94,7 +95,7 @@ export async function enrolSecondFactor(
     'before',
   );
   if (precondition !== undefined) return precondition;
-
+  await reconcileFactors(caller, provider);
   const issued = await provider.enrol(caller.accessToken);
   const recorded = await judged(caller, act, async (tx, session) => {
     if (!issued.ok) return providerRefusal(issued.fault, 'answer');
@@ -148,25 +149,26 @@ export async function verifySecondFactor(
   if (precondition !== undefined || factor === undefined || code === undefined)
     return precondition ?? refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES);
   const target = factor;
-
   const verified = await provider.verify(caller.accessToken, target.providerFactorId, code);
   let ended: number | undefined;
+  let unrecorded = false;
   const recorded = await judged({ ...sending, proven: verified.ok }, act, async (tx, session) => {
     if (!verified.ok) return providerRefusal(verified.fault, 'code');
     const live = await liveFactor(tx, session.personId, { lock: caller.presented.subject });
     // Removed or replaced by another tab between the two transactions.
     if (live?.id !== target.id) return refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES);
     const elsewhere = await enrolledElsewhere(tx, caller, live);
-    if (elsewhere !== undefined) return elsewhere;
+    // Decided under the lock: this call's unverified enrolment lost, so it goes.
+    unrecorded = elsewhere !== undefined;
+    if (unrecorded) return elsewhere;
     // The first good code completes an enrolment (a factor change); a later one is a step-up.
     if (live.status !== 'verified') ended = await endOthersOnChange(tx, session, caller.presented);
     await recordFactorVerified(tx, ownFactor(caller, session, live.id));
     return undefined;
   });
-  // An enrolment verified at the provider but refused here (a session the winning
-  // enrolment ended included) is removed there too; a verified factor never is.
-  if (recorded !== undefined && verified.ok && target.status !== 'verified')
-    await removeRefusedFactor(caller, provider, verified.value, target, sending.attempt);
+  // No other refusal removes at the provider; a stray waits for `reconcileFactors`.
+  if (unrecorded && verified.ok)
+    await removeAtProvider(caller, provider, verified.value, target, sending.attempt);
   if (recorded !== undefined || !verified.ok)
     return recorded ?? providerRefusal('malformed', 'answer');
   if (ended === undefined) return verified.value;
@@ -207,15 +209,11 @@ export async function removeSecondFactor(
   if (precondition !== undefined || factor === undefined || code === undefined)
     return precondition ?? refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES);
   const target = factor;
-
+  await reconcileFactors(caller, provider);
   const proved = await provider.verify(caller.accessToken, target.providerFactorId, code);
   let ended = 0;
-  const removed = proved.ok
-    ? await provider.remove(proved.value.accessToken, target.providerFactorId)
-    : undefined;
   const recorded = await judged({ ...sending, proven: proved.ok }, act, async (tx, session) => {
     if (!proved.ok) return providerRefusal(proved.fault, 'code');
-    if (removed !== undefined && !removed.ok) return providerRefusal(removed.fault, 'answer');
     const live = await liveFactor(tx, session.personId, { lock: caller.presented.subject });
     if (live?.id !== target.id) return refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES);
     ended = await endOthersOnChange(tx, session, caller.presented);
@@ -224,6 +222,8 @@ export async function removeSecondFactor(
   });
   if (recorded !== undefined || !proved.ok)
     return recorded ?? providerRefusal('malformed', 'answer');
+  // Only once the record commits; a refusal here removes nothing there.
+  await removeAtProvider(caller, provider, proved.value, target, sending.attempt);
   return {
     removed: true,
     otherSessions: await signOutOthers(provider, proved.value.accessToken, ended),

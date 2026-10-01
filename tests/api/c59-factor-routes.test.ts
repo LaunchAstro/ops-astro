@@ -73,8 +73,8 @@ describe.skipIf(serverUrl === undefined)(
       const enrolled = await act('enrol', token);
       expect(enrolled.status).toBe(200);
       expect(enrolled.body).toMatchObject({ factorId: 'factor-one', secret: CANARY });
-      expect(seen.map((request) => request.route)).toEqual(['POST /factors']);
-      expect(seen[0]?.authorization).toBe(`Bearer ${token}`);
+      expect(seen.map((request) => request.route)).toEqual(['GET /user', 'POST /factors']);
+      expect(seen[1]?.authorization).toBe(`Bearer ${token}`);
       expect(await factorOf(world.mia.personId)).toMatchObject({ status: 'unverified' });
 
       // One event for the act, written with its record after the provider
