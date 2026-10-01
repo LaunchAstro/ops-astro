@@ -16,7 +16,6 @@
 
 import { describe, expect, it } from 'vitest';
 import { acceptInvitation } from '../../packages/core-commands/src/index.ts';
-import { resolveLogin, type Session } from '../../packages/core-records/src/index.ts';
 import {
   bindVia,
   boundTo,
@@ -27,6 +26,7 @@ import {
   mountOver,
   passwordFor,
   rowsIn,
+  sessionOf,
   spentOf,
   tokenTo,
   useEnrolWorld,
@@ -48,22 +48,6 @@ useEnrolWorld();
 
 const REFUSED = { status: 404, body: { code: 'ENROLMENT_LINK_INVALID' }, cookie: null };
 const SIGN_IN = { status: 200, body: { state: 'sign_in' }, cookie: null };
-
-/**
- * The login a provider subject resolves to in one business, or the refusal's
- * code, asked as the factor routes ask it (`enrolling`): the binding, not the
- * content gate `c39-t-second-factor-first` proves. `required` asks the gate.
- */
-async function sessionOf(
-  business: string,
-  subject: string,
-  rule: 'required' | 'enrolling' = 'enrolling',
-): Promise<Session | string> {
-  return await w.db.app.withBusiness(business, async (tx) => {
-    const resolved = await resolveLogin(tx, { provider: 'supabase', subject }, rule);
-    return 'code' in resolved ? resolved.code : resolved;
-  });
-}
 
 /** The identity rows a business holds, to show a refusal wrote none. */
 async function identityRows(business: string): Promise<readonly number[]> {
