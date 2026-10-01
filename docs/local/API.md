@@ -1820,9 +1820,27 @@ signature over the raw body before parsing (401), refuses a stale timestamp
 evidence), and answers every verified message 200 `{}`, sent or not. An
 invitation message is sent through `sendInvitation` when exactly one business
 holds a pending invitation for the address with an unanswered act; other
-Auth mail (a reset among it) has no attempt yet and is not sent (C40). Not
-here yet: the send mounted after the command, the hook wired in `main`, the
-enrolment page and the Access screen (C39-T P3).
+Auth mail (a reset among it) has no attempt yet and is not sent (C40).
+
+`POST /api/enrol` with `token` and `password` accepts an invitation
+(`acceptInvitation`, mounted by `mountEnrolment` with the deployment's
+businesses and a broker cataloguing `auth.create_user`). No sign-in and no
+grant: the one-time token is the authority, looked for by its SHA-256 in
+every business. It is live while it is unspent, in its lifetime, its
+invitation's newest and its invitation pending. The login provider makes a
+login for the invited address, confirmed, through custody (the service key
+stays there); then, in one transaction, every token of the invitation is
+spent, it is accepted, its person gets an actor, a membership in the invited
+role and the confirmed address, the login is mapped to that person, and
+`invitation.accept` and `login.create` are audited as the business's
+worker. The answer is 200 `{ state: 'enrolled' }` and opens no session. An
+address that already holds a login gets none: 200 `{ state: 'sign_in' }`,
+nothing spent. Every other token is 404 `ENROLMENT_LINK_INVALID`, a password
+outside 12 to 72 bytes 400 `PASSWORD_INVALID`, and a provider fault or
+hostile answer 503 `ENROLMENT_UNAVAILABLE`, nothing spent or kept. The page
+is `/enrol/:token`. Not here yet: the send mounted after the command, the
+hook and the enrolment route wired in `main`, the signed-in accept for an
+address with a login, the second factor first (C59) and the Access screen.
 
 ## Reads
 

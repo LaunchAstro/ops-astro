@@ -52,6 +52,15 @@ export const ROUTES = {
     surface: 'none',
     authenticated: false,
   },
+  // C39-T: the page an invitation's link opens. Drawn signed in or out, and it
+  // signs nobody in; the manifest has no page for it, so no rail entry.
+  'agency:enrol': {
+    namespace: 'agency',
+    path: '/enrol/:token',
+    title: 'Join your team',
+    surface: 'none',
+    authenticated: false,
+  },
   'agency:projects-board': {
     namespace: 'agency',
     path: '/projects/',
@@ -208,6 +217,7 @@ export function pathTo<Id extends RouteId>(
 export type Gate =
   | { readonly kind: 'not-found' }
   | { readonly kind: 'sign-in' }
+  | { readonly kind: 'enrol'; readonly token: string }
   | { readonly kind: 'signed-in-already' }
   | { readonly kind: 'screen'; readonly match: RouteMatch<AuthenticatedRouteId> };
 
@@ -218,6 +228,8 @@ export type Gate =
  */
 export function gateOf(match: RouteMatch | null, signedIn: boolean): Gate {
   if (match === null) return { kind: 'not-found' };
+  // The enrolment page needs no session and is the same with one.
+  if (match.id === 'agency:enrol') return { kind: 'enrol', token: match.params.token };
   if (!signedIn) return { kind: 'sign-in' };
   if (!needsSession(match)) return { kind: 'signed-in-already' };
   return { kind: 'screen', match };

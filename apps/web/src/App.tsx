@@ -27,6 +27,7 @@ import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, type Interruption, type Session, type SessionStore } from './session/token.ts';
 import { signOut } from './session/sign-in.ts';
 import { SignIn } from './screens/SignIn.tsx';
+import { Enrol } from './screens/Enrol.tsx';
 import { drawScreen } from './screen-registry.tsx';
 import { AssistantView, useAgentDrawer } from './views/assistant.tsx';
 
@@ -87,13 +88,11 @@ export function App(props: AppProps): ReactElement {
         props.navigate(pathTo('agency:projects-board'));
         return;
       }
-      // **The held address only means anything in the business it was held
-      // in.** A task key is business-local, so replaying the string under a
-      // different business does not reopen the task the person was promised:
-      // it refuses, or -- worse, because it looks like success -- it draws an
-      // unrelated record that happens to share the key. A deliberate change of
-      // business is not a mistake, so it is not refused; it goes to that
-      // business's board and says why.
+      // **The held address only means anything in the business it was held in.** A task key is
+      // business-local, so replaying the string under a different business does not reopen the task
+      // the person was promised: it refuses, or -- worse, because it looks like success -- it draws
+      // an unrelated record that happens to share the key. A deliberate change of business is not a
+      // mistake, so it is not refused; it goes to that business's board and says why.
       if (back.businessKey === next.businessKey) {
         props.navigate(back.address);
         return;
@@ -219,6 +218,8 @@ export function App(props: AppProps): ReactElement {
         return <NotFound path={here} />;
       case 'sign-in':
         return signIn;
+      case 'enrol':
+        return <Enrol token={gate.token} app={props} />;
       case 'signed-in-already':
         return (
           <SignedInAlready
@@ -244,10 +245,9 @@ export function App(props: AppProps): ReactElement {
     }
   })();
 
-  // Compiled in by the build's stamp (`apps/web/vite.config.ts`); absent under a
-  // bundler that did not stamp, and the rail then says the build is unstamped.
-  // Read by name, never by index: an indexed read inlines every VITE_ setting
-  // of the build's environment into the bundle (G3).
+  // Compiled in by the build's stamp (`apps/web/vite.config.ts`); absent under a bundler that did
+  // not stamp, and the rail then says the build is unstamped. Read by name, never by index: an
+  // indexed read inlines every VITE_ setting of the build's environment into the bundle (G3).
   const build = import.meta.env.VITE_OPS_ASTRO_BUILD ?? '';
 
   return (

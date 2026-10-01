@@ -3,7 +3,8 @@
 // What every broker email send shares (the inbox item's in `broker-email.ts`,
 // C39-T's invitation in `broker-invitation.ts`): the sender check, the
 // catalogued `email.send` and its route, and the one reading of what the
-// provider answered. Nothing here sends or writes.
+// provider answered, which the login provider's `auth.create_user` shares
+// (`broker-auth-user.ts`). Nothing here sends or writes.
 
 import type { ModelOperation, SenderReport } from '../../core-connectors/src/index.ts';
 import type { BrokerRoute, Broker, ProviderAdapter } from './broker-types.ts';
@@ -19,9 +20,9 @@ export interface Routed {
   readonly adapter: ProviderAdapter;
 }
 
-/** The catalogued `email.send`, its route and its adapter, or nothing when any is missing. */
-function routed(broker: Broker): Routed | undefined {
-  const operation = broker.operations.get(EMAIL_OPERATION);
+/** A catalogued operation, its route and its adapter, or nothing when any is missing. */
+export function routed(broker: Broker, key: string = EMAIL_OPERATION): Routed | undefined {
+  const operation = broker.operations.get(key);
   if (operation === undefined) return undefined;
   const route = broker.routes.find((entry) => entry.provider === operation.provider);
   const adapter = broker.providers.get(operation.provider);
@@ -38,7 +39,7 @@ export function sendRoute(
 }
 
 /** What came back: the answer as its schema reads it, or the fault's kind. Never the body. */
-function answerOf(
+export function answerOf(
   outcome: CustodyOutcome,
   operation: ModelOperation,
 ): { readonly ok: true; readonly text: string } | { readonly ok: false; readonly fault: string } {

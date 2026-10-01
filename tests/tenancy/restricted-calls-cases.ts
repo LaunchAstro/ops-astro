@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// I06 and M02: the machinery for an actual call by every restricted role
-// against every table and function the migrations leave behind. A catalogue
-// assertion says what a role was granted; this issues the statement and
-// classifies the server's reply by SQLSTATE and message, because a policy, a
-// trigger or a schema privilege sits between a grant and an answer.
+// I06 and M02: the machinery for an actual call by every restricted role against every table and
+// function the migrations leave behind. A catalogue assertion says what a role was granted; this
+// issues the statement and classifies the server's reply by SQLSTATE and message, because a policy,
+// a trigger or a schema privilege sits between a grant and an answer.
 //
 // Only the contract is listed by hand: what the application group was granted.
 // Tables, functions and roles are read from the migrated catalogue at call
@@ -57,13 +56,13 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // AW-13: the export's cursor moves; its gaps and retention batches are facts, never rewritten.
   ['siu', 'trace_export_cursors'],
   ['si', 'trace_export_gaps trace_expiry_batches'],
-  // 0042, 0222: an attempt, a seen stamp and a token are written once (INB-1a, C39-T).
-  ['si', 'inbox_attention inbox_delivery_attempts enrolment_tokens invitation_delivery_attempts'],
+  // 0042, 0222: an attempt and a seen stamp are written once (INB-1a, C39-T).
+  ['si', 'inbox_attention inbox_delivery_attempts invitation_delivery_attempts'],
   ['siu', 'inbox_items'],
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
   ['siu', 'leases planned_steps proposal_lineages proposal_versions'],
-  // AW-02, C39-T: a run and an invitation move only by their column grants in COLUMN_UPDATES.
-  ['si', 'planned_runs invitations'],
+  // AW-02, C39-T: a run, an invitation and a token move only by their grants in COLUMN_UPDATES.
+  ['si', 'planned_runs invitations enrolment_tokens'],
   ['siu', 'outage_reports outage_runs reservations task_envelopes'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
   // 0028 revokes delete on these two: identity history is kept (0002).
@@ -99,6 +98,7 @@ const COLUMN_UPDATES: Readonly<
 > = {
   'public.planned_runs': { from: '0192', columns: ['state'] },
   'public.invitations': { from: '0222', columns: ['ended_at', 'expires_at', 'revision', 'state'] },
+  'public.enrolment_tokens': { from: '0222', columns: ['spent_at'] },
 };
 
 /** The `table.column` pairs the application group may update after `at`, or at the full schema. */

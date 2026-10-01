@@ -32,6 +32,7 @@ export {
   type InvitationSendResult,
 } from './broker-invitation.ts';
 export { deliverAuthMessage, type AuthMessageOutcome } from './broker-auth-email.ts';
+export { createLogin, type LoginMade } from './broker-auth-user.ts';
 export {
   callModelInConversation,
   type ConversationCallRequest,
