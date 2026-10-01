@@ -163,6 +163,7 @@
     "SL12-18-COL names mp-6-2-plan-record-stored (0223, ORCH49: the plan record task.propose checked the step key against is stored with the step; an accept begun before a proposal and bound after it relabels no row, with a prior plan or none) and mp-6-2-plan-record-isolation (a record of another business or another client's task is never stored on a step, a step's record never moves, a forged one reads nothing of the other task) as conformance, the second listed in isolation-suites.json too.",
     "SL12-18-COL names mp-6-2-plan-record-stored (0223, ORCH49: the plan record task.propose checked the step key against is stored with the step; an accept begun before a proposal and bound after it relabels no row, with a prior plan or none) and mp-6-2-plan-record-isolation (a record of another business or another client's task is never stored on a step, a step's record never moves, a forged one reads nothing of the other task) as conformance, the second listed in isolation-suites.json too.",
     "SL12-19-COLFIX names sl12-19-plan-record-restart-proof (0223: a run task.restart proposes stores the plan record bound at its proposal, written true) beside the hand-back successor case added to mp-6-2-plan-record-stored, as conformance.",
+    "SL12-19-F2 names task-read-client (AW-04 pane client: task.read returns the record's client as clientId, null for internal work, and a reader from another business, client or person learns none of it) as an invariant.",
     "SL12-20-FUP2 names c39-t-invitation-lock-order (C39-T rate limit and expiry, one lock order: a resend started while its invitation is live and a create for the same address started once it lapsed, driven to the same row, both finish, the resend applied and the create refused UNIQUE_VALUE_TAKEN, never a deadlock) as an invariant.",
     "SL12-19-FUP names aw-07b-server-worker (AW-07b delivery worker started by the server: apps/api/server.ts with MAIL_DELIVERY=mock mails a waiting decision through its own worker and custody and exits 0 on SIGTERM; any other value stops it before it listens; the delivery stopped sends nothing more) as an invariant."
   ],
@@ -492,7 +493,8 @@
     "tests/access/c39-t-auth-link.test.ts",
     "tests/access/c39-t-review-proofs-p2.test.ts",
     "tests/access/c39-t-invitation-lock-order.test.ts",
-    "tests/access/c39-t-enrolment.test.ts"
+    "tests/access/c39-t-enrolment.test.ts",
+    "tests/reads/task-read-client.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
