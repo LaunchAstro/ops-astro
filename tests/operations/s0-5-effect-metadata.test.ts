@@ -10,7 +10,9 @@
 // verification and the live change record) is the same for every call and is
 // not a record kind.
 // A declared kind that is no table fails too, so a misspelt one cannot pass. Two commands have no
-// recipe of their own (a grant id, a live delegation) and get one here.
+// recipe of their own (a grant id, a live delegation) and get one here. The run's own three
+// (`model.call`, `run.delegate_child`, `run.child_handback`) are the agent's under its
+// delegation, never a person's: each is made on the agent prefix from the agent's recipe.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -23,6 +25,7 @@ import { createHarness, type Harness } from '../acceptance/role-case-harness.ts'
 import type { Prepared } from '../acceptance/role-case-bodies.ts';
 import { serverUrl } from '../acceptance/world.ts';
 import { grantTo, type Member } from '../commands/fixture.ts';
+import { AGENT_RECIPES } from '../tenancy/statement-capture-agent-recipes.ts';
 
 if (serverUrl === undefined) {
   console.warn('operations/s0-5-effect-metadata: DATABASE_URL is unset, so nothing below ran.');
@@ -85,8 +88,29 @@ async function clientScoped(): Promise<ReadonlySet<string>> {
   return new Set(rows.map((row) => row.name));
 }
 
+/** An agent's call: its body and the delegation credential it travels with. */
+type AgentCall = {
+  readonly agent: true;
+  readonly body: Readonly<Record<string, unknown>>;
+  readonly credential?: string;
+};
+
+/** The run's worker's commands, made on the agent prefix after a pickup of their own. */
+const AGENT_ONLY: ReadonlySet<string> = new Set([
+  'model.call',
+  'run.delegate_child',
+  'run.child_handback',
+]);
+
 /** The positive recipe, or one made here where it changes nothing or there is none. */
-async function bodyFor(declaration: CommandDeclaration): Promise<Prepared> {
+async function bodyFor(declaration: CommandDeclaration): Promise<Prepared | AgentCall> {
+  const agentRecipe = AGENT_ONLY.has(declaration.name)
+    ? AGENT_RECIPES[declaration.name]
+    : undefined;
+  if (agentRecipe !== undefined) {
+    const { body, credential } = await agentRecipe(harness);
+    return { agent: true, body, ...(credential === undefined ? {} : { credential }) };
+  }
   if (declaration.name === 'grant.revoke') {
     const mia = harness.world.mia as unknown as Member;
     const grantId = await harness.world.db.app.withBusiness(
@@ -135,7 +159,10 @@ async function runFaults(declaration: CommandDeclaration): Promise<string[]> {
   const prepared = await bodyFor(declaration);
   if ('exception' in prepared) return [`${name}: no fixture (${prepared.exception})`];
   const before = await fingerprint();
-  const answer = await harness.asPerson(name, prepared.body);
+  const answer =
+    'agent' in prepared
+      ? await harness.asAgent(name, prepared.body, prepared.credential)
+      : await harness.asPerson(name, prepared.body);
   if (answer.code !== 'ok') return [`${name}: its fixture was refused ${answer.code}`];
   const after = await fingerprint();
   const written = [...after.keys()].filter(
