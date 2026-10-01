@@ -604,8 +604,11 @@ export type RevocationCause = 'authority_lost' | 'delegation_revoked' | 'work_re
  * clears the delegation from every task holding it as its `agent` (tasks only,
  * never another record's own `agent` field), each at the task's next revision
  * with one applied `task.assign` audit event, whatever the cause. The actor is
- * the caller's when it names one (`delegation.revoke`), else the agent's own:
- * the runtime transitions have no person behind them.
+ * the caller's when it names one: the person whose command revoked it
+ * (`delegation.revoke`, `grant.revoke`, `access.end`, `task.cancel`,
+ * `task.propose`'s supersession, `budget.record_outcome`). A caller naming
+ * none gets the agent's own actor: the recovery pass and the restart replay,
+ * which no person ran.
  */
 export async function revokeDelegation(
   tx: TenantQuery,

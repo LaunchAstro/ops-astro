@@ -33,6 +33,7 @@ const HISTORY = [
   {
     at: at(3 * 24 * 60),
     actorId: 'actor-ada',
+    personId: 'person-ada',
     actorName: 'Ada',
     actorKind: 'person',
     operation: 'task.create',
@@ -40,6 +41,7 @@ const HISTORY = [
   {
     at: at(120),
     actorId: 'actor-ada',
+    personId: 'person-ada',
     actorName: 'Ada',
     actorKind: 'person',
     operation: 'task.comment',
@@ -47,6 +49,7 @@ const HISTORY = [
   {
     at: at(90),
     actorId: 'actor-ben',
+    personId: 'person-ben',
     actorName: 'Ben',
     actorKind: 'person',
     operation: 'task.update',
@@ -54,6 +57,7 @@ const HISTORY = [
   {
     at: at(5),
     actorId: 'actor-ben',
+    personId: 'person-ben',
     actorName: 'Ben',
     actorKind: 'person',
     operation: 'task.comment',
@@ -100,6 +104,7 @@ describe('MP-4-16 empty line on the page', () => {
           {
             at: at(1),
             actorId: 'actor-ada',
+            personId: 'person-ada',
             actorName: 'Ada',
             actorKind: 'person',
             operation: 'task.comment',
@@ -163,6 +168,7 @@ describe('MP-4-16 who: the page names whoever made each change', () => {
     {
       at: at(60),
       actorId: 'actor-ada',
+      personId: 'person-ada',
       actorName: 'Ada Lovelace',
       actorKind: 'person',
       operation: 'task.create',

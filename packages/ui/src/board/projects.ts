@@ -9,7 +9,7 @@
 
 import type { ColumnSpec } from './types.ts';
 import type { ProjectRow } from './project-row.ts';
-import { burnRatio, pad, waiting } from './project-words.ts';
+import { burnRatio, waiting } from './project-words.ts';
 
 export {
   burnOf,
@@ -56,8 +56,9 @@ function stageOrder(stages: readonly string[]): (row: ProjectRow) => string | nu
   return (row) => {
     if (row.stage === null) return null;
     const at = stages.indexOf(row.stage);
-    // A stage outside the vocabulary sorts after it, by its words.
-    return at === -1 ? `~${row.stage}` : `${pad(at).padStart(4, '0')}`;
+    // A stage outside the vocabulary is its words, which sort after every
+    // number (`sortRows`), so after the vocabulary (REVIEW-2C1-15).
+    return at === -1 ? row.stage : at;
   };
 }
 

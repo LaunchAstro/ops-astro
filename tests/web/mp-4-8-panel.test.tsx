@@ -27,6 +27,7 @@ const at = (minutesAgo: number): string => new Date(Date.now() - minutesAgo * 60
 const change = (minutesAgo: number, operation: string) => ({
   at: at(minutesAgo),
   actorId: 'actor-ada',
+  personId: 'person-ada',
   actorName: 'Ada',
   actorKind: 'person',
   operation,

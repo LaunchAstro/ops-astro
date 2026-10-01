@@ -16,7 +16,7 @@
 // a new reader starts again from the newest days, and a page that arrives for
 // a first page no longer drawn is dropped rather than drawn under it.
 
-import { useState, type ReactElement } from 'react';
+import { useRef, useState, type ReactElement } from 'react';
 import { Button, Empty, Ledger, SearchBox } from '@launchastro/ui';
 import type {
   LedgerDayView,
@@ -122,19 +122,20 @@ export function WorkLog(props: WorkLogProps): ReactElement {
     setWords(words);
     writeTyped(words);
   };
-  const [known, setKnown] = useState<readonly LedgerDayView[]>([]);
-  const search = readSearch(typed, known);
+  // The first page the read last accepted. The people in view are read from
+  // it alone: an answer the read dropped names nobody, and the words it was
+  // searched for stay words, so its own answer cannot turn them into people.
+  const [answer, setAnswer] = useState<LedgerRead | null>(null);
+  const search = readSearch(typed, answer?.ledger.days ?? [], answer?.query ?? null);
   const query = queryOf(search);
   const { state, reload } = useRead<LedgerRead>({
     grantKey,
-    run: async () => {
-      const read = await readNewest(client, ownZone(), query);
-      if (!isRefusal(read) && !isUnavailable(read)) setKnown(read.value.ledger.days);
-      return read;
-    },
+    run: () => readNewest(client, ownZone(), query),
     deps: [query],
   });
-  const pages = useEarlierDays(client);
+  const accepted = state.outcome === 'ready' || state.outcome === 'empty' ? state.value : null;
+  if (accepted !== null && accepted !== answer) setAnswer(accepted);
+  const pages = useEarlierDays(client, answer);
   const clear = (): void => {
     setTyped('');
   };
@@ -177,9 +178,11 @@ interface EarlierDays {
  * is disabled while one is on its way. Each is kept against the first page it
  * continues, so one that arrives after the first page changed is never drawn.
  */
-function useEarlierDays(client: OperationsClient): EarlierDays {
+function useEarlierDays(client: OperationsClient, answer: LedgerRead | null): EarlierDays {
   const [more, setMore] = useState<Earlier>(NONE);
   const [asking, setAsking] = useState<LedgerRead | null>(null);
+  const current = useRef(answer);
+  current.current = answer;
 
   const loadEarlier = (from: LedgerRead, days: readonly LedgerDayView[]): void => {
     const last = days.at(-1);
@@ -192,6 +195,8 @@ function useEarlierDays(client: OperationsClient): EarlierDays {
       );
       setAsking((now) => (now === from ? null : now));
       setMore((now) => {
+        // For a first page no longer current: dropped, and the current one's days kept.
+        if (current.current !== from) return now;
         const kept = now.from === from ? now : { ...NONE, from };
         if (isRefusal(result) || isUnavailable(result)) {
           return { ...kept, failed: describeFailure(result) };

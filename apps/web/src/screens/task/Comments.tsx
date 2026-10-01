@@ -43,8 +43,11 @@
 //
 // **A reply is the same box, pointed at one message** (R42). Pressing Reply on
 // a message holds its id with the draft; the post then carries `parentId` and
-// goes to that message's audience, whichever tab is showing, since the message
-// already says who may read what answers it. The thread itself, the pencil and
+// goes to that message's audience. A reply belongs to the tab it was typed on:
+// moving to the other audience's tab drops it, and a message of the other
+// audience is never a parent there, so words typed under Internal never reach
+// the client by way of a reply. All has no audience of its own, so a reply
+// typed there goes where its message is. The thread itself, the pencil and
 // the ×, and the signals are drawn by `Thread.tsx`; an edit or a delete goes
 // out through its own command and the task is read again, as a post is.
 
@@ -54,7 +57,8 @@ import type { OperationsClient } from '../../operations/client.ts';
 import type { InternalCommentView } from '../../../../../packages/core-wire/src/index.ts';
 import { useCommand } from '../../records/use-command.ts';
 import { PanelDoorButton, type ConversationTab, type PanelOpener } from './Perspectives.tsx';
-import { CommentThread, type RowActions } from './Thread.tsx';
+import { CommentThread, type RowActions, type RowEdit } from './Thread.tsx';
+import { useRowActions } from './row-actions.ts';
 
 export interface CommentsProps {
   readonly client: OperationsClient;
@@ -80,6 +84,9 @@ export interface CommentsProps {
   /** The unsent comment, held above the read so a reread keeps it. Null is an empty box. */
   readonly draft: CommentDraft | null;
   readonly onDraft: (next: CommentDraft | null) => void;
+  /** The edit open on one of the reader's rows, held above the read the same way. */
+  readonly editing: RowEdit | null;
+  readonly onEditing: (next: RowEdit | null) => void;
 }
 
 /** An unsent comment: the words, the attempt whose outcome is unknown, and a stale refusal. */
@@ -125,9 +132,13 @@ export function Comments(props: CommentsProps): ReactElement {
   const scoped = (id: string): string => (props.scope === undefined ? id : `${props.scope}-${id}`);
   const current = props.draft ?? EMPTY;
   const { body, tab, pending } = current;
-  // A reply names a message still on the task; one deleted since is dropped.
+  // A reply names a message still on the task; one deleted since is dropped,
+  // and so is one of an audience other than the tab's.
   const parent = props.comments.find(
-    (comment) => comment.id === current.replyTo && (comment.parent ?? null) === null,
+    (comment) =>
+      comment.id === current.replyTo &&
+      (comment.parent ?? null) === null &&
+      (tab === 'all' || comment.audience === tab),
   );
   const parentId = parent?.id ?? null;
   const { audience, kind } = POSTS[(parent?.audience ?? tab) === 'client' ? 'client' : 'internal'];
@@ -219,7 +230,8 @@ export function Comments(props: CommentsProps): ReactElement {
         tab={tab}
         actions={rows.actions}
         onTab={(next) => {
-          put({ tab: next });
+          const keeps = parent === undefined || next === 'all' || parent.audience === next;
+          put(keeps ? { tab: next } : { tab: next, replyTo: null, pending: null });
         }}
       />
       <RowRefusal because={rows.because} />
@@ -250,22 +262,32 @@ export function Comments(props: CommentsProps): ReactElement {
           onPut={put}
           onSend={post}
         />
-        {picking ? (
-          <p className="card__sub" data-comment="pick">
-            Pick Internal or Client to post, so it is clear who may read it.
-          </p>
-        ) : null}
+        {picking ? <PickNote /> : null}
         <button className="btn btn--primary" type="submit" data-comment="post" disabled={locked}>
           {busy ? 'Posting…' : 'Post comment'}
         </button>
-        {!closed ? null : (
-          <p className="card__sub" data-comment="closed">
-            The server refused this. The box is closed rather than asking again on your behalf.
-          </p>
-        )}
+        {closed ? <ClosedNote /> : null}
       </form>
       <PanelDoorButton door="reply" tab={tab} onOpenPanel={props.onOpenPanel} />
     </section>
+  );
+}
+
+/** On All nobody has said who may read a post. */
+function PickNote(): ReactElement {
+  return (
+    <p className="card__sub" data-comment="pick">
+      Pick Internal or Client to post, so it is clear who may read it.
+    </p>
+  );
+}
+
+/** The server refused the reader's comment: the box stays closed. */
+function ClosedNote(): ReactElement {
+  return (
+    <p className="card__sub" data-comment="closed">
+      The server refused this. The box is closed rather than asking again on your behalf.
+    </p>
   );
 }
 
@@ -431,50 +453,4 @@ function CommentBody(props: {
 function excerpt(body: string): string {
   const line = body.replaceAll(/\s+/gu, ' ').trim();
   return line.length <= 60 ? line : `${line.slice(0, 59)}…`;
-}
-
-/**
- * Editing and deleting a row: each goes out through its own command against
- * the task, and the task is read again whatever the answer, so what is drawn
- * is what the server has. A lost answer is not retried as the same attempt:
- * sending the same words again, or deleting what is already gone, changes
- * nothing, and the reread shows which happened.
- */
-function useRowActions(
-  props: CommentsProps,
-  onReply: (commentId: string) => void,
-): { readonly actions: RowActions; readonly because: string | null } {
-  const command = useCommand();
-  const send = (name: 'task.edit_comment' | 'task.delete_comment', operands: object): void => {
-    command.run(
-      () =>
-        props.client.mutate(
-          name,
-          { recordId: props.recordId, ...operands },
-          { expectedRevision: props.revision },
-        ),
-      (settlement) => {
-        if (
-          settlement.kind === 'ok' ||
-          settlement.kind === 'unknown' ||
-          settlement.kind === 'stale'
-        ) {
-          props.onPosted();
-        }
-      },
-    );
-  };
-  return {
-    because: command.because,
-    actions: {
-      busy: command.busy,
-      onReply,
-      onEdit: (commentId, body) => {
-        send('task.edit_comment', { commentId, body });
-      },
-      onDelete: (commentId) => {
-        send('task.delete_comment', { commentId });
-      },
-    },
-  };
 }

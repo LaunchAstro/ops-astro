@@ -223,6 +223,7 @@ describe.skipIf(serverUrl === undefined)('identity edges on the agent prefix', (
     const person = await world.asPerson('task.read', { recordId: mine.taskId });
     const personHistory = (person.body['task'] as Record<string, unknown>)['history'];
     expect(JSON.stringify(personHistory)).toContain('task.comment');
+    expect(JSON.stringify(personHistory)).toContain('"personId":"');
 
     const agent = await world.asAgent(
       'task.read',
@@ -233,6 +234,12 @@ describe.skipIf(serverUrl === undefined)('identity edges on the agent prefix', (
     const whole = JSON.stringify(agent.body);
     expect(whole).not.toContain('an internal note the agent never sees');
     expect(whole).not.toContain('task.comment');
+    // Nor the person behind each actor: an agent is read as an outside reader.
+    const { task } = agent.body['detail'] as { task: { history: unknown } };
+    expect(JSON.stringify(task.history)).toContain('"personId":null');
+    expect(JSON.stringify(task.history)).not.toContain('"personId":"');
+    expect(JSON.stringify(task.history)).toContain('"actorName":null');
+    expect(JSON.stringify(task.history)).not.toContain('"actorName":"');
   });
 });
 

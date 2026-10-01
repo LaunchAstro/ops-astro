@@ -12,7 +12,10 @@
 // **One create, however many presses.** An outcome nobody knows keeps the
 // create's identity for the retry, so the server's replay answers it rather
 // than a second task; an edit to the draft is a different request and starts
-// a new one.
+// a new one. The identity is stored with the draft before Create goes out, so
+// a reload or Back while it is out reopens the draft with it. While Create is out, Close, Cancel, Escape and the host's doors
+// wait for it, so the draft is never reopened and created again; a Create that
+// lands after the session changed opens nothing.
 //
 // **Timer on the draft.** DN-05's running timer on a draft waits on the dock
 // frame's timer (MP-3-1); time spent is logged here and written at Create.
@@ -25,7 +28,12 @@ import {
   dropDraft,
   emptyDraft,
   keepDraft,
+  newAttempt,
+  readAttempt,
   readDraft,
+  saveAttempt,
+  type Attempt,
+  type CreateOutcome,
   type TaskDraft,
 } from './task-draft.ts';
 
@@ -43,6 +51,8 @@ export interface DraftPanelProps {
   readonly scope: DraftScope;
   readonly onCreated: (key: string) => void;
   readonly onClose: () => void;
+  /** Hold the host while Create is out; the release says whether the session is still the same. */
+  readonly hold: () => () => boolean;
 }
 
 const CONTROLS = new Set(['INPUT', 'SELECT', 'TEXTAREA']);
@@ -51,7 +61,7 @@ export function DraftPanel(props: DraftPanelProps): ReactElement {
   const kept = useKeptDraft(props);
   const creating = useCreate(props, kept);
   const onKeyDown = (event: KeyboardEvent<HTMLElement>): void => {
-    if (event.key !== 'Escape' || event.defaultPrevented) return;
+    if (event.key !== 'Escape' || event.defaultPrevented || creating.busy) return;
     if (CONTROLS.has((event.target as HTMLElement).tagName)) return;
     event.preventDefault();
     props.onClose();
@@ -76,12 +86,7 @@ function DraftBody(
   const { kept, creating } = props;
   return (
     <>
-      <div className="dtp__head">
-        <h2 className="t-title">New task</h2>
-        <button className="btn" type="button" data-draft="close" onClick={props.onClose}>
-          Close
-        </button>
-      </div>
+      <DraftHead busy={creating.busy} onClose={props.onClose} />
       <p className="card__sub" data-draft-admission>
         New task, filed from {props.scope.from}. Nothing is stored until Create.
       </p>
@@ -103,11 +108,35 @@ function DraftBody(
         >
           Create task
         </button>
-        <button className="btn" type="button" data-draft="cancel" onClick={kept.cancel}>
+        <button
+          className="btn"
+          type="button"
+          data-draft="cancel"
+          disabled={creating.busy}
+          onClick={kept.cancel}
+        >
           Cancel
         </button>
       </div>
     </>
+  );
+}
+
+/** The draft's title and Close; Close waits while Create is out. */
+function DraftHead(props: { readonly busy: boolean; readonly onClose: () => void }): ReactElement {
+  return (
+    <div className="dtp__head">
+      <h2 className="t-title">New task</h2>
+      <button
+        className="btn"
+        type="button"
+        data-draft="close"
+        disabled={props.busy}
+        onClick={props.onClose}
+      >
+        Close
+      </button>
+    </div>
   );
 }
 
@@ -117,8 +146,9 @@ function useKeptDraft(props: DraftPanelProps) {
   const [draft, setDraft] = useState<TaskDraft>(
     () => readDraft(storage, person) ?? emptyDraft(props.scope.clientId),
   );
-  // The create's identity, kept across an unknown outcome and dropped by any edit.
-  const [attempt, setAttempt] = useState<string | null>(null);
+  // The create's identity, kept across an unknown outcome and a remount, and
+  // dropped by any edit.
+  const [attempt, setAttempt] = useState<Attempt | null>(() => readAttempt(storage, person));
   const name = useRef<HTMLInputElement>(null);
   useEffect(() => {
     name.current?.focus();
@@ -129,11 +159,25 @@ function useKeptDraft(props: DraftPanelProps) {
     setAttempt(null);
     keepDraft(storage, person, merged);
   };
+  // Stored before Create goes out, with each part's id and count as it goes;
+  // cleared once its outcome is known.
+  const begin = (next: Attempt): void => {
+    setAttempt(next);
+    keepDraft(storage, person, draft, next);
+  };
+  const progress = (next: Attempt): void => {
+    setAttempt((held) => (held?.id === next.id ? next : held));
+    saveAttempt(storage, person, next.id, next);
+  };
+  const settled = (id: string): void => {
+    setAttempt(null);
+    saveAttempt(storage, person, id, null);
+  };
   const cancel = (): void => {
     dropDraft(storage, person);
     props.onClose();
   };
-  return { draft, put, name, attempt, setAttempt, cancel };
+  return { draft, put, name, attempt, begin, progress, settled, cancel };
 }
 
 /** Create: the refusal for an empty name, the one identity per attempt, and the parts not written. */
@@ -148,13 +192,21 @@ function useCreate(props: DraftPanelProps, kept: Kept) {
       kept.name.current?.focus();
       return;
     }
-    const operationId = kept.attempt ?? props.client.newOperationId();
-    kept.setAttempt(operationId);
+    const attempt = kept.attempt ?? newAttempt(props.client.newOperationId());
+    kept.begin(attempt);
+    const release = props.hold();
     setBusy(true);
     setRefusal(null);
-    const outcome = await createFromDraft(props.client, kept.draft, operationId);
+    let outcome: CreateOutcome | null = null;
+    try {
+      outcome = await createFromDraft(props.client, kept.draft, attempt, kept.progress);
+    } finally {
+      // The session changed while it was out: the draft and the panel went with it.
+      if (!release()) outcome = null;
+    }
+    if (outcome === null) return;
     setBusy(false);
-    if (outcome.kind !== 'unknown') kept.setAttempt(null);
+    if (outcome.kind !== 'unknown') kept.settled(attempt.id);
     if (outcome.kind !== 'created') {
       setRefusal(outcome.because);
       return;

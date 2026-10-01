@@ -197,7 +197,7 @@ describe('MP-5-8 comment badge count and door, drawn', () => {
 
 describe('MP-5-8 client column drops for one client, drawn', () => {
   it('drops the Client column when one client filter is on', async () => {
-    const board = await open({ address: 'f=client:beta-bakery' });
+    const board = await open({ address: 'f=client:"Beta Bakery"' });
     expect(heads(board)).not.toContain('client');
     expect(order(board)).toStrictEqual(['waiting', 'unranked']);
   });

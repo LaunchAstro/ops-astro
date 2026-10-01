@@ -62,6 +62,7 @@ export async function recordOutcomeOnTask(
     outcome: fields.outcome,
     subjects: subjectsOf(context.session),
     collection: context.declaration.collection,
+    actorId: context.session.actorId,
   });
   return result.ok ? applied(taskId, null, { ...result.value }) : refused(result.refusal);
 }
