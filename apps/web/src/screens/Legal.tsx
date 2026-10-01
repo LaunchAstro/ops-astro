@@ -34,13 +34,14 @@ export interface LegalScreenProps {
   readonly business: string;
   readonly document: string;
   readonly apiOrigin: string;
-  readonly fetch: typeof globalThis.fetch;
+  /** Reads a public address: the open route's fetch, handed in by the registry. */
+  readonly read: (address: string) => Promise<Response>;
 }
 
 async function readPublished(props: LegalScreenProps): Promise<Answer> {
   const address = `${props.apiOrigin}${PUBLIC_PREFIX}${encodeURIComponent(props.business)}/legal/${encodeURIComponent(props.document)}`;
   try {
-    const response = await props.fetch(address);
+    const response = await props.read(address);
     if (response.status === 404) return 'not-published';
     if (!response.ok) return 'failed';
     const body = (await response.json()) as Partial<Published>;
@@ -55,17 +56,17 @@ async function readPublished(props: LegalScreenProps): Promise<Answer> {
 export function LegalScreen(props: LegalScreenProps): ReactElement {
   const [answer, setAnswer] = useState<Answer>('reading');
   const title = PUBLIC_DOCUMENTS.find(([name]) => name === props.document)?.[1];
-  const { business, document, apiOrigin, fetch } = props;
+  const { business, document, apiOrigin, read } = props;
   useEffect(() => {
     let current = true;
     void (async () => {
-      const next = await readPublished({ business, document, apiOrigin, fetch });
+      const next = await readPublished({ business, document, apiOrigin, read });
       if (current) setAnswer(next);
     })();
     return () => {
       current = false;
     };
-  }, [business, document, apiOrigin, fetch]);
+  }, [business, document, apiOrigin, read]);
 
   return (
     <div data-screen="legal">
