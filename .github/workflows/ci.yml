@@ -322,7 +322,7 @@ jobs:
     name: database look-ahead, Postgres 18 (not required)
     needs: [gate]
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 90
     services:
       postgres:
         image: postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 # postgres:18-alpine

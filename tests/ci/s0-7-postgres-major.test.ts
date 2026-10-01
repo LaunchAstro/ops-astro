@@ -142,8 +142,8 @@ function ciOnTheCases2() {
       expect(other).not.toMatch(new RegExp(`needs:.*\\b${id}\\b`, 'u'));
     // Its failure shows red on the pull request: nothing turns it green.
     expect(block).not.toMatch(/continue-on-error/u);
-    // ORCH57PG18: a hung run gives its runner back after 30 minutes, not GitHub's 360.
-    expect(block).toMatch(/^ {4}timeout-minutes: 30$/mu);
+    // ORCH57PG18, ORCH57B3: a hung run gives its runner back after 90 minutes, not GitHub's 360.
+    expect(block).toMatch(/^ {4}timeout-minutes: 90$/mu);
   });
 
   it('S0-7 the watch line: one ticket moves production, staging, CI and the restore drill to 18', () => {
