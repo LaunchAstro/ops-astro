@@ -63,9 +63,30 @@ export const openAtWhole = async (label: string): Promise<Work> => {
   return work;
 };
 
-/** Work whose one call is open at its whole hold when its delegation is revoked. */
-export const spentWhole = async (label: string): Promise<Work> => {
+/**
+ * Work whose one call settled at its maximum, its whole hold: a provider billing
+ * the whole of it. The replay provider never answers that high, so the open
+ * call's row is moved as the broker's settle moves it.
+ */
+export const settledAtWhole = async (label: string): Promise<Work> => {
   const work = await openAtWhole(label);
+  await s.db.admin.execute(
+    `update public.model_calls
+        set state = 'settled', observed_minor = reserved_minor, actual_minor = reserved_minor,
+            drop_state = null, completed_at = clock_timestamp(), ended_at = clock_timestamp()
+      where reservation_id = $1 and state = 'dispatched'`,
+    [work.decision['reservationId']],
+  );
+  return work;
+};
+
+/**
+ * Work whose spend used its whole hold, its delegation then revoked: the
+ * classifier settles the hold at that spend (AW-01), and nothing is left to
+ * hold for the step.
+ */
+export const spentWhole = async (label: string): Promise<Work> => {
+  const work = await settledAtWhole(label);
   await revoke(work);
   return work;
 };
