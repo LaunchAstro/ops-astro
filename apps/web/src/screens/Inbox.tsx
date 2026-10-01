@@ -72,8 +72,9 @@ export function InboxScreen(props: {
   });
   // Beside needs the dock's drawers (MP-3-1); until then both open in place.
   const onOpenTask = (key: string, _how: OpenHow): void => navigate(taskHref(key));
+  // A live re-read keeps the list drawn, so the tab the person chose holds (C4 live-sync 4).
   return (
-    <RecordState state={state} subject="inbox" onRetry={reload}>
+    <RecordState state={state} subject="inbox" onRetry={reload} keep>
       {(inbox) => (
         <InboxPage
           items={inbox.items}
