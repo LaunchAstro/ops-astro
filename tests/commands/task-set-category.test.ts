@@ -8,23 +8,18 @@
 // value is refused naming `category` and writes nothing. `task.read` and the
 // board's row carry the stored id. An agent reaches it only inside its
 // delegation, and a category never touches agent scope (R76):
-// task-set-category-agent. The world is the ad hoc one.
+// task-set-category-agent. The crossings are task-set-category-isolation.
+// The world is the ad hoc one.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { grantTo } from './fixture.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import { COMMAND_SURFACE, TASK_CATEGORIES } from '../../packages/core-wire/src/index.ts';
-import type { BusinessId } from '../../packages/core-records/src/index.ts';
-import type { Member } from './fixture.ts';
 import {
   CANARY,
   alpha,
   as,
-  bravo,
-  bravoWriter,
-  clientAWriter,
   db,
   fresh,
   outcomeOf,
@@ -34,50 +29,13 @@ import {
   tearDown,
   writer,
 } from './adhoc-world.ts';
+import { current, readCategory, setCategory, stored } from './category-support.ts';
 
 if (serverUrl === undefined) {
   console.warn(
     'task-set-category: DATABASE_URL is unset, so nothing below ran and nothing is proved.',
   );
 }
-
-type Task = { recordId: string; revision: number };
-
-const stored = async (recordId: string): Promise<{ category: unknown; revision: number }> => {
-  const rows = await db.admin.execute<{ readonly category: unknown; readonly revision: string }>(
-    `select data -> 'category' as category, revision::text as revision
-       from public.records where id = $1`,
-    [recordId],
-  );
-  return { category: rows[0]?.category ?? null, revision: Number(rows[0]?.revision) };
-};
-
-const current = async (task: Task): Promise<Task> => ({
-  recordId: task.recordId,
-  revision: (await stored(task.recordId)).revision,
-});
-
-const setCategory = async (
-  business: BusinessId,
-  by: Member,
-  task: Task,
-  category: unknown,
-  operationId: string = randomUUID(),
-) =>
-  await as(business, by, {
-    command: 'task.set_category',
-    operationId,
-    recordId: task.recordId,
-    expectedRevision: task.revision,
-    fields: { category },
-  });
-
-/** The category `task.read` answers for the task, or the refusal's code. */
-const readCategory = async (business: BusinessId, by: Member, recordId: string) => {
-  const read = await executeRead(db.app, business, by.presented, { read: 'task.read', recordId });
-  if (isCommandRefusal(read)) return read.code;
-  return 'task' in read ? (read.task as unknown as { category?: unknown }).category : 'no task';
-};
 
 beforeAll(async () => {
   if (serverUrl !== undefined) await setUp();
@@ -261,39 +219,6 @@ describe.skipIf(serverUrl === undefined)('MP-4-8 CS-4.16 task category', () => {
       expect(await stored(task.recordId)).toStrictEqual({
         category: null,
         revision: task.revision,
-      });
-    });
-  });
-});
-
-describe.skipIf(serverUrl === undefined)('MP-4-8 CS-4.16 task category', () => {
-  describe('MP-4-8 isolation: task category', () => {
-    it('another business: its task is not found, keeps its label and shows no canary', async () => {
-      const foreign = await fresh(bravo, bravoWriter, CANARY);
-      await setCategory(bravo, bravoWriter, foreign, 'videography');
-      const before = await stored(foreign.recordId);
-      const answer = await setCategory(alpha, writer, await current(foreign), 'seo');
-      expect(outcomeOf(answer)).toMatchObject({ code: 'NOT_FOUND' });
-      expect(JSON.stringify(answer)).not.toMatch(new RegExp(`${CANARY}|videography`, 'u'));
-      expect(await stored(foreign.recordId)).toStrictEqual(before);
-      expect(await readCategory(alpha, writer, foreign.recordId)).toBe('NOT_FOUND');
-    });
-
-    it('another client in the same business: a writer on client A’s task cannot label client B’s', async () => {
-      const taskA = await fresh(alpha, writer, 'client A');
-      const taskB = await fresh(alpha, writer, CANARY);
-      await db.app.withBusiness(alpha, async (tx) => {
-        await grantTo(tx, clientAWriter, 'write', { kind: 'record', id: taskA.recordId });
-      });
-      expect(outcomeOf(await setCategory(alpha, clientAWriter, taskA, 'admin'))).toStrictEqual({
-        applied: true,
-      });
-      const refused = await setCategory(alpha, clientAWriter, taskB, 'admin');
-      expect(outcomeOf(refused)).toMatchObject({ code: 'SCOPE_NOT_GRANTED' });
-      expect(JSON.stringify(refused)).not.toContain(CANARY);
-      expect(await stored(taskB.recordId)).toStrictEqual({
-        category: null,
-        revision: taskB.revision,
       });
     });
   });

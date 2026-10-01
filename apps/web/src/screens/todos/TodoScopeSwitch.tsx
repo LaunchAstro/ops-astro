@@ -3,28 +3,25 @@
 // The Projects panel's scope switch (MP-7-2, CS-7.4): a teammate from
 // `person.list`, or a client, its waiting comments and its route family.
 // Each choice replaces the scope before it, and none writes. The teammates
-// are real; the clients come through `ClientSource` and are drawn under the
-// one shared mock label while they are made-up (`todo-scope.ts`).
+// and the clients are real (`person.list`, `client.list`); a client's route
+// family is made-up and drawn under the one shared mock label (`todo-scope.ts`).
 
 import type { ReactElement } from 'react';
 import { SourceRegion } from '@launchastro/ui';
-import type { PersonListResult } from '../../../../../packages/core-wire/src/index.ts';
+import type {
+  ClientListResult,
+  ClientView,
+  PersonListResult,
+} from '../../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../../operations/client.ts';
 import { useRead } from '../../data/use-read.ts';
-import {
-  MINE,
-  wordsOf,
-  type ClientChoice,
-  type ClientSource,
-  type TodoScope,
-} from './todo-scope.ts';
+import { MINE, ROUTE_FAMILIES, wordsOf, type TodoScope } from './todo-scope.ts';
 
 export interface TodoScopeSwitchProps {
   readonly client: OperationsClient;
   readonly grantKey: string;
   readonly scope: TodoScope;
   readonly onScope: (scope: TodoScope) => void;
-  readonly clients: ClientSource;
 }
 
 export function TodoScopeSwitch(props: TodoScopeSwitchProps): ReactElement {
@@ -49,9 +46,7 @@ export function TodoScopeSwitch(props: TodoScopeSwitchProps): ReactElement {
           onScope(person === undefined ? MINE : { kind: 'person', ...person });
         }}
       />
-      <SourceRegion provenance={props.clients.provenance}>
-        <ClientScope {...props} />
-      </SourceRegion>
+      <ClientScope {...props} />
       {words === null ? null : (
         <p className="card__sub">
           <span data-todos-scope>{words}</span>{' '}
@@ -64,18 +59,27 @@ export function TodoScopeSwitch(props: TodoScopeSwitchProps): ReactElement {
   );
 }
 
+/** The business's clients the reader's grants reach (`client.list`, C32); none until it lands. */
+function useClients(props: TodoScopeSwitchProps): readonly ClientView[] {
+  const listed = useRead<ClientListResult>({
+    grantKey: props.grantKey,
+    run: () => props.client.read<ClientListResult>('client.list', {}),
+    deps: [],
+  });
+  return listed.state.outcome === 'ready' ? listed.state.value.clients : [];
+}
+
 /** A client, its waiting comments and its route family: one client scope, replaced whole. */
 function ClientScope(props: TodoScopeSwitchProps): ReactElement {
-  const { scope, onScope, clients } = props;
+  const { scope, onScope } = props;
+  const clients = useClients(props);
   const chosen =
-    scope.kind === 'client'
-      ? clients.clients.find((each) => each.id === scope.clientId)
-      : undefined;
-  const to = (client: ClientChoice | undefined, over: { waiting?: boolean; family?: string }) => {
+    scope.kind === 'client' ? clients.find((each) => each.clientId === scope.clientId) : undefined;
+  const to = (client: ClientView | undefined, over: { waiting?: boolean; family?: string }) => {
     onScope(
       client === undefined
         ? MINE
-        : { kind: 'client', clientId: client.id, name: client.name, ...over },
+        : { kind: 'client', clientId: client.clientId, name: client.name, ...over },
     );
   };
   const waiting = scope.kind === 'client' && scope.waiting === true;
@@ -85,11 +89,11 @@ function ClientScope(props: TodoScopeSwitchProps): ReactElement {
         id="todos-client"
         label="Client"
         none="No client"
-        value={chosen?.id ?? ''}
-        options={clients.clients.map((client) => ({ value: client.id, label: client.name }))}
+        value={chosen?.clientId ?? ''}
+        options={clients.map((client) => ({ value: client.clientId, label: client.name }))}
         onPick={(value) => {
           to(
-            clients.clients.find((each) => each.id === value),
+            clients.find((each) => each.clientId === value),
             {},
           );
         }}
@@ -101,18 +105,39 @@ function ClientScope(props: TodoScopeSwitchProps): ReactElement {
           to(chosen, { waiting: !waiting });
         }}
       />
-      <Choice
-        id="todos-family"
-        label="Route family"
-        none="Any route"
-        disabled={chosen === undefined}
-        value={scope.kind === 'client' ? (scope.family ?? '') : ''}
-        options={(chosen?.families ?? []).map((family) => ({ value: family, label: family }))}
+      <FamilyChoice
+        scope={scope}
+        chosen={chosen !== undefined}
         onPick={(value) => {
           to(chosen, value === '' ? {} : { family: value });
         }}
       />
     </div>
+  );
+}
+
+/** A client's route family: made-up (no source yet), so drawn under the one mock label. */
+function FamilyChoice(props: {
+  readonly scope: TodoScope;
+  readonly chosen: boolean;
+  readonly onPick: (value: string) => void;
+}): ReactElement {
+  const { scope } = props;
+  return (
+    <SourceRegion provenance="mock">
+      <Choice
+        id="todos-family"
+        label="Route family"
+        none="Any route"
+        disabled={!props.chosen}
+        value={scope.kind === 'client' ? (scope.family ?? '') : ''}
+        options={(props.chosen ? ROUTE_FAMILIES : []).map((family) => ({
+          value: family,
+          label: family,
+        }))}
+        onPick={props.onPick}
+      />
+    </SourceRegion>
   );
 }
 

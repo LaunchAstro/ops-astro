@@ -3,17 +3,17 @@
 //
 // MP-7-2's scoping seams on the Projects dock panel (CS-7.4): the list scoped
 // to a teammate (picked from `person.list`, real), to a client, to a client's
-// waiting comments, or to a client's route family. Client names and the
-// client list are family B (C32), not on this base, so the clients are
-// made-up behind a typed seam and drawn under the one shared mock label; the
-// read they send is the real `task.todos` scope. Each scope replaces the one
+// waiting comments, or to a client's route family. The clients are the
+// business's own from `client.list` (C32), real and never mock-marked; a
+// client's route family has no source yet, so it is made-up and drawn under
+// the one shared mock label. The read each sends is the real `task.todos` scope. Each scope replaces the one
 // before, and a door opens the panel already scoped. What a scope may read
 // is the server's (`tests/commands/task-todos-scope*.test.ts`).
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { TodosScreen } from '../../apps/web/src/screens/todos/Todos.tsx';
-import { MOCK_CLIENTS, type TodoScope } from '../../apps/web/src/screens/todos/todo-scope.ts';
+import { ROUTE_FAMILIES, type TodoScope } from '../../apps/web/src/screens/todos/todo-scope.ts';
 import { json, mount, unmountAll } from './perspective-support.tsx';
 import { tick } from './task-page-stub.tsx';
 import { NOW, TODOS, keysOf } from './todos-support.tsx';
@@ -24,7 +24,12 @@ const PEOPLE = [
   { personId: 'p-ada', name: 'Ada' },
   { personId: 'p-noah', name: 'Noah' },
 ];
-const ACME = MOCK_CLIENTS.clients[0] ?? { id: '', name: '', families: [] };
+/** The business's clients, as `client.list` answers them. */
+const CLIENTS = [
+  { clientId: 'c-acme', name: 'Acme Physio' },
+  { clientId: 'c-north', name: 'Northside Dental' },
+];
+const ACME = { id: 'c-acme', name: 'Acme Physio' };
 const CANARY = 'canary-noahs-secret';
 
 /** Two tasks with messages waiting (2 and 1), the rest with none. */
@@ -42,6 +47,9 @@ function serving(refuse: (body: Record<string, unknown>) => boolean = () => fals
     >;
     if (String(url).endsWith('/person/list')) {
       return Promise.resolve(json({ ok: true, persons: PEOPLE }));
+    }
+    if (String(url).endsWith('/client/list')) {
+      return Promise.resolve(json({ ok: true, clients: CLIENTS }));
     }
     if (String(url).endsWith('/task/todos')) {
       reads.push(body);
@@ -100,14 +108,11 @@ describe('MP-7-2 Scope to a client, a client’s waiting comments, a person, or 
     expect(view.text()).toContain(CANARY);
   });
 
-  it('a client: the made-up clients sit under the one shared mock label, and the read is the client’s', async () => {
+  it('a client: the choices are client.list’s, real and never mock-marked; the read is the client’s', async () => {
     const { view, choose, last } = await panel();
-    const region = view.find('[data-todos-clients]');
-    expect(region?.closest('.is-mock')?.querySelector('.mocktag')?.textContent).toBe('Mock');
-    expect(options(view, '#todos-client')).toStrictEqual([
-      '',
-      ...MOCK_CLIENTS.clients.map((each) => each.id),
-    ]);
+    expect(view.find('#todos-client')?.closest('.is-mock')).toBeNull();
+    expect(options(view, '#todos-client')).toStrictEqual(['', 'c-acme', 'c-north']);
+    expect(view.text()).toContain('Northside Dental');
     await choose('#todos-client', ACME.id);
     expect(last()).toStrictEqual({ client: ACME.id });
     expect(view.find('[data-todos-scope]')?.textContent).toContain(ACME.name);
@@ -132,7 +137,8 @@ describe('MP-7-2 Scope to a client, a client’s waiting comments, a person, or 
     const { view, choose, last } = await panel();
     expect(view.find('#todos-family')?.closest('.is-mock')).not.toBeNull();
     await choose('#todos-client', ACME.id);
-    const family = ACME.families[0] ?? '';
+    expect(options(view, '#todos-family')).toStrictEqual(['', ...ROUTE_FAMILIES]);
+    const family = ROUTE_FAMILIES[0] ?? '';
     await choose('#todos-family', family);
     expect(last()).toStrictEqual({ client: ACME.id });
     expect(view.find('[data-todos-scope]')?.textContent).toContain(family);

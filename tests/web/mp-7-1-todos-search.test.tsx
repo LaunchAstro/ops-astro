@@ -100,8 +100,9 @@ describe('MP-7-1 not audited: reads, search and sort send no write', () => {
     await view.click('[data-todos="clear"]');
     await view.choose('#todos-sort', 'priority');
     await view.click('[data-todo-row="Proj-Alpha"] [data-todo-comments]');
-    // The list's one read, and the scope switch's teammates (MP-7-2).
+    // The list's one read, and the scope switch's teammates and clients (MP-7-2).
     expect(server.sent.map((one) => one.to).toSorted()).toStrictEqual([
+      '/client/list',
       '/person/list',
       '/task/todos',
     ]);

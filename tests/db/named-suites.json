@@ -449,6 +449,7 @@
     "tests/commands/task-set-state.test.ts",
     "tests/commands/task-set-state-agent.test.ts",
     "tests/commands/task-set-category.test.ts",
+    "tests/commands/task-set-category-isolation.test.ts",
     "tests/commands/task-set-category-agent.test.ts",
     "tests/commands/task-duplicate.test.ts",
     "tests/commands/task-duplicate-access.test.ts",

@@ -62,8 +62,9 @@ export function serving(rows: readonly unknown[] = TODOS, refuse: readonly strin
     const body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as Sent['body'];
     sent.push({ to, body });
     if (to === '/task/todos') return Promise.resolve(json({ ok: true, todos: rows }));
-    // The scope switch's teammates (MP-7-2).
+    // The scope switch's teammates and clients (MP-7-2).
     if (to === '/person/list') return Promise.resolve(json({ ok: true, persons: [] }));
+    if (to === '/client/list') return Promise.resolve(json({ ok: true, clients: [] }));
     if (refuse.includes(to)) {
       const refusal = { refused: true, code: 'SCOPE_NOT_GRANTED', names: ['task'], fixes: [] };
       return Promise.resolve(json(refusal, 403));
