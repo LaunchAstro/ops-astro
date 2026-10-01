@@ -14,22 +14,29 @@
 // against the mockup's page. Every name and client is made up.
 
 import type {
+  AccessReadResult,
   BoardTask,
   CapabilitiesResult,
+  ClientListResult,
   InboxCountResult,
   InboxReadResult,
   InternalTaskDetail,
   InternalTaskRead,
+  OperationsReadResult,
   PersonListResult,
   QueueResult,
+  SessionPersonResult,
   SettingsReadResult,
   TagListResult,
   TagView,
   TaskBoardResult,
   TaskExecutionResult,
+  TaskLedgerResult,
+  TaskSearchResult,
   TaskStateView,
   TaskSummary,
   TaskTodosResult,
+  TeamListResult,
   TodoView,
 } from '../../packages/core-wire/src/index.ts';
 import type { BrowserContext } from 'playwright';
@@ -159,6 +166,48 @@ const DETAIL: InternalTaskDetail = {
   tags: [],
 };
 
+const HARBOUR = { clientId: 'c-harbour', name: 'Harbour Physio' };
+const MERIDIAN = { clientId: 'c-meridian', name: 'Meridian Dental' };
+
+/** The Work log's two days, newest first, as `task.ledger` answers them (MP-8-4). */
+const LEDGER: TaskLedgerResult = {
+  ok: true,
+  earlier: true,
+  days: [
+    {
+      day: '2026-09-26',
+      events: [
+        {
+          id: 'e-3',
+          at: '2026-09-26T01:20:00.000Z',
+          actorName: NATHAN.name,
+          operation: 'task.complete',
+          task: { key: 'T-13', title: 'Approve the four review replies before they go out' },
+        },
+        {
+          id: 'e-2',
+          at: '2026-09-25T23:05:00.000Z',
+          actorName: MIA.name,
+          operation: 'task.comment',
+          task: { key: 'T-15', title: 'Ads rebuild: cost per enquiry' },
+        },
+      ],
+    },
+    {
+      day: '2026-09-25',
+      events: [
+        {
+          id: 'e-1',
+          at: '2026-09-25T03:40:00.000Z',
+          actorName: NATHAN.name,
+          operation: 'task.update',
+          task: { key: 'T-1', title: 'Contract review pack, 31 July' },
+        },
+      ],
+    },
+  ],
+};
+
 const TAGS: readonly TagView[] = [
   { id: 'g-renewal', name: 'renewal' },
   { id: 'g-ads', name: 'ads' },
@@ -213,8 +262,30 @@ const READS = {
         updatedByActorId: NATHAN.personId,
         revision: 1,
       },
+      {
+        key: 'conversation_window_days',
+        value: 30,
+        valueType: 'numeric',
+        updatedAt: '2026-09-20T00:00:00.000Z',
+        updatedByActorId: NATHAN.personId,
+        revision: 1,
+      },
+      {
+        key: 'retention_window_days',
+        value: 365,
+        valueType: 'numeric',
+        updatedAt: '2026-09-20T00:00:00.000Z',
+        updatedByActorId: NATHAN.personId,
+        revision: 1,
+      },
     ],
   } satisfies SettingsReadResult,
+  // The person's own store (MP-2-11a): no appearance, so the capture's colour
+  // scheme draws; two dismissals no page draws, so the reset has a count.
+  'preference.read': {
+    ok: true,
+    preferences: { 'tips.dismissed': { 'agency:settings#one': 1, 'agency:settings#two': 1 } },
+  },
   'session.capabilities': {
     ok: true,
     personId: NATHAN.personId,
@@ -261,6 +332,38 @@ const READS = {
     ],
   } satisfies InboxReadResult,
   'inbox.count': { ok: true, owed: 2 } satisfies InboxCountResult,
+  'session.person': { ok: true, person: { name: NATHAN.name } } satisfies SessionPersonResult,
+  'team.list': {
+    ok: true,
+    you: NATHAN.personId,
+    people: [
+      { personId: NATHAN.personId, name: NATHAN.name, availability: null },
+      { personId: MIA.personId, name: MIA.name, availability: { state: 'away', reason: 'Leave' } },
+    ],
+  } satisfies TeamListResult,
+  'task.ledger': LEDGER,
+  'task.search': {
+    ok: true,
+    hits: TASKS.slice(0, 3).map(({ id, key, title }) => ({ id, key, title })),
+  } satisfies TaskSearchResult,
+  'access.read': {
+    ok: true,
+    team: [
+      { ...NATHAN, permissions: [], grants: [] },
+      { ...MIA, permissions: [], grants: [] },
+    ],
+    clients: [],
+    agents: [],
+    clientRecords: [HARBOUR, MERIDIAN],
+  } satisfies AccessReadResult,
+  'operations.read': {
+    ok: true,
+    privacyIncidents: [],
+    breachRunbook: null,
+  } satisfies OperationsReadResult,
+  // The business's clients (C32), as the task's client field and the to-dos'
+  // client scope ask them.
+  'client.list': { ok: true, clients: [HARBOUR, MERIDIAN] } satisfies ClientListResult,
 } as const satisfies Partial<Record<ReadName, unknown>>;
 
 /** The reads the harness answers; a read missing here draws its "could not be read" state. */
