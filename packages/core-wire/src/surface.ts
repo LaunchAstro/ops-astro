@@ -31,151 +31,9 @@
 // because the web client imports this table and must not import the database.
 
 import type { Action } from '../../core-records/src/index.ts';
+import type { CommandName } from './command-names.ts';
 
-export type CommandName =
-  // The contract's nine.
-  | 'task.create'
-  | 'task.update'
-  | 'task.complete'
-  | 'task.reopen'
-  | 'task.comment'
-  | 'task.propose'
-  | 'task.decide'
-  | 'task.pickup'
-  | 'task.handback'
-  // The owning operations the task type's field definitions name.
-  | 'task.start'
-  | 'task.assign'
-  | 'task.triage'
-  | 'task.set_stage'
-  | 'task.set_party'
-  | 'task.set_audience'
-  | 'task.reparent'
-  | 'task.move'
-  // The mechanics specification 14.2 and 14.3 name.
-  | 'task.rank'
-  | 'task.trash'
-  | 'task.restore'
-  | 'task.purge'
-  // The reads. They are here because a read is an operation the same surfaces
-  // have to expose, and a table that held only the writes would leave the
-  // route for reading a task to be invented somewhere else.
-  | 'task.read'
-  | 'task.board'
-  | 'task.queue'
-  | 'task.execution'
-  // What happened to the business's tasks, by day (MP-8-4, CS-8.9): a view
-  // over the applied writes in `audit_events`, never a second record of them.
-  | 'task.ledger'
-  | 'person.list'
-  // Search over what the caller may read (C1). The grant it takes is `read`
-  // on tasks at whatever scope the caller holds it, asked by the search
-  // itself so the scope is part of the statement that finds candidates.
-  | 'task.search'
-  | 'team.list'
-  // The preset planner. It reads the model and writes nothing at all, so it is
-  // a read by the only definition this table has; what makes it unlike the
-  // other three is the authority it asks for, which is `manage` on presets
-  // rather than `read` on a collection of records.
-  | 'preset.plan'
-  // The business's own settings, projected. Four landed contracts name a
-  // per-business setting and none of them could read one through a surface,
-  // so the values were writable and invisible. It is a read on the `settings`
-  // collection, which is the same collection the two commands below write.
-  | 'settings.read'
-  // What the caller may do here, from the live grant model. It is the one row
-  // whose answer is about the caller rather than about the business, which is
-  // why it takes no grant beyond membership: every pair in it is a pair the
-  // caller already holds, so returning them confers nothing.
-  | 'session.capabilities'
-  // Who is signed in (C23): the caller's own name and nothing else, for the
-  // person menu. Like `session.capabilities` it is about the caller, so it takes
-  // no grant; unlike it, it answers a person who holds none, because anyone
-  // signed in may see their own name.
-  | 'session.person'
-  // Settings ▸ Access (C32): Team, Clients and Agents from the one set of
-  // person records, each with what its grants and delegations allow now.
-  | 'access.read'
-  | 'client.list'
-  // C55: the operations view, the one read of what needs the operator's eye.
-  | 'operations.read'
-  // C81: the breach drill's notices, drafted from the published runbook.
-  | 'privacy.draft_breach_notices'
-  // The two settings the model classifies `operation`. A setting that decides
-  // who must agree before money moves or before work completes is an authority
-  // change wearing configuration's clothes, so it is not reachable through a
-  // generic edit and a named command owns it. The names are the ones the
-  // `business_settings` rows already cite in `owning_operation`.
-  | 'settings.set_four_eyes_threshold'
-  | 'settings.set_client_sign_off'
-  // C59: whether a money action needs a recent second-factor sign-in.
-  | 'settings.set_money_step_up'
-  // MP-2-11: the conversation and retention windows, in days (C122-1).
-  | 'settings.set_conversation_window'
-  | 'settings.set_retention_window'
-  // C55: the breach runbook's day-0 record, `privacy incident recorded`.
-  | 'privacy.record_incident'
-  // C81: the legal documents' versions, drafted, approved as those exact
-  // bytes, and published.
-  | 'legal.draft_version'
-  | 'legal.approve_version'
-  | 'legal.publish_version'
-  // API-2: an agent credential, issued and revoked by a person on their own
-  // account.
-  | 'credential.issue'
-  | 'credential.revoke'
-  // C81: the overseas-services register the privacy policy reads.
-  | 'privacy.set_overseas_service'
-  // C81: the data-class register the privacy policy reads.
-  | 'privacy.set_data_class'
-  // S0-5: the first-client gate's own acts, `gate item recorded` and
-  // `installation mode changed`.
-  | 'operations.record_gate_item'
-  | 'operations.change_installation_mode'
-  // The support controls the contract ledger requires through owning
-  // production interfaces: revocation of an existing grant or delegation,
-  // cancellation of a run's lineage, an authorised restart as a new lineage,
-  // and the lease owner's heartbeat. None is a new actor power; each asks for
-  // authority the caller already holds (see each row below).
-  | 'client.create'
-  | 'access.grant'
-  | 'access.revoke'
-  | 'access.end'
-  | 'grant.revoke'
-  | 'delegation.revoke'
-  | 'task.cancel'
-  | 'task.restart'
-  | 'task.heartbeat'
-  // The lease holder marks its step dispatched before any effect (T2c1).
-  | 'task.dispatch'
-  // The lease holder observes its applied effect, and a person reads the
-  // receipt citing the decision it came from (T2c2).
-  | 'task.observe'
-  | 'task.receipt'
-  // A person raises a task's envelope, two people above the band (T2e).
-  | 'budget.top_up'
-  // A person records what an unknown effect came to: one of three (T3d1).
-  | 'budget.record_outcome'
-  // A person closes an unknown hold at an amount, with a reason (T3c).
-  | 'budget.write_off'
-  // Sign-out (C23, CS-2.9): records `session ended (sign-out)` on the audit
-  // chain. `account:write`, which every signed-in person holds on their own
-  // account and nobody holds on another's, so it names no one: the account is
-  // the caller's, always.
-  | 'session.end'
-  // The one preference store (MP-2-11a): the caller's own keys.
-  | 'preference.read'
-  | 'preference.save'
-  | 'preference.dismiss_tip'
-  // The inbox inside Tasks (INB-1d): the caller's own items and owed count,
-  // and `seen` stamped on the caller's own attention row.
-  | 'inbox.read'
-  | 'inbox.count'
-  | 'inbox.seen'
-  // Items no path reaches, for the operations view (INB-1e), and the caller's
-  // own notification setting on one channel.
-  | 'inbox.unattended'
-  | 'notifications.set_channel';
+export type { CommandName } from './command-names.ts';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -354,9 +212,12 @@ function declare(
 }
 
 const TASK_COLLECTION = 'task';
+const ACCESS_COLLECTION = 'access';
 const SETTINGS_COLLECTION = 'settings';
 const SESSION_COLLECTION = 'session';
 const BILLING_COLLECTION = 'billing';
+const TIME_COLLECTION = 'time';
+const TAG_COLLECTION = 'tag';
 const SPEND_COLLECTION = 'spend';
 const ACCOUNT_COLLECTION = 'account';
 const PREFERENCE_COLLECTION = 'preference';
@@ -414,13 +275,17 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'task.complete': TARGET,
   'task.reopen': { ...TARGET, reason: 'any' },
   'task.start': TARGET,
+  'task.set_state': { ...TARGET, stateId: 'id' },
   'task.comment': {
     ...TARGET,
     body: 'any',
     audience: 'any',
     commentType: 'any',
+    parentId: 'any',
     mentions: 'any',
   },
+  'task.edit_comment': { ...TARGET, commentId: 'any', body: 'any' },
+  'task.delete_comment': { ...TARGET, commentId: 'any' },
   'task.propose': {
     ...TARGET,
     purpose: 'any',
@@ -455,6 +320,10 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'task.set_stage': FIELDS,
   'task.set_party': FIELDS,
   'task.set_audience': FIELDS,
+  'task.set_scores': FIELDS,
+  'task.set_adhoc': FIELDS,
+  'task.share_with_client': TARGET,
+  'task.revoke_client_share': TARGET,
   'task.reparent': { ...TARGET, parentId: 'any' },
   'task.move': { ...TARGET, board: 'any', boardSection: 'any' },
   'task.rank': { ...TARGET, afterId: 'id?|null', beforeId: 'id?|null' },
@@ -527,6 +396,15 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     usage: 'any',
     outcome: 'any',
   },
+  // A duration is text the handler parses and answers in its own words.
+  'time.start': { taskId: 'id' },
+  'time.stop': { taskId: 'id' },
+  'time.log': { taskId: 'id', duration: 'any', note: 'any' },
+  'time.set_note': { entryId: 'id', note: 'any' },
+  'time.delete': { entryId: 'id' },
+  'tag.create': { name: 'any' },
+  'task.add_tag': { recordId: 'id', tagId: 'id' },
+  'task.remove_tag': { recordId: 'id', tagId: 'id' },
   'session.end': {},
   'preference.save': { preference: 'text', value: 'any' },
   'preference.dismiss_tip': { page: 'text', tip: 'text', version: 'count' },
@@ -539,7 +417,10 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     untargetedIdentifiers: ['parentId', 'board', 'boardSection'],
   }),
-  declare('task.update', 'write'),
+  // An agent writes the description, its brief, the name, the due date and
+  // the page link on its own task inside its delegation (MP-4-7, MP-4-8,
+  // MP-4-12), and no other field: `updateTaskAsAgent` refuses the rest.
+  declare('task.update', 'write', { agent: 'delegated' }),
   declare('task.complete', 'write'),
   declare('task.reopen', 'write'),
   declare('task.comment', 'comment', { agent: 'delegated' }),
@@ -576,7 +457,13 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   }),
 
   declare('task.start', 'write'),
-  declare('task.assign', 'assign'),
+  // Any state of the business's own workflow but a completed one, by its
+  // record id (the status select: Waiting on client, On hold). A person's
+  // call: an agent's lifecycle stays pickup and handback.
+  declare('task.set_state', 'write'),
+  // An agent sets the assignee of its own task when its delegation holds
+  // `task:assign` (MP-4-8), and not the delegate: `assignTaskAsAgent`.
+  declare('task.assign', 'assign', { agent: 'delegated' }),
   declare('task.triage', 'write'),
   declare('task.set_stage', 'write'),
   declare('task.set_party', 'share', {
@@ -585,6 +472,23 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   declare('task.set_audience', 'share'),
   declare('task.reparent', 'write', { serialise: TASK_PLACEMENT_LOCK }),
   declare('task.move', 'write', { serialise: TASK_PLACEMENT_LOCK }),
+  // The three marks the rank reads (MP-4-9). `task:write`, as `task.update`
+  // asks, and an agent sets them inside its delegation like a comment.
+  declare('task.set_scores', 'write', { agent: 'delegated' }),
+  // The Ad hoc mark (MP-4-10, CS-4.9): `task:write`, and an agent sets it on
+  // its own task inside its delegation.
+  declare('task.set_adhoc', 'write', { agent: 'delegated' }),
+  // Client access (MP-4-10, CS-4.10, R45): the task's share grants to its
+  // client's people, created and withdrawn under `access:share`, which an
+  // agent never holds (contract 2.3 to 2.6). The target row is the lock, so
+  // two at once on one task leave one share per person.
+  declare('task.share_with_client', 'share', { collection: ACCESS_COLLECTION }),
+  declare('task.revoke_client_share', 'share', { collection: ACCESS_COLLECTION }),
+  // An author's own message or reply, rewritten or deleted (MP-4-5,
+  // CS-4.34): `task:comment` on the task, as the comment itself, and an
+  // agent inside its delegation on its own words only (the handler's check).
+  declare('task.edit_comment', 'comment', { agent: 'delegated' }),
+  declare('task.delete_comment', 'comment', { agent: 'delegated' }),
 
   declare('task.rank', 'write'),
   declare('task.trash', 'write'),
@@ -897,6 +801,49 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     untargetedIdentifiers: [],
     audited: false,
   }),
+
+  // Time tracking (MP-4-6, CS-4.1, CS-4.28 to CS-4.30): `write` on `time`,
+  // asked of the business, and the handler then asks `task:read` on the task
+  // the entry is against, so a person times only a task they may read. Each
+  // reaches only the caller's own entries. The key catalogue lets an agent
+  // hold `time:write` inside its delegation; the agent path does not serve
+  // these yet, so it is `never` here until it does.
+  ...(['time.start', 'time.stop', 'time.log'] as const).map((name) =>
+    declare(name, 'write', {
+      collection: TIME_COLLECTION,
+      targetsExistingRecord: false,
+      untargetedIdentifiers: ['taskId'],
+    }),
+  ),
+  ...(['time.set_note', 'time.delete'] as const).map((name) =>
+    declare(name, 'write', {
+      collection: TIME_COLLECTION,
+      targetsExistingRecord: false,
+      untargetedIdentifiers: ['entryId'],
+    }),
+  ),
+
+  // Tags (MP-4-11, CS-4.19 to CS-4.21). A new tag is `tag:write` on the
+  // business; adding and removing are `task:write` on the task named in
+  // `recordId`; the vocabulary is `task:read` on the business, so a reader
+  // held to one client's records is not shown the business's tags. The key
+  // catalogue lets an agent hold these inside its delegation; the agent path
+  // does not serve them yet, so they are `never` here until it does, as the
+  // time commands are.
+  declare('tag.create', 'write', {
+    collection: TAG_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+  }),
+  ...(['task.add_tag', 'task.remove_tag'] as const).map((name) =>
+    declare(name, 'write', {
+      targetsExistingRecord: false,
+      authorisedOn: 'record',
+      untargetedIdentifiers: ['recordId', 'tagId'],
+    }),
+  ),
+  read('tag.list', TASK_COLLECTION),
+  read('task.todos', TASK_COLLECTION),
 
   // The inbox is one person's: no agent reaches it, and each row answers the
   // caller about their own items only, with access derived per item.

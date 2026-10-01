@@ -52,6 +52,7 @@ import {
   ACCEPTANCE_ISSUER,
   ADMIN_ACTIONS,
   ADMIN_COLLECTIONS,
+  ADMIN_EXTRA_PAIRS,
   MEMBER_ACTIONS,
   enrolAgent,
   enrolCaller,
@@ -131,6 +132,7 @@ export async function createWorld(part: string): Promise<World> {
     membership: true,
     actions: ADMIN_ACTIONS,
     collections: ADMIN_COLLECTIONS,
+    extraPairs: ADMIN_EXTRA_PAIRS,
     secondFactor: true,
   });
   const mia = await enrolCaller(db, alpha, 'alpha', 'mia', {

@@ -26,10 +26,96 @@
   font: var(--type-title);
   letter-spacing: var(--type-title-tracking);
   text-transform: var(--type-title-case);
+  /* A long name wraps at 390 rather than clipping (MP-4-1). */
+  overflow-wrap: anywhere;
 }
 .tpr__facts {
   display: grid;
   gap: var(--s-3);
+}
+/* The facts band's frame (DS-TASK-11): 5 columns, 2 below 1280, 1 below 641. */
+.tpr__band {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin: 0;
+  background: var(--surface-2);
+}
+@media (width <= 1279px) {
+  .tpr__band {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (width <= 640px) {
+  .tpr__band {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.tpr__band dd {
+  margin: 0;
+}
+.tpr__strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-4);
+}
+.tpr__fact {
+  display: grid;
+  gap: 0.15rem;
+}
+.tpr__calc {
+  margin: 0;
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+  color: var(--ink-faint);
+}
+/* Inert on the task page: they say what the record says and do nothing, so
+   the cursor is the default one, never the pointer (MP-4-2, D-08). */
+.tpr__mark {
+  display: inline-grid;
+  place-items: center;
+  inline-size: 18px;
+  block-size: 18px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--accent);
+  cursor: default;
+}
+.tpr__mark[data-on='yes'] {
+  border-color: var(--accent);
+}
+/* The live ticks (MP-4-10, DP-16, DP-17): the dock panel's, which do turn. */
+.tpr__tick {
+  display: inline-grid;
+  place-items: center;
+  inline-size: 18px;
+  block-size: 18px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--accent);
+  cursor: pointer;
+}
+.tpr__tick:hover,
+.tpr__tick[aria-checked='true'] {
+  border-color: var(--accent);
+}
+.tpr__tick:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.tpr__tick[aria-disabled='true'] {
+  cursor: progress;
+}
+.tpr__chip {
+  display: inline-block;
+  margin-inline-end: var(--s-2);
+  padding: 0 0.5rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  font: var(--type-chip);
+  letter-spacing: var(--type-chip-tracking);
+  text-transform: var(--type-chip-case);
+  cursor: default;
 }
 .taskform {
   border: 1px solid var(--border);
@@ -156,10 +242,14 @@
   padding: var(--s-2) 0;
   border-bottom: 1px solid var(--border);
 }
-.sbact__meta {
+/* A task key prints as typed (MP-4-14): the data style's case is none. */
+.sbact__meta,
+.tt__more {
   font: var(--type-data);
   letter-spacing: var(--type-data-tracking);
   text-transform: var(--type-data-case);
+}
+.sbact__meta {
   color: var(--ink-faint);
 }
 .sout__box {
@@ -322,4 +412,100 @@
   letter-spacing: var(--type-caption-tracking);
   text-transform: var(--type-caption-case);
   color: var(--text-muted);
+}
+
+/* The panel doors (TT-06): a centred line of mono text across the pane that
+   sends the edit to the dock task panel. Drawn but not pressable while no
+   panel is there to open, and then it looks inert. */
+.tt__more {
+  display: block;
+  width: 100%;
+  padding: var(--s-2) 0;
+  border: 0;
+  background: none;
+  color: var(--ink-muted);
+  text-align: center;
+  cursor: pointer;
+}
+.tt__more:hover:not(:disabled) {
+  color: var(--accent);
+}
+.tt__more:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.tt__more:disabled {
+  cursor: default;
+}
+
+/* -- The description and the agent brief (MP-4-7, DP-34, DP-35, TT-01, TA-10).
+   One font rule (R60): the description is sans on every surface, and so is
+   the rendered brief; mono is kept for the brief's markdown field alone. --- */
+.tt__prose {
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+  color: var(--text-2);
+}
+.md p,
+.md ul,
+.md ol {
+  margin: 0 0 var(--s-2);
+}
+.tf__ta {
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+  width: 100%;
+  padding: var(--s-2) var(--s-3);
+  border: 1px solid var(--rule-faint);
+  background: var(--surface);
+  color: var(--text);
+  resize: vertical;
+}
+.tf__ta:focus {
+  border-color: var(--accent);
+  outline: none;
+}
+.tf__ta--md {
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
+
+/* MP-4-5 thread: replies one level under their message (R42); the pencil and
+   the × revealed on hover or keyboard focus, and at rest below 900px where
+   there is no hover (DT-17); the client message signal a label (DT-19). */
+.msg__replies {
+  margin: var(--s-2) 0 0 var(--s-4);
+  padding-left: var(--s-3);
+  border-left: 1px solid var(--border);
+}
+.msg--deleted > .card__body {
+  color: var(--text-muted);
+  font-style: italic;
+}
+.msg__acts {
+  display: flex;
+  gap: var(--s-2);
+}
+.msg__acts [data-comment-act='edit'],
+.msg__acts [data-comment-act='delete'] {
+  opacity: 0;
+}
+.msg:hover > .msg__acts [data-comment-act],
+.msg__acts [data-comment-act]:focus-visible {
+  opacity: 1;
+}
+@media (width < 900px) {
+  .msg__acts [data-comment-act='edit'],
+  .msg__acts [data-comment-act='delete'] {
+    opacity: 1;
+  }
+}
+.msg__signal {
+  color: var(--text-muted);
+}
+.msg__signal[data-signal='owed'] {
+  color: var(--warning);
 }

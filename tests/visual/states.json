@@ -18,6 +18,16 @@
       "app": "T4b1 drives the board from T4a's fixture"
     },
     {
+      "id": "board-funnel",
+      "note": "MP-5-3 and MP-5-7: the funnel open over the board",
+      "mockup": "/agency/projects/",
+      "open": "[data-funnel]",
+      "regions": { "page": "viewport" },
+      "appPath": "/projects/",
+      "appOpen": "[data-funnel]",
+      "app": "the board machine from the made-up reads (run.ts --made-up)"
+    },
+    {
       "id": "gate",
       "note": "the armed gate, bound to the version it names",
       "mockup": "/agency/task/?task=proj-meridian-hero-copy",

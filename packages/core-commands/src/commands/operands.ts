@@ -140,6 +140,7 @@ export const IDENTIFIER_FIELDS: readonly string[] = [
   'lineageId',
   'reservationId',
   'leaseId',
+  'stateId',
   'itemId',
 ];
 
@@ -220,6 +221,7 @@ const OPERAND_FIXES: Readonly<Record<string, string>> = {
   fields: 'Send fields as an object of field keys to values, such as { title }.',
   batchId: 'Send the batchId that task.trash answered with.',
   payload: 'Send the payload as a JSON object.',
+  stateId: 'Send the id of one of this business’s task states, as task.read names it.',
 };
 
 const KIND_FIXES: Readonly<Record<OperandKind, string>> = {

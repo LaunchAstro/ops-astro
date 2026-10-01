@@ -21,6 +21,7 @@ import { buildStamp, useCanonicalAddress, useOfflineSince, usePersonName } from 
 import { FrameStrip } from './strip.tsx';
 import { HeldAddressNotice, heldAddressOffer, type HeldOffer } from './held-address.tsx';
 import { shellDock, useDockShell, type DockAppProps } from './dock/dock-props.tsx';
+import { useDockPanel } from './screens/task/DockPanel.tsx';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, type Interruption, type Session, type SessionStore } from './session/token.ts';
 import { SignIn } from './screens/SignIn.tsx';
@@ -191,6 +192,8 @@ export function App(props: AppProps): ReactElement {
 
   const bare = here.split(/[?#]/u)[0] ?? here;
   const grantKey = grantKeyOf(session);
+  const taskDock = useDockPanel({ client, grantKey, session, storage: props.storage });
+  const screen = { client, grantKey, storage: props.storage, navigate, taskPanel: taskDock.host };
   const { match, at, refused, rail, tabs, identity, face } = frameAt(
     bare,
     session?.businessKey ?? null,
@@ -217,12 +220,9 @@ export function App(props: AppProps): ReactElement {
     signedIn: session !== null,
     refused,
     signIn,
-    onGo: () => {
-      props.navigate(pathTo('agency:projects-board'));
-    },
+    onGo: () => props.navigate(pathTo('agency:projects-board')),
     screen: {
-      client,
-      grantKey,
+      ...screen,
       notice:
         notice === null || session === null ? null : (
           <HeldAddressNotice
@@ -231,8 +231,6 @@ export function App(props: AppProps): ReactElement {
             onSwitch={onSwitch}
           />
         ),
-      storage: props.storage,
-      navigate: props.navigate,
     },
   });
 
@@ -275,10 +273,9 @@ export function App(props: AppProps): ReactElement {
           // The client face has no dock (R17), and nobody signed out has one.
           {...shellDock(
             docked,
-            session === null || face === 'client'
-              ? null
-              : { client, grantKey, notice: null, storage: props.storage, navigate },
+            session === null || face === 'client' ? null : { ...screen, notice: null },
           )}
+          taskPanel={taskDock.panel}
         >
           <FaceProvider face={face}>{content}</FaceProvider>
         </Shell>

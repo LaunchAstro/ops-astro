@@ -76,6 +76,8 @@ const INJECTED_BOUNDS = 3;
 const TARGET_FREE: ReadonlySet<CommandName> = new Set(TARGET_FREE_BODIES.map(([op]) => op));
 
 const NOBODY = 'text nobody should find in an audit row';
+/** A tag no business has: the task is what the tag cells compare. */
+const TAG = randomUUID();
 
 interface Verdict {
   readonly foreignMedian: number;
@@ -201,13 +203,20 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     const onRecord: Readonly<Partial<Record<CommandName, Body>>> = {
       'task.update': { fields: { title: NOBODY } },
       'task.reopen': { reason: NOBODY },
+      'task.set_state': { stateId: randomUUID() },
       'task.comment': { body: NOBODY, audience: 'internal' },
+      'task.edit_comment': { commentId: randomUUID(), body: NOBODY },
+      'task.delete_comment': { commentId: randomUUID() },
       'task.propose': { ...PROPOSAL, payload: { instruction: NOBODY } },
       'task.assign': { fields: { assignee: w.h.world.mia.personId } },
       'task.triage': { fields: { intake_state: 'accepted' } },
       'task.set_stage': { fields: { stage: 'drafting' } },
       'task.set_party': { fields: { client: randomUUID() } },
       'task.set_audience': { fields: { client_visible: true } },
+      'task.set_scores': { fields: { impact: 5 } },
+      'task.set_adhoc': { fields: { ad_hoc: true } },
+      'task.share_with_client': {},
+      'task.revoke_client_share': {},
       'task.reparent': { parentId: null },
       'task.move': { board: null, boardSection: null },
       'task.rank': { afterId: w.h.alphaTask.id },
@@ -254,6 +263,15 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     });
     byAda('task.board', 'board', f.task.id, (board) => ({ board }));
     byAda('task.restore', 'batchId', f.batchId, (batchId) => ({ batchId }));
+    // MP-4-6: a task names what is timed, an entry what is noted or deleted.
+    byAda('time.start', 'taskId', f.task.id, (taskId) => ({ taskId }));
+    byAda('time.stop', 'taskId', f.task.id, (taskId) => ({ taskId }));
+    byAda('time.log', 'taskId', f.task.id, (taskId) => ({ taskId, duration: '5', note: NOBODY }));
+    byAda('time.set_note', 'entryId', f.entryId, (entryId) => ({ entryId, note: NOBODY }));
+    byAda('time.delete', 'entryId', f.entryId, (entryId) => ({ entryId }));
+    // MP-4-11: the task names what is tagged.
+    byAda('task.add_tag', 'recordId', f.task.id, (recordId) => ({ recordId, tagId: TAG }));
+    byAda('task.remove_tag', 'recordId', f.task.id, (recordId) => ({ recordId, tagId: TAG }));
     byAda('grant.revoke', 'grantId', f.grantId, (grantId) => ({ grantId }));
     byAda('access.revoke', 'grantId', f.grantId, (grantId) => ({ grantId }));
     byAda('access.grant', 'holderId', f.admin.personId as string, (holderId) => ({
@@ -341,11 +359,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 40 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 54 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(40);
-    expect(names).toHaveLength(40);
+    expect(new Set(names).size, 'distinct operations').toBe(54);
+    expect(names).toHaveLength(54);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

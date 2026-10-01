@@ -123,6 +123,26 @@
   overflow-wrap: anywhere;
 }
 
+/* The Projects dock panel's to-dos (MP-7-1). The list is its own container,
+   so the priority cell yields first when the list is narrower than 380px,
+   wherever the panel is seated. */
+.todos {
+  container-type: inline-size;
+}
+
+.todo {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+@container (max-width: 379px) {
+  .todo__priority {
+    display: none;
+  }
+}
+
 /* C2 presence (SH-15, DS-COMP-1): who else is on this page, as the kit's
    AvatarStack (overlapping circles, each named); hidden at 640 and under. */
 .presence-strip {

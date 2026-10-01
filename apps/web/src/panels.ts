@@ -93,6 +93,13 @@ export const PANELS: PanelRegistry = {
     route: 'agency:clients',
     icon: 'users',
   },
+  // My to-dos (MP-7-1, SL07): the tab reads Projects, as the mockup's dock does.
+  todos: {
+    label: 'Projects',
+    ariaLabel: 'My to-dos',
+    route: 'agency:todos',
+    icon: 'briefcase',
+  },
   settings: {
     label: 'Settings',
     ariaLabel: 'Business settings',

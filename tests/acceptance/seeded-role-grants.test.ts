@@ -16,7 +16,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { COMMAND_SURFACE } from '../../packages/core-wire/src/surface.ts';
-import { ADMIN_ACTIONS, ADMIN_COLLECTIONS, MEMBER_ACTIONS } from './cast.ts';
+import { ADMIN_ACTIONS, ADMIN_COLLECTIONS, ADMIN_EXTRA_PAIRS, MEMBER_ACTIONS } from './cast.ts';
 
 type Pair = readonly [collection: string, action: string];
 
@@ -99,11 +99,12 @@ describe('the acceptance cast against the seed', () => {
   });
 
   it('gives the fixture admin every grant the seeded admin holds', () => {
-    const cast = new Set(
-      ADMIN_COLLECTIONS.flatMap((collection) =>
+    const cast = new Set([
+      ...ADMIN_COLLECTIONS.flatMap((collection) =>
         ADMIN_ACTIONS.map((action) => `${collection}:${action}`),
       ),
-    );
+      ...ADMIN_EXTRA_PAIRS.map(([collection, action]) => `${collection}:${action}`),
+    ]);
     expect(held('admin').filter((pair) => !cast.has(pair))).toStrictEqual([]);
   });
 });

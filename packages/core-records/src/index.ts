@@ -79,6 +79,12 @@ export {
   type ClientRow,
 } from './clients/clients.ts';
 export {
+  readableRecordIds,
+  readableScope,
+  type ReadableScope,
+} from './authority/readable-scope.ts';
+export { issueShare, withdrawShares } from './authority/shares.ts';
+export {
   EXPIRED_FIXES,
   NO_AGENT_FIXES,
   resolveAgentLogin,
@@ -232,14 +238,7 @@ export {
   type RuntimeRefusalCode,
 } from './register.ts';
 export { UNPRODUCED_CODES } from './register-unproduced.ts';
-export {
-  COMMENT_TYPE_KEY,
-  externalCommentProjection,
-  readTaskComments,
-  writeComment,
-  type CommentAudience,
-  type CommentType,
-} from './tasks/comments.ts';
+export * from './tasks/content.ts';
 export {
   DERIVED_ON_CREATE,
   deriveSource,
@@ -253,6 +252,7 @@ export {
   wouldCloseParentLoop,
   type EntryPoint,
 } from './tasks/placement.ts';
+export { readTaskFamily, type FamilyRow, type TaskFamily } from './tasks/family.ts';
 export { changesSince, type ChangesSince, type TaskChange } from './tasks/changes.ts';
 export { slotOf, TASK_SPINE, TASK_TYPE_KEY } from './tasks/spine.ts';
 export { readTaskStates, setTaskState, type TaskStateRow } from './tasks/state.ts';

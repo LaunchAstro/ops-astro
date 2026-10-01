@@ -18,6 +18,8 @@ import {
   clientsReached,
   planPresetSync,
   isUuid,
+  listTags,
+  readableScope,
   readPreferences,
   subjectsOf,
 } from '../../../core-records/src/index.ts';
@@ -33,12 +35,14 @@ import type { TaskSpine } from '../commands/context.ts';
 import type { ReadOperands, ReadRequest, ReadResult } from './requests.ts';
 import {
   isInternalReader,
-  readBoard,
+  readBoardStamped,
   readSharedTask,
   readTaskDetail,
   resolveTaskId,
 } from './tasks.ts';
+import { readStateChoices } from './task-states.ts';
 import { listPeople, listTeam, readAccess, readOwnName } from './people.ts';
+import { readTodos } from './todos.ts';
 import { readQueue } from './queue.ts';
 import { readTaskExecution } from './execution.ts';
 import { readSettings } from './settings.ts';
@@ -87,12 +91,21 @@ interface RowBase<K extends ReadName> {
    * action, at the subject's record scope or the business's. A function: the
    * collection it names instead. `holds-any-grant`: no collection is asked;
    * the read refuses a caller holding nothing (see `session.capabilities`).
+   * `declared-within`: a list read. For an external party, as `declared`.
+   * For a member, the row's `serve` decides from one read of their grants:
+   * a business grant answers every record with the withheld count (B-22), a
+   * grant on some records answers those and no count (a client login, owner
+   * answer 22), no grant is refused.
    * `self`: no grant is asked; the answer is about the caller alone and names
    * nobody else (`session.person`), or serves the caller's own rows only and
    * derives access on each (the inbox).
    */
   readonly authority:
-    'declared' | 'holds-any-grant' | 'self' | ((operands: ReadOperands[K]) => string);
+    | 'declared'
+    | 'declared-within'
+    | 'holds-any-grant'
+    | 'self'
+    | ((operands: ReadOperands[K]) => string);
   /**
    * Whether an external party refused by the grant check is told `NOT_FOUND`
    * rather than `SCOPE_NOT_GRANTED` (minimum contract 8.2 case 7: "Sibling
@@ -102,6 +115,14 @@ interface RowBase<K extends ReadName> {
    */
   readonly outsiderNotFound: boolean;
 }
+
+/** The grant check's own refusal, for a list read that decides in its `serve`. */
+const refuseScope = (): CommandRefusal =>
+  refuseCommand(
+    'SCOPE_NOT_GRANTED',
+    [],
+    ['no live grant covers it', 'ask a holder who may delegate'],
+  );
 
 /**
  * A read that needs the installed task type's identifiers. The pipeline reads
@@ -240,12 +261,23 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
         );
         return sharedTask === undefined ? refuseNotFound() : { ok: true, sharedTask };
       }
-      const task = await readTaskDetail(tx, spine.taskTypeId, recordId, {
-        commentTypeId: spine.taskCommentTypeId,
-        internal: true,
-      });
+      const task = await readTaskDetail(
+        tx,
+        spine.taskTypeId,
+        recordId,
+        {
+          commentTypeId: spine.taskCommentTypeId,
+          internal: true,
+          actorId: session.actorId,
+        },
+        // The rank's pool is every open task this reader's grants reach.
+        { kind: 'grants', subjects: subjectsOf(session) },
+        // A member reads their own time on the task (RS-VAULT-9).
+        session.personId,
+      );
       // Not there, or there in another business: one answer, deliberately.
-      return task === undefined ? refuseNotFound() : { ok: true, task };
+      if (task === undefined) return refuseNotFound();
+      return { ok: true, task, states: await readStateChoices(tx, spine.taskStateTypeId) };
     },
   },
   'task.board': {
@@ -262,9 +294,19 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
             'Send board as a board task’s identifier, or null for tasks on no board.',
           ),
     spine: true,
-    authority: 'declared',
+    authority: 'declared-within',
     outsiderNotFound: true,
-    async serve(tx, _session, operands, { spine }) {
+    async serve(tx, session, operands, { spine }) {
+      // The one read of the caller's grants: it admits, and it filters, so no
+      // grant changes between the decision and the answer. It comes before
+      // any lookup, so a member holding nothing learns nothing about which
+      // boards exist, and it is refused as the grant check refuses, never
+      // answered with an empty list (`declared-within`).
+      const scope = await readableScope(tx, subjectsOf(session), 'task', 'read');
+      const unreadable = (board: string | null): boolean =>
+        !scope.business &&
+        (board === null ? scope.records.length === 0 : !scope.records.includes(board));
+      if (unreadable(null)) return refuseScope();
       // A board is a task record, so one that is not alpha's is refused the
       // way `task.move` refuses it, and never listed as a board with nothing
       // on it: minimum contract 8.2 case 1 asks `NOT_FOUND` for another
@@ -277,7 +319,32 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       ) {
         return refuseNotFound();
       }
-      return { ok: true, tasks: await readBoard(tx, spine.taskTypeId, operands.board) };
+      // A named board is itself a task: one the caller cannot read is refused
+      // as `task.read` refuses it, in-tenant (I05).
+      if (unreadable(operands.board)) return refuseScope();
+      // The caller's decide reach, for the Review mode's rows (MP-5-12). It
+      // only marks rows already served under the read scope above.
+      const decide = await readableScope(tx, subjectsOf(session), 'task', 'decide');
+      const { tasks, changedAt } = await readBoardStamped(
+        tx,
+        spine.taskTypeId,
+        operands.board,
+        scope.business ? null : scope.records,
+        decide.business ? null : decide.records,
+        session.personId,
+      );
+      // The withheld count goes only to a member holding task:read on the
+      // whole collection, whose grant reaches every task, so it is 0 until a
+      // narrower collection-wide rule exists. A member reading through record
+      // grants is a client login under owner answer 22 and is told no count
+      // at all, not a filtered one (SL07-B22-ANSWER).
+      // The stamp is the newest of the rows served, so it is in scope (MP-5-7).
+      // `viewer` is the caller's own person, the one the viewer preset
+      // narrows to (MP-5-12), and `owed` their own count as `inbox.count` gives it.
+      const [viewer, owed] = [session.personId, await countOwed(tx, session.personId)];
+      return scope.business
+        ? { ok: true, tasks, changedAt, viewer, owed, withheld: 0 }
+        : { ok: true, tasks, changedAt, viewer, owed };
     },
   },
   // The grant is asked by the search, not here: a record-scoped reader is
@@ -338,6 +405,31 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     authority: 'declared',
     outsiderNotFound: false,
     serve: async (tx) => ({ ok: true, persons: await listPeople(tx) }),
+  },
+  // The vocabulary is the business's, asked at the business (`task:read`), so
+  // a reader held to one client's records is refused rather than shown the
+  // names every client's tasks carry.
+  'tag.list': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'declared',
+    outsiderNotFound: false,
+    serve: async (tx) => ({ ok: true, tags: await listTags(tx) }),
+  },
+  // The reader's own to-dos (MP-7-1), asked at the business (`task:read`) like
+  // the tag vocabulary: a reader held to one client's records is refused, and
+  // the list is filtered by the reader's person inside the query.
+  'task.todos': {
+    identifiers: [],
+    parse: NONE,
+    spine: true,
+    authority: 'declared',
+    outsiderNotFound: false,
+    serve: async (tx, session, _operands, { spine }) => ({
+      ok: true,
+      todos: await readTodos(tx, spine, session.personId),
+    }),
   },
   // The Team panel (MP-7-10) is staff only: a client holding `person:read`
   // still meets NOT_FOUND, and the list names staff alone.

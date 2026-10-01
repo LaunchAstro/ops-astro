@@ -18,8 +18,18 @@ import { InboxScreen } from './screens/Inbox.tsx';
 import { Projects } from './screens/Projects.tsx';
 import { SettingsGeneralScreen } from './screens/SettingsGeneral.tsx';
 import { TaskDetailScreen } from './screens/TaskDetail.tsx';
+import { TaskUnnamed } from './screens/task/Absent.tsx';
+import { TodosScreen } from './screens/todos/Todos.tsx';
 import { TeamScreen } from './screens/Team.tsx';
 import { TelemetryScreen } from './screens/Telemetry.tsx';
+import type { ConversationTab, PanelDoor } from './screens/task/Perspectives.tsx';
+
+/** The dock task panel as a screen reaches it (MP-4-8): open it, and read its change count. */
+export interface TaskPanelHost {
+  readonly open: (taskKey: string, door: PanelDoor, tab?: ConversationTab) => void;
+  /** Changes made in the panel so far: a screen showing the task reads it again on a new one. */
+  readonly changes: number;
+}
 
 /** What the application hands whichever screen the address resolves to. */
 export interface ScreenContext<Id extends AuthenticatedRouteId = AuthenticatedRouteId> {
@@ -30,6 +40,8 @@ export interface ScreenContext<Id extends AuthenticatedRouteId = AuthenticatedRo
   /** Why the board was reached instead of the address that was held. */
   readonly notice: ReactNode;
   readonly storage: Storage | null;
+  /** Absent where no panel can open, and then a door cannot be pressed. */
+  readonly taskPanel?: TaskPanelHost;
   /** Goes to an address inside the application. */
   readonly navigate: (path: string) => void;
 }
@@ -44,7 +56,12 @@ export const SCREENS: {
           {context.notice}
         </p>
       )}
-      <Projects client={context.client} grantKey={context.grantKey} navigate={context.navigate} />
+      <Projects
+        client={context.client}
+        grantKey={context.grantKey}
+        navigate={context.navigate}
+        {...(context.taskPanel === undefined ? {} : { taskPanel: context.taskPanel })}
+      />
     </>
   ),
   'agency:gallery': () => <Gallery />,
@@ -71,6 +88,29 @@ export const SCREENS: {
       client={context.client}
       grantKey={context.grantKey}
       taskKey={context.params.key}
+      {...(context.taskPanel === undefined
+        ? {}
+        : {
+            onOpenPanel: (door: PanelDoor, tab?: ConversationTab) => {
+              context.taskPanel?.open(context.params.key, door, tab);
+            },
+            changes: context.taskPanel.changes,
+          })}
+    />
+  ),
+  'agency:task-unnamed': () => <TaskUnnamed />,
+  'agency:todos': (context) => (
+    <TodosScreen
+      client={context.client}
+      grantKey={context.grantKey}
+      {...(context.taskPanel === undefined
+        ? {}
+        : {
+            onOpen: (key: string) => {
+              context.taskPanel?.open(key, 'open');
+            },
+            changes: context.taskPanel.changes,
+          })}
     />
   ),
 };

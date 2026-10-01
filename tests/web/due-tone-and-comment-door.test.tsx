@@ -11,7 +11,7 @@
 
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { dueTone } from '../../apps/web/src/screens/Projects.tsx';
+import { dueTone } from '../../apps/web/src/screens/projects-row.ts';
 
 const read = (path: string): string =>
   readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');

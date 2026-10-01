@@ -60,6 +60,8 @@ export interface ShellProps {
   readonly meta?: ReactNode;
   /** The dock, or null where there is none: signed out, and on the client face (R17). */
   readonly dock: DockProps | null;
+  /** The dock task panel (MP-4-8), beside the dock until the dock draws it as its `task` panel. */
+  readonly taskPanel?: ReactNode;
   /** The dock's grid track: the seated group's width, or 0 while it floats. */
   readonly dockWidth?: number;
   /** The one sheet height below the side tier, so the page can be padded under it. */
@@ -275,6 +277,7 @@ export function Shell(props: ShellProps): ReactElement {
           below 900; it does not disappear, and there is no topbar fallback —
           at the pinned revision that control is display:none at every width. */}
       {props.dock === null ? null : <Dock {...props.dock} inert={open} />}
+      {props.dock === null ? null : props.taskPanel}
     </div>
   );
 }

@@ -175,6 +175,32 @@ const UNREACHED_OWN: Readonly<Record<string, string>> = {
        join public.attempts att on att.business_id = r.business_id
        join public.planned_runs run on run.business_id = att.business_id and run.id = att.run_id
       where r.business_id = $1 order by att.id limit 1 returning 1`,
+  // 0136: no journey step logs time yet, so one finished entry is written here.
+  'public.time_entries': `insert into public.time_entries
+       (business_id, id, task_id, person_id, actor_id, started_at, ended_at, minutes,
+        ad_hoc, source)
+     select r.business_id, gen_random_uuid(), r.id, p.id, a.id, now(), now(), 1, false, 'log'
+       from public.records r
+       join public.people p on p.business_id = r.business_id
+       join public.actors a on a.business_id = r.business_id
+      where r.business_id = $1 order by r.id, p.id, a.id limit 1 returning 1`,
+  // 0139: no journey step tags a task yet, so one tag is named here...
+  'public.tags': `insert into public.tags (business_id, id, name, actor_id)
+     select a.business_id, gen_random_uuid(), 'restricted ' || left(gen_random_uuid()::text, 8), a.id
+       from public.actors a
+      where a.business_id = $1 order by a.id limit 1 returning 1`,
+  // ...and one task carries a tag of its own, made in the same statement.
+  'public.task_tags': `with made as (
+       insert into public.tags (business_id, id, name, actor_id)
+       select a.business_id, gen_random_uuid(), 'carried ' || left(gen_random_uuid()::text, 8), a.id
+         from public.actors a
+        where a.business_id = $1 order by a.id limit 1
+       returning business_id, id, actor_id)
+     insert into public.task_tags (business_id, task_id, tag_id, actor_id)
+     select m.business_id, r.id, m.id, m.actor_id
+       from made m
+       join public.records r on r.business_id = m.business_id
+      order by r.id limit 1 returning 1`,
 };
 
 /** Thrown to end the wrapper's transaction once the insert has answered. */

@@ -14,6 +14,7 @@
 // against the mockup's page. Every name and client is made up.
 
 import type {
+  BoardTask,
   CapabilitiesResult,
   InboxCountResult,
   InboxReadResult,
@@ -22,10 +23,14 @@ import type {
   PersonListResult,
   QueueResult,
   SettingsReadResult,
+  TagListResult,
+  TagView,
   TaskBoardResult,
   TaskExecutionResult,
   TaskStateView,
   TaskSummary,
+  TaskTodosResult,
+  TodoView,
 } from '../../packages/core-wire/src/index.ts';
 import type { BrowserContext } from 'playwright';
 import type { ReadName } from '../../apps/web/src/operations/read-names.ts';
@@ -50,7 +55,8 @@ const task = (
   state: TaskStateView,
   due: string | null,
   assignee: TaskSummary['assignee'] = NATHAN,
-): TaskSummary => ({
+  board: Partial<BoardTask> = {},
+): BoardTask => ({
   id: `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`,
   key: `T-${String(n)}`,
   title,
@@ -60,13 +66,42 @@ const task = (
   priority: null,
   completedAt: null,
   revision: 1,
+  // What the Projects board's cells draw (MP-5-8), made up like the rest.
+  rank: { number: n, score: 100 - n, calc: 'made up' },
+  stage: null,
+  clientSet: true,
+  actualMinutes: 0,
+  estimateMinutes: null,
+  pageLink: null,
+  statePosition: state.key === 'active' ? 1 : state.key === 'waiting' ? 2 : 3,
+  waitReason: null,
+  awaitingDecision: false,
+  agent: null,
+  myAgents: [],
+  // The reader's own waiting client signals and mentions (MP-5-8), none here.
+  comments: { client: 0, mentions: 0, latest: null },
+  ...board,
 });
 
 // The harness clock is 2026-09-26; dates sit either side of it.
-export const TASKS: readonly TaskSummary[] = [
-  task(1, 'Contract review pack, 31 July', STATE.active, '2026-09-30'),
-  task(6, 'Renewal pack, 14 August', STATE.active, '2026-10-07'),
-  task(9, 'Sign off the Meridian ad run rate, 29% over budget', STATE.active, '2026-09-18'),
+export const TASKS: readonly BoardTask[] = [
+  task(1, 'Contract review pack, 31 July', STATE.active, '2026-09-30', NATHAN, {
+    stage: 'Build',
+    estimateMinutes: 240,
+    actualMinutes: 95,
+  }),
+  task(6, 'Renewal pack, 14 August', STATE.active, '2026-10-07', NATHAN, { stage: 'Brief' }),
+  task(
+    9,
+    'Sign off the Meridian ad run rate, 29% over budget',
+    STATE.active,
+    '2026-09-18',
+    NATHAN,
+    {
+      waitReason: 'needs_approval',
+      awaitingDecision: true,
+    },
+  ),
   task(13, 'Approve the four review replies before they go out', STATE.active, '2026-09-26'),
   task(15, 'Ads rebuild: cost per enquiry', STATE.active, '2026-10-06', MIA),
   task(17, 'Shopping feed clean-up', STATE.active, '2026-10-05'),
@@ -76,12 +111,25 @@ export const TASKS: readonly TaskSummary[] = [
 ];
 
 const DETAIL: InternalTaskDetail = {
-  ...(TASKS[0] as TaskSummary),
+  ...(TASKS[0] as BoardTask),
+  agentBrief: null,
   description:
     'Pull the signed scope, the two variations and the renewal terms into one pack for review.',
   history: [
-    { at: '2026-09-24T01:10:00.000Z', actorId: NATHAN.personId, operation: 'task.create' },
-    { at: '2026-09-25T03:40:00.000Z', actorId: NATHAN.personId, operation: 'task.update' },
+    {
+      at: '2026-09-24T01:10:00.000Z',
+      actorId: NATHAN.personId,
+      actorKind: 'person',
+      actorName: NATHAN.name,
+      operation: 'task.create',
+    },
+    {
+      at: '2026-09-25T03:40:00.000Z',
+      actorId: NATHAN.personId,
+      actorKind: 'person',
+      actorName: NATHAN.name,
+      operation: 'task.update',
+    },
   ],
   comments: [
     {
@@ -93,17 +141,57 @@ const DETAIL: InternalTaskDetail = {
       posted_at: '2026-09-25T04:00:00.000Z',
       edited_at: null,
       source: 'app',
+      parent: null,
+      signal: null,
+      own: true,
     },
   ],
   proposals: [],
   capCurrency: 'AUD',
   envelope: null,
   alerts: [],
+  adHoc: false,
+  clientAccess: false,
+  board: null,
+  steps: [],
+  time: null,
+  tags: [],
 };
 
+const TAGS: readonly TagView[] = [
+  { id: 'g-renewal', name: 'renewal' },
+  { id: 'g-ads', name: 'ads' },
+];
+
+// My to-dos (MP-7-1): the reader's own open tasks, with tags and owed messages.
+const todo = (at: number, tags: readonly TagView[], waitingComments = 0): TodoView => ({
+  ...(TASKS[at] as BoardTask),
+  tags,
+  waitingComments,
+});
+const TODOS: readonly TodoView[] = [
+  todo(0, TAGS.slice(0, 1)),
+  todo(1, [], 2),
+  todo(2, TAGS.slice(1)),
+  todo(3, []),
+  todo(5, []),
+];
+
 const READS = {
-  'task.board': { ok: true, tasks: TASKS } satisfies TaskBoardResult,
-  'task.read': { ok: true, task: DETAIL } satisfies InternalTaskRead,
+  'task.board': {
+    ok: true,
+    tasks: TASKS,
+    changedAt: '2026-09-25T04:00:00.000Z',
+    viewer: NATHAN.personId,
+    owed: 0,
+  } satisfies TaskBoardResult,
+  'task.read': {
+    ok: true,
+    task: DETAIL,
+    states: Object.values(STATE),
+  } satisfies InternalTaskRead,
+  'task.todos': { ok: true, todos: TODOS } satisfies TaskTodosResult,
+  'tag.list': { ok: true, tags: TAGS } satisfies TagListResult,
   'person.list': { ok: true, persons: [NATHAN, MIA] } satisfies PersonListResult,
   'settings.read': {
     ok: true,

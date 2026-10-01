@@ -43,6 +43,7 @@ import {
   TASK_STATE_FIELDS,
   TASK_STATE_TYPE_KEY,
 } from '../../packages/core-records/src/tasks/states.ts';
+import { mintDelegation } from '../../packages/core-records/src/authority/delegations.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
@@ -179,8 +180,12 @@ describe.skipIf(serverUrl === undefined)('the model negatives, one per member', 
   describe('D02: each protected field relaxed to generic is named by the task set', () => {
     const PROTECTED_RULE = 'no field in the protected set is generic';
 
-    it('is eleven, read from the spine', () => {
-      expect(PROTECTED_TASK_FIELDS.length).toBe(11);
+    // Fourteen since MP-4-9 added the three marks `task.set_scores` owns, and
+    // fifteen since MP-4-10 added the Ad hoc mark `task.set_adhoc` owns, and
+    // seventeen since MP-4-15 added the two archive fields its transition writes,
+    // and eighteen since Assign to AI added the agent `task.assign` owns.
+    it('is eighteen, read from the spine', () => {
+      expect(PROTECTED_TASK_FIELDS.length).toBe(18);
     });
 
     it.each([...PROTECTED_TASK_FIELDS])('catches %s relaxed to generic', async (key) => {
@@ -209,6 +214,8 @@ type Payload = Readonly<Record<string, unknown>>;
 interface OwnerWorld {
   readonly other: Member;
   readonly freshTask: (title: string) => Promise<{ id: string; revision: number }>;
+  /** A live delegation of the writer's own, minted for this task (the agent assignee). */
+  readonly ownAgent: (taskId: string) => Promise<string>;
   /** A client of this business (C32): the party link names a real one. */
   readonly madeClient: () => Promise<string>;
 }
@@ -216,7 +223,7 @@ interface OwnerWorld {
 /** The success an owner must be seen to produce. */
 interface OwnerCase {
   readonly command: CommandName;
-  readonly payload: (world: OwnerWorld) => Payload | Promise<Payload>;
+  readonly payload: (world: OwnerWorld, taskId: string) => Payload | Promise<Payload>;
   /** What the stored field holds afterwards. Null means "read the category". */
   readonly stored: (payload: Payload) => unknown;
 }
@@ -241,6 +248,11 @@ const OWNER_CASES: Readonly<Record<string, OwnerCase>> = {
     command: 'task.assign',
     payload: (world) => ({ fields: { assignee: world.other.personId } }),
     stored: (payload) => fieldOf(payload, 'assignee'),
+  },
+  agent: {
+    command: 'task.assign',
+    payload: async (world, taskId) => ({ fields: { agent: await world.ownAgent(taskId) } }),
+    stored: (payload) => fieldOf(payload, 'agent'),
   },
   delegate: {
     command: 'task.assign',
@@ -273,12 +285,61 @@ const OWNER_CASES: Readonly<Record<string, OwnerCase>> = {
     payload: () => ({ fields: { stage: 'drafting' } }),
     stored: () => 'drafting',
   },
+  impact: {
+    command: 'task.set_scores',
+    payload: () => ({ fields: { impact: 7 } }),
+    stored: () => '7',
+  },
+  confidence: {
+    command: 'task.set_scores',
+    payload: () => ({ fields: { confidence: 9 } }),
+    stored: () => '9',
+  },
+  ease: {
+    command: 'task.set_scores',
+    payload: () => ({ fields: { ease: 8 } }),
+    stored: () => '8',
+  },
+  ad_hoc: {
+    command: 'task.set_adhoc',
+    payload: () => ({ fields: { ad_hoc: true } }),
+    stored: () => true,
+  },
   state: {
     command: 'task.start',
     payload: () => ({}),
     stored: () => null,
   },
 };
+
+/** A live delegation of the writer's own, minted for one task (the agent assignee). */
+async function mintOwnAgent(
+  db: FreshDatabase,
+  business: string,
+  worker: Member,
+  taskId: string,
+): Promise<string> {
+  return await db.app.withBusiness(business, async (tx) => {
+    const agentActorId = randomUUID();
+    await tx.query(`insert into public.actors (business_id, id, kind) values ($1, $2, 'agent')`, [
+      business,
+      agentActorId,
+    ]);
+    const made = await mintDelegation(tx, {
+      agentActorId,
+      delegatePersonId: worker.personId,
+      mintedByActorId: worker.actorId,
+      purpose: `owner_${randomUUID().slice(0, 8)}`,
+      collections: ['task'],
+      // The writer holds write, assign and share here, and a mint never widens.
+      actions: ['write'],
+      purposeScope: { kind: 'record', id: taskId },
+      expiresAt: new Date(Date.now() + 3_600_000),
+    });
+    if (!made.ok) throw new Error(`model negatives: mint refused ${made.refusal.code}`);
+    return made.value.delegation.id;
+  });
+}
 
 describe.skipIf(serverUrl === undefined)('D04: every owner writes the field it owns', () => {
   let db: FreshDatabase;
@@ -293,9 +354,10 @@ describe.skipIf(serverUrl === undefined)('D04: every owner writes the field it o
 
   /** The stored row, read as the superuser so row security is not what answers. */
   const stored = async (recordId: string, key: string) => {
-    const slot = spineField(key)?.slot ?? 'null';
+    const field = spineField(key)?.slot ?? null;
+    const slot = field === null ? 'null' : `r.${field}`;
     const rows = await db.admin.execute<Record<string, unknown>>(
-      `select r.revision::text as revision, r.data ->> $2 as value, r.${slot} as slot,
+      `select r.revision::text as revision, r.data ->> $2 as value, ${slot} as slot,
               s.data ->> 'machine_category' as category
          from public.records r
          left join public.records s on s.business_id = r.business_id and s.id = r.uuid_1
@@ -324,6 +386,7 @@ describe.skipIf(serverUrl === undefined)('D04: every owner writes the field it o
     });
     world = {
       other,
+      ownAgent: async (taskId) => await mintOwnAgent(db, business, worker, taskId),
       freshTask: async (title) => {
         const made = await run({
           command: 'task.create',
@@ -368,7 +431,7 @@ describe.skipIf(serverUrl === undefined)('D04: every owner writes the field it o
       if (test === undefined) throw new Error(`model negatives: no case for ${key}`);
       const task = await world.freshTask(`owned ${key}`);
       const before = await stored(task.id, key);
-      const payload = await test.payload(world);
+      const payload = await test.payload(world, task.id);
       const answer = await run({
         command: test.command,
         operationId: randomUUID(),
@@ -391,8 +454,8 @@ describe.skipIf(serverUrl === undefined)('D04: every owner writes the field it o
         expect(after['value']).toBe(String(expected));
         expect(before['value']).not.toBe(String(expected));
         // The slot is the projection a view filters on. A write that reached
-        // `data` and not the slot is half a write.
-        expect(after['slot']).toStrictEqual(expected);
+        // `data` and not the slot is half a write. An unslotted field has none.
+        expect(after['slot']).toStrictEqual(spineField(key)?.slot === null ? null : expected);
       }
     },
   );

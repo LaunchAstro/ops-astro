@@ -112,6 +112,14 @@ function server(options: ServerOptions = {}) {
     completedAt: null,
     revision: 3,
     history: [],
+    board: null,
+    rank: { number: null, score: null, calc: '' },
+    adHoc: false,
+    clientAccess: false,
+    stage: null,
+    clientSet: false,
+    steps: [],
+    time: null,
     comments: [],
     proposals: (options.lineages ?? []).map(lineageOf),
     // The task cap's currency, which the propose form offers (CQ-7).
@@ -239,7 +247,7 @@ describe('a lost answer is retried as the same attempt', () => {
       const page = await open(client);
 
       await typeComment(page, 'Sent to the client once, whatever the network does.');
-      await page.choose('#comment-audience', 'client');
+      await page.click('#conversation-tab-client');
       await press(page, '[data-comment="post"]');
       expect(page.find('[data-comment="refusal"]')).not.toBeNull();
 
@@ -260,7 +268,7 @@ describe('a lost answer is retried as the same attempt', () => {
 
     await typeComment(page, 'Who reads this matters.');
     await press(page, '[data-comment="post"]');
-    await page.choose('#comment-audience', 'client');
+    await page.click('#conversation-tab-client');
     await press(page, '[data-comment="post"]');
 
     const [first, second] = idsOf('task/comment');

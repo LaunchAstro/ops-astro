@@ -36,6 +36,8 @@ import type {
   InboxCountResult,
   InboxReadResult,
   PersonListResult,
+  TagListResult,
+  TaskTodosResult,
   TeamListResult,
   PresetPlanResult,
   QueueResult,
@@ -85,6 +87,10 @@ export interface ReadOperands {
     readonly query: string | null;
   };
   readonly 'person.list': NoOperands;
+  /** The business's tag vocabulary (MP-4-11). */
+  readonly 'tag.list': NoOperands;
+  /** The reader's own open tasks (MP-7-1). */
+  readonly 'task.todos': NoOperands;
   /** The words to find among the tasks the caller may read (C1). */
   readonly 'task.search': { readonly query: string };
   readonly 'team.list': NoOperands;
@@ -171,6 +177,8 @@ export type ReadResult =
   | TaskSearchResult
   | TaskLedgerResult
   | PersonListResult
+  | TagListResult
+  | TaskTodosResult
   | TeamListResult
   | QueueResult
   | PresetPlanResult

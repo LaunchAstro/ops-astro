@@ -9,8 +9,9 @@
 // out of `data` would still return the right answer on a record the trigger had
 // stopped projecting, which is the failure worth catching.
 //
-// `description` is the exception and has to be: it is unslotted on purpose
-// (`tasks/spine.ts`), so `data` is where it lives.
+// `description`, `agent_brief`, `page_link` and `estimated_minutes` are the
+// exceptions and have to be: they are unslotted on purpose (`tasks/spine.ts`),
+// so `data` is where they live.
 //
 // A task that is not here, and a task that is in another business, produce
 // nothing to distinguish them: the query is scoped by the business the session
@@ -19,36 +20,61 @@
 // never real.
 
 import {
+  commentSignals,
   externalCommentProjection,
   readTaskComments,
   readFieldDefinitions,
   isLive,
   isUuid,
+  readTaskTime,
+  tagsOfTask,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { HistoryEntry, SharedTaskView, TaskDetail, TaskSummary } from './requests.ts';
-import type { InternalCommentView } from '../../../core-wire/src/index.ts';
+import type { BoardTask, InternalCommentView } from '../../../core-wire/src/index.ts';
 import { openEnvelopeOf } from '../../../core-runtime/src/index.ts';
 import { READS } from '../../../core-wire/src/index.ts';
 import { readAlerts } from '../../../core-runtime/src/index.ts';
 import { readTaskProposals } from './proposals.ts';
 import { taskCapCurrency } from './task-cap.ts';
+import { awaitingApproval } from './awaiting.ts';
+import { readRanks } from './board-rank.ts';
+import { readActualMinutes } from './board-time.ts';
+import { readTaskRank, type RankPool } from './rank.ts';
+import { readBoardCrumb } from './board-crumb.ts';
+import { readTaskSteps } from './steps.ts';
+import { readTaskAgents } from './task-agents.ts';
+import { NO_AGENTS, readBoardAgents } from './board-agents.ts';
+import { NO_COMMENTS, readBoardComments } from './board-comments.ts';
 
-interface TaskRowRead {
+// A served row is always in its reader's pool; this is only the type's answer.
+const UNRANKED = { number: null, score: null, calc: '' } as const;
+
+export interface TaskRowRead {
   readonly id: string;
   readonly revision: string;
+  /** When the task last changed; the board's freshness stamp (MP-5-7). */
+  readonly updated_at: Date;
   readonly key: string | null;
   readonly title: string | null;
   readonly due: Date | null;
   readonly priority: string | null;
   readonly completed_at: Date | null;
   readonly description: string | null;
+  readonly agent_brief: string | null;
+  readonly page_link: string | null;
+  readonly estimated_minutes: string | null;
   readonly state_id: string | null;
   readonly state_key: string | null;
   readonly state_label: string | null;
   readonly state_machine_category: string | null;
+  readonly state_position: string | null;
   readonly assignee_id: string | null;
   readonly assignee_name: string | null;
+  readonly ad_hoc: boolean | null;
+  readonly board_id: string | null;
+  readonly stage: string | null;
+  readonly client_set: boolean;
 }
 
 // The task's state record, by the slot the trigger keeps (`uuid_1`). One copy
@@ -61,26 +87,35 @@ const STATE_JOIN = `
 // `revision` is bigint and this driver hands a bigint back as a string, so it
 // is read as text and converted once, here. `priority` is numeric, which is
 // the same story for the same reason.
-const SELECT = `
+export const SELECT: string = `
   select r.id,
          r.revision::text as revision,
+         r.updated_at,
          r.txt_1 as key,
          r.txt_4 as title,
          r.ts_1  as due,
          r.num_1::text as priority,
          r.ts_2  as completed_at,
          r.data ->> 'description' as description,
+         r.data ->> 'agent_brief' as agent_brief,
+         r.data ->> 'page_link' as page_link,
+         r.data ->> 'estimated_minutes' as estimated_minutes,
          s.id as state_id,
          s.data ->> 'key' as state_key,
          s.data ->> 'label' as state_label,
          s.data ->> 'machine_category' as state_machine_category,
+         s.data ->> 'position' as state_position,
          p.id as assignee_id,
-         p.display_name as assignee_name
+         p.display_name as assignee_name,
+         r.bool_2 as ad_hoc,
+         r.uuid_5 as board_id,
+         r.txt_5 as stage,
+         r.uuid_7 is not null as client_set
     from public.records r${STATE_JOIN}
     left join public.people p
       on p.business_id = r.business_id and p.id = r.uuid_2`;
 
-function summaryOf(row: TaskRowRead): TaskSummary {
+export function summaryOf(row: TaskRowRead): TaskSummary {
   return {
     id: row.id,
     key: row.key ?? '',
@@ -125,6 +160,8 @@ async function historyOf(
     readonly occurred_at: Date;
     readonly actor_id: string;
     readonly command: string;
+    readonly actor_kind: string | null;
+    readonly actor_name: string | null;
   }>(
     // The writes only. Reads are audited now (I13) and they carry the record
     // they looked at, which is what makes "who read this" answerable at all —
@@ -132,11 +169,18 @@ async function historyOf(
     // nobody. The two questions share one chain and are not the same question,
     // so the projection names the outcomes it wants rather than taking every
     // row that mentions the record.
-    `select occurred_at, actor_id, command
-       from public.audit_events
-      where business_id = $1 and subject_record_id = $2 and outcome = 'applied'
-        and command <> all($3::text[])
-      order by seq`,
+    //
+    // Who is the actor's kind and, for a person's actor, that person's name,
+    // joined inside this business: an actor or a person of another business
+    // matches nothing (MP-4-16).
+    `select e.occurred_at, e.actor_id, e.command, a.kind as actor_kind,
+            case when a.kind = 'person' then p.display_name end as actor_name
+       from public.audit_events e
+       left join public.actors a on a.business_id = e.business_id and a.id = e.actor_id
+       left join public.people p on p.business_id = a.business_id and p.id = a.person_id
+      where e.business_id = $1 and e.subject_record_id = $2 and e.outcome = 'applied'
+        and e.command <> all($3::text[])
+      order by e.seq`,
     // A reader outside the business is not shown that a comment was written:
     // its comments carry only what the catalogue shares, and an internal
     // note's author and time in the history would be the note, hidden rather
@@ -146,6 +190,8 @@ async function historyOf(
   return rows.map((row) => ({
     at: row.occurred_at.toISOString(),
     actorId: row.actor_id,
+    actorKind: row.actor_kind,
+    actorName: row.actor_name,
     operation: row.command,
   }));
 }
@@ -199,21 +245,29 @@ export function isInternalReader(roleKey: string | null): boolean {
   return roleKey !== null && INTERNAL_ROLES.has(roleKey);
 }
 
+/**
+ * Who is reading the comments: an internal reader, whose own rows are marked
+ * by their actor, or anyone else, who gets the shared projection.
+ */
+export type CommentReader =
+  { readonly internal: true; readonly actorId: string } | { readonly internal: false };
+
 async function commentsFor(
   tx: TenantQuery,
   commentTypeId: string | undefined,
   taskId: string,
-  internal: boolean,
+  reader: CommentReader,
 ): Promise<readonly Readonly<Record<string, unknown>>[]> {
   // A business with no comment type has no comments, which is an empty list
   // and not a fault: the task detail is still the task detail.
   if (commentTypeId === undefined) return [];
   const comments = await readTaskComments(tx, commentTypeId, taskId);
-  if (!internal) {
+  if (!reader.internal) {
     return externalCommentProjection(comments, await readFieldDefinitions(tx, commentTypeId));
   }
   // The times as the ISO strings they are sent as, so the type this builds is
   // the one a client parses (`views.ts`).
+  const signals = commentSignals(comments);
   return comments.map((comment): InternalCommentView => ({
     id: comment.id,
     audience: comment.audience,
@@ -223,6 +277,9 @@ async function commentsFor(
     posted_at: comment.postedAt.toISOString(),
     edited_at: comment.editedAt?.toISOString() ?? null,
     source: comment.source,
+    parent: comment.parentId,
+    signal: signals.get(comment.id) ?? null,
+    own: comment.authorActorId === reader.actorId,
   }));
 }
 
@@ -231,7 +288,10 @@ export async function readTaskDetail(
   tx: TenantQuery,
   taskTypeId: string,
   recordId: string,
-  comments: { readonly commentTypeId: string | undefined; readonly internal: boolean },
+  comments: { readonly commentTypeId: string | undefined } & CommentReader,
+  rankPool: RankPool,
+  /** The person whose own time is sent (RS-VAULT-9); null sends none, as to an agent. */
+  timeReader: string | null,
 ): Promise<TaskDetail | undefined> {
   // A malformed identifier is not cast and not queried. The cast would raise
   // where the contract promises a refusal, and "that is not a uuid" is an
@@ -248,8 +308,11 @@ export async function readTaskDetail(
   return {
     ...summaryOf(row),
     description: row.description,
+    agentBrief: row.agent_brief,
+    pageLink: row.page_link,
+    estimateMinutes: row.estimated_minutes === null ? null : Number(row.estimated_minutes),
     history: await historyOf(tx, row.id, comments.internal),
-    comments: await commentsFor(tx, comments.commentTypeId, row.id, comments.internal),
+    comments: await commentsFor(tx, comments.commentTypeId, row.id, comments),
     // The proposals go to every reader of the detail, internal or external,
     // because the projection carries no comment body and no field value the
     // catalogue classifies -- it carries the proposal's own payload, which is
@@ -259,6 +322,16 @@ export async function readTaskDetail(
     capCurrency: await taskCapCurrency(tx, row.id),
     envelope: envelopeOf(await openEnvelopeOf(tx, row.id)),
     alerts: await readAlerts(tx, row.id),
+    rank: await readTaskRank(tx, taskTypeId, row.id, rankPool),
+    adHoc: row.ad_hoc === true,
+    clientAccess: (await outsideHolders(tx, row.id)).length > 0,
+    board: await readBoardCrumb(tx, taskTypeId, row.board_id, rankPool),
+    stage: row.stage,
+    clientSet: row.client_set,
+    steps: await readTaskSteps(tx, taskTypeId, row.id, rankPool),
+    time: timeReader === null ? null : await readTaskTime(tx, row.id, timeReader),
+    tags: await tagsOfTask(tx, row.id),
+    ...(await readTaskAgents(tx, row.id, timeReader)),
   };
 }
 
@@ -315,12 +388,13 @@ export async function readSharedTask(
     // `revision` is `bigint`, which this driver hands back as a string.
     revision: Number(row['revision']),
     fields,
-    comments: await commentsFor(tx, commentTypeId, recordId, false),
+    comments: await commentsFor(tx, commentTypeId, recordId, { internal: false }),
   };
 }
 
 /**
- * The live tasks on one board, or the unboarded ones when the board is null.
+ * The live tasks on one board, or the unboarded ones when the board is null,
+ * that the caller's grants reach.
  *
  * Unboarded is a real answer and not a missing filter: `task.create` takes no
  * board (acceptance B1), so every task starts here and a board read that
@@ -329,18 +403,124 @@ export async function readSharedTask(
  * A named board is already a live task by the time it gets here: `task.board`
  * refuses anything else, a malformed identifier included, through
  * `boardExists` before it calls this.
+ *
+ * `readable` is null under a collection-wide grant; otherwise it is the
+ * records the caller's record-scoped grants reach, and the filter is in the
+ * query.
  */
 export async function readBoard(
   tx: TenantQuery,
   taskTypeId: string,
   board: string | null,
+  readable: readonly string[] | null,
 ): Promise<readonly TaskSummary[]> {
+  return (await readBoardStamped(tx, taskTypeId, board, readable)).tasks;
+}
+
+/**
+ * The board's tasks, each with what its cells draw (MP-5-8), and when the
+ * newest of them last changed (MP-5-7, P-07). The tasks and the stamp come
+ * from one query, so the stamp is of exactly the rows served and a newer task
+ * the caller cannot read never moves it; null when no task is served. The
+ * ranks are read over the same `readable` scope. A row whose task has an open
+ * gate waits for approval, whoever may decide it (MP-5-11). `decidable` is the
+ * caller's decide reach (null for business-wide); such a row waits on the
+ * caller when the gate is inside it (MP-5-12). None when not given.
+ * `reader` is the caller's own person, whose agents alone a row carries
+ * (Assign to AI), and whose waiting client signals and mentions alone it
+ * counts (MP-5-8); null for none.
+ */
+export async function readBoardStamped(
+  tx: TenantQuery,
+  taskTypeId: string,
+  board: string | null,
+  readable: readonly string[] | null,
+  decidable: readonly string[] | null = [],
+  reader: string | null = null,
+): Promise<{ readonly tasks: readonly BoardTask[]; readonly changedAt: string | null }> {
   const rows = await tx.query<TaskRowRead>(
     `${SELECT}
       where r.business_id = $1 and r.record_type_id = $2 and r.deleted_at is null
         and (($3::uuid is null and r.uuid_5 is null) or r.uuid_5 = $3::uuid)
+        and ($4::uuid[] is null or r.id = any($4::uuid[]))
       order by r.num_2 nulls last, r.created_at`,
-    [tx.businessId, taskTypeId, board],
+    [tx.businessId, taskTypeId, board, readable],
   );
-  return rows.map(summaryOf);
+  let newest: Date | null = null;
+  for (const row of rows) {
+    if (newest === null || row.updated_at > newest) newest = row.updated_at;
+  }
+  // Asked only of the rows served, so a gate on a task outside the reader's
+  // scope is never read (MP-5-11, MP-5-12), nor a delegation on one (ruling
+  // point 9: the reader's own agents; none for an agent).
+  const served = rows.map((row) => row.id);
+  const gated = await awaitingApproval(tx, served);
+  const ranks = await readRanks(tx, taskTypeId, readable);
+  const actuals = await readActualMinutes(tx, served);
+  const agents = await readBoardAgents(tx, served, reader);
+  const comments = await readBoardComments(tx, served, reader);
+  const decides = decidable === null ? null : new Set(decidable);
+  const tasks = rows.map((row): BoardTask =>
+    Object.assign(summaryOf(row), {
+      rank: ranks.get(row.id) ?? UNRANKED,
+      stage: row.stage,
+      clientSet: row.client_set,
+      actualMinutes: actuals.get(row.id) ?? 0,
+      estimateMinutes: row.estimated_minutes === null ? null : Number(row.estimated_minutes),
+      pageLink: row.page_link,
+      statePosition: row.state_position === null ? null : Number(row.state_position),
+      waitReason: gated.has(row.id) ? ('needs_approval' as const) : null,
+      awaitingDecision: gated.has(row.id) && (decides === null || decides.has(row.id)),
+      ...(agents.get(row.id) ?? NO_AGENTS),
+      comments: comments.get(row.id) ?? NO_COMMENTS,
+    }),
+  );
+  return { tasks, changedAt: newest?.toISOString() ?? null };
+}
+
+/**
+ * The Ad hoc default a new time entry on this task takes (MP-4-10, CS-4.9):
+ * the task's own mark, and false for a task never marked. It is the one value
+ * the timer and the log read, so an entry cannot start from a different
+ * answer than the task page shows. Scoped by the business the session set: a
+ * task in another business is not here, and takes false.
+ */
+export async function adHocDefault(
+  tx: TenantQuery,
+  taskTypeId: string,
+  recordId: string,
+): Promise<boolean> {
+  if (!isUuid(recordId)) return false;
+  const rows = await tx.query<{ readonly ad_hoc: boolean | null }>(
+    `select r.bool_2 as ad_hoc from public.records r
+      where r.business_id = $1 and r.record_type_id = $2 and r.id = $3 and r.deleted_at is null`,
+    [tx.businessId, taskTypeId, recordId],
+  );
+  return rows[0]?.ad_hoc === true;
+}
+
+/**
+ * Everyone outside the business's membership holding a live read share on
+ * this task. Client access (MP-4-10, R45) is on exactly when this is not
+ * empty: the tick on the task read and the withdrawal in
+ * `commands/tasks-client-access.ts` read this one list.
+ */
+export async function outsideHolders(
+  tx: TenantQuery,
+  recordId: string,
+): Promise<readonly string[]> {
+  const rows = await tx.query<{ readonly person_id: string }>(
+    `select distinct g.subject_id as person_id
+       from public.grants g
+      where g.business_id = $1 and g.subject_kind = 'person'
+        and g.scope_kind = 'record' and g.scope_id = $2
+        and g.collection = 'task' and g.action = 'read'
+        and g.revoked_at is null and (g.expires_at is null or g.expires_at > now())
+        and not exists (select 1 from public.memberships m
+                         where m.business_id = g.business_id and m.person_id = g.subject_id
+                           and m.active)
+      order by 1`,
+    [tx.businessId, recordId],
+  );
+  return rows.map((row) => row.person_id);
 }

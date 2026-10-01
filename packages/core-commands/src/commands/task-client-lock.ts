@@ -15,6 +15,7 @@ import type { CommandContext } from './context.ts';
 import { refused, type HandlerOutcome } from './outcome.ts';
 import { refuseCommand } from './refusal.ts';
 import type { FieldValues } from './requests.ts';
+import { setParty } from './tasks-party.ts';
 import { writeOwnedFields } from './tasks-state.ts';
 
 /** Writes whose history event is content; creation and client changes are not. */
@@ -44,7 +45,12 @@ async function hasContent(tx: TenantQuery, taskId: string): Promise<boolean> {
   return row?.content !== false;
 }
 
-/** The client change, refused `CLIENT_LOCKED` and writing nothing once the task has content. */
+/**
+ * The client change, refused `CLIENT_LOCKED` and writing nothing once the task
+ * has content. An empty task's change is MP-4-4's (`setParty`): a subtask is
+ * held to its parent's client, and a parent's client carries down (a parent
+ * with a subtask has content, so the lock answers first there).
+ */
 export async function setPartyWhileEmpty(
   tx: TenantQuery,
   context: CommandContext,
@@ -52,8 +58,11 @@ export async function setPartyWhileEmpty(
 ): Promise<HandlerOutcome> {
   // A trashed task keeps its old answer (`NOT_FOUND`, from the owned-field writer).
   const task = context.target;
-  if (task !== undefined && task.deleted_at === null && (await hasContent(tx, task.id))) {
+  if (task === undefined || task.deleted_at !== null) {
+    return await writeOwnedFields(tx, context, 'task.set_party', fields);
+  }
+  if (await hasContent(tx, task.id)) {
     return refused(refuseCommand('CLIENT_LOCKED', [], LOCKED_FIXES));
   }
-  return await writeOwnedFields(tx, context, 'task.set_party', fields);
+  return await setParty(tx, context, fields);
 }

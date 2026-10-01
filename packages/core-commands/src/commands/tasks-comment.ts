@@ -34,6 +34,13 @@
 // whether it happened. That identity is accepted only once the attempt's step
 // is marked dispatched to this caller's own lease: no effect before its
 // dispatch, whichever entry sends it.
+// **A reply (R42).** `parentId` names a top-level message on the same task,
+// read under its lock through the task: a reply to a reply, a message on
+// another task or in another business, or one already deleted is refused
+// naming `parentId`. A reply goes to its message's audience, so a client is
+// only ever shown the id of a client message. A reply to a client message
+// from the other side answers it (`comment answered`): the signal is derived
+// at read (`commentSignals`), and the reply's audit event is the record of it.
 
 import {
   audienceNotPermitted,
@@ -54,6 +61,7 @@ import { isIdentifier } from './operands.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseUnstorable, storableText } from './values.ts';
+import { replyParent } from './tasks-comment-reply.ts';
 
 const AUDIENCES: ReadonlySet<string> = new Set<CommentAudience>(['internal', 'client']);
 const EXTERNAL_AUDIENCES: ReadonlySet<string> = new Set<CommentAudience>(['client']);
@@ -73,7 +81,7 @@ const TYPE_FIXES: readonly string[] = [
 
 const BODY_FIXES: readonly string[] = ['Send a body with something in it.'];
 
-const NO_COMMENT_TYPE_FIXES: readonly string[] = [
+export const NO_COMMENT_TYPE_FIXES: readonly string[] = [
   'This business has no comment record type installed, so it cannot hold a comment.',
   'It is not a permission problem and retrying will not change it.',
 ];
@@ -89,6 +97,7 @@ export async function commentOnTask(
   body: unknown,
   audience: unknown,
   commentType: unknown,
+  parentId: unknown,
   mentions: unknown,
 ): Promise<HandlerOutcome> {
   const target = context.target;
@@ -110,6 +119,7 @@ export async function commentOnTask(
     body,
     audience,
     commentType,
+    parentId,
     mentions,
   );
 }
@@ -209,6 +219,7 @@ export async function writeTaskComment(
   body: unknown,
   audience: unknown,
   commentType: unknown,
+  parentId: unknown = undefined,
   mentions: unknown = [],
 ): Promise<HandlerOutcome> {
   if (on.target.deleted_at !== null) return refused(refuseNotFound());
@@ -264,6 +275,9 @@ export async function writeTaskComment(
 
   const effect = await effectRefusal(tx, on, audience);
   if (effect !== undefined) return refused(effect);
+  const parent = await replyParent(tx, { ...on, commentTypeId }, parentId, audience);
+  if (typeof parent === 'object' && parent !== null) return parent;
+
   const commentId = await writeComment(tx, commentTypeId, {
     taskId: on.target.id,
     authorActorId: on.authorActorId,
@@ -271,6 +285,7 @@ export async function writeTaskComment(
     audience: audience as CommentAudience,
     body,
     source: on.entryPoint,
+    parentId: parent,
   });
   await raiseMentions(tx, { ...task, commentId, authorActorId: on.authorActorId }, mentioned);
 

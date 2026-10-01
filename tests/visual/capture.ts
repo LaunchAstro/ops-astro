@@ -1,9 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 /// <reference lib="dom" />
 //
-// Capturing one side of the comparison in the pinned renderer.
-//
-// The network is closed. Every request is answered by route interception:
+// Capturing one side of the comparison in the pinned renderer. The network is closed. Every request is answered by route interception:
 // the mockup's own files from the pinned git tree, its two external addresses
 // from the packet's list (the fonts from the bundled bytes, the refused icon
 // set as an empty stylesheet), the app from its local address only, and
@@ -29,6 +27,8 @@ export type State = {
   open?: string;
   app?: string;
   appPath?: string;
+  /** What the app presses to reach the state, as `open` on the mockup. */
+  appOpen?: string;
   appRegions?: Record<string, string>;
   reason?: string;
 };
