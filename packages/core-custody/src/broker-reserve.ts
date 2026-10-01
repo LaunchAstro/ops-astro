@@ -160,9 +160,7 @@ export async function reserveModelCall(
   const route = routeFor(operation, caller, resolved.fields, facts, broker);
   if (!route.ok) return await refused(route.code, route.words);
   if (await atCeiling(tx, operation, route.route)) {
-    // AW-10: the wait is the run's recorded step, read by the people whose work waits.
-    const waiting = await recordRefusal(tx, facts, request.operation, 'RATE_LIMITED', broker);
-    return refusing('RATE_LIMITED', waiting, { retryAfterSeconds: WAIT_SECONDS });
+    return refusing('RATE_LIMITED', null, { retryAfterSeconds: WAIT_SECONDS });
   }
   const spent = await committedMinor(tx, facts.reservationId);
   if (operation.maximumMinor > facts.heldMinor - spent) {
