@@ -1,21 +1,24 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// What a destination adds to, and allows beyond, a POST (AW-13): fixed
+// What a destination adds to a request, and which it takes (AW-13): fixed
 // headers custody sets on every request to it, and the few DELETE, GET and
 // PUT routes it answers (the trace store's expiry and the read that confirms
-// it; the login provider's update of one user, C39-T). Both are custody's own
+// it; the login provider's update of one user, C39-T). A destination may also
+// list the exact paths it takes a POST on (the login provider's create); one
+// that lists none takes a POST on any plain path. Both are custody's own
 // list, read once at start; a caller names neither.
 
 /**
- * A non-POST route: an exact path, or for a GET one trailing `/*` segment.
- * A PUT is only ever one `/*` segment under a prefix, never an exact path.
+ * A route: an exact path, or for a GET one trailing `/*` segment. A PUT is
+ * only ever one `/*` segment under a prefix, never an exact path; a POST only
+ * ever an exact path.
  */
 export interface Route {
-  readonly method: 'DELETE' | 'GET' | 'PUT';
+  readonly method: 'POST' | 'DELETE' | 'GET' | 'PUT';
   readonly path: string;
 }
 
-export type Method = 'POST' | Route['method'];
+export type Method = Route['method'];
 
 export const METHODS: readonly Method[] = ['POST', 'DELETE', 'GET', 'PUT'];
 
@@ -69,7 +72,9 @@ function routeOf(value: unknown): Route | undefined {
   if (!isObject(value) || Object.keys(value).toSorted().join() !== 'method,path') return undefined;
   const { method, path } = value;
   if (typeof path !== 'string') return undefined;
-  if (method === 'DELETE' && ROUTE_PATH.test(path)) return { method, path };
+  if ((method === 'DELETE' || method === 'POST') && ROUTE_PATH.test(path)) {
+    return { method, path };
+  }
   const prefix = path.endsWith('/*') ? path.slice(0, -2) : path;
   if (method === 'GET' && ROUTE_PATH.test(prefix)) return { method, path };
   if (method === 'PUT' && prefix !== path && ROUTE_PATH.test(prefix)) return { method, path };
@@ -97,13 +102,15 @@ export function parseExtras(entry: Readonly<Record<string, unknown>>): Extras | 
 const PATH = /^\/(?!\/)[A-Za-z0-9._~\-/]*$/u;
 
 /**
- * A path a request may name: a plain path under the origin for a POST, as
- * before; for any other method, only a route the destination lists.
+ * A path a request may name: for a POST, a plain path under the origin unless
+ * the destination lists POST paths, then only one of those; for any other
+ * method, only a route the destination lists.
  */
 export function pathAllowed(extras: Extras, method: Method, path: string): boolean {
   if (!PATH.test(path) || path.includes('..')) return false;
-  if (method === 'POST') return true;
-  return (extras.routes ?? []).some((route) => {
+  const routes = extras.routes ?? [];
+  if (method === 'POST' && !routes.some((route) => route.method === 'POST')) return true;
+  return routes.some((route) => {
     if (route.method !== method) return false;
     if (!route.path.endsWith('/*')) return route.path === path;
     const prefix = route.path.slice(0, -1);

@@ -154,7 +154,10 @@ it("C39-T enrolment broker: it catalogues auth.create_user and auth.update_user 
   expect(settings.destination).toStrictEqual({
     key: 'auth',
     origin: e.users.origin,
-    routes: [{ method: 'PUT', path: '/auth/v1/admin/users/*' }],
+    routes: [
+      { method: 'POST', path: '/auth/v1/admin/users' },
+      { method: 'PUT', path: '/auth/v1/admin/users/*' },
+    ],
   });
   const started = await startEnrolment(settings, async () => await Promise.resolve([w.alpha]));
   try {

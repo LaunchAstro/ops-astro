@@ -4,7 +4,9 @@
 // header custody adds to every request, and the few non-POST routes it
 // answers (the trace store's expiry and the read that confirms it). Both come
 // from the destination's own configuration, never from a caller; anything
-// else a caller asks is refused before a socket exists.
+// else a caller asks is refused before a socket exists. A destination that
+// lists no POST path takes a POST on any plain path (C39-T's login provider
+// lists its one).
 
 import { randomBytes } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -187,6 +189,21 @@ it('AW-13 custody expiry route: DELETE and GET only on the destination’s own r
   expect(seen).toHaveLength(0);
 });
 
+it('AW-13 custody routes: a destination that lists no POST path takes a POST on any plain path, as before', async () => {
+  seen.length = 0;
+  const paths = ['/api/public/otel/v1/traces', '/api/public/ingestion/', '/api//public', '/x'];
+  for (const path of paths) {
+    for (const on of [custody, other]) {
+      // oxlint-disable-next-line no-await-in-loop
+      const outcome = await dispatch('POST', path, on);
+      expect(outcome, path).toMatchObject({ kind: 'answered', outbound: { ok: true } });
+    }
+  }
+  expect(seen.map((one) => `${one.method} ${one.url}`)).toStrictEqual(
+    paths.flatMap((path) => [`POST ${path}`, `POST ${path}`]),
+  );
+});
+
 it('AW-13 custody expiry route: a redirect on a delete is answered, never followed', async () => {
   seen.length = 0;
   redirecting = true;
@@ -213,6 +230,9 @@ it('AW-13 custody header: a destination’s fixed header or route is refused at 
   const load = (extra: Record<string, unknown>) =>
     parseDestinations([{ key: 'trace_target', origin, ...extra }]);
   expect(load({ headers: { [HEADER]: '4' } })).toMatchObject({ ok: true });
+  expect(load({ routes: [{ method: 'POST', path: '/api/public/traces' }] })).toMatchObject({
+    ok: true,
+  });
   const refused: Record<string, unknown>[] = [
     { headers: { [HEADER]: '4\r\nx-injected: 1' } },
     { headers: { [HEADER]: '4\n' } },
@@ -234,7 +254,9 @@ it('AW-13 custody header: a destination’s fixed header or route is refused at 
     { headers: { 'transfer-encoding': 'chunked' } },
     { headers: [] },
     { headers: 'x' },
-    { routes: [{ method: 'POST', path: '/api/public/traces' }] },
+    { routes: [{ method: 'POST', path: '/api/public/traces/*' }] },
+    { routes: [{ method: 'POST', path: '/api/public/traces/' }] },
+    { routes: [{ method: 'POST', path: '//evil.example.com/x' }] },
     { routes: [{ method: 'PUT', path: '/api/public/traces' }] },
     { routes: [{ method: 'delete', path: '/api/public/traces' }] },
     { routes: [{ method: 'DELETE', path: '/api/../traces' }] },

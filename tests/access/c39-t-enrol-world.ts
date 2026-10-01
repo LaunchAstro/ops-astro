@@ -67,7 +67,10 @@ async function withUsers(): Promise<void> {
       {
         key: 'auth',
         origin: e.users.origin,
-        routes: [{ method: 'PUT', path: '/auth/v1/admin/users/*' }],
+        routes: [
+          { method: 'POST', path: '/auth/v1/admin/users' },
+          { method: 'PUT', path: '/auth/v1/admin/users/*' },
+        ],
       },
     ],
   });
