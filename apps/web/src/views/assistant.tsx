@@ -10,7 +10,8 @@
 //
 // **One start per tab.** A second question asked while the first is still
 // starting waits for that start and joins the conversation it made, so a
-// quick second press never opens a second conversation.
+// quick second press never opens a second conversation. Where that start is
+// refused, the next queued question starts the tab and the rest wait on it.
 //
 // **Nothing about a client's material is sent** (owner line 72): the drawer
 // refuses the question itself while the offer is empty with a reason
@@ -167,13 +168,20 @@ function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
     const chat = store.chat(key);
     if (chat === undefined) return;
     store.line(key, 'user', body);
-    const pending = starts.current.get(key);
-    const known = chat.conversationId ?? (pending === undefined ? null : await pending);
+    let known = chat.conversationId;
     if (known === null) {
-      const starting = start(chat, body);
-      starts.current.set(key, starting);
-      if ((await starting) === null) starts.current.delete(key);
-      return;
+      // Queued behind the tab's last start: joins what it made, or starts
+      // itself only once that start is refused.
+      let asked = false;
+      const before = starts.current.get(key) ?? Promise.resolve(null);
+      const turn = before.then(async (id) => {
+        if (id !== null) return id;
+        asked = true;
+        return await start(chat, body);
+      });
+      starts.current.set(key, turn);
+      known = await turn;
+      if (asked || known === null) return;
     }
     const settled = settle(
       await props.client.mutate('conversation.message', { conversationId: known, body }),
