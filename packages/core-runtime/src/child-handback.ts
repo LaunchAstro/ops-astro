@@ -139,14 +139,31 @@ async function openChild(
   return rows.length === 0 ? undefined : only(rows, "handBackChild: the child's parent lease");
 }
 
-/** What a child's standing is read from: its row, and its handback if one landed. */
+/**
+ * What a child's standing is read from: its row, its parent's (`PARENT_FAULT`),
+ * and its handback if one landed.
+ */
 export interface ChildStanding {
   readonly expired: boolean;
   readonly revoked: boolean;
   readonly cause: string | null;
+  readonly parentFault: ChildResult['fault'];
   readonly outcome: 'completed' | 'partial' | null;
   readonly refusal: string | null;
 }
+
+/**
+ * The fault a child takes from its parent, as SQL over the parent's row `p`:
+ * a parent handed back or withdrawn ends its helpers' work with it, in the
+ * order `parentStanding` (core-records delegations.ts) refuses the helper's
+ * next call, so the merged result and that refusal agree. Nothing is written
+ * to the child's own row.
+ */
+export const PARENT_FAULT = `case when p.settled_at is not null then 'DELEGATION_REVOKED'
+    when p.expires_at <= now() then 'DELEGATION_EXPIRED'
+    when p.revoked_at is null then null
+    when p.revocation_cause = 'authority_lost' then 'DELEGATION_NARROWED'
+    else 'DELEGATION_REVOKED' end`;
 
 interface ChildRow extends ChildStanding {
   readonly id: string;
@@ -160,8 +177,10 @@ export async function childResults(
   const rows = await tx.query<ChildRow>(
     `select d.id, d.agent_actor_id, d.expires_at <= now() as expired,
             d.revoked_at is not null as revoked, d.revocation_cause as cause,
+            ${PARENT_FAULT} as "parentFault",
             ev.detail ->> 'outcome' as outcome, ev.detail ->> 'refusal' as refusal
        from public.delegations d
+       join public.delegations p on p.business_id = d.business_id and p.id = d.parent_delegation_id
        left join public.run_events ev
          on ev.business_id = d.business_id and ev.kind = 'child_handed_back'
         and ev.detail ->> 'childDelegationId' = d.id::text
@@ -177,8 +196,8 @@ function resultOf(row: ChildRow): ChildResult {
 }
 
 /**
- * Handed back, else dropped with its fault (expiry first, as the walk reads
- * it), else working. The execution graph reads a helper by the same rule.
+ * Handed back, else dropped with its own fault (expiry first, as the walk
+ * reads it) or its parent's, else working. The execution graph reads a helper by the same rule.
  */
 export function childStateOf(
   row: ChildStanding,
@@ -195,6 +214,6 @@ export function childStateOf(
 
 function faultOf(row: ChildStanding): ChildResult['fault'] {
   if (row.expired) return 'DELEGATION_EXPIRED';
-  if (!row.revoked) return null;
+  if (!row.revoked) return row.parentFault;
   return row.cause === 'authority_lost' ? 'DELEGATION_NARROWED' : 'DELEGATION_REVOKED';
 }
