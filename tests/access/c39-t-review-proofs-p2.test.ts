@@ -41,7 +41,7 @@ const providerHash = (email: string, otp: string): string =>
 
 const sixDigits = (n: number): string => String(n).padStart(6, '0');
 
-it('Sol proof, criterion C39-T token canary: the enrolment token kept at rest cannot be rebuilt from the invitation address', async () => {
+it('C39-T token canary: the enrolment token kept at rest cannot be rebuilt from the invitation address', async () => {
   mountAuthHook();
   w.provider.mode('accept');
   const address = addressFor('rebuilt');
@@ -65,7 +65,7 @@ it('Sol proof, criterion C39-T token canary: the enrolment token kept at rest ca
   expect(rebuilt, 'a live enrolment token, rebuilt from the database alone').toBeUndefined();
 }, 120_000);
 
-it('Sol proof, criterion C39-T isolation: a person whose address already holds a login in another business can still be invited', async () => {
+it('C39-T isolation: a person whose address already holds a login in another business can still be invited', async () => {
   w.provider.mode('accept');
   // GoTrue's answer to an invite link for a confirmed user, as the stand-in gives it.
   auth.fake.mode('exists');
