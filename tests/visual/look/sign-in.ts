@@ -2,7 +2,7 @@
 //
 // B6, sign in (no mockup page: held to the kit through the shell's own elements).
 
-import type { LookScreen } from './index.ts';
+import type { LookScreen } from './probe.ts';
 
 export const SIGN_IN: LookScreen = {
   id: 'sign-in',

@@ -6,7 +6,7 @@
 // held to that panel's message in the mockup. The app draws the made-up
 // conversation (made-up-agent.ts).
 
-import type { LookProbe, LookScreen } from './index.ts';
+import type { LookProbe, LookScreen } from './probe.ts';
 
 const MOCK = { path: '/agency/projects/' } as const;
 const APP = { page: 'agency:agent-conversation' } as const;
@@ -31,7 +31,16 @@ const probe = (
   app: { ...APP, selector: selector.app },
   props,
   widths: ALL,
+  ruled: LEADING,
 });
+
+// MP-1-4: a message is DS-TOK-117 --type-body (14/1.55); the panel's
+// .875rem/1.5 is drift off the type scale.
+const LEADING = (['light', 'dark'] as const).map((theme) => ({
+  at: `line-height@${theme}`,
+  want: '21.7px',
+  why: 'MP-1-4',
+}));
 
 export const CONVERSATION: LookScreen = {
   id: 'conversation',

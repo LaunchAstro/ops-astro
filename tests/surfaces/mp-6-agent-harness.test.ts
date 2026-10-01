@@ -101,13 +101,17 @@ const T1 = madeUpAnswer(`${PREFIX.person}alpha${pathOf('task.read')}`)?.json as 
 function unknownT1(): InternalTaskRead {
   const [lineage, ...rest] = T1.task.proposals;
   if (lineage === undefined) throw new Error('the made-up T-1 has no run');
-  const held = {
-    ...lineage.reservations[0],
+  const held: (typeof lineage.reservations)[number] = {
     id: 'r-2',
+    envelopeId: 'env-1',
     runId: 'run-2',
     state: 'held',
+    heldMinor: 6_000,
     actualMinor: null,
     releasedMinor: null,
+    classifiedCause: null,
+    leaseId: 'lease-2',
+    lease: null,
     attempt: {
       id: 'at-2',
       state: 'liability_unknown',
@@ -115,7 +119,7 @@ function unknownT1(): InternalTaskRead {
       observed: false,
       dropCause: null,
     },
-  } as (typeof lineage.reservations)[number];
+  };
   const reservations = [...lineage.reservations, held];
   return { ...T1, task: { ...T1.task, proposals: [{ ...lineage, reservations }, ...rest] } };
 }

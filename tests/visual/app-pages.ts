@@ -19,12 +19,16 @@ import type { Browser } from 'playwright';
 import { createServer } from 'vite';
 import { load, openSide, shoot, type Catalogue, type Side } from './capture.ts';
 import { scrollMetrics } from './drift.ts';
+import { CONVERSATION_ID } from './made-up-agent.ts';
 import { answerMadeUp } from './made-up-api.ts';
 import type { Packet, Theme } from './packet.ts';
 import { addressOf, builtPages, needsSession, overflowOf, type PageShot } from './report.ts';
 
 /** The value each route parameter takes in the harness: the made-up reads' own records. */
-export const PAGE_PARAMS: Readonly<Record<string, string>> = { key: 'T-1' };
+export const PAGE_PARAMS: Readonly<Record<string, string>> = {
+  key: 'T-1',
+  conversation: CONVERSATION_ID,
+};
 
 /** The app served from source by its own Vite config, at a free local port. */
 export async function serveApp(): Promise<{ app: URL; close: () => Promise<void> }> {

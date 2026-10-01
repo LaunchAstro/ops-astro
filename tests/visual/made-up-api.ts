@@ -29,6 +29,7 @@ import type {
 } from '../../packages/core-wire/src/index.ts';
 import type { BrowserContext } from 'playwright';
 import type { ReadName } from '../../apps/web/src/operations/read-names.ts';
+import { AGENT_LEDGER, AGENT_PROPOSALS, AGENT_READS } from './made-up-agent.ts';
 
 const STATE = {
   active: { id: 's-active', key: 'active', label: 'Active', machineCategory: 'started' },
@@ -95,11 +96,11 @@ const DETAIL: InternalTaskDetail = {
       source: 'app',
     },
   ],
-  proposals: [],
+  proposals: AGENT_PROPOSALS,
   capCurrency: 'AUD',
   envelope: null,
   alerts: [],
-  ledger: null,
+  ledger: AGENT_LEDGER,
 };
 
 const READS = {
@@ -180,6 +181,7 @@ const READS = {
     ],
   } satisfies InboxReadResult,
   'inbox.count': { ok: true, owed: 2 } satisfies InboxCountResult,
+  ...AGENT_READS,
 } as const satisfies Partial<Record<ReadName, unknown>>;
 
 /** The reads the harness answers; a read missing here draws its "could not be read" state. */

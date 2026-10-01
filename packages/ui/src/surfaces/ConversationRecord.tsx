@@ -42,6 +42,9 @@ export interface ConversationRecordProps {
 }
 
 const ROLE = { person: 'You', agent: 'Agent' } as const;
+// Each message in the drawer's own message look (DS-COMP-23's panel, MP-7-11),
+// so a conversation reads the same at its address as in the dock.
+const BUBBLE = { person: 'aip__msg--user', agent: 'aip__msg--ai' } as const;
 
 function Pointer(props: { readonly pointer: ConversationRecordPointer }): ReactElement {
   const { pointer } = props;
@@ -97,7 +100,10 @@ export function ConversationRecord(props: ConversationRecordProps): ReactElement
       ) : (
         <ol className="convrec__log" data-conversation="transcript" aria-label="Conversation">
           {props.messages.map((message) => (
-            <li key={message.id} className={`convrec__msg convrec__msg--${message.role}`}>
+            <li
+              key={message.id}
+              className={`aip__msg ${BUBBLE[message.role]} convrec__msg convrec__msg--${message.role}`}
+            >
               <span className="convrec__who">{ROLE[message.role]}</span>
               <p data-conversation="message">{message.body}</p>
             </li>
