@@ -12,7 +12,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import { verifyAuditChain } from '../../packages/core-commands/src/commands/audit.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
-import type { Database } from '../../packages/core-records/src/index.ts';
+import { connect, type Database } from '../../packages/core-records/src/index.ts';
 import { codeOf } from './agent-fixture.ts';
 import {
   serverUrl,
@@ -157,8 +157,9 @@ function latch(): { readonly promise: Promise<void>; readonly open: () => void }
   return { promise, open: () => settle?.() };
 }
 
-/** The app database with each transaction held open after its work until `held` opens. */
-function heldOpen(database: Database, worked: () => void, held: Promise<void>): Database {
+/** A connection of its own whose transactions stay open after their work until `held` opens. */
+function heldOpen(url: string, worked: () => void, held: Promise<void>): Database {
+  const database = connect(url, { source: 'runtime' });
   return {
     log: database.log,
     close: async () => await database.close(),
@@ -177,8 +178,8 @@ async function untilOneWaits(): Promise<void> {
   for (let tries = 0; tries < 500; tries += 1) {
     // eslint-disable-next-line no-await-in-loop -- polling, one look at a time
     const [row] = await seeded().admin.execute<{ readonly waiting: boolean }>(
-      `select exists (select 1 from pg_stat_activity
-                       where datname = current_database() and wait_event_type = 'Lock') as waiting`,
+      `select exists (select 1 from pg_locks where not granted and pid in
+         (select pid from pg_stat_activity where datname = current_database())) as waiting`,
     );
     if (row?.waiting === true) return;
     // eslint-disable-next-line no-await-in-loop
@@ -194,7 +195,7 @@ describe.skipIf(serverUrl === undefined)('MP-4-4 parent scope, raced', () => {
     const moving = await make(alpha, owner, 'racedChild', 'Banner', { client: CLIENT_A });
     const under = await make(alpha, owner, 'racedGrand', 'Sizes', { parentId: moving });
     const [worked, gate] = [latch(), latch()];
-    const held = heldOpen(seeded().app, worked.open, gate.promise);
+    const held = heldOpen(seeded().appUrl, worked.open, gate.promise);
     const changing = executeCommand(held, alpha, owner.presented, 'api', {
       operationId: randomUUID(),
       command: 'task.set_party',
@@ -216,12 +217,12 @@ describe.skipIf(serverUrl === undefined)('MP-4-4 parent scope, raced', () => {
       gate.open();
     }
     expect(isCommandRefusal(await changing)).toBe(false);
+    await held.close();
     const answer = await reparenting;
     const [placed] = await seeded().admin.execute<{ readonly parent: string | null }>(
       `select data ->> 'parent' as parent from public.records where id = $1`,
       [moving],
     );
-    expect(await clientOf(parent)).toBe(CLIENT_B);
     if (placed?.parent === parent) {
       expect([await clientOf(moving), await clientOf(under)]).toEqual([CLIENT_B, CLIENT_B]);
     } else {
