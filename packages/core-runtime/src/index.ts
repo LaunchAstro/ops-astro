@@ -95,6 +95,11 @@ export {
 } from './heartbeat.ts';
 export { leaseReason, NOT_OWNED_FIX } from './lease-ownership.ts';
 export { dispatch, EFFECT_OPERATIONS, type Dispatched, type DispatchRequest } from './dispatch.ts';
+export {
+  isReviewedOutput,
+  markReviewedOutput,
+  type ReviewedOutputMark,
+} from './reviewed-output.ts';
 export { observe, type AppliedEffect, type Observed, type ObserveRequest } from './observe.ts';
 export { readReceipt, receiptTask, type Receipt } from './receipt.ts';
 export { readAlerts, type Alert } from './alerts.ts';
