@@ -95,6 +95,7 @@ const underClient = async (client: string, title: string): Promise<Task> => {
   const placed = await as(alpha, writer, {
     command: 'task.set_party',
     recordId: task.recordId,
+    expectedRevision: task.revision,
     fields: { client },
   });
   if (isCommandRefusal(placed)) throw new Error(`task.set_party refused ${placed.code}`);
