@@ -10,7 +10,7 @@
 // runner. The key goes only into the credentials file; nothing prints it.
 
 import { randomBytes } from 'node:crypto';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createRunner, type Runner } from './runner.ts';
@@ -53,10 +53,28 @@ function apiEnvOf(origin: string, credentialsFile: string, installation: string)
   };
 }
 
-/** `export NAME='value'` lines a shell can source; no value holds a single quote. */
+/**
+ * A file only the owner can read, written whole: a fresh temp file beside it
+ * (never one already there, never through a symlink), renamed over the old
+ * one. The rename replaces a symlink at `file` rather than following it.
+ */
+function writeOwnerFile(file: string, text: string): void {
+  const temp = `${file}.${randomBytes(6).toString('hex')}.tmp`;
+  try {
+    writeFileSync(temp, text, { flag: 'wx', mode: 0o600 });
+    renameSync(temp, file);
+  } finally {
+    rmSync(temp, { force: true });
+  }
+}
+
+/** A value a sourced `export NAME='value'` line holds as it is. */
+const QUOTABLE = /^[^'\n\r]*$/u;
+
+/** `export NAME='value'` lines a shell can source; startStack refuses a value with a quote. */
 function writeApiEnv(file: string, env: Readonly<Record<string, string>>): void {
   const lines = Object.entries(env).map(([name, value]) => `export ${name}='${value}'`);
-  writeFileSync(file, `${lines.join('\n')}\n`, { mode: 0o600 });
+  writeOwnerFile(file, `${lines.join('\n')}\n`);
 }
 
 /** The settings back out of `api.env`, as the API would see them after sourcing it. */
@@ -107,7 +125,34 @@ export async function startStack(
   const { settings } = read;
   const tick = await tickIdentity(env, identityOf);
   if (!tick.ok) return tick;
-  mkdirSync(settings.home, { recursive: true });
+  const installation = env['OPS_LOCAL_AGENT_INSTALLATION'] || 'local';
+  if (!QUOTABLE.test(settings.home) || !QUOTABLE.test(installation)) {
+    return {
+      ok: false,
+      code: 'SETTING_MALFORMED',
+      message: 'OPS_LOCAL_AGENT_HOME and OPS_LOCAL_AGENT_INSTALLATION hold no quote or line break',
+    };
+  }
+  mkdirSync(settings.home, { recursive: true, mode: 0o700 });
+  // A home someone else owns could hold their symlinks or read the key.
+  if (statSync(settings.home).uid !== process.getuid?.()) {
+    return { ok: false, code: 'HOME_NOT_OWNED', message: 'OPS_LOCAL_AGENT_HOME is not yours' };
+  }
+  // The runner takes the home before anything is written: a second start on a
+  // live home is refused with the filed key still the one the first runner serves.
+  let runner: Runner;
+  try {
+    runner = await createRunner(settings, print);
+  } catch (error) {
+    if (String(error).includes('LOCAL_HOME_IN_USE')) {
+      return {
+        ok: false,
+        code: 'LOCAL_HOME_IN_USE',
+        message: 'another runner holds this OPS_LOCAL_AGENT_HOME',
+      };
+    }
+    throw error;
+  }
   const credentialsFile = join(settings.home, 'credentials.json');
   const credential = {
     ref: CREDENTIAL_REF,
@@ -117,14 +162,17 @@ export async function startStack(
     header: 'authorization',
     value: key,
   };
-  writeFileSync(credentialsFile, JSON.stringify([credential]), { mode: 0o600 });
-  const runner = await createRunner(settings, print);
   const apiEnvFile = join(settings.home, 'api.env');
-  const installation = env['OPS_LOCAL_AGENT_INSTALLATION'] || 'local';
-  writeApiEnv(apiEnvFile, {
-    ...apiEnvOf(runner.origin, credentialsFile, installation),
-    ...tick.env,
-  });
+  try {
+    writeOwnerFile(credentialsFile, JSON.stringify([credential]));
+    writeApiEnv(apiEnvFile, {
+      ...apiEnvOf(runner.origin, credentialsFile, installation),
+      ...tick.env,
+    });
+  } catch (error) {
+    await runner.close();
+    throw error;
+  }
   print(`local agent: runner on ${runner.origin} (seat ${settings.seat})`);
   print(`local agent: source ${apiEnvFile} before starting the API`);
   return {

@@ -22,7 +22,12 @@ client: client-facing agent work stays on the API.
    It makes a runner key, starts the runner, files the key for custody in
    `credentials.json` and writes `api.env`, both 0600 under
    `OPS_LOCAL_AGENT_HOME`. It prints the runner's origin and the `api.env` path,
-   never the key.
+   never the key. The home must be yours; it is made 0700.
+
+   Each start makes a new key and a new port. After restarting the stack,
+   source `api.env` again and restart the API and the tick: both load the key
+   and the runner's origin once, at their own start, and every call fails
+   until they do.
 
    With `OPS_LOCAL_AGENT_BUSINESS` set to a business `pnpm db:seed` made
    (`alpha` or `bravo`), it also writes the tick's identity into `api.env`: the
@@ -66,11 +71,15 @@ client: client-facing agent work stays on the API.
   killed at its timeout is charged the whole budget it was given. An unreadable
   ledger counts as the cap, and a row that cannot be written stops every later
   call until the runner restarts.
+- A cap set in `OPS_LOCAL_AGENT_CAP_USD` is the cap, whatever `approvals.json`
+  says. Unset, the owner's yes on a raise is the cap from the next call on,
+  never past USD 30.
 - At the cap a call is refused before anything runs (`LOCAL_CAP_REACHED`) and the
   runner asks for the owner's yes. Any model but Haiku needs `approvals.json`
   `{ "models": [...] }`, else `LOCAL_MODEL_NOT_APPROVED`. Until the inbox approval
   gate is wired these are plain refusals.
-- One runner per home: a second one on the same ledger refuses to start.
+- One runner per home: a second one on the same ledger, or a second stack,
+  refuses to start (`LOCAL_HOME_IN_USE`) before it writes anything.
 
 ## What is not here
 

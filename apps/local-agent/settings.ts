@@ -21,6 +21,8 @@ export type Seat = (typeof SEATS)[number];
 
 /** The cap with no approval: the owner's first figure (addendum 2). */
 export const DEFAULT_CAP_USD = 10;
+/** The highest cap the owner's yes can raise to (approval.ts asks for no more). */
+export const MAX_CAP_USD = 30;
 const MIN_KEY_LENGTH = 32;
 
 export interface RunnerSettings {
@@ -31,6 +33,8 @@ export interface RunnerSettings {
   /** The runner's own folder: the ledger, the approvals and the child's empty working folder. */
   readonly home: string;
   readonly capUsd: number;
+  /** OPS_LOCAL_AGENT_CAP_USD was set: that figure is the cap, whatever approvals.json says. */
+  readonly capConfigured: boolean;
   readonly claudeBin: string;
   /** The seat usage reading, `{ seat, percent, at }`, when the operator keeps one. */
   readonly usageFile: string | null;
@@ -140,10 +144,11 @@ export function readSettings(
   if (capUsd === undefined) {
     return refuse('CAP_MALFORMED', 'OPS_LOCAL_AGENT_CAP_USD is a dollar amount above 0');
   }
-  if (capUsd > DEFAULT_CAP_USD && readApprovals(home).capUsd !== capUsd) {
+  if (capUsd > MAX_CAP_USD || (capUsd > DEFAULT_CAP_USD && readApprovals(home).capUsd !== capUsd)) {
     return refuse(
       'CAP_NOT_APPROVED',
-      `a cap above USD ${String(DEFAULT_CAP_USD)} needs the owner's yes in approvals.json`,
+      `a cap above USD ${String(DEFAULT_CAP_USD)} needs the owner's yes in approvals.json, ` +
+        `USD ${String(MAX_CAP_USD)} at most`,
     );
   }
   return {
@@ -154,6 +159,7 @@ export function readSettings(
       seatDir: join(userHome, `.claude-seat-${seat as Seat}`),
       home,
       capUsd,
+      capConfigured: (env['OPS_LOCAL_AGENT_CAP_USD'] ?? '') !== '',
       claudeBin: env['OPS_LOCAL_AGENT_CLAUDE_BIN'] || 'claude',
       usageFile: env['OPS_LOCAL_AGENT_SEAT_USAGE_FILE'] || null,
       childEnv: childEnvOf(env, userHome),

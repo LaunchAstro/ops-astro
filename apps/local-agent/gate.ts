@@ -8,7 +8,7 @@
 
 import { readFileSync } from 'node:fs';
 import { ledgerTotal } from './ledger.ts';
-import { readApprovals, type RunnerSettings } from './settings.ts';
+import { MAX_CAP_USD, readApprovals, type RunnerSettings } from './settings.ts';
 
 export const DEFAULT_MODEL = 'haiku';
 /** The seat's stop: at or past it the runner refuses (the owner's 85% rule). */
@@ -57,8 +57,11 @@ export function decide(settings: RunnerSettings, model: string): Decision {
   if (model !== DEFAULT_MODEL && !approved.models.includes(model)) {
     return { ok: false, code: 'LOCAL_MODEL_NOT_APPROVED' };
   }
-  // The owner's yes on a cap raise (approval.ts) is the cap from the next call on.
-  const cap = approved.capUsd ?? settings.capUsd;
+  // A cap the owner configured is the cap. Unset, the owner's yes on a raise
+  // (approval.ts) is the cap from the next call on, never past MAX_CAP_USD.
+  const cap = settings.capConfigured
+    ? settings.capUsd
+    : Math.min(approved.capUsd ?? settings.capUsd, MAX_CAP_USD);
   const left = cap - ledgerTotal(settings.home, cap);
   // Claude Code refuses a budget of 0.00, so under a cent left is the cap.
   if (left < 0.01) return { ok: false, code: 'LOCAL_CAP_REACHED' };
