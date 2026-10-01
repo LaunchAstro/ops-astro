@@ -4,9 +4,9 @@
 // businesses, two clients in the first, and the helpers the cases read. A
 // harness, not a suite: nothing here runs on its own.
 //
-// A client's name and aliases are read from the business's `client` record
-// (`tasks-duplicate.ts`); this base installs no client model, so the world
-// plants that record type and its records as the owner would.
+// The clients are real (C32): made with `client.create` by a person given
+// `record:write`, since `task.set_party` and `task.duplicate` name only a
+// client of the business.
 
 import { randomUUID } from 'node:crypto';
 import { insertBusiness } from '../identity/fixture.ts';
@@ -15,7 +15,7 @@ import {
   databaseUrlFromEnvironment,
   type FreshDatabase,
 } from '../support/fresh-database.ts';
-import { enrol, grantTo, installSpine, type Member } from './fixture.ts';
+import { enrol, grantTo, installSpine, WHOLE_BUSINESS, type Member } from './fixture.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import type { ReadResult } from '../../packages/core-commands/src/reads/requests.ts';
@@ -34,11 +34,10 @@ export let bravo: BusinessId;
 /** Business-wide read, write and share on tasks, and write on time and tags. */
 export let owner: Member;
 export let bravoWriter: Member;
-/** Client A's and client B's party ids, and client A's name and alias. */
+/** Client A's and client B's ids, and client A's name. */
 export let clientA: string;
 export let clientB: string;
 export const CLIENT_A_NAME = 'Harbourline Dental';
-export const CLIENT_A_ALIAS = 'HLD Group';
 
 export const outcomeOf = (answer: CommandResult): Readonly<Record<string, unknown>> =>
   isCommandRefusal(answer) ? { code: answer.code, names: answer.names } : { applied: true };
@@ -144,21 +143,14 @@ export const newTaskOf = (answer: CommandResult): { taskId: string; key: string 
 export const person = async (name: string, business: BusinessId = alpha): Promise<Member> =>
   await enrol(db.app, business, `${name}-${randomUUID()}`);
 
-/** The business's `client` record type, and one client record under it. */
-async function plantClient(business: BusinessId, name: string, aliases: readonly string[]) {
-  const typeKey = 'client';
-  await db.admin.execute(
-    `insert into public.record_types (business_id, id, key, name, origin)
-     values ($1, gen_random_uuid(), $2, 'Client', 'preset') on conflict do nothing`,
-    [business, typeKey],
-  );
-  const id = randomUUID();
-  await db.admin.execute(
-    `insert into public.records (business_id, id, record_type_id, data)
-     select $1, $2, t.id, $3 from public.record_types t where t.business_id = $1 and t.key = $4`,
-    [business, id, { name, aliases }, typeKey],
-  );
-  return id;
+/** A real client of `business` named `name`, made by `by` with `record:write` there. */
+export async function clientOf(business: BusinessId, by: Member, name: string): Promise<string> {
+  await db.app.withBusiness(business, async (tx) => {
+    await grantTo(tx, by, 'write', WHOLE_BUSINESS, false, 'record');
+  });
+  const made = await as(business, by, { command: 'client.create', name });
+  if (isCommandRefusal(made)) throw new Error(`client.create refused ${made.code}`);
+  return String(made.detail?.['clientId']);
 }
 
 export async function setUp(): Promise<void> {
@@ -181,8 +173,8 @@ export async function setUp(): Promise<void> {
     await grantTo(tx, bravoWriter, 'write');
     await grantTo(tx, bravoWriter, 'read');
   });
-  clientA = await plantClient(alpha, CLIENT_A_NAME, [CLIENT_A_ALIAS]);
-  clientB = await plantClient(alpha, 'Northgate Physio', []);
+  clientA = await clientOf(alpha, owner, CLIENT_A_NAME);
+  clientB = await clientOf(alpha, owner, 'Northgate Physio');
 }
 
 export async function tearDown(): Promise<void> {

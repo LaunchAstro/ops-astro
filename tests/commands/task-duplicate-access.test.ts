@@ -14,13 +14,15 @@ import { revokeGrant } from '../../packages/core-records/src/index.ts';
 import { COMMAND_SURFACE } from '../../packages/core-wire/src/index.ts';
 import {
   CANARY,
-  CLIENT_A_ALIAS,
   CLIENT_A_NAME,
   ENTRIES,
   alpha,
   boardOf,
+  bravo,
+  bravoWriter,
   clientA,
   clientB,
+  clientOf,
   db,
   detailOf,
   duplicate,
@@ -156,7 +158,7 @@ describe.skipIf(serverUrl === undefined)(
         recordId: old,
         client: clientB,
         title: `Refit for ${CLIENT_A_NAME}`,
-        stepNames: ['Measure up', `Call ${CLIENT_A_ALIAS} reception`],
+        stepNames: ['Measure up', 'Call harbourline dental reception'],
       };
       const before = await footprint();
       for (const answer of await everyPath([owner], [body])) {
@@ -212,6 +214,29 @@ describe.skipIf(serverUrl === undefined)('MP-4-8 refusal task:write for the chos
     expect(outcomeOf(made)).toStrictEqual({ applied: true });
   });
 });
+
+describe.skipIf(serverUrl === undefined)(
+  'MP-4-8 duplicate for a client of this business only',
+  () => {
+    it('another business’s client and a made-up client are one NOT_FOUND, and nothing is written', async () => {
+      const old = await taskFor(alpha, owner, `${CANARY} old`, clientA);
+      const foreign = await clientOf(bravo, bravoWriter, `Bravo client ${randomUUID()}`);
+      const before = await footprint();
+      const answers = await everyPath(
+        [owner],
+        [foreign, randomUUID()].map((client) => ({ recordId: old, client, title: 'x' })),
+      );
+      for (const answer of answers) {
+        expect(outcomeOf(answer)).toMatchObject({ code: 'NOT_FOUND' });
+        expect(JSON.stringify(answer)).not.toContain(foreign);
+        expect(JSON.stringify(answer)).not.toContain(CANARY);
+      }
+      // One answer for both, so nothing is learned about bravo's clients.
+      expect(new Set(answers.map((answer) => JSON.stringify(answer))).size).toBe(1);
+      expect(await footprint()).toStrictEqual(before);
+    });
+  },
+);
 
 describe.skipIf(serverUrl === undefined)('MP-4-8 task.duplicate declaration and audit', () => {
   it('is declared a person-only task write with its two-part authority', () => {

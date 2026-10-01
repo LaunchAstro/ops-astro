@@ -77,6 +77,10 @@ export const DECLARED: Readonly<
     carry: 'not carried',
     plant: writeOn('task.set_adhoc', () => ({ ad_hoc: true })),
   },
+  'task.set_category': {
+    carry: 'not carried',
+    plant: writeOn('task.set_category', () => ({ category: 'seo' })),
+  },
   'task.start': {
     carry: 'not carried',
     plant: async (taskId) =>
@@ -131,6 +135,26 @@ export const DECLARED: Readonly<
   'settings.set_four_eyes_threshold': { carry: 'not carried', plant: 'a business setting' },
   'settings.set_client_sign_off': { carry: 'not carried', plant: 'a business setting' },
   'grant.revoke': { carry: 'not carried', plant: 'authority, not task content' },
+  'access.grant': { carry: 'not carried', plant: 'authority, not task content' },
+  'access.revoke': { carry: 'not carried', plant: 'authority, not task content' },
+  'access.end': { carry: 'not carried', plant: 'authority, not task content' },
+  'credential.issue': { carry: 'not carried', plant: 'authority, not task content' },
+  'credential.revoke': { carry: 'not carried', plant: 'authority, not task content' },
+  'session.end': { carry: 'not carried', plant: 'a sign-in, not task content' },
+  'client.create': { carry: 'not carried', plant: 'a client of the business, not task content' },
+  'preference.save': { carry: 'not carried', plant: 'a person’s setting' },
+  'preference.dismiss_tip': { carry: 'not carried', plant: 'a person’s setting' },
+  'settings.set_money_step_up': { carry: 'not carried', plant: 'a business setting' },
+  'settings.set_conversation_window': { carry: 'not carried', plant: 'a business setting' },
+  'settings.set_retention_window': { carry: 'not carried', plant: 'a business setting' },
+  'privacy.record_incident': { carry: 'not carried', plant: 'the privacy register, not a task' },
+  'privacy.set_overseas_service': { carry: 'not carried', plant: 'the privacy register' },
+  'privacy.set_data_class': { carry: 'not carried', plant: 'the privacy register' },
+  'legal.draft_version': { carry: 'not carried', plant: 'a legal document, not a task' },
+  'legal.approve_version': { carry: 'not carried', plant: 'a legal document, not a task' },
+  'legal.publish_version': { carry: 'not carried', plant: 'a legal document, not a task' },
+  'operations.record_gate_item': { carry: 'not carried', plant: 'the installation, not a task' },
+  'operations.change_installation_mode': { carry: 'not carried', plant: 'the installation' },
   'delegation.revoke': { carry: 'not carried', plant: 'authority, not task content' },
 };
 

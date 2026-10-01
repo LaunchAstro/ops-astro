@@ -14,7 +14,7 @@ import { isCommandRefusal } from '../../packages/core-commands/src/commands/refu
 import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
 import type { BusinessId } from '../../packages/core-records/src/index.ts';
 import { insertBusiness } from '../identity/fixture.ts';
-import { enrol, grantTo, installSpine, type Member } from './fixture.ts';
+import { enrol, grantTo, installSpine, WHOLE_BUSINESS, type Member } from './fixture.ts';
 import { codeOf } from './agent-fixture.ts';
 import { CANARY, revision, serverUrl, setUp, tearDown, world } from './adhoc-agent-world.ts';
 
@@ -64,6 +64,20 @@ const refusedClean = (answer: CommandResult, ids: readonly string[]): void => {
   expect(text).not.toContain(CANARY);
   for (const id of ids) expect(text).not.toContain(id);
 };
+
+/** A real client of the world's business (C32), made by `by` given `record:write` there. */
+async function clientBy(by: Member): Promise<string> {
+  await world.db.app.withBusiness(world.business, async (tx) => {
+    await grantTo(tx, by, 'write', WHOLE_BUSINESS, false, 'record');
+  });
+  const made = await world.asPerson(by, {
+    command: 'client.create',
+    operationId: randomUUID(),
+    name: `A client ${randomUUID()}`,
+  });
+  if (isCommandRefusal(made)) throw new Error(`client.create refused ${made.code}`);
+  return String(made.detail?.['clientId']);
+}
 
 /** A task of `client`, made and placed by `by` (who holds task:share for the move). */
 async function taskOf(by: Member, client: string): Promise<string> {
@@ -118,7 +132,7 @@ describe.skipIf(serverUrl === undefined)('MP-4-8 agent duplicate refused', () =>
         fields: { title: CANARY },
       }),
     );
-    const client = randomUUID();
+    const client = await clientBy(decider);
     const before = await footprint();
     const tries = [picked.taskId, other].flatMap((taskId) =>
       [client, null].map(async (chosen) => {
@@ -140,7 +154,7 @@ describe.skipIf(serverUrl === undefined)('MP-4-8 duplicate isolation', () => {
     await world.db.app.withBusiness(world.business, async (tx) => {
       await grantTo(tx, decider, 'share');
     });
-    const [clientA, clientB] = [randomUUID(), randomUUID()];
+    const [clientA, clientB] = [await clientBy(decider), await clientBy(decider)];
     const oldA = await taskOf(decider, clientA);
     const ownB = await taskOf(decider, clientB);
     const bravo = await otherBusiness();
