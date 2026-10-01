@@ -5,7 +5,8 @@
 // U09's board machine in a document, on its gallery fixture: the owner checks
 // of MP-5-1 to MP-5-5 as they run before the Projects board takes the machine
 // (MP-5-8, U25), and the checklist lines that need a rendered board. The
-// harness captures at 1480, 900 and 390 in both themes wait on MP-1-7.
+// harness captures at 1480, 900 and 390 in both themes are
+// tests/visual/mp-5-board-harness.test.ts.
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';

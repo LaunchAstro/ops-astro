@@ -5,7 +5,8 @@
 // U13 in a document, on the board machine's gallery fixture: MP-5-6's grips,
 // drag, arrow keys and Reset columns, and MP-5-7's command bar. The owner
 // checks run here until the Projects board takes the machine (MP-5-8, U25);
-// the harness captures at 1480, 900 and 390 in both themes wait on MP-1-7.
+// the harness captures at 1480, 900 and 390 in both themes are in
+// tests/visual/mp-5-board-harness.test.ts.
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
