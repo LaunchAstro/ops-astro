@@ -26,17 +26,29 @@
 
 import type { PresetField } from '../../../core-records/src/index.ts';
 import type {
+  AttributionResult,
   CapabilitiesResult,
+  InboxCountResult,
+  InboxReadResult,
   PersonListResult,
   PresetPlanResult,
   QueueResult,
+  AwaitingReviewResult,
+  ConversationListResult,
+  ConversationReadResult,
   SettingsReadResult,
   SharedTaskRead,
   TaskBoardResult,
   TaskDetail,
+  MapViewResult,
+  MapFrontierResult,
+  MapStatusResult,
+  TicketContextResult,
 } from '../../../core-wire/src/index.ts';
 import type { TaskExecution } from './execution.ts';
 import type { Receipt } from '../../../core-runtime/src/index.ts';
+import type { Detail, Paging } from './detail.ts';
+import type { UnattendedEntry } from './inbox.ts';
 
 // The result types live in `views.ts`, which the clients import; the server's
 // own modules keep importing them from here.
@@ -57,12 +69,14 @@ export type {
  * uses is a field its `parse` checked.
  */
 export interface ReadOperands {
-  readonly 'task.read': { readonly recordId: string };
+  readonly 'task.read': { readonly recordId: string } & Paging;
   /** `null` is the business's unboarded tasks, which is where a created task starts. */
-  readonly 'task.board': { readonly board: string | null };
+  readonly 'task.board': { readonly board: string | null } & Paging;
   readonly 'person.list': NoOperands;
   /** Approved, held and unpicked. A projection; reading it claims nothing. */
   readonly 'task.queue': NoOperands;
+  /** The pending gates the caller may decide, filtered by their `decide` in the query. */
+  readonly 'gate.pending': NoOperands;
   /**
    * The task's runs and their progress events after `cursor`, a position the
    * caller already holds (0 for the start). See `reads/execution.ts`.
@@ -102,6 +116,29 @@ export interface ReadOperands {
   readonly 'session.capabilities': NoOperands;
   /** What an observed effect came from, asked on its attempt (T2c2). */
   readonly 'task.receipt': { readonly attemptId: string };
+  /** A map's sections, tickets and versions (WF-1). */
+  readonly 'map.view': { readonly recordId: string };
+  /** A map's frontier and fog, from their read models (WF-2). */
+  readonly 'map.frontier': { readonly recordId: string };
+  /** A map's frontier, fog and counts in one call, at a detail level (API-4). */
+  readonly 'map.status': { readonly recordId: string; readonly detail?: Detail };
+  /** Work this ticket: the ticket and all it depends on, in one call, at a detail level (API-4). */
+  readonly 'task.context': { readonly recordId: string; readonly detail?: Detail };
+  /**
+   * A conversation at its address (AW-03): the owner's, or a holder of the
+   * read-any grant's. After the body purges it answers the wrap-up.
+   */
+  readonly 'conversation.read': { readonly conversationId: unknown };
+  /** The caller's own conversations, for the assistant panel's tab row (MP-7-11). */
+  readonly 'conversation.list': NoOperands;
+  /** The runs that read one file, by its digest: pre-review (AW-04). */
+  readonly 'definition.attribution': { readonly digest: string };
+  /** The caller's own inbox items, each with its access derived now (INB-1d). */
+  readonly 'inbox.read': NoOperands;
+  /** The caller's owed count: the counted entries of `inbox.read`. */
+  readonly 'inbox.count': NoOperands;
+  /** The business's items no path reaches, for `operations:read` (INB-1e). */
+  readonly 'inbox.unattended': NoOperands;
 }
 
 /** A read about the business as a whole, which takes nothing. */
@@ -119,12 +156,34 @@ export interface ReadRequest {
 
 export type ReadResult =
   | { readonly ok: true; readonly task: TaskDetail }
+  /** A task or a page at a named detail level (API-3, `detail.ts`). */
+  | {
+      readonly ok: true;
+      readonly detail: Detail;
+      readonly view: Readonly<Record<string, unknown>>;
+    }
+  | {
+      readonly ok: true;
+      readonly page: readonly Readonly<Record<string, unknown>>[];
+      readonly next: string | null;
+    }
   | SharedTaskRead
   | TaskBoardResult
   | PersonListResult
   | QueueResult
+  | AwaitingReviewResult
   | PresetPlanResult
   | SettingsReadResult
   | { readonly ok: true; readonly execution: TaskExecution }
   | { readonly ok: true; readonly receipt: Receipt }
-  | CapabilitiesResult;
+  | CapabilitiesResult
+  | MapViewResult
+  | MapFrontierResult
+  | MapStatusResult
+  | TicketContextResult
+  | ConversationReadResult
+  | ConversationListResult
+  | AttributionResult
+  | InboxReadResult
+  | InboxCountResult
+  | { readonly ok: true; readonly unattended: readonly UnattendedEntry[] };

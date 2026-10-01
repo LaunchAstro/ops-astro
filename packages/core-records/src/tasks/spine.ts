@@ -260,6 +260,89 @@ export const TASK_SPINE: readonly SpineField[] = [
     owningOperations: [],
     escalatingOperation: null,
   },
+  // Wayfinder (WF-1). Unslotted: no view filters on them yet, and a slot
+  // would cost an index migration for nothing. The type changes views and
+  // rules, never the record kind; a map is a task whose type is `map`.
+  {
+    key: 'type',
+    label: 'Type',
+    valueType: 'text',
+    slot: null,
+    writeMode: 'operation',
+    owningOperations: ['task.set_type'],
+    escalatingOperation: null,
+  },
+  {
+    // The person who created the map; grilling and prototype tickets and
+    // guarded retypes are theirs alone.
+    key: 'map_owner',
+    label: 'Map owner',
+    valueType: 'uuid',
+    slot: null,
+    writeMode: 'system',
+    owningOperations: [],
+    escalatingOperation: null,
+  },
+  {
+    key: 'map_version',
+    label: 'Map version',
+    valueType: 'numeric',
+    slot: null,
+    writeMode: 'system',
+    owningOperations: [],
+    escalatingOperation: null,
+  },
+  {
+    // The resolution (WF-2): the answer and its one-line gist, written once by
+    // `task.resolve`. Decisions so far is rendered from the gist.
+    key: 'answer',
+    label: 'Answer',
+    valueType: 'text',
+    slot: null,
+    writeMode: 'operation',
+    owningOperations: ['task.resolve'],
+    escalatingOperation: null,
+  },
+  {
+    key: 'gist',
+    label: 'Gist',
+    valueType: 'text',
+    slot: null,
+    writeMode: 'operation',
+    owningOperations: ['task.resolve'],
+    escalatingOperation: null,
+  },
+  {
+    // The ticket's blockers as ids, kept by `task.set_blocking` beside the
+    // `blocks` links it writes, so the ticket's revision moves with the set.
+    key: 'blocked_by',
+    label: 'Blocked by',
+    valueType: 'json',
+    slot: null,
+    writeMode: 'system',
+    owningOperations: [],
+    escalatingOperation: null,
+  },
+  {
+    // `out_of_scope` when `task.close_out_of_scope` closed it.
+    key: 'closed_as',
+    label: 'Closed as',
+    valueType: 'text',
+    slot: null,
+    writeMode: 'system',
+    owningOperations: [],
+    escalatingOperation: null,
+  },
+  {
+    // Every retype, appended by `task.set_type`: from, to, actor and time.
+    key: 'type_history',
+    label: 'Type history',
+    valueType: 'json',
+    slot: null,
+    writeMode: 'system',
+    owningOperations: [],
+    escalatingOperation: null,
+  },
 ];
 
 /**
@@ -278,6 +361,14 @@ export const PROTECTED_TASK_FIELDS: readonly string[] = [
   'source',
   'stage',
   'state',
+  'type',
+  'answer',
+  'gist',
+  'map_owner',
+  'map_version',
+  'type_history',
+  'blocked_by',
+  'closed_as',
 ];
 
 /** The two fields that are generic ordinarily and an access change sometimes. */

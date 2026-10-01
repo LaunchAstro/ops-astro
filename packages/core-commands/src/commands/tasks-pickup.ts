@@ -17,6 +17,7 @@ import { applied, refused, type HandlerOutcome, type Refused } from './outcome.t
 import { handbackShapeFor } from './pickup-handback-shape.ts';
 import { readLeaseSeconds } from './tasks-lease.ts';
 import { agentClaimant, personClaimant, type Claimant } from './tasks-claimant.ts';
+import { pickupStopRefusal } from './research-run.ts';
 
 /** How long a lease runs when the caller names nothing. Bounded, and the server's. */
 const DEFAULT_LEASE_SECONDS = 15 * 60;
@@ -131,6 +132,9 @@ async function claim(
     // gives the same two sentences for a reservation somebody else holds.
     return notClaimable();
   }
+  // WF-7: a stopped research ticket's run is not picked up, whoever approved it.
+  const stopped = await pickupStopRefusal(tx, approver.taskId);
+  if (stopped !== undefined) return refused(stopped);
 
   const common = {
     reservationId: fields.reservationId,
@@ -204,13 +208,21 @@ function pickupDetail(picked: PickedUp | PickedUpByPerson): Record<string, unkno
     brief: picked.brief,
     expectedVersions: picked.expectedVersions,
     budgetEnvelope: picked.budgetEnvelope,
-    permittedOperations: ['task.read', 'task.comment', 'task.heartbeat', 'task.handback'],
+    permittedOperations: [
+      'task.read',
+      'task.comment',
+      'task.heartbeat',
+      'task.check',
+      'task.handback',
+    ],
     excludedOperations: exclusionsFor(picked.claimant),
     handbackShape: handbackShapeFor(picked),
   };
   if (picked.claimant === 'person') return common;
   return {
     ...common,
+    // An agent also makes the run's priced model calls, through the broker.
+    permittedOperations: [...common.permittedOperations, 'model.call'],
     // In the clear only in this answer. The delegation stores its digest and
     // the register keeps this detail with the credential nulled
     // (`agent-envelope.ts`, `storable`). A replay of this pickup, after the
@@ -225,9 +237,10 @@ function pickupDetail(picked: PickedUp | PickedUpByPerson): Record<string, unkno
 interface Approver {
   readonly personId: string;
   readonly actorId: string;
+  readonly taskId: string;
 }
 
-/** The person whose approval put this reservation on the queue. */
+/** The person whose approval put this reservation on the queue, and the run's task. */
 async function approvingPerson(
   tx: TenantQuery,
   reservationId: string,
@@ -235,11 +248,13 @@ async function approvingPerson(
   const rows = await tx.query<{
     readonly decided_by_person_id: string;
     readonly decided_by_actor_id: string;
+    readonly task_id: string;
   }>(
-    `select d.decided_by_person_id, d.decided_by_actor_id
+    `select d.decided_by_person_id, d.decided_by_actor_id, run.task_id
        from public.reservations res
        join public.gate_decisions d
          on d.business_id = res.business_id and d.version_id = res.version_id
+       join public.planned_runs run on run.business_id = res.business_id and run.id = res.run_id
       where res.business_id = $1 and res.id = $2 and d.decision = 'approve'
       order by d.seq desc
       limit 1`,
@@ -248,5 +263,9 @@ async function approvingPerson(
   const row = rows[0];
   return row === undefined
     ? undefined
-    : { personId: row.decided_by_person_id, actorId: row.decided_by_actor_id };
+    : {
+        personId: row.decided_by_person_id,
+        actorId: row.decided_by_actor_id,
+        taskId: row.task_id,
+      };
 }

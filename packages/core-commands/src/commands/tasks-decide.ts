@@ -2,14 +2,20 @@
 //
 // `task.decide`: a person's decision on a gate.
 
-import { isUuid, subjectsOf } from '../../../core-records/src/index.ts';
+import {
+  clearDecision,
+  isUuid,
+  raiseEscalation,
+  subjectsOf,
+} from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { decide, type DecisionKind } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
-import { gateSigningKey } from '../../../core-runtime/src/index.ts';
+import { gateSigningKey, type SigningKey } from '../../../core-runtime/src/index.ts';
 import { decisionCapId } from '../reads/task-cap.ts';
+import { stopRefusalAtGate } from './research-run.ts';
 
 export interface DecideFields {
   readonly gateId: string;
@@ -28,11 +34,56 @@ function isDecisionKind(decision: string): decision is DecisionKind {
 }
 
 /** `task.decide`'s answer for a gate not visible here. Constant, so nothing presented rides out. */
-const GATE_NOT_VISIBLE: CommandRefusal = refuseCommand(
+export const GATE_NOT_VISIBLE: CommandRefusal = refuseCommand(
   'NOT_FOUND',
   [],
   ['No gate by that identity in this business.', 'Name a gate on a task you can see.'],
 );
+
+/**
+ * What an approval on `gateId` signs with and draws on, or the refusal when
+ * this deployment or business has neither. Shared by `task.decide` and the
+ * plan accept (AW-04), which is that approval.
+ */
+export async function decisionKeys(
+  tx: TenantQuery,
+  gateId: string,
+): Promise<{ readonly signingKey: SigningKey; readonly capId: string } | HandlerOutcome> {
+  const signingKey = gateSigningKey();
+  if (signingKey === undefined) {
+    // Not a refusal about the caller. The chain is signed or it is not written,
+    // and a deployment with no key configured has not built the part this
+    // command rests on, which is what this code has always meant.
+    return refused(
+      refuseCommand(
+        'DEPENDENCY_NOT_LANDED',
+        ['task.decide', 'GATE_SIGNING_KEY_ID and GATE_SIGNING_SECRET'],
+        [
+          'This deployment has no decision signing key configured.',
+          'It is not a permission problem and retrying will not change it.',
+        ],
+      ),
+    );
+  }
+
+  // The task's open envelope's cap, or the business's before there is one
+  // (`reads/task-cap.ts`), which is also the cap whose currency `task.read`
+  // offers. The runtime still refuses a cap that is not the envelope's.
+  const capId = await decisionCapId(tx, gateId);
+  if (capId === undefined) {
+    return refused(
+      refuseCommand(
+        'BUDGET_UNAVAILABLE',
+        ['budget_caps.local'],
+        [
+          'This business has no budget cap, so there is nothing an approval could draw on.',
+          'An administrator installs the cap; a decision does not create one.',
+        ],
+      ),
+    );
+  }
+  return { signingKey, capId };
+}
 
 export async function decideOnGate(
   tx: TenantQuery,
@@ -70,39 +121,9 @@ export async function decideOnGate(
     );
   }
 
-  const signingKey = gateSigningKey();
-  if (signingKey === undefined) {
-    // Not a refusal about the caller. The chain is signed or it is not written,
-    // and a deployment with no key configured has not built the part this
-    // command rests on, which is what this code has always meant.
-    return refused(
-      refuseCommand(
-        'DEPENDENCY_NOT_LANDED',
-        ['task.decide', 'GATE_SIGNING_KEY_ID and GATE_SIGNING_SECRET'],
-        [
-          'This deployment has no decision signing key configured.',
-          'It is not a permission problem and retrying will not change it.',
-        ],
-      ),
-    );
-  }
-
-  // The task's open envelope's cap, or the business's before there is one
-  // (`reads/task-cap.ts`), which is also the cap whose currency `task.read`
-  // offers. The runtime still refuses a cap that is not the envelope's.
-  const capId = await decisionCapId(tx, fields.gateId);
-  if (capId === undefined) {
-    return refused(
-      refuseCommand(
-        'BUDGET_UNAVAILABLE',
-        ['budget_caps.local'],
-        [
-          'This business has no budget cap, so there is nothing an approval could draw on.',
-          'An administrator installs the cap; a decision does not create one.',
-        ],
-      ),
-    );
-  }
+  const keys = await decisionKeys(tx, fields.gateId);
+  if (!('signingKey' in keys)) return keys;
+  const { signingKey, capId } = keys;
 
   const result = await decide(tx, {
     gateId: fields.gateId,
@@ -128,7 +149,20 @@ export async function decideOnGate(
   }
 
   const decided = result.value;
+  // WF-7: an approval begins a run, so a stopped research ticket waits on its
+  // map's owner here too, under the decision's task lock.
+  if (decided.decision === 'approve') {
+    const stopped = await stopRefusalAtGate(tx, decided.gateId, context.session);
+    if (stopped !== undefined) return refused(stopped);
+  }
   if (decided.decision === 'escalate') {
+    // INB-1: the gate is now the business-scope deciders' to decide, so the
+    // inbox moves with it in this transaction: nothing is cleared, since
+    // nothing was decided.
+    await raiseEscalation(tx, {
+      gateId: decided.gateId,
+      recipientPersonId: decided.escalatedToPersonId,
+    });
     return applied(null, null, {
       gateId: decided.gateId,
       versionId: decided.versionId,
@@ -136,6 +170,9 @@ export async function decideOnGate(
       escalatedToPersonId: decided.escalatedToPersonId,
     });
   }
+  // INB-1: the gate's decision items close in this transaction, naming the
+  // decider; a fault here throws and takes the decision down with it.
+  await clearDecision(tx, { gateId: decided.gateId, decisionId: decided.decisionId });
   return applied(null, null, {
     decisionId: decided.decisionId,
     gateId: decided.gateId,

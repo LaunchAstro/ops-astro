@@ -1,0 +1,7 @@
+The wordmark (packages/ui/src/brand/wordmark.svg) and the planet mark
+(packages/ui/src/brand/planet.svg) are the project's own brand marks, from
+the same rights holder as the rest of this repository (see NOTICE).
+
+As files they are distributed with the software under its licence. As marks
+they are governed by TRADEMARK.md: the software licence grants no permission
+to use them as the name or identity of another product.

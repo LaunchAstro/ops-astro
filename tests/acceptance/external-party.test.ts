@@ -21,6 +21,7 @@ import {
   TEAM_NOTE,
   TITLE,
 } from './external-party-records.ts';
+import { childProbe } from './role-case-bodies.ts';
 import { createPositiveBody } from './role-case-positive-body.ts';
 import {
   bearer,
@@ -203,6 +204,17 @@ describe.skipIf(serverUrl === undefined)('R4: the external party over HTTP', () 
     const REVOCATION_BODIES: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
       'grant.revoke': { grantId: randomUUID() },
       'delegation.revoke': { delegationId: randomUUID() },
+      // No person body either: it is the agent's (AW-01). Sent well formed,
+      // naming a lease, so the answer is authority's.
+      'model.call': {
+        leaseId: randomUUID(),
+        fence: 1,
+        operation: 'model.replay_compose',
+        fields: [],
+      },
+      // AW-11's hand-over and handback are the agent's too, read by type first.
+      'run.delegate_child': { leaseId: randomUUID(), fence: 1, ...childProbe(randomUUID()) },
+      'run.child_handback': { outcome: 'completed' },
     };
     // The matrix's own valid bodies, so a refusal is authority's and not the
     // body check's. Each is sent as it is (against a sibling the admin made, or
@@ -256,8 +268,12 @@ describe.skipIf(serverUrl === undefined)('R4: the external party over HTTP', () 
       expect(answer.status, name).toBeGreaterThanOrEqual(400);
       expect(JSON.stringify(answer.body), name).not.toContain(TITLE);
       // Pickup and handback are refused on the person path by design
-      // (`handlers.ts`), before authority; every other write reaches it.
-      if (!/^task\.(pickup|handback)/u.test(name)) {
+      // (`handlers.ts`), before authority. `inbox.seen` passes R4 (the party
+      // opens their own item) and its handler answers an item that is not
+      // theirs as not found. Every other write is refused on authority.
+      if (name === 'inbox.seen') {
+        expect(answer.code, name).toBe('NOT_FOUND');
+      } else if (!/^task\.(pickup|handback)/u.test(name)) {
         expect(answer.code, name).toBe('SCOPE_NOT_GRANTED');
       }
     }

@@ -8,17 +8,20 @@ deployment, and nothing here is the Hub's `supabase_*` database or the draft's.
 
 ## Owned resources
 
-| Thing     | Identity                                                                                              |
-| --------- | ----------------------------------------------------------------------------------------------------- |
-| Container | `ops-astro-local-pg`                                                                                  |
-| Image     | `postgres@sha256:77f5851…a1873`, the digest pinned in [supply-chain-pins.md](../supply-chain-pins.md) |
-| Address   | `127.0.0.1:54390`                                                                                     |
-| Volume    | `ops-astro-local-pgdata`, mounted at `/var/lib/postgresql`                                            |
-| Database  | `ops_astro_local`                                                                                     |
+| Thing     | Identity                                                                                                          |
+| --------- | ----------------------------------------------------------------------------------------------------------------- |
+| Container | `ops-astro-local-pg`                                                                                              |
+| Image     | `postgres@sha256:b0f9560…2b24`, Postgres 17, the digest pinned in [supply-chain-pins.md](../supply-chain-pins.md) |
+| Address   | `127.0.0.1:54390`                                                                                                 |
+| Volume    | `ops-astro-local-pgdata-17`, mounted at `/var/lib/postgresql/data`                                                |
+| Database  | `ops_astro_local`                                                                                                 |
 
-Postgres 18 keeps its cluster in a subdirectory of `/var/lib/postgresql`. Mount
-the volume at `/var/lib/postgresql/data` instead and the server finds a cluster
-in a directory it does not use, and refuses to start.
+The local database runs the hosted database's major, 17 (S0-7). Its volume is
+named for the major because a cluster one major wrote, the other refuses to
+open. A tree from before S0-7 ran 18 on `ops-astro-local-pgdata`, mounted at
+`/var/lib/postgresql`; `db-up.sh` replaces that container, starts an empty 17
+cluster on the new volume and leaves the old volume as it was. Migrate and
+seed again after the switch.
 
 ## Roles, and the two URLs
 
@@ -43,7 +46,7 @@ state; the major is pinned in `.nvmrc`.
 ```sh
 bash scripts/local/db-up.sh      # start it; idempotent; writes .local/db.env
 node scripts/db-migrate.mjs      # apply every migration in migrations/, in order, once each
-node scripts/local-seed.mjs      # businesses, people, logins, memberships, grants
+node scripts/local-seed.mjs      # people and grants (new database: LOCAL_SEED_MADE_UP=confirm)
 bash scripts/local/db-down.sh    # stop the container; the volume is untouched
 
 set -a; . ./.local/db.env; set +a
@@ -51,7 +54,7 @@ pnpm exec vitest run             # the whole suite, against this server
 ```
 
 `db-down.sh` never removes the volume. To delete the data, run
-`docker rm -f ops-astro-local-pg && docker volume rm ops-astro-local-pgdata`.
+`docker rm -f ops-astro-local-pg && docker volume rm ops-astro-local-pgdata-17`.
 
 ## Upgrade
 
@@ -175,8 +178,12 @@ identity, grant, record and command-envelope spine ported from
 `ops-astro-t1-draft@60f2009`. Two companion files describe the later ones.
 [AUTHORITY.md](AUTHORITY.md) covers the agent-authority, settings and
 delegation migrations, and [RUNTIME.md](RUNTIME.md) covers the proposal, gate,
-decision, budget, lease and attempt migrations. Read `ls migrations/` for the
-current set.
+decision, budget, lease and attempt migrations, and the model-call ledger and
+copy register (`0191_model_calls`), and the pinned instruction files
+(`0192_bootstrap_pins`), the budget wait (`0193_budget_wait`), its answers
+(`0194_budget_answers`) and the diagnostic trace export (`0195_trace_export`, and `0196_trace_export_horizon`,
+which stamps each run event with its writing transaction's id).
+Read `ls migrations/` for the current set.
 
 There is no `tasks` table. A task is a record of the built-in `task` record
 type in fixed typed slots, and the slots are the acceptance checklist's field
@@ -206,6 +213,58 @@ restore does not tie with a task made while it was away (`rankAfterSiblings`,
 Every field carries a write mode, slotted or not. The conformance check names
 each field with a null write mode (`every field has a non-null write mode`,
 `packages/core-records/src/records/conformance.ts`).
+
+## Wayfinder maps
+
+A map is a task whose `type` is `map`, and its tickets are its subtasks
+(WF-1). There is no map record type and no maps table. `type` is an unslotted
+task field owned by `task.set_type`; a create names it with the `taskType`
+operand and defaults to `task`. `map_owner` (the creator), `map_version` and
+`type_history` are system fields beside it. An install made before these
+fields existed gets them from `installTaskSpine`, which adds any unslotted
+spine field an installed task type is missing and touches nothing else.
+
+Migration `0281_wayfinder_maps.sql` holds what a map has that a task does not:
+
+| Table            | What it holds                                                                                    | Application role       |
+| ---------------- | ------------------------------------------------------------------------------------------------ | ---------------------- |
+| `map_components` | Destination, Notes, fog patches and Out of scope items, each with its own id; retired by version | select, insert, update |
+| `map_versions`   | One row per `map.revise`: the version number and the component ids it added or retired           | select, insert         |
+| `map_summaries`  | The summary read model: version, open and closed tickets, fog and Out of scope counts            | select                 |
+| `map_frontier`   | The frontier read model (WF-2): the open, unblocked, unclaimed tickets of each map, in order     | select                 |
+
+Decisions so far is not stored: `map.view` renders it from the map's completed
+tickets in closing order, so a decision lives once, on its ticket.
+
+Charting's pre-answers (WF-6, migration `0282_wayfinder_pre_answers.sql`) are
+`map_components` rows of kind `pre_answer`: the question, the answer (the
+body), `veto_open` for an obvious call ("decided, veto open"), and exactly one
+source, `source_record_id` (a closed ticket) or `source_reference` (one line).
+`map.chart` refuses an uncited pre-answer, and a cited record the charter may
+not read answers NOT_FOUND like one that does not exist. `map.view` shows a
+cited record only to a reader who may read it; anyone else sees the source as
+withheld. A pre-answer resolves nothing, so it never joins Decisions so far.
+SL14's block is 0281- (ORCH46); the batch 3 integration gives the final numbers.
+
+`map_summaries` has one writer, the security definer trigger functions in 0281. A write to a task recounts the map it is, and the map its parent was
+before and after; a write to a component or a version recounts its map. So the
+counts move in the transaction that changed them, whichever command did it.
+
+A blocking link is a `record_links` row of type `blocks`, from the blocker to
+the ticket it blocks; a link write recounts the map of the ticket it blocks.
+`task.set_blocking` keeps the same set on the ticket as `blocked_by`, so the
+ticket's revision moves with it. Writes to a map's structure (`map.revise`,
+`map.scope`, `map.graduate`, `task.set_blocking`, `task.close_out_of_scope`)
+serialise on the per-business `wayfinder.map` lock before any task row, so the
+cycle check and the version number are each read and written as one step.
+
+A grant scoped to a map covers the map and its tickets. `prepare.ts` and
+`reads/dispatch.ts` ask the record's own scope first and, when that is
+refused, the map's (`coveringMap`); the first refusal stands when both fail. A
+map, its tickets and their threads never reach a client surface: a new share
+of one is refused `NOT_FOUND`, `task.set_audience` refuses making one client
+visible, and the shared-task read answers `NOT_FOUND` for one even under a
+read grant written outside the share path.
 
 ## What the tenancy proofs are
 
@@ -261,14 +320,36 @@ foreign insert into `delegations` is refused with `check_violation`
 (migration 0018), but no application role reaches it: the group holds only
 `select` and `insert` on `handback_reports`, so the privilege check refuses
 `update` and `delete` before the trigger runs. Its only live caller is the owner,
-whom it refuses.
+whom it refuses. `model_route_room` (migration 0191, AW-01's fair share) is
+the second, and the one read across businesses: a route's ceiling is the
+installation's, which a tenant transaction cannot count under row security.
+It answers one whole number, 1 when the transaction's own business may hold
+one more call on the route and 0 when it may not, with no id and no count;
+the business is `app_business_id()`, never an argument, and none is 0. It
+runs with `row_security = off`, so an owner that does not bypass row security
+is refused rather than answered from one business's rows. PUBLIC and the
+application group may not execute it. Only `ops_astro_broker` may, a
+`nologin` role that holds nothing else; the group may take it (`SET`) but does
+not inherit it, so the broker takes it for the one statement with
+`set_config('role', ..., true)` and gives it back. The suites sort that role
+into a class of its own (`broker`). `tests/broker/aw-01-broker-fair-share.test.ts`
+proves the separation and the grants.
+
+`ops_astro_occurrence` (migration 0203, AW-01 J) follows the same pattern
+without a function: it holds `insert` on `planned_runs`, `select` on a task's
+`business_id`, `id` and `revision` (for 0032's trigger) and execute on
+`app_business_id()`, and nothing else. The worker's occurrence path takes it
+for the one insert of an occurrence's run; the trigger
+`planned_runs_occurrence_origin` refuses an origin written by any other role
+and any later change to one. The suites sort it into a class of its own
+(`occurrence`), and the column-grant contract names its three reads.
 
 At every migration prefix, every tenant table holds an owner-written row per
 business before the calls, so cross-tenant reads are asked of rows that exist
 (the header of `restricted-calls-prefixes.test.ts`, and its
 `answers every caller as the contract says after <version>`). At the full
-schema, the suite seeds `person_identifiers`, `person_merges` and `record_links`
-itself. The suite counts the own-tenant insert positive control (TC:108) per
+schema, the suite seeds `person_identifiers`, `person_merges`, `record_links` and
+the three `inbox_` tables itself. The suite counts the own-tenant insert positive control (TC:108) per
 table: one insert through the production wrapper on each tenant table the
 application may insert into, each `rows 1`, and each rolled back
 (`restricted-calls.test.ts`,

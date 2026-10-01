@@ -73,6 +73,7 @@ function lineageOf(spec: LineageSpec) {
         payload: { step: 'draft the quote' },
         supersededAt: null,
         runId: null,
+        checks: [],
         evidence: null,
         gate: {
           id: spec.gateId,
@@ -156,7 +157,7 @@ function server(options: ServerOptions = {}) {
   const client = new OperationsClient({
     origin: '',
     businessKey: 'alpha',
-    token: 'a-token',
+    signedIn: true,
     fetch,
     newOperationId: () => 'operation-1',
   });

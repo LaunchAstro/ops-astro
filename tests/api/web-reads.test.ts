@@ -24,6 +24,7 @@ import type {
 import type { Member } from '../commands/fixture.ts';
 import { tokenFor } from './fixture.ts';
 import { createControls, type Controls } from './controls-fixture.ts';
+import { asBrowser } from '../support/sign-in.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -33,9 +34,19 @@ function value<T>(result: CallResult<T>): T {
   return result.value;
 }
 
-describe.skipIf(serverUrl === undefined)('the web client reads task.queue and preset.plan', () => {
-  let c: Controls;
+let c: Controls;
 
+async function clientFor(member: Member): Promise<OperationsClient> {
+  const token = await tokenFor(member.presented.subject);
+  return new OperationsClient({
+    origin: 'http://api.test',
+    businessKey: 'alpha',
+    signedIn: true,
+    fetch: asBrowser(token, async (url, init) => await c.api.fetch(new Request(url, init))),
+  });
+}
+
+describe.skipIf(serverUrl === undefined)('the web client reads task.queue and preset.plan', () => {
   beforeAll(async () => {
     c = await createControls('webrd');
   }, 120_000);
@@ -44,17 +55,11 @@ describe.skipIf(serverUrl === undefined)('the web client reads task.queue and pr
     await c?.drop();
   });
 
-  async function clientFor(member: Member): Promise<OperationsClient> {
-    const token = await tokenFor(member.presented.subject);
-    return new OperationsClient({
-      origin: 'http://api.test',
-      businessKey: 'alpha',
-      token,
-      fetch: (async (url: string | URL, init?: RequestInit) =>
-        await c.api.fetch(new Request(String(url), init))) as unknown as typeof globalThis.fetch,
-    });
-  }
+  theWebClientCases1();
+  theWebClientCases2();
+});
 
+function theWebClientCases1() {
   it('reads the queue of approved work awaiting an agent, as a read', async () => {
     const task = await c.createTask('work an agent can pick up');
     const reservationId = await c.approve(await c.propose(task.id, task.revision, 'queue_me'));
@@ -81,7 +86,9 @@ describe.skipIf(serverUrl === undefined)('the web client reads task.queue and pr
       ),
     ).toBe(0);
   });
+}
 
+function theWebClientCases2() {
   it('plans a preset as a dry run for a manager, and names the D05 refusal', async () => {
     const client = await clientFor(c.manager);
     const planned = value(
@@ -112,4 +119,4 @@ describe.skipIf(serverUrl === undefined)('the web client reads task.queue and pr
     });
     expect(isRefusal(plan) ? plan.code : 'not refused').toBe('SCOPE_NOT_GRANTED');
   });
-});
+}

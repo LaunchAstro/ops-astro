@@ -27,6 +27,8 @@
 // contract already named. `UNPRODUCED_CODES` names them, so a later part
 // closing one shows as a diff to this file rather than as nothing at all.
 
+import { DEFINITION_ROWS, UNPRODUCED_DEFINITION_CODES } from './register-definitions.ts';
+
 export type Visibility = 'caller' | 'audit';
 
 /**
@@ -49,7 +51,7 @@ export type Visibility = 'caller' | 'audit';
  * 501, the operation is declared and what it rests on is not built. 402 and
  * 410 are the runtime's, and the rows that carry them say why.
  */
-export type RefusalStatus = 400 | 401 | 402 | 403 | 404 | 409 | 410 | 422 | 501;
+export type RefusalStatus = 400 | 401 | 402 | 403 | 404 | 409 | 410 | 422 | 429 | 501;
 
 /**
  * A row as it is declared. `visibility` is `caller` unless the row says
@@ -66,7 +68,7 @@ interface Declared {
   readonly runtime?: true;
 }
 
-const ROWS = [
+const ROWS_HEAD = [
   // Identity, T1b. Not signed in, or signed in as nobody this business knows.
   {
     code: 'AUTH_UNKNOWN_LOGIN',
@@ -297,6 +299,28 @@ const ROWS = [
     meaning: 'The verified token has expired; sign in again',
     source: 'L2 AUTHORITY.md',
   },
+  // A 429 because nothing about the caller or the request was wrong: the same
+  // call answers once the window passes or a call in flight finishes
+  // (`identity/quota.ts`). The names say which quota and whose.
+  {
+    code: 'QUOTA_EXCEEDED',
+    status: 429,
+    meaning: 'A request or concurrency quota is used up; send again later',
+    source: 'API-3 quota',
+  },
+  // S0-6c. 403s: the session may be good, and ending it would hand the sign-out to others.
+  {
+    code: 'AUTH_CROSS_SITE',
+    status: 403,
+    meaning: 'A session cookie arrived without the same-origin header',
+    source: 'S0-6 csrf',
+  },
+  {
+    code: 'AUTH_SESSION_MISMATCH',
+    status: 403,
+    meaning: 'Session cookies arrived and the tab named none of its own',
+    source: 'S0-6 isolation',
+  },
 
   // Delegation and lease, T1's pickup and handback. No table yet.
   {
@@ -393,6 +417,12 @@ const ROWS = [
     status: 422,
     meaning: 'The caller may not write in that audience',
     source: 'contract 4.3',
+  },
+  {
+    code: 'MENTION_NOT_READABLE',
+    status: 422,
+    meaning: 'A person the comment names cannot read it, so it is not saved',
+    source: 'INB-1 (CS-16.8)',
   },
 
   // The preset planner, `records/preset-plan.ts`. A preset that is itself
@@ -591,6 +621,11 @@ const ROWS = [
     source: 'L4 RUNTIME.md',
     runtime: true,
   },
+] as const;
+
+// AW-02's and AW-01 J's definition codes sit here, in `register-definitions.ts`.
+
+const ROWS_TAIL = [
   // T2c1, the dispatch transaction's recheck of the effect-time facts
   // (`core-runtime/src/dispatch.ts`). Each is 409: the call was well formed,
   // and state moved under it, so nothing was dispatched.
@@ -638,17 +673,92 @@ const ROWS = [
     source: 'T3 T3d1',
     runtime: true,
   },
+  // The broker's model call (AW-01, `core-custody/src/broker.ts`). The six
+  // facts are verified against rows under lock; everything after them is
+  // recorded as a step of the run. AUTHORITY_LOST, DECISION_STALE and
+  // EFFECT_NOT_RECONCILABLE are the core's (T2c1, above), and the broker
+  // answers with them.
+  {
+    code: 'OPERATION_NOT_CATALOGUED',
+    status: 403,
+    meaning: 'The operation is not in the reviewed catalogue, whatever the grant',
+    source: 'AW-01',
+  },
+  // Owner line 72: the product has no local-model route yet, so the call waits
+  // on one. 501, because what it rests on is not built.
+  {
+    code: 'LOCAL_MODEL_REQUIRED',
+    status: 501,
+    meaning: 'Personal information stays out of cloud AI until a local model exists',
+    source: 'AW-01, owner line 72',
+  },
+  // C60 (LF-5): a client's model use is off by default and, while no local
+  // model exists, cannot be switched on, so a call on its task reaches no route.
+  {
+    code: 'CLIENT_MODEL_USE_OFF',
+    status: 403,
+    meaning: "Model use is off for the task's client, so no route is chosen",
+    source: 'C60, LF-5, owner line 72',
+  },
+  // S3: a bound field's row is another business's, made up, trashed, or holds
+  // no text at the key. The same words whoever's row it was.
+  {
+    code: 'SOURCE_UNREADABLE',
+    status: 422,
+    meaning: "A bound field's row could not be read, so the call is not made",
+    source: 'AW-01 S3, owner line 72',
+  },
+  {
+    code: 'SUBSCRIPTION_UNATTENDED',
+    status: 403,
+    meaning: "A subscription carries only a person's own attended work",
+    source: 'AW-01, LF-5',
+  },
+  {
+    code: 'SUBSCRIPTION_OTHER_TENANT',
+    status: 403,
+    meaning: "A subscription never carries another installation's tenant",
+    source: 'AW-01, LF-5',
+  },
+  {
+    code: 'SUBSCRIPTION_NOT_OWN_WORK',
+    status: 403,
+    meaning: "A subscription never carries another person's work",
+    source: 'AW-01, LF-5',
+  },
+  {
+    code: 'RATE_LIMITED',
+    status: 409,
+    meaning: "The operation's ceiling on calls in flight is reached; wait and ask again",
+    source: 'AW-01',
+  },
+  {
+    code: 'COPY_NOT_REGISTERED',
+    status: 409,
+    meaning: 'A copy of business content was not registered before it was made',
+    source: 'AW-01',
+  },
+  {
+    code: 'LIABILITY_UNKNOWN',
+    status: 409,
+    meaning: 'The provider may have acted; the maximum is held until a person records an outcome',
+    source: 'AW-01, O6, O9',
+  },
 ] as const;
 
 /** Every registered code. Declared by the rows above and nowhere else. */
-export type RefusalCode = (typeof ROWS)[number]['code'];
+/** Every row, in register order: the head, the definition codes, the tail. */
+type Row =
+  (typeof ROWS_HEAD)[number] | (typeof DEFINITION_ROWS)[number] | (typeof ROWS_TAIL)[number];
+
+export type RefusalCode = Row['code'];
 
 /**
  * The codes `core-runtime` returns as its own (`core-runtime/src/refusals.ts`).
  * A narrow union for that module's own types, taken from the rows marked
  * `runtime` rather than spelled a second time there.
  */
-export type RuntimeRefusalCode = Extract<(typeof ROWS)[number], { readonly runtime: true }>['code'];
+export type RuntimeRefusalCode = Extract<Row, { readonly runtime: true }>['code'];
 
 export interface RegisterEntry {
   readonly code: RefusalCode;
@@ -664,16 +774,18 @@ export interface RegisterEntry {
   readonly runtime: boolean;
 }
 
-export const REFUSAL_REGISTER: readonly RegisterEntry[] = ROWS.map(
-  (row: Declared & { readonly code: RefusalCode }) => ({
-    code: row.code,
-    status: row.status,
-    visibility: row.visibility ?? 'caller',
-    meaning: row.meaning,
-    source: row.source,
-    runtime: row.runtime ?? false,
-  }),
-);
+export const REFUSAL_REGISTER: readonly RegisterEntry[] = [
+  ...ROWS_HEAD,
+  ...DEFINITION_ROWS,
+  ...ROWS_TAIL,
+].map((row: Declared & { readonly code: RefusalCode }) => ({
+  code: row.code,
+  status: row.status,
+  visibility: row.visibility ?? 'caller',
+  meaning: row.meaning,
+  source: row.source,
+  runtime: row.runtime ?? false,
+}));
 
 const BY_CODE = new Map(REFUSAL_REGISTER.map((row) => [row.code, row]));
 
@@ -731,55 +843,6 @@ export function refuseCommand<C extends RefusalCode>(
   return { refused: true, code, names, fixes };
 }
 
-/**
- * The gate codes' production constructors (T2g, build plan section 5), so each
- * producer raises its code one way and a test can name the constructor.
- */
-
-/** Completing a task while a gate on it is open (contract 4.3, `task.complete`). */
-export function gatePending(): CommandRefusal<'GATE_PENDING'> {
-  return refuseCommand(
-    'GATE_PENDING',
-    [],
-    [
-      'An approval gate on this task is still open, so the task is not complete.',
-      'Decide the gate, or let it expire, then complete the task.',
-    ],
-  );
-}
-
-/** A second decision on a gate that carries one (G03). */
-export function gateAlreadyDecided(
-  gateId: string,
-  state: string,
-): CommandRefusal<'GATE_ALREADY_DECIDED'> {
-  return refuseCommand(
-    'GATE_ALREADY_DECIDED',
-    [],
-    [
-      `gate ${gateId} is ${state}`,
-      'Read the decision that was recorded. A second decision on one version is never taken.',
-    ],
-  );
-}
-
-/** A comment in an audience this caller may not write in. */
-export function audienceNotPermitted(fix: string): CommandRefusal<'AUDIENCE_NOT_PERMITTED'> {
-  return refuseCommand('AUDIENCE_NOT_PERMITTED', ['audience'], [fix]);
-}
-
-/** The task's assignee asked to decide its own gate: another person decides. */
-export function fourEyesRequired(): CommandRefusal<'FOUR_EYES_REQUIRED'> {
-  return refuseCommand(
-    'FOUR_EYES_REQUIRED',
-    [],
-    [
-      'The task is assigned to you, so its gate is decided by someone else.',
-      'Ask another person who holds the decision grant on this task.',
-    ],
-  );
-}
-
 /** The discriminant every result is read through. */
 export function isCommandRefusal(value: object): value is CommandRefusal {
   return 'refused' in value && value.refused === true;
@@ -797,7 +860,8 @@ export function isCommandRefusal(value: object): value is CommandRefusal {
  * write-off. The write-off is deferred, so nothing in `apps/` or `packages/`
  * returns `GATE_NOT_APPROVED`: it is registered, unproduced and not on this
  * list, so this list is not every code nothing produces. `FOUR_EYES_REQUIRED`
- * is produced by the top-up (T2e, `core-runtime/src/budget.ts`) and, since
+ * is produced by the top-up (T2e, `core-runtime/src/budget.ts`), by AW-05's
+ * top-up at the budget stop, `run.top_up` (`core-runtime/src/budget-answer.ts`), and, since
  * T2g, by the gate: the task's assignee is refused a decision on its gate.
  * Asserted by name in `tests/commands/refusal-register.test.ts`, so a part
  * that closes one has to come here and take it off the list.
@@ -828,19 +892,18 @@ export const UNPRODUCED_CODES: ReadonlySet<RefusalCode> = new Set([
   // mint reads the approver's live grants when the agent picks the work up, not
   // when the person approved it, so a grant revoked or expired in between
   // leaves the pickup asking for authority the approver no longer holds
-  // (`tests/commands/delegation-widens.test.ts`). These
-  // three name a delegation lifecycle (intake, expiry as its own answer, an
-  // explicit revocation) that this head's one-task purpose does not
-  // distinguish.
+  // (`tests/commands/delegation-widens.test.ts`).
+  // `DELEGATION_EXCLUDES_INTAKE` is not on this list: an agent calling
+  // `task.triage`, the intake operation, is refused it (`agent-envelope.ts`).
+  // `DELEGATION_EXPIRED` and `DELEGATION_REVOKED` are not on this list: a
+  // child delegation's call walks to its parent (AW-11), and a parent that has
+  // run out, or was handed back or withdrawn, answers with them.
   // `DELEGATION_ALREADY_LIVE` is not on this list:
   // `authority/delegations.ts` refuses a second mint under a purpose the agent
   // already holds live, and `task.pickup` reaches it as a 409 rather than the
   // unique index's 503. Nor is `DELEGATION_EXCLUDES_OPERATION`:
   // `agent-envelope.ts` refuses with it any operation outside
   // `AGENT_SURFACE`, and `tests/commands/unproduced-reach.test.ts` reaches it.
-  'DELEGATION_EXCLUDES_INTAKE',
-  'DELEGATION_EXPIRED',
-  'DELEGATION_REVOKED',
   // `GATE_PENDING` left the list with T2g, which raises it on completing a
   // task whose gate is open; `PROPOSAL_SUPERSEDED` and
   // `PROPOSAL_SCOPE_EXCEEDED` left it with T3a, which gave each its producer.
@@ -868,6 +931,7 @@ export const UNPRODUCED_CODES: ReadonlySet<RefusalCode> = new Set([
   // reservations: the second pickup meets the first one's live lease.
   'EVIDENCE_MISMATCH',
   'LEASE_EXPIRED',
+  ...UNPRODUCED_DEFINITION_CODES,
   // Three codes are deliberately **not** on this list, and each is a command
   // path rather than a module one.
   //

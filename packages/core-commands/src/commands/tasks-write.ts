@@ -39,11 +39,12 @@ import {
   planTaskPlacement,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery, TaskStateRow } from '../../../core-records/src/index.ts';
-import { refuseCommand, type CommandRefusal } from './refusal.ts';
+import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import { refuseWrongValueType } from './values.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
 import type { CommandRequest, FieldValues } from './requests.ts';
+import { taskTypeOperand, wayfinderDataOnCreate } from './wayfinder.ts';
 
 /** The fields a create body can use to claim a provenance it does not have. */
 const SPOOFABLE_ON_CREATE: readonly string[] = ['source', 'intake_state'];
@@ -137,6 +138,9 @@ export async function createTask(
 
   // A uuid names one task in either case. Lower-cased once, so the stored
   // `parent` and `board` and the sibling lock agree with the uuid-typed slots.
+  const taskType = taskTypeOperand(request.taskType);
+  if (typeof taskType !== 'string') return refused(taskType);
+
   const parentId =
     typeof request.parentId === 'string'
       ? request.parentId.toLowerCase()
@@ -178,10 +182,13 @@ export async function createTask(
     );
   }
   const stateId = named?.id ?? initialStateId(context.spine.states);
+  const origin = await originOf(tx, context, request.conversationId);
+  if (origin !== undefined && typeof origin !== 'string') return origin;
 
   const id = randomUUID();
   const data: Record<string, unknown> = {
     ...request.fields,
+    ...(await wayfinderDataOnCreate(tx, context, taskType, parentId)),
     key: await nextTaskKey(tx, context.spine.taskTypeId),
     source: deriveSource('person', context.entryPoint),
     board_rank: placement.boardRank,
@@ -199,7 +206,31 @@ export async function createTask(
   );
   const written = rows[0];
   if (written === undefined) throw new Error('createTask: the insert returned no row');
-  return applied(id, Number(written.revision), { key: written.key, source: data['source'] });
+  const created = applied(id, Number(written.revision), {
+    key: written.key,
+    source: data['source'],
+  });
+  return origin === undefined ? created : { ...created, originConversationId: origin };
+}
+
+/**
+ * The conversation a task is created from (AW-03): the caller's own, in this
+ * business, its body kept, or one NOT_FOUND for any other, another person's
+ * and a made-up id alike. Absent or null is a task created from no
+ * conversation.
+ */
+export async function originOf(
+  tx: TenantQuery,
+  context: CommandContext,
+  conversationId: string | null | undefined,
+): Promise<string | HandlerOutcome | undefined> {
+  if (conversationId === undefined || conversationId === null) return undefined;
+  const rows = await tx.query<{ readonly id: string }>(
+    `select id from public.conversations
+      where business_id = $1 and id = $2 and owner_person_id = $3 and body_purged_at is null`,
+    [tx.businessId, conversationId, context.session.personId],
+  );
+  return rows[0]?.id ?? refused(refuseNotFound(['conversationId']));
 }
 
 /**

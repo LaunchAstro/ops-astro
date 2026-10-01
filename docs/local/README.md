@@ -188,11 +188,15 @@ and none should be pasted into one.
 | `orphan@alpha.local` | alpha    |
 | `bea@bravo.local`    | bravo    |
 
+The staging reset (`scripts/ops/staging-reset.ts`) adds a sixth on staging
+only, its made-up operator `olive@alpha.local` (alpha), who holds
+`operations:manage` there.
+
 These are addresses, not contact details. RFC 6762 reserves `.local` for
 multicast DNS and it cannot be delegated, so none of them reaches a mailbox.
-The public content check allows exactly these five by name
-(`scripts/public-content-check.mjs`, `publishedAddresses`). It reports a sixth
-invented login until that login is added to this table and to that list.
+The public content check allows exactly these six by name
+(`scripts/public-content-check.mjs`, `publishedAddresses`). It reports a seventh
+invented login until that login is added here and to that list.
 
 There are two businesses, keys `alpha` and `bravo`. The business selector on
 the sign-in page chooses the `/api/b/<key>` route prefix. That only picks a
@@ -437,9 +441,9 @@ byte (the route registry check, the typecheck's TS1117 and T4c's mockup pin
 must each fail, told apart by name), and reverts each T2 and T3 part, T2a to
 T3f, and reruns its named invariant, which must go red (`T4-N4`), as must
 every crossing the part declares (`crossings`: its business, client and person
-cases); one green, absent or skipped fails the line. T2b and T2f are UNPROVEN
-until their follow-ups (#191, #192), and the run fails unless exactly they
-are. T4a to T4d
+cases); one green, absent or skipped fails the line. A part listed with
+`knownUnproven` is UNPROVEN, and the run fails unless exactly the listed parts
+are; none is listed since #191 and #192. T4a to T4d
 are test tooling: each is proven by its own planted-mutation cases, named on
 its `T4-P` line, which plant the fault and assert the failure. The parts, their
 invariants, their commits, their crossings and the planted cases are catalogued

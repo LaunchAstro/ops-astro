@@ -7,7 +7,9 @@ dev server on `127.0.0.1:5190` that proxies `/api` to the API on
 `127.0.0.1:8790`, so the browser only ever makes same-origin requests.
 `OperationsClient` takes an `origin`, empty for same-origin, and posts under
 `PREFIX.person` from `core-wire/src/surface.ts`. `App` takes it as `apiOrigin`, which
-`main.tsx` reads from `VITE_API_ORIGIN` (unset in local runs).
+`main.tsx` sets empty: the build bakes no address, so one build serves every
+environment. The identity service's address is the API's own `GOTRUE_URL`,
+which `main.tsx` reads from `GET /api/sign-in` before the first render (G3).
 
 ## Start it
 
@@ -17,7 +19,7 @@ pnpm install
 scripts/local/web-up.sh
 ```
 
-`WEB_PORT`, `API_ORIGIN` and `GOTRUE_URL` override the three addresses. The port
+`WEB_PORT` and `API_ORIGIN` override the two addresses. The port
 is strict: if 5190 is taken the script fails rather than moving, because
 evidence with the wrong address in it is worse than no evidence.
 
@@ -28,7 +30,9 @@ reports the API as unavailable, which is the intended reading.
 ## Sign in
 
 Email and password go to GoTrue's own `/token?grant_type=password`. The
-application never mints or inspects a token. The API verifies the signature.
+application never mints or inspects a token. It hands it to `POST /api/session`,
+which keeps it as an `HttpOnly` cookie no script reads (S0-6c, `API.md`, "Who
+is calling"). The built page's content policy runs only this origin's scripts.
 The business selector (`alpha` or `bravo`) chooses the `/api/b/<key>` prefix. It
 is a routing choice, not a claim, so picking `bravo` with an alpha-only account
 gets `AUTH_NO_MEMBERSHIP` rather than access to bravo.
@@ -99,18 +103,21 @@ browser.
 
 ## Addresses
 
-| Address      | What it draws                                                                                    |
-| ------------ | ------------------------------------------------------------------------------------------------ |
-| `/sign-in`   | Credentials and the business selector                                                            |
-| `/projects/` | `task.board` for the unboarded tasks (`board: null`), and the create form                        |
-| `/task/:key` | `task.read`: state buttons, the assignee select, title and due date, comments, history, revision |
-| `/settings`  | The two operation-classified business settings, from `settings.read` and `session.capabilities`  |
+| Address                | What it draws                                                                                                                                                   |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/sign-in`             | Credentials and the business selector                                                                                                                           |
+| `/projects/`           | `task.board` for the unboarded tasks (`board: null`), and the create form                                                                                       |
+| `/task/:key`           | `task.read`: state buttons, the assignee select, title and due date, comments, history, revision                                                                |
+| `/settings`            | The two operation-classified business settings, from `settings.read` and `session.capabilities`                                                                 |
+| `/agent/:conversation` | `conversation.read` by the id the address carries: the transcript while the body lives, only the wrap-up after it purges (C36); a started drawer tab links here |
+| `/map/:key`            | `map.view`: a Wayfinder map's sections, each edited in place through `map.revise`, and its history                                                              |
 
 `/task/:key` is a real address. A hard reload lands on it because the dev server
 falls back to `index.html`, and everything on the page is reread from the API.
 
-The dock has one tab, Settings (`PANELS` in `apps/web/src/panels.ts`), and it
-goes to `/settings`. An open dock tab is announced as "Close Settings"
+The dock has two tabs (`PANELS` in `apps/web/src/panels.ts`): Settings, which
+goes to `/settings`, and Agent, which opens the assistant drawer in place
+(MP-7-11; its route is null). An open dock tab is announced as "Close Settings"
 (`aria-expanded="true"`, `Shell` in `packages/ui/src/surfaces/Shell.tsx`) and
 leaves its address for the board when pressed (`onDockTab` in
 `apps/web/src/App.tsx`).
@@ -189,6 +196,52 @@ a new attempt (`saveFields` in `TaskDetail.tsx`).
 The settings screen's writes go through `useCommand` too. `use-settings.ts`
 keeps only what settings does with each kind, and its memory of the last
 confirmed write is in `confirmed.ts`.
+
+## A Wayfinder map
+
+`/map/:key` (WF-3, `screens/Map.tsx`, `screens/map/Sections.tsx` for what a
+person edits and `screens/map/ReadSections.tsx` for what only reads) draws one
+`map.view` answer: Destination, Notes, Decisions so far (each line links its
+ticket's `/task/:key`), Pre-answered, Not yet specified (the fog), Out of scope
+and the version history. Pre-answered is charting's cited pre-answers (WF-6):
+each question, its answer, "decided, veto open" on an obvious call, and its one
+source, a cited record by its key as a link, a reference as written, or
+withheld where the reader may not read the record (never its id). A
+pre-answer resolves nothing, so it is never a line of Decisions so far. Every edit (Destination or Notes rewritten, a fog line added or
+removed, an Out of scope line added) is one `map.revise` carrying the map's
+record revision from the same read, so a second writer's edit comes back
+`VERSION_STALE` and the page reads the map again. After an applied edit the
+page rereads: the new version in the history is the server's. A refused edit
+keeps its draft in the editor and names the key it needed (`task:write`), as
+the CLI's refusal line does.
+
+The map is the first of four views, as tabs (WF-4, `screens/map/Views.tsx`):
+Map; Tickets (`map/Tickets.tsx`: every ticket, each linking its page, with its
+blockers; blocking is `task.set_blocking` on the blocked ticket with its whole
+list, so adding or removing one sends the list with or without it); Frontier
+(`map/Frontier.tsx`: `map.frontier`'s read model in its own order, read while
+its tab is open); and Fog (graduating a patch into tickets through
+`map.graduate`). A type and a text filter narrow the tickets and the frontier.
+The view and the filters are held by the screen above the read, so moving
+between the tabs, and the reread after each write, keep the map and its
+filters. `map.view`'s ticket rows carry each ticket's revision and blockers for
+these writes. The look waits on the accepted prototypes W4 and W5.
+
+## A ticket on its task page
+
+`/task/:key` for a map's ticket (WF-5) adds the ticket panel
+(`screens/task/Ticket.tsx`) under the header. It draws from `task.context` at
+`full`: the ticket's type, its map (linking `/map/:key`) and Destination, what
+blocks it and what it blocks, and its gist once resolved. The thread is not
+drawn again: it is the task's one comment record, shown by `Comments`. Claim
+(`task.claim`) is offered while nobody holds the open ticket; Resolve
+(`task.resolve`, `TicketResolve.tsx`) asks for the answer and a one-line gist
+and stays disabled until both are written. On a grilling or prototype ticket
+Resolve is offered only to the map's owner: the panel compares
+`session.capabilities`' person with the bundle's map owner, and the server
+refuses anyone else who sends it. A task on no map draws no panel. The panel's
+two reads are audited like every read. The look waits on the accepted
+prototype W6.
 
 ## Comments on a task
 
@@ -525,7 +578,7 @@ changed without reading the rest:
 
 ### What B6 restarts
 
-B6 restarts `ops-astro-local-pg` with the `ops-astro-local-pgdata` volume by
+B6 restarts `ops-astro-local-pg` with the `ops-astro-local-pgdata-17` volume by
 default, which is the registered run. A stack of your own names its pair, and
 B6 restarts the API on `API_URL`'s port:
 
@@ -638,12 +691,11 @@ places this build does not yet reach it.
 - The board draws nine pinned columns; this build stores five of them. Rank,
   client, stage, estimate and actual draw the ported "not set" dash.
 - No facet menu, presets, undo/redo, typeahead or column drag-resize.
-- No Agent panel, gate or run surfaces, and no dock tab for them. The records
-  behind them are stored and read: `task.read` carries every proposal on the
-  task with its gate's state and expiry (`docs/local/API.md`'s "Proposal
-  projection", served by `packages/core-commands/src/reads/proposals.ts`). So this
-  is the web not drawing them yet and not the database failing to hold them, and
-  the panel registry stays empty until there is a screen for a tab to open.
+- The task page draws the Agent pane (MP-6-1 to MP-6-5): the run, its gate,
+  checks, scope and token panel from `task.read`, and a person's word on an
+  unknown effect (C54: the three outcomes and the write-off). It has no dock
+  tab yet, because the dock is not built; the pane sits in the task page's
+  own column.
 - Subtasks are not built. Comments are, and the task page draws them. The
   mockup's tabbed Internal / Client / All activity conversation is not built:
   the comments are one list with each row's audience on it, and history stays
@@ -673,8 +725,32 @@ places this build does not yet reach it.
   to. Offering to switch back, or carrying more than one interruption, is not
   built. The interruption keeps the business key, which is the word in the URL
   prefix, and never the token.
-- Fonts and icons are not fetched. The redistribution question (#32) is open, so
-  the families are a stack with real fallbacks and the brand is its own words.
+- Fonts, icons and the brand marks are bundled, each with its licence recorded
+  in `packages/ui/assets/licences.json` (MP-1-2): Funnel Display, Funnel Sans
+  and Chivo Mono under the SIL Open Font License, Lucide's icons under ISC,
+  and the project's own wordmark and planet mark. The build copies the record
+  and the licence texts into its output.
+- Text is set in the 23 styles of the declared scale, `--type-<name>` in
+  `packages/ui/src/styles/1-tokens.css` (MP-1-4). A rule sets text with the
+  style's `font`, `letter-spacing` and `text-transform` together, or not at
+  all; `pnpm type:census` refuses any other size, weight, family, line height,
+  tracking or case, and lists the four exceptions a ruling keeps (strong text
+  at the medium weight, the two larger button labels, the run hero's mono
+  figure). A stat number keeps one size at every width. Inline `code`, `kbd`
+  and `samp` take the mono style from the base layer. The census reads the
+  sheets; the MP-1-4 visual match also measures every built page as the
+  browser draws it, so an element left on the browser's own default is caught.
+- Charts are hand-drawn SVG in `packages/ui/src/kit/charts.tsx` (MP-1-5), with
+  no chart library: line, column with a dashed line, donut, gauge, score dial,
+  sparkline and the true-scale funnel, shown on `/gallery/`. Line and column
+  charts measure their width with the browser's resize observer and redraw
+  when shown or resized. Line, column and donut charts are one tab stop each;
+  the arrow keys walk the points, and hover or focus shows the value. A
+  second quantity gets its own labelled right-hand axis. They take the
+  mockup's paint: a donut's slices ink, accent, lilac, lilac deep, ink muted
+  and ink faint in that order; a sparkline the accent; a score dial's number
+  at the medium weight. No page draws a chart yet; the Executive page
+  (MP-14-3) is the first.
 - Layouts are written for 1480, 900 and 390. Photographed at all three, light
   and dark, on 2026-09-23 with `node tests/browser/keyboard-and-widths.mjs`,
   which writes `width-<w>-<theme>-<page>.png` into `SHOT_DIR`; that run's
@@ -688,9 +764,10 @@ places this build does not yet reach it.
   - At 390 the sidebar is gone, and with it the only navigation apart from the
     breadcrumb. A person who lands on a task deep-linked has `Projects` in the
     crumb and nothing else.
-  - At 390 the task page's assignee section can still be drawing
-    `Loading the people…` after the record itself is on screen: two reads, two
-    arrival times, and the slower one is a block of text in the middle of the
-    form rather than a field-shaped placeholder.
+  - At 390 the task page's assignee section could still be drawing
+    `Loading the people…` after the record itself was on screen: two reads,
+    two arrival times, and the slower one a block of text in the middle of the
+    form. Fixed by MP-1-3: it now draws a field-shaped placeholder, and the
+    words are kept for a screen reader.
 
   Recorded, not fixed.

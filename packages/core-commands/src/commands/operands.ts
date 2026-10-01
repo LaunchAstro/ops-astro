@@ -140,6 +140,8 @@ export const IDENTIFIER_FIELDS: readonly string[] = [
   'lineageId',
   'reservationId',
   'leaseId',
+  'conversationId',
+  'itemId',
 ];
 
 /**

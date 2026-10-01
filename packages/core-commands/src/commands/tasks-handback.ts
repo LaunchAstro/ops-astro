@@ -2,6 +2,7 @@
 //
 // `task.handback`: a lease settled, with its report and any successor.
 
+import { raiseDecision, raiseIncident, raiseRunSettled } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import {
   handback,
@@ -20,6 +21,7 @@ import {
   type HandlerOutcome,
   type Refused,
 } from './outcome.ts';
+import { researchFailed } from './research-failed.ts';
 import { readSuccessor } from './successor.ts';
 import { NO_SUCH_LEASE } from './tasks-lease.ts';
 import { agentClaimant, personClaimant, type Claimant } from './tasks-claimant.ts';
@@ -153,6 +155,20 @@ export function refuseActualMinor(actualMinor: unknown): Refused {
   );
 }
 
+/**
+ * Whether the gate is still pending on a live lineage: a research stop in the
+ * same handback withdraws the successor's lineage, and its gate is no decision.
+ */
+async function decidable(tx: TenantQuery, gateId: string): Promise<boolean> {
+  const rows = await tx.query<{ readonly id: string }>(
+    `select g.id from public.gates g
+       join public.proposal_lineages l on l.business_id = g.business_id and l.id = g.lineage_id
+      where g.business_id = $1 and g.id = $2 and g.state = 'pending' and l.state = 'live'`,
+    [tx.businessId, gateId],
+  );
+  return rows.length > 0;
+}
+
 async function settle(
   tx: TenantQuery,
   fields: HandbackFields,
@@ -235,6 +251,17 @@ async function settle(
   }
 
   const settled = result.value;
+  // INB-1: the launcher is told, and a successor's gate is a decision to raise.
+  const outcome = fields.outcome as 'completed' | 'failed';
+  const taskId = await raiseRunSettled(tx, { leaseId: settled.leaseId, outcome });
+  // WF-7: a research ticket's second failed run stops and asks its map's owner.
+  if (outcome === 'failed') await researchFailed(tx, { taskId, leaseId: settled.leaseId });
+  await raiseIncident(tx, [
+    { reservationId: settled.reservationId, state: settled.reservationState },
+  ]);
+  const liveSuccessor =
+    settled.successorGateId !== null && (await decidable(tx, settled.successorGateId));
+  if (liveSuccessor) await raiseDecision(tx, { taskId, gateId: settled.successorGateId });
   return applied(null, null, {
     leaseId: settled.leaseId,
     reservationId: settled.reservationId,
@@ -248,13 +275,14 @@ async function settle(
     // nobody can read.
     reportId: settled.reportId,
     // The successor's four durable handles, null throughout when none was
-    // asked for. They are in the same detail as the settlement because they
-    // were written in the same transaction: T4 wants "the durable
-    // handback/proposal handles in one response", and a caller that had to go
-    // looking for its own gate could not tell the two halves apart.
-    successorVersionId: settled.successorVersionId,
-    successorGateId: settled.successorGateId,
-    successorRunId: settled.successorRunId,
-    successorStepId: settled.successorStepId,
+    // asked for or the same handback withdrew it. They are in the same detail
+    // as the settlement because they were written in the same transaction: T4
+    // wants "the durable handback/proposal handles in one response", and a
+    // caller that had to go looking for its own gate could not tell the two
+    // halves apart.
+    successorVersionId: liveSuccessor ? settled.successorVersionId : null,
+    successorGateId: liveSuccessor ? settled.successorGateId : null,
+    successorRunId: liveSuccessor ? settled.successorRunId : null,
+    successorStepId: liveSuccessor ? settled.successorStepId : null,
   });
 }

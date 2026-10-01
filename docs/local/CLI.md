@@ -73,7 +73,10 @@ also names its operationId, including one the caller supplied:
 Make the location writable and send the same body again with that id to get
 the credential back. The same applies to an agent `task.handback` that was
 applied but whose saved credential could not be removed: make the location
-writable and send the same body again with the id named on stderr.
+writable and send the same body again with the id named on stderr. A
+`run.delegate_child` whose helper's credential could not be saved says
+`cli: hand-over applied but its helper's credential could not be saved to <file>: <reason>`;
+the same body again with that id derives the credential again.
 
 ## Person and agent use
 
@@ -91,18 +94,36 @@ agent then passes `--agent` or sets `OPS_ASTRO_AGENT=1`, and calls go to
 `DELEGATION_EXCLUDES_OPERATION`. A successful `task.pickup` saves the
 delegation credential to the delegation file and prints the answer with that
 credential replaced by `(saved to <file>)`. Later calls
-(`task.heartbeat`, `task.read`, `task.comment`, `task.handback`) send it in the
+(`task.heartbeat`, `task.read`, `task.comment`, `model.call`, `task.handback`) send it in the
 `x-agent-delegation` header. A successful `task.handback` removes the file when
 it holds the credential that handback was sent with. A handback sent with
 another credential through `OPS_ASTRO_DELEGATION`, such as a replay of an older
 lease, leaves the saved one alone (`tests/cli/cli-delegation-replay.test.ts`).
+A successful `run.delegate_child` (AW-11) saves the helper's credential to
+`<delegation file>.child-<childDelegationId>`, owner-readable only, and prints
+the answer with it replaced by `(saved to <file>)`; the parent's own file is
+left alone. The helper sends it with `OPS_ASTRO_DELEGATION` for its calls and
+its `run.child_handback`.
 
 ```sh
 export OPS_ASTRO_AGENT=1 OPS_ASTRO_BUSINESS=alpha
 pnpm cli task.queue
 pnpm cli task.pickup --json '{"reservationId":"<reservationId>","operationId":"<your-id>"}'
 pnpm cli task.heartbeat --json '{"leaseId":"<leaseId>","fence":<fence>}'
+pnpm cli model.call --json '{"leaseId":"<leaseId>","fence":<fence>,"operation":"model.replay_compose","fields":[{"name":"tone","from":{"recordId":"<taskId>","key":"title"}}]}'
 pnpm cli task.handback --json '{"leaseId":"<leaseId>","fence":<fence>,"outcome":"completed","report":{}}'
+pnpm cli run.delegate_child --json '{"leaseId":"<leaseId>","fence":<fence>,"helperActorId":"<agentActorId>","purpose":"draft_help","collections":["task"],"actions":["read"],"expiresInSeconds":600}'
+OPS_ASTRO_DELEGATION="$(cat <delegation file>.child-<childDelegationId>)" pnpm cli run.child_handback --json '{"outcome":"completed"}'
+```
+
+A person answers a run waiting at its approved ceiling on the person prefix
+(AW-05). The top-up is in the currency's minor units; above the business's
+four-eyes threshold a second person sends the same body to complete it.
+
+```sh
+pnpm cli run.top_up --json '{"recordId":"<taskId>","runId":"<runId>","amountMinor":1000,"currency":"AUD"}'
+pnpm cli run.end_at_budget_stop --json '{"recordId":"<taskId>","runId":"<runId>"}'
+pnpm cli run.revise_state --json '{"recordId":"<taskId>","runId":"<runId>","expectedVersion":0,"knowledge":["the brief is agreed"],"unknowns":["the launch date"]}'
 ```
 
 `reservationId` comes from the queue; `leaseId` and `fence` from the pickup's
@@ -117,13 +138,13 @@ printed exactly as the API returned it (`refused`, `code`, `names`, `fixes`).
 The one exception is a successful agent `task.pickup`, whose credential is
 replaced by where it was saved.
 
-| Exit | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0    | Answered: a 2xx with a JSON body. Also `--help`, and a `login` or `logout` that succeeded.                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| 1    | Refused: the API's body carries `refused: true`. Also a `login` that got no token, whether the identity provider refused it or did not answer.                                                                                                                                                                                                                                                                                                                                                                                                                |
-| 2    | Usage: an unknown operation (`COMMAND_UNKNOWN`), a bad flag or body (including a number with no canonical form, such as `1e400`, which the command line refuses rather than sending as `null`), no bearer or business, an agent `task.pickup` whose delegation file (`OPS_ASTRO_DELEGATION_FILE`) cannot be written, or a `login` whose token file (`OPS_ASTRO_TOKEN_FILE`) cannot be written. No request sent.                                                                                                                                               |
-| 3    | Transport: no answer arrived.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| 4    | Fault: any other non-2xx, for example a 500 `DECISION_INTEGRITY` or a 503, or an answer that is not JSON. Also an agent `task.pickup` that the API applied but whose credential could not be saved (stderr names the operationId); an agent `task.handback` that the API applied but whose spent credential could not be removed (stdout carries the answer; stderr names the operationId, and a replay with it removes the file); a `login` whose issued token could not be saved; and a `logout` that could not remove a credential file (stderr names it). |
+| Exit | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0    | Answered: a 2xx with a JSON body. Also `--help`, and a `login` or `logout` that succeeded.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| 1    | Refused: the API's body carries `refused: true`. Also a `login` that got no token, whether the identity provider refused it or did not answer.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| 2    | Usage: an unknown operation (`COMMAND_UNKNOWN`), a bad flag or body (including a number with no canonical form, such as `1e400`, which the command line refuses rather than sending as `null`), no bearer or business, an agent `task.pickup` whose delegation file (`OPS_ASTRO_DELEGATION_FILE`) cannot be written, or a `login` whose token file (`OPS_ASTRO_TOKEN_FILE`) cannot be written. No request sent.                                                                                                                                                                                                                                      |
+| 3    | Transport: no answer arrived.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| 4    | Fault: any other non-2xx, for example a 500 `DECISION_INTEGRITY` or a 503, or an answer that is not JSON. Also an agent `task.pickup` that the API applied but whose credential could not be saved (stderr names the operationId); an agent `run.delegate_child` whose helper's credential could not be saved (the same); an agent `task.handback` that the API applied but whose spent credential could not be removed (stdout carries the answer; stderr names the operationId, and a replay with it removes the file); a `login` whose issued token could not be saved; and a `logout` that could not remove a credential file (stderr names it). |
 
 ## What it does not do
 
@@ -137,3 +158,121 @@ replaced by where it was saved.
 - It has no test-only path. The process proof (`tests/cli/cli-process.test.ts`)
   hands it a bearer through `OPS_ASTRO_TOKEN`, the same way a person does after
   `login`.
+
+## Wayfinder maps
+
+A map is a task of type `map`; its tickets are its subtasks (WF-1, WF-2). The
+same verbs as every other command, each one call:
+
+```sh
+pnpm cli map.chart --json '{"title":"Onboarding","destination":"A signed-off flow","tickets":[{"ref":"a","title":"Find the rules","type":"research"},{"ref":"b","title":"Choose the flow","type":"grilling","blockedBy":["a"]}],"fog":["Who approves?"]}'
+pnpm cli map.view --json '{"recordId":"<mapId>"}'
+pnpm cli map.frontier --json '{"recordId":"<mapId>"}'
+pnpm cli task.claim --json '{"recordId":"<ticketId>","expectedRevision":1}'
+pnpm cli task.resolve --json '{"recordId":"<ticketId>","expectedRevision":2,"answer":"...","gist":"one line"}'
+```
+
+`task.create` takes `taskType` (map, research, prototype, grilling, task or
+build; `task` when absent). `map.chart` also takes `preAnswers`, a list of
+`{ question, answer, source, vetoOpen? }` where `source` is `{ "recordId": "<closed ticket>" }`
+or `{ "reference": "one line" }`; an uncited one is refused (WF-6). `task.set_type`, `map.revise`, `map.scope`,
+`task.set_blocking`, `map.graduate` and `task.close_out_of_scope` complete the
+set. A grilling or prototype ticket is retyped or resolved only by the map's
+owner, holding `task:decide`. An agent reaches none of these yet: they wait on
+the agent credential narrowed from a person's grants (API-2).
+
+## The agent verbs (API-3)
+
+A small general set on top of the operations, for people and delegated agents
+alike. Each verb maps onto its owning operation (`apps/cli/verbs.ts`) and is
+one request; the CLI adds no rule, so a refusal is the server's, printed in one
+line that names the missing key when it is about authority.
+
+```
+pnpm cli help
+pnpm cli task get <id> [--detail brief|standard|full] [--fields a,b] [--json]
+pnpm cli task list [--board <id>] [--limit n] [--page <next>] [--detail ...]
+pnpm cli task create --title <t> [--description <d>] [--parent <id>] [--board <id>] [--type <type>]
+pnpm cli task update <id> --revision n [--title <t>] [--description <d>]
+pnpm cli task link <id> --revision n --blocked-by <id,id>
+pnpm cli task comment <id> --revision n --text <t> [--audience internal|client]
+pnpm cli task resolve <id> --revision n --answer <a> --gist <one line>
+pnpm cli task context <id> [--detail brief|standard|full]
+pnpm cli map view <id>
+pnpm cli map status <id> [--detail brief|standard|full]
+pnpm cli map frontier <id>
+```
+
+- `--business`, `--api` and `--agent` and the environment work as for an
+  operation. Exit codes are the same.
+- A write prints `ok <operation> <id> r<revision>`; pass that revision to the
+  next write on the same task.
+- Reads take a detail level. `brief` is id, title and state. `standard` (the
+  default) adds the summary, description, blockers and the latest five
+  comments. `full` is everything, the whole thread and history included. A
+  blocker the reader may not read is never listed: it is counted as
+  `blockersWithheld`.
+- Output is terse text. `--json` prints minimal JSON, and `--fields` keeps only
+  the fields named.
+- `task list` pages 20 at a time (at most 100 with `--limit`). A page ends with
+  `next: <token>`; pass it as `--page` for the next one. A task added meanwhile
+  joins a later page, and none repeats.
+- The API takes the same `detail`, `limit` and `page` body fields on
+  `task.read` and `task.board`. Without them it answers as before.
+- `task list` takes at most 100 a page, and every call counts against the
+  caller's quotas (`identity/quota.ts`): past one, the call is refused
+  `QUOTA_EXCEEDED` with when to send again.
+- `map status` (API-4, `map.status`) is the map's frontier, fog and counts in
+  one call, from one query on the map's read models, so it is current after
+  any write. `full` carries every id; `standard` names a frontier ticket by
+  key, title and type; `brief` keeps the counts and the keys.
+- `task context` (API-4, `task.context`, _work this ticket_) is everything a
+  ticket depends on in one call and one statement: the ticket, its map's
+  Destination, owner (at `standard` and `full`) and Decisions so far, its blockers and what it blocks, its
+  acceptance checks (the `- [ ]` and `- [x]` lines of its description, as
+  written), its linked documents (none yet: they join with WF-8's Docs pages)
+  and its recent thread. It reads the live tables the write changed, so it is
+  current after any write. A part the reader may not read is left out and
+  counted under `withheld` (`map`, `blockedBy`, `blocks`), never listed. `full`
+  carries every id and the whole thread; `standard` keeps the ticket's own id
+  (writes take it), names the tickets around it by key and title, and carries
+  the latest five comments; `brief` is names and state and no thread bodies.
+  Internal readers only; an agent reaches it once its credential is narrowed
+  from a person's grants (API-2).
+- _Changes since_ joins with the live change record (C4).
+
+## The wayfinder tracker (API-5)
+
+`docs/agents/issue-tracker-ops-astro.md` is the tracker file the upstream
+wayfinder and grilling skills read, beside their `issue-tracker-github.md` and
+`issue-tracker-local.md`: point a project's tracker at it and the skills run
+unmodified against Ops Astro. Every operation it names is one of the verbs
+above or one of these (`apps/cli/tracker-verbs.ts`), each onto its owning
+wayfinder command:
+
+```
+pnpm cli map chart --title <t> [--destination <d>] [--notes <n>] [--fog <json list>] [--tickets <json list>] [--out-of-scope <json list>]
+pnpm cli map revise <map> --revision n [--destination <d>] [--notes <n>] [--add-fog <json list>] [--add-out-of-scope <json list>] [--retire <id,id>]
+pnpm cli map graduate <map> --revision n --patch <fog id> --tickets <json list>
+pnpm cli task claim <id> --revision n
+pnpm cli task type <id> --revision n --type <type>
+pnpm cli task out-of-scope <id> --revision n --reason <r>
+pnpm cli task close <id> --revision n
+pnpm cli task research <id>
+```
+
+- List operands (fog lines, tickets) are JSON lists; a flag that is not one is
+  a usage error before any request.
+- `map chart --tickets` takes `{ref, title, type, blockedBy}` entries and
+  prints each ref with the ticket it became (`a=<id>`); `map graduate` prints
+  its tickets in order (`1=<id>`).
+- `task research` answers `NOT_AVAILABLE` ("not available until Docs"), exit 1,
+  and sends nothing: a research artefact is a Docs page, which arrives with
+  WF-8. There is no other store for it.
+- The tracker's mapping table is the spec's (`CAPABILITY-SLICES.md` section
+  15a, copied in `tests/cli/api-5-spec-mapping.md`); the upstream skill files
+  are pinned by SHA-256 in the tracker file. `tests/cli/api-5-contract.test.ts`
+  fails when either drifts, and `tests/cli/api-5-conformance.test.ts` runs the
+  same wayfinding script against the local-Markdown tracker and Ops Astro.
+- A ticket ruled out of scope is an Out of scope item and stays out of
+  Decisions so far, in `map view` and in `task context`.

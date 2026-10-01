@@ -41,6 +41,7 @@ import {
   advisoryLock,
   checkAuthority,
   subjectsOf,
+  wayfinderFacts,
   isUuid,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery, Session, Scope, EntryPoint } from '../../../core-records/src/index.ts';
@@ -57,8 +58,12 @@ export const REVISION_FIXES: readonly string[] = [
   'A write against a stale revision is refused, never merged.',
 ];
 
-/** The one write an external party (R4) may reach, and then only in the client audience. */
-const EXTERNAL_WRITES: ReadonlySet<string> = new Set(['task.comment']);
+/**
+ * The writes an external party (R4) may reach: a comment, only in the client
+ * audience, and opening their own inbox item (`inbox.seen`, a `self` row whose
+ * handler stamps the caller's own item on a task they can read, and nothing else).
+ */
+const EXTERNAL_WRITES: ReadonlySet<string> = new Set(['task.comment', 'inbox.seen']);
 
 const EXTERNAL_FIXES: readonly string[] = [
   'A person without a membership may read what was shared with them and nothing more.',
@@ -369,6 +374,21 @@ const BUSINESS: Scope = { kind: 'business', id: null };
  * scope, and a record-scoped manager could tell a same-business delegation
  * outside their scope from a fabricated one by the answer.
  */
+/** The task a gate's run belongs to, at record scope. */
+const GATE_TASK: ScopeLookup = [
+  'gateId',
+  async (tx, id) => {
+    const rows = await tx.query<{ readonly id: string }>(
+      `select run.task_id as id
+         from public.gates g
+         join public.planned_runs run on run.business_id = g.business_id and run.id = g.run_id
+        where g.business_id = $1 and g.id = $2`,
+      [tx.businessId, id],
+    );
+    return rows[0] === undefined ? undefined : { kind: 'record', id: rows[0].id };
+  },
+];
+
 const TARGET_LOOKUPS: Readonly<Record<string, ScopeLookup>> = {
   'grant.revoke': [
     'grantId',
@@ -384,19 +404,9 @@ const TARGET_LOOKUPS: Readonly<Record<string, ScopeLookup>> = {
   // reaches the runtime, which asks it again under its locks and, once the
   // gate is escalated, asks business scope. A gate that resolves to nothing
   // is asked at business scope, so a foreign and a fabricated id answer alike.
-  'task.decide': [
-    'gateId',
-    async (tx, id) => {
-      const rows = await tx.query<{ readonly id: string }>(
-        `select run.task_id as id
-           from public.gates g
-           join public.planned_runs run on run.business_id = g.business_id and run.id = g.run_id
-          where g.business_id = $1 and g.id = $2`,
-        [tx.businessId, id],
-      );
-      return rows[0] === undefined ? undefined : { kind: 'record', id: rows[0].id };
-    },
-  ],
+  'task.decide': GATE_TASK,
+  // AW-04: the plan accept is that decision, asked the same way.
+  'task.accept_plan': GATE_TASK,
   'delegation.revoke': [
     'delegationId',
     (tx, id) =>
@@ -468,7 +478,7 @@ const CLAIM_LOOKUPS: readonly ScopeLookup[] = [
  */
 const SCOPE_OF: Readonly<
   Record<
-    CommandDeclaration['authorisedOn'],
+    Exclude<CommandDeclaration['authorisedOn'], 'self'>,
     (tx: TenantQuery, request: UncheckedRequest, declaration: CommandDeclaration) => Promise<Scope>
   >
 > = {
@@ -485,6 +495,31 @@ const SCOPE_OF: Readonly<
   },
   claim: (tx, request) => firstScope(tx, request, CLAIM_LOOKUPS),
 };
+
+/**
+ * The map whose record-scoped grant also covers this request: the map a
+ * targeted ticket belongs to, or the map a new task is filed under. Only a
+ * task collection command, and never the record itself (its own scope was
+ * the first question).
+ */
+async function coveringMap(
+  tx: TenantQuery,
+  request: UncheckedRequest,
+  declaration: CommandDeclaration,
+): Promise<string | undefined> {
+  if (declaration.collection !== 'task') return undefined;
+  const named =
+    declaration.authorisedOn === 'record'
+      ? request['recordId']
+      : declaration.name === 'task.create'
+        ? request['parentId']
+        : undefined;
+  if (!isUuid(named)) return undefined;
+  const id = named.toLowerCase();
+  const facts = await wayfinderFacts(tx, id);
+  if (facts?.mapId === null || facts?.mapId === undefined) return undefined;
+  return declaration.name === 'task.create' || facts.mapId !== id ? facts.mapId : undefined;
+}
 
 /** Everything the handler needs first, or the refusal that stops it. */
 export async function prepareCommand(
@@ -513,18 +548,34 @@ export async function prepareCommand(
   const recordId = typeof request['recordId'] === 'string' ? request['recordId'] : undefined;
   // R4 before any grant row. A session with no membership stands on a read
   // share, and whatever else a row may say it holds, it writes nothing but a
-  // client-audience comment (minimum contract 8.1 R4; the audience is
-  // `tasks-comment.ts`'s to narrow).
+  // client-audience comment and the seen stamp on its own inbox item (minimum
+  // contract 8.1 R4; the audience is `tasks-comment.ts`'s to narrow).
   if (session.roleKey === null && !EXTERNAL_WRITES.has(declaration.name)) {
     return refused(refuseCommand('SCOPE_NOT_GRANTED', [], EXTERNAL_FIXES));
   }
-  const authorised = await checkAuthority(tx, subjectsOf(session), {
-    // From the declaration, never written in here: see `CommandDeclaration`.
-    collection: declaration.collection,
-    action: declaration.action,
-    scope: await SCOPE_OF[declaration.authorisedOn](tx, request, declaration),
-  });
-  if (!authorised.ok) return refused(authorised.refusal);
+  // A `self` row asks no grant: its handler reaches the caller's own rows only.
+  if (declaration.authorisedOn !== 'self') {
+    const asked = {
+      // From the declaration, never written in here: see `CommandDeclaration`.
+      collection: declaration.collection,
+      action: declaration.action,
+      scope: await SCOPE_OF[declaration.authorisedOn](tx, request, declaration),
+    };
+    let authorised = await checkAuthority(tx, subjectsOf(session), asked);
+    // A grant scoped to a map covers the map and its tickets (W12): asked again
+    // at the map's scope, and the first refusal stands when that fails too.
+    if (!authorised.ok) {
+      const map = await coveringMap(tx, request, declaration);
+      if (map !== undefined) {
+        const again = await checkAuthority(tx, subjectsOf(session), {
+          ...asked,
+          scope: { kind: 'record', id: map },
+        });
+        if (again.ok) authorised = again;
+      }
+    }
+    if (!authorised.ok) return refused(authorised.refusal);
+  }
   // A field the row does not describe, after authority as on the agent prefix:
   // a caller without the right is told that first (R4, `external-party`).
   // Against the row itself: a replay prepares with the target left out, and

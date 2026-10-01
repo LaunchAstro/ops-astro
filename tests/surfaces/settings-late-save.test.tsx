@@ -34,7 +34,7 @@ const tick = async (): Promise<void> => {
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
-const ADA: Session = { token: 'tok-ada', businessKey: 'alpha', email: 'ada@alpha.local' };
+const ADA: Session = { businessKey: 'alpha', email: 'ada@alpha.local' };
 
 /** An API whose write answers only when the test says so. The read is unavailable. */
 function api(): { fetch: typeof globalThis.fetch; answer: () => void } {
@@ -74,7 +74,7 @@ const open = async (fetch: typeof globalThis.fetch): Promise<Mounted> => {
         new OperationsClient({
           origin: '',
           businessKey: ADA.businessKey,
-          token: ADA.token,
+          signedIn: true,
           fetch,
         })
       }

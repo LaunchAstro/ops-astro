@@ -22,6 +22,7 @@ import { createWorker, type WorkerOptions } from '../../apps/worker/worker.ts';
 import { SYNTHETIC_USAGE } from '../../apps/worker/usage.ts';
 import type { World } from '../acceptance/world.ts';
 import { runCli } from '../cli/cli-process-harness.ts';
+import { asBrowser } from '../support/sign-in.ts';
 import { readFacts, type JourneyFacts } from './facts.ts';
 import { holdSecret } from './redact.ts';
 
@@ -70,7 +71,9 @@ function answerOf(outcome: Answer['outcome'], body: unknown): Answer {
 
 /** The app's own client, as the screens hold it. */
 export function appPerson(origin: string, businessKey: string, token: string): Person {
-  const client = new OperationsClient({ origin, businessKey, token, fetch: globalThis.fetch });
+  // Signed in as a browser is, on the session cookie (S0-6c).
+  const fetch = asBrowser(token, async (url, init) => await globalThis.fetch(url, init));
+  const client = new OperationsClient({ origin, businessKey, signedIn: true, fetch });
   return async (name, body) => {
     const { operationId, ...rest } = body;
     const result =

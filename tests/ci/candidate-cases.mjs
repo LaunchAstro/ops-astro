@@ -18,6 +18,7 @@ import { checkCandidate, exportCandidate, indexFiles } from '../../scripts/candi
 import { scanPublicFiles } from '../../scripts/public-content-check.mjs';
 
 const source = resolve(import.meta.dirname, '../..');
+const author = ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid'];
 
 function fixture(run) {
   const dir = mkdtempSync(join(tmpdir(), 'hub-candidate-'));
@@ -208,10 +209,7 @@ test('receipt requires external output and rejects inherited fixture history', (
         'core.hooksPath=/dev/null',
         '-c',
         'commit.gpgsign=false',
-        '-c',
-        'user.name=Fixture',
-        '-c',
-        'user.email=fixture@example.invalid',
+        ...author,
         'commit',
         '-qm',
         'chore: disposable receipt fixture',
@@ -305,10 +303,7 @@ test('receipt refuses an annotated tag before running scans or writing a receipt
       'core.hooksPath=/dev/null',
       '-c',
       'commit.gpgsign=false',
-      '-c',
-      'user.name=Fixture',
-      '-c',
-      'user.email=fixture@example.invalid',
+      ...author,
       'commit',
       '-qm',
       'chore: disposable tag receipt fixture',
@@ -316,10 +311,7 @@ test('receipt refuses an annotated tag before running scans or writing a receipt
     git(
       '-c',
       'tag.gpgsign=false',
-      '-c',
-      'user.name=Fixture',
-      '-c',
-      'user.email=fixture@example.invalid',
+      ...author,
       'tag',
       '-am',
       'Synthetic annotated metadata',

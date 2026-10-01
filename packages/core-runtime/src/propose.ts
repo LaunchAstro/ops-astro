@@ -52,7 +52,15 @@ export interface ProposeRequest {
   readonly maximumMinor: number;
   readonly currency: string;
   readonly payload: Record<string, unknown>;
-  readonly step: { readonly kind: string; readonly payload: Record<string, unknown> };
+  /**
+   * The run's one step. `planStep`, when present, is a step key of the task's
+   * bound plan, checked by the command under the task lock (AW-06, 0210).
+   */
+  readonly step: {
+    readonly kind: string;
+    readonly payload: Record<string, unknown>;
+    readonly planStep?: string;
+  };
   readonly expiresAt: Date;
   /** Present to add a version to a live lineage; absent to open one. */
   readonly lineageId?: string;

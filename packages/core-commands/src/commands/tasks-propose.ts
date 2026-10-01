@@ -2,23 +2,25 @@
 //
 // `task.propose`: a proposal on a task, through the runtime's locks.
 
-import { subjectsOf } from '../../../core-records/src/index.ts';
-import type { Subject, TenantQuery } from '../../../core-records/src/index.ts';
+import { raiseDecision, subjectsOf } from '../../../core-records/src/index.ts';
+import type { Delegation, Subject, TenantQuery } from '../../../core-records/src/index.ts';
 import { lockProposal, proposeUnderLocks } from '../../../core-runtime/src/index.ts';
 import type { CommandContext, TaskRow } from './context.ts';
 import { lockTask, REVISION_FIXES } from './prepare.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
-import { applied, refused, type HandlerOutcome } from './outcome.ts';
+import { applied, refused, type HandlerOutcome, type Refused } from './outcome.ts';
 import { EXPIRY_FIX, expiryFrom } from './expiry.ts';
 import { invalid, isFieldMap } from './operands.ts';
-import { readBusinessCapId } from '../../../core-runtime/src/index.ts';
+import { claimUnclaimed, researchStartRefusal } from './research-run.ts';
+import { pinResearchSkillOnStart } from './research-skill.ts';
+import { readBusinessCapId, readProjectedPlan } from '../../../core-runtime/src/index.ts';
 
 export interface ProposeFields {
   readonly purpose: string;
   readonly maximumMinor: number;
   readonly currency: string;
   readonly payload: Readonly<Record<string, unknown>>;
-  readonly step: { readonly kind: string; readonly payload: Readonly<Record<string, unknown>> };
+  readonly step: ProposedStep;
   readonly expiresInSeconds?: number;
   readonly lineageId?: string;
   /** The task revision the caller read, compared under the runtime's locks. */
@@ -32,18 +34,47 @@ export interface ProposeFields {
  */
 const PURPOSE_SHAPE = /^[a-z][a-z0-9_]{0,62}$/u;
 
+/** The run's one step, and the plan step it is proposed under when it names one (AW-06). */
+interface ProposedStep {
+  readonly kind: string;
+  readonly payload: Readonly<Record<string, unknown>>;
+  readonly planStep?: string;
+}
+
 /**
  * `planned_steps.kind` is `not null` and `payload` is `jsonb not null`. The
  * payload is a JSON object, not an array: spreading an array or a string into
- * one stores bytes the proposer never sent.
+ * one stores bytes the proposer never sent. A `planStep` that is present is
+ * a string; whether the task's bound plan has it is asked under the lock.
  */
-function isStep(
-  step: unknown,
-): step is { readonly kind: string; readonly payload: Readonly<Record<string, unknown>> } {
+function isStep(step: unknown): step is ProposedStep {
   if (typeof step !== 'object' || step === null) return false;
-  const candidate = step as { kind?: unknown; payload?: unknown };
+  const candidate = step as { kind?: unknown; payload?: unknown; planStep?: unknown };
   if (typeof candidate.kind !== 'string' || candidate.kind === '') return false;
+  if ('planStep' in candidate && typeof candidate.planStep !== 'string') return false;
   return isFieldMap(candidate.payload);
+}
+
+const PLAN_STEP_FIXES: readonly string[] = [
+  "Name a step of this task's accepted plan in planStep, or leave planStep out.",
+];
+
+/**
+ * Whether `step` may be proposed on `taskId`: no plan step named, or one the
+ * task's bound plan has (`readProjectedPlan`, the record the graph projects),
+ * read under the task lock the caller holds.
+ */
+async function planStepRefusal(
+  tx: TenantQuery,
+  taskId: string,
+  step: ProposedStep,
+): Promise<Refused | undefined> {
+  if (step.planStep === undefined) return undefined;
+  const plan = await readProjectedPlan(tx, taskId);
+  if (plan?.steps.some((each) => each.key === step.planStep) === true) return undefined;
+  return refused(refuseCommand('FIELD_VALUE_INVALID', ['step'], PLAN_STEP_FIXES), {
+    step: { planStep: step.planStep },
+  });
 }
 
 /**
@@ -88,11 +119,13 @@ export interface Proposer {
   readonly taskTypeId: string;
   readonly actorId: string;
   readonly subjects: readonly Subject[];
+  /** An agent's: its reach is the delegation's, inside the person's grants. */
+  readonly delegation?: Delegation;
 }
 
 export async function proposeFor(
   tx: TenantQuery,
-  { target, collection, taskTypeId, actorId, subjects }: Proposer,
+  { target, collection, taskTypeId, actorId, subjects, delegation }: Proposer,
   fields: ProposeFields,
 ): Promise<HandlerOutcome> {
   // A trashed task is gone to the work surface until its batch is restored,
@@ -154,7 +187,10 @@ export async function proposeFor(
       refuseCommand(
         'FIELD_VALUE_INVALID',
         ['step'],
-        ['Send a step as { kind, payload }, with a non-empty kind and a JSON object payload.'],
+        [
+          'Send a step as { kind, payload }, with a non-empty kind and a JSON object payload;',
+          'planStep, when sent, is the key of a step of the plan.',
+        ],
       ),
       { step: fields.step },
     );
@@ -176,7 +212,11 @@ export async function proposeFor(
     maximumMinor: fields.maximumMinor,
     currency: fields.currency,
     payload: { ...fields.payload },
-    step: { kind: fields.step.kind, payload: { ...fields.step.payload } },
+    step: {
+      kind: fields.step.kind,
+      payload: { ...fields.step.payload },
+      ...(fields.step.planStep === undefined ? {} : { planStep: fields.step.planStep }),
+    },
     expiresAt,
     ...(typeof lineageId === 'string' ? { lineageId } : {}),
     // T1's existing budget authority, for a task with no envelope open yet:
@@ -192,18 +232,46 @@ export async function proposeFor(
   if (current === undefined || current.deleted_at !== null) {
     return refused(refuseNotFound());
   }
+  const research = current.data['type'] === 'research';
+  // WF-7 claim first (ORCH36 ruling P): the starter is the person the
+  // proposal is asked as, an agent's delegating person included. Asked
+  // before the revision, so a starter who lost the race is told it is claimed.
+  const starter = subjects.find((subject) => subject.kind === 'person')?.id ?? actorId;
+  if (research) {
+    const refusal = await researchStartRefusal(tx, current, subjects, delegation, starter, actorId);
+    if (refusal !== undefined) return refused(refusal);
+  }
   if (fields.expectedRevision !== current.revision) {
     return refused(
       refuseCommand('VERSION_STALE', [`revision=${current.revision}`], REVISION_FIXES),
     );
   }
+  const unplanned = await planStepRefusal(tx, target.id, proposal.step);
+  if (unplanned !== undefined) return unplanned;
   const result = await proposeUnderLocks(tx, proposal, held);
   if (!result.ok) return refused(result.refusal);
+  // WF-7 skill pinned by digest (ORCH47 (b)8): a person's research run pins
+  // the vendored research skill on the run it planned, in this transaction.
+  // A skill that is not the locked one refuses the start, and the refusal
+  // rolls back the run and proposal above with it. An agent's start
+  // (`delegation` set) is refused in Stage 1 (ORCH49-R2): an agent may not
+  // activate an instruction file (`admitActivation`), so it pins nothing;
+  // an agent pinning the skill on its own start is a later-stage line.
+  if (research) {
+    const pinned = await pinResearchSkillOnStart(tx, {
+      runId: result.value.runId,
+      starter: { kind: delegation === undefined ? 'person' : 'agent', actorId },
+    });
+    if (!pinned.ok) return refused(pinned.refusal);
+  }
+  const revision = research ? await claimUnclaimed(tx, current, starter) : current.revision;
+  await raiseDecision(tx, { taskId: target.id, gateId: result.value.gateId });
 
   // The revision is the task's own and is unchanged: a proposal is a record
   // beside the task, not an edit to it, so a caller may keep writing against
-  // the revision they hold. `task.comment` answers the same way.
-  return applied(target.id, current.revision, {
+  // the revision they hold. `task.comment` answers the same way. The one
+  // exception is a research run's claim above, which writes the ticket.
+  return applied(target.id, revision, {
     lineageId: result.value.lineageId,
     versionId: result.value.versionId,
     version: result.value.version,

@@ -19,12 +19,14 @@ import { setState, writeOwnedFields } from './tasks-state.ts';
 import { moveTask, rankTask, reparentTask } from './tasks-place.ts';
 import { purgeTasks, restoreTasks, trashTask } from './tasks-trash.ts';
 import { commentOnTask } from './tasks-comment.ts';
-import { setBusinessSetting } from './settings-write.ts';
+import { setBusinessSetting, setNotificationChannel } from './settings-write.ts';
 import { decideOnGate } from './tasks-decide.ts';
+import { acceptPlanOnGate } from './plan-accept.ts';
 import { handbackOwnLease } from './tasks-handback.ts';
 import { heartbeatOwnLease } from './tasks-lease.ts';
 import { dispatchOwnLease } from './tasks-dispatch.ts';
 import { observeOwnLease } from './tasks-observe.ts';
+import { checkOwnLease } from './tasks-check.ts';
 import { pickupAsPerson } from './tasks-pickup.ts';
 import { proposeOnTask } from './tasks-propose.ts';
 import { revokeDelegationAsManager, revokeGrantAsManager } from './authority-controls.ts';
@@ -32,6 +34,19 @@ import { cancelOnTask, restartOnTask } from './tasks-controls.ts';
 import { topUpOnTask } from './budget-top-up.ts';
 import { recordOutcomeOnTask } from './budget-record-outcome.ts';
 import { writeOffOnTask } from './budget-write-off.ts';
+import { scopeMap, setTaskType } from './wayfinder.ts';
+import { reviseMap } from './wayfinder-revision.ts';
+import { chartMap } from './wayfinder-chart.ts';
+import { claimTicket, graduateFog, setBlocking } from './wayfinder-blocking.ts';
+import { closeOutOfScope, resolveTicket } from './wayfinder-resolve.ts';
+import { setPlanningCap } from './budget-planning-cap.ts';
+import { messageConversation, startConversation } from './conversations.ts';
+import { renameConversation, setConversationScope } from './conversation-tabs.ts';
+import { refuseChildWorkAsPerson } from './child-work-person.ts';
+import { refuseModelCallAsPerson } from './model-call-person.ts';
+import { endOnRun, topUpOnRun } from './run-answers.ts';
+import { reviseStateOnRun } from './run-state.ts';
+import { stampOwnSeen } from './inbox-seen.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
@@ -78,6 +93,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
       request.body,
       request.audience,
       request.commentType,
+      request.mentions,
     ),
 
   // The revision travels with the rest of the envelope rather than as a
@@ -90,6 +106,8 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
 
   'task.propose': proposeOnTask,
   'task.decide': decideOnGate,
+  // AW-04: the plan accept, the only activation of a run's instruction file.
+  'task.accept_plan': acceptPlanOnGate,
 
   'grant.revoke': (tx, context, request) => revokeGrantAsManager(tx, context, request.grantId),
   'delegation.revoke': (tx, context, request) =>
@@ -106,6 +124,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.heartbeat': heartbeatOwnLease,
   'task.dispatch': dispatchOwnLease,
   'task.observe': observeOwnLease,
+  'task.check': checkOwnLease,
   'task.handback': handbackOwnLease,
 
   // T2e. A person's money decision; no agent route reaches it.
@@ -114,6 +133,38 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'budget.record_outcome': recordOutcomeOnTask,
   // T3c. A person closes an unknown hold at an amount; no agent route reaches it.
   'budget.write_off': writeOffOnTask,
+
+  'task.set_type': setTaskType,
+  'map.revise': reviseMap,
+  'map.scope': scopeMap,
+  'map.chart': chartMap,
+  'task.set_blocking': setBlocking,
+  'task.claim': (tx, context) => claimTicket(tx, context),
+  'map.graduate': graduateFog,
+  'task.resolve': resolveTicket,
+  'task.close_out_of_scope': closeOutOfScope,
+  // AW-04 (U10). A person sets the planning cap; no agent route reaches it.
+  'budget.set_planning_cap': setPlanningCap,
+  // AW-03: the conversation's first message mints it; later ones are its owner's.
+  'conversation.start': startConversation,
+  'conversation.message': messageConversation,
+  // MP-7-11: the tab row's title and the page it is about, the owner's alone.
+  'conversation.rename': renameConversation,
+  'conversation.set_scope': setConversationScope,
+  // AW-01: the run's worker's, through the broker, on the agent prefix only.
+  'model.call': refuseModelCallAsPerson,
+
+  // AW-05: a person's answers to a run waiting at its approved ceiling.
+  'run.top_up': topUpOnRun,
+  'run.end_at_budget_stop': endOnRun,
+  // MP-6-2: a run's state revised, a person's under run:write; the agent's is
+  // served on its own prefix (`agent-operations.ts`).
+  'run.revise_state': reviseStateOnRun,
+  // AW-11: the parent's and the helper's, on the agent prefix only.
+  'run.delegate_child': refuseChildWorkAsPerson,
+  'run.child_handback': refuseChildWorkAsPerson,
+  'inbox.seen': (tx, context, request) => stampOwnSeen(tx, context, request.itemId),
+  'notifications.set_channel': setNotificationChannel,
 };
 
 function writeOwned(

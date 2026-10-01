@@ -35,6 +35,7 @@ type Refusal = CommandRefusal<IdentityRefusalCode>;
 const refuse = (code: IdentityRefusalCode, fixes: readonly string[]): Refusal =>
   refuseCommand(code, [], fixes);
 import { recordAuthenticationAttempt } from './authentication-attempts.ts';
+import { admitQuota, type QuotaRefusal } from './quota.ts';
 import type { VerifiedSubject } from './verified-subject.ts';
 
 export type { VerifiedSubject } from './verified-subject.ts';
@@ -162,7 +163,7 @@ const STANDING = `
      and ((g.subject_kind = 'person' and g.subject_id = $1)
           or (g.subject_kind = 'actor' and a.person_id = $1))`;
 
-async function standsOnShares(tx: TenantQuery, personId: string): Promise<boolean> {
+export async function standsOnShares(tx: TenantQuery, personId: string): Promise<boolean> {
   const rows = await tx.query<{ readonly shares: number; readonly business: number }>(STANDING, [
     personId,
   ]);
@@ -198,10 +199,16 @@ export async function withSession<T>(
   businessId: BusinessId,
   presented: VerifiedSubject,
   run: (tx: TenantQuery, session: Session) => Promise<T>,
-): Promise<T | Refusal> {
+): Promise<T | Refusal | QuotaRefusal> {
   return await database.withBusiness(businessId, async (tx) => {
     const resolved = await resolveLogin(tx, presented);
     if ('refused' in resolved) return resolved;
+    // Charged only now, once the caller is admitted (`quota.ts`).
+    const overQuota = await admitQuota(tx, 'person_login', presented, {
+      credential: resolved.loginId,
+      person: resolved.personId,
+    });
+    if (overQuota !== undefined) return overQuota;
     return await run(tx, resolved);
   });
 }

@@ -9,5 +9,11 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@fontsource-variable/chivo-mono": "5.3.0",
+    "@fontsource-variable/funnel-sans": "5.3.0",
+    "@fontsource/funnel-display": "5.3.0",
+    "lucide-react": "1.47.0"
   }
 }

@@ -14,19 +14,65 @@
 import { type AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
 
 export const WORKER_ROLE = 'ops_astro_worker';
+/** The broker's role (AW-01): it executes the fair share's one count, and holds nothing else. */
+export const BROKER_ROLE = 'ops_astro_broker';
+export const OCCURRENCE_ROLE = 'ops_astro_occurrence';
 
 /**
- * The contract: what 0001-0020 grant the application group, table by table,
+ * The contract: what 0001-0048 grant the application group, table by table,
  * as `s` select, `i` insert, `u` update, `d` delete. Read from the `grant`
  * lines of the migrations, not from the catalogue this suite then checks.
  */
 const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['', 'ops.schema_migrations'],
-  ['s', 'ops.slots'],
+  // 0045: the installation's operating business; the application reads it only.
+  ['s', 'ops.operating_business'],
+  // 0047: the API's outbox; the application inserts its four columns, and reads nothing.
+  ['i', 'ops.api_events'],
+  // 0048: the forwarder's kept alerts; the application holds nothing on them.
+  ['', 'ops.api_alerts'],
+  // 0281: a map's frontier and summaries are read models its triggers write; versions are history.
+  ['s', 'ops.slots map_frontier map_summaries'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],
-  ['si', 'alerts handback_reports operations run_events'],
+  ['si', 'alerts handback_reports map_versions operations run_events'],
+  ['siu', 'map_components'],
+  // A run's checks, append only as handback_reports is (MP-6-1).
+  ['si', 'run_checks'],
+  // 0201 (MP-6-2): a run's state, each revision a version, never rewritten.
+  ['si', 'run_states'],
+  // 0198 (AW-03): a conversation, its body (deleted only by the purge, never
+  // edited) and its wrap-ups (append only, never purged).
+  ['siu', 'conversations'],
+  ['sid', 'conversation_messages'],
+  ['si', 'conversation_wrap_ups'],
+  // AW-01: the model-call ledger, and the copy register, which is append only.
+  ['siu', 'model_calls'],
+  ['si', 'copy_registrations'],
+  // AW-02: the pin and the read ledger are never rewritten; the audit copy is
+  // kept and never read back by a run role.
+  ['si', 'bootstrap_reads run_definition_pins'],
+  ['i', 'bootstrap_bytes'],
+  // AW-04: the plan a decision approved is bound once and never rewritten.
+  ['si', 'plan_records'],
+  // AW-04 (U10): a planning envelope is opened once and never moved.
+  ['si', 'planning_envelopes'],
+  // AW-05: a budget ask is the persisted count and is never rewritten.
+  ['si', 'budget_asks'],
+  // AW-05: an answer and its approvals are never rewritten.
+  ['si', 'budget_answers budget_approvals'],
+  // AW-13: the export's cursor moves; its gaps are facts and never rewritten.
+  ['siu', 'trace_export_cursors'],
+  ['si', 'trace_export_gaps'],
+  // AW-13: a retention batch is a fact, never rewritten.
+  ['si', 'trace_expiry_batches'],
+  // 0042: an attempt and a seen stamp are observations, never rewritten (INB-1a).
+  ['si', 'inbox_attention inbox_delivery_attempts'],
+  ['siu', 'inbox_items'],
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
-  ['siu', 'leases planned_runs planned_steps proposal_lineages proposal_versions'],
+  ['siu', 'leases planned_steps proposal_lineages proposal_versions'],
+  // AW-02: a historical run is never rewritten; the application moves its
+  // state alone, by the column grant in COLUMN_UPDATES.
+  ['si', 'planned_runs'],
   ['siu', 'outage_reports outage_runs reservations task_envelopes'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
   // 0028 revokes delete on these two: identity history is kept (0002).
@@ -49,7 +95,58 @@ export const APPLICATION_GRANTS: Readonly<Record<string, string>> = Object.fromE
 const REVOKED: Readonly<Record<string, { readonly from: string; readonly letters: string }>> = {
   'public.person_logins': { from: '0028', letters: 'd' },
   'public.person_merges': { from: '0028', letters: 'd' },
+  // 0192 takes back update on the whole run and grants it on `state` alone.
+  'public.planned_runs': { from: '0192', letters: 'u' },
 };
+
+/** Update granted by column: table, columns, first migration. Any other column grant is outside. */
+const COLUMN_UPDATES: Readonly<
+  Record<string, { readonly from: string; readonly columns: readonly string[] }>
+> = {
+  'public.planned_runs': { from: '0192', columns: ['state'] },
+};
+
+/** The `table.column` pairs the application group may update after `at`, or at the full schema. */
+export function columnUpdatesAt(at?: string): readonly string[] {
+  return Object.entries(COLUMN_UPDATES)
+    .filter(([, grant]) => at === undefined || at.slice(0, 4) >= grant.from)
+    .flatMap(([table, grant]) => grant.columns.map((column) => `${table}.${column}`))
+    .toSorted();
+}
+
+/**
+ * Every other column grant, from the migration that made it: the occurrence role
+ * reads a task's revision for 0032's trigger (AW-01 J, 0203); batch 1's lookup
+ * reads a business's id and key (0046); the application inserts the outbox (0047).
+ */
+const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: string }[] = (
+  [
+    ['0203', `${OCCURRENCE_ROLE} SELECT public.records`, ['business_id', 'id', 'revision']],
+    ['0046', 'ops_astro_lookup SELECT public.businesses', ['id', 'key']],
+    ['0047', 'ops_astro_app INSERT ops.api_events', ['event', 'kind', 'scope', 'weight']],
+  ] as const
+).flatMap(([from, grant, columns]) => columns.map((c) => ({ from, line: `${grant}.${c}` })));
+
+export function roleColumnGrantsAt(at?: string): readonly string[] {
+  return ROLE_COLUMN_GRANTS.filter((grant) => at === undefined || at.slice(0, 4) >= grant.from)
+    .map((grant) => grant.line)
+    .toSorted();
+}
+
+/** Every column-level privilege on the cluster's schema, as `grantee PRIVILEGE table.column`. */
+export async function catalogueColumnGrants(admin: AdminConnection): Promise<readonly string[]> {
+  const rows = await admin.execute<{ line: string }>(
+    `select pg_get_userbyid(acl.grantee) || ' ' || acl.privilege_type || ' ' ||
+            n.nspname || '.' || c.relname || '.' || a.attname as line
+       from pg_attribute a
+       join pg_class c on c.oid = a.attrelid
+       join pg_namespace n on n.oid = c.relnamespace
+       cross join lateral aclexplode(a.attacl) acl
+      where a.attacl is not null and n.nspname in ('public', 'ops')
+      order by 1`,
+  );
+  return rows.map((row) => row.line);
+}
 
 /**
  * What the application group holds on a table after the migration `at` (its

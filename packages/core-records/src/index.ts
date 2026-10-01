@@ -21,6 +21,7 @@ export { readEnvFile } from './env-file.ts';
 export {
   checkDelegatedAuthority,
   digestOf,
+  mintChildDelegation,
   mintDelegation,
   resolveDelegation,
   resolveHistoricalDelegation,
@@ -29,13 +30,17 @@ export {
   resolveSettledByLease,
   revokeDelegation,
   settleDelegation,
+  type ChildMintRequest,
   type Delegation,
   type DelegationRefusalCode,
   type MintedDelegation,
+  type PurposeScope,
 } from './authority/delegations.ts';
 export {
   checkAuthority,
+  EFFECTIVE as EFFECTIVE_GRANTS,
   effectiveGrants,
+  OPERATIONS_MANAGE,
   revokeGrant,
   subjectsOf,
   type Action,
@@ -46,6 +51,7 @@ export {
   type ScopeRequest,
   type Subject,
 } from './authority/grants.ts';
+export { coveredScopes } from './authority/covered-scopes.ts';
 export {
   EXPIRED_FIXES,
   NO_AGENT_FIXES,
@@ -54,11 +60,55 @@ export {
 } from './identity/agent-login.ts';
 export { recordBodyRefusal } from './identity/authentication-attempts.ts';
 export {
+  admitQuota,
+  admitAgentQuota,
+  createQuotaGate,
+  QUOTAS,
+  withQuotaScope,
+  type QuotaGate,
+  type QuotaLimits,
+  type QuotaOptions,
+  type QuotaRefusal,
+} from './identity/quota.ts';
+export {
   NO_MEMBERSHIP_FIXES,
+  resolveLogin,
   withSession,
   type Session,
   type VerifiedSubject,
 } from './identity/login-resolution.ts';
+export {
+  readInboxItems,
+  countOwedItems,
+  INBOX_HISTORY_PAGE,
+  INBOX_HISTORY_SCAN,
+} from './inbox/read.ts';
+export {
+  owes,
+  raiseInboxItem,
+  stampSeen,
+  recordDeliveryAttempt,
+  type DeliveryChannel,
+  type DeliveryState,
+  type InboxAccess,
+  type InboxFactKind,
+  type InboxItem,
+  type InboxAlert,
+  type InboxReason,
+  type InboxWorkState,
+  type RaiseInboxItem,
+} from './inbox/items.ts';
+export { taskAccess } from './inbox/access.ts';
+export {
+  raiseAssignment,
+  raiseDecision,
+  raiseEscalation,
+  raiseIncident,
+  raiseRunSettled,
+} from './inbox/raise.ts';
+export { raiseMentions, readMentions, type Mentioned } from './inbox/mentions.ts';
+export { clearDecision, withdrawEndedGates } from './inbox/clear.ts';
+export { readUnattended, type UnattendedItem } from './inbox/unattended.ts';
 export {
   isSettingRevisionStale,
   readBusinessSetting,
@@ -72,10 +122,12 @@ export { planPresetSync, type PresetField, type PresetPlan } from './records/pre
 export { isRecordsRefusal, type RecordsRefusal } from './records/refusals.ts';
 export {
   audienceNotPermitted,
-  CALLER_VISIBLE,
   fourEyesRequired,
   gateAlreadyDecided,
   gatePending,
+} from './gate-refusals.ts';
+export {
+  CALLER_VISIBLE,
   isCommandRefusal,
   REFUSAL_REGISTER,
   refuseCommand,
@@ -111,6 +163,15 @@ export { readTaskStates, setTaskState, type TaskStateRow } from './tasks/state.t
 export { TASK_STATE_TYPE_KEY, type MachineCategory } from './tasks/states.ts';
 export { purgeTrashedRecords, restoreBatch, trashSubtree } from './tasks/trash.ts';
 export {
+  isTaskType,
+  isWayfinderRecord,
+  OWNER_TYPES,
+  TASK_TYPES,
+  wayfinderFacts,
+  type TaskType,
+  type WayfinderFacts,
+} from './tasks/wayfinder.ts';
+export {
   advisoryLock,
   connect,
   connectAsAdmin,
@@ -121,5 +182,8 @@ export {
   type Database,
   type Listener,
   type TenantQuery,
+  type TransactionQuery,
 } from './tenancy/database.ts';
 export { isUuid } from './tenancy/ids.ts';
+export { hasRoom, type DurableLimit } from './tenancy/limit.ts';
+export { connectOutbox, type ApiEvent, type Outbox } from './tenancy/outbox.ts';

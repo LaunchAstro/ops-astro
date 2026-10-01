@@ -8,6 +8,7 @@
 import { randomUUID } from 'node:crypto';
 import { type CommandDeclaration } from '../../packages/core-wire/src/surface.ts';
 import {
+  ACCEPTED_PLAN,
   PROPOSAL,
   lineageOn,
   type Prepared,
@@ -15,11 +16,14 @@ import {
   batchOf,
   approvableGate,
   approvedReservationId,
-  approvedTaskId,
+  moneyBody,
   ownLease,
   ownAppliedEffect,
-  ownUnknownAttempt,
 } from './role-case-bodies.ts';
+import { WAYFINDER_BODIES } from './role-case-wayfinder.ts';
+import { ownConversation } from './foreign-conversation.ts';
+import { answerAtTheStop } from './stopped-run.ts';
+import { revisedRunBody } from './revised-run.ts';
 
 export function createPositiveBody(
   context: BodyContext,
@@ -110,6 +114,10 @@ export function createPositiveBody(
         const gate = await approvableGate(context);
         return { body: { ...gate, decision: 'approve', note: 'the admin approves' } };
       }
+      case 'task.accept_plan': {
+        const gate = await approvableGate(context);
+        return { body: { ...gate, ...ACCEPTED_PLAN, note: 'the admin accepts the plan' } };
+      }
       case 'task.pickup':
         // Person pickup (EX-01, transaction contract T3 line 66, minimum
         // contract line 331, ledger line 30): the admin claims approved work
@@ -121,9 +129,13 @@ export function createPositiveBody(
         return { body: { ...(await ownLease(context)), outcome: 'completed' } };
       case 'task.read':
       case 'task.execution':
+      case 'task.context':
         return { body: { recordId: context.alphaTaskId } };
       case 'task.board':
         return { body: { board: null } };
+      // The pending gates the admin may decide: the admin holds `decide` on
+      // the whole business, so the list answers.
+      case 'gate.pending':
       case 'task.queue':
       case 'person.list':
       // Both take an empty body and neither carries an `expectedRevision`:
@@ -135,36 +147,37 @@ export function createPositiveBody(
       // the admin holds, so the admin reaches both here.
       case 'settings.read':
       case 'session.capabilities':
+      case 'inbox.read':
+      case 'inbox.count':
+      case 'inbox.unattended':
+        // The caller's own inbox (INB-1d) needs a live grant of any kind, as
+        // above; `inbox.unattended` needs `operations:read`, which the seed
+        // grants the admin (INB-1e, C55).
         return { body: {} };
+      case 'notifications.set_channel':
+        // Self-scoped (INB-1e): in-app is always on, the one mode it takes.
+        return { body: { channel: 'in_app', mode: 'on' } };
+      case 'inbox.seen': {
+        // The caller's own item: a proposal raises a decision item for every
+        // decide holder, the admin among them, read back from their inbox.
+        await lineageOn(context, await context.freshTask('a task whose item is opened'));
+        const listed = await context.asPerson('inbox.read', {});
+        const items = listed.body['inbox'] as readonly Record<string, unknown>[];
+        return { body: { itemId: String(items.at(-1)?.['id']) } };
+      }
       case 'preset.plan':
         return { body: { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] } };
+      case 'definition.attribution':
+        return { body: { digest: 'a'.repeat(64) } };
       case 'settings.set_four_eyes_threshold':
         return { body: { value: 1200 } };
       case 'settings.set_client_sign_off':
         return { body: { value: true } };
       case 'budget.top_up':
-        // The admin approved the plan and holds billing, so a top-up under
-        // the band is hers alone (T2e).
-        return {
-          body: {
-            recordId: await approvedTaskId(context),
-            amountMinor: 100,
-            fromMaximumMinor: PROPOSAL.maximumMinor,
-          },
-        };
       case 'budget.record_outcome':
-        // The admin holds billing, so any unknown attempt on the business's
-        // tasks is hers to record (O8, T3d1).
-        return { body: { ...(await ownUnknownAttempt(context)), outcome: 'happened' } };
       case 'budget.write_off':
-        // The same unknown hold, closed at nothing with a reason (T3c).
-        return {
-          body: {
-            ...(await ownUnknownAttempt(context)),
-            amountMinor: 0,
-            reason: 'The matrix writes its own unknown hold off.',
-          },
-        };
+      case 'budget.set_planning_cap':
+        return { body: await moneyBody(context, declaration.name) };
       case 'task.cancel': {
         // A lineage to cancel is a proposal's, so one is proposed first.
         const task = await context.freshTask('a task whose lineage is cancelled');
@@ -201,6 +214,24 @@ export function createPositiveBody(
             'executed alternative: needs a pickup; ada revokes a live delegation in ' +
             'case (h), k-revoke rows',
         };
+      case 'model.call':
+      case 'run.delegate_child':
+      case 'run.child_handback':
+        // The run's worker's, never a person's: the person prefix refuses each
+        // SCOPE_NOT_GRANTED (AW-01, AW-11, "n/a (system)"). The agent makes the
+        // call under its delegation in the agent journey, case (h).
+        return {
+          exception:
+            'executed alternative: the person prefix refuses it by design; the agent calls it ' +
+            'in case (h)',
+        };
+      case 'run.top_up':
+      case 'run.end_at_budget_stop':
+        // A run the broker stopped at its approved ceiling (`stopped-run.ts`).
+        return await answerAtTheStop(context, declaration.name, PROPOSAL);
+      case 'run.revise_state':
+        // MP-6-2: a proposal's planned run, its state revised under run:write.
+        return await revisedRunBody(context, PROPOSAL);
       case 'task.heartbeat':
         // The person renews their own lease (ledger line 38, "current lease
         // owner"). The agent's renewal is in the agent journey.
@@ -208,6 +239,12 @@ export function createPositiveBody(
       case 'task.dispatch':
         // The person marks their own lease's step dispatched (T2c1).
         return { body: await ownLease(context) };
+      case 'task.check':
+        // A check recorded under the person's own lease (MP-6-1). The agent's
+        // check under its delegation is in the agent journey.
+        return {
+          body: { ...(await ownLease(context)), name: 'the admin checks', outcome: 'passed' },
+        };
       case 'task.observe':
         // The person observes the effect they applied on their own lease (T2c2).
         return { body: await ownAppliedEffect(context) };
@@ -218,8 +255,33 @@ export function createPositiveBody(
         if (observed.code !== 'ok') throw new Error(`matrix: observe refused ${observed.code}`);
         return { body: { attemptId: applied.attemptId } };
       }
-      default:
+      // AW-03. The admin holds `conversation:write`, so starts one of their own;
+      // the message and the read name a conversation the admin just started.
+      case 'conversation.start':
+        return { body: { body: 'the admin asks the agent', subject: 'acceptance' } };
+      case 'conversation.message':
+        return { body: { conversationId: await ownConversation(context), body: 'and again' } };
+      case 'conversation.read':
+        return { body: { conversationId: await ownConversation(context) } };
+      // MP-7-11. The tab row: the admin's own list, and a title and a page
+      // on the conversation the admin just started.
+      case 'conversation.list':
+        return { body: {} };
+      case 'conversation.rename':
+        return { body: { conversationId: await ownConversation(context), title: 'Renamed' } };
+      case 'conversation.set_scope':
+        return {
+          body: {
+            conversationId: await ownConversation(context),
+            page: { address: '/settings', shows: 'Settings' },
+          },
+        };
+      default: {
+        // Wayfinder (WF-1, WF-2) keeps its recipes beside this table.
+        const wayfinder = WAYFINDER_BODIES[declaration.name];
+        if (wayfinder !== undefined) return { body: await wayfinder(context, target) };
         throw new Error(`matrix: no positive control recipe for ${String(declaration.name)}`);
+      }
     }
   };
 }

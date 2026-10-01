@@ -65,6 +65,10 @@ if (serverUrl === undefined) {
 }
 
 const THROUGH_0025 = (version: string): boolean => version.slice(0, 4) <= '0025';
+// And AW-06's 0210 plan step key: the runtime that seeds below proposes with
+// it, and it reads nothing the migrations under test add, so it is applied
+// with the seed and the runner applies whatever is pending after it.
+const SEEDED = (version: string): boolean => THROUGH_0025(version) || version.startsWith('0210');
 /** The three this suite is about. Later migrations may follow them on disk. */
 const NEW = ['0026', '0027', '0028'];
 
@@ -238,7 +242,7 @@ async function upgraded(): Promise<Built> {
   const db = await createEmptyDatabase({ part: 'fr1mupgraded' });
   await applyMigrations(
     db.admin,
-    onDisk.filter((m) => THROUGH_0025(m.version)),
+    onDisk.filter((m) => SEEDED(m.version)),
   );
   // Valid rows written through the application role at 0025: two businesses
   // under their own keys, a held reservation, and identity history.
@@ -277,13 +281,13 @@ describe.skipIf(serverUrl === undefined).each([
   });
 
   it('applies 0026, 0027 and 0028 after 0025, and every migration once', () => {
-    const through = onDisk.filter((m) => THROUGH_0025(m.version)).map((m) => m.version);
-    const after = onDisk.filter((m) => !THROUGH_0025(m.version)).map((m) => m.version);
+    const all = onDisk.map((m) => m.version);
+    const after = all.filter((version) => !SEEDED(version));
     expect(after.slice(0, 3).map((v) => v.slice(0, 4))).toStrictEqual(NEW);
     const expected =
       label === 'fresh'
-        ? { applied: [...through, ...after], alreadyApplied: [] }
-        : { applied: after, alreadyApplied: through };
+        ? { applied: all, alreadyApplied: [] }
+        : { applied: after, alreadyApplied: all.filter((version) => SEEDED(version)) };
     expect({
       applied: built.migration.applied,
       alreadyApplied: built.migration.alreadyApplied,
@@ -504,7 +508,7 @@ describe.skipIf(serverUrl === undefined)('a 0025 database holding a row a new ru
       try {
         await applyMigrations(
           db.admin,
-          onDisk.filter((m) => THROUGH_0025(m.version)),
+          onDisk.filter((m) => SEEDED(m.version)),
         );
         await write(db);
         const seeded = await seedSnapshot(db);
@@ -514,7 +518,7 @@ describe.skipIf(serverUrl === undefined)('a 0025 database holding a row a new ru
           message.test(String((error as { cause?: unknown }).cause ?? error)),
         );
         const [ledger] = await db.admin.execute<{ readonly last: string }>(
-          `select max(version) as last from ops.schema_migrations`,
+          `select max(version) as last from ops.schema_migrations where version not like '0210%'`,
         );
         expect(ledger?.last.slice(0, 4)).toBe(stopsAt);
         expect(await seedSnapshot(db)).toBe(seeded);

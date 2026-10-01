@@ -56,8 +56,26 @@ new_repo() {
 
 # A key that has never been a credential anywhere: 48 random hex characters in
 # an assignment, which is the shape gitleaks' generic rule is looking for.
+# About one such key in a hundred slips under that rule (entropy below 3.5, or
+# a stopword such as "dead"), and a planted key the scanner cannot see would
+# make case M or N fail a correct scan. So each key is first shown to gitleaks
+# alone, under the same configuration, and only a detected one is planted;
+# ten misses in a row is a broken scanner or config, and the harness stops.
 write_key() {
-  printf 'SERVICE_TOKEN="%s"\n' "$(openssl rand -hex 24)" > "$1"
+  local probe try
+  probe="$(mktemp -d "$SCRATCH/probe.XXXXXX")"
+  for try in 1 2 3 4 5 6 7 8 9 10; do
+    printf 'SERVICE_TOKEN="%s"\n' "$(openssl rand -hex 24)" > "$probe/key.ts"
+    gitleaks dir --no-banner --exit-code 42 --config "$REPO_ROOT/.gitleaks.toml" \
+      "$probe" >/dev/null 2>&1
+    if [ $? -eq 42 ]; then
+      mv "$probe/key.ts" "$1"
+      rm -rf "$probe"
+      return
+    fi
+  done
+  echo "harness: gitleaks detected none of $try generated keys; the cases cannot run" >&2
+  exit 1
 }
 
 scan_status() {

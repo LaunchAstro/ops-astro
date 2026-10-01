@@ -32,6 +32,8 @@ const HARNESS = 'tests/support/fresh-database.ts';
 const NOT_NAMED: Readonly<Record<string, string>> = {
   'tests/api/server-onerror.test.ts': 'skips without SURFACE_API_PORT',
   'tests/cli/mounted-cli.test.ts': 'skips without SURFACE_API_PORT',
+  'tests/runtime/aw-13-local-target.test.ts':
+    'skips without TRACE_TARGET_ENV_FILE (a running local trace target)',
   'tests/acceptance/restart-and-expiry.test.ts': 'skips without L5_RESTART_CONTAINER_NAME',
   'tests/acceptance/restart-http.test.ts':
     'skips without L5_RESTART_CONTAINER_NAME and L5_RESTART_API_PORT',
@@ -40,13 +42,17 @@ const NOT_NAMED: Readonly<Record<string, string>> = {
   'tests/acceptance/runtime-proofs.test.tsx':
     'skips without L5_RUNTIME_PROOFS and L5_RESTART_API_PORT',
   'tests/acceptance/drop-proofs.test.ts': 'skips without L5_RUNTIME_PROOFS and L5_RESTART_API_PORT',
+  'tests/acceptance/inbox-worker-restart.test.ts':
+    'skips without L5_RUNTIME_PROOFS and L5_RESTART_API_PORT',
   'tests/acceptance/restart-declared.test.ts': 'pure: restart-harness refusals only',
+  'tests/cli/api-4-changes.test.ts': 'held skip until the C4 change record lands (SL10 U26)',
   'tests/cli/cli-answers.test.ts': 'pure: the CLI against an HTTP stand-in',
   'tests/cli/cli-wire.test.ts': 'pure: the CLI against an HTTP stand-in',
   'tests/support/global-setup.test.ts': 'pure: besideUrl only',
   'tests/cli/operation-id-login-and-stdout.test.ts': 'pure: the CLI against stand-ins, counter 0',
   'tests/journey/budgets-bundle-and-person-crossing.test.ts':
     'pure: a stubbed fetch and a typed stand-in world, counter 0',
+  'tests/api/mp-6-1-preferences.test.ts': 'skips until preference.save is on the command surface',
 };
 
 interface Manifest {

@@ -8,6 +8,7 @@
 // unsaved, and the page decides that; these only draw it.
 
 import type { ReactElement } from 'react';
+import { Skeleton } from '@launchastro/ui';
 import type {
   InternalTaskDetail as Task,
   PersonListResult,
@@ -88,7 +89,12 @@ export function Assignee(props: AssigneeProps): ReactElement {
       <div className="sb__sh">
         <span className="sb__k">Assignee</span>
       </div>
-      <RecordState state={props.people} subject="people" onRetry={props.onRetry}>
+      <RecordState
+        state={props.people}
+        subject="people"
+        onRetry={props.onRetry}
+        placeholder={<Skeleton shape="field" />}
+      >
         {(value) => (
           <select
             className="input"

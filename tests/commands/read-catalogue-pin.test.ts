@@ -25,30 +25,61 @@ const OUTSIDER_NOT_FOUND = rows.filter(([, row]) => row.outsiderNotFound).map(([
 
 /** How each read reaches its answer: spine, a resolved subject, and how authority is asked. */
 const PINNED_SHAPE = {
+  'conversation.list': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'conversation.read': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'definition.attribution': { spine: true, subject: false, authority: 'holds-any-grant' },
+  'gate.pending': { spine: true, subject: false, authority: 'holds-any-grant' },
+  'inbox.count': { spine: false, subject: false, authority: 'self' },
+  'inbox.read': { spine: false, subject: false, authority: 'self' },
+  'inbox.unattended': { spine: false, subject: false, authority: 'declared' },
+  'map.frontier': { spine: true, subject: true, authority: 'declared' },
+  'map.status': { spine: true, subject: true, authority: 'declared' },
+  'map.view': { spine: true, subject: true, authority: 'declared' },
   'person.list': { spine: false, subject: false, authority: 'declared' },
   'preset.plan': { spine: false, subject: false, authority: 'from the request' },
   'session.capabilities': { spine: false, subject: false, authority: 'holds-any-grant' },
   'settings.read': { spine: false, subject: false, authority: 'declared' },
   'task.board': { spine: true, subject: false, authority: 'declared' },
   'task.execution': { spine: true, subject: true, authority: 'declared' },
+  'task.context': { spine: true, subject: true, authority: 'declared' },
   'task.queue': { spine: false, subject: false, authority: 'declared' },
   'task.read': { spine: true, subject: true, authority: 'declared' },
   'task.receipt': { spine: true, subject: true, authority: 'declared' },
 };
 
 const PINNED_IDENTIFIERS = {
+  'conversation.list': [],
+  'conversation.read': ['conversationId'],
+  'definition.attribution': [],
+  'gate.pending': [],
+  'inbox.count': [],
+  'inbox.read': [],
+  'inbox.unattended': [],
+  'map.frontier': ['recordId'],
+  'map.status': ['recordId'],
+  'map.view': ['recordId'],
   'person.list': [],
   'preset.plan': [],
   'session.capabilities': [],
   'settings.read': [],
   'task.board': ['board'],
+  'task.context': ['recordId'],
   'task.execution': ['recordId'],
   'task.queue': [],
   'task.read': ['recordId'],
   'task.receipt': ['attemptId'],
 };
 
-const PINNED_OUTSIDER_NOT_FOUND = ['task.board', 'task.execution', 'task.read', 'task.receipt'];
+const PINNED_OUTSIDER_NOT_FOUND = [
+  'map.frontier',
+  'map.status',
+  'map.view',
+  'task.board',
+  'task.context',
+  'task.execution',
+  'task.read',
+  'task.receipt',
+];
 
 const BODIES: readonly (readonly [string, Readonly<Record<string, unknown>>])[] = [
   ['empty', {}],
@@ -68,6 +99,16 @@ const RECORD_ID = {
   code: 'FIELD_VALUE_INVALID',
   names: ['recordId'],
   fixes: ['Send recordId as the task’s identifier or its key.'],
+};
+const MAP_ID = {
+  code: 'FIELD_VALUE_INVALID',
+  names: ['recordId'],
+  fixes: ['Send recordId as the map’s identifier or its key.'],
+};
+const TICKET_ID = {
+  code: 'FIELD_VALUE_INVALID',
+  names: ['recordId'],
+  fixes: ['Send recordId as the ticket’s identifier or its key.'],
 };
 const BOARD = {
   code: 'FIELD_VALUE_INVALID',
@@ -122,10 +163,26 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
     PLAN_FIELDS,
     PLAN_FIELDS,
   ],
+  'map.view': BODIES.map(([label]) => (label === 'recordId string' ? null : MAP_ID)),
+  'map.frontier': BODIES.map(([label]) => (label === 'recordId string' ? null : MAP_ID)),
+  'map.status': BODIES.map(([label]) => (label === 'recordId string' ? null : MAP_ID)),
+  'task.context': BODIES.map(([label]) => (label === 'recordId string' ? null : TICKET_ID)),
   'task.queue': BODIES.map(() => null),
+  'gate.pending': BODIES.map(() => null),
   'person.list': BODIES.map(() => null),
   'settings.read': BODIES.map(() => null),
   'session.capabilities': BODIES.map(() => null),
+  'conversation.read': BODIES.map(() => null),
+  'conversation.list': BODIES.map(() => null),
+  // AW-04: the file's digest, which none of these bodies carries.
+  'definition.attribution': BODIES.map(() => ({
+    code: 'FIELD_VALUE_INVALID',
+    names: ['digest'],
+    fixes: ['Send digest as the file’s sha-256, 64 lowercase hex characters.'],
+  })),
+  'inbox.read': BODIES.map(() => null),
+  'inbox.count': BODIES.map(() => null),
+  'inbox.unattended': BODIES.map(() => null),
 };
 
 /** The refusal without its `refused` flag, or null. */
@@ -137,7 +194,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same nine reads', () => {
+  it('names the same twenty reads (API-4 added map.status and task.context)', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 

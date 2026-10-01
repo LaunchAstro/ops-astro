@@ -26,6 +26,7 @@ import {
   checkAuthority,
   subjectsOf,
 } from '../../../core-records/src/index.ts';
+import { refuseOwnerTicketMove } from './wayfinder.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { refuseWrongValueType } from './values.ts';
@@ -187,6 +188,9 @@ export async function reparentTask(
     const unreached = await refuseUnreachedRecord(tx, context, parentId);
     if (unreached !== undefined) return refused(unreached);
   }
+  // A grilling or prototype ticket leaves its map only by the map's owner (WF-2).
+  const owned = await refuseOwnerTicketMove(tx, context, target.id, parentId);
+  if (owned !== undefined) return refused(owned);
   if (
     parentId !== null &&
     (await wouldCloseParentLoop(tx, context.spine.taskTypeId, target.id, parentId))

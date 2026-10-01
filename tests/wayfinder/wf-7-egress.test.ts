@@ -1,0 +1,200 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// WF-7 (#640) "Model egress off for the map's client: no model call is
+// made." A research ticket's run calls a model through the broker (AW-01),
+// which reads the run's task's client link and refuses a client's task before
+// any route (C60). The ticket's link is wayfinder's: `map.scope` puts the
+// map's client on the map and on every ticket under it, and a ticket filed
+// under a scoped map inherits it. These cases hold that seam end to end, on
+// the real commands and the real broker.
+//
+// The run is main's proposal, approval and pickup on the ticket, the proposal
+// under `run:write` (wf-7-run); the map's research ceiling and the waiting
+// item stay in wf-7-held.
+
+import { randomUUID } from 'node:crypto';
+import { expect, it as vitestIt } from 'vitest';
+import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { enrol, grantTo, type Member } from '../commands/fixture.ts';
+import {
+  appliedDetail,
+  approveBody,
+  asPerson,
+  freshPurpose,
+  pickup,
+  propose,
+  revisionOf,
+  type Work,
+} from '../runtime/schedules-harness.ts';
+import {
+  CLOUD,
+  call,
+  noDatabase,
+  rowsOf,
+  s,
+  useBrokerWorld,
+  withRoutes,
+  world,
+} from '../broker/broker-world.ts';
+
+/** Every case needs the database; without one the file is skipped. */
+const it = noDatabase ? vitestIt.skip : vitestIt;
+
+useBrokerWorld('wf7egress');
+
+const chartMap = async (title: string): Promise<{ map: string; ticket: string }> => {
+  const outcome = await asPerson(s, {
+    command: 'map.chart',
+    operationId: randomUUID(),
+    title,
+    tickets: [{ ref: 'r1', title: `${title}: what is decided`, type: 'research' }],
+  });
+  const tickets = appliedDetail(outcome, 'map.chart')['tickets'] as Record<string, string>;
+  return { map: String((outcome as { recordId: string }).recordId), ticket: String(tickets['r1']) };
+};
+
+const scope = async (map: string, client: string | null): Promise<void> => {
+  appliedDetail(
+    await asPerson(s, {
+      command: 'map.scope',
+      operationId: randomUUID(),
+      recordId: map,
+      expectedRevision: await revisionOf(s, map),
+      client,
+    }),
+    'map.scope',
+  );
+};
+
+const researchTicket = async (map: string, title: string): Promise<string> => {
+  const outcome = await asPerson(s, {
+    command: 'task.create',
+    operationId: randomUUID(),
+    fields: { title },
+    taskType: 'research',
+    parentId: map,
+  });
+  appliedDetail(outcome, 'task.create');
+  return String((outcome as { recordId: string }).recordId);
+};
+
+/**
+ * A second person who decides: the starter claims the ticket, and T2g refuses
+ * an assignee its own gate. The approver holds the decider's delegable grants,
+ * because pickup mints the agent's delegation from the approver's.
+ */
+let approver: Member | undefined;
+const approve = async (proposal: Record<string, unknown>): Promise<Record<string, unknown>> => {
+  if (approver === undefined) {
+    const member = await enrol(s.db.app, s.business, 'wf7-approver');
+    await s.db.app.withBusiness(s.business, async (tx) => {
+      for (const action of ['read', 'write', 'decide', 'assign', 'comment'] as const) {
+        // oxlint-disable-next-line no-await-in-loop
+        await grantTo(tx, member, action, undefined, true);
+      }
+    });
+    approver = member;
+  }
+  const body = approveBody(proposal);
+  return appliedDetail(
+    await executeCommand(s.db.app, s.business, approver.presented, 'api', body as never),
+    'task.decide',
+  );
+};
+
+/**
+ * The run on the ticket: started (and so claimed, wf-7-claim) by a person
+ * holding `run:write` on it (wf-7-run), approved by another, and picked up by
+ * the agent.
+ */
+const runOn = async (ticket: string): Promise<Work> => {
+  await s.db.app.withBusiness(s.business, async (tx) => {
+    await grantTo(tx, s.decider, 'write', { kind: 'record', id: ticket }, false, 'run');
+  });
+  const proposal = await propose(s, ticket, { maximumMinor: 2_000, purpose: freshPurpose() });
+  const decision = await approve(proposal);
+  const picked = await pickup(s, decision['reservationId']);
+  return { taskId: ticket, proposal, decision, picked };
+};
+
+const linkOf = async (id: string): Promise<string | null> =>
+  (
+    await s.db.admin.execute<{ client: string | null }>(
+      'select uuid_7::text as client from public.records where id = $1',
+      [id],
+    )
+  )[0]?.client ?? null;
+
+/** Refused as its step before any route, and the provider asked nothing. */
+async function expectNoCall(work: Work): Promise<void> {
+  const seen = world.provider.seen.length;
+  const answer = await call(work, {}, withRoutes([CLOUD]));
+  expect(answer).toMatchObject({ ok: false, code: 'CLIENT_MODEL_USE_OFF' });
+  expect(await rowsOf(answer.ok ? null : (answer.callId ?? null))).toMatchObject([
+    { state: 'refused', refusal_code: 'CLIENT_MODEL_USE_OFF', route_key: null },
+  ]);
+  expect(world.provider.seen.length).toBe(seen);
+}
+
+it('WF-7 egress off makes no call: a research ticket on a map scoped to a client after charting', async () => {
+  const { map, ticket } = await chartMap('wf7 scoped after');
+  const client = randomUUID();
+  await scope(map, client);
+  expect(await linkOf(ticket)).toBe(client);
+  await expectNoCall(await runOn(ticket));
+}, 180_000);
+
+it('WF-7 egress off makes no call: a research ticket filed under a map already scoped to a client', async () => {
+  const { map } = await chartMap('wf7 scoped before');
+  const client = randomUUID();
+  await scope(map, client);
+  const ticket = await researchTicket(map, 'wf7 filed after the scope');
+  expect(await linkOf(ticket)).toBe(client);
+  await expectNoCall(await runOn(ticket));
+}, 180_000);
+
+it('WF-7 egress off makes no call: a map whose client is cleared lets its research ticket call', async () => {
+  const { map, ticket } = await chartMap('wf7 scope cleared');
+  await scope(map, randomUUID());
+  await scope(map, null);
+  expect(await linkOf(ticket)).toBeNull();
+  const answer = await call(await runOn(ticket), {}, withRoutes([CLOUD]));
+  expect(answer).toMatchObject({ ok: true });
+}, 180_000);
+
+it('WF-7 egress: a research ticket moved under a client map, or cleared by set_party, makes no call', async () => {
+  const { map } = await chartMap('sol wf7 client map');
+  await scope(map, randomUUID());
+  // (a) reparented in from a map no client is on: its own client link stays empty.
+  const { ticket: moved } = await chartMap('sol wf7 loose map');
+  appliedDetail(
+    await asPerson(s, {
+      command: 'task.reparent',
+      operationId: randomUUID(),
+      recordId: moved,
+      expectedRevision: await revisionOf(s, moved),
+      parentId: map,
+    }),
+    'task.reparent',
+  );
+  expect(await linkOf(moved)).toBeNull();
+  await expectNoCall(await runOn(moved));
+  // (b) a ticket of a client map, its own client link cleared by set_party.
+  const { map: second, ticket: cleared } = await chartMap('sol wf7 second');
+  await scope(second, randomUUID());
+  await s.db.app.withBusiness(s.business, async (tx) => {
+    await grantTo(tx, s.decider, 'share', { kind: 'record', id: cleared });
+  });
+  appliedDetail(
+    await asPerson(s, {
+      command: 'task.set_party',
+      operationId: randomUUID(),
+      recordId: cleared,
+      expectedRevision: await revisionOf(s, cleared),
+      fields: { client: null },
+    }),
+    'task.set_party',
+  );
+  expect(await linkOf(cleared)).toBeNull();
+  await expectNoCall(await runOn(cleared));
+}, 180_000);

@@ -1,0 +1,39 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// WF-7 (#640): research runs on research tickets. Tests first, held: every
+// named test of the ticket is here as a todo because what a run is built on
+// is not on this branch yet. The file is listed as deliberately unnamed in
+// the database manifest; at the rebase each todo becomes its test, red
+// before the build.
+// - `run started (research)` under `run:write` is no longer held: MP-6-2's
+//   key and pickup ceiling came with the SL12 stack, and it is
+//   `wf-7-run.test.ts` (the refusal by grant and by delegation).
+// - Reserve before a priced call, the ceiling, the broker's catalogued
+//   operations and model.call: SL11 U100 AW-01; the top-up shape AW-05.
+// - Model egress for the map's client is no longer held: C60 came with the
+//   SL11 stack, and it is `wf-7-egress.test.ts`.
+// - Twice failed and the waiting item under the lease are `wf-7-inbox.test.ts`;
+//   canary, hostile provider and holds no credential are `wf-7-research.test.ts`.
+// - The ceiling approval's recent sign-in: C59's step-up (S0-5's sweep).
+// - The run's lease and checks (SL12 U31, MP-6-1) came with the SL12 stack;
+//   the lines that ride on the run are still to build on it.
+// - `ticket resolved (answer, gist)` inside the delegation and
+//   `WF-7 refusal task:write` are `wf-7-resolve.test.ts`; `WF-7 isolation`
+//   is `wf-7-isolation.test.ts`; `WF-7 CLI parity` is `wf-7-cli.test.ts`.
+// - The skill pinned by digest is no longer held: a person's research run
+//   start pins it, and it is `wf-7-pin.test.ts`.
+// - `WF-7 audit readback` is `wf-7-audit.test.ts` for what is built (run
+//   started, ticket resolved, the failures); `ceiling approved (map,
+//   research)` is read back with the ceiling, beside its refusal below.
+
+import { describe, it } from 'vitest';
+
+describe('WF-7 held (to build on the run; LEANS-ON the research ceiling, SL04 U99, C59)', () => {
+  it.todo('WF-7 recent sign-in');
+  it.todo('WF-7 refusal billing:decide');
+  it.todo('WF-7 reserve before a priced call');
+  it.todo('WF-7 no ceiling stops and asks');
+  it.todo(
+    'WF-7 owner check: Run on a research ticket with a small approved ceiling claims it, posts a cited answer and closes it; with no ceiling it stops and asks',
+  );
+});

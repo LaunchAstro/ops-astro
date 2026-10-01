@@ -34,12 +34,12 @@ import { executeCommand } from '../../packages/core-commands/src/commands/envelo
 import { runtimeKeys, withRuntimeKeys } from '../../packages/core-runtime/src/runtime-config.ts';
 import { createApi } from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
+import { testSignIn } from '../support/sign-in.ts';
 import {
   authorised,
   createBusinessResolver,
   post,
   ISSUER,
-  SECRET,
   tokenFor,
   type Answer,
 } from '../api/fixture.ts';
@@ -76,7 +76,7 @@ function secondOf(c: Controls): Second {
   const database: Database = connect(c.fixture.db.appUrl, { source: 'runtime' });
   const inner: Hono = createApi({
     database,
-    verify: createSupabaseVerifier({ secret: SECRET, issuer: ISSUER }),
+    verify: createSupabaseVerifier(testSignIn(ISSUER)),
     resolveBusiness: createBusinessResolver(c.fixture.db.admin),
     executeCommand,
     executeRead,

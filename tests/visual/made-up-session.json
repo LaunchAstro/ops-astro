@@ -1,0 +1,14 @@
+{
+  "cookies": [],
+  "origins": [
+    {
+      "origin": "http://127.0.0.1:5391",
+      "localStorage": [
+        {
+          "name": "ops-astro.session",
+          "value": "{\"token\":\"made-up\",\"businessKey\":\"alpha\",\"email\":\"a@example.invalid\"}"
+        }
+      ]
+    }
+  ]
+}

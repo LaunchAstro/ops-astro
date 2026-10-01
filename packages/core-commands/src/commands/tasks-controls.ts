@@ -12,7 +12,13 @@
 // Neither writes the task record, which is why neither takes an
 // `expectedRevision`.
 
-import { subjectsOf, isUuid } from '../../../core-records/src/index.ts';
+import {
+  isUuid,
+  raiseDecision,
+  raiseIncident,
+  subjectsOf,
+  withdrawEndedGates,
+} from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import {
   cancelAndClassify,
@@ -25,6 +31,7 @@ import type { CommandContext } from './context.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { EXPIRY_FIX, expiryFrom } from './expiry.ts';
+import { researchRestartRefusal } from './research-run.ts';
 
 const REASON_LIMIT = 500;
 
@@ -164,6 +171,9 @@ export async function cancelOnTask(
     },
   });
   if (!result.ok) return refused(result.refusal);
+  await raiseIncident(tx, result.value);
+  // INB-1: the cancelled lineage's pending gate can no longer be decided.
+  await withdrawEndedGates(tx, found.taskId);
   return applied(found.taskId, null, {
     lineageId: found.lineageId,
     state: 'cancelled',
@@ -223,7 +233,11 @@ export async function restartOnTask(
   // its own locks).
   const lapsed = await decideHeld(tx, context, found.taskId);
   if (lapsed !== null) return lapsed;
+  // WF-7: a restart is a run's start, so on a research ticket it asks what Run asks.
+  const asked = await researchRestartRefusal(tx, found.taskId, result.value.runId, context.session);
+  if (asked !== undefined) return refused(asked);
   await closeOpenEnvelope(tx, found.taskId);
+  await raiseDecision(tx, { taskId: found.taskId, gateId: result.value.gateId });
   return applied(found.taskId, null, {
     lineageId: result.value.lineageId,
     restartsLineageId: result.value.restartsLineageId,

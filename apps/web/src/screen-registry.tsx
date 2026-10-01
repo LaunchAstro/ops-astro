@@ -8,9 +8,12 @@
 // instead of falling through to whichever screen a bare `else` happened to
 // draw.
 
-import type { ReactElement } from 'react';
+import type { ReactElement, ReactNode } from 'react';
+import { Gallery } from '@launchastro/ui';
 import type { AuthenticatedRouteId, ParamsOf, RouteMatch } from './routes.ts';
 import type { OperationsClient } from './operations/client.ts';
+import { MapScreen } from './screens/Map.tsx';
+import { ConversationScreen } from './screens/Conversation.tsx';
 import { Projects } from './screens/Projects.tsx';
 import { SettingsScreen } from './screens/Settings.tsx';
 import { TaskDetailScreen } from './screens/TaskDetail.tsx';
@@ -22,7 +25,7 @@ export interface ScreenContext<Id extends AuthenticatedRouteId = AuthenticatedRo
   /** The route's parameters, decoded. */
   readonly params: ParamsOf<Id>;
   /** Why the board was reached instead of the address that was held. */
-  readonly notice: string | null;
+  readonly notice: ReactNode;
   readonly storage: Storage | null;
 }
 
@@ -39,8 +42,24 @@ export const SCREENS: {
       <Projects client={context.client} grantKey={context.grantKey} />
     </>
   ),
+  'agency:agent-conversation': (context) => (
+    <ConversationScreen
+      client={context.client}
+      grantKey={context.grantKey}
+      conversationId={context.params.conversation}
+    />
+  ),
+  'agency:gallery': () => <Gallery />,
   'agency:settings': (context) => (
     <SettingsScreen client={context.client} grantKey={context.grantKey} storage={context.storage} />
+  ),
+  'agency:map': (context) => (
+    <MapScreen
+      key={`${context.grantKey}\u0000${context.params.key}`}
+      client={context.client}
+      grantKey={context.grantKey}
+      mapKey={context.params.key}
+    />
   ),
   'agency:task-detail': (context) => (
     <TaskDetailScreen

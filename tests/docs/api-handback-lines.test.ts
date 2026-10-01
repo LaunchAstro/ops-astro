@@ -211,7 +211,13 @@ describe('API.md lines derived from the code', () => {
 
 describe('API.md operands and codes derived from the code', () => {
   it('lists each typed identifier in the operand table, and every free operand', () => {
-    const typed = ['task.rank', 'task.propose', 'task.create', 'task.decide'] as const;
+    const typed = [
+      'task.rank',
+      'task.propose',
+      'task.create',
+      'task.decide',
+      'task.accept_plan',
+    ] as const;
     for (const operation of typed) {
       const ids = Object.entries(declarationOf(operation).operands ?? {})
         .filter(([name, operand]) => name !== 'recordId' && operand.startsWith('id'))

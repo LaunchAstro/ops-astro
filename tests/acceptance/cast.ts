@@ -12,7 +12,6 @@
 // passing quietly and taking a proof with it.
 
 import { randomUUID } from 'node:crypto';
-import { sign } from 'hono/jwt';
 import type { FreshDatabase } from '../support/fresh-database.ts';
 import {
   insertActor,
@@ -25,6 +24,7 @@ import { grantTo, WHOLE_BUSINESS } from '../commands/fixture.ts';
 import type { BusinessId, TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 import type { Action } from '../../packages/core-records/src/authority/grants.ts';
 import type { VerifiedSubject } from '../../packages/core-records/src/identity/login-resolution.ts';
+import { signBearer, TEST_ISSUER } from '../support/sign-in.ts';
 
 /**
  * What a seeded person is, and what a seeded agent is.
@@ -53,17 +53,14 @@ export interface AgentIdentity {
   readonly token: string;
 }
 
-/** The deployment secret for this suite. Local, disposable, never a real one. */
-export const ACCEPTANCE_SECRET = 'l5-acceptance-secret-not-any-running-deployment';
-
 /** The issuer the acceptance tokens carry, as GoTrue stamps its own URL. */
-export const ACCEPTANCE_ISSUER = 'http://127.0.0.1:54391';
+export const ACCEPTANCE_ISSUER: string = TEST_ISSUER;
 
 /**
  * The grants the fixture gives each role. They are not a copy of
  * `GRANTS_BY_ROLE` in the seed: the fixture member holds `task:comment` and not
  * `person:read` or `settings:read`, and the fixture admin holds every action on
- * four collections where the seed names ten pairs. `seeded-role-grants.test.ts`
+ * six collections where the seed names twelve pairs. `seeded-role-grants.test.ts`
  * pins that difference and checks the seed's roles against the surface.
  *
  * `noah` is absent on purpose and that absence is the whole of case N2: a
@@ -86,19 +83,26 @@ export const MEMBER_ACTIONS: readonly Action[] = ['read', 'write', 'assign', 'co
  * The collections an administrator holds authority over.
  *
  * `task` is not the whole surface any more. `person.list` asks about `person`,
- * the two settings commands about `settings`, and `preset.plan` about the
- * record family it names — so an administrator granted only on tasks is
- * refused `SCOPE_NOT_GRANTED` on four declarations, and a matrix built on that
- * fixture would have recorded four missing positive controls as product
- * failures. The grant is per collection because the surface says it is.
+ * the two settings commands about `settings`, `preset.plan` about the record
+ * family it names, and AW-05's two answers about `billing` and `gate` — so an
+ * administrator granted only on tasks is refused `SCOPE_NOT_GRANTED` on six
+ * declarations, and a matrix built on that fixture would have recorded six
+ * missing positive controls as product failures. The grant is per collection because the surface says it is.
+ * `conversation` is AW-03's: the seeded admin holds `conversation:write`, so
+ * the fixture's does too (and, being a fixture, every other action on it).
  */
 export const ADMIN_COLLECTIONS: readonly string[] = [
   'task',
   'person',
   'settings',
   'preset',
-  // `budget.top_up` asks `decide` on `billing` (T2e), as the seed's admin holds it.
+  // `budget.top_up` asks `decide` on `billing` (T2e), as the seed's admin holds it;
+  // AW-05's answers ask `decide` on `billing` and `gate`.
   'billing',
+  'conversation',
+  'gate',
+  // `inbox.unattended` asks `operations:read` (INB-1e, C55).
+  'operations',
 ];
 
 export async function tokenFor(
@@ -106,17 +110,13 @@ export async function tokenFor(
   options: { readonly expiresIn?: number } = {},
 ): Promise<string> {
   const now = Math.floor(Date.now() / 1000);
-  return await sign(
-    {
-      sub: subject,
-      aud: 'authenticated',
-      iss: ACCEPTANCE_ISSUER,
-      role: 'authenticated',
-      exp: now + (options.expiresIn ?? 3600),
-    },
-    ACCEPTANCE_SECRET,
-    'HS256',
-  );
+  return await signBearer({
+    sub: subject,
+    aud: 'authenticated',
+    iss: ACCEPTANCE_ISSUER,
+    role: 'authenticated',
+    exp: now + (options.expiresIn ?? 3600),
+  });
 }
 
 export async function enrolCaller(
