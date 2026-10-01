@@ -4,7 +4,9 @@
 // command as a person runs it, a throwaway database reached as staging's pooler
 // (`tests/support/pooler-at-loopback.mjs`) whose two logins carry the pooler's
 // `<login>.<reference>` form, and the provider's admin API as a stand-in on
-// loopback, so nothing hosted is reached.
+// loopback, so nothing hosted is reached. As the hosted provider does, the
+// stand-in keeps each sign-in it makes in `auth.users`, in the same database
+// the reset empties and seeds.
 
 import { spawn } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -58,7 +60,7 @@ function serveAuth(): Promise<void> {
   auth = createServer((request, response) => {
     let text = '';
     request.on('data', (chunk: Buffer) => (text += chunk.toString()));
-    request.on('end', () => {
+    request.on('end', async () => {
       const body = text === '' ? undefined : (JSON.parse(text) as Record<string, unknown>);
       const path = (request.url ?? '').split('?')[0] ?? '';
       const key = request.headers['apikey'] === KEY;
@@ -71,8 +73,12 @@ function serveAuth(): Promise<void> {
       if (request.method === 'POST' && path === '/admin/users') {
         const email = String(body?.['email']);
         if (users.has(email)) return reply(422, { msg: 'already registered' });
-        users.set(email, randomUUID());
-        return reply(200, { id: users.get(email), email });
+        const id = randomUUID();
+        users.set(email, id);
+        await onDatabase((admin) =>
+          admin.execute('insert into auth.users (id, email) values ($1, $2)', [id, email]),
+        );
+        return reply(200, { id, email });
       }
       if (request.method === 'GET' && path === '/admin/users')
         return reply(200, { users: [...users].map(([email, id]) => ({ id, email })) });
@@ -210,6 +216,11 @@ export function stagingResetHooks(): void {
     } finally {
       await server.close();
     }
+    // The provider's sign-in table, there before any reset, as on a hosted project.
+    await onDatabase(async (admin) => {
+      await admin.execute('create schema auth');
+      await admin.execute('create table auth.users (id uuid, email text)');
+    });
     own = databaseUrl(login('own'), OWN_PASSWORD);
     runner = databaseUrl(login('run'), RUN_PASSWORD);
     await plantCanary();
