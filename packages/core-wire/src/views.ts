@@ -635,7 +635,7 @@ export interface OperationsReadResult {
 
 /**
  * One security alert S0-2 raises: its kind, when, and what it concerns, in
- * words. Never the secret or the record content behind it (TR-SEC-9).
+ * words. Never the secret or the record content behind it.
  */
 export interface SecurityAlertView {
   readonly kind: string;

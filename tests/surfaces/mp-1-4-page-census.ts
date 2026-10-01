@@ -19,7 +19,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Page } from 'playwright';
 import { launchChromium } from '../support/chromium.ts';
-import { madeUpSession, screenOf, serveApp } from '../visual/app-pages.ts';
+import { MADE_UP_PARAMS, madeUpSession, screenOf, serveApp } from '../visual/app-pages.ts';
 import { load, openSide, type Side } from '../visual/capture.ts';
 import { scrollMetrics } from '../visual/drift.ts';
 import { WIDTHS } from '../visual/gallery-views.ts';
@@ -162,7 +162,7 @@ async function eachPage(
   const out: PageCensus[] = [];
   for (const id of builtPages()) {
     const side = needsSession(id) ? sides.signedIn : sides.signedOut;
-    const address = addressOf(id, { key: 'T-1' }) ?? '/';
+    const address = addressOf(id, MADE_UP_PARAMS) ?? '/';
     const page = await load(side, at.packet, new URL(address, at.app).href);
     out.push({ name: `${id}@${String(at.width)}-${at.theme}`, ...(await measure(page, given)) });
     await page.close();

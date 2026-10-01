@@ -10,8 +10,7 @@
 // `operation` rather than `generic` because a setting that changes who must
 // agree is an authority change wearing configuration's clothes — so neither is
 // reachable through a generic edit, and each has a named command of its own.
-// This screen posts to those two commands and, for the person's own sessions
-// (C58, `settings/sessions.tsx`), to their own account routes, nowhere else. `budget.top_up`
+// This screen posts to those two commands and nowhere else. `budget.top_up`
 // (T2e) and `budget.write_off` (T3c) read the band; the sign-off setting has no consumer yet, and the
 // copy on the page says so rather than describing a stop that does not happen.
 //
@@ -38,7 +37,6 @@
 import { useState, type ReactElement } from 'react';
 import { Empty } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
-import { OwnSessions } from './settings/sessions.tsx';
 import { CapabilityBanner, ConflictBlock, ReadBanner, ValueLine } from './settings/panels.tsx';
 import { useSettings, type StorageLike, type Which } from './settings/use-settings.ts';
 
@@ -247,8 +245,6 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
           {model.busy === 'sign-off' ? 'Saving…' : 'Save sign-off'}
         </button>
       </section>
-
-      <OwnSessions client={props.client} grantKey={props.grantKey} />
     </div>
   );
 }

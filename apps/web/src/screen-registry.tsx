@@ -18,6 +18,7 @@ import { LegalScreen } from './screens/Legal.tsx';
 import { OperationsScreen } from './screens/Operations.tsx';
 import { Projects } from './screens/Projects.tsx';
 import { SettingsScreen } from './screens/Settings.tsx';
+import { OwnSessions } from './screens/settings/sessions.tsx';
 import { TaskDetailScreen } from './screens/TaskDetail.tsx';
 import { TelemetryScreen } from './screens/Telemetry.tsx';
 
@@ -46,8 +47,17 @@ export const SCREENS: {
     </>
   ),
   'agency:gallery': () => <Gallery />,
+  // Settings ▸ General, then the person's own sessions (C58), which post to
+  // their own account routes rather than to the settings commands.
   'agency:settings': (context) => (
-    <SettingsScreen client={context.client} grantKey={context.grantKey} storage={context.storage} />
+    <>
+      <SettingsScreen
+        client={context.client}
+        grantKey={context.grantKey}
+        storage={context.storage}
+      />
+      <OwnSessions client={context.client} grantKey={context.grantKey} />
+    </>
   ),
   'agency:access': (context) => (
     <AccessScreen client={context.client} grantKey={context.grantKey} />

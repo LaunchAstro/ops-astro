@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Settings ▸ General's "Your sessions" (C58, TR-SEC-3): a person sees their own
+// Settings ▸ General's "Your sessions" (C58): a person sees their own
 // live sessions and can end every one but this.
 //
 // Both calls are the person's own account routes with an empty body
