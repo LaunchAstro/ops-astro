@@ -13,12 +13,10 @@
 import { useState, type FormEvent, type ReactElement } from 'react';
 import { Banner, Button } from '@launchastro/ui';
 import { pathTo } from '../routes.ts';
-import { askReset } from '../session/recovery.ts';
+import { askReset, type Route } from '../session/recovery.ts';
 
 /** What the page needs of the application: where the API is, and where to go next. */
-interface ForgotApp {
-  readonly apiOrigin: string;
-  readonly fetch: typeof globalThis.fetch;
+interface ForgotApp extends Route {
   readonly navigate: (path: string) => void;
 }
 

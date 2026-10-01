@@ -15,7 +15,8 @@
 // the address; `set`, the new password with the recovery session's bearer.
 const PASSWORD_API = '/api/password/';
 
-interface Route {
+/** Where the API is, and the fetch to reach it and the provider with. */
+export interface Route {
   readonly apiOrigin: string;
   readonly fetch: typeof globalThis.fetch;
 }

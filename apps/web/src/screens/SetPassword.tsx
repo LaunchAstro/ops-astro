@@ -21,13 +21,11 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactElement } from 'react';
 import { Banner, Button, FieldError } from '@launchastro/ui';
 import { pathTo } from '../routes.ts';
-import { recoveryTokenOf, setPassword, verifyRecovery } from '../session/recovery.ts';
+import { recoveryTokenOf, setPassword, verifyRecovery, type Route } from '../session/recovery.ts';
 
 /** What the page needs of the application: the provider and the API, and where to go next. */
-interface SetApp {
+interface SetApp extends Route {
   readonly gotrueUrl: string;
-  readonly apiOrigin: string;
-  readonly fetch: typeof globalThis.fetch;
   readonly navigate: (path: string, options?: { readonly replace?: boolean }) => void;
 }
 
