@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C4, migration 0059 on the stacked chain. The live change record was written
+// C4, migration 0064 on the stacked chain. The live change record was written
 // as 0036, straight after T2f's 0035, then renumbered 0042 after main's 0036 to
-// 0041, 0057 after the stacked 0042 to 0056 (ORCH37 8e), and 0059 after batch
-// 1's 0042 to 0048 and SL09's 0049 to 0058 (SL09 NOTE 30 Sep 21:12Z); it runs
-// after them all. On a database seeded at 0058 and then
-// upgraded, and on a fresh one: the seeded rows are unchanged and nothing is
+// 0041, 0057 after the stacked 0042 to 0056 (ORCH37 8e), 0059 after batch 1's
+// 0042 to 0048 and SL09's 0049 to 0058 (SL09 NOTE 30 Sep 21:12Z), and 0064
+// after batch 2a's SL09 0049 to 0063; it runs after them all. On a database
+// seeded at 0058 and then upgraded, and on a fresh one: the seeded rows are unchanged and nothing is
 // stamped by the upgrade itself, the two live functions are the ones a fresh
 // chain has, and on the upgraded database a write to a task still reaches
 // T2f's topic on the channel and stamps the change record once.
@@ -78,7 +78,7 @@ async function writeReachesTopic(db: EmptyDatabase, seed: RuntimeFixture): Promi
   }
 }
 
-describe.skipIf(serverUrl === undefined)('0059 the live change record on the stacked chain', () => {
+describe.skipIf(serverUrl === undefined)('0064 the live change record on the stacked chain', () => {
   let fresh: EmptyDatabase;
   let upgraded: EmptyDatabase;
   let seed: RuntimeFixture;
