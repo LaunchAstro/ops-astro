@@ -145,11 +145,20 @@ it('AW-07b channel settings: a preference silences email and never removes the i
   expect(await seenCount([off, decision])).toBe(0);
 });
 
-it('AW-07b recovery: a provider refusal is recorded and the item stands; accepted is not delivered or seen', async () => {
+it('AW-07b recovery: a refusal is recorded and the item stands; only a refusal that proves nothing went is followed by another email', async () => {
   await freshInbox();
   const item = await itemFor(w.task, 'mention');
-  w.provider.mode('refuse');
-  expect(await batch()).toMatchObject({ ok: false, code: 'EMAIL_FAILED' });
+  // Custody refuses before the provider (no credential on the route): nothing went.
+  const route = w.broker.routes[0];
+  if (route === undefined) throw new Error('the email world has no route');
+  const unrouted = {
+    ...timing(),
+    broker: { ...w.broker, routes: [{ ...route, credentialRef: 'none' }] },
+  };
+  expect(await emailDailyBatch(w.db.app, w.alpha, w.person, unrouted)).toMatchObject({
+    ok: false,
+    code: 'EMAIL_FAILED',
+  });
   const refused = await attemptsOf(item);
   expect(refused.map((row) => row.state)).toEqual(['asked', 'failed']);
   const [row] = await w.db.admin.execute<{ work_state: string }>(
@@ -158,10 +167,20 @@ it('AW-07b recovery: a provider refusal is recorded and the item stands; accepte
   );
   expect(row?.work_state).toBe('open');
   // A refusal that proves nothing went does not spend the day: the next batch sends.
-  w.provider.mode('accept');
   expect(await batch()).toMatchObject({ ok: true, items: 1 });
   const states = (await attemptsOf(item)).map((attempt) => attempt.state);
   expect(states).toEqual(['asked', 'failed', 'asked', 'accepted']);
   expect(states).not.toContain('delivered');
   expect(await seenCount([item])).toBe(0);
+  // The provider's own refusal may have sent: the item stands, and no second email follows.
+  await aged('25 hours');
+  const later = await itemFor(w.task, 'assignment');
+  w.provider.mode('refuse');
+  expect(await batch()).toMatchObject({ ok: false, code: 'EMAIL_FAILED' });
+  w.provider.mode('accept');
+  await aged('25 hours');
+  const sent = w.provider.outbox.length;
+  expect(await batch()).toEqual({ ok: false, code: 'NOTHING_WAITING' });
+  expect(w.provider.outbox.length).toBe(sent);
+  expect((await attemptsOf(later)).map((attempt) => attempt.state)).toEqual(['asked', 'failed']);
 });
