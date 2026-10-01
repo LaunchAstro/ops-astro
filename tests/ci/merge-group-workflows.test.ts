@@ -5,7 +5,7 @@
 // tests/ci/merge-group.test.ts.
 
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { cleanup, ENV, group, read, repo, ROOT, type Repo } from './merge-group-repo.ts';
@@ -95,7 +95,7 @@ describe('merge group: every required check runs on a group, and none passes it 
     for (const name of actions) {
       const block = all.find((b) => /^ {4}name: (.+)$/mu.exec(b)?.[1] === name) ?? '';
       expect(block, name).not.toBe('');
-      const cond = /^ {4}if: (.+)$/mu.exec(block)?.[1];
+      const cond = /^ {4}["']?if["']?: (.+)$/mu.exec(block)?.[1];
       // A push to main has no pull request; anything narrower could skip a group.
       const runs = [undefined, 'always()', "github.event_name != 'push'"].includes(cond);
       expect(runs, `${name}: if: ${cond}`).toBe(true);
@@ -115,27 +115,82 @@ describe('merge group: every required check runs on a group, and none passes it 
   });
 });
 
+/** A step's key, as its first line or under it, quoted or not. */
+const KEY = (key: string) => new RegExp(`^ {6}(?:- | {2})["']?${key}["']?: (.+)$`, 'mu');
+
 describe('merge group: no step skips a group', () => {
-  // review1 B1: a step-level condition could pass a group green without judging it. Every step of
-  // every job in both workflows (the shards behind `database conformance` included) runs on a
-  // group, apart from the one step that reads main from its root on a push.
+  // review1 B1, review2 B2: a step-level condition, wherever it sits in the step and however its
+  // key is quoted, could pass a group green without judging it, and so could `continue-on-error`.
+  // Every step of every job in both workflows (the shards behind `database conformance` included)
+  // runs on a group, apart from the one step that reads main from its root on a push.
   it('no step in either workflow is skipped on a group', () => {
     const ONLY_ON_PUSH = 'Public content and metadata from the root';
     for (const path of [CI, REVIEW])
       for (const s of top(read(path), 'jobs')
         .split(/^(?= {6}- )/mu)
         .slice(1)) {
-        const name = /^ {6}- (?:name|uses|run): (.+)$/mu.exec(s)?.[1] ?? s.slice(0, 80);
-        const cond = /^ {8}if: (.+)$/mu.exec(s)?.[1];
+        const name = KEY('(?:name|uses|run)').exec(s)?.[1] ?? s.slice(0, 80);
+        const cond = KEY('if').exec(s)?.[1];
         const allowed =
           name === ONLY_ON_PUSH
             ? cond === "github.event_name == 'push'"
             : cond === undefined || cond === "github.event_name != 'push'";
         expect(allowed, `${path}: ${name}: if: ${cond}`).toBe(true);
       }
-    const evidence = top(read(REVIEW), 'jobs');
-    expect(evidence.match(/^ {8}if:/mu)).toBeNull();
+    expect(KEY('if').exec(top(read(REVIEW), 'jobs'))).toBeNull();
   });
+
+  it('no job or step in either workflow lets a failure through', () => {
+    for (const path of [CI, REVIEW])
+      expect(top(read(path), 'jobs'), path).not.toMatch(/continue-on-error/u);
+  });
+});
+
+/** A ci.yml step's one-line command, run on a group of #11 and #12 where #12 adds `file`. */
+function sweep(name: string, file: string, text: string) {
+  const r = repo();
+  // Copied, not linked: both scanners read the repository they sit in.
+  cpSync(join(ROOT, 'scripts'), join(r.dir, 'scripts'), { recursive: true });
+  r.git('checkout', '-q', 'pr12');
+  writeFileSync(join(r.dir, file), text);
+  r.git('add', file);
+  r.git('commit', '-q', '-m', 'feat: b, planted');
+  r.git('checkout', '-q', '-B', 'queue', r.main);
+  r.merge('pr11', 'Merge pull request #11 from LaunchAstro/pr11');
+  const head = r.merge('pr12', 'Merge pull request #12 from LaunchAstro/pr12');
+  const run = /^ {8}run: (.+)$/mu.exec(step(read(CI), name))?.[1] ?? '';
+  return spawnSync('bash', ['-euo', 'pipefail', '-c', run], {
+    cwd: r.dir,
+    env: {
+      ...ENV,
+      GITHUB_EVENT_NAME: 'merge_group',
+      GITHUB_EVENT_PATH: group(r.dir, head, `12-${r.main}`),
+    },
+    encoding: 'utf8',
+  });
+}
+
+// review2 M5: the two range scans are run, not only read, so an early exit on a group shows.
+describe('merge group: the range scans judge every pull request in the group', () => {
+  for (const [name, file, bad] of [
+    ['Sweep every blob in the incoming commits', 'leak.pem', 'planted\n'],
+    [
+      'Public content and metadata in every incoming commit',
+      'notes.md',
+      `see ${['', 'Users', 'someone', 'x'].join('/')}\n`,
+    ],
+  ] as const) {
+    it(`${name}: passes a clean group`, () => {
+      const out = sweep(name, 'fine.md', 'nothing here\n');
+      expect(`${out.status} ${out.stdout} ${out.stderr}`).toMatch(/^0 /u);
+    });
+
+    it(`${name}: fails a group when one pull request's range holds what it refuses, naming it`, () => {
+      const out = sweep(name, file, bad);
+      expect(out.status).toBe(1);
+      expect(out.stderr).toMatch(/failed for #12\./u);
+    });
+  }
 });
 
 // ORCH55-CQL: CodeQL's default setup never runs on a group, so advanced setup takes its place.
