@@ -65,7 +65,7 @@ const Panel = (props: { readonly client: OperationsClient; readonly changes: num
   />
 );
 
-describe('review/305-pf-keep round 2: the panel rename under a re-read', () => {
+describe('the panel rename under a re-read', () => {
   it('a rename opened before a colleague renamed the task is sent at the revision it opened at', async () => {
     const { client, updates } = serving();
     const view = await mount(<Panel client={client} changes={0} />);

@@ -161,7 +161,7 @@ const open = async (answers: Server): Promise<Mounted> => {
   return board;
 };
 
-describe('review/305-pf-keep round 2: the board rename under a re-read', () => {
+describe('the board rename under a re-read', () => {
   it('a rename opened before a colleague changed the task is sent at the revision it opened at', async () => {
     const answers = server();
     mounted = await open(answers);
