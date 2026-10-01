@@ -243,7 +243,13 @@ async function settle(
 
   const settled = result.value;
   // INB-1: the launcher is told, and a successor's gate is a decision to raise.
-  const taskId = await raiseRunSettled(tx, { leaseId: settled.leaseId, outcome });
+  // A step that went out unobserved is an unknown liability whatever the holder
+  // reported, and that waits on the launcher (#287 A2); a drop still raises nothing.
+  const unknown = settled.classification?.state === 'liability_unknown' && outcome !== 'dropped';
+  const taskId = await raiseRunSettled(tx, {
+    leaseId: settled.leaseId,
+    outcome: unknown ? 'liability_unknown' : outcome,
+  });
   await raiseIncident(tx, [
     { reservationId: settled.reservationId, state: settled.reservationState },
   ]);

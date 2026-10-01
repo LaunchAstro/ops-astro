@@ -75,6 +75,7 @@ it('G4: the function entry reads no setting that could hold a worker identity', 
     SERVED_HOST: 'ops.example.test',
     OPS_ENVIRONMENT: 'staging',
     ALERT_SCOPE_KEY: 'ab'.repeat(32),
+    RECOVERY_BUSINESS_KEYS: 'none',
   };
   const settings = new Proxy(given, {
     get: (target, name) => {
