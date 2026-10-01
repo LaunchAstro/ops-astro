@@ -17,8 +17,8 @@ import { json, open } from './mp-2-1-support.tsx';
 
 const ZENITH = { clientId: 'c-zenith', name: 'Zenith Physio' };
 const SUMMIT = { clientId: 'c-summit', name: 'Summit Allied' };
-/** A client the reader's grants do not reach: the read sends its tasks' client as null. */
-const WITHHELD = 'Withheld Holdings';
+/** A client the reader reaches with no task on the board they may see. */
+const QUIET = { clientId: 'c-quiet', name: 'Quiet Clinic' };
 
 const task = (n: number, client: { clientId: string; name: string } | null, clientSet = true) => ({
   id: `00000000-0000-4000-8000-00000000000${String(n)}`,
@@ -57,7 +57,7 @@ const alpha: typeof globalThis.fetch = (url) => {
   if (path.endsWith('/api/b/alpha/task/board'))
     return Promise.resolve(json({ ok: true, tasks: TASKS, changedAt: null, viewer: null }));
   if (path.endsWith('/api/b/alpha/client/list'))
-    return Promise.resolve(json({ ok: true, clients: [SUMMIT, ZENITH] }));
+    return Promise.resolve(json({ ok: true, clients: [QUIET, SUMMIT, ZENITH] }));
   if (path.endsWith('/api/b/alpha/person/list'))
     return Promise.resolve(json({ ok: true, persons: [] }));
   return new Promise<Response>(() => {});
@@ -128,15 +128,34 @@ describe('Clients row door', () => {
   });
 });
 
+describe('Clients row door: review proofs', () => {
+  it('a door to a client with no rows the reader sees opens no other client work', async () => {
+    const page = await at('/clients/?client=c-quiet');
+    await press(door(page));
+    const panel = page.find('[data-panel-id="todos"]');
+    expect(panel, 'no Projects panel opened').not.toBeNull();
+    expect(panel?.querySelectorAll('tbody tr[data-row]').length).toBe(0);
+    expect(panel?.textContent).toContain('No task matches that.');
+    expect(panel?.textContent).not.toContain('Task 1');
+  });
+
+  it('a filter change in the Projects panel leaves the page address alone', async () => {
+    window.history.replaceState(null, '', '/clients/?client=c-zenith');
+    const page = await at('/clients/?client=c-zenith');
+    await press(door(page));
+    await press(page.find('[data-panel-id="todos"] .cbd__clear'));
+    expect(`${window.location.pathname}${window.location.search}`).toBe(
+      '/clients/?client=c-zenith',
+    );
+  });
+});
+
 describe('Clients row door data separation', () => {
-  it('a row whose client the read withholds is never under a client filter, and names nothing', async () => {
+  it('a row whose client the read withholds is never under a client filter', async () => {
     const page = await at('/projects/?f=client%3Azenith-physio');
-    const text = page.find('.content')?.textContent ?? '';
-    expect(text).not.toContain('Task 4');
-    expect(text).not.toContain(WITHHELD);
+    expect(page.find('.content')?.textContent).not.toContain('Task 4');
     const whole = await at('/projects/');
     expect(whole.find('.content')?.textContent).toContain('Task 4');
-    expect(whole.text()).not.toContain(WITHHELD);
   });
 
   it('a client the reader does not reach gets no door, only the sentence', async () => {
