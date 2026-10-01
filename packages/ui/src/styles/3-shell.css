@@ -25,9 +25,12 @@
   min-height: 100vh;
 }
 /* The third track is the dock, and the shell is the only thing that writes
-   --dock-w, so there is no second opinion about how wide the edge is. */
+   --dock-w, so there is no second opinion about how wide the edge is. At rest
+   the track is empty: the dock's rail floats over the page's right gutter, as
+   the mockup's does, and the content runs to the window's edge. */
 @media not all and (max-width: 900px) {
   .shell[data-face='agency'] {
+    --dock-w: 0px;
     grid-template-columns: var(--rail-w) minmax(0, 1fr) var(--dock-w);
   }
 }
@@ -657,6 +660,13 @@
   flex: 1;
   padding: var(--s-6);
 }
+/* Above 900 the agency face's right gutter clears the dock's rail, which
+   floats over it: 16px past the rail's 40 (the mockup's calc). */
+@media not all and (max-width: 900px) {
+  .shell[data-face='agency'] :is(.topbar, .content) {
+    padding-right: calc(var(--s-4) + 40px);
+  }
+}
 @media (width <= 900px) {
   .topbar {
     justify-content: flex-start;
@@ -684,6 +694,25 @@
   padding: var(--s-3) 0;
   border-left: 1px solid var(--border);
   background: var(--rail-bg);
+}
+/* At rest above 900 the rail is a rectangle floating at the window's right
+   edge, halfway down, with its own edge and lift (DS-SIDE-1). The dock
+   itself, its panels and its seat, are slice SL06's. */
+@media not all and (max-width: 900px) {
+  .dock__rail {
+    position: fixed;
+    top: 50%;
+    right: 0;
+    z-index: 50;
+    padding: var(--s-2) 0;
+    border: 1px solid var(--border);
+    border-right: 0;
+    box-shadow: var(--shadow-sm);
+    transform: translateY(-50%);
+  }
+  .dock__rail:empty {
+    display: none;
+  }
 }
 .dock__tab {
   position: relative;
