@@ -226,8 +226,15 @@
             "      const [taskId] = await asks.atDoor([context.req.param('recordId')]);",
             "      if (taskId === undefined) throw new Error('the door answered no topic');",
             "      if (typeof taskId !== 'string') return refuse(context, taskId);",
+            "      // Batch 1's dedicated task stream: its frames carry no identifier (REVB1ENDFIXAPID).",
             "      return streamSSE(context, async (stream) => {",
-            "        await follow(stream, live, [{ label: taskId, taskId }], asks);",
+            "        await follow(",
+            "          stream,",
+            "          live,",
+            "          admitted.businessId,",
+            "          taskId,",
+            "          async () => await asks.again(taskId),",
+            "        );",
             "      });",
             "    });"
           ]
