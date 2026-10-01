@@ -60,6 +60,21 @@ const ROW_TITLE_RULED = [
   { at: 'font-weight@dark', want: '400', why: 'DS-COMP-13' },
 ];
 
+// DS-TOK-119 `--type-card-title` is Sans 15/1.1 600 (TOKENS.md); the
+// Portfolio card's title sets its own 1.2.
+const TITLE_RULED = [
+  { at: 'line-height@light', want: '16.5px', why: 'DS-TOK-119' },
+  { at: 'line-height@dark', want: '16.5px', why: 'DS-TOK-119' },
+];
+
+// The stand-in's chip is a neutral count; here the chip is a state, so it
+// takes DS-PRIM-11's tone: the first made-up row is a set key and an approved
+// activation, `is-ok`, ink `--success`.
+const CHIP_RULED = [
+  { at: 'color@light', want: 'rgba(16,185,129,255)', why: 'DS-PRIM-11 is-ok' },
+  { at: 'color@dark', want: 'rgba(52,211,153,255)', why: 'DS-PRIM-11 is-ok' },
+];
+
 function panel(name: 'keys' | 'triggers'): LookProbe[] {
   const at = `[data-settings="${name}"]`;
   const probe = (
@@ -78,12 +93,12 @@ function panel(name: 'keys' | 'triggers'): LookProbe[] {
   });
   return [
     probe('card', CARD, '', CARD_PROPS),
-    probe('title', `${CARD} .card__title`, ' .card__title', TITLE_PROPS),
+    probe('title', `${CARD} .card__title`, ' .card__title', TITLE_PROPS, TITLE_RULED),
     probe('sub', `${CARD} .card__sub`, ' .card__sub', SUB_PROPS),
     probe('row', '#alerts a.trow', ' .lrow', ROW_PROPS),
     probe('row-title', '#alerts .trow__t', ' .lrow__title', ROW_TITLE_PROPS, ROW_TITLE_RULED),
     probe('row-meta', '#alerts .trow .muted.t-sm', ' .lrow__meta', META_PROPS),
-    probe('chip', '#alertCount', ' .lrow .chip', CHIP_PROPS),
+    probe('chip', '#alertCount', ' .lrow .chip', CHIP_PROPS, CHIP_RULED),
     probe('button', '#portfolioPeriod', ' .lrow .btn', BUTTON_PROPS),
   ];
 }

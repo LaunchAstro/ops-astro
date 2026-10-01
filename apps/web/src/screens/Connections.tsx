@@ -65,19 +65,21 @@ function Banner(props: {
   const count = props.broken.length;
   return (
     <div className="banner banner--bad" role="alert" data-fleet-banner>
-      <p>
-        <strong>
-          {count === 1 ? '1 source is' : `${count} sources are`} broken and accruing a data gap.
-        </strong>
-      </p>
-      <ul>
-        {props.broken.map((row) => (
-          <li key={row.id}>
-            {row.label}: {FAILURE_WORDS[row.failureClass ?? ''] ?? 'it has stopped'}.
-          </li>
-        ))}
-      </ul>
-      <p>Reports generated now will understate the affected clients.</p>
+      <div className="banner__body">
+        <p>
+          <strong>
+            {count === 1 ? '1 source is' : `${count} sources are`} broken and accruing a data gap.
+          </strong>
+        </p>
+        <ul>
+          {props.broken.map((row) => (
+            <li key={row.id}>
+              {row.label}: {FAILURE_WORDS[row.failureClass ?? ''] ?? 'it has stopped'}.
+            </li>
+          ))}
+        </ul>
+        <p>Reports generated now will understate the affected clients.</p>
+      </div>
       <button type="button" className="btn btn--sm btn--primary" data-fleet-fix onClick={props.fix}>
         Fix now
       </button>

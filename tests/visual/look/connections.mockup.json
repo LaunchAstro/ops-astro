@@ -178,6 +178,18 @@
         "padding-left": "16px"
       }
     },
+    "connections.fleet-fix": {
+      "390-light": {
+        "box.x": "292",
+        "box.width": "65",
+        "box.height": "27"
+      },
+      "390-dark": {
+        "box.x": "292",
+        "box.width": "65",
+        "box.height": "27"
+      }
+    },
     "connections.fleet-tiles": {
       "1480-light": {
         "display": "grid",

@@ -54,6 +54,16 @@ export const CONNECTIONS: LookScreen = {
       'padding-top',
       'padding-left',
     ]),
+    // MP-14-7a at 390: the banner's action stays inside the page (one body
+    // that grows, then the button, as the mockup draws it); a banner whose
+    // parts sit side by side pushes the button out and the page scrolls.
+    probe(
+      'fleet-fix',
+      '#fleetBanner .banner--bad > .btn',
+      '[data-fleet-banner] [data-fleet-fix]',
+      ['box.x', 'box.width', 'box.height'],
+      { widths: [390] },
+    ),
     probe('fleet-tiles', '#fleet.statrow', '[data-section="001"] .statrow', [
       'display',
       'border-bottom-style',
