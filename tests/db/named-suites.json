@@ -181,7 +181,9 @@
     "SL09-2a-f3 adds c58-end-access-credentials (access.end revoking every live agent credential the ended person issued, each agent actor deactivated with it, in the same act; another person's credential in the same business and the same provider user's credential in bravo left live), named as an isolation suite too.",
     "FIX-2B1 (REVIEW-MAIN-2B1 ids 4, 5, P2-F2; REVIEW-MAIN-2A P2-1) names review-main-2b1-4-double-refusal (an aal1 refusal with a factor held is one attempt row), review-main-2b1-5-rollup-race (a grant moved during compute is not cached under the old fingerprint), fix-main-2b1-availability-attempt (availability.set records one attempt per call) and c59-second-factor-attempts, which now reaches a database through REVIEW-MAIN-2A's proof case.",
     "FIX-2B1 (review RS, B2) names fix-2b1-rs-rollup-issued-and-revoked (a grant issued and revoked while a rollup is worked out leaves no wider answer held).",
-    "FIX-2B1 RS2 names fix-2b1-rs2-left-at-door-real-routes (a tab that leaves while each real live route awaits its door ends its stream: T2f, C4 topics and the board, through composeApi)."
+    "FIX-2B1 RS2 names fix-2b1-rs2-left-at-door-real-routes (a tab that leaves while each real live route awaits its door ends its stream: T2f, C4 topics and the board, through composeApi).",
+    "FIX-B1 (review round 1, rs-6) adds inbox-unattended-escalated (an escalated gate's recipient who keeps decide across the business is a path to the decision, so the item is not listed unattended) and names review-p03-unattended-escalated-decider (REVIEW-MAIN-B1 p03-1's proof: the recipient keeps task-scope decide only, and the item is listed), both invariants.",
+    "FIX-B1 (REVIEW-MAIN-B1 p02-1) adds forwarder-export-ageout-false-signals-dropped-review (an export signal under its threshold ages out of the forwarder's table without a false signals-dropped alert: the sweep window outlasts every rule's)."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -365,6 +367,7 @@
     "tests/db/business-lookup.test.ts",
     "tests/db/api-events.test.ts",
     "tests/db/api-events-forwarder.test.ts",
+    "tests/db/forwarder-export-ageout-false-signals-dropped-review.test.ts",
     "tests/db/backup-identity.test.ts",
     "tests/db/backup-identity-grants.test.ts",
     "tests/db/backup-store.test.ts",
@@ -517,7 +520,9 @@
     "tests/commands/inbox-unattended.test.ts",
     "tests/commands/inbox-escalation-settings.test.ts",
     "tests/ci/staging-no-production-data.test.ts",
-    "tests/ci/staging-no-production-data-guard.test.ts"
+    "tests/ci/staging-no-production-data-guard.test.ts",
+    "tests/commands/review-p03-unattended-escalated-decider.test.ts",
+    "tests/commands/inbox-unattended-escalated.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

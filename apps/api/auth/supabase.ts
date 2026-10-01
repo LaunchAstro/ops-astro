@@ -21,7 +21,9 @@
 // signature verifies against a published key and whose `exp` has passed, or whose
 // session is past its 12-hour absolute limit (C58, `pastAbsoluteLimit`): it
 // returns `'expired'`, which the boundary answers `AUTH_SESSION_EXPIRED` (see
-// `Verified` and `jwks.ts`).
+// `Verified` and `jwks.ts`). A token checked while the provider's key set
+// cannot be reached is neither: it returns `'unavailable'`, which the boundary
+// answers as an outage, not a refusal.
 //
 // **It verifies; it does not decode.** `jwks.ts` checks the ES256 signature,
 // `exp`, audience and issuer against the provider's published keys. There is no
@@ -57,9 +59,12 @@ export interface SupabaseVerifierOptions {
 
 /**
  * What the boundary learns about a caller: a verified subject, the one word
- * `'expired'`, `'absent'` when the request carries no credential at all, or
- * nothing. `'absent'` is answered as nothing is; it only keeps a request that
- * tried no sign-in out of the failed sign-in count (security line 9).
+ * `'expired'`, `'absent'` when the request carries no credential at all,
+ * `'unavailable'` when the provider's key set could not be reached to check
+ * one, or nothing. `'absent'` is answered as nothing is; it only keeps a
+ * request that tried no sign-in out of the failed sign-in count (security
+ * line 9). `'unavailable'` says nothing about the credential, so it is never
+ * answered as a refusal of it (B7).
  *
  * **Why `expired` is told apart and the rest are not.** API.md's rule stands
  * for every other failure: a missing, forged, unsigned or subject-less token
@@ -72,7 +77,7 @@ export interface SupabaseVerifierOptions {
  * `AUTH_SESSION_EXPIRED` is the re-login path and the browser already draws it
  * as one.
  */
-export type Verified = VerifiedSubject | 'expired' | 'absent';
+export type Verified = VerifiedSubject | 'expired' | 'absent' | 'unavailable';
 
 export type Verifier = (request: Context['req']) => Promise<Verified | undefined>;
 
@@ -98,12 +103,18 @@ export function keySetUrlFor(named: string, issuer: string): string | undefined 
 
 export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifier {
   const now = options.now ?? (() => Math.floor(Date.now() / 1000));
+  // Whether the latest key set fetch failed to reach the provider, rather than
+  // bringing back a set this refused for what it held.
+  let unreached = false;
   const verifyToken = createKeySetVerifier({
     keySetUrl: options.keySetUrl,
     issuer: options.issuer,
     audience: SUPABASE_AUDIENCE,
     ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
-    ...(options.onRefusal === undefined ? {} : { onRefusal: options.onRefusal }),
+    onRefusal: (refusal) => {
+      unreached = UNREACHED.has(refusal.reason);
+      options.onRefusal?.(refusal);
+    },
   });
 
   return async function verifySupabaseToken(
@@ -118,7 +129,9 @@ export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifi
     // a signature that verified can be reported as expired (`jwks.ts`).
     const verdict = await verifyToken(token);
     if (verdict.outcome === 'expired') return 'expired';
-    if (verdict.outcome === 'refused') return undefined;
+    if (verdict.outcome === 'refused') {
+      return verdict.reason === 'key_set_unavailable' && unreached ? 'unavailable' : undefined;
+    }
 
     const subject = verdict.claims['sub'];
     if (typeof subject !== 'string' || subject === '') return undefined;
@@ -200,6 +213,13 @@ function pastAbsoluteLimit(signedInAt: number | null, now: number): boolean {
   const age = now - signedInAt;
   return age > SESSION_ABSOLUTE_SECONDS || age < -60;
 }
+
+/**
+ * The key set fetches that never reached a set: an outage. A set the provider
+ * did send and this refused (too large, the wrong shape, private material) is
+ * refused like the token it was asked to check.
+ */
+const UNREACHED: ReadonlySet<KeySetRefusal['reason']> = new Set(['network', 'timeout', 'status']);
 
 /** GoTrue's `amr` methods that begin a session: the first factor. */
 const FIRST_FACTOR_METHODS: ReadonlySet<string> = new Set([

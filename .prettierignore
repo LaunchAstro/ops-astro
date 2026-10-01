@@ -112,3 +112,6 @@ tests/api/live-board-client-move-prompt-review.test.ts
 tests/api/live-board-task-resync-isolation-review.test.ts
 tests/api/live-task-frame-no-identifier-review.test.ts
 tests/ci/inb1f-rebind-mutation-review.test.ts
+
+# REVIEW-MAIN-B1's p01-2 proof, byte-for-byte as the reviewer committed it.
+tests/review/main-b1-p01-closed-tab-cookies-proof.test.ts

@@ -29,7 +29,9 @@ function Bars(props: {
 }): ReactElement {
   const { axis, bar, stacked } = props;
   const group = bar / props.bars.length;
-  let below = 0;
+  // Stacked: positives build up from zero, negatives build down from it.
+  let up = 0;
+  let down = 0;
   return (
     <g aria-hidden="true" className={props.active ? 'is-active' : undefined}>
       {props.bars.map((s, k) => {
@@ -37,8 +39,10 @@ function Bars(props: {
         const [x, w] = stacked
           ? [props.x - bar / 2, bar]
           : [props.x - bar / 2 + group * k, Math.max(1, group - 1.5)];
+        const below = v < 0 ? down : up;
         const [from, to] = stacked ? [below, below + v] : [0, v];
-        below += stacked ? v : 0;
+        if (stacked && v < 0) down += v;
+        else if (stacked) up += v;
         return (
           <rect
             key={s.label}

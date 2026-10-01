@@ -63,10 +63,13 @@ export function allowList(env) {
 
 const listed = (list, host, port) => list.some(([h, p]) => h === host && p === port);
 
-/** The server name in a TLS ClientHello, or undefined when there is none to read. */
+/**
+ * The server name in a TLS ClientHello, or undefined when there is none to read. Only a whole
+ * first record names anything: a hello cut short names nothing, so the relay reads on.
+ */
 export function serverName(hello) {
   try {
-    if (hello[0] !== 0x16 || hello[5] !== 0x01) return;
+    if (hello[0] !== 0x16 || hello[5] !== 0x01 || hello.length < 5 + hello.readUInt16BE(3)) return;
     let at = 5 + 4 + 2 + 32;
     at += 1 + hello[at];
     at += 2 + hello.readUInt16BE(at);
