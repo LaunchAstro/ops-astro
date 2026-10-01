@@ -50,48 +50,14 @@ import {
   SESSION_HEADER,
   pathOf,
 } from '../../../../packages/core-wire/src/index.ts';
-import type {
-  CommandName,
-  CommandRefusal,
-  PlanOffer,
-} from '../../../../packages/core-wire/src/index.ts';
+import type { CommandName, CommandRefusal } from '../../../../packages/core-wire/src/index.ts';
 import type { AccountRoute, NotARead, ReadName } from './read-names.ts';
 import { BEFORE_LOGIN, SESSION_ENDED, describe, isWireRefusal } from './wire-answer.ts';
+import type { CommandOutcome } from './outcome.ts';
 
 export { READ_NAMES } from './read-names.ts';
 export type { AccountRoute, NotARead, ReadName } from './read-names.ts';
-
-/** What a mutation returns when it worked: a durable handle and a new revision. */
-export interface CommandOutcome {
-  readonly recordId: string;
-  readonly revision: number;
-  /**
-   * Whatever the operation has to say about what it did, in its own words.
-   *
-   * It is the envelope's third field (`commands/outcome.ts`) and the API passes it through
-   * unchanged. `task.comment` puts the new comment's identifier in it; the two settings commands
-   * put the key and the value the row now holds, which is the only thing in this build that tells
-   * a caller what a setting was set to — there is no settings read. Optional, because most
-   * operations have nothing to add beyond the handle and the revision.
-   */
-  readonly detail?: Readonly<Record<string, unknown>>;
-  /**
-   * AW-03: the agent's answer beside a message the person just kept, or why
-   * there is none, where the deployment answers conversations. Absent, the
-   * message is kept and nothing answers it.
-   */
-  readonly reply?: ConversationReply;
-}
-
-export type ConversationReply =
-  | {
-      readonly answered: true;
-      readonly messageId: string;
-      readonly body: string;
-      /** AW-04: the plan version a planning reply composed, drawn as a card. */
-      readonly plan?: PlanOffer;
-    }
-  | { readonly answered: false; readonly code: string; readonly words: string };
+export type { CommandOutcome, ConversationReply } from './outcome.ts';
 
 /**
  * A refusal as it arrives over HTTP: the server's one refusal shape, taken
