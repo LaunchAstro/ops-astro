@@ -95,3 +95,33 @@ describe('MP-4-8 Category on the task page facts', () => {
     await view.unmount();
   });
 });
+
+describe('MP-4-8 category leaves agent scope', () => {
+  it('a category change sends the label alone, and the Assign to AI stamp and choice stay as they were', async () => {
+    const held = {
+      agent: {
+        delegationId: 'd-mine-1',
+        purpose: 'draft_replies',
+        accountable: { personId: 'p-ada', name: 'Ada' },
+        live: true,
+      },
+      myAgents: [{ delegationId: 'd-mine-1', purpose: 'draft_replies' }],
+    };
+    const { client, sent } = serving(held);
+    const view = await panel(client);
+    const stamp = () => view.find('[data-agent-assignee]')?.textContent;
+    const choice = () => (view.find('#panel-assign-ai') as HTMLSelectElement | null)?.value;
+    const before = { stamp: stamp(), choice: choice() };
+    expect(before.stamp).toContain('draft_replies');
+    await view.choose('#panel-field-category', 'seo');
+    await tick();
+    expect(commands(sent)).toStrictEqual([
+      [
+        '/task/set_category',
+        { recordId: TASK_ID, expectedRevision: 4, fields: { category: 'seo' } },
+      ],
+    ]);
+    expect({ stamp: stamp(), choice: choice() }).toStrictEqual(before);
+    await view.unmount();
+  });
+});

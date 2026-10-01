@@ -12,7 +12,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { grantTo } from './fixture.ts';
+import { WHOLE_BUSINESS, enrol, grantTo } from './fixture.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import { COMMAND_SURFACE, TASK_CATEGORIES } from '../../packages/core-wire/src/index.ts';
@@ -79,8 +79,35 @@ const readCategory = async (business: BusinessId, by: Member, recordId: string) 
   return 'task' in read ? (read.task as unknown as { category?: unknown }).category : 'no task';
 };
 
+/** A client of alpha made through `client.create`: `task.set_party` names only a real one. */
+const realClient = async (): Promise<string> => {
+  const made = await as(alpha, writer, {
+    command: 'client.create',
+    name: `Client ${randomUUID()}`,
+  });
+  if (isCommandRefusal(made)) throw new Error(`client.create refused ${made.code}`);
+  return String(made.detail?.['clientId']);
+};
+
+/** A fresh task of alpha's, placed under `client` while it is empty. */
+const underClient = async (client: string, title: string): Promise<Task> => {
+  const task = await fresh(alpha, writer, title);
+  const placed = await as(alpha, writer, {
+    command: 'task.set_party',
+    recordId: task.recordId,
+    fields: { client },
+  });
+  if (isCommandRefusal(placed)) throw new Error(`task.set_party refused ${placed.code}`);
+  return await current(task);
+};
+
 beforeAll(async () => {
-  if (serverUrl !== undefined) await setUp();
+  if (serverUrl === undefined) return;
+  await setUp();
+  await db.app.withBusiness(alpha, async (tx) => {
+    await grantTo(tx, writer, 'share');
+    await grantTo(tx, writer, 'write', WHOLE_BUSINESS, false, 'record');
+  });
 }, 180_000);
 
 afterAll(async () => {
@@ -279,11 +306,12 @@ describe.skipIf(serverUrl === undefined)('MP-4-8 CS-4.16 task category', () => {
       expect(await readCategory(alpha, writer, foreign.recordId)).toBe('NOT_FOUND');
     });
 
-    it('another client in the same business: a writer on client A’s task cannot label client B’s', async () => {
-      const taskA = await fresh(alpha, writer, 'client A');
-      const taskB = await fresh(alpha, writer, CANARY);
+    it('another client in the same business: a writer on client A cannot label client B’s task', async () => {
+      const clientA = await realClient();
+      const taskA = await underClient(clientA, 'client A');
+      const taskB = await underClient(await realClient(), CANARY);
       await db.app.withBusiness(alpha, async (tx) => {
-        await grantTo(tx, clientAWriter, 'write', { kind: 'record', id: taskA.recordId });
+        await grantTo(tx, clientAWriter, 'write', { kind: 'party', id: clientA });
       });
       expect(outcomeOf(await setCategory(alpha, clientAWriter, taskA, 'admin'))).toStrictEqual({
         applied: true,
@@ -295,6 +323,31 @@ describe.skipIf(serverUrl === undefined)('MP-4-8 CS-4.16 task category', () => {
         category: null,
         revision: taskB.revision,
       });
+    });
+
+    // The label is a task field like the estimate (MP-5-8): a reader of a task is
+    // served it, on the board and on task.read, and never another client's.
+    it('another client: a reader held to client A reads its task’s category, never client B’s', async () => {
+      const clientA = await realClient();
+      const taskA = await underClient(clientA, 'client A labelled');
+      const taskB = await underClient(await realClient(), CANARY);
+      await setCategory(alpha, writer, taskA, 'reporting');
+      await setCategory(alpha, writer, await current(taskB), 'videography');
+      const partyReader = await enrol(db.app, alpha, 'party-reader');
+      await db.app.withBusiness(alpha, async (tx) => {
+        await grantTo(tx, partyReader, 'read', { kind: 'party', id: clientA });
+      });
+      const board = await executeRead(db.app, alpha, partyReader.presented, {
+        read: 'task.board',
+        board: null,
+      });
+      const rows = isCommandRefusal(board) || !('tasks' in board) ? [] : board.tasks;
+      expect(rows.map((one) => [one.id, (one as { category?: unknown }).category])).toStrictEqual([
+        [taskA.recordId, 'reporting'],
+      ]);
+      expect(JSON.stringify(board)).not.toMatch(new RegExp(`${CANARY}|videography`, 'u'));
+      expect(await readCategory(alpha, partyReader, taskA.recordId)).toBe('reporting');
+      expect(await readCategory(alpha, partyReader, taskB.recordId)).not.toBe('videography');
     });
   });
 });

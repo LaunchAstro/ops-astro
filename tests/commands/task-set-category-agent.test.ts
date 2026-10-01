@@ -12,6 +12,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
+import { mintDelegation } from '../../packages/core-records/src/index.ts';
 import { codeOf, type Decider } from './agent-fixture.ts';
 import {
   CANARY,
@@ -129,6 +130,28 @@ describe.skipIf(serverUrl === undefined)(
       });
       expect(codeOf(widened)).toBe('TRANSITION_PROTECTED');
       expect(await categoryOf(picked.taskId)).toBeNull();
+    });
+
+    it('an agent whose delegation holds read and not write is refused, and nothing is written', async () => {
+      const task = await created(w, w.p, CANARY);
+      const credential = await w.world.db.app.withBusiness(w.world.business, async (tx) => {
+        const made = await mintDelegation(tx, {
+          agentActorId: w.world.agentActorId,
+          delegatePersonId: w.p.personId,
+          mintedByActorId: w.p.actorId,
+          purpose: `read_${randomUUID().slice(0, 8)}`,
+          collections: ['task'],
+          actions: ['read'],
+          purposeScope: { kind: 'record', id: task },
+          expiresAt: new Date(Date.now() + 3_600_000),
+        });
+        if (!made.ok) throw new Error(`fixture: the mint was refused ${made.refusal.code}`);
+        return made.value.credential;
+      });
+      const answer = await byAgent(credential, task, { category: 'seo' });
+      expect(codeOf(answer)).toBe('DELEGATION_OUT_OF_PURPOSE');
+      expect(JSON.stringify(answer)).not.toContain(CANARY);
+      expect(await categoryOf(task)).toBeNull();
     });
   },
 );

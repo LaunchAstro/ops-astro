@@ -15,7 +15,7 @@ import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
 import type { BusinessId } from '../../packages/core-records/src/index.ts';
-import { grantTo, type Member } from './fixture.ts';
+import { enrol, grantTo, type Member } from './fixture.ts';
 import { agentWorld, codeOf, type AgentWorld } from './agent-fixture.ts';
 import { timeWorld, type TimeWorld } from './time-world.ts';
 import { assignTo, madeClient, todosOf } from './todo-support.ts';
@@ -105,6 +105,27 @@ describe.skipIf(serverUrl === undefined)('MP-7-2 isolation: another client', () 
     // The control: a reader of the whole business sees the canary in Noah's list.
     const noahs = await todosOf(w, w.alpha, w.ada, { person: w.noah.personId });
     expect(noahs.todos.map((todo) => todo.id)).toEqual(expect.arrayContaining([taskA, taskB]));
+  });
+
+  it('a reader held to client A by a party grant is refused every scope, its own client’s included', async () => {
+    const clientA = await madeClient(w, w.alpha, w.ada);
+    const clientB = await madeClient(w, w.alpha, w.ada);
+    const reader = await enrol(w.db.app, w.alpha, 'party-reader');
+    const taskA = await assignTo(w, w.alpha, w.ada, 'client A work', w.noah, {}, clientA);
+    const taskB = await assignTo(w, w.alpha, w.ada, `${CANARY}-party`, w.noah, {}, clientB);
+    await w.db.app.withBusiness(w.alpha, async (tx) => {
+      await grantTo(tx, reader, 'read', { kind: 'party', id: clientA });
+    });
+    const scopes = [{}, { person: w.noah.personId }, { client: clientB }, { client: clientA }];
+    for (const scope of scopes) {
+      // eslint-disable-next-line no-await-in-loop -- one read at a time
+      const read = await readAs(w.alpha, reader, scope);
+      expect(read.code, JSON.stringify(scope)).toBe('SCOPE_NOT_GRANTED');
+      expect(read.text).not.toContain(CANARY);
+      expect(read.text).not.toContain(taskB);
+      expect(read.text).not.toContain(taskA);
+      expect(read.text).not.toMatch(/todos|withheld|count/u);
+    }
   });
 });
 

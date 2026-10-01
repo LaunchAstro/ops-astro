@@ -47,6 +47,9 @@ export interface ClientSource {
   readonly clients: readonly ClientChoice[];
 }
 
+/** A client's route families (its work board's Agent, Review and Team routes): made-up, no source yet. */
+export const ROUTE_FAMILIES: readonly string[] = ['Agent', 'Review', 'Team'];
+
 // Made-up: the business's client list (family B, C32) replaces these.
 export const MOCK_CLIENTS: ClientSource = {
   provenance: 'mock',
@@ -54,12 +57,12 @@ export const MOCK_CLIENTS: ClientSource = {
     {
       id: '0b7d3c1e-5f2a-4c8e-9a61-3d2f7e4b9c01',
       name: 'Harbour Physio',
-      families: ['Agent', 'Review', 'Team'],
+      families: ROUTE_FAMILIES,
     },
     {
       id: '6e2a9f40-1c7b-4d35-8e92-a4b0c5d6e702',
       name: 'Northside Dental',
-      families: ['Agent', 'Review', 'Team'],
+      families: ROUTE_FAMILIES,
     },
   ],
 };
