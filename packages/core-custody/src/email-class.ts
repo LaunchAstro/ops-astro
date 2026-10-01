@@ -19,7 +19,8 @@
 // queue, and the second reads the first's `asked`. An attempt that failed
 // with proof nothing went does not spend a window.
 
-import type { InboxReason, TenantQuery } from '../../core-records/src/index.ts';
+import { hasRoom, type InboxReason, type TenantQuery } from '../../core-records/src/index.ts';
+import type { ModelOperation } from '../../core-connectors/src/index.ts';
 
 export type MailClass = 'staff' | 'transactional' | 'relationship';
 
@@ -94,4 +95,44 @@ export async function windowSpent(
     [tx.businessId, id, windowMs, byPerson, [...NOTHING_SENT]],
   );
   return row?.spent === true;
+}
+
+/** Emails in flight for this business: items whose last email observation is still `asked`. */
+async function emailsInFlight(tx: TenantQuery): Promise<number> {
+  const [flight] = await tx.query<{ readonly n: number }>(
+    `select count(*)::int as n from (
+       select distinct on (item_id) state from public.inbox_delivery_attempts
+        where business_id = $1 and channel = 'email'
+        order by item_id, observed_seq desc) last
+      where state = 'asked'`,
+    [tx.businessId],
+  );
+  return flight?.n ?? 0;
+}
+
+/**
+ * The catalogued concurrency, as a durable limit: an ask counts until its
+ * outcome is kept. Checked under the limit's lock just before `asked` is
+ * written, so a refusal writes nothing.
+ */
+export type Room = () => Promise<boolean>;
+
+export function roomFor(tx: TenantQuery, operation: ModelOperation): Room {
+  const limit = {
+    name: `email:${operation.key}`,
+    limit: operation.concurrency,
+    count: emailsInFlight,
+  };
+  return async () => await hasRoom(tx, [limit]);
+}
+
+/** The item's last email observation allows a send: none yet, or a failure that proves nothing went. */
+export async function mayStillSend(tx: TenantQuery, itemId: string): Promise<boolean> {
+  const [last] = await tx.query<{ readonly state: string; readonly evidence: string | null }>(
+    `select state, evidence from public.inbox_delivery_attempts
+      where business_id = $1 and item_id = $2 and channel = 'email'
+      order by observed_seq desc limit 1`,
+    [tx.businessId, itemId],
+  );
+  return last === undefined || (last.state === 'failed' && NOTHING_SENT.has(last.evidence ?? ''));
 }

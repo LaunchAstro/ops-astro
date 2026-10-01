@@ -162,6 +162,10 @@ export async function heldOpen(
 /** Whether a promise is still pending after a short wait. */
 export async function stillWaiting(promise: Promise<unknown>): Promise<boolean> {
   const pending = Symbol('pending');
-  const timer = new Promise((resolve) => setTimeout(() => resolve(pending), 400));
+  const timer = new Promise((resolve) => {
+    setTimeout(() => {
+      resolve(pending);
+    }, 400);
+  });
   return (await Promise.race([promise, timer])) === pending;
 }

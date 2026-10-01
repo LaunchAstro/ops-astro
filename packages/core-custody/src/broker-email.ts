@@ -25,7 +25,6 @@
 // moves the item (`recordDeliveryAttempt`).
 
 import {
-  hasRoom,
   recordDeliveryAttempt,
   taskAccess,
   type BusinessId,
@@ -39,11 +38,15 @@ import type { CustodyOutcome } from './custody.ts';
 import {
   askedEvidence,
   classOf,
-  NOTHING_SENT,
+  mayStillSend,
+  roomFor,
   WEEK_MS,
   windowSpent,
   type MailClass,
+  type Room,
 } from './email-class.ts';
+
+export type { Room } from './email-class.ts';
 
 /** The catalogued name the send dispatches by. */
 export const EMAIL_OPERATION = 'email.send';
@@ -74,35 +77,6 @@ export type EmailResult =
       readonly fault: string;
     };
 
-/** Emails in flight for this business: items whose last email observation is still `asked`. */
-async function emailsInFlight(tx: TenantQuery): Promise<number> {
-  const [flight] = await tx.query<{ readonly n: number }>(
-    `select count(*)::int as n from (
-       select distinct on (item_id) state from public.inbox_delivery_attempts
-        where business_id = $1 and channel = 'email'
-        order by item_id, observed_seq desc) last
-      where state = 'asked'`,
-    [tx.businessId],
-  );
-  return flight?.n ?? 0;
-}
-
-/**
- * The catalogued concurrency, as a durable limit: an ask counts until its
- * outcome is kept. Checked under the limit's lock just before `asked` is
- * written, so a refusal writes nothing.
- */
-export type Room = () => Promise<boolean>;
-
-function roomFor(tx: TenantQuery, operation: ModelOperation): Room {
-  const limit = {
-    name: `email:${operation.key}`,
-    limit: operation.concurrency,
-    count: emailsInFlight,
-  };
-  return async () => await hasRoom(tx, [limit]);
-}
-
 interface Routed {
   readonly operation: ModelOperation;
   readonly route: BrokerRoute;
@@ -115,17 +89,6 @@ function routed(broker: Broker): Routed | undefined {
   const route = broker.routes.find((entry) => entry.provider === operation.provider);
   const adapter = broker.providers.get(operation.provider);
   return route === undefined || adapter === undefined ? undefined : { operation, route, adapter };
-}
-
-/** The item's last email observation allows a send: none yet, or a failure that proves nothing went. */
-async function mayStillSend(tx: TenantQuery, itemId: string): Promise<boolean> {
-  const [last] = await tx.query<{ readonly state: string; readonly evidence: string | null }>(
-    `select state, evidence from public.inbox_delivery_attempts
-      where business_id = $1 and item_id = $2 and channel = 'email'
-      order by observed_seq desc limit 1`,
-    [tx.businessId, itemId],
-  );
-  return last === undefined || (last.state === 'failed' && NOTHING_SENT.has(last.evidence ?? ''));
 }
 
 /** One item that passed every check: whose it is, where it goes, and its class. */
