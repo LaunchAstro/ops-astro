@@ -205,6 +205,22 @@ async function twoWriters(): Promise<void> {
   expect(ids(await since(alpha.id, alpha.member, point))).toEqual(expect.arrayContaining([a1, a2]));
 }
 
+/** C4 change record: one write naming a task id in two letter cases does not fail */
+async function mixedCase(): Promise<void> {
+  const [a1, a2] = tasksOf(alpha);
+  const point = await pointAfter(a2);
+  await s.db.app.withBusiness(alpha.id, async (tx) => {
+    await tx.query(
+      `update public.records
+          set data = data || jsonb_build_object('task',
+                case when id = $1::uuid then upper($2) else lower($2) end)
+        where id = any($3::uuid[])`,
+      [a1, a2, [a1, a2]],
+    );
+  });
+  expect(ids(await since(alpha.id, alpha.member, point))).toContain(a2);
+}
+
 /** C4 changes since: the change record holds no content */
 async function noContent(): Promise<void> {
   const columns = await s.db.admin.execute<{ column_name: string }>(
@@ -248,5 +264,6 @@ describe.skipIf(serverUrl === undefined)(
       twoWriters,
     );
     it('C4 changes since: the change record holds no content', noContent);
+    it('C4 change record: one write naming a task id in two letter cases does not fail', mixedCase);
   },
 );

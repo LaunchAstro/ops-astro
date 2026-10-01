@@ -576,9 +576,13 @@ export function createApi(options: ApiOptions): Hono {
     const { presence } = live;
     if (presence !== undefined) {
       api.post(`${PREFIX.person}:businessKey/live/mark`, async (context) => {
-        const body = await readObject(context);
-        const asked =
-          body === undefined ? refuseCommand('COMMAND_BODY_INVALID', [], [OBJECT]) : markOf(body);
+        // The door first, then the body, as every other route reads it.
+        const asked = async () => {
+          const body = await readObject(context);
+          return body === undefined
+            ? refuseCommand('COMMAND_BODY_INVALID', [], [OBJECT])
+            : markOf(body);
+        };
         return await onSeat(options, live, context, asked, (mark, viewer, businessId) =>
           presence.mark(businessId, mark.taskId, mark.seat, viewer, mark.field)
             ? { marked: true }
@@ -586,7 +590,7 @@ export function createApi(options: ApiOptions): Hono {
         );
       });
       api.get(`${PREFIX.person}:businessKey/live/presence`, async (context) => {
-        const asked = presenceAskOf(context.req.queries());
+        const asked = () => presenceAskOf(context.req.queries());
         return await onSeat(options, live, context, asked, (ask, viewer, businessId) => {
           const seenBy = presence.seenBy(businessId, ask.taskId, ask.seat, viewer);
           return seenBy === undefined ? undefined : { seenBy };
@@ -624,19 +628,20 @@ export function createApi(options: ApiOptions): Hono {
 }
 
 /**
- * A presence route once its input has passed: the door, the caller's standing
- * (nothing recorded), the task asked about again as the stream asks, then
+ * A presence route: the door, then its input (read only once the door has
+ * passed), the caller's standing (nothing recorded), the task asked about again as the stream asks, then
  * `answer` for the caller's own person; undefined from it is no such seat.
  */
 async function onSeat<A extends SeatAsk>(
   options: ApiOptions,
   live: LiveOptions,
   context: Context,
-  asked: A | CommandRefusal,
+  ask: () => A | CommandRefusal | Promise<A | CommandRefusal>,
   answer: (asked: A, personId: string, businessId: string) => object | undefined,
 ): Promise<Response> {
   const admitted = await admit(options, context, PERSON, false);
   if (admitted instanceof Response) return admitted;
+  const asked = await ask();
   if (isCommandRefusal(asked)) return refuse(context, asked);
   const { businessId, presented } = admitted;
   const viewer = await (live.viewer ?? viewerOf)(options.database, businessId, presented);

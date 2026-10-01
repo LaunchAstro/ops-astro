@@ -24,7 +24,7 @@ import { useDock } from './dock.ts';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, type Interruption, type Session, type SessionStore } from './session/token.ts';
 import { SignIn } from './screens/SignIn.tsx';
-import { signOutOf } from './session/sign-in.ts';
+import { endThenSignOut } from './sign-out.ts';
 import { PagePresenceProvider, StripPresence } from './views/presence.tsx';
 import { PageFreshnessProvider, StripFreshness } from './views/freshness.tsx';
 
@@ -163,8 +163,8 @@ export function App(props: AppProps): ReactElement {
 
   // Sign-out (C23). The tab forgets the session first, so a server that never
   // answers cannot keep it. Then, with the ended session's own client:
-  // `session.end` records it on the audit chain, and the API clears this
-  // sign-in's cookie and no other (S0-6c). Neither answer is waited for.
+  // `session.end` records it on the audit chain first (briefly waited for),
+  // then the API clears this sign-in's cookie and no other (S0-6c).
   const onSignOut = (): void => {
     const ended = session;
     props.sessions.clear();
@@ -173,8 +173,7 @@ export function App(props: AppProps): ReactElement {
     setSignedOut(true);
     props.navigate(pathTo('agency:sign-in'));
     if (ended === null) return;
-    void client.mutate('session.end', {});
-    void signOutOf(props, ended);
+    void endThenSignOut(() => client.mutate('session.end', {}), props, ended);
   };
 
   const personName = usePersonName(client, session, props.storage);
