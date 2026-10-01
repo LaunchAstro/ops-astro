@@ -2,28 +2,24 @@
 //
 // Login resolution: verified subject to session, inside one transaction.
 //
-// The steps are the contract's (minimum contract, section 1.3). Step 1,
-// verifying the credential with the auth provider, is not here: the provider
-// question is open, and what arrives is a subject someone else has verified.
-// Steps 2 to 4 are the query below. Step 5 is `withBusiness`, which is T1a's,
-// and step 6 — deriving scope — is T1c's and happens in the same transaction
-// this one opens, which is what makes "re-evaluated on each call" mechanical
-// rather than a discipline.
+// The steps are the contract's (minimum contract, section 1.3). Step 1, verifying the credential
+// with the auth provider, is not here: the provider question is open, and what arrives is a
+// subject someone else has verified. Steps 2 to 4 are the query below. Step 5 is `withBusiness`,
+// which is T1a's, and step 6 — deriving scope — is T1c's and happens in the same transaction this
+// one opens, which is what makes "re-evaluated on each call" mechanical rather than a discipline.
 //
 // Two decisions worth seeing before the code.
 //
-// **The business is named, never discovered.** A caller says which business it
-// is acting in and the server verifies it against the mapping. Resolving the
-// business from the subject alone would mean reading `logins` across tenants,
-// and the only way to do that under forced row security is a definer-rights
-// function — a hole in the barrier, cut before anything in this part needs it.
-// The contract permits the convenience; it does not require it, and the sign-in
-// surface that wants it can arrive with its own proof.
+// **The business is named, never discovered.** A caller says which business it is acting in and
+// the server verifies it against the mapping. Resolving the business from the subject alone would
+// mean reading `logins` across tenants, and the only way to do that under forced row security is a
+// definer-rights function — a hole in the barrier, cut before anything in this part needs it. The
+// contract permits the convenience; it does not require it, and the sign-in surface that wants it
+// can arrive with its own proof.
 //
-// **A subject with no login row here is refused exactly as an unmapped one
-// is.** Telling the two apart tells the caller whether that subject exists in
-// this business, which is the same inference leak that makes a wrong-business
-// read return NOT_FOUND. One refusal, one message, one shape.
+// **A subject with no login row here is refused exactly as an unmapped one is.** Telling the two
+// apart tells the caller whether that subject exists in this business, which is the same inference
+// leak that makes a wrong-business read return NOT_FOUND. One refusal, one message, one shape.
 
 import type { BusinessId, Database, TenantQuery } from '../tenancy/database.ts';
 import { refuseCommand, type CommandRefusal } from '../register.ts';
@@ -47,10 +43,9 @@ export interface Session {
   readonly personId: string;
   readonly actorId: string;
   /**
-   * The membership's role key, or null for an external party: a mapped person
-   * with no membership whose whole standing is the record- or party-scoped
-   * grants they hold (minimum contract 8.1, R4). Null rather than a word, so
-   * no role a preset names can be mistaken for one.
+   * The membership's role key, or null for an external party: a mapped person with no membership
+   * whose whole standing is the record- or party-scoped grants they hold (minimum contract 8.1,
+   * R4). Null rather than a word, so no role a preset names can be mistaken for one.
    */
   readonly roleKey: string | null;
   /**
@@ -86,18 +81,15 @@ export const NO_MEMBERSHIP_FIXES = [
 ] as const;
 
 const INACTIVE_FIXES = ['ask an administrator of this business to reactivate this person'] as const;
-
 const ENDED_FIXES = ['sign in again: this session was signed out'] as const;
-
 const SECOND_FACTOR_FIXES = [
   'enter the code from your authenticator app to finish signing in',
 ] as const;
 
-// Left joins rather than four round trips, because the four facts are read
-// under one snapshot and one policy evaluation. Row security scopes every
-// table to the business the wrapper set, so no clause below names it; the
-// joins still carry business_id because a join that only works because a
-// policy is in place is a join that stops working the day one is not.
+// Left joins rather than four round trips, because the four facts are read under one snapshot and
+// one policy evaluation. Row security scopes every table to the business the wrapper set, so no
+// clause below names it; the joins still carry business_id because a join that only works because
+// a policy is in place is a join that stops working the day one is not.
 const RESOLUTION = `
   select l.id as login_id,
          pl.person_id,
@@ -197,10 +189,9 @@ async function factorHeld(tx: TenantQuery, subject: string, found: ResolutionRow
 }
 
 /**
- * The attempt and what it resolved to commit together with whatever the
- * caller goes on to do. I13 asks for every attempt, which includes the ones
- * that succeeded and the ones whose transaction later rolled back — those
- * roll back with it, and a recorded attempt for work that never happened
+ * The attempt and what it resolved to commit together with whatever the caller goes on to do. I13
+ * asks for every attempt, which includes the ones that succeeded and the ones whose transaction
+ * later rolled back — those roll back with it, and a recorded attempt for work that never happened
  * would be the worse trail.
  */
 async function recordResolved(
@@ -218,16 +209,14 @@ async function recordResolved(
   });
 }
 
-// An external party's standing, read under the same snapshot as the mapping.
-// A live share is a record- or party-scoped *read* grant to the person or to
-// their acting identity, which is what `shareRecord` issues and all R4 reaches.
-// A scoped `comment` or `write` grant is not a share and stands for nothing
-// here, so a row a share would never carry cannot turn a non-member into a
-// session. A live *business* grant disqualifies rather than helps: it
-// is a member's grant, and a person holding one without a membership is a
-// former member whose grants outlived them, who stays refused here exactly as
-// before. The per-call check in the serving transaction still decides what the
-// share reaches; this only decides whether there is anyone to ask about.
+// An external party's standing, read under the same snapshot as the mapping. A live share is a
+// record- or party-scoped *read* grant to the person or to their acting identity, which is what
+// `shareRecord` issues and all R4 reaches. A scoped `comment` or `write` grant is not a share and
+// stands for nothing here, so a row a share would never carry cannot turn a non-member into a
+// session. A live *business* grant disqualifies rather than helps: it is a member's grant, and a
+// person holding one without a membership is a former member whose grants outlived them, who stays
+// refused here exactly as before. The per-call check in the serving transaction still decides what
+// the share reaches; this only decides whether there is anyone to ask about.
 const STANDING = `
   select count(*) filter (where g.scope_kind <> 'business' and g.action = 'read')::int as shares,
          count(*) filter (where g.scope_kind = 'business')::int as business
