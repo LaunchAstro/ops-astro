@@ -34,6 +34,14 @@ const spent = async (title: string): Promise<{ work: Work; runId: string }> => {
   return { work, runId: await runOf(work) };
 };
 
+/** The lease's delegation runs out with it, as one minted for the lease does. */
+const expireDelegation = async (work: Work): Promise<void> => {
+  await s.db.admin.execute(
+    `update public.delegations set expires_at = clock_timestamp() where id = $1`,
+    [work.picked['delegationId']],
+  );
+};
+
 it('B3: a hold a restart replay closed actual is picked up again on what it has left', async () => {
   const { work, runId } = await spent('pf3a sec b3 replay');
   // A lease fenced and never classified: the restart replay's case.
@@ -45,6 +53,7 @@ it('B3: a hold a restart replay closed actual is picked up again on what it has 
   // Setup: the replay settled the hold at the call's 100.
   expect(await moneyOf(runId)).toMatchObject({ reservation: 'actual', envelope_actual: '100' });
 
+  await expireDelegation(work);
   await pickup(s, work.decision['reservationId']);
 
   expect(await moneyOf(runId)).toMatchObject({
@@ -62,6 +71,7 @@ it('B3: an expired lease on a spent hold is picked up again on what it has left'
     [work.picked['leaseId']],
   );
 
+  await expireDelegation(work);
   await pickup(s, work.decision['reservationId']);
 
   expect(await moneyOf(runId)).toMatchObject({
