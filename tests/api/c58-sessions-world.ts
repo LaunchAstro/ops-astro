@@ -201,8 +201,9 @@ export async function openSessionsWorld(): Promise<void> {
     request.on('end', () => {
       const route = `${request.method} ${request.url}`;
       seen.push({ route, authorization: request.headers.authorization });
-      const reply =
-        new Map(Object.entries(replies)).get(route) ?? json(404, { msg: 'no such route' });
+      // Only a stand-in reply the test planted runs; any other route is a 404.
+      const found = new Map(Object.entries(replies)).get(route);
+      const reply = typeof found === 'function' ? found : json(404, { msg: 'no such route' });
       reply(request, response);
     });
   });
