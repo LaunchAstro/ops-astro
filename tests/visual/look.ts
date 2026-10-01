@@ -120,7 +120,7 @@ async function measureOn(side: Side, url: string, probe: LookProbe, on: 'mockup'
     if (on === 'app') {
       await page
         .waitForSelector(probe.app.selector, { state: 'attached', timeout: 5000 })
-        .catch(() => undefined);
+        .catch(() => null);
     }
     return await page.evaluate(measure, { selector: probe[on].selector, props: probe.props });
   } finally {
