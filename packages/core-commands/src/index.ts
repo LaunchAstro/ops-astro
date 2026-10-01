@@ -16,6 +16,7 @@ export {
   type ConversationExchange,
   type ConversationReply,
 } from './commands/conversation-exchange.ts';
+export { pinResearchSkill, RESEARCH_SKILL } from './commands/research-skill.ts';
 export { describeFault, executeCommand } from './commands/envelope.ts';
 export {
   modelCallExecutor,
