@@ -97,7 +97,10 @@ describe('SL12 visual matches against the pinned mockup (MP-1-7)', () => {
 
 // T-1's read with its newest attempt held and its effect unknown (C54), the
 // state a person answers with one of the three outcomes or a write-off.
-const T1 = madeUpAnswer(`${PREFIX.person}alpha${pathOf('task.read')}`)?.json as InternalTaskRead;
+const T1_ANSWER = madeUpAnswer(`${PREFIX.person}alpha${pathOf('task.read')}`);
+const T1 = (
+  T1_ANSWER !== undefined && 'json' in T1_ANSWER ? T1_ANSWER.json : undefined
+) as InternalTaskRead;
 function unknownT1(): InternalTaskRead {
   const [lineage, ...rest] = T1.task.proposals;
   if (lineage === undefined) throw new Error('the made-up T-1 has no run');

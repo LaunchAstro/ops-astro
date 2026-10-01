@@ -11,7 +11,7 @@
 // (`drawRunState`'s fallback), never dropped.
 
 import type { ReactElement } from 'react';
-import { drawRunState, Empty, major, Spill } from '@launchastro/ui';
+import { Banner, drawRunState, Empty, major, Spill } from '@launchastro/ui';
 import {
   isRefusal,
   isUnavailable,
@@ -26,6 +26,7 @@ import type {
   TaskExecutionResult,
 } from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
+import { Observed } from './run-observed.tsx';
 
 export interface RunProgressProps {
   readonly client: OperationsClient;
@@ -64,11 +65,13 @@ export function RunProgress(props: RunProgressProps): ReactElement {
           The server refused this read ({state.refusal.code}), so nothing about the run is shown.
         </p>
       ) : state.outcome === 'unavailable' || !readable ? (
-        <p className="card__sub" data-run="unavailable">
-          The run could not be read
-          {state.outcome === 'unavailable' ? `: ${state.because}` : ''}. That is not a claim that no
-          work ran.
-        </p>
+        // DS-PRIM-30: a read that could not be read is a section error, the bad banner.
+        <div data-run="unavailable">
+          <Banner tone="bad" lead="The run could not be read.">
+            {state.outcome === 'unavailable' ? `${state.because} ` : ''}That is not a claim that no
+            work ran.
+          </Banner>
+        </div>
       ) : value === null ? null : value.outcome === 'no-run' ? (
         <Empty title="No run yet" description="Nothing has been picked up on this task." />
       ) : (
@@ -180,62 +183,6 @@ function Run(props: {
 }
 
 /**
- * The run's observed layer (AW-06): what its record says happened, in words.
- * Silence is not a verdict (a quiet run reads in progress until something
- * recorded moves it), and money nobody recorded reads as not recorded, never 0.
- * The planned layer waits on the bound plan record, so nothing here says
- * planned or unplanned.
- */
-function Observed(props: { readonly node: ExecutionNode }): ReactElement {
-  const { observed } = props.node;
-  const money = (minor: number | null): string =>
-    minor === null ? 'not recorded' : `${String(minor)} ${observed.currency} (minor units)`;
-  return (
-    <div className="sbact" data-observed={observed.condition}>
-      <div className="sbact__row">
-        <span className="sb__state">{observedWords(props.node)}</span>
-      </div>
-      {observed.fault === null ? null : (
-        <div className="sbact__row" data-observed-fault="">
-          <span className="sbact__meta">Dropped: {observed.fault}</span>
-        </div>
-      )}
-      {observed.lease?.state === 'lapsed' ? (
-        <div className="sbact__row" data-observed-lease="lapsed">
-          <span className="sbact__meta">
-            Its lease ran out at {observed.lease.expiresAt} and no drop is recorded yet.
-          </span>
-        </div>
-      ) : null}
-      <div className="sbact__row">
-        <span className="sbact__meta">
-          Held {money(observed.heldMinor)}; spent {money(observed.spentMinor)}.{' '}
-          {observed.effectObserved ? 'Its effect was observed.' : 'No effect observed yet.'}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function observedWords(node: ExecutionNode): string {
-  const { observed } = node;
-  switch (observed.condition) {
-    case 'not_started':
-      return 'Not started';
-    case 'in_progress':
-      return observed.whoseMove === null
-        ? 'In progress'
-        : `In progress: the ${observed.whoseMove.kind === 'agent' ? "agent's" : "person's"} move`;
-    case 'settled':
-      return `Settled: ${observed.outcome ?? 'unknown'}`;
-    case 'superseded':
-      return 'Superseded by a later version';
-    default:
-      return observed.runState;
-  }
-}
-
-/**
  * The receipt of one attempt: the approval it came from, the version, the
  * effect, and the money line (held, spent, released). It carries no undo
  * control. The server answers `NOT_FOUND` alike for an attempt with no
@@ -259,30 +206,61 @@ function AttemptReceipt(props: {
   if (state.outcome === 'loading') return null;
   if (state.outcome !== 'ready' && state.outcome !== 'empty') {
     return (
-      <p className="card__sub" data-receipt="unavailable" data-receipt-attempt={attemptId}>
-        The receipt for attempt {attemptId} could not be read. That is not a claim that no effect
-        happened.
-      </p>
+      <div data-receipt="unavailable" data-receipt-attempt={attemptId}>
+        <Banner tone="bad" lead={`The receipt for attempt ${attemptId} could not be read.`}>
+          That is not a claim that no effect happened.
+        </Banner>
+      </div>
     );
   }
-  const { receipt } = state.value;
+  return (
+    <ReceiptBox attemptId={attemptId} receipt={state.value.receipt} currency={props.currency} />
+  );
+}
+
+/** DS-TASK-6, the live body: the mockup's evidence box, one row per fact. */
+function ReceiptBox(props: {
+  readonly attemptId: string;
+  readonly receipt: ReceiptResult['receipt'];
+  /** The run's currency, from its observed node; null when the graph names none. */
+  readonly currency: string | null;
+}): ReactElement {
+  const { attemptId, receipt } = props;
   const { settlement } = receipt;
   const amount = (minor: number): string =>
     props.currency === null ? `${String(minor)} minor units` : major(minor, props.currency);
   return (
-    <div
-      className="card__sub"
+    <section
+      className="sb__sect sout"
       data-receipt-attempt={attemptId}
       data-receipt-decision={receipt.decision.id}
     >
-      Receipt: approved by decision {receipt.decision.id} on version {receipt.version.number}; the
-      effect was a{' '}
-      {receipt.effect.audience === 'internal' ? 'team-only comment' : receipt.effect.kind}.{' '}
-      <span data-money={settlement.state}>
-        {'spentMinor' in settlement
-          ? `held ${amount(settlement.heldMinor)} · spent ${amount(settlement.spentMinor)} · released ${amount(settlement.releasedMinor)}`
-          : `held ${amount(settlement.heldMinor)} · ${settlement.state.replaceAll('_', ' ')}`}
-      </span>
-    </div>
+      <div className="sb__sh">
+        <span className="sb__k">Receipt</span>
+        <span className="sb__meta">attempt {attemptId}</span>
+      </div>
+      <div className="sout__box">
+        <div className="sout__row">
+          <span className="tf__k">Approved</span>
+          <span className="sout__v">
+            by decision {receipt.decision.id} on version {receipt.version.number}
+          </span>
+        </div>
+        <div className="sout__row">
+          <span className="tf__k">Effect</span>
+          <span className="sout__t">
+            {receipt.effect.audience === 'internal' ? 'A team-only comment' : receipt.effect.kind}
+          </span>
+        </div>
+        <div className="sout__row">
+          <span className="tf__k">Money</span>
+          <span className="sout__v" data-money={settlement.state}>
+            {'spentMinor' in settlement
+              ? `held ${amount(settlement.heldMinor)} · spent ${amount(settlement.spentMinor)} · released ${amount(settlement.releasedMinor)}`
+              : `held ${amount(settlement.heldMinor)} · ${settlement.state.replaceAll('_', ' ')}`}
+          </span>
+        </div>
+      </div>
+    </section>
   );
 }

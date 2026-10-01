@@ -87,6 +87,7 @@ import type {
   QueueResult,
   TaskReadResult,
 } from '../../../../packages/core-wire/src/index.ts';
+import { Empty } from '@launchastro/ui';
 import { useRead } from '../data/use-read.ts';
 import { AgentSection } from '../views/agent-pane.tsx';
 import type { ReadState } from '../data/authorised-read.ts';
@@ -114,6 +115,7 @@ import { Comments, type CommentDraft } from './task/Comments.tsx';
 import { DetailsForm } from './task/DetailsForm.tsx';
 import { History } from './task/History.tsx';
 import { Outages } from './task/Outages.tsx';
+import { Perspectives, type Perspective } from './task/Perspectives.tsx';
 import { Assignee, Lifecycle, type LifecycleCommand } from './task/Lifecycle.tsx';
 
 export interface TaskDetailProps {
@@ -197,10 +199,17 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   const [commentDraft, setCommentDraft] = useHeld<CommentDraft>(identity, denied);
   const [proposeDraft, setProposeDraft] = useHeld<ProposeDraft>(identity, denied);
   const [topUpNote, setTopUpNote] = useHeld<TopUpNote>(identity, denied);
+  // The open perspective is the reading's: a write's reread keeps the side
+  // its refusal or answer is drawn on (Perspectives.tsx).
+  const [perspective, setPerspective] = useHeld<Perspective>(identity, denied);
 
   return (
     <div className="stack">
-      <RefreshRow held={held !== null} onRefresh={reload} />
+      {/* The failed read draws its own Try again; a second button above it
+          is the stray one the mockup never draws (UI-TRACK B4). */}
+      {state.outcome === 'unavailable' ? null : (
+        <RefreshRow held={held !== null} onRefresh={reload} />
+      )}
       <RecordState state={state} subject="task" onRetry={reload} keep={held !== null}>
         {(value) =>
           'sharedTask' in value ? (
@@ -225,6 +234,8 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
               onProposeDraft={setProposeDraft}
               topUpNote={topUpNote}
               onTopUpNote={setTopUpNote}
+              perspective={perspective ?? 'team'}
+              onPerspective={setPerspective}
               onAttempt={(attempt) => {
                 setDraft((current) =>
                   current !== null && current.identity === identity
@@ -309,9 +320,9 @@ function RefreshRow(props: {
       does not reconcile them — the person does, with the Save or Discard
       choice the form is showing them.
     */}
-      <div className="btnrow">
+      <div className="btnrow tpr__refresh">
         <button
-          className="btn"
+          className="btn btn--sm btn--secondary"
           type="button"
           data-refresh="task"
           disabled={props.held}
@@ -514,6 +525,9 @@ interface LoadedProps {
   /** The last top-up's answer, held so a reread keeps it (T2e). */
   readonly topUpNote: TopUpNote | null;
   readonly onTopUpNote: (note: TopUpNote | null) => void;
+  /** Which side of the task this reading has open, held above the read. */
+  readonly perspective: Perspective;
+  readonly onPerspective: (next: Perspective) => void;
   /** Record, or forget, the draft save whose outcome is unknown. */
   readonly onAttempt: (attempt: SaveAttempt | null) => void;
   readonly onDraft: (next: { title: string; due: string } | null, base: DraftBase) => void;
@@ -554,14 +568,6 @@ function Loaded(props: LoadedProps): ReactElement {
   // live re-read that keeps this mounted still shows the newest value.
   const title = props.draft?.title ?? saved.title;
   const due = props.draft?.due ?? saved.due;
-  // T3e2: the outage reports are the team's, read once from the queue.
-  const outages = useRead<QueueResult>({
-    grantKey: props.grantKey,
-    run: () => client.read<QueueResult>('task.queue', {}),
-    isEmpty: (value) => (value.outages ?? []).length === 0,
-    deps: [],
-  });
-
   // Where this edit began. An existing draft keeps its own starting point; a
   // first keystroke takes the record as it stands right now.
   const base: DraftBase = props.draft?.base ?? {
@@ -621,76 +627,137 @@ function Loaded(props: LoadedProps): ReactElement {
         onDiscard={props.onDiscard}
       />
 
-      <Lifecycle
-        disabled={busy || dirty}
-        completed={task.completedAt !== null}
-        onLifecycle={lifecycle}
-      />
+      <Perspectives
+        selected={props.perspective}
+        onSelect={props.onPerspective}
+        proposals={task.proposals}
+        team={
+          <>
+            <Description text={task.description} />
 
-      <Assignee
-        people={people.state}
-        onRetry={people.reload}
-        assignee={task.assignee}
-        disabled={busy || dirty}
-        onAssign={onAssign}
-      />
+            <Lifecycle
+              disabled={busy || dirty}
+              completed={task.completedAt !== null}
+              onLifecycle={lifecycle}
+            />
 
-      <DetailsForm
-        formRef={fields}
-        busy={busy}
-        title={title}
-        due={due}
-        onEdit={edit}
-        onField={presence.mark}
-        onSubmit={onFields}
-      />
+            <Assignee
+              people={people.state}
+              onRetry={people.reload}
+              assignee={task.assignee}
+              disabled={busy || dirty}
+              onAssign={onAssign}
+            />
 
-      <Comments
-        client={client}
-        comments={task.comments}
-        recordId={task.id}
-        revision={task.revision}
-        refusal={props.commentRefusal}
-        onRefused={props.onCommentRefused}
-        onPosted={props.onChanged}
-        draft={props.commentDraft}
-        onDraft={props.onCommentDraft}
-      />
+            <DetailsForm
+              formRef={fields}
+              busy={busy}
+              title={title}
+              due={due}
+              onEdit={edit}
+              onField={presence.mark}
+              onSubmit={onFields}
+            />
 
+            <Comments
+              client={client}
+              comments={task.comments}
+              recordId={task.id}
+              revision={task.revision}
+              refusal={props.commentRefusal}
+              onRefused={props.onCommentRefused}
+              onPosted={props.onChanged}
+              draft={props.commentDraft}
+              onDraft={props.onCommentDraft}
+            />
+
+            <History history={task.history} />
+          </>
+        }
+        agent={
+          <AgentPane
+            {...props}
+            persons={people.state.outcome === 'ready' ? people.state.value.persons : []}
+          />
+        }
+      />
+    </div>
+  );
+}
+
+/**
+ * DS-TASK-15: the Agent side, the run and its gate in the main column, the
+ * standing facts about the task's run (its alerts, the team's outages) beside.
+ * The agent section (MP-6-1) sits above them, full width, as batch 3a drew it.
+ */
+function AgentPane(
+  props: LoadedProps & { readonly persons: PersonListResult['persons'] },
+): ReactElement {
+  const { client, task } = props;
+  // T3e2: the outage reports are the team's, read once from the queue.
+  const outages = useRead<QueueResult>({
+    grantKey: props.grantKey,
+    run: () => client.read<QueueResult>('task.queue', {}),
+    isEmpty: (value) => (value.outages ?? []).length === 0,
+    deps: [],
+  });
+  return (
+    <div className="stack">
       <AgentSection
         client={client}
         recordId={task.id}
         proposals={task.proposals}
-        people={people.state.outcome === 'ready' ? people.state.value.persons : []}
+        people={props.persons}
         ledger={task.ledger}
         onChanged={props.onChanged}
       />
+      <div className="tpg">
+        <div className="tpg__main">
+          <RunProgress client={client} grantKey={props.grantKey} readOf={task} taskKey={task.key} />
 
-      <Proposals
-        capCurrency={task.capCurrency}
-        client={client}
-        note={props.note}
-        onChanged={props.onChanged}
-        onDecided={props.onDecided}
-        onProposeRefused={props.onProposeRefused}
-        proposeRefusal={props.proposeRefusal}
-        proposeDraft={props.proposeDraft}
-        onProposeDraft={props.onProposeDraft}
-        persons={people.state.outcome === 'ready' ? people.state.value.persons : []}
-        proposals={task.proposals}
-        envelope={task.envelope ?? null}
-        topUpNote={props.topUpNote}
-        onTopUpNote={props.onTopUpNote}
-        recordId={task.id}
-        revision={task.revision}
-      />
-
-      <RunProgress client={client} grantKey={props.grantKey} readOf={task} taskKey={task.key} />
-      <Alerts alerts={task.alerts} />
-
-      <Outages state={outages.state} taskId={task.id} />
-
-      <History history={task.history} />
+          <Proposals
+            capCurrency={task.capCurrency}
+            client={client}
+            note={props.note}
+            onChanged={props.onChanged}
+            onDecided={props.onDecided}
+            onProposeRefused={props.onProposeRefused}
+            proposeRefusal={props.proposeRefusal}
+            proposeDraft={props.proposeDraft}
+            onProposeDraft={props.onProposeDraft}
+            persons={props.persons}
+            proposals={task.proposals}
+            envelope={task.envelope ?? null}
+            topUpNote={props.topUpNote}
+            onTopUpNote={props.onTopUpNote}
+            recordId={task.id}
+            revision={task.revision}
+          />
+        </div>
+        <aside className="tpg__side">
+          <Alerts alerts={task.alerts} />
+          <Outages state={outages.state} taskId={task.id} />
+        </aside>
+      </div>
     </div>
+  );
+}
+
+/** TT-01: the description as prose, or the sentence that there is none. */
+function Description(props: { readonly text: string | null | undefined }): ReactElement {
+  const text = (props.text ?? '').trim();
+  return (
+    <section className="sb__sect">
+      <div className="sb__sh">
+        <span className="sb__k">Description</span>
+      </div>
+      {text === '' ? (
+        <Empty look="inline" title="No description on this one yet." />
+      ) : (
+        <p className="card__body" data-task-description="">
+          {text}
+        </p>
+      )}
+    </section>
   );
 }

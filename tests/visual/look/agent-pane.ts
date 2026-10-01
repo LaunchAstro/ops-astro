@@ -12,7 +12,8 @@ const MOCK = {
   path: '/agency/task/?task=proj-meridian-hero-copy',
   open: '[role=tab]:has-text("Agent")',
 } as const;
-const APP = { page: 'agency:task-detail' } as const;
+// The app draws the agent section on its Agent perspective too, so it opens there.
+const APP = { page: 'agency:task-detail', open: MOCK.open } as const;
 const ALL = [1480, 900, 390] as const;
 const TYPE: readonly string[] = ['font-family', 'font-size', 'font-weight', 'color'];
 
