@@ -1204,8 +1204,11 @@ the task it names: it is the one stop-and-log step every closing surface
 calls (R77), and it logs the elapsed minutes rounded up, never fewer than
 one. A running entry is stopped before it can be deleted. Each is audited
 under its own name (`time entry started`, `time entry created`,
-`time entry note changed`, `time entry deleted`). No agent reaches them
-yet, although the key catalogue allows `time:write` inside a delegation.
+`time entry note changed`, `time entry deleted`), with no subject record
+and `recordId: null` in the answer, so no time event is in a task's
+`history` or in `task.ledger`: those name who acted and when, which would
+be another person's time. No agent reaches them yet, although the key
+catalogue allows `time:write` inside a delegation.
 
 ## The description and the agent brief
 
@@ -2472,7 +2475,8 @@ commands.
 `task.set_party` changes a task's client only while the task is empty: its
 history (applied audit events about it) holds nothing beyond its creation and
 earlier client changes, and no row names it (a subtask naming it as its parent, a
-proposal, a planned run, an envelope, a lease, an alert). Otherwise it is
+proposal, a planned run, an envelope, a lease, an alert, or a time entry,
+deleted or not). Otherwise it is
 refused `CLIENT_LOCKED` 409 and writes nothing, on the API and the command
 line alike. The check runs under the task's row lock, so a content write
 holding that lock lands wholly before it (the change is refused) or wholly

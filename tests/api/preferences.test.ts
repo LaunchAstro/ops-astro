@@ -205,7 +205,7 @@ function agentAndOutsider(): void {
     expect(await rowsOf(principal)).toStrictEqual(before);
   });
 
-  it('MP-2-11a an external party (no membership) is refused, as every write but a client comment is', async () => {
+  it('MP-2-11a an external party (no membership) saves their own preference row and reads only it', async () => {
     const outsider = await fixture.db.app.withBusiness(fixture.business, async (tx) => {
       // A mapped person with no membership (R4): no role key.
       const personId = await insertPerson(tx, 'Olive Outside');
@@ -217,12 +217,14 @@ function agentAndOutsider(): void {
       return { personId, subject };
     });
     const token = await tokenFor(outsider.subject);
+    // `preference:write` is every signed-in person's, a client user's included
+    // (ORCH50's ruling on the catalogue): their own row and no one else's.
     const answer = await save('appearance', 'dark', token);
-    expect(answer.body['code']).toBe('SCOPE_NOT_GRANTED');
-    expect(await rowsOf(outsider.personId)).toStrictEqual([]);
-    // Their read is their own (empty) row: another client's canary never shows.
+    expect(answer.status, JSON.stringify(answer.body)).toBe(200);
+    expect(await rowsOf(outsider.personId)).toStrictEqual([{ key: 'appearance', value: 'dark' }]);
+    // Their read is their own row: another client's canary never shows.
     const own = await call('preference.read', {}, token);
-    expect(own.body['preferences']).toStrictEqual({});
+    expect(own.body['preferences']).toStrictEqual({ appearance: 'dark' });
     expectNoCanary(own);
   });
 }

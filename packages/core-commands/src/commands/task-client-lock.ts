@@ -5,9 +5,12 @@
 // `task.set_party` changes the client only while the task is empty: its history
 // holds nothing beyond its creation and earlier client changes, and no row
 // names it (a subtask naming it as parent, a proposal, a planned run, an envelope,
-// a lease, an alert). The check runs under the task's row lock, which the
-// preparation took (`lockTask`, `for update`), so a content write that holds
-// the same lock is either wholly before it or wholly after it.
+// a lease, an alert, a time entry, deleted or not). A time event names no
+// subject (RS-VAULT-9), so the entry's row is what the lock reads. A tag event
+// keeps the task as its subject: a removed tag leaves no row behind. The check
+// runs under the task's row lock, which the preparation took (`lockTask`,
+// `for update`), so a content write that holds the same lock is either wholly
+// before it or wholly after it.
 //
 // Not every content write takes the task lock. The runtime's own (heartbeat,
 // dispatch, observe) lock runtime rows, but each runs only on a task that
@@ -45,7 +48,8 @@ async function hasContent(tx: TenantQuery, taskId: string): Promise<boolean> {
          or exists (select 1 from planned_runs where business_id = $1 and task_id = $2)
          or exists (select 1 from task_envelopes where business_id = $1 and task_id = $2)
          or exists (select 1 from leases where business_id = $1 and task_id = $2)
-         or exists (select 1 from alerts where business_id = $1 and task_id = $2) as content`,
+         or exists (select 1 from alerts where business_id = $1 and task_id = $2)
+         or exists (select 1 from time_entries where business_id = $1 and task_id = $2) as content`,
     [tx.businessId, taskId, CONTENT_COMMANDS],
   );
   return row?.content !== false;
@@ -54,8 +58,8 @@ async function hasContent(tx: TenantQuery, taskId: string): Promise<boolean> {
 /**
  * The client change, refused `CLIENT_LOCKED` and writing nothing once the task
  * has content. An empty task's change is MP-4-4's (`setParty`): a subtask is
- * held to its parent's client, and a parent's client carries down (a parent
- * with a subtask has content, so the lock answers first there).
+ * held to its parent's client. A parent with a live subtask has content, so
+ * the lock answers first and `setParty`'s carry-down is not reached from here.
  */
 export async function setPartyWhileEmpty(
   tx: TenantQuery,
@@ -64,10 +68,10 @@ export async function setPartyWhileEmpty(
 ): Promise<HandlerOutcome> {
   // A trashed task keeps its old answer (`NOT_FOUND`, from the owned-field writer).
   const task = context.target;
-  if (task === undefined || task.deleted_at !== null) {
+  if (task !== undefined && task.deleted_at !== null) {
     return await writeOwnedFields(tx, context, 'task.set_party', fields);
   }
-  if (await hasContent(tx, task.id)) {
+  if (task !== undefined && (await hasContent(tx, task.id))) {
     return refused(refuseCommand('CLIENT_LOCKED', [], LOCKED_FIXES));
   }
   return await setParty(tx, context, fields);

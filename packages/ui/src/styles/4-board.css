@@ -62,8 +62,6 @@
   letter-spacing: var(--type-body-tracking);
   text-transform: var(--type-body-case);
 }
-/* The head cells are the one table head (`.table th`, MP-1-3); the label
-   only adds its ellipsis. */
 .cbd__thl {
   display: block;
   overflow: hidden;
@@ -81,23 +79,37 @@
   background: var(--surface-2);
 }
 /* The group banner is a plain heading: no colour, no count. A board where
-   every row shouts says nothing. */
-.cbd__grp td {
-  padding-top: var(--s-4);
-  border-bottom: 1px solid var(--border-strong);
+   every row shouts says nothing. A rule on the cell parts it from the group
+   above; the first group sits tight under the heads with none (DS-COMP-17). */
+.cbd__grp > td {
+  padding: 0.85rem 0.5rem 0.35rem;
+  border-top: 1px solid var(--border);
+  background: var(--paper);
 }
+.cbd__tbl tbody tr.cbd__grp:first-child > td {
+  padding-top: 0.35rem;
+  border-top: 0;
+}
+/* The heading and its wait reasons are two sizes on one line: baselines. */
 .cbd__grpb {
-  font: var(--type-eyebrow);
-  letter-spacing: var(--type-eyebrow-tracking);
-  text-transform: var(--type-eyebrow-case);
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  /* The heading's line, so group rows keep 46 and the first 38 (DS-COMP-17). */
+  min-height: 25px;
+  font: var(--type-subheading);
+  letter-spacing: var(--type-subheading-tracking);
+  text-transform: var(--type-subheading-case);
   color: var(--text);
 }
 .cbd__grpr {
-  margin-left: 0.6rem;
+  margin-left: 0.1rem;
+  padding-left: 0.4rem;
+  border-left: 1px solid var(--border);
   color: var(--text-muted);
-  font: var(--type-data);
-  letter-spacing: var(--type-data-tracking);
-  text-transform: var(--type-data-case);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
 }
 .cbd__name {
   display: flex;
@@ -110,9 +122,12 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font: var(--type-body-strong);
-  letter-spacing: var(--type-body-strong-tracking);
-  text-transform: var(--type-body-strong-case);
+  /* One name weight on every board, the Projects board's 400 (DR-48). */
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+  color: var(--text);
+  text-decoration: none;
 }
 .cbd__rank {
   font: var(--type-data);

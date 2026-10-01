@@ -14,7 +14,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { insertMembership } from '../identity/fixture.ts';
-import { type Member } from './fixture.ts';
+import { addClient, type Member } from './fixture.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import { verifyAuditChain } from '../../packages/core-commands/src/commands/audit.ts';
 import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
@@ -35,6 +35,7 @@ import {
   fresh,
   liveHolders,
   outcomeOf,
+  placeBehind,
   readAs,
   reader,
   revisionOf,
@@ -151,13 +152,16 @@ describe.skipIf(serverUrl === undefined)('MP-4-10 client access', () => {
     it('off withdraws the old client’s shares after the client changed', async () => {
       const task = await fresh(alpha, admin, 'moved client', clientA);
       await toggle(alpha, admin, SHARE, task);
+      // The share is content, so the command refuses the change (S0-5); a task
+      // moved before the lock existed holds the same state.
       const moved = await as(alpha, admin, {
         command: 'task.set_party',
         recordId: task,
         expectedRevision: await revisionOf(task),
         fields: { client: clientB },
       });
-      expect(outcomeOf(moved)).toStrictEqual({ applied: true });
+      expect(outcomeOf(moved)).toStrictEqual({ code: 'CLIENT_LOCKED', names: [] });
+      await placeBehind(task, clientB);
       // Still on: client A's people still see it until it is turned off.
       expect(await clientAccessOf(admin, task)).toBe(true);
       await toggle(alpha, admin, REVOKE, task);
@@ -171,7 +175,9 @@ describe.skipIf(serverUrl === undefined)('MP-4-10 client access', () => {
         code: 'FIELD_VALUE_INVALID',
         names: ['client'],
       });
-      const empty = await fresh(alpha, admin, 'empty client', randomUUID());
+      const nobody = randomUUID();
+      await addClient(db.app, alpha, nobody, admin);
+      const empty = await fresh(alpha, admin, 'empty client', nobody);
       expect(outcomeOf(await toggle(alpha, admin, SHARE, empty))).toStrictEqual({
         code: 'FIELD_VALUE_INVALID',
         names: ['client'],

@@ -173,6 +173,16 @@ the last one, because the next migration would make it wrong.
 `tests/tenancy/restricted-calls.test.ts` all read the list from `migrations/`,
 so a new migration edits none of them.
 
+The upgrade drill (`pnpm verify:upgrade-drill`) fails a migration that changes a
+row an installation already holds. A migration that does so on purpose, such as
+a slot reservation or a field's owners, says so in
+`migrations/<version>.changes.json`, beside the file: a list of
+`{ "table", "columns", "where" }`. The drill excuses a changed row only where
+that predicate picked it before the upgrade and the row differs in those columns
+alone, and it fails a declaration whose change never happened
+(`scripts/local/upgrade-drill-changes.mjs`). Every other reader of `migrations/`
+reads `.sql` files only.
+
 The first seven, `0001_tenancy` to `0007_command_envelope`, are the tenancy,
 identity, grant, record and command-envelope spine ported from
 `ops-astro-t1-draft@60f2009`. Two companion files describe the later ones.

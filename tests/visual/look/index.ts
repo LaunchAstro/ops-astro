@@ -14,8 +14,10 @@ import { SETTINGS } from './settings.ts';
 import { SHELL } from './shell.ts';
 import { SIGN_IN } from './sign-in.ts';
 import { TASK } from './task.ts';
+import { TASK_PANEL } from './task-panel.ts';
 import { TEAM } from './team.ts';
 import { TELEMETRY } from './telemetry.ts';
+import { TODOS } from './todos.ts';
 import { WORKLOG } from './worklog.ts';
 import type { LookScreen } from './probe.ts';
 
@@ -29,6 +31,8 @@ export const LOOK_SCREENS: readonly LookScreen[] = [
   SIGN_IN,
   ACCESS,
   TELEMETRY,
+  TODOS,
+  TASK_PANEL,
   INBOX,
   TEAM,
   WORKLOG,

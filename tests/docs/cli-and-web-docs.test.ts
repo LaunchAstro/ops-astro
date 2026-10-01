@@ -174,6 +174,7 @@ describe('WEB.md on the dock', () => {
     const shell = read('packages/ui/src/surfaces/Shell.tsx');
     expect(shell).toContain('aria-expanded={tab.open}');
     expect(shell).toContain("tab.open ? 'Close' : 'Open'");
+    // `dockTabGo`, split out of App.tsx for the line cap; WEB.md names it there.
     expect(read('apps/web/src/panels.ts')).toContain(
       "here === target ? pathTo('agency:projects-board') : target",
     );

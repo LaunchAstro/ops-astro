@@ -200,16 +200,39 @@
 }
 
 .cbd__th {
-  font: inherit;
-  letter-spacing: inherit;
-  text-transform: inherit;
-  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  box-sizing: border-box;
+  /* The head cell is the one table head (`.table th`, MP-1-3); the label
+     button spans its padding edge to edge and carries the board's own
+     (DS-COMP-17, B-15), so it clips at the cell's edge where the grip sits. */
+  width: calc(100% + 32px);
+  margin: -8.8px -16px;
+  /* The head's icon box (1rem) holds its height where the icon is not drawn. */
+  min-height: calc(1rem + 1.1rem);
   border: 0;
-  padding: 0;
+  padding: 0.55rem var(--s-3);
+  overflow: hidden;
   background: none;
-  color: inherit;
+  color: var(--text-muted);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
   text-align: inherit;
+  white-space: nowrap;
   cursor: pointer;
+}
+.cbd__th:hover,
+.cbd__hd[aria-sort='ascending'] .cbd__th,
+.cbd__hd[aria-sort='descending'] .cbd__th {
+  color: var(--text);
+}
+.cbd__tbl [data-align='end'] > .cbd__th {
+  justify-content: flex-end;
+}
+.cbd__tbl [data-align='center'] > .cbd__th {
+  justify-content: center;
 }
 
 .cbd__tbl [data-align='end'] {
@@ -467,27 +490,39 @@ td[data-tight] {
 .cbd__rank {
   color: var(--ink-faint);
 }
-.cbd__due {
-  font: var(--type-data);
-  letter-spacing: var(--type-data-tracking);
-  text-transform: var(--type-data-case);
+/* The assignee's name beside the person avatar (DS-PRIM-16) is quieter than the task's. */
+.cbd__tbl .av--person + .cbd__nm {
   color: var(--text-2);
 }
-.cbd__due[data-tone='overdue'] {
+/* The due date, in the dock's `.tl__due` dialect: overdue is the danger ink
+   at the medium weight; due today keeps the plain date's ink. */
+.cbd__tbl .tl__due {
+  color: var(--text-2);
+}
+.cbd__tbl .tl__due.is-now:not(.is-bad) {
+  color: var(--text-2);
+}
+.cbd__tbl .tl__due.is-bad {
   color: var(--danger);
 }
-.cbd__due[data-tone='today'] {
-  color: var(--text);
-}
+/* 22 tall and top-aligned, so the chip sits inside the cell's line and the
+   row keeps 39 (DS-COMP-17); the caption's line is taller than the box. */
 .cbd__chip {
   display: inline-block;
-  padding: 1px 6px;
+  vertical-align: top;
+  box-sizing: border-box;
+  height: 22px;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0.1rem 0.35rem;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  background: var(--surface);
   font: var(--type-caption);
   letter-spacing: var(--type-caption-tracking);
   text-transform: var(--type-caption-case);
   color: var(--text-2);
+  /* A cell clips at its edge and never shortens its words (MP-5-1). */
+  text-overflow: clip;
   white-space: nowrap;
 }
 .cbd__tok {
