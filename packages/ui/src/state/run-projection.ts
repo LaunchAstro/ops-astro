@@ -127,3 +127,14 @@ export function unknownOf(reservation: RunReservation | undefined): UnknownAttem
   }
   return typeof id === 'string' ? { id, heldMinor: reservation.heldMinor } : null;
 }
+
+/**
+ * The reservation that matters now: the newest one held for the head's run.
+ * An older version's run says nothing about the head. A read made before
+ * MP-6-5 names no run, so each of its reservations counts.
+ */
+export function headReservation(lineage: RunLineage, head: RunVersion): RunReservation | undefined {
+  return lineage.reservations.findLast(
+    (reservation) => reservation.runId === undefined || reservation.runId === head.runId,
+  );
+}

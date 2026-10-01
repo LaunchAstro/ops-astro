@@ -15,8 +15,8 @@
 // passed on the server's clock, which the read already derived), never a
 // timer in the browser. What the run staged is read in `agent-staged.ts`.
 
-import { unknownOf, type UnknownAttempt } from './run-projection.ts';
-import type { RunCheck, RunLineage, RunReservation, RunVersion } from './run-projection.ts';
+import { headReservation, unknownOf, type UnknownAttempt } from './run-projection.ts';
+import type { RunCheck, RunLineage, RunVersion } from './run-projection.ts';
 
 export type RunTone = 'gate' | 'run' | 'done' | 'bad';
 
@@ -103,35 +103,18 @@ const WORDS: Readonly<Record<RunState, { word: string; tone: RunTone }>> = {
   cancelled: { word: 'Cancelled', tone: 'bad' },
 };
 
-/**
- * The reservation that matters now: the newest one held for the head's run.
- * An older version's run says nothing about the head. A read made before
- * MP-6-5 names no run, so each of its reservations counts.
- */
-function latest(lineage: RunLineage, head: RunVersion): RunReservation | undefined {
-  return lineage.reservations.findLast(
-    (reservation) => reservation.runId === undefined || reservation.runId === head.runId,
-  );
-}
-
-function stateOf(
-  lineage: RunLineage,
-  head: RunVersion,
-  reservation: RunReservation | undefined,
-): RunState {
+function stateOf(lineage: RunLineage, head: RunVersion): RunState {
   if (lineage.state === 'rejected') return 'rejected';
   if (lineage.state === 'cancelled') return 'cancelled';
+  const reservation = headReservation(lineage, head);
   if (reservation?.state === 'quarantined') return 'unknown-outcome';
   // T3b's unknown effect: held until a person records what happened (C54).
   if (reservation?.attempt?.state === 'liability_unknown') return 'unknown-outcome';
-  // A hand-back releases the hold through the classifier, which leaves the
-  // reservation abandoned under `handback_completed` and the lineage live. A
-  // dropped hand-back is classified the same way but marks its attempt dropped.
+  // A hand-back's classifier abandons the hold under `handback_completed` and
+  // leaves the lineage live; a dropped hand-back also marks its attempt dropped.
   if (reservation?.state === 'abandoned') {
-    return reservation.classifiedCause === 'handback_completed' &&
-      reservation.attempt?.state !== 'dropped'
-      ? 'done'
-      : 'dropped';
+    const handedBack = reservation.classifiedCause === 'handback_completed';
+    return handedBack && reservation.attempt?.state !== 'dropped' ? 'done' : 'dropped';
   }
   if (lineage.state === 'completed' || reservation?.state === 'actual') return 'done';
   if (reservation?.lease?.state === 'live') return 'running';
@@ -271,11 +254,11 @@ export function runStories(proposals: readonly RunLineage[] | undefined): readon
   return oldestFirst.flatMap((lineage, index) => {
     const head = lineage.versions[0];
     if (head === undefined) return [];
-    const reservation = latest(lineage, head);
-    const state = stateOf(lineage, head, reservation);
+    const state = stateOf(lineage, head);
     const box = gateBox(lineage, head, state);
     const jobs = jobsOf(head, state, box);
     const passed = head.checks.filter((check) => check.outcome === 'passed').length;
+    const reservation = headReservation(lineage, head);
     const { word, tone } = WORDS[state];
     return [
       {
