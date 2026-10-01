@@ -13,12 +13,14 @@
 // - The runtime's `decide` is asked directly with the agent's actor beside a
 //   person who holds decide, the one way past the surfaces' identity checks:
 //   each decision is refused `DELEGATION_EXCLUDES_DECISION`, and the escalate
-//   too. Before AW-09 the runtime trusted the actor it was handed.
+//   too, on the agent's output and on a person's own version alike. Before
+//   AW-09 the runtime trusted the actor it was handed.
 // Every refusal leaves the gate pending with no decision row. The positive
 // control is the person deciding the same output as themselves.
 // The process-level half (the command line holding the agent's session) is in
 // `tests/cli/aw-09-reviewed-on-every-surface.test.ts`.
 
+import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { decide, gateSigningKey } from '../../packages/core-runtime/src/index.ts';
 import { isReviewedOutput } from '../../packages/core-runtime/src/reviewed-output.ts';
@@ -28,7 +30,10 @@ import { agentOutput as madeByAgent } from './aw-09-agent-round.ts';
 import {
   asAgent,
   codeOf,
+  createTask,
+  freshPurpose,
   openSchedules,
+  propose,
   rows,
   type Detail,
   type Schedules,
@@ -149,5 +154,21 @@ describe.skipIf(serverUrl === undefined)('AW-09 no self-review', () => {
     expect(await footprint(output['gateId'])).toEqual([
       { state: 'changes_requested', decisions: 1 },
     ]);
+  });
+
+  it('AW-09 no self-review: a decision by an agent’s actor is refused on a person’s own version too', async () => {
+    const taskId = await createTask(s, `aw-09 own ${randomUUID()}`);
+    const own = await propose(s, taskId, { purpose: freshPurpose() });
+    for (const kind of KINDS) {
+      // eslint-disable-next-line no-await-in-loop -- each decision on the same pending gate
+      const result = await runtimeDecide(own, kind, s.agentActorId);
+      expect(result.ok, kind).toBe(false);
+      if (!result.ok) expect(result.refusal.code, kind).toBe('DELEGATION_EXCLUDES_DECISION');
+    }
+    expect(await footprint(own['gateId'])).toEqual([{ state: 'pending', decisions: 0 }]);
+
+    // Positive control: the person deciding their own version as themselves.
+    expect((await runtimeDecide(own, 'request_changes', s.decider.actorId)).ok).toBe(true);
+    expect(await footprint(own['gateId'])).toEqual([{ state: 'changes_requested', decisions: 1 }]);
   });
 });

@@ -166,3 +166,44 @@ it('AW-08 mark: a lease marks only newer work on its lineage, never the plan it 
     'dispatch',
   );
 });
+
+it("AW-08 mark: a lease cannot mark a person's newer version on its lineage as reviewed output", async () => {
+  const taskId = await createTask(s, `aw08-own-${randomUUID()}`);
+  const plan = appliedDetail(
+    await asPerson(s, {
+      ...proposeBody(taskId, await revisionOf(s, taskId), { purpose: freshPurpose() }),
+      step: EFFECT,
+    }),
+    'task.propose',
+  );
+  const working = await pickup(s, (await approve(s, plan))['reservationId']);
+  const successor = { purpose: freshPurpose(), maximumMinor: 2_000, currency: 'AUD' };
+  const back = appliedDetail(
+    await asAgent(
+      s,
+      handbackBody(working, { ...successor, payload: { change: 'output' }, step: EFFECT }),
+      String(working['credential']),
+    ),
+    'task.handback',
+  );
+  // The person proposes a newer version on the same lineage: newer than the lease's work.
+  const lineageId = String(plan['lineageId']);
+  const theirs = appliedDetail(
+    await asPerson(s, {
+      ...proposeBody(taskId, await revisionOf(s, taskId), { purpose: freshPurpose(), lineageId }),
+      step: EFFECT,
+    }),
+    'task.propose',
+  );
+  const mark = {
+    versionId: String(theirs['versionId']),
+    lineageId,
+    leaseId: String(working['leaseId']),
+  };
+  await expect(
+    s.db.app.withBusiness(s.business, async (tx) => await markReviewedOutput(tx, mark)),
+  ).rejects.toThrow(/the lease's own hand-back/u);
+
+  // Control: the one mark is the hand-back's own successor, under that lease.
+  expect(await marksOf(s, taskId)).toEqual([back['successorVersionId']]);
+});
