@@ -210,8 +210,12 @@ export async function classifyUnderLocks(
   // after it is conditional on that row. A classifier whose conditional update
   // affected nothing has lost the race, and it must not then move the attempt
   // or subtract a hold the winner has already subtracted.
+  //
+  // Above zero the hold settles at its calls' spend, at zero it is abandoned;
+  // either way the row records the cause that stopped it and the cause's
+  // identity (T5; 0219 admits a cause on `actual`).
   const hold = { reservationId: request.reservationId, envelopeId: row.envelope_id };
-  const closed = await closeHold(tx, hold, request, calls.spentMinor);
+  const closed = await closeHold(tx, hold, request, calls.spentMinor, { stopped: true });
   if (!closed) {
     return {
       reservationId: request.reservationId,
@@ -241,26 +245,32 @@ export async function classifyUnderLocks(
  * Close a held reservation, guarded on `held` (false if another closed it): `actual` at
  * its model calls' cost, else abandoned under the cause (0013: an actual is never zero).
  * The envelope gives the hold back once and takes only that spend, never an invented zero.
+ * A hold the classifier `stopped` records its cause on `actual` too (0219); a person's
+ * write-off or recorded outcome that settles it records none, as before.
  */
 export async function closeHold(
   tx: TenantQuery,
   hold: { readonly reservationId: string; readonly envelopeId: string },
   cause: { readonly cause: string; readonly causeId: string },
   spentMinor: bigint,
+  { stopped = false }: { readonly stopped?: boolean } = {},
 ): Promise<boolean> {
   const spent = spentMinor > 0n;
+  const recorded = !spent || stopped;
   const [changed] = await tx.query<{ readonly held_minor: string }>(
-    spent
-      ? `update public.reservations set state = 'actual', actual_minor = $3, terminal_at = now()
-          where business_id = $1 and id = $2 and state = 'held'
-          returning held_minor::text as held_minor`
-      : `update public.reservations
-            set state = 'abandoned', classified_cause = $3, classified_cause_id = $4, terminal_at = now()
-          where business_id = $1 and id = $2 and state = 'held'
-          returning held_minor::text as held_minor`,
-    spent
-      ? [tx.businessId, hold.reservationId, spentMinor.toString()]
-      : [tx.businessId, hold.reservationId, cause.cause, cause.causeId],
+    `update public.reservations
+        set state = $3, actual_minor = $4, classified_cause = $5, classified_cause_id = $6,
+            terminal_at = now()
+      where business_id = $1 and id = $2 and state = 'held'
+      returning held_minor::text as held_minor`,
+    [
+      tx.businessId,
+      hold.reservationId,
+      spent ? 'actual' : 'abandoned',
+      spent ? spentMinor.toString() : null,
+      recorded ? cause.cause : null,
+      recorded ? cause.causeId : null,
+    ],
   );
   if (changed === undefined) return false;
   await tx.query(
