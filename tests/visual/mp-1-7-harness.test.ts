@@ -169,13 +169,15 @@ function everyPageAtItsAddress(): void {
 }
 
 // The registry's pages: wave 0's four, an invitation's link (C39-T), the
-// public legal page (C81), Settings ▸ Access, Telemetry (U14), Operations
+// public legal page (C81), the forgot-password pages (C40), Settings ▸ Access, Telemetry (U14), Operations
 // (C55), MP-7-3's inbox, the component gallery (MP-1-3, U04), a
 // conversation's own address (C36) and MP-7-10's Team.
 const BUILT_PAGES = [
   'agency:sign-in',
   'agency:enrol',
   'agency:legal',
+  'agency:forgot-password',
+  'agency:reset',
   'agency:projects-board',
   'agency:task-detail',
   'agency:settings',

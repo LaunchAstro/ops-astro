@@ -73,6 +73,23 @@ export const ROUTES = {
     surface: 'none',
     authenticated: false,
   },
+  // C40: a forgotten password. The ask, linked from sign-in, and the page the
+  // reset link opens (`/reset#token_hash=...`, the address the reset mail
+  // carries); both need no sign-in and are the same with one.
+  'agency:forgot-password': {
+    namespace: 'agency',
+    path: '/forgot-password',
+    title: 'Forgot password',
+    surface: 'none',
+    authenticated: false,
+  },
+  'agency:reset': {
+    namespace: 'agency',
+    path: '/reset',
+    title: 'Set a new password',
+    surface: 'none',
+    authenticated: false,
+  },
   'agency:projects-board': {
     namespace: 'agency',
     path: '/projects/',
