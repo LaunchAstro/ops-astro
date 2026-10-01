@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Review proof (REVIEW-MAIN-B1 p13-1). On a hosted project the provider keeps
-// its sign-ins in `auth.users`, in the same database the reset empties. The
-// reset makes the cast's sign-ins there before it seeds, and never empties
-// `auth.users`, so the seed it starts (LOCAL_SEED_MADE_UP=confirm, mark just
-// cleared) judges an unmarked database whose sign-in table has held a row and
-// refuses it. The loopback stand-in here writes no `auth.users`, so this file
-// puts the cast's made-up sign-ins there, as the provider holds them after a
-// reset, and runs the reset again.
+// its sign-ins in `auth.users`, in the same database the reset empties, and the
+// reset never empties `auth.users`. Before #298 the seed then judged an
+// unmarked database whose sign-in table had held a row and refused it. The
+// stand-in now writes `auth.users` as the provider does; this file adds the
+// cast's made-up sign-ins there once more and runs the reset again.
 
 import { expect, it } from 'vitest';
 import { STAGING_CAST } from '../../scripts/ops/staging-reset.ts';
