@@ -30,12 +30,18 @@ import { raiseAlert } from './alerts.ts';
  * SQL: what the classifier's settle of the reservation `r` counts now, its
  * calls as they stand (settled at their actual, still open or unknown at their
  * maximum), never above the figure it settled at. `r` is a query's own alias.
+ * A call released unsent after the settle (never started, ended after it)
+ * was counted at its maximum and gives nothing back, so it stays there, as the
+ * envelope counts it; the cap keeps one the settle already counted at nothing
+ * (released by the sweep in the settle's own transaction) from adding to it.
  */
 export const spentNowOf = (r: string): string =>
   `least(${r}.actual_minor, (
      select coalesce(sum(case when c.state = 'settled' then c.actual_minor
                               when c.state in ('reserved', 'dispatched', 'liability_unknown')
                                 then c.reserved_minor
+                              when c.state = 'released' and c.started_at is null
+                                   and c.ended_at > ${r}.terminal_at then c.reserved_minor
                               else 0 end), 0)
        from public.model_calls c
       where c.business_id = ${r}.business_id and c.reservation_id = ${r}.id))`;

@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Step 4 of a model call (AW-01): what custody's outcome means, and the
-// settlement under the six facts' locks with its audit event.
+// settlement under the six facts' locks with its audit event. A call closes
+// once: each close moves it only out of an open state (`reserved`,
+// `dispatched`), and a call already closed, by the sweep, a provider's proof
+// or a person, ignores a later answer and gives nothing back again.
 
 import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
 import {
@@ -102,6 +105,9 @@ export async function markStepActed(tx: TenantQuery, callId: string): Promise<vo
   );
 }
 
+/** The answer to a close that found its call already closed: it moved nothing. */
+const closed = (callId: string): ModelCallResult => ({ ok: false, code: 'DECISION_STALE', callId });
+
 /** Above the hold, or no answer: the maximum stays held as unknown liability until a person records an outcome. */
 export async function hold(
   tx: TenantQuery,
@@ -120,12 +126,13 @@ export async function hold(
     fault: failure.fault,
     providerCode: failure.providerCode,
   };
-  await tx.query(
+  const moved = await tx.query(
     `update public.model_calls
         set state = 'liability_unknown', observed_minor = $3, fault = $4, drop_state = $5,
             drop_cause = $6, provider_code = $7, reconcile_mode = $8,
             unknown_since = clock_timestamp()
-      where business_id = $1 and id = $2`,
+      where business_id = $1 and id = $2 and state in ('reserved', 'dispatched')
+      returning id`,
     [
       tx.businessId,
       callId,
@@ -137,6 +144,7 @@ export async function hold(
       reconcileModeOf(operation, broker.providers.get(operation.provider)),
     ],
   );
+  if (moved.length === 0) return closed(callId);
   await markStepActed(tx, callId);
   await broker.audit(tx, {
     action: 'model.call_held',
@@ -155,11 +163,13 @@ export async function release(
   broker: Broker,
 ): Promise<ModelCallResult> {
   const { callId, operation, reservedMinor } = reserved;
-  await tx.query(
+  const moved = await tx.query(
     `update public.model_calls set state = 'released', ended_at = clock_timestamp()
-      where business_id = $1 and id = $2`,
+      where business_id = $1 and id = $2 and state in ('reserved', 'dispatched')
+      returning id`,
     [tx.businessId, callId],
   );
+  if (moved.length === 0) return closed(callId);
   await broker.audit(tx, {
     action: 'model.call_released',
     outcome: 'applied',
@@ -178,7 +188,7 @@ export async function settlePriced(
 ): Promise<void> {
   const { callId, operation, reservedMinor } = reserved;
   const { costMinor } = settlement;
-  await tx.query(
+  const moved = await tx.query(
     `update public.model_calls
         set state = 'settled', observed_minor = $3, actual_minor = $3, account = $4,
             credential_kind = $5,
@@ -186,7 +196,8 @@ export async function settlePriced(
             landed_at = case when $7 then clock_timestamp() end,
             ended_at = clock_timestamp(),
             model_id = $8, input_units = $9, output_units = $10
-      where business_id = $1 and id = $2`,
+      where business_id = $1 and id = $2 and state in ('reserved', 'dispatched')
+      returning id`,
     [
       tx.businessId,
       callId,
@@ -200,6 +211,7 @@ export async function settlePriced(
       settlement.answer.usage.outputUnits,
     ],
   );
+  if (moved.length === 0) return;
   await broker.audit(tx, {
     action: 'model.call_dispatched',
     outcome: 'applied',
@@ -228,11 +240,11 @@ export async function settle(
   return await database.withBusiness(businessId, async (tx) => {
     const work = await lockCall(tx, reserved.callId, caller, request.fence);
     const { callId, reservedMinor } = reserved;
+    if (!(await isOpen(tx, callId))) return closed(callId);
     if (settlement.kind === 'unknown') return await hold(tx, reserved, null, settlement, broker);
-    const open = await isOpen(tx, callId);
     if (settlement.kind === 'nothing') {
       const released = await release(tx, reserved, settlement.reason, broker);
-      if (open) await giveBack(tx, callId);
+      await giveBack(tx, callId);
       return released;
     }
     const { costMinor } = settlement;
@@ -241,7 +253,7 @@ export async function settle(
       return await hold(tx, reserved, observed, null, broker);
     }
     await settlePriced(tx, reserved, settlement, broker);
-    if (open) await giveBack(tx, callId);
+    await giveBack(tx, callId);
     if (work !== 'stands') return { ok: false, code: work, callId };
     return {
       ok: true,
@@ -254,10 +266,13 @@ export async function settle(
   });
 }
 
-/** Whether the call is still open, read under its reservation's lock before it settles. */
+/**
+ * Whether the call is still open, read and locked under its envelope's and
+ * reservation's locks before it settles: a call already closed stays closed.
+ */
 async function isOpen(tx: TenantQuery, callId: string): Promise<boolean> {
   const [call] = await tx.query<{ readonly state: string }>(
-    'select state from public.model_calls where business_id = $1 and id = $2',
+    'select state from public.model_calls where business_id = $1 and id = $2 for update',
     [tx.businessId, callId],
   );
   return call?.state === 'reserved' || call?.state === 'dispatched';
