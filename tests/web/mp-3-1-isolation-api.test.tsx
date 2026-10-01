@@ -22,7 +22,12 @@
 
 import { describe, expect, it } from 'vitest';
 import { act } from 'react';
-import { COMMAND_EFFECTS, type CommandName } from '../../packages/core-wire/src/index.ts';
+import {
+  COMMAND_EFFECTS,
+  COMMAND_SURFACE,
+  pathOf,
+  type CommandName,
+} from '../../packages/core-wire/src/index.ts';
 import { tokenFor } from '../api/fixture.ts';
 import {
   isolationWorld,
@@ -158,11 +163,21 @@ const escape = async (): Promise<void> =>
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
   });
 
+const timesIn = (list: readonly string[], one: string): number =>
+  list.filter((each) => each === one).length;
+
+/** The command a client request named, by the catalogue's own path. */
+const commandAt = (path: string) =>
+  COMMAND_SURFACE.find((each) => path.endsWith(pathOf(each.name)));
+
 /**
- * One step of the dock: every audit event it led to is a read by the
- * catalogue's own effects (task.execution is one whose name does not end in
- * .read: no write, intake, egress or access) that the client asked for, at
- * `/api/b/<business>/a/b` for a read `a.b`.
+ * One step of the dock, both ways round. Every audit event it led to is a read
+ * by the catalogue's own effects (task.execution is one whose name does not
+ * end in .read: no write, intake, egress or access), asked by the client at
+ * its path no fewer times than it was audited. Every request it led to is the
+ * live stream reopening with the topics left, or such a read: audited in the
+ * step, or one the surface declares unaudited (a person's own preferences,
+ * CS-2.8).
  */
 async function step(heard: readonly Heard[], doing: () => Promise<void>) {
   const seen = await auditIds();
@@ -171,13 +186,23 @@ async function step(heard: readonly Heard[], doing: () => Promise<void>) {
   await quiet(heard);
   const audited = await auditedSince(seen);
   const paths = heard.slice(asked).map((each) => each.path.split('?')[0] ?? '');
-  for (const command of audited) {
+  const named = paths.map((path) => commandAt(path)?.name ?? path);
+  for (const command of new Set(audited)) {
     expect([command, COMMAND_EFFECTS[command as CommandName]]).toEqual([command, NO_EFFECT]);
-    const at = `/${command.replaceAll('.', '/')}`;
-    expect(
-      paths.some((path) => path.endsWith(at)),
+    const counts = [timesIn(audited, command), timesIn(named, command)];
+    expect([command, counts[0]! <= counts[1]!], `${command} audited, asked: ${counts}`).toEqual([
       command,
-    ).toBe(true);
+      true,
+    ]);
+  }
+  for (const path of paths) {
+    if (path.endsWith('/live')) continue;
+    const command = commandAt(path);
+    expect([path, command !== undefined && COMMAND_EFFECTS[command.name]]).toEqual([
+      path,
+      NO_EFFECT,
+    ]);
+    expect([path, audited.includes(command!.name) || !command!.audited]).toEqual([path, true]);
   }
   return audited;
 }
@@ -204,11 +229,21 @@ describe.skipIf(serverUrl === undefined)('MP-3-1 isolation', () => {
     });
     expect(opened.length).toBeGreaterThan(0);
 
+    const settingsTab = async () => {
+      await act(() => {
+        (page.find('.dock__tab[data-panel="settings"]') as HTMLElement).dispatchEvent(
+          new MouseEvent('click', { bubbles: true, shiftKey: true }),
+        );
+      });
+    };
     // Escape closes Settings; the to-dos panel still drawn may read again.
     await step(heard, escape);
     expect(page.all('.dpanel')).toHaveLength(1);
-    // Its X closes the last panel; the page's own screen may read again.
-    await step(heard, async () => await page.click('[data-panel-id="todos"] .dpanel__x'));
+    // Its X closes Settings again once reopened, and Close all the last panel.
+    await step(heard, settingsTab);
+    await step(heard, async () => await page.click('[data-panel-id="settings"] .dpanel__x'));
+    expect(page.all('.dpanel')).toHaveLength(1);
+    await step(heard, async () => await page.click('.dock__closeall'));
     expect(page.all('.dpanel')).toHaveLength(0);
 
     // The dock on its own, nothing left to close: nothing audited, nothing asked.
