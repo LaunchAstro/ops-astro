@@ -35,13 +35,15 @@ export async function reviewedByPerson(
   versionId: string,
   reviewer: Reviewer,
 ): Promise<RuntimeResult<null>> {
-  if (!(await isReviewedOutput(tx, versionId))) return PASSED;
+  // The actor first: a person acting as themselves passes whatever the version
+  // is, so a decision reads reviewed_outputs only when that could refuse it.
   const acting = await tx.query<{ readonly id: string }>(
     `select id from public.actors
       where business_id = $1 and id = $2 and kind = 'person' and person_id = $3 and active`,
     [tx.businessId, reviewer.decidedByActorId, reviewer.decidedByPersonId],
   );
   if (acting.length === 1) return PASSED;
+  if (!(await isReviewedOutput(tx, versionId))) return PASSED;
   return {
     ok: false,
     refusal: refuseCommand(
