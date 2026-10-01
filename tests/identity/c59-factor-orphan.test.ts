@@ -26,6 +26,7 @@ import type {
 } from '../../packages/core-commands/src/commands/account-factor-provider.ts';
 import {
   recordFactorEnrolled,
+  recordFactorRemoved,
   recordFactorVerified,
 } from '../../packages/core-records/src/identity/second-factor.ts';
 import { endOtherSeenSessions } from '../../packages/core-records/src/identity/sessions.ts';
@@ -367,6 +368,53 @@ describe.skipIf(serverUrl === undefined)(
       expect(asked).toEqual(['list', `remove ${stray}`, 'enrol']);
       const reconciled = (await events(bravo, 'account.factor_reconciled')).slice(before);
       expect(reconciled.map(({ outcome }) => outcome)).toEqual(['applied']);
+    });
+
+    it('C59 sec r9: the next enrolment removes a factor verified at the provider that no business records, after a replaced enrolment', async () => {
+      const subject = `sub-${randomUUID()}`;
+      const person = await personIn(bravo, subject);
+      // Tab A's good code verified F at the provider; tab B's enrolment G
+      // replaced F in the record first, so F was never recorded. G was then
+      // completed and removed.
+      const replaced = `factor-${randomUUID()}`;
+      const g = await factorIn(person, subject, true);
+      await db.app.withBusiness(bravo, (tx) =>
+        recordFactorRemoved(tx, { personId: person, factorId: g.id, subject }),
+      );
+      const { provider, asked } = namingProvider([{ factorId: replaced, status: 'verified' }]);
+      const before = (await events(bravo, 'account.factor_reconciled')).length;
+
+      const answer = await enrolSecondFactor(callerFor(subject), provider);
+
+      expect('code' in answer ? answer.code : 'issued').toBe('issued');
+      expect(asked).toEqual(['list', `remove ${replaced}`, 'enrol']);
+      const reconciled = (await events(bravo, 'account.factor_reconciled')).slice(before);
+      expect(reconciled.map(({ outcome }) => outcome)).toEqual(['applied']);
+    });
+
+    it('C59 sec r9: reconciling never removes a factor another business records as verified', async () => {
+      const subject = `sub-${randomUUID()}`;
+      const alphaPerson = await personIn(alpha, subject);
+      await enrolHere(alpha, alphaPerson, subject, true);
+      const elsewhere = await db.app.withBusiness(alpha, (tx) =>
+        tx.query<{ provider_factor_id: string }>(
+          'select provider_factor_id from public.second_factors where person_id = $1',
+          [alphaPerson],
+        ),
+      );
+      const person = await personIn(bravo, subject);
+      const own = await factorIn(person, subject, true);
+      const stray = `factor-${randomUUID()}`;
+      const { provider, asked } = namingProvider([
+        { factorId: own.providerFactorId, status: 'verified' },
+        { factorId: elsewhere[0]!.provider_factor_id, status: 'verified' },
+        { factorId: stray, status: 'verified' },
+      ]);
+
+      await removeSecondFactor(callerFor(subject), { code: '123456' }, provider);
+
+      expect(asked.slice(0, 3)).toEqual(['list', `remove ${stray}`, 'verify']);
+      expect(asked).not.toContain(`remove ${elsewhere[0]!.provider_factor_id}`);
     });
 
     it('C59: a removal the product refuses removes nothing at the provider', async () => {
