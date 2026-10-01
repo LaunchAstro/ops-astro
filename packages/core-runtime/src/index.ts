@@ -56,6 +56,7 @@ export {
   childResults,
   childStateOf,
   handBackChild,
+  PARENT_FAULT,
   type ChildHandback,
   type ChildResult,
   type ChildStanding,

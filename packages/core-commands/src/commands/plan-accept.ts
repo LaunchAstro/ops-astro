@@ -7,11 +7,12 @@
 // shape, and the origin conversation, which is the caller's own or
 // `NOT_FOUND`. The files are read from the server's instruction root, never
 // from the body; a deployment with none configured cannot accept. Then
-// `acceptPlan` approves, pins and binds in this one transaction. The authority
-// was asked on the gate's own task by the surface (`task.decide`'s lookup),
-// and `decide` asks it again under its locks.
+// `acceptPlan` approves, pins and binds in this one transaction, and the gate's
+// inbox decision items close in it as `task.decide` closes them (INB-1c).
+// The authority was asked on the gate's own task by the surface
+// (`task.decide`'s lookup), and `decide` asks it again under its locks.
 
-import { subjectsOf } from '../../../core-records/src/index.ts';
+import { clearDecision, subjectsOf } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import {
   acceptPlan,
@@ -131,6 +132,8 @@ export async function acceptPlanOnGate(
   if (!result.ok) {
     return refused(result.refusal.code === 'GATE_NOT_FOUND' ? GATE_NOT_VISIBLE : result.refusal);
   }
+  // INB-1: a fault here throws and takes the approval down with it.
+  await clearDecision(tx, { gateId: result.value.gateId, decisionId: result.value.decisionId });
   const outcome = acceptedOutcome(result.value, body.plan);
   return origin === undefined ? outcome : { ...outcome, originConversationId: origin };
 }
