@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Reviewer proofs for MP-4-8 Client field on real sources (SL08-21-rev2).
-// Placed at tests/reads/sol-proof-clientreal.test.ts to run; not part of the repo.
+// MP-4-8 Client field on real sources: task.read sends a client id only to a
+// member whose grants reach that client; the shared view sends neither field.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
@@ -46,8 +46,8 @@ afterAll(async () => {
   await w?.db.drop();
 });
 
-live('Sol proof, clientreal', () => {
-  it('Sol proof, criterion security: a member whose grants do not reach client A is not sent A’s id by task.read', async () => {
+live('task.read names a client only to a reader it reaches', () => {
+  it('a member whose grants do not reach client A is not sent A’s id by task.read', async () => {
     const listed = await executeRead(w.db.app, w.alpha, bea.presented, {
       read: 'client.list',
     } as never);
@@ -64,7 +64,7 @@ live('Sol proof, clientreal', () => {
     expect(JSON.stringify(read)).not.toContain(clientA);
   });
 
-  it('Sol proof, check: the shared view carries neither client nor hasContent', async () => {
+  it('the shared view carries neither client nor hasContent', async () => {
     const outsider = await shareWithClient(w.db.app, w.alpha, w.ada, taskA);
     const read = await executeRead(w.db.app, w.alpha, outsider.presented, {
       read: 'task.read',
