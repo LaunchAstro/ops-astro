@@ -25,7 +25,9 @@ useClientsWorld();
 // Minted per call: the ids. The states and revisions are compared.
 const MINTED = new Set(['recordId', 'operationId', 'invitationId']);
 
-const addressFor = (name: string): string => `${name}-${randomUUID().slice(0, 8)}@example.test`;
+/** A unique address under the test domain, from the name with its spaces dropped. */
+const addressFor = (name: string): string =>
+  `${name.toLowerCase().replaceAll(' ', '-')}-${randomUUID().slice(0, 8)}@example.test`;
 
 const invitation = (name: string) => ({ name, email: addressFor(name), role: 'member' });
 
@@ -126,6 +128,7 @@ describe.skipIf(serverUrl === undefined)('C39-T invitations on the command line'
     const { world } = harness;
     const bodies = { cli: invitation('Cy Cli'), api: invitation('Abe Api') };
     const created = await oneEach(world.api, 'invitation.create', bodies, world.ada.token);
+    expect(created.cli.status, JSON.stringify(created.cli.body)).toBe(200);
     sameRecord(created, MINTED);
     const ids = { cli: idOf(created.cli.body), api: idOf(created.api.body) };
     expect(ids.cli).not.toBe(ids.api);
