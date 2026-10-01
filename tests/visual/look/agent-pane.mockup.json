@@ -1,0 +1,298 @@
+{
+  "about": "Mockup values for tests/visual/look/agent-pane.ts, from look.ts --measure.",
+  "mockup": "7066bad7402c97b8a039447ad87f387cd719208c",
+  "probes": {
+    "agent-pane.mp-6-1.staged-box": {
+      "1480-light": {
+        "border-top-color": "rgba(0,0,0,31)",
+        "border-top-width": "1px",
+        "padding-top": "12px",
+        "row-gap": "12px"
+      },
+      "1480-dark": {
+        "border-top-color": "rgba(245,245,245,26)",
+        "border-top-width": "1px",
+        "padding-top": "12px",
+        "row-gap": "12px"
+      },
+      "900-light": {
+        "border-top-color": "rgba(0,0,0,31)",
+        "border-top-width": "1px",
+        "padding-top": "12px",
+        "row-gap": "12px"
+      },
+      "900-dark": {
+        "border-top-color": "rgba(245,245,245,26)",
+        "border-top-width": "1px",
+        "padding-top": "12px",
+        "row-gap": "12px"
+      },
+      "390-light": {
+        "border-top-color": "rgba(0,0,0,31)",
+        "border-top-width": "1px",
+        "padding-top": "12px",
+        "row-gap": "12px"
+      },
+      "390-dark": {
+        "border-top-color": "rgba(245,245,245,26)",
+        "border-top-width": "1px",
+        "padding-top": "12px",
+        "row-gap": "12px"
+      }
+    },
+    "agent-pane.mp-6-1.gatebox": {
+      "1480-light": {
+        "background-color": "rgba(0,0,0,0)",
+        "border-top-color": "rgba(245,158,11,255)",
+        "border-left-width": "1px",
+        "padding-top": "12px",
+        "padding-left": "12px"
+      },
+      "1480-dark": {
+        "background-color": "rgba(0,0,0,0)",
+        "border-top-color": "rgba(251,191,36,255)",
+        "border-left-width": "1px",
+        "padding-top": "12px",
+        "padding-left": "12px"
+      },
+      "900-light": {
+        "background-color": "rgba(0,0,0,0)",
+        "border-top-color": "rgba(245,158,11,255)",
+        "border-left-width": "1px",
+        "padding-top": "12px",
+        "padding-left": "12px"
+      },
+      "900-dark": {
+        "background-color": "rgba(0,0,0,0)",
+        "border-top-color": "rgba(251,191,36,255)",
+        "border-left-width": "1px",
+        "padding-top": "12px",
+        "padding-left": "12px"
+      },
+      "390-light": {
+        "background-color": "rgba(0,0,0,0)",
+        "border-top-color": "rgba(245,158,11,255)",
+        "border-left-width": "1px",
+        "padding-top": "12px",
+        "padding-left": "12px"
+      },
+      "390-dark": {
+        "background-color": "rgba(0,0,0,0)",
+        "border-top-color": "rgba(251,191,36,255)",
+        "border-left-width": "1px",
+        "padding-top": "12px",
+        "padding-left": "12px"
+      }
+    },
+    "agent-pane.mp-6-1.gate-word": {
+      "1480-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "400",
+        "color": "rgba(0,0,0,255)",
+        "letter-spacing": "0.24px",
+        "text-transform": "uppercase"
+      },
+      "1480-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "400",
+        "color": "rgba(248,248,248,255)",
+        "letter-spacing": "0.24px",
+        "text-transform": "uppercase"
+      },
+      "900-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "400",
+        "color": "rgba(0,0,0,255)",
+        "letter-spacing": "0.24px",
+        "text-transform": "uppercase"
+      },
+      "900-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "400",
+        "color": "rgba(248,248,248,255)",
+        "letter-spacing": "0.24px",
+        "text-transform": "uppercase"
+      },
+      "390-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "400",
+        "color": "rgba(0,0,0,255)",
+        "letter-spacing": "0.24px",
+        "text-transform": "uppercase"
+      },
+      "390-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "400",
+        "color": "rgba(248,248,248,255)",
+        "letter-spacing": "0.24px",
+        "text-transform": "uppercase"
+      }
+    },
+    "agent-pane.mp-6-2.section-key": {
+      "1480-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "300",
+        "color": "rgba(140,133,127,255)",
+        "letter-spacing": "0.24px",
+        "text-transform": "uppercase"
+      },
+      "1480-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "300",
+        "color": "rgba(248,248,248,117)",
+        "letter-spacing": "0.24px",
+        "text-transform": "uppercase"
+      },
+      "900-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "300",
+        "color": "rgba(140,133,127,255)",
+        "letter-spacing": "0.24px",
+        "text-transform": "uppercase"
+      },
+      "900-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "300",
+        "color": "rgba(248,248,248,117)",
+        "letter-spacing": "0.24px",
+        "text-transform": "uppercase"
+      },
+      "390-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "300",
+        "color": "rgba(140,133,127,255)",
+        "letter-spacing": "0.24px",
+        "text-transform": "uppercase"
+      },
+      "390-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "300",
+        "color": "rgba(248,248,248,117)",
+        "letter-spacing": "0.24px",
+        "text-transform": "uppercase"
+      }
+    },
+    "agent-pane.mp-6-2.hero-n": {
+      "1480-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "20px",
+        "font-weight": "400",
+        "color": "rgba(0,0,0,255)"
+      },
+      "1480-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "20px",
+        "font-weight": "400",
+        "color": "rgba(248,248,248,255)"
+      },
+      "900-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "20px",
+        "font-weight": "400",
+        "color": "rgba(0,0,0,255)"
+      },
+      "900-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "20px",
+        "font-weight": "400",
+        "color": "rgba(248,248,248,255)"
+      },
+      "390-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "20px",
+        "font-weight": "400",
+        "color": "rgba(0,0,0,255)"
+      },
+      "390-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "20px",
+        "font-weight": "400",
+        "color": "rgba(248,248,248,255)"
+      }
+    },
+    "agent-pane.mp-6-2.side": {
+      "1480-light": {
+        "box.width": "336"
+      },
+      "1480-dark": {
+        "box.width": "336"
+      }
+    },
+    "agent-pane.mp-6-5.run-n": {
+      "1480-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "400",
+        "color": "rgba(0,0,0,255)"
+      },
+      "1480-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "400",
+        "color": "rgba(248,248,248,255)"
+      },
+      "900-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "400",
+        "color": "rgba(0,0,0,255)"
+      },
+      "900-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "400",
+        "color": "rgba(248,248,248,255)"
+      },
+      "390-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "400",
+        "color": "rgba(0,0,0,255)"
+      },
+      "390-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "400",
+        "color": "rgba(248,248,248,255)"
+      }
+    },
+    "agent-pane.mp-6-5.bar": {
+      "1480-light": {
+        "background-color": "rgba(0,0,0,31)",
+        "box.height": "4"
+      },
+      "1480-dark": {
+        "background-color": "rgba(247,247,247,31)",
+        "box.height": "4"
+      },
+      "900-light": {
+        "background-color": "rgba(0,0,0,31)",
+        "box.height": "4"
+      },
+      "900-dark": {
+        "background-color": "rgba(247,247,247,31)",
+        "box.height": "4"
+      },
+      "390-light": {
+        "background-color": "rgba(0,0,0,31)",
+        "box.height": "4"
+      },
+      "390-dark": {
+        "background-color": "rgba(247,247,247,31)",
+        "box.height": "4"
+      }
+    }
+  }
+}

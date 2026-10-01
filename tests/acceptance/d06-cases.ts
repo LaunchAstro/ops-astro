@@ -125,7 +125,11 @@ export interface TopCell {
  * so it has no person positive control, and its D06 cells run on the agent
  * prefix (`d06-agent.test.ts`).
  */
-const AGENT_ONLY: ReadonlySet<CommandName> = new Set(['model.call']);
+const AGENT_ONLY: ReadonlySet<CommandName> = new Set([
+  'model.call',
+  'run.delegate_child',
+  'run.child_handback',
+]);
 
 /** Every operation a person surface serves, by every classified key, by every surface. */
 export const TOP_LEVEL_CELLS: readonly TopCell[] = COMMAND_SURFACE.filter(

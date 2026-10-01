@@ -39,6 +39,14 @@ export {
 export { landEmailEvent, type EmailHookOutcome } from './broker-email-hook.ts';
 export { tellCommentClients } from './broker-email-mention.ts';
 export {
+  callModelForPlanning,
+  PLANNING_CAP_DEFAULT,
+  readPlanningAllowance,
+  readPlanningCap,
+  type PlanningAllowance,
+  type PlanningCapView,
+} from './broker-planning.ts';
+export {
   callModel,
   promptCopyRegistered,
   registerPromptCopy,

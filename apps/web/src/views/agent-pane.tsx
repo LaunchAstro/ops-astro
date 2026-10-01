@@ -15,21 +15,37 @@
 // the task page's own (T2e). A run stopped at its ceiling (AW-05) is answered
 // with `run.top_up` (`billing:decide`) or `run.end_at_budget_stop`
 // (`gate:decide`), naming the task and the run the read showed. Every outcome
-// ends in a reread, as the proposals section's does.
+// ends in a reread, as the proposals section's does. The operational log
+// (MP-6-2) is `task.execution`'s events and bound plan, read again with each
+// new task read, as the run's own section reads them; a refused or failed read
+// draws no log, and the run's section says why.
 
 import { useState, type ReactElement } from 'react';
-import { AgentPane, type GateDecision, type RecordedOutcome } from '@launchastro/ui';
+import {
+  AgentPane,
+  type GateDecision,
+  type RecordedOutcome,
+  type RunActivity,
+} from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
 import type {
   PersonView,
   ProposalView,
+  TaskExecutionResult,
   TaskLedgerView,
 } from '../../../../packages/core-wire/src/index.ts';
+import { useRead } from '../data/use-read.ts';
 import { useCommand, type Settlement } from '../records/use-command.ts';
+import { wholeExecution } from './run-progress.tsx';
 
 export interface AgentSectionProps {
   readonly client: OperationsClient;
   readonly recordId: string;
+  /** The task's key and the page's grant, for the operational log's read (MP-6-2). */
+  readonly taskKey: string;
+  readonly grantKey: string;
+  /** The task read's latest answer: each new one re-reads the log. */
+  readonly readOf: unknown;
   readonly proposals: readonly ProposalView[];
   readonly people: readonly PersonView[];
   /** `task.read`'s token ledger (MP-6-5): null for a reader it is not shown to, absent on an older read. */
@@ -176,6 +192,7 @@ export function AgentSection(props: AgentSectionProps): ReactElement {
   // preference store once that store is in (MP-2-11); until then it lasts
   // as long as the page.
   const [jobListOpen, setJobListOpen] = useState(false);
+  const activity = useActivity(props);
   const nameOf = (personId: string): string =>
     props.people.find((person) => person.personId === personId)?.name ?? 'a person';
 
@@ -204,7 +221,21 @@ export function AgentSection(props: AgentSectionProps): ReactElement {
         onTopUpAtStop={controls.topUpAtStop}
         onEndAtStop={controls.endAtStop}
         stopAwaiting={controls.stopAwaiting}
+        {...(activity === undefined ? {} : { activity })}
       />
     </section>
   );
+}
+
+/** The log's rows: the execution read's events and its bound plan's steps, once read. */
+function useActivity(props: AgentSectionProps): RunActivity | undefined {
+  const { state } = useRead<TaskExecutionResult>({
+    grantKey: props.grantKey,
+    run: async () => await wholeExecution(props.client, props.taskKey),
+    deps: [props.taskKey, props.readOf],
+  });
+  if (state.outcome !== 'ready' && state.outcome !== 'empty') return undefined;
+  const execution = state.value.execution as Partial<TaskExecutionResult['execution']> | undefined;
+  if (!Array.isArray(execution?.events)) return undefined;
+  return { steps: execution.graph?.steps ?? [], events: execution.events };
 }

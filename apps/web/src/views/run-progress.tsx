@@ -117,7 +117,7 @@ function Runs(props: {
  * the walk rather than asking for the same page again, and so does an answer
  * that carries no `next` at all.
  */
-async function wholeExecution(
+export async function wholeExecution(
   client: OperationsClient,
   recordId: string,
 ): Promise<CallResult<TaskExecutionResult>> {

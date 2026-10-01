@@ -1469,6 +1469,12 @@ both tenancy-scoped with row security forced, and the fair share's count
   answer, and the database holds the same shape
   (`model_calls_model_id_shape`, `model_calls_units_whole`). Test:
   `aw-01-call-usage`.
+- Caller (`0209_model_call_caller`, AW-11): the delegation the broker's caller
+  presented (`caller_delegation_id`): the lease's own for its holder, a
+  child's for a helper spending on its parent's lease; null for a call no
+  delegation made. `delegation_id` stays the lease's, the one ledger. Written
+  once by the reserve, read by the execution graph's helper steps. Test:
+  `aw-11-child-graph`.
 - `copy_registrations`: the copy register's registration half. A call's
   outbound prompt is registered before it is first materialised, and nothing
   is sent without it (`COPY_NOT_REGISTERED`). Append-only: a trigger refuses
@@ -1549,9 +1555,90 @@ run, which it takes `for update` (lock class `lease`, its only lock) and then
 judges on the database clock, so a lease released or expired while the read
 waited is refused and nothing is recorded. With no pin it resolves nothing by name or path (`DEFINITION_UNAVAILABLE`),
 and bytes that are not the manifest's are `DEFINITION_DIGEST_MISMATCH`. It
-writes its ledger row, the audit copy and its one audit event before it returns
-the bytes, so a read that cannot be recorded fails the transaction and returns
-nothing. `setDigest` is the path-sorted set digest over a run's reads.
+writes its ledger row and its one audit event before it returns the bytes, so
+a read that cannot be recorded fails the transaction and returns nothing. The
+audit copy is kept in a savepoint (`TransactionQuery.savepoint`, the driver's
+own nested scope): a copy the store refuses keeps the read, its ledger row and
+its event, and raises the business's one `audit_copy_missing` row for that
+digest on the outage report (`raiseMissingCopy`, 0211, AW-04 missing audit
+copy); a later miss of the digest joins it. `setDigest` is the path-sorted set digest over a run's reads.
+
+The accept itself is `acceptPlan` (`core-runtime/src/plan-accept.ts`, AW-04):
+one person's approval of the plan's gate, in the caller's one transaction. It
+admits the activation as that person's manual act, captures the manifest (the
+entry file first, then every other file the run may read) before any row is
+written, so an unreadable file or an odd path is `DEFINITION_UNAVAILABLE` and
+nothing is decided. The store itself unreachable (the instruction root gone or
+unreadable) is the same code naming `fault: ours`, telling the person that
+nothing was approved and no run started (`storeUnavailable`, AW-04 pin
+recovery); a restore that puts other bytes at a path is a new file, so runs
+pinned before keep their digest and a read on one refuses
+`DEFINITION_DIGEST_MISMATCH`. Then `decide` approves (its own `gate:decide` check, locks,
+signed decision and reservation, and its refusal is the accept's); then the pin
+goes on the gate's run with the manifest beside it. A pin that cannot be
+written fails the transaction, so an approval never commits without its pin,
+and a gate is approved once, so a second accept is refused and leaves one pin.
+Last, the plan is bound to the decision in `plan_records` (`0207_plan_records`):
+the exact words, the structured record (`core-runtime/src/plan-record.ts`,
+checked for vocabulary, references, duplicates and cycles before anything is
+written), the SHA-256 of each, the run and the caller's origin conversation.
+The application may insert and read a bound plan, never change or remove one;
+it retains with the run's records. The accept authorises no effect: the plan
+decision is not an effect gate (AW-08's launch).
+
+The command is `task.accept_plan` ([API.md](API.md#the-plan-accept)), at
+parity on the API and the command line. It reads the files from the server's
+instruction root (`core-runtime/src/instruction-root.ts`), one read-only
+directory named by `OPS_ASTRO_INSTRUCTION_ROOT`; a symlink at any segment, a
+name outside the root, a directory or a missing file reads as nothing, and no
+root configured refuses the accept. C33's `definition_version` replaces the
+directory when it is built. Not here yet: the task and its components created
+in the same transaction (the gate's task exists from the plan's proposal), and
+the run's own origin column (the bound plan and the audit event carry the origin).
+
+## The planning budget
+
+Every planning reply before the accept is priced (U10), against a small budget
+of its own (`0212_planning_envelopes`, `core-custody/src/broker-planning.ts`).
+The business's planning cap is the `budget_caps` row keyed `planning`. Until a
+person moves it the cap is AUD 50 (`PLANNING_CAP_DEFAULT`, the owner's ruling,
+NATHAN-STAGE1-TODAY 4): the first hold in a business with no row writes the
+default as its row, under the same lock. Each conversation spends through one
+planning envelope, which names the conversation and its owner and carries no
+totals.
+
+- **The hold.** `callModelForPlanning` runs the conversation seam's checks (the
+  owner in their own session, the catalogue, a local route under AW-03's rule),
+  then takes the cap row `for update` and adds up every planning call under it:
+  a settled call's actual, a held or sent call's hold. A reply whose priced
+  maximum does not fit is refused `BUDGET_UNAVAILABLE` with nothing written;
+  one that fits is written as its own row, sent, at its maximum on the envelope.
+  Two replies at once meet on the cap's lock, so the second counts the first.
+- **The end.** Priced within its hold, the reply settles at its price and the
+  rest is released; positive proof nothing happened releases it; no answer, or
+  a price above the hold, leaves it held at its maximum as unknown liability
+  against the envelope until a person records an outcome, as a task call is.
+- **The allowance line and the spend.** `readPlanningAllowance` answers whether
+  a cap row holds it (no row is the default, all of it left), its limit, what
+  is left of it across the business, and the
+  person's own conversation's settled spend and held amount. The conversation
+  part is filtered by its owner inside the query: another person's
+  conversation, or a made-up one, reads as nothing spent. The surface that
+  shows it (the drawer's allowance line, the spend beside the plan) is not here
+  yet; it is the team's and the conversation owner's to see.
+- **Setting the cap.** `budget.set_planning_cap` writes the `planning` row and
+  no other ([API.md](API.md#budgetset_planning_cap-aw-04-u10)): `billing:decide`
+  on the whole business, against the limit the caller last saw, under the same
+  row lock the hold takes; with no row the limit seen is the default's.
+  Lowering it below what is committed is allowed; the next reply that no
+  longer fits is refused.
+- **On the settings page.** `settings.read` carries `planningCap` (limit,
+  currency, and `set` false while it is the default) for every settings reader;
+  the page's AI planning budget field moves it through the command, opened only
+  for a session holding `billing:decide` (`screens/settings/planning-cap.tsx`).
+
+Not here yet: the recent sign-in the command asks as a money action (C59), and
+the drawer's allowance line and spend beside the plan.
 
 ## The budget wait
 
@@ -1640,12 +1727,13 @@ or delete.
 
 ## The diagnostic trace export
 
-AW-13, `0195_trace_export` and `0196_trace_export_horizon`. A run's durable events leave as timings, counts
+AW-13, `0195_trace_export`, `0196_trace_export_horizon` and `0208_trace_expiry`. A run's durable events leave as timings, counts
 and codes, never a sentence, to a trace target an operator reads.
 
 - `core-runtime/src/trace-span.ts`: the span is a typed allowlist
   (`traceSpan`): a derived trace id (32 hex) and span id (16 hex), the event
-  kind from a closed list, the transform version, start and duration in whole
+  kind from a closed list (the run event kinds, AW-11's `delegated` and
+  `child_handed_back` from 0206 among them), the transform version, start and duration in whole
   milliseconds, the event's place in its task's order, and a drop's cause
   from a closed list. Any other field, or a value outside a list, throws
   `TraceRefused`, which names the field and never the value. `otlp` writes
@@ -1681,7 +1769,15 @@ and codes, never a sentence, to a trace target an operator reads.
   `scheme: "basic"` and leaves as HTTP Basic (the pinned target's OpenTelemetry
   route refuses a Bearer key), so the target's origin is https unless it is
   this machine's loopback address; the trace key is read by the exporter from its
-  own file. `TRACE_EXPORT=on` is the one change that starts it
+  own file. The destination (`traceDestination`) also names a fixed header,
+  `x-langfuse-ingestion-version: 4` (the contract wants it on every request;
+  the value is the vendor's documented one), and two routes beyond the
+  export's POST: `DELETE /api/public/traces` and `GET /api/public/traces/*`
+  (one id segment). Custody (`core-custody/src/egress-routes.ts`) adds the
+  header itself and answers any other method or path with `bad_path`; a
+  request naming a header, or any key beyond its six, is refused whole; a
+  header that is reserved (the credential, framing, host), not lower case, or
+  not visible ASCII is refused when custody loads its list. `TRACE_EXPORT=on` is the one change that starts it
   ([API.md](API.md#the-composition-root)); the server then exports every
   recovered business on an interval, and a failure is logged by kind only.
 - The pinned local target, `scripts/local/trace-target/`, proved by
@@ -1693,8 +1789,25 @@ and codes, never a sentence, to a trace target an operator reads.
   runs. `node scripts/local/trace-target.ts check | up <port> | down` checks the
   pin and a fresh render, starts it with generated secrets in
   `.local/trace-target.env` without pulling, and destroys it with its volumes.
-  Retention (the product's job deleting by derived id, the raw bucket's
-  lifecycle rule) and the operator readers are AW-13's remaining lines.
+  The blob store's start command sets the raw event bucket's lifecycle rule,
+  14 days on the prefix the worker writes, chained so the store stops if it
+  cannot be set: on the OpenTelemetry path nothing else ever deletes a raw
+  event. The pin check refuses a profile without exactly that rule.
+- Retention (`core-runtime/src/trace-retention.ts`, `expireOnce`): the
+  product is the trace store's deletion authority. A pass for one business
+  takes the runs with a registered trace copy, every event behind the
+  export's cursor (a pending event would be exported after its trace went),
+  the newest event older than the window (30 days) and no batch confirming
+  them since; deletes their derived ids through custody, at most 1,000 per
+  call; then reads each id back, because the endpoint may answer success for
+  work it skipped: only a 404 confirms a run. Each page is one
+  `trace_expiry_batches` row (append only, under tenancy; the application
+  group may select and insert): the window, the runs asked, the runs
+  confirmed, and the gap code when it did not finish (a delivery code, or
+  `expiry_unconfirmed`). A failed delete confirms nothing; an unconfirmed run
+  is due again next pass. Two passes at once are harmless: deletion by
+  derived id is idempotent. The server runs it hourly beside the export.
+  The operator readers (`operations:read`) are AW-13's remaining line.
 
 ## An automation occurrence's run
 

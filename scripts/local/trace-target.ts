@@ -8,7 +8,8 @@
 // off loopback, or a setting the contract fixes (telemetry off, no licence
 // key, media upload and batch export off, no SSRF allowlist, AI or cloud
 // variable, signup closed, every secret required from the run and never a
-// default). A refusal names the service and the setting, never a value.
+// default), or the raw event bucket's 14-day lifecycle rule. A refusal names
+// the service and the setting, never a value.
 
 import { execFileSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
@@ -144,6 +145,28 @@ function serviceRefusals(pin: Pin, name: string, service: Service): string[] {
   return refusals;
 }
 
+/** A setting's value in the model: a `${NAME:-default}` reads as its default. */
+function valueOf(service: Service, name: string): string {
+  const [value = ''] = settings(service).get(name) ?? [];
+  return /^\$\{[A-Z0-9_]+:-([^}]*)\}$/u.exec(value)?.[1] ?? value;
+}
+
+/**
+ * The raw event bucket's lifecycle rule (contract 7.2.1 and 7.5): on the
+ * OpenTelemetry path it is that copy's whole deletion path. Exactly one rule,
+ * 14 days, on the bucket and prefix the worker writes, chained so the store
+ * stops if it cannot be set.
+ */
+function lifecycleRefusals(services: Readonly<Record<string, Service>>): string[] {
+  const worker = services['langfuse-worker'] ?? {};
+  const bucket = valueOf(worker, 'LANGFUSE_S3_EVENT_UPLOAD_BUCKET');
+  const prefix = valueOf(worker, 'LANGFUSE_S3_EVENT_UPLOAD_PREFIX');
+  const rule = `mc ilm rule add --expire-days 14 --prefix ${prefix} local/${bucket}`;
+  const command = [services['minio']?.['command']].flat().join(' ');
+  const held = command.split('mc ilm').length === 2 && command.includes(`&& ${rule} &&`);
+  return held ? [] : ['minio lifecycle rule is not 14 days on the worker’s event prefix, chained'];
+}
+
 /** Every way the profile in `dir` drifts from its pin; empty when it holds. */
 export function profileRefusals(dir: string): readonly string[] {
   const pin = JSON.parse(readFileSync(join(dir, 'pin.json'), 'utf8')) as Pin;
@@ -164,6 +187,7 @@ export function profileRefusals(dir: string): readonly string[] {
     const service = services[name] ?? {};
     refusals.push(...(name in pin.services ? serviceRefusals(pin, name, service) : []));
   }
+  refusals.push(...lifecycleRefusals(services));
   return refusals;
 }
 

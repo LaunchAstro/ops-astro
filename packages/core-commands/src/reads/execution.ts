@@ -11,7 +11,10 @@
 // and `unavailable` are refusals and faults, and `loading` is the client's.
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
+import { PLAN_CANDIDATES, projectedPlan } from '../../../core-runtime/src/index.ts';
 import { projectGraph, type ExecutionGraph } from './execution-graph.ts';
+import { DEFINITION_FACTS } from './execution-definition.ts';
+import { HELPER_FACTS } from './execution-helpers.ts';
 
 /** The most events one read returns. `next` is the handle for the rest. */
 export const EXECUTION_PAGE = 200;
@@ -59,7 +62,7 @@ export async function readTaskExecution(
   taskId: string,
   cursor: number,
 ): Promise<TaskExecution> {
-  const { runs, sourceRevision, events, facts } = await snapshot(tx, taskId, cursor);
+  const { runs, sourceRevision, events, facts, plans } = await snapshot(tx, taskId, cursor);
   const last = events.at(-1)?.position ?? cursor;
   const complete = last >= sourceRevision;
   return {
@@ -70,7 +73,7 @@ export async function readTaskExecution(
     next: complete ? null : last,
     runs,
     events,
-    graph: projectGraph(facts, sourceRevision, complete),
+    graph: projectGraph(facts, projectedPlan(plans), sourceRevision, complete),
   };
 }
 
@@ -79,13 +82,15 @@ const ISO = `'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'`;
 
 /**
  * Each run's facts for the graph (AW-06, `execution-graph.ts`): its gate, its
- * version, its latest lease and attempt, its reservations and its last event
- * at or before the head. `$1` is the business, `$2` the task; `head` is the
- * statement's own event head.
+ * version, its latest lease and attempt, its reservations, its last event at
+ * or before the head, its helpers (AW-11) and its pin and read ledger (AW-04). `$1` is the business, `$2`
+ * the task; `head` is the statement's own event head.
  */
 const RUN_FACTS = `coalesce((select json_agg(json_build_object(
-    'runId', run.id, 'state', run.state,
+    'runId', run.id, 'lineageId', run.lineage_id, 'state', run.state,
     'superseded', ver.superseded_at is not null,
+    'planStepKey', (select st.plan_step_key from public.planned_steps st
+      where st.business_id = $1 and st.run_id = run.id and st.ordinal = 1),
     'currency', ver.currency, 'gateState', gate.state,
     'lease', (select json_build_object(
         'state', l.state,
@@ -104,7 +109,11 @@ const RUN_FACTS = `coalesce((select json_agg(json_build_object(
       where res.business_id = $1 and res.run_id = run.id and res.state = 'held'),
     'spentMinor', (select sum(res.actual_minor)::float8 from public.reservations res
       where res.business_id = $1 and res.run_id = run.id and res.state = 'actual'),
-    'lastKind', last.kind, 'lastFault', last.detail ->> 'fault')
+    'lastKind', last.kind, 'lastFault', last.detail ->> 'fault',
+    -- The helpers the run's work was handed to (AW-11, execution-helpers.ts).
+    'helpers', ${HELPER_FACTS},
+    -- Its pinned instruction file and read ledger (AW-04, execution-definition.ts).
+    'definition', ${DEFINITION_FACTS})
   order by run.created_at, run.id)
   from public.planned_runs run
   join public.proposal_versions ver
@@ -114,12 +123,17 @@ const RUN_FACTS = `coalesce((select json_agg(json_build_object(
   left join lateral (select ev.kind, ev.detail from public.run_events ev
       where ev.business_id = $1 and ev.run_id = run.id
         and ev.position <= (select n from head)
+        -- The run's own progress: a helper's hand-over and handback (AW-11)
+        -- never stand in for the run's last move or hide its drop.
+        and ev.kind not in ('delegated', 'child_handed_back')
       order by ev.position desc limit 1) last on true
  where run.business_id = $1 and run.task_id = $2), '[]')`;
 
 /**
- * The runs, the event head, one page of events and each run's facts for the
- * graph, read by one statement so all four come from one snapshot: separate
+ * The runs, the event head, one page of events, each run's facts for the
+ * graph and the task's plan records (`PLAN_CANDIDATES`, bound or not, checked
+ * by `projectedPlan`), read by one statement so all five come from one
+ * snapshot: separate
  * reads could see a successor's events without its run, or a hand-back's
  * event without its settled attempt. The facts read the whole run, never the
  * page, so a condition does not depend on the cursor; `lastKind` stops at the
@@ -135,12 +149,14 @@ async function snapshot(
   readonly sourceRevision: number;
   readonly events: readonly ExecutionEvent[];
   readonly facts: unknown;
+  readonly plans: unknown;
 }> {
   const rows = await tx.query<{
     readonly runs: readonly ExecutionRun[];
     readonly sourceRevision: number;
     readonly events: readonly ExecutionEvent[];
     readonly facts: unknown;
+    readonly plans: unknown;
   }>(
     `with head as (
        select coalesce(max(position), 0) as n
@@ -164,7 +180,8 @@ async function snapshot(
                 'detail', detail, 'at', to_char(created_at at time zone 'UTC', ${ISO}))
               order by position)
               from page), '[]') as events,
-            ${RUN_FACTS} as facts`,
+            ${RUN_FACTS} as facts,
+            ${PLAN_CANDIDATES} as plans`,
     [tx.businessId, taskId, cursor, EXECUTION_PAGE],
   );
   const [row] = rows;

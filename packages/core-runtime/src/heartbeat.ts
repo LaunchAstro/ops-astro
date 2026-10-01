@@ -147,7 +147,7 @@ export async function lockOwnedLease(
  * fence, and the lease and the authority behind it are still live. Answers
  * the task the lease works.
  */
-async function recheckOwner(
+export async function recheckOwner(
   tx: TenantQuery,
   request: LeaseCaller,
   lockedAt: string,

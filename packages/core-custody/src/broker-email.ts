@@ -21,6 +21,7 @@
 // moves the item (`recordDeliveryAttempt`).
 
 import {
+  hasRoom,
   recordDeliveryAttempt,
   taskAccess,
   type BusinessId,
@@ -48,7 +49,8 @@ export type EmailRefusal =
   | 'ITEM_NOT_OPEN'
   | 'ITEM_WITHHELD'
   | 'NO_ADDRESS'
-  | 'EMAIL_MAY_HAVE_GONE';
+  | 'EMAIL_MAY_HAVE_GONE'
+  | 'EMAIL_AT_CEILING';
 
 export type EmailResult =
   | { readonly ok: true; readonly attemptId: string; readonly state: 'accepted' }
@@ -61,18 +63,24 @@ export type EmailResult =
     };
 
 /**
- * Failures that prove the provider took nothing: it never reached them, or
- * refused before sending. Any other fault may have sent, so it is never
- * followed by a second send.
+ * Failures that prove the provider took nothing: custody never reached it.
+ * Any answer from the provider, a redirect or an error status included, may
+ * have sent, so it is never followed by a second send (the broker's rule).
  */
-const NOTHING_SENT: ReadonlySet<string> = new Set([
-  'refused',
-  'unlisted',
-  'bad_path',
-  'forbidden',
-  'redirect',
-  'status',
-]);
+const NOTHING_SENT: ReadonlySet<string> = new Set(['refused', 'unlisted', 'bad_path', 'forbidden']);
+
+/** Emails in flight for this business: items whose last email observation is still `asked`. */
+async function emailsInFlight(tx: TenantQuery): Promise<number> {
+  const [flight] = await tx.query<{ readonly n: number }>(
+    `select count(*)::int as n from (
+       select distinct on (item_id) state from public.inbox_delivery_attempts
+        where business_id = $1 and channel = 'email'
+        order by item_id, observed_seq desc) last
+      where state = 'asked'`,
+    [tx.businessId],
+  );
+  return flight?.n ?? 0;
+}
 
 interface Routed {
   readonly operation: ModelOperation;
@@ -103,6 +111,7 @@ async function mayStillSend(tx: TenantQuery, itemId: string): Promise<boolean> {
 async function ask(
   tx: TenantQuery,
   itemId: string,
+  operation: ModelOperation,
 ): Promise<{ readonly attemptId: string; readonly to: string } | EmailRefusal> {
   const [item] = await tx.query<{ readonly recipient: string; readonly subject: string }>(
     `select recipient_person_id as recipient, subject_record_id as subject
@@ -121,6 +130,13 @@ async function ask(
   );
   if (address === undefined) return 'NO_ADDRESS';
   if (!(await mayStillSend(tx, itemId))) return 'EMAIL_MAY_HAVE_GONE';
+  // The catalogued concurrency, as a durable limit: an ask counts until its outcome is kept.
+  const limit = {
+    name: `email:${operation.key}`,
+    limit: operation.concurrency,
+    count: emailsInFlight,
+  };
+  if (!(await hasRoom(tx, [limit]))) return 'EMAIL_AT_CEILING';
   const attemptId = await recordDeliveryAttempt(tx, { itemId, channel: 'email', state: 'asked' });
   return { attemptId, to: address.value };
 }
@@ -156,7 +172,10 @@ export async function sendInboxEmail(
   const found = routed(broker);
   if (found === undefined) return { ok: false, code: 'OPERATION_NOT_CATALOGUED' };
   const { operation, route, adapter } = found;
-  const asked = await database.withBusiness(businessId, async (tx) => await ask(tx, itemId));
+  const asked = await database.withBusiness(
+    businessId,
+    async (tx) => await ask(tx, itemId, operation),
+  );
   if (typeof asked === 'string') return { ok: false, code: asked };
   const address = new URL(`/inbox/${encodeURIComponent(itemId)}`, mail.appOrigin).href;
   const built = adapter.build({ to: asked.to, from: mail.from, address });
