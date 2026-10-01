@@ -18,6 +18,7 @@
 // a failure, which could carry anything. The audit event holds the act, its
 // outcome and a digest of what identifies it.
 
+import { randomUUID } from 'node:crypto';
 import {
   liveFactor,
   loginHasVerifiedFactor,
@@ -43,7 +44,7 @@ import {
   type SessionsEnded,
 } from './account-factor-provider.ts';
 import { endOthersOnChange, signOutOthers } from './account-factor-sessions.ts';
-import { codeOf, freshSignIn, tooManyWrongCodes } from './account-factor-checks.ts';
+import { codeOf, codeSent, freshSignIn, wrongCodeLock } from './account-factor-checks.ts';
 import { writeAuditEvent } from './audit.ts';
 import { asCallerVisible, refuseCommand, type CommandRefusal } from './refusal.ts';
 
@@ -66,9 +67,6 @@ const ENROLLED_FIXES: readonly string[] = [
 ];
 const NOT_ENROLLED_FIXES: readonly string[] = ['Set up an authenticator app first.'];
 const BODY_FIXES: readonly string[] = ['Send only { "code": "<the six digits>" }.'];
-const LOCKED_FIXES: readonly string[] = [
-  'Too many wrong codes. Wait 15 minutes, then try again with the code your app shows.',
-];
 
 /**
  * First enrolment: a person with no factor, after a fresh password sign-in
@@ -131,14 +129,15 @@ export async function verifySecondFactor(
 ): Promise<(FactorSession & { readonly otherSessions?: SessionsEnded }) | CommandRefusal> {
   const act = 'account.factor_verify';
   const code = codeOf(body);
+  const sending = { ...caller, attempt: randomUUID() };
   let factor: SecondFactor | undefined;
   const precondition = await judged(
-    caller,
+    sending,
     act,
     async (tx, session) => {
       if (code === undefined) return refuseCommand('COMMAND_BODY_INVALID', [], BODY_FIXES);
-      if (await tooManyWrongCodes(tx, session))
-        return refuseCommand('SECOND_FACTOR_LOCKED', [], LOCKED_FIXES);
+      const locked = await wrongCodeLock(tx, session);
+      if (locked !== undefined) return locked;
       factor = await liveFactor(tx, session.personId);
       return factor === undefined
         ? refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES)
@@ -146,14 +145,13 @@ export async function verifySecondFactor(
     },
     'before',
   );
-  if (precondition !== undefined || factor === undefined || code === undefined) {
+  if (precondition !== undefined || factor === undefined || code === undefined)
     return precondition ?? refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES);
-  }
   const target = factor;
 
   const verified = await provider.verify(caller.accessToken, target.providerFactorId, code);
   let ended: number | undefined;
-  const recorded = await judged(caller, act, async (tx, session) => {
+  const recorded = await judged(sending, act, async (tx, session) => {
     if (!verified.ok) return providerRefusal(verified.fault, 'code');
     const live = await liveFactor(tx, session.personId, { lock: true });
     // Removed or replaced by another tab between the two transactions.
@@ -188,14 +186,15 @@ export async function removeSecondFactor(
 ): Promise<{ readonly removed: true; readonly otherSessions: SessionsEnded } | CommandRefusal> {
   const act = 'account.factor_remove';
   const code = codeOf(body);
+  const sending = { ...caller, attempt: randomUUID() };
   let factor: { readonly id: string; readonly providerFactorId: string } | undefined;
   const precondition = await judged(
-    caller,
+    sending,
     act,
     async (tx, session) => {
       if (code === undefined) return refuseCommand('COMMAND_BODY_INVALID', [], BODY_FIXES);
-      if (await tooManyWrongCodes(tx, session))
-        return refuseCommand('SECOND_FACTOR_LOCKED', [], LOCKED_FIXES);
+      const locked = await wrongCodeLock(tx, session);
+      if (locked !== undefined) return locked;
       const live = await liveFactor(tx, session.personId);
       if (live?.status !== 'verified')
         return refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES);
@@ -204,9 +203,8 @@ export async function removeSecondFactor(
     },
     'before',
   );
-  if (precondition !== undefined || factor === undefined || code === undefined) {
+  if (precondition !== undefined || factor === undefined || code === undefined)
     return precondition ?? refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES);
-  }
   const target = factor;
 
   const proved = await provider.verify(caller.accessToken, target.providerFactorId, code);
@@ -214,7 +212,7 @@ export async function removeSecondFactor(
   const removed = proved.ok
     ? await provider.remove(proved.value.accessToken, target.providerFactorId)
     : undefined;
-  const recorded = await judged(caller, act, async (tx, session) => {
+  const recorded = await judged(sending, act, async (tx, session) => {
     if (!proved.ok) return providerRefusal(proved.fault, 'code');
     if (removed !== undefined && !removed.ok) return providerRefusal(removed.fault, 'answer');
     const live = await liveFactor(tx, session.personId, { lock: true });
@@ -263,12 +261,13 @@ const ownFactor = (caller: FactorCaller, session: Session, factorId: string) => 
  * required yet, since these acts are how they give it), run `check`, and write
  * the act's audit event in the same transaction.
  *
- * The check before the provider call records only a refusal: a check that
- * passed has done nothing yet, and the act's own event is the one written
- * after the call, applied or refused, beside the record it changes.
+ * The check before the provider call records only a refusal, or, passed for a
+ * code (`attempt`), the code as sent, under the person's lock (`codeSent`); the
+ * act's own event, applied or refused, is written after the call beside the
+ * record it changes, and names the same `attempt`.
  */
 async function judged(
-  caller: FactorCaller,
+  caller: FactorCaller & { readonly attempt?: string },
   act: Act,
   check: (tx: TenantQuery, session: Session) => Promise<CommandRefusal | undefined>,
   stage: 'before' | 'after' = 'after',
@@ -279,10 +278,14 @@ async function judged(
     caller.presented,
     async (tx, session) => {
       const refusal = await check(tx, session);
-      if (stage === 'before' && refusal === undefined) return;
+      if (stage === 'before' && refusal === undefined) {
+        await codeSent(tx, session, caller.attempt);
+        return;
+      }
       await writeAuditEvent(tx, {
         actorId: session.actorId,
         command: act,
+        operationId: caller.attempt ?? null,
         outcome: refusal === undefined ? 'applied' : 'refused',
         refusalCode: refusal?.code ?? null,
         payloadDigest: payloadDigest({ command: act, person: session.personId }),

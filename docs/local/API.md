@@ -1701,12 +1701,17 @@ factor of its own and answers `FACTOR_NOT_ENROLLED`.
 | `/account/factor/verify` | `{ code }`, six digits | `{ accessToken, refreshToken, expiresIn }` at `aal2`; completing an enrolment adds `otherSessions` | `COMMAND_BODY_INVALID` 400, `FACTOR_NOT_ENROLLED` 409, `FACTOR_ALREADY_ENROLLED` 409, `SECOND_FACTOR_INVALID` 422 (recorded as the failed attempt), `SECOND_FACTOR_LOCKED` 429, `PROVIDER_ANSWER_INVALID` 502 |
 | `/account/factor/remove` | `{ code }`, six digits | `{ removed: true, otherSessions }`                                                                 | `COMMAND_BODY_INVALID` 400, `FACTOR_NOT_ENROLLED` 409, `SECOND_FACTOR_INVALID` 422, `SECOND_FACTOR_LOCKED` 429, `PROVIDER_ANSWER_INVALID` 502                                                                 |
 
-Five wrong codes in fifteen minutes, counted from the person's own refused
-attempts in the audit chain, answer `SECOND_FACTOR_LOCKED` 429 on `verify` and
-`remove` without asking the provider, so a caller holding only the password
-cannot walk the six digits. The check before a provider call writes an audit
-event only when it refuses; the act's own event is written after the call,
-beside the record it changes. GoTrue served under a path (`/auth/v1`) is called
+Five wrong codes in fifteen minutes answer `SECOND_FACTOR_LOCKED` 429 on
+`verify` and `remove` without asking the provider, so a caller holding only the
+password cannot walk the six digits. The check before a code goes to the
+provider locks the person's own row, counts the codes the person sent in the
+window that were not answered otherwise (wrong ones, and ones still at the
+provider), and, passing, records the code as sent (`account.factor_code_sent`)
+before it commits: requests sent at once count each other, and at most five
+codes reach the provider. Otherwise the check writes an audit event only when
+it refuses; the act's own event is written after the call, beside the record it
+changes, and carries the sent code's id as its `operation_id`, so a good code
+stops counting once it is answered. GoTrue served under a path (`/auth/v1`) is called
 under that path. The record step locks the person's own row (`for no key
 update`), so two tabs enrolling at once queue: the later enrolment replaces the
 earlier unverified one, and one live factor remains.
