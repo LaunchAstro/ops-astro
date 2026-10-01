@@ -25,6 +25,7 @@ const BOOKKEEPING: ReadonlySet<string> = new Set([
 /** Commands that write a client-scoped kind but are not content on an existing task. */
 const NOT_CONTENT: Readonly<Record<string, string>> = {
   'task.create': 'the creation itself',
+  'task.duplicate': 'creates a new task from the shell; the old task is untouched (MP-4-8)',
   'task.set_party': 'a client change, which the lock allows while the task is empty',
   'client.create': 'writes a client, not a task',
   'task.purge': 'removes the task; nothing is left to change the client of',

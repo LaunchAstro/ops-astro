@@ -58,21 +58,22 @@ export const FIXED_BODIES: Readonly<Partial<Record<CommandName, Body>>> = {
 };
 
 /** The reads' own operands, which the probe body sends as the positive body does. */
-const READ_OPERANDS: readonly CommandName[] = [
+const READ_OPERANDS: ReadonlySet<CommandName> = new Set<CommandName>([
   'task.board',
   'task.search',
   'task.ledger',
   'preset.plan',
-];
+]);
 
 /**
  * The operands the probe body (`role-case-harness.ts`) adds beyond its record
  * and revision, so a refusal it measures is authority's and not the body's.
  */
 export function probeOperands(name: CommandName): Body {
-  if (READ_OPERANDS.includes(name)) return FIXED_BODIES[name] ?? {};
+  if (READ_OPERANDS.has(name)) return FIXED_BODIES[name] ?? {};
   if (name === 'task.receipt') return { attemptId: randomUUID() };
   if (name === 'task.set_state') return { stateId: randomUUID() };
+  if (name === 'task.duplicate') return { client: null, title: 'a copy', stepNames: [] };
   if (name === 'privacy.draft_breach_notices') return breachDrillBody();
   return {};
 }
