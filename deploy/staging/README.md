@@ -231,7 +231,7 @@ addresses are private, set in the environment at run time:
 | `OPS_ERROR_SINK_DSN`                                       | the forwarder, `alerts.mjs`, the secret scan | the sink's DSN, at a public https address (a private one is refused, a redirect not followed); never the Vercel function's (it refuses to start beside it) |
 | `OPS_ENVIRONMENT`, `OPS_RELEASE`                           | the API, the forwarder, `alerts.mjs test`    | `staging` or `production`; the build stamp                                                                                                                 |
 | `ALERT_SCOPE_KEY`                                          | the API (the Vercel function)                | at least 32 bytes as hex (`openssl rand -hex 32`), one per environment, every instance the same; required once `OPS_ENVIRONMENT` is set                    |
-| `RECOVERY_BUSINESS_KEYS`                                   | the API (the Vercel function)                | deployment's business keys, or `none`; the function's recovery (below); unset, none                                                                        |
+| `RECOVERY_BUSINESS_KEYS`                                   | the API (the Vercel function)                | deployment's business keys, or `none`; the function's recovery (below); unset, the function does not start                                                 |
 | `DATABASE_FORWARDER_URL`                                   | `forwarder.mjs`                              | a login that is a member of `ops_astro_forwarder` alone                                                                                                    |
 | `OPS_FORWARDER_HEARTBEAT_URL`                              | `forwarder.mjs`                              | the watcher's forwarder heartbeat, pinged after each pass that completed                                                                                   |
 | `OPS_WORKER_HEARTBEAT_URL`                                 | the worker                                   | the watcher's worker heartbeat, pinged after each pass the API answered                                                                                    |
@@ -243,8 +243,8 @@ addresses are private, set in the environment at run time:
 worker holds no database and sweeps nothing): before the first request each
 minute, it sweeps expired leases, replays and reconciles for those businesses,
 resolving the keys on `DATABASE_LOOKUP_URL`. The operator sets it with `vercel
-env add`; a malformed value stops the function starting, and unset, nothing
-recovers a lost worker's lease.
+env add`; unset or malformed, the function does not start. Each business
+passes on its own, so a key that resolves to no business holds up no other.
 
 `node scripts/ops/alerts.mjs plan` prints the checks, each with its name and
 its alert message in plain words, and the recipients to set up in both services (`--test`: all mail to the test address). `node
