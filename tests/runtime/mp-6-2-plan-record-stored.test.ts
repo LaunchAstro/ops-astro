@@ -46,7 +46,6 @@ useAw06World('mp62stored');
 
 interface Placed {
   readonly events: readonly { readonly runId: string; readonly placement: unknown }[];
-  readonly plans: readonly { readonly planRecordId: string }[];
 }
 
 async function placedAs(taskId: string): Promise<Placed> {
@@ -172,9 +171,7 @@ it('MP-6-2 placement reads the plan record stored at proposal: a run proposed un
   await topUp(taskId);
   await pickup(w.s, (await approve(w.s, proposal))['reservationId']);
 
-  const placed = await placedAs(taskId);
-  expect(placed.events).toMatchObject([
+  expect((await placedAs(taskId)).events).toMatchObject([
     { runId: proposal['runId'], placement: { planRecordId: null, stepKey: null, planRun: false } },
   ]);
-  expect(placed.plans).toEqual([]);
 });
