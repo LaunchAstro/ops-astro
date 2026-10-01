@@ -72,17 +72,6 @@ it("AW-10 three outcomes: it happened records the effect at the call's maximum a
 
 it('AW-10 three outcomes: it happened differently records the effect and reopens the work', async () => {
   const { work } = await unanswerable();
-  // Room for the reopened work beside the spent hold, by the person who approved it (T2e).
-  appliedDetail(
-    await asPerson(s, {
-      command: 'budget.top_up',
-      operationId: randomUUID(),
-      recordId: work.taskId,
-      amountMinor: 2_000,
-      fromMaximumMinor: 2_000,
-    }),
-    'budget.top_up',
-  );
   appliedDetail(await outcome(s, work, 'happened_differently'), 'budget.record_outcome');
   expect(await callsOf(s, work)).toMatchObject([
     { state: 'settled', actual: '500', outcome: 'happened_differently' },
