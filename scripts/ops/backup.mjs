@@ -140,6 +140,7 @@ export async function runBackup({
   try {
     seal = sealer(publicKey);
   } catch {
+    await source.stop?.();
     return failed('backup run', 'seal');
   }
   const failure = { stage: null, bytes: 0 };
@@ -147,9 +148,10 @@ export async function runBackup({
     // The server judges each part as the backup identity, and stamps it.
     await reach(storeUrl, upload(source, seal, failure));
   } catch {
-    // A refused store or a failed seal stops the dump and waits for it, so
-    // pg_dump never blocks on an unread pipe holding its snapshot and locks.
-    await source.return?.();
+    // A refused store or a failed seal stops the dump and waits for it, read
+    // or not, so pg_dump never blocks on an unread pipe holding its snapshot
+    // and locks.
+    await source.stop?.();
     return failed('backup run', failure.stage ?? 'store');
   }
   const record = { event: 'backup run', outcome: 'recorded', at, bytes: failure.bytes };
