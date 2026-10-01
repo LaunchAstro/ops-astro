@@ -59,12 +59,8 @@ export interface Session {
    * step-up reads it (`authority/step-up.ts`); nothing else grants on it.
    */
   readonly assurance: Assurance;
-  /**
-   * Present only on a call made with an agent credential (API-2): its ticked
-   * `collection:action` keys. `actorId` is then the credential's agent and
-   * `personId` the person it acts for, and every grant check asks the key
-   * within these as well as the person's grants (`subjectsOf`).
-   */
+  /** Agent credential calls only (API-2): its ticked `collection:action` keys, which every
+   *  grant check also asks within (`subjectsOf`); `actorId` is the agent, `personId` its person. */
   readonly credentialScope?: readonly string[];
 }
 
@@ -93,9 +89,7 @@ export const NO_MEMBERSHIP_FIXES = [
 ] as const;
 
 const INACTIVE_FIXES = ['ask an administrator of this business to reactivate this person'] as const;
-
 const ENDED_FIXES = ['sign in again: this session was signed out'] as const;
-
 const SECOND_FACTOR_FIXES = [
   'enter the code from your authenticator app to finish signing in',
 ] as const;
