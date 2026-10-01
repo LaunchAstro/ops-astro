@@ -92,7 +92,9 @@ describe('S0-2 heartbeats: the error sink, paced', () => {
         OPS_EGRESS_HEARTBEAT_HOST: 'example.test',
       },
     });
-    const exited = new Promise((done) => child.once('exit', done));
+    const exited = new Promise((done) => {
+      child.once('exit', done);
+    });
     await vi.waitFor(
       () => expect(asked.filter((u) => u === '/_health/').length).toBeGreaterThanOrEqual(4),
       { timeout: 20_000 },
