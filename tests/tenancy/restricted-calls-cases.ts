@@ -101,9 +101,8 @@ const REVOKED: Readonly<Record<string, { readonly from: string; readonly letters
 };
 
 /**
- * Update granted column by column: the table, the columns, and the first
- * migration that grants them. Every other column-level privilege, to any
- * role, is outside the contract.
+ * Update granted column by column: the table, the columns, and the first migration that
+ * grants them. Every other column-level privilege, to any role, is outside the contract.
  */
 const COLUMN_UPDATES: Readonly<
   Record<string, { readonly from: string; readonly columns: readonly string[] }>
@@ -120,25 +119,21 @@ export function columnUpdatesAt(at?: string): readonly string[] {
 }
 
 /**
- * Every other column grant, each from the migration that made it: the
- * occurrence role reads a task's revision for 0032's trigger when it inserts an
- * occurrence's run (AW-01 J, 0203); batch 1's lookup identity reads a
- * business's id and key (0046), and the application inserts the API outbox's
- * four columns (0047).
+ * Every other column grant, from the migration that made it: the occurrence role reads a
+ * task's revision for 0032's trigger (AW-01 J, 0203), the application writes the outbox's
+ * four columns alone (S0-2, 0047), and the lookup reads a business's id and key (G2, 0046).
  */
 const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: string }[] = [
   ...['business_id', 'id', 'revision'].map((column) => ({
     from: '0203',
     line: `${OCCURRENCE_ROLE} SELECT public.records.${column}`,
   })),
-  ...['id', 'key'].map((column) => ({
-    from: '0046',
-    line: `ops_astro_lookup SELECT public.businesses.${column}`,
-  })),
   ...['event', 'kind', 'scope', 'weight'].map((column) => ({
     from: '0047',
     line: `ops_astro_app INSERT ops.api_events.${column}`,
   })),
+  { from: '0046', line: 'ops_astro_lookup SELECT public.businesses.id' },
+  { from: '0046', line: 'ops_astro_lookup SELECT public.businesses.key' },
 ];
 
 export function roleColumnGrantsAt(at?: string): readonly string[] {

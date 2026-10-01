@@ -41,6 +41,13 @@ const NETWORK_SITES: Readonly<Record<string, string>> = {
   'apps/web/src/operations/client.ts': "the browser calls the product's own API, same origin",
   'apps/web/src/session/sign-in.ts':
     "the browser signs in through the product's own API, same origin",
+  // Batch 1's, taken at 5d3e129 (reviewed there):
+  'apps/api/auth/jwks.ts':
+    "reads the sign-in provider's published key set at its pinned address (S0-6b)",
+  'apps/api/auth/supabase.ts': 'threads that key-set fetch to the verifier; it calls nothing',
+  'apps/api/function.ts': "the hosted function hands each request to the API's own handler",
+  'apps/web/build-stamp.ts': 'runs the local git once at build time to stamp the build; no network',
+  'apps/web/src/held-address.tsx': "threads the page's fetch to the product's own API",
   // C80, stacked on this slice (SL15): not a model call. Whether its provider
   // calls should leave through custody instead is for the batch review.
   'packages/core-connectors/src/capture/transport.ts':

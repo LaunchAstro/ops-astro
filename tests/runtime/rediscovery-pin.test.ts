@@ -211,7 +211,7 @@ const HELD_BY_DELEGATION = 'select res.id as reservation_id, res.envelope_id #22
 // retired delegation (classifier.ts, `discoverEligible`;
 // tests/broker/aw-05-budget-wait.test.ts). Still one read, taken twice; no
 // lock moved.
-const ELIGIBLE = 'select res.id as reservation_id, res.envelope_id #323ac513';
+const ELIGIBLE = 'select res.id as reservation_id, res.envelope_id #fcec6a1d';
 const DEPENDENTS = 'with recursive revoked as ( select g.id, g.subje #c53e3eae';
 
 /**
