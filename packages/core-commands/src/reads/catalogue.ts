@@ -44,7 +44,7 @@ import { readTaskExecution } from './execution.ts';
 import { readSettings } from './settings.ts';
 import { readCapabilities } from './capabilities.ts';
 import { parseReceipt, receiptSubject, serveReceipt } from './receipts.ts';
-import { searchTasks, wordsOf } from './search.ts';
+import { SERVER_HIT_LIMIT, searchTasks, wordsOf } from './search.ts';
 import { parseBreachNotices, readBreachNotices, readOperations } from './operations.ts';
 import { countOwed, readInbox, readUnattendedInbox } from './inbox.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
@@ -321,14 +321,22 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       if (!isInternalReader(session.roleKey)) return refuseNotFound();
       if (!(await isKnownTimeZone(tx, operands.timeZone))) return invalid('timeZone', ZONE_FIX);
       // A search is C1's one service: the ledger reads the events of the tasks it
-      // found, within its own twenty best, and runs no second search.
+      // found, up to C1's bound (the server's, never the caller's), says when
+      // more of the reader's own matches lie past it, and runs no second search.
       const found =
         operands.query === null
           ? null
-          : await searchTasks(tx, session, { taskTypeId: spine.taskTypeId, query: operands.query });
+          : await searchTasks(tx, session, {
+              taskTypeId: spine.taskTypeId,
+              query: operands.query,
+              limit: SERVER_HIT_LIMIT,
+            });
       if (found !== null && isCommandRefusal(found)) return found;
       const taskIds = found === null ? null : found.hits.map((hit) => hit.id);
-      return { ok: true, ...(await readLedger(tx, spine.taskTypeId, { ...operands, taskIds })) };
+      const page = await readLedger(tx, spine.taskTypeId, { ...operands, taskIds });
+      return found === null
+        ? { ok: true, ...page }
+        : { ok: true, ...page, more: found.more === true };
     },
   },
   'person.list': {
