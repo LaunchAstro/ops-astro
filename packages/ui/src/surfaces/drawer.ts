@@ -46,8 +46,18 @@ export function useDrawerFocus(
     };
   }, [open, onToggle]);
 
-  // The drawer is the narrow view's. Past 900 the stylesheet hides its way
-  // out, so widening closes it and takes `inert` off the page.
+  useCloseOnWidening(open, onToggle);
+
+  return (event) => {
+    if (open) keepTabInside(event, railRef.current);
+  };
+}
+
+/**
+ * The drawer is the narrow view's. Past 900 the stylesheet hides its way out,
+ * so widening closes it and takes `inert` off the page.
+ */
+function useCloseOnWidening(open: boolean, onToggle: ((open: boolean) => void) | undefined): void {
   useEffect(() => {
     if (!open || onToggle === undefined || typeof window.matchMedia !== 'function') return;
     const narrow = window.matchMedia('(width <= 900px)');
@@ -59,10 +69,6 @@ export function useDrawerFocus(
       narrow.removeEventListener('change', onChange);
     };
   }, [open, onToggle]);
-
-  return (event) => {
-    if (open) keepTabInside(event, railRef.current);
-  };
 }
 
 /** While the drawer is open, Tab and Shift+Tab stay inside it. */
