@@ -22,6 +22,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { launchChromium } from '../support/chromium.ts';
 import { load, MOCKUP_ORIGIN, openSide, type Side } from './capture.ts';
 import { madeUpSession, serveApp } from './app-pages.ts';
+import { measure, type Measured } from './look-measure.ts';
 import { answerMadeUp } from './made-up-api.ts';
 import { LOOK_SCREENS, RULED_PAINT, type LookProbe, type LookScreen } from './look/index.ts';
 import {
@@ -35,7 +36,6 @@ import {
 } from './packet.ts';
 import { addressOf, needsSession } from './report.ts';
 
-type Measured = Readonly<Record<string, string>>;
 interface Pinned {
   readonly about: string;
   readonly mockup: string;
@@ -54,43 +54,6 @@ if (screens.length === 0) throw new Error(`look: no screen ${String(only)}`);
 const pinnedFile = (screen: LookScreen): URL =>
   new URL(`look/${screen.id}.mockup.json`, import.meta.url);
 const widthsOf = (probe: LookProbe): readonly number[] => probe.widths ?? [1480];
-
-/** In the page: each asked property of the element, colours as the pixel they paint. */
-function measure(input: { selector: string; props: readonly string[] }): Measured | null {
-  const element = document.querySelector(input.selector);
-  if (element === null) return null;
-  const style = getComputedStyle(element);
-  const box = element.getBoundingClientRect();
-  const canvas = document.createElement('canvas');
-  canvas.width = 1;
-  canvas.height = 1;
-  const pen = canvas.getContext('2d', { willReadFrequently: true });
-  const paint = (value: string): string => {
-    if (pen === null || value === '' || value === 'none') return value;
-    pen.clearRect(0, 0, 1, 1);
-    pen.fillStyle = '#000';
-    pen.fillStyle = value;
-    pen.fillRect(0, 0, 1, 1);
-    const [r, g, b, a] = pen.getImageData(0, 0, 1, 1).data;
-    return `rgba(${String(r)},${String(g)},${String(b)},${String(a)})`;
-  };
-  const out: Record<string, string> = {};
-  for (const prop of input.props) {
-    if (prop.startsWith('box.')) {
-      const key = prop.slice(4) as 'width' | 'height' | 'x' | 'y';
-      out[prop] = String(Math.round(box[key]));
-    } else if (prop === 'font-family') {
-      // The face that paints: load() has proved every bundled face resolves,
-      // so the fallbacks after the first never draw.
-      out[prop] = (style.fontFamily.split(',')[0] ?? '').trim().replaceAll('"', '');
-    } else if (prop.includes('color')) {
-      out[prop] = paint(style.getPropertyValue(prop));
-    } else {
-      out[prop] = style.getPropertyValue(prop);
-    }
-  }
-  return out;
-}
 
 const key = (width: number, theme: Theme): string => `${String(width)}-${theme}`;
 

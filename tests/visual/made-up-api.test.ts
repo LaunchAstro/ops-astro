@@ -7,9 +7,9 @@ import { TASKS } from './made-up-data.ts';
 
 // Reads no screen draws at the harness's addresses: the preset plan is the
 // command line's, the unattended list is the operations view's. No screen asks
-// the client list or the breach notice drafts (the command line's drill). Each
-// is drawn "could not be read" if asked. The task page's run has a receipt, so
-// `task.receipt` is drawn here.
+// the client list (Access reads its clients inside access.read) or the breach
+// notice drafts (the command line's drill). Each is drawn "could not be read" if
+// asked. The task page's run has a receipt, so `task.receipt` is drawn here.
 const NOT_DRAWN = new Set([
   'preset.plan',
   'inbox.unattended',

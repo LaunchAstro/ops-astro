@@ -8,13 +8,17 @@ import type { MadeUpVariant } from '../made-up-api.ts';
 export interface LookProbe {
   /** `<screen>.<element>`, unique across screens. */
   readonly id: string;
-  /** The mockup page path and the element there; `open` clicks before measuring. */
-  readonly mockup: { readonly path: string; readonly selector: string; readonly open?: string };
+  /** The mockup page path and the element there; `open` clicks, in turn, before measuring. */
+  readonly mockup: {
+    readonly path: string;
+    readonly selector: string;
+    readonly open?: string | readonly string[];
+  };
   /** The app page (drawn from the made-up reads) and the element there. */
   readonly app: {
     readonly page: string;
     readonly selector: string;
-    readonly open?: string;
+    readonly open?: string | readonly string[];
     /**
      * An address to draw instead of the page's, signed in: a held address, an
      * unknown one, or sign-in with a session already held.

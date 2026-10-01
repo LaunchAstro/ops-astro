@@ -101,7 +101,9 @@ Each drill it runs, passed or failed, leaves a receipt in the backup store
 (`backups.drills`: time, outcome, stage, majors, table count, stage timings
 and the operator; no record data, key, credential, fingerprint or path) and a
 line in the operator's record folder. The receipt names the date of the last
-tested restore. The daily upkeep job (`backup.mjs expire`) pings the restore
+tested restore, and a pass the store took also stamps that date on staging's
+database (`ops.last_tested_restore`, migration 0070), where the operations
+view reads it; a failed drill stamps nothing. The daily upkeep job (`backup.mjs expire`) pings the restore
 heartbeat only while a drill passed within `backups.settings.restore_days`
 (35 to start); once none has, the watcher mails the owner and the second
 operator that the restore drill is out of date.
@@ -180,12 +182,15 @@ checked, and the output is copied into a folder of its own and checked again
 there. It runs `vercel deploy --prebuilt --prod` under the person's own Vercel
 sign-in (`VERCEL_TOKEN` set refuses it) into the project `VERCEL_ORG_ID` and
 `VERCEL_PROJECT_ID` name, handing the CLI nothing else from the environment,
-then reads the deployment's region back with `vercel inspect`. Before Vercel
-is asked, the sign-in server at `GOTRUE_URL` reports its version on `/health`
-(with `SUPABASE_PUBLISHABLE_KEY` as its key when set); no version, no deploy.
-Only a deployment Vercel reports in `syd1` alone writes `deploy recorded`: the
-version, the artefact, the digest, the deployment's own address, the region,
-the function runtime and the sign-in server's version. The folder, `.vercel`
+then asks `vercel inspect` about the deployment it made, which must report
+that same deployment `READY` on `production`. Before Vercel is asked, the
+sign-in server at `GOTRUE_URL` reports its version on `/health` (with
+`SUPABASE_PUBLISHABLE_KEY` as its key when set); no version, no deploy. Only a
+deployment read back that way writes `deploy recorded`: the version, the
+artefact, the digest, the deployment's own address, the region, the function
+runtime and the sign-in server's version. The region is `syd1`, the built
+output's own declaration, which `buildOutputProblems` holds every function to
+before the deploy; it is not a region Vercel reports. The folder, `.vercel`
 included, is removed either way.
 
 `scripts/ops/web-deploy.mjs --maintenance`, behind the same gate, puts the
@@ -229,6 +234,7 @@ addresses are private, set in the environment at run time:
 | `OPS_ALERT_TEST_EMAIL`                                     | `alerts.mjs plan --test`                     | the test address agreed before case R8's proof                                                                                                                                                                                                               |
 | `OPS_WATCH_STAGING_URL`, `OPS_WATCH_PRODUCTION_URL`        | `alerts.mjs plan`                            | the public https addresses watched; production's from the first promotion                                                                                                                                                                                    |
 | `OPS_ERROR_SINK_DSN`                                       | the forwarder, `alerts.mjs`, the secret scan | the sink's DSN, at a public https address (a private one is refused, a redirect not followed); never the Vercel function's (it refuses to start beside it)                                                                                                   |
+| `OPS_ERROR_SINK_URL`                                       | the API                                      | the sink's web address, the operations view's link (C55); no secret, never the DSN (an address with a user part stops the API)                                                                                                                               |
 | `OPS_ENVIRONMENT`, `OPS_RELEASE`                           | the API, the forwarder, `alerts.mjs test`    | `staging` or `production`; the build stamp                                                                                                                                                                                                                   |
 | `ALERT_SCOPE_KEY`                                          | the API (the Vercel function)                | at least 32 bytes as hex (`openssl rand -hex 32`), one per environment, every instance the same; required once `OPS_ENVIRONMENT` is set                                                                                                                      |
 | `RECOVERY_BUSINESS_KEYS`                                   | the API (the Vercel function)                | deployment's business keys, or `none`; the function's recovery (below); unset, the function does not start                                                                                                                                                   |

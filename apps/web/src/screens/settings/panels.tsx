@@ -22,7 +22,7 @@ import type {
   CapabilitiesResult,
   SettingView,
 } from '../../../../../packages/core-wire/src/index.ts';
-import { holdsManage, inWords } from './reads.ts';
+import { SETTINGS_MANAGE, SPEND_DECIDE, holds, inWords, scopeName } from './reads.ts';
 import type { Conflict, Draft, Which } from './use-settings.ts';
 
 export const draftInWords = (draft: Draft): string =>
@@ -79,8 +79,15 @@ export function CapabilityBanner(props: {
   readonly state: ReadState<CapabilitiesResult>;
 }): ReactElement {
   const state = props.state;
-  const short =
-    (state.outcome === 'ready' || state.outcome === 'empty') && !holdsManage(state.value.grants);
+  const answered = state.outcome === 'ready' || state.outcome === 'empty';
+  // Each closed row in the grant its own command takes, so a person told one
+  // row is closed is told which scope would open it.
+  const missing = answered
+    ? [
+        { grant: SPEND_DECIDE, rows: 'the four-eyes threshold' },
+        { grant: SETTINGS_MANAGE, rows: 'client sign-off and the two windows' },
+      ].filter((need) => !holds(state.value.grants, need.grant))
+    : [];
   return (
     <div className="readstate" data-settings="capabilities" data-outcome={state.outcome}>
       {state.outcome === 'denied' ? (
@@ -91,12 +98,18 @@ export function CapabilityBanner(props: {
             : 'The controls are closed: this screen could not find out what you may do and does not assume in your favour.'}
         </p>
       ) : null}
-      {short ? (
+      {missing.length === 0 ? null : (
         <p className="field__error" role="alert" data-settings="capabilities-because">
-          Your session does not hold <code>settings:manage</code>, which both of these commands
-          take. The controls are closed rather than sending a write nobody was going to accept.
+          {missing.map((need) => (
+            <span key={need.rows}>
+              Your session does not hold <code>{scopeName(need.grant)}</code>, which {need.rows}{' '}
+              take{need.rows.startsWith('the ') ? 's' : ''}, so{' '}
+              {need.rows.startsWith('the ') ? 'it is' : 'they are'} closed.{' '}
+            </span>
+          ))}
+          Closed rather than sending a write nobody was going to accept.
         </p>
-      ) : null}
+      )}
     </div>
   );
 }

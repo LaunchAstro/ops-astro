@@ -20,8 +20,8 @@
    charts and the gallery page).
    ============================================================================ */
 
-/* -- Blocks (DS-PRIM-20 to DS-PRIM-24, DS-PRIM-28 to DS-PRIM-33, DS-COMP-7,
-      DS-COMP-8, DS-COMP-13, DS-COMP-26; MP-1-3). ------------------------- */
+/* -- Blocks (DS-PRIM-20, DS-PRIM-21, DS-PRIM-23, DS-PRIM-24, DS-PRIM-28 to
+      DS-PRIM-33, DS-COMP-7, DS-COMP-8, DS-COMP-13, DS-COMP-26; MP-1-3). -- */
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -293,6 +293,8 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+/* -- Banner and tip (DS-PRIM-22). `--hint` is the agent's aside (DR-5): no
+   box, a 1px accent rule on the one wash (DR-11). ------------------------ */
 .banner {
   display: flex;
   align-items: flex-start;
@@ -313,6 +315,23 @@
 }
 .banner--info {
   border-left-color: var(--info);
+}
+.banner--hint {
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border: 0;
+  border-left: 1px solid var(--accent);
+  background: var(--accent-wash);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+  color: var(--text-2);
+}
+.banner__mark {
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+  color: var(--accent);
 }
 @media print {
   .banner--info {
@@ -394,57 +413,6 @@
   font: var(--type-small);
   letter-spacing: var(--type-small-tracking);
   text-transform: var(--type-small-case);
-}
-/* The one empty state (DS-PRIM-28): no icon, no fill, in three looks. */
-.empty {
-  display: grid;
-  gap: 6px;
-  color: var(--text-muted);
-}
-.empty > p {
-  margin: 0;
-}
-.empty--block {
-  display: block;
-  padding: 48px 24px;
-  font: var(--type-body);
-  letter-spacing: var(--type-body-tracking);
-  text-transform: var(--type-body-case);
-  text-align: center;
-}
-/* As the mockup's house empty state: every line at the block's own size, 1em apart. */
-.empty.empty--block > * {
-  max-width: none;
-  margin: 1em 0;
-  font: inherit;
-  letter-spacing: inherit;
-  text-transform: inherit;
-}
-.empty--inline {
-  max-width: 60ch;
-  padding-block: 16px;
-  font: var(--type-small);
-  letter-spacing: var(--type-small-tracking);
-  text-transform: var(--type-small-case);
-}
-.empty--row {
-  padding: 0;
-  font: var(--type-data);
-  letter-spacing: var(--type-data-tracking);
-  text-transform: var(--type-data-case);
-}
-.empty__title {
-  color: var(--text-muted);
-}
-.empty__desc,
-.empty__hint {
-  max-width: 340px;
-  font: var(--type-caption);
-  letter-spacing: var(--type-caption-tracking);
-  text-transform: var(--type-caption-case);
-}
-.empty__action {
-  margin-top: 8px;
 }
 /* DS-PRIM-29 (DR-37): a skeleton at the size of what it stands for. A slow
    pulse, and none at all under reduced motion. */
@@ -569,9 +537,9 @@
   padding: 4px 8px;
   border: 1px solid var(--border);
   color: var(--text-muted);
-  font: var(--type-eyebrow);
-  letter-spacing: var(--type-eyebrow-tracking);
-  text-transform: var(--type-eyebrow-case);
+  font: var(--type-chip);
+  letter-spacing: var(--type-chip-tracking);
+  text-transform: var(--type-chip-case);
   cursor: default;
 }
 .fresh__live {

@@ -51,6 +51,8 @@ export function reachArgs(network) {
     'run',
     '--rm',
     '-i',
+    // Attached output still streams; nothing psql prints goes to a log on the host's disk.
+    '--log-driver=none',
     `--name=${staging['x-ops-astro'].ownPrefix}-store-${randomBytes(4).toString('hex')}`,
     `--network=${network}`,
     ...LOGIN.map((name) => `--env=${name}`),

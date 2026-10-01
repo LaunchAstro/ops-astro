@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Settings ▸ Access and Settings ▸ Telemetry wear the shell's page header
+// Settings ▸ Access, Telemetry and Operations wear the shell's page header
 // (DS-COMP-3), which already names the page. The page keeps its one lead line
 // and draws no second title, and never the task page's record header (`.tpr`),
 // which belongs to a task (UI-POLISH look sweep of batch/2a).
@@ -58,6 +58,7 @@ describe('SL09 settings pages wear the shell page header only', () => {
   it.each([
     ['access', '/settings/access/', 'Access', 'Who may do what in alpha'],
     ['telemetry', '/settings/telemetry/', 'Telemetry', 'Service health for alpha'],
+    ['operations', '/settings/operations/', 'Operations', 'What needs an operator in alpha'],
   ])(
     'Settings ▸ %s names the page once, in the page header, and keeps its lead',
     async (screen, path, title, lead) => {

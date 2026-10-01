@@ -24,13 +24,16 @@ const staging = JSON.parse(
  * identity. The password reaches the container through the environment, never
  * the command line, and pg_dump's own messages are discarded. It answers once
  * pg_dump has printed its first bytes: the pieces it prints, which throw after
- * the last if pg_dump failed. A pg_dump that prints nothing fails.
+ * the last if pg_dump failed, with a `stop()` for a reader that gives up. A
+ * pg_dump that prints nothing fails.
  */
 export function pgDump(sourceUrl) {
   const url = new URL(sourceUrl);
   const args = [
     'run',
     '--rm',
+    // Attached output still streams; none of the dump goes to a log on the host's disk.
+    '--log-driver=none',
     `--name=${staging['x-ops-astro'].ownPrefix}-backup-${randomBytes(4).toString('hex')}`,
     `--network=${staging.networks.staging.name}`,
     '--env=PGPASSWORD',
@@ -54,8 +57,27 @@ export function pgDump(sourceUrl) {
 }
 
 /**
+ * Settles once `child` has exited and its pipes have closed, or after `ms`, when
+ * it is killed outright and left, so a stopped dump never holds the job open.
+ */
+function closed(child, ms = 5000) {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      child.kill?.('SIGKILL');
+      resolve();
+    }, ms);
+    child.once('close', () => {
+      clearTimeout(timer);
+      resolve();
+    });
+  });
+}
+
+/**
  * A child's printed pieces, read as they come and paused while a few wait,
- * once it has printed something; stops the child if the reader stops first.
+ * once it has printed something. Their `stop()` stops the child, drops what it
+ * still prints so its pipe can close, and waits for it to exit, whether or not
+ * the pieces were ever read.
  */
 function printed(child) {
   const waiting = [];
@@ -80,22 +102,21 @@ function printed(child) {
       wake = resolve;
     });
   async function* pieces() {
-    let done = false;
-    try {
-      for (;;) {
-        if (waiting.length > 0) {
-          child.stdout.resume?.();
-          yield waiting.shift();
-        } else if (exit === null) {
-          // oxlint-disable-next-line no-await-in-loop -- one piece at a time is the point
-          await more();
-        } else break;
-      }
-      done = true;
-    } finally {
-      if (!done) child.kill?.();
+    for (;;) {
+      if (waiting.length > 0) {
+        child.stdout.resume?.();
+        yield waiting.shift();
+      } else if (exit === null) {
+        // oxlint-disable-next-line no-await-in-loop -- one piece at a time is the point
+        await more();
+      } else break;
     }
     if (exit !== 0) throw new Error('pg_dump failed');
   }
-  return started.then(() => pieces());
+  async function stop() {
+    child.kill?.();
+    child.stdout.removeAllListeners?.('data').resume?.();
+    if (exit === null) await closed(child);
+  }
+  return started.then(() => Object.assign(pieces(), { stop }));
 }

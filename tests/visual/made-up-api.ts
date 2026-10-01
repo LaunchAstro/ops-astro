@@ -3,12 +3,11 @@
 // Made-up answers for the width-and-theme harness (UI-POLISH).
 //
 // The harness serves the app with its API at a dead port, so every data
-// screen used to be photographed on its "could not be read" state: no
-// sideways scroll proven on an error, nothing about the look. These answers
-// let each screen draw rows. They are typed against the wire contract's own
-// read shapes, so a changed read fails the typecheck here rather than drawing
-// a screen from a shape the API no longer sends. Test side only: the page
-// asks the same addresses it asks the real API; nothing here is a back end.
+// screen was photographed on its "could not be read" state, proving nothing
+// about the look. These answers let each screen draw rows. They are typed against the wire
+// contract's own read shapes, so a changed read fails the typecheck here rather than drawing
+// a screen from a shape the API no longer sends. Test side only: the page asks the same
+// addresses it asks the real API; nothing here is a back end.
 //
 // The rows follow the pinned mockup's Projects board, so a capture reads
 // against the mockup's page. Every name and client is made up.
@@ -30,16 +29,8 @@ import type {
 } from '../../packages/core-wire/src/index.ts';
 import type { BrowserContext } from 'playwright';
 import type { ReadName } from '../../apps/web/src/operations/read-names.ts';
-import {
-  ACCESS,
-  DETAIL,
-  EXECUTION,
-  MIA,
-  NATHAN,
-  OPERATIONS,
-  RECEIPT,
-  TASKS,
-} from './made-up-data.ts';
+import { ACCESS, HARBOUR, MERIDIAN, MIA, NATHAN, OPERATIONS } from './made-up-access.ts';
+import { DETAIL, EXECUTION, RECEIPT, TASKS } from './made-up-data.ts';
 
 /** The Work log's two days, newest first, as `task.ledger` answers them (MP-8-4). */
 const LEDGER: TaskLedgerResult = {
@@ -137,6 +128,7 @@ const READS = {
         seenAt: null,
         lastDelivery: 'delivered',
         task: { key: 'T-9', title: 'Sign off the Meridian ad run rate, 29% over budget' },
+        client: MERIDIAN,
       },
       {
         id: 'i-2',
@@ -150,6 +142,7 @@ const READS = {
         seenAt: '2026-09-25T21:00:00.000Z',
         lastDelivery: 'delivered',
         task: { key: 'T-13', title: 'Approve the four review replies before they go out' },
+        client: HARBOUR,
       },
       {
         id: 'i-3',

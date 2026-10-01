@@ -52,6 +52,18 @@ const giveWith =
     act(() => client.mutate('access.grant', body), `Gave ${holder.name} ${key}.`);
   };
 
+/** A refusal is drawn as Settings draws one; a success stays a quiet line. */
+const Outcome = (props: { readonly text: string; readonly refused: boolean }): ReactElement =>
+  props.refused ? (
+    <p className="field__error" role="alert" data-access-outcome="refused">
+      {props.text}
+    </p>
+  ) : (
+    <p className="card__sub" role="status" data-access-outcome="done">
+      {props.text}
+    </p>
+  );
+
 /**
  * The two acts that wait on a confirmation before anything is sent: ending a
  * person's access (`access.end`) and revoking one grant (`access.revoke`).
@@ -102,6 +114,7 @@ function AccessLists(props: {
   readonly result: AccessReadResult;
   readonly busy: boolean;
   readonly act: Act;
+  readonly outcome: ReactElement | null;
 }): ReactElement {
   const { client, result, act } = props;
   const { confirmations, onEnd, onRevokeGrant } = usePending(client, act);
@@ -109,11 +122,20 @@ function AccessLists(props: {
   const lists = { clients, onEnd, onRevokeGrant };
   return (
     <>
-      {confirmations(result)}
-      <People id="team" title="Team" people={result.team} {...lists} />
-      <People id="clients" title="Clients" people={result.clients} {...lists} />
-      <Agents result={result} onRevoke={revokeWith(client, act)} />
-      <GiveAccess result={result} busy={props.busy} onGive={giveWith(client, act)} />
+      <section className="sec">
+        <h2 className="sec__head">Who may do what</h2>
+        <p className="card__sub">In {client.businessKey}, as the server grants it now.</p>
+        {props.outcome}
+        <div className="stack" data-access-lists>
+          {confirmations(result)}
+          <People id="team" title="Team" people={result.team} {...lists} />
+          <People id="clients" title="Clients" people={result.clients} {...lists} />
+          <Agents result={result} onRevoke={revokeWith(client, act)} />
+        </div>
+      </section>
+      <section className="sec">
+        <GiveAccess result={result} busy={props.busy} onGive={giveWith(client, act)} />
+      </section>
     </>
   );
 }
@@ -126,32 +148,33 @@ export function AccessScreen(props: AccessScreenProps): ReactElement {
     deps: [client],
   });
   const [busy, setBusy] = useState(false);
-  const [outcome, setOutcome] = useState<string | null>(null);
+  const [outcome, setOutcome] = useState<{ text: string; refused: boolean } | null>(null);
   const act: Act = (send, done) => {
     setBusy(true);
     void (async () => {
       const failure = describeFailure(await send());
       setBusy(false);
-      setOutcome(failure ?? done);
+      setOutcome({ text: failure ?? done, refused: failure !== null });
       if (failure === null) reload();
     })();
   };
+  // The top bar names the page; the body is the page kit's sections (PAGE-MAP SH-40 to 44).
   return (
-    <div className="stack" data-screen="access" data-business={client.businessKey}>
-      {/* The shell's page header names the page; the page keeps its lead line only. */}
+    <div className="secs" data-screen="access" data-business={client.businessKey}>
       <p className="card__sub" data-page-lead>
         Who may do what in {client.businessKey}, as the server grants it now.
       </p>
       <RecordState state={state} subject="access list" onRetry={reload}>
         {(result) => (
-          <>
-            {outcome === null ? null : (
-              <p className="card__sub" role="status" data-access-outcome>
-                {outcome}
-              </p>
-            )}
-            <AccessLists client={client} result={result} busy={busy} act={act} />
-          </>
+          <div className="secs">
+            <AccessLists
+              client={client}
+              result={result}
+              busy={busy}
+              act={act}
+              outcome={outcome === null ? null : <Outcome {...outcome} />}
+            />
+          </div>
         )}
       </RecordState>
     </div>

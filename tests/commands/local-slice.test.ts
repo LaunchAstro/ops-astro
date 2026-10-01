@@ -206,6 +206,8 @@ describe.skipIf(serverUrl === undefined)('the local working slice', () => {
         'task.reopen',
       ]);
       expect(afterReopen.history.every((entry) => entry.actorId === mia.actorId)).toBe(true);
+      // And the person that actor is, which a page names them by.
+      expect(afterReopen.history.every((entry) => entry.personId === mia.personId)).toBe(true);
     });
 
     it('B4: edits title, description, due and priority through task.update', async () => {

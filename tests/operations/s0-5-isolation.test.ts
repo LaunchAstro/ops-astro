@@ -252,6 +252,8 @@ describe.skipIf(serverUrl === undefined)('S0-5 isolation', () => {
     expect(namingTheGate()).toStrictEqual([
       'packages/core-commands/src/commands/first-client-gate.ts',
       'packages/core-commands/src/commands/gate-write.ts',
+      // C55's alerts read only operator_business_id, to keep them to the operating business.
+      'packages/core-records/src/operations/security-alerts.ts',
       'packages/core-wire/src/data-effects.ts',
     ]);
   });

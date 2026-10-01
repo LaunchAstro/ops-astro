@@ -176,7 +176,7 @@ async function isolation(): Promise<void> {
   expect(witness.status, JSON.stringify(witness.refusal)).toBe(200);
   const theirsJoined = await still(theirs);
   await barrier(witness, s.business, mine);
-  expect(moves(theirs)).toBe(theirsJoined);
+  expect(await still(theirs)).toBe(theirsJoined);
   await touch(other.id, otherTask.id);
   await within(2_000, () => moves(theirs) > theirsJoined, 'their own task');
 
@@ -219,14 +219,14 @@ async function delegated(
   await within(2_000, () => count(tab, 'resync', BOARD) === 1, 'the delegate joined');
   const joined = await still(tab);
   await barrier(witness, s.business, mine);
-  expect(moves(tab)).toBe(joined);
+  expect(await still(tab)).toBe(joined);
   await touch(s.business, sibling);
   await within(2_000, () => moves(tab) > joined, 'the delegated task');
   await s.db.app.withBusiness(s.business, async (tx) => await revokeGrant(tx, parent));
   const revoked = await still(tab);
   await touch(s.business, sibling);
   await barrier(witness, s.business, mine);
-  expect(moves(tab)).toBe(revoked);
+  expect(await still(tab)).toBe(revoked);
   for (const each of [...others, tab]) {
     carriesOnly(each, [BOARD]);
     expect(each.raw).not.toContain(mine);
