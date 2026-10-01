@@ -57,6 +57,7 @@ export {
   EFFECTIVE as EFFECTIVE_GRANTS,
   effectiveGrants,
   grantFingerprint,
+  grantRowsFingerprint,
   OPERATIONS_MANAGE,
   revokeGrant,
   subjectsOf,
