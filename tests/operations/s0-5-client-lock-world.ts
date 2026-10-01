@@ -36,6 +36,11 @@ const NOT_CONTENT: Readonly<Record<string, string>> = {
   'conversation.set_scope': "the page the caller's own conversation is about",
   'model.call':
     'the agent prefix only (the person path refuses it), under a lease: the task already has content',
+  // SL11 (batch 3b): AW-11's two, agent-only like `model.call`.
+  'run.delegate_child':
+    "the agent prefix only, under the parent's lease: the task already has content",
+  'run.child_handback':
+    "the agent prefix only, on a child the parent's lease made: the task already has content",
 };
 
 export const CONTENT: readonly CommandDeclaration[] = COMMAND_SURFACE.filter(
@@ -157,6 +162,8 @@ const MARKER_HELD: ReadonlySet<string> = new Set([
   'run.top_up',
   'run.end_at_budget_stop',
   'run.revise_state',
+  // SL11 (batch 3b): approves the proposal's gate as `task.decide` does, then pins and binds.
+  'task.accept_plan',
 ]);
 
 /** Per task, a digest of every row that names it, in the tables the lock reads. */
