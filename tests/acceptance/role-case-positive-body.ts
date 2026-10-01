@@ -83,8 +83,7 @@ export function createPositiveBody(
         };
       }
       case 'task.duplicate': {
-        // The shell of a fresh task, to no client.
-        const task = await context.freshTask('a task to duplicate');
+        const task = await context.freshTask('a task to duplicate, to no client');
         return { body: { recordId: task.id, client: null, title: 'a copy', stepNames: [] } };
       }
       case 'task.comment':
