@@ -67,7 +67,7 @@ export interface AuditNote {
     'model.call_dispatched' | 'model.call_released' | 'model.call_refused' | 'model.call_held';
   readonly outcome: 'applied' | 'refused';
   /** Set on a refusal, from the refusal register. */
-  readonly refusalCode: BrokerRefusal | 'LIABILITY_UNKNOWN' | null;
+  readonly refusalCode: BrokerRefusal | null;
   readonly detail: Readonly<Record<string, unknown>>;
 }
 
@@ -137,6 +137,7 @@ export type BrokerRefusal =
   | 'BUDGET_UNAVAILABLE'
   | 'RATE_LIMITED'
   | 'COPY_NOT_REGISTERED'
+  | 'LIABILITY_UNKNOWN'
   | CarryRefusal;
 
 export type ModelCallResult =

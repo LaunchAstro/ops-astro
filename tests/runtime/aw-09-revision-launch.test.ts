@@ -5,7 +5,8 @@
 // ruling on N9-M2). The same revision loop holds: two rounds, then approve,
 // reject or escalate (`aw-09-round-rules`). A person's own revision on the
 // agent's lineage is not the agent's output, so it is never marked and its
-// approval stays a plan accept, `LAUNCH_NOT_DECIDED` at dispatch.
+// approval stays a plan accept, `LAUNCH_NOT_DECIDED` at dispatch; the agent's
+// own revision after it is its output again, marked under its lease.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -104,6 +105,16 @@ describe.skipIf(serverUrl === undefined)('AW-09 the agent’s revision is its ou
     const other = await changesAsked();
     const own = await revisedBy(other, 'person');
     expect(await reviewed(own['versionId'])).toBe(false);
+  });
+
+  it("the agent's revision after a person's revision on its lineage is the reviewed output", async () => {
+    const output = await changesAsked();
+    const own = await revisedBy(output, 'person');
+    expect(await reviewed(own['versionId'])).toBe(false);
+    const revision = await revisedBy(output, 'agent');
+    // Marked under the lease whose hand-back made the agent's output on this lineage.
+    expect(await markLease(revision['versionId'])).toEqual(await markLease(output.versionId));
+    expect(codeOf(await dispatched(revision))).toBe('applied');
   });
 
   it('approving the revision is the launch; dispatch before it is LAUNCH_NOT_DECIDED', async () => {

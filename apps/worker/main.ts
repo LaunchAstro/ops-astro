@@ -21,6 +21,25 @@ import { createWorker } from './worker.ts';
 const EXIT = { ok: 0, refused: 1, usage: 2, fault: 4 } as const;
 const REQUIRED = ['OPS_ASTRO_BUSINESS', 'OPS_ASTRO_TOKEN', 'OPS_ASTRO_DELEGATION'] as const;
 const HEARTBEAT = 'OPS_WORKER_HEARTBEAT_URL';
+const HEARTBEAT_EGRESS = 'OPS_EGRESS_HEARTBEAT_HOST';
+const API = 'OPS_ASTRO_API_URL';
+const INTERVAL = 'OPS_ASTRO_WORKER_INTERVAL_MS';
+
+export type WorkerSetting =
+  | (typeof REQUIRED)[number]
+  | typeof API
+  | typeof INTERVAL
+  | typeof HEARTBEAT
+  | typeof HEARTBEAT_EGRESS;
+
+/** Every setting the worker reads: the required three, then the optional ones. */
+export const WORKER_SETTINGS: readonly WorkerSetting[] = [
+  ...REQUIRED,
+  API,
+  INTERVAL,
+  HEARTBEAT,
+  HEARTBEAT_EGRESS,
+];
 
 /** What is wrong with the settings, in words naming each, never a value. */
 function refusal(env: Readonly<Record<string, string | undefined>>): string | undefined {
@@ -31,7 +50,7 @@ function refusal(env: Readonly<Record<string, string | undefined>>): string | un
   if (heartbeat && (url?.protocol !== 'https:' || UNREACHABLE.test(url.hostname))) {
     return `${HEARTBEAT} must be a public https address`;
   }
-  return offEgress(env, [[HEARTBEAT, 'OPS_EGRESS_HEARTBEAT_HOST']]);
+  return offEgress(env, [[HEARTBEAT, HEARTBEAT_EGRESS]]);
 }
 
 export async function main(
@@ -44,7 +63,7 @@ export async function main(
     process.stderr.write(`worker: ${refused}\n`);
     return EXIT.usage;
   }
-  const api = (env['OPS_ASTRO_API_URL'] ?? 'http://127.0.0.1:8790').replace(/\/$/u, '');
+  const api = (env[API] ?? 'http://127.0.0.1:8790').replace(/\/$/u, '');
   const worker = createWorker({
     transport: httpTransport(api),
     businessKey: env['OPS_ASTRO_BUSINESS'] as string,
@@ -52,7 +71,7 @@ export async function main(
     delegation: env['OPS_ASTRO_DELEGATION'] as string,
     reporter: SYNTHETIC_USAGE,
   });
-  const interval = Number(env['OPS_ASTRO_WORKER_INTERVAL_MS'] ?? 5_000);
+  const interval = Number(env[INTERVAL] ?? 5_000);
   let proposedOn: string | undefined;
   for (;;) {
     let outcome: Awaited<ReturnType<typeof worker.proposeOnce>> | undefined;

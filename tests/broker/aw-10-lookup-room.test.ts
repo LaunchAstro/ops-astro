@@ -5,7 +5,8 @@
 // the installation, and the business's fair share of it. A lookup with no room
 // is not sent, and the pass writes nothing on the call, so the next pass asks
 // again; it never changes a call's state on its own. Another business fills
-// the route here, so the ceiling or the share is the only thing in the way.
+// the route here, so the ceiling or the share is the only thing in the way;
+// in the last case the business's own ceiling for the operation is.
 
 import { beforeAll, expect, it as vitestIt } from 'vitest';
 import type { Schedules } from '../runtime/schedules-harness.ts';
@@ -74,4 +75,21 @@ it('N10-M2: a lookup with room asks once and records its proof', async () => {
   const [call] = await callsOf(s, run.work);
   expect(call).toMatchObject({ state: 'released' });
   expect(String(call?.['reconcile_note'])).toMatch(/^proved nothing happened: /u);
+});
+
+it("a lookup waits at the business's own ceiling for the operation", async () => {
+  // The operation's ceiling is 4 a business; the route has room for a thousand.
+  const roomy = onRoute('lookup-m1', 1_000);
+  world.provider.lookupMode('honest');
+  const run = await dropped('unavailable', s, roomy);
+  await hold(s, onRoute('lookup-m1-other', 1_000), 4);
+  const before = await callsOf(s, run.work);
+  const sent = lookups();
+  await pass(s, roomy);
+  expect(lookups()).toBe(sent);
+  expect(await callsOf(s, run.work)).toEqual(before);
+  await free(s, 'lookup-m1-other');
+  await pass(s, roomy);
+  expect(lookups()).toBe(sent + 1);
+  expect((await callsOf(s, run.work))[0]).toMatchObject({ state: 'released' });
 });

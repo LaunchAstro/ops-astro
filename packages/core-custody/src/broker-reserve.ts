@@ -16,6 +16,7 @@ import {
   type ModelOperation,
 } from '../../core-connectors/src/index.ts';
 import { mayCarry } from './credentials.ts';
+import { heldUnknown } from './broker-holds.ts';
 import { committedMinor, lockFacts, type Facts } from './broker-facts.ts';
 import { resolveFields } from './broker-sources.ts';
 import { stopAtCeiling } from './broker-wait.ts';
@@ -146,6 +147,7 @@ export async function reserveModelCall(
       await recordRefusal(tx, facts, request.operation, code, broker),
       words === undefined ? {} : { words },
     );
+  if (await heldUnknown(tx, facts.reservationId)) return await refused('LIABILITY_UNKNOWN');
   if (operation === undefined) return await refused('OPERATION_NOT_CATALOGUED');
   if (operation.nothingHappened === 'not_reconcilable')
     return await refused('EFFECT_NOT_RECONCILABLE');
