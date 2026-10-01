@@ -21,7 +21,13 @@ describe('the made-up reads the width-and-theme harness draws from', () => {
     const answer = madeUpAnswer(`${PREFIX.person}alpha${pathOf('task.board')}`);
     expect(answer).toEqual({
       status: 200,
-      json: { ok: true, tasks: TASKS, changedAt: '2026-09-25T04:00:00.000Z', viewer: 'p-nathan' },
+      json: {
+        ok: true,
+        tasks: TASKS,
+        changedAt: '2026-09-25T04:00:00.000Z',
+        viewer: 'p-nathan',
+        owed: 0,
+      },
     });
   });
 
