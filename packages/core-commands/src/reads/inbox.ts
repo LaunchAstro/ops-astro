@@ -17,14 +17,15 @@
 // task or the fact it points at.
 
 import {
+  clientsReached,
   countOwedItems,
   readInboxItems,
   readUnattended,
   type InboxItem,
-  type UnattendedItem,
+  type Subject,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
-import type { InboxEntry, PersonView } from '../../../core-wire/src/index.ts';
+import type { InboxEntry, PersonView, UnattendedView } from '../../../core-wire/src/index.ts';
 
 const iso = (at: Date | null): string | null => (at === null ? null : at.toISOString());
 
@@ -56,12 +57,17 @@ function entryOf(item: InboxItem): InboxEntry {
 /**
  * The caller's own inbox, oldest raised first, as `readInboxItems` orders it.
  * A readable entry is named in the same transaction: its task's key and title,
- * and who closed it. The item stores neither, so a renamed task reads renamed.
+ * who closed it, and its task's client where the caller's subjects reach that
+ * client (MP-7-3). The item stores none of them, so a rename reads renamed.
  */
-export async function readInbox(tx: TenantQuery, personId: string): Promise<readonly InboxEntry[]> {
+export async function readInbox(
+  tx: TenantQuery,
+  personId: string,
+  subjects: readonly Subject[],
+): Promise<readonly InboxEntry[]> {
   const items = await readInboxItems(tx, personId);
   const listed = items.filter((item) => item.access !== 'withheld').map((item) => entryOf(item));
-  return await named(tx, listed);
+  return await named(tx, listed, subjects);
 }
 
 /** The owed count: the list's counted entries, counted in one query under the same rule. */
@@ -69,27 +75,52 @@ export async function countOwed(tx: TenantQuery, personId: string): Promise<numb
   return await countOwedItems(tx, personId);
 }
 
+/** Each task's key, title and client link, read at the read. */
+async function taskNames(
+  tx: TenantQuery,
+  taskIds: readonly string[],
+): Promise<ReadonlyMap<string, { key: string; title: string | null; clientId: string | null }>> {
+  const rows = await tx.query<{
+    readonly id: string;
+    readonly key: string | null;
+    readonly title: string | null;
+    readonly clientId: string | null;
+  }>(
+    `select id, txt_1 as key, txt_4 as title, uuid_7 as "clientId" from public.records
+      where business_id = $1 and id = any($2::uuid[]) and deleted_at is null`,
+    [tx.businessId, taskIds],
+  );
+  return new Map(
+    rows.map((row) => [row.id, { key: row.key ?? '', title: row.title, clientId: row.clientId }]),
+  );
+}
+
+/**
+ * Which of these clients the subjects reach, by C32's own rule: a grant over
+ * the business, or on the client. Asked only of the listed tasks' clients.
+ */
+async function reachedClients(
+  tx: TenantQuery,
+  subjects: readonly Subject[],
+  clientIds: readonly string[],
+): Promise<ReadonlyMap<string, { readonly clientId: string; readonly name: string }>> {
+  if (clientIds.length === 0) return new Map();
+  const reached = (await clientsReached(tx, subjects, clientIds)) ?? [];
+  return new Map(reached.map((row) => [row.clientId, row]));
+}
+
 async function named(
   tx: TenantQuery,
   entries: readonly InboxEntry[],
+  subjects: readonly Subject[],
 ): Promise<readonly InboxEntry[]> {
   const readable = entries.filter((entry) => entry.access === 'readable');
   const taskIds = [...new Set(readable.map((entry) => entry.subjectRecordId ?? ''))];
   const deciderIds = [...new Set(readable.flatMap((entry) => entry.closedByPersonId ?? []))];
   if (taskIds.length === 0) return entries;
-  const tasks = new Map(
-    (
-      await tx.query<{
-        readonly id: string;
-        readonly key: string | null;
-        readonly title: string | null;
-      }>(
-        `select id, txt_1 as key, txt_4 as title from public.records
-          where business_id = $1 and id = any($2::uuid[]) and deleted_at is null`,
-        [tx.businessId, taskIds],
-      )
-    ).map((row) => [row.id, { key: row.key ?? '', title: row.title }] as const),
-  );
+  const tasks = await taskNames(tx, taskIds);
+  const clientIds = [...tasks.values()].flatMap((task) => task.clientId ?? []);
+  const reached = await reachedClients(tx, subjects, clientIds);
   const people = new Map<string, PersonView>(
     deciderIds.length === 0
       ? []
@@ -104,27 +135,26 @@ async function named(
   return entries.map((entry) => {
     if (entry.access !== 'readable') return entry;
     const task = tasks.get(entry.subjectRecordId ?? '');
+    const client = reached.get(task?.clientId ?? '');
     const decider = entry.closedByPersonId ?? null;
     return {
       ...entry,
-      ...(task === undefined ? {} : { task }),
+      ...(task === undefined ? {} : { task: { key: task.key, title: task.title } }),
+      ...(client === undefined ? {} : { client }),
       closedBy: decider === null ? null : (people.get(decider) ?? null),
     };
   });
 }
 
-/** An item no path reaches (INB-1e), as the operations view is shown it. */
-export type UnattendedEntry = Omit<UnattendedItem, 'raisedAt'> & { readonly raisedAt: string };
-
 /**
  * The business's unattended items whose task the caller can read: the list
- * the operations view (C55) will show, on the API and the command line until
- * then. It names each recipient, so it is `operations:read`'s and nobody's own.
+ * the operations view (C55) shows, and `inbox.unattended` on the API and the
+ * command line. It names each recipient, so it is `operations:read`'s and nobody's own.
  */
 export async function readUnattendedInbox(
   tx: TenantQuery,
   viewerPersonId: string,
-): Promise<readonly UnattendedEntry[]> {
+): Promise<readonly UnattendedView[]> {
   return (await readUnattended(tx, viewerPersonId)).map((item) => ({
     id: item.id,
     recipientPersonId: item.recipientPersonId,

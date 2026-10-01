@@ -8,7 +8,7 @@
 // own, bounded: neither read grows with a person's history. Raising and
 // recording are `items.ts`.
 
-import { readScopes, type InboxAccess } from './access.ts';
+import { REACH, type InboxAccess } from './access.ts';
 import type { Disclosed, InboxAlert, InboxItem, InboxItemAxes } from './items.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 
@@ -34,15 +34,11 @@ type ItemRow = InboxItemAxes &
   };
 
 /**
- * Where the recipient reads tasks now, as the three parameters a query filters
- * on itself: the same grants `taskAccess` asks, listed once for every row.
+ * Whether the recipient reads the row's task now, from the statement's own
+ * `reach` (`REACH`): the same grants `taskAccess` asks, walked once for every row.
  */
-const HELD = `($3::boolean or i.subject_record_id = any($4::uuid[]) or r.uuid_7 = any($5::uuid[]))`;
-
-async function reach(tx: TenantQuery, personId: string): Promise<readonly unknown[]> {
-  const scopes = await readScopes(tx, personId);
-  return [tx.businessId, personId, scopes.business, scopes.records, scopes.parties];
-}
+const HELD = `((select business from reach) or i.subject_record_id = any((select records from reach)::uuid[])
+         or r.uuid_7 = any((select parties from reach)::uuid[]))`;
 
 /** An item's own columns, as `shown` carries them before trashed and held. */
 const COLUMNS = `i.id, i.business_id, i.recipient_person_id, i.subject_record_id, i.reason,
@@ -56,21 +52,21 @@ const OPEN = `select ${COLUMNS}, r.deleted_at is not null as trashed, ${HELD} as
         where i.business_id = $1 and i.recipient_person_id = $2 and i.work_state = 'open'`;
 
 /**
- * The page: the newest $6 closed items about a task the recipient reads now,
+ * The page: the newest $3 closed items about a task the recipient reads now,
  * found from the grants' side. A business-wide read takes the history index
  * (0044) as it stands. Otherwise each task the grants reach, named or through
- * its client, gives at most $6 of its newest items on the subject history
- * index (0044), and the newest $6 of those are the page. A closed item about
+ * its client, gives at most $3 of its newest items on the subject history
+ * index (0044), and the newest $3 of those are the page. A closed item about
  * a task the recipient cannot read is never looked at, so it takes no place.
  */
 const PAGE = `select * from (
          (select ${COLUMNS}, r.deleted_at is not null as trashed, true as held
             from public.inbox_items i
             join public.records r on r.business_id = i.business_id and r.id = i.subject_record_id
-           where $3::boolean and i.business_id = $1 and i.recipient_person_id = $2
+           where (select business from reach) and i.business_id = $1 and i.recipient_person_id = $2
              and i.work_state <> 'open'
            order by i.closed_at desc, i.id desc
-           limit $6)
+           limit $3)
          union all
          (select h.*
             from public.records r
@@ -80,27 +76,27 @@ const PAGE = `select * from (
                where i.business_id = r.business_id and i.recipient_person_id = $2
                  and i.subject_record_id = r.id and i.work_state <> 'open'
                order by i.closed_at desc, i.id desc
-               limit $6) h
-           where not $3::boolean and r.business_id = $1
-             and (r.id = any($4::uuid[]) or r.uuid_7 = any($5::uuid[]))
+               limit $3) h
+           where not (select business from reach) and r.business_id = $1
+             and (r.id = any((select records from reach)::uuid[]) or r.uuid_7 = any((select parties from reach)::uuid[]))
            order by h.closed_at desc, h.id desc
-           limit $6)
+           limit $3)
        ) page`;
 
 /**
  * The withheld history beside the page: closed items about a task the
  * recipient cannot read now, closed no earlier than the page's oldest item
- * ($6, `-infinity` while the page is not full), among the newest $7 closed
+ * ($3, `-infinity` while the page is not full), among the newest $4 closed
  * items on the history index (0044), which the scan starts and stops on.
  */
-const WITHHELD = `shown as (
+const WITHHELD = `shown as (${REACH}
        select ${COLUMNS}, r.deleted_at is not null as trashed, false as held
          from (select ${COLUMNS}
                  from public.inbox_items i
                 where i.business_id = $1 and i.recipient_person_id = $2
-                  and i.work_state <> 'open' and i.closed_at >= $6::text::timestamptz
+                  and i.work_state <> 'open' and i.closed_at >= $3::text::timestamptz
                 order by i.closed_at desc, i.id desc
-                limit $7) i
+                limit $4) i
          join public.records r on r.business_id = i.business_id and r.id = i.subject_record_id
         where not ${HELD}
      )`;
@@ -139,7 +135,7 @@ const listing = (ctes: string): string => `with ${ctes}
       order by s.raised_at, s.id`;
 
 /** Every open item and the page. */
-const ITEMS = listing(`shown as (${OPEN}\n       union all\n       ${PAGE})`);
+const ITEMS = listing(`shown as (${REACH}\n       ${OPEN}\n       union all\n       ${PAGE})`);
 
 /**
  * What one recipient can be shown, each axis read separately and access derived
@@ -162,18 +158,27 @@ export async function readInboxItems(
   tx: TenantQuery,
   recipientPersonId: string,
 ): Promise<readonly InboxItem[]> {
-  const reached = await reach(tx, recipientPersonId);
-  const shown = await tx.query<ItemRow>(ITEMS, [...reached, INBOX_HISTORY_PAGE]);
+  const shown = await tx.query<ItemRow>(ITEMS, [
+    tx.businessId,
+    recipientPersonId,
+    INBOX_HISTORY_PAGE,
+  ]);
   const page = shown.flatMap((row) => (row.closedAt === null ? [] : [row.closedAt.getTime()]));
   // As text: the driver writes a timestamp parameter through `Date`, which has no infinity.
   const edge =
     page.length < INBOX_HISTORY_PAGE ? '-infinity' : new Date(Math.min(...page)).toISOString();
   const withheld = await tx.query<ItemRow>(listing(WITHHELD), [
-    ...reached,
+    tx.businessId,
+    recipientPersonId,
     edge,
     INBOX_HISTORY_SCAN,
   ]);
-  return [...shown, ...withheld].toSorted(byRaised).map((row) => itemOf(row));
+  // Each read walks the grants as they stand when it runs: an item a grant
+  // revoked between the two put in both is withheld, as the later one says.
+  const later = new Set(withheld.map((row) => row.id));
+  return [...shown.filter((row) => !later.has(row.id)), ...withheld]
+    .toSorted(byRaised)
+    .map((row) => itemOf(row));
 }
 
 /** Oldest raised first, as one query's `order by raised_at, id` would have it. */
@@ -205,12 +210,13 @@ function itemOf(row: ItemRow): InboxItem {
  */
 export async function countOwedItems(tx: TenantQuery, recipientPersonId: string): Promise<number> {
   const rows = await tx.query<{ readonly owed: number }>(
-    `select count(*)::int as owed
+    `${REACH}
+     select count(*)::int as owed
        from public.inbox_items i
        join public.records r on r.business_id = i.business_id and r.id = i.subject_record_id
       where i.business_id = $1 and i.recipient_person_id = $2
         and i.work_state = 'open' and i.owed and r.deleted_at is null and ${HELD}`,
-    await reach(tx, recipientPersonId),
+    [tx.businessId, recipientPersonId],
   );
   return rows[0]?.owed ?? 0;
 }

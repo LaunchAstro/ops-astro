@@ -23,7 +23,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { composeApi } from '../../apps/api/server.ts';
 import { runtimeKeys } from '../../packages/core-runtime/src/runtime-config.ts';
-import { ACCEPTANCE_ISSUER, ACCEPTANCE_SECRET } from '../acceptance/cast.ts';
+import { ACCEPTANCE_ISSUER } from '../acceptance/cast.ts';
+import { testSignIn } from '../support/sign-in.ts';
 import { createWorld, serverUrl, type World } from '../acceptance/world.ts';
 import { asAda, revisionOf } from '../acceptance/restart-harness.ts';
 import { overHttp, startApi, type RunningApi } from '../acceptance/restart-process.ts';
@@ -103,8 +104,7 @@ describe.skipIf(serverUrl === undefined)(
       api = composeApi({
         database: world.db.app,
         admin: world.db.admin,
-        secret: ACCEPTANCE_SECRET,
-        issuer: ACCEPTANCE_ISSUER,
+        signIn: testSignIn(ACCEPTANCE_ISSUER),
         keys: runtimeKeys(process.env),
         executeRead,
       }).app;
@@ -138,8 +138,7 @@ describe.skipIf(serverUrl === undefined)(
       const faulty = composeApi({
         database: world.db.app,
         admin: world.db.admin,
-        secret: ACCEPTANCE_SECRET,
-        issuer: ACCEPTANCE_ISSUER,
+        signIn: testSignIn(ACCEPTANCE_ISSUER),
         keys: runtimeKeys(process.env),
         executeRead: async () =>
           await Promise.reject(new Error('a message that may carry a value')),

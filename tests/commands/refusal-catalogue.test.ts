@@ -14,12 +14,12 @@
 // must not be named in `tests/db/named-suites.json`.
 
 import { describe, expect, it } from 'vitest';
-import { sign } from 'hono/jwt';
 import type { Database } from '../../packages/core-records/src/tenancy/database.ts';
 import { createApi } from '../../apps/api/app.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
+import { signBearer, TEST_ISSUER, testSignIn } from '../support/sign-in.ts';
 import {
   refuse as refuseRuntime,
   SUGGESTED_STATUS,
@@ -72,12 +72,44 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['WRONG_BUSINESS', 404, 'audit'],
   ['AUTH_NO_AGENT_IDENTITY', 401, 'caller'],
   ['AUTH_SESSION_EXPIRED', 401, 'caller'],
+  ['AUTH_SECOND_FACTOR_REQUIRED', 401, 'caller'],
+  ['STEP_UP_REQUIRED', 403, 'caller'],
+  ['FRESH_SIGN_IN_REQUIRED', 403, 'caller'],
+  ['FACTOR_ALREADY_ENROLLED', 409, 'caller'],
+  ['FACTOR_NOT_ENROLLED', 409, 'caller'],
+  ['SECOND_FACTOR_INVALID', 422, 'caller'],
+  ['SECOND_FACTOR_LOCKED', 429, 'caller'],
+  ['PROVIDER_ANSWER_INVALID', 502, 'caller'],
+  ['LEGAL_VERSION_EXISTS', 409, 'caller'],
+  ['LEGAL_DIGEST_MISMATCH', 409, 'caller'],
+  ['LEGAL_ALREADY_APPROVED', 409, 'caller'],
+  ['LEGAL_NOT_APPROVED', 409, 'caller'],
+  ['LEGAL_ALREADY_PUBLISHED', 409, 'caller'],
+  ['LEGAL_REGISTER_CHANGED', 409, 'caller'],
+  ['LEGAL_REGISTER_UNCONFIRMED', 409, 'caller'],
+  ['CLIENT_LOCKED', 409, 'caller'],
+  ['GATE_SHUT', 409, 'caller'],
+  ['GATE_ITEM_ALREADY_RECORDED', 409, 'caller'],
+  ['INSTALLATION_NOT_READY', 409, 'caller'],
+  ['INSTALLATION_MODE_ONE_WAY', 409, 'caller'],
+  ['LEGAL_DATA_CLASSES_CHANGED', 409, 'caller'],
+  ['BREACH_RUNBOOK_UNPUBLISHED', 409, 'caller'],
+  ['BREACH_TEMPLATE_UNFILLED', 409, 'caller'],
+  ['CREDENTIAL_SCOPE_WIDENS', 403, 'caller'],
+  ['CREDENTIAL_ACTION_EXCLUDED', 403, 'caller'],
+  ['CREDENTIAL_MONEY_KEY_EXCLUDED', 403, 'caller'],
+  ['CREDENTIAL_ALREADY_REVOKED', 409, 'caller'],
+  ['CLIENT_NAME_TAKEN', 409, 'caller'],
+  ['ACCESS_LAST_MANAGER', 409, 'caller'],
+  ['AUTH_CROSS_SITE', 403, 'caller'],
+  ['AUTH_SESSION_MISMATCH', 403, 'caller'],
   ['DELEGATION_EXCLUDES_OPERATION', 403, 'caller'],
   ['DELEGATION_EXCLUDES_DECISION', 403, 'caller'],
   ['DELEGATION_EXCLUDES_INTAKE', 403, 'caller'],
   ['DELEGATION_NARROWED', 403, 'caller'],
   ['DELEGATION_OUT_OF_PURPOSE', 403, 'caller'],
   ['DELEGATION_NOT_LIVE', 401, 'caller'],
+  ['AGENT_QUOTA_EXCEEDED', 429, 'caller'],
   ['DELEGATION_WIDENS', 403, 'caller'],
   ['DELEGATION_ALREADY_LIVE', 409, 'caller'],
   ['DELEGATION_EXPIRED', 403, 'caller'],
@@ -273,23 +305,22 @@ describe('one refusal from each road, byte for byte', () => {
   });
 });
 
-const SECRET = 'a-local-test-secret-that-is-not-the-running-one';
-const ISSUER = 'http://127.0.0.1:54391';
+const ISSUER: string = TEST_ISSUER;
 const ALPHA = '11111111-1111-4111-8111-111111111111';
 const MIA = '22222222-2222-4222-8222-222222222222';
 
 /** Answers the boundary's own admission insert with nothing; anything else throws. */
 const stubDatabase = (): Database =>
   ({
-    log: { record: () => undefined, statements: () => [] },
+    log: { record: () => {}, statements: () => [] },
     withBusiness: async (businessId: string, run: (tx: unknown) => Promise<unknown>) =>
       await run({
         businessId,
-        query: async (text: string) => {
+        query: (text: string) => {
           if (!text.trimStart().startsWith('insert into public.authentication_attempts')) {
-            throw new Error('the stub database has no rows');
+            return Promise.reject(new Error('the stub database has no rows'));
           }
-          return [];
+          return Promise.resolve([]);
         },
       }),
     close: () => Promise.resolve(),
@@ -299,8 +330,8 @@ const api = createApi({
   database: stubDatabase(),
   executeCommand,
   executeRead,
-  verify: createSupabaseVerifier({ secret: SECRET, issuer: ISSUER }),
-  resolveBusiness: async (key) => (key === 'alpha' ? ALPHA : undefined),
+  verify: createSupabaseVerifier(testSignIn(ISSUER)),
+  resolveBusiness: (key) => Promise.resolve(key === 'alpha' ? ALPHA : undefined),
 });
 
 async function raw(
@@ -321,21 +352,19 @@ async function raw(
   return [response.status, await response.text()];
 }
 
-describe('the boundary’s own refusals, as the HTTP response carries them', () => {
-  const create = '{"operationId":"33333333-3333-4333-8333-333333333333","fields":{"title":"x"}}';
+const create = '{"operationId":"33333333-3333-4333-8333-333333333333","fields":{"title":"x"}}';
 
+describe('the boundary’s own refusals, as the HTTP response carries them', () => {
   it('answers an unsigned request, a non-object body and an unknown business the same way', async () => {
-    const token = await sign(
-      {
-        sub: MIA,
-        aud: 'authenticated',
-        iss: ISSUER,
-        role: 'authenticated',
-        exp: Math.floor(Date.now() / 1000) + 600,
-      },
-      SECRET,
-      'HS256',
-    );
+    const token = await signBearer({
+      sub: MIA,
+      aud: 'authenticated',
+      iss: ISSUER,
+      role: 'authenticated',
+      exp: Math.floor(Date.now() / 1000) + 600,
+      // The first sign-in, as GoTrue stamps it (C58's 12-hour limit is measured from it).
+      amr: [{ method: 'password', timestamp: Math.floor(Date.now() / 1000) }],
+    });
     expect(await raw('alpha', create)).toStrictEqual([
       401,
       '{"refused":true,"code":"AUTH_UNKNOWN_LOGIN","names":[],"fixes":["Sign in. This endpoint reads the caller from verified authentication only."]}',

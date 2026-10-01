@@ -10,7 +10,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
-import { pathOf } from '../../packages/core-wire/src/surface.ts';
+import { CSRF_HEADER, pathOf } from '../../packages/core-wire/src/surface.ts';
 
 interface Captured {
   readonly url: string;
@@ -26,25 +26,27 @@ function stub(
   readonly calls: Captured[];
 } {
   const calls: Captured[] = [];
-  const fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+  const fetch = ((url: string | URL | Request, init?: RequestInit) => {
     calls.push({
       url: String(url),
       headers: (init?.headers ?? {}) as Record<string, string>,
       body: JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>,
     });
-    return new Response(JSON.stringify(answer), {
-      status,
-      headers: { 'content-type': 'application/json' },
-    });
+    return Promise.resolve(
+      new Response(JSON.stringify(answer), {
+        status,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
   }) as unknown as typeof globalThis.fetch;
   return { fetch, calls };
 }
 
-const make = (fetch: typeof globalThis.fetch, token: string | null = 'tok'): OperationsClient =>
+const make = (fetch: typeof globalThis.fetch): OperationsClient =>
   new OperationsClient({
     origin: '',
     businessKey: 'alpha',
-    token,
+    signedIn: true,
     fetch,
     newOperationId: () => 'op-1',
   });
@@ -78,7 +80,7 @@ describe('route derivation', () => {
     const client = new OperationsClient({
       origin: '',
       businessKey: 'a/../b',
-      token: 't',
+      signedIn: true,
       fetch,
     });
     await client.read('task.board', { board: null });
@@ -148,14 +150,13 @@ describe('the envelope', () => {
     expect(calls[1]?.body['operationId']).toBe('retry-me');
   });
 
-  it('carries the token as a bearer and sets no actor or business header', async () => {
+  it('sends no bearer, no actor and no business header: the cookie is the credential', async () => {
     const { fetch, calls } = stub({ ok: true, persons: [] });
     await make(fetch).read('person.list', {});
     const headers = calls[0]?.headers ?? {};
-    expect(headers['authorization']).toBe('Bearer tok');
     expect(Object.keys(headers).map((name) => name.toLowerCase())).toEqual([
       'content-type',
-      'authorization',
+      CSRF_HEADER,
     ]);
   });
 
@@ -198,7 +199,7 @@ describe('what comes back', () => {
       const result = await new OperationsClient({
         origin: '',
         businessKey: 'alpha',
-        token: 'tok',
+        signedIn: true,
         fetch,
         newOperationId: () => 'op-1',
         onSessionEnded: (refusal) => ended.push(refusal.code),
@@ -221,11 +222,55 @@ describe('what comes back', () => {
     await new OperationsClient({
       origin: '',
       businessKey: 'alpha',
-      token: null,
+      signedIn: false,
       fetch,
       onSessionEnded: (refusal) => ended.push(refusal.code),
     }).read('task.board', { board: null });
     expect(ended).toEqual([]);
+  });
+});
+
+const refused = (code: string) => ({ refused: true, code, names: [], fixes: [] });
+
+/** What `onSessionEnded` heard over two calls: `first` answered, then access ended. */
+async function endedAfter(first: string, status: number): Promise<readonly string[]> {
+  const answers = [
+    new Response(JSON.stringify(refused(first)), { status }),
+    new Response(JSON.stringify(refused('AUTH_NO_MEMBERSHIP')), { status: 403 }),
+  ];
+  const fetch = (() => Promise.resolve(answers.shift())) as unknown as typeof globalThis.fetch;
+  const ended: string[] = [];
+  const client = new OperationsClient({
+    origin: '',
+    businessKey: 'alpha',
+    signedIn: true,
+    fetch,
+    onSessionEnded: (refusal) => ended.push(refusal.code),
+  });
+  await client.read('task.board', { board: null });
+  await client.read('task.board', { board: null });
+  return ended;
+}
+
+describe('what comes back', () => {
+  it('ends the session on access ended once a refusal has shown the login was a member', async () => {
+    // Ending access answers the next call 403 `AUTH_NO_MEMBERSHIP`, the answer a
+    // login that never had a membership gets too. A refusal decided after login
+    // resolution (a scope not granted) proves the bearer was a member, as a
+    // success does; a refusal the door or resolution gives first proves nothing.
+    expect(await endedAfter('SCOPE_NOT_GRANTED', 403)).toEqual(['AUTH_NO_MEMBERSHIP']);
+    const before = [
+      ['AUTH_NO_MEMBERSHIP', 403],
+      ['ACTOR_INACTIVE', 403],
+      ['AUTH_SESSION_MISMATCH', 403],
+      ['AUTH_CROSS_SITE', 403],
+      ['COMMAND_BODY_INVALID', 400],
+      ['AUTH_SECOND_FACTOR_REQUIRED', 401],
+    ] as const;
+    const heard = await Promise.all(
+      before.map(async ([code, status]) => await endedAfter(code, status)),
+    );
+    expect(heard).toEqual(before.map(() => []));
   });
 });
 

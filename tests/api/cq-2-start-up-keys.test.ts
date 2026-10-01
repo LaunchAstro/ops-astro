@@ -8,7 +8,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { ISSUER, SECRET } from './fixture.ts';
+import { ISSUER } from './fixture.ts';
 import { runtimeKeys } from '../../packages/core-runtime/src/runtime-config.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 
@@ -25,7 +25,7 @@ function start(settings: Record<string, string>, [url, admin]: readonly string[]
     if (String(parts[0]).startsWith('api: listening')) setImmediate(() => process.exit(0)); };`;
   const preload = `data:text/javascript,${encodeURIComponent(report)}`;
   const env = { PATH: process.env['PATH'], DATABASE_URL: url, DATABASE_ADMIN_URL: admin };
-  const settled = { ...env, SUPABASE_JWT_SECRET: SECRET, GOTRUE_URL: ISSUER, API_PORT: '0' };
+  const settled = { ...env, GOTRUE_URL: ISSUER, API_PORT: '0' };
   const options = { cwd: ROOT, env: { ...settled, ...settings }, timeout: 60_000 };
   const run = spawnSync(process.execPath, ['--import', preload, 'apps/api/server.ts'], options);
   return { status: run.status, output: `${run.stdout}${run.stderr}` };

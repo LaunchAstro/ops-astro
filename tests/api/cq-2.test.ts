@@ -7,7 +7,8 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Hono } from 'hono';
 import type { ReadExecutor } from '../../apps/api/app.ts';
-import { authorised, createApiFixture, ISSUER, post, SECRET, tokenFor } from './fixture.ts';
+import { authorised, createApiFixture, ISSUER, post, tokenFor } from './fixture.ts';
+import { testSignIn } from '../support/sign-in.ts';
 import type { ApiFixture } from './fixture.ts';
 import { enrol, grantTo, installSpine } from '../commands/fixture.ts';
 import { insertActor, insertBusiness, insertLogin, insertMapping } from '../identity/fixture.ts';
@@ -63,7 +64,7 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('CQ-2 logs and fault
 
   const composed = (executeRead: ReadExecutor, keys = runtimeKeys({ ...fixture.environment })) => {
     const { app, admin } = fixture.db;
-    const config = { database: app, admin, secret: SECRET, issuer: ISSUER, keys, executeRead };
+    const config = { database: app, admin, signIn: testSignIn(ISSUER), keys, executeRead };
     return composeApi(config).app;
   };
 

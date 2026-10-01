@@ -24,6 +24,8 @@
 
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import { OPERATION_ID } from './register-store.ts';
+import type { PrivacyRequest } from './requests-privacy.ts';
+import type { SelfRequest } from './requests-self.ts';
 
 export type FieldValues = Readonly<Record<string, unknown>>;
 
@@ -208,6 +210,19 @@ export type CommandRequest =
       readonly value: boolean;
       readonly expectedRevision?: number;
     } & Envelope)
+  | ({
+      readonly command: 'settings.set_money_step_up';
+      readonly value: boolean;
+      readonly expectedRevision?: number;
+    } & Envelope)
+  // MP-2-11: whole days (C122-1).
+  | ({
+      readonly command: 'settings.set_conversation_window' | 'settings.set_retention_window';
+      readonly value: number;
+      readonly expectedRevision?: number;
+    } & Envelope)
+  // C32, C55, C58, C81, API-2 and S0-5, in their own file.
+  | PrivacyRequest<Envelope>
   // The support controls. Revocation names the row it revokes; the time is the
   // server's. Cancel and restart name the task and the lineage on it, so the
   // task is where the work-control authority is asked and the lineage is
@@ -267,23 +282,4 @@ export type CommandRequest =
       readonly amountMinor: unknown;
       readonly reason: unknown;
     } & Envelope)
-  // The recipient opening their own inbox item (INB-1d).
-  | ({ readonly command: 'inbox.seen'; readonly itemId: string } & Envelope)
-  // The caller's own notification setting on one channel (INB-1e).
-  | ({
-      readonly command: 'notifications.set_channel';
-      readonly channel: string;
-      readonly mode: string;
-      readonly category?: string;
-    } & Envelope);
-
-/**
- * The part of a request the register compares, which is everything except the
- * identity itself. Two requests differing only in their `operation_id` are two
- * attempts, not a conflict; two differing anywhere else under one identity are
- * the conflict `OPERATION_ID_REUSED` names.
- */
-export function comparablePayload(request: UncheckedRequest): Readonly<Record<string, unknown>> {
-  const { operationId: _identity, ...rest } = request;
-  return rest;
-}
+  | SelfRequest<Envelope>;

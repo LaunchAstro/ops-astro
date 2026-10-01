@@ -19,7 +19,7 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { chromium } from 'playwright';
+import { launchChromium } from '../support/chromium.ts';
 import { appDrift } from './app-drift.ts';
 import { openSide } from './capture.ts';
 import { MODE, readPacket } from './packet.ts';
@@ -105,7 +105,7 @@ try {
       origins: [{ origin: app.origin, localStorage: [{ name: 'ops-astro.session', value }] }],
     }),
   );
-  const browser = await chromium.launch(MODE);
+  const browser = await launchChromium(MODE);
   try {
     const side = await openSide(browser, readPacket(), 390, { app, session: file });
     const tab = await side.context.newPage();

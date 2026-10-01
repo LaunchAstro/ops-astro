@@ -12,12 +12,15 @@ import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { tokenFor } from './fixture.ts';
 import type { Member } from '../commands/fixture.ts';
 import { agentToken, delegation, label, through, type Name } from './api-1-isolation-world.ts';
+import { asBrowser } from '../support/sign-in.ts';
 
 export interface Heard {
   readonly status: number;
   readonly code: unknown;
   /** The whole answer, each known record id and title replaced by its label. */
   readonly body: unknown;
+  /** The whole answer as heard, so a check for a raw id sees a leak. */
+  readonly raw?: unknown;
 }
 
 /** Every task, title, lease, reservation, business or person any answer names, refusals included, but the caller's own. */
@@ -64,10 +67,16 @@ export async function threeWays(
       .clone()
       .json()
       .catch(() => ({}))) as { code?: unknown } | null;
-    heard.push({ status: response.status, code: parsed?.code, body: label(parsed) });
+    heard.push({ status: response.status, code: parsed?.code, body: label(parsed), raw: parsed });
     return response;
   }) as typeof fetch;
-  const app = new OperationsClient({ origin: '', businessKey, token, fetch: recording });
+  // The app's client signs in as a browser does, on the session cookie (S0-6c).
+  const app = new OperationsClient({
+    origin: '',
+    businessKey,
+    signedIn: true,
+    fetch: asBrowser(token, async (url, init) => await recording(url, init)),
+  });
   const operationId = randomUUID();
   await (row.kind === 'read'
     ? app.read(row.command as never, body)
@@ -105,7 +114,7 @@ export async function asAgent(
       .clone()
       .json()
       .catch(() => ({}))) as { code?: unknown } | null;
-    heard.push({ status: response.status, code: parsed?.code, body: label(parsed) });
+    heard.push({ status: response.status, code: parsed?.code, body: label(parsed), raw: parsed });
     return response;
   };
   // The agent prefix takes an operation id on every call, reads included.

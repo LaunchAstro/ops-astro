@@ -39,7 +39,10 @@ const CAPABILITIES = {
   ok: true,
   personId: 'p-ada',
   businessKey: 'alpha',
-  grants: [{ collection: 'settings', action: 'manage' }],
+  grants: [
+    { collection: 'settings', action: 'manage' },
+    { collection: 'spend', action: 'decide' },
+  ],
 };
 
 /** A settings server whose four-eyes row moves to 999 under the first write. */
@@ -93,7 +96,7 @@ function staleServer(): typeof globalThis.fetch {
 
 const settingsScreen = (fetch: typeof globalThis.fetch) => (
   <SettingsScreen
-    client={new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch })}
+    client={new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch })}
     grantKey="alpha:ada"
     storage={window.sessionStorage}
   />
@@ -171,6 +174,7 @@ describe('the sign-in failure', () => {
     const page = await mount(
       <SignIn
         gotrueUrl="http://identity.invalid"
+        apiOrigin=""
         fetch={gotrue}
         onSignedIn={() => {}}
         ended={null}

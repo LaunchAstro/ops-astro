@@ -11,7 +11,8 @@
 //
 // Four rules:
 //
-//  - `settings:manage` in the grants opens the controls. Nothing else does.
+//  - Each row opens from its own command's grant: four-eyes from `spend:decide`,
+//    sign-off and the two windows from `settings:manage`. Nothing else does.
 //  - A person without it gets closed controls and the reason, and never sends
 //    a write nobody was going to accept.
 //  - **A refused capability read closes the controls too.** A screen that
@@ -71,37 +72,45 @@ function server(
   } = {},
 ): Stub {
   const sent: { at: string; body: Record<string, unknown> }[] = [];
-  const fetch = (async (url: string | URL, init?: RequestInit) => {
+  const fetch = ((url: string | URL, init?: RequestInit) => {
     const at = String(url);
     sent.push({ at, body: JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown> });
     if (at.endsWith('/session/capabilities')) {
-      return (
-        options.capabilities ??
-        (() =>
-          json({
-            ok: true,
-            personId: 'p-ada',
-            businessKey: 'alpha',
-            grants: [{ collection: 'settings', action: 'manage' }],
-          }))
-      )();
+      return Promise.resolve(
+        (
+          options.capabilities ??
+          (() =>
+            json({
+              ok: true,
+              personId: 'p-ada',
+              businessKey: 'alpha',
+              grants: [
+                { collection: 'settings', action: 'manage' },
+                { collection: 'spend', action: 'decide' },
+              ],
+            }))
+        )(),
+      );
     }
     if (at.endsWith('/settings/read')) {
-      return json({ ok: true, settings: [row('four_eyes_threshold', 500)] });
+      return Promise.resolve(json({ ok: true, settings: [row('four_eyes_threshold', 500)] }));
     }
     if (at.includes('/settings/set_')) {
-      return (
-        options.write ?? (() => json({ recordId: 'row', revision: null, detail: { value: 1200 } }))
-      )();
+      return Promise.resolve(
+        (
+          options.write ??
+          (() => json({ recordId: 'row', revision: null, detail: { value: 1200 } }))
+        )(),
+      );
     }
-    throw new Error(`unrouted ${at}`);
+    return Promise.reject(new Error(`unrouted ${at}`));
   }) as unknown as typeof globalThis.fetch;
   return { fetch, sent };
 }
 
 const screen = (fetch: typeof globalThis.fetch) => (
   <SettingsScreen
-    client={new OperationsClient({ origin: '', businessKey: 'alpha', token: 'tok', fetch })}
+    client={new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch })}
     grantKey="alpha:ada"
     storage={window.sessionStorage}
   />
@@ -118,6 +127,13 @@ describe('the settings controls follow the session capabilities', () => {
     window.sessionStorage.clear();
   });
 
+  theSettingsControlsCases1();
+  theSettingsControlsCases2();
+  theSettingsControlsCases3();
+  theSettingsControlsCases4();
+});
+
+function theSettingsControlsCases1() {
   it('asks session.capabilities on open, with an empty body', async () => {
     const api = server();
     const page = await mount(screen(api.fetch));
@@ -139,7 +155,9 @@ describe('the settings controls follow the session capabilities', () => {
     expect(saveDisabled(page)).toBe(false);
     await page.unmount();
   });
+}
 
+function theSettingsControlsCases2() {
   it('keeps them closed for a member, and asks nothing on their behalf', async () => {
     const api = server({
       capabilities: () =>
@@ -179,7 +197,9 @@ describe('the settings controls follow the session capabilities', () => {
     expect(saveDisabled(page)).toBe(true);
     await page.unmount();
   });
+}
 
+function theSettingsControlsCases3() {
   it('falls back to asking once when the API carries no capability read', async () => {
     const api = server({ capabilities: () => json({ error: 'not found' }, 404) });
     const page = await mount(screen(api.fetch));
@@ -216,4 +236,60 @@ describe('the settings controls follow the session capabilities', () => {
     expect(writes(api)).toBe(1);
     await page.unmount();
   });
-});
+}
+
+const ROWS = ['four-eyes', 'sign-off', 'conversation', 'retention'] as const;
+
+const holding = (grants: readonly { collection: string; action: string }[]) => () =>
+  json({ ok: true, personId: 'p-ada', businessKey: 'alpha', grants });
+
+const openRows = (page: { find: (selector: string) => Element | null }): string[] =>
+  ROWS.filter(
+    (which) => !(page.find(`[data-settings="save-${which}"]`) as HTMLButtonElement).disabled,
+  );
+
+function theSettingsControlsCases4() {
+  // The server gates the four-eyes threshold with spend:decide and the other
+  // three with settings:manage, so each row opens from its own command's grant.
+  it('opens only four-eyes for spend:decide alone', async () => {
+    const api = server({ capabilities: holding([{ collection: 'spend', action: 'decide' }]) });
+    const page = await mount(screen(api.fetch));
+    await tick();
+    expect(openRows(page)).toEqual(['four-eyes']);
+    expect(page.find('[data-settings="capabilities-because"]')?.textContent).toContain(
+      'settings:manage',
+    );
+    await page.click('[data-settings="save-sign-off"]');
+    await tick();
+    expect(writes(api)).toBe(0);
+    await page.unmount();
+  });
+
+  it('opens all but four-eyes for settings:manage alone', async () => {
+    const api = server({ capabilities: holding([{ collection: 'settings', action: 'manage' }]) });
+    const page = await mount(screen(api.fetch));
+    await tick();
+    expect(openRows(page)).toEqual(['sign-off', 'conversation', 'retention']);
+    expect(page.find('[data-settings="capabilities-because"]')?.textContent).toContain(
+      'spend:decide',
+    );
+    await page.click('[data-settings="save-four-eyes"]');
+    await tick();
+    expect(writes(api)).toBe(0);
+    await page.unmount();
+  });
+
+  it('opens every row for both grants', async () => {
+    const api = server({
+      capabilities: holding([
+        { collection: 'settings', action: 'manage' },
+        { collection: 'spend', action: 'decide' },
+      ]),
+    });
+    const page = await mount(screen(api.fetch));
+    await tick();
+    expect(openRows(page)).toEqual([...ROWS]);
+    expect(page.find('[data-settings="capabilities-because"]')).toBeNull();
+    await page.unmount();
+  });
+}

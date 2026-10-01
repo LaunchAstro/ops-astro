@@ -11,7 +11,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium } from 'playwright';
+import { launchChromium } from '../support/chromium.ts';
 import { build, preview } from 'vite';
 import { afterAll, expect, it } from 'vitest';
 
@@ -51,7 +51,7 @@ const built = (file: string): RegExp => {
 
 /** In a plain browser on the served build: the families that load, and every font it fetched. */
 async function fontsServed(origin: string): Promise<{ loaded: string[]; fonts: Fetched[] }> {
-  const browser = await chromium.launch();
+  const browser = await launchChromium();
   try {
     const page = await browser.newPage();
     const pending: Promise<Fetched>[] = [];

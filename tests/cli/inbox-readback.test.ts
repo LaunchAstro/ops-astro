@@ -19,6 +19,7 @@ import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import type { InboxEntry, InboxReadResult } from '../../packages/core-wire/src/index.ts';
 import { createWorld, serverUrl, type World } from '../acceptance/world.ts';
 import { runCli, serveApi, type ServedApi } from './cli-process-harness.ts';
+import { asBrowser } from '../support/sign-in.ts';
 
 // eslint-disable-next-line max-lines-per-function -- one database world, and the cases that share it
 describe.skipIf(serverUrl === undefined)('INB-1g the inbox reads back after a restart', () => {
@@ -38,8 +39,8 @@ describe.skipIf(serverUrl === undefined)('INB-1g the inbox reads back after a re
     const client = new OperationsClient({
       origin: (api as ServedApi).origin,
       businessKey: 'alpha',
-      token,
-      fetch: globalThis.fetch.bind(globalThis),
+      signedIn: true,
+      fetch: asBrowser(token, async (url, init) => await globalThis.fetch(url, init)),
     });
     const read = await client.read<InboxReadResult>('inbox.read', {});
     if (!('value' in read)) throw new Error(`inbox.read failed: ${JSON.stringify(read)}`);

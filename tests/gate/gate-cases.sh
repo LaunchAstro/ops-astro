@@ -296,5 +296,37 @@ else
 fi
 
 echo
+echo "M. the secret scan's cases plant only keys gitleaks detects"
+# About one random 48-hex key in a hundred slips under gitleaks: entropy below
+# the generic rule's 3.5, or a hex word such as "dead" on its stopword list.
+# Planted in case M or N, that key turns a correct scanner red. An openssl
+# that answers every other call with 48 zeros, which gitleaks never flags,
+# makes that miss certain: the cases must regenerate past it, and fail loudly
+# rather than plant it when no key is ever detected.
+stub_bin="$(mktemp -d "$SCRATCH/stub.XXXXXX")"
+cat > "$stub_bin/openssl" <<STUB
+#!/usr/bin/env bash
+calls=\$(( \$(cat "$stub_bin/calls" 2>/dev/null || echo 0) + 1 ))
+echo "\$calls" > "$stub_bin/calls"
+if [ "\$STUB_MODE" = always ] || [ \$((calls % 2)) -eq 1 ]; then printf '%048d\n' 0; exit 0; fi
+exec "$(command -v openssl)" "\$@"
+STUB
+chmod +x "$stub_bin/openssl"
+if STUB_MODE=alternate PATH="$stub_bin:$PATH" bash "$REPO_ROOT/tests/gate/secrets-scan-cases.sh" >/dev/null 2>&1; then
+  pass "a key gitleaks misses is regenerated, not planted"
+else
+  fail "a key gitleaks misses is regenerated, not planted" \
+    "with every other generated key undetectable, secrets-scan-cases.sh failed"
+fi
+rm -f "$stub_bin/calls"
+never_out="$(STUB_MODE=always PATH="$stub_bin:$PATH" bash "$REPO_ROOT/tests/gate/secrets-scan-cases.sh" 2>&1)"
+if [ $? -ne 0 ] && printf '%s' "$never_out" | grep -q '^harness: gitleaks detected none'; then
+  pass "no detectable key after the bounded tries fails the harness loudly"
+else
+  fail "no detectable key after the bounded tries fails the harness loudly" \
+    "$(printf '%s' "$never_out" | tail -3 | tr '\n' ' ')"
+fi
+
+echo
 echo "gate cases: $PASSED passed, $FAILED failed"
 [ "$FAILED" -eq 0 ]

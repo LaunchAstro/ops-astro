@@ -25,7 +25,15 @@
  * already verified. It is named here because the code is the register's, not
  * this function's, and a caller switching on the union should see all three.
  */
-export type IdentityRefusalCode = 'AUTH_UNKNOWN_LOGIN' | 'AUTH_NO_MEMBERSHIP' | 'ACTOR_INACTIVE';
+export type IdentityRefusalCode =
+  | 'AUTH_UNKNOWN_LOGIN'
+  | 'AUTH_NO_MEMBERSHIP'
+  | 'ACTOR_INACTIVE'
+  // C59: a person with a verified second factor signed in without it.
+  | 'AUTH_SECOND_FACTOR_REQUIRED'
+  // C58: a person's session they signed out of or ended from another; the
+  // same re-login answer as a token past its time, which it now is.
+  | 'AUTH_SESSION_EXPIRED';
 
 /**
  * The two codes the agent path adds, kept in their own union rather than

@@ -12,7 +12,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AuthorisedRead, initialState, type ReadState } from './authorised-read.ts';
-import { followLive } from './live.ts';
+import type { LiveHub } from './live.ts';
+import type { RollupFloor } from './rollup-floor.ts';
 import type { CallResult } from '../operations/client.ts';
 
 export interface UseReadOptions<T> {
@@ -23,16 +24,38 @@ export interface UseReadOptions<T> {
   /** Re-read when any of these change. The grant key is always included. */
   readonly deps: readonly unknown[];
   /**
-   * The live channel for what this read shows (T2f). While `paused` (an unsaved
-   * edit) a change is held until the pause ends; `closed` is read at once.
+   * The live topic for what this read shows (C4), named from its last answer
+   * and followed on the tab's one stream. Every change is read at once, an
+   * unsaved edit included: the edit lives above the read and is never read
+   * over, and the rest of the page keeps updating (C4 live-sync 4).
    */
-  readonly live?: (signal: AbortSignal) => Promise<ReadableStream<Uint8Array> | null>;
-  readonly paused?: boolean;
+  readonly live?: { readonly hub: LiveHub; readonly topic: (value: T) => string | undefined };
+  /** An agency-wide rollup no topic reaches: re-read on the floor instead (C4 CS-1.2). */
+  readonly rollup?: RollupFloor;
 }
 
 export interface UseReadResult<T> {
   readonly state: ReadState<T>;
   readonly reload: () => void;
+}
+
+/**
+ * Run the read and offer its answer. An answer the read or the projection
+ * cannot take (a malformed body the read rejects on, an emptiness test that
+ * throws) shows as unavailable instead of escaping.
+ */
+async function offer<T>(
+  projection: AuthorisedRead<T>,
+  generation: number,
+  run: () => Promise<CallResult<T>>,
+  grantKey: string,
+): Promise<void> {
+  try {
+    projection.accept(generation, await run(), grantKey);
+  } catch {
+    const because = 'The API answered with something this screen could not read.';
+    projection.accept(generation, { unavailable: true, because }, grantKey);
+  }
 }
 
 export function useRead<T>(options: UseReadOptions<T>): UseReadResult<T> {
@@ -48,9 +71,7 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadResult<T> {
     const projection = readRef.current;
     if (projection === null) return;
     const generation = projection.begin();
-    void (async () => {
-      projection.accept(generation, await runRef.current(), grantKey);
-    })();
+    void offer(projection, generation, runRef.current, grantKey);
   }, [grantKey]);
 
   useEffect(() => {
@@ -62,9 +83,7 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadResult<T> {
     readRef.current = projection;
     setState(projection.state);
     const generation = projection.begin();
-    void (async () => {
-      projection.accept(generation, await runRef.current(), grantKey);
-    })();
+    void offer(projection, generation, runRef.current, grantKey);
     return () => {
       // Retire it, do not merely forget it. Clearing the reference stops the
       // next `reload` from finding it and stops nothing else: the read this
@@ -78,28 +97,22 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadResult<T> {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the dependency list is the caller's, plus the grant.
   }, [grantKey, ...options.deps]);
 
-  const liveRef = useRef(options.live);
-  liveRef.current = options.live;
-  const pausedRef = useRef(false);
-  pausedRef.current = options.paused === true;
-  const heldRef = useRef(false);
-  const hasLive = options.live !== undefined;
+  // The last answer's topic, kept while a re-read is in flight or denied, so a
+  // revoked page still hears the channel that tells it so.
+  const topicRef = useRef<string | null>(null);
+  if (state.outcome === 'ready' || state.outcome === 'empty') {
+    topicRef.current = options.live?.topic(state.value) ?? null;
+  }
+  const topic = topicRef.current;
+  const hub = options.live?.hub;
 
   useEffect(() => {
-    const open = liveRef.current;
-    if (open === undefined) return;
-    return followLive(open, (change) => {
-      if (pausedRef.current && change === 'changed') heldRef.current = true;
-      else reload();
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- as above: the caller's list, plus the grant.
-  }, [reload, hasLive, ...options.deps]);
+    if (hub === undefined || topic === null) return;
+    return hub.follow(topic, reload);
+  }, [hub, topic, reload]);
 
-  useEffect(() => {
-    if (options.paused === true || !heldRef.current) return;
-    heldRef.current = false;
-    reload();
-  }, [options.paused, reload]);
+  const { rollup } = options;
+  useEffect(() => rollup?.follow(reload), [rollup, reload]);
 
   return { state, reload };
 }

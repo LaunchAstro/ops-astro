@@ -69,6 +69,8 @@ describe.skipIf(serverUrl === undefined)('the reads this lane adds', () => {
       await grantTo(tx, mia, 'read');
       await grantTo(tx, mia, 'read', { kind: 'business', id: null }, false, 'settings');
       await grantTo(tx, mia, 'manage', { kind: 'business', id: null }, false, 'settings');
+      // MP-2-11: the four-eyes threshold is a money action, `spend:decide`.
+      await grantTo(tx, mia, 'decide', { kind: 'business', id: null }, false, 'spend');
     });
   }, 60_000);
 
@@ -83,6 +85,7 @@ describe.skipIf(serverUrl === undefined)('the reads this lane adds', () => {
         'client_sign_off_required',
         'conversation_window_days',
         'four_eyes_threshold',
+        'money_step_up_required',
         'retention_window_days',
       ]);
       const band = result.settings.find((setting) => setting.key === 'four_eyes_threshold');
@@ -139,7 +142,7 @@ describe.skipIf(serverUrl === undefined)('the reads this lane adds', () => {
       expect(result.businessKey).toBe('alpha');
       expect(
         result.grants.map((grant) => `${grant.collection}:${grant.action}`).toSorted(),
-      ).toStrictEqual(['settings:manage', 'settings:read', 'task:read']);
+      ).toStrictEqual(['settings:manage', 'settings:read', 'spend:decide', 'task:read']);
     });
 
     it('refuses a member holding no grant, rather than answering an empty list', async () => {
@@ -175,6 +178,8 @@ describe.skipIf(serverUrl === undefined)('the reads this lane adds', () => {
       // Put it back: the later cases read settings through it.
       await db.app.withBusiness(alpha, async (tx) => {
         await grantTo(tx, mia, 'manage', { kind: 'business', id: null }, false, 'settings');
+        // MP-2-11: the four-eyes threshold is a money action, `spend:decide`.
+        await grantTo(tx, mia, 'decide', { kind: 'business', id: null }, false, 'spend');
       });
     });
 

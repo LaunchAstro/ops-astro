@@ -5,7 +5,6 @@
 // Split from that file so each stays under the per-file cap; the seam is the
 // same one: this is still the matrix's only knowledge of what a task is.
 
-import { randomUUID } from 'node:crypto';
 import { type CommandDeclaration } from '../../packages/core-wire/src/surface.ts';
 import {
   PROPOSAL,
@@ -20,10 +19,15 @@ import {
   ownAppliedEffect,
   ownUnknownAttempt,
 } from './role-case-bodies.ts';
+import { privacyBody } from './role-case-privacy-bodies.ts';
+import { credentialBody } from './role-case-credential-bodies.ts';
+import { accessBody, madeClient } from './role-case-access-bodies.ts';
+import { createGateBody } from './role-case-gate-bodies.ts';
 
 export function createPositiveBody(
   context: BodyContext,
 ): (declaration: CommandDeclaration) => Promise<Prepared> {
+  const gateBody = createGateBody(context);
   // eslint-disable-next-line max-lines-per-function -- one recipe per declaration reads as a table
   return async function positiveBody(declaration: CommandDeclaration): Promise<Prepared> {
     const target = async (): Promise<Record<string, unknown>> => {
@@ -67,13 +71,9 @@ export function createPositiveBody(
       case 'task.set_audience':
         return { body: { ...(await target()), fields: { client_visible: true } } };
       case 'task.set_party':
-        // The party link takes a uuid and nothing in this tree resolves one:
-        // the party model is not installed, and `tasks-state.ts` says so where
-        // it excludes `client` from the person links it checks. So this is the
-        // operation succeeding on a well-formed identifier, which is the whole
-        // of what it claims to check — written down so a reader is not left
-        // believing a party was proved to exist.
-        return { body: { ...(await target()), fields: { client: randomUUID() } } };
+        // The party link names a client of this business (C32), so the admin
+        // makes one first.
+        return { body: { ...(await target()), fields: { client: await madeClient(context) } } };
       case 'task.reparent':
         return { body: { ...(await target()), parentId: null } };
       case 'task.move':
@@ -124,17 +124,24 @@ export function createPositiveBody(
         return { body: { recordId: context.alphaTaskId } };
       case 'task.board':
         return { body: { board: null } };
+      case 'task.ledger':
+        return { body: { timeZone: 'UTC' } };
+      // An empty body, and no `expectedRevision`: `business_settings` has no revision column,
+      // and `session.capabilities` reports the caller's own grants. The admin holds what each
+      // asks: `settings:read`, `access:manage` and `operations:read` (C55, INB-1e), and a live
+      // grant of any kind for `session.capabilities`, `client.list` (C32) and the inbox (INB-1d).
+      // The person menu's two (C23) and the caller's own preferences (MP-2-11a) are its own.
       case 'task.queue':
       case 'person.list':
-      // Both take an empty body and neither carries an `expectedRevision`:
-      // `settings.read` because `business_settings` has no revision column to
-      // be stale against, `session.capabilities` because it reports the
-      // caller's own grants and there is nothing of the caller's to be stale.
-      // `settings.read` needs `settings:read`, which the seed grants the
-      // admin; `session.capabilities` needs a live grant of any kind, which
-      // the admin holds, so the admin reaches both here.
+      case 'team.list':
       case 'settings.read':
       case 'session.capabilities':
+      case 'session.person':
+      case 'session.end':
+      case 'preference.read':
+      case 'access.read':
+      case 'operations.read':
+      case 'client.list':
       case 'inbox.read':
       case 'inbox.count':
       case 'inbox.unattended':
@@ -142,6 +149,18 @@ export function createPositiveBody(
         // above; `inbox.unattended` needs `operations:read`, which the seed
         // grants the admin (INB-1e, C55).
         return { body: {} };
+      case 'preference.save':
+        return { body: { preference: 'appearance', value: 'dark' } };
+      case 'preference.dismiss_tip':
+        return { body: { page: 'agency:inbox', tip: 'triage', version: 1 } };
+      case 'task.search':
+        // A word no audit row carries, so digest-only is checked on it.
+        return { body: { query: 'brochure' } };
+      case 'client.create':
+      case 'access.grant':
+      case 'access.revoke':
+      case 'access.end':
+        return await accessBody(declaration.name, context);
       case 'notifications.set_channel':
         // Self-scoped (INB-1e): in-app is always on, the one mode it takes.
         return { body: { channel: 'in_app', mode: 'on' } };
@@ -159,6 +178,32 @@ export function createPositiveBody(
         return { body: { value: 1200 } };
       case 'settings.set_client_sign_off':
         return { body: { value: true } };
+      case 'settings.set_money_step_up':
+        return { body: { value: true } };
+      // Inside C122-1's bounds whichever runs first: seven or more, and the
+      // retention window never below the conversation window.
+      case 'settings.set_conversation_window':
+        return { body: { value: 14 } };
+      case 'settings.set_retention_window':
+        return { body: { value: 90 } };
+      // C81: the admin holds `privacy:manage`, as the owner does.
+      case 'legal.draft_version':
+      case 'legal.approve_version':
+      case 'legal.publish_version':
+      case 'privacy.set_overseas_service':
+      case 'privacy.set_data_class':
+      case 'privacy.draft_breach_notices':
+      case 'privacy.record_incident':
+        return await privacyBody(declaration.name, context);
+      // API-2: the admin holds `credential:write`, as the owner does.
+      case 'credential.issue':
+      case 'credential.revoke':
+        return await credentialBody(declaration.name, context);
+      // S0-5: the admin holds `operations:manage` in alpha, which operates the
+      // harness's installation.
+      case 'operations.record_gate_item':
+      case 'operations.change_installation_mode':
+        return await gateBody(declaration.name);
       case 'budget.top_up':
         // The admin approved the plan and holds billing, so a top-up under
         // the band is hers alone (T2e).

@@ -32,15 +32,17 @@ export interface TenantQuery {
 
 /**
  * The one advisory lock in the product: a transaction-scoped lock on `key`,
- * released at commit or rollback like a row lock. Every caller builds a key
- * that names its business, so two businesses never wait on each other.
+ * released at commit or rollback like a row lock. Every key names its business,
+ * so two businesses never wait on each other, except C59's two installation-wide keys,
+ * `second-factor-codes:` and `second-factor-subject:` with a login's subject digest, so
+ * its businesses do: each is taken first in its transaction, before any row or chain lock.
  *
  * Where it sits in the lock order is `core-runtime/src/locks.ts`: the chain
  * class is `acquire`'s own first class, and the command layer's keys (the
  * placement and sibling locks) come before anything `acquire` takes. Nothing
  * else in `packages/` or `apps/` spells the SQL (`tests/runtime/cq-8.test.ts`).
  */
-export async function advisoryLock(tx: TenantQuery, key: string): Promise<void> {
+export async function advisoryLock(tx: Pick<TenantQuery, 'query'>, key: string): Promise<void> {
   await tx.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [key]);
 }
 
@@ -89,7 +91,10 @@ export interface DatabaseOptions {
   readonly max?: number;
 }
 
-function open(url: string, options: DatabaseOptions): { sql: postgres.Sql; log: StatementLog } {
+export function open(
+  url: string,
+  options: DatabaseOptions,
+): { sql: postgres.Sql; log: StatementLog } {
   const log = options.log ?? createStatementLog();
   const source = options.source ?? 'runtime';
   const sql = postgres(url, {

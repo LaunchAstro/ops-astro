@@ -201,6 +201,63 @@ describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
     ).toMatchObject([{ factKind: 'planned_run', factId: failed.runId, owed: true }]);
   });
 
+  // #287 A2: the step went out and nothing was observed, so what it cost is unknown and the
+  // hold stays. The launcher's move is owed, whatever the holder reported.
+  // Copilot on #289: a successor proposed beside it hides the liability behind its own alert.
+  const followUp = {
+    purpose: 'follow_up',
+    maximumMinor: 500,
+    currency: 'AUD',
+    payload: {},
+    step: { kind: 'compose', payload: {} },
+  };
+  it.each([
+    ['', undefined],
+    [', a successor proposed beside it', followUp],
+  ])(
+    'a completed handback of a dispatched step owes the launcher an inbox item while its hold is an unknown liability%s',
+    async (_beside, successor) => {
+      const task = await newTask('dispatched then completed');
+      const step = { kind: 'synthetic_comment', payload: {} };
+      const proposed = detailOf(ok(await call('task.propose', { ...proposal(task), step })));
+      const decided = detailOf(
+        ok(
+          await call('task.decide', {
+            gateId: proposed['gateId'],
+            versionId: proposed['versionId'],
+            decision: 'approve',
+            note: 'go',
+          }),
+        ),
+      );
+      const lease = { reservationId: decided['reservationId'], leaseSeconds: 600 };
+      const picked = detailOf(ok(await call('task.pickup', lease, writerToken)));
+      const at = { leaseId: picked['leaseId'], fence: picked['fence'] };
+      ok(await call('task.dispatch', at, writerToken));
+      const settled = detailOf(
+        ok(await call('task.handback', { ...at, outcome: 'completed', successor }, writerToken)),
+      );
+      expect(settled).toMatchObject({
+        reservationState: 'held',
+        classification: { state: 'liability_unknown' },
+      });
+      const launcher = async (reason: InboxReason) =>
+        (await open(fixture.member.personId, reason))
+          .filter((i) => readable(i))
+          .filter((i) => i.subjectRecordId === task.id);
+      expect(await launcher('waiting_run')).toMatchObject([
+        { factKind: 'planned_run', factId: proposed['runId'], owed: true },
+      ]);
+      expect(await launcher('run_finished')).toStrictEqual([]);
+      // The alert agrees, as observe's does for the same state: a person records the outcome.
+      const alerts = await fixture.db.admin.execute(
+        'select kind, waiting_reason from public.alerts where task_id = $1',
+        [task.id],
+      );
+      expect(alerts).toEqual([{ kind: 'awaiting_person', waiting_reason: 'liability_unknown' }]);
+    },
+  );
+
   it('raises an assignment for the assignee, moves it on reassignment, and never for oneself', async () => {
     const task = await newTask('assign me');
     const assign = async (assignee: string, rev: number): Promise<number> =>

@@ -24,6 +24,7 @@ import { mount, settle } from './mount.tsx';
 import type { InboxCountResult, InboxReadResult } from '../../packages/core-wire/src/index.ts';
 import { createWorld, serverUrl, type World } from '../acceptance/world.ts';
 import { runCli, serveApi, type ServedApi } from '../cli/cli-process-harness.ts';
+import { asBrowser } from '../support/sign-in.ts';
 
 // eslint-disable-next-line max-lines-per-function -- one mounted screen, and the cases that share it
 describe.skipIf(serverUrl === undefined)('INB-1g the owed count on three surfaces', () => {
@@ -48,8 +49,8 @@ describe.skipIf(serverUrl === undefined)('INB-1g the owed count on three surface
     new OperationsClient({
       origin: served().origin,
       businessKey: 'alpha',
-      token,
-      fetch: globalThis.fetch.bind(globalThis),
+      signedIn: true,
+      fetch: asBrowser(token, async (url, init) => await globalThis.fetch(url, init)),
     });
 
   /** The owed count the mounted inbox panel shows, read off the page. */

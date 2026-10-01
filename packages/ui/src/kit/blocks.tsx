@@ -12,9 +12,12 @@ import { type ReactElement, type ReactNode } from 'react';
 import { IconButton } from './controls.tsx';
 import { Term, type MarkTone } from './marks.tsx';
 
-/** DS-PRIM-22, and the section error of DS-PRIM-30 (`bad`). A tip is info with a dismiss. */
+/**
+ * DS-PRIM-22, and the section error of DS-PRIM-30 (`bad`). A tip is info with a
+ * dismiss. `hint` is the agent's aside (DR-5): marked AI, and not a status.
+ */
 export interface BannerProps {
-  readonly tone?: 'warn' | 'bad' | 'info' | undefined;
+  readonly tone?: 'warn' | 'bad' | 'info' | 'hint' | undefined;
   readonly lead?: string | undefined;
   readonly children: ReactNode;
   readonly action?: ReactNode;
@@ -23,8 +26,11 @@ export interface BannerProps {
 
 export function Banner(props: BannerProps): ReactElement {
   const tone = props.tone ?? 'warn';
+  const Box = tone === 'hint' ? 'aside' : 'div';
+  const role = tone === 'hint' ? undefined : tone === 'bad' ? 'alert' : 'status';
   return (
-    <div className={`banner banner--${tone}`} role={tone === 'bad' ? 'alert' : 'status'}>
+    <Box className={`banner banner--${tone}`} role={role}>
+      {tone === 'hint' ? <span className="banner__mark">AI</span> : null}
       <p className="banner__body">
         {props.lead === undefined ? null : <strong>{props.lead} </strong>}
         {props.children}
@@ -33,7 +39,7 @@ export function Banner(props: BannerProps): ReactElement {
       {props.onDismiss === undefined ? null : (
         <IconButton icon="cross-small" label="Dismiss" onClick={props.onDismiss} />
       )}
-    </div>
+    </Box>
   );
 }
 
@@ -125,9 +131,13 @@ export function RowNote(props: { readonly children: ReactNode }): ReactElement {
 }
 
 /**
- * DS-PRIM-32. Marks a region whose values are sample data. Only a demo
- * install has any (R56); on a real client nothing is sample, so nothing is
- * marked. `nested` keeps only the edge inside a marked region.
+ * DS-PRIM-32, the one shared mock label. Marks a region whose values are
+ * made-up data: the pink wash and edge, and with `word` the MOCK label in the
+ * region's top-right corner. A screen whose back end is not built yet wraps
+ * the made-up region in it; a real data path never does. Only a demo install
+ * has sample data (R56); on a real client nothing is marked. `nested` keeps
+ * only the edge inside a marked region. `data-provenance="mock"` lets a test
+ * find every marked region.
  */
 export function MockRegion(props: {
   readonly children: ReactNode;
@@ -135,7 +145,10 @@ export function MockRegion(props: {
   readonly word?: boolean | undefined;
 }): ReactElement {
   return (
-    <div className={props.nested === true ? 'is-mock is-mock--nested' : 'is-mock'}>
+    <div
+      className={props.nested === true ? 'is-mock is-mock--nested' : 'is-mock'}
+      data-provenance="mock"
+    >
       {props.word === true ? <span className="mocktag">Mock</span> : null}
       {props.children}
     </div>

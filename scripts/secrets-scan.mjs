@@ -49,10 +49,21 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
+// Every failure is a failed scan, a scanner that cannot start included. It
+// throws, so cleanup in a `finally` still runs, and one handler reports it,
+// raises the owner's alert where a sink is set (ticket S0-2) and exits 1.
+class ScanFailed extends Error {}
 const fail = (message) => {
-  console.error(`secrets: ${message}`);
-  process.exit(1);
+  throw new ScanFailed(message);
 };
+process.on('uncaughtException', failed);
+
+async function failed(error) {
+  console.error(error instanceof ScanFailed ? `secrets: ${error.message}` : error);
+  process.exitCode = 1;
+  await raiseAlert();
+  process.exit(1);
+}
 
 const git = (...args) => {
   const result = spawnSync('git', args, { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
@@ -122,3 +133,21 @@ try {
 }
 
 if (status !== 0) fail(`gitleaks exited ${status}. A file that can be committed carries a secret.`);
+
+/**
+ * A failed scan where the error sink is set (staging's and production's
+ * runs, ticket S0-2) raises the owner's alert, in plain words and naming no
+ * file. Loaded only then, so a copy of this script outside the repository
+ * still scans. An alert that cannot be raised never turns the failure into a pass.
+ */
+async function raiseAlert() {
+  if (!process.env['OPS_ERROR_SINK_DSN']) return;
+  try {
+    const { createAlerts, sinkFrom } = await import('../apps/api/alerts/sink.ts');
+    const alerts = createAlerts({ ...sinkFrom(process.env), root: process.cwd() });
+    alerts.observe({ kind: 'secret-scan-failed' });
+    await alerts.settled();
+  } catch {
+    console.error('secrets: the alert could not be raised; the scan still fails.');
+  }
+}
