@@ -14,7 +14,10 @@
 // find the calls, then for each the lookup outside any transaction (custody's
 // wait is bounded by the operation's timeout), then one to record the answer,
 // guarded on the call still being unknown with no outcome, so a person's
-// outcome recorded meanwhile wins and the answer writes nothing.
+// outcome recorded meanwhile wins and the answer writes nothing. A provider
+// that gives one lookup no answer is asked nothing more in that pass: its
+// other calls say the pass established nothing, so a hung provider costs the
+// pass one timeout, not one per call, and cannot stall every business's sweep.
 
 import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
 import { proofOf, reconcileModeOf, type Proof } from './broker-fault.ts';
@@ -76,7 +79,7 @@ async function ask(broker: Providers, call: Asked): Promise<Proof> {
     });
     return proofOf(outcome, operation, adapter);
   } catch {
-    return nothing('custody could not ask the provider');
+    return { proved: false, reason: 'custody could not ask the provider', silent: true };
   }
 }
 
@@ -122,10 +125,15 @@ export async function reconcileProviderCalls(
       ),
   );
   const proofs: ProviderProof[] = [];
+  const unanswered = new Set<string>();
   for (const call of asked) {
+    const provider = broker.operations.get(call.operation_key)?.provider ?? '';
     // Sequential: one lookup at a time keeps the pass inside the route's ceiling.
-    // eslint-disable-next-line no-await-in-loop
-    const proof = await ask(broker, call);
+    const proof = unanswered.has(provider)
+      ? nothing('its provider gave an earlier lookup in this pass no answer')
+      : // eslint-disable-next-line no-await-in-loop
+        await ask(broker, call);
+    if (!proof.proved && proof.silent === true) unanswered.add(provider);
     // eslint-disable-next-line no-await-in-loop
     const recorded = await database.withBusiness(
       businessId,

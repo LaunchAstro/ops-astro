@@ -84,9 +84,11 @@ export function reconcileModeOf(
 
 export type Proof =
   | { readonly proved: true; readonly code: string }
-  | { readonly proved: false; readonly reason: string };
+  | { readonly proved: false; readonly reason: string; readonly silent?: true };
 
 const nothing = (reason: string): Proof => ({ proved: false, reason });
+/** No answer came back: the pass asks that provider nothing more (`broker-reconcile.ts`). */
+const silent = (reason: string): Proof => ({ proved: false, reason, silent: true });
 
 /**
  * A lookup's answer: proof only when it arrived whole, inside custody's bounds,
@@ -99,10 +101,10 @@ export function proofOf(
   operation: ModelOperation,
   adapter: ProviderAdapter,
 ): Proof {
-  if (outcome.kind === 'worker_lost') return nothing('custody was lost before the answer');
+  if (outcome.kind === 'worker_lost') return silent('custody was lost before the answer');
   if (outcome.kind === 'refused') return nothing(`custody refused the lookup (${outcome.code})`);
   if (!outcome.outbound.ok) {
-    return nothing(`the lookup failed (${outcome.outbound.fault})`);
+    return silent(`the lookup failed (${outcome.outbound.fault})`);
   }
   let body: unknown;
   try {
