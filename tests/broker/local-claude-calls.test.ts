@@ -242,3 +242,19 @@ it("LA-1 canary: the runner's key never reaches an answer, a row, an audit event
   expect(everything.map((entry) => entry.row).join('\n')).not.toContain(runner.canary);
   expect(output.join('')).not.toContain(runner.canary);
 }, 120_000);
+
+it('Sol proof, fence route recorded: a settled local call records route kind subscription and the seat as its account', async () => {
+  runner.mode('answer');
+  const work = await liveWork(s, 'la1 route line', 2_000);
+  const result = await runStep(work, local());
+  expect(result.ok).toBe(true);
+  const rows = await rowsOf(result.ok ? result.callId : null);
+  expect(rows).toMatchObject([
+    {
+      route_key: 'local_claude',
+      credential_kind: 'subscription',
+      account: SEAT_ACCOUNT,
+      model_id: LOCAL_MODEL,
+    },
+  ]);
+}, 120_000);
