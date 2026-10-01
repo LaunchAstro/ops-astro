@@ -23,6 +23,7 @@ import type {
   PersonListResult,
   ProposalView,
   QueueResult,
+  ReceiptResult,
   SettingsReadResult,
   TaskBoardResult,
   TaskExecutionResult,
@@ -136,6 +137,55 @@ const DETAIL: InternalTaskDetail = {
   alerts: [],
 };
 
+// An earlier version of the same lineage was approved and ran: one run whose
+// attempt has a receipt, so the Agent perspective draws the mockup's receipt
+// box (states.json `receipt`).
+const EXECUTION: TaskExecutionResult = {
+  execution: {
+    outcome: 'ready',
+    runs: [
+      {
+        runId: 'r-1',
+        lineageId: 'l-1',
+        versionId: 'v-1',
+        state: 'completed',
+        taskRevisionAtRequest: 1,
+        createdAt: '2026-09-25T05:00:00.000Z',
+      },
+    ],
+    events: [
+      {
+        eventId: 'e-1',
+        runId: 'r-1',
+        position: 1,
+        kind: 'claimed',
+        attemptId: 'a-1',
+        at: '2026-09-25T05:00:00.000Z',
+      },
+      {
+        eventId: 'e-2',
+        runId: 'r-1',
+        position: 2,
+        kind: 'effect_observed',
+        attemptId: 'a-1',
+        at: '2026-09-25T05:02:00.000Z',
+      },
+    ],
+    complete: true,
+    next: null,
+  },
+};
+
+const RECEIPT: ReceiptResult = {
+  receipt: {
+    attemptId: 'a-1',
+    decision: { id: 'd-1' },
+    version: { id: 'v-1', number: 1 },
+    effect: { kind: 'comment', audience: 'internal' },
+    settlement: { state: 'settled', heldMinor: 12_000, spentMinor: 9_500, releasedMinor: 2_500 },
+  },
+};
+
 const READS = {
   'task.board': { ok: true, tasks: TASKS } satisfies TaskBoardResult,
   'task.read': { ok: true, task: DETAIL } satisfies InternalTaskRead,
@@ -172,9 +222,8 @@ const READS = {
     ],
   } satisfies CapabilitiesResult,
   'task.queue': { ok: true, queue: [], alerts: [], outages: [] } satisfies QueueResult,
-  'task.execution': {
-    execution: { outcome: 'no-run', runs: [], events: [], complete: true, next: null },
-  } satisfies TaskExecutionResult,
+  'task.execution': EXECUTION,
+  'task.receipt': { ok: true, ...RECEIPT },
   'inbox.read': {
     ok: true,
     inbox: [

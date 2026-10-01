@@ -202,23 +202,49 @@ function AttemptReceipt(props: {
       </p>
     );
   }
-  const { receipt } = state.value;
+  return <ReceiptBox attemptId={attemptId} receipt={state.value.receipt} />;
+}
+
+/** DS-TASK-6, the live body: the mockup's evidence box, one row per fact. */
+function ReceiptBox(props: {
+  readonly attemptId: string;
+  readonly receipt: ReceiptResult['receipt'];
+}): ReactElement {
+  const { attemptId, receipt } = props;
   const { settlement } = receipt;
   return (
-    <div
-      className="card__sub"
+    <section
+      className="sb__sect sout"
       data-receipt-attempt={attemptId}
       data-receipt-decision={receipt.decision.id}
     >
-      Receipt: approved by decision {receipt.decision.id} on version {receipt.version.number}; the
-      effect was a{' '}
-      {receipt.effect.audience === 'internal' ? 'team-only comment' : receipt.effect.kind}.{' '}
-      <span data-money={settlement.state}>
-        {'spentMinor' in settlement
-          ? `held ${amount(settlement.heldMinor)} · spent ${amount(settlement.spentMinor)} · released ${amount(settlement.releasedMinor)}`
-          : `held ${amount(settlement.heldMinor)} · ${settlement.state.replaceAll('_', ' ')}`}
-      </span>
-    </div>
+      <div className="sb__sh">
+        <span className="sb__k">Receipt</span>
+        <span className="sb__meta">attempt {attemptId}</span>
+      </div>
+      <div className="sout__box">
+        <div className="sout__row">
+          <span className="tf__k">Approved</span>
+          <span className="sout__v">
+            by decision {receipt.decision.id} on version {receipt.version.number}
+          </span>
+        </div>
+        <div className="sout__row">
+          <span className="tf__k">Effect</span>
+          <span className="sout__t">
+            {receipt.effect.audience === 'internal' ? 'A team-only comment' : receipt.effect.kind}
+          </span>
+        </div>
+        <div className="sout__row">
+          <span className="tf__k">Money</span>
+          <span className="sout__v" data-money={settlement.state}>
+            {'spentMinor' in settlement
+              ? `held ${amount(settlement.heldMinor)} · spent ${amount(settlement.spentMinor)} · released ${amount(settlement.releasedMinor)}`
+              : `held ${amount(settlement.heldMinor)} · ${settlement.state.replaceAll('_', ' ')}`}
+          </span>
+        </div>
+      </div>
+    </section>
   );
 }
 

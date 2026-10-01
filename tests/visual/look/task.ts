@@ -3,13 +3,19 @@
 // B4, the task page (TASK-PAGE.md; PAGE-MAP TASKS S5 to S8). The header and
 // facts are measured on the mockup's gate task (Team, as it opens); the gate
 // box on its Agent perspective. The app draws the made-up T-1, whose one
-// proposal waits at an armed gate (made-up-api.ts).
+// proposal waits at an armed gate and whose run has a receipt (made-up-api.ts).
+// The perspective tabs, the fact strip (sample values behind the mock label)
+// and the receipt box (`.sout`, the mockup's live task) follow.
 
 import type { LookProbe, LookScreen } from './probe.ts';
 
 const MOCK = { path: '/agency/task/?task=proj-meridian-hero-copy' } as const;
-const AGENT = { ...MOCK, open: '[role=tab]:has-text("Agent")' } as const;
+const OPEN_AGENT = '[role=tab]:has-text("Agent")';
+const AGENT = { ...MOCK, open: OPEN_AGENT } as const;
+const LIVE = { path: '/agency/task/?task=proj-blue-schema-live', open: OPEN_AGENT } as const;
 const APP = { page: 'agency:task-detail' } as const;
+const TABS = '[data-tabs="perspective"]';
+const TEAM = '[data-tp-pane="team"]';
 const ALL = [1480, 900, 390] as const;
 const TYPE: readonly string[] = ['font-family', 'font-size', 'font-weight', 'color'];
 
@@ -22,7 +28,8 @@ const probe = (
 ): LookProbe => ({
   id: `task.${id}`,
   mockup,
-  app: { ...APP, selector: app },
+  // A probe the mockup measures on its Agent perspective opens the app's too.
+  app: { ...APP, selector: app, ...(mockup.open === undefined ? {} : { open: mockup.open }) },
   props,
   widths: ALL,
   ...(ruled === undefined ? {} : { ruled }),
@@ -96,19 +103,17 @@ export const TASK: LookScreen = {
       ...TYPE,
       'padding-top',
     ]),
-    probe('section', { ...MOCK, selector: '.sb__sect' }, '[data-task] > .sb__sect', [
+    probe('section', { ...MOCK, selector: '.sb__sect' }, `${TEAM} > .sb__sect`, [
       'border-top-color',
       'border-top-width',
       'padding-top',
       'padding-left',
       'row-gap',
     ]),
-    probe(
-      'section-key',
-      { ...MOCK, selector: '.sb__sect .sb__k' },
-      '[data-task] > .sb__sect .sb__k',
-      [...TYPE, 'text-transform'],
-    ),
+    probe('section-key', { ...MOCK, selector: '.sb__sect .sb__k' }, `${TEAM} > .sb__sect .sb__k`, [
+      ...TYPE,
+      'text-transform',
+    ]),
     probe('gatebox', { ...AGENT, selector: '.gatebox' }, '.gatebox', [
       'border-top-color',
       'border-top-width',
@@ -156,5 +161,78 @@ export const TASK: LookScreen = {
       '.gatebox__acts .btn:not(.btn--primary)',
       ['font-size', 'border-top-color', 'color', 'box.height'],
     ),
+    // TP-12: the Team | Agent switch (DS-COMP-23, static) and its one count.
+    probe('tabs', { ...MOCK, selector: '[data-tp-tabs]' }, TABS, ['column-gap']),
+    probe(
+      'tab-on',
+      { ...MOCK, selector: '[data-tp-tabs] .cmtab[aria-selected="true"]' },
+      `${TABS} .cmtab[aria-selected="true"]`,
+      [...TYPE, 'padding-top', 'padding-bottom'],
+    ),
+    probe(
+      'tab-off',
+      { ...MOCK, selector: '[data-tp-tabs] .cmtab[aria-selected="false"]' },
+      `${TABS} .cmtab[aria-selected="false"]`,
+      ['font-size', 'color'],
+    ),
+    probe(
+      'tab-mark',
+      { ...MOCK, selector: '[data-tp-tabs] .cmtabs__mark' },
+      `${TABS} .cmtabs__mark`,
+      ['background-color', 'box.height', 'box.width'],
+    ),
+    probe('tab-count', { ...MOCK, selector: '[data-tp-tabs] .cbadge' }, `${TABS} .cbadge`, [
+      'font-family',
+      'font-size',
+      'color',
+      'background-color',
+    ]),
+    // DS-TASK-1, read-only: the strip above the field grid (sample values).
+    probe('strip', { ...MOCK, selector: '.tpr__facts .mstrip' }, '.tpr__facts .mstrip', [
+      'border-bottom-color',
+      'border-bottom-width',
+      'padding-bottom',
+      'margin-bottom',
+      'row-gap',
+      'column-gap',
+    ]),
+    probe(
+      'strip-key',
+      { ...MOCK, selector: '.mstrip .mstrip__k' },
+      '.mstrip .mstrip__k',
+      [...TYPE, 'text-transform'],
+      EYEBROW,
+    ),
+    probe(
+      'strip-move',
+      { ...MOCK, selector: '.mstrip [data-mstrip-fact="whose-move"] .mstrip__v' },
+      '.mstrip [data-mstrip-fact="whose-move"] .mstrip__v',
+      TYPE,
+    ),
+    probe(
+      'strip-rank',
+      { ...MOCK, selector: '.mstrip .mstrip__v--none' },
+      '.mstrip .mstrip__v--none',
+      ['font-size', 'font-style', 'color'],
+    ),
+    // DS-TASK-6, live: the receipt of an attempt (states.json `receipt`).
+    probe('receipt-box', { ...LIVE, selector: '.sout .sout__box' }, '.sout .sout__box', [
+      'border-top-color',
+      'border-top-width',
+      'padding-top',
+      'row-gap',
+    ]),
+    probe(
+      'receipt-key',
+      { ...LIVE, selector: '.sout .sout__row .tf__k' },
+      '.sout .sout__row .tf__k',
+      TYPE,
+      EYEBROW,
+    ),
+    probe('receipt-value', { ...LIVE, selector: '.sout .sout__v' }, '.sout .sout__v', [
+      'font-family',
+      'font-size',
+      'color',
+    ]),
   ],
 };

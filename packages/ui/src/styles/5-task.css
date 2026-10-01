@@ -93,11 +93,75 @@
   overflow-wrap: anywhere;
 }
 
-/* The page's ruled sections (DS-COMP-22): a rule above, the 24 gutter. */
-[data-task] > .sb__sect {
+/* The page's ruled sections (DS-COMP-22): a rule above, the 24 gutter. The
+   Agent side column's sit closer under their rule (DS-TASK-15). */
+[data-task] > .sb__sect,
+[data-tp-pane] > .sb__sect,
+.tpg__main > .sb__sect,
+.tpg__side > .sb__sect {
   gap: var(--s-3);
   padding: var(--s-5);
   border-top: 1px solid var(--border);
+}
+.tpg__side > .sb__sect {
+  padding-top: var(--s-2);
+}
+
+/* DS-TASK-1, read-only: the fact strip above the field grid. */
+.mstrip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--s-3) var(--s-6);
+  margin: 0 0 var(--s-4);
+  padding: 0 0 var(--s-4);
+  border-bottom: 1px solid var(--border);
+}
+.mstrip__c {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+.mstrip__k {
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
+  color: var(--text-muted);
+}
+.mstrip__v {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+  color: var(--text);
+}
+.mstrip__bucket {
+  font: var(--type-small-strong);
+  letter-spacing: var(--type-small-strong-tracking);
+}
+.mstrip__rank {
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  font-variant-numeric: tabular-nums;
+}
+.mstrip__v--none {
+  font-style: italic;
+  color: var(--text-muted);
+}
+/* A tick on the page is a picture of a state: nothing to press (D-08). */
+.mstrip .check {
+  cursor: default;
+}
+/* "derived": the calculation-source word after a derived cell's label. */
+.mcalc__src {
+  color: var(--text-2);
+}
+.mcalc__src::before {
+  content: '\00b7';
+  margin: 0 0.35rem;
 }
 
 /* -- The sliding tab set (S3/S4 switch, and the panel's conversations) ---- */
@@ -132,6 +196,16 @@
   transition:
     left var(--dur-1) var(--ease),
     width var(--dur-1) var(--ease);
+}
+/* A tab's count is a plain mono number in the muted ink, not a badge. */
+.cmtab .cbadge--plain {
+  display: inline;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  color: var(--text-muted);
 }
 .cmtabs.is-placing .cmtabs__mark {
   transition: none;
@@ -205,6 +279,20 @@
   display: grid;
   gap: 0.3rem;
   min-width: 0;
+}
+.sout__v {
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+.sout__t {
+  margin: 0;
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+  color: var(--text);
 }
 
 /* -- The run hero. Status is a border-left LINE plus a word. -------------- */

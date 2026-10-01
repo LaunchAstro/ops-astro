@@ -12,6 +12,7 @@ import { describeRefusal } from '../../records/submit.ts';
 import { pathTo } from '../../routes.ts';
 import { drawTaskState } from '../../views/task-state.ts';
 import { titleOf } from '../../views/task-title.ts';
+import { TaskFacts } from './Facts.tsx';
 
 /** The crumb, the title (or the placeholder for a task with none) and the revision. */
 export function TaskHeader(props: { readonly task: InternalTaskDetail }): ReactElement {
@@ -36,45 +37,6 @@ export function TaskHeader(props: { readonly task: InternalTaskDetail }): ReactE
       </header>
       <TaskFacts task={task} />
     </>
-  );
-}
-
-/** A field this build does not carry yet: drawn, with a dash, never a made-up value. */
-const NOT_BUILT = '–';
-
-/**
- * The read-only field grid under the header (TP-10, DS-COMP-26 inline form):
- * the mockup's ten fields in its order. Assignee, due date and status are the
- * task's own; the rest are not on this build and draw a dash. Editing stays
- * with the controls below it.
- */
-function TaskFacts(props: { readonly task: InternalTaskDetail }): ReactElement {
-  const { task } = props;
-  const fields: readonly (readonly [string, string])[] = [
-    ['Assignee', task.assignee?.name ?? 'Unassigned'],
-    ['Client', NOT_BUILT],
-    ['Due date', task.due === null ? 'No date' : task.due.slice(0, 10)],
-    ['Estimate', NOT_BUILT],
-    ['Project', NOT_BUILT],
-    ['Category', NOT_BUILT],
-    ['Stage', NOT_BUILT],
-    ['Status', task.state?.label ?? 'No state'],
-    ['Page link', NOT_BUILT],
-    ['Handling', NOT_BUILT],
-  ];
-  return (
-    <div className="tpr__facts" data-task-facts="">
-      <div className="taskform">
-        <dl className="tf__grid">
-          {fields.map(([label, value]) => (
-            <div className="tf__row" key={label}>
-              <dt className="tf__k">{label}</dt>
-              <dd className="sb__state">{value}</dd>
-            </div>
-          ))}
-        </dl>
-      </div>
-    </div>
   );
 }
 

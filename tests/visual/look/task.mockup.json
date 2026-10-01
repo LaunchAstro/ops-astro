@@ -761,6 +761,444 @@
         "color": "rgba(248,248,248,255)",
         "box.height": "27"
       }
+    },
+    "task.tabs": {
+      "1480-light": {
+        "column-gap": "16px"
+      },
+      "1480-dark": {
+        "column-gap": "16px"
+      },
+      "900-light": {
+        "column-gap": "16px"
+      },
+      "900-dark": {
+        "column-gap": "16px"
+      },
+      "390-light": {
+        "column-gap": "16px"
+      },
+      "390-dark": {
+        "column-gap": "16px"
+      }
+    },
+    "task.tab-on": {
+      "1480-light": {
+        "font-family": "Funnel Sans",
+        "font-size": "13px",
+        "font-weight": "400",
+        "color": "rgba(0,0,0,255)",
+        "padding-top": "4.8px",
+        "padding-bottom": "7.2px"
+      },
+      "1480-dark": {
+        "font-family": "Funnel Sans",
+        "font-size": "13px",
+        "font-weight": "400",
+        "color": "rgba(248,248,248,255)",
+        "padding-top": "4.8px",
+        "padding-bottom": "7.2px"
+      },
+      "900-light": {
+        "font-family": "Funnel Sans",
+        "font-size": "13px",
+        "font-weight": "400",
+        "color": "rgba(0,0,0,255)",
+        "padding-top": "4.8px",
+        "padding-bottom": "7.2px"
+      },
+      "900-dark": {
+        "font-family": "Funnel Sans",
+        "font-size": "13px",
+        "font-weight": "400",
+        "color": "rgba(248,248,248,255)",
+        "padding-top": "4.8px",
+        "padding-bottom": "7.2px"
+      },
+      "390-light": {
+        "font-family": "Funnel Sans",
+        "font-size": "13px",
+        "font-weight": "400",
+        "color": "rgba(0,0,0,255)",
+        "padding-top": "4.8px",
+        "padding-bottom": "7.2px"
+      },
+      "390-dark": {
+        "font-family": "Funnel Sans",
+        "font-size": "13px",
+        "font-weight": "400",
+        "color": "rgba(248,248,248,255)",
+        "padding-top": "4.8px",
+        "padding-bottom": "7.2px"
+      }
+    },
+    "task.tab-off": {
+      "1480-light": {
+        "font-size": "13px",
+        "color": "rgba(140,133,127,255)"
+      },
+      "1480-dark": {
+        "font-size": "13px",
+        "color": "rgba(248,248,248,140)"
+      },
+      "900-light": {
+        "font-size": "13px",
+        "color": "rgba(140,133,127,255)"
+      },
+      "900-dark": {
+        "font-size": "13px",
+        "color": "rgba(248,248,248,140)"
+      },
+      "390-light": {
+        "font-size": "13px",
+        "color": "rgba(140,133,127,255)"
+      },
+      "390-dark": {
+        "font-size": "13px",
+        "color": "rgba(248,248,248,140)"
+      }
+    },
+    "task.tab-mark": {
+      "1480-light": {
+        "background-color": "rgba(116,92,238,255)",
+        "box.height": "2",
+        "box.width": "32"
+      },
+      "1480-dark": {
+        "background-color": "rgba(116,92,238,255)",
+        "box.height": "2",
+        "box.width": "32"
+      },
+      "900-light": {
+        "background-color": "rgba(116,92,238,255)",
+        "box.height": "2",
+        "box.width": "32"
+      },
+      "900-dark": {
+        "background-color": "rgba(116,92,238,255)",
+        "box.height": "2",
+        "box.width": "32"
+      },
+      "390-light": {
+        "background-color": "rgba(116,92,238,255)",
+        "box.height": "2",
+        "box.width": "32"
+      },
+      "390-dark": {
+        "background-color": "rgba(116,92,238,255)",
+        "box.height": "2",
+        "box.width": "32"
+      }
+    },
+    "task.tab-count": {
+      "1480-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "color": "rgba(140,133,127,255)",
+        "background-color": "rgba(0,0,0,0)"
+      },
+      "1480-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "color": "rgba(248,248,248,140)",
+        "background-color": "rgba(0,0,0,0)"
+      },
+      "900-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "color": "rgba(140,133,127,255)",
+        "background-color": "rgba(0,0,0,0)"
+      },
+      "900-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "color": "rgba(248,248,248,140)",
+        "background-color": "rgba(0,0,0,0)"
+      },
+      "390-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "color": "rgba(140,133,127,255)",
+        "background-color": "rgba(0,0,0,0)"
+      },
+      "390-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "color": "rgba(248,248,248,140)",
+        "background-color": "rgba(0,0,0,0)"
+      }
+    },
+    "task.strip": {
+      "1480-light": {
+        "border-bottom-color": "rgba(0,0,0,31)",
+        "border-bottom-width": "1px",
+        "padding-bottom": "16px",
+        "margin-bottom": "16px",
+        "row-gap": "12px",
+        "column-gap": "32px"
+      },
+      "1480-dark": {
+        "border-bottom-color": "rgba(245,245,245,26)",
+        "border-bottom-width": "1px",
+        "padding-bottom": "16px",
+        "margin-bottom": "16px",
+        "row-gap": "12px",
+        "column-gap": "32px"
+      },
+      "900-light": {
+        "border-bottom-color": "rgba(0,0,0,31)",
+        "border-bottom-width": "1px",
+        "padding-bottom": "16px",
+        "margin-bottom": "16px",
+        "row-gap": "12px",
+        "column-gap": "32px"
+      },
+      "900-dark": {
+        "border-bottom-color": "rgba(245,245,245,26)",
+        "border-bottom-width": "1px",
+        "padding-bottom": "16px",
+        "margin-bottom": "16px",
+        "row-gap": "12px",
+        "column-gap": "32px"
+      },
+      "390-light": {
+        "border-bottom-color": "rgba(0,0,0,31)",
+        "border-bottom-width": "1px",
+        "padding-bottom": "16px",
+        "margin-bottom": "16px",
+        "row-gap": "12px",
+        "column-gap": "32px"
+      },
+      "390-dark": {
+        "border-bottom-color": "rgba(245,245,245,26)",
+        "border-bottom-width": "1px",
+        "padding-bottom": "16px",
+        "margin-bottom": "16px",
+        "row-gap": "12px",
+        "column-gap": "32px"
+      }
+    },
+    "task.strip-key": {
+      "1480-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "300",
+        "color": "rgba(140,133,127,255)",
+        "text-transform": "uppercase"
+      },
+      "1480-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "300",
+        "color": "rgba(248,248,248,140)",
+        "text-transform": "uppercase"
+      },
+      "900-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "300",
+        "color": "rgba(140,133,127,255)",
+        "text-transform": "uppercase"
+      },
+      "900-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "300",
+        "color": "rgba(248,248,248,140)",
+        "text-transform": "uppercase"
+      },
+      "390-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "300",
+        "color": "rgba(140,133,127,255)",
+        "text-transform": "uppercase"
+      },
+      "390-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "300",
+        "color": "rgba(248,248,248,140)",
+        "text-transform": "uppercase"
+      }
+    },
+    "task.strip-move": {
+      "1480-light": {
+        "font-family": "Funnel Sans",
+        "font-size": "13px",
+        "font-weight": "500",
+        "color": "rgba(0,0,0,255)"
+      },
+      "1480-dark": {
+        "font-family": "Funnel Sans",
+        "font-size": "13px",
+        "font-weight": "500",
+        "color": "rgba(248,248,248,255)"
+      },
+      "900-light": {
+        "font-family": "Funnel Sans",
+        "font-size": "13px",
+        "font-weight": "500",
+        "color": "rgba(0,0,0,255)"
+      },
+      "900-dark": {
+        "font-family": "Funnel Sans",
+        "font-size": "13px",
+        "font-weight": "500",
+        "color": "rgba(248,248,248,255)"
+      },
+      "390-light": {
+        "font-family": "Funnel Sans",
+        "font-size": "13px",
+        "font-weight": "500",
+        "color": "rgba(0,0,0,255)"
+      },
+      "390-dark": {
+        "font-family": "Funnel Sans",
+        "font-size": "13px",
+        "font-weight": "500",
+        "color": "rgba(248,248,248,255)"
+      }
+    },
+    "task.strip-rank": {
+      "1480-light": {
+        "font-size": "13px",
+        "font-style": "italic",
+        "color": "rgba(140,133,127,255)"
+      },
+      "1480-dark": {
+        "font-size": "13px",
+        "font-style": "italic",
+        "color": "rgba(248,248,248,140)"
+      },
+      "900-light": {
+        "font-size": "13px",
+        "font-style": "italic",
+        "color": "rgba(140,133,127,255)"
+      },
+      "900-dark": {
+        "font-size": "13px",
+        "font-style": "italic",
+        "color": "rgba(248,248,248,140)"
+      },
+      "390-light": {
+        "font-size": "13px",
+        "font-style": "italic",
+        "color": "rgba(140,133,127,255)"
+      },
+      "390-dark": {
+        "font-size": "13px",
+        "font-style": "italic",
+        "color": "rgba(248,248,248,140)"
+      }
+    },
+    "task.receipt-box": {
+      "1480-light": {
+        "border-top-color": "rgba(0,0,0,31)",
+        "border-top-width": "1px",
+        "padding-top": "12px",
+        "row-gap": "12px"
+      },
+      "1480-dark": {
+        "border-top-color": "rgba(245,245,245,26)",
+        "border-top-width": "1px",
+        "padding-top": "12px",
+        "row-gap": "12px"
+      },
+      "900-light": {
+        "border-top-color": "rgba(0,0,0,31)",
+        "border-top-width": "1px",
+        "padding-top": "12px",
+        "row-gap": "12px"
+      },
+      "900-dark": {
+        "border-top-color": "rgba(245,245,245,26)",
+        "border-top-width": "1px",
+        "padding-top": "12px",
+        "row-gap": "12px"
+      },
+      "390-light": {
+        "border-top-color": "rgba(0,0,0,31)",
+        "border-top-width": "1px",
+        "padding-top": "12px",
+        "row-gap": "12px"
+      },
+      "390-dark": {
+        "border-top-color": "rgba(245,245,245,26)",
+        "border-top-width": "1px",
+        "padding-top": "12px",
+        "row-gap": "12px"
+      }
+    },
+    "task.receipt-key": {
+      "1480-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "400",
+        "color": "rgba(140,133,127,255)"
+      },
+      "1480-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "400",
+        "color": "rgba(248,248,248,117)"
+      },
+      "900-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "400",
+        "color": "rgba(140,133,127,255)"
+      },
+      "900-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "400",
+        "color": "rgba(248,248,248,117)"
+      },
+      "390-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "400",
+        "color": "rgba(140,133,127,255)"
+      },
+      "390-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "400",
+        "color": "rgba(248,248,248,117)"
+      }
+    },
+    "task.receipt-value": {
+      "1480-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "color": "rgba(107,99,93,255)"
+      },
+      "1480-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "color": "rgba(248,248,248,184)"
+      },
+      "900-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "color": "rgba(107,99,93,255)"
+      },
+      "900-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "color": "rgba(248,248,248,184)"
+      },
+      "390-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "color": "rgba(107,99,93,255)"
+      },
+      "390-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "color": "rgba(248,248,248,184)"
+      }
     }
   }
 }
