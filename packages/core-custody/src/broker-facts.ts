@@ -239,11 +239,13 @@ export async function lockFacts(
 /** Whether a settled call's work still stands for its caller. */
 export type WorkStands = 'stands' | 'LEASE_EXPIRED' | 'LEASE_NOT_OWNED';
 
+type CallRows = { lease_id: string; delegation_id: string | null; reservation_id: string };
+
 /**
- * Settlement's locks, by the call's own rows in the contract's order (lease,
- * delegation, reservation), so the cost settles whoever holds the work now.
- * The answer says whether the work stands for this caller: its lease, at its
- * fence, under its delegation, and still live.
+ * Settlement's locks, by the call's own rows in the contract's order (envelope,
+ * lease, delegation, reservation): the cost settles whoever holds the work now,
+ * and a call counted at its maximum gives back what it did not spend (`giveBack`).
+ * The answer: whether the work stands for this caller (lease, fence, delegation, live).
  */
 export async function lockCall(
   tx: TenantQuery,
@@ -251,13 +253,11 @@ export async function lockCall(
   caller: ModelCaller,
   fence: number,
 ): Promise<WorkStands> {
-  const [call] = await tx.query<{
-    lease_id: string;
-    delegation_id: string | null;
-    reservation_id: string;
-  }>(
-    `select lease_id, delegation_id, reservation_id from public.model_calls
-      where business_id = $1 and id = $2`,
+  const [call] = await tx.query<CallRows>(
+    `select c.lease_id, c.delegation_id, c.reservation_id from public.model_calls c
+       join public.reservations r on r.business_id = c.business_id and r.id = c.reservation_id
+       join public.task_envelopes e on e.business_id = r.business_id and e.id = r.envelope_id
+      where c.business_id = $1 and c.id = $2 for update of e`,
     [tx.businessId, callId],
   );
   if (call === undefined) throw new Error(`model call ${callId}: no row to settle`);

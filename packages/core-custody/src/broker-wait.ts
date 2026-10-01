@@ -142,5 +142,9 @@ export async function stopAtCeiling(
     ceilingMinor: facts.heldMinor,
     spentMinor,
   });
-  return wait.raised ? WAITING_WORDS : LAST_ASK_WORDS;
+  return stopWords(wait);
 }
+
+/** What a stop tells the caller: the run waits for a person, or its last ask is spent. */
+export const stopWords = (wait: BudgetWait): string =>
+  wait.raised ? WAITING_WORDS : LAST_ASK_WORDS;

@@ -817,8 +817,16 @@ lost. If its version is still approved and current on a live lineage, the pickup
 replaces it with a fresh hold and a fresh attempt on that version, under the
 locks it already holds (`pickup`, `pickup.ts`). The abandoned reservation stays
 abandoned. A hold the classifier settled at its calls' spend (`actual`, its
-attempt `abandoned`) is replaced the same way, and the replacement needs room
-beside that spend. A settled hold, a quarantined one, or a version already holding
+attempt `abandoned`) is replaced the same way. The replacement holds the old
+hold less the spend it settled at, the step's budget that remains
+(`remainingOf`, `budget-stop.ts`), and a drop's resume sizes its new hold the
+same way (`resume`, `recovery/reconcile.ts`). When the spend used the whole
+hold, nothing is left to hold: the run stops at its budget and raises the
+AW-05 ask with the old hold as the ceiling and its spend (`stopAtSpentHold`),
+and the pickup is refused `BUDGET_UNAVAILABLE`, a refusal that keeps the stop
+and its ask. The claimant's authority is read first (`claimantMayWork`), so a
+caller without it is refused with nothing kept
+(`tests/runtime/resume-sizing.test.ts`). A settled hold, a quarantined one, or a version already holding
 elsewhere is refused `RESERVATION_NOT_CLAIMABLE` (`replaceable`). Storage
 counts a quarantined hold as active too.
 
@@ -952,9 +960,16 @@ The classifier never abandons spend. Before it releases a hold it reads the
 reservation's broker calls (`spentOn`, `recovery/classifier.ts`): settled calls
 at their actual, calls still open at their maximum. Above zero the hold settles
 `actual` at that spend and the envelope takes it, so the cap counts it once;
-only a hold with no spend is `abandoned`. A hold whose spend a budget top-up
-already moved to the envelope's actual (`raiseHold`, `budget-answer.ts`) is
-abandoned, so the spend is not counted twice. The sweep, a cancel, a lost
+only a hold with no spend is `abandoned`. A budget top-up already moved the
+spend to date to the envelope's actual (`raiseHold`, `budget-answer.ts`), so a
+topped-up hold counts only the spend the top-up did not move: the ask's
+ceiling and the top-up less the hold now. Below zero, a call counted at its
+maximum came to less, and the envelope gets the difference back. A call still
+open when the hold settled was counted at its maximum; when it settles lower
+or is released, the broker's settlement gives the envelope the difference
+back, once, under the envelope lock it takes first (`giveBack`,
+`core-custody/src/broker-settle.ts`; `tests/broker/spend-give-back.test.ts`).
+The sweep, a cancel, a lost
 authority, pickup's expired-lease replacement and every hand-back, a drop
 included, reach this one step (`tests/runtime/classifier-counts-spend.test.ts`).
 
@@ -1781,7 +1796,9 @@ or delete.
   and sends the run back to `planned`. Pickup's replacement branch then fences
   the released lease, classifies the old hold and re-holds that amount on a
   fresh reservation, so the run spends the raised ceiling once and the cap
-  counts the spend once.
+  counts the spend once. A stop raised because the step's calls spent its
+  whole hold (`budget-stop.ts`) has no hold left to raise: completing it holds
+  the amount on a fresh reservation for the step (`holdTopUp`).
 - **The end** (`endAtBudgetStop`, `gate:decide` on the task, a person). One
   call with no confirmation (U7). The hold becomes `abandoned` with the cause
   `budget_stop_ended`; the envelope releases the unspent part and keeps the

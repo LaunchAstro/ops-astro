@@ -228,14 +228,19 @@ export async function settle(
     const work = await lockCall(tx, reserved.callId, caller, request.fence);
     const { callId, reservedMinor } = reserved;
     if (settlement.kind === 'unknown') return await hold(tx, reserved, null, settlement, broker);
-    if (settlement.kind === 'nothing')
-      return await release(tx, reserved, settlement.reason, broker);
+    const open = await isOpen(tx, callId);
+    if (settlement.kind === 'nothing') {
+      const released = await release(tx, reserved, settlement.reason, broker);
+      if (open) await giveBack(tx, callId);
+      return released;
+    }
     const { costMinor } = settlement;
     if (!Number.isSafeInteger(costMinor) || costMinor < 0 || costMinor > reservedMinor) {
       const observed = Number.isSafeInteger(costMinor) ? costMinor : null;
       return await hold(tx, reserved, observed, null, broker);
     }
     await settlePriced(tx, reserved, settlement, broker);
+    if (open) await giveBack(tx, callId);
     if (work !== 'stands') return { ok: false, code: work, callId };
     return {
       ok: true,
@@ -246,4 +251,36 @@ export async function settle(
       releasedMinor: reservedMinor - costMinor,
     };
   });
+}
+
+/** Whether the call is still open, read under its reservation's lock before it settles. */
+async function isOpen(tx: TenantQuery, callId: string): Promise<boolean> {
+  const [call] = await tx.query<{ readonly state: string }>(
+    'select state from public.model_calls where business_id = $1 and id = $2',
+    [tx.businessId, callId],
+  );
+  return call?.state === 'reserved' || call?.state === 'dispatched';
+}
+
+/**
+ * SL11-29 FIXMONEY. A call still open when the classifier settled its stopped
+ * hold was counted at its maximum (`core-runtime/src/recovery/classifier.ts`,
+ * `spentOn`). Settled lower now, or released, it gives the envelope the
+ * difference back: once, because only a settlement that moved the call out of
+ * an open state reaches here. A hold settled any other way (an observed or a
+ * written-off cost, its attempt `settled`) never counted its calls. Under the
+ * envelope lock `lockCall` took first.
+ */
+async function giveBack(tx: TenantQuery, callId: string): Promise<void> {
+  await tx.query(
+    `update public.task_envelopes e
+        set actual_minor = e.actual_minor - (c.reserved_minor - coalesce(c.actual_minor, 0))
+       from public.model_calls c
+       join public.reservations r on r.business_id = c.business_id and r.id = c.reservation_id
+       join public.attempts a on a.business_id = r.business_id and a.reservation_id = r.id
+      where c.business_id = $1 and c.id = $2 and c.state in ('settled', 'released')
+        and r.state = 'actual' and a.state <> 'settled'
+        and e.business_id = r.business_id and e.id = r.envelope_id`,
+    [tx.businessId, callId],
+  );
 }

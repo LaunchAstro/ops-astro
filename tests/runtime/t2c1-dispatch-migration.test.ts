@@ -51,10 +51,12 @@ const THROUGH_0032 = (version: string): boolean => version.slice(0, 4) <= '0032'
 // And AW-11's 0205 delegation parent: that runtime's pickup mints with it.
 // And AW-06's 0210 plan step key: that runtime's proposal writes its step with it.
 // And AW-01's 0191 model calls: that runtime's classifier counts their spend.
+// And AW-05's 0193 and 0194 asks and answers: it subtracts what a top-up moved.
 // None reads anything 0033 to 0035 add, and the runner applies whatever is
 // pending, so the upgrade below still applies 0033 onto these rows.
 const SEEDED = (version: string): boolean =>
-  THROUGH_0032(version) || ['0036', '0191', '0205', '0210'].includes(version.slice(0, 4));
+  THROUGH_0032(version) ||
+  ['0036', '0191', '0193', '0194', '0205', '0210'].includes(version.slice(0, 4));
 
 /** Proposes work on the task and approves it, answering the reservation the approval made. */
 async function approvedReservation(

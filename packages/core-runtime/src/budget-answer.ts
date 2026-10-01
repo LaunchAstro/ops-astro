@@ -22,7 +22,9 @@
 // replacement re-holds the old reservation's `held_minor` on a fresh
 // reservation with no calls on it, so the hold is set to the raised ceiling
 // less what is spent: the run may spend the raised ceiling once, and the cap
-// counts the spend once, as actual.
+// counts the spend once, as actual. A stop raised because the calls spent the
+// whole hold (`budget-stop.ts`) has no hold left to raise: its top-up is the
+// step's fresh hold (`holdTopUp`).
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../../core-records/src/index.ts';
@@ -35,6 +37,7 @@ import {
   type Opened,
 } from './budget-answer-facts.ts';
 import { capCommitted, capVerdict } from './budget.ts';
+import { reserve } from './decide.ts';
 import { spentOn } from './recovery/classifier.ts';
 import { fourEyes } from './budget-answer-eyes.ts';
 import { refuse } from './refusals.ts';
@@ -120,7 +123,7 @@ async function topUpRefusal(
       'End the work instead. A terminal plan takes no top-up.',
     );
   }
-  if (locked.reservation_state !== 'held') {
+  if (locked.reservation_state !== 'held' && locked.reservation_state !== 'actual') {
     return refuse(
       'TRANSITION_NOT_PERMITTED',
       'this run holds no reservation to raise',
@@ -172,6 +175,7 @@ async function raiseHold(
   request: BudgetStopTopUpRequest,
   { locked }: Opened,
 ): Promise<number> {
+  if (locked.reservation_state === 'actual') return await holdTopUp(tx, request, locked);
   const spent = await spentOn(tx, locked.reservation_id);
   const heldMinor = Number(locked.held_minor) + request.amountMinor - spent;
   await tx.query(
@@ -190,6 +194,44 @@ async function raiseHold(
     [tx.businessId, request.runId],
   );
   return heldMinor;
+}
+
+/**
+ * A stop raised because the step's calls spent its whole hold (`budget-stop.ts`):
+ * that hold is settled, so the top-up is the step's fresh hold, on the envelope
+ * raised by it, and the run goes back for its pickup. Under the cap and
+ * envelope locks the answer holds; the cap was checked for the amount.
+ */
+async function holdTopUp(
+  tx: TenantQuery,
+  request: BudgetStopTopUpRequest,
+  locked: Opened['locked'],
+): Promise<number> {
+  await tx.query(
+    `update public.task_envelopes set maximum_minor = maximum_minor + $3
+      where business_id = $1 and id = $2`,
+    [tx.businessId, locked.envelope_id, request.amountMinor],
+  );
+  const [step] = await tx.query<{ readonly step_id: string }>(
+    'select step_id from public.attempts where business_id = $1 and reservation_id = $2',
+    [tx.businessId, locked.reservation_id],
+  );
+  if (step === undefined) throw new Error('budget top-up: the stopped hold has no attempt');
+  const fresh = await reserve(tx, {
+    envelopeId: locked.envelope_id,
+    versionId: locked.version_id,
+    runId: request.runId,
+    stepId: step.step_id,
+    heldMinor: request.amountMinor,
+  });
+  // The envelope was raised by the amount and the cap checked for it, under their locks.
+  if (!fresh.ok)
+    throw new Error(`budget top-up: the raised hold was refused ${fresh.refusal.code}`);
+  await tx.query(
+    `update public.planned_runs set state = 'planned' where business_id = $1 and id = $2`,
+    [tx.businessId, request.runId],
+  );
+  return request.amountMinor;
 }
 
 /** End the work at the budget stop: one click, the hold released, the task parked. */
