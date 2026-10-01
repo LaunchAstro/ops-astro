@@ -8,12 +8,18 @@
 // the door can clear anything, for as long as the cookies' `Max-Age` (up to
 // 12 hours). The door keeps only a few other sign-ins' cookies, so neither the
 // burst nor a new tab two hours later is ever answered 431.
+//
+// FIX-B1 review round 2. rs2-1: the cases below pin how many other sign-ins'
+// cookies the door keeps (five, the newest by `exp`) and which. rs2-2 (b): a
+// tab whose own cookie has gone keeps one more of the others, so its refused
+// read clears no live tab that a normal read would keep.
 
 import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';
 import { serve } from '@hono/node-server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createApi } from '../../apps/api/app.ts';
+import { cookieNameFor } from '../../apps/api/auth/session.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import {
   SESSION_COOKIE,
@@ -48,11 +54,13 @@ function jar() {
         else held.set(name, { value: value.join('='), until: Date.now() + seconds * 1000 });
       }
     },
-    header: (): string =>
-      live()
+    /** The Cookie header, in the order the cookies were set, or the reverse. */
+    header: (reversed = false): string =>
+      (reversed ? live().toReversed() : live())
         .map(([name, { value }]) => `${name}=${value}`)
         .join('; '),
     sessions: (): number => live().filter(([name]) => name.startsWith(SESSION_COOKIE)).length,
+    holds: (name: string): boolean => live().some(([key]) => key === name),
   };
 }
 
@@ -130,5 +138,97 @@ describe('FIX-B1 rs-1: tabs opened inside one token lifetime never lock the pers
     } finally {
       server.close();
     }
+  });
+});
+
+/** One tab reads the board with the jar's cookies; the jar takes the answer. */
+async function readAs(
+  api: ReturnType<typeof build>,
+  cookies: ReturnType<typeof jar>,
+  session: string,
+  reversed = false,
+): Promise<{ status: number; cleared: string[] }> {
+  const answer = await post(api, BOARD, {
+    ...SAME_ORIGIN,
+    cookie: cookies.header(reversed),
+    [SESSION_HEADER]: session,
+  });
+  cookies.take(answer);
+  const cleared = answer.headers
+    .getSetCookie()
+    .filter((line) => /max-age=0(?:;|$)/iu.test(line))
+    .map((line) => line.split('=')[0] ?? '');
+  return { status: answer.status, cleared };
+}
+
+/** Seven tabs sign in a minute apart, so each token's `exp` is later; each reads once. */
+async function sevenTabs(
+  api: ReturnType<typeof build>,
+  cookies: ReturnType<typeof jar>,
+  reversed = false,
+): Promise<{ tabs: string[]; lastRead: { status: number; cleared: string[] } }> {
+  const tabs: string[] = [];
+  let lastRead = { status: 0, cleared: [] as string[] };
+  for (let n = 1; n <= 7; n += 1) {
+    // eslint-disable-next-line no-await-in-loop -- one tab after another
+    const tab = await newTab(api, cookies, n);
+    tabs.push(tab);
+    // eslint-disable-next-line no-await-in-loop -- one tab after another
+    lastRead = await readAs(api, cookies, tab, reversed);
+    expect(lastRead.status, `tab ${String(n)}'s first read`).toBe(200);
+    vi.setSystemTime(Date.now() + 60_000);
+  }
+  return { tabs, lastRead };
+}
+
+describe('FIX-B1 rs2-1: the door keeps the five other sign-ins with the latest exp', () => {
+  it("tab 7's read clears only tab 1's cookie, and tabs 2 to 7 each read with their own", async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const api = build();
+    const cookies = jar();
+    const { tabs, lastRead } = await sevenTabs(api, cookies);
+    expect(lastRead.cleared).toEqual([cookieNameFor(tabs[0] ?? '')]);
+    expect(cookies.sessions()).toBe(6);
+    for (const [index, tab] of tabs.entries()) {
+      if (index === 0) continue;
+      expect(cookies.holds(cookieNameFor(tab)), `tab ${String(index + 1)} holds its cookie`).toBe(
+        true,
+      );
+      // eslint-disable-next-line no-await-in-loop -- one tab after another
+      const read = await readAs(api, cookies, tab);
+      expect(read.status, `tab ${String(index + 1)} reads`).toBe(200);
+      expect(read.cleared, `tab ${String(index + 1)} clears nothing`).toEqual([]);
+    }
+    expect(cookies.sessions()).toBe(6);
+  });
+
+  it('the oldest-signed tab is the one dropped, wherever its cookie sits in the header', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const api = build();
+    const cookies = jar();
+    // Newest first in the Cookie header, so the oldest sign-in comes last.
+    const { tabs, lastRead } = await sevenTabs(api, cookies, true);
+    expect(lastRead.cleared).toEqual([cookieNameFor(tabs[0] ?? '')]);
+    for (const tab of tabs.slice(1)) expect(cookies.holds(cookieNameFor(tab))).toBe(true);
+  });
+});
+
+describe('FIX-B1 rs2-2 (b): a tab whose cookie has gone clears no other live tab', () => {
+  it('seven tabs, then every tab reads in turn twice: only tab 1 is signed out', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const api = build();
+    const cookies = jar();
+    const { tabs } = await sevenTabs(api, cookies);
+    for (let round = 1; round <= 2; round += 1) {
+      for (const [index, tab] of tabs.entries()) {
+        // eslint-disable-next-line no-await-in-loop -- one tab after another
+        const read = await readAs(api, cookies, tab);
+        expect(read.status, `round ${String(round)}, tab ${String(index + 1)}`).toBe(
+          index === 0 ? 401 : 200,
+        );
+      }
+    }
+    expect(cookies.sessions()).toBe(6);
+    for (const tab of tabs.slice(1)) expect(cookies.holds(cookieNameFor(tab))).toBe(true);
   });
 });
