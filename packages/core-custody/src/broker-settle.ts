@@ -93,7 +93,7 @@ export function settlementOf(
 export async function markStepActed(tx: TenantQuery, callId: string): Promise<void> {
   await tx.query(
     `update public.attempts att
-        set dispatch_marker = true, provider_started_at = coalesce(att.provider_started_at, now())
+        set dispatch_marker = true
        from public.model_calls c
       where c.business_id = $1 and c.id = $2 and att.business_id = c.business_id
         and att.reservation_id = c.reservation_id and att.state = 'dispatched'`,

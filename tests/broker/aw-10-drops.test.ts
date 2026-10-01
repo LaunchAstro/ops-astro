@@ -161,7 +161,9 @@ it("AW-10 a heartbeat provider start is not cleared by a call's absence proof: t
   expect(reconciled.filter((one) => one.attemptId === work.picked['attemptId'])).toMatchObject([
     { answer: 'unanswered' },
   ]);
+  // The plan's attempt, then the launched one: held whole, and no attempt resumed after it.
   expect(await attemptsOf(s, work)).toMatchObject([
-    { state: 'liability_unknown', marked: true, held: 'held' },
+    { state: 'abandoned' },
+    { id: work.picked['attemptId'], state: 'liability_unknown', marked: true, held: 'held' },
   ]);
 });
