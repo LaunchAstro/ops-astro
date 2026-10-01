@@ -44,10 +44,11 @@ import type {
 } from '../../../../../packages/core-wire/src/index.ts';
 import { sessionMemory, type Confirmed } from './confirmed.ts';
 import {
+  GRANT,
   KEY,
   SESSION_CAPABILITIES,
   SETTINGS_READ,
-  holdsManage,
+  holds,
   rowsInHand,
   settingOf,
 } from './reads.ts';
@@ -111,7 +112,9 @@ export interface SettingsModel {
   readonly confirmed: Confirmed;
   readonly closed: boolean;
   readonly busy: Which | null;
+  /** Every row closed; `disabledFor` adds the row's own grant (four-eyes: spend:decide). */
   readonly disabled: boolean;
+  readonly disabledFor: (which: Which) => boolean;
   readonly because: string | null;
   readonly conflict: Conflict | null;
   readonly rowFor: (which: Which) => SettingView | null;
@@ -186,13 +189,12 @@ export function useSettings(
   // screen behaves as it did before the read existed: it offers the controls,
   // asks once, and closes on the server's refusal. Closing on an absence would
   // make the screen unusable against every build that has not landed it yet.
-  const mayManage =
+  const mayFor = (which: Which): boolean =>
     caps.outcome === 'unavailable'
       ? true
       : caps.outcome === 'ready' || caps.outcome === 'empty'
-        ? holdsManage(caps.value.grants)
+        ? holds(caps.value.grants, GRANT[which])
         : false;
-  const shut = command.closed || !mayManage;
   // A conflict's reread still in flight: the row on screen is the one that
   // lost, so a press now would write against a revision nobody has seen.
   const rereading = conflict !== null && read.outcome === 'loading';
@@ -256,7 +258,7 @@ export function useSettings(
   };
 
   const save = (which: Which, value: Draft): void => {
-    if (command.locked || !mayManage) return;
+    if (command.locked || !mayFor(which)) return;
     const revision = rowFor(which)?.revision;
     const options: MutationOptions = revision === undefined ? {} : { expectedRevision: revision };
     setPressed(which);
@@ -270,6 +272,7 @@ export function useSettings(
     );
   };
 
+  const everyRow = busy !== null || command.closed || rereading;
   return {
     read,
     capabilities: caps,
@@ -278,7 +281,8 @@ export function useSettings(
     confirmed,
     closed: command.closed,
     busy,
-    disabled: busy !== null || shut || rereading,
+    disabled: everyRow,
+    disabledFor: (which) => everyRow || !mayFor(which),
     because,
     conflict,
     rowFor,

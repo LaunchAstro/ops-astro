@@ -211,7 +211,14 @@ done
 # whose 114-character Rebase-note footers commitlint refuses. Kept in history
 # because every slice holds batch/1; scripts/commit-message-exemptions.json.
 LONG_FOOTER=$'\n\nRebase-note: tests/db/named-suites.json invariant list resolved as a union with group E\'s two fixture suites (T4a)'
-for sha in eb39c3fc5d97ae4f8ba9f0ad4fd84e495ca080f8 0b096723fe68f3d3e1c6d893e9436da058ad461c; do
+# The same exemption, ORCH48 (1 Oct 2026): nine SL10 commits whose 30 Sep Rebase-note
+# footers (onto main 8eba5e6, 130 to 394 characters) commitlint refuses; b0/SL05 holds them.
+SL10_REBASE_NOTES="17811a926b3ec5fcc168d35cbda2c8349348e3f1 380f0a42073a4f7597bf806e04795f00d5af99fc
+  4773f0f2930c985a8349f2889408d99c7169ffb7 6432eb8e4f5e004260cfad414ed4a33249c3a2a7
+  6e74a5f35dd14484380be5bfb6c945ad20334ef6 bccb753d4550ec05e0dfda720bdba264a40ed779
+  c259b971bc8864f05cf49c3c8c9673001f5440cf d3cca1760395c0039d538ee796249aca60aa2e46
+  e167c9ed4541b4dab7ea5c03fe45dead6752b452"
+for sha in eb39c3fc5d97ae4f8ba9f0ad4fd84e495ca080f8 0b096723fe68f3d3e1c6d893e9436da058ad461c $SL10_REBASE_NOTES; do
   if git -C "$REPO_ROOT" cat-file -e "$sha^{commit}" 2>/dev/null; then
     status="$( cd "$REPO_ROOT" && BASE_SHA="$sha^" HEAD_SHA="$sha" node "$CHECKER" >/dev/null 2>&1; echo $? )"
     [ "$status" = "0" ] && pass "the exempt commit ${sha:0:7} passes (exit 0)" \
