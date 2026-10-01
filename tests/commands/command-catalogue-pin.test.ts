@@ -254,6 +254,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'inbox.seen',
   'inbox.unattended',
   'live_correction.decide',
+  'live_correction.read',
   'live_correction.request',
   'model.call',
   'notifications.set_channel',
@@ -290,6 +291,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
 ];
 
 const PINNED_AGENT_SURFACE = [
+  'live_correction.read',
   'live_correction.request',
   'model.call',
   'run.child_handback',
@@ -582,13 +584,13 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same fifty-two from an expected revision', () => {
+  it('exempts the same fifty-three from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );
   });
 
-  it('lets an agent reach the same sixteen, two of them before a pickup', () => {
+  it('lets an agent reach the same seventeen, two of them before a pickup', () => {
     expect(agentReach(['delegated', 'before-pickup'])).toStrictEqual(PINNED_AGENT_SURFACE);
     expect(agentReach(['before-pickup'])).toStrictEqual(PINNED_BEFORE_PICKUP);
     expect([...AGENT_SURFACE].toSorted()).toStrictEqual(PINNED_AGENT_SURFACE);

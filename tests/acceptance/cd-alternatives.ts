@@ -84,6 +84,7 @@ export const IDENTIFIER_BEARING: Readonly<
   'budget.write_off': ['attemptId', 'control'],
   'live_correction.request': ['taskId', 'liveCorrection'],
   'live_correction.decide': ['correctionId', 'liveCorrection'],
+  'live_correction.read': ['correctionId', 'liveCorrection'],
   'conversation.message': ['conversationId', 'conversation'],
   'conversation.read': ['conversationId', 'conversation'],
   'conversation.rename': ['conversationId', 'conversation'],

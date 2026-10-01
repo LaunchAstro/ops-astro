@@ -146,10 +146,12 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
 
   beforeAll(async () => {
     w = await createIdentWorld('ident_timing');
-    // MP-6-2's revision asks run:write, which the cast's admin holds on no
-    // run; on the whole business, so a foreign task is judged by the handler.
+    // MP-6-2's revision asks run:write, and C80's decision read run:read, which
+    // the cast's admin holds on no run; on the whole business, so a foreign
+    // task or correction is judged by the handler.
     await w.h.world.db.app.withBusiness(w.h.world.alpha, async (tx) => {
       await grantTo(tx, w.h.world.ada as Member, 'write', undefined, false, 'run');
+      await grantTo(tx, w.h.world.ada as Member, 'read', undefined, false, 'run');
     });
   }, 180_000);
   afterAll(async () => {
@@ -216,7 +218,7 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return { foreign, fabricated };
   }
 
-  /** The 48 cells: the record-targeted operations, then those with their own operand. */
+  /** The 49 cells: the record-targeted operations, then those with their own operand. */
   // eslint-disable-next-line max-lines-per-function -- one table, built in one place
   async function cells(): Promise<readonly Cell[]> {
     const ada: Presenter = { kind: 'person', caller: w.h.world.ada };
@@ -277,18 +279,28 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     });
     // C80: a correction of bravo's, and a request worked under bravo's task.
     const theirs = await seedLiveCorrection(w.h.world.db.app, w.h.world.bravo, f.task.id, f.admin);
-    out.push({
-      op: 'live_correction.decide',
-      operand: 'correctionId',
-      by: ada,
-      code: 'NOT_FOUND',
-      foreign: () => ({ ...theirs, decision: 'approve' }),
-      fabricated: () => ({
-        correctionId: randomUUID(),
-        versionId: randomUUID(),
-        decision: 'approve',
-      }),
-    });
+    out.push(
+      {
+        op: 'live_correction.decide',
+        operand: 'correctionId',
+        by: ada,
+        code: 'NOT_FOUND',
+        foreign: () => ({ ...theirs, decision: 'approve' }),
+        fabricated: () => ({
+          correctionId: randomUUID(),
+          versionId: randomUUID(),
+          decision: 'approve',
+        }),
+      },
+      {
+        op: 'live_correction.read',
+        operand: 'correctionId',
+        by: ada,
+        code: 'NOT_FOUND',
+        foreign: () => ({ correctionId: theirs.correctionId }),
+        fabricated: () => ({ correctionId: randomUUID() }),
+      },
+    );
     const request = { ...C80_REQUEST, partyId: randomUUID() };
     out.push({
       op: 'live_correction.request',
@@ -439,11 +451,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 48 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 49 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(48);
-    expect(names).toHaveLength(48);
+    expect(new Set(names).size, 'distinct operations').toBe(49);
+    expect(names).toHaveLength(49);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

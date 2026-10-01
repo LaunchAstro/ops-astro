@@ -58,6 +58,7 @@ const AGENT_OPERATIONS: readonly CommandName[] = [
   'task.propose',
   'run.revise_state',
   'live_correction.request',
+  'live_correction.read',
   'task.heartbeat',
   'task.dispatch',
   'task.observe',
@@ -119,6 +120,13 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
     const held = await hold.ensureLive();
     const credential = held.credential;
     if (name === 'live_correction.request') return c80AgentBody(operationId, held);
+    if (name === 'live_correction.read') {
+      // A correction the agent asked for on its own task, read back.
+      const asked = c80AgentBody(randomUUID(), held);
+      const made = await harness.asAgent('live_correction.request', asked.body, credential);
+      const correctionId = (made.body['detail'] as Record<string, unknown>)['correctionId'];
+      return { body: { operationId, correctionId }, credential };
+    }
     if (name === 'session.capabilities') return { body: { operationId }, credential };
     if (name === 'task.read') return { body: { operationId, recordId: held.taskId }, credential };
     if (name === 'task.comment') {

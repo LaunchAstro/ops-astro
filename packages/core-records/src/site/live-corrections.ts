@@ -207,6 +207,48 @@ export async function lockCoveredCorrection(
   return row === undefined ? undefined : correctionFrom(row);
 }
 
+/** What a card reads again of one correction: its state, who decided it, its version. */
+export interface CorrectionDecision {
+  readonly correctionId: string;
+  readonly state: CorrectionState;
+  /** The deciding person's display name; null until decided. */
+  readonly approver: string | null;
+  readonly versionId: string;
+}
+
+/**
+ * One correction's decision, when the caller's grant covers it at its party
+ * (and, for an agent, it was asked under the delegation's own task), or
+ * undefined: absent, in another business, on another task or not covered are
+ * one answer. Unlocked: it reads, and decides nothing.
+ */
+export async function readCoveredDecision(
+  tx: TenantQuery,
+  id: string,
+  covering: Covering,
+  taskId: string | null = null,
+): Promise<CorrectionDecision | undefined> {
+  const rows = await tx.query<{
+    readonly id: string;
+    readonly state: CorrectionState;
+    readonly approver: string | null;
+    readonly version_id: string;
+  }>(
+    `${EFFECTIVE}
+     select c.id, c.state, p.display_name as approver, c.version_id
+       from public.live_corrections c
+       left join public.people p
+         on p.business_id = c.business_id and p.id = c.decided_by_person_id
+      where c.business_id = $1 and c.id = $6
+        and ($7::uuid is null or c.task_id = $7) and ${COVERED}`,
+    [tx.businessId, ...coveringParameters(covering), id, taskId],
+  );
+  const [row] = rows;
+  return row === undefined
+    ? undefined
+    : { correctionId: row.id, state: row.state, approver: row.approver, versionId: row.version_id };
+}
+
 /** Every correction the caller may read, newest first; the grant filters inside the query. */
 export async function listCoveredCorrections(
   tx: TenantQuery,
