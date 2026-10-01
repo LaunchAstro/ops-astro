@@ -154,11 +154,11 @@ export async function standingOf(
   }
   if (found.actor_id === null) return refuse('ACTOR_INACTIVE', INACTIVE_FIXES);
 
-  // A session the person has ended (C58: signed out, or ended from another
-  // session or by a factor change) is over from that commit, whatever the
-  // token's own expiry says. Before the factor, so an ended session is told
-  // to sign in again rather than to give a code.
-  if (await sessionEnded(tx, presented)) {
+  // A session the person ended (C58: signed out, ended elsewhere or by a factor
+  // change) is over from that commit, whatever its expiry, before the factor.
+  // A reset link's session serves the reset alone, and the reset only it (C40).
+  const outOfPlace = (presented.recovery === true) !== (rule === 'recovering');
+  if (outOfPlace || (await sessionEnded(tx, presented))) {
     return refuse('AUTH_SESSION_EXPIRED', ENDED_FIXES);
   }
 

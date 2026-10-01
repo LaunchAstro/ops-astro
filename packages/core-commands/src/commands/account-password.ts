@@ -83,16 +83,29 @@ export async function setPasswordByRecovery(
   provider: PasswordProvider,
   reset: PasswordReset,
 ): Promise<PasswordResetResult> {
+  const { presented, accessToken } = reset;
+  const mapped = presented.recovery === true ? await mappedIn(database, businesses, presented) : [];
+  if (mapped.length === 0) return { ok: false, code: 'RESET_LINK_INVALID' };
   const bytes = Buffer.byteLength(reset.password, 'utf8');
   if (bytes < PASSWORD_BYTES.least || bytes > PASSWORD_BYTES.most) {
     return { ok: false, code: 'PASSWORD_INVALID' };
   }
-  void mappedIn;
-  void endOtherSeenSessions;
-  void payloadDigest;
-  void writeAuditEvent;
-  void database;
-  void businesses;
-  void provider;
-  return { ok: true, signedOutAtProvider: false };
+  const set = await provider.setPassword(accessToken, reset.password);
+  if (!set.ok || set.value !== presented.subject) return { ok: false, code: 'RESET_UNAVAILABLE' };
+  for (const { business, personId, actorId } of mapped) {
+    // oxlint-disable-next-line no-await-in-loop -- one business's transaction at a time
+    await database.withBusiness(business, async (tx) => {
+      await endOtherSeenSessions(tx, personId, undefined, 'end_others', presented.subject);
+      await writeAuditEvent(tx, {
+        actorId,
+        command: PASSWORD_CHANGED,
+        outcome: 'applied',
+        refusalCode: null,
+        payloadDigest: payloadDigest({ command: PASSWORD_CHANGED, person: personId }),
+      });
+    });
+  }
+  const others = await provider.signOut(accessToken, 'others');
+  const local = await provider.signOut(accessToken, 'local');
+  return { ok: true, signedOutAtProvider: others.ok && local.ok };
 }
