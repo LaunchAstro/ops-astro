@@ -30,6 +30,7 @@ import type {
 import type { BrowserContext } from 'playwright';
 import type { ReadName } from '../../apps/web/src/operations/read-names.ts';
 import { FLEET_READ, SIGNAL_READ } from './made-up-connections.ts';
+import { GRADUATION, SKILL_COSTS } from './made-up-connections-region.ts';
 
 const STATE = {
   active: { id: 's-active', key: 'active', label: 'Active', machineCategory: 'started' },
@@ -184,6 +185,8 @@ const READS = {
   'inbox.count': { ok: true, owed: 2 } satisfies InboxCountResult,
   'connection.fleet': FLEET_READ,
   'connection.signal': SIGNAL_READ,
+  'finance.skill_costs': SKILL_COSTS,
+  'connection.graduation': GRADUATION,
 } as const satisfies Partial<Record<ReadName, unknown>>;
 
 /** The reads the harness answers; a read missing here draws its "could not be read" state. */

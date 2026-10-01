@@ -108,7 +108,7 @@ export function PromoteForm(props: {
     props.promote({ ceiling: { amountMinor: cents, currency: CURRENCY }, expiresAt });
   };
   return (
-    <div className="fieldrow mt-2" data-promote-form={props.id}>
+    <div className="fieldrow" data-promote-form={props.id}>
       <CeilingAndExpiry what={` for ${props.label}`} marks="promote" {...values} />
       <button
         type="button"
@@ -189,7 +189,7 @@ export function MandateForm(props: {
     labelRef.current?.focus();
   };
   return (
-    <div className="fieldrow psadd mt-3">
+    <div className="fieldrow psadd">
       <input
         ref={labelRef}
         className="connnote__field"

@@ -213,6 +213,25 @@ describe('MP-14-9 Connections & signal: skill costing', () => {
     expect(text(page, `${foot} [data-split-unpriced]`)).toContain('1 run has no known cost yet');
   });
 
+  it('MP-14-9 draws the mockup’s parts: rows in one flush card, figures, model ids and the split’s legs', async () => {
+    const { page } = await open(COSTING);
+    expect(page.all('[data-costing] .skc__lede .skc__count[data-costing-lede]')).toHaveLength(1);
+    expect(page.all('[data-costing] .card.card--flush .skc .skc__row')).toHaveLength(3);
+    expect(text(page, '[data-skill="mean"] .skc__head .skc__what')).toBe('Skill mean');
+    expect(text(page, '[data-skill="mean"] .skc__figv .skc__n')).toBe('AUD 12.00');
+    expect(text(page, '[data-skill="mean"] .skc__figv .skc__u')).toBe('mean');
+    expect(text(page, '[data-skill="mean"] .skc__spread')).toBe('AUD 8.00–AUD 16.00');
+    expect(text(page, '[data-skill="one"] .skc__figv .skc__u')).toBe('one run');
+    expect(page.all('[data-skill="mean"] .skc__model').map((one) => one.textContent)).toEqual(
+      MEAN.models.ids,
+    );
+    expect(text(page, '[data-skill="mean"] .skc__obs .skc__k')).toBe('Observed');
+    expect(text(page, '[data-skill="mean"] .skc__mods .skc__k')).toBe('On');
+    expect(text(page, '[data-skill="mean"] .skc__alt .skc__k')).toBe('Finished runs only');
+    expect(page.all('[data-split="AUD"] .skc__split .skc__leg[data-bucket]')).toHaveLength(3);
+    expect(page.all('[data-split="AUD"] .skc__split .skc__k[data-split-total]')).toHaveLength(1);
+  });
+
   it('MP-14-9 section numbers read top to bottom; skill costing is 009 (R61)', async () => {
     const { page } = await open(COSTING);
     const numbers = page.all('[data-section]').map((one) => data(one)['section']);
