@@ -4,19 +4,23 @@
 // passed, composing the reviewed executable (`core-connectors`) with the
 // records (`core-records`) in three steps:
 //
-// 1. Read the correction under the worker lease. Only an approved correction
-//    publishes; an accepted one is observed again, never dispatched again; an
-//    unknown one waits for reconciliation. Once the state allows the run, a
+// 1. Read the correction under the worker lease, and ask the effect register
+//    (`live-correction-effect.ts`) whether its publish happened. One the
+//    register holds is observed again, never dispatched again, whether the
+//    correction reads approved (its receipt was lost with the lease), accepted
+//    or unknown; an unknown one the register does not hold waits on a person.
+//    Only an approved correction publishes. Once the state allows the run, a
 //    stored page the C18-1 fence refuses stops it before anything is read or
 //    sent (`live-correction-capture.ts`).
 // 2. Rebuild the exact approved bytes from the pinned source (the store keeps
 //    digests, never text), then run the executable, which checks approval,
 //    envelope, cancellation and drift before its one dispatch. The capture
 //    reads the correction's own catalogued page through the fence, never a
-//    provider's address.
+//    provider's address. The provider's acceptance is registered the moment
+//    it answers, under the identity derived from the correction.
 // 3. Write the observed result with its receipt under the same lease. A lease
-//    lost in between writes nothing and raises a task: the effect may have
-//    happened, and the dispatch token keeps a later attempt the same effect.
+//    lost in between writes no receipt and raises a task; the register still
+//    holds the effect, so the next run observes it rather than sending it.
 //
 // No transaction is held open across a provider call. The revert (case 8) is
 // `live-correction-revert.ts`, on the same helpers.
@@ -41,12 +45,17 @@ import {
 } from '../../../core-connectors/src/index.ts';
 import {
   landedObservations,
-  observedIn,
   pinnedObservations,
   seen,
   type Observations,
 } from './live-correction-observations.ts';
 import { captureFenced, pageNotCatalogued } from './live-correction-capture.ts';
+import {
+  acceptedOf,
+  correctionEffectId,
+  readCorrectionEffect,
+  registerCorrectionEffect,
+} from './live-correction-effect.ts';
 
 export interface CorrectionRun {
   readonly business: string;
@@ -154,29 +163,11 @@ async function observe(
       observations: {
         ...pinnedObservations(correction, ports.refusals()),
         ...landedObservations(correction, landed),
+        effect_operation_id: seen(correctionEffectId(correction.id, 'publish')),
       },
     },
     ports,
   );
-}
-
-/** The accepted publish a receipt recorded, rebuilt for observing it again. */
-function acceptedFrom(
-  correction: LiveCorrection,
-  last: Readonly<Record<string, unknown>> | undefined,
-): Accepted | undefined {
-  const revision = observedIn(last, 'published_revision');
-  const deploymentId = observedIn(last, 'deployment_id');
-  const dispatchToken = observedIn(last, 'attempt_and_dispatch_token');
-  if (revision === undefined || deploymentId === undefined || dispatchToken === undefined)
-    return undefined;
-  return {
-    state: 'accepted',
-    revision,
-    deploymentId,
-    liveUrl: correction.pageUrl,
-    dispatchToken,
-  };
 }
 
 /** Step 2's rebuild: the approved change from the pinned source, or the refusal. */
@@ -229,7 +220,16 @@ async function dispatch(
 ): Promise<RunResult> {
   const outcome = await publishCorrection(job, {
     readSource: ports.readSource,
-    publish: ports.publish,
+    publish: async (input) => {
+      const answer = await ports.publish(input);
+      if (answer.kind === 'ok') {
+        const { revision, deploymentId } = answer.value;
+        const registered = { revision, deploymentId, dispatchToken: input.dispatchToken };
+        if (!(await registerCorrectionEffect(db, run, correction, 'publish', registered)))
+          await ports.raiseTask('EFFECT_NOT_REGISTERED');
+      }
+      return answer;
+    },
     cancellation: async () => await cancellation(db, run),
     raiseTask: ports.raiseTask,
   });
@@ -244,6 +244,7 @@ async function dispatch(
   if (outcome.state === 'accepted') return await observe(db, run, correction, outcome, ports);
   const observations: Observations = {
     ...pinnedObservations(correction, ports.refusals()),
+    effect_operation_id: seen(correctionEffectId(correction.id, 'publish')),
     ...(outcome.state === 'failed'
       ? { refusals_raised: seen(`${outcome.code} ${outcome.proof}`) }
       : {
@@ -256,26 +257,35 @@ async function dispatch(
   return await record(db, run, { step: 'publish', outcome: outcome.state, observations }, ports);
 }
 
-/** Publish an approved correction, or observe an accepted one again. */
+/** The states a publish the register holds is observed again from, never sent again. */
+const OBSERVED_AGAIN: ReadonlySet<LiveCorrection['state']> = new Set([
+  'approved',
+  'accepted',
+  'unknown',
+]);
+
+/** Publish an approved correction, or observe again one the register holds. */
 export async function runLivePublish(
   db: Database,
   run: CorrectionRun,
   ports: RunnerPorts,
 ): Promise<RunResult> {
-  const held = await db.withBusiness(
-    run.business,
-    async (tx) => await readCorrectionForRun(tx, run),
-  );
+  const held = await db.withBusiness(run.business, async (tx) => {
+    const read = await readCorrectionForRun(tx, run);
+    if (!read.ok) return read;
+    return { ...read, effect: await readCorrectionEffect(tx, read.correction, 'publish') };
+  });
   if (!held.ok) return refused(held.code);
-  const { correction } = held;
-  if (correction.state === 'unknown') return refused('OUTCOME_UNKNOWN');
-  if (correction.state === 'accepted') {
-    const accepted = acceptedFrom(correction, held.lastPublish);
+  const { correction, effect } = held;
+  if (OBSERVED_AGAIN.has(correction.state) && effect !== undefined) {
+    const accepted = acceptedOf(correction, effect);
     if (accepted === undefined) return refused('OUTCOME_UNKNOWN');
     const unfenced = await pageRefused(correction, ports);
     if (unfenced !== undefined) return unfenced;
     return await observe(db, run, correction, accepted, ports);
   }
+  if (correction.state === 'unknown' || correction.state === 'accepted')
+    return refused('OUTCOME_UNKNOWN');
   const job = await rebuild(correction, ports);
   if (!isJob(job)) return job;
   return await dispatch(db, run, correction, job, ports);
