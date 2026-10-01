@@ -39,10 +39,10 @@ const MUTED_DARK = { at: 'color@dark', want: 'rgba(248,248,248,140)', why: 'DR-1
 
 const BOARD_PROBES: readonly LookProbe[] = [
   // DS-COMP-2: the tab row and its tabs.
+  // The row's 32px inset and tab gap live on its inner scroller in the app (the
+  // arrows and edge fade need them there); frame.tab-start holds where tabs start.
   probe('board.tabrow', { path: '/agency/brief/', selector: 'nav.tabbar' }, 'nav.tabbar', [
     'box.height',
-    'padding-left',
-    'column-gap',
     'background-color',
     'border-bottom-color',
     'border-bottom-width',

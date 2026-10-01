@@ -172,10 +172,11 @@ export const SHELL: LookScreen = {
     },
     {
       // DS-COMP-2: the tab row sits between the app strip and the page header.
+      // Its inset is on the app's inner scroller; shell.tabrow-first holds it.
       id: 'shell.tabrow',
       mockup: { ...TABBED, selector: 'nav.tabbar' },
       app: { ...APP, selector: 'nav.tabbar' },
-      props: ['padding-left', 'box.x', 'box.y', 'box.width', 'box.height'],
+      props: ['box.x', 'box.y', 'box.width', 'box.height'],
       widths: ALL,
     },
     {
