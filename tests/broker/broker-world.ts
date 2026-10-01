@@ -149,6 +149,24 @@ export const gated = (
   };
 };
 
+/**
+ * The world's broker, with custody moving `work`'s lease fence on before it dispatches, so
+ * the lease leaves the caller while custody has the request. Moved whole from
+ * aw-01-broker-limits.test.ts to keep that file under the line limit.
+ */
+export const fenceMoving = (work: Work): Broker => ({
+  ...broker,
+  custody: {
+    ...world.custody,
+    dispatch: async (credentialRef, request) => {
+      await s.db.admin.execute(`update public.leases set fence = fence + 1 where id = $1`, [
+        work.picked['leaseId'],
+      ]);
+      return await world.custody.dispatch(credentialRef, request);
+    },
+  },
+});
+
 export const rowsOf = async (callId: string | null): Promise<readonly Record<string, unknown>[]> =>
   callId === null
     ? []

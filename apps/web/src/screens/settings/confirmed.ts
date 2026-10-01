@@ -19,6 +19,30 @@ import {
   type StorageLike,
 } from '../../session/token.ts';
 
+// `Which`, `Draft` and `remember` moved here whole from use-settings.ts to keep that file
+// under the line limit; use-settings.ts re-exports the two types.
+
+/** Which setting a press is about: the two money and sign-off rows, and MP-2-11's two windows. */
+export type Which = 'four-eyes' | 'sign-off' | 'conversation' | 'retention';
+
+/** What a person can propose. `null` is the band off, and it is a real value. */
+export type Draft = number | boolean | null;
+
+const isThreshold = (value: unknown): value is number | null =>
+  value === null || typeof value === 'number';
+
+/** The server's echo when it gave one of the right kind, else what was sent. */
+export function remember(which: Which, echo: unknown, value: Draft): Confirmed {
+  if (which === 'four-eyes') {
+    const fourEyes = isThreshold(echo) ? echo : isThreshold(value) ? value : undefined;
+    return fourEyes === undefined ? {} : { fourEyes };
+  }
+  // The windows keep no browser memory: only the server's read is drawn for them.
+  if (which !== 'sign-off') return {};
+  const signOff = typeof echo === 'boolean' ? echo : typeof value === 'boolean' ? value : undefined;
+  return signOff === undefined ? {} : { signOff };
+}
+
 /** What the last confirmed write left behind, per business. */
 export interface Confirmed {
   readonly fourEyes?: number | null;
