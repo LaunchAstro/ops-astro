@@ -37,6 +37,13 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // column, which stays refused; s0-5-gate-commands proves the column.
   ['s', 'ops.installation'],
   ['si', 'ops.gate_items'],
+  // 0065 (C58): an ended provider session, installation-wide; the application
+  // inserts and reads its id column alone, and changes or removes nothing.
+  ['si', 'ops.ended_provider_sessions'],
+  // 0069 (C58): other sessions ended in every business, by subject digest.
+  ['si', 'ops.ended_subject_sessions'],
+  // 0083 (C59): a second factor verified or removed, by subject digest, for every business.
+  ['si', 'ops.second_factor_subjects'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],
   ['si', 'alerts handback_reports operations run_events'],
   // 0042: an attempt and a seen stamp are observations, never rewritten (INB-1a).

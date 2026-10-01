@@ -38,6 +38,7 @@ import { createAgentQuota, DEFAULT_AGENT_LIMITS, type AgentLimits } from './auth
 import {
   NO_MEMBERSHIP_FIXES,
   NO_AGENT_FIXES,
+  endProviderSession,
   EXPIRED_FIXES,
   NO_ASSURANCE,
   PUBLIC_LEGAL_DOCUMENTS,
@@ -97,6 +98,7 @@ import { followBoard } from './live-board.ts';
 import { signalOf, type Outcome, type SecuritySignal } from './alerts/detect.ts';
 import {
   bearerOf,
+  cookieMaxAge,
   cookieNameFor,
   CROSS_SITE_FIXES,
   crossSiteSession,
@@ -187,6 +189,12 @@ export interface ApiOptions {
    * commits. Absent, they stay owed for the server's retry.
    */
   readonly logins?: LoginProvider;
+  /**
+   * Whether an ended login's subject is still live in another business, on the
+   * owner's connection (`loginLiveElsewhere`, ORCH46 ruling A). Without it the
+   * act's provider steps are left to the retry.
+   */
+  readonly sharedLogin?: (subject: string, businessId: string) => Promise<boolean>;
   readonly live?: LiveOptions;
   /**
    * The security detections (ticket S0-2): each answer's outcome, as a signal
@@ -349,11 +357,12 @@ export function createApi(options: ApiOptions): Hono {
     if (token === undefined || presented === undefined) {
       return refuse(context, refuseCommand('AUTH_UNKNOWN_LOGIN', [], [SIGN_IN]));
     }
-    // No `Max-Age`: the cookie ends with the browser session and the token's
-    // own `exp` ends it sooner. Its lifetime under the 12-hour limit is C58's.
-    // Each sign-in its own cookie; the tab names it in `SESSION_HEADER`.
+    // The cookie lives what is left of the 12-hour limit (C58); the verifier
+    // has refused a token past it. Each sign-in its own cookie, named by the tab.
     const session = sessionIdOf(token);
-    setCookie(context, cookieNameFor(session), token, SESSION_COOKIE_OPTIONS);
+    const signedInAt = presented.assurance?.signedInAt ?? null;
+    const maxAge = cookieMaxAge(signedInAt, Math.floor(Date.now() / 1000));
+    setCookie(context, cookieNameFor(session), token, { ...SESSION_COOKIE_OPTIONS, maxAge });
     return context.json({ ok: true, session }, 200);
   });
   api.post(`${SESSION_PATH}/end`, (context) => {
@@ -431,10 +440,12 @@ export function createApi(options: ApiOptions): Hono {
     if (isCommandRefusal(result)) return refuse(context, result);
     // C58: the provider steps an ending owes are tried as soon as it commits,
     // outside its transaction; what fails stays owed for the server's retry.
-    if (name === 'access.end' && options.logins !== undefined) {
+    const { logins, sharedLogin } = options;
+    if (name === 'access.end' && logins !== undefined && sharedLogin !== undefined) {
       const only = endingIdsOf(result);
+      const sharedElsewhere = async (subject: string) => await sharedLogin(subject, businessId);
       if (only.length > 0) {
-        await settleAccessEndings(options.database, businessId, options.logins, { only });
+        await settleAccessEndings(options.database, businessId, logins, { only, sharedElsewhere });
       }
     }
     return context.json({ ...result }, 200);
@@ -673,6 +684,29 @@ function mountPublicLegal(api: Hono, options: ApiOptions): void {
  * person route. The bearer goes to the provider as the person's own; the body
  * is the code, or nothing.
  */
+/**
+ * C58: a sign-out this business refused (it no longer admits the person, say)
+ * still ends the verified token's own session in every business, then at the
+ * provider. The door has checked the token and the cross-site rule; a token
+ * naming no session ends nothing, and the refusal is still answered.
+ */
+async function signOutRefused(
+  options: ApiOptions,
+  caller: {
+    readonly businessId: string;
+    readonly presented: VerifiedSubject;
+    readonly accessToken: string;
+  },
+  factors: FactorProvider,
+): Promise<void> {
+  const { sessionId } = caller.presented;
+  if (sessionId === undefined) return;
+  await options.database.withBusiness(caller.businessId, async (tx) => {
+    await endProviderSession(tx, sessionId);
+  });
+  await factors.signOut(caller.accessToken, 'local');
+}
+
 function mountFactorRoutes(api: Hono, options: ApiOptions, factors: FactorProvider): void {
   const routes = new Hono();
   type Caller = Parameters<typeof enrolSecondFactor>[0];
@@ -704,7 +738,12 @@ function mountFactorRoutes(api: Hono, options: ApiOptions, factors: FactorProvid
         accessToken,
       };
       const result = await act(caller, admitted.body);
-      if (isCommandRefusal(result)) return refuse(context, result);
+      if (isCommandRefusal(result)) {
+        if (name === 'sessions/sign-out' && result.code !== 'COMMAND_BODY_INVALID') {
+          await signOutRefused(options, caller, factors);
+        }
+        return refuse(context, result);
+      }
       return context.json(result, 200);
     });
   }

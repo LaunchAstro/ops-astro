@@ -64,6 +64,8 @@ export interface AgentCredential {
   readonly issuedByPersonId: string;
   readonly keyId: string;
   readonly credentialHash: string;
+  /** The ticked keys as `collection:action`. */
+  readonly scope: readonly string[];
   readonly expiresAt: Date;
   readonly revokedAt: Date | null;
 }
@@ -143,10 +145,11 @@ export async function lockAgentCredential(
     readonly issued_by_person_id: string;
     readonly credential_key_id: string;
     readonly credential_hash: string;
+    readonly scope: readonly string[];
     readonly expires_at: Date;
     readonly revoked_at: Date | null;
   }>(
-    `select id, agent_actor_id, issued_by_person_id, credential_key_id, credential_hash,
+    `select id, agent_actor_id, issued_by_person_id, credential_key_id, credential_hash, scope,
             expires_at, revoked_at
        from public.agent_credentials
       where business_id = $1 and id = $2
@@ -161,6 +164,7 @@ export async function lockAgentCredential(
     issuedByPersonId: row.issued_by_person_id,
     keyId: row.credential_key_id,
     credentialHash: row.credential_hash,
+    scope: row.scope,
     expiresAt: row.expires_at,
     revokedAt: row.revoked_at,
   };

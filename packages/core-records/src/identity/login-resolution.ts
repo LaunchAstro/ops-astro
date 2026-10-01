@@ -35,6 +35,7 @@ type Refusal = CommandRefusal<IdentityRefusalCode>;
 const refuse = (code: IdentityRefusalCode, fixes: readonly string[]): Refusal =>
   refuseCommand(code, [], fixes);
 import { recordAuthenticationAttempt } from './authentication-attempts.ts';
+import { loginHasVerifiedFactor } from './second-factor.ts';
 import { NO_ASSURANCE, type Assurance, type VerifiedSubject } from './verified-subject.ts';
 
 export type { VerifiedSubject } from './verified-subject.ts';
@@ -82,6 +83,8 @@ interface ResolutionRow {
   readonly actor_id: string | null;
   /** 'true' once the person has a verified second factor; null before 0049. */
   readonly second_factor_verified: string | null;
+  /** Whether the login's factors are kept by subject (0083), so every business reads them. */
+  readonly by_subject: boolean;
 }
 
 export const NO_MEMBERSHIP_FIXES = [
@@ -110,7 +113,8 @@ const RESOLUTION = `
          a.id as actor_id,
          -- Read through the row's json so this one query serves a database
          -- from before 0049, which has no such column and so no factor.
-         to_jsonb(p) ->> 'second_factor_verified' as second_factor_verified
+         to_jsonb(p) ->> 'second_factor_verified' as second_factor_verified,
+         to_regclass('ops.second_factor_subjects') is not null as by_subject
     from public.logins l
     left join public.person_logins pl
       on pl.business_id = l.business_id and pl.login_id = l.id and pl.active
@@ -156,15 +160,16 @@ export async function resolveLogin(
   // session or by a factor change) is over from that commit, whatever the
   // token's own expiry says. Before the factor, so an ended session is told
   // to sign in again rather than to give a code.
-  if (presented.sessionId !== undefined && (await sessionEnded(tx, found.person_id, presented))) {
+  if (await sessionEnded(tx, presented)) {
     return await recordRefusal(tx, presented, refuse('AUTH_SESSION_EXPIRED', ENDED_FIXES));
   }
 
-  // After the person is known and active, because only a person has a factor,
-  // and before anything is served: a sign-in that stopped at the password is
-  // not yet a sign-in for someone who enrolled a second factor (C59, LF-4).
+  // After the person is known and active, and before anything is served: a
+  // sign-in that stopped at the password is not yet a sign-in for a login
+  // that verified a second factor, in any business (C59, LF-4).
   const assurance = presented.assurance ?? NO_ASSURANCE;
-  if (rule === 'required' && stoppedAtPassword(assurance, found)) {
+  const short = assurance.level !== 'aal2';
+  if (rule === 'required' && short && (await factorHeld(tx, presented.subject, found))) {
     return await recordRefusal(
       tx,
       presented,
@@ -184,9 +189,10 @@ export async function resolveLogin(
   return session;
 }
 
-/** A sign-in short of `aal2` for a person whose second factor is verified (C59, LF-4). */
-function stoppedAtPassword(assurance: Assurance, found: ResolutionRow): boolean {
-  return assurance.level !== 'aal2' && found.second_factor_verified === 'true';
+/** A factor verified through this business (the mirror) or, from 0083, any (C59, LF-4). */
+async function factorHeld(tx: TenantQuery, subject: string, found: ResolutionRow) {
+  if (found.second_factor_verified === 'true') return true;
+  return found.by_subject && (await loginHasVerifiedFactor(tx, subject));
 }
 
 /**
@@ -240,18 +246,24 @@ export async function standsOnShares(tx: TenantQuery, personId: string): Promise
   return row !== undefined && row.shares > 0 && row.business === 0;
 }
 
-/** Whether this person ended the session the token belongs to (C58, 0057). */
-async function sessionEnded(
-  tx: TenantQuery,
-  personId: string,
-  presented: VerifiedSubject,
-): Promise<boolean> {
+/**
+ * Whether the session the token belongs to has ended (C58): signed out, in any
+ * business the login reaches (0065), or one of the login's other sessions
+ * ended from any business (0069): not the kept one, first signed in at or
+ * before that ending. A token naming no session has none to end.
+ */
+async function sessionEnded(tx: TenantQuery, presented: VerifiedSubject): Promise<boolean> {
+  if (presented.sessionId === undefined) return false;
   const rows = await tx.query<{ readonly ended: boolean }>(
     `select exists (
-       select 1 from public.ended_sessions
-        where business_id = $1 and person_id = $2 and session_id = $3
+       select 1 from ops.ended_provider_sessions where session_id = $1::uuid
+     ) or exists (
+       select 1 from ops.ended_subject_sessions s
+        where s.subject_digest = encode(sha256(convert_to($2, 'UTF8')), 'hex')
+          and s.kept_session is distinct from $1::uuid
+          and to_timestamp($3::bigint) <= s.ended_before
      ) as ended`,
-    [tx.businessId, personId, presented.sessionId],
+    [presented.sessionId, presented.subject, presented.assurance?.signedInAt ?? null],
   );
   return rows[0]?.ended === true;
 }

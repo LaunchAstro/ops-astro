@@ -40,11 +40,11 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
-import { sign } from 'hono/jwt';
 import {
   connect,
   connectAsAdmin,
   connectListener,
+  loginLiveElsewhere,
   isBusinessId,
   KEY_FILE_VARIABLE,
   readEnvFile,
@@ -57,9 +57,7 @@ import {
   executeCredentialCommand,
   executeCommand,
   executeRead as readExecutor,
-  settleAccessEndings,
   type LoginProvider,
-  type ProviderAnswer,
 } from '../../packages/core-commands/src/index.ts';
 import {
   CRASH_POINT_VARIABLE,
@@ -70,7 +68,7 @@ import {
 import type { RuntimeKeys } from '../../packages/core-runtime/src/index.ts';
 import { createGoTrueFactors } from './auth/factors.ts';
 import { createLangfuseHealth } from './health/tracing.ts';
-import { createGoTrueLogins } from './auth/logins.ts';
+import { goTrueLogins, providerAdminKey } from './auth/provider-logins.ts';
 import {
   createSupabaseVerifier,
   keySetUrlFor,
@@ -179,11 +177,11 @@ export interface ApiConfig {
   /** The signing key and delegation keyring `main` read, never put in `process.env`. */
   readonly keys: RuntimeKeys;
   /**
-   * The secret the provider's administrative bearers are minted with,
-   * `SUPABASE_JWT_SECRET`, for C58's calls on an ended login only; sign-in
-   * never reads it. Absent, those calls are not sent and stay owed.
+   * The provider admin API's key (`providerAdminKey`), for C58's calls on an
+   * ended login only; sign-in never reads it. Absent, those calls are not sent
+   * and stay owed.
    */
-  readonly providerSecret?: string;
+  readonly providerAdminKey?: () => Promise<string>;
   /** Langfuse's URL, `LANGFUSE_HOST` (C34); absent is tracing switched off. */
   readonly tracingUrl?: string;
   /**
@@ -221,7 +219,7 @@ export interface ComposedApi {
 export function composeApi(config: ApiConfig): ComposedApi {
   const { database, admin } = config;
   const executeRead = config.executeRead ?? readExecutor;
-  const logins = goTrueLogins(config.providerSecret, config.signIn.issuer);
+  const logins = goTrueLogins(config.providerAdminKey, config.signIn.issuer);
   const resolveBusiness = createBusinessResolver(admin);
   const server = new Hono();
   // S0-6 no edge caching: the API is served behind Vercel's edge network, so
@@ -305,6 +303,15 @@ export function composeApi(config: ApiConfig): ComposedApi {
       // The provider GoTrue is: the one destination its factor calls reach.
       factors: createGoTrueFactors({ baseUrl: config.signIn.issuer }),
       logins,
+      // Only where a provider key is held (the local server): the Vercel
+      // function has none, so it asks the owner nothing and leaves every
+      // provider step to the endings loop (ORCH47).
+      ...(config.providerAdminKey === undefined
+        ? {}
+        : {
+            sharedLogin: async (subject: string, businessId: string) =>
+              await loginLiveElsewhere(admin, subject, businessId),
+          }),
       // C34: tracing where switched on; the watcher and error sink are C29's.
       health:
         config.tracingUrl === undefined
@@ -332,71 +339,6 @@ export function composeApi(config: ApiConfig): ComposedApi {
   return { app: server, logins, resolveBusiness };
 }
 
-/** How often the server retries the provider steps an access ending owes (C58). */
-export const ACCESS_ENDING_RETRY_SECONDS = 60;
-
-/** A provider call not sent: the step stays owed. */
-const notSent = async (): Promise<ProviderAnswer<void>> =>
-  await Promise.resolve({ ok: false, fault: 'unreachable' });
-
-/**
- * GoTrue's calls for an ended login, with the two bearers they need minted
- * here from `SUPABASE_JWT_SECRET`: an
- * administrative one for the deactivation, and one naming the login's own
- * subject for its global sign-out. Each lives a minute and is never stored.
- */
-function goTrueLogins(secret: string | undefined, issuer: string): LoginProvider {
-  // Sign-in no longer holds the secret (S0-6b): without one named, nothing is
-  // sent, and each ending's provider steps stay owed for the retry.
-  if (secret === undefined || secret === '') return { endSessions: notSent, deactivate: notSent };
-  const mint = async (claims: Readonly<Record<string, unknown>>): Promise<string> => {
-    const now = Math.floor(Date.now() / 1000);
-    return await sign(
-      { ...claims, aud: 'authenticated', iss: issuer, iat: now, exp: now + 60 },
-      secret,
-      'HS256',
-    );
-  };
-  return createGoTrueLogins({
-    baseUrl: issuer,
-    adminToken: async () => await mint({ role: 'service_role' }),
-    subjectToken: async (subject) => await mint({ sub: subject, role: 'authenticated' }),
-  });
-}
-
-/**
- * One retry pass (C58): every business with an access ending that still owes
- * the provider a step, each settled under its own tenancy. The owner's
- * connection reads business ids and nothing else; the endings themselves are
- * read and stamped on the application connection, inside the business.
- * Answers how many endings still owe a step.
- */
-export async function retryAccessEndings(
-  admin: AdminConnection,
-  database: Database,
-  logins: LoginProvider,
-  /** A test's shorter claim; the settle's own otherwise. */
-  claimSeconds?: number,
-): Promise<number> {
-  const rows = await admin.execute<{ readonly business_id: string }>(
-    `select distinct business_id from public.access_endings
-      where sessions_ended_at is null or login_deactivated_at is null`,
-  );
-  let owed = 0;
-  for (const row of rows) {
-    if (!isBusinessId(row.business_id)) continue;
-    const settle = settleAccessEndings(
-      database,
-      row.business_id,
-      logins,
-      claimSeconds === undefined ? {} : { claimSeconds },
-    );
-    // eslint-disable-next-line no-await-in-loop -- one business at a time, each under its own tenancy
-    owed += (await settle).owed;
-  }
-  return owed;
-}
-
 async function main(): Promise<void> {
   // T2c1: the crash seam is test-only, so an armed one outside test mode stops the start.
   const seam = crashSeamProblem(process.env);
@@ -415,7 +357,7 @@ async function main(): Promise<void> {
   const adminUrl = environment['DATABASE_ADMIN_URL'];
   const issuer = environment['GOTRUE_URL'];
   const tracingUrl = environment['LANGFUSE_HOST'];
-  const providerSecret = environment['SUPABASE_JWT_SECRET'];
+  const adminKey = providerAdminKey(environment, join(ROOT, '.local'));
 
   // A test's stand-in set, for a loopback issuer only: a hosted issuer's
   // tokens are checked against that provider's own published set, always.
@@ -457,14 +399,14 @@ async function main(): Promise<void> {
   // Wiring only: nothing here runs a statement or binds a port, so building it
   // before recovery changes nothing recovery sees, and recovery resolves its
   // keys through the same resolver the requests will.
-  const { app, logins, resolveBusiness } = composeApi({
+  const { app, resolveBusiness } = composeApi({
     identity: readIdentity(ROOT),
     database,
     admin,
     signIn: { issuer: issuer as string, keySetUrl },
     keys,
     live: { topics },
-    ...(providerSecret === undefined || providerSecret === '' ? {} : { providerSecret }),
+    ...(adminKey === undefined ? {} : { providerAdminKey: adminKey }),
     ...(tracingUrl === undefined || tracingUrl === '' ? {} : { tracingUrl }),
     ...(alerts === undefined ? {} : { alerts }),
   });
@@ -505,18 +447,10 @@ async function main(): Promise<void> {
       }),
   );
 
-  // C58: the provider steps an access ending still owes, retried until each
-  // is done. A failed pass is logged by its kind and tried again next time.
-  const retry = setInterval(() => {
-    retryAccessEndings(admin, database, logins).catch((cause: unknown) => {
-      console.error(`api: access ending retry failed (${faultCode(cause)}); next pass retries`);
-    });
-  }, ACCESS_ENDING_RETRY_SECONDS * 1000);
-  retry.unref();
+  // C58: what the act could not settle, the endings loop retries (`apps/endings`).
 
   const stop = (): void => {
     sweeper.stop();
-    clearInterval(retry);
     // The live streams first: a question one has in flight ends before its pool does.
     void Promise.allSettled([topics.close()])
       .then(async () => await Promise.allSettled([database.close(), admin.close()]))

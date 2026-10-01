@@ -37,7 +37,8 @@ by kind. A copy not on the list is a copy the reply missed.
 
 - **Records:** the database rows that name the person (people, identifiers,
   memberships, records and their fields, incidents). Found with
-  `node scripts/privacy/find-copies.mjs`.
+  `node scripts/privacy/find-copies.mjs --business <key> --text <name>`, which
+  searches the request's business only and refuses to run without one.
 - **Search indexes:** the records' search column (`records.search_tsv`),
   rebuilt from the record's text, so it follows the record. The finder reads it
   with the rest of the row.
@@ -57,7 +58,8 @@ by kind. A copy not on the list is a copy the reply missed.
 ### Access
 
 1. Find every copy (above).
-2. Export the person's rows: `node scripts/privacy/find-copies.mjs --export`.
+2. Export the person's rows:
+   `node scripts/privacy/find-copies.mjs --business <key> --text <name> --export`.
 3. The owner reviews the export, removes what belongs to other people, and
    replies with it.
 

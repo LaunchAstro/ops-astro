@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // A person's own sessions (C58, 0057): the ones this business has served them
-// lately, and the ones they have ended.
+// lately, less the ones ended anywhere (0065).
 //
 // The sign-in provider gives a person no list of their sessions, so the list
 // is what the door has seen: the distinct `session_id`s of the person's
@@ -21,6 +21,15 @@ export interface SeenSession {
   readonly current: boolean;
 }
 
+/**
+ * Ends provider sessions installation-wide (0065): login resolution refuses a
+ * token whose session is named there, in every business. Asking again changes
+ * nothing.
+ */
+const END_PROVIDER_SESSIONS = `insert into ops.ended_provider_sessions (session_id)
+  select ids.id from unnest($1::uuid[]) as ids (id)
+  on conflict (session_id) do nothing`;
+
 /** The most sessions one list names; a person has a handful, never hundreds. */
 const LISTED = 50;
 
@@ -36,10 +45,7 @@ const SEEN = `
      and a.session_id is not null
      and a.at > now() - make_interval(secs => $3)
      and not exists (
-       select 1 from public.ended_sessions e
-        where e.business_id = a.business_id
-          and e.person_id = a.person_id
-          and e.session_id = a.session_id)
+       select 1 from ops.ended_provider_sessions e where e.session_id = a.session_id)
    group by a.session_id
    order by max(a.at) desc, a.session_id
    limit $4`;
@@ -73,7 +79,14 @@ export async function endOtherSeenSessions(
   personId: string,
   keep: string | undefined,
   reason: Exclude<SessionEndReason, 'sign_out'>,
+  /** The login's provider subject: the ending holds in every business (0069). */
+  subject: string,
 ): Promise<number> {
+  await tx.query(
+    `insert into ops.ended_subject_sessions (subject_digest, kept_session)
+     values (encode(sha256(convert_to($1, 'UTF8')), 'hex'), $2::uuid)`,
+    [subject, keep ?? null],
+  );
   const seen = await tx.query<{ readonly session_id: string }>(
     `select distinct a.session_id::text as session_id
        from public.authentication_attempts a
@@ -84,6 +97,14 @@ export async function endOtherSeenSessions(
   );
   const others = seen.map((row) => row.session_id).filter((id) => id !== keep);
   return await endSessions(tx, personId, others, reason);
+}
+
+/**
+ * End one provider session in every business (0065), with no person: a
+ * sign-out the business no longer admits still ends its verified session.
+ */
+export async function endProviderSession(tx: TenantQuery, sessionId: string): Promise<void> {
+  await tx.query(END_PROVIDER_SESSIONS, [[sessionId]]);
 }
 
 /** End the one session the person is signing out of. */
@@ -109,5 +130,7 @@ async function endSessions(
      returning 1`,
     [tx.businessId, personId, sessionIds, reason],
   );
+  // Ended in every business the login reaches, not only this one (0065).
+  await tx.query(END_PROVIDER_SESSIONS, [sessionIds]);
   return rows.length;
 }

@@ -116,6 +116,7 @@ export {
 } from './identity/second-factor.ts';
 export {
   endOtherSeenSessions,
+  endProviderSession,
   endOwnSession,
   listSeenSessions,
   type SeenSession,
@@ -267,3 +268,4 @@ export {
 } from './tenancy/database.ts';
 export { isUuid } from './tenancy/ids.ts';
 export { connectOutbox, type ApiEvent, type Outbox } from './tenancy/outbox.ts';
+export { loginLiveElsewhere } from './identity/shared-login.ts';

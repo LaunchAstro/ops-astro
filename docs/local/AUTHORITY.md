@@ -212,31 +212,31 @@ of them, with the HTTP status in the register's own column (`statusOf`,
 `core-records/src/register.ts`). The last column says whether a caller can meet the
 code on this head, and where that is shown.
 
-| Code                                                                         | Status | Reachable on this head                                                                                                 |
-| ---------------------------------------------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------- |
-| `AUTH_NO_AGENT_IDENTITY`                                                     | 401    | yes                                                                                                                    |
-| `AUTH_SESSION_EXPIRED`                                                       | 401    | yes, on both prefixes; this is the re-login path                                                                       |
-| `AUTH_SECOND_FACTOR_REQUIRED`                                                | 401    | yes, on the person prefix, for a person with a verified second factor signed in below `aal2` (C59)                     |
-| `STEP_UP_REQUIRED`                                                           | 403    | not yet: no command on this head holds a money key; wave 0's `budget.*` commands will (C59)                            |
-| `FRESH_SIGN_IN_REQUIRED`                                                     | 403    | yes, on `/account/factor/enrol` (C59)                                                                                  |
-| `FACTOR_ALREADY_ENROLLED`                                                    | 409    | yes, on `/account/factor/enrol` (C59)                                                                                  |
-| `FACTOR_NOT_ENROLLED`                                                        | 409    | yes, on `/account/factor/verify` and `/remove` (C59)                                                                   |
-| `SECOND_FACTOR_INVALID`                                                      | 422    | yes, on `/account/factor/verify` and `/remove` (C59)                                                                   |
-| `SECOND_FACTOR_LOCKED`                                                       | 429    | yes, after five wrong codes in fifteen minutes (C59)                                                                   |
-| `AGENT_QUOTA_EXCEEDED`                                                       | 429    | yes, an agent credential past a limit a minute or at once (API-2)                                                      |
-| `PROVIDER_ANSWER_INVALID`                                                    | 502    | yes, on the three factor routes (C59)                                                                                  |
-| `DELEGATION_EXCLUDES_DECISION`                                               | 403    | yes                                                                                                                    |
-| `DELEGATION_EXCLUDES_OPERATION`                                              | 403    | yes; see below                                                                                                         |
-| `DELEGATION_OUT_OF_PURPOSE`                                                  | 403    | yes                                                                                                                    |
-| ↳ _also_ when `request.scope` is not exactly the delegation's `purposeScope` | 403    | yes                                                                                                                    |
-| `DELEGATION_NARROWED`                                                        | 403    | yes: `grant.revoke` on the delegating person's grant, or that grant's expiry, between pickup and the agent's next call |
-| `DELEGATION_NOT_LIVE`                                                        | 401    | yes                                                                                                                    |
-| `DELEGATION_WIDENS`                                                          | 403    | yes: `grant.revoke` on the approving person's grant, or that grant's expiry, between approval and the agent's pickup   |
-| `DELEGATION_ALREADY_LIVE`                                                    | 409    | yes, at mint time; see below                                                                                           |
-| `PRESET_FIELD_UNCLASSIFIED`                                                  | 422    | yes, with the field keys                                                                                               |
-| `PRESET_TYPE_UNKNOWN`                                                        | 404    | yes                                                                                                                    |
-| `PRESET_FIELD_UNPLACEABLE`                                                   | 409    | yes                                                                                                                    |
-| `PRESET_FIELD_DUPLICATE`                                                     | 422    | yes                                                                                                                    |
+| Code                                                                         | Status | Reachable on this head                                                                                                                              |
+| ---------------------------------------------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AUTH_NO_AGENT_IDENTITY`                                                     | 401    | yes                                                                                                                                                 |
+| `AUTH_SESSION_EXPIRED`                                                       | 401    | yes, on both prefixes; this is the re-login path                                                                                                    |
+| `AUTH_SECOND_FACTOR_REQUIRED`                                                | 401    | yes, on the person prefix, for a login with a verified second factor, in any business, below `aal2` (C59)                                           |
+| `STEP_UP_REQUIRED`                                                           | 403    | yes, on `budget.top_up`, `budget.record_outcome` and `budget.write_off` (billing:decide) past 60 minutes; an absent setting reads as on (C59, S0-5) |
+| `FRESH_SIGN_IN_REQUIRED`                                                     | 403    | yes, on `/account/factor/enrol` (C59)                                                                                                               |
+| `FACTOR_ALREADY_ENROLLED`                                                    | 409    | yes, on `/account/factor/enrol` (C59)                                                                                                               |
+| `FACTOR_NOT_ENROLLED`                                                        | 409    | yes, on `/account/factor/verify` and `/remove` (C59)                                                                                                |
+| `SECOND_FACTOR_INVALID`                                                      | 422    | yes, on `/account/factor/verify` and `/remove` (C59)                                                                                                |
+| `SECOND_FACTOR_LOCKED`                                                       | 429    | yes, after five wrong codes in fifteen minutes (C59)                                                                                                |
+| `AGENT_QUOTA_EXCEEDED`                                                       | 429    | yes, an agent credential past a limit a minute or at once (API-2)                                                                                   |
+| `PROVIDER_ANSWER_INVALID`                                                    | 502    | yes, on the three factor routes (C59)                                                                                                               |
+| `DELEGATION_EXCLUDES_DECISION`                                               | 403    | yes                                                                                                                                                 |
+| `DELEGATION_EXCLUDES_OPERATION`                                              | 403    | yes; see below                                                                                                                                      |
+| `DELEGATION_OUT_OF_PURPOSE`                                                  | 403    | yes                                                                                                                                                 |
+| ↳ _also_ when `request.scope` is not exactly the delegation's `purposeScope` | 403    | yes                                                                                                                                                 |
+| `DELEGATION_NARROWED`                                                        | 403    | yes: `grant.revoke` on the delegating person's grant, or that grant's expiry, between pickup and the agent's next call                              |
+| `DELEGATION_NOT_LIVE`                                                        | 401    | yes                                                                                                                                                 |
+| `DELEGATION_WIDENS`                                                          | 403    | yes: `grant.revoke` on the approving person's grant, or that grant's expiry, between approval and the agent's pickup                                |
+| `DELEGATION_ALREADY_LIVE`                                                    | 409    | yes, at mint time; see below                                                                                                                        |
+| `PRESET_FIELD_UNCLASSIFIED`                                                  | 422    | yes, with the field keys                                                                                                                            |
+| `PRESET_TYPE_UNKNOWN`                                                        | 404    | yes                                                                                                                                                 |
+| `PRESET_FIELD_UNPLACEABLE`                                                   | 409    | yes                                                                                                                                                 |
+| `PRESET_FIELD_DUPLICATE`                                                     | 422    | yes                                                                                                                                                 |
 
 `DELEGATION_WIDENS` is off `UNPRODUCED_CODES` (`core-records/src/register.ts`). The
 mint reads the approving person's live grants when the agent picks the work
@@ -622,21 +622,30 @@ a fresh agent actor of theirs, with no lease and no run
 `credential:write` and is always the caller's own. Its scope is the ticked
 `collection:action` keys, each one the caller holds at business scope when it
 is issued, by the grant check's own walk (`CREDENTIAL_SCOPE_WIDENS` otherwise),
-and never decide, share or manage (`CREDENTIAL_ACTION_EXCLUDED`). Its expiry is
-at most `CREDENTIAL_MAX_DAYS` (90) from issue, set in that one constant.
+and never decide, share or manage (`CREDENTIAL_ACTION_EXCLUDED`). It never
+holds a money key either (C59's set, `isMoneyKey`, `billing:read` included):
+the permission key catalogue (`docs/design-system/CAPABILITY-SLICES.md`) says
+an agent may hold none, and every credential is an agent's, so a scope with
+one is `CREDENTIAL_MONEY_KEY_EXCLUDED` before any grant walk, on any sign-in.
+No credential is held by a person, so no money step-up is asked at issue.
+Its expiry is at most
+`CREDENTIAL_MAX_DAYS` (90) from issue, set in that one constant.
 
 The secret is derived as a delegation's credential is, under the delegation
 credential key, in its own domain (`AGENT_CREDENTIAL_DOMAIN`), so it can never
 equal a delegation's. It is in the issue answer only: the row keeps its SHA-256,
 the scheme and the key id, the register keeps the answer with the credential
 null, and the issuer's replay of the same operation derives it again while the
-credential is theirs and live.
+credential is theirs and live. A live one holding a money key, issued before
+that rule, is refused `CREDENTIAL_MONEY_KEY_EXCLUDED` on replay instead.
 
 `credential.revoke` is `credential:write` too. The issuer revokes their own;
 anyone else needs `access:manage` as well, and without it another person's
 credential is `NOT_FOUND`, as a foreign or made-up one is. It locks the row,
 decides under the lock, sets the revocation once (`CREDENTIAL_ALREADY_REVOKED`
-after) and deactivates the agent actor. Neither command is ever an agent's: an
+after) and deactivates the agent actor. Ending the issuer's access
+(`access.end`) revokes every credential they issued there the same way, by
+the person who ended it. Neither command is ever an agent's: an
 agent under a live delegation is refused `DELEGATION_EXCLUDES_OPERATION`.
 
 **Using it** (`commands/credential-envelope.ts`). The agent sends the secret
@@ -696,8 +705,9 @@ agent's. After the access lock it locks every live grant the person holds, in
 id order, before any runtime lock (the order one revocation and `task.pickup`
 take), then revokes them and every delegation the person gave in one
 authority-loss classification (`endPersonAuthority`,
-`commands/authority-controls.ts`), and ends the membership and the person's
-acting identity. The delegations lose their ceiling with the grants and are
+`commands/authority-controls.ts`), revokes every agent credential the person
+issued in that business with its agent actor, and ends the membership and the
+person's acting identity. The delegations lose their ceiling with the grants and are
 revoked with the cause `authority_lost`. Nobody ends the last business-wide
 `access:manage` of a person who can sign in.
 

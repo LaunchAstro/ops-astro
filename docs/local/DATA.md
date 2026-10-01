@@ -503,7 +503,8 @@ never written here. Whether a person has a verified factor is mirrored onto
 (`identity/second-factor.ts`), so login resolution reads it inside the one
 query it already makes and refuses a sign-in without the second factor. It
 reads the column through the row's json, so on a database from before 0049,
-which has no such column, the answer is no factor.
+which has no such column, the answer is no factor. The same writers record
+the verification and the removal by subject for every business (0083, below).
 
 ## Privacy incidents (0050, C55)
 
@@ -550,7 +551,7 @@ each stamped once when done (`sessions_ended_at`, `login_deactivated_at`).
 (the kind of the last failure, one of five words, never the provider's text)
 record the retries. The application may select, insert and update; nothing
 deletes a row. Tenancy-keyed with the restrictive policy. The partial index
-`access_endings_owed` is what the server's retry looks for.
+`access_endings_owed` is what the server's retry looks for. `provider_steps_skipped` (0066) is `shared` where both steps were stamped done without a call because the subject was still live in another business.
 
 ## Ended sessions (0057, C58)
 
@@ -559,10 +560,40 @@ attempt came in on (null on a refusal, and for a token that names none); a
 person's session list reads it through `authentication_attempts_person_sessions`.
 `ended_sessions` holds one row per session a person ended: signed out
 (`sign_out`), ended from another session (`end_others`) or by a second-factor
-change (`factor_change`). Unique on business, person and session; login
-resolution refuses a session named here for that person. The application may
-select and insert; nothing changes or deletes a row. Tenancy-keyed with the
-restrictive policy.
+change (`factor_change`). Unique on business, person and session. The
+application may select and insert; nothing changes or deletes a row.
+Tenancy-keyed with the restrictive policy.
+
+## Ended provider sessions (0065, C58)
+
+`ops.ended_provider_sessions` holds the id of every provider session ended
+anywhere: each `ended_sessions` row, and the browser's sign-out at
+`/api/session/end`, which names no business. Installation-wide, no business,
+person or reason: the id alone. Login resolution refuses a token whose session
+is here in every business, and a person's session list leaves it out. The
+application may insert and read the id column; nothing changes or deletes a
+row.
+
+## Other sessions ended by subject (0069, C58)
+
+`ops.ended_subject_sessions` holds one row per "end my other sessions" or
+factor change: a SHA-256 digest of the login's subject, the session kept
+(null keeps none) and when. Installation-wide, no business, person or
+reason. Login resolution refuses a token of that subject whose session is not
+the kept one and whose first sign-in is at or before the ending. The
+application may insert the digest and the kept session and read the three
+columns; nothing changes or deletes a row.
+
+## Second factors by subject (0083, C59)
+
+`ops.second_factor_subjects` holds one row per second factor verified or
+removed through any business: a SHA-256 digest of the login's subject, one of
+the provider's factor id, and `verified` or `removed`. Installation-wide, no
+business, person or reason. Login resolution refuses a sign-in below `aal2`
+in every business the login reaches while one of its factors is verified and
+not removed; a removed factor is never verified again, so the rows need no
+order. Before 0083 the person's mirror alone answers. The application may
+insert and read the three columns; nothing changes or deletes a row.
 
 ## Overseas-services register (0052, C81)
 

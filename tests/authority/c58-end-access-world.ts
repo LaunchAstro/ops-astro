@@ -4,6 +4,7 @@
 // that file to keep it under the line limit. Its hooks are called at module
 // level there, under the same skip as its cases.
 
+import { loginLiveElsewhere } from '../../packages/core-records/src/index.ts';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect } from 'vitest';
 import { createApi } from '../../apps/api/app.ts';
@@ -106,6 +107,8 @@ export const apiWith = (logins?: LoginProvider, now?: () => number): ReturnType<
     executeRead,
     executeAgentCommand,
     ...(logins === undefined ? {} : { logins }),
+    sharedLogin: async (subject, businessId) =>
+      await loginLiveElsewhere(harness.world.db.admin, subject, businessId),
   });
 
 export const end = async (

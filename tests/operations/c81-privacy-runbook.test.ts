@@ -8,8 +8,10 @@
 // runbook's own finder (`scripts/privacy/find-copies.mjs`, run as a process
 // against this world's database), exports them, deletes each copy or records
 // the lawful reason it is kept, then searches again: any hit outside a lawfully
-// kept copy fails. The leg that searches a backup restored from before the
-// erasure waits on S0-3's restore. The cases run in order and share the plant.
+// kept copy fails. The finder runs for one business only: a same-named person
+// in another business never reaches its list or its export. The leg that
+// searches a backup restored from before the erasure waits on S0-3's restore.
+// The cases run in order and share the plant.
 
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
@@ -60,9 +62,13 @@ afterAll(async () => {
   await harness?.close();
 });
 
-/** The finder as an operator runs it; its output never holds the connection string. */
-async function find(args: readonly string[]) {
-  const done = await run('node', [FINDER, ...args], {
+/**
+ * The finder as an operator runs it, for one business (alpha unless named;
+ * null runs it with none). Its output never holds the connection string.
+ */
+async function find(args: readonly string[], business: string | null = 'alpha') {
+  const scope = business === null ? [] : ['--business', business];
+  const done = await run('node', [FINDER, ...scope, ...args], {
     env: { ...process.env, DATABASE_ADMIN_URL: adminUrl },
   }).then(
     (out) => ({ code: 0, ...out }),
@@ -78,7 +84,7 @@ async function find(args: readonly string[]) {
     .split('\n')
     .filter((line) => line !== '')
     .map((line) => JSON.parse(line) as Hit);
-  return { code: done.code, hits };
+  return { code: done.code, hits, stdout: done.stdout, stderr: done.stderr };
 }
 
 /** The canary person: their row, an identifier, a task and an incident naming them. */
@@ -218,4 +224,63 @@ test('C81 manual privacy runbook: the finder matches the text alone, in any lett
       hits: [],
     });
   }
+});
+
+test('find-copies refuses to run without a business', async () => {
+  for (const args of [
+    ['--text', CANARY],
+    ['--text', CANARY, '--export'],
+  ]) {
+    // oxlint-disable-next-line no-await-in-loop
+    const refused = await find(args, null);
+    expect({ code: refused.code, stdout: refused.stdout }, args.join(' ')).toEqual({
+      code: 2,
+      stdout: '',
+    });
+    expect(refused.stderr).toContain('--business');
+  }
+  const unknown = await find(['--text', CANARY], `nobody-${CANARY}`);
+  expect({ code: unknown.code, stdout: unknown.stdout }).toEqual({ code: 2, stdout: '' });
+});
+
+test('find-copies finds nothing in another business', async () => {
+  const { world } = harness;
+  // The same person's name in alpha and in bravo; bravo's copy carries a
+  // canary that alpha's list and export must never hold.
+  const twin = `qx7twin${randomUUID().slice(0, 8)}`;
+  const bravoCanary = `qx7bravo${randomUUID().slice(0, 8)}`;
+  const ids = { alpha: randomUUID(), bravo: randomUUID() };
+  for (const key of ['alpha', 'bravo'] as const) {
+    const businessId = world[key];
+    // oxlint-disable-next-line no-await-in-loop
+    await world.db.app.withBusiness(businessId, async (tx) => {
+      await tx.query(
+        `insert into public.people (business_id, id, display_name) values ($1, $2, $3)`,
+        [businessId, ids[key], `Jordan ${twin}`],
+      );
+      await tx.query(
+        `insert into public.person_identifiers
+           (business_id, id, person_id, kind, value, observed_value, source_system)
+         values ($1, $2, $3, 'email', $4, $4, 'dry-run')`,
+        [
+          businessId,
+          randomUUID(),
+          ids[key],
+          key === 'bravo' ? `${twin}.${bravoCanary}@example.test` : `${twin}@example.test`,
+        ],
+      );
+    });
+  }
+  const inAlpha = await find(['--text', twin, '--export'], 'alpha');
+  expect(inAlpha.code).toBe(0);
+  expect(inAlpha.hits.map((hit) => hit.table)).toEqual(['people', 'person_identifiers']);
+  expect(inAlpha.hits.map((hit) => hit.row?.['business_id'])).toEqual([world.alpha, world.alpha]);
+  expect(inAlpha.stdout).not.toContain(bravoCanary);
+  expect(inAlpha.stdout).not.toContain(ids.bravo);
+  expect(inAlpha.stdout).not.toContain(world.bravo);
+  // Bravo's own run finds bravo's copies, canary included, and none of alpha's.
+  const inBravo = await find(['--text', twin, '--export'], 'bravo');
+  expect(inBravo.hits.map((hit) => hit.row?.['business_id'])).toEqual([world.bravo, world.bravo]);
+  expect(inBravo.stdout).toContain(bravoCanary);
+  expect(inBravo.stdout).not.toContain(ids.alpha);
 });

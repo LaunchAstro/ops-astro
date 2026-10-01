@@ -19,10 +19,11 @@
 // nothing; Bea is bravo's, holding `access:manage` there. Each case enrols the
 // person it ends. Every name below is made up.
 
+import { loginLiveElsewhere } from '../../packages/core-records/src/index.ts';
 import { describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { createGoTrueLogins } from '../../apps/api/auth/logins.ts';
-import { retryAccessEndings } from '../../apps/api/server.ts';
+import { retryAccessEndings } from '../../apps/endings/pass.ts';
 import { settleAccessEndings, type LoginProvider } from '../../packages/core-commands/src/index.ts';
 import { mintDelegation } from '../../packages/core-records/src/authority/delegations.ts';
 import { serverUrl } from '../acceptance/world.ts';
@@ -140,7 +141,11 @@ describe.skipIf(serverUrl === undefined)("C58 end a person's access in one act",
 
     const alpha = harness.world.alpha;
     const again = async () =>
-      await settleAccessEndings(harness.world.db.app, alpha, provider, { claimSeconds: 0 });
+      await settleAccessEndings(harness.world.db.app, alpha, provider, {
+        claimSeconds: 0,
+        sharedElsewhere: async (subject) =>
+          await loginLiveElsewhere(harness.world.db.admin, subject, alpha),
+      });
     // The server's own pass: it finds alpha by its owed ending and settles it
     // under alpha's tenancy. The provider fails again, so the step stays owed.
     await retryAccessEndings(harness.world.db.admin, harness.world.db.app, provider, 0);
@@ -243,8 +248,7 @@ describe.skipIf(serverUrl === undefined)("C58 end a person's access in one act",
     for (const [index, hostile] of answers.entries()) {
       const logins = createGoTrueLogins({
         baseUrl: 'http://127.0.0.1:9/auth/v1',
-        adminToken: () => Promise.resolve('admin-bearer'),
-        subjectToken: () => Promise.resolve('subject-bearer'),
+        adminKey: () => Promise.resolve('admin-key'),
         timeoutMs: 200,
         maxBytes: 16 * 1024,
         fetch: (input, init) => {
@@ -269,8 +273,7 @@ describe.skipIf(serverUrl === undefined)("C58 end a person's access in one act",
   it("C58 hostile provider: a subject not in the provider's id shape is never sent, and a hostile answer through the act leaves both steps owed", async () => {
     const never = createGoTrueLogins({
       baseUrl: 'http://127.0.0.1:9',
-      adminToken: () => Promise.resolve('a'),
-      subjectToken: () => Promise.resolve('s'),
+      adminKey: () => Promise.resolve('a'),
       fetch: () => Promise.reject(new Error('sent')),
     });
     expect(await never.deactivate('../admin/users')).toEqual({ ok: false, fault: 'refused' });

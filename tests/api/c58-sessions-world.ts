@@ -123,16 +123,23 @@ export const tokenFor = async (
   subject: string,
   sessionId: unknown,
   assurance?: { readonly aal: 'aal1' | 'aal2'; readonly totp?: number },
+  expiresAt: number = now() + 600,
+  /**
+   * The first sign-in (`amr`), which a refresh keeps. A fresh session by
+   * default: just after now, so an ending earlier in this second (0069)
+   * does not reach it. A session that predates an ending names its time.
+   */
+  signedInAt: number = now() + 1,
 ): Promise<string> =>
   await signBearer({
     sub: subject,
     aud: 'authenticated',
     iss: ACCEPTANCE_ISSUER,
-    exp: now() + 600,
+    exp: expiresAt,
     aal: assurance?.aal ?? 'aal1',
     session_id: sessionId,
     amr: [
-      { method: 'password', timestamp: now() - 60 },
+      { method: 'password', timestamp: signedInAt },
       ...(assurance?.totp === undefined ? [] : [{ method: 'totp', timestamp: assurance.totp }]),
     ],
   });

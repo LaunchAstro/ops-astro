@@ -3,8 +3,8 @@
 // API-2: an agent credential, issued and revoked by a person on their own
 // account (Settings ▸ Access), through the real API. This file holds the
 // person's half: issue and revoke under `credential:write` (and revoke under
-// `access:manage`), the scope never wider than the person's grants and never
-// decide, share or manage, an expiry at most 90 days out, the secret shown once
+// `access:manage`), the scope never wider than the person's grants, never
+// decide, share or manage and never a money key, an expiry at most 90 days out, the secret shown once
 // and kept only as a digest, each act audited, refusals per key, three
 // crossings and the canary. Using the credential on the agent route (the next
 // call after a revocation, expiry either side, the actor and the person
@@ -17,7 +17,7 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
-import { agentPath, bearer, call, serverUrl } from '../acceptance/world.ts';
+import { agentPath, bearer, call, serverUrl, tokenFor } from '../acceptance/world.ts';
 import {
   CANARY,
   clientToken,
@@ -68,6 +68,63 @@ describe.skipIf(serverUrl === undefined)('API-2 the agent credential, issued and
       expect(answer.code, action).toBe('CREDENTIAL_ACTION_EXCLUDED');
     }
     expect(await credentialCount(harness.world.alpha)).toBe(before);
+  });
+});
+
+describe.skipIf(serverUrl === undefined)('API-2 the agent credential, issued and revoked', () => {
+  // C59's money set, every key of it: CAPABILITY-SLICES.md says an agent may hold none.
+  const MONEY_KEYS = [
+    ...(['read', 'write', 'decide', 'manage'] as const).map((action) => ({
+      collection: 'billing',
+      action,
+    })),
+    { collection: 'offer', action: 'decide' },
+    { collection: 'mandate', action: 'manage' },
+    { collection: 'spend', action: 'decide' },
+  ];
+
+  it('credential.issue refuses every money key by name, on a fresh factor or a stale one', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const stale = await tokenFor(harness.world.ada.subject, {
+      secondFactor: true,
+      signedInAt: now - 61 * 60,
+    });
+    const before = await credentialCount(harness.world.alpha);
+    for (const key of MONEY_KEYS) {
+      const scopes = [[key], [{ collection: 'task', action: 'read' }, key]];
+      for (const [scope, token] of scopes.flatMap((one) => [
+        [one, harness.world.ada.token] as const,
+        [one, stale] as const,
+      ])) {
+        // oxlint-disable-next-line no-await-in-loop
+        const answer = await issue(issueBody({ scope }), token);
+        expect(answer.status, JSON.stringify(scope)).toBe(403);
+        expect(answer.code, JSON.stringify(scope)).toBe('CREDENTIAL_MONEY_KEY_EXCLUDED');
+      }
+    }
+    expect(await credentialCount(harness.world.alpha)).toBe(before);
+  });
+});
+
+describe.skipIf(serverUrl === undefined)('API-2 the agent credential, issued and revoked', () => {
+  it('replaying the issue of a live credential holding a money key is refused by name, with no secret', async () => {
+    const body = issueBody();
+    const first = await issue(body);
+    const secret = String(detailOf(first)['credential']);
+    // A credential issued before the rule: the row is written once, so the
+    // owner lifts its trigger for this one throwaway row.
+    await harness.world.db.admin.transaction(async (execute) => {
+      await execute('set local session_replication_role = replica');
+      await execute(
+        `update public.agent_credentials set scope = array['task:read', 'billing:read']
+          where id = $1`,
+        [String(detailOf(first)['credentialId'])],
+      );
+    });
+    const again = await issue(body);
+    expect(again.status).toBe(403);
+    expect(again.code).toBe('CREDENTIAL_MONEY_KEY_EXCLUDED');
+    expect(JSON.stringify(again.body)).not.toContain(secret);
   });
 });
 

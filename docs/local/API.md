@@ -228,11 +228,19 @@ A browser holds no token (S0-6c). It posts the token once to
 `POST /api/session`, which verifies it, answers `{ ok: true, session }` and
 sets it as an `HttpOnly`, `Secure`, `SameSite=Lax` cookie scoped to `/api/b/`,
 one per sign-in, named from `session` (a digest of the token, not a secret).
-A cookie-carried request needs `x-ops-astro-csrf: 1` and no cross-site
-`Sec-Fetch-Site` (else `AUTH_CROSS_SITE` 403), and reads only the cookie of
-the sign-in its `x-ops-astro-session` names; session cookies with none named
-are `AUTH_SESSION_MISMATCH` 403. `/api/session/end` clears only the named
-sign-in's cookie, so a late sign-out ends no other. A bearer is read first.
+Its `Max-Age` is what is left of the session's 12-hour absolute limit from the
+first sign-in (below), never more than the 12 (`cookieMaxAge`, C58); a token
+past the limit gets no cookie, and a cookie whose token is past it is
+`AUTH_SESSION_EXPIRED` 401. A cookie-carried request needs
+`x-ops-astro-csrf: 1` and no cross-site `Sec-Fetch-Site` (else
+`AUTH_CROSS_SITE` 403), and reads only the cookie of the sign-in its
+`x-ops-astro-session` names; session cookies with none named are
+`AUTH_SESSION_MISMATCH` 403. `/api/session/end` clears only the named
+sign-in's cookie, so a late sign-out ends no other. When that cookie's token
+verifies and names a provider session, it first ends that session for every
+business (below) and asks the provider to sign it out (`scope=local`); a
+bearer beside it, a forged or lapsed token ends nothing but the cookie, and
+the answer is `{ ok: true }` whatever the provider says. A bearer is read first.
 
 Nothing else reaches identity. Not a body field, not a host or forwarded
 header, not an `apikey`, not a query parameter. A request carrying `actorId` or
@@ -251,8 +259,9 @@ with the expiry check off, before it answers `AUTH_SESSION_EXPIRED`
 **Sessions (C58).** A session has no idle limit and an absolute limit of 12
 hours from the first sign-in, `SESSION_ABSOLUTE_SECONDS`
 (`core-records/src/identity/verified-subject.ts`), set there and nowhere else.
-The first sign-in is the `amr` first-factor time GoTrue stamps, which a refresh
-carries unchanged; never `iat`, which every refresh moves. A verified bearer
+The first sign-in is the earliest `amr` first-factor time GoTrue stamps, which a
+refresh carries unchanged, so a later re-sign-in in the same session never
+extends the 12; never `iat`, which every refresh moves. A verified bearer
 one second past the limit, with no first-sign-in time, or with one more than a
 minute ahead of the server's clock, is `AUTH_SESSION_EXPIRED` 401
 (`pastAbsoluteLimit`). A session left alone for hours inside the 12 is still
@@ -263,8 +272,17 @@ a UUID (`VerifiedSubject.sessionId`), and kept by every refresh. A session the
 person has ended (signed out of, ended from another session, or ended by a
 factor change) is refused at login resolution from that commit,
 `AUTH_SESSION_EXPIRED` 401, before the second-factor check, whatever the
-token's own `exp` says (`ended_sessions`, 0057). The provider's sign-out, which
-revokes the refresh tokens, comes after and cannot undo it.
+token's own `exp` says. The ending holds in every business the login reaches,
+whichever route asked (`ops.ended_provider_sessions`, 0065; each business's
+own record is `ended_sessions`, 0057). Ending the other sessions, or a factor
+change, also ends every session of the login but the kept one in every
+business, seen here or not: a token whose first sign-in (`amr`) is at or
+before that ending is refused; a sign-in after it is served
+(`ops.ended_subject_sessions`, 0069, keyed by a SHA-256 digest of the
+subject). The provider's sign-out, which revokes
+the refresh tokens, comes after and cannot undo it. A sign-out this business refuses (it no
+longer admits the person) still ends the verified token's own session in
+every business and at the provider, and answers the refusal.
 
 The business is named by the path and verified by login resolution. A business
 the caller is not a member of and a business that does not exist both answer
@@ -1554,13 +1572,18 @@ a case that cannot run yet prints `unrun` with its reason.
 
 The sign-in adapter (`apps/api/auth/supabase.ts`) passes the provider's
 assurance through beside `sub`: the level (`aal`), and from `amr` the time of
-the session's first sign-in and of its second factor. A refresh carries the
+the session's first sign-in (the earliest first factor) and of its latest
+second factor. A refresh carries the
 `amr` times unchanged, so the factor time is never renewed by one. A claim the
 adapter cannot read is the lowest level, `aal1` with no factor time.
 
-Login resolution refuses `AUTH_SECOND_FACTOR_REQUIRED` 401 when the person has
-a verified second factor and the sign-in is below `aal2`. That holds on every
-person route except the three below, which are how the sign-in gets its code.
+Login resolution refuses `AUTH_SECOND_FACTOR_REQUIRED` 401 when the sign-in
+login has a verified second factor and the sign-in is below `aal2`. The factor
+is the login's: verified through one business, it is required in every
+business the login reaches, and removing it clears it in every one
+(`ops.second_factor_subjects`, 0083, keyed by SHA-256 digests of the subject
+and the provider's factor id). That holds on every person route except the
+three below, which are how the sign-in gets its code.
 
 A command whose declared key is in the money set (every `billing` key,
 `offer:decide`, `mandate:manage`, `spend:decide`) is judged once, in
@@ -1568,7 +1591,9 @@ A command whose declared key is in the money set (every `billing` key,
 factor verified in the last 60 minutes, a client a sign-in in the last 60
 minutes, or it is refused `STEP_UP_REQUIRED` 403. While the business setting
 `money_step_up_required` is `false` a live session is enough; only
-`settings:manage` switches it, through `settings.set_money_step_up`.
+`settings:manage` switches it, through `settings.set_money_step_up`. An agent
+credential never holds a money key (`credential.issue` below), so none is
+judged later on an agent's behalf.
 
 A person's own factor has three routes on the person prefix only. Each is
 served only when the composition root passes a `factors` provider
@@ -1771,9 +1796,11 @@ business's or a made-up one is `NOT_FOUND` 404 naming `client`.
 agent's: the tracked action `access ended (person: login, sessions, grants)`,
 audited. In one transaction, under the access lock, the person's membership
 and acting identity end, every live grant they hold and every delegation they
-gave are revoked with one authority-loss classification, and one access ending
-is written per login mapped to them. It answers `{ personId, grantsRevoked,
-delegationsRevoked, classifiedHolds, endingIds }`. A person with no active
+gave are revoked with one authority-loss classification, every agent
+credential they issued in this business and not yet revoked is revoked by the
+caller with its agent actor, and one access ending is written per login
+mapped to them. It answers `{ personId, grantsRevoked, delegationsRevoked,
+credentialsRevoked, classifiedHolds, endingIds }`. A person with no active
 membership in this business, another business's included, is `NOT_FOUND` 404
 naming `holderId`; a malformed id is `FIELD_VALUE_INVALID` 422. Ending the last
 business-wide `access:manage` of a person who can sign in is
@@ -1781,17 +1808,37 @@ business-wide `access:manage` of a person who can sign in is
 
 From the commit the person's next call is `AUTH_NO_MEMBERSHIP` 403, whatever
 the sign-in provider has done. Each ending owes the provider two steps, never
-taken inside a transaction: end every session of the login (GoTrue's
-`/logout?scope=global`, which revokes their refresh tokens), then deactivate the
-login (a 100-year ban through GoTrue's admin API). Both bearers are minted by
-the server from the secret it verifies sessions with and live a minute
-(`apps/api/server.ts`, `goTrueLogins`). Every answer is shaped as C59's are
+taken inside a transaction: end every session of the login, then deactivate
+the login. Both are a 100-year ban through GoTrue's admin API
+(`PUT /admin/users/<id>`), each done once the ban holds: GoTrue has no admin
+call that ends a user's sessions, and it refuses a banned user's every refresh
+and sign-in, so the ban is the session end (ORCH46). What access token is left
+runs out within the hour and is refused here from the commit. GoTrue keeps a
+banned user's sessions and refresh tokens, so an unban would revive them:
+restoring access is a new login, never an unban (ORCH46). A provider user is
+one person's across every business, while a login is one business's: while the
+subject still has a live login in another business (mapped, its access not
+ended there), both steps are stamped done with the reason `shared` and nothing
+is sent, so ending access here never ends it there; the business that ends it
+last bans (`loginLiveElsewhere`, on the owner's connection, answers yes or no). The calls carry the
+admin key, `SUPABASE_SERVICE_KEY` (hosted, the project's service key; with none
+set on a local stack, a five-minute `service_role` bearer signed with the local
+auth key, minted per call); with neither, nothing is sent and both steps stay
+owed. Sign-in never reads the key (`apps/api/server.ts`, `providerAdminKey`,
+`goTrueLogins`). Every answer is shaped as C59's are
 (`apps/api/auth/logins.ts`): one destination, no redirect, a time limit the
 answer cannot stretch, a size limit, a shape per call; anything else is a fault
-by its kind and the step stays owed. The route tries the act's own endings as
-soon as it commits; the server retries every owed ending each
-`ACCESS_ENDING_RETRY_SECONDS` (60), business by business under each one's
-tenancy (`retryAccessEndings`). A 30-second claim on the row stops two retries
+by its kind and the step stays owed. Where the server holds the provider key (the local server), the route tries
+the act's own endings as soon as it commits. Hosted, the Vercel function holds
+neither the key nor the owner login, and the endings loop (`pnpm endings`,
+`apps/endings`, on the environment's machine beside the forwarder) asks for
+every owed step each `ACCESS_ENDING_RETRY_SECONDS` (60): it reads business ids
+and the shared check on the owner login only, and settles business by
+business on the application login under each one's tenancy
+(`retryAccessEndings`). `pnpm endings --once` runs one pass and exits 1 if it
+failed, so a scheduler sees the backlog. It refuses to start without `DATABASE_URL`,
+`DATABASE_ADMIN_URL`, `GOTRUE_URL` (https or loopback) and
+`SUPABASE_SERVICE_KEY`. A 30-second claim on the row stops two retries
 calling the provider at once, and a step done is stamped once and never asked
 again (`settleAccessEndings`, `commands/access-end.ts`).
 
@@ -1839,12 +1886,16 @@ and never an agent's (an agent is refused `DELEGATION_EXCLUDES_OPERATION`):
   `{ operationId, scope, expiresAt, purpose }` and issues a credential of the
   caller's own. `scope` is 1 to 32 distinct `{ collection, action }` keys, each
   held by the caller at business scope (otherwise `CREDENTIAL_SCOPE_WIDENS` 403) and never `decide`, `share` or `manage` (`CREDENTIAL_ACTION_EXCLUDED`
-  403). `expiresAt` is an ISO 8601 UTC time after now and at most 90 days out.
+  403). It never holds a money key (C59's set, `billing:read` included): an
+  agent may hold none (`docs/design-system/CAPABILITY-SLICES.md`), so a scope
+  with one is `CREDENTIAL_MONEY_KEY_EXCLUDED` 403 on any sign-in. `expiresAt` is an ISO 8601 UTC time after now and at most 90 days out.
   `purpose` is 1 to 200 characters. Its detail is
   `{ credentialId, agentActorId, scope, expiresAt, credential }`.
   `credential` is the secret, in this answer only; the register keeps it null.
   The same operation replayed by the issuer answers the same secret while the
-  credential is live, and `credential: null` once it is revoked or expired.
+  credential is live, and `credential: null` once it is revoked or expired; a
+  live one holding a money key, issued before that rule, is
+  `CREDENTIAL_MONEY_KEY_EXCLUDED` 403.
 - `credential.revoke` (`agent credential revoked`) takes
   `{ operationId, credentialId }`. The issuer revokes their own; anyone else
   needs `access:manage` too. A credential of another business, a made-up one,
