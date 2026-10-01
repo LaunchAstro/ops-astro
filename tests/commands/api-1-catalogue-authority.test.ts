@@ -43,6 +43,7 @@ function replacesDiscovery(): void {
     const writer = reachableBy(rows, {
       kind: 'person',
       grants: wide('task:read', 'task:write'),
+      member: true,
     });
     expect(writer.map((one) => one.command)).toContain('task.update');
     expect(writer.map((one) => one.command)).not.toContain('task.assign');
@@ -56,7 +57,11 @@ function replacesDiscovery(): void {
     // and never trashes a task.
     expect(agent.map((one) => one.command)).toContain('task.update');
     expect(agent.map((one) => one.command)).not.toContain('task.trash');
-    const withUi = reachableBy(real().rows, { kind: 'person', grants: wide('task:write') });
+    const withUi = reachableBy(real().rows, {
+      kind: 'person',
+      grants: wide('task:write'),
+      member: true,
+    });
     expect(withUi.find((one) => one.command === 'task.start')?.surfaces).toEqual([
       'app',
       'API',
@@ -66,6 +71,7 @@ function replacesDiscovery(): void {
     const onOneTask = reachableBy(rows, {
       kind: 'person',
       grants: [{ key: 'task:write', scope: { kind: 'record', id: 'one-task' } }],
+      member: true,
     }).map((one) => one.command);
     expect(onOneTask).toContain('task.update');
     expect(onOneTask).not.toContain('task.create');

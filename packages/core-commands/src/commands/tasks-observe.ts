@@ -10,7 +10,7 @@
 // the refusal keeps the attempt held as an unknown liability, with the
 // observed amount on its audit event.
 
-import type { TenantQuery } from '../../../core-records/src/index.ts';
+import { raiseRunSettled, type TenantQuery } from '../../../core-records/src/index.ts';
 import { leaseReason, observe, type ObserveRequest } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { isIdentifier } from './operands.ts';
@@ -101,6 +101,9 @@ async function observeAs(
   const { taskId, ...observed } = result.value;
   const { settlement } = observed;
   if (settlement.state === 'liability_unknown') {
+    // INB-1: the hold stays whole until a person records the outcome, so the
+    // launcher is owed the move; the refusal commits with it.
+    await raiseRunSettled(tx, { leaseId: operands.leaseId, outcome: 'liability_unknown' });
     return refusedRetaining(
       refuseCommand(
         'BUDGET_UNAVAILABLE',

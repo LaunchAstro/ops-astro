@@ -169,6 +169,9 @@ async function fixtureDump(): Promise<{ dump: Buffer; unbarred: Buffer }> {
     }
     const sql = `
       create schema ops;
+      create schema auth;
+      create table auth.users (id uuid primary key);
+      insert into auth.users values (gen_random_uuid());
       create table ops.schema_migrations (version text primary key, checksum text not null);
       insert into ops.schema_migrations values ('0033', 'a'), ('0034', 'b');
       create function public.app_business_id() returns uuid language sql stable
@@ -232,6 +235,7 @@ async function fixtureDump(): Promise<{ dump: Buffer; unbarred: Buffer }> {
       '--format=custom',
       '--schema=public',
       '--schema=ops',
+      '--schema=auth',
       '-U',
       'postgres',
       '-d',
@@ -256,6 +260,7 @@ async function fixtureDump(): Promise<{ dump: Buffer; unbarred: Buffer }> {
       '--format=custom',
       '--schema=public',
       '--schema=ops',
+      '--schema=auth',
       '-U',
       'postgres',
       '-d',
@@ -459,7 +464,7 @@ function drillTargetCases1() {
         sourceMajor: PRODUCTION_MAJOR,
         targetMajor: PRODUCTION_MAJOR,
         productionMajor: PRODUCTION_MAJOR,
-        tables: 7,
+        tables: 8,
         readAs: 'ops_astro_app',
       });
       const timings = record['timings'] as Record<string, number>;
@@ -539,7 +544,7 @@ function drillScopeCases1() {
         return docker(args, input);
       },
     });
-    expect(record).toMatchObject({ outcome: 'passed', readAs: 'ops_astro_app', tables: 7 });
+    expect(record).toMatchObject({ outcome: 'passed', readAs: 'ops_astro_app', tables: 8 });
     // Every statement that reads the copy's tables runs as the tenancy role
     // under the named business; the owner session never reads one.
     const reads = calls.filter(
@@ -765,7 +770,7 @@ function carriedRestoreCases() {
       expect(receipt).toMatchObject({
         outcome: 'pending',
         stage: null,
-        tables: 7,
+        tables: 8,
         readAs: 'ops_astro_app',
         ranOn: 'carried archive',
         targetMajor: PRODUCTION_MAJOR,

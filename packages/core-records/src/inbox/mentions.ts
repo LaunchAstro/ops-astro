@@ -5,7 +5,7 @@
 // from `raise.ts` unchanged.
 
 import type { TenantQuery } from '../tenancy/database.ts';
-import { taskAccess } from './access.ts';
+import { REACH, taskAccess } from './access.ts';
 import { raiseInboxItem, type InboxReason } from './items.ts';
 
 /** A person a comment names, as this business knows them. */
@@ -62,6 +62,42 @@ export async function readMentions(
     });
   }
   return named;
+}
+
+/**
+ * Which of these people an author could already see, so a refusal may name
+ * them: staff, or a person holding read on a client the author reads (a
+ * business-wide reader reads every client). Anyone else is named back only by
+ * the identifier as sent, so a commenter cannot learn another client's names.
+ */
+export async function seenBy(
+  tx: TenantQuery,
+  authorActorId: string,
+  personIds: readonly string[],
+): Promise<ReadonlySet<string>> {
+  const author = await tx.query<{ readonly personId: string | null }>(
+    `select person_id as "personId" from public.actors where business_id = $1 and id = $2`,
+    [tx.businessId, authorActorId],
+  );
+  const rows = await tx.query<{ readonly id: string }>(
+    `${REACH}
+     select p.id from public.people p
+      where p.business_id = $1 and p.id = any($3::uuid[])
+        and ((select business from reach)
+             or exists (select 1 from public.memberships m
+                         where m.business_id = p.business_id and m.person_id = p.id and m.active)
+             or exists (select 1 from effective e
+                         where e.collection = 'task' and e.action = 'read'
+                           and e.scope_kind = 'party'
+                           and e.scope_id = any((select parties from reach)::uuid[])
+                           and ((e.subject_kind = 'person' and e.subject_id = p.id)
+                                or (e.subject_kind = 'actor' and e.subject_id in (
+                                      select a.id from public.actors a
+                                       where a.business_id = p.business_id and a.person_id = p.id
+                                         and a.kind = 'person' and a.active)))))`,
+    [tx.businessId, author[0]?.personId ?? null, personIds],
+  );
+  return new Set(rows.map((row) => row.id));
 }
 
 /**

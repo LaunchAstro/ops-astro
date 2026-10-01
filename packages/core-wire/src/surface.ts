@@ -237,10 +237,12 @@ function read(
     readonly action?: Action;
     readonly agent?: CommandDeclaration['agent'];
     readonly authorisedOn?: 'record' | 'business' | 'self';
+    readonly authority?: readonly string[];
     readonly audited?: boolean;
   } = {},
 ): CommandDeclaration {
   return {
+    ...(options.authority === undefined ? {} : { authority: options.authority }),
     name,
     kind: 'read',
     collection,
@@ -536,7 +538,8 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // An agent reaches it only under a delegation, where it answers the
   // delegation's purpose; before a pickup it is refused like every other
   // operation outside the two (minimum contract 8.2 case 9).
-  read('session.capabilities', SESSION_COLLECTION, { agent: 'delegated' }),
+  // It asks no grant of its own (`authority: []`), so discovery lists it for any holder.
+  read('session.capabilities', SESSION_COLLECTION, { agent: 'delegated', authority: [] }),
   // The caller's own name, served without a grant (`reads/dispatch.ts`). Never
   // an agent's: the person menu is a person's.
   read('session.person', SESSION_COLLECTION, { authorisedOn: 'self' }),
@@ -941,6 +944,22 @@ export {
 } from './paths.ts';
 
 /** The reads, which no caller may reach through the command envelope. */
+/**
+ * The writes an external party (R4) may reach: a comment, only in the client audience; signing
+ * out, which writes only the record that this person's session ended (C23); and opening their
+ * own inbox item. `commands/prepare.ts` refuses every other write to a person
+ * without a membership, and `session.capabilities` and discovery read this same list.
+ */
+export const EXTERNAL_WRITES: readonly CommandName[] = [
+  'task.comment',
+  'session.end',
+  'inbox.seen',
+];
+
+/** Whether a person of this standing may send this write: the envelope and discovery ask it. */
+export const admitsSelfWrite = (member: boolean, command: CommandName): boolean =>
+  member || EXTERNAL_WRITES.includes(command);
+
 export const READS: readonly CommandName[] = COMMAND_SURFACE.filter(
   (command) => command.kind === 'read',
 ).map((command) => command.name);

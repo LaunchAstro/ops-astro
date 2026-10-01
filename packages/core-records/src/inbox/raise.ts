@@ -113,13 +113,20 @@ export async function raiseEscalation(
 }
 
 /**
- * A handed-back lease. The person who authorised it launched the run: a
- * completed run tells them it finished and owes nothing; a failed one is
- * waiting on their move (restart or cancel). Answers the lease's task.
+ * A lease's run as its launcher, the person who authorised the lease, is told
+ * of it. A completed run finished and owes nothing. A failed one, or one held
+ * as an unknown liability that only a person can resolve (T2d), is waiting on
+ * their move: restart, cancel, or record the outcome. A dropped one raises
+ * nothing: unmarked work comes back by itself and marked work waits on the
+ * reconciliation pass, while the outage report tells a person (T3e). Answers
+ * the lease's task.
  */
 export async function raiseRunSettled(
   tx: TenantQuery,
-  settled: { readonly leaseId: string; readonly outcome: 'completed' | 'failed' },
+  settled: {
+    readonly leaseId: string;
+    readonly outcome: 'completed' | 'failed' | 'dropped' | 'liability_unknown';
+  },
 ): Promise<string> {
   const rows = await tx.query<{ readonly taskId: string; runId: string; launcher: string }>(
     `select task_id as "taskId", run_id as "runId", authorised_by_person_id as launcher
@@ -128,6 +135,7 @@ export async function raiseRunSettled(
   );
   const lease = rows[0];
   if (lease === undefined) throw new Error('raiseRunSettled: the settled lease is not here');
+  if (settled.outcome === 'dropped') return lease.taskId;
   await raiseInboxItem(tx, {
     recipientPersonId: lease.launcher,
     subjectRecordId: lease.taskId,

@@ -2,12 +2,13 @@
 //
 // `S0-6 content policy` in a real browser: the built page, served with an
 // inline script and an outside script planted in it, runs its own bundle and
-// neither plant. The required check reads the policy out of the page
-// (`tests/api/session-cookie-tabs.test.ts`); this run is the evidence that a browser
-// enforces it, because the hosted runners install no browser.
+// neither plant. `tests/api/session-cookie-tabs.test.ts` reads the policy out
+// of the page; this run is the evidence that a browser enforces it, required
+// through `built-page-refuses-planted-scripts.test.ts` in CI's own step.
 //
 // Run after `pnpm build`: `node tests/browser/content-policy.mjs`. It serves
-// `apps/web/dist` on a loopback port of its own and closes it.
+// `apps/web/dist` on a loopback port of its own and closes it, and answers
+// `/api/sign-in` as the API would, since the page asks it before drawing the form.
 
 import { readFileSync } from 'node:fs';
 import { createServer, get } from 'node:http';
@@ -34,6 +35,12 @@ await new Promise((resolve) => {
 const OUTSIDE = `http://127.0.0.1:${String(outside.address().port)}`;
 
 const server = createServer((request, response) => {
+  if (request.url === '/api/sign-in') {
+    response
+      .writeHead(200, { 'content-type': 'application/json' })
+      .end(JSON.stringify({ issuer: 'http://127.0.0.1:9/auth/v1' }));
+    return;
+  }
   const path = request.url === '/' ? '/index.html' : (request.url ?? '/');
   const file = resolvePath(DIST, `.${path}`);
   if (!file.startsWith(`${DIST}${sep}`)) {

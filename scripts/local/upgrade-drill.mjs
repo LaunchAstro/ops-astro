@@ -12,6 +12,10 @@
 // changed or lost, or a table gone, fails the drill. The report names tables
 // and counts and never a row's content.
 //
+// A migration that changes rows on purpose declares it beside itself; a change
+// beyond its declaration, or a declared one that did not happen, fails the
+// drill (`upgrade-drill-changes.mjs`).
+//
 // The first drill was run by hand before slice one landed (0023 through 0031,
 // 217 records identical) and its script was never committed; 0023 is the
 // default for that reason. CI runs it from the base branch's newest migration
@@ -37,6 +41,7 @@ import {
 import { connect, connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
 import { readEnvFile } from '../../packages/core-records/src/env-file.ts';
 import { Failure, baseCommit, seed } from './upgrade-drill-seed.mjs';
+import * as changes from './upgrade-drill-changes.mjs';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 const LEDGER = 'ops.schema_migrations';
@@ -180,27 +185,23 @@ async function snapshot(admin, before) {
   return shot;
 }
 
-/** Each table whose earlier rows are not all still there, unchanged. */
-function compare(before, after) {
-  const differences = [];
-  for (const [table, { rows }] of before) {
-    const now = after.get(table);
-    if (now === undefined) {
-      differences.push({ table, changedOrLost: rows.length, added: 0, gone: true });
-      continue;
-    }
-    const waiting = new Map();
-    for (const row of rows) waiting.set(row, (waiting.get(row) ?? 0) + 1);
-    let added = 0;
-    for (const row of now.rows) {
-      const count = waiting.get(row) ?? 0;
-      if (count > 0) waiting.set(row, count - 1);
-      else added += 1;
-    }
-    const changedOrLost = [...waiting.values()].reduce((sum, n) => sum + n, 0);
-    if (changedOrLost > 0) differences.push({ table, changedOrLost, added, gone: false });
-  }
-  return differences;
+/**
+ * The upgrade itself, the application stopped: the declarations of the
+ * migrations it applies are read and their rows picked first, then every
+ * migration is applied and the snapshots compared.
+ */
+async function upgrade(db, directory, all, at, before) {
+  const declarations = changes.readDeclarations(directory, all.slice(at + 1), before, Refused);
+  await changes.declaredRows(db.admin, declarations);
+  const { applied } = await applyMigrations(db.admin, all);
+  const differences = changes.compare(before, await snapshot(db.admin, before), declarations);
+  const declared = declarations.map(({ migration, table, columns, rows }) => ({
+    migration,
+    table,
+    columns,
+    rows,
+  }));
+  return { applied, differences, declared };
 }
 
 async function drill({ url, from, directory, base }) {
@@ -237,17 +238,17 @@ async function drill({ url, from, directory, base }) {
       `built at ${start} and seeded through ${commit.slice(0, 7)}'s commands: ` +
         `${rows} rows in ${before.size} tables; application stopped`,
     );
-    const { applied } = await applyMigrations(db.admin, all);
+    const { applied, differences, declared } = await upgrade(db, directory, all, at, before);
     say(`upgraded ${start} -> ${to}: applied ${applied.join(', ')}`);
-    const differences = compare(before, await snapshot(db.admin, before));
     return {
-      ok: differences.length === 0,
+      ok: differences.length === 0 && declared.every((one) => one.rows > 0),
       from: start,
       to,
       applied,
       tables: before.size,
       rows,
       differences,
+      declared,
     };
   } finally {
     await db.drop();
@@ -279,10 +280,13 @@ try {
         : `${d.table}: ${d.changedOrLost} row${d.changedOrLost === 1 ? '' : 's'} changed or lost, ${d.added} added`,
     );
   }
+  for (const line of changes.declaredReport(result.declared)) say(line);
   say(
     result.ok
       ? `passed: ${result.rows} rows in ${result.tables} tables unchanged from ${result.from} to ${result.to}`
-      : `FAILED: ${result.differences.length} table(s) changed from ${result.from} to ${result.to}`,
+      : `FAILED: ${result.differences.length} table(s) changed and ` +
+          `${result.declared.filter((d) => d.rows === 0).length} declared change(s) missing ` +
+          `from ${result.from} to ${result.to}`,
   );
   if (values.json) console.log(JSON.stringify(result));
   process.exitCode = result.ok ? 0 : 1;

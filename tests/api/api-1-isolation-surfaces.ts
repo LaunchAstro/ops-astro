@@ -19,6 +19,8 @@ export interface Heard {
   readonly code: unknown;
   /** The whole answer, each known record id and title replaced by its label. */
   readonly body: unknown;
+  /** The whole answer as heard, so a check for a raw id sees a leak. */
+  readonly raw?: unknown;
 }
 
 /** Every task, title, lease, reservation, business or person any answer names, refusals included, but the caller's own. */
@@ -65,7 +67,7 @@ export async function threeWays(
       .clone()
       .json()
       .catch(() => ({}))) as { code?: unknown } | null;
-    heard.push({ status: response.status, code: parsed?.code, body: label(parsed) });
+    heard.push({ status: response.status, code: parsed?.code, body: label(parsed), raw: parsed });
     return response;
   }) as typeof fetch;
   // The app's client signs in as a browser does, on the session cookie (S0-6c).
@@ -112,7 +114,7 @@ export async function asAgent(
       .clone()
       .json()
       .catch(() => ({}))) as { code?: unknown } | null;
-    heard.push({ status: response.status, code: parsed?.code, body: label(parsed) });
+    heard.push({ status: response.status, code: parsed?.code, body: label(parsed), raw: parsed });
     return response;
   };
   // The agent prefix takes an operation id on every call, reads included.
