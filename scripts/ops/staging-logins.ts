@@ -70,6 +70,7 @@ export const LOGINS: readonly Login[] = [
 type Environment = Readonly<Record<string, string | undefined>>;
 const STEPS: ReadonlySet<string> = new Set(['before-reset', 'after-reset']);
 const REF = /^[a-z]{20}$/u;
+const TLS_MODES: ReadonlySet<string> = new Set(['require', 'verify-ca', 'verify-full']);
 
 function setting(environment: Environment, name: string): string {
   const value = environment[name] ?? '';
@@ -99,6 +100,12 @@ export function loginsRefusal(
     // The addresses made here are the pooler's, so the admin address must name it.
     if (!POOLER.test(new URL(adminUrl).hostname.toLowerCase()))
       throw new Refusal("DATABASE_ADMIN_URL is not Supabase's pooler in Sydney");
+    // The verifiers cross this connection: TLS, asked for in the address, is required.
+    const query = new URL(adminUrl).searchParams;
+    if (!TLS_MODES.has(query.get('sslmode') ?? '') || query.has('ssl'))
+      throw new Refusal(
+        'DATABASE_ADMIN_URL does not require TLS (add ?sslmode=require or stricter)',
+      );
     setting(environment, 'OPS_LOGINS_DIR');
     return undefined;
   } catch (error) {

@@ -12,9 +12,17 @@
 // header notwithstanding, is refused 421 before anything is read. So once the alias has moved, the deployment it moved
 // from serves nothing.
 //
-// What `main` does that a function does not: the loopback identity route, the
-// live channel's LISTEN, restart recovery and the sweeper. Those belong to a
-// long-running process, the worker (re-plan, section 11).
+// What `main` does that a function does not: the loopback identity route and
+// the live channel's LISTEN.
+//
+// **Recovery has one owner here: the function.** The worker holds no database,
+// so with `RECOVERY_BUSINESS_KEYS` set the function runs the reconciliation
+// pass (`passDeployment`: sweep, replay, the register's answers) over those
+// businesses, awaited by every request while it runs, again each
+// `SWEEP_INTERVAL_MS` after one succeeds, since an instance may be frozen once
+// it answers. Instances that pass at once meet
+// on the pass's own row locks. `server.ts` runs the same pass only where there
+// is no function.
 //
 // **No admin login (G2).** The business key, the one read before tenancy, is
 // read on `DATABASE_LOOKUP_URL`, a login in the lookup identity (0046) that
@@ -32,12 +40,29 @@
 // the entry refuses to start beside it.
 
 import { join } from 'node:path';
-import { connect, connectAsAdmin, connectOutbox } from '../../packages/core-records/src/index.ts';
-import { crashSeamProblem, runtimeKeys } from '../../packages/core-runtime/src/index.ts';
+import {
+  connect,
+  connectAsAdmin,
+  connectOutbox,
+  type Database,
+} from '../../packages/core-records/src/index.ts';
+import {
+  crashSeamProblem,
+  runtimeKeys,
+  type RuntimeKeys,
+  withRuntimeKeys,
+} from '../../packages/core-runtime/src/index.ts';
 import { createOutboxAlerts, scopeKey } from './alerts/outbox.ts';
 import type { Alerts } from './alerts/sink.ts';
 import { publishableKey } from './auth/publishable-key.ts';
 import { keySetUrlFor } from './auth/supabase.ts';
+import {
+  parseRecoveryScope,
+  passDeployment,
+  RECOVERY_SCOPE_SETTING,
+  registerEffectLookup,
+  SWEEP_INTERVAL_MS,
+} from './recovery-entry.ts';
 import { composeApi } from './server.ts';
 
 type Settings = Readonly<Record<string, string | undefined>>;
@@ -80,22 +105,68 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
     throw new Error(`delegation credential keys: ${keys.delegation.problem}`);
   }
   const alerts = outboxAlerts(settings, databaseUrl, required);
-
-  const { app } = composeApi({
-    database: connect(databaseUrl, { source: 'runtime' }),
+  const database = connect(databaseUrl, { source: 'runtime' });
+  const { app, resolveBusiness } = composeApi({
+    database,
     admin: connectAsAdmin(lookupUrl, { source: 'lookup' }),
     signIn: { issuer, keySetUrl },
     providerKey: publishableKey(settings['SUPABASE_PUBLISHABLE_KEY']),
     keys,
     ...(alerts === undefined ? {} : { alerts }),
   });
+  const pass = recoveryPass(settings, database, resolveBusiness, keys);
 
   return async (request) => {
     const hosts = [request.headers.get('host') ?? '', new URL(request.url).host];
     if (hosts.some((host) => host.toLowerCase() !== servedHost)) {
       return new Response(null, { status: 421, headers: { 'cache-control': 'private, no-store' } });
     }
+    await pass();
     return await app.fetch(request);
+  };
+}
+
+/**
+ * The reconciliation pass the function owns, over `RECOVERY_BUSINESS_KEYS`:
+ * at most once each `SWEEP_INTERVAL_MS` after one succeeds, awaited by every
+ * request while it runs. Unset or `none`, it does nothing; a malformed value
+ * throws at start.
+ */
+function recoveryPass(
+  settings: Settings,
+  database: Database,
+  resolveBusiness: (businessKey: string) => Promise<string | undefined>,
+  keys: RuntimeKeys,
+): () => Promise<void> {
+  const scope =
+    settings[RECOVERY_SCOPE_SETTING] === undefined
+      ? undefined
+      : parseRecoveryScope(settings[RECOVERY_SCOPE_SETTING]);
+  if (scope?.ok === false) throw new Error(scope.problem);
+
+  let due = 0;
+  let running: Promise<void> | undefined;
+  const run = async (scopeKeys: readonly string[]): Promise<void> => {
+    const outcome = await withRuntimeKeys(
+      keys,
+      async () => await passDeployment(database, resolveBusiness, scopeKeys, registerEffectLookup),
+    ).catch((cause: unknown) => ({
+      ok: false as const,
+      problem: cause instanceof Error ? cause.message : 'unknown',
+    }));
+    // Only a pass that finished marks the interval done; a failed one runs again.
+    if (outcome.ok) due = Date.now() + SWEEP_INTERVAL_MS;
+    else console.error(`api: reconciliation pass: ${outcome.problem}`);
+  };
+  // Every request waits on the pass in flight, so none is served beside it.
+  return async (): Promise<void> => {
+    if (scope === undefined || scope.keys.length === 0) return;
+    if (running === undefined && Date.now() >= due) {
+      running = run(scope.keys).finally(() => {
+        running = undefined;
+      });
+    }
+    await running;
   };
 }
 

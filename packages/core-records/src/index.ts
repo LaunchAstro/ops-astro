@@ -83,7 +83,7 @@ export {
   type InboxWorkState,
   type RaiseInboxItem,
 } from './inbox/items.ts';
-export { taskAccess } from './inbox/access.ts';
+export { readScopes, taskAccess } from './inbox/access.ts';
 export {
   raiseAssignment,
   raiseDecision,
@@ -91,7 +91,7 @@ export {
   raiseIncident,
   raiseRunSettled,
 } from './inbox/raise.ts';
-export { raiseMentions, readMentions, type Mentioned } from './inbox/mentions.ts';
+export { raiseMentions, readMentions, seenBy, type Mentioned } from './inbox/mentions.ts';
 export { clearDecision, withdrawEndedGates } from './inbox/clear.ts';
 export { readUnattended, type UnattendedItem } from './inbox/unattended.ts';
 export {

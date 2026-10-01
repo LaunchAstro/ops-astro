@@ -160,20 +160,18 @@ build to staging (ticket S0-6). It is a person's act under
 the preparation and the promotion. It takes the artefact the store holds for
 that version, checked as the promotion checks it, and never builds the
 product. Before anything starts, staging's database (`DATABASE_ADMIN_URL`)
-must pass the made-up-only preflight; a sign refuses the deploy. It builds one image from that artefact on the pinned base (the
-staging Dockerfile, which arrives with the release artefact in S0-6e; until
-then the deploy stops at its build and records nothing), with nothing from
-the machine mounted, and Compose runs the app services on that image by its
-id. Every other service
-is named by a digest with a row in `docs/supply-chain-pins.md`, and a
-service Compose could build or pull another way is refused (`S0-6 image
-pins`). After Compose is up, each container must be on the image it was named
-by.
+must pass the made-up-only preflight; a sign refuses the deploy. It builds
+no image: the app and API run on Vercel and deploy only through
+`web-deploy.mjs` (below). Compose starts the M5's unit (worker, forwarder,
+backup store, egress), every service named by a digest with a row in
+`docs/supply-chain-pins.md`; a service Compose could build or pull another
+way is refused (`S0-6 image pins`). After Compose is up, each container must
+be on the image it was named by.
 
 The deploy takes the service report's snapshot before and after, and a live
 service that stopped, restarted or changed fails it (`S0-6 services
 unchanged`). Only a deploy that passes both writes `deploy recorded` to the
-operator's record folder: the version, the artefact and the image id.
+operator's record folder: the version and the artefact.
 
 The web app goes to Vercel with `scripts/ops/web-deploy.mjs --version <id>
 --artefacts <store>` (the Vercel re-plan, step 4), beside the deploy above.
@@ -233,6 +231,7 @@ addresses are private, set in the environment at run time:
 | `OPS_ERROR_SINK_DSN`                                       | the forwarder, `alerts.mjs`, the secret scan | the sink's DSN, at a public https address (a private one is refused, a redirect not followed); never the Vercel function's (it refuses to start beside it)       |
 | `OPS_ENVIRONMENT`, `OPS_RELEASE`                           | the API, the forwarder, `alerts.mjs test`    | `staging` or `production`; the build stamp                                                                                                                       |
 | `ALERT_SCOPE_KEY`                                          | the API (the Vercel function)                | at least 32 bytes as hex (`openssl rand -hex 32`), one per environment, every instance the same; required once `OPS_ENVIRONMENT` is set                          |
+| `RECOVERY_BUSINESS_KEYS`                                   | the API (the Vercel function)                | deployment's business keys, or `none`; the function's recovery (below); unset, none                                                                              |
 | `DATABASE_FORWARDER_URL`                                   | `forwarder.mjs`                              | a login that is a member of `ops_astro_forwarder` alone                                                                                                          |
 | `OPS_FORWARDER_HEARTBEAT_URL`                              | `forwarder.mjs`                              | the watcher's forwarder heartbeat, pinged after each pass that completed                                                                                         |
 | `OPS_WORKER_HEARTBEAT_URL`                                 | the worker                                   | the watcher's worker heartbeat, pinged after each pass the API answered                                                                                          |
@@ -240,6 +239,13 @@ addresses are private, set in the environment at run time:
 | `OPS_BACKUP_HEARTBEAT_URL`                                 | `backup.mjs run`                             | the watcher's backup heartbeat, pinged once a backup is recorded                                                                                                 |
 | `OPS_RESTORE_HEARTBEAT_URL`                                | `backup.mjs expire`                          | the watcher's restore heartbeat, pinged only while a drill is fresh                                                                                              |
 | `OPS_HEARTBEAT_EVERY_MS`                                   | the worker, `forwarder.mjs`                  | the least milliseconds between two pings to one heartbeat, so a free watcher's budget holds; staging's compose requires it, and unset elsewhere every pass pings |
+
+`RECOVERY_BUSINESS_KEYS` makes the Vercel function recovery's one owner (the
+worker holds no database and sweeps nothing): before the first request each
+minute, it sweeps expired leases, replays and reconciles for those businesses,
+resolving the keys on `DATABASE_LOOKUP_URL`. The operator sets it with `vercel
+env add`; a malformed value stops the function starting, and unset, nothing
+recovers a lost worker's lease.
 
 `node scripts/ops/alerts.mjs plan` prints the checks, each with its name and
 its alert message in plain words, and the recipients to set up in both services (`--test`: all mail to the test address). `node
