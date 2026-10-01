@@ -69,6 +69,7 @@ function DockPanel(props: {
           taskPanel.changed();
         }}
         onClose={taskPanel.close}
+        docked
       />
     );
   }

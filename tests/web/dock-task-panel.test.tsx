@@ -14,7 +14,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { App } from '../../apps/web/src/App.tsx';
 import { SessionStore, tabStorage, type StorageLike } from '../../apps/web/src/session/token.ts';
 import { task, tick } from './task-page-stub.tsx';
-import { json, mount, unmountAll } from './perspective-support.tsx';
+import { json, mount, typeInto, unmountAll } from './perspective-support.tsx';
 
 afterEach(unmountAll);
 
@@ -192,5 +192,30 @@ describe('MP-3-1 the Task panel sits in the dock like any other panel', () => {
     await view.click(`${TASK} [data-panel-head="page"]`);
     await tick();
     expect(went).toContain(`/task/${KEY}`);
+  });
+});
+
+describe('MP-4-13 the new-task draft in the dock', () => {
+  it("the draft draws no close of its own in the dock: the dock's X is its one close", async () => {
+    const view = await opened();
+    await view.click('[data-panel-head="new"]');
+    await tick();
+    expect(view.host.querySelector(`${TASK} [data-draft="close"]`)).toBeNull();
+    expect(view.host.querySelectorAll(`${TASK} [data-act="close"]`)).toHaveLength(1);
+  });
+
+  it("the dock's X keeps the draft: reopened, it holds what was typed", async () => {
+    const view = await opened();
+    await view.click('[data-panel-head="new"]');
+    await tick();
+    await typeInto(view, '#panel-draft-name', 'New brief');
+    await view.click(`${TASK} [data-act="close"]`);
+    await tick();
+    expect(view.find(`${TASK} [data-draft-panel]`)).toBeNull();
+    await view.click(DOOR);
+    await tick();
+    await view.click('[data-panel-head="new"]');
+    await tick();
+    expect((view.find('#panel-draft-name') as HTMLInputElement | null)?.value).toBe('New brief');
   });
 });
