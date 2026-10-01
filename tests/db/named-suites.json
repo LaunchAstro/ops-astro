@@ -420,6 +420,7 @@
     "tests/broker/aw-05-budget-answer-routes-isolation.test.ts",
     "tests/broker/aw-05-four-eyes-one-rule.test.ts",
     "tests/broker/review-3a-4-model-spend-reservation.test.ts",
+    "tests/broker/review-3a-5-stranded-model-calls.test.ts",
     "tests/broker/aw-07b-email.test.ts",
     "tests/broker/aw-07b-email-hostile.test.ts",
     "tests/broker/aw-07b-no-second-send.test.ts",
