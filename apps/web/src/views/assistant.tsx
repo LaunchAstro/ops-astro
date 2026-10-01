@@ -43,6 +43,9 @@ import {
   type AssistantState,
   type Chat,
 } from '../assistant/chats.ts';
+import type { CorrectionDesk } from '../assistant/correction.ts';
+import { madeUpDesk } from '../assistant/correction-desks.ts';
+import { useCorrections } from '../assistant/use-corrections.ts';
 import { entryFor, type EntryPoint } from '../assistant/entries.ts';
 import { modelOffer, subjectFor, type ModelChoice, type Subject } from '../assistant/subject.ts';
 import type {
@@ -67,6 +70,8 @@ export interface AssistantViewProps {
   /** The entry point the drawer was last opened from, if any: asked through the one seam. */
   readonly entry: EntryPoint | null;
   readonly onClose: () => void;
+  /** C80: where a one-word site correction is asked; made up until the site read joins. */
+  readonly corrections?: CorrectionDesk;
 }
 
 type Move = (state: AssistantState) => AssistantState;
@@ -229,6 +234,8 @@ export function AssistantView(props: AssistantViewProps): ReactElement {
   const subject = subjectFor({ route: props.route, ...state.scope });
   const sender = useSender(props, store, subject);
   const writes = useWrites(props, store, sender.report);
+  const [madeUp] = useState(madeUpDesk);
+  const corrections = useCorrections(props.client, props.corrections ?? madeUp, update);
   const opened = state.chats.find((chat) => chat.key === state.selected)?.conversationId ?? null;
   return (
     <AssistantPanel
@@ -256,9 +263,11 @@ export function AssistantView(props: AssistantViewProps): ReactElement {
       }}
       onAddPage={writes.addPage}
       onSend={(key, text) => {
+        if (corrections.ask(key, text)) return;
         void sender.send(key, text);
       }}
       onClose={props.onClose}
+      onCheckCorrection={corrections.check}
     />
   );
 }

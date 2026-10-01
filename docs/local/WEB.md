@@ -121,6 +121,19 @@ goes to `/settings`, and Agent, which opens the assistant drawer in place
 leaves its address for the board when pressed (`onDockTab` in
 `apps/web/src/App.tsx`).
 
+In the Agent drawer, a line such as "Change alongside to beside on the About
+page" (one word for one word, on a named page) is a correction request, not a
+question (C80, the owner check's first step; `apps/web/src/assistant/correction.ts`).
+The drawer reads `session.capabilities` first: without `run:write` it says so
+and draws no card. With it, the request goes to a desk and comes back as a card
+under the agent's line (`packages/ui/src/surfaces/assistant/correction-card.tsx`):
+the page, the word, its replacement, the line before and after, and the state
+(waiting for the configured approver, approved, refused). The live desk sends
+`live_correction.request` (`apps/web/src/assistant/correction-desks.ts`). Until
+the site read that locates the word and a read of a correction's decision
+join, the drawer uses the made-up desk: one made-up About line and a made-up
+approver, nothing sent, and every line it draws wears the kit's mock mark.
+
 The route registry is the router. `SCREENS` in `apps/web/src/screen-registry.tsx`
 looks each screen up by route id and is keyed by `AuthenticatedRouteId`, so an
 authenticated route added to `apps/web/src/routes.ts` without a screen fails
