@@ -7,8 +7,9 @@
 // work inside another's. Three writes could do that, and each keeps the rule:
 // `task.create` copies the parent's client onto a new subtask, `task.reparent`
 // refuses a parent whose client differs from the task's own, and
-// `task.set_party` refuses a subtask a client of its own and carries a
-// parent's new client down its whole live subtree in the same transaction.
+// `task.set_party` refuses a subtask a client of its own. Its carry-down of a
+// parent's new client stays as a second guard only: a parent with a live
+// subtask has content, so `CLIENT_LOCKED` answers first (task-client-lock.ts).
 // The business needs no rule of its own here: every lookup is filtered by the
 // business the session set, so another business's parent is not found.
 

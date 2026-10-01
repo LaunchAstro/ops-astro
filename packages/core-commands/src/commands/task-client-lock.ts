@@ -29,8 +29,8 @@ const LOCKED_FIXES: readonly string[] = [
 /**
  * The client change, refused `CLIENT_LOCKED` and writing nothing once the task
  * has content. An empty task's change is MP-4-4's (`setParty`): a subtask is
- * held to its parent's client, and a parent's client carries down (a parent
- * with a subtask has content, so the lock answers first there).
+ * held to its parent's client. A parent with a live subtask has content, so
+ * the lock answers first and `setParty`'s carry-down is not reached from here.
  */
 export async function setPartyWhileEmpty(
   tx: TenantQuery,

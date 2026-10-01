@@ -6,7 +6,7 @@
 // (TR-S-B1R-13), search and the timer ship disabled on the agency face with a
 // tooltip naming the feature and search is hidden on the portal (R29), and no
 // presence avatars are drawn (R30). The hide rules at 900 and 640 and the two
-// strip colours are measured in a browser by `tests/browser/app-frame.mjs`.
+// strip colours are measured in a browser by `tests/surfaces/mp-2-8-harness.test.tsx`.
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';

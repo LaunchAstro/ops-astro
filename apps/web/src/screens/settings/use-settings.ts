@@ -118,6 +118,8 @@ export interface SettingsModel {
   readonly save: (which: Which, value: Draft) => void;
   /** The second explicit press: the person choosing to overwrite what they saw. */
   readonly writeOver: () => void;
+  /** Asks the settings read again, after it did not come back. */
+  readonly retry: () => void;
   /** Something this screen decided, not the server. Never dressed as a refusal. */
   readonly complain: (text: string) => void;
 }
@@ -288,6 +290,7 @@ export function useSettings(
       setConflict(null);
       save(conflict.which, conflict.draft);
     },
+    retry: settings.reload,
     complain: setComplaint,
   };
 }

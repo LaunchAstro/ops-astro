@@ -16,6 +16,28 @@ import {
 import { insertBusiness } from '../identity/fixture.ts';
 import { enrol, grantTo, installSpine } from './fixture.ts';
 
+/** A business from before MP-4-9a: its own text field already took the key `impact`. */
+async function plantOldImpactField(
+  db: EmptyDatabase,
+  business: string,
+  taskTypeId: string,
+): Promise<void> {
+  await db.admin.execute(
+    `delete from public.field_defs
+      where business_id = $1 and record_type_id = $2
+        and key in ('impact', 'confidence', 'ease')`,
+    [business, taskTypeId],
+  );
+  await db.admin.execute(
+    `insert into public.field_defs
+       (business_id, id, record_type_id, key, label, value_type, slot,
+        write_mode, owning_operation, visibility_class, origin)
+     values ($1, gen_random_uuid(), $2, 'impact', 'Old impact note', 'text', null,
+             'generic', null, 'internal', 'preset')`,
+    [business, taskTypeId],
+  );
+}
+
 describe.skipIf(databaseUrlFromEnvironment() === undefined)('MP-4-9a upgrade proof', () => {
   let db: EmptyDatabase | undefined;
 
@@ -37,20 +59,7 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('MP-4-9a upgrade pro
       await grantTo(tx, writer, 'write');
     });
 
-    await db.admin.execute(
-      `delete from public.field_defs
-        where business_id = $1 and record_type_id = $2
-          and key in ('impact', 'confidence', 'ease')`,
-      [business, spine.taskTypeId],
-    );
-    await db.admin.execute(
-      `insert into public.field_defs
-         (business_id, id, record_type_id, key, label, value_type, slot,
-          write_mode, owning_operation, visibility_class, origin)
-       values ($1, gen_random_uuid(), $2, 'impact', 'Old impact note', 'text', null,
-               'generic', null, 'internal', 'preset')`,
-      [business, spine.taskTypeId],
-    );
+    await plantOldImpactField(db, business, spine.taskTypeId);
 
     await db.closeSessions();
     await applyMigrations(db.admin, migrations);

@@ -124,6 +124,8 @@
     "tests/api/live-board-scoped-revocation-review.test.ts",
     "tests/api/live-board-client-move-review.test.ts",
     "tests/api/live-board-client-move-prompt-review.test.ts",
-    "tests/api/c4-notifications-live.test.ts"
+    "tests/api/c4-notifications-live.test.ts",
+    "tests/reads/mp-7-3-client-groups.test.ts",
+    "tests/api/mp-9-1-tip-dismiss-security.test.ts"
   ]
 }

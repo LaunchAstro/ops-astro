@@ -75,11 +75,13 @@ export async function listAllClients(tx: TenantQuery): Promise<readonly ClientRo
  * live grant at all (an answer the read refuses, since empty and denied are
  * different answers). The grant rows are walked by `EFFECTIVE`, the grant
  * check's own expression, so a revoked or expired grant, or one cut from a
- * revoked parent, reaches nothing.
+ * revoked parent, reaches nothing. `among`, when given, asks only of those
+ * clients, so the read follows the caller's list and not the business's size.
  */
 export async function clientsReached(
   tx: TenantQuery,
   subjects: readonly Subject[],
+  among: readonly string[] | null = null,
 ): Promise<readonly ClientRow[] | null> {
   const rows = await tx.query<{
     readonly held: boolean;
@@ -97,11 +99,17 @@ export async function clientsReached(
        from (select 1) as one
        left join public.clients c
          on c.business_id = $1
+        and ($4::uuid[] is null or c.id = any($4::uuid[]))
         and exists (select 1 from mine m
                      where m.scope_kind = 'business'
                         or (m.scope_kind = 'party' and m.scope_id = c.id))
       order by lower(c.name), c.id`,
-    [tx.businessId, subjects.map((subject) => subject.kind), subjects.map((subject) => subject.id)],
+    [
+      tx.businessId,
+      subjects.map((subject) => subject.kind),
+      subjects.map((subject) => subject.id),
+      among,
+    ],
   );
   if (rows[0]?.held !== true) return null;
   return rows.flatMap((row) =>

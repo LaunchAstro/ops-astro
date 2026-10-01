@@ -19,10 +19,11 @@ import { applyAppearance, isAppearance, type Appearance } from '../../appearance
 import { isRefusal, type OperationsClient } from '../../operations/client.ts';
 import { describeFailure, describeRefusal } from '../../records/submit.ts';
 import type { StorageLike } from '../../session/token.ts';
+import { OnOff } from './panels.tsx';
 
 type Preferences = Readonly<Record<string, unknown>>;
 
-/** The label, one quiet sentence, and the control on the right (DS-COMP-13). */
+/** The label, one quiet sentence, and the control on the right (DS-COMP-26 rows). */
 function Row(props: {
   readonly id: string;
   readonly label: string;
@@ -33,12 +34,30 @@ function Row(props: {
   const key = { [props.dataKey ?? 'data-pref']: props.id };
   return (
     <div className="setrow" {...key}>
-      <div className="setrow__text">
-        <span className="setrow__k">{props.label}</span>
-        <div className="card__sub">{props.sentence}</div>
+      <div className="setrow__t">
+        <h3 className="setrow__k">{props.label}</h3>
+        <div className="setrow__note">{props.sentence}</div>
       </div>
-      {props.control === undefined ? null : <div className="setrow__control">{props.control}</div>}
+      {props.control === undefined ? null : <div className="setrow__ctl">{props.control}</div>}
     </div>
+  );
+}
+
+/** One group of rows: the kit's settings card (AG-X20), titled. */
+function Group(props: {
+  readonly id: string;
+  readonly title: string;
+  readonly intro: string;
+  readonly children: ReactNode;
+}): ReactElement {
+  return (
+    <section data-pref={props.id} aria-label={props.title}>
+      <div className="card set__card">
+        <h2 className="card__title">{props.title}</h2>
+        <p className="card__sub">{props.intro}</p>
+        <div className="set">{props.children}</div>
+      </div>
+    </section>
   );
 }
 
@@ -111,8 +130,8 @@ function AppearanceRow(props: {
   );
 }
 
-/** The tips switch, and the reset whose count is derived from the store (AG-X23). */
-function TipsRows(props: {
+/** Guided tips as AG-X23: On and Off, the reset, and its state line (AG-X23). */
+function TipsRow(props: {
   readonly preferences: Preferences | null;
   readonly save: (preference: string, value: unknown) => void;
 }): ReactElement {
@@ -124,28 +143,24 @@ function TipsRows(props: {
       : null
     : 'Guided tips are off, so there is nothing to bring back.';
   return (
-    <>
-      <Row
-        id="tips"
-        label="Guided tips"
-        sentence="Short tips on each page about what it is for."
-        control={
-          <Switch
+    <Row
+      id="tips"
+      label="Guided tips"
+      sentence="Short tips on each page about what it is for."
+      control={
+        <>
+          <OnOff
             label="Guided tips"
+            id="settings-tips"
+            idFor="on"
             on={tipsOn}
+            disabled={false}
             onChange={(on) => {
               props.save('tips.enabled', on);
             }}
           />
-        }
-      />
-      <Row
-        id="tips-reset"
-        label="Dismissed tips"
-        sentence={closed ?? 'Show every tip you dismissed again.'}
-        control={
           <button
-            className="btn"
+            className="btn btn--sm btn--secondary"
             type="button"
             disabled={closed !== null}
             title={closed ?? undefined}
@@ -155,19 +170,23 @@ function TipsRows(props: {
           >
             {`Bring back ${String(dismissed)} dismissed ${dismissed === 1 ? 'tip' : 'tips'}`}
           </button>
-        }
-      />
-    </>
+          <p className="setrow__state">
+            {closed ?? `${String(dismissed)} ${dismissed === 1 ? 'tip' : 'tips'} dismissed`}
+          </p>
+        </>
+      }
+    />
   );
 }
 
 /** CS-2.17 as INB-1 rules it: nothing here is stored, so nothing here writes. */
 function NotificationsGroup(): ReactElement {
   return (
-    <section className="sb__sect" data-pref="notifications">
-      <div className="sb__sh">
-        <span className="sb__k">Notifications</span>
-      </div>
+    <Group
+      id="notifications"
+      title="Notifications"
+      intro="What reaches you, and where. Nothing here is stored yet: these are the house rules."
+    >
       <Row
         id="in-app"
         dataKey="data-notify"
@@ -205,7 +224,7 @@ function NotificationsGroup(): ReactElement {
         label="Decisions and Incidents"
         sentence="Decisions you are responsible for and Incidents are told at once on every channel: they cannot be silenced."
       />
-    </section>
+    </Group>
   );
 }
 
@@ -218,10 +237,11 @@ export function YouGroups(props: {
   const stored = preferences?.['appearance'];
   return (
     <>
-      <section className="sb__sect" data-pref="you">
-        <div className="sb__sh">
-          <span className="sb__k">You</span>
-        </div>
+      <Group
+        id="you"
+        title="You"
+        intro="Your own settings, on every device you sign in on. Nobody else sees them."
+      >
         {because === null ? null : (
           <p className="field__error" role="alert" data-pref="refusal">
             {because}
@@ -234,8 +254,8 @@ export function YouGroups(props: {
             save('appearance', value);
           }}
         />
-        <TipsRows preferences={preferences} save={save} />
-      </section>
+        <TipsRow preferences={preferences} save={save} />
+      </Group>
       <NotificationsGroup />
     </>
   );

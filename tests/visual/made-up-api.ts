@@ -10,7 +10,7 @@
 // a screen from a shape the API no longer sends. Test side only: the page
 // asks the same addresses it asks the real API; nothing here is a back end.
 //
-// The rows follow the pinned mockup's Projects board, so a capture reads
+// The rows (made-up-tasks.ts) follow the pinned mockup's Projects board, so a capture reads
 // against the mockup's page. Every name and client is made up.
 
 import type {
@@ -49,6 +49,16 @@ import {
 
 export { TASKS } from './made-up-rows.ts';
 
+/** One business setting as `settings.read` answers it, last written by Nathan. */
+const setting = (key: string, value: number | boolean, revision: number) => ({
+  key,
+  value,
+  valueType: typeof value === 'boolean' ? ('boolean' as const) : ('numeric' as const),
+  updatedAt: '2026-09-20T00:00:00.000Z',
+  updatedByActorId: NATHAN.personId,
+  revision,
+});
+
 const READS = {
   'task.board': {
     ok: true,
@@ -68,38 +78,10 @@ const READS = {
   'settings.read': {
     ok: true,
     settings: [
-      {
-        key: 'four_eyes_threshold',
-        value: 500,
-        valueType: 'numeric',
-        updatedAt: '2026-09-20T00:00:00.000Z',
-        updatedByActorId: NATHAN.personId,
-        revision: 2,
-      },
-      {
-        key: 'client_sign_off_required',
-        value: true,
-        valueType: 'boolean',
-        updatedAt: '2026-09-20T00:00:00.000Z',
-        updatedByActorId: NATHAN.personId,
-        revision: 1,
-      },
-      {
-        key: 'conversation_window_days',
-        value: 30,
-        valueType: 'numeric',
-        updatedAt: '2026-09-20T00:00:00.000Z',
-        updatedByActorId: NATHAN.personId,
-        revision: 1,
-      },
-      {
-        key: 'retention_window_days',
-        value: 365,
-        valueType: 'numeric',
-        updatedAt: '2026-09-20T00:00:00.000Z',
-        updatedByActorId: NATHAN.personId,
-        revision: 1,
-      },
+      setting('four_eyes_threshold', 500, 2),
+      setting('client_sign_off_required', true, 1),
+      setting('conversation_window_days', 30, 1),
+      setting('retention_window_days', 365, 1),
     ],
   } satisfies SettingsReadResult,
   // The person's own store (MP-2-11a): no appearance, so the capture's colour
@@ -137,6 +119,7 @@ const READS = {
         seenAt: null,
         lastDelivery: 'delivered',
         task: { key: 'T-9', title: 'Sign off the Meridian ad run rate, 29% over budget' },
+        client: MERIDIAN,
       },
       {
         id: 'i-2',
@@ -150,6 +133,20 @@ const READS = {
         seenAt: '2026-09-25T21:00:00.000Z',
         lastDelivery: 'delivered',
         task: { key: 'T-13', title: 'Approve the four review replies before they go out' },
+        client: HARBOUR,
+      },
+      {
+        id: 'i-3',
+        reason: 'run_finished',
+        workState: 'open',
+        access: 'readable',
+        owed: false,
+        counted: false,
+        raisedAt: '2026-09-25T18:10:00.000Z',
+        closedAt: null,
+        seenAt: null,
+        lastDelivery: 'delivered',
+        task: { key: 'T-17', title: 'Shopping feed clean-up' },
       },
     ],
   } satisfies InboxReadResult,

@@ -6,7 +6,7 @@
 // and typing it shows the one shared "not here yet" state, as does any page
 // whose own ticket has not landed. `/dashboard/` is Portfolio Command's
 // address and `/` goes there. Looks at 1480, 900 and 390, light and dark, are
-// measured in a browser by `tests/browser/app-frame.mjs`.
+// measured in a browser by `tests/surfaces/mp-2-8-harness.test.tsx`.
 
 // oxlint-disable no-await-in-loop
 
