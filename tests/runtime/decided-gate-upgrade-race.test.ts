@@ -51,7 +51,7 @@ import {
   type AdminConnection,
   type TenantQuery,
 } from '../../packages/core-records/src/tenancy/database.ts';
-import { propose } from '../../packages/core-runtime/src/propose.ts';
+import { BEFORE_0223, propose } from '../../packages/core-runtime/src/propose.ts';
 import { decide } from '../../packages/core-runtime/src/decide.ts';
 import {
   buildFixture,
@@ -144,6 +144,8 @@ async function stagedAt0029(part: string): Promise<Staged> {
       currency: 'AUD',
       payload: { instruction: 'draft it' },
       step: { kind: 'local.draft', payload: { words: 200 } },
+      // Seeded before 0223 (and 0207): the step has no plan record columns.
+      planRecordId: BEFORE_0223,
       expiresAt: new Date(Date.now() + 3_600_000),
     });
     if (!result.ok) throw new Error(`propose refused ${result.refusal.code}`);
@@ -241,6 +243,8 @@ async function proposeOn(tx: TenantQuery, on: Bare, lineageId?: string) {
     currency: 'AUD',
     payload: { instruction: 'draft it' },
     step: { kind: 'local.draft', payload: { words: 200 } },
+    // Seeded before 0223 (and 0207): the step has no plan record columns.
+    planRecordId: BEFORE_0223,
     expiresAt: new Date(Date.now() + 3_600_000),
   });
   if (!result.ok) throw new Error(`propose refused ${result.refusal.code}`);
