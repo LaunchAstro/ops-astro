@@ -4,8 +4,9 @@
 // every row of one business that holds a person's text, in any table, in any
 // letter case, including the records' search column, and every row naming by
 // id a person whose own row or identifier holds it, or their acting identity
-// or sign-in (their memberships, logins and grants). It reads with the
-// owner's connection from DATABASE_ADMIN_URL, with row security off, so a table
+// or sign-in (their memberships, logins and grants), or the agent of a
+// credential they issued. It reads with the owner's connection from
+// DATABASE_ADMIN_URL, with row security off, so a table
 // the connection cannot read in full is an error rather than a silent gap. Every
 // query names the business, and a table with no business column is an error,
 // so no other business's row reaches the list or the export.
