@@ -76,7 +76,7 @@ export interface QuotaSlot {
 /** The app's limits (`apps/api/auth/agent-quota.ts`): a slot, or undefined when one is reached. */
 export interface CredentialQuota {
   enter(keys: QuotaKeys): QuotaSlot | undefined;
-  /** Whether the business's door has room for another bearer; asked before it is resolved. */
+  /** Whether the business's door has room to record another not-live bearer. */
   knock(businessId: string): boolean;
   /** A bearer turned away as not live, counted at the business's door. */
   turnedAway(businessId: string): void;
@@ -119,14 +119,14 @@ export async function executeCredentialCommand(
   // Entered once per request, outside `retryOnce`, so a retry is not a second call.
   let slot: QuotaSlot | undefined;
   let answer: CommandResult | ReadResult | undefined;
-  // Made-up bearers cost a transaction and an attempt row each (finding 5).
-  if (call.quota?.knock(businessId) === false) return asCallerVisible(limited());
+  // Asked before, answered after the bearer is resolved (`notLive`).
+  const doorFull = call.quota?.knock(businessId) === false;
   try {
     answer = await retryOnce(
       async () =>
         await database.withBusiness(businessId, async (tx) => {
           const standing = await resolveAgentCredential(tx, call.credential, call.now);
-          if (standing === 'not-live') return await refusedAtTheDoor(tx, call.credential);
+          if (standing === 'not-live') return await notLive(tx, call.credential, doorFull);
           const keys = {
             credentialId: standing.credentialId,
             personId: standing.personId,
@@ -160,8 +160,17 @@ export async function executeCredentialCommand(
   }
 }
 
-/** A credential turned away is an attempt at the door (I13), answered as every other. */
-async function refusedAtTheDoor(tx: TenantQuery, credential: string): Promise<CommandRefusal> {
+/**
+ * A credential turned away is an attempt at the door (I13), answered as every
+ * other. Past the door's count it is answered as limited and writes no row
+ * (finding 5), while a live bearer is still served (round 2, finding 1).
+ */
+async function notLive(
+  tx: TenantQuery,
+  credential: string,
+  doorFull: boolean,
+): Promise<CommandRefusal> {
+  if (doorFull) return limited();
   const refusal = credentialNotLive();
   await recordCredentialRefusal(tx, credential, refusal.code);
   return refusal;

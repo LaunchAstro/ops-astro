@@ -2,8 +2,8 @@
 //
 // The agent credential's quota (API-2): requests a minute, calls in flight
 // and records handed out a minute, each held per credential, per person and
-// per business; and, before a bearer is resolved, the made-up or dead ones
-// a business key is sent a minute.
+// per business; and the made-up or dead bearers a business key is sent a
+// minute, past which a not-live one is answered as limited and not recorded.
 
 import type { CredentialQuota } from '../../../packages/core-commands/src/index.ts';
 
@@ -21,7 +21,7 @@ export interface AgentLimits {
   readonly concurrent: Tiers;
   /** Records handed out a minute. */
   readonly exports: Tiers;
-  /** Not-live bearers a minute, per business, before the next is even looked up. */
+  /** Not-live bearers a minute, per business, recorded before the rest are answered as limited. */
   readonly refused: number;
 }
 
