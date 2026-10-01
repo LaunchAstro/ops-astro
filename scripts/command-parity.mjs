@@ -198,8 +198,8 @@ async function askedBy(read) {
   return asked;
 }
 
-// What the real API runs at each path on both prefixes, profiled: a read by the grants its
-// path asks, a command by its declaration (its executor stubbed).
+// What the real API runs at each path on both prefixes, by name and profile: a read by the
+// grants its path asks, a command by its declaration (its executor stubbed).
 async function routedByApi() {
   let ran;
   let asked;
@@ -225,22 +225,25 @@ async function routedByApi() {
     const name = ran;
     const runs = COMMAND_SURFACE.find((one) => one.name === name);
     if (runs === undefined) continue;
-    routed.set(
-      path,
-      asked === undefined ? profileOf(runs) : { ...profileOf(runs), authority: asked },
-    );
+    const profile = profileOf(runs);
+    routed.set(path, {
+      name,
+      profile: asked === undefined ? profile : { ...profile, authority: asked },
+    });
   }
   return routed;
 }
 const ROUTED = await routedByApi();
 
-// Each name sent through a surface (clients post before any await) is what the API runs there.
+// Each name sent through a surface (clients post before any await) reaches its path's profile
+// only when the API runs that very command there; a path that runs another reaches nothing.
 function reached(send) {
   const reach = new Map();
   for (const { name } of COMMAND_SURFACE) {
     let path;
     send(name, (sent) => ((path = sent), Promise.resolve(new Response('{}')))).catch(() => null);
-    if (ROUTED.has(path)) reach.set(name, ROUTED.get(path));
+    const routed = ROUTED.get(path);
+    if (routed?.name === name) reach.set(name, routed.profile);
   }
   return reach;
 }
