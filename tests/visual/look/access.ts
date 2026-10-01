@@ -6,7 +6,7 @@
 // sub, the outlined chip, and the page's section rhythm. The app's Access page
 // is held to that page kit; its rows are the made-up `access.read`.
 
-import type { LookProbe, LookScreen } from './index.ts';
+import type { LookProbe, LookScreen } from './probe.ts';
 
 const MOCKUP = { path: '/settings/access/' } as const;
 const APP = { page: 'agency:access' } as const;

@@ -6,7 +6,7 @@
 // page kit: the section head, content cards with title and sub, and the rhythm
 // between them; its rows are the made-up `operations.read`.
 
-import type { LookProbe, LookScreen } from './index.ts';
+import type { LookProbe, LookScreen } from './probe.ts';
 
 const MOCKUP = { path: '/settings/telemetry/' } as const;
 const APP = { page: 'agency:telemetry' } as const;
