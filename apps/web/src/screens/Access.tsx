@@ -149,6 +149,9 @@ export function AccessScreen(props: AccessScreenProps): ReactElement {
   // The top bar names the page; the body is the page kit's sections (PAGE-MAP SH-40 to 44).
   return (
     <div className="secs" data-screen="access" data-business={client.businessKey}>
+      <p className="card__sub" data-page-lead>
+        Who may do what in {client.businessKey}, as the server grants it now.
+      </p>
       <RecordState state={state} subject="access list" onRetry={reload}>
         {(result) => (
           <div className="secs">
