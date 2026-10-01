@@ -1,35 +1,53 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // C39-T, piece P3: a login made at the login provider when an invitation is
-// accepted, under the catalogued `auth.create_user`, through custody, so the
-// service key stays in custody's process. The broker's process sends the
-// address and the password once and keeps neither.
+// accepted, under the catalogued `auth.create_user`, and set again under
+// `auth.update_user` when an earlier accept made it and never bound it, each
+// through custody, so the service key stays in custody's process. The
+// broker's process sends the id, the address and the password once and keeps
+// none of them.
 //
-// What comes back is read by the operation's answer schema to the new
-// user's id alone. The provider's `email_exists` answer (422) is positive
-// proof nothing was made: the address already holds a login. Any other
-// answer, an answer that carries the password among them, or one that is
-// oversized, redirected, malformed or slow, is a fault, and the caller
-// spends nothing and keeps nothing.
+// What comes back is read by the operation's answer schema to the user's id
+// alone, and it must be the id asked for. The provider's positive proof that
+// nothing was made or changed is `refused`: `email_exists` (422) on either,
+// the address holding another login, and `user_not_found` (404) on an update,
+// no user under that id. Any other answer, one that names another user, one
+// that carries the password, or one oversized, redirected, malformed or slow,
+// is a fault, and the caller spends nothing and binds nothing.
 
-import { AUTH_CREATE_USER, AUTH_EXISTS_STATUS } from '../../core-connectors/src/index.ts';
+import {
+  AUTH_CREATE_USER,
+  AUTH_EXISTS_STATUS,
+  AUTH_NOT_FOUND_STATUS,
+  AUTH_UPDATE_USER,
+} from '../../core-connectors/src/index.ts';
 import { answerOf, routed } from './broker-email-route.ts';
 import type { Broker } from './broker-types.ts';
 
+/** The login asked for: the provider user's id (ours), the address and the password. */
+export interface LoginAsked {
+  readonly id: string;
+  readonly email: string;
+  readonly password: string;
+}
+
 export type LoginMade =
   | { readonly ok: true; readonly subject: string }
-  | { readonly ok: false; readonly kind: 'exists' | 'fault' | 'not_catalogued' };
+  | { readonly ok: false; readonly kind: 'refused' | 'fault' | 'not_catalogued' };
 
-/** Ask the login provider for one confirmed login: its subject, or why there is none. */
-export async function createLogin(
+const FAULT = { ok: false, kind: 'fault' } as const;
+
+/** One catalogued call for one login: its subject, or why there is none. */
+async function ask(
   broker: Broker,
-  address: string,
-  password: string,
+  key: string,
+  refusals: readonly number[],
+  login: LoginAsked,
 ): Promise<LoginMade> {
-  const found = routed(broker, AUTH_CREATE_USER.key);
+  const found = routed(broker, key);
   if (found === undefined) return { ok: false, kind: 'not_catalogued' };
   const { operation, route, adapter } = found;
-  const built = adapter.build({ email: address, password });
+  const built = adapter.build({ id: login.id, email: login.email, password: login.password });
   const outcome = await broker.custody.dispatch(route.credentialRef, {
     destination: operation.destination,
     path: built.path,
@@ -41,12 +59,24 @@ export async function createLogin(
   if (outcome.kind === 'answered') {
     const { outbound } = outcome;
     if (!outbound.ok) {
-      const exists = outbound.fault === 'status' && outbound.status === AUTH_EXISTS_STATUS;
-      return { ok: false, kind: exists ? 'exists' : 'fault' };
+      const { fault, status } = outbound;
+      const refused = fault === 'status' && status !== null && refusals.includes(status);
+      return refused ? { ok: false, kind: 'refused' } : FAULT;
     }
     // An answer is the user's id, never a place the password is kept.
-    if (outbound.body.includes(password)) return { ok: false, kind: 'fault' };
+    if (outbound.body.includes(login.password)) return FAULT;
   }
   const answer = answerOf(outcome, operation);
-  return answer.ok ? { ok: true, subject: answer.text } : { ok: false, kind: 'fault' };
+  return answer.ok && answer.text === login.id ? { ok: true, subject: answer.text } : FAULT;
+}
+
+/** Ask the login provider for one confirmed login under our id: refused when the address holds one. */
+export async function createLogin(broker: Broker, login: LoginAsked): Promise<LoginMade> {
+  return await ask(broker, AUTH_CREATE_USER.key, [AUTH_EXISTS_STATUS], login);
+}
+
+/** Set the login under our id to this address and password: refused when there is none, or the address is another's. */
+export async function updateLogin(broker: Broker, login: LoginAsked): Promise<LoginMade> {
+  const refusals = [AUTH_NOT_FOUND_STATUS, AUTH_EXISTS_STATUS];
+  return await ask(broker, AUTH_UPDATE_USER.key, refusals, login);
 }

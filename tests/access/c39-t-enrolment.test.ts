@@ -8,7 +8,8 @@
 // replaced by a resend, unknown) is refused alike and asks nothing. An
 // address that already holds a login gets none and is told to sign in, in
 // the one answer shape, naming no business. A token reaches only its own
-// business, and a hostile provider answer spends and keeps nothing.
+// business, and a hostile provider answer spends and binds nothing: the
+// login it may have made is ours, and the same link then enrols with it.
 //
 // Not here: `C39-T second factor first` waits on C59, which this branch
 // does not carry yet.
@@ -96,6 +97,7 @@ describe.skipIf(noDatabase)('C39-T enrolment', () => {
       body: { email: address, password, email_confirm: true },
     });
     const subject = String(e.users.users.get(address));
+    expect(e.users.received.at(-1)?.body['id']).toBe(subject);
     expect(await spentOf(id)).toStrictEqual({ state: 'accepted', spent: 2, tokens: 2 });
     // Bound to the invitation's one enduring person: no person is made at accept.
     expect(await peopleIn(w.alpha)).toBe(people);
@@ -263,8 +265,9 @@ describe.skipIf(noDatabase)('C39-T enrolment', () => {
   });
 
   // eslint-disable-next-line max-lines-per-function -- every hostile answer, then the control
-  it('C39-T hostile provider: an answer echoing the password, oversized, redirected, malformed, faulted or slow spends nothing and keeps nothing', async () => {
-    const { id, token } = await invited(c.admin, addressFor('hostile'));
+  it('C39-T hostile provider: an answer echoing the password, oversized, redirected, malformed, naming another user, faulted or slow spends and binds nothing, and the same link then enrols', async () => {
+    const address = addressFor('hostile');
+    const { id, token } = await invited(c.admin, address);
     const rows = await identityRows(w.alpha);
     const modes: readonly FakeUsersMode[] = [
       'echo',
@@ -272,6 +275,7 @@ describe.skipIf(noDatabase)('C39-T enrolment', () => {
       'redirect',
       'not_json',
       'bad_id',
+      'other_id',
       'fault',
       'slow',
     ];
@@ -292,10 +296,16 @@ describe.skipIf(noDatabase)('C39-T enrolment', () => {
     expect(await identityRows(w.alpha)).toStrictEqual(rows);
     const stored = await storedText();
     for (const password of passwords) expect(stored.includes(password)).toBe(false);
-    expect(w.custody.stderr()).not.toContain(passwords[0]);
-    // The control: an honest answer, and the same link enrols.
+    for (const password of passwords) expect(w.custody.stderr()).not.toContain(password);
+    // The provider made one user, under our id, and nothing here bound it.
+    const made = String(e.users.users.get(address));
+    expect(await sessionOf(w.alpha, made)).toBe('AUTH_NO_MEMBERSHIP');
+    // The control: an honest answer, and the same link enrols with that user.
     e.users.mode('accept');
     expect((await enrolVia(token)).body).toStrictEqual({ state: 'enrolled' });
+    expect(e.users.users.get(address)).toBe(made);
+    expect(await sessionOf(w.alpha, made)).toMatchObject({ personId: await personOf(id) });
+    expect(await spentOf(id)).toStrictEqual({ state: 'accepted', spent: 1, tokens: 1 });
   }, 30_000);
 
   it('C39-T enrolment: a login the provider made while its answer came too late does not stop the same link enrolling the invited person', async () => {

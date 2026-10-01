@@ -163,7 +163,8 @@
     "SL12-18-COL names mp-6-2-plan-record-stored (0223, ORCH49: the plan record task.propose checked the step key against is stored with the step; an accept begun before a proposal and bound after it relabels no row, with a prior plan or none) and mp-6-2-plan-record-isolation (a record of another business or another client's task is never stored on a step, a step's record never moves, a forged one reads nothing of the other task) as conformance, the second listed in isolation-suites.json too.",
     "SL12-18-COL names mp-6-2-plan-record-stored (0223, ORCH49: the plan record task.propose checked the step key against is stored with the step; an accept begun before a proposal and bound after it relabels no row, with a prior plan or none) and mp-6-2-plan-record-isolation (a record of another business or another client's task is never stored on a step, a step's record never moves, a forged one reads nothing of the other task) as conformance, the second listed in isolation-suites.json too.",
     "SL12-19-COLFIX names sl12-19-plan-record-restart-proof (0223: a run task.restart proposes stores the plan record bound at its proposal, written true) beside the hand-back successor case added to mp-6-2-plan-record-stored, as conformance.",
-    "SL12-19-FUP names aw-07b-server-worker (AW-07b delivery worker started by the server: apps/api/server.ts with MAIL_DELIVERY=mock mails a waiting decision through its own worker and custody and exits 0 on SIGTERM; any other value stops it before it listens; the delivery stopped sends nothing more) as an invariant."
+    "SL12-19-FUP names aw-07b-server-worker (AW-07b delivery worker started by the server: apps/api/server.ts with MAIL_DELIVERY=mock mails a waiting decision through its own worker and custody and exits 0 on SIGTERM; any other value stops it before it listens; the delivery stopped sends nothing more) as an invariant.",
+    "SL12-20-P3FIX names c39-t-enrolment-recovery (C39-T enrolment, C39-T no account oracle and C39-T isolation on the login's recovery: the provider user id is ours for one address in one business, so a login made behind a late answer or a link that died before the bind is adopted by the next accept with the password set then; another business's login or one made elsewhere is never set and answers sign_in; a login bound here already answers sign_in and asks nothing) as an invariant, and re-reads c39-t-enrolment: a hostile provider answer spends and binds nothing, and the same link then enrols with the login it made."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -490,7 +491,8 @@
     "tests/access/c39-t-auth-hook.test.ts",
     "tests/access/c39-t-auth-link.test.ts",
     "tests/access/c39-t-review-proofs-p2.test.ts",
-    "tests/access/c39-t-enrolment.test.ts"
+    "tests/access/c39-t-enrolment.test.ts",
+    "tests/access/c39-t-enrolment-recovery.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

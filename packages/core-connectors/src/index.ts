@@ -32,7 +32,10 @@ export { readAuthMessage, type AuthMessage } from './auth-message.ts';
 export {
   AUTH_CREATE_USER,
   AUTH_EXISTS_STATUS,
+  AUTH_NOT_FOUND_STATUS,
+  AUTH_UPDATE_USER,
   authUserAdapter,
+  authUserUpdateAdapter,
   readAuthUserAnswer,
 } from './auth-user.ts';
 export {
