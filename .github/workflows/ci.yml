@@ -170,6 +170,14 @@ jobs:
       - name: The pinned headless shell for MP-1-1's harness captures and the browser proofs
         run: pnpm exec playwright install --with-deps --only-shell chromium
       - run: pnpm check
+        env:
+          # The suites in tests/ci/container-suites.json run in the next step instead.
+          CONTAINER_SUITES: apart
+      # They start containers, and a new network interface aborts a browser
+      # capture's page load in flight (net::ERR_NETWORK_CHANGED), so they run
+      # here, after every capture in `pnpm check`.
+      - name: The suites that start containers, after the browser captures
+        run: pnpm vitest run $(node -p "require('./tests/ci/container-suites.json').suites.join(' ')")
       # S0-6 content policy: the built page, in the headless shell above,
       # refuses planted scripts. Alone, since it builds apps/web/dist.
       - name: The built page refuses planted scripts in a real browser

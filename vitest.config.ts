@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import { readFileSync } from 'node:fs';
 import { configDefaults, defineConfig } from 'vitest/config';
 
 // With a database, the database-bound suites run, and every one migrates a
@@ -10,6 +11,9 @@ import { configDefaults, defineConfig } from 'vitest/config';
 // run uses four workers, the hosted runner's cores, and times sized for the
 // queue. Without a database those suites skip and the defaults stand.
 const database = (process.env['DATABASE_URL'] ?? '') !== '';
+const containerSuites: string[] = (
+  JSON.parse(readFileSync('tests/ci/container-suites.json', 'utf8')) as { suites: string[] }
+).suites;
 
 export default defineConfig({
   test: {
@@ -55,6 +59,9 @@ export default defineConfig({
       ...configDefaults.exclude,
       ...(process.env['BROWSER_PROOFS'] === '1' ? [] : ['tests/browser/**']),
       ...(database ? [] : ['tests/api/leaked-client-read-isolation-assertion.test.ts']),
+      // CI's `local checks` runs the suites that start containers in a step of their own, after
+      // the browser captures: a new network interface aborts a page load in flight.
+      ...(process.env['CONTAINER_SUITES'] === 'apart' ? containerSuites : []),
     ],
   },
 });
