@@ -66,6 +66,28 @@ describe('MP-4-5 reply one level', () => {
   });
 });
 
+describe('MP-4-5 a reply stays in its tab’s audience', () => {
+  it('a reply started on Client and typed under Internal posts internally, never to the client', async () => {
+    const { view, sent } = conversing([
+      comment('c1', 'client', '2026-09-21T02:00:00.000Z', 'from the client'),
+      comment('i1', 'internal', '2026-09-21T03:00:00.000Z', 'a note'),
+    ]);
+    const seen = await view();
+    await seen.click('#conversation-tab-client');
+    await seen.click('[data-comment-id="c1"] [data-comment-act="reply"]');
+    await seen.click('#conversation-tab-internal');
+    await typeInto(seen, '#comment-body', 'Only for the team.');
+    await seen.click('[data-comment="post"]');
+    await tick();
+    expect(sent).toHaveLength(1);
+    expect(sent[0]?.body).toMatchObject({ audience: 'internal', commentType: 'note' });
+    expect(sent[0]?.body).not.toHaveProperty('parentId');
+    // The reply was dropped on the switch: back on Client it does not come back.
+    await seen.click('#conversation-tab-client');
+    expect(seen.find('[data-comment="replying"]')).toBeNull();
+  });
+});
+
 describe('MP-4-5 reply one level, a deleted message', () => {
   it('a deleted message’s replies stay, under a line saying it was deleted', async () => {
     const { view } = conversing([

@@ -38,6 +38,7 @@ import { useRead } from '../../data/use-read.ts';
 import { pathTo } from '../../routes.ts';
 import { RecordState } from '../../views/record-state.tsx';
 import { Comments, type CommentDraft } from './Comments.tsx';
+import type { RowEdit } from './Thread.tsx';
 import { TaskFacts } from './Facts.tsx';
 import { History } from './History.tsx';
 import {
@@ -213,6 +214,7 @@ function PanelConversation(props: SideProps): ReactElement {
       : { body: '', tab: opening.tab, replyTo: null, pending: null, stale: null },
   );
   const [refusal, setRefusal] = useState<string | null>(null);
+  const [editing, setEditing] = useState<RowEdit | null>(null);
   return (
     <Comments
       scope="panel"
@@ -225,6 +227,8 @@ function PanelConversation(props: SideProps): ReactElement {
       onPosted={props.onChanged}
       draft={draft}
       onDraft={setDraft}
+      editing={editing}
+      onEditing={setEditing}
     />
   );
 }

@@ -3,10 +3,11 @@
 // The new-task draft (MP-4-13): what a person has put on it, and the Create
 // that writes it.
 //
-// **Kept for its person until Create or Cancel (DN-04).** The draft lives in
-// this browser's storage under the business and the person, so X, Escape,
-// navigating away and a reload keep it, and another person signed in here, or
-// the same person in another business, never sees it. Nothing reaches the
+// **Kept for its person until Create or Cancel (DN-04), within their own
+// signed-in session.** The draft lives in this tab's storage under the
+// business and the person, so X, Escape, navigating away and a reload keep it.
+// Signing out, the session ending, a business switch and another person's
+// sign-in drop it (ruling ORCH57, the panel host does it). Nothing reaches the
 // server until Create.
 //
 // **Create is the task first, then each part by its own command (DN-05).**
@@ -53,7 +54,8 @@ export const emptyDraft = (clientId: string | null): TaskDraft => ({
   clientId,
 });
 
-const keyOf = (person: string): string => `ops-astro.task-draft.${person}`;
+const PREFIX = 'ops-astro.task-draft.';
+const keyOf = (person: string): string => `${PREFIX}${person}`;
 
 /** The person's kept draft, or null when there is none or storage is blocked. */
 export function readDraft(storage: Storage | null, person: string): TaskDraft | null {
@@ -80,6 +82,23 @@ export function dropDraft(storage: Storage | null, person: string): void {
     storage?.removeItem(keyOf(person));
   } catch {
     // Nothing was kept.
+  }
+}
+
+/**
+ * Remove every kept draft but `person`'s own (none when signed out): a draft
+ * key of another person or business is removed unread.
+ */
+export function dropOtherDrafts(storage: Storage | null, person: string | null): void {
+  try {
+    if (storage === null) return;
+    const own = person === null ? null : keyOf(person);
+    const keys = Array.from({ length: storage.length }, (_, index) => storage.key(index));
+    for (const key of keys) {
+      if (key !== null && key !== own && key.startsWith(PREFIX)) storage.removeItem(key);
+    }
+  } catch {
+    // A blocked store kept nothing.
   }
 }
 

@@ -24,7 +24,12 @@ export function useDockPanel(props: DockPanelProps): {
   readonly host: TaskPanelState['host'];
   readonly panel: ReactElement | null;
 } {
-  const taskPanel = useTaskPanel();
+  const { grantKey, session, storage } = props;
+  const taskPanel = useTaskPanel({
+    key: grantKey,
+    person: session === null ? null : `${session.businessKey}:${session.email}`,
+    storage,
+  });
   return { host: taskPanel.host, panel: <DockPanel {...props} taskPanel={taskPanel} /> };
 }
 
@@ -40,7 +45,7 @@ function DockPanel(props: {
   if (taskPanel.draft !== null) {
     return (
       <DraftPanel
-        key={`${session.businessKey}:${session.email}`}
+        key={grantKey}
         client={client}
         storage={props.storage}
         person={`${session.businessKey}:${session.email}`}
@@ -50,13 +55,14 @@ function DockPanel(props: {
           taskPanel.changed();
         }}
         onClose={taskPanel.close}
+        hold={taskPanel.hold}
       />
     );
   }
   if (taskPanel.opening === null) return null;
   return (
     <TaskPanel
-      key={`${taskPanel.opening.taskKey}\u0000${taskPanel.opening.door}\u0000${taskPanel.opening.tab ?? ''}`}
+      key={`${grantKey}\u0000${taskPanel.opening.taskKey}\u0000${taskPanel.opening.door}\u0000${taskPanel.opening.tab ?? ''}`}
       client={client}
       grantKey={grantKey}
       opening={taskPanel.opening}

@@ -5,7 +5,8 @@
 // that reach the task (`myAgents`, which the server fills with nothing
 // else). Choosing one sends `task.assign` with `agent` at the read revision;
 // a landed write asks for a reread. With none of the reader's own agents, no
-// control is drawn, so nothing hints that anyone else's exists.
+// control is drawn, so nothing hints that anyone else's exists. The page locks
+// it as it locks the assignee: while a write is in flight or an edit unsaved.
 
 import type { ReactElement } from 'react';
 import type { OperationsClient } from '../../operations/client.ts';
@@ -19,6 +20,8 @@ export interface AssignToAIProps {
   /** The id prefix: `panel` in the dock, `page` on the task page. */
   readonly scope: 'panel' | 'page';
   readonly onChanged: () => void;
+  /** The page's lock: a write in flight or an unsaved edit. */
+  readonly disabled?: boolean;
 }
 
 export function AssignToAI(props: AssignToAIProps): ReactElement | null {
@@ -49,7 +52,7 @@ export function AssignToAI(props: AssignToAIProps): ReactElement | null {
         </p>
       )}
       {task.myAgents.length === 0 ? null : (
-        <AgentSelect id={id} task={task} busy={busy} onAssign={assign} />
+        <AgentSelect id={id} task={task} busy={busy || props.disabled === true} onAssign={assign} />
       )}
       {because === null ? null : (
         <p className="field__error" role="alert">
