@@ -3,6 +3,8 @@
 // AW-12, part one: the four shared fakes (TEST.md 4), each capability the
 // cases lean on, all of them run with every egress denied.
 
+import { createSocket } from 'node:dgram';
+import dns from 'node:dns';
 import { request } from 'node:http';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { HARNESS_PINNED_WINDOW } from '../../packages/core-runtime/src/index.ts';
@@ -162,8 +164,9 @@ describe('AW-12 fakes: FP-C and FP-S', () => {
 });
 
 describe('AW-12 fakes: all egress denied', () => {
-  it('the guard refuses a socket, a lookup and a fetch, and records each (the control)', async () => {
+  it('the guard refuses a socket, a datagram, a lookup, a resolve and a fetch, and records each (the control)', async () => {
     const control = denyEgress();
+    const udp = createSocket('udp4');
     try {
       await expect(fetch('http://203.0.113.9/collect')).rejects.toThrow(/egress denied/u);
       const refused = await new Promise<string>((done) => {
@@ -172,8 +175,22 @@ describe('AW-12 fakes: all egress denied', () => {
         outbound.end();
       });
       expect(refused).toMatch(/egress denied/u);
-      expect(control.attempts).toEqual(['fetch http://203.0.113.9/collect', 'socket 9']);
+      expect(() => udp.send('x', 9, '127.0.0.1')).toThrow(/egress denied/u);
+      expect(() => dns.resolve4('a.aw12.invalid', () => {})).toThrow(/egress denied/u);
+      await expect(dns.promises.resolveTxt('b.aw12.invalid')).rejects.toThrow(/egress denied/u);
+      expect(() => new dns.Resolver().resolve6('c.aw12.invalid', () => {})).toThrow(/denied/u);
+      await expect(new dns.promises.Resolver().resolve('d.aw12.invalid')).rejects.toThrow(
+        /denied/u,
+      );
+      expect(() => dns.lookup('e.aw12.invalid', () => {})).toThrow(/egress denied/u);
+      expect(control.attempts).toEqual([
+        'fetch http://203.0.113.9/collect',
+        'socket 9',
+        'udp 9',
+        ...['a', 'b', 'c', 'd', 'e'].map((host) => `dns ${host}.aw12.invalid`),
+      ]);
     } finally {
+      udp.close();
       control.release();
     }
   });
