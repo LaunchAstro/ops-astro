@@ -13,6 +13,7 @@ import { act } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { matchRoute } from '../../apps/web/src/routes.ts';
 import { dataOf, found, page, proposalWith, tick } from './task-page-stub.tsx';
+import { unheld } from './task-look.ts';
 
 const ADDRESS = '[data-copy="address"]';
 
@@ -179,5 +180,10 @@ describe('MP-4-1 run line shapes', () => {
 });
 
 describe('MP-4-1 visual match', () => {
-  it.todo('found, missing and bare states at 1480, 900 and 390, light and dark (MP-1-7 harness)');
+  // The mockup draws the found header only; the missing and bare states are
+  // held by the run line shapes above and mp-4-1-task-absent.test.tsx.
+  it('the found header’s crumb, key, title and run line are held to the mockup at 1480, 900 and 390, light and dark', () => {
+    const header = ['crumb', 'key', 'title', 'run-line'].map((one) => `task.page-${one}`);
+    expect(unheld(header)).toEqual([]);
+  });
 });

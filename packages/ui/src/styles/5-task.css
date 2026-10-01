@@ -23,11 +23,18 @@
 }
 .tpr__title {
   margin: 0;
-  font: var(--type-title);
-  letter-spacing: var(--type-title-tracking);
-  text-transform: var(--type-title-case);
+  font: var(--type-display);
+  letter-spacing: var(--type-display-tracking);
+  text-transform: var(--type-display-case);
   /* A long name wraps at 390 rather than clipping (MP-4-1). */
   overflow-wrap: anywhere;
+}
+/* The crumb's door is data ink, its key an eyebrow, as the mockup draws them. */
+.tpr__crumb .sb__addr {
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+  color: var(--text);
 }
 .tpr__facts {
   display: grid;
@@ -263,7 +270,9 @@
   gap: var(--s-3);
 }
 .sb__k,
-.sb__meta {
+.sb__meta,
+.tpr__crumb [data-crumb='key'],
+.sb__steplist [data-step-count] {
   font: var(--type-eyebrow);
   letter-spacing: var(--type-eyebrow-tracking);
   text-transform: var(--type-eyebrow-case);
