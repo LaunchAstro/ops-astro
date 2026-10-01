@@ -9,6 +9,7 @@
 import { spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { createForwarder } from '../../apps/forwarder/forward.ts';
 import { heartbeatEvery, paced } from '../../apps/worker/heartbeat.ts';
 import { main as worker } from '../../apps/worker/main.ts';
 
@@ -132,5 +133,57 @@ describe('S0-2 heartbeats, paced: the worker and forwarder read the setting', ()
     });
     expect(run.status).not.toBe(0);
     expect(run.stderr).toContain('OPS_HEARTBEAT_EVERY_MS');
+  });
+});
+
+// Proofs from the Opus review of 86f3ae0 (handbacks/STAGING-DEPLOY-review-86f3ae0.md), unchanged.
+describe('S0-2 heartbeats, paced: a pass inside the wait, a clock gone back, a pace too long', () => {
+  it('a paced forwarder pass inside the wait completes, it does not fail', async () => {
+    let now = 0;
+    const beat = paced(
+      HALF_HOUR,
+      () => Promise.resolve('sent'),
+      () => now,
+    );
+    const database = { transaction: () => Promise.resolve({ handled: 0, dropped: 0 }) } as never;
+    const forwarder = createForwarder({
+      database,
+      send: (() => Promise.resolve()) as never,
+      where: 'staging' as never,
+      root: '/',
+      heartbeat: () => beat(A),
+    });
+    await expect(forwarder.once()).resolves.toEqual({ handled: 0, dropped: 0 });
+    now = 15_000;
+    await expect(forwarder.once()).resolves.toEqual({ handled: 0, dropped: 0 });
+  });
+
+  it('the wall clock stepping back does not hold a healthy heartbeat past the gap', async () => {
+    let now = 10_000_000;
+    let real = 0;
+    const sentAt: number[] = [];
+    const beat = paced(
+      HALF_HOUR,
+      () => {
+        sentAt.push(real);
+        return Promise.resolve('sent');
+      },
+      () => now,
+    );
+    await beat(A);
+    now -= 600_000; // the clock steps back ten minutes
+    for (let pass = 0; pass < 360; pass += 1) {
+      now += 5_000;
+      real += 5_000;
+      // oxlint-disable-next-line no-await-in-loop -- one pass at a time
+      await beat(A);
+    }
+    expect(sentAt.length).toBe(2);
+  });
+
+  it('a pace far beyond any monitor window is refused by name', () => {
+    for (const value of ['1800000000', '9'.repeat(400)]) {
+      expect(typeof heartbeatEvery({ OPS_HEARTBEAT_EVERY_MS: value })).toBe('string');
+    }
   });
 });
