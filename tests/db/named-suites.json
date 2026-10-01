@@ -412,6 +412,8 @@
     "tests/broker/aw-07b-sender-mention.test.ts",
     "tests/broker/email-sender-from-outside-verified-subdomain.test.ts",
     "tests/broker/aw-07b-no-second-send.test.ts",
+    "tests/review/sl12-18-hook-batch-proof.test.ts",
+    "tests/review/sl12-18-mention-timing-proof.test.ts",
     "tests/broker/c60-egress-before-route.test.ts",
     "tests/broker/c60-route-and-carry.test.ts",
     "tests/broker/s3-bound-source.test.ts",
