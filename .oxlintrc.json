@@ -15,6 +15,10 @@
   "overrides": [
     { "files": ["tests/review/sl01-s06-proof.test.ts"], "rules": { "no-await-in-loop": "off" } },
     {
+      "files": ["tests/local-agent/review-4-proofs.test.ts"],
+      "rules": { "unicorn/no-useless-undefined": "off" }
+    },
+    {
       "files": ["tests/ci/staging-special-objects.test.ts"],
       "rules": { "max-lines-per-function": "off" }
     },
