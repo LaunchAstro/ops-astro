@@ -584,8 +584,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // C32: the clients the caller's live grants reach, filtered inside the
   // query, never an agent's. Like `session.capabilities` it asks no one
   // collection (`reads/catalogue.ts`, `holds-any-grant`), so it carries that
-  // read's pair for the route generator and the surface inventory.
-  read('client.list', SESSION_COLLECTION),
+  // read's pair for the route generator and the surface inventory, and like it
+  // asks no grant at the door (`authority: []`).
+  read('client.list', SESSION_COLLECTION, { authority: [] }),
   // C55: `operations:read` (install default owner and administrators), never
   // an agent's.
   read('operations.read', 'operations'),

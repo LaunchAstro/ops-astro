@@ -169,6 +169,13 @@ const OPERANDS = {
   'task.board': { board: null },
   'task.receipt': { attemptId: 'a' },
   'preset.plan': { recordTypeKey: 'preset', presetKey: 'p', fields: [] },
+  'privacy.draft_breach_notices': {
+    incidentId: '00000000-0000-4000-8000-000000000000',
+    oaic: { name: 'n', address: 'a' },
+    people: [{ name: 'n', address: 'a' }],
+    containment: 'c',
+    steps: 's',
+  },
 };
 
 // The grants a read really asks: the real read path on a transaction that holds none.
