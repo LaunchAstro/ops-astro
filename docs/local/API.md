@@ -1707,18 +1707,24 @@ password cannot walk the six digits. The count is the login's, through every
 business it reaches, since the provider holds one factor per login. The check
 before a code goes to the provider takes the login's lock (a transaction-scoped
 advisory lock on its subject's digest), counts the codes the login sent in the
-window that were not answered otherwise (wrong ones, and ones still at the
-provider), and, passing, records the code as sent before it commits, in
+window that the provider has not proved good (wrong ones, ones still at the
+provider, and ones it answered `slow`, `unreachable`, `malformed` or
+`oversized`, which it may still have checked), and, passing, records the code as sent before it commits, in
 `ops.second_factor_codes` (0072) and as `account.factor_code_sent` in the
 business's audit chain: requests sent at once, in any business, count each
 other, and at most five codes reach the provider. Otherwise the check writes an
 audit event only when it refuses; the act's own event is written after the
 call, beside the record it changes, and carries the sent code's id as its
-`operation_id`; an answer other than a wrong code is recorded as answered
-there too, so a good code stops counting once it is answered. GoTrue served under a path (`/auth/v1`) is called
-under that path. The record step locks the person's own row (`for no key
-update`), so two tabs enrolling at once queue: the later enrolment replaces the
-earlier unverified one, and one live factor remains.
+`operation_id`; a code the provider proved good is recorded as answered there
+too, so it stops counting, and a provider fault on the code leaves it counted. GoTrue served under a path (`/auth/v1`) is called
+under that path. The record step locks the login (a transaction-scoped
+advisory lock, `second-factor-subject:` and its subject's digest), then the
+person's own row (`for no key update`), so two tabs enrolling at once queue: the
+later enrolment replaces the earlier unverified one, and one live factor
+remains. Two businesses completing enrolments for one login at once queue too:
+the later is refused `FACTOR_ALREADY_ENROLLED`, and the factor the provider has
+just verified for it is removed there, best effort, so the login holds one
+verified factor.
 
 `PROVIDER_ANSWER_INVALID` names only the kind of fault (`malformed`,
 `oversized`, `slow`, `unreachable` or `refused`), never the provider's words.

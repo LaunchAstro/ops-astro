@@ -426,6 +426,8 @@
     "tests/identity/c59-factor-every-business.test.ts",
     "tests/identity/c59-wrong-code-lock-concurrent.test.ts",
     "tests/identity/c59-wrong-code-lock-subject.test.ts",
+    "tests/identity/c59-enrol-race.test.ts",
+    "tests/identity/c59-wrong-code-provider-fault.test.ts",
     "tests/operations/c81-legal-documents-access.test.ts",
     "tests/operations/c81-register-isolation.test.ts",
     "tests/operations/c81-breach-drill-clock.test.ts",

@@ -25,7 +25,6 @@ const LOCKED_FIXES: readonly string[] = [
 
 /** The event that a code is on its way to the provider; the act's own event names its answer. */
 const CODE_SENT = 'account.factor_code_sent';
-const WRONG = 'SECOND_FACTOR_INVALID';
 
 /** The login's subject as `ops.second_factor_codes` keys it (0072). */
 const subjectDigest = (subject: string) => createHash('sha256').update(subject).digest('hex');
@@ -33,13 +32,14 @@ const subjectDigest = (subject: string) => createHash('sha256').update(subject).
 /**
  * `SECOND_FACTOR_LOCKED` when this login has sent too many wrong codes lately
  * (see `FAILED_CODE_LIMIT`), through any business: codes sent (`recordCode`)
- * that the provider has not answered otherwise, so a wrong one and one still
- * at the provider, which may be wrong. A good code, once answered, does not
- * count. The provider holds one factor per login, so the count and its lock
- * are the login's (0072): an advisory lock on the subject's digest, the one
- * key named by login rather than business, taken first in the transaction
- * and held to the end of the one that records the code as sent, so requests
- * at once, in any business, are counted one after another.
+ * that the provider has not proved good, so a wrong one, one still at the
+ * provider and one it answered with a fault, any of which may be wrong. A good
+ * code, once proved, does not count. The provider holds one factor per login,
+ * so the count and its lock are the login's (0072): an advisory lock on the
+ * subject's digest, one of the two keys named by login rather than business
+ * (`advisoryLock`), taken first in the transaction and held to the end of the
+ * one that records the code as sent, so requests at once, in any business,
+ * are counted one after another.
  */
 export async function wrongCodeLock(
   tx: TenantQuery,
@@ -69,20 +69,26 @@ export async function wrongCodeLock(
  * A code's place in the count, for a call that sends one (`attempt`). Before
  * the provider call, a check that passed records the code as sent, under the
  * lock `wrongCodeLock` took, in the login's record and as an audit event in
- * this business. After it, an answer other than a wrong code
- * (`SECOND_FACTOR_INVALID`) records the code as answered, so it stops
- * counting. The act's own event carries the same `attempt` as its operation.
+ * this business. After it, a code the provider proved good (`proven`) is
+ * recorded as answered, so it stops counting; a wrong one, and one the
+ * provider answered slowly, not at all or in a shape it should not, which it
+ * may still have checked, keeps counting. The act's own event carries the
+ * same `attempt` as its operation.
  */
 export async function recordCode(
   tx: TenantQuery,
   session: Session,
-  caller: { readonly presented: VerifiedSubject; readonly attempt?: string },
+  caller: {
+    readonly presented: VerifiedSubject;
+    readonly attempt?: string;
+    readonly proven?: boolean;
+  },
   stage: 'before' | 'after',
   refusal: CommandRefusal | undefined,
 ): Promise<void> {
   const attempt = caller.attempt;
   const sent = stage === 'before';
-  if (attempt === undefined || (sent ? refusal !== undefined : refusal?.code === WRONG)) return;
+  if (attempt === undefined || (sent ? refusal !== undefined : caller.proven !== true)) return;
   if (sent) {
     await writeAuditEvent(tx, {
       actorId: session.actorId,
