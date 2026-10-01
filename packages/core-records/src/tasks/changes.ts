@@ -15,7 +15,7 @@
 // re-read. Points never go backwards: the next is at least the one given.
 
 import type { TenantQuery } from '../tenancy/database.ts';
-import { EFFECTIVE, type Subject } from '../authority/grants.ts';
+import { EFFECTIVE, askedFor, type Subject } from '../authority/grants.ts';
 
 /** One task that changed after the point; nothing about what changed. */
 export interface TaskChange {
@@ -81,9 +81,10 @@ export async function changesSince(
   point: string | null,
 ): Promise<ChangesSince | 'POINT_INVALID'> {
   if (point !== null && !POINT.test(point)) return 'POINT_INVALID';
+  const asked = askedFor(subjects, { collection: 'task', action: 'read' });
   const [row] = await tx.query<Row>(CHANGES_SINCE, [
-    subjects.map((subject) => subject.kind),
-    subjects.map((subject) => subject.id),
+    asked.map((subject) => subject.kind),
+    asked.map((subject) => subject.id),
     point,
   ]);
   if (row === undefined) throw new Error('changes since answered no row');

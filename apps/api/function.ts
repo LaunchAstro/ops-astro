@@ -39,6 +39,14 @@
 // login, scopes keyed by `ALERT_SCOPE_KEY`, and the environment's forwarder
 // counts and sends (`apps/forwarder`). The sink's DSN is the forwarder's, so
 // the entry refuses to start beside it.
+//
+// **The agent quota is per instance (API-2).** Its counts live in one
+// process's memory and every instance starts its own, so each holds the
+// installation's limits divided by the deployment's instance ceiling,
+// `AGENT_QUOTA_INSTANCES` (4 unset; set it to the function's maximum
+// instances), rounded down. A ceiling above the smallest limit would round a
+// share up to one, so the entry refuses it at start-up. Together they stay
+// within what one server holds.
 
 import { join } from 'node:path';
 import {
@@ -55,7 +63,9 @@ import {
 } from '../../packages/core-runtime/src/index.ts';
 import { createOutboxAlerts, scopeKey } from './alerts/outbox.ts';
 import type { Alerts } from './alerts/sink.ts';
+import { DEFAULT_AGENT_LIMITS, type AgentLimits, type Tiers } from './auth/agent-quota.ts';
 import { publishableKey } from './auth/publishable-key.ts';
+import { errorSinkLink } from './health/error-sink-link.ts';
 import { keySetUrlFor } from './auth/supabase.ts';
 import {
   parseRecoveryScope,
@@ -97,10 +107,8 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
       'SUPABASE_KEY_SET_URL may name a loopback key set only, for a loopback issuer.',
     );
   }
-  // The keyring from the settings alone: without them `runtimeKeys` falls back
-  // to creating a local key file, and a function has none to share.
-  required('DELEGATION_CREDENTIAL_KEY_ID');
-  required('DELEGATION_CREDENTIAL_KEYS');
+  // The keyring from the settings alone: `runtimeKeys` would make a key file no instance shares.
+  for (const name of ['DELEGATION_CREDENTIAL_KEY_ID', 'DELEGATION_CREDENTIAL_KEYS']) required(name);
   const keys = runtimeKeys(settings);
   if (!keys.delegation.ok) {
     throw new Error(`delegation credential keys: ${keys.delegation.problem}`);
@@ -113,7 +121,9 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
     signIn: { issuer, keySetUrl },
     providerKey: publishableKey(settings['SUPABASE_PUBLISHABLE_KEY']),
     keys,
+    errorSink: errorSinkLink(settings),
     ...(alerts === undefined ? {} : { alerts }),
+    agentLimits: perInstance(settings['AGENT_QUOTA_INSTANCES']),
   });
   const pass = recoveryPass(settings, database, resolveBusiness, keys);
 
@@ -124,6 +134,42 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
     }
     await pass();
     return await app.fetch(request);
+  };
+}
+
+/** The most instances the limits split across with at least one of each. */
+const INSTANCES_MOST = Math.min(
+  ...[
+    DEFAULT_AGENT_LIMITS.requests,
+    DEFAULT_AGENT_LIMITS.concurrent,
+    DEFAULT_AGENT_LIMITS.exports,
+  ].flatMap((all) => Object.values(all)),
+  DEFAULT_AGENT_LIMITS.refused,
+);
+const INSTANCES_UNSET = INSTANCES_MOST;
+
+/** The default limits split across the instance ceiling, rounded down. */
+function perInstance(setting: string | undefined): AgentLimits {
+  const given = setting === undefined || setting === '' ? String(INSTANCES_UNSET) : setting;
+  const instances = /^\d+$/u.test(given) ? Number(given) : 0;
+  if (instances < 1) throw new Error('AGENT_QUOTA_INSTANCES is not a whole number of instances.');
+  if (instances > INSTANCES_MOST) {
+    throw new Error(
+      `AGENT_QUOTA_INSTANCES is above ${INSTANCES_MOST}, the smallest agent limit, so a share would round up.`,
+    );
+  }
+  const share = (limit: number): number => Math.floor(limit / instances);
+  const tiers = (all: Tiers): Tiers => ({
+    credential: share(all.credential),
+    person: share(all.person),
+    business: share(all.business),
+  });
+  const { requests, concurrent, exports, refused } = DEFAULT_AGENT_LIMITS;
+  return {
+    requests: tiers(requests),
+    concurrent: tiers(concurrent),
+    exports: tiers(exports),
+    refused: share(refused),
   };
 }
 

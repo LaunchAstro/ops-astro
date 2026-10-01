@@ -1,13 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// What the application draws inside the shell for an address: a screen,
-// sign-in, a manifest page's placeholder or refusal, or not-found.
+// What the application draws inside the shell for an address: a screen, a
+// public page (C81's legal documents), sign-in, a manifest page's placeholder or refusal, or not-found.
 
 import type { ReactElement } from 'react';
 import { gateOf, type RouteMatch } from './routes.ts';
 import type { PageMatch } from './manifest.ts';
 import { ClientRefused, NotFound, PagePlaceholder, SignedInAlready } from './route-views.tsx';
-import { drawScreen, type ScreenContext } from './screen-registry.tsx';
+import {
+  drawOpenScreen,
+  drawScreen,
+  type OpenContext,
+  type ScreenContext,
+} from './screen-registry.tsx';
 
 export function drawContent(props: {
   readonly here: string;
@@ -20,6 +25,8 @@ export function drawContent(props: {
   /** Where "Go to Projects" goes for a person already signed in. */
   readonly onGo: () => void;
   readonly screen: Omit<ScreenContext, 'params'>;
+  /** What a public page reads with: the API's origin and the fetch. */
+  readonly open: OpenContext;
 }): ReactElement {
   const { match, at } = props;
   // A manifest page with no screen yet: sign-in first, then the grant check.
@@ -33,6 +40,8 @@ export function drawContent(props: {
       return <NotFound path={props.here} />;
     case 'sign-in':
       return props.signIn;
+    case 'open':
+      return drawOpenScreen(gate.match, props.open);
     case 'signed-in-already':
       return <SignedInAlready onGo={props.onGo} />;
     case 'screen':
