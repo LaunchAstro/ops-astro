@@ -10,7 +10,7 @@ import { expect, it } from 'vitest';
 const root = fileURLToPath(new URL('../..', import.meta.url));
 
 it(
-  'Sol proof, criterion same-claims: the coloured check rejects a wrapper that skips under colour',
+  'the coloured check rejects a wrapper that skips under colour',
   () => {
     const directory = mkdtempSync(join(tmpdir(), 'skipped-wrapper-'));
     try {
