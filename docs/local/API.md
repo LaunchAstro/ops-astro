@@ -1804,10 +1804,24 @@ counted from the applied audit events (`RATE_LIMITED` naming `email` or
 
 Each create and each resend allows one email: `sendInvitation`
 (`core-custody`) sends through the broker's `email.send` only while the
-invitation is pending and has an applied act no send has answered, mints a
+invitation is pending and has an applied act no send has answered, takes a
 fresh enrolment token, keeps its SHA-256 alone and records the attempt
-against it. Not here yet: the send mounted after the command, Auth's Send
-Email hook, the enrolment page and the Access screen (C39-T P2 and P3).
+against it, under `email.send`'s one ceiling with the inbox's emails. The
+token is the login provider's invite link's hashed token, generated through
+custody under the catalogued `auth.invite_link` (the service key stays in
+custody) when the broker catalogues it, and minted here when it does not.
+
+`POST /api/hooks/auth-email` is the login provider's Send Email hook, mounted
+by `composeApi` when it is given the hook's secret (`AUTH_EMAIL_HOOK_SECRET`,
+`v1,whsec_...`) and a mail broker. It verifies the Standard Webhooks
+signature over the raw body before parsing (401), refuses a stale timestamp
+(401) and a replayed message id (409, held in the attempt's `hook:<id>`
+evidence), and answers every verified message 200 `{}`, sent or not. An
+invitation message is sent through `sendInvitation` when exactly one business
+holds a pending invitation for the address with an unanswered act; other
+Auth mail (a reset among it) has no attempt yet and is not sent (C40). Not
+here yet: the send mounted after the command, the hook wired in `main`, the
+enrolment page and the Access screen (C39-T P3).
 
 ## Reads
 
