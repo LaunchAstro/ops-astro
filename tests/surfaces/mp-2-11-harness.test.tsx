@@ -9,8 +9,8 @@
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { chromium } from 'playwright';
 import { afterAll, expect, it } from 'vitest';
+import { launchChromium } from '../support/chromium.ts';
 import { captureBuiltPages, madeUpSession, serveApp } from '../visual/app-pages.ts';
 import { comparePng } from '../visual/compare.ts';
 import { fetchAssets, MODE, readAssets, readPacket, themesOf } from '../visual/packet.ts';
@@ -28,7 +28,7 @@ it('MP-2-11 harness captures: /settings in light and dark at 1480, 900 and 390',
   const widths = [1480, 900, 390];
   await fetchAssets(readAssets(), packet);
   // No browser, no capture: the launch fails the test, never skips it.
-  const browser = await chromium.launch(MODE);
+  const browser = await launchChromium(MODE);
   const { app, close } = await serveApp();
   try {
     const out = join(scratch, 'captures');
