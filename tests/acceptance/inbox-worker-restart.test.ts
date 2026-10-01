@@ -47,8 +47,13 @@ describe.skipIf(!PROOFS_ASKED)('INB-1 the inbox reads back after the worker rest
       async () =>
         (
           await p.admin.execute(
-            `select 1 from public.leases
-              where business_id = $1 and task_id = $2 and expires_at > now()`,
+            // The launch's lease (AW-08); the plan's ended at its hand-back.
+            `select 1 from public.leases l
+               join public.reservations res
+                 on res.business_id = l.business_id and res.id = l.reservation_id
+               join public.reviewed_outputs ro
+                 on ro.business_id = res.business_id and ro.version_id = res.version_id
+              where l.business_id = $1 and l.task_id = $2 and l.expires_at > now()`,
             [p.world.alpha, w.taskId],
           )
         ).length === 0,

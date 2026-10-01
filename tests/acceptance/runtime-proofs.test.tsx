@@ -129,9 +129,13 @@ describe.skipIf(!PROOFS_ASKED)('T3d2: the runtime proofs against real hard kills
     expect(receipt).toMatchObject({
       receipt: { taskId: w.taskId, decision: { id: w.decisionId } },
     });
-    // One lease, the one A handed out, carried the work through B.
+    // One lease on the launch, the one A handed out, carried the work through B.
     const leases = await p.admin.execute(
-      'select id from public.leases where business_id = $1 and task_id = $2',
+      `select l.id from public.leases l
+         join public.reservations res on res.business_id = l.business_id and res.id = l.reservation_id
+         join public.reviewed_outputs ro
+           on ro.business_id = res.business_id and ro.version_id = res.version_id
+        where l.business_id = $1 and l.task_id = $2`,
       [p.world.alpha, w.taskId],
     );
     expect(leases).toHaveLength(1);
