@@ -85,6 +85,7 @@ export function delegationCrossing(): void {
       'task.update': (record) => written(record, { title: 'made-up' }),
       'task.assign': (record) => written(record, { assignee: randomUUID() }),
       'task.set_adhoc': (record) => written(record, { ad_hoc: true }),
+      'task.set_category': (record) => written(record, { category: 'seo' }),
       'task.set_scores': (record) => written(record, { impact: 7, confidence: 9, ease: 8 }),
       'task.edit_comment': (record) => ({
         recordId: record,
