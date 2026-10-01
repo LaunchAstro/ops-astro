@@ -108,6 +108,11 @@ export function isUnavailable<T>(result: CallResult<T>): result is Unavailable {
   return 'unavailable' in result;
 }
 
+/** What `account/factor/verify` answers: only the access token is read, once, to trade it. */
+export interface FactorVerified {
+  readonly accessToken?: unknown;
+}
+
 export interface ClientOptions {
   /**
    * Where the API is served from: empty for the page's own origin, an absolute origin in a test.
@@ -190,6 +195,14 @@ export class OperationsClient {
   /** The person's own account route (C58), always with an empty body: see `AccountRoute`. */
   async account<T>(route: AccountRoute): Promise<CallResult<T>> {
     return await this.#post<T>(`/account/${route}`, {});
+  }
+
+  /**
+   * The person's authenticator code checked on their own account route (C59): the one account
+   * call with a body. A good code on a verified factor is a step-up and answers a new token.
+   */
+  async verifyFactor(code: string): Promise<CallResult<FactorVerified>> {
+    return await this.#post<FactorVerified>('/account/factor/verify', { code });
   }
 
   /** The person's own availability (MP-7-10), on the path the surface names. */

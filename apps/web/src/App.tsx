@@ -22,7 +22,15 @@ import { FrameStrip } from './strip.tsx';
 import { HeldAddressNotice, heldAddressOffer, type HeldOffer } from './held-address.tsx';
 import { useDock } from './dock.ts';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
-import { grantKeyOf, type Interruption, type Session, type SessionStore } from './session/token.ts';
+import {
+  grantKeyOf,
+  sessionGeneration,
+  type Interruption,
+  type Session,
+  type SessionStore,
+} from './session/token.ts';
+import { stepUpSession, type StepUpResult } from './session/step-up.ts';
+import { StepUpContext } from './records/use-money-command.ts';
 import { SignIn } from './screens/SignIn.tsx';
 import { endThenSignOut } from './sign-out.ts';
 import { PagePresenceProvider, StripPresence } from './views/presence.tsx';
@@ -180,6 +188,27 @@ export function App(props: AppProps): ReactElement {
     void endThenSignOut(() => client.mutate('session.end', {}), props, ended);
   };
 
+  // The money step-up (C59): the tab moves to the stepped-up sign-in as a sign-in does, without
+  // going anywhere, and only while the session that asked is still the one in hand.
+  const stepUp = async (code: string): Promise<StepUpResult> => {
+    const from = session;
+    if (from === null) return { ok: false, because: 'Sign in first.' };
+    const generation = sessionGeneration();
+    return await stepUpSession({
+      code,
+      client,
+      route: { apiOrigin: props.apiOrigin, fetch: props.fetch },
+      from: from.sessionId,
+      current: () => generation === sessionGeneration() && sessionRef.current === from,
+      adopt: (sessionId) => {
+        const next = { ...from, sessionId };
+        props.sessions.set(next);
+        sessionRef.current = next;
+        setSession(next);
+      },
+    });
+  };
+
   const personName = usePersonName(client, session, props.storage);
   const onSwitch = (businessKey: string, address: string): void => {
     if (session === null) return;
@@ -300,7 +329,9 @@ export function App(props: AppProps): ReactElement {
             ) : undefined
           }
         >
-          <FaceProvider face={face}>{content}</FaceProvider>
+          <StepUpContext.Provider value={session === null ? null : stepUp}>
+            <FaceProvider face={face}>{content}</FaceProvider>
+          </StepUpContext.Provider>
         </Shell>
         {search.showing && searchable ? (
           <SearchPalette
