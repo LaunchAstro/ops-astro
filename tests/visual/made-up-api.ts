@@ -78,6 +78,8 @@ const task = (
   awaitingDecision: false,
   agent: null,
   myAgents: [],
+  // The reader's own waiting client signals and mentions (MP-5-8), none here.
+  comments: { client: 0, mentions: 0, latest: null },
   ...board,
 });
 
@@ -181,6 +183,7 @@ const READS = {
     tasks: TASKS,
     changedAt: '2026-09-25T04:00:00.000Z',
     viewer: NATHAN.personId,
+    owed: 0,
   } satisfies TaskBoardResult,
   'task.read': {
     ok: true,
