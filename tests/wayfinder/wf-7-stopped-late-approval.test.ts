@@ -117,7 +117,7 @@ it("WF-7 twice failed: the map owner's approval given before the stop does not b
   expect(await asksOn(s, ticket)).toStrictEqual(asked);
 }, 240_000);
 
-it("WF-7 twice failed with no map owner: an approval given before the stop does not lift it at pickup", async () => {
+it('WF-7 twice failed with no map owner: an approval given before the stop does not lift it at pickup', async () => {
   const ticket = await researchOnMap(s, owner, 'wf7 ownerless approved before the stop');
   await s.db.admin.execute(
     `update public.records m set data = m.data - 'map_owner'
@@ -126,7 +126,10 @@ it("WF-7 twice failed with no map owner: an approval given before the stop does 
         and m.business_id = t.business_id and m.id = t.uuid_4`,
     [s.business, ticket],
   );
-  const { second, third } = await twoApproved(ticket, async (proposal) => await approve(s, proposal));
+  const { second, third } = await twoApproved(
+    ticket,
+    async (proposal) => await approve(s, proposal),
+  );
   await fail(s, await pickup(s, second['reservationId']));
   const said = async () => (await commentsOn(s, ticket)).map((comment) => comment.body);
   const before = await said();
