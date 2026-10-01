@@ -70,6 +70,8 @@ interface ResolutionRow {
   readonly second_factor_verified: string | null;
   /** Whether the login's factors are kept by subject (0064), so every business reads them. */
   readonly by_subject: boolean;
+  /** Whether the installation has invitations (C39-T); one stopped before them has none. */
+  readonly invitations: boolean;
 }
 
 export const NO_MEMBERSHIP_FIXES = [
@@ -93,7 +95,8 @@ const RESOLUTION = `
          -- Read through the row's json so this one query serves a database
          -- from before 0049, which has no such column and so no factor.
          to_jsonb(p) ->> 'second_factor_verified' as second_factor_verified,
-         to_regclass('ops.second_factor_subjects') is not null as by_subject
+         to_regclass('ops.second_factor_subjects') is not null as by_subject,
+         to_regclass('public.invitations') is not null as invitations
     from public.logins l
     left join public.person_logins pl
       on pl.business_id = l.business_id and pl.login_id = l.id and pl.active
@@ -160,6 +163,7 @@ export async function standingOf(
     personId: found.person_id,
     mirrored: found.second_factor_verified,
     bySubject: found.by_subject,
+    invitations: found.invitations,
   };
   const gate = await factorGate(tx, presented.subject, person, assurance, rule);
   if (gate !== undefined) {

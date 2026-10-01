@@ -38,6 +38,8 @@ export interface GatedPerson {
   readonly mirrored: string | null;
   /** Whether the login's factors are kept by subject (0064), so every business reads them. */
   readonly bySubject: boolean;
+  /** Whether the installation has invitations (C39-T); one stopped before them has none. */
+  readonly invitations: boolean;
 }
 
 /** The gate's refusal for this sign-in, or nothing when it may be served. */
@@ -51,6 +53,7 @@ export async function factorGate(
   if (rule !== 'required') return undefined;
   const held = await factorHeld(tx, subject, person);
   if (held) return assurance.level === 'aal2' ? undefined : 'AUTH_SECOND_FACTOR_REQUIRED';
+  if (!person.invitations) return undefined;
   return (await invited(tx, person.personId)) ? 'AUTH_SECOND_FACTOR_SETUP_REQUIRED' : undefined;
 }
 
