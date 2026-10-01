@@ -17,7 +17,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import type { Browser, BrowserContext, BrowserContextOptions, Page, Route } from 'playwright';
-import { boot } from './boot.ts';
+import { boot, settled } from './boot.ts';
 import { routeRules, sourceOf } from './mockup-routes.ts';
 import { fontCache, readAssets, type Packet, type Theme } from './packet.ts';
 
@@ -258,12 +258,7 @@ export async function load(
   }
   // oxlint-disable-next-line no-await-in-loop -- opened as a person would, each control in turn
   for (const control of [prep.open ?? []].flat()) await page.locator(control).first().click();
-  await page.evaluate(
-    () =>
-      new Promise((resolve) => {
-        requestAnimationFrame(() => requestAnimationFrame(resolve));
-      }),
-  );
+  await settled(page);
   return page;
 }
 

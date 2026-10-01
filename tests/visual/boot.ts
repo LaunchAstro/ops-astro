@@ -40,6 +40,22 @@ export async function boot(page: Page, url: string, clock: string): Promise<Page
   );
 }
 
+/**
+ * Two frames on, with every transition the page started run out. Reduced
+ * motion (1-tokens.css) leaves each change a 0.01ms transition, and until its
+ * frame comes a changed colour reads as where it started: a clicked tab
+ * measured in its unselected ink on a slow runner.
+ */
+export async function settled(page: Page): Promise<void> {
+  await page.evaluate(async () => {
+    const running = document.getAnimations().filter((a) => a instanceof CSSTransition);
+    await Promise.allSettled(running.map(async (a) => await a.finished));
+    await new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    });
+  });
+}
+
 /** What the page reports from before it loads, and each time the network changes under it. */
 function watch(page: Page): {
   report: () => string;

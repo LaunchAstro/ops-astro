@@ -104,8 +104,7 @@
         "line-height": "21.7px",
         "color": "rgba(107,99,93,255)",
         "padding-top": "10.4px",
-        "padding-bottom": "8.4px",
-        "box.x": "340"
+        "padding-bottom": "8.4px"
       },
       "1480-dark": {
         "font-family": "Funnel Sans",
@@ -114,8 +113,7 @@
         "line-height": "21.7px",
         "color": "rgba(248,248,248,184)",
         "padding-top": "10.4px",
-        "padding-bottom": "8.4px",
-        "box.x": "340"
+        "padding-bottom": "8.4px"
       },
       "900-light": {
         "font-family": "Funnel Sans",
@@ -124,8 +122,7 @@
         "line-height": "21.7px",
         "color": "rgba(107,99,93,255)",
         "padding-top": "10.4px",
-        "padding-bottom": "8.4px",
-        "box.x": "116"
+        "padding-bottom": "8.4px"
       },
       "900-dark": {
         "font-family": "Funnel Sans",
@@ -134,8 +131,7 @@
         "line-height": "21.7px",
         "color": "rgba(248,248,248,184)",
         "padding-top": "10.4px",
-        "padding-bottom": "8.4px",
-        "box.x": "116"
+        "padding-bottom": "8.4px"
       },
       "390-light": {
         "font-family": "Funnel Sans",
@@ -144,8 +140,7 @@
         "line-height": "21.7px",
         "color": "rgba(107,99,93,255)",
         "padding-top": "10.4px",
-        "padding-bottom": "8.4px",
-        "box.x": "116"
+        "padding-bottom": "8.4px"
       },
       "390-dark": {
         "font-family": "Funnel Sans",
@@ -154,8 +149,27 @@
         "line-height": "21.7px",
         "color": "rgba(248,248,248,184)",
         "padding-top": "10.4px",
-        "padding-bottom": "8.4px",
-        "box.x": "116"
+        "padding-bottom": "8.4px"
+      }
+    },
+    "frame.tab-start": {
+      "1480-light": {
+        "box.x": "256"
+      },
+      "1480-dark": {
+        "box.x": "256"
+      },
+      "900-light": {
+        "box.x": "32"
+      },
+      "900-dark": {
+        "box.x": "32"
+      },
+      "390-light": {
+        "box.x": "32"
+      },
+      "390-dark": {
+        "box.x": "32"
       }
     },
     "frame.tab-current": {
