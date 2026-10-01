@@ -93,6 +93,10 @@ describe('MP-6-1 agent pane', () => {
     expect(word({ reservations: [{ ...running, state: 'abandoned', lease: null }] })).toBe(
       'Dropped',
     );
+    // A hold the classifier settled at its calls' spend stopped; a hand-back that spent finished.
+    const spent = { ...running, state: 'actual', actualMinor: 100, lease: null };
+    expect(word({ reservations: [{ ...spent, attempt: { state: 'abandoned' } }] })).toBe('Dropped');
+    expect(word({ reservations: [{ ...spent, attempt: { state: 'handed_back' } }] })).toBe('Done');
     expect(word({ state: 'cancelled' })).toBe('Cancelled');
     expect(word({ state: 'completed' })).toBe('Done');
   });
