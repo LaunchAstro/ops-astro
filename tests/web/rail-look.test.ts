@@ -147,6 +147,29 @@ describe('MP-2-3 the fold button sits clear of the wordmark (DR-61)', () => {
   }, 300_000);
 });
 
+/** Each section: its 16 px glyph when folded, its label in the drawer. */
+async function expectSections(page: Page, name: string, folded: boolean): Promise<void> {
+  const items = await page.locator('.rail__group .rail__item').all();
+  expect(items.length, name).toBeGreaterThan(0);
+  for (const item of items) {
+    const label = (await item.locator('.rail__label').textContent()) ?? '';
+    const icon = item.locator('.rail__icon');
+    expect(await item.locator('.rail__glyph').count(), `${name} ${label}`).toBe(0);
+    // Folded, the glyph is what shows and the label is clipped to one
+    // pixel; in the drawer, the label is what shows.
+    expect(await icon.isVisible(), `${name} ${label}`).toBe(folded);
+    const words = await item.locator('.rail__label').boundingBox();
+    expect((words?.width ?? 0) > 1, `${name} ${label}`).toBe(!folded);
+    if (folded) {
+      const box = await icon.boundingBox();
+      expect([box?.width, box?.height], `${name} ${label}`).toStrictEqual([16, 16]);
+    }
+    // The label stays the link's accessible name, drawn or not.
+    const named = page.locator('nav.rail').getByRole('link', { name: label, exact: true });
+    await expect.poll(() => named.count(), { message: `${name} ${label}` }).toBe(1);
+  }
+}
+
 describe('MP-2-3 the folded strip, and the drawer at 900 and below', () => {
   it('draws each section as its 16 px glyph named by its label at 1480, the drawer as labels at 900 and 390, light and dark', async () => {
     const pictures = new Map<string, Buffer>();
@@ -167,25 +190,7 @@ describe('MP-2-3 the folded strip, and the drawer at 900 and below', () => {
         await settle(page);
         expect((await boxOf(page, 'nav.rail')).width, name).toBe(Math.min(300, at.width * 0.84));
       }
-      const items = await page.locator('.rail__group .rail__item').all();
-      expect(items.length, name).toBeGreaterThan(0);
-      for (const item of items) {
-        const label = (await item.locator('.rail__label').textContent()) ?? '';
-        const icon = item.locator('.rail__icon');
-        expect(await item.locator('.rail__glyph').count(), `${name} ${label}`).toBe(0);
-        // Folded, the glyph is what shows and the label is clipped to one
-        // pixel; in the drawer, the label is what shows.
-        expect(await icon.isVisible(), `${name} ${label}`).toBe(at.width > 900);
-        const words = await item.locator('.rail__label').boundingBox();
-        expect((words?.width ?? 0) > 1, `${name} ${label}`).toBe(at.width <= 900);
-        if (at.width > 900) {
-          const box = await icon.boundingBox();
-          expect([box?.width, box?.height], `${name} ${label}`).toStrictEqual([16, 16]);
-        }
-        // The label stays the link's accessible name, drawn or not.
-        const named = page.locator('nav.rail').getByRole('link', { name: label, exact: true });
-        await expect.poll(() => named.count(), { message: `${name} ${label}` }).toBe(1);
-      }
+      await expectSections(page, name, at.width > 900);
       await page.mouse.move(700, 600);
       pictures.set(name, await page.locator('nav.rail').screenshot({ animations: 'disabled' }));
     });
