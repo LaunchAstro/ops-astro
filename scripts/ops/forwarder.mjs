@@ -17,18 +17,24 @@ import { join } from 'node:path';
 import { sinkFrom } from '../../apps/api/alerts/sink.ts';
 import { createForwarder } from '../../apps/forwarder/forward.ts';
 import { connectAsAdmin } from '../../packages/core-records/src/index.ts';
-import { offEgress, ping, sinkAnswers } from './heartbeat.mjs';
+import { heartbeatEvery, offEgress, paced, ping, sinkAnswers } from './heartbeat.mjs';
 
 const ROOT = join(import.meta.dirname, '..', '..');
 
-/** On staging, each address leaves by the egress host beside it (S0-1 egress allow-list). */
-const offRoute = (env) =>
-  offEgress(env, [
+/**
+ * A malformed OPS_HEARTBEAT_EVERY_MS; else, on staging, each address leaving by
+ * the egress host beside it (S0-1 egress allow-list).
+ */
+const offRoute = (env) => {
+  const every = heartbeatEvery(env);
+  if (typeof every === 'string') return every;
+  return offEgress(env, [
     ['DATABASE_FORWARDER_URL', 'OPS_EGRESS_POOLER_HOST', 'OPS_EGRESS_POOLER_PORT'],
     ['OPS_ERROR_SINK_DSN', 'OPS_EGRESS_SINK_HOST'],
     ['OPS_FORWARDER_HEARTBEAT_URL', 'OPS_EGRESS_HEARTBEAT_HOST'],
     ['OPS_SINK_HEARTBEAT_URL', 'OPS_EGRESS_HEARTBEAT_HOST'],
   ]);
+};
 
 export async function main(argv, env) {
   const url = env['DATABASE_FORWARDER_URL'] ?? '';
@@ -46,12 +52,13 @@ export async function main(argv, env) {
     process.stderr.write(`forwarder: ${error.message}\n`);
     return 1;
   }
+  const beat = paced(heartbeatEvery(env), ping);
   const database = connectAsAdmin(url, { source: 'forwarder' });
   const forwarder = createForwarder({
     ...sink,
     database,
     root: ROOT,
-    heartbeat: () => ping(env['OPS_FORWARDER_HEARTBEAT_URL']),
+    heartbeat: () => beat(env['OPS_FORWARDER_HEARTBEAT_URL']),
   });
   const interval = Number(env['OPS_FORWARDER_INTERVAL_MS'] ?? 15_000);
   let failed = false;
@@ -69,7 +76,7 @@ export async function main(argv, env) {
     }
     // The sink is on the machine, out of the watcher's sight: its heartbeat says it answers.
     // oxlint-disable-next-line no-await-in-loop -- one probe after each pass
-    if (await sinkAnswers(env['OPS_ERROR_SINK_DSN'])) await ping(env['OPS_SINK_HEARTBEAT_URL']);
+    if (await sinkAnswers(env['OPS_ERROR_SINK_DSN'])) await beat(env['OPS_SINK_HEARTBEAT_URL']);
     if (argv.includes('--once')) break;
     // oxlint-disable-next-line no-await-in-loop -- the poll interval
     await new Promise((done) => {
