@@ -1865,8 +1865,10 @@ adoption is the owner's separate decision.
   window at the pinned provider: the replay provider's `replay-1`, 32 000
   units, the only route catalogued. The work must also sub-delegate (AW-11's
   `delegated` run event, depth one). The reading is the sum of the run's
-  accept-time manifest sizes (0192), counted in UTF-8 bytes, an upper bound on
-  any byte-level tokenizer's units. A run with no pin reads nothing.
+  accept-time manifest sizes (0192), each file once: a file is its digest and
+  size, so the same bytes at two paths count once. It is counted in UTF-8
+  bytes, an upper bound on any byte-level tokenizer's units. A run with no pin
+  reads nothing.
 - **"Not yet" is a result.** Either limb missing, the reading is `not_yet`.
   It names the missing limbs and carries the two figures: the reading against
   the window, and the depth with the depth built. It is frozen and holds no
@@ -1875,9 +1877,10 @@ adoption is the owner's separate decision.
   The trigger is read from the work's shape, never from a date.
 - **Who reads it.** `readHarnessTrigger` is the team's: a person outside it,
   or one with no live `task:read`, gets `SCOPE_NOT_GRANTED`. The run is
-  filtered by that grant inside the statement, so a run outside it, in another
+  filtered by that grant inside the statement (on the business, the task or
+  the task's client, as `taskAccess` asks), so a run outside it, in another
   business or missing, is one `NOT_FOUND`. A manifest entry with no whole size
-  is `DEFINITION_UNAVAILABLE`, never counted as nothing. No route, verb or
+  or no digest is `DEFINITION_UNAVAILABLE`, never counted as nothing. No route, verb or
   agent operation reaches it yet.
 - **What stays in the tests.** The pinned candidates with their licences read
   (`tests/harness/candidates.ts`) and the four shared fakes, all in
