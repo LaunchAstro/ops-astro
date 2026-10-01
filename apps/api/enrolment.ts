@@ -75,7 +75,9 @@ async function sessionOf(context: Context, verify: Verifier): Promise<VerifiedSu
   if (crossSiteSession(context.req)) return context.json({ code: 'AUTH_CROSS_SITE' }, 403);
   const presented = await verify(context.req);
   if (presented === 'expired') return context.json({ code: 'AUTH_SESSION_EXPIRED' }, 401);
-  if (presented !== undefined) return presented;
+  // The key set could not be reached: nothing is said of the credential (B7).
+  if (presented === 'unavailable') return context.json({ code: 'SERVICE_UNAVAILABLE' }, 503);
+  if (presented !== undefined && presented !== 'absent') return presented;
   if (unnamedSession(context.req)) return context.json({ code: 'AUTH_SESSION_MISMATCH' }, 401);
   return context.json({ code: 'AUTH_UNKNOWN_LOGIN' }, 401);
 }

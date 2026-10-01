@@ -500,12 +500,17 @@ function handedBackEvent(request: HandbackRequest, found: Discovered, settled: S
 }
 
 /**
- * The alert a hand-back raises (T2h): a successor waits on a person to decide
- * it, and a quarantined hold on a person to reconcile it; otherwise the run
- * ended as the holder reported. A successor refused later rolls this back with
- * the rest of the settlement.
+ * The alert a hand-back raises (T2h): an unknown liability waits on a person to
+ * record the outcome, a successor on a person to decide it (its gate raises its
+ * own decision items), and a quarantined hold on a person to reconcile it;
+ * otherwise the run ended as the holder reported. A successor refused later
+ * rolls this back with the rest of the settlement.
  */
 function handedBack(request: HandbackRequest, classification: Classification): Raised {
+  // The step went out unobserved: the hold stays, and nothing else records it (#287 A2).
+  if (classification.state === 'liability_unknown') {
+    return { kind: 'awaiting_person', waitingReason: 'liability_unknown' };
+  }
   if (request.successor !== undefined) {
     return { kind: 'awaiting_person', waitingReason: 'needs_approval' };
   }

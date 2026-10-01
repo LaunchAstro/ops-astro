@@ -232,11 +232,11 @@ function publishedKeysOnlyCases2() {
   });
 
   it('the adapter hands over the verified subject and nothing else', async () => {
-    const verify = createSupabaseVerifier(testSignIn(ISSUER));
     const token = await signBearer(claims({ email: 'mia@alpha.local', role: 'service_role' }));
-    expect(await verify(requestWith(token))).toStrictEqual({
+    expect(await createSupabaseVerifier(testSignIn(ISSUER))(requestWith(token))).toStrictEqual({
       provider: 'supabase',
       subject: 'mia',
+      assurance: { level: 'aal1', signedInAt: expect.any(Number), factorAt: null },
     });
   });
 }

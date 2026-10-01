@@ -4,16 +4,20 @@ import { READ_NAMES } from '../../apps/web/src/operations/read-names.ts';
 import { pathOf, PREFIX } from '../../packages/core-wire/src/index.ts';
 import { MADE_UP_READS, madeUpAnswer, TASKS } from './made-up-api.ts';
 
-// Reads no batch/1 screen draws at the harness's addresses: a receipt needs a
+// Reads no screen draws at the harness's addresses: a receipt needs a
 // finished run, the preset plan is the command line's, and the unattended list
 // is the operations view's; a file's attribution (AW-04) is asked by its
-// digest from the agent's sources, on no harness address. Each is drawn
-// "could not be read" if asked.
+// digest from the agent's sources, on no harness address. No screen asks the
+// client list (Access reads its clients inside access.read) or the breach
+// notice drafts (the command line's drill). Each is drawn "could not be read"
+// if asked.
 const NOT_DRAWN = new Set([
   'task.receipt',
   'preset.plan',
   'inbox.unattended',
+  'client.list',
   'definition.attribution',
+  'privacy.draft_breach_notices',
 ]);
 
 describe('the made-up reads the width-and-theme harness draws from', () => {

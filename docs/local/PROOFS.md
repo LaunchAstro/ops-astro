@@ -260,7 +260,7 @@ none unreachable.
 
 `role-case-matrix.test.ts` with `role-case-harness.ts` (its shape in
 `role-case-harness-shape.ts`), `role-case-bodies.ts` (its recipe table in
-`role-case-positive-body.ts`) and `role-case-ledger.ts`. The enumeration is generated from `COMMAND_SURFACE`
+`role-case-positive-body.ts`, C81's recipes in `role-case-privacy-bodies.ts`, API-2's in `role-case-credential-bodies.ts`) and `role-case-ledger.ts`. The enumeration is generated from `COMMAND_SURFACE`
 and the whole matrix is written to `.local/l5-matrix.tsv` as
 `role · case · operation · observed code · observed status · expected · verdict`.
 
@@ -1254,6 +1254,14 @@ login, and is green 3 of 3 (FR8-0031).
   dialogue. The U7 score (events log, 2026-09-23T23:19:45Z) left U7
   undischarged and named this as Nathan's item. Either answer clears it
   without re-scoring.
+
+## Retired by ruling
+
+- `tests/ci/staging-deploy-consumes-release.test.ts` ("deploys a checked staging artefact through the
+  shipped image build path", batch 1's blind review, finding 6): retired by the orchestrator's ruling
+  (ORCH45, option 1). It certified a local app image built from `deploy/staging/Dockerfile`, a path
+  staging no longer has: the app and API deploy only to Vercel (`scripts/ops/web-deploy.mjs`), and
+  `scripts/ops/deploy.mjs` now starts the M5's unit on its pinned images with no image build.
 
 ## What is not here
 

@@ -168,19 +168,29 @@ function everyPageAtItsAddress(): void {
   });
 }
 
+// The registry's pages: wave 0's four, an invitation's link (C39-T), the
+// public legal page (C81), Settings ▸ Access, Telemetry (U14), Operations
+// (C55), MP-7-3's inbox, the component gallery (MP-1-3, U04), a
+// conversation's own address (C36) and MP-7-10's Team.
+const BUILT_PAGES = [
+  'agency:sign-in',
+  'agency:enrol',
+  'agency:legal',
+  'agency:projects-board',
+  'agency:task-detail',
+  'agency:settings',
+  'agency:access',
+  'agency:telemetry',
+  'agency:operations',
+  'agency:inbox',
+  'agency:gallery',
+  'agency:agent-conversation',
+  'agency:team',
+];
+
 function everyPageBuiltSoFar(): void {
   it('MP-1-7 every page built so far: each registered route has a picture at each width', () => {
-    // The wave 0 pages and those built since: the gallery (MP-1-3, U04), a
-    // conversation's own address (C36) and an invitation's link (C39-T).
-    expect(builtPages()).toEqual([
-      'agency:sign-in',
-      'agency:enrol',
-      'agency:projects-board',
-      'agency:task-detail',
-      'agency:settings',
-      'agency:gallery',
-      'agency:agent-conversation',
-    ]);
+    expect(builtPages()).toEqual(BUILT_PAGES);
     const all = report(packet, builtPages(), everyShot(packet.widths));
     expect(all.failed).toBe(0);
     expect(all.lines.at(-1)).toBe(

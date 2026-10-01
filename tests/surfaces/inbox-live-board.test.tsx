@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// INB-1f on the page: the board screen opens one event stream for the tab
-// (`<person prefix><business>/live`, T2f's content-free channel) and never a
-// stream per task or per panel. An `invalidate` re-reads the board and an
+// INB-1f on the page: the board screen follows the `board` topic on the tab's
+// one event stream (C4, `<person prefix><business>/live?topic=board`), never a
+// stream per task or per panel; every board frame is labelled `board`. An `invalidate` re-reads the board and an
 // `inbox` signal re-reads the inbox and its owed count, with no refresh.
 // While the stream is down, the 30-second floor re-reads them; while it is
 // up, nothing polls.
@@ -82,21 +82,23 @@ afterEach(() => {
 describe('INB-1f the board moves live on the page', () => {
   it('INB-1 board live (page): one stream per tab; an invalidate re-reads the board and an inbox signal the inbox and its count', async () => {
     const api = server();
-    const view = await mount(<Projects client={api.client} grantKey="alpha:mia" />);
+    const view = await mount(
+      <Projects client={api.client} grantKey="alpha:mia" navigate={() => {}} />,
+    );
     const deadline = Date.now() + 2_000;
     await until('the tab joined', () => api.joins.length > 0, deadline);
     await until('the first reads', () => api.asked.board > 0 && api.asked.count > 0, deadline);
     await settle();
     // One stream for the tab: the board, the inbox list and its count share it.
     expect(api.joins).toHaveLength(1);
-    expect(api.joins[0]).toMatch(/\/api\/b\/alpha\/live$/u);
+    expect(api.joins[0]).toMatch(/\/api\/b\/alpha\/live\?topic=board$/u);
 
     const before = { ...api.asked };
-    api.send('invalidate', '22222222-2222-4222-8222-222222222222');
+    api.send('invalidate', 'board');
     await until('the board re-read', () => api.asked.board > before.board, deadline);
 
     const board = api.asked.board;
-    api.send('inbox');
+    api.send('inbox', 'board');
     await until(
       'the inbox and its count re-read',
       () => api.asked.inbox > before.inbox && api.asked.count > before.count,
@@ -112,7 +114,9 @@ describe('INB-1f the board moves live on the page', () => {
   it('INB-1 the 30-second floor: the board and the owed count re-read every 30 seconds only while the channel is down', async () => {
     vi.useFakeTimers();
     const down = server({ down: true });
-    const view = await mount(<Projects client={down.client} grantKey="alpha:mia" />);
+    const view = await mount(
+      <Projects client={down.client} grantKey="alpha:mia" navigate={() => {}} />,
+    );
     await vi.advanceTimersByTimeAsync(10);
     const first = { ...down.asked };
     expect(first.board).toBeGreaterThan(0);
@@ -122,7 +126,9 @@ describe('INB-1f the board moves live on the page', () => {
     await view.unmount();
 
     const up = server();
-    const live = await mount(<Projects client={up.client} grantKey="alpha:mia" />);
+    const live = await mount(
+      <Projects client={up.client} grantKey="alpha:mia" navigate={() => {}} />,
+    );
     await vi.advanceTimersByTimeAsync(10);
     expect(up.joins).toHaveLength(1);
     const settled = { ...up.asked };

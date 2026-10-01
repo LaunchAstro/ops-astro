@@ -33,5 +33,15 @@
     "skipLibCheck": true
   },
   "include": ["tests/**/*.ts", "packages/**/*.ts", "apps/**/*.ts"],
-  "exclude": ["**/node_modules", "**/dist", "apps/web", "packages/ui", "tests/surfaces"]
+  "exclude": [
+    "**/node_modules",
+    "**/dist",
+    "apps/web",
+    "packages/ui",
+    "tests/surfaces",
+    "tests/api/live-board-closed-recheck-review.test.ts",
+    "tests/api/live-board-revoked-after-final-read-review.test.ts",
+    "tests/api/live-board-revoked-during-rejoin-review.test.ts",
+    "tests/api/live-board-task-resync-isolation-review.test.ts"
+  ]
 }

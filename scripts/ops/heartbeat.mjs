@@ -8,10 +8,16 @@
 //
 // The address carries the watcher's token, so it is never printed: a run's
 // record says only `sent`, `failed`, `refused` or `not set`. The one request is
-// a GET to a public https address, with no redirect followed, a 10-second
+// an empty POST to a public https address, with no redirect followed, a 10-second
 // limit and its answer's body discarded.
 
-export { offEgress, ping, UNREACHABLE } from '../../apps/worker/heartbeat.ts';
+export {
+  heartbeatEvery,
+  offEgress,
+  paced,
+  ping,
+  UNREACHABLE,
+} from '../../apps/worker/heartbeat.ts';
 
 /**
  * Whether the error sink behind `dsn` answers its health page. The sink is on

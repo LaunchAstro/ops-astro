@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // How the typed client (`client.ts`) reads what came back: a refusal in the
-// server's one shape, the two codes that end a session, and the words for a
+// server's one shape, the two codes that end a session, the refusals that come
+// before login resolution places a member (C58), and the words for a
 // call that produced no answer at all. Nothing here sends anything.
 
 import type { CommandRefusal } from '../../../../packages/core-wire/src/index.ts';
@@ -18,6 +19,15 @@ type WireRefusal = CommandRefusal;
 export const SESSION_ENDED: ReadonlySet<string> = new Set([
   'AUTH_UNKNOWN_LOGIN',
   'AUTH_SESSION_EXPIRED',
+]);
+
+/** Refusals besides the 401s that can come before login resolution places a member. */
+export const BEFORE_LOGIN: ReadonlySet<string> = new Set([
+  'AUTH_NO_MEMBERSHIP',
+  'ACTOR_INACTIVE',
+  'AUTH_CROSS_SITE',
+  'AUTH_SESSION_MISMATCH',
+  'COMMAND_BODY_INVALID',
 ]);
 
 export function isWireRefusal(value: unknown): value is WireRefusal {

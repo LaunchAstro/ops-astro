@@ -20,8 +20,8 @@ vi.mock('./capture.ts', () => ({
     session: source.session,
     width,
     theme: source.colorScheme,
-    // The made-up reads register a route on the signed-in side's context.
-    context: { close: () => {}, route: () => Promise.resolve() },
+    // The made-up answers route on the signed-in context; nothing is fetched here.
+    context: { close: () => {}, route: async () => {} },
   }),
   load: (
     side: { session?: string; width: number; theme: string },
