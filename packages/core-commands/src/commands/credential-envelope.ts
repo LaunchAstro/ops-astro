@@ -27,8 +27,7 @@
 
 import {
   NO_ASSURANCE,
-  digestOf,
-  recordAuthenticationAttempt,
+  recordCredentialRefusal,
   resolveAgentCredential,
 } from '../../../core-records/src/index.ts';
 import type {
@@ -151,23 +150,10 @@ export async function executeCredentialCommand(
   }
 }
 
-/**
- * A credential turned away is an attempt at the door (I13): recorded against
- * the digest of its digest, never the secret, and answered as every other.
- */
+/** A credential turned away is an attempt at the door (I13), answered as every other. */
 async function refusedAtTheDoor(tx: TenantQuery, credential: string): Promise<CommandRefusal> {
   const refusal = credentialNotLive();
-  const presented = {
-    provider: 'agent-credential',
-    subject: digestOf(credential),
-    assurance: NO_ASSURANCE,
-  };
-  await recordAuthenticationAttempt(tx, {
-    owner: 'delegation',
-    presented,
-    outcome: 'refused',
-    refusalCode: refusal.code,
-  });
+  await recordCredentialRefusal(tx, credential, refusal.code);
   return refusal;
 }
 

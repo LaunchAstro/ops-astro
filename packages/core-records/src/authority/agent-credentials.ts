@@ -20,6 +20,8 @@
 // anyone else needs `access:manage`, which the command asks before this runs.
 
 import { randomUUID } from 'node:crypto';
+import { recordAuthenticationAttempt } from '../identity/authentication-attempts.ts';
+import { NO_ASSURANCE } from '../identity/verified-subject.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 import {
   AGENT_CREDENTIAL_DOMAIN,
@@ -260,4 +262,22 @@ export async function resolveAgentCredential(
     roleKey: row.role_key,
     scope: row.scope,
   };
+}
+
+/**
+ * A credential turned away is an attempt at the door (I13): recorded against
+ * the digest of its digest, never the secret, owned by the delegation, in the
+ * caller's transaction.
+ */
+export async function recordCredentialRefusal(
+  tx: TenantQuery,
+  secret: string,
+  refusalCode: string,
+): Promise<void> {
+  await recordAuthenticationAttempt(tx, {
+    owner: 'delegation',
+    presented: { provider: 'agent-credential', subject: digestOf(secret), assurance: NO_ASSURANCE },
+    outcome: 'refused',
+    refusalCode,
+  });
 }

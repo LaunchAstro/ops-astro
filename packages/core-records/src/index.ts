@@ -25,6 +25,7 @@ export {
   isAgentCredentialForm,
   issueAgentCredential,
   lockAgentCredential,
+  recordCredentialRefusal,
   resolveAgentCredential,
   revokeAgentCredential,
   type AgentCredential,
