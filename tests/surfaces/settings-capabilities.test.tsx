@@ -11,7 +11,8 @@
 //
 // Four rules:
 //
-//  - `settings:manage` in the grants opens the controls. Nothing else does.
+//  - Each row opens from its own command's grant: four-eyes from `spend:decide`,
+//    sign-off and the two windows from `settings:manage`. Nothing else does.
 //  - A person without it gets closed controls and the reason, and never sends
 //    a write nobody was going to accept.
 //  - **A refused capability read closes the controls too.** A screen that
@@ -83,7 +84,10 @@ function server(
               ok: true,
               personId: 'p-ada',
               businessKey: 'alpha',
-              grants: [{ collection: 'settings', action: 'manage' }],
+              grants: [
+                { collection: 'settings', action: 'manage' },
+                { collection: 'spend', action: 'decide' },
+              ],
             }))
         )(),
       );
@@ -126,6 +130,7 @@ describe('the settings controls follow the session capabilities', () => {
   theSettingsControlsCases1();
   theSettingsControlsCases2();
   theSettingsControlsCases3();
+  theSettingsControlsCases4();
 });
 
 function theSettingsControlsCases1() {
@@ -229,6 +234,62 @@ function theSettingsControlsCases3() {
     await page.click('[data-settings="save-four-eyes"]');
     await tick();
     expect(writes(api)).toBe(1);
+    await page.unmount();
+  });
+}
+
+const ROWS = ['four-eyes', 'sign-off', 'conversation', 'retention'] as const;
+
+const holding = (grants: readonly { collection: string; action: string }[]) => () =>
+  json({ ok: true, personId: 'p-ada', businessKey: 'alpha', grants });
+
+const openRows = (page: { find: (selector: string) => Element | null }): string[] =>
+  ROWS.filter(
+    (which) => !(page.find(`[data-settings="save-${which}"]`) as HTMLButtonElement).disabled,
+  );
+
+function theSettingsControlsCases4() {
+  // The server gates the four-eyes threshold with spend:decide and the other
+  // three with settings:manage, so each row opens from its own command's grant.
+  it('opens only four-eyes for spend:decide alone', async () => {
+    const api = server({ capabilities: holding([{ collection: 'spend', action: 'decide' }]) });
+    const page = await mount(screen(api.fetch));
+    await tick();
+    expect(openRows(page)).toEqual(['four-eyes']);
+    expect(page.find('[data-settings="capabilities-because"]')?.textContent).toContain(
+      'settings:manage',
+    );
+    await page.click('[data-settings="save-sign-off"]');
+    await tick();
+    expect(writes(api)).toBe(0);
+    await page.unmount();
+  });
+
+  it('opens all but four-eyes for settings:manage alone', async () => {
+    const api = server({ capabilities: holding([{ collection: 'settings', action: 'manage' }]) });
+    const page = await mount(screen(api.fetch));
+    await tick();
+    expect(openRows(page)).toEqual(['sign-off', 'conversation', 'retention']);
+    expect(page.find('[data-settings="capabilities-because"]')?.textContent).toContain(
+      'spend:decide',
+    );
+    await page.click('[data-settings="save-four-eyes"]');
+    await tick();
+    expect(writes(api)).toBe(0);
+    await page.unmount();
+  });
+
+  it('opens every row for both grants', async () => {
+    const api = server({
+      capabilities: holding([
+        { collection: 'settings', action: 'manage' },
+        { collection: 'spend', action: 'decide' },
+      ]),
+    });
+    const page = await mount(screen(api.fetch));
+    await tick();
+    expect(openRows(page)).toEqual([...ROWS]);
+    expect(page.find('[data-settings="capabilities-because"]')).toBeNull();
     await page.unmount();
   });
 }

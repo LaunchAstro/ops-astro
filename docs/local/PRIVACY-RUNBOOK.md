@@ -127,3 +127,7 @@ product stores:
    run.
 
 The backup leg needs the restore from S0-3 and is recorded when that lands.
+
+The dry run's evidence link closes the first-client gate's `privacy-procedure`
+line (item 3, migration 0071). Until it is recorded the gate stays shut,
+whatever else item 3 has.
