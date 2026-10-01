@@ -16,6 +16,12 @@
   padding-top: var(--s-3);
 }
 
+/* The fleet banner: one body that grows, then its action, centred, as the
+   mockup draws it (connections-and-signal 209-218). */
+[data-fleet-banner] {
+  align-items: center;
+}
+
 .statrow > .stat {
   padding: var(--s-4) var(--s-5) var(--s-4) 0;
 }
