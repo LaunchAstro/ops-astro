@@ -77,7 +77,7 @@
       "open": "#connRows .conn__row",
       "regions": { "tiles": "#fleet", "table": "table:has(#connRows)" },
       "appPath": "/connections/",
-      "appRegions": { "tiles": ".tiles", "table": "table.conn" },
+      "appRegions": { "tiles": "[data-fleet-tiles]", "table": "table.conn" },
       "app": "MP-14-7a draws the fleet from the made-up connection.fleet"
     },
     {
