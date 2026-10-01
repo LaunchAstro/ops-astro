@@ -1486,7 +1486,8 @@ both tenancy-scoped with row security forced, and the fair share's count
   (replay: `http_429`) releases the hold whole. The reconciliation pass's
   provider phase (`reconcileProviderCalls`, `core-custody/src/broker-reconcile.ts`,
   run per business by `passDeployment` after the sweep) asks the provider, through
-  custody and by the call's id (the operation id the call carried), about each
+  custody and by the call's id (the operation id every call sends, a
+  conversation call's and a planning reply's too), about each
   held call whose step is held unknown, at most 50 a pass. Only an answer in the
   lookup's own shape with a declared code releases the call; the step then
   resumes through the register's answer (`withProviderCalls`). Anything else
