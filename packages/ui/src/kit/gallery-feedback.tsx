@@ -40,6 +40,21 @@ export const FEEDBACK: readonly GalleryEntry[] = [
           </Banner>
         ),
       },
+      {
+        label: 'Hint',
+        render: () => (
+          <Banner
+            tone="hint"
+            action={
+              <Button variant="ghost" onClick={() => {}}>
+                Set reminders
+              </Button>
+            }
+          >
+            The client must re-consent every 12 months. Two are overdue.
+          </Banner>
+        ),
+      },
     ],
   },
   {

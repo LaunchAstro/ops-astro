@@ -39,7 +39,10 @@ const CAPABILITIES = {
   ok: true,
   personId: 'p-ada',
   businessKey: 'alpha',
-  grants: [{ collection: 'settings', action: 'manage' }],
+  grants: [
+    { collection: 'settings', action: 'manage' },
+    { collection: 'spend', action: 'decide' },
+  ],
 };
 
 /** A settings server whose four-eyes row moves to 999 under the first write. */

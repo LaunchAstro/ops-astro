@@ -18,25 +18,27 @@ import { createControls, type Controls } from '../api/controls-fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
+let c: Controls;
+
+beforeAll(async () => {
+  if (serverUrl === undefined) return;
+  c = await createControls('fr1r');
+}, 120_000);
+
+afterAll(async () => {
+  if (serverUrl === undefined) return;
+  await c?.drop();
+});
+
+const revisionOf = async (recordId: string): Promise<number> =>
+  await c.count(`select revision::text as n from public.records where id = $1`, [recordId]);
+
+const queued = async (): Promise<readonly string[]> =>
+  (await c.fixture.db.app.withBusiness(c.fixture.business, async (tx) => await queue(tx))).map(
+    (entry) => entry.reservationId,
+  );
+
 describe.skipIf(serverUrl === undefined)('continuation', () => {
-  let c: Controls;
-
-  beforeAll(async () => {
-    c = await createControls('fr1r');
-  }, 120_000);
-
-  afterAll(async () => {
-    await c?.drop();
-  });
-
-  const revisionOf = async (recordId: string): Promise<number> =>
-    await c.count(`select revision::text as n from public.records where id = $1`, [recordId]);
-
-  const queued = async (): Promise<readonly string[]> =>
-    (await c.fixture.db.app.withBusiness(c.fixture.business, async (tx) => await queue(tx))).map(
-      (entry) => entry.reservationId,
-    );
-
   it.each([
     ['a NUL', `a${String.fromCodePoint(0)}b`],
     ['a lone surrogate', '\ud800'],
@@ -60,7 +62,9 @@ describe.skipIf(serverUrl === undefined)('continuation', () => {
     },
     60_000,
   );
+});
 
+describe.skipIf(serverUrl === undefined)('continuation', () => {
   it("a trashed task's work is not queued or picked up, and restore brings it back", async () => {
     const task = await c.createTask('work on a task that is trashed');
     const reservationId = await c.approve(await c.propose(task.id, task.revision));

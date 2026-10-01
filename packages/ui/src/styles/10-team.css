@@ -1,0 +1,184 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* The Team panel (MP-7-10, C71-D, C71-G): the pinned mockup's `tmc__` rules. Buttons
+   are the kit's `btn`, counts its `cbadge`, the empty line the kit's `Empty`, and the
+   thread the task page's `thread`/`msg` dialect, all placed, never restyled.
+   Faces are the kit's team-card avatar and the door its door mark. Away is a
+   dashed ring and the word Away, never a coloured dot. The group
+   list, picker and head (C71-G) are drawn by no mockup surface: spacing only,
+   everything else from the kit. */
+
+.tmc {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+}
+.tmc__me {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0 0 var(--s-3);
+  color: var(--text-2);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+.tmc__why {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.tmc__strip {
+  display: flex;
+  flex: none;
+  gap: var(--s-3);
+  overflow-x: auto;
+  padding-bottom: var(--s-3);
+  border-bottom: 1px solid var(--border);
+}
+.tmc__p {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.1rem;
+  color: var(--text-muted);
+}
+.tmc__face {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+button.tmc__face {
+  cursor: pointer;
+}
+.tmc__n {
+  color: inherit;
+  text-decoration: none;
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
+}
+a.tmc__n:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+.tmc__u {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+}
+.tmc__away {
+  font: var(--type-badge);
+  letter-spacing: var(--type-badge-tracking);
+  text-transform: var(--type-badge-case);
+}
+.tmc__p.is-on .tmc__n {
+  color: var(--text);
+}
+.tmc__conv {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+.tmc__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.tmc .thread {
+  padding-top: var(--s-3);
+  border-top: 0;
+}
+.tmc .composer {
+  display: flex;
+  flex: none;
+  gap: var(--s-2);
+  padding-top: var(--s-3);
+}
+.tmc .composer input {
+  flex: 1;
+}
+
+/* C71-G group conversations: spacing and layout only. */
+.tmc__groups {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-3) 0;
+  border-bottom: 1px solid var(--border);
+}
+.tmc__glist {
+  margin: 0;
+  padding: 0;
+}
+.tmc__members {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tmc__members li {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.tmc__g {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  cursor: pointer;
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+.tmc__g[aria-pressed='true'] {
+  color: var(--text);
+  font: var(--type-small-strong);
+  letter-spacing: var(--type-small-strong-tracking);
+  text-transform: var(--type-small-strong-case);
+}
+.tmc__new,
+.tmc__renaming,
+.tmc__adding {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--s-2);
+}
+.tmc__pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+.tmc__ghead {
+  flex: none;
+  padding-top: var(--s-3);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+.tmc__gname,
+.tmc__with {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  margin: 0 0 var(--s-2);
+}
+.tmc__with {
+  color: var(--text-muted);
+}

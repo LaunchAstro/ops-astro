@@ -18,6 +18,13 @@ on:
     types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
     branches: [main]
+  # CI-QUEUE: the merge queue's build of main with the queued pull requests
+  # merged on top. Every required check runs on it and holds the claim it
+  # holds on a pull request. A step that reads a pull request's range runs
+  # once per pull request in the group, each against main as it stands
+  # (scripts/merge-group.mjs), so a group passes nothing by skipping and
+  # fails when it cannot tell which pull requests it holds.
+  merge_group:
 
 # Read-only by default. A job that needs more says so itself.
 permissions:
@@ -81,19 +88,13 @@ jobs:
       - name: Nothing merges itself
         run: node scripts/merge-policy-check.mjs
       - name: Sweep every blob in the incoming commits
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: python3 scripts/gate/sweep.py --range "$BASE_SHA..$HEAD_SHA"
+        if: github.event_name != 'push'
+        run: node scripts/merge-group.mjs each sh -c 'python3 scripts/gate/sweep.py --range "$BASE_SHA..$HEAD_SHA"'
       - name: Sweep every tracked file
         run: python3 scripts/gate/sweep.py
       - name: Public content and metadata in every incoming commit
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: node scripts/public-content-check.mjs --repo "$PWD" --range "$BASE_SHA..$HEAD_SHA"
+        if: github.event_name != 'push'
+        run: node scripts/merge-group.mjs each sh -c 'node scripts/public-content-check.mjs --repo "$PWD" --range "$BASE_SHA..$HEAD_SHA"'
       - name: Public content and metadata from the root
         if: github.event_name == 'push'
         run: node scripts/public-content-check.mjs --repo "$PWD" --range HEAD
@@ -167,9 +168,23 @@ jobs:
           rm -f "${RUNNER_TEMP}/${archive}"
           "$bin/gitleaks" version
           echo "$bin" >> "$GITHUB_PATH"
-      - name: The pinned headless shell for MP-1-1's harness captures, which pnpm check runs
+      - name: The pinned headless shell for MP-1-1's harness captures and the browser proofs
         run: pnpm exec playwright install --with-deps --only-shell chromium
       - run: pnpm check
+        env:
+          # The suites in tests/ci/container-suites.json run in the next step instead.
+          CONTAINER_SUITES: apart
+      # They start containers, and a new network interface aborts a browser
+      # capture's page load in flight (net::ERR_NETWORK_CHANGED), so they run
+      # here, after every capture in `pnpm check`.
+      - name: The suites that start containers, after the browser captures
+        run: pnpm vitest run $(node -p "require('./tests/ci/container-suites.json').suites.join(' ')")
+      # S0-6 content policy: the built page, in the headless shell above,
+      # refuses planted scripts. Alone, since it builds apps/web/dist.
+      - name: The built page refuses planted scripts in a real browser
+        run: pnpm vitest run tests/browser/
+        env:
+          BROWSER_PROOFS: '1'
       - name: Semgrep p/default on the supply-chain settings, image pinned by digest (CQ-3)
         run: bash scripts/local/semgrep-settings.sh
       - name: Public content in the actual checked-out snapshot
@@ -189,6 +204,14 @@ jobs:
           node scripts/ops/release.ts --out "${store}/ops-astro-${version}"
           node scripts/ops/promote.mjs --dry-run --version "$version" --artefacts "$store" \
             --line "CI dry run of the promotion step over the build just made"
+      # INB-1g, the worker's leg: the inbox reads back after the worker is hard-killed
+      # and replaced, on the runner's own disposable Postgres. It names the proof, so
+      # a skip fails the step (tests/support/ci-must-run.ts).
+      - name: The inbox reads back after the worker restarts
+        env:
+          DOCKER: docker
+          L5_RUNTIME_PROOFS: '1'
+        run: bash scripts/local/restart-proof.sh --suite tests/acceptance/inbox-worker-restart.test.ts
 
   database-gate:
     # Proving the gate. These probes start their own throwaway Postgres, run
@@ -274,13 +297,15 @@ jobs:
       # S0-3: a pull request that adds a migration upgrades a database built and
       # seeded at the base branch's newest migration, with the application
       # stopped, and every row must come through unchanged. No migration added,
-      # nothing to drill; a push to main has no base to start from.
+      # nothing to drill; a push to main has no base to start from. On a merge
+      # group the base is main as it stands, and the head holds every
+      # migration the group's pull requests add.
       - name: The upgrade drill, when this pull request adds a migration
-        if: github.event_name == 'pull_request'
+        if: github.event_name != 'push'
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
           DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
         run: |
+          BASE_SHA="$(node scripts/merge-group.mjs base)"
           git fetch --no-tags origin "$BASE_SHA"
           added=$(git diff --name-only --diff-filter=A "$BASE_SHA" HEAD -- migrations/)
           if [ -z "$added" ]; then echo "upgrade-drill: no migration added; not run"; exit 0; fi
@@ -297,6 +322,7 @@ jobs:
     name: database look-ahead, Postgres 18 (not required)
     needs: [gate]
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     services:
       postgres:
         image: postgres@sha256:77f585114c32fbca283dc835b0596f4e52b51b4c6662d7810b2f4084f60a1873 # postgres:18-alpine
@@ -363,7 +389,8 @@ jobs:
   commits:
     name: commit messages and provenance
     needs: [gate]
-    if: github.event_name == 'pull_request'
+    # On a push to main, no pull request: the range is the gate's, from the root.
+    if: github.event_name != 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -376,35 +403,26 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - name: Every commit in the pull request, not only the tip
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: node scripts/commit-range-check.mjs
+        run: node scripts/merge-group.mjs each node scripts/commit-range-check.mjs
       - name: The checker's own cases
         run: bash tests/ci/commit-range-cases.sh
       - name: Migrations already on the base branch are byte-unchanged
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: node scripts/migrations-unchanged.mjs
+        run: node scripts/merge-group.mjs each node scripts/migrations-unchanged.mjs
       - name: The migration check's own cases
         run: node --test tests/ci/migrations-unchanged-cases.mjs
 
   pr-size:
     name: pull request size
     needs: [gate]
-    if: github.event_name == 'pull_request'
+    if: github.event_name != 'push'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+      # Reported for each pull request in a group, each against main.
       - name: Measure the diff against the size rule
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
-        run: node scripts/pr-size.mjs
+        run: node scripts/merge-group.mjs each node scripts/pr-size.mjs
       - name: The size gate's own cases
         run: bash tests/ci/pr-size-cases.sh
 
@@ -528,9 +546,10 @@ jobs:
       - name: The mode's own cases, against a made-up page
         run: node tests/visual/app-drift-cases.ts
       - run: pnpm build:web
-      - name: App-only drift on the built app
+      - name: App-only drift and look parity on the built app
         run: |
           set -euo pipefail
           pnpm --filter @launchastro/web exec vite preview --host 127.0.0.1 --port 5391 --strictPort &
           for _ in $(seq 1 30); do curl -sf http://127.0.0.1:5391/ >/dev/null && break; sleep 1; done
           node tests/visual/run.ts --app-drift --app http://127.0.0.1:5391 --session tests/visual/made-up-session.json --out "$RUNNER_TEMP/visual"
+          node tests/visual/look.ts --app http://127.0.0.1:5391 --out "$RUNNER_TEMP/look"

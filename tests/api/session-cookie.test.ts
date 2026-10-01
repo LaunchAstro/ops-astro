@@ -113,7 +113,11 @@ function sessionCookieCases1() {
       ...SAME_ORIGIN,
     });
     expect(answer.status).toBe(200);
-    expect(executeRead.mock.calls[0]?.[2]).toEqual({ provider: 'supabase', subject: 'mia' });
+    expect(executeRead.mock.calls[0]?.[2]).toEqual({
+      provider: 'supabase',
+      subject: 'mia',
+      assurance: { level: 'aal1', signedInAt: expect.any(Number), factorAt: null },
+    });
   });
 }
 

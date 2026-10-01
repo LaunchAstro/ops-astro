@@ -87,40 +87,40 @@ describe('T3 shipped graph: the sweeper side', () => {
   });
 });
 
-describe('the import-boundary barrier, a second and independent rule', () => {
-  const require = createRequire(import.meta.url);
-  const config = require(join(ROOT, '.dependency-cruiser.cjs')) as {
-    forbidden: { name: string }[];
-  };
+const require = createRequire(import.meta.url);
+const config = require(join(ROOT, '.dependency-cruiser.cjs')) as {
+  forbidden: { name: string }[];
+};
 
-  function cruise(forbidden: readonly { name: string }[], planted: string) {
-    const root = mkdtempSync(join(tmpdir(), 't3b-cruise-'));
-    try {
-      writeFileSync(
-        join(root, '.dependency-cruiser.cjs'),
-        `module.exports = ${JSON.stringify({ ...config, forbidden })};\n`,
-      );
-      const files: Record<string, string> = {
-        [FIXTURE_REPORTER]: 'export const R = { observe: () => null };\n',
-        'apps/api/server.ts': planted,
-      };
-      for (const [path, contents] of Object.entries(files)) {
-        mkdirSync(dirname(join(root, path)), { recursive: true });
-        writeFileSync(join(root, path), contents);
-      }
-      const run = spawnSync(
-        process.execPath,
-        [join(ROOT, 'scripts/deps-cruise.mjs'), 'apps', 'tests'],
-        { env: { ...process.env, DEPS_CRUISE_ROOT: root }, encoding: 'utf8' },
-      );
-      return { status: run.status, output: `${run.stdout}${run.stderr}` };
-    } finally {
-      rmSync(root, { recursive: true, force: true });
+function cruise(forbidden: readonly { name: string }[], planted: string) {
+  const root = mkdtempSync(join(tmpdir(), 't3b-cruise-'));
+  try {
+    writeFileSync(
+      join(root, '.dependency-cruiser.cjs'),
+      `module.exports = ${JSON.stringify({ ...config, forbidden })};\n`,
+    );
+    const files: Record<string, string> = {
+      [FIXTURE_REPORTER]: 'export const R = { observe: () => null };\n',
+      'apps/api/server.ts': planted,
+    };
+    for (const [path, contents] of Object.entries(files)) {
+      mkdirSync(dirname(join(root, path)), { recursive: true });
+      writeFileSync(join(root, path), contents);
     }
+    const run = spawnSync(
+      process.execPath,
+      [join(ROOT, 'scripts/deps-cruise.mjs'), 'apps', 'tests'],
+      { env: { ...process.env, DEPS_CRUISE_ROOT: root }, encoding: 'utf8' },
+    );
+    return { status: run.status, output: `${run.stdout}${run.stderr}` };
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
+}
 
-  const PLANTED = "import { R } from '../../tests/support/declining-reporter.ts';\nR;\n";
+const PLANTED = "import { R } from '../../tests/support/declining-reporter.ts';\nR;\n";
 
+describe('the import-boundary barrier, a second and independent rule', () => {
   it('names the declining reporter in its own rule', () => {
     expect(config.forbidden.map((rule) => rule.name)).toContain(RULE);
   });

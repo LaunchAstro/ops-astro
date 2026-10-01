@@ -120,6 +120,18 @@ export async function authorise<O extends object>(
     };
   }
 
+  // A call over the whole business (a create) asks the delegation at that
+  // scope, which its one-task purpose never reaches: the check's own
+  // `DELEGATION_OUT_OF_PURPOSE`, in its words, and nothing is served.
+  if (operation.authority === 'business') {
+    const outside = await checkDelegatedAuthority(tx, delegation, {
+      collection: declaration.collection,
+      action: declaration.action,
+      scope: { kind: 'business', id: null },
+    });
+    return { refusal: outside.ok ? unreachable() : outside.refusal };
+  }
+
   const named = await namedTaskId(tx, request, operation.subjectTask);
   const decision = await checkDelegatedAuthority(tx, delegation, {
     collection: declaration.collection,
@@ -138,7 +150,7 @@ export async function authorise<O extends object>(
 }
 
 function unreachable(): never {
-  throw new Error('agent-envelope: decideAsAgent permitted a decision');
+  throw new Error('agent-envelope: a delegation permitted a decision or a business-wide call');
 }
 
 /**

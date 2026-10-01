@@ -30,10 +30,12 @@
 // subject and a missing login do: telling them apart tells an outsider which
 // businesses exist.
 
+import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
 import type { Context } from 'hono';
-import { streamSSE, type SSEStreamingApi } from 'hono/streaming';
+import { streamSSE } from 'hono/streaming';
 import { deleteCookie, setCookie } from 'hono/cookie';
+import { createAgentQuota, DEFAULT_AGENT_LIMITS, type AgentLimits } from './auth/agent-quota.ts';
 import {
   NO_MEMBERSHIP_FIXES,
   NO_AGENT_FIXES,
@@ -44,13 +46,26 @@ import {
 import type { Database, VerifiedSubject } from '../../packages/core-records/src/index.ts';
 import {
   agentAnswer,
+  credentialNotLive,
   isCommandRefusal,
   isReadName,
+  boardReach,
   joinLiveBoard,
   shownInbox,
   refuseCommand,
+  refuseNotFound,
+  setOwnAvailability,
+  viewerOf,
 } from '../../packages/core-commands/src/index.ts';
 import {
+  readServiceHealth,
+  settleAccessEndings,
+  type FactorProvider,
+  type HealthSources,
+  type LoginProvider,
+} from '../../packages/core-commands/src/index.ts';
+import {
+  ACCOUNT_AVAILABILITY_PATH,
   COMMAND_SURFACE,
   DELEGATION_HEADER,
   PREFIX,
@@ -62,15 +77,35 @@ import type { CommandDeclaration } from '../../packages/core-wire/src/index.ts';
 import type {
   executeCommand,
   executeAgentCommand,
+  executeCredentialCommand,
   CommandRefusal,
   executeRead,
+  admitReads,
+  AdmissionAt,
 } from '../../packages/core-commands/src/index.ts';
 import type { Verifier } from './auth/supabase.ts';
+import { presentedBy } from './auth/agent-bearer.ts';
+import type { SSEStreamingApi } from 'hono/streaming';
 import type { LiveSignal, LiveTopics } from './live.ts';
+import { markOf, presenceAskOf, type LivePresence, type SeatAsk } from './live-presence.ts';
+import {
+  BOARD,
+  follow as followTopics,
+  RECHECK_MS,
+  sharesOf,
+  topicsOf,
+  TOPICS,
+  type LiveStream,
+  type Seated,
+  type Watching,
+} from './live-follow.ts';
 import { followBoard } from './live-board.ts';
+import { mountFactorRoutes, mountPublicLegal } from './account-routes.ts';
 import { signalOf, type Outcome, type SecuritySignal } from './alerts/detect.ts';
+import type { ErrorSinkLink } from './health/error-sink-link.ts';
 import {
   bearerOf,
+  cookieMaxAge,
   cookieNameFor,
   CROSS_SITE_FIXES,
   crossSiteSession,
@@ -78,6 +113,7 @@ import {
   MISMATCH_FIXES,
   namedSession,
   sessionIdOf,
+  staleSessions,
   unnamedSession,
   SESSION_COOKIE_OPTIONS,
 } from './auth/session.ts';
@@ -133,19 +169,71 @@ export interface ApiOptions {
    * which is the honest answer for a deployment that has not enabled it.
    */
   readonly executeAgentCommand?: AgentExecutor;
+  /**
+   * An agent credential's calls on the agent prefix (API-2),
+   * `commands/credential-envelope.ts` in every deployment that mounts the
+   * agent prefix. Absent, a credential answers as an unknown agent does.
+   */
+  readonly executeCredentialCommand?: typeof executeCredentialCommand;
+  /**
+   * The sign-in provider's second-factor calls (C59), `auth/factors.ts` in a
+   * deployment. Absent means the three factor routes are not mounted, which is
+   * the honest answer for a deployment whose provider has no second factor.
+   * They are mounted on the person prefix only: a factor is a person's own,
+   * and no agent holds `account:write`.
+   */
+  readonly factors?: FactorProvider;
+  /**
+   * The installation's service-health sources (C34): the watcher, the error
+   * sink and, where switched on, tracing. Read for `operations.read` after its
+   * grant check, outside the serving transaction.
+   */
+  readonly health?: HealthSources;
+  /** The error sink's web address (C55), served by `operations.read`; absent is null. */
+  readonly errorSink?: ErrorSinkLink;
+  /**
+   * The sign-in provider's calls for a login whose access has ended (C58),
+   * `auth/logins.ts` in a deployment. `access.end` ends access locally either
+   * way; with a provider, the owed provider steps are tried as soon as the act
+   * commits. Absent, they stay owed for the server's retry.
+   */
+  readonly logins?: LoginProvider;
+  /**
+   * Whether an ended login's subject is still live in another business, on the
+   * owner's connection (`loginLiveElsewhere`, ORCH46 ruling A). Without it the
+   * act's provider steps are left to the retry.
+   */
+  readonly sharedLogin?: (subject: string, businessId: string) => Promise<boolean>;
   readonly live?: LiveOptions;
   /**
    * The security detections (ticket S0-2): each answer's outcome, as a signal
    * with no content. Absent in a deployment without an error sink.
    */
   readonly observe?: (signal: SecuritySignal) => void;
+  /**
+   * The agent credential on the agent route (API-2): the clock its expiry is
+   * read against and its quota. Absent, the wall clock and the defaults.
+   */
+  readonly agentCredentials?: {
+    readonly now?: () => Date;
+    readonly limits?: AgentLimits;
+  };
 }
 
 /** The live task channel (T2f); absent, unmounted. `recheckMs`: how often a quiet stream re-asks. */
 export interface LiveOptions {
   readonly topics: LiveTopics;
   readonly recheckMs?: number;
+  /** `reads/execute.ts`'s `admitReads`: the channel's checks, which serve and audit nothing. */
+  readonly admit: ReadAdmitter;
+  /** C2: who else is on each watched task; absent, the stream carries no presence. */
+  readonly presence?: LivePresence;
+  /** `reads/execute.ts`'s `viewerOf`, unless a test hands in its own. */
+  readonly viewer?: typeof viewerOf;
 }
+
+/** The live channel's check: `admitReads`'s signature. */
+export type ReadAdmitter = typeof admitReads;
 
 /** The person path's executor: `commands/envelope.ts`'s signature. */
 export type CommandExecutor = typeof executeCommand;
@@ -181,6 +269,8 @@ const AGENT: Entry = {
 
 interface Admitted {
   readonly presented: VerifiedSubject;
+  /** The agent credential the bearer is, on the agent prefix only; `presented` then names its digest. */
+  readonly credential?: string;
   readonly businessId: string;
   readonly body: Readonly<Record<string, unknown>>;
 }
@@ -204,12 +294,21 @@ async function admit(
   // A session cookie from another site's page stops here, before the
   // verifier reads it (`auth/session.ts`).
   if (crossSiteSession(context.req)) return refuse(context, CROSS_SITE());
-  const presented = await options.verify(context.req);
-  if (presented !== undefined && presented !== 'expired') context.set(PRESENTED, presented);
-  if (presented === undefined) {
+  // Lapsed and surplus other-tab cookies go with any answer (`staleSessions`).
+  for (const name of staleSessions(context.req, Math.floor(Date.now() / 1000))) {
+    deleteCookie(context, name, SESSION_COOKIE_OPTIONS);
+  }
+  const { presented, credential } = await presentedBy(options.verify, context.req, entry === AGENT);
+  if (presented === 'unavailable') return unavailable(context);
+  if (typeof presented === 'object') context.set(PRESENTED, presented);
+  else clearNamedCookie(context);
+  if (presented === undefined || presented === 'absent') {
     // A tab that names no sign-in of its own reads nothing on the cookies of
     // others: not them, their business or their clients.
     if (unnamedSession(context.req)) return refuse(context, MISMATCH());
+    // No credential at all (a crawler, a probe) tried no sign-in: the same
+    // answer, and never counted as a failed one (security line 9).
+    if (presented === 'absent') context.set(NO_CREDENTIAL, true);
     return refuse(context, refuseCommand('AUTH_UNKNOWN_LOGIN', [], [SIGN_IN]));
   }
   // An expired bearer is its own answer on both paths. It is the re-login
@@ -224,17 +323,39 @@ async function admit(
   const businessId = await options.resolveBusiness(context.req.param('businessKey') ?? '');
   if (body === undefined) {
     // An admission refusal: the resolved business, the verified subject (ruling 4).
-    if (businessId !== undefined) {
+    if (businessId !== undefined && credential === undefined) {
       await recordBodyRefusal(options.database, businessId, entry.owner, presented);
     }
     return refuse(context, refuseCommand('COMMAND_BODY_INVALID', [], [OBJECT]));
   }
-  if (businessId === undefined) return refuse(context, entry.unresolved());
-  return { presented, businessId, body };
+  // A credential at a key nobody holds answers as one not live, so its answer
+  // cannot tell a key that exists from one that does not.
+  if (businessId === undefined) {
+    return refuse(context, credential === undefined ? entry.unresolved() : credentialNotLive());
+  }
+  return { presented, businessId, body, ...(credential === undefined ? {} : { credential }) };
+}
+
+/**
+ * The page ends its session on `AUTH_SESSION_EXPIRED` and `AUTH_UNKNOWN_LOGIN`
+ * alike, and only the API can clear an `HttpOnly` cookie: a refused cookie
+ * left behind rides beside every later sign-in's until the headers are too
+ * large to answer. So the named sign-in's cookie goes with the refusal.
+ */
+function clearNamedCookie(context: Context): void {
+  const session = namedSession(context.req);
+  if (bearerOf(context.req) !== undefined || session === undefined) return;
+  deleteCookie(context, cookieNameFor(session), SESSION_COOKIE_OPTIONS);
 }
 
 export function createApi(options: ApiOptions): Hono {
   const api = new Hono();
+  const now = options.agentCredentials?.now ?? (() => new Date());
+  const quota = createAgentQuota(
+    options.agentCredentials?.limits ?? DEFAULT_AGENT_LIMITS,
+    now,
+    recordsIn,
+  );
 
   // The browser trades the provider's token for the session cookie here, and
   // gives it back at `/end`; both only from this application's own pages.
@@ -242,17 +363,19 @@ export function createApi(options: ApiOptions): Hono {
     if (!fromOwnPages(context.req)) return refuse(context, CROSS_SITE());
     const token = bearerOf(context.req);
     const presented = token === undefined ? undefined : await options.verify(context.req);
+    if (presented === 'unavailable') return unavailable(context);
     if (presented === 'expired') {
       return refuse(context, refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED_FIXES));
     }
-    if (token === undefined || presented === undefined) {
+    if (token === undefined || presented === undefined || presented === 'absent') {
       return refuse(context, refuseCommand('AUTH_UNKNOWN_LOGIN', [], [SIGN_IN]));
     }
-    // No `Max-Age`: the cookie ends with the browser session and the token's
-    // own `exp` ends it sooner. Its lifetime under the 12-hour limit is C58's.
-    // Each sign-in its own cookie; the tab names it in `SESSION_HEADER`.
+    // The cookie lives what is left of the 12-hour limit (C58); the verifier
+    // has refused a token past it. Each sign-in its own cookie, named by the tab.
     const session = sessionIdOf(token);
-    setCookie(context, cookieNameFor(session), token, SESSION_COOKIE_OPTIONS);
+    const signedInAt = presented.assurance?.signedInAt ?? null;
+    const maxAge = cookieMaxAge(signedInAt, Math.floor(Date.now() / 1000));
+    setCookie(context, cookieNameFor(session), token, { ...SESSION_COOKIE_OPTIONS, maxAge });
     return context.json({ ok: true, session }, 200);
   });
   api.post(`${SESSION_PATH}/end`, (context) => {
@@ -282,7 +405,8 @@ export function createApi(options: ApiOptions): Hono {
         const response =
           admitted instanceof Response ? admitted : await run(context, declaration, admitted);
         const outcome = outcomeOf(context, declaration);
-        const signal = options.observe && signalOf(outcome);
+        const tried = (context as Context).get(NO_CREDENTIAL) !== true;
+        const signal = options.observe && tried && signalOf(outcome);
         if (signal) options.observe?.(signal);
         // Download volume (security line 9): the records each read handed out, per business and reader.
         const { business, person: who, items } = outcome;
@@ -311,6 +435,14 @@ export function createApi(options: ApiOptions): Hono {
       });
       if (isCommandRefusal(read)) return refuse(context, read);
       context.set(HANDED_OUT, recordsIn(read));
+      // C34: the operations view's service-health section, read only after
+      // the grant check above let the caller in, and outside the serving
+      // transaction, so a refused caller asks no source and no source call
+      // holds a transaction open.
+      if (name === 'operations.read') {
+        const serviceHealth = await readServiceHealth(options.health ?? {}, new Date());
+        return context.json({ ...read, serviceHealth, errorSink: options.errorSink ?? null }, 200);
+      }
       return context.json(read, 200);
     }
 
@@ -320,6 +452,16 @@ export function createApi(options: ApiOptions): Hono {
     });
 
     if (isCommandRefusal(result)) return refuse(context, result);
+    // C58: the provider steps an ending owes are tried as soon as it commits,
+    // outside its transaction; what fails stays owed for the server's retry.
+    const { logins, sharedLogin } = options;
+    if (name === 'access.end' && logins !== undefined && sharedLogin !== undefined) {
+      const only = endingIdsOf(result);
+      const sharedElsewhere = async (subject: string) => await sharedLogin(subject, businessId);
+      if (only.length > 0) {
+        await settleAccessEndings(options.database, businessId, logins, { only, sharedElsewhere });
+      }
+    }
     return context.json({ ...result }, 200);
   });
 
@@ -330,7 +472,20 @@ export function createApi(options: ApiOptions): Hono {
   const agentExecutor = options.executeAgentCommand;
   if (agentExecutor !== undefined) {
     mountSurface(`${PREFIX.agent}:businessKey`, AGENT, async (context, declaration, admitted) => {
-      const { presented, businessId, body } = admitted;
+      const { presented, businessId, body, credential } = admitted;
+      if (credential !== undefined) {
+        const run = options.executeCredentialCommand;
+        if (run === undefined) return refuse(context, AGENT.unresolved());
+        const call = { credential, now: now(), quota };
+        const answer = await run(options.database, businessId, call, {
+          ...body,
+          command: declaration.name,
+        });
+        if (isCommandRefusal(answer)) return refuse(context, answer);
+        // Shaped as the person prefix shapes it: a read flat, a command its handle.
+        if (declaration.kind === 'read') context.set(HANDED_OUT, recordsIn(answer));
+        return context.json({ ...answer }, 200);
+      }
       // From the route, never from the body, exactly as on the person path: a
       // caller must not be able to post to one endpoint and have another
       // operation run. `operationId` is passed as the JSON carried it, absent
@@ -357,72 +512,265 @@ export function createApi(options: ApiOptions): Hono {
     api.get(`${PREFIX.person}:businessKey/live/task/:recordId`, async (context) => {
       const admitted = await admit(options, context, PERSON, false);
       if (admitted instanceof Response) return admitted;
-      const may = async () => await mayWatch(options, context, admitted.businessId);
-      const taskId = await may();
+      const asks = watching(options, live, context, admitted.businessId);
+      const [taskId] = await asks.atDoor([context.req.param('recordId')]);
+      if (taskId === undefined) throw new Error('the door answered no topic');
       if (typeof taskId !== 'string') return refuse(context, taskId);
+      // Batch 1's dedicated task stream: its frames carry no identifier (REVB1ENDFIXAPID).
       return streamSSE(context, async (stream) => {
-        await follow(stream, live, admitted.businessId, taskId, may);
-      });
-    });
-    // INB-1f: the board's one stream per tab, through the same door. Each task
-    // it names is asked as the task's own stream asks it; the inbox topic is
-    // the caller's own person, which the join resolves, asked again each batch.
-    api.get(`${PREFIX.person}:businessKey/live`, async (context) => {
-      const admitted = await admit(options, context, PERSON, false);
-      if (admitted instanceof Response) return admitted;
-      const join = async () => await mayJoinBoard(options, context, admitted.businessId);
-      const joined = await join();
-      if (isCommandRefusal(joined)) return refuse(context, joined);
-      return streamSSE(context, async (stream) => {
-        await followBoard(
+        await follow(
           stream,
-          live.topics,
-          {
-            businessId: admitted.businessId,
-            personId: joined.personId,
-            recheckMs: live.recheckMs ?? RECHECK_MS,
-          },
-          {
-            joinedAs: async () => {
-              const again = await join();
-              return isCommandRefusal(again) ? undefined : again.personId;
-            },
-            reads: async (taskId) =>
-              typeof (await mayWatch(options, context, admitted.businessId, taskId)) === 'string',
-            shown: async (personId) =>
-              await mayShowInbox(options, context, admitted.businessId, personId),
-          },
+          live,
+          admitted.businessId,
+          taskId,
+          async () => await asks.again(taskId),
         );
       });
     });
+
+    // C4: one stream per tab carries every topic its pages follow. Each topic
+    // is asked about at join as T2f asks about its one task; one refused is
+    // closed alone, all refused is the first refusal (`tests/api/c4-live-stream.test.ts`).
+    // `board` is the board's stream (INB-1f) as one topic beside them, its every
+    // frame labelled `board`; naming no topic at all is that stream on its own
+    // (`tests/api/c4-notifications-live.test.ts`).
+    api.get(`${PREFIX.person}:businessKey/live`, async (context) => {
+      const admitted = await admit(options, context, PERSON, false);
+      if (admitted instanceof Response) return admitted;
+      const { businessId } = admitted;
+      const asked = context.req.queries('topic');
+      if (asked === undefined) return await boardStream(options, live, context, businessId);
+      const named = topicsOf(asked);
+      if (named === undefined) {
+        return refuse(context, refuseCommand('FIELD_VALUE_INVALID', ['topic'], [TOPICS]));
+      }
+      const asks = watching(options, live, context, businessId);
+      const tasks = named.watches;
+      const answers = tasks.length === 0 ? [] : await asks.atDoor(tasks.map((each) => each.taskId));
+      const board = named.board ? await mayJoinBoard(options, context, businessId) : undefined;
+      const watched = tasks.filter((_, at) => typeof answers[at] === 'string');
+      const joined = board === undefined || isCommandRefusal(board) ? undefined : board;
+      const [first] = answers;
+      const refused = first !== undefined && typeof first !== 'string' ? first : board;
+      const none = watched.length === 0 && joined === undefined;
+      if (none && refused !== undefined && isCommandRefusal(refused))
+        return refuse(context, refused);
+      return streamSSE(context, async (stream) => {
+        for (const watch of tasks.filter((each) => !watched.includes(each))) {
+          // eslint-disable-next-line no-await-in-loop -- written in the order named.
+          await stream.writeSSE({ event: 'closed', data: watch.label });
+        }
+        if (named.board && joined === undefined) {
+          await stream.writeSSE({ event: 'closed', data: BOARD });
+        }
+        const shares = sharesOf(stream, [
+          ...(watched.length > 0 ? [undefined] : []),
+          ...(joined === undefined ? [] : [BOARD]),
+        ]);
+        const forTasks = watched.length > 0 ? shares.shift() : undefined;
+        const forBoard = shares.shift();
+        const seated = forTasks && (await seatOf(options, live, context, asks));
+        await Promise.all([
+          forTasks && followTopics(forTasks, live, watched, asks, seated),
+          joined && forBoard && followBoardOn(forBoard, options, live, context, businessId, joined),
+        ]);
+      });
+    });
+
+    // C2: presence on the stream's seat. Both routes check their input before
+    // anything is read, resolve the caller as a recheck does and ask about the
+    // task again, and write nothing (`tests/api/c2-presence-live.test.ts`).
+    const { presence } = live;
+    if (presence !== undefined) {
+      api.post(`${PREFIX.person}:businessKey/live/mark`, async (context) => {
+        // The door first, then the body, as every other route reads it.
+        const asked = async () => {
+          const body = await readObject(context);
+          return body === undefined
+            ? refuseCommand('COMMAND_BODY_INVALID', [], [OBJECT])
+            : markOf(body);
+        };
+        return await onSeat(options, live, context, asked, (mark, viewer, businessId) =>
+          presence.mark(businessId, mark.taskId, mark.seat, viewer, mark.field)
+            ? { marked: true }
+            : undefined,
+        );
+      });
+      api.get(`${PREFIX.person}:businessKey/live/presence`, async (context) => {
+        const asked = () => presenceAskOf(context.req.queries());
+        return await onSeat(options, live, context, asked, (ask, viewer, businessId) => {
+          const seenBy = presence.seenBy(businessId, ask.taskId, ask.seat, viewer);
+          return seenBy === undefined ? undefined : { seenBy };
+        });
+      });
+    }
   }
+  const factors = options.factors;
+  if (factors !== undefined) {
+    mountFactorRoutes(api, options, factors, {
+      prefix: PREFIX.person,
+      admit: async (context) => await admit(options, context, PERSON),
+      refuse,
+      unknownLogin: () => refuseCommand('AUTH_UNKNOWN_LOGIN', [], [SIGN_IN]),
+    });
+  }
+  mountPublicLegal(api, options);
+
+  // MP-7-10: the person's own availability, on the person prefix alone (their
+  // own account; no agent holds it), audited with its row.
+  api.post(`${PREFIX.person}:businessKey${ACCOUNT_AVAILABILITY_PATH}`, async (context) => {
+    const admitted = await admit(options, context, PERSON);
+    if (admitted instanceof Response) return admitted;
+    const { database } = options;
+    const result = await setOwnAvailability(
+      database,
+      admitted.businessId,
+      admitted.presented,
+      admitted.body,
+    );
+    return isCommandRefusal(result) ? refuse(context, result) : context.json(result, 200);
+  });
 
   return api;
 }
 
 /**
- * Whether this caller may watch the task, asked after verifying the bearer
- * again of `task.execution`, the internal activity the channel reports:
- * expiry, a revoked grant and any external reader all refuse.
- * The answer is the task's identifier, the topic.
+ * A presence route: the door, then its input (read only once the door has
+ * passed), the caller's standing (nothing recorded), the task asked about again as the stream asks, then
+ * `answer` for the caller's own person; undefined from it is no such seat.
+ */
+async function onSeat<A extends SeatAsk>(
+  options: ApiOptions,
+  live: LiveOptions,
+  context: Context,
+  ask: () => A | CommandRefusal | Promise<A | CommandRefusal>,
+  answer: (asked: A, personId: string, businessId: string) => object | undefined,
+): Promise<Response> {
+  const admitted = await admit(options, context, PERSON, false);
+  if (admitted instanceof Response) return admitted;
+  const asked = await ask();
+  if (isCommandRefusal(asked)) return refuse(context, asked);
+  const { businessId, presented } = admitted;
+  const viewer = await (live.viewer ?? viewerOf)(options.database, businessId, presented);
+  if (isCommandRefusal(viewer)) return refuse(context, viewer);
+  const task = { read: 'task.execution' as const, recordId: asked.taskId };
+  const again = await live.admit(options.database, businessId, presented, [task], 'recheck');
+  const [admission] = isCommandRefusal(again) ? [again] : again;
+  if (admission === undefined || isCommandRefusal(admission)) {
+    return refuse(context, admission ?? refuseNotFound());
+  }
+  const answered = answer(asked, viewer.personId, businessId);
+  return answered === undefined ? refuse(context, refuseNotFound()) : context.json(answered);
+}
+
+/** The stream's seat in the presence book, for a caller whose standing still resolves. */
+async function seatOf(
+  options: ApiOptions,
+  live: LiveOptions,
+  context: Context,
+  asks: Watching,
+): Promise<Seated | undefined> {
+  const { presence } = live;
+  const presented = await options.verify(context.req);
+  if (presence === undefined || typeof presented !== 'object') return undefined;
+  const viewer = await (live.viewer ?? viewerOf)(options.database, asks.businessId, presented);
+  if (isCommandRefusal(viewer)) return undefined;
+  const { personId, name, staff } = viewer;
+  const session = { sessionId: randomUUID(), personId, name, side: staff ? 'staff' : 'client' };
+  return { presence, session: session as Seated['session'] };
+}
+
+function watching(
+  options: ApiOptions,
+  live: LiveOptions,
+  context: Context,
+  businessId: string,
+): Watching {
+  const ask = async (taskIds: readonly string[], at: AdmissionAt) => {
+    const answers = await mayWatch(options, live, context, businessId, taskIds, at);
+    return isCommandRefusal(answers) ? taskIds.map(() => answers) : answers;
+  };
+  return {
+    businessId,
+    atDoor: async (taskIds) => await ask(taskIds, 'door'),
+    async again(taskId) {
+      const [answer] = await ask([taskId], 'recheck');
+      if (answer === undefined) throw new Error('the recheck answered no topic');
+      return answer;
+    },
+  };
+}
+
+/**
+ * Whether this caller may watch each task, asked after verifying the bearer
+ * again, of `task.execution`'s own admission, the internal activity the channel
+ * reports: expiry, a lost membership, a revoked grant, a trashed or foreign
+ * task and any external reader all refuse. It serves and audits nothing, since
+ * the channel shows the person no content (C4 live-sync 6). Each answer is the
+ * task's identifier, the topic, or its refusal.
  */
 async function mayWatch(
   options: ApiOptions,
+  live: LiveOptions,
   context: Context,
   businessId: string,
-  recordId: string | undefined = context.req.param('recordId'),
-): Promise<string | CommandRefusal> {
+  taskIds: readonly string[],
+  at: AdmissionAt,
+): Promise<readonly (string | CommandRefusal)[] | CommandRefusal> {
   const presented = await options.verify(context.req);
-  if (presented === undefined || presented === 'expired') {
+  if (typeof presented !== 'object') {
     return refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED_FIXES);
   }
-  const read = await options.executeRead(options.database, businessId, presented, {
-    read: 'task.execution',
-    recordId,
+  const requests = taskIds.map((recordId) => ({ read: 'task.execution' as const, recordId }));
+  const admitted = await live.admit(options.database, businessId, presented, requests, at);
+  if (isCommandRefusal(admitted)) return admitted;
+  return admitted.map((answer) => {
+    if (isCommandRefusal(answer)) return answer;
+    if (answer.recordId === undefined) throw new Error('task.execution admitted no task');
+    return answer.recordId;
   });
-  if (isCommandRefusal(read)) return read;
-  if ('execution' in read) return read.execution.taskId;
-  throw new Error('task.execution answered something other than an execution');
+}
+
+/**
+ * INB-1f: the board's one stream per tab, through the same door. It digests
+ * the reads of the person the join resolves, asked again on every run, and
+ * hears that person's inbox topic (`live-board.ts`).
+ */
+async function boardStream(
+  options: ApiOptions,
+  live: LiveOptions,
+  context: Context,
+  businessId: string,
+): Promise<Response> {
+  const joined = await mayJoinBoard(options, context, businessId);
+  if (isCommandRefusal(joined)) return refuse(context, joined);
+  return streamSSE(context, async (stream) => {
+    await followBoardOn(stream, options, live, context, businessId, joined);
+  });
+}
+
+/** The board's questions on `stream` (the whole stream, or its `board` share), for the person the join resolved. */
+async function followBoardOn(
+  stream: LiveStream,
+  options: ApiOptions,
+  live: LiveOptions,
+  context: Context,
+  businessId: string,
+  joined: { readonly personId: string },
+): Promise<void> {
+  await followBoard(
+    stream,
+    live.topics,
+    { businessId, personId: joined.personId, recheckMs: live.recheckMs ?? RECHECK_MS },
+    {
+      joinedAs: async () => {
+        const again = await mayJoinBoard(options, context, businessId);
+        return isCommandRefusal(again) ? undefined : again.personId;
+      },
+      reach: async (personId) => await mayReach(options, context, businessId, personId),
+      shown: async (personId) => await mayShowInbox(options, context, businessId, personId),
+    },
+  );
 }
 
 /** Whether this caller may hold the board's stream (INB-1f), with the bearer verified again. */
@@ -432,10 +780,23 @@ async function mayJoinBoard(
   businessId: string,
 ): Promise<{ readonly personId: string } | CommandRefusal> {
   const presented = await options.verify(context.req);
-  if (presented === undefined || presented === 'expired') {
+  if (typeof presented !== 'object') {
     return refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED_FIXES);
   }
   return await joinLiveBoard(options.database, businessId, presented);
+}
+
+/** A digest of the tasks the stream's own person reads now, with the bearer verified again. */
+async function mayReach(
+  options: ApiOptions,
+  context: Context,
+  businessId: string,
+  personId: string,
+): Promise<string | undefined> {
+  const presented = await options.verify(context.req);
+  return typeof presented === 'object'
+    ? await boardReach(options.database, businessId, presented, personId)
+    : undefined;
 }
 
 /** What `inbox.read` shows the stream's own person now, asked with the bearer verified again. */
@@ -446,11 +807,17 @@ async function mayShowInbox(
   personId: string,
 ): Promise<string | undefined> {
   const presented = await options.verify(context.req);
-  if (presented === undefined || presented === 'expired') return undefined;
+  if (typeof presented !== 'object') return undefined;
   return await shownInbox(options.database, businessId, presented, personId);
 }
 
-const RECHECK_MS = 30_000;
+/**
+ * The person's own second factor (C59): `account/factor/enrol`, `verify` and
+ * `remove`; and their own sessions (C58): `account/sessions/list`,
+ * `end-others` and `sign-out`. Each goes through the same door as every
+ * person route. The bearer goes to the provider as the person's own; the body
+ * is the code, or nothing.
+ */
 const noop = (): void => {};
 const RANK = { check: 0, invalidate: 1, resync: 2 } as const;
 
@@ -463,7 +830,7 @@ const RANK = { check: 0, invalidate: 1, resync: 2 } as const;
  */
 export async function follow(
   stream: SSEStreamingApi,
-  live: LiveOptions,
+  live: { readonly topics: LiveTopics; readonly recheckMs?: number },
   businessId: string,
   taskId: string,
   may: () => Promise<string | CommandRefusal>,
@@ -477,10 +844,13 @@ export async function follow(
     const signal = pending;
     pending = null;
     if (signal === null || stream.aborted) return;
-    if (typeof (await may()) !== 'string') {
-      await stream.writeSSE({ event: 'closed', data: taskId });
+    const allowed = typeof (await may()) === 'string';
+    // The tab may have left while the caller was asked: nothing is written after.
+    if (stream.aborted) return;
+    if (!allowed) {
+      await stream.writeSSE({ event: 'closed', data: '' });
       stream.abort();
-    } else if (signal !== 'check') await stream.writeSSE({ event: signal, data: taskId });
+    } else if (signal !== 'check') await stream.writeSSE({ event: signal, data: '' });
   };
   const want = (signal: LiveSignal | 'check'): void => {
     if (pending === null) chain = chain.then(send).catch(() => stream.abort());
@@ -497,7 +867,8 @@ export async function follow(
   const unsubscribe = live.topics.subscribe(businessId, taskId, want, stop);
   const timer = setInterval(() => want('check'), live.recheckMs ?? RECHECK_MS);
   try {
-    await stream.writeSSE({ event: 'resync', data: taskId });
+    // Topics closing stop a stream as it subscribes: nothing is written after.
+    if (!stream.aborted) await stream.writeSSE({ event: 'resync', data: '' });
     await ended;
   } finally {
     clearInterval(timer);
@@ -527,9 +898,21 @@ function refuse(context: Context, refusal: CommandRefusal): Response {
   );
 }
 
+/**
+ * The provider's key set could not be reached, so no credential was checked.
+ * Not a refusal: no `refused` flag, the page keeps its session, nothing counted.
+ */
+function unavailable(context: Context): Response {
+  context.set(REFUSAL, 'SERVICE_UNAVAILABLE');
+  return context.json({ code: 'SERVICE_UNAVAILABLE', names: [], fixes: [RETRY] }, 503);
+}
+
+const RETRY =
+  'The service could not complete the request. Retry; if it persists, check /api/health.';
 const PRESENTED = 'presented';
 const REFUSAL = 'refusal';
 const HANDED_OUT = 'handed-out';
+const NO_CREDENTIAL = 'no-credential';
 
 /** How many records a read handed out: a task is one, a list is its length. */
 function recordsIn(read: object): number {
@@ -603,4 +986,12 @@ async function readLimited(request: Request, limit: number): Promise<string | un
   } catch {
     return undefined;
   }
+}
+
+/** The endings an `access.end` answer names (C58): ids, and nothing else. */
+function endingIdsOf(result: object): readonly string[] {
+  const detail = (result as { readonly detail?: unknown }).detail;
+  if (typeof detail !== 'object' || detail === null) return [];
+  const ids = (detail as { readonly endingIds?: unknown }).endingIds;
+  return Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : [];
 }
