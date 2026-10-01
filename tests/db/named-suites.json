@@ -165,7 +165,8 @@
     "SL11-30 ROGUARD names reviewed-output-proposer (0218: the database refuses a reviewed_outputs row whose version the named lease's holder did not propose, a person's version or another holder's lease, written straight as the application role; the handback's mark and the agent's revision (N9-M2) are accepted; another business's mark is refused by row security first) as an invariant.",
     "SL11-30 STOPCAUSE names reservation-stop-cause (0219: a hold settled actual at its spend may record its cause, written straight as the application role; an abandoned hold still needs one, and a held or quarantined hold still carries none) as an invariant.",
     "SL11-30 SETTLEGUARD names spend-closes-once (a call closes once: one the provider's proof released ignores its own late answer and one settled by its answer ignores a later release, so nothing is given back twice; a call released unsent after its hold's settle stays at its maximum in the replacement's size, as the envelope counts it; only in its own business's envelope) as an invariant.",
-    "SL11-30 LEASEGUARD names lease-holder-guard and take-lease-path (0220: the application role cannot rewrite a lease's holder or insert a lease, and keeps the three columns the product moves; a lease is taken through public.take_lease, which refuses another business's reservation, unclaimable work, a lease past its lifetime, and a holder the claimant's authority does not cover; pickup, heartbeat, hand-back and fence still work) as invariants."
+    "SL11-30 LEASEGUARD names lease-holder-guard and take-lease-path (0220: the application role cannot rewrite a lease's holder or insert a lease, and keeps the three columns the product moves; a lease is taken through public.take_lease, which refuses another business's reservation, unclaimable work, a lease past its lifetime, and a holder the claimant's authority does not cover; pickup, heartbeat, hand-back and fence still work) as invariants.",
+    "SL11-31 STOPFENCE names pickup-stop-at-spent-hold-lease (a pickup that stops the run at a spent hold meets the task's lease first: another holder's live lease refuses it LEASE_HELD for a person and an agent, keeping no ask; with the lease handed back the stop keeps its ask; an expired lease is fenced and the stop kept; another business's live lease refuses nothing here) as an invariant."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -515,7 +516,8 @@
     "tests/db/take-lease-path.test.ts",
     "tests/surfaces/aw-09-reject-header.test.tsx",
     "tests/broker/aw-10-lookup-slot.test.ts",
-    "tests/broker/aw-10-lookup-slot-isolation.test.ts"
+    "tests/broker/aw-10-lookup-slot-isolation.test.ts",
+    "tests/pickup/pickup-stop-at-spent-hold-lease.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
