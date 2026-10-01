@@ -63,3 +63,5 @@ export * from './surfaces/TaskPage.tsx';
 export * from './surfaces/AgentPane.tsx';
 export * from './surfaces/AssistantPanel.tsx';
 export * from './surfaces/ConversationRecord.tsx';
+// Money in a currency's own minor digits, the server's rule; the task page shares it.
+export { major, minorDigits, minorOf } from './surfaces/agent/format.ts';

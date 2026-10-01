@@ -245,7 +245,7 @@ function Lineage(props: LineageProps): ReactElement {
       ))}
 
       <Chain decisions={lineage.decisions} />
-      <Reservations reservations={lineage.reservations} />
+      <Reservations reservations={lineage.reservations} versions={lineage.versions} />
     </article>
   );
 }

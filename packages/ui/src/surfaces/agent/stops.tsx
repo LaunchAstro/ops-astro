@@ -86,7 +86,7 @@ export interface StopAnswerProps {
 export function StopAnswer(props: StopAnswerProps): ReactElement {
   const { stop } = props;
   const [amount, setAmount] = useState('');
-  const minor = minorOf(amount);
+  const minor = minorOf(amount, stop.currency);
   const ready = !props.busy && minor !== null && minor > 0;
   return (
     <div className="sb__sect" data-agent="budget-stop" data-stop-kind={stop.kind}>
