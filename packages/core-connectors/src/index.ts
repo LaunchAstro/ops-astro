@@ -42,3 +42,14 @@ export {
   type ReplayProvider,
   type SeenRequest,
 } from './replay.ts';
+export {
+  LOCAL_CLAUDE_COMPOSE,
+  LOCAL_CLAUDE_CONVERSATION,
+  LOCAL_CLAUDE_DEFAULT_MODEL,
+  LOCAL_CLAUDE_NOTHING_HAPPENED,
+  LOCAL_CLAUDE_PATH,
+  LOCAL_CLAUDE_PROVIDER,
+  localClaudeAdapter,
+  localClaudeCostMinor,
+  readLocalClaudeAnswer,
+} from './local-claude.ts';

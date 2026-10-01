@@ -158,7 +158,9 @@ export async function settlePriced(
       callId,
       costMinor,
       settlement.credentialKind === 'replay' ? null : settlement.account,
-      settlement.credentialKind,
+      // A subscription route records its own kind (LA-1): custody's credential is only the
+      // local runner's loopback key, and the row must show where the carve-out was used.
+      reserved.route.credentialKind === 'subscription' ? 'subscription' : settlement.credentialKind,
       reaches(operation, 'completed'),
       reaches(operation, 'landed'),
       settlement.answer.model,
