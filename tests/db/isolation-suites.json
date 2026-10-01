@@ -34,6 +34,7 @@
     "tests/operations/c81-legal-documents-access.test.ts",
     "tests/operations/c81-register-isolation.test.ts",
     "tests/operations/c81-breach-drill-clock.test.ts",
+    "tests/operations/c81-privacy-runbook.test.ts",
     "tests/api/api-2-agent-credential.test.ts",
     "tests/api/api-2-agent-credential-revoke.test.ts",
     "tests/authority/c32-clients-and-grants.test.ts",
