@@ -10,6 +10,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { ModelCallExecutor } from '../../packages/core-commands/src/index.ts';
 import { REPLAY_COMPOSE } from '../../packages/core-connectors/src/index.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { openReplayBroker, type ReplayBroker } from '../broker/replay-broker.ts';
@@ -56,6 +57,27 @@ const liveLeasesOn = async (world: Schedules, taskId: string): Promise<number> =
   return Number(row?.n);
 };
 
+/** The hand-backs settled for a task's runs: each one's outcome and summary. */
+const reportsOn = async (
+  world: Schedules,
+  taskId: string,
+): Promise<readonly { outcome: string; summary: string }[]> =>
+  await world.db.admin.execute<{ outcome: string; summary: string }>(
+    `select h.outcome, h.report->>'summary' as summary from public.handback_reports h
+       join public.planned_runs r on r.business_id = h.business_id and r.id = h.run_id
+      where r.task_id = $1`,
+    [taskId],
+  );
+
+/** The broker's answer when the model step never ran: released, with no answer. */
+const released: ModelCallExecutor = async () =>
+  await Promise.resolve({
+    command: 'model.call',
+    recordId: null,
+    revision: null,
+    detail: { callId: randomUUID(), state: 'released', outcome: 'CALL_RELEASED' },
+  } as Awaited<ReturnType<ModelCallExecutor>>);
+
 // eslint-disable-next-line max-lines-per-function -- one world, the cases that share it
 describe.skipIf(serverUrl === undefined)("LA-1 local tick: a task's agent run", () => {
   let s: Schedules;
@@ -100,6 +122,18 @@ describe.skipIf(serverUrl === undefined)("LA-1 local tick: a task's agent run", 
     expect(mine[0]).toMatchObject({ taskId, outcome: 'completed', reply: 'Drafted.' });
     expect(broker.provider.seen.length).toBe(sentBefore + 1);
     expect(await callsOn(s, taskId)).toBe(1);
+    expect(await liveLeasesOn(s, taskId)).toBe(0);
+  });
+
+  it('a released model step with no gate is handed back failed, never completed', async () => {
+    const taskId = await queued(s);
+
+    const ran = await runQueuedTasks({ ...optionsFor(s), executeModelCall: released });
+
+    expect(ran).toMatchObject({ ok: true, ran: [{ taskId, outcome: 'failed', reply: null }] });
+    expect(await reportsOn(s, taskId)).toEqual([
+      { outcome: 'failed', summary: 'the model step was released without an answer' },
+    ]);
     expect(await liveLeasesOn(s, taskId)).toBe(0);
   });
 

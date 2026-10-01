@@ -114,12 +114,12 @@ afterAll(async () => {
   await s?.db.drop();
 });
 
-it('a release the local gate does not explain raises nothing', async () => {
+it('a release the local gate does not explain is handed back failed and raises nothing', async () => {
   const untouched = makeWorld();
   try {
     const taskId = await queued();
     const pass = await runQueuedTasks(taskTick(gateFor(untouched.agentHome)));
-    expect(pass).toMatchObject({ ok: true, ran: [{ taskId, outcome: 'completed' }] });
+    expect(pass).toMatchObject({ ok: true, ran: [{ taskId, outcome: 'failed', reply: null }] });
     expect(await pending()).toHaveLength(0);
     expect(await openItems()).toBe(0);
   } finally {
@@ -162,8 +162,8 @@ it('approvals are applied before the task pass', async () => {
   const before = calls;
   const pass = await runQueuedTasks(taskTick(gateFor(world.agentHome)));
   // The approval's own work never reached the model; the other work ran under the new cap,
-  // so its release is not the gate's and raises nothing.
-  expect(pass).toMatchObject({ ok: true, ran: [{ taskId, outcome: 'completed' }] });
+  // so its release is not the gate's: handed back failed, raising nothing.
+  expect(pass).toMatchObject({ ok: true, ran: [{ taskId, outcome: 'failed' }] });
   expect(calls).toBe(before + 1);
   const file = join(world.agentHome, 'approvals.json');
   expect(existsSync(file) ? (JSON.parse(readFileSync(file, 'utf8')) as unknown) : null).toEqual({
