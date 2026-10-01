@@ -9,6 +9,9 @@
 // (`/route-home/`, served at `/dashboard/`): its title and placeholder chip
 // (PAGE-MAP SHELL SH-40). Its body is the one empty state, not the mockup's
 // banner, door cards and port handoff: DS-COMP-36 was retired (R2 (a)).
+// A read that could not be read is not drawn as the empty state: it is
+// DS-PRIM-30's section error, the bad banner (UI-POLISH DECISION error look,
+// 1 Oct), held to the mockup's `.banner--bad` on Connections & Signal.
 // The loading line is DS-PRIM-29's panel line, which no mockup page draws, so
 // it is held by the surface tests instead.
 
@@ -18,6 +21,40 @@ const WIDTHS = [1480, 900, 390] as const;
 const EMPTY = { path: '/agency/task/?task=NOPE', selector: '.cbd__empty' } as const;
 const SAY = { ...EMPTY, selector: '.cbd__empty > p:first-child' } as const;
 const PLACEHOLDER = { path: '/dashboard/' } as const;
+const BANNER = { path: '/agency/connections-and-signal/', selector: '.banner--bad' } as const;
+
+/** Every read that could not be read, drawn as the bad banner (DS-PRIM-30). */
+const ERRORS: readonly { readonly id: string; readonly app: LookProbe['app'] }[] = [
+  {
+    id: 'board-unavailable',
+    app: {
+      page: 'agency:projects-board',
+      selector: '[data-outcome="unavailable"] > .banner--bad',
+      reads: { unavailable: ['task.board'] },
+    },
+  },
+  {
+    id: 'task-unavailable',
+    app: {
+      page: 'agency:task-detail',
+      selector: '[data-outcome="unavailable"] > .banner--bad',
+      reads: { unavailable: ['task.read'] },
+    },
+  },
+];
+
+const BAD = [
+  'border-left-width',
+  'border-left-color',
+  'border-top-width',
+  'border-top-color',
+  'background-color',
+  'padding-top',
+  'padding-left',
+  'font-family',
+  'font-size',
+  'color',
+] as const;
 
 /** Every app state drawn as the one empty state, and where to find it. */
 const STATES: readonly { readonly id: string; readonly app: LookProbe['app'] }[] = [
@@ -38,27 +75,11 @@ const STATES: readonly { readonly id: string; readonly app: LookProbe['app'] }[]
     },
   },
   {
-    id: 'board-unavailable',
-    app: {
-      page: 'agency:projects-board',
-      selector: '[data-outcome="unavailable"] > .empty',
-      reads: { unavailable: ['task.board'] },
-    },
-  },
-  {
     id: 'board-refused',
     app: {
       page: 'agency:projects-board',
       selector: '[data-outcome="denied"] > .empty',
       reads: { refused: ['task.board'] },
-    },
-  },
-  {
-    id: 'task-unavailable',
-    app: {
-      page: 'agency:task-detail',
-      selector: '[data-outcome="unavailable"] > .empty',
-      reads: { unavailable: ['task.read'] },
     },
   },
   {
@@ -104,14 +125,7 @@ const line = (app: LookProbe['app'], part: 'title' | 'desc'): LookProbe['app'] =
   selector: `${app.selector} > .empty__${part}`,
 });
 /** The states whose block says why under its title (the signed-in gate has no reason). */
-const WHY = new Set([
-  'held',
-  'board-empty',
-  'board-unavailable',
-  'board-refused',
-  'task-unavailable',
-  'not-found',
-]);
+const WHY = new Set(['held', 'board-empty', 'board-refused', 'not-found']);
 
 export const STATES_SCREEN: LookScreen = {
   id: 'states',
@@ -135,6 +149,13 @@ export const STATES_SCREEN: LookScreen = {
         })),
       );
     }),
+    ...ERRORS.map(({ id, app }): LookProbe => ({
+      id: `states.${id}`,
+      mockup: BANNER,
+      app,
+      props: BAD,
+      widths: WIDTHS,
+    })),
     // The way on from the not-found gate: the mockup's door link under the line.
     {
       id: 'states.not-found-way',
