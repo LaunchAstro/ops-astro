@@ -6,7 +6,7 @@
 // prints it 012, so each probe names its element by class, never by number.
 // Sections 001 to 008 are look/connections.ts.
 
-import type { LookProbe, LookScreen } from './index.ts';
+import type { LookProbe, LookScreen } from './probe.ts';
 
 const MOCKUP = '/agency/connections-and-signal/';
 const PAGE = 'agency:connections';
