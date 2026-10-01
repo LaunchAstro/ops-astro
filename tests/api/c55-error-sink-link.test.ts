@@ -7,7 +7,7 @@ import { randomBytes } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { createFunctionHandler } from '../../apps/api/function.ts';
 import { errorSinkLink } from '../../apps/api/health/error-sink-link.ts';
-import { ISSUER } from './fixture.ts';
+import { TEST_ISSUER as ISSUER } from '../support/sign-in.ts';
 
 const KEY_ID = 'test/c55-error-sink@1';
 /** Nothing listens here: start-up reads no database. */
