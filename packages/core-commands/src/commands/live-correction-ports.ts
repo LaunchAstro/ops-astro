@@ -7,7 +7,8 @@
 // holds a credential: custody's port borrows one per call.
 //
 // The binding is one correction's proposal: its branch is the correction's
-// seam, so a publish or revert for any other seam sends nothing. Every
+// seam, so a publish or revert for any other seam sends nothing, and a publish
+// of any version but the one it proposed sends nothing either. Every
 // refusal and unknown the guarded calls and the fence record on this run is
 // kept, by code only, for the receipt.
 

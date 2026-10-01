@@ -7,7 +7,8 @@
 // - The source is the site file on the default branch, decoded as UTF-8.
 // - The publish is the merge of the proposal's request at the head it was
 //   proposed at (`sha`), so a branch moved since is refused by the provider,
-//   never merged. The merge carries no idempotency parameter: a second merge
+//   never merged. Only the version the proposal's bytes are is merged: any
+//   other approved version is `PROPOSAL_SUPERSEDED`, with nothing sent. The merge carries no idempotency parameter: a second merge
 //   of the same request answers `not_mergeable`, and that answer is read back
 //   by the request's merge state. Merged already (another worker's, under a
 //   lease that lapsed) is `unknown`, never `failed`; still unmerged is the
@@ -34,8 +35,16 @@ export interface SiteBinding {
   readonly project: string;
   /** The correction's catalogued page. */
   readonly pageUrl: string;
-  /** The branch is the correction's seam; the head is the commit the request was opened at. */
-  readonly proposal: { readonly branch: string; readonly request: string; readonly head: string };
+  /**
+   * The branch is the correction's seam; the head is the commit the request was opened at;
+   * the version digest is the version whose bytes it proposed.
+   */
+  readonly proposal: {
+    readonly branch: string;
+    readonly request: string;
+    readonly head: string;
+    readonly versionDigest: string;
+  };
   readonly change: { readonly before: string; readonly after: string };
 }
 
@@ -129,10 +138,12 @@ async function mergeState(
 /** `site.publish`: the merge at the proposed head, then its deployment by the merged commit. */
 export async function mergeAndFind(
   binding: SiteBinding,
-  input: { readonly seam: string },
+  input: { readonly seam: string; readonly versionDigest: string },
   deps: BindingDependencies,
 ): Promise<ProviderResult<Published>> {
   if (input.seam !== binding.proposal.branch) return stop('refused', 'SEAM_MISMATCH', deps);
+  if (input.versionDigest !== binding.proposal.versionDigest)
+    return stop('refused', 'PROPOSAL_SUPERSEDED', deps);
   const { repository, proposal } = binding;
   const merged = await call(
     'site.publish',

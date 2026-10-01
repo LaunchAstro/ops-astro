@@ -9,6 +9,7 @@ import { proposeSource } from '../../packages/core-connectors/src/index.ts';
 import {
   AFTER,
   BEFORE,
+  DIGEST,
   HEAD,
   REPOSITORY,
   SEAM,
@@ -22,7 +23,7 @@ describe('C80 source proposal', () => {
     const site = provider({ content: BEFORE });
     expect(await proposeSource(proposal, site.deps)).toEqual({
       kind: 'ok',
-      value: { request: '17', head: HEAD },
+      value: { request: '17', head: HEAD, versionDigest: DIGEST },
     });
     expect(site.sent.map(line)).toEqual([
       `POST /repos/${REPOSITORY}/git/refs`,

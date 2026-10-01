@@ -7,21 +7,21 @@
 import { describe, expect, it } from 'vitest';
 import {
   CONNECTOR_HOSTS,
-  contentDigest,
   dispatchToken,
   mergeAndFind,
   publishCorrection,
   readServed,
   readSiteSource,
   revertForward,
-  versionDigestOf,
   type PublishJob,
   type PublishPorts,
 } from '../../packages/core-connectors/src/index.ts';
 import { siteRunnerPorts } from '../../packages/core-commands/src/commands/live-correction-ports.ts';
 import {
   AFTER,
+  APPROVED,
   BEFORE,
+  DIGEST,
   HEAD,
   MERGED,
   PAGE,
@@ -29,6 +29,7 @@ import {
   REPOSITORY,
   REVERTED,
   SEAM,
+  VERSION_PIN,
   binding,
   json,
   line,
@@ -38,7 +39,7 @@ import {
 describe('C80 publish binding', () => {
   it('merges the proposal at its pinned head and finds the deployment by the merged commit', async () => {
     const site = proposed();
-    expect(await mergeAndFind(binding, { seam: SEAM }, site.deps)).toEqual({
+    expect(await mergeAndFind(binding, APPROVED, site.deps)).toEqual({
       kind: 'ok',
       value: { revision: MERGED, deploymentId: 'dpl_merged', liveUrl: PAGE },
     });
@@ -52,11 +53,11 @@ describe('C80 publish binding', () => {
   it('waits for the deployment the merge starts, a bounded number of times, then is unknown', async () => {
     const late = proposed();
     late.state.lookupMisses = 2;
-    expect(await mergeAndFind(binding, { seam: SEAM }, late.deps)).toMatchObject({ kind: 'ok' });
+    expect(await mergeAndFind(binding, APPROVED, late.deps)).toMatchObject({ kind: 'ok' });
     expect(late.waits).toEqual([5000, 5000]);
     const never = proposed();
     never.state.lookupMisses = 99;
-    expect(await mergeAndFind(binding, { seam: SEAM }, never.deps)).toEqual({
+    expect(await mergeAndFind(binding, APPROVED, never.deps)).toEqual({
       kind: 'unknown',
       code: 'DEPLOYMENT_NOT_FOUND',
     });
@@ -67,7 +68,7 @@ describe('C80 publish binding', () => {
   it('a deployment answered for another commit is unknown, never taken as this one', async () => {
     const site = proposed();
     site.state.lookupCommit = 'f00dbabe';
-    expect(await mergeAndFind(binding, { seam: SEAM }, site.deps)).toEqual({
+    expect(await mergeAndFind(binding, APPROVED, site.deps)).toEqual({
       kind: 'unknown',
       code: 'DEPLOYMENT_COMMIT_MISMATCH',
     });
@@ -78,7 +79,7 @@ describe('C80 publish binding', () => {
   it('not_mergeable after another worker merged reads the request and is unknown, never failed', async () => {
     const site = proposed();
     if (site.state.request) site.state.request.merged = true;
-    expect(await mergeAndFind(binding, { seam: SEAM }, site.deps)).toEqual({
+    expect(await mergeAndFind(binding, APPROVED, site.deps)).toEqual({
       kind: 'unknown',
       code: 'REQUEST_ALREADY_MERGED',
     });
@@ -119,7 +120,7 @@ describe('C80 publish binding', () => {
       { message: 'boom' },
       500,
     );
-    expect(await mergeAndFind(binding, { seam: SEAM }, site.deps)).toEqual({
+    expect(await mergeAndFind(binding, APPROVED, site.deps)).toEqual({
       kind: 'unknown',
       code: 'MERGE_STATE_UNREAD',
     });
@@ -131,7 +132,7 @@ describe('C80 publish binding', () => {
       { message: 'no' },
       405,
     );
-    expect(await mergeAndFind(binding, { seam: SEAM }, site.deps)).toEqual({
+    expect(await mergeAndFind(binding, APPROVED, site.deps)).toEqual({
       kind: 'refused',
       code: 'PROVIDER_REFUSED',
       proof: 'not_mergeable',
@@ -140,7 +141,7 @@ describe('C80 publish binding', () => {
 
   it('a seam other than the proposal branch sends nothing', async () => {
     const site = proposed();
-    expect(await mergeAndFind(binding, { seam: 'seam-other' }, site.deps)).toEqual({
+    expect(await mergeAndFind(binding, { ...APPROVED, seam: 'seam-other' }, site.deps)).toEqual({
       kind: 'refused',
       code: 'SEAM_MISMATCH',
     });
@@ -182,7 +183,7 @@ describe('C80 publish binding', () => {
   it('reverts forward: the pre-image written on the default branch at the current blob, its deployment found', async () => {
     const site = proposed();
     site.state.content = AFTER;
-    expect(await revertForward(binding, { seam: SEAM }, site.deps)).toEqual({
+    expect(await revertForward(binding, APPROVED, site.deps)).toEqual({
       kind: 'ok',
       value: { revision: REVERTED, deploymentId: 'dpl_reverted' },
     });
@@ -194,7 +195,7 @@ describe('C80 publish binding', () => {
   it('a site file that is not the published change sends no revert', async () => {
     const site = proposed();
     site.state.content = '<p>Someone else edited this.</p>\n';
-    expect(await revertForward(binding, { seam: SEAM }, site.deps)).toEqual({
+    expect(await revertForward(binding, APPROVED, site.deps)).toEqual({
       kind: 'refused',
       code: 'CONTENT_DRIFTED',
     });
@@ -221,8 +222,8 @@ describe('C80 publish binding', () => {
     await ports.readSource();
     await ports.publish({
       seam: SEAM,
-      dispatchToken: dispatchToken('site.publish', 'v'),
-      versionDigest: 'v',
+      dispatchToken: dispatchToken('site.publish', DIGEST),
+      versionDigest: DIGEST,
     });
     await ports.readDeployment('dpl_merged');
     ports.capture.record?.({
@@ -246,24 +247,15 @@ describe('C80 publish binding', () => {
 });
 
 function jobFor(): PublishJob {
-  const change = { files: [{ path: binding.path, before: BEFORE, after: AFTER }] };
-  const pin = {
-    target: { path: binding.path, word: 'friendly', replacement: 'welcoming' },
-    change,
-    preImageDigest: contentDigest(BEFORE),
-    baseRevision: 'base-commit',
-    pageUrl: PAGE,
-  };
-  const digest = versionDigestOf(pin);
   return {
     correctionId: 'correction-1',
-    ...pin,
-    version: { versionId: 'version-1', digest },
+    ...VERSION_PIN,
+    version: { versionId: 'version-1', digest: DIGEST },
     decision: {
       decisionId: 'decision-1',
       decision: 'approve',
       versionId: 'version-1',
-      versionDigest: digest,
+      versionDigest: DIGEST,
     },
     seam: SEAM,
   };
