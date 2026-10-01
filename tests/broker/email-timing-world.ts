@@ -15,7 +15,7 @@ import type {
 import { writeComment, type InboxReason } from '../../packages/core-records/src/index.ts';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { installTaskSpine } from '../../packages/core-records/src/tasks/install.ts';
-import type { TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
+import { connect, type TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
 import { insertActor, insertAgentActor, insertPerson } from '../identity/fixture.ts';
 import { MAIL, w } from './email-world.ts';
 
@@ -123,30 +123,38 @@ export function useTimingWorld(): void {
 }
 
 /**
- * Another sender mid-send: `work` runs in its own transaction, which stays
- * open, its writes uncommitted and its locks held, until `release`.
+ * Another sender mid-send: `work` runs in its own transaction, on its own
+ * connection, which stays open, its writes uncommitted and its locks held,
+ * until `release`. The world's app pool holds one connection, so a sender
+ * held on it would leave the racing side waiting for the pool, not a lock.
  */
 export async function heldOpen(
   work: (tx: TenantQuery) => Promise<unknown>,
 ): Promise<{ release: () => Promise<void> }> {
-  let finish = (): void => {};
+  let finish!: () => void;
   const gate = new Promise<void>((resolve) => {
     finish = resolve;
   });
-  let started = (): void => {};
+  let started!: () => void;
   const ready = new Promise<void>((resolve) => {
     started = resolve;
   });
-  const done = w.db.app.withBusiness(w.alpha, async (tx) => {
+  const sender = connect(w.db.appUrl, { source: 'runtime' });
+  const done = sender.withBusiness(w.alpha, async (tx) => {
     await work(tx);
     started();
     await gate;
   });
-  await ready;
+  // A sender that fails before it holds anything fails here, not as a wait.
+  await Promise.race([ready, done]);
   return {
     release: async () => {
       finish();
-      await done;
+      try {
+        await done;
+      } finally {
+        await sender.close();
+      }
     },
   };
 }
