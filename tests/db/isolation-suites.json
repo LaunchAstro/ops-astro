@@ -124,6 +124,7 @@
     "tests/reads/mp-7-3-client-groups.test.ts",
     "tests/api/mp-9-1-tip-dismiss-security.test.ts",
     "tests/db/take-lease-path.test.ts",
-    "tests/broker/aw-10-lookup-slot-isolation.test.ts"
+    "tests/broker/aw-10-lookup-slot-isolation.test.ts",
+    "tests/pickup/pickup-stop-at-spent-hold-lease.test.ts"
   ]
 }

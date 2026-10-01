@@ -829,10 +829,14 @@ and the pickup is refused `BUDGET_UNAVAILABLE`, a refusal that keeps the stop
 and its ask. After the consolidated ask there is no ask left to raise: the run
 ends (`cancelled`, with no hold to release) and a person is told on the task
 (`awaiting_person`, `needs_approval`). The stop is written first, then the
+task's lease is met as a pickup meets it (`fenceLiveLease`), then the
 claimant's authority is read (`claimantMayWork`) before the refusal commits, so
 a caller without it is refused and the rollback takes the stop and its ask
 back (`tests/runtime/resume-sizing.test.ts`,
-`tests/runtime/resume-sizing-stop.test.ts`). A settled hold, a quarantined one,
+`tests/runtime/resume-sizing-stop.test.ts`). Another holder's live, unexpired
+lease refuses the stop `LEASE_HELD`, and the rollback takes it back too; an
+expired one is fenced and its hold classified, kept with the stop, as a pickup
+would (`tests/pickup/pickup-stop-at-spent-hold-lease.test.ts`). A settled hold, a quarantined one,
 or a version already holding elsewhere is refused `RESERVATION_NOT_CLAIMABLE` (`replaceable`). Storage
 counts a quarantined hold as active too.
 
