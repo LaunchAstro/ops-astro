@@ -349,6 +349,19 @@ over the businesses the sweep covers (`RECOVERY_BUSINESS_KEYS`), beside the swee
 nothing on the wire reaches either
 ([RUNTIME.md](RUNTIME.md#the-diagnostic-trace-export)).
 
+`main()` mounts C39-T's `POST /api/enrol` (`apps/api/enrolment-broker.ts`)
+only when `ENROLMENT=on`, with `ENROLMENT_AUTH_ORIGIN` (the login provider's
+bare origin, https unless it is on this machine) and
+`ENROLMENT_CREDENTIALS_FILE` (custody's file, the service key under
+`auth_key` for the `auth` destination) staged. A custody process of its own
+holds the key, started before the port is bound and stopped before the
+database closes; the broker catalogues `auth.create_user` and
+`auth.update_user` alone, and tokens are looked for in the businesses the
+sweep covers (`RECOVERY_BUSINESS_KEYS`). Unset or `off`, the route is not
+mounted (404) and the log says `api: enrolment off`. `on` with either
+setting missing or malformed, or any other value, stops the server before it
+listens, naming the setting, never its value.
+
 ## Task, board and people operations
 
 The everyday task writes, and the two reads the web's board and task page
