@@ -80,3 +80,11 @@ export const dockTabs = (
     icon: panel.icon,
     open: panel.route !== null && here === pathTo(panel.route),
   }));
+
+/** Where a dock tab goes: its surface, or the board when that surface is open. */
+export function dockTarget(id: string, here: string): string | null {
+  const panel = PANELS.find((entry) => entry.id === id);
+  if (panel === undefined || panel.route === null) return null;
+  const target = pathTo(panel.route);
+  return here === target ? pathTo('agency:projects-board') : target;
+}

@@ -36,7 +36,6 @@ export function WindowRow(props: {
 }): ReactElement {
   const { which, model } = props;
   const [days, setDays] = useState('');
-  const id = `settings-${which}`;
   const save = (): void => {
     const value = daysIn(days);
     if (value === null) model.complain('Type a whole number of days.');
@@ -50,24 +49,20 @@ export function WindowRow(props: {
         {model.answered ? <Written which={which} row={model.rowFor(which)} /> : null}
       </div>
       <div className="setrow__ctl">
-        <div className="setrow__line">
-          <label className="visually-hidden" htmlFor={id}>
-            {`${WINDOWS[which].label} in days`}
-          </label>
-          <input
-            id={id}
-            className="tf setrow__num"
-            type="number"
-            min={0}
-            step={1}
-            placeholder="Days"
-            disabled={model.disabled}
-            value={days}
-            onChange={(event) => {
-              setDays(event.target.value);
-            }}
-          />
-        </div>
+        <input
+          id={`settings-${which}`}
+          className="tf setrow__num"
+          aria-label={`${WINDOWS[which].label} in days`}
+          type="number"
+          min={0}
+          step={1}
+          placeholder="Days"
+          disabled={model.disabled}
+          value={days}
+          onChange={(event) => {
+            setDays(event.target.value);
+          }}
+        />
         <button
           className="btn btn--sm btn--primary"
           type="button"

@@ -289,25 +289,3 @@ it('MP-2-11 business rows: the built rows sit in This business, and a stale sign
   expect(said).toContain('Sign in again');
   expect(said).not.toContain('STEP_UP_REQUIRED');
 });
-
-it('MP-2-11 settings cards: You, Notifications and This business each draw as the kit settings card', async () => {
-  const api = server();
-  mounted = await mount(page(api.fetch));
-  await tick();
-  const groups = ['you', 'notifications', 'business'].map((group) =>
-    mounted?.find(`[data-pref="${group}"] .card.set__card`),
-  );
-  expect(groups.map((card) => card?.querySelector('.card__title')?.textContent)).toEqual([
-    'You',
-    'Notifications',
-    'This business',
-  ]);
-  for (const card of groups) {
-    const rows = [...(card?.querySelectorAll('.set > .setrow') ?? [])];
-    expect(rows.length).toBeGreaterThan(1);
-    for (const row of rows) {
-      expect(row.querySelector('.setrow__t > .setrow__k')).not.toBeNull();
-      expect(row.querySelector('.setrow__t > .setrow__note')).not.toBeNull();
-    }
-  }
-});

@@ -32,6 +32,7 @@
 
 import { useState, type FormEvent, type ReactElement } from 'react';
 import { BrandMark, FieldError } from '@launchastro/ui';
+import { buildStamp } from '../app-state.ts';
 import { openSession } from '../session/sign-in.ts';
 import type { Interruption, Session } from '../session/token.ts';
 
@@ -44,7 +45,7 @@ export interface SignInProps {
   readonly ended: Interruption | null;
   /** True when the person signed out in this tab. */
   readonly signedOut?: boolean;
-  /** The version stamp, drawn where the rail would draw it; null for an unstamped build. */
+  /** The version stamp, drawn where the rail would draw it; the build's own when not given. */
   readonly build?: string | null;
 }
 
@@ -88,6 +89,7 @@ export function SignIn(props: SignInProps): ReactElement {
 
   // Signed out there is no shell: the rail's pages all ask for a session, so
   // the page is the brand mark and the form, held to the kit (B6).
+  const build = props.build === undefined ? buildStamp() : props.build;
   return (
     <main className="signin" data-screen="sign-in">
       <form className="signin__form card" aria-labelledby="signin-title" onSubmit={onSubmit}>
@@ -177,10 +179,8 @@ export function SignIn(props: SignInProps): ReactElement {
         </div>
       </form>
       {/* The version stamp's fixed place when there is no rail (S0-1). */}
-      <p className="rail__build signin__build" data-build={props.build ?? ''}>
-        {props.build === null || props.build === undefined
-          ? 'Build not stamped'
-          : `Build ${props.build}`}
+      <p className="rail__build signin__build" data-build={build ?? ''}>
+        {build === null ? 'Build not stamped' : `Build ${build}`}
       </p>
     </main>
   );

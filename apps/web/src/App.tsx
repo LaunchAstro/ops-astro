@@ -20,7 +20,7 @@ import { drawContent } from './app-content.tsx';
 import { buildStamp, useCanonicalAddress, useOfflineSince, usePersonName } from './app-state.ts';
 import { FrameStrip } from './strip.tsx';
 import { HeldAddressNotice, heldAddressOffer, type HeldOffer } from './held-address.tsx';
-import { PANELS, dockTabs } from './panels.ts';
+import { dockTabs, dockTarget } from './panels.ts';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, type Interruption, type Session, type SessionStore } from './session/token.ts';
 import { SignIn } from './screens/SignIn.tsx';
@@ -206,7 +206,6 @@ export function App(props: AppProps): ReactElement {
       onSignedIn={onSignedIn}
       ended={props.sessions.interruption}
       signedOut={signedOut}
-      build={buildStamp()}
     />
   );
 
@@ -236,10 +235,8 @@ export function App(props: AppProps): ReactElement {
     },
   });
 
-  // Signed out, the page is the form alone: every rail entry and dock tab asks
-  // for a session, so the shell would offer nothing a person could open (B6).
+  // Signed out, the page is the form alone: no rail entry opens without a session (B6).
   if (content === signIn) return signIn;
-
   return (
     <PageFreshnessProvider>
       <PagePresenceProvider>
@@ -280,10 +277,8 @@ export function App(props: AppProps): ReactElement {
           // for the board rather than pushing the same address again.
           dock={session === null || face === 'client' ? [] : dockTabs(here)}
           onDockTab={(id) => {
-            const panel = PANELS.find((entry) => entry.id === id);
-            if (panel === undefined || panel.route === null) return;
-            const target = pathTo(panel.route);
-            props.navigate(here === target ? pathTo('agency:projects-board') : target);
+            const target = dockTarget(id, here);
+            if (target !== null) props.navigate(target);
           }}
           seated={false}
         >

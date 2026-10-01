@@ -149,6 +149,16 @@ const LEDGER: TaskLedgerResult = {
   ],
 };
 
+/** One business setting as `settings.read` answers it, last written by Nathan. */
+const setting = (key: string, value: number | boolean, revision: number) => ({
+  key,
+  value,
+  valueType: typeof value === 'boolean' ? ('boolean' as const) : ('numeric' as const),
+  updatedAt: '2026-09-20T00:00:00.000Z',
+  updatedByActorId: NATHAN.personId,
+  revision,
+});
+
 const READS = {
   'task.board': { ok: true, tasks: TASKS } satisfies TaskBoardResult,
   'task.read': { ok: true, task: DETAIL } satisfies InternalTaskRead,
@@ -156,48 +166,17 @@ const READS = {
   'settings.read': {
     ok: true,
     settings: [
-      {
-        key: 'four_eyes_threshold',
-        value: 500,
-        valueType: 'numeric',
-        updatedAt: '2026-09-20T00:00:00.000Z',
-        updatedByActorId: NATHAN.personId,
-        revision: 2,
-      },
-      {
-        key: 'client_sign_off_required',
-        value: true,
-        valueType: 'boolean',
-        updatedAt: '2026-09-20T00:00:00.000Z',
-        updatedByActorId: NATHAN.personId,
-        revision: 1,
-      },
-      {
-        key: 'conversation_window_days',
-        value: 30,
-        valueType: 'numeric',
-        updatedAt: '2026-09-20T00:00:00.000Z',
-        updatedByActorId: NATHAN.personId,
-        revision: 1,
-      },
-      {
-        key: 'retention_window_days',
-        value: 365,
-        valueType: 'numeric',
-        updatedAt: '2026-09-20T00:00:00.000Z',
-        updatedByActorId: NATHAN.personId,
-        revision: 1,
-      },
+      setting('four_eyes_threshold', 500, 2),
+      setting('client_sign_off_required', true, 1),
+      setting('conversation_window_days', 30, 1),
+      setting('retention_window_days', 365, 1),
     ],
   } satisfies SettingsReadResult,
   // The person's own store (MP-2-11a): no appearance, so the capture's colour
   // scheme draws; two dismissals no page draws, so the reset has a count.
   'preference.read': {
     ok: true,
-    preferences: {
-      'tips.enabled': true,
-      'tips.dismissed': { 'agency:settings#made-up-one': 1, 'agency:settings#made-up-two': 1 },
-    },
+    preferences: { 'tips.dismissed': { 'agency:settings#one': 1, 'agency:settings#two': 1 } },
   },
   'session.capabilities': {
     ok: true,

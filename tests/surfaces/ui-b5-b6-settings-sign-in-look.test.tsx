@@ -8,12 +8,14 @@
 // the row's controls, on and off as the segmented control (AG-X22), and the
 // server's value as the row's derived line. Sign in is drawn signed out with
 // no shell: the brand mark over one card of kit fields, and the version stamp
-// in its fixed selector because there is no rail to carry it.
+// in its fixed selector because there is no rail to carry it. Settings
+// General (MP-2-11) draws each of its three groups as that card.
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../../apps/web/src/App.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { SettingsScreen } from '../../apps/web/src/screens/Settings.tsx';
+import { SettingsGeneralScreen } from '../../apps/web/src/screens/SettingsGeneral.tsx';
 import { SessionStore, tabStorage, type StorageLike } from '../../apps/web/src/session/token.ts';
 import { BUILD_SELECTOR } from '../browser/served-build.ts';
 import { mount, settle } from './mount.tsx';
@@ -91,6 +93,42 @@ describe('B5 settings, as the mockup draws settings rows', () => {
     }
     // A read that answered leaves no empty read-state box above the card.
     expect(page.find('[data-settings="read"]')?.childElementCount).toBe(0);
+    await page.unmount();
+  });
+});
+
+describe('MP-2-11 Settings General, as the mockup draws settings cards', () => {
+  it('MP-2-11 settings cards: You, Notifications and This business each draw as the kit settings card', async () => {
+    const client = new OperationsClient({
+      origin: '',
+      businessKey: 'alpha',
+      signedIn: true,
+      fetch: answered,
+    });
+    const page = await mount(
+      <SettingsGeneralScreen
+        client={client}
+        grantKey="alpha:ada"
+        storage={window.sessionStorage}
+      />,
+    );
+    await settle();
+    const cards = ['you', 'notifications', 'business'].map((group) =>
+      page.find(`[data-pref="${group}"] .card.set__card`),
+    );
+    expect(cards.map((card) => card?.querySelector('.card__title')?.textContent)).toEqual([
+      'You',
+      'Notifications',
+      'This business',
+    ]);
+    for (const card of cards) {
+      const rows = [...(card?.querySelectorAll('.set > .setrow') ?? [])];
+      expect(rows.length).toBeGreaterThan(1);
+      for (const row of rows) {
+        expect(row.querySelector('.setrow__t > .setrow__k')).not.toBeNull();
+        expect(row.querySelector('.setrow__t > .setrow__note')).not.toBeNull();
+      }
+    }
     await page.unmount();
   });
 });
