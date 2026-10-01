@@ -22,7 +22,7 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
 import { insertBusiness } from '../identity/fixture.ts';
 import { authorised, post, tokenFor, type Answer } from './fixture.ts';
-import { createControls, type Controls } from './controls-fixture.ts';
+import { createControls, detailOf, PROPOSAL, type Controls } from './controls-fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -151,15 +151,36 @@ describe.skipIf(serverUrl === undefined)('MP-6-1 isolation', () => {
       authorised(await tokenFor(both.presented.subject)),
     );
 
+  // eslint-disable-next-line max-lines-per-function -- the list's two cases, one revising a lineage
   describe('MP-6-1 one awaiting-review read', () => {
     it('lists every pending gate to a business-wide decider, current versions only', async () => {
+      // A lineage revised once: its first version is superseded, its second current.
+      const task = await c.createTask('revised once');
+      const first = await c.propose(task.id, task.revision, 'await_review');
+      const revision = await c.count(
+        `select revision::text as n from public.records where business_id = $1 and id = $2`,
+        [c.fixture.business, task.id],
+      );
+      const revised = await c.asPerson('task.propose', {
+        recordId: task.id,
+        expectedRevision: revision,
+        ...PROPOSAL,
+        purpose: 'await_review',
+        lineageId: first['lineageId'],
+      });
+      expect(revised.status, JSON.stringify(revised.body)).toBe(200);
+      const second = detailOf(revised);
+
       const answer = await c.asPerson('gate.pending', {});
       expect(answer.status).toBe(200);
-      const gates = (answer.body['awaiting'] as { gateId: string; taskId: string }[]).map(
-        (row) => row.gateId,
-      );
+      const rows = answer.body['awaiting'] as { gateId: string; taskId: string }[];
+      const gates = rows.map((row) => row.gateId);
       expect(gates).toContain(gateA);
       expect(gates).toContain(gateB);
+      expect(rows.filter((row) => row.taskId === task.id).map((row) => row.gateId)).toStrictEqual([
+        second['gateId'],
+      ]);
+      expect(gates).not.toContain(first['gateId']);
     });
 
     it('drops a gate once decided, and refuses a caller holding no decide', async () => {
