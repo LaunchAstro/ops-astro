@@ -9,7 +9,11 @@
 import { randomBytes } from 'node:crypto';
 import { expect, it } from 'vitest';
 import type { AgentLimits } from '../../apps/api/auth/agent-quota.ts';
-import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
+import {
+  connect,
+  type Database,
+  type TenantQuery,
+} from '../../packages/core-records/src/tenancy/database.ts';
 import { bearer, serverUrl, type Answer } from '../acceptance/world.ts';
 import { harness, openWorld } from './api-2-agent-credential-world.ts';
 import {
@@ -188,66 +192,99 @@ needsServer(
   },
 );
 
-/** The world's pool, counting the business transactions it opens. */
-function counted(): { database: Database; opened: () => number } {
-  let n = 0;
+/** The world's pool, keeping each business transaction's statements. */
+function counted(): { database: Database; opened: () => readonly (readonly string[])[] } {
+  const opened: string[][] = [];
   const app = harness.world.db.app;
   const database = new Proxy(app, {
     get(target, key, receiver) {
       const value: unknown = Reflect.get(target, key, receiver);
       if (key !== 'withBusiness' || typeof value !== 'function') return value;
-      return (...args: unknown[]) => {
-        n += 1;
-        return (value as (...a: unknown[]) => unknown).apply(target, args);
+      return async (businessId: string, run: (tx: TenantQuery) => Promise<unknown>) => {
+        const sent: string[] = [];
+        opened.push(sent);
+        return await (value as Database['withBusiness']).call(target, businessId, async (tx) => {
+          const query: TenantQuery['query'] = async (text, parameters) => {
+            sent.push(text);
+            return await tx.query(text, parameters);
+          };
+          return await run({ businessId: tx.businessId, query });
+        });
       };
     },
   });
-  return { database, opened: () => n };
+  return { database, opened: () => opened };
 }
 
-/** The API as a server socket from `address` reaches it. */
-const from = (api: Api, address: string): Api =>
+/** The API as one server socket reaches it: behind the local proxy, every caller is 127.0.0.1. */
+const proxied = (api: Api): Api =>
   ({
     fetch: async (request: Request) =>
-      await api.fetch(request, { incoming: { socket: { remoteAddress: address } } }),
+      await api.fetch(request, { incoming: { socket: { remoteAddress: '127.0.0.1' } } }),
   }) as unknown as Api;
 
+const madeUp = (): string => randomBytes(32).toString('base64url');
+
 needsServer(
-  'API-2 quota at the door: a made-up bearer already answered not live is limited without a transaction once the door is full',
+  'API-2 quota at the door: past a full door a made-up bearer costs one read, takes no lock and writes nothing',
   async () => {
     const { database, opened } = counted();
     const { api } = limited({ refused: 2 }, database);
-    const again = randomBytes(32).toString('base64url');
+    const again = madeUp();
     expect((await readWith(api, again)).code).toBe('DELEGATION_NOT_LIVE');
-    expect((await readWith(api, randomBytes(32).toString('base64url'))).code).toBe(
-      'DELEGATION_NOT_LIVE',
-    );
-    const before = opened();
-    const answer = await readWith(api, again);
-    expect(answer.code).toBe('AGENT_QUOTA_EXCEEDED');
-    expect(opened(), 'no transaction for a bearer known not live').toBe(before);
+    expect((await readWith(api, madeUp())).code).toBe('DELEGATION_NOT_LIVE');
+    const rows = await attemptsIn(harness.world.alpha);
+    const pastTheDoor = async (secret: string): Promise<void> => {
+      const before = opened().length;
+      expect((await readWith(api, secret)).code).toBe('AGENT_QUOTA_EXCEEDED');
+      const sent = opened().slice(before);
+      expect(sent.length, 'one lookup at most').toBeLessThanOrEqual(1);
+      expect(sent.flat().filter((text) => !/^\s*select\b/iu.test(text))).toEqual([]);
+      expect(sent.flat().join('\n')).not.toMatch(/\bfor\s+(share|update)\b/iu);
+    };
+    await pastTheDoor(again);
+    await pastTheDoor(madeUp());
+    expect(await attemptsIn(harness.world.alpha), 'no attempt row').toBe(rows);
   },
 );
 
 needsServer(
-  'API-2 quota at the door: an address past its share of not-live bearers is limited without a transaction, while a live credential is still served from it',
+  'API-2 quota at the door: a credential never served in this process is served while made-up bearers from the same address fill the door',
   async () => {
-    const { database, opened } = counted();
-    const { api } = limited({ refused: 2 }, database);
-    const live = await issued();
-    const flood = from(api, '203.0.113.9');
-    const made = async (): Promise<Answer> =>
-      await readWith(flood, randomBytes(32).toString('base64url'));
-    expect((await readWith(from(api, '198.51.100.1'), live.secret)).code).toBe('ok');
-    await made();
-    await made();
-    const before = opened();
-    const past = await Promise.all([made(), made(), made()]);
-    expect(codesOf(past)).toEqual(Array.from({ length: 3 }, () => 'AGENT_QUOTA_EXCEEDED'));
-    expect(opened(), 'no transaction for the flooding address').toBe(before);
-    expect((await readWith(flood, live.secret)).code).toBe('ok');
+    const { api } = limited({ refused: 2 });
+    const flood = proxied(api);
+    await readWith(flood, madeUp());
+    await readWith(flood, madeUp());
+    await Promise.all(Array.from({ length: 4 }, async () => await readWith(flood, madeUp())));
+    const fresh = await issued();
+    expect((await readWith(flood, fresh.secret)).code).toBe('ok');
   },
 );
+
+needsServer(
+  'API-2 quota at the door: a credential made live again inside the window is served',
+  async () => {
+    const { api } = limited({ refused: 2 });
+    const credential = await issued();
+    await readWith(api, madeUp());
+    await readWith(api, madeUp());
+    await agentActive(credential.id, false);
+    try {
+      expect((await readWith(api, credential.secret)).code).toBe('AGENT_QUOTA_EXCEEDED');
+    } finally {
+      await agentActive(credential.id, true);
+    }
+    expect((await readWith(api, credential.secret)).code).toBe('ok');
+  },
+);
+
+async function agentActive(credentialId: string, active: boolean): Promise<void> {
+  await harness.world.db.admin.execute(
+    `update public.actors set active = $2, deactivated_at = case when $2 then null else now() end
+      where id = (select agent_actor_id from public.agent_credentials where id = $1)`,
+    [credentialId, active],
+  );
+}
 
 async function attemptsIn(businessId: string): Promise<number> {
   const rows = await harness.world.db.admin.execute<{ readonly n: string }>(
