@@ -46,6 +46,7 @@
     "tests/api/c58-sessions.test.ts",
     "tests/api/c58-sign-out-revoked.test.ts",
     "tests/api/c58-end-others-every-business.test.ts",
+    "tests/api/c58-sign-out-no-membership.test.ts",
     "tests/authority/c58-shared-login.test.ts",
     "tests/operations/c34-service-health.test.ts",
     "tests/web/mp-2-1-isolation-api.test.tsx",
