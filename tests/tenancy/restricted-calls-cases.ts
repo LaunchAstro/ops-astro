@@ -57,9 +57,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // AW-13: the export's cursor moves; its gaps and retention batches are facts, never rewritten.
   ['siu', 'trace_export_cursors'],
   ['si', 'trace_export_gaps trace_expiry_batches'],
-  // 0042: an attempt and a seen stamp are observations, never rewritten (INB-1a).
-  ['si', 'inbox_attention inbox_delivery_attempts'],
-  ['siu', 'inbox_items'],
+  // 0042, 0222: an attempt, a seen stamp and a token are written once (INB-1a, C39-T).
+  ['si', 'inbox_attention inbox_delivery_attempts enrolment_tokens invitation_delivery_attempts'],
+  ['siu', 'inbox_items invitations'],
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
   ['siu', 'leases planned_steps proposal_lineages proposal_versions'],
   // AW-02: a historical run is never rewritten; the application moves its

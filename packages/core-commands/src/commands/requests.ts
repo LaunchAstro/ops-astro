@@ -24,6 +24,7 @@
 
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import { OPERATION_ID } from './register-store.ts';
+import type { AccessRequest } from './requests-access.ts';
 import type { BudgetRequest } from './requests-budget.ts';
 import type { CheckRequest } from './requests-check.ts';
 import type { ConversationRequest } from './requests-conversation.ts';
@@ -263,6 +264,7 @@ export type CommandRequest =
       readonly usage?: { readonly item: string; readonly quantity: number } | null;
       readonly outcome?: 'completed' | 'failed';
     } & Envelope)
+  | AccessRequest
   | BudgetRequest
   | CheckRequest
   | ConversationRequest

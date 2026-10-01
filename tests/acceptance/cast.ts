@@ -103,6 +103,8 @@ export const ADMIN_COLLECTIONS: readonly string[] = [
   'gate',
   // `inbox.unattended` asks `operations:read` (INB-1e, C55).
   'operations',
+  // C39-T's invitation commands ask `access:share`, as the seed's admin holds it.
+  'access',
 ];
 
 export async function tokenFor(

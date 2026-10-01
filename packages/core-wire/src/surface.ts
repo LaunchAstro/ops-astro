@@ -157,7 +157,12 @@ export type CommandName =
   // Items no path reaches, for the operations view (INB-1e), and the caller's
   // own notification setting on one channel.
   | 'inbox.unattended'
-  | 'notifications.set_channel';
+  | 'notifications.set_channel'
+  // C39-T: a team invitation made, sent again and withdrawn under
+  // `access:share`; its expiry is the business's worker's, never a command.
+  | 'invitation.create'
+  | 'invitation.resend'
+  | 'invitation.revoke';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -510,6 +515,9 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'run.child_handback': { outcome: 'any', refusal: 'any' },
   'inbox.seen': { itemId: 'id' },
   'notifications.set_channel': { channel: 'text', mode: 'text', category: 'text?' },
+  'invitation.create': { name: 'text', email: 'text', role: 'text' },
+  'invitation.resend': { invitationId: 'id' },
+  'invitation.revoke': { invitationId: 'id' },
 };
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
@@ -845,6 +853,17 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     authorisedOn: 'self',
     untargetedIdentifiers: [],
   }),
+
+  // C39-T: `access:share` on the whole business, a person's key no agent holds
+  // (the permission key catalogue). Another business's invitation is
+  // NOT_FOUND from the handler, as an id nobody issued.
+  ...(['invitation.create', 'invitation.resend', 'invitation.revoke'] as const).map((name) =>
+    declare(name, 'share', {
+      collection: 'access',
+      targetsExistingRecord: false,
+      untargetedIdentifiers: name === 'invitation.create' ? [] : ['invitationId'],
+    }),
+  ),
 ];
 
 const BY_NAME = new Map(COMMAND_SURFACE.map((command) => [command.name, command]));

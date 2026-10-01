@@ -99,10 +99,10 @@ describe('the surface as a table', () => {
     // asked with `decide` on tasks. `conversation` is a person's conversation
     // with the agent (AW-03), its writes and its read at its address. `model`
     // is AW-01's call through the broker, asked of the lease's task. `run` is
-    // AW-05's budget stop answers; `definition`, AW-04's attribution by digest.
+    // AW-05's budget stop answers; `definition`, AW-04's attribution; `invitation`, C39-T's.
     expect(
       paths.every((path) =>
-        /^\/(?:task|person|preset|settings|session|grant|delegation|budget|gate|conversation|model|run|definition|inbox|notifications)\/[a-z_]+$/u.test(
+        /^\/(?:task|person|preset|settings|session|grant|delegation|budget|gate|conversation|model|run|definition|inbox|notifications|invitation)\/[a-z_]+$/u.test(
           path,
         ),
       ),
