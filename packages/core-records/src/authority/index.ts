@@ -19,6 +19,7 @@ export {
   checkAuthority,
   effectiveGrants,
   issueGrant,
+  OPERATIONS_MANAGE,
   revokeGrant,
   subjectsOf,
   type Action,
@@ -31,6 +32,7 @@ export {
   type Subject,
   type SubjectKind,
 } from './grants.ts';
+export { coveredScopes, type CoveredScopes } from './covered-scopes.ts';
 
 export {
   checkDelegatedAuthority,

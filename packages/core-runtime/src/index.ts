@@ -26,6 +26,67 @@ export {
 } from './propose.ts';
 export { restart, type Restarted, type RestartRequest } from './restart.ts';
 export {
+  admitActivation,
+  captureManifest,
+  identityOf,
+  isInstructionPath,
+  pinBootstrapFile,
+  setDigest,
+  type ActivationMode,
+  type ActivationRequest,
+  type Activator,
+  type AdmittedActivation,
+  type CapturedManifest,
+  type FileIdentity,
+  type InstructionSource,
+} from './definitions.ts';
+export {
+  acceptPlan,
+  type PlanAccepted,
+  type PlanAcceptRequest,
+  type PlanAcceptResult,
+} from './plan-accept.ts';
+export {
+  delegateChild,
+  type ChildPickup,
+  type ChildWorkResult,
+  type DelegateChildRequest,
+} from './child-work.ts';
+export {
+  childResults,
+  childStateOf,
+  handBackChild,
+  type ChildHandback,
+  type ChildResult,
+  type ChildStanding,
+} from './child-handback.ts';
+export {
+  boundPlanOf,
+  planRecordOf,
+  PLAN_TEXT_LIMIT,
+  type BoundPlan,
+  type PlanRecord,
+  type PlanRefusal,
+  type PlanStep,
+} from './plan-record.ts';
+export {
+  PLAN_CANDIDATES,
+  projectedPlan,
+  readProjectedPlan,
+  type ProjectedPlan,
+} from './plan-binding.ts';
+export {
+  configuredInstructionSource,
+  directorySource,
+  INSTRUCTION_ROOT_VARIABLE,
+} from './instruction-root.ts';
+export {
+  readPinned,
+  type PinnedRead,
+  type ReadAuditNote,
+  type ReadRequest,
+} from './definitions-read.ts';
+export {
   heartbeat,
   MAXIMUM_LEASE_LIFETIME_SECONDS,
   MAXIMUM_RENEWAL_SECONDS,
@@ -37,9 +98,16 @@ export { dispatch, EFFECT_OPERATIONS, type Dispatched, type DispatchRequest } fr
 export { observe, type AppliedEffect, type Observed, type ObserveRequest } from './observe.ts';
 export { readReceipt, receiptTask, type Receipt } from './receipt.ts';
 export { readAlerts, type Alert } from './alerts.ts';
-export { priceUsage, SYNTHETIC_PRICES, type Usage } from './price-book.ts';
+export { PRICE_BOOK_CURRENCY, priceUsage, SYNTHETIC_PRICES, type Usage } from './price-book.ts';
 export { openEnvelopeOf, topUp, type Settlement, type TopUp, type TopUpRequest } from './budget.ts';
 export { CRASH_POINT_VARIABLE, crashPointAfterCommit, crashSeamProblem } from './crash-point.ts';
+export {
+  CHECK_OUTCOMES,
+  recordCheck,
+  type CheckOutcome,
+  type CheckRequest,
+  type RecordedCheck,
+} from './checks.ts';
 export { renderEvidence, RENDERER, type RenderedPack } from './evidence.ts';
 export {
   decide,
@@ -123,6 +191,18 @@ export {
   keyResolver,
   type KeyResolver,
 } from './signing.ts';
+export {
+  endAtBudgetStop,
+  topUpAtBudgetStop,
+  type EndOutcome,
+  type BudgetStopTopUpRequest,
+  type TopUpOutcome,
+} from './budget-answer.ts';
+export type {
+  BudgetAnswerCode,
+  BudgetAnswerRequest,
+  BudgetAnswerResult,
+} from './budget-answer-facts.ts';
 export { acquire, LOCK_ORDER, type LockClass, type LockRequest, type LockSet } from './locks.ts';
 export {
   isRuntimeRefusal,
@@ -139,3 +219,32 @@ export {
   withRuntimeKeys,
   type RuntimeKeys,
 } from './runtime-config.ts';
+export {
+  TRACE_ERRORS,
+  TRACE_STAGES,
+  TRANSFORM_VERSION,
+  TraceRefused,
+  derivedId,
+  otlp,
+  traceSpan,
+  type TraceError,
+  type TraceSpan,
+  type TraceStage,
+} from './trace-span.ts';
+export {
+  TRACE_BATCH,
+  exportOnce,
+  type Deliver,
+  type Delivered,
+  type ExportOutcome,
+  type GapCode,
+  type TraceDatabase,
+} from './trace-export.ts';
+export {
+  EXPIRY_PAGE,
+  expireOnce,
+  TRACE_WINDOW_DAYS,
+  type ExpiryCode,
+  type ExpiryPorts,
+  type RetentionBatch,
+} from './trace-retention.ts';

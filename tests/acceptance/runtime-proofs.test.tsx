@@ -30,6 +30,7 @@ import { enrolAgent } from './cast.ts';
 import { bearer, call, personPath } from './world.ts';
 import { evidence, hardKill, until } from './kill-harness.ts';
 import { openProofWorld, origin, PROOFS_ASKED, type ProofWorld, type Work } from './proof-world.ts';
+import { asBrowser } from '../support/sign-in.ts';
 
 if (!PROOFS_ASKED) {
   console.warn('runtime-proofs: not asked (pnpm verify:runtime-proofs); nothing proved.');
@@ -184,8 +185,9 @@ describe.skipIf(!PROOFS_ASKED)('T3d2: the runtime proofs against real hard kills
       const client = new OperationsClient({
         origin: origin(),
         businessKey: 'alpha',
-        token: p.world.ada.token,
-        fetch,
+        // Signed in as a browser is, on the session cookie (S0-6c).
+        signedIn: true,
+        fetch: asBrowser(p.world.ada.token, async (url, init) => await fetch(url, init)),
       });
       // eslint-disable-next-line no-await-in-loop
       const page = await mount(

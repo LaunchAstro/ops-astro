@@ -3,7 +3,15 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- S0-6c: only this origin's script files run. First, ahead of every
+      script; the dev server drops it (vite.config.ts). -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="script-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'"
+    />
     <title>Ops Astro</title>
+    <!-- The theme, before first paint (MP-1-1): theme-before-paint.js. -->
+    <script src="/theme-before-paint.js"></script>
     <!--
       No font link and no icon stylesheet. The pinned estate pulls Funnel Sans,
       Funnel Display, Chivo Mono and the Flaticon rounded set from two content

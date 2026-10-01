@@ -8,17 +8,20 @@ deployment, and nothing here is the Hub's `supabase_*` database or the draft's.
 
 ## Owned resources
 
-| Thing     | Identity                                                                                              |
-| --------- | ----------------------------------------------------------------------------------------------------- |
-| Container | `ops-astro-local-pg`                                                                                  |
-| Image     | `postgres@sha256:77f5851…a1873`, the digest pinned in [supply-chain-pins.md](../supply-chain-pins.md) |
-| Address   | `127.0.0.1:54390`                                                                                     |
-| Volume    | `ops-astro-local-pgdata`, mounted at `/var/lib/postgresql`                                            |
-| Database  | `ops_astro_local`                                                                                     |
+| Thing     | Identity                                                                                                          |
+| --------- | ----------------------------------------------------------------------------------------------------------------- |
+| Container | `ops-astro-local-pg`                                                                                              |
+| Image     | `postgres@sha256:b0f9560…2b24`, Postgres 17, the digest pinned in [supply-chain-pins.md](../supply-chain-pins.md) |
+| Address   | `127.0.0.1:54390`                                                                                                 |
+| Volume    | `ops-astro-local-pgdata-17`, mounted at `/var/lib/postgresql/data`                                                |
+| Database  | `ops_astro_local`                                                                                                 |
 
-Postgres 18 keeps its cluster in a subdirectory of `/var/lib/postgresql`. Mount
-the volume at `/var/lib/postgresql/data` instead and the server finds a cluster
-in a directory it does not use, and refuses to start.
+The local database runs the hosted database's major, 17 (S0-7). Its volume is
+named for the major because a cluster one major wrote, the other refuses to
+open. A tree from before S0-7 ran 18 on `ops-astro-local-pgdata`, mounted at
+`/var/lib/postgresql`; `db-up.sh` replaces that container, starts an empty 17
+cluster on the new volume and leaves the old volume as it was. Migrate and
+seed again after the switch.
 
 ## Roles, and the two URLs
 
@@ -43,7 +46,7 @@ state; the major is pinned in `.nvmrc`.
 ```sh
 bash scripts/local/db-up.sh      # start it; idempotent; writes .local/db.env
 node scripts/db-migrate.mjs      # apply every migration in migrations/, in order, once each
-node scripts/local-seed.mjs      # businesses, people, logins, memberships, grants
+node scripts/local-seed.mjs      # people and grants (new database: LOCAL_SEED_MADE_UP=confirm)
 bash scripts/local/db-down.sh    # stop the container; the volume is untouched
 
 set -a; . ./.local/db.env; set +a
@@ -51,7 +54,7 @@ pnpm exec vitest run             # the whole suite, against this server
 ```
 
 `db-down.sh` never removes the volume. To delete the data, run
-`docker rm -f ops-astro-local-pg && docker volume rm ops-astro-local-pgdata`.
+`docker rm -f ops-astro-local-pg && docker volume rm ops-astro-local-pgdata-17`.
 
 ## Upgrade
 
@@ -175,8 +178,12 @@ identity, grant, record and command-envelope spine ported from
 `ops-astro-t1-draft@60f2009`. Two companion files describe the later ones.
 [AUTHORITY.md](AUTHORITY.md) covers the agent-authority, settings and
 delegation migrations, and [RUNTIME.md](RUNTIME.md) covers the proposal, gate,
-decision, budget, lease and attempt migrations. Read `ls migrations/` for the
-current set.
+decision, budget, lease and attempt migrations, and the model-call ledger and
+copy register (`0191_model_calls`), and the pinned instruction files
+(`0192_bootstrap_pins`), the budget wait (`0193_budget_wait`), its answers
+(`0194_budget_answers`) and the diagnostic trace export (`0195_trace_export`, and `0196_trace_export_horizon`,
+which stamps each run event with its writing transaction's id).
+Read `ls migrations/` for the current set.
 
 There is no `tasks` table. A task is a record of the built-in `task` record
 type in fixed typed slots, and the slots are the acceptance checklist's field
@@ -261,14 +268,43 @@ foreign insert into `delegations` is refused with `check_violation`
 (migration 0018), but no application role reaches it: the group holds only
 `select` and `insert` on `handback_reports`, so the privilege check refuses
 `update` and `delete` before the trigger runs. Its only live caller is the owner,
-whom it refuses.
+whom it refuses. `model_route_room` (migration 0191, AW-01's fair share) is
+the second, and the one read across businesses: a route's ceiling is the
+installation's, which a tenant transaction cannot count under row security.
+It answers one whole number, 1 when the transaction's own business may hold
+one more call on the route and 0 when it may not, with no id and no count;
+the business is `app_business_id()`, never an argument, and none is 0. It
+runs with `row_security = off`, so an owner that does not bypass row security
+is refused rather than answered from one business's rows. PUBLIC and the
+application group may not execute it. Only `ops_astro_broker` may, a
+`nologin` role that holds nothing else; the group may take it (`SET`) but does
+not inherit it, so the broker takes it for the one statement with
+`set_config('role', ..., true)` and gives it back. The suites sort that role
+into a class of its own (`broker`). `tests/broker/aw-01-broker-fair-share.test.ts`
+proves the separation and the grants.
+`live_correction_receipts_append_only` (migration 0311, C80)
+is `security invoker`: raising needs no privilege, and the group holds only
+`select` and `insert` on `live_correction_receipts`, so the definer set is
+unchanged. `live_corrections` takes `select`, `insert` and `update`, and a
+check refuses a decision by the person recorded as the requester; another
+keeps the digest a decision approved (`decided_version_digest`) equal to the
+pinned version digest, which the publish runner binds its one dispatch to.
+
+`ops_astro_occurrence` (migration 0203, AW-01 J) follows the same pattern
+without a function: it holds `insert` on `planned_runs`, `select` on a task's
+`business_id`, `id` and `revision` (for 0032's trigger) and execute on
+`app_business_id()`, and nothing else. The worker's occurrence path takes it
+for the one insert of an occurrence's run; the trigger
+`planned_runs_occurrence_origin` refuses an origin written by any other role
+and any later change to one. The suites sort it into a class of its own
+(`occurrence`), and the column-grant contract names its three reads.
 
 At every migration prefix, every tenant table holds an owner-written row per
 business before the calls, so cross-tenant reads are asked of rows that exist
 (the header of `restricted-calls-prefixes.test.ts`, and its
 `answers every caller as the contract says after <version>`). At the full
-schema, the suite seeds `person_identifiers`, `person_merges` and `record_links`
-itself. The suite counts the own-tenant insert positive control (TC:108) per
+schema, the suite seeds `person_identifiers`, `person_merges`, `record_links` and
+the three `inbox_` tables itself. The suite counts the own-tenant insert positive control (TC:108) per
 table: one insert through the production wrapper on each tenant table the
 application may insert into, each `rows 1`, and each rolled back
 (`restricted-calls.test.ts`,

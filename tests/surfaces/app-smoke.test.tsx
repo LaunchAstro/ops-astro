@@ -51,6 +51,17 @@ const TASK = {
   revision: 3,
 };
 
+/**
+ * The empty inbox and count, for the inbox the board screen also mounts, and
+ * its tab stream (INB-1f), refused, so the channel is down and nothing streams.
+ */
+function inboxReply(url: string): Response | undefined {
+  if (url.endsWith('/live')) return new Response(null, { status: 503 });
+  if (url.endsWith('/inbox/read')) return Response.json({ ok: true, inbox: [] });
+  if (url.endsWith('/inbox/count')) return Response.json({ ok: true, owed: 0 });
+  return undefined;
+}
+
 /** A `fetch` that answers from a queue, one scripted reply per call. */
 function scripted(replies: readonly (() => Promise<Response>)[]): {
   readonly fetch: typeof globalThis.fetch;
@@ -59,6 +70,10 @@ function scripted(replies: readonly (() => Promise<Response>)[]): {
   const calls: string[] = [];
   let index = 0;
   const fetch = (async (url: string | URL) => {
+    // The inbox above the board (INB-1g) reads on its own; it is answered
+    // empty outside the queue, so each case's replies stay the board's.
+    const inbox = inboxReply(String(url));
+    if (inbox !== undefined) return inbox;
     calls.push(String(url));
     const reply = replies[Math.min(index, replies.length - 1)];
     index += 1;

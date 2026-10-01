@@ -26,6 +26,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApi } from '../../apps/api/app.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
+import { testSignIn } from '../support/sign-in.ts';
 import { shareRecord } from '../../packages/core-records/src/authority/shares.ts';
 import { executeAgentCommand } from '../../packages/core-commands/src/commands/agent-envelope.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
@@ -34,11 +35,10 @@ import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import {
   connect,
   type Database,
-  type TenantQuery,
+  type TransactionQuery,
 } from '../../packages/core-records/src/tenancy/database.ts';
 import {
   ACCEPTANCE_ISSUER,
-  ACCEPTANCE_SECRET,
   bearer,
   call,
   createWorld,
@@ -77,8 +77,9 @@ interface Holder {
  */
 function holding(inner: Database): Database & Holder {
   let armed: { reached: (pid: number) => void; released: Promise<void> } | undefined;
-  const wrap = (tx: TenantQuery): TenantQuery => ({
+  const wrap = (tx: TransactionQuery): TransactionQuery => ({
     businessId: tx.businessId,
+    savepoint: tx.savepoint,
     async query<Row>(text: string, parameters?: readonly unknown[]): Promise<readonly Row[]> {
       const rows = await tx.query<Row>(text, parameters);
       const stop = armed;
@@ -224,8 +225,8 @@ describe.skipIf(serverUrl === undefined)('I10: a read admitted during revocation
     reader = holding(connect(world.db.appUrl, { source: 'runtime' }));
     readerApi = createApi({
       database: reader,
-      verify: createSupabaseVerifier({ secret: ACCEPTANCE_SECRET, issuer: ACCEPTANCE_ISSUER }),
-      resolveBusiness: async (key: string) => (key === 'alpha' ? world.alpha : undefined),
+      verify: createSupabaseVerifier(testSignIn(ACCEPTANCE_ISSUER)),
+      resolveBusiness: (key: string) => Promise.resolve(key === 'alpha' ? world.alpha : undefined),
       executeCommand,
       executeRead,
       executeAgentCommand,

@@ -57,8 +57,12 @@ export const REVISION_FIXES: readonly string[] = [
   'A write against a stale revision is refused, never merged.',
 ];
 
-/** The one write an external party (R4) may reach, and then only in the client audience. */
-const EXTERNAL_WRITES: ReadonlySet<string> = new Set(['task.comment']);
+/**
+ * The writes an external party (R4) may reach: a comment, only in the client
+ * audience, and opening their own inbox item (`inbox.seen`, a `self` row whose
+ * handler stamps the caller's own item on a task they can read, and nothing else).
+ */
+const EXTERNAL_WRITES: ReadonlySet<string> = new Set(['task.comment', 'inbox.seen']);
 
 const EXTERNAL_FIXES: readonly string[] = [
   'A person without a membership may read what was shared with them and nothing more.',
@@ -369,7 +373,36 @@ const BUSINESS: Scope = { kind: 'business', id: null };
  * scope, and a record-scoped manager could tell a same-business delegation
  * outside their scope from a fabricated one by the answer.
  */
+/** The task a gate's run belongs to, at record scope. */
+const GATE_TASK: ScopeLookup = [
+  'gateId',
+  async (tx, id) => {
+    const rows = await tx.query<{ readonly id: string }>(
+      `select run.task_id as id
+         from public.gates g
+         join public.planned_runs run on run.business_id = g.business_id and run.id = g.run_id
+        where g.business_id = $1 and g.id = $2`,
+      [tx.businessId, id],
+    );
+    return rows[0] === undefined ? undefined : { kind: 'record', id: rows[0].id };
+  },
+];
+
 const TARGET_LOOKUPS: Readonly<Record<string, ScopeLookup>> = {
+  // C80: the party a request names is its scope as named; an approval's is
+  // the party of the correction it names, read in this business only, so a
+  // correction elsewhere falls back to the business like any unknown target.
+  'live_correction.request': ['partyId', (_tx, id) => Promise.resolve({ kind: 'party', id })],
+  'live_correction.decide': [
+    'correctionId',
+    (tx, id) =>
+      firstRow(
+        tx,
+        `select 'party' as kind, party_id as id from public.live_corrections
+          where business_id = $1 and id = $2`,
+        id,
+      ),
+  ],
   'grant.revoke': [
     'grantId',
     (tx, id) =>
@@ -384,19 +417,9 @@ const TARGET_LOOKUPS: Readonly<Record<string, ScopeLookup>> = {
   // reaches the runtime, which asks it again under its locks and, once the
   // gate is escalated, asks business scope. A gate that resolves to nothing
   // is asked at business scope, so a foreign and a fabricated id answer alike.
-  'task.decide': [
-    'gateId',
-    async (tx, id) => {
-      const rows = await tx.query<{ readonly id: string }>(
-        `select run.task_id as id
-           from public.gates g
-           join public.planned_runs run on run.business_id = g.business_id and run.id = g.run_id
-          where g.business_id = $1 and g.id = $2`,
-        [tx.businessId, id],
-      );
-      return rows[0] === undefined ? undefined : { kind: 'record', id: rows[0].id };
-    },
-  ],
+  'task.decide': GATE_TASK,
+  // AW-04: the plan accept is that decision, asked the same way.
+  'task.accept_plan': GATE_TASK,
   'delegation.revoke': [
     'delegationId',
     (tx, id) =>
@@ -468,7 +491,7 @@ const CLAIM_LOOKUPS: readonly ScopeLookup[] = [
  */
 const SCOPE_OF: Readonly<
   Record<
-    CommandDeclaration['authorisedOn'],
+    Exclude<CommandDeclaration['authorisedOn'], 'self'>,
     (tx: TenantQuery, request: UncheckedRequest, declaration: CommandDeclaration) => Promise<Scope>
   >
 > = {
@@ -513,18 +536,21 @@ export async function prepareCommand(
   const recordId = typeof request['recordId'] === 'string' ? request['recordId'] : undefined;
   // R4 before any grant row. A session with no membership stands on a read
   // share, and whatever else a row may say it holds, it writes nothing but a
-  // client-audience comment (minimum contract 8.1 R4; the audience is
-  // `tasks-comment.ts`'s to narrow).
+  // client-audience comment and the seen stamp on its own inbox item (minimum
+  // contract 8.1 R4; the audience is `tasks-comment.ts`'s to narrow).
   if (session.roleKey === null && !EXTERNAL_WRITES.has(declaration.name)) {
     return refused(refuseCommand('SCOPE_NOT_GRANTED', [], EXTERNAL_FIXES));
   }
-  const authorised = await checkAuthority(tx, subjectsOf(session), {
-    // From the declaration, never written in here: see `CommandDeclaration`.
-    collection: declaration.collection,
-    action: declaration.action,
-    scope: await SCOPE_OF[declaration.authorisedOn](tx, request, declaration),
-  });
-  if (!authorised.ok) return refused(authorised.refusal);
+  // A `self` row asks no grant: its handler reaches the caller's own rows only.
+  if (declaration.authorisedOn !== 'self') {
+    const authorised = await checkAuthority(tx, subjectsOf(session), {
+      // From the declaration, never written in here: see `CommandDeclaration`.
+      collection: declaration.collection,
+      action: declaration.action,
+      scope: await SCOPE_OF[declaration.authorisedOn](tx, request, declaration),
+    });
+    if (!authorised.ok) return refused(authorised.refusal);
+  }
   // A field the row does not describe, after authority as on the agent prefix:
   // a caller without the right is told that first (R4, `external-party`).
   // Against the row itself: a replay prepares with the target left out, and

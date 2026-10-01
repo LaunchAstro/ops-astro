@@ -43,6 +43,8 @@ export type CommandName =
   | 'task.decide'
   | 'task.pickup'
   | 'task.handback'
+  // AW-04: the plan accept, a person's one click on the plan's gate.
+  | 'task.accept_plan'
   // The owning operations the task type's field definitions name.
   | 'task.start'
   | 'task.assign'
@@ -64,6 +66,11 @@ export type CommandName =
   | 'task.board'
   | 'task.queue'
   | 'task.execution'
+  // The gate engine's pending decisions a person may make (MP-6-1).
+  | 'gate.pending'
+  // AW-04: which runs read an instruction file, by digest, and what they
+  // reached: a pre-review projection, the team's only.
+  | 'definition.attribution'
   | 'person.list'
   // The preset planner. It reads the model and writes nothing at all, so it is
   // a read by the only definition this table has; what makes it unlike the
@@ -108,7 +115,56 @@ export type CommandName =
   // A person records what an unknown effect came to: one of three (T3d1).
   | 'budget.record_outcome'
   // A person closes an unknown hold at an amount, with a reason (T3c).
-  | 'budget.write_off';
+  | 'budget.write_off'
+  // C80's live correction: an agent may request it inside its delegation, a
+  // person decides the exact version, a named setting names who, the decision
+  // is read back; the publish, revert and receipt are system writes, not rows here.
+  | 'live_correction.request'
+  | 'live_correction.read'
+  | 'live_correction.decide'
+  | 'settings.set_live_correction_approver'
+  // AW-04 (U10): a person sets the business's planning cap, the allowance the
+  // planning replies spend before the accept.
+  | 'budget.set_planning_cap'
+  // A check the run performed, recorded under its worker lease (MP-6-1,
+  // CS-16.3): a system write whose authority is the live lease, not a grant.
+  | 'task.check'
+  // A person's conversation with the agent (AW-03): minted at its first
+  // message, its owner's alone, and read at its address after the body purges.
+  | 'conversation.start'
+  | 'conversation.message'
+  | 'conversation.read'
+  // The assistant panel's tab row (MP-7-11): the person's own conversations,
+  // a tab's title, and the page it is about.
+  | 'conversation.list'
+  | 'conversation.rename'
+  | 'conversation.set_scope'
+  // One priced model call, made by the lease holder through the credential
+  // broker (AW-01). The grant is the run's delegation, one of the six facts
+  // the broker verifies from rows; no person grant carries it.
+  | 'model.call'
+  // A person's two answers to a run waiting at its approved ceiling (AW-05):
+  // a top-up under four eyes above the business's threshold, or one click
+  // that ends the work and parks the task. No agent answers either.
+  | 'run.top_up'
+  | 'run.end_at_budget_stop'
+  // A run's current knowledge and unknowns, revised as a new version (MP-6-2,
+  // CS-16.4): `run:write` on the run's task, a person's or an agent's inside
+  // its delegation, the agent the recorded actor.
+  | 'run.revise_state'
+  // AW-11: the parent's holder hands part of its work to a helper that can do
+  // strictly less, and the helper hands its result back. Both agents only.
+  | 'run.delegate_child'
+  | 'run.child_handback'
+  // The inbox inside Tasks (INB-1d): the caller's own items and owed count,
+  // and `seen` stamped on the caller's own attention row.
+  | 'inbox.read'
+  | 'inbox.count'
+  | 'inbox.seen'
+  // Items no path reaches, for the operations view (INB-1e), and the caller's
+  // own notification setting on one channel.
+  | 'inbox.unattended'
+  | 'notifications.set_channel';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -158,8 +214,11 @@ export interface CommandDeclaration {
    * - `claim`: the task the body's reservation or lease belongs to, so a
    *   record-scoped writer works their own lease on that task. Own-lease work
    *   names its task only through the claim and writes no task revision.
+   * - `self`: the caller's own rows, which every signed-in person holds
+   *   without a grant (a self-scoped key such as `preference:write`). The
+   *   operation reaches no row but the caller's, and asks access per row.
    */
-  readonly authorisedOn: 'record' | 'business' | 'target' | 'claim';
+  readonly authorisedOn: 'record' | 'business' | 'target' | 'claim' | 'self';
   /**
    * Who locks a targeted task. `command`: the envelope locks it and compares
    * the revision before the handler runs, the ordinary task-write path.
@@ -211,6 +270,10 @@ export interface CommandDeclaration {
    * (`reads/catalogue.ts`), so it carries none here.
    */
   readonly operands?: OperandSpec;
+  // two-part keys (API-1); the handler checks past `action`
+  readonly authority?: readonly string[];
+  // a hold every path keeps, carried onto the catalogue row (API-1)
+  readonly rule?: string;
 }
 
 /**
@@ -242,6 +305,8 @@ function declare(
     readonly untargetedIdentifiers?: readonly string[];
     readonly runtimeShaped?: string;
     readonly agent?: CommandDeclaration['agent'];
+    readonly authority?: readonly string[];
+    readonly rule?: string;
   } = {},
 ): CommandDeclaration {
   const targetsExistingRecord = options.targetsExistingRecord ?? true;
@@ -252,6 +317,8 @@ function declare(
       : { untargetedIdentifiers: options.untargetedIdentifiers }),
     ...(options.runtimeShaped === undefined ? {} : { runtimeShaped: options.runtimeShaped }),
     ...(options.serialise === undefined ? {} : { serialise: options.serialise }),
+    ...(options.authority === undefined ? {} : { authority: options.authority }),
+    ...(options.rule === undefined ? {} : { rule: options.rule }),
     name,
     kind: 'write',
     collection: options.collection ?? TASK_COLLECTION,
@@ -267,6 +334,10 @@ const TASK_COLLECTION = 'task';
 const SETTINGS_COLLECTION = 'settings';
 const SESSION_COLLECTION = 'session';
 const BILLING_COLLECTION = 'billing';
+const RUN_COLLECTION = 'run';
+const GATE_COLLECTION = 'gate';
+const CONVERSATION_COLLECTION = 'conversation';
+const INBOX_COLLECTION = 'inbox';
 
 /**
  * A read. It takes the `read` action on the collection it names, targets no
@@ -281,7 +352,7 @@ function read(
   options: {
     readonly action?: Action;
     readonly agent?: CommandDeclaration['agent'];
-    readonly authorisedOn?: 'record' | 'business';
+    readonly authorisedOn?: 'record' | 'business' | 'self';
   } = {},
 ): CommandDeclaration {
   return {
@@ -311,12 +382,20 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     board: 'id?|null',
     boardSection: 'id?|null',
     stateKey: 'any',
+    // The caller's own conversation the task is created from (AW-03's origin).
+    conversationId: 'id?|null',
   },
   'task.update': FIELDS,
   'task.complete': TARGET,
   'task.reopen': { ...TARGET, reason: 'any' },
   'task.start': TARGET,
-  'task.comment': { ...TARGET, body: 'any', audience: 'any', commentType: 'any' },
+  'task.comment': {
+    ...TARGET,
+    body: 'any',
+    audience: 'any',
+    commentType: 'any',
+    mentions: 'any',
+  },
   'task.propose': {
     ...TARGET,
     purpose: 'any',
@@ -333,6 +412,16 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     decision: 'any',
     note: 'any',
     recipientPersonId: 'id?|null',
+  },
+  'task.accept_plan': {
+    gateId: 'id',
+    versionId: 'id',
+    note: 'any',
+    planText: 'any',
+    plan: 'any',
+    entryPath: 'any',
+    paths: 'any',
+    conversationId: 'id?|null',
   },
   'task.pickup': { reservationId: 'any', leaseSeconds: 'any' },
   // A lease call names its task through its lease; a `recordId` beside the
@@ -377,6 +466,12 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'budget.record_outcome': { recordId: 'any', attemptId: 'any', outcome: 'any' },
   // The task, the attempt held unknown, the minor units charged and why (T3c).
   'budget.write_off': { recordId: 'any', attemptId: 'any', amountMinor: 'count', reason: 'text' },
+  // Minor units in the price book's currency, against the limit last seen (null: unset).
+  'budget.set_planning_cap': {
+    limitMinor: 'count',
+    currency: 'text',
+    fromLimitMinor: 'count|null',
+  },
   'task.observe': {
     leaseId: 'any',
     recordId: 'any',
@@ -385,12 +480,66 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     usage: 'any',
     outcome: 'any',
   },
+  // Typed by the handler, after authority, on both entries: an agent holding
+  // nothing is told that before anything about its body.
+  'live_correction.request': {
+    partyId: 'any',
+    taskId: 'any',
+    path: 'any',
+    word: 'any',
+    replacement: 'any',
+    pageUrl: 'any',
+    baseRevision: 'any',
+    before: 'any',
+    after: 'any',
+  },
+  'live_correction.decide': { correctionId: 'id', versionId: 'id', decision: 'text' },
+  'settings.set_live_correction_approver': { value: 'any', expectedRevision: 'any' },
+  'task.check': {
+    leaseId: 'any',
+    recordId: 'any',
+    fence: 'any',
+    name: 'any',
+    outcome: 'any',
+    note: 'any',
+  },
+  'conversation.start': { body: 'any', title: 'any', subject: 'any', scope: 'any' },
+  'conversation.message': { conversationId: 'any', body: 'any' },
+  'conversation.rename': { conversationId: 'any', title: 'any' },
+  'conversation.set_scope': { conversationId: 'any', page: 'any' },
+  'model.call': { leaseId: 'any', fence: 'any', operation: 'any', fields: 'any' },
+  'run.top_up': { recordId: 'any', runId: 'any', amountMinor: 'any', currency: 'any' },
+  'run.end_at_budget_stop': { recordId: 'any', runId: 'any' },
+  // The version the caller read (0 before the first); the two lists are
+  // checked item by item by the handler.
+  'run.revise_state': {
+    recordId: 'any',
+    runId: 'any',
+    expectedVersion: 'count',
+    knowledge: 'any',
+    unknowns: 'any',
+  },
+  // The parent's own lease and fence, then the helper and its narrower set.
+  'run.delegate_child': {
+    leaseId: 'any',
+    recordId: 'any',
+    fence: 'any',
+    helperActorId: 'any',
+    purpose: 'any',
+    collections: 'any',
+    actions: 'any',
+    expiresInSeconds: 'any',
+  },
+  // The helper's credential says whose work it is; the body only how it went.
+  'run.child_handback': { outcome: 'any', refusal: 'any' },
+  'inbox.seen': { itemId: 'id' },
+  'notifications.set_channel': { channel: 'text', mode: 'text', category: 'text?' },
 };
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   declare('task.create', 'write', {
     targetsExistingRecord: false,
-    untargetedIdentifiers: ['parentId', 'board', 'boardSection'],
+    untargetedIdentifiers: ['parentId', 'board', 'boardSection', 'conversationId'],
   }),
   declare('task.update', 'write'),
   declare('task.complete', 'write'),
@@ -409,6 +558,14 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     authorisedOn: 'target',
     untargetedIdentifiers: ['gateId', 'versionId'],
     agent: 'delegated',
+  }),
+  // AW-04: the plan accept is `task.decide`'s approval asked on the gate's own
+  // task, with the plan bound and the run's instruction file pinned in the
+  // same transaction. Out of the agent's reach: only a person activates.
+  declare('task.accept_plan', 'decide', {
+    targetsExistingRecord: false,
+    authorisedOn: 'target',
+    untargetedIdentifiers: ['gateId', 'versionId', 'conversationId'],
   }),
   // Own-lease work is `write` on the task the reservation or lease belongs to,
   // the scope the runtime and `grant.revoke` ask under their locks: a
@@ -432,7 +589,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   declare('task.assign', 'assign'),
   declare('task.triage', 'write'),
   declare('task.set_stage', 'write'),
-  declare('task.set_party', 'share'),
+  declare('task.set_party', 'share', {
+    rule: 'once the task has content: refused CLIENT_LOCKED (409), writes nothing, on every path (S0-5)',
+  }),
   declare('task.set_audience', 'share'),
   declare('task.reparent', 'write', { serialise: TASK_PLACEMENT_LOCK }),
   declare('task.move', 'write', { serialise: TASK_PLACEMENT_LOCK }),
@@ -454,6 +613,12 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   read('task.queue', TASK_COLLECTION, { agent: 'before-pickup' }),
   // One task's runs and their progress events (T2a), after `read` on that task.
   read('task.execution', TASK_COLLECTION, { authorisedOn: 'record' }),
+  // `decide` on tasks (`gate:decide`), asked per row inside the query, so a
+  // record-scoped decider sees its own records' gates (`reads/awaiting-review.ts`).
+  read('gate.pending', TASK_COLLECTION, { action: 'decide' }),
+  // `read` on tasks, asked per run inside the query, so a record-scoped reader
+  // sees its own tasks' runs (`reads/attribution.ts`). No agent route.
+  read('definition.attribution', TASK_COLLECTION),
   read('person.list', 'person'),
   // `preset` is what this route is about; the grant it takes is `manage` on
   // the family the request names, which `reads/dispatch.ts` reads off the
@@ -474,6 +639,38 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // delegation's purpose; before a pickup it is refused like every other
   // operation outside the two (minimum contract 8.2 case 9).
   read('session.capabilities', SESSION_COLLECTION, { agent: 'delegated' }),
+
+  // AW-03. `conversation:write` is the owner's key for their own conversation;
+  // the handler refuses a message into anyone else's. The read names its own
+  // rule (`reads/conversation.ts`): the owner, or a holder of the read-any
+  // grant `conversation:read`, which nobody holds on install. No agent entry:
+  // the agent's side of an exchange is written by the product's exchange,
+  // never by an agent calling in.
+  declare('conversation.start', 'write', {
+    collection: CONVERSATION_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+  }),
+  declare('conversation.message', 'write', {
+    collection: CONVERSATION_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['conversationId'],
+  }),
+  read('conversation.read', CONVERSATION_COLLECTION),
+  // MP-7-11's tab row, under the same rule: the owner's own, no agent entry.
+  // The list is the caller's own conversations and nobody else's, whatever
+  // read-any grant they hold; its rule is the read's own, like the read's.
+  read('conversation.list', CONVERSATION_COLLECTION),
+  declare('conversation.rename', 'write', {
+    collection: CONVERSATION_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['conversationId'],
+  }),
+  declare('conversation.set_scope', 'write', {
+    collection: CONVERSATION_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['conversationId'],
+  }),
 
   // Neither settings command names a record. The setting is chosen by the
   // command, so a body carrying a `recordId` is a body the caller believes was
@@ -538,6 +735,15 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     runtimeShaped: 'leaseId',
     agent: 'delegated',
   }),
+  // Asked of the lease like heartbeat: the lease holder records the check,
+  // and the row names the holder as the actor that performed it.
+  declare('task.check', 'write', {
+    targetsExistingRecord: false,
+    authorisedOn: 'claim',
+    untargetedIdentifiers: ['leaseId'],
+    runtimeShaped: 'leaseId',
+    agent: 'delegated',
+  }),
   // The effect's token is the attempt its dispatch answered; the runtime reads
   // the operation register for the effect under the lease's own locks (T2c2).
   declare('task.observe', 'write', {
@@ -573,6 +779,119 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     authorisedOn: 'record',
     untargetedIdentifiers: ['recordId', 'attemptId'],
+  }),
+  // `billing:decide` on the whole business (AW-04, U10): owners and
+  // administrators set the planning cap; no agent route serves it.
+  declare('budget.set_planning_cap', 'decide', {
+    collection: BILLING_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+  }),
+  // C80, each asked at the correction's party (`prepare.ts`, TARGET_LOOKUPS; the
+  // read inside its query), so one client's grant reaches no other client's
+  // correction. The request is `run:write`, an agent's inside its delegation; the
+  // read asks the request's own `run:write` (ORCH33) and the approval `gate:decide`,
+  // never an agent's, and only the configured approver who is not the requester.
+  read('live_correction.read', RUN_COLLECTION, { action: 'write' }),
+  declare('live_correction.request', 'write', {
+    collection: RUN_COLLECTION,
+    targetsExistingRecord: false,
+    authorisedOn: 'target',
+    untargetedIdentifiers: ['partyId', 'taskId'],
+    agent: 'delegated',
+  }),
+  declare('live_correction.decide', 'decide', {
+    collection: GATE_COLLECTION,
+    targetsExistingRecord: false,
+    authorisedOn: 'target',
+    untargetedIdentifiers: ['correctionId', 'versionId'],
+  }),
+  declare('settings.set_live_correction_approver', 'manage', {
+    collection: SETTINGS_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+  }),
+  // The lease holder's, asked of the lease's task like the heartbeat. The
+  // agent path checks the delegation; the broker then verifies the lease, the
+  // delegation and the reservation again under their locks when it holds the
+  // money. A person holding a lease has no route to it (AW-01, "n/a (system)").
+  declare('model.call', 'write', {
+    targetsExistingRecord: false,
+    authorisedOn: 'claim',
+    untargetedIdentifiers: ['leaseId'],
+    runtimeShaped: 'leaseId',
+    agent: 'delegated',
+  }),
+  // The answers at the budget stop: `decide` on `billing` for a top-up and on
+  // `gate` for the end, each asked of the task the body names, like the work
+  // controls. The runtime asks the same pair of the run's own task again under
+  // its locks, and the handler refuses a run on another task. Neither writes
+  // the task record. No agent reaches either: an agent never holds decide.
+  declare('run.top_up', 'decide', {
+    collection: 'billing',
+    targetsExistingRecord: false,
+    authorisedOn: 'record',
+    untargetedIdentifiers: ['recordId', 'runId'],
+  }),
+  declare('run.end_at_budget_stop', 'decide', {
+    collection: 'gate',
+    targetsExistingRecord: false,
+    authorisedOn: 'record',
+    untargetedIdentifiers: ['recordId', 'runId'],
+  }),
+  // `write` on `run`, asked of the task the body names (ORCH33); the handler
+  // refuses a run on another task. It has a version of its own, not the
+  // task's revision. An agent reaches it only where its delegation was minted
+  // with `run` (ORCH34), and the mint holds `run` to `write`.
+  declare('run.revise_state', 'write', {
+    collection: 'run',
+    targetsExistingRecord: false,
+    authorisedOn: 'record',
+    untargetedIdentifiers: ['recordId', 'runId'],
+    agent: 'delegated',
+  }),
+  // AW-11: `run:write` inside the parent's delegation, asked of its lease's
+  // task like the heartbeat; the runtime binds the parent to that lease at its
+  // fence under the locks. A person holding a lease has no route to it.
+  declare('run.delegate_child', 'write', {
+    collection: 'run',
+    targetsExistingRecord: false,
+    authorisedOn: 'claim',
+    untargetedIdentifiers: ['leaseId'],
+    runtimeShaped: 'leaseId',
+    agent: 'delegated',
+  }),
+  // The helper's handback answers to its own child credential, bound to its
+  // own login by the runtime, not to a grant: a revoked or run-out child still
+  // hands its partial work back, and the handback grants nothing.
+  declare('run.child_handback', 'write', {
+    collection: 'run',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+    agent: 'delegated',
+  }),
+
+  // The inbox is one person's: no agent reaches it, and each row answers the
+  // caller about their own items only, with access derived per item.
+  read('inbox.read', INBOX_COLLECTION, { authorisedOn: 'self' }),
+  read('inbox.count', INBOX_COLLECTION, { authorisedOn: 'self' }),
+  declare('inbox.seen', 'write', {
+    collection: 'preference',
+    targetsExistingRecord: false,
+    authorisedOn: 'self',
+    untargetedIdentifiers: ['itemId'],
+  }),
+  // `operations:read`: owner and administrators by default, never an agent
+  // (the catalogue's C55 row). It names other people's items, so it is not
+  // `self`.
+  read('inbox.unattended', 'operations'),
+  // Per channel, never per item: the body names no item. Self-scoped like
+  // `inbox.seen`, so it asks no grant and reaches the caller's own setting.
+  declare('notifications.set_channel', 'write', {
+    collection: 'preference',
+    targetsExistingRecord: false,
+    authorisedOn: 'self',
+    untargetedIdentifiers: [],
   }),
 ];
 
@@ -665,6 +984,15 @@ export const PREFIX = { person: '/api/b/', agent: '/api/a/b/' } as const;
  * made under is not part of that.
  */
 export const DELEGATION_HEADER = 'x-agent-delegation';
+
+/**
+ * The browser's session (S0-6c, `apps/api/auth/session.ts`): the route that
+ * makes the cookie, the cookie prefix, the CSRF header and the tab's own session.
+ */
+export const SESSION_PATH = '/api/session';
+export const SESSION_COOKIE = 'ops-astro-session';
+export const CSRF_HEADER = 'x-ops-astro-csrf';
+export const SESSION_HEADER = 'x-ops-astro-session';
 
 /** The reads, which no caller may reach through the command envelope. */
 export const READS: readonly CommandName[] = COMMAND_SURFACE.filter(

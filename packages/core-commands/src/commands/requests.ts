@@ -24,6 +24,12 @@
 
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import { OPERATION_ID } from './register-store.ts';
+import type { BudgetRequest } from './requests-budget.ts';
+import type { CheckRequest } from './requests-check.ts';
+import type { ConversationRequest } from './requests-conversation.ts';
+import type { RunRequest } from './requests-run.ts';
+import type { Envelope } from './request-envelope.ts';
+import type { LiveCorrectionRequest } from './live-correction-requests.ts';
 
 export type FieldValues = Readonly<Record<string, unknown>>;
 
@@ -54,11 +60,6 @@ export function hasIdentity(request: UncheckedRequest): request is IdentifiedReq
 
 // Type aliases rather than interfaces, so each member of the union is also an
 // `UncheckedRequest`: a parsed request is still the body it was parsed from.
-type Envelope = {
-  /** The repeat-request identity. Required on every command in the surface. */
-  readonly operationId: string;
-};
-
 type Targeted = Envelope & {
   readonly recordId: string;
   readonly expectedRevision?: number;
@@ -72,6 +73,7 @@ export type CommandRequest =
       readonly board?: string | null;
       readonly boardSection?: string | null;
       readonly stateKey?: string;
+      readonly conversationId?: string | null;
     } & Envelope)
   | ({ readonly command: 'task.update'; readonly fields: FieldValues } & Targeted)
   | ({ readonly command: 'task.complete' } & Targeted)
@@ -85,6 +87,8 @@ export type CommandRequest =
       readonly audience: string;
       /** `note`, `client` or `system`. A person writing a comment writes a note. */
       readonly commentType?: string;
+      /** The people the comment names, by person id. */
+      readonly mentions?: unknown;
     } & Targeted)
   // A proposal is a record beside the task and targets it, so it names the
   // revision it was written against like every other targeted command. What it
@@ -115,6 +119,20 @@ export type CommandRequest =
       readonly decision: string;
       readonly note: string;
       readonly recipientPersonId?: string | null;
+    } & Envelope)
+  // The plan accept (AW-04): a decision on the plan's gate, the words and the
+  // structured record it binds, and the instruction files the run may read.
+  // The record and the paths are checked by value, so they are `unknown` here.
+  | ({
+      readonly command: 'task.accept_plan';
+      readonly gateId: string;
+      readonly versionId: string;
+      readonly note: string;
+      readonly planText: unknown;
+      readonly plan: unknown;
+      readonly entryPath: unknown;
+      readonly paths: unknown;
+      readonly conversationId?: string | null;
     } & Envelope)
   | ({
       readonly command: 'task.pickup';
@@ -225,6 +243,8 @@ export type CommandRequest =
       readonly lineageId: string;
       readonly expiresInSeconds?: number;
     } & Envelope)
+  // C80's three, in their own file to keep this one under the size cap.
+  | LiveCorrectionRequest
   | ({
       readonly command: 'task.heartbeat';
       readonly leaseId: string;
@@ -246,24 +266,20 @@ export type CommandRequest =
       readonly usage?: { readonly item: string; readonly quantity: number } | null;
       readonly outcome?: 'completed' | 'failed';
     } & Envelope)
+  | BudgetRequest
+  | CheckRequest
+  | ConversationRequest
+  // Read by its own parser (`model-call.ts`), never by a person handler.
+  | ({ readonly command: 'model.call' } & Envelope)
+  | RunRequest
+  // The recipient opening their own inbox item (INB-1d).
+  | ({ readonly command: 'inbox.seen'; readonly itemId: string } & Envelope)
+  // The caller's own notification setting on one channel (INB-1e).
   | ({
-      readonly command: 'budget.top_up';
-      readonly recordId: unknown;
-      readonly amountMinor: number;
-      readonly fromMaximumMinor: number;
-    } & Envelope)
-  | ({
-      readonly command: 'budget.record_outcome';
-      readonly recordId: unknown;
-      readonly attemptId: unknown;
-      readonly outcome: unknown;
-    } & Envelope)
-  | ({
-      readonly command: 'budget.write_off';
-      readonly recordId: unknown;
-      readonly attemptId: unknown;
-      readonly amountMinor: unknown;
-      readonly reason: unknown;
+      readonly command: 'notifications.set_channel';
+      readonly channel: string;
+      readonly mode: string;
+      readonly category?: string;
     } & Envelope);
 
 /**

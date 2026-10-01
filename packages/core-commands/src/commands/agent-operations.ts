@@ -17,6 +17,7 @@ import { businessKeyOf, type AgentCapabilities } from '../reads/capabilities.ts'
 import type { Capability } from '../../../core-wire/src/index.ts';
 import { readTaskSpine } from './context.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
+import { requestAsAgent, requestOperands } from './live-corrections.ts';
 import { isFieldMap } from './operands.ts';
 import { refuseUnstorable, unstorableOperands } from './values.ts';
 import type { CommandName } from '../../../core-wire/src/index.ts';
@@ -31,6 +32,8 @@ import { MAXIMUM_LEASE_SECONDS, pickupReservation, refuseReservationBody } from 
 import { heartbeatLease, leaseSecondsFixes } from './tasks-lease.ts';
 import { dispatchLease } from './tasks-dispatch.ts';
 import { observeLease } from './tasks-observe.ts';
+import { checkLease } from './tasks-check.ts';
+import { reviseRunState } from './run-state.ts';
 import { MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/index.ts';
 import { agentClaimant } from './tasks-claimant.ts';
 import { writeTaskComment } from './tasks-comment.ts';
@@ -44,6 +47,13 @@ import {
   SYSTEM_OWNED_FIXES,
 } from './prepare.ts';
 import { retainLateHandback } from './agent-late-handback.ts';
+import { modelCallOperands, type ModelCallOperands } from './model-call-operands.ts';
+import {
+  childHandbackOperands,
+  delegateChildOperands,
+  serveChildHandback,
+  serveDelegateChild,
+} from './agent-child.ts';
 import type {
   AgentCall,
   AgentRequest,
@@ -65,7 +75,8 @@ interface AgentOperationRow<O extends object> {
   /** The operands read before any authority, after the system-owned fields. */
   readonly operands: (request: AgentRequest) => O | Refused;
   /** How a stored success is released on replay (`agent-replay.ts`). */
-  readonly replay: 'reauthorise' | 'pickup' | 'capabilities' | 'settledHandback';
+  readonly replay:
+    'reauthorise' | 'pickup' | 'capabilities' | 'settledHandback' | 'childPickup' | 'childHandback';
   /** What an authority refusal keeps, when the operation keeps anything. */
   readonly onRefused?: (
     tx: TenantQuery,
@@ -86,7 +97,9 @@ interface AgentOperationRow<O extends object> {
  * - `record`, the operation's own collection and action on the task the call
  *   is about, found where `subjectTask` says, and served on that task;
  * - `decision`, the runtime's `decideAsAgent`, which always refuses, so it has
- * no `serve` at all.
+ * no `serve` at all;
+ * - `helper`, AW-11's handback: the presented child credential itself, which
+ *   the runtime binds to the helper's own login, under no resolved delegation.
  */
 export type TypedOperation<O extends object> =
   | (AgentOperationRow<O> & {
@@ -119,7 +132,16 @@ export type TypedOperation<O extends object> =
         taskId: string | undefined,
       ) => Promise<HandlerOutcome>;
     })
-  | (AgentOperationRow<O> & { readonly authority: 'decision' });
+  | (AgentOperationRow<O> & { readonly authority: 'decision' })
+  | (AgentOperationRow<O> & {
+      readonly authority: 'helper';
+      readonly serve: (
+        tx: TenantQuery,
+        call: AgentCall,
+        operands: O,
+        credential: string,
+      ) => Promise<HandlerOutcome>;
+    });
 
 /**
  * A row, with its operands type closed over.
@@ -365,6 +387,7 @@ async function serveComment(
     request['body'],
     request['audience'],
     request['commentType'],
+    request['mentions'],
   );
 }
 
@@ -426,6 +449,34 @@ async function serveHeartbeat(
  * Every operation an agent may reach, in the order `AGENT_SURFACE` lists them.
  * `task.decide` is here to be refused by name (`decideAsAgent`), never served.
  */
+/**
+ * `model.call`, over the serve its entry supplies. The broker's executor
+ * (`model-call.ts`) serves it with the reservation; this table serves it
+ * where the deployment configured no broker, and says so.
+ */
+export function modelCallRow(
+  serve: (
+    tx: TenantQuery,
+    call: AgentCall,
+    operands: ModelCallOperands,
+    delegation: Delegation,
+  ) => Promise<HandlerOutcome>,
+): AgentOperation {
+  return row({
+    authority: 'record',
+    subjectTask: 'lease',
+    replay: 'reauthorise',
+    operands: modelCallOperands,
+    // The lease's task was checked under the delegation; the broker checks
+    // the lease, the delegation and the reservation again under their locks.
+    serve: async (tx, call, operands, delegation) => await serve(tx, call, operands, delegation),
+  });
+}
+
+const NO_BROKER_FIXES: readonly string[] = [
+  'This deployment has no credential broker configured, so it makes no model call.',
+];
+
 export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Map<
   CommandName,
   AgentOperation
@@ -538,6 +589,28 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
     }),
   ],
   [
+    'task.check',
+    row({
+      authority: 'record',
+      subjectTask: 'lease',
+      replay: 'reauthorise',
+      operands: NONE,
+      serve: async (tx, { session, request }, _operands, delegation) =>
+        await checkLease(
+          tx,
+          {
+            leaseId: request['leaseId'],
+            fence: request['fence'],
+            name: request['name'],
+            outcome: request['outcome'],
+            note: request['note'],
+          },
+          agentClaimant(session.actorId),
+          delegation.id,
+        ),
+    }),
+  ],
+  [
     'task.read',
     row({
       authority: 'record',
@@ -604,6 +677,70 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       authority: 'decision',
       replay: 'reauthorise',
       operands: NONE,
+    }),
+  ],
+  [
+    'live_correction.request',
+    row({
+      authority: 'purpose',
+      replay: 'reauthorise',
+      operands: requestOperands,
+      serve: async (tx, { session }, operands, delegation) =>
+        await requestAsAgent(tx, session.actorId, operands, delegation),
+    }),
+  ],
+  [
+    'model.call',
+    modelCallRow(() =>
+      Promise.resolve(
+        refused(refuseCommand('DEPENDENCY_NOT_LANDED', ['model.call'], NO_BROKER_FIXES)),
+      ),
+    ),
+  ],
+  [
+    'run.revise_state',
+    row({
+      authority: 'record',
+      subjectTask: 'record',
+      replay: 'reauthorise',
+      operands: recordIdOperand(() => refuseNotFound()),
+      // The task checked under the delegation (`run:write`, which the mint
+      // grants only where the person holds it); the agent is the recorded actor.
+      serve: async (tx, { session, request }, _operands, _delegation, taskId) => {
+        const spine = await readTaskSpine(tx);
+        return await reviseRunState(
+          tx,
+          spine.taskTypeId,
+          { taskId: taskId ?? request['recordId'], runId: request['runId'] },
+          {
+            expectedVersion: request['expectedVersion'],
+            knowledge: request['knowledge'],
+            unknowns: request['unknowns'],
+          },
+          session.actorId,
+        );
+      },
+    }),
+  ],
+  [
+    'run.delegate_child',
+    row({
+      authority: 'record',
+      subjectTask: 'lease',
+      replay: 'childPickup',
+      operands: delegateChildOperands,
+      // The parent is the delegation `authorise` resolved for this call.
+      serve: async (tx, call, operands, delegation) =>
+        await serveDelegateChild(tx, call, operands, delegation),
+    }),
+  ],
+  [
+    'run.child_handback',
+    row({
+      authority: 'helper',
+      replay: 'childHandback',
+      operands: childHandbackOperands,
+      serve: serveChildHandback,
     }),
   ],
   [

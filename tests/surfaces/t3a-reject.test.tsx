@@ -47,7 +47,9 @@ function version(id: string, n: number, gate: Record<string, unknown> | null) {
     supersededAt: null,
     runId: null,
     evidence: null,
-    gate,
+    // The projection's gate carries its version's digest, as the server sends it.
+    gate: gate === null ? null : { ...gate, payloadDigest: `digest-${id}` },
+    checks: [],
   };
 }
 
@@ -92,7 +94,7 @@ function server(versions: readonly ReturnType<typeof version>[], state = 'live')
   const client = new OperationsClient({
     origin: '',
     businessKey: 'alpha',
-    token: 'a-token',
+    signedIn: true,
     fetch,
     newOperationId: () => 'operation-1',
   });

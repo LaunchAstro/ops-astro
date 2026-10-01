@@ -35,8 +35,8 @@ import {
   type Answer,
   type Caller,
 } from './world.ts';
-import { PROPOSAL, type Task } from './role-case-bodies.ts';
-import { createPositiveBody } from './role-case-positive-body.ts';
+import { PROPOSAL, childProbe, type Task } from './role-case-bodies.ts';
+import { createPositiveBody, taskBodyContext } from './role-case-positive-body.ts';
 import { plainRows, seedFixtureClients } from './role-case-clients.ts';
 import { pairFor, targetKeyOf, type Harness } from './role-case-harness-shape.ts';
 
@@ -174,16 +174,25 @@ export async function createHarness(part: string): Promise<Harness> {
    * authority one the case is about.
    */
   function probeBody(declaration: CommandDeclaration): Readonly<Record<string, unknown>> {
-    const targeted = declaration.targetsExistingRecord;
     return {
       operationId: randomUUID(),
       ...(targetKeyOf(declaration) === 'recordId' ? { recordId: alphaTask.id } : {}),
-      ...(targeted ? { expectedRevision: alphaTask.revision } : {}),
+      ...(declaration.targetsExistingRecord ? { expectedRevision: alphaTask.revision } : {}),
       ...(declaration.name === 'task.board' ? { board: null } : {}),
       ...(declaration.name === 'task.receipt' ? { attemptId: randomUUID() } : {}),
+      ...(declaration.name === 'live_correction.read' ? { correctionId: randomUUID() } : {}),
+      ...(declaration.name === 'definition.attribution' ? { digest: 'a'.repeat(64) } : {}),
       ...(declaration.name === 'preset.plan'
         ? { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] }
         : {}),
+      // Well formed, so authority answers: operands are read by type before the delegation.
+      ...(declaration.name === 'model.call'
+        ? { leaseId: randomUUID(), fence: 1, operation: 'model.replay_compose', fields: [] }
+        : {}),
+      ...(declaration.name === 'run.delegate_child'
+        ? { leaseId: randomUUID(), fence: 1, ...childProbe(randomUUID()) }
+        : {}),
+      ...(declaration.name === 'run.child_handback' ? { outcome: 'completed' } : {}),
     };
   }
 
@@ -274,9 +283,10 @@ export async function createHarness(part: string): Promise<Harness> {
     freshTask,
     probeBody,
     positiveBody: createPositiveBody({
-      alphaTaskId: alphaTask.id,
+      ...taskBodyContext(world, alphaTask.id),
       assigneePersonId: world.mia.personId as string,
       asPerson: async (name, body) => await asPerson(name, body),
+      asAgent,
       freshTask,
     }),
     approvedReservation,

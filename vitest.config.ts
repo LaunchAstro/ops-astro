@@ -15,12 +15,18 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: false,
+    // On CI with a database, fails the run if a proof that must run there
+    // skipped (see the file); first, so its teardown runs after the others.
     // Creates the cluster-wide roles once, before any file builds its own
     // database, so files starting side by side on a new cluster do not race
     // on `pg_authid_rolname_index` (see the file).
     // Gives the run a temp folder of its own and fails the run if a test
     // leaves anything in it (issue #103, see the file).
-    globalSetup: ['tests/support/global-setup.ts', 'tests/support/temp-guard.ts'],
+    globalSetup: [
+      'tests/support/ci-must-run.ts',
+      'tests/support/global-setup.ts',
+      'tests/support/temp-guard.ts',
+    ],
     // Hooks are where every database-bound file migrates a fresh database from
     // empty (`beforeAll`) and drops it (`afterAll`). That is legitimately slow
     // work, and with many files and other runs sharing the machine it ran past

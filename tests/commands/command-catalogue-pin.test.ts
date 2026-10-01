@@ -17,8 +17,14 @@
 // The five untargeted commands that `refuseIrrelevantTarget` never checked
 // were pinned as `unchecked` at 06ab232. Architecture observation 2 flipped
 // them, red first (`stray-identifiers.test.ts`): each now names the
-// identifiers its request type declares, and that change is the one
-// deliberate edit to this pin.
+// identifiers its request type declares, and that change was the first
+// deliberate edit to this pin. AW-01's `model.call` is another: a new
+// untargeted lease write an agent reaches under its delegation, added to each
+// table it belongs in and to the handler map. AW-05's two answers at the
+// budget stop are two more: untargeted person writes naming the task and the
+// run on it, which no agent reaches. AW-11's hand-over and handback are two
+// more: untargeted writes on `run` an agent reaches under its delegation, and
+// a person is refused both by name.
 //
 // This suite moves the database counter by zero, so it is a unit suite and
 // must not be named in `tests/db/named-suites.json`.
@@ -48,6 +54,16 @@ function recorder(handler: string) {
   };
 }
 
+vi.mock('../../packages/core-commands/src/commands/conversations.ts', async (original) => ({
+  ...(await original<object>()),
+  startConversation: recorder('startConversation'),
+  messageConversation: recorder('messageConversation'),
+}));
+vi.mock('../../packages/core-commands/src/commands/conversation-tabs.ts', async (original) => ({
+  ...(await original<object>()),
+  renameConversation: recorder('renameConversation'),
+  setConversationScope: recorder('setConversationScope'),
+}));
 vi.mock('../../packages/core-commands/src/commands/tasks-write.ts', async (original) => ({
   ...(await original<object>()),
   createTask: recorder('createTask'),
@@ -77,6 +93,7 @@ vi.mock('../../packages/core-commands/src/commands/tasks-comment.ts', async (ori
 vi.mock('../../packages/core-commands/src/commands/settings-write.ts', async (original) => ({
   ...(await original<object>()),
   setBusinessSetting: recorder('setBusinessSetting'),
+  setNotificationChannel: recorder('setNotificationChannel'),
 }));
 vi.mock('../../packages/core-commands/src/commands/tasks-propose.ts', async (original) => ({
   ...(await original<object>()),
@@ -85,6 +102,10 @@ vi.mock('../../packages/core-commands/src/commands/tasks-propose.ts', async (ori
 vi.mock('../../packages/core-commands/src/commands/tasks-decide.ts', async (original) => ({
   ...(await original<object>()),
   decideOnGate: recorder('decideOnGate'),
+}));
+vi.mock('../../packages/core-commands/src/commands/plan-accept.ts', async (original) => ({
+  ...(await original<object>()),
+  acceptPlanOnGate: recorder('acceptPlanOnGate'),
 }));
 vi.mock('../../packages/core-commands/src/commands/tasks-pickup.ts', async (original) => ({
   ...(await original<object>()),
@@ -106,10 +127,23 @@ vi.mock('../../packages/core-commands/src/commands/tasks-observe.ts', async (ori
   ...(await original<object>()),
   observeOwnLease: recorder('observeOwnLease'),
 }));
+vi.mock('../../packages/core-commands/src/commands/tasks-check.ts', async (original) => ({
+  ...(await original<object>()),
+  checkOwnLease: recorder('checkOwnLease'),
+}));
 vi.mock('../../packages/core-commands/src/commands/authority-controls.ts', async (original) => ({
   ...(await original<object>()),
   revokeDelegationAsManager: recorder('revokeDelegationAsManager'),
   revokeGrantAsManager: recorder('revokeGrantAsManager'),
+}));
+vi.mock('../../packages/core-commands/src/commands/live-corrections.ts', async (original) => ({
+  ...(await original<object>()),
+  decideLiveCorrection: recorder('decideLiveCorrection'),
+  requestLiveCorrection: recorder('requestLiveCorrection'),
+}));
+vi.mock('../../packages/core-commands/src/commands/inbox-seen.ts', async (original) => ({
+  ...(await original<object>()),
+  stampOwnSeen: recorder('stampOwnSeen'),
 }));
 vi.mock('../../packages/core-commands/src/commands/tasks-controls.ts', async (original) => ({
   ...(await original<object>()),
@@ -128,25 +162,67 @@ vi.mock('../../packages/core-commands/src/commands/budget-write-off.ts', async (
   ...(await original<object>()),
   writeOffOnTask: recorder('writeOffOnTask'),
 }));
+vi.mock('../../packages/core-commands/src/commands/budget-planning-cap.ts', async (original) => ({
+  ...(await original<object>()),
+  setPlanningCap: recorder('setPlanningCap'),
+}));
+vi.mock('../../packages/core-commands/src/commands/model-call-person.ts', async (original) => ({
+  ...(await original<object>()),
+  refuseModelCallAsPerson: recorder('refuseModelCallAsPerson'),
+}));
+vi.mock('../../packages/core-commands/src/commands/child-work-person.ts', async (original) => ({
+  ...(await original<object>()),
+  refuseChildWorkAsPerson: recorder('refuseChildWorkAsPerson'),
+}));
+vi.mock('../../packages/core-commands/src/commands/run-answers.ts', async (original) => ({
+  ...(await original<object>()),
+  topUpOnRun: recorder('topUpOnRun'),
+  endOnRun: recorder('endOnRun'),
+}));
+vi.mock('../../packages/core-commands/src/commands/run-state.ts', async (original) => ({
+  ...(await original<object>()),
+  reviseStateOnRun: recorder('reviseStateOnRun'),
+}));
 
 const PINNED_RUNTIME_SHAPED = {
+  'task.check': 'leaseId',
   'task.handback': 'leaseId',
   'task.heartbeat': 'leaseId',
   'task.dispatch': 'leaseId',
   'task.observe': 'leaseId',
   'task.pickup': 'reservationId',
+  'model.call': 'leaseId',
+  'run.delegate_child': 'leaseId',
 };
 
 const PINNED_UNTARGETED_IDENTIFIERS = {
   'budget.record_outcome': ['recordId', 'attemptId'],
+  'budget.set_planning_cap': [],
   'budget.top_up': ['recordId'],
   'budget.write_off': ['recordId', 'attemptId'],
+  'conversation.message': ['conversationId'],
+  'conversation.rename': ['conversationId'],
+  'conversation.set_scope': ['conversationId'],
+  'conversation.start': [],
   'delegation.revoke': [],
   'grant.revoke': [],
+  'live_correction.decide': ['correctionId', 'versionId'],
+  'live_correction.request': ['partyId', 'taskId'],
+  'model.call': ['leaseId'],
+  'run.child_handback': [],
+  'run.delegate_child': ['leaseId'],
+  'run.end_at_budget_stop': ['recordId', 'runId'],
+  'run.revise_state': ['recordId', 'runId'],
+  'run.top_up': ['recordId', 'runId'],
+  'inbox.seen': ['itemId'],
+  'notifications.set_channel': [],
   'settings.set_client_sign_off': [],
   'settings.set_four_eyes_threshold': [],
+  'settings.set_live_correction_approver': [],
+  'task.accept_plan': ['gateId', 'versionId', 'conversationId'],
   'task.cancel': ['recordId', 'lineageId'],
-  'task.create': ['parentId', 'board', 'boardSection'],
+  'task.check': ['leaseId'],
+  'task.create': ['parentId', 'board', 'boardSection', 'conversationId'],
   'task.decide': ['gateId', 'versionId'],
   'task.handback': ['leaseId'],
   'task.heartbeat': ['leaseId'],
@@ -160,18 +236,44 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
 
 const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'budget.record_outcome',
+  'budget.set_planning_cap',
   'budget.top_up',
   'budget.write_off',
+  'conversation.list',
+  'conversation.message',
+  'conversation.read',
+  'conversation.rename',
+  'conversation.set_scope',
+  'conversation.start',
+  'definition.attribution',
   'delegation.revoke',
+  'gate.pending',
   'grant.revoke',
+  'inbox.count',
+  'inbox.read',
+  'inbox.seen',
+  'inbox.unattended',
+  'live_correction.decide',
+  'live_correction.read',
+  'live_correction.request',
+  'model.call',
+  'notifications.set_channel',
   'person.list',
   'preset.plan',
+  'run.child_handback',
+  'run.delegate_child',
+  'run.end_at_budget_stop',
+  'run.revise_state',
+  'run.top_up',
   'session.capabilities',
   'settings.read',
   'settings.set_client_sign_off',
   'settings.set_four_eyes_threshold',
+  'settings.set_live_correction_approver',
+  'task.accept_plan',
   'task.board',
   'task.cancel',
+  'task.check',
   'task.create',
   'task.decide',
   'task.dispatch',
@@ -189,7 +291,13 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
 ];
 
 const PINNED_AGENT_SURFACE = [
+  'live_correction.request',
+  'model.call',
+  'run.child_handback',
+  'run.delegate_child',
+  'run.revise_state',
   'session.capabilities',
+  'task.check',
   'task.comment',
   'task.decide',
   'task.dispatch',
@@ -217,6 +325,7 @@ const REQUESTS: readonly CommandRequest[] = [
     body: 'b-comment',
     audience: 'a-comment',
     commentType: 't-comment',
+    mentions: 'm-comment',
   },
   {
     command: 'task.propose',
@@ -235,6 +344,17 @@ const REQUESTS: readonly CommandRequest[] = [
     versionId: 'v',
     decision: 'approve',
     note: 'n',
+  },
+  {
+    command: 'task.accept_plan',
+    operationId: 'op',
+    gateId: 'g-accept',
+    versionId: 'v-accept',
+    note: 'n-accept',
+    planText: 't-accept',
+    plan: {},
+    entryPath: 'e-accept',
+    paths: [],
   },
   { command: 'task.pickup', operationId: 'op', reservationId: 'res' },
   { command: 'task.handback', operationId: 'op', leaseId: 'l', fence: 2, outcome: 'done' },
@@ -291,6 +411,69 @@ const REQUESTS: readonly CommandRequest[] = [
     amountMinor: 0,
     reason: 'why',
   },
+  {
+    command: 'live_correction.request',
+    operationId: 'op',
+    partyId: 'party',
+    taskId: 'task',
+    path: 'p',
+    word: 'w',
+    replacement: 'x',
+    pageUrl: 'u',
+    baseRevision: 'b',
+    before: 'before',
+    after: 'after',
+  },
+  {
+    command: 'live_correction.decide',
+    operationId: 'op',
+    correctionId: 'c',
+    versionId: 'v',
+    decision: 'approve',
+  },
+  { command: 'settings.set_live_correction_approver', operationId: 'op', value: null },
+  {
+    command: 'budget.set_planning_cap',
+    operationId: 'op',
+    limitMinor: 2_000,
+    currency: 'AUD',
+    fromLimitMinor: null,
+  },
+  {
+    command: 'task.check',
+    operationId: 'op',
+    leaseId: 'l',
+    fence: 4,
+    name: 'spelling',
+    outcome: 'passed',
+  },
+  { command: 'conversation.start', operationId: 'op', body: 'hello', subject: 's' },
+  { command: 'conversation.message', operationId: 'op', conversationId: 'c', body: 'again' },
+  { command: 'conversation.rename', operationId: 'op', conversationId: 'c', title: 'Renamed' },
+  { command: 'conversation.set_scope', operationId: 'op', conversationId: 'c', page: null },
+  { command: 'model.call', operationId: 'op' },
+  {
+    command: 'run.top_up',
+    operationId: 'op',
+    recordId: 'r',
+    runId: 'run',
+    amountMinor: 700,
+    currency: 'AUD',
+  },
+  { command: 'run.end_at_budget_stop', operationId: 'op', recordId: 'r', runId: 'run' },
+  {
+    command: 'run.revise_state',
+    operationId: 'op',
+    recordId: 'r',
+    runId: 'run',
+    expectedVersion: 0,
+    knowledge: [],
+    unknowns: [],
+  },
+  { command: 'run.delegate_child', operationId: 'op' },
+  { command: 'run.child_handback', operationId: 'op' },
+  { command: 'inbox.seen', operationId: 'op', itemId: 'item' },
+  { command: 'notifications.set_channel', operationId: 'op', channel: 'in_app', mode: 'on' },
 ];
 
 /** Where each request went: `[handler, ...what it was handed after tx and context]`. */
@@ -299,9 +482,10 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'task.update': ['updateTask', 'request'],
   'task.complete': ['setState', 'completed'],
   'task.reopen': ['setState', 'unstarted', 'why-reopen'],
-  'task.comment': ['commentOnTask', 'op', 'b-comment', 'a-comment', 't-comment'],
+  'task.comment': ['commentOnTask', 'op', 'b-comment', 'a-comment', 't-comment', 'm-comment'],
   'task.propose': ['proposeOnTask', 'request'],
   'task.decide': ['decideOnGate', 'request'],
+  'task.accept_plan': ['acceptPlanOnGate', 'request'],
   'task.pickup': ['pickupAsPerson', 'request'],
   'task.handback': ['handbackOwnLease', 'request'],
   'task.start': ['setState', 'started'],
@@ -338,6 +522,28 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'budget.top_up': ['topUpOnTask', 'request'],
   'budget.record_outcome': ['recordOutcomeOnTask', 'request'],
   'budget.write_off': ['writeOffOnTask', 'request'],
+  'live_correction.request': ['requestLiveCorrection', 'request'],
+  'live_correction.decide': ['decideLiveCorrection', 'request'],
+  'settings.set_live_correction_approver': [
+    'setBusinessSetting',
+    'settings.set_live_correction_approver',
+    null,
+    undefined,
+  ],
+  'budget.set_planning_cap': ['setPlanningCap', 'request'],
+  'task.check': ['checkOwnLease', 'request'],
+  'conversation.start': ['startConversation', 'request'],
+  'conversation.message': ['messageConversation', 'request'],
+  'conversation.rename': ['renameConversation', 'request'],
+  'conversation.set_scope': ['setConversationScope', 'request'],
+  'model.call': ['refuseModelCallAsPerson', 'request'],
+  'run.top_up': ['topUpOnRun', 'request'],
+  'run.end_at_budget_stop': ['endOnRun', 'request'],
+  'run.revise_state': ['reviseStateOnRun', 'request'],
+  'run.delegate_child': ['refuseChildWorkAsPerson', 'request'],
+  'run.child_handback': ['refuseChildWorkAsPerson', 'request'],
+  'inbox.seen': ['stampOwnSeen', 'item'],
+  'notifications.set_channel': ['setNotificationChannel', 'request'],
 };
 
 const untargetedWrites = COMMAND_SURFACE.filter(
@@ -362,7 +568,7 @@ const agentReach = (reach: readonly string[]) =>
     .toSorted();
 
 describe('the per-command tables at 06ab232', () => {
-  it('shapes the same runtime identifier for the same three commands', () => {
+  it('shapes the same runtime identifier for the same eight commands', () => {
     expect({ ...RUNTIME_SHAPED }).toStrictEqual(PINNED_RUNTIME_SHAPED);
   });
 
@@ -377,13 +583,13 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same twenty-six from an expected revision', () => {
+  it('exempts the same fifty-three from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );
   });
 
-  it('lets an agent reach the same eleven, two of them before a pickup', () => {
+  it('lets an agent reach the same sixteen, two of them before a pickup', () => {
     expect(agentReach(['delegated', 'before-pickup'])).toStrictEqual(PINNED_AGENT_SURFACE);
     expect(agentReach(['before-pickup'])).toStrictEqual(PINNED_BEFORE_PICKUP);
     expect([...AGENT_SURFACE].toSorted()).toStrictEqual(PINNED_AGENT_SURFACE);

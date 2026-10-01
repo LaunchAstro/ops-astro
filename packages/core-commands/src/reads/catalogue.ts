@@ -30,9 +30,15 @@ import {
 import { listPeople } from './people.ts';
 import { readQueue } from './queue.ts';
 import { readTaskExecution } from './execution.ts';
+import { readAwaitingReview } from './awaiting-review.ts';
+import { readPlanningCap } from '../../../core-custody/src/index.ts';
 import { readSettings } from './settings.ts';
 import { readCapabilities } from './capabilities.ts';
 import { parseReceipt, receiptSubject, serveReceipt } from './receipts.ts';
+import { listConversations, readConversation } from './conversation.ts';
+import { DIGEST, readAttribution } from './attribution.ts';
+import { countOwed, readInbox, readUnattendedInbox } from './inbox.ts';
+import { parseCorrectionRead, serveCorrectionRead } from './live-correction.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
 
 export type ReadName = ReadRequest['read'];
@@ -72,8 +78,11 @@ interface RowBase<K extends ReadName> {
    * action, at the subject's record scope or the business's. A function: the
    * collection it names instead. `holds-any-grant`: no collection is asked;
    * the read refuses a caller holding nothing (see `session.capabilities`).
+   * `self`: no grant is asked; the read serves the caller's own rows only and
+   * derives access on each (the inbox).
    */
-  readonly authority: 'declared' | 'holds-any-grant' | ((operands: ReadOperands[K]) => string);
+  readonly authority:
+    'declared' | 'holds-any-grant' | 'self' | ((operands: ReadOperands[K]) => string);
   /**
    * Whether an external party refused by the grant check is told `NOT_FOUND`
    * rather than `SCOPE_NOT_GRANTED` (minimum contract 8.2 case 7: "Sibling
@@ -161,6 +170,34 @@ const NO_GRANT_AT_ALL = refuseCommand(
 );
 
 export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
+  // AW-03. No collection is asked at the door: the owner reads their own
+  // without the read-any grant, so the rule is the read's own
+  // (`reads/conversation.ts`), and a caller holding nothing is refused there.
+  'conversation.read': {
+    identifiers: ['conversationId'],
+    // Any body parses: a caller holding nothing is refused SCOPE_NOT_GRANTED
+    // before the identifier is looked at (the matrix's case (e)), so the
+    // read checks the identifier itself, after that.
+    parse: ({ conversationId }) => parsed({ conversationId }),
+    spine: false,
+    authority: 'holds-any-grant',
+    // The door asks no grant, so this flag has nothing to answer; the read
+    // itself tells a caller with no membership NOT_FOUND.
+    outsiderNotFound: false,
+    serve: async (tx, session, { conversationId }) =>
+      await readConversation(tx, session, conversationId),
+  },
+  // MP-7-11. The caller's own conversations; the rule is the read's own, as
+  // `conversation.read`'s is, because the owner lists without the read-any
+  // grant and the read-any grant lists nothing.
+  'conversation.list': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session) => await listConversations(tx, session),
+  },
   'task.read': {
     identifiers: ['recordId'],
     parse: ({ recordId }) =>
@@ -286,6 +323,39 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       return { ok: true, execution: await readTaskExecution(tx, recordId, operands.cursor) };
     },
   },
+  // AW-04: the runs that read one file, by its digest, and what they reached.
+  // Pre-review, the team's only, each run filtered by the caller's task `read`
+  // inside the query (`reads/attribution.ts`). No subject record: a digest is
+  // not one, and naming one run's task would make the audit row false for the
+  // others. The door asks for any grant; the read refuses the rest itself.
+  'definition.attribution': {
+    identifiers: [],
+    parse: ({ digest }) =>
+      typeof digest === 'string' && DIGEST.test(digest)
+        ? parsed({ digest })
+        : rejected('digest', 'Send digest as the file’s sha-256, 64 lowercase hex characters.'),
+    spine: true,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    async serve(tx, session, { digest }, { spine }) {
+      const attribution = await readAttribution(tx, session, spine.taskTypeId, digest);
+      return 'refused' in attribution ? attribution : { ok: true, attribution };
+    },
+  },
+  // No subject record, as the queue: the list is about the gates the caller
+  // may decide. The door asks for any grant; the rows are filtered by the
+  // caller's `decide` inside the query, and a caller holding none is refused.
+  'gate.pending': {
+    identifiers: [],
+    parse: NONE,
+    spine: true,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    async serve(tx, session, _operands, { spine }) {
+      const awaiting = await readAwaitingReview(tx, session, spine.taskTypeId, 'task');
+      return Array.isArray(awaiting) ? { ok: true, awaiting } : (awaiting as CommandRefusal);
+    },
+  },
   'preset.plan': {
     identifiers: [],
     parse({ recordTypeKey, presetKey, fields }) {
@@ -344,7 +414,14 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     spine: false,
     authority: 'declared',
     outsiderNotFound: false,
-    serve: async (tx) => ({ ok: true, settings: await readSettings(tx) }),
+    // The planning cap beside the settings (AW-04): the business's own
+    // configuration too, and every settings reader may see it; only
+    // `billing:decide` moves it (`budget.set_planning_cap`).
+    serve: async (tx) => ({
+      ok: true,
+      settings: await readSettings(tx),
+      planningCap: await readPlanningCap(tx),
+    }),
   },
   // `session.capabilities` has no collection of its own to hold a grant on:
   // it reports the caller's grants, so it is answered only to a caller who
@@ -378,7 +455,63 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     outsiderNotFound: true,
     serve: serveReceipt,
   },
+  // The caller's own items: the query names the caller as recipient and each
+  // item's access is asked of their live grants, which is the permission
+  // check (INB-1d). The count is the same read, counted. A caller holding no
+  // live grant is refused, as `session.capabilities` refuses one, and never
+  // answered with a list of withheld items or a zero.
+  'inbox.read': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'self',
+    outsiderNotFound: false,
+    serve: async (tx, session) =>
+      (await holdsAnyGrant(tx, session))
+        ? { ok: true, inbox: await readInbox(tx, session.personId) }
+        : NO_GRANT_AT_ALL,
+  },
+  'inbox.count': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'self',
+    outsiderNotFound: false,
+    serve: async (tx, session) =>
+      (await holdsAnyGrant(tx, session))
+        ? { ok: true, owed: await countOwed(tx, session.personId) }
+        : NO_GRANT_AT_ALL,
+  },
+  // Every path to a person broken (INB-1e): `operations:read` on the business,
+  // declared, and within it only the items whose task the caller reads.
+  'inbox.unattended': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'declared',
+    outsiderNotFound: false,
+    serve: async (tx, session) => ({
+      ok: true,
+      unattended: await readUnattendedInbox(tx, session.personId),
+    }),
+  },
+  // C80: one correction's decision, for its card. No subject record, as
+  // `gate.pending`: the door asks for any grant, and the read filters by the
+  // caller's `run:write` at the correction's own party inside its query, so a
+  // correction out of reach and one that does not exist are one answer.
+  'live_correction.read': {
+    identifiers: ['correctionId'],
+    parse: parseCorrectionRead,
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: serveCorrectionRead,
+  },
 };
+
+async function holdsAnyGrant(tx: TenantQuery, session: Session): Promise<boolean> {
+  return (await readCapabilities(tx, session)).grants.length > 0;
+}
 
 /** Whether `id` names a live task in the caller's business: `task.move`'s own check. */
 async function liveTask(tx: TenantQuery, taskTypeId: string, id: string): Promise<boolean> {

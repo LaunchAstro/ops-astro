@@ -8,9 +8,10 @@
 
 export const FLOOR_MS = 30_000;
 const REJOIN_MS = 2_000;
-const EVENT = /^event: (invalidate|resync|closed)$/mu;
+const EVENT = /^event: (invalidate|resync|closed|inbox)$/mu;
 
-export type LiveChange = 'changed' | 'closed';
+/** `inbox`: the caller's own inbox changed (INB-1f's board stream only). */
+export type LiveChange = 'changed' | 'closed' | 'inbox';
 
 export interface FollowOptions {
   readonly visible?: () => boolean;
@@ -54,7 +55,11 @@ export function followLive(
   const refresh = (): void => {
     if (visible()) onChange('changed');
   };
-  const onEvent = (name: string): void => (name === 'closed' ? onChange('closed') : refresh());
+  const onEvent = (name: string): void => {
+    if (name === 'closed') onChange('closed');
+    else if (name === 'inbox' && visible()) onChange('inbox');
+    else refresh();
+  };
   let floor: ReturnType<typeof setInterval> | undefined;
   const run = async (): Promise<void> => {
     const body = await open(abort.signal).catch(() => null);

@@ -53,6 +53,11 @@ if (serverUrl === undefined) {
 }
 
 const THROUGH_0029 = (version: string): boolean => version.slice(0, 4) <= '0029';
+// And AW-06's 0210 plan step key: the runtime that seeds below proposes with it.
+// It reads nothing 0030 adds, and the runner applies whatever is pending, so
+// the upgrade still applies 0030 onto these rows.
+const SEEDED = (version: string): boolean =>
+  THROUGH_0029(version) || version.slice(0, 4) === '0210';
 
 const PACK_OF_VERSION = { code: '23503', constraint_name: 'gates_pack_in_same_version' };
 const VERSION_FIXED = { code: '23514', constraint_name: 'gates_version_fixed_once_decided' };
@@ -254,14 +259,17 @@ async function proposalState(db: EmptyDatabase, businessId: string): Promise<str
 }
 
 /**
- * Every gate, pack, version and decision in the database, as the owner reads them.
- * A gate is read as 0029 knew it: 0041 (T3a) adds the escalation columns after
- * this seed, null on every seeded row, so they are left out on both sides and
- * every column 0029 had is still compared value for value.
+ * Columns a migration after 0030 adds to a table this snapshot reads. A row
+ * that gained a column has not changed what it held, so the snapshot compares
+ * the columns the seed wrote: 0041 (T3a) adds the escalation columns to gates
+ * and 0199 adds `origin_conversation_id`.
  */
+const ADDED_AFTER_0030 = `array['escalated_to_person_id','escalated_by_person_id','escalated_by_actor_id','escalated_at','origin_conversation_id']`;
+
+/** Every gate, pack, version and decision in the database, as the owner reads them. */
 async function seedSnapshot(db: EmptyDatabase): Promise<string> {
   const [row] = await db.admin.execute<{ readonly all: string | null }>(
-    `select coalesce((select string_agg((to_jsonb(g) - '{escalated_to_person_id,escalated_by_person_id,escalated_by_actor_id,escalated_at}'::text[])::text, '|' order by g.id)
+    `select coalesce((select string_agg((to_jsonb(g) - ${ADDED_AFTER_0030})::text, '|' order by g.id)
                         from public.gates g), '') || '#' ||
             coalesce((select string_agg(p::text, '|' order by p.id) from public.evidence_packs p), '') || '#' ||
             coalesce((select string_agg(v::text, '|' order by v.id) from public.proposal_versions v), '') || '#' ||
@@ -290,7 +298,7 @@ async function seededAt0029(
   const db = await createEmptyDatabase({ part });
   await applyMigrations(
     db.admin,
-    onDisk.filter((m) => THROUGH_0029(m.version)),
+    onDisk.filter((m) => SEEDED(m.version)),
   );
   const seed = await buildFixture(db.app, `seed-0029-${part}`);
   await approved(db.app, seed);
@@ -327,13 +335,13 @@ describe.skipIf(serverUrl === undefined).each([
   });
 
   it('applies every migration once, the upgrade only those after 0029', () => {
-    const through = onDisk.filter((m) => THROUGH_0029(m.version)).map((m) => m.version);
-    const after = onDisk.filter((m) => !THROUGH_0029(m.version)).map((m) => m.version);
+    const all = onDisk.map((m) => m.version);
+    const after = all.filter((version) => !SEEDED(version));
     expect(after.map((v) => v.slice(0, 4))).toContain('0030');
     const expected =
       label === 'fresh'
-        ? { applied: [...through, ...after], alreadyApplied: [] }
-        : { applied: after, alreadyApplied: through };
+        ? { applied: all, alreadyApplied: [] }
+        : { applied: after, alreadyApplied: all.filter((version) => SEEDED(version)) };
     expect({
       applied: built.migration.applied,
       alreadyApplied: built.migration.alreadyApplied,
@@ -480,10 +488,13 @@ describe.skipIf(serverUrl === undefined)('a 0029 database holding a row 0030 for
         await expect(migrate(db.admin, 'migrations')).rejects.toSatisfy((error: unknown) =>
           /gates:/u.test(String((error as { cause?: unknown }).cause ?? error)),
         );
-        const [ledger] = await db.admin.execute<{ readonly last: string }>(
-          `select max(version) as last from ops.schema_migrations`,
+        // Nothing past what was seeded: the ledger stops at 0029 (and the seeded 0210).
+        const ledger = await db.admin.execute<{ readonly version: string }>(
+          `select version from ops.schema_migrations order by version`,
         );
-        expect(ledger?.last.slice(0, 4)).toBe('0029');
+        expect(ledger.map((row) => row.version)).toStrictEqual(
+          onDisk.filter((m) => SEEDED(m.version)).map((m) => m.version),
+        );
         expect(await seedSnapshot(db)).toBe(seeded);
       } finally {
         await db.drop();

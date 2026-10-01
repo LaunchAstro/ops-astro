@@ -18,7 +18,7 @@ import {
   connect,
   type BusinessId,
   type Database,
-  type TenantQuery,
+  type TransactionQuery,
 } from '../../packages/core-records/src/tenancy/database.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { executeRead, isCommandRefusal } from '../../packages/core-commands/src/index.ts';
@@ -189,12 +189,16 @@ describe.skipIf(serverUrl === undefined)('T2a run progress on a real database', 
       const interleavedDb: Database = {
         log: s.db.app.log,
         close: async () => {},
-        withBusiness: async <T>(id: BusinessId, run: (tx: TenantQuery) => Promise<T>): Promise<T> =>
+        withBusiness: async <T>(
+          id: BusinessId,
+          run: (tx: TransactionQuery) => Promise<T>,
+        ): Promise<T> =>
           await s.db.app.withBusiness(
             id,
             async (tx) =>
               await run({
                 businessId: tx.businessId,
+                savepoint: tx.savepoint,
                 async query<Row>(
                   sql: string,
                   parameters?: readonly unknown[],

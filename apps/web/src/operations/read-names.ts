@@ -40,6 +40,23 @@ export const READ_NAMES = [
   'task.execution',
   // What an observed effect came from (T2c2); the task page draws it in T2g.
   'task.receipt',
+  // The gates waiting on the caller's decision (MP-6-1).
+  'gate.pending',
+  // A conversation at its address (AW-03).
+  'conversation.read',
+  // The caller's own conversations, for the tab row (MP-7-11).
+  'conversation.list',
+  // Which runs read an instruction file, by digest: pre-review (AW-04).
+  'definition.attribution',
+  // The caller's own inbox and owed count (INB-1d), the same read the API and
+  // the command line serve; the working minimum draws them in INB-1g.
+  'inbox.read',
+  'inbox.count',
+  // Items no path reaches (INB-1e), for `operations:read`; the operations view
+  // (C55) draws them.
+  'inbox.unattended',
+  // One live correction's decision, read again for its card (C80).
+  'live_correction.read',
 ] as const;
 
 /**

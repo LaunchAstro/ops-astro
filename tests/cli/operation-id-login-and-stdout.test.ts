@@ -215,7 +215,7 @@ describe.skipIf(!TERMINAL)('login at a terminal prompts with echo off', () => {
     const gotrue = await standIn();
     gotrue.handle = (_request, _raw, response) => {
       response.setHeader('content-type', 'application/json');
-      response.end(JSON.stringify({ access_token: 'a-bearer-from-the-stand-in' }));
+      response.end(JSON.stringify({ access_token: 'ops-astro-test-only-bearer' }));
     };
     const scratch = mkdtempSync(join(tmpdir(), 'final-r1-cli-tty-'));
     const tokenFile = join(scratch, 'token');
@@ -244,7 +244,7 @@ describe.skipIf(!TERMINAL)('login at a terminal prompts with echo off', () => {
         // Type only once the prompt is up, so echo is already off.
         if (!typed && screen.includes('password: ')) {
           typed = true;
-          child.stdin.end('typed-at-the-terminal\r');
+          child.stdin.end('ops-astro-test-only-typed\r');
         }
       });
       const code = await new Promise<number | null>((resolve) => {
@@ -254,10 +254,10 @@ describe.skipIf(!TERMINAL)('login at a terminal prompts with echo off', () => {
       expect(code, screen).toBe(0);
       expect(gotrue.seen[0]?.body).toStrictEqual({
         email: 'ada@alpha.local',
-        password: 'typed-at-the-terminal',
+        password: 'ops-astro-test-only-typed',
       });
-      expect(screen).not.toContain('typed-at-the-terminal');
-      expect(readFileSync(tokenFile, 'utf8').trim()).toBe('a-bearer-from-the-stand-in');
+      expect(screen).not.toContain('ops-astro-test-only-typed');
+      expect(readFileSync(tokenFile, 'utf8').trim()).toBe('ops-astro-test-only-bearer');
     } finally {
       await gotrue.close();
       rmSync(scratch, { recursive: true, force: true });

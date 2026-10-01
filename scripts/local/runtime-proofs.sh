@@ -19,4 +19,5 @@ set -euo pipefail
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 L5_RUNTIME_PROOFS=1 exec bash "$here/restart-proof.sh" \
   --name ops-astro-runtime-proofs-pg --port 54396 --api-port 8796 \
-  --suite tests/acceptance/runtime-proofs.test.tsx --suite tests/acceptance/drop-proofs.test.ts "$@"
+  --suite tests/acceptance/runtime-proofs.test.tsx --suite tests/acceptance/drop-proofs.test.ts \
+  --suite tests/acceptance/inbox-worker-restart.test.ts "$@"

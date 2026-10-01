@@ -34,7 +34,12 @@
 // name these settings predate the column, so a caller that has not learnt to
 // send one still writes and is still handed the revision the row is now at.
 
-import { isSettingRevisionStale, writeBusinessSetting } from '../../../core-records/src/index.ts';
+import {
+  isActiveMember,
+  isSettingRevisionStale,
+  isUuid,
+  writeBusinessSetting,
+} from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { refuseCommand } from './refusal.ts';
@@ -44,6 +49,7 @@ import { applied, refused, type HandlerOutcome } from './outcome.ts';
 const KEY_OF: Readonly<Record<string, string>> = {
   'settings.set_four_eyes_threshold': 'four_eyes_threshold',
   'settings.set_client_sign_off': 'client_sign_off_required',
+  'settings.set_live_correction_approver': 'live_correction_approver',
 };
 
 const THRESHOLD_FIXES: readonly string[] = [
@@ -52,6 +58,10 @@ const THRESHOLD_FIXES: readonly string[] = [
 ];
 
 const SIGN_OFF_FIXES: readonly string[] = ['Send value as true or false.'];
+
+const APPROVER_FIXES: readonly string[] = [
+  'Send value as the person id of an active member of this business, or null.',
+];
 
 const ABSENT_FIXES: readonly string[] = [
   'This business has no row for that setting yet.',
@@ -84,7 +94,10 @@ function isCheckViolation(cause: unknown): boolean {
 export async function setBusinessSetting(
   tx: TenantQuery,
   context: CommandContext,
-  command: 'settings.set_four_eyes_threshold' | 'settings.set_client_sign_off',
+  command:
+    | 'settings.set_four_eyes_threshold'
+    | 'settings.set_client_sign_off'
+    | 'settings.set_live_correction_approver',
   value: unknown,
   expectedRevision?: number,
 ): Promise<HandlerOutcome> {
@@ -96,8 +109,15 @@ export async function setBusinessSetting(
   // serialises by the type it is given, and an `unknown` that is really a
   // string reaches the column as the JSON string "500", which no comparison
   // reads and the check constraint correctly refuses.
-  let writable: number | boolean | null;
-  if (command === 'settings.set_four_eyes_threshold') {
+  let writable: number | boolean | string | null;
+  if (command === 'settings.set_live_correction_approver') {
+    // A named member or nobody. Checked here, in the writing transaction, so
+    // a person id from another business or a departed member is refused
+    // rather than stored as an approver no approval could ever match.
+    if (value === null) writable = null;
+    else if (isUuid(value) && (await isActiveMember(tx, value))) writable = value;
+    else return refused(refuseCommand('FIELD_VALUE_INVALID', ['value'], APPROVER_FIXES));
+  } else if (command === 'settings.set_four_eyes_threshold') {
     if (value === null) writable = null;
     else if (typeof value === 'number' && Number.isFinite(value) && value >= 0) writable = value;
     else return refused(refuseCommand('FIELD_VALUE_INVALID', ['value'], THRESHOLD_FIXES));
@@ -145,4 +165,86 @@ export async function setBusinessSetting(
     value: written.value,
     revision: written.revision,
   });
+}
+
+// The caller's notification setting (INB-1e, CS-2.17). Per channel and never
+// per item: the body names no item, and `prepare.ts` refuses one that does.
+// In-app is always on, so the one mode it takes is `on`, and it is the state
+// already: nothing is stored. The email channel and its per-category choice
+// (instant, daily batch, off) arrive with AW-07b, which stores the row under
+// the same self-scoped key; until then email is declared and not landed.
+// Nobody switches off or batches a decision or an incident on any channel,
+// and that rule is checked before the channel's own, so it holds the day
+// email lands. No setting reaches an item, a gate or an approval.
+
+const CHANNEL_MODES: Readonly<Record<string, readonly string[]>> = {
+  in_app: ['on'],
+  email: ['instant', 'daily_batch', 'off'],
+};
+
+const CATEGORIES: ReadonlySet<string> = new Set([
+  'decision',
+  'waiting_run',
+  'run_finished',
+  'assignment',
+  'mention',
+  'incident',
+  'client_comment',
+]);
+
+/** Told at once on every channel it reaches (owner answer 10). */
+const NEVER_QUIETED: ReadonlySet<string> = new Set(['decision', 'incident']);
+
+const CHANNEL_FIXES: readonly string[] = ['Send channel as in_app or email.'];
+const IN_APP_FIXES: readonly string[] = ['In-app is always on; the one mode it takes is on.'];
+const CATEGORY_FIXES: readonly string[] = [
+  'Send category as one of the inbox reasons, or leave it out for the whole channel.',
+];
+const NEVER_QUIETED_FIXES: readonly string[] = [
+  'Nobody can switch off or batch notifications about a decision or an incident.',
+];
+const EMAIL_FIXES: readonly string[] = ['The email channel arrives with AW-07b.'];
+const EMAIL_MODE_FIXES: readonly string[] = ['Send mode as instant, daily_batch or off.'];
+
+/**
+ * Validate one channel setting; in-app `on` is the only one that applies
+ * today. It reads and writes nothing, so the transaction and caller go unused.
+ */
+export function setNotificationChannel(
+  _tx: TenantQuery,
+  _context: CommandContext,
+  request: {
+    readonly channel: string;
+    readonly mode: string;
+    readonly category?: string;
+  },
+): Promise<HandlerOutcome> {
+  const modes = CHANNEL_MODES[request.channel];
+  const { category } = request;
+  let outcome: HandlerOutcome;
+  if (modes === undefined) {
+    outcome = refused(refuseCommand('FIELD_VALUE_INVALID', ['channel'], CHANNEL_FIXES));
+  } else if (category !== undefined && !CATEGORIES.has(category)) {
+    outcome = refused(refuseCommand('FIELD_VALUE_INVALID', ['category'], CATEGORY_FIXES));
+  } else if (
+    category !== undefined &&
+    NEVER_QUIETED.has(category) &&
+    request.mode !== 'on' &&
+    request.mode !== 'instant'
+  ) {
+    outcome = refused(refuseCommand('FIELD_VALUE_INVALID', ['category'], NEVER_QUIETED_FIXES));
+  } else if (!modes.includes(request.mode)) {
+    outcome = refused(
+      refuseCommand(
+        'FIELD_VALUE_INVALID',
+        ['mode'],
+        request.channel === 'in_app' ? IN_APP_FIXES : EMAIL_MODE_FIXES,
+      ),
+    );
+  } else if (request.channel === 'email') {
+    outcome = refused(refuseCommand('DEPENDENCY_NOT_LANDED', ['channel'], EMAIL_FIXES));
+  } else {
+    outcome = applied(null, null, { channel: request.channel, mode: request.mode });
+  }
+  return Promise.resolve(outcome);
 }

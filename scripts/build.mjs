@@ -28,16 +28,27 @@
 // A build that reports success without an artefact is the failure this script
 // exists to catch, so each built target's output directory is checked for real
 // files afterwards and an empty one fails.
+//
+// Every build carries its version (S0-1, line C2). The web build reads the
+// identifier from the checkout (`apps/web/build-stamp.ts`) and writes it into
+// the page and into `build.json` in its artefact; nothing in the environment
+// can name it. The artefact is then read back against the checkout: one
+// without that exact stamp is a failed build, because a promotion step that
+// cannot say which build it is promoting is promoting a guess.
 
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
+import { buildIdentifier, readStamp, STAMP_FILE } from '../apps/web/build-stamp.ts';
 
 /** Workspace roots, in the order `pnpm-workspace.yaml` globs them. */
 const ROOTS = ['packages', 'apps'];
 
 /** Where a built target puts its output, relative to the target directory. */
 const OUTPUT_DIRECTORY = { '@launchastro/web': 'dist' };
+
+/** The targets whose artefact must carry the version stamp. */
+const STAMPED = new Set(['@launchastro/web']);
 
 /**
  * Run a root package script through the same pnpm that is running this file.
@@ -106,6 +117,15 @@ if (built.length === 0) {
   process.exit(0);
 }
 
+let stamp;
+try {
+  stamp = buildIdentifier(process.cwd());
+} catch (error) {
+  console.error(`build: ${error.message}`);
+  process.exit(1);
+}
+console.log(`build: this build is ${stamp}`);
+
 for (const target of built) {
   console.log(`\n=== ${target.name} (pnpm --filter ${target.name} run build) ===`);
   const run = pnpmRun(['--filter', target.name, 'run', 'build']);
@@ -134,6 +154,17 @@ for (const target of built) {
     process.exit(1);
   }
   console.log(`build: ${target.name} wrote ${contents.length} entries to ${outputPath}`);
+
+  if (!STAMPED.has(target.name)) continue;
+  const carried = readStamp(outputPath);
+  if (carried !== stamp) {
+    console.error(
+      `\nbuild: ${target.name} exited 0 but ${join(outputPath, STAMP_FILE)} carries ` +
+        `${carried ?? 'no stamp'}, not ${stamp}.`,
+    );
+    process.exit(1);
+  }
+  console.log(`build: ${target.name} is stamped ${stamp} in ${join(outputPath, STAMP_FILE)}`);
 }
 
 console.log(`\nbuild: built ${built.length} of ${targets.length} workspace directories.`);

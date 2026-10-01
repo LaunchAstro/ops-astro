@@ -41,10 +41,6 @@ export function Mono(props: { readonly children: string }): ReactElement {
   return <span className="sbact__meta">{props.children}</span>;
 }
 
-export function Pill(props: { readonly children: string }): ReactElement {
-  return <span className="u-pill">{props.children}</span>;
-}
-
 /**
  * The count badge, absence-honest at the call site.
  *

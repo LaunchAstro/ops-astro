@@ -52,6 +52,7 @@ import {
   closeQuietly,
   fromEnvFile,
   record,
+  servedBuild,
   shot,
   signIn,
   standaloneStatus,
@@ -211,6 +212,8 @@ export async function casesR4SharedPage(run) {
     const drawnFields = await page
       .locator('[data-shared-field]')
       .evaluateAll((nodes) => nodes.map((node) => node.dataset.sharedField));
+    // Which build served this page (S0-1, line C8).
+    await servedBuild(page, 'R4');
     const verdict = openSharedVerdict({
       status: first.status(),
       body: firstBody,

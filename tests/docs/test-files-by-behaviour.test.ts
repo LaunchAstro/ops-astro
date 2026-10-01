@@ -332,7 +332,14 @@ function importsOf(file: string, text: string, packages: ReadonlyMap<string, str
  * belongs in `tests/`.
  */
 const NO_PRODUCT_IMPORTER_YET = new Map([
-  ['apps/api/server.ts', 'the API process entry, started by node rather than imported'],
+  [
+    'packages/core-commands/src/commands/live-correction-ports.ts',
+    "C80's runner ports over the site binding; the worker wiring that calls them waits on the capture catalogue's page-to-file placement and a per-business site binding, neither built yet",
+  ],
+  [
+    'apps/api/function.ts',
+    "the Vercel function entry, loaded by Vercel's Node.js runtime rather than imported",
+  ],
   [
     'apps/worker/main.ts',
     'the worker process entry (`pnpm worker`), started by node rather than imported',

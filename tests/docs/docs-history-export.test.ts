@@ -35,4 +35,5 @@ it('docs history checks skip in a source export', () => {
   } finally {
     rmSync(exported, { recursive: true, force: true });
   }
-});
+  // git archive, tar and a nested vitest run outlast the 5 s default on a loaded CI runner.
+}, 60_000);

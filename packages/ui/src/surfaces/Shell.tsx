@@ -12,6 +12,8 @@
 // and layout and may not own a session [ui-reference CONTRACT.md:305 rule 3].
 
 import type { ReactElement, ReactNode } from 'react';
+import { BrandMark } from '../primitives/BrandMark.tsx';
+import { Icon, type GlyphName } from '../primitives/Icon.tsx';
 
 export interface RailEntry {
   /** Namespace-qualified. Sixteen bare identifiers collide in the corpus. */
@@ -24,6 +26,8 @@ export interface DockTab {
   readonly id: string;
   readonly label: string;
   readonly open: boolean;
+  /** The panel's glyph, as the mockup registers each panel with one; the grid glyph when none is named. */
+  readonly icon?: GlyphName;
 }
 
 export interface ShellProps {
@@ -38,6 +42,11 @@ export interface ShellProps {
   /** Whether the open panel is seated as a grid track or floating over. */
   readonly seated: boolean;
   readonly panel?: ReactNode;
+  /**
+   * The build identifier, drawn at the foot of the rail (S0-1, line C2). Null
+   * is a build that carries none, and the rail says so rather than going blank.
+   */
+  readonly build: string | null;
   readonly children: ReactNode;
 }
 
@@ -46,9 +55,7 @@ export function Shell(props: ShellProps): ReactElement {
     <div className="shell" data-face={props.face} data-dock={props.seated ? 'seated' : 'floating'}>
       <nav className="rail" aria-label="Sections">
         <div className="rail__brand">
-          {/* The wordmark is a mask over an SVG in the pinned estate. No asset
-              ships here until the icon-and-font rights question is resolved
-              (#32), so the brand is its own words. */}
+          <BrandMark variant="wordmark" />
           <span className="rail__hub">Ops Astro</span>
         </div>
         <div className="rail__group">
@@ -68,6 +75,11 @@ export function Shell(props: ShellProps): ReactElement {
             </a>
           ))}
         </div>
+        {/* The version stamp's one fixed place. The browser rows read
+            `data-build` here and match it against the served build. */}
+        <p className="rail__build" data-build={props.build ?? ''}>
+          {props.build === null ? 'Build not stamped' : `Build ${props.build}`}
+        </p>
       </nav>
 
       <main className="main">
@@ -95,10 +107,15 @@ export function Shell(props: ShellProps): ReactElement {
               props.onDockTab(tab.id);
             }}
           >
-            {/* The icon slot. It carries the panel's initial until an icon set
-                with redistribution rights is resolved, rather than an emoji,
-                which the design system forbids outright. */}
-            <span aria-hidden="true">{tab.label.slice(0, 1)}</span>
+            {/* The icon slot: the panel's glyph from the licensed set (MP-1-2),
+                never an initial or an emoji. Decoration: the button's label
+                names the panel. */}
+            <Icon name={tab.icon ?? 'apps'} />
+            {/* The callout names the tab on hover and focus. The button's
+                label already says it, so the callout is hidden from it. */}
+            <span className="dock__tablabel" aria-hidden="true">
+              {tab.label}
+            </span>
           </button>
         ))}
         {props.panel}

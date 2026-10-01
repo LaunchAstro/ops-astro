@@ -46,6 +46,7 @@ import {
   probeValue,
   roomToApprove,
 } from '../acceptance/d06-cases.ts';
+import { DELEGATION_HEADER, pathOf } from '../../packages/core-wire/src/index.ts';
 import { createPositiveBody } from '../acceptance/role-case-positive-body.ts';
 import { grantTo } from '../commands/fixture.ts';
 import { d03Column } from './d06-mounted-d03.mjs';
@@ -176,34 +177,42 @@ try {
     return { id: String(created.body.recordId), revision: Number(created.body.revision) };
   };
   const alphaTask = await freshTask('a task every mounted cell can name');
-  const positiveBody = createPositiveBody({
-    alphaTaskId: alphaTask.id,
-    assigneePersonId: mia.personId,
-    asPerson: async (name, body) => await inPage(name, body),
-    freshTask,
-  });
-
   const agent = JSON.parse(readFileSync(`${root}.local/synthetic-agents.json`, 'utf8')).find(
     (entry) => entry.business === 'alpha',
   );
   let agentToken;
-  const agentPickup = async (reservationId) => {
+  /** The agent's own prefix on the live API, answered as the matrix's callers are. */
+  const asAgent = async (name, body, credential) => {
     agentToken ??= await fetch(`${gotrue()}/token?grant_type=password`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ email: agent.email, password: agent.password }),
     }).then(async (response) => (await response.json()).access_token);
-    const response = await fetch(`${API}/api/a/b/alpha/task/pickup`, {
+    const response = await fetch(`${API}/api/a/b/alpha${pathOf(name)}`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${agentToken}` },
-      body: JSON.stringify({ operationId: randomUUID(), reservationId }),
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${agentToken}`,
+        ...(credential === undefined ? {} : { [DELEGATION_HEADER]: credential }),
+      },
+      body: JSON.stringify({ operationId: randomUUID(), ...body }),
     });
-    const body = await response.json().catch(() => ({}));
-    if (response.status !== 200) {
-      throw new Error(`d06-mounted: agent pickup ${String(response.status)} ${body.code}`);
-    }
-    return (body.detail ?? body).delegationId;
+    const answer = await response.json().catch(() => ({}));
+    return { code: response.status === 200 ? 'ok' : answer.code, body: answer };
   };
+  const agentPickup = async (reservationId) => {
+    const picked = await asAgent('task.pickup', { reservationId });
+    if (picked.code !== 'ok') throw new Error(`d06-mounted: agent pickup ${picked.code}`);
+    return (picked.body.detail ?? picked.body).delegationId;
+  };
+
+  const positiveBody = createPositiveBody({
+    alphaTaskId: alphaTask.id,
+    assigneePersonId: mia.personId,
+    asPerson: async (name, body) => await inPage(name, body),
+    asAgent,
+    freshTask,
+  });
 
   /** A valid body, on work of its own, exactly as `d06-generated.test.ts` builds one. */
   const positive = async (name) => {

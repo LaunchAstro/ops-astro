@@ -66,7 +66,11 @@ The order of its checks matters:
    purpose-scoped to one task", and R1's own grant is business-wide. Without
    the stored scope, a call on a sibling task reaches that same grant and passes
    exactly as a call on the picked-up task does. A business- or party-scoped
-   request under a delegation is refused here too.
+   request under a delegation is refused here too. A collection may also carry
+   fewer actions than the delegation lists: `run` carries `write` only (MP-6-2,
+   `CEILING` in `delegations.ts`), so a delegation that reaches `run` answers
+   any other action on it here, and a mint that asks `run` for no `write` is
+   `DELEGATION_WIDENS` naming the ceiling.
 3. `DELEGATION_ALREADY_LIVE`: the agent already holds a live delegation for
    this purpose. `delegations_one_live_per_purpose_idx` (`0008:195`) is unique
    on `(business_id, agent_actor_id, purpose)` where
@@ -114,6 +118,7 @@ pinned, so a rearrangement behind it is not a change to what L3 imports.
 ```ts
 // authority/delegations.ts
 mintDelegation(tx, MintRequest): Promise<DelegationDecision<MintedDelegation>>
+mintChildDelegation(tx, parent: Delegation, ChildMintRequest): Promise<DelegationDecision<MintedDelegation>>
 resolveDelegation(tx, agentActorId: string, credential: string): Promise<DelegationDecision<Delegation>>
 checkDelegatedAuthority(tx, delegation: Delegation, request: ScopeRequest): Promise<DelegationDecision<readonly string[]>>
 revokeDelegation(tx, delegationId: string, cause?: RevocationCause): Promise<Date | null>
@@ -123,7 +128,7 @@ digestOf(credential: string): string
 type DelegationRefusalCode =
   | 'DELEGATION_EXCLUDES_DECISION' | 'DELEGATION_OUT_OF_PURPOSE'
   | 'DELEGATION_NARROWED' | 'DELEGATION_NOT_LIVE' | 'DELEGATION_WIDENS'
-  | 'DELEGATION_ALREADY_LIVE'
+  | 'DELEGATION_ALREADY_LIVE' | 'DELEGATION_EXPIRED' | 'DELEGATION_REVOKED'
 type RevocationCause = 'authority_lost' | 'delegation_revoked' | 'work_retired' // absent: 'delegation_revoked'
 type DelegationDecision<T> = { ok: true; value: T } | { ok: false; refusal: DelegationRefusal }
 
@@ -216,6 +221,7 @@ code on this head, and where that is shown.
 | `AUTH_NO_AGENT_IDENTITY`                                                     | 401    | yes                                                                                                                    |
 | `AUTH_SESSION_EXPIRED`                                                       | 401    | yes, on both prefixes; this is the re-login path                                                                       |
 | `DELEGATION_EXCLUDES_DECISION`                                               | 403    | yes                                                                                                                    |
+| `DELEGATION_EXCLUDES_INTAKE`                                                 | 403    | yes: an agent's `task.triage`, the intake operation (minimum contract 6.1)                                             |
 | `DELEGATION_EXCLUDES_OPERATION`                                              | 403    | yes; see below                                                                                                         |
 | `DELEGATION_OUT_OF_PURPOSE`                                                  | 403    | yes                                                                                                                    |
 | ↳ _also_ when `request.scope` is not exactly the delegation's `purposeScope` | 403    | yes                                                                                                                    |
@@ -223,6 +229,8 @@ code on this head, and where that is shown.
 | `DELEGATION_NOT_LIVE`                                                        | 401    | yes                                                                                                                    |
 | `DELEGATION_WIDENS`                                                          | 403    | yes: `grant.revoke` on the approving person's grant, or that grant's expiry, between approval and the agent's pickup   |
 | `DELEGATION_ALREADY_LIVE`                                                    | 409    | yes, at mint time; see below                                                                                           |
+| `DELEGATION_EXPIRED`                                                         | 403    | yes: a child's parent ran out (see [Sub-delegation](#sub-delegation-aw-11))                                            |
+| `DELEGATION_REVOKED`                                                         | 403    | yes: a child's parent was withdrawn or handed back                                                                     |
 | `PRESET_FIELD_UNCLASSIFIED`                                                  | 422    | yes, with the field keys                                                                                               |
 | `PRESET_TYPE_UNKNOWN`                                                        | 404    | yes                                                                                                                    |
 | `PRESET_FIELD_UNPLACEABLE`                                                   | 409    | yes                                                                                                                    |
@@ -297,6 +305,78 @@ twenty runtime codes ("is not one of the runtime codes"). The runtime passes
 it through from the authority layer, the same way `DELEGATION_NOT_LIVE` and
 `DELEGATION_OUT_OF_PURPOSE` travel, and does not own its status.
 
+## Sub-delegation (AW-11)
+
+An agent holding a delegation may hand part of its work to a helper agent
+through `mintChildDelegation`: `run:write` inside its own delegation, depth
+one, the parent's person, authoriser and record, and an operation set that
+is a strict subset of the parent's (every collection and action the
+parent's, at least one of the two fewer). The mint re-reads the parent under
+a share lock, so a revocation in flight either lands first and is named or
+waits for the mint.
+
+The database holds the same rules for the application role
+(`delegations_child_within_parent`, 0205), and fixes a delegation's
+operation set, purpose, scope, person, authoriser and parent at mint
+(`delegations_set_is_fixed`); only `expires_at`, revocation and settlement
+move. Token claims add nothing (the U6 fallback): every call a child makes
+re-reads its parent in the serving transaction and asks it the same question
+(`checkDelegatedAuthority`), so the parent's state bites at the child's next
+call: handed back or withdrawn is `DELEGATION_REVOKED`, run out is
+`DELEGATION_EXPIRED`, its person's authority lost is `DELEGATION_NARROWED`.
+The child's own credential, once not live, stays `DELEGATION_NOT_LIVE`.
+
+A child spends on its parent's work, never on a lease of its own: its
+`model.call` names the parent's lease and fence, and the broker admits the
+lease's holder under its delegation or a helper holding a live child of that
+delegation (`holdsWork`, `core-custody/src/broker-facts.ts`), so the call is
+held on the parent's reservation under the parent's locks and one ceiling
+covers both. An exhausted envelope stops the child as it stops the parent
+(`BUDGET_UNAVAILABLE` with the budget wait); a pickup by the helper mints no
+second delegation; a parent that runs out ends the child's calls with
+`DELEGATION_EXPIRED` and its settled calls stay on the ledger.
+
+The hand-over and the merged result are `core-runtime/src/child-work.ts`.
+`delegateChild` hands part of the work over on the parent's own lease, at its
+own fence: the task, lease and parent delegation are locked, the heartbeat's
+owner check (`recheckOwner`) binds the parent to that lease, the child is
+minted as above and never past the lease's expiry, and a `delegated` run event
+is written (`0206`). The helper's one answer carries the business, the
+resource (task, run, lease, fence, reservation), the approved version and task
+revision, its own `collection:action` set, the parent's envelope, its actor
+scope and expiry, the run's pinned bootstrap file or `null`, and what it cannot
+do. `handBackChild` takes the helper's own credential (agent and digest
+together): completed work, or partial work naming a registered refusal, lands
+on the parent's run as `child_handed_back` and settles the child; a revoked or
+run-out child may still hand back, since a handback grants nothing, and the
+parent's lease is untouched. `childResults` is the parent's view: working,
+handed back with its outcome, or dropped with the fault named
+(`DELEGATION_EXPIRED`, `DELEGATION_REVOKED`, `DELEGATION_NARROWED`); nothing
+re-delegates on a guess.
+
+Both are agent operations (`commands/agent-child.ts`; API.md, "The hand-over
+and the handback"). `run.delegate_child` is a `record` row on the lease's
+task: `authorise` resolves the parent from the caller's own credential and
+asks `run:write` of it there, so a parent the body could name does not exist,
+and the runtime then binds that delegation to the lease at its fence.
+`run.child_handback` is the one `helper` row: no grant is asked, the
+presented credential itself is the authority and `handBackChild` binds it to
+the caller's login. Neither credential reaches the register: a hand-over's
+replay re-authorises the parent, finds the child still live and its own, and
+derives the child's credential again under its pinned key; a handback's
+replay is released only to the same helper presenting the same credential.
+A person is refused both `SCOPE_NOT_GRANTED`.
+
+A person sees the helpers under the parent's run on `task.execution` (API.md,
+the execution graph): each helper's standing by the same rule, and its steps,
+the calls the broker records with the caller's own delegation beside the
+lease's (`model_calls.caller_delegation_id`, `0209`). When the parent's lease
+runs out, the child it was capped at runs out with it and its credential is
+`DELEGATION_NOT_LIVE`; the sweep brings the work back, and a replacement parent
+picks it up and hands a new helper the work. The old child is never resumed.
+
+Not built yet: an unplanned helper step against AW-06's planned layer.
+
 ## The expired session
 
 The HTTP door (`apps/api/app.ts`) answers a verified GoTrue token that has
@@ -368,11 +448,11 @@ fields and client-audience comments only".
   its content and the next call is `AUTH_NO_MEMBERSHIP`.
 - **The seed enrols one.** `scripts/local-seed.mjs` adds an entry with
   `role: 'external'` to `.local/synthetic-users.json` and creates its GoTrue
-  user (`:659-689`, run at `:819-827`). It gets a login and an acting identity,
-  and no membership and no business grant (`:114-117`, `:266-268`). The seed
+  user (`:667-703`, run at `:832-840`). It gets a login and an acting identity,
+  and no membership and no business grant (`:135-138`, `:288-290`). The seed
   makes no task, so it shares one only when rerun with `LOCAL_SEED_SHARE_TASK`
   naming a task, through `shareRecord` under the admin's own `share` grant
-  (`:700-720`, `:854-864`).
+  (`:710-734`, `:874-884`).
 - **Standing checks raw liveness.** Resolution asks whether a share grant is
   revoked or expired, not the `EFFECTIVE` chain in `grants.ts`. `shareRecord`
   issues root grants only, so the two agree today; a derived share under a
@@ -504,12 +584,13 @@ than as an answer about the preset. D05 says so, and the test counts
 landed contracts read without having. `records/business-settings.ts` produces
 the named rows:
 
-| Key                        | Default             | Write mode  | Why                                                              |
-| -------------------------- | ------------------- | ----------- | ---------------------------------------------------------------- |
-| `four_eyes_threshold`      | `500`, `null` = off | `operation` | changes who must agree before money moves                        |
-| `client_sign_off_required` | `false`             | `operation` | changes who must agree before work completes                     |
-| `retention_window_days`    | `30`                | `generic`   | policy an administrator sets; read by `task.purge` as its window |
-| `conversation_window_days` | `30`                | `generic`   | policy an administrator sets                                     |
+| Key                        | Default             | Write mode  | Why                                                               |
+| -------------------------- | ------------------- | ----------- | ----------------------------------------------------------------- |
+| `four_eyes_threshold`      | `500`, `null` = off | `operation` | changes who must agree before money moves                         |
+| `client_sign_off_required` | `false`             | `operation` | changes who must agree before work completes                      |
+| `live_correction_approver` | `null` = no one     | `operation` | names the one staff account that approves a live correction (C80) |
+| `retention_window_days`    | `30`                | `generic`   | policy an administrator sets; read by `task.purge` as its window  |
+| `conversation_window_days` | `30`                | `generic`   | policy an administrator sets                                      |
 
 The classification matters here, not the values. A setting that decides
 whether a second approver is needed changes authority, the same category the
@@ -525,9 +606,10 @@ body naming `olderThanDays` is refused `COMMAND_BODY_INVALID`
 and no accepted source names one for the work window (C122-1's seven-day floor
 is the conversation window's). `conversation_window_days` and
 `client_sign_off_required` still have no consumer among the first slice's
-operations. `four_eyes_threshold` has one: above it, `budget.top_up` needs a
+operations. `four_eyes_threshold` has two: above it, `budget.top_up` needs a
 second approver, a different person holding `billing:decide` on the task
-(T2e, `core-runtime/src/budget.ts`).
+(T2e, `core-runtime/src/budget.ts`), and so does AW-05's top-up at the budget
+stop, `run.top_up`, which reads it under its locks ([RUNTIME.md](RUNTIME.md)).
 
 **Every setting has a revision** (0020), for the reason a record has one: two
 administrators editing one row from two browser tabs both wrote, and the second
@@ -575,8 +657,10 @@ is the grant manager's, within its own ceiling, and no actor gains a power:
   grant, the caller must hold `manage` on the grant's collection and the
   grant's own (collection, action), both live and both at a scope covering
   the grant's. For a delegation, the same test runs for every (collection,
-  action) the delegation reaches, at its purpose scope. A manager without
-  `share` cannot revoke a `share` grant.
+  action) the delegation reaches, at its purpose scope; a pair on `run` is
+  asked on `task` there, since run reach exists only inside a task delegation
+  on that task and no one holds `run:manage` (MP-6-2, ORCH34). A manager
+  without `share` cannot revoke a `share` grant.
 - `revokeGrant` and `revokeDelegation` write `revoked_at` and now return the
   instant they wrote, or null when they wrote nothing. A second revocation is
   `TRANSITION_NOT_PERMITTED` for a grant and `DELEGATION_NOT_LIVE` for a
@@ -683,6 +767,29 @@ foreign and a fabricated id get the same answer (`SCOPE_OF.claim`,
 lineage is `TRANSITION_NOT_PERMITTED` 409, the same code a second
 grant revocation answers.
 
+AW-05's two answers at the budget stop are authorised the same way as
+`task.cancel`: on the task named in `recordId`, `decide` on `billing` for
+`run.top_up` and `decide` on `gate` for `run.end_at_budget_stop`. The handler
+refuses a run that is not on that task with the bytes a made-up run gets, and
+the runtime asks the same pair of the run's own task again under the run's
+locks. No agent holds `decide`, and neither row is in the agent's reach. The
+seed gives both pairs to `admin` only (`scripts/local-seed.mjs`).
+
+AW-04's `budget.set_planning_cap` asks `decide` on `billing` of the business
+as a whole (`authorisedOn: 'business'`), so a `billing:decide` grant on one
+task does not reach it: only a business-wide holder, which the seed makes the
+owner and administrators. It is not in the agent's reach.
+
+MP-6-2's `run.revise_state` asks `write` on `run` of the task named in
+`recordId` (ORCH33: `run:write` is the only key on `run`; its reads stay
+`task:read`; C80's `live_correction.read` asks the request's own `run:write`
+at the correction's party). The handler refuses a run on another task with the
+bytes a made-up run gets. An agent reaches it only under a delegation minted
+with `run`, which pickup mints where the delegating person holds `run:write` and
+holds to `write` alone; the agent is the recorded actor. The seed gives
+`run:write` to the owner and administrators, beside `conversation:write`
+(ORCH38).
+
 ## The restricted worker role
 
 `ops_astro_worker` (0008) exists at the database level with no privilege
@@ -696,6 +803,17 @@ through a privilege the worker holds itself.
 call every table and function as `ops_astro_worker`, beside the application
 login, the application group and an outsider, at the full schema and at every
 migration prefix ([DATA.md](DATA.md#what-the-tenancy-proofs-are)).
+
+## Attribution by digest (AW-04)
+
+`definition.attribution` asks `read` on tasks the way `gate.pending` asks
+`decide`: the door takes any grant, and the statement that reads the runs
+keeps only those whose task the caller's `read` covers (`coveredScopes`), so a
+record-scoped member sees its own tasks' runs and no other's. It is the team's,
+as the queue's alerts and outages are: a client, a contractor and anyone
+holding no `read` on tasks get `SCOPE_NOT_GRANTED`, never an empty list. An
+agent has no route to it (`DELEGATION_EXCLUDES_OPERATION`). Every row is
+labelled pre-review; see [API.md](API.md).
 
 ## What is not here
 
