@@ -19,6 +19,7 @@ import type { Browser } from 'playwright';
 import { createServer } from 'vite';
 import { load, openSide, shoot, type Catalogue, type Side } from './capture.ts';
 import { scrollMetrics } from './drift.ts';
+import { answerMadeUp } from './made-up-api.ts';
 import type { Packet, Theme } from './packet.ts';
 import {
   addressOf,
@@ -82,6 +83,8 @@ export async function captureBuiltPages(options: {
       // A public page (sign-in) is drawn signed out, a working page signed in.
       const signedOut = await openSide(browser, packet, width, { app, colorScheme: theme });
       const signedIn = await openSide(browser, packet, width, { app, session, colorScheme: theme });
+      // Made-up reads first; a page's own answers are routed after, so they are asked first.
+      await answerMadeUp(signedIn.context);
       for (const side of [signedOut, signedIn]) await answer(side, options.answers ?? {});
       try {
         const sides = { signedOut, signedIn };

@@ -102,6 +102,7 @@ function AccessLists(props: {
   readonly result: AccessReadResult;
   readonly busy: boolean;
   readonly act: Act;
+  readonly outcome: ReactElement | null;
 }): ReactElement {
   const { client, result, act } = props;
   const { confirmations, onEnd, onRevokeGrant } = usePending(client, act);
@@ -109,11 +110,20 @@ function AccessLists(props: {
   const lists = { clients, onEnd, onRevokeGrant };
   return (
     <>
-      {confirmations(result)}
-      <People id="team" title="Team" people={result.team} {...lists} />
-      <People id="clients" title="Clients" people={result.clients} {...lists} />
-      <Agents result={result} onRevoke={revokeWith(client, act)} />
-      <GiveAccess result={result} busy={props.busy} onGive={giveWith(client, act)} />
+      <section className="sec">
+        <h2 className="sec__head">Who may do what</h2>
+        <p className="card__sub">In {client.businessKey}, as the server grants it now.</p>
+        {props.outcome}
+        <div className="stack" data-access-lists>
+          {confirmations(result)}
+          <People id="team" title="Team" people={result.team} {...lists} />
+          <People id="clients" title="Clients" people={result.clients} {...lists} />
+          <Agents result={result} onRevoke={revokeWith(client, act)} />
+        </div>
+      </section>
+      <section className="sec">
+        <GiveAccess result={result} busy={props.busy} onGive={giveWith(client, act)} />
+      </section>
     </>
   );
 }
@@ -136,24 +146,26 @@ export function AccessScreen(props: AccessScreenProps): ReactElement {
       if (failure === null) reload();
     })();
   };
+  // The top bar names the page; the body is the page kit's sections (PAGE-MAP SH-40 to 44).
   return (
-    <div className="stack" data-screen="access" data-business={client.businessKey}>
-      <header className="tpr">
-        <h2 className="tpr__title">Access</h2>
-        <div className="card__sub">
-          Who may do what in {client.businessKey}, as the server grants it now.
-        </div>
-      </header>
+    <div className="secs" data-screen="access" data-business={client.businessKey}>
       <RecordState state={state} subject="access list" onRetry={reload}>
         {(result) => (
-          <>
-            {outcome === null ? null : (
-              <p className="card__sub" role="status" data-access-outcome>
-                {outcome}
-              </p>
-            )}
-            <AccessLists client={client} result={result} busy={busy} act={act} />
-          </>
+          <div className="secs">
+            <AccessLists
+              client={client}
+              result={result}
+              busy={busy}
+              act={act}
+              outcome={
+                outcome === null ? null : (
+                  <p className="card__sub" role="status" data-access-outcome>
+                    {outcome}
+                  </p>
+                )
+              }
+            />
+          </div>
         )}
       </RecordState>
     </div>
