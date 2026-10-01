@@ -174,7 +174,7 @@ describe('WEB.md on the dock', () => {
     const shell = read('packages/ui/src/surfaces/Shell.tsx');
     expect(shell).toContain('aria-expanded={tab.open}');
     expect(shell).toContain("tab.open ? 'Close' : 'Open'");
-    expect(read('apps/web/src/App.tsx')).toContain(
+    expect(read('apps/web/src/panels.ts')).toContain(
       "here === target ? pathTo('agency:projects-board') : target",
     );
     expect(folded(read(WEB_DOC))).toContain('An open dock tab is announced as "Close');

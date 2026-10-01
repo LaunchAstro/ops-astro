@@ -20,6 +20,7 @@ import type {
   AssistantOffer,
   AssistantPanelProps,
 } from './assistant/types.ts';
+import { Icon } from '../primitives/Icon.tsx';
 import { Asker } from './assistant/asker.tsx';
 import { TabRow } from './assistant/tab-row.tsx';
 import { Transcript } from './assistant/transcript.tsx';
@@ -75,6 +76,7 @@ function Head(props: {
   return (
     <header className="aip__head">
       <div className="aip__id">
+        <Icon name="sparkles" />
         <span className="aip__title">Agent</span>
         <ModelPicker chat={props.chat} offer={props.offer} onModel={props.onModel} />
       </div>
@@ -89,11 +91,11 @@ function Head(props: {
             if (props.chat !== undefined) props.onAddPage(props.chat.key);
           }}
         >
-          <span aria-hidden="true">Page</span>
+          <Icon name="eye" size="sm" />
         </button>
         <span className="aip__actdiv" aria-hidden="true" />
         <button
-          className="aip__act"
+          className="aip__act aip__x"
           type="button"
           data-assistant="close"
           title="Close the panel"
@@ -102,7 +104,7 @@ function Head(props: {
             props.onClose();
           }}
         >
-          <span aria-hidden="true">×</span>
+          <Icon name="cross-small" />
         </button>
       </div>
     </header>

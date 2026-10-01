@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// AW-01 on the database, continued from aw-01-broker.test.ts: recovery after
-// custody is lost, the copy register, and the three isolation crossings.
+// AW-01 on the database, continued from aw-01-broker.test.ts: unknown liability
+// held by the lease-expiry sweep, the copy register, and the three isolation
+// crossings.
 
 import { expect, it as vitestIt } from 'vitest';
 import { randomUUID } from 'node:crypto';
@@ -43,7 +44,7 @@ const it = noDatabase ? vitestIt.skip : vitestIt;
 
 useBrokerWorld('aw01isolation');
 
-it('AW-01 recovery: the sweep holds a started call and releases one never sent', async () => {
+it('AW-01 unknown liability held: the sweep holds a started call and releases one never sent', async () => {
   const work = await liveWork(s, 'swept', 2_000);
   const step = await stepOf(work);
   const [started, unsent] = [randomUUID(), randomUUID()];

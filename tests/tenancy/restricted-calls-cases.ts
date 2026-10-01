@@ -71,9 +71,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // AW-02: a historical run is never rewritten; the application moves its
   // state alone, by the column grant in COLUMN_UPDATES.
   ['si', 'planned_runs'],
-  ['siu', 'outage_reports outage_runs reservations task_envelopes'],
-  // C80: a live correction (a decision is an update), and its receipts, append only.
-  ['siu', 'live_corrections'],
+  // C80's live_corrections take updates (a decision is one); its receipts are append only.
+  ['siu', 'live_corrections outage_reports outage_runs reservations task_envelopes'],
   ['si', 'live_correction_receipts'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
   // 0028 revokes delete on these two: identity history is kept (0002).
@@ -100,10 +99,7 @@ const REVOKED: Readonly<Record<string, { readonly from: string; readonly letters
   'public.planned_runs': { from: '0192', letters: 'u' },
 };
 
-/**
- * Update granted column by column: the table, the columns, and the first migration that
- * grants them. Every other column-level privilege, to any role, is outside the contract.
- */
+/** Update granted by column: table, columns, first migration. Any other column grant is outside. */
 const COLUMN_UPDATES: Readonly<
   Record<string, { readonly from: string; readonly columns: readonly string[] }>
 > = {
@@ -119,22 +115,17 @@ export function columnUpdatesAt(at?: string): readonly string[] {
 }
 
 /**
- * Every other column grant, from the migration that made it: the occurrence role reads a
- * task's revision for 0032's trigger (AW-01 J, 0203), the application writes the outbox's
- * four columns alone (S0-2, 0047), and the lookup reads a business's id and key (G2, 0046).
+ * Every other column grant, from the migration that made it: the occurrence role
+ * reads a task's revision for 0032's trigger (AW-01 J, 0203); batch 1's lookup
+ * reads a business's id and key (0046); the application inserts the outbox (0047).
  */
-const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: string }[] = [
-  ...['business_id', 'id', 'revision'].map((column) => ({
-    from: '0203',
-    line: `${OCCURRENCE_ROLE} SELECT public.records.${column}`,
-  })),
-  ...['event', 'kind', 'scope', 'weight'].map((column) => ({
-    from: '0047',
-    line: `ops_astro_app INSERT ops.api_events.${column}`,
-  })),
-  { from: '0046', line: 'ops_astro_lookup SELECT public.businesses.id' },
-  { from: '0046', line: 'ops_astro_lookup SELECT public.businesses.key' },
-];
+const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: string }[] = (
+  [
+    ['0203', `${OCCURRENCE_ROLE} SELECT public.records`, ['business_id', 'id', 'revision']],
+    ['0046', 'ops_astro_lookup SELECT public.businesses', ['id', 'key']],
+    ['0047', 'ops_astro_app INSERT ops.api_events', ['event', 'kind', 'scope', 'weight']],
+  ] as const
+).flatMap(([from, grant, columns]) => columns.map((c) => ({ from, line: `${grant}.${c}` })));
 
 export function roleColumnGrantsAt(at?: string): readonly string[] {
   return ROLE_COLUMN_GRANTS.filter((grant) => at === undefined || at.slice(0, 4) >= grant.from)

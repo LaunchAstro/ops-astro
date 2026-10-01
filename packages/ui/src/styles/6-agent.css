@@ -63,17 +63,18 @@
   background: var(--warning);
 }
 .gate__word {
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
-  text-transform: uppercase;
-  letter-spacing: var(--tracking-label);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
   color: var(--text);
 }
 .gate__say {
   margin: 0.3rem 0 0;
-  font-size: var(--text-sm);
   color: var(--text-2);
   max-width: 74ch;
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
 
 .sout__box {
@@ -83,32 +84,39 @@
   gap: var(--s-3);
 }
 .sout__where {
-  font-size: var(--fs-mono-sm);
   color: var(--ink-faint);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
 }
 .sout__row {
   display: grid;
   gap: 0.3rem;
 }
 .sout__v {
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
   color: var(--text-2);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 .sout__t {
-  font-size: var(--text-sm);
-  line-height: 1.5;
   color: var(--text);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
 .sout__meta {
-  font-size: var(--fs-mono-sm);
   color: var(--ink-faint);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
 }
 .sout__say {
-  font-size: var(--text-sm);
   color: var(--text-muted);
   margin: 0;
-  line-height: 1.45;
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
 
 /* The diff is two stacked halves, not side by side: the dock's panel is 380px
@@ -151,8 +159,10 @@
   gap: 0.25rem;
 }
 .sout__adname {
-  font-size: var(--text-sm);
   color: var(--text);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
 .sout__band {
   color: var(--text-muted);
@@ -192,9 +202,10 @@
 }
 .trs__say {
   margin: 0;
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
   color: var(--text);
+  font: var(--type-small-strong);
+  letter-spacing: var(--type-small-strong-tracking);
+  text-transform: var(--type-small-strong-case);
 }
 /* MP-6-2: the run's figures (the mockup's `.tph__stats`, taskrun.js runHero). */
 .tph__stats {
@@ -238,9 +249,11 @@
   padding-bottom: 0;
 }
 .trs__v {
-  font-size: var(--text-sm);
   color: var(--text);
   overflow-wrap: anywhere;
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
 .trs__snap {
   color: var(--text-muted);
@@ -341,12 +354,16 @@
   min-width: 0;
 }
 .wf__t {
-  font-size: var(--text-sm);
   color: var(--text);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
 .wf__fail {
-  font-size: var(--text-overline);
   color: var(--danger);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
 }
 .wf__state {
   flex: none;
@@ -359,8 +376,9 @@
 .wf__parlab {
   display: block;
   padding-top: var(--s-1);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
 }
 .wf__par .wf__row:first-of-type {
   border-top: 0;
@@ -395,9 +413,10 @@
   align-items: center;
   gap: 0.4rem;
   flex-wrap: wrap;
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
   color: var(--text-2);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 .mstamp__lock {
   inline-size: 0.6rem;
@@ -416,15 +435,18 @@
   color: var(--accent);
 }
 .mstamp__say {
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
   color: var(--ink-faint);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 
 /* C36: a conversation at its own address, and the drawer's link to it. */
 .aip__address {
   padding: var(--s-2) var(--s-5) 0;
-  font-size: var(--text-overline);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
 }
 .convrec {
   display: grid;
@@ -437,8 +459,12 @@
 .convrec__who {
   color: var(--text-muted);
 }
+/* The drawer's transcript at the conversation's own address: its messages
+   wear `.aip__msg` (AI-09), the agent's on the left and the person's on the
+   right, so the column is a flex column as the drawer's is. */
 .convrec__log {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: var(--s-3);
   margin: 0;
   padding: 0;
@@ -474,7 +500,9 @@
 }
 .tokpanel__by {
   color: var(--text-muted);
-  font-size: var(--text-overline);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
 }
 .tokpanel__chips,
 .tokrun__skills {
@@ -490,14 +518,14 @@
   background: none;
   cursor: not-allowed;
   color: var(--text-muted);
-  text-transform: none;
 }
 .tokest__n,
 .tokrun__n {
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
   font-variant-numeric: tabular-nums;
   color: var(--text);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 .tokpanel .tt__bar {
   height: 4px;
@@ -513,10 +541,11 @@
 }
 .brn__over {
   flex: none;
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
   color: var(--danger);
   white-space: nowrap;
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 .tokruns {
   display: grid;
@@ -552,10 +581,11 @@
 }
 /* The run id keeps its case: mono family, never `.u-mono`, never truncated. */
 .tokrun__model {
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
   color: var(--text-2);
   word-break: break-word;
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 .tokrun__io {
   display: inline-flex;
@@ -567,7 +597,9 @@
 .tokrun__when,
 .tokpanel__reason {
   color: var(--text-muted);
-  font-size: var(--text-overline);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
 }
 .tokpanel__reason {
   margin: 0;
