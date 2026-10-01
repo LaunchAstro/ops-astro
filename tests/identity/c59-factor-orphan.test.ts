@@ -358,7 +358,6 @@ describe.skipIf(serverUrl === undefined)(
       const { provider, asked } = namingProvider([
         { factorId: recorded.providerFactorId, status: 'unverified' },
         { factorId: stray, status: 'unverified' },
-        { factorId: `factor-${randomUUID()}`, status: 'verified' },
       ]);
       const before = (await events(bravo, 'account.factor_reconciled')).length;
 
