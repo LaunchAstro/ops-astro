@@ -55,6 +55,10 @@ export function addressOf(
 /** Whether drawing the page needs a signed-in session. */
 export const needsSession = (page: string): boolean => ROUTES[page]?.authenticated ?? false;
 
+/** The screen a built page should draw: sign-in draws its form, every other page itself. */
+export const intendedScreen = (page: string): string =>
+  page === 'agency:sign-in' ? 'the sign-in form' : 'the page';
+
 /** The registered page an address draws, or undefined when none does. */
 export const pageAt = (path: string): string | undefined =>
   Object.keys(ROUTES).find((page) => ROUTES[page]?.path === path);

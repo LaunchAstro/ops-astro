@@ -20,7 +20,14 @@ import { createServer } from 'vite';
 import { load, openSide, shoot, type Catalogue, type Side } from './capture.ts';
 import { scrollMetrics } from './drift.ts';
 import type { Packet, Theme } from './packet.ts';
-import { addressOf, builtPages, needsSession, overflowOf, type PageShot } from './report.ts';
+import {
+  addressOf,
+  builtPages,
+  intendedScreen,
+  needsSession,
+  overflowOf,
+  type PageShot,
+} from './report.ts';
 
 /** The app served from source by its own Vite config, at a free local port. */
 export async function serveApp(): Promise<{ app: URL; close: () => Promise<void> }> {
@@ -132,7 +139,7 @@ async function capturePages(
     const side = needsSession(id) ? sides.signedIn : sides.signedOut;
     const page = await load(side, packet, new URL(address, app).href);
     // The intended screen is checked before the picture counts.
-    const intended = id === 'agency:sign-in' ? 'the sign-in form' : 'the page';
+    const intended = intendedScreen(id);
     const drew = await page.evaluate(screenOf);
     const [shot] = await shoot(page, name, { page: 'viewport' }, mask);
     const overflow = overflowOf(await page.evaluate(scrollMetrics));
