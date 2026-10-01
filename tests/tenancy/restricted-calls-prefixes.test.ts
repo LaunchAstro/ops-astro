@@ -202,6 +202,8 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   },
   // 0067: nothing in the journey saves a preference yet.
   'public.person_preferences': { person_id: randomUUID(), key: 'appearance', value: '"dark"' },
+  // 0341: nothing in the journey opens a team conversation (C71-D).
+  'public.team_conversation_members': { conversation_id: randomUUID(), person_id: randomUUID() },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;

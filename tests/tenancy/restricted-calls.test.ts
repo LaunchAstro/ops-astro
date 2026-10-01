@@ -147,6 +147,13 @@ const UNREACHED: Readonly<Record<string, string>> = {
        (business_id, person_id, state, reason)
      select business_id, id, 'away', 'restricted calls seed'
        from public.people where business_id = $1 order by id limit 1 returning 1`,
+  // 0341: nothing in the journey opens a team conversation (C71-D); the member
+  // row names a record and a person of the business.
+  'public.team_conversation_members': `insert into public.team_conversation_members
+       (business_id, conversation_id, person_id)
+     select r.business_id, r.id, p.id
+       from public.records r join public.people p on p.business_id = r.business_id
+      where r.business_id = $1 order by r.id, p.id limit 1 returning 1`,
   // Nothing in the journey raises an inbox item yet (INB-1b does), so one item,
   // its recipient's attention row and one attempt are written here, in order.
   'public.inbox_items': `insert into public.inbox_items

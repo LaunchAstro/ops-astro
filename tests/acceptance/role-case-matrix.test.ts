@@ -298,6 +298,17 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
           );
           continue;
         }
+        if (declaration.name === 'chat.mark_read' && grants !== undefined) {
+          // C71-D: the reader's own marker, no grant asked, so nobody is R2 for it.
+          except(
+            caller.name,
+            'e-no-grant',
+            declaration.name,
+            'not applicable: the reader’s own read marker; a conversation they are not ' +
+              'in is NOT_FOUND in tests/api/c71-d-direct-messages.test.ts',
+          );
+          continue;
+        }
         if (declaration.authorisedOn === 'self' && grants !== undefined) {
           // The person menu's two (C23): `account:write` and the caller's own
           // name are every signed-in person's, on their own account only, so a
