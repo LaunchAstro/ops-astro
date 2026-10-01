@@ -182,7 +182,10 @@ export function createForwarder(options: ForwarderOptions): {
     await options.database.transaction(async (execute) => await deliver(execute, options));
     const beat = await options.heartbeat?.();
     // Only a ping the watcher took completes a pass: failed, refused or not set is silence.
-    if (beat !== undefined && beat !== 'sent') throw new Error(`the heartbeat was ${String(beat)}`);
+    // `not due` is a paced pass inside its wait (OPS_HEARTBEAT_EVERY_MS): complete, no ping.
+    if (beat !== undefined && beat !== 'sent' && beat !== 'not due') {
+      throw new Error(`the heartbeat was ${String(beat)}`);
+    }
     return done;
   }
 

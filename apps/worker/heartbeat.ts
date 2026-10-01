@@ -62,16 +62,20 @@ export function offEgress(
 }
 
 const EVERY = 'OPS_HEARTBEAT_EVERY_MS';
+const DAY = 86_400_000;
 
 /**
  * The least time between two pings to one address (`OPS_HEARTBEAT_EVERY_MS`),
  * so a free watcher's budget holds (NATHAN-GLITCHTIP 4); 0 when unset or empty,
- * every pass pinging as before. A malformed value, as words naming the setting.
+ * every pass pinging as before. A malformed value or one over a day, as words
+ * naming the setting. Set it a few minutes under the watcher's window: a ping
+ * lands up to one pass after the gap.
  */
 export function heartbeatEvery(env: Readonly<Record<string, string | undefined>>): number | string {
   const value = env[EVERY] ?? '';
   if (value === '') return 0;
   if (!/^[0-9]+$/u.test(value)) return `${EVERY} is not a whole number of milliseconds`;
+  if (Number(value) > DAY) return `${EVERY} is more than a day`;
   return Number(value);
 }
 
@@ -83,7 +87,7 @@ export function heartbeatEvery(env: Readonly<Record<string, string | undefined>>
 export function paced(
   every: number,
   send: (address: string | undefined) => Promise<string> = ping,
-  now: () => number = Date.now,
+  now: () => number = () => performance.now(),
 ): (address: string | undefined) => Promise<string> {
   if (every <= 0) return send;
   const last = new Map<string, number>();
@@ -91,7 +95,8 @@ export function paced(
     const key = address ?? '';
     const at = now();
     const before = last.get(key);
-    if (before !== undefined && at - before < every) return 'not due';
+    // A clock that went back (an injected one, or a host's) counts as due.
+    if (before !== undefined && at >= before && at - before < every) return 'not due';
     const outcome = await send(address);
     if (outcome === 'sent') last.set(key, at);
     return outcome;
