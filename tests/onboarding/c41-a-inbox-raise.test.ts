@@ -85,6 +85,14 @@ describe.skipIf(serverUrl === undefined)('C41-A inbox raise', () => {
     expect(answer.status, JSON.stringify(answer.body)).toBe(200);
   };
 
+  const revisionOf = async (taskId: string): Promise<number> => {
+    const [task] = await controls.fixture.db.admin.execute<{ readonly revision: string }>(
+      'select revision::text as revision from public.records where id = $1',
+      [taskId],
+    );
+    return Number(task?.revision);
+  };
+
   // Every item on this onboarding's tasks, read as the database holds it.
   const itemsOn = async (steps: Map<string, string>): Promise<readonly Item[]> => [
     ...(await controls.fixture.db.admin.execute<Item>(
@@ -106,6 +114,8 @@ describe.skipIf(serverUrl === undefined)('C41-A inbox raise', () => {
     await db.app.withBusiness(business, async (tx) => {
       await grantTo(tx, admin, 'write', whole, false, 'record');
       await grantTo(tx, assignee, 'write', whole, false, 'task');
+      await grantTo(tx, assignee, 'assign', whole, false, 'task');
+      await grantTo(tx, admin, 'share', whole, false, 'task');
     });
     clientA = await newClient('Made-up Client A');
     clientB = await newClient(`Client B ${RECORD_CANARY}`);
@@ -167,17 +177,16 @@ describe.skipIf(serverUrl === undefined)('C41-A inbox raise', () => {
   });
 
   it('C41-A inbox raise: an assigned step’s move goes to its assignee, once, and never to the starter', async () => {
+    // The assignee takes the step before it opens: nobody is told of their own
+    // assignment, so the item they hold once it opens is the step's move.
     const kickoff = String(stepsB.get('kickoff-call'));
-    const [task] = await controls.fixture.db.admin.execute<{ readonly revision: string }>(
-      'select revision::text as revision from public.records where id = $1',
-      [kickoff],
-    );
-    const assigned = await as(admin, 'task.assign', {
+    const took = await as(assignee, 'task.assign', {
       recordId: kickoff,
-      expectedRevision: Number(task?.revision),
+      expectedRevision: await revisionOf(kickoff),
       fields: { assignee: assignee.personId },
     });
-    expect(assigned.status, JSON.stringify(assigned.body)).toBe(200);
+    expect(took.status, JSON.stringify(took.body)).toBe(200);
+    expect(open(await itemsOn(stepsB))).toStrictEqual([]);
 
     await done(stepsB, 'welcome-email');
     const onKickoff = open(await itemsOn(stepsB)).filter((one) => one.task === kickoff);
@@ -190,6 +199,21 @@ describe.skipIf(serverUrl === undefined)('C41-A inbox raise', () => {
         closedBy: null,
       },
     ]);
+  });
+
+  it('C41-A isolation: a ready step whose task moves to another client is no longer anyone’s move here', async () => {
+    const steps = await start(await newClient('Made-up Client Moving'));
+    const kickoff = String(steps.get('kickoff-call'));
+    await done(steps, 'welcome-email');
+    expect(open(await itemsOn(steps)).map((one) => one.recipient)).toStrictEqual([admin.personId]);
+    const moved = await as(admin, 'task.set_party', {
+      recordId: kickoff,
+      expectedRevision: await revisionOf(kickoff),
+      fields: { client: await newClient('Made-up Client Elsewhere') },
+    });
+    expect(moved.status, JSON.stringify(moved.body)).toBe(200);
+    // step_result answers 404 for it now, so its item could never close: it is withdrawn.
+    expect(open(await itemsOn(steps))).toStrictEqual([]);
   });
 
   it('C41-A isolation: another business is never raised, told or shown an onboarding step’s item', async () => {
@@ -227,11 +251,7 @@ describe.skipIf(serverUrl === undefined)('C41-A inbox raise', () => {
 
   it('C41-A isolation: an agent under a live delegation on a step’s task reads no inbox and is told no step', async () => {
     const task = String(stepsA.get('site-setup'));
-    const [row] = await controls.fixture.db.admin.execute<{ readonly revision: string }>(
-      'select revision::text as revision from public.records where id = $1',
-      [task],
-    );
-    const proposal = await controls.propose(task, Number(row?.revision), 'onboarding_step');
+    const proposal = await controls.propose(task, await revisionOf(task), 'onboarding_step');
     const picked = await controls.pickup(await controls.approve(proposal));
     for (const name of ['inbox.read', 'inbox.count'] as const) {
       // oxlint-disable-next-line no-await-in-loop -- one read, then the other

@@ -32,6 +32,7 @@ import {
   isRecordsRefusal,
   mergeFieldValues,
   raiseAssignment,
+  reparkStepMove,
   setTaskState,
 } from '../../../core-records/src/index.ts';
 import type {
@@ -309,6 +310,8 @@ export async function writeOwnedFields(
     const assignee = typeof links['assignee'] === 'string' ? links['assignee'] : null;
     await raiseAssignment(tx, { taskId: target.id, assignee, by: context.session.personId });
   }
+  // C41-A: an onboarding step's move follows its assignee and its client.
+  if ('assignee' in links || 'client' in links) await reparkStepMove(tx, target.id);
   return applied(target.id, Number(written.revision), { changed: keys });
 }
 
