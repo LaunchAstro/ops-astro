@@ -28,7 +28,7 @@ import {
 import { raiseAlert } from '../alerts.ts';
 import { lockedInstant } from '../clock.ts';
 import { lockRediscovered } from '../rediscovery.ts';
-import { checkAuthorityAt, holdCoveringGrants } from './classifier.ts';
+import { checkAuthorityAt, closeHold, holdCoveringGrants, modelCallsOn } from './classifier.ts';
 import { fourEyesBandMinor, pairFor, type Holds } from '../four-eyes.ts';
 import { locksOf, UNKNOWN_SELECT, type Unknown } from './reconcile.ts';
 
@@ -84,46 +84,34 @@ async function firstApprovers(
 }
 
 /**
- * Close the hold at the amount: a positive figure settles it (the attempt's
+ * Close the hold at the amount: a positive figure settles the attempt (its
  * outcome stays `unknown`, since nobody observed the effect), nothing
- * abandons it under the write-off. Either way the envelope gives the whole
- * hold back and takes the amount.
+ * abandons it under the write-off. The hold is charged the amount, and never
+ * less than what its model calls settled at, which did happen (AW-01,
+ * `closeHold`). Either way the envelope gives the whole hold back and takes
+ * the charge.
  */
 async function close(tx: TenantQuery, row: Unknown, amount: bigint): Promise<void> {
-  const [business, held] = [tx.businessId, row.held_minor];
-  if (amount > 0n) {
-    await tx.query(
-      `update public.attempts
-          set state = 'settled', actual_minor = $3, outcome = 'unknown', settled_at = now()
-        where business_id = $1 and id = $2`,
-      [business, row.attempt_id, amount.toString()],
-    );
-    await tx.query(
-      `update public.reservations set state = 'actual', actual_minor = $3, terminal_at = now()
-        where business_id = $1 and id = $2`,
-      [business, row.reservation_id, amount.toString()],
-    );
-  } else {
-    await tx.query(
-      `update public.attempts set state = 'abandoned', outcome = 'abandoned'
-        where business_id = $1 and id = $2`,
-      [business, row.attempt_id],
-    );
-    await tx.query(
-      `update public.reservations
-          set state = 'abandoned', classified_cause = 'written_off',
-              classified_cause_id = $3, terminal_at = now()
-        where business_id = $1 and id = $2`,
-      [business, row.reservation_id, row.attempt_id],
-    );
-  }
+  const { spentMinor } = await modelCallsOn(tx, row.reservation_id);
+  const charge = amount > spentMinor ? amount : spentMinor;
   await tx.query(
-    `update public.task_envelopes
-        set held_minor = held_minor - $3, actual_minor = actual_minor + $4
-      where business_id = $1 and id = $2`,
-    [business, row.envelope_id, held, amount.toString()],
+    amount > 0n
+      ? `update public.attempts
+            set state = 'settled', actual_minor = $3, outcome = 'unknown', settled_at = now()
+          where business_id = $1 and id = $2`
+      : `update public.attempts set state = 'abandoned', outcome = 'abandoned'
+          where business_id = $1 and id = $2`,
+    amount > 0n
+      ? [tx.businessId, row.attempt_id, amount.toString()]
+      : [tx.businessId, row.attempt_id],
   );
-  if (amount > 0n) {
+  await closeHold(
+    tx,
+    { reservationId: row.reservation_id, envelopeId: row.envelope_id },
+    { cause: 'written_off', causeId: row.attempt_id },
+    charge,
+  );
+  if (charge > 0n) {
     await raiseAlert(tx, {
       taskId: row.task_id,
       causeId: row.attempt_id,

@@ -208,24 +208,10 @@ export async function classifyUnderLocks(
   // R1. The guarded update reports the row it actually changed, and everything
   // after it is conditional on that row. A classifier whose conditional update
   // affected nothing has lost the race, and it must not then move the attempt
-  // or subtract a hold the winner has already subtracted. Spent, the hold
-  // settles at what it spent (0013: an actual is never zero), with no cause.
-  const spent = calls.spentMinor > 0n;
-  const changed = await tx.query<{ readonly held_minor: string }>(
-    spent
-      ? `update public.reservations set state = 'actual', actual_minor = $3, terminal_at = now()
-          where business_id = $1 and id = $2 and state = 'held'
-          returning held_minor::text as held_minor`
-      : `update public.reservations
-            set state = 'abandoned', classified_cause = $3, classified_cause_id = $4, terminal_at = now()
-          where business_id = $1 and id = $2 and state = 'held'
-          returning held_minor::text as held_minor`,
-    spent
-      ? [tx.businessId, request.reservationId, calls.spentMinor.toString()]
-      : [tx.businessId, request.reservationId, request.cause, request.causeId],
-  );
-  const released = changed[0];
-  if (released === undefined) {
+  // or subtract a hold the winner has already subtracted.
+  const hold = { reservationId: request.reservationId, envelopeId: row.envelope_id };
+  const closed = await closeHold(tx, hold, request, calls.spentMinor);
+  if (!closed) {
     return {
       reservationId: request.reservationId,
       released: false,
@@ -238,32 +224,52 @@ export async function classifyUnderLocks(
       where business_id = $1 and id = $2`,
     [tx.businessId, row.attempt_id],
   );
-  // Subtracted once, by the amount the changed row carried. Only what the
-  // settled calls cost is added to `actual`: with no observation there is no
-  // number to justify, not even zero.
-  await tx.query(
-    `update public.task_envelopes set held_minor = held_minor - $3, actual_minor = actual_minor + $4
-      where business_id = $1 and id = $2`,
-    [tx.businessId, row.envelope_id, released.held_minor, calls.spentMinor.toString()],
-  );
-
-  // Not `released`: pickup's expired-lease replacement re-holds the old hold
-  // whole, so it refuses here, and the sweep's drop resumes the step on what
-  // the hold has left (`resume`, `reconcile.ts`).
-  if (spent) {
-    return {
-      reservationId: request.reservationId,
-      released: false,
-      state: 'actual',
-      reason: `settled under ${request.cause} (${request.causeId}) at the ${calls.spentMinor.toString()} its model calls cost; the rest of the hold was released once`,
-    };
-  }
   return {
     reservationId: request.reservationId,
     released: true,
-    state: 'abandoned',
-    reason: `abandoned under ${request.cause} (${request.causeId}); the hold was released once and no cost was recorded`,
+    state: calls.spentMinor > 0n ? 'actual' : 'abandoned',
+    reason:
+      calls.spentMinor > 0n
+        ? `settled under ${request.cause} (${request.causeId}) at the ${calls.spentMinor.toString()} its model calls cost; the rest of the hold was released once`
+        : `abandoned under ${request.cause} (${request.causeId}); the hold was released once and no cost was recorded`,
   };
+}
+
+/**
+ * Close a held reservation, guarded on `held`: spent, it settles at what its
+ * model calls cost (0013: an actual is never zero, and carries no cause);
+ * otherwise it is abandoned under the cause. The envelope gives the whole hold
+ * back once, by the amount the changed row carried, and takes only the spend:
+ * with no observation there is no number to justify, not even zero. False
+ * when another transaction closed it first.
+ */
+export async function closeHold(
+  tx: TenantQuery,
+  hold: { readonly reservationId: string; readonly envelopeId: string },
+  cause: { readonly cause: string; readonly causeId: string },
+  spentMinor: bigint,
+): Promise<boolean> {
+  const spent = spentMinor > 0n;
+  const [changed] = await tx.query<{ readonly held_minor: string }>(
+    spent
+      ? `update public.reservations set state = 'actual', actual_minor = $3, terminal_at = now()
+          where business_id = $1 and id = $2 and state = 'held'
+          returning held_minor::text as held_minor`
+      : `update public.reservations
+            set state = 'abandoned', classified_cause = $3, classified_cause_id = $4, terminal_at = now()
+          where business_id = $1 and id = $2 and state = 'held'
+          returning held_minor::text as held_minor`,
+    spent
+      ? [tx.businessId, hold.reservationId, spentMinor.toString()]
+      : [tx.businessId, hold.reservationId, cause.cause, cause.causeId],
+  );
+  if (changed === undefined) return false;
+  await tx.query(
+    `update public.task_envelopes set held_minor = held_minor - $3, actual_minor = actual_minor + $4
+      where business_id = $1 and id = $2`,
+    [tx.businessId, hold.envelopeId, changed.held_minor, spentMinor.toString()],
+  );
+  return true;
 }
 
 /**
@@ -272,7 +278,7 @@ export async function classifyUnderLocks(
  * envelope's actual (AW-05, `budget-answer.ts`), so after one there is
  * nothing more to count.
  */
-async function modelCallsOn(
+export async function modelCallsOn(
   tx: TenantQuery,
   reservationId: string,
 ): Promise<{ readonly spentMinor: bigint; readonly open: boolean }> {
