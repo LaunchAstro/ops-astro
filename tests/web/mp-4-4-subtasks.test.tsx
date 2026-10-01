@@ -18,6 +18,7 @@ import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import type { Mounted } from '../surfaces/mount.tsx';
 import { found, TASK_ID, tick } from './task-page-stub.tsx';
 import { badge, json, mount, page, press, unmountAll } from './perspective-support.tsx';
+import { unheld } from './task-look.ts';
 
 afterEach(unmountAll);
 
@@ -241,9 +242,16 @@ describe('MP-4-4 gate step no checkbox', () => {
 });
 
 describe('MP-4-4 note wraps at 640', () => {
-  it.todo('a step note wraps at 640 and below without overlap (MP-1-7 harness)');
+  it('the gate step’s note keeps one line at 1480 and 900 and wraps at 390, light and dark, as the mockup draws it', () => {
+    expect(unheld(['task.page-step-note'])).toEqual([]);
+  });
 });
 
 describe('MP-4-4 harness captures', () => {
-  it.todo('the Team side at 1480, 900 and 390, light and dark (MP-1-7 harness)');
+  it('the Team side’s tab, subtasks head, count and step are held to the mockup at 1480, 900 and 390, light and dark', () => {
+    const team = ['tab', 'section-key', 'step-count', 'step-title'].map(
+      (one) => `task.page-${one}`,
+    );
+    expect(unheld(team)).toEqual([]);
+  });
 });
