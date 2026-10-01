@@ -149,7 +149,8 @@
     "SL01 (REVB1SL01S34C) adds Sol's proof staging-reset-refuses-unwritable-record-before-emptying: a run record that cannot be opened for appending leaves the database unemptied.",
     "SL01 (REVB1SL01S34D) adds Sol's proof staging-reset-refuses-discarded-record-before-emptying: a record target that discards writes (a link to /dev/null) leaves the database unemptied. s0-1-staging-reset-record adds the family: a link to a file, a pipe, a device or a linked folder is refused the same way.",
     "B1-JOIN-FIX (REV187W): service-stop.test.ts's before-lookup refusals also run beside a live database of the named business and write no sign-in row to it; Sol's proof named-service-stop-reaches-database runs that suite alone through the conformance runner, which must see it reach the database.",
-    "SL12 (B1-TAKE, Opus interim review for Sol, SOL-LATER) adds column-grants-name-batch-1 (the column-grant contract names batch 1's column grants, 0046 and 0047) as conformance; its two siblings in tests/review read no database and are not named."
+    "SL12 (B1-TAKE, Opus interim review for Sol, SOL-LATER) adds column-grants-name-batch-1 (the column-grant contract names batch 1's column grants, 0046 and 0047) as conformance; its two siblings in tests/review read no database and are not named.",
+    "SL11-27 (AW-09) names aw-09-reviewed-on-every-surface (agent_output_is_reviewed_on_every_surface: on the app's client, the API and the command line as its own process, the agent's handed-back output lands as its own pending gate, the agent is refused its decision on the agent prefix and with its own login on the person prefix, two rounds of changes then the third refused offering approve, reject or escalate, the reject terminal with the version kept and a fresh proposal a new lineage, the facts equal across the legs, and review.view handing off to the app's task page), aw-09-no-self-review (the agent never completes its own round on any entry point, and the runtime refuses the agent's actor as decider), aw-09-isolation (business, client, person and delegation crossings with positive controls) and aw-09-round-rules (superseded, over-scope, reject and restart, escalation without the role, a reviewer cut mid-decision) as invariants."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -455,7 +456,11 @@
     "tests/commands/inbox-unattended.test.ts",
     "tests/commands/inbox-escalation-settings.test.ts",
     "tests/ci/staging-no-production-data.test.ts",
-    "tests/ci/staging-no-production-data-guard.test.ts"
+    "tests/ci/staging-no-production-data-guard.test.ts",
+    "tests/cli/aw-09-reviewed-on-every-surface.test.ts",
+    "tests/runtime/aw-09-no-self-review.test.ts",
+    "tests/runtime/aw-09-isolation.test.ts",
+    "tests/runtime/aw-09-round-rules.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
