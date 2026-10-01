@@ -29,7 +29,10 @@ beforeAll(async () => {
   if (serverUrl === undefined) return;
   w = await timeWorld('tcf');
   await w.db.app.withBusiness(w.alpha, async (tx) => {
-    await grantTo(tx, w.ada, 'share');
+    for (const action of ['assign', 'share'] as const) {
+      // eslint-disable-next-line no-await-in-loop -- one transaction, one grant at a time
+      await grantTo(tx, w.ada, action);
+    }
   });
 }, 180_000);
 
