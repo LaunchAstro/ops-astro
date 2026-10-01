@@ -129,7 +129,7 @@ export async function productionSigns(
 }
 
 /** What a marked database's guard says about its sign-ins, which no reset empties. */
-const SIGN_IN_SIGNS = [SIGNS['auth.users'], SIGNS['guard'], UNGUARDED];
+const SIGN_IN_SIGNS = new Set([SIGNS['auth.users'], SIGNS['guard'], UNGUARDED]);
 
 /**
  * Whether the staging reset may empty this database: no tenant or sign-in
@@ -140,7 +140,7 @@ const SIGN_IN_SIGNS = [SIGNS['auth.users'], SIGNS['guard'], UNGUARDED];
  */
 export async function resettable(admin: OwnerQuery): Promise<boolean> {
   if (await marked(admin))
-    return !(await guardSigns(admin)).some((sign) => SIGN_IN_SIGNS.includes(sign));
+    return !(await guardSigns(admin)).some((sign) => SIGN_IN_SIGNS.has(sign));
   return yes(admin, NEVER_HELD_A_ROW);
 }
 

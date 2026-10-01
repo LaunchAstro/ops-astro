@@ -187,6 +187,13 @@ export const plantCanary = async (): Promise<void> =>
     await admin.execute('create table if not exists public.reset_canary (x text)');
   });
 
+/** The provider's sign-in table, there before any reset, as on a hosted project. */
+const makeSignInTable = async (): Promise<void> =>
+  await onDatabase(async (admin) => {
+    await admin.execute('create schema auth');
+    await admin.execute('create table auth.users (id uuid, email text)');
+  });
+
 export let keySet: ServedKeySet | undefined;
 
 /** The throwaway database, its two project logins and the stand-ins, for the whole file. */
@@ -216,11 +223,7 @@ export function stagingResetHooks(): void {
     } finally {
       await server.close();
     }
-    // The provider's sign-in table, there before any reset, as on a hosted project.
-    await onDatabase(async (admin) => {
-      await admin.execute('create schema auth');
-      await admin.execute('create table auth.users (id uuid, email text)');
-    });
+    await makeSignInTable();
     own = databaseUrl(login('own'), OWN_PASSWORD);
     runner = databaseUrl(login('run'), RUN_PASSWORD);
     await plantCanary();
