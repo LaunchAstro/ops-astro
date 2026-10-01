@@ -77,10 +77,17 @@ export interface QuotaSlot {
 /** The app's limits (`apps/api/auth/agent-quota.ts`): a slot, or undefined when one is reached. */
 export interface CredentialQuota {
   enter(keys: QuotaKeys): QuotaSlot | undefined;
-  /** Whether the business's door has room to record another not-live bearer. */
-  knock(businessId: string): boolean;
-  /** A bearer turned away as not live, counted at the business's door. */
-  turnedAway(businessId: string): void;
+  /**
+   * A place at the business's door, taken at once before the bearer is
+   * resolved, or undefined when the door is full. A bearer turned away as not
+   * live keeps it; any other answer gives it back.
+   */
+  knock(businessId: string): DoorPlace | undefined;
+}
+
+/** A place held at a business's door. */
+export interface DoorPlace {
+  release(): void;
 }
 
 export interface CredentialCall {
@@ -117,15 +124,23 @@ export async function executeCredentialCommand(
   call: CredentialCall,
   request: UncheckedRequest,
 ): Promise<CommandResult | ReadResult> {
-  // Asked before, answered after the bearer is resolved (`notLive`).
-  const doorFull = call.quota?.knock(businessId) === false;
+  // Taken before the bearer is resolved, so a cold burst cannot all see room.
+  const place = call.quota?.knock(businessId);
+  const doorFull = call.quota !== undefined && place === undefined;
   // Past a full door, one unlocked read before the call's transaction: a bearer
   // not live is limited with nothing held and nothing written, and a live one,
   // never known before or made live again, goes on as below the door (round 4).
   if (doorFull && !(await database.withBusiness(businessId, (tx) => live(tx, call)))) {
     return asCallerVisible(limited());
   }
-  return await resolvedAndRun(database, businessId, call, request, doorFull);
+  let kept = false;
+  try {
+    const answer = await resolvedAndRun(database, businessId, call, request, doorFull);
+    kept = isCommandRefusal(answer) && answer.code === 'DELEGATION_NOT_LIVE';
+    return answer;
+  } finally {
+    if (!kept) place?.release();
+  }
 }
 
 async function resolvedAndRun(
@@ -169,8 +184,6 @@ async function resolvedAndRun(
         }),
     );
     if (!isCommandRefusal(answer)) return answer;
-    // Counted once the retry is settled, so a retried attempt is one.
-    if (answer.code === 'DELEGATION_NOT_LIVE') call.quota?.turnedAway(businessId);
     return asCallerVisible(answer);
   } finally {
     slot?.leave(answer === undefined || isCommandRefusal(answer) ? undefined : answer);

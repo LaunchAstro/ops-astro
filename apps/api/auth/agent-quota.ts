@@ -60,14 +60,26 @@ function currentWindow(windows: Map<string, Window>, key: string, at: number): W
   return fresh;
 }
 
-/** A business's door: its not-live bearers a minute, counted in its own window's `requests`. */
-function doorOf(refused: number, now: () => Date): Pick<CredentialQuota, 'knock' | 'turnedAway'> {
+/**
+ * A business's door: its not-live bearers a minute, counted in its own
+ * window's `requests`. A knock takes a place at once; a released one is given
+ * back to the window it was taken from.
+ */
+function doorOf(refused: number, now: () => Date): Pick<CredentialQuota, 'knock'> {
   const windows = new Map<string, Window>();
-  const door = (businessId: string): Window => currentWindow(windows, businessId, now().getTime());
   return {
-    knock: (businessId) => door(businessId).requests < refused,
-    turnedAway(businessId) {
-      door(businessId).requests += 1;
+    knock(businessId) {
+      const window = currentWindow(windows, businessId, now().getTime());
+      if (window.requests >= refused) return;
+      window.requests += 1;
+      let released = false;
+      return {
+        release() {
+          if (released) return;
+          released = true;
+          window.requests -= 1;
+        },
+      };
     },
   };
 }
