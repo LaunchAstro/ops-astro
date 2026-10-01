@@ -295,12 +295,10 @@ async function admit(
   // verifier reads it (`auth/session.ts`).
   if (crossSiteSession(context.req)) return refuse(context, CROSS_SITE());
   // Lapsed and surplus other-tab cookies go with any answer (`staleSessions`).
-  const now = Math.floor(Date.now() / 1000);
-  for (const name of staleSessions(context.req, now)) {
+  for (const name of staleSessions(context.req, Math.floor(Date.now() / 1000))) {
     deleteCookie(context, name, SESSION_COOKIE_OPTIONS);
   }
   const { presented, credential } = await presentedBy(options.verify, context.req, entry === AGENT);
-  // A key set outage: the cookie stays and no failed sign-in is counted.
   if (presented === 'unavailable') return unavailable(context);
   if (typeof presented === 'object') context.set(PRESENTED, presented);
   else clearNamedCookie(context);
