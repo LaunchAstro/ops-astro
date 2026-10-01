@@ -37,6 +37,18 @@ import {
 
 const NO_EFFECT = { writes: [], intake: [], outside: [], access: false };
 
+/** The audit log's ids once two reads 300 ms apart agree. */
+async function stillAudit(
+  events: () => Promise<readonly Record<string, unknown>[]>,
+  before = -1,
+): Promise<Set<unknown>> {
+  await new Promise<void>((resolve) => {
+    setTimeout(resolve, 300);
+  });
+  const ids = (await events()).map((row) => row['id']);
+  return ids.length === before ? new Set(ids) : stillAudit(events, ids.length);
+}
+
 const w = isolationWorld('mp_3_1_isolation');
 describe.skipIf(serverUrl === undefined)('MP-3-1 isolation', () => {
   it('draws the task for its own reader: the canary is detectable', async () => {
@@ -165,7 +177,9 @@ describe.skipIf(serverUrl === undefined)('MP-3-1 isolation', () => {
       expect([command, COMMAND_EFFECTS[command as CommandName]]).toEqual([command, NO_EFFECT]);
 
     // Everything the dock does on its own: nothing audited, nothing asked.
-    seen = new Set((await events()).map((row) => row['id']));
+    // The reads the panels caused finish on the server first: the audit log
+    // holds still for 300 ms before it is read as the line to measure from.
+    seen = await stillAudit(events);
     const asked = heard.length;
     await act(() => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
