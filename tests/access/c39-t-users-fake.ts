@@ -14,7 +14,15 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from 'node:net';
 
 export type FakeUsersMode =
-  'accept' | 'echo' | 'oversized' | 'redirect' | 'not_json' | 'bad_id' | 'fault' | 'slow';
+  | 'accept'
+  | 'echo'
+  | 'oversized'
+  | 'redirect'
+  | 'not_json'
+  | 'bad_id'
+  | 'fault'
+  | 'slow'
+  | 'made_late';
 
 export interface UsersRequest {
   readonly path: string;
@@ -94,6 +102,17 @@ function respond(
       return json(200, { ...user(id, email), id: `${id}&next=x` });
     case 'fault':
       return json(500, { code: 500, msg: 'unexpected failure' });
+    case 'made_late': {
+      // The provider made the user, as a real one does before it answers;
+      // the answer arrives after the caller's timeout.
+      kept.users.set(email, id);
+      const timer = setTimeout(() => {
+        kept.timers.delete(timer);
+        json(200, user(id, email));
+      }, 10_000);
+      kept.timers.add(timer);
+      return;
+    }
     case 'slow': {
       const timer = setTimeout(() => {
         kept.timers.delete(timer);
