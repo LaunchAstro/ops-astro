@@ -358,6 +358,8 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       knowledge: [NOBODY],
       unknowns: [],
     }));
+    // AW-12: the harness result on bravo's run is the same NOT_FOUND as on a made-up one.
+    byAda('harness.read', 'runId', String(bravoRun?.run_id), (runId) => ({ runId }));
     // Bravo's proposal raised its holders an inbox item (INB-1b); stamping it
     // from alpha is the same NOT_FOUND as stamping an item that never existed.
     const [bravoItem] = await w.h.world.db.admin.execute<{ id: string }>(
@@ -418,11 +420,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 48 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 49 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(48);
-    expect(names).toHaveLength(48);
+    expect(new Set(names).size, 'distinct operations').toBe(49);
+    expect(names).toHaveLength(49);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();

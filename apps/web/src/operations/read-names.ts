@@ -59,6 +59,8 @@ export const READ_NAMES = [
   'inbox.unattended',
   // A task's runs' trace (AW-13 readers), for `operations:read`.
   'trace.read',
+  // The harness test's result on one run (AW-12); no screen draws it yet.
+  'harness.read',
 ] as const;
 
 /**

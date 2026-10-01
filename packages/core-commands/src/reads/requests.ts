@@ -43,7 +43,7 @@ import type {
   TaskDetail,
 } from '../../../core-wire/src/index.ts';
 import type { TaskExecution } from './execution.ts';
-import type { ReadSpan, Receipt } from '../../../core-runtime/src/index.ts';
+import type { ReadSpan, Receipt, TriggerReading } from '../../../core-runtime/src/index.ts';
 import type { UnattendedEntry } from './inbox.ts';
 
 // The result types live in `views.ts`, which the clients import; the server's
@@ -131,6 +131,8 @@ export interface ReadOperands {
   readonly 'inbox.unattended': NoOperands;
   /** The task whose runs' trace is read (AW-13 readers). */
   readonly 'trace.read': { readonly recordId: string };
+  /** The run whose harness test result is read (AW-12). */
+  readonly 'harness.read': { readonly runId: string };
 }
 
 /** A read about the business as a whole, which takes nothing. */
@@ -172,4 +174,5 @@ export type ReadResult =
         readonly spans: readonly ReadSpan[];
         readonly complete: boolean;
       };
-    };
+    }
+  | { readonly ok: true; readonly harness: TriggerReading };

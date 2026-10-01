@@ -824,6 +824,17 @@ target's Owner login (the Langfuse contract's recovery operator), an
 installation step in the runbook like the export switch; the product keeps no
 rehearsal record and asks none.
 
+## The harness read (AW-12)
+
+`harness.read` asks `read` on tasks the way `definition.attribution` does: the
+door takes any grant, and the statement that reads the run keeps it only when
+the caller's `read` covers its task (the business, the task or the task's
+client), so a run outside the grant, in another business or not there at all
+is one `NOT_FOUND`. It is the team's: a client, a contractor and anyone holding
+no `read` on tasks get `SCOPE_NOT_GRANTED`. No agent reads it
+(`DELEGATION_EXCLUDES_OPERATION`): the owner reads the result, and nothing
+under test reaches its own verdict. See [RUNTIME.md](RUNTIME.md#the-harness-adoption-tests-trigger).
+
 ## The planning allowance (AW-04)
 
 `conversation.allowance` is the drawer's allowance line. Its cap and what is

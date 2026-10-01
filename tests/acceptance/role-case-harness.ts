@@ -167,11 +167,10 @@ export async function createHarness(part: string): Promise<Harness> {
    * The least a caller can send and still be asking the operation its own
    * question, for the cases whose answer arrives before the body is read.
    *
-   * `recordId` is sent only where the declaration names a record by it, because
-   * `prepare.ts` refuses an identifier on a command that has no use for one —
-   * `COMMAND_BODY_INVALID`, and before the authority check — so a body that was
-   * uniform across the table would have measured that refusal rather than the
-   * authority one the case is about.
+   * `recordId` goes only where the declaration names a record by it: `prepare.ts`
+   * refuses an identifier a command has no use for, `COMMAND_BODY_INVALID`, before
+   * the authority check, so a uniform body would have measured that refusal and
+   * not the authority one the case is about.
    */
   function probeBody(declaration: CommandDeclaration): Readonly<Record<string, unknown>> {
     const targeted = declaration.targetsExistingRecord;
@@ -182,6 +181,7 @@ export async function createHarness(part: string): Promise<Harness> {
       ...(declaration.name === 'task.board' ? { board: null } : {}),
       ...(declaration.name === 'task.receipt' ? { attemptId: randomUUID() } : {}),
       ...(declaration.name === 'definition.attribution' ? { digest: 'a'.repeat(64) } : {}),
+      ...(declaration.name === 'harness.read' ? { runId: randomUUID() } : {}),
       ...(declaration.name === 'preset.plan'
         ? { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] }
         : {}),

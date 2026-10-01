@@ -1948,8 +1948,12 @@ adoption is the owner's separate decision.
   filtered by that grant inside the statement (on the business, the task or
   the task's client, as `taskAccess` asks), so a run outside it, in another
   business or missing, is one `NOT_FOUND`. A manifest entry with no whole size
-  or no digest is `DEFINITION_UNAVAILABLE`, never counted as nothing. No route, verb or
-  agent operation reaches it yet.
+  or no digest is `DEFINITION_UNAVAILABLE`, never counted as nothing. The owner
+  reads it through `harness.read` (part two), on the API and as the command
+  line's `harness.read` verb, one answer on both: `{ ok: true, harness }`. The
+  agent route refuses it, as it refuses every person-only read; nothing under
+  test reads its own verdict. Nothing is stored: each read computes the result
+  from the run's frozen manifest ([API.md](API.md#reads)).
 - **What stays in the tests.** The pinned candidates with their licences read
   (`tests/harness/candidates.ts`) and the four shared fakes, all in
   `tests/harness/`, so none of them is in the product's dependency tree.
@@ -1957,7 +1961,8 @@ adoption is the owner's separate decision.
 Tests: `aw-12-trigger`, `aw-12-trigger-read`, `aw-12-isolation`,
 `aw-12-candidates` (with `AW-12 candidates kept out of the product`; the
 candidate audit, a dependency audit at each pinned commit, is part two's),
-`aw-12-fakes` and `aw-12-authorities` (part two, three files). The
+`aw-12-fakes`, `aw-12-harness-read`, `aw-12-harness-read-isolation`,
+`aw-12-harness-read-parity` and `aw-12-authorities` (part two, three files). The
 authorities suite holds the product's side of the eight refusals, the boundary
 any candidate would sit behind, with no candidate run: the trigger reads "not
 yet". A test-only stand-in (`tests/harness/framework-stand-in.ts`) takes a

@@ -161,7 +161,9 @@ export type CommandName =
   | 'inbox.unattended'
   | 'notifications.set_channel'
   // A run's trace, as the export sends it (AW-13 readers), for `operations:read`.
-  | 'trace.read';
+  | 'trace.read'
+  // The harness adoption test's result on one run (AW-12): the team's.
+  | 'harness.read';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -850,6 +852,11 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // record scope and, inside it, the task's own read. Never an agent: no
   // agent-reachable operation returns a trace (the ticket's `no agent read`).
   read('trace.read', 'operations', { authorisedOn: 'record' }),
+  // AW-12: the harness test's result on one run, computed from its frozen
+  // manifest. `read` on tasks, asked inside the statement on the run's task
+  // (`reads/harness-trigger.ts`). Never an agent: the owner reads it, and no
+  // framework under test reaches its own verdict.
+  read('harness.read', TASK_COLLECTION),
   // Per channel, never per item: the body names no item. Self-scoped like
   // `inbox.seen`, so it asks no grant and reaches the caller's own setting.
   declare('notifications.set_channel', 'write', {

@@ -1454,6 +1454,21 @@ a holder without `read` on the task, a task of another business and a trashed
 one are `NOT_FOUND`, and a member without the key `SCOPE_NOT_GRANTED`. No agent
 route (`tests/runtime/aw-13-readers.test.ts`; [RUNTIME.md](RUNTIME.md#the-diagnostic-trace-export)).
 
+`harness.read` (AW-12) is the harness adoption test's result on one run
+(`{ runId }`, a string, else `FIELD_VALUE_INVALID` naming `runId`), as
+`{ ok: true, harness }`. `harness` is the trigger's reading: `result: 'not_yet'`
+with the `missing` limbs and the two `figures` (the reading against the window,
+the delegation depth against the depth built), or `result: 'fired'` with the
+same figures. It is computed from the run's frozen accept-time manifest on
+every read and stores nothing. It is the team's: a reader outside the team, or
+one holding no `read` on tasks, is refused `SCOPE_NOT_GRANTED` 403; the run is
+filtered by the caller's task `read` inside the statement, so another client's
+run, another business's and a made-up one are one `NOT_FOUND` 404. A manifest
+it cannot count is `DEFINITION_UNAVAILABLE`. No agent route; the command line
+is `pnpm cli harness.read --json '{"runId":"..."}'`
+(`reads/harness-trigger.ts`; `tests/harness/aw-12-harness-read.test.ts`;
+[RUNTIME.md](RUNTIME.md#the-harness-adoption-tests-trigger)).
+
 A `task.read` answer's gate states, decisions and reservations come from one
 database snapshot. `readTaskProposals` (`reads/proposals.ts`) takes the
 versions, gates and reservations in the same statement that reads the decision
@@ -1836,7 +1851,7 @@ yet: the recent sign-in a money action asks (C59).
 `task.read`, `task.board`, `task.queue`, `gate.pending`, `person.list`,
 `preset.plan`, `settings.read`, `session.capabilities`, `conversation.read`,
 `conversation.list`, `conversation.allowance`, `definition.attribution`,
-`inbox.read`, `inbox.count`, `inbox.unattended` and `trace.read` are declared in `COMMAND_SURFACE` with `kind: 'read'`. The boundary branches on that and calls the executor the
+`inbox.read`, `inbox.count`, `inbox.unattended`, `trace.read` and `harness.read` are declared in `COMMAND_SURFACE` with `kind: 'read'`. The boundary branches on that and calls the executor the
 composition root supplies:
 
 ```ts
