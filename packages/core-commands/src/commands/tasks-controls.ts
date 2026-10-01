@@ -31,7 +31,7 @@ import type { CommandContext } from './context.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { EXPIRY_FIX, expiryFrom } from './expiry.ts';
-import { stopRefusal } from './research-run.ts';
+import { researchRestartRefusal } from './research-run.ts';
 
 const REASON_LIMIT = 500;
 
@@ -233,9 +233,9 @@ export async function restartOnTask(
   // its own locks).
   const lapsed = await decideHeld(tx, context, found.taskId);
   if (lapsed !== null) return lapsed;
-  // WF-7: a restart is a run's start, so a stopped research ticket waits on its map's owner.
-  const stopped = await stopRefusal(tx, found.taskId, context.session.personId);
-  if (stopped !== undefined) return refused(stopped);
+  // WF-7: a restart is a run's start, so on a research ticket it asks what Run asks.
+  const asked = await researchRestartRefusal(tx, found.taskId, result.value.runId, context.session);
+  if (asked !== undefined) return refused(asked);
   await closeOpenEnvelope(tx, found.taskId);
   await raiseDecision(tx, { taskId: found.taskId, gateId: result.value.gateId });
   return applied(found.taskId, null, {
