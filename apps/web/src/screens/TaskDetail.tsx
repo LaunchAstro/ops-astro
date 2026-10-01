@@ -614,6 +614,7 @@ function Loaded(props: LoadedProps): ReactElement {
         recordId={task.id}
         taskKey={task.key}
         grantKey={props.grantKey}
+        clientId={task.clientId}
         readOf={task}
         proposals={task.proposals}
         people={people.state.outcome === 'ready' ? people.state.value.persons : []}

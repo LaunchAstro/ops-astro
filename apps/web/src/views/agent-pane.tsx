@@ -46,6 +46,8 @@ export interface AgentSectionProps {
   /** The task's key and the page's grant, for the operational log's read (MP-6-2). */
   readonly taskKey: string;
   readonly grantKey: string;
+  /** The client the task is for, as `task.read` gave it: the drawer's ask carries it. */
+  readonly clientId: string | null;
   /** The task read's latest answer: each new one re-reads the log. */
   readonly readOf: unknown;
   readonly proposals: readonly ProposalView[];
@@ -225,7 +227,13 @@ export function AgentSection(props: AgentSectionProps): ReactElement {
         stopAwaiting={controls.stopAwaiting}
         {...(activity === undefined ? {} : { activity })}
         onStartAttempt={() => {
-          askDrawer(newAttemptAsk({ id: props.recordId, title: titleOf(props), clientId: null }));
+          askDrawer(
+            newAttemptAsk({
+              id: props.recordId,
+              title: titleOf(props),
+              clientId: props.clientId,
+            }),
+          );
         }}
       />
     </section>

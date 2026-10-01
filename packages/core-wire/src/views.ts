@@ -72,6 +72,13 @@ export type CommentView = Readonly<Record<string, unknown>>;
 
 export interface TaskDetail extends TaskSummary {
   readonly description: string | null;
+  /**
+   * The client the task is for: the record's `client` slot, null on an
+   * internal task. A reader of the task already reaches its client, so this
+   * widens nothing; the Agent pane asks the drawer with it, so the egress rule
+   * sees whose data a plan would carry (AW-04).
+   */
+  readonly clientId: string | null;
   readonly history: readonly HistoryEntry[];
   /** Oldest first. Empty is a real answer; a denied read never reaches here. */
   readonly comments: readonly CommentView[];

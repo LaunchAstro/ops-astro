@@ -4,10 +4,10 @@
 //
 // Both read the **slots**, not `data`. The slots are the projection the field
 // table fixes -- state `uuid_1`, assignee `uuid_2`, title `txt_4`, due `ts_1`,
-// priority `num_1`, completed_at `ts_2` -- and reading them is what makes a
-// read of a task and the trigger that writes it two halves of one claim. A read
-// out of `data` would still return the right answer on a record the trigger had
-// stopped projecting, which is the failure worth catching.
+// priority `num_1`, completed_at `ts_2`, client `uuid_7` -- and reading them is
+// what makes a read of a task and the trigger that writes it two halves of one
+// claim. A read out of `data` would still return the right answer on a record
+// the trigger had stopped projecting, which is the failure worth catching.
 //
 // `description` is the exception and has to be: it is unslotted on purpose
 // (`tasks/spine.ts`), so `data` is where it lives.
@@ -43,6 +43,7 @@ interface TaskRowRead {
   readonly priority: string | null;
   readonly completed_at: Date | null;
   readonly description: string | null;
+  readonly client_id: string | null;
   readonly state_id: string | null;
   readonly state_key: string | null;
   readonly state_label: string | null;
@@ -70,6 +71,7 @@ const SELECT = `
          r.num_1::text as priority,
          r.ts_2  as completed_at,
          r.data ->> 'description' as description,
+         r.uuid_7 as client_id,
          s.id as state_id,
          s.data ->> 'key' as state_key,
          s.data ->> 'label' as state_label,
@@ -263,6 +265,7 @@ export async function readTaskDetail(
   return {
     ...summaryOf(row),
     description: row.description,
+    clientId: row.client_id,
     history: await historyOf(tx, row.id, comments.internal),
     comments: await commentsFor(tx, comments.commentTypeId, row.id, comments.internal),
     // The proposals go to every reader of the detail, internal or external,
