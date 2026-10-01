@@ -17,7 +17,7 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
-import { agentPath, bearer, call, serverUrl } from '../acceptance/world.ts';
+import { agentPath, bearer, call, serverUrl, tokenFor } from '../acceptance/world.ts';
 import {
   CANARY,
   clientToken,
@@ -68,6 +68,36 @@ describe.skipIf(serverUrl === undefined)('API-2 the agent credential, issued and
       expect(answer.code, action).toBe('CREDENTIAL_ACTION_EXCLUDED');
     }
     expect(await credentialCount(harness.world.alpha)).toBe(before);
+  });
+});
+
+describe.skipIf(serverUrl === undefined)('API-2 the agent credential, issued and revoked', () => {
+  const MONEY_SCOPE = [
+    { collection: 'billing', action: 'read' },
+    { collection: 'billing', action: 'write' },
+  ];
+
+  it('credential.issue with a money key is STEP_UP_REQUIRED past 60 minutes', async () => {
+    const { ada } = harness.world;
+    const now = Math.floor(Date.now() / 1000);
+    // The owner's sixty minutes and one more, written here so a widened window fails.
+    const stale = await tokenFor(ada.subject, { secondFactor: true, signedInAt: now - 61 * 60 });
+    const before = await credentialCount(harness.world.alpha);
+    for (const scope of [MONEY_SCOPE, [{ collection: 'billing', action: 'read' }]]) {
+      // oxlint-disable-next-line no-await-in-loop
+      const answer = await issue(issueBody({ scope }), stale);
+      expect(answer.status, JSON.stringify(scope)).toBe(403);
+      expect(answer.code, JSON.stringify(scope)).toBe('STEP_UP_REQUIRED');
+    }
+    expect(await credentialCount(harness.world.alpha)).toBe(before);
+    // The same stale sign-in issues a credential holding no money key.
+    expect((await issue(issueBody(), stale)).status).toBe(200);
+  });
+
+  it('credential.issue with a money key is served on a factor inside 60 minutes', async () => {
+    const issued = await issue(issueBody({ scope: MONEY_SCOPE }));
+    expect(issued.status).toBe(200);
+    expect(detailOf(issued)['scope']).toEqual(MONEY_SCOPE);
   });
 });
 
