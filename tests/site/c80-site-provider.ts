@@ -6,12 +6,15 @@
 // every request it was sent, so a test reads what left and in what order.
 // Nothing leaves the process.
 
-import type {
-  BindingDependencies,
-  ProposeInput,
-  SiteBinding,
-  TransportAnswer,
-  TransportRequest,
+import {
+  contentDigest,
+  versionDigestOf,
+  type BindingDependencies,
+  type ProposeInput,
+  type SiteBinding,
+  type TransportAnswer,
+  type TransportRequest,
+  type VersionPin,
 } from '../../packages/core-connectors/src/index.ts';
 
 export const REPOSITORY = 'agency/site';
@@ -200,13 +203,28 @@ export const AFTER = '<p>We are a welcoming studio.</p>\n';
 export const SEAM = 'seam-5b0e';
 export const PAGE = 'https://agency.example/about/';
 
+/** The approved version: its change, its pin, and its digest. */
+export const VERSION_PIN: VersionPin = {
+  target: { path: 'src/pages/about.md', word: 'friendly', replacement: 'welcoming' },
+  change: { files: [{ path: 'src/pages/about.md', before: BEFORE, after: AFTER }] },
+  preImageDigest: contentDigest(BEFORE),
+  baseRevision: 'base-commit',
+  pageUrl: PAGE,
+};
+export const DIGEST: string = versionDigestOf(VERSION_PIN);
+/** The publish of the approved version on the correction's seam. */
+export const APPROVED: { readonly seam: string; readonly versionDigest: string } = {
+  seam: SEAM,
+  versionDigest: DIGEST,
+};
+
 export const binding: SiteBinding = {
   repository: REPOSITORY,
   path: 'src/pages/about.md',
   defaultBranch: 'main',
   project: PROJECT,
   pageUrl: PAGE,
-  proposal: { branch: SEAM, request: '17', head: HEAD },
+  proposal: { branch: SEAM, request: '17', head: HEAD, versionDigest: DIGEST },
   change: { before: BEFORE, after: AFTER },
 };
 
@@ -226,6 +244,7 @@ export const proposal: ProposeInput = {
   baseRevision: 'base-commit',
   blob: 'blob-base',
   after: AFTER,
+  versionDigest: DIGEST,
 };
 
 export const line = (sent: { method: string; target: string }): string =>

@@ -66,7 +66,7 @@ function buildPath(
 }
 
 /** A dotted field; a list is read only by a numeric index (`deployments.0.uid`). */
-function readField(body: unknown, dotted: string): unknown {
+export function readField(body: unknown, dotted: string): unknown {
   let value: unknown = body;
   for (const part of dotted.split('.')) {
     if (Array.isArray(value)) {

@@ -28,9 +28,15 @@ export interface ProposeInput {
   readonly blob: string;
   /** The approved bytes. */
   readonly after: string;
+  /** The version those bytes are; the proposal carries it to the publish. */
+  readonly versionDigest: string;
 }
 
-export type Proposed = ProviderResult<{ readonly request: string; readonly head: string }>;
+export type Proposed = ProviderResult<{
+  readonly request: string;
+  readonly head: string;
+  readonly versionDigest: string;
+}>;
 
 function incomplete(code: string, deps: CallDependencies): Proposed {
   deps.record('PROPOSAL_INCOMPLETE');
@@ -70,6 +76,10 @@ export async function proposeSource(
   if (opened.kind !== 'ok') return incomplete(opened.code, deps);
   return {
     kind: 'ok',
-    value: { request: String(opened.value['number']), head: String(committed.value['commit.sha']) },
+    value: {
+      request: String(opened.value['number']),
+      head: String(committed.value['commit.sha']),
+      versionDigest: input.versionDigest,
+    },
   };
 }

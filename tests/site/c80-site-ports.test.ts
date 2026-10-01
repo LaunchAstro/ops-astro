@@ -43,15 +43,15 @@ afterAll(async () => {
 });
 
 /** An approved correction and its seam, as the request stored them. */
-async function approved(): Promise<{ id: string; seam: string }> {
+async function approved(): Promise<{ id: string; seam: string; digest: string }> {
   const detail = detailOf(await w.request(w.ava, { taskId: lease.taskId }));
   const id = String(detail['correctionId']);
   expect(codeOf(await w.approve(w.ben, id, String(detail['versionId'])))).toBe('not-a-refusal');
-  const rows = await w.world.db.admin.execute<{ readonly seam: string }>(
-    `select seam from public.live_corrections where id = $1`,
+  const rows = await w.world.db.admin.execute<{ readonly seam: string; readonly digest: string }>(
+    `select seam, version_digest as digest from public.live_corrections where id = $1`,
     [id],
   );
-  return { id, seam: rows[0]?.seam ?? '' };
+  return { id, seam: rows[0]?.seam ?? '', digest: rows[0]?.digest ?? '' };
 }
 
 /** The fence's inputs over the agency's page, served showing the corrected word. */
@@ -71,7 +71,7 @@ const fence = (captured: string[]): CaptureOptions => ({
 
 /** Proposed on the correction's seam through the composition, then bound. */
 async function proposedAndBound(
-  seam: string,
+  { seam, digest }: { seam: string; digest: string },
   site: Provider,
   raised: string[],
   captured: string[],
@@ -85,6 +85,7 @@ async function proposedAndBound(
       baseRevision: 'rev-1',
       blob: 'blob-base',
       after: AFTER,
+      versionDigest: digest,
     },
     site.deps,
   );
@@ -127,11 +128,11 @@ async function observed(id: string): Promise<Record<string, { observed: string }
 
 describe.skipIf(serverUrl === undefined)('C80 publish binding', () => {
   it('publishes a proposed, approved correction on the bound ports and records it live', async () => {
-    const { id, seam } = await approved();
+    const { id, ...version } = await approved();
     const site = provider({ content: BEFORE });
     const raised: string[] = [];
     const captured: string[] = [];
-    const ports = await proposedAndBound(seam, site, raised, captured);
+    const ports = await proposedAndBound(version, site, raised, captured);
     expect(await runLivePublish(w.world.db.app, at(id), ports)).toMatchObject({
       kind: 'recorded',
       state: 'live',
@@ -144,10 +145,10 @@ describe.skipIf(serverUrl === undefined)('C80 publish binding', () => {
   });
 
   it('a merge another worker already made is recorded unknown with a task, never failed', async () => {
-    const { id, seam } = await approved();
+    const { id, ...version } = await approved();
     const site = provider({ content: BEFORE });
     const raised: string[] = [];
-    const ports = await proposedAndBound(seam, site, raised, []);
+    const ports = await proposedAndBound(version, site, raised, []);
     if (site.state.request) site.state.request.merged = true;
     expect(await runLivePublish(w.world.db.app, at(id), ports)).toMatchObject({
       kind: 'recorded',
@@ -155,7 +156,7 @@ describe.skipIf(serverUrl === undefined)('C80 publish binding', () => {
     });
     expect([await w.stateOf(id), raised]).toEqual(['unknown', ['REQUEST_ALREADY_MERGED']]);
     expect((await observed(id))['unknown_outcome_reconciliation']).toEqual({
-      observed: `REQUEST_ALREADY_MERGED, read back by ${seam}`,
+      observed: `REQUEST_ALREADY_MERGED, read back by ${version.seam}`,
     });
   });
 });
