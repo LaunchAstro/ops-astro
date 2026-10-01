@@ -129,7 +129,7 @@ export async function executeCredentialCommand(
   const doorFull = call.quota !== undefined && place === undefined;
   // Past a full door, one unlocked read before the call's transaction: a bearer
   // not live is limited with nothing held and nothing written, and a live one,
-  // never known before or made live again, goes on as below the door (round 4).
+  // never known before or made live again, goes on as below the door.
   if (doorFull && !(await database.withBusiness(businessId, (tx) => live(tx, call)))) {
     return asCallerVisible(limited());
   }
@@ -195,8 +195,8 @@ const live = async (tx: TenantQuery, call: CredentialCall): Promise<boolean> =>
 
 /**
  * A credential turned away is an attempt at the door (I13), answered as every
- * other. Past the door's count it is answered as limited and writes no row
- * (finding 5), while a live bearer is still served (round 2, finding 1).
+ * other. Past the door's count it is answered as limited and writes no row,
+ * while a live bearer is still served.
  */
 async function notLive(
   tx: TenantQuery,

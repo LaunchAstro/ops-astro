@@ -4,16 +4,15 @@
 // (`account-factor.ts`): an enrolment that lost, under the record lock, to a
 // factor the login verified elsewhere, or a removal the record has committed.
 // And a stray the product leaves there, reported: a factor issued or proven
-// at the provider whose record was then refused (security review 2b2 r11-2).
-// Split from `account-factor.ts` to keep that file under the line limit
-// (security review 2b2, finding 1).
+// at the provider whose record was then refused.
+// Split from `account-factor.ts` to keep that file under the line limit.
 
 import { loginHasVerifiedFactor, withSession } from '../../../core-records/src/index.ts';
 import type { RefusalCode, Session, TenantQuery } from '../../../core-records/src/index.ts';
 import { payloadDigest } from '../../../core-digest/src/index.ts';
 import type { FactorProvider } from './account-factor-provider.ts';
 import type { FactorCaller } from './account-factor-judged.ts';
-import { writeAuditEvent } from './audit.ts';
+import { writeRefusedAuditEvent } from './envelope.ts';
 
 const ORPHANED = 'account.factor_orphaned';
 
@@ -58,11 +57,10 @@ export async function reportOrphan(
     caller.businessId,
     login,
     async (tx, session) => {
-      await writeAuditEvent(tx, {
+      await writeRefusedAuditEvent(tx, {
         actorId: session.actorId,
         command: ORPHANED,
         operationId: attempt,
-        outcome: 'refused',
         refusalCode: why,
         payloadDigest: payloadDigest({
           command: ORPHANED,
@@ -75,7 +73,7 @@ export async function reportOrphan(
     'enrolling',
   );
   // Login resolution refused (membership ended, person archived): no row can
-  // be written here, so the server log carries it, digests only (review r12-1).
+  // be written here, so the server log carries it, digests only.
   if (written !== true) {
     console.warn(
       `${ORPHANED} unrecorded: business=${caller.businessId} operation=${attempt} ` +

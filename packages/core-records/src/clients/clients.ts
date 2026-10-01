@@ -84,7 +84,7 @@ export async function clientsReached(
   among: readonly string[] | null = null,
 ): Promise<readonly ClientRow[] | null> {
   // An agent credential's subject is held within named keys, and no key names
-  // a client list, so it reaches none (2b2 security review, finding 3).
+  // a client list, so it reaches none.
   const asked = subjects.filter((subject) => subject.within === undefined);
   const rows = await tx.query<{
     readonly held: boolean;
