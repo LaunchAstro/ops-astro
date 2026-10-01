@@ -44,12 +44,6 @@ export {
 export type { CommandRefusal } from '../../core-records/src/index.ts';
 // What the reads answer, declared once for the server and every client.
 export type {
-  AccessAgent,
-  AccessGrant,
-  AccessPermission,
-  AccessPerson,
-  AccessPreview,
-  AccessReadResult,
   AttemptView,
   AwaitingReviewResult,
   ConversationMessageView,
@@ -63,25 +57,9 @@ export type {
   CheckView,
   RunPinView,
   RunReadView,
-  BreachNoticeDraft,
-  BreachNoticesResult,
-  BreachRunbookLink,
-  HealthFault,
-  HealthSourceName,
-  HealthSourceState,
-  HealthSourceView,
-  LastTestedRestoreView,
-  OperationsReadResult,
-  PrivacyIncidentView,
-  SecurityAlertView,
-  ServiceHealthSection,
-  ServiceHealthState,
-  ServiceHealthView,
   Capability,
   CapabilitiesResult,
   SessionPersonResult,
-  ClientListResult,
-  ClientView,
   CommentView,
   DecisionLink,
   EvidenceView,
@@ -140,6 +118,32 @@ export type {
   TaskStateView,
   TaskSummary,
 } from './views.ts';
+export type {
+  AccessAgent,
+  AccessGrant,
+  AccessPermission,
+  AccessPerson,
+  AccessPreview,
+  AccessReadResult,
+  ClientListResult,
+  ClientView,
+} from './views-access.ts';
+export type {
+  BreachNoticeDraft,
+  BreachNoticesResult,
+  BreachRunbookLink,
+  HealthFault,
+  HealthSourceName,
+  HealthSourceState,
+  HealthSourceView,
+  LastTestedRestoreView,
+  OperationsReadResult,
+  PrivacyIncidentView,
+  SecurityAlertView,
+  ServiceHealthSection,
+  ServiceHealthState,
+  ServiceHealthView,
+} from './views-operations.ts';
 // AW-04: a plan version as a planning reply offers it in the chat
 export type { PlanOffer, PlanOfferStep } from './plan-offer.ts';
 // the command catalogue and its parity check (API-1)
