@@ -294,11 +294,10 @@ insert on `leases` and updates only `expires_at`, `state` and `released_at`, so
 it can neither rewrite a lease's holder nor forge a lease, and 0218's check
 that a reviewed output is its lease holder's work stands on the holder column.
 Pickup calls it after its own checks under the locks. It checks again inside, in
-`app_business_id()`'s business: the reservation is claimable, the claimant's
-authority is live (a person's own write on the task, claimed under their own
-name, whoever approved; or an agent's own delegation for this lease from the
-approving person, who is the one named, judged as `EFFECTIVE` judges grants),
-and the expiry is within a lease's
+`app_business_id()`'s business: the reservation is claimable, the approving
+person is the one named, the claimant's authority is live (a person's own write
+on the task, or an agent's own delegation for this lease from the approving
+person, judged as `EFFECTIVE` judges grants), and the expiry is within a lease's
 lifetime. It computes the fence itself. The application role still writes
 delegations, grants, gate decisions and actors, so a new lease is only as
 trustworthy as those rows; the delegation mint behind this path is the next step. It runs as its own
