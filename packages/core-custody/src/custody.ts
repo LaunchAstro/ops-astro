@@ -90,9 +90,12 @@ function exchangeWith(child: ChildProcess): Exchange {
     const id = shape['id'];
     if (typeof id === 'string') waiting.get(id)?.(shape);
   });
-  child.on('exit', () => {
+  const loseAll = (): void => {
     for (const notify of lost) notify();
-  });
+  };
+  child.on('exit', loseAll);
+  // A write to a custody that died before its exit was handled fails as EPIPE: lost, as on exit, not a crash.
+  child.on('error', loseAll);
   return async (body, onStarted) =>
     await new Promise((resolve) => {
       const id = randomUUID();
@@ -115,7 +118,9 @@ function exchangeWith(child: ChildProcess): Exchange {
         onLost();
         return;
       }
-      child.send({ ...body, id });
+      child.send({ ...body, id }, (error) => {
+        if (error !== null) onLost();
+      });
     });
 }
 
