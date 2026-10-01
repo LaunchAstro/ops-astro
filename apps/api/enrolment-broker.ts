@@ -10,7 +10,8 @@
 // file (`ENROLMENT_CREDENTIALS_FILE`), holding the service key under
 // `auth_key` for the `auth` destination. On with either missing or
 // malformed, or any other value, the server stops before it listens, naming
-// the setting and never its value, as the mail delivery's switch does.
+// the setting and never its value, as the mail delivery's switch does; and so
+// it does when the file holds no `auth_key` for `auth`, which custody checks.
 //
 // **The service key stays in custody.** A custody process of its own holds
 // it; this process names the file and never reads it. The broker catalogues
@@ -54,11 +55,16 @@ const invalid = (problem: string): EnrolmentSettings => ({ kind: 'invalid', prob
 /** Plain http only to this machine, as the trace export's target. */
 const LOOPBACK = /^(?:127(?:\.\d{1,3}){3}|\[::1\])$/u;
 
-/** The login provider as custody lists it: the origin, the create's one POST and the read's GET. */
+/**
+ * The login provider as custody lists it: the origin, the create's one POST
+ * and the read's GET, and the service key in `apikey` as well as the bearer,
+ * as a hosted provider reads a secret key (`sb_secret_...`).
+ */
 export function authDestination(origin: string): Destination {
   return {
     key: AUTH_CREATE_USER.destination,
     origin,
+    keyHeader: 'apikey',
     routes: [
       { method: 'POST', path: AUTH_USERS_PATH },
       { method: 'GET', path: `${AUTH_USERS_PATH}/*` },
@@ -119,9 +125,11 @@ export async function startEnrolment(
   settings: Extract<EnrolmentSettings, { kind: 'on' }>,
   businesses: () => Promise<readonly BusinessId[]>,
 ): Promise<{ readonly options: EnrolmentOptions; readonly stop: () => Promise<void> }> {
+  // Without the service key for `auth` custody does not start, so the server stops before it listens.
   const custody = await startCustody({
     credentialsFile: settings.credentialsFile,
     destinations: [settings.destination],
+    requires: [AUTH_CREDENTIAL],
   });
   return {
     options: { businesses, broker: enrolmentBroker(custody) },
