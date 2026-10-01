@@ -456,16 +456,23 @@
   padding: var(--s-5);
 }
 .convrec__subject,
-.convrec__note,
-.convrec__who {
+.convrec__note {
   color: var(--text-muted);
 }
+/* The messages stack as the drawer's do: the agent's at the start, the person's at the end. */
 .convrec__log {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: var(--s-3);
   margin: 0;
   padding: 0;
   list-style: none;
+}
+.convrec__who {
+  display: block;
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
 }
 .convrec__msg p {
   margin: 0;
