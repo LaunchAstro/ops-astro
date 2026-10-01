@@ -95,12 +95,16 @@ describe('S0-2 heartbeats: the error sink, paced', () => {
     const exited = new Promise((done) => {
       child.once('exit', done);
     });
-    await vi.waitFor(
-      () => expect(asked.filter((u) => u === '/_health/').length).toBeGreaterThanOrEqual(4),
-      { timeout: 20_000 },
-    );
-    child.kill();
-    await exited;
+    try {
+      await vi.waitFor(
+        () => expect(asked.filter((u) => u === '/_health/').length).toBeGreaterThanOrEqual(4),
+        { timeout: 20_000 },
+      );
+    } finally {
+      // Whatever the wait did, the forwarder never outlives the test.
+      child.kill();
+      await exited;
+    }
     expect(asked.filter((u) => u === '/sink-beat')).toHaveLength(1);
-  });
+  }, 30_000);
 });
