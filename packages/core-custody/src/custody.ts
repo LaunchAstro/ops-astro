@@ -84,7 +84,7 @@ async function ready(child: ChildProcess, log: () => string): Promise<void> {
     };
     child.on('message', onReady);
     child.once('close', (code) => {
-      const kind = /^custody: ([a-z0-9_ ]+)$/mu.exec(log())?.[1] ?? 'no reason given';
+      const kind = /^custody: ([\w ]+)$/mu.exec(log())?.[1] ?? 'no reason given';
       reject(new Error(`custody did not start (${String(code)}): ${kind}`));
     });
   });
