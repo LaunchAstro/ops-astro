@@ -1914,6 +1914,23 @@ invitation message is sent through `sendInvitation` when exactly one business
 holds a pending invitation for the address with an unanswered act; other
 Auth mail (a reset among it) has no attempt yet and is not sent (C40).
 
+`POST /api/password/set` with `password` and the bearer of the session a
+reset link opened sets the new password (C40, `setPasswordByRecovery`,
+mounted by `mountPasswordSet` with the deployment's businesses; `main()` does
+not mount it yet). A token whose `amr` holds `recovery` is a recovery
+session: login resolution refuses it everywhere else (`AUTH_SESSION_EXPIRED`),
+and this route takes nothing else. The provider sets the password on the
+person's own token (GoTrue `PUT /user`, not custody), and only a user whose
+id is the token's subject is a yes. Then, in each business the login is
+mapped in, one transaction ends every session of the login (0063, keeping
+none, the recovery session too) and audits `account.password_changed`; after
+commit the provider signs out the others, then this session. The answer is
+200 `{ signedOutAtProvider }`. A session that is not a live recovery session
+of a mapped login (none, expired, spent, a sign-in) is 401
+`RESET_LINK_INVALID`, a password outside 12 to 72 bytes 400
+`PASSWORD_INVALID`, a provider fault or wrong answer 503 `RESET_UNAVAILABLE`,
+nothing ended or audited. Answers carry a code alone; nothing is logged.
+
 `POST /api/enrol` with `token` and `password` accepts an invitation
 (`acceptInvitation`, mounted by `mountEnrolment` with the deployment's
 businesses and a broker cataloguing `auth.create_user` and
