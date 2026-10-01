@@ -112,3 +112,19 @@ export function unknownOf(reservation: RunReservation | undefined): UnknownAttem
   }
   return typeof id === 'string' ? { id, heldMinor: reservation.heldMinor } : null;
 }
+
+/**
+ * The hold that tells the head's story: the newest, unless it is a settled
+ * hold of an earlier version's run. A handback's successor (AW-09) or a
+ * revision has no hold of its own yet, so its gate is the story; a hold whose
+ * outcome is unknown stays the story (C54). A read without run ids keeps the
+ * newest.
+ */
+export function headHold(lineage: RunLineage, head: RunVersion): RunReservation | undefined {
+  const newest = lineage.reservations.at(-1);
+  if (newest?.runId === undefined || head.runId === null || newest.runId === head.runId) {
+    return newest;
+  }
+  const unknown = newest.state === 'quarantined' || newest.attempt?.state === 'liability_unknown';
+  return unknown ? newest : undefined;
+}

@@ -10,6 +10,7 @@ import {
   COMMAND_SURFACE,
   PREFIX,
   VIEW_ONLY_EXEMPT,
+  VISUAL_HANDOFFS,
   buildCatalogue,
   checkParity,
   pathOf,
@@ -19,6 +20,7 @@ import {
 import { createApi } from '../apps/api/app.ts';
 import { createCli } from '../apps/cli/client.ts';
 import { OperationsClient, READ_NAMES } from '../apps/web/src/operations/client.ts';
+import { ROUTES } from '../apps/web/src/routes.ts';
 
 const WEB = resolve(import.meta.dirname, '..', 'apps', 'web', 'src');
 // transport, addresses
@@ -146,6 +148,24 @@ export function realSurfaces(uses) {
   };
 }
 
+/**
+ * AW-09: a visual hand-off is honest only if the app draws the page it names
+ * and nothing with its name runs as a command: a route the app does not
+ * register is a link to nowhere, and a shared name hides a command's verb.
+ */
+export function handoffFailures(
+  handoffs = VISUAL_HANDOFFS,
+  paths = Object.values(ROUTES).map((route) => route.path),
+  commands = COMMAND_SURFACE.map((one) => one.name),
+) {
+  return handoffs.flatMap((one) => [
+    ...(paths.includes(one.route) && one.route.includes(`:${one.param}`)
+      ? []
+      : [`the hand-off ${one.name} opens ${one.route}, which the app does not draw`]),
+    ...(commands.includes(one.name) ? [`the hand-off ${one.name} is also a command's name`] : []),
+  ]);
+}
+
 export function run(
   files = new Map(sources(WEB).map((file) => [file, readFileSync(join(WEB, file), 'utf8')])),
 ) {
@@ -153,7 +173,8 @@ export function run(
   const unparsed = [];
   const uses = scanUses(files, namespaces, unparsed);
   const rows = buildCatalogue(uses);
-  return { rows, failures: [...unparsed, ...checkParity(rows, realSurfaces(uses))] };
+  const failures = [...unparsed, ...checkParity(rows, realSurfaces(uses)), ...handoffFailures()];
+  return { rows, failures };
 }
 
 if (process.argv[1] === import.meta.filename) {

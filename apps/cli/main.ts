@@ -40,6 +40,8 @@ import {
   usage,
   type CliAnswer,
 } from './client.ts';
+import { handoffOf } from '../../packages/core-wire/src/index.ts';
+import { DEFAULT_WEB, handOff, handoffHelp } from './handoff.ts';
 
 const ROOT = join(import.meta.dirname, '..', '..');
 
@@ -65,7 +67,7 @@ interface Parsed {
 }
 
 /** Flags that take a value; every other `--name` is a switch. */
-const VALUED = new Set(['json', 'body-file', 'business', 'api', 'email', 'gotrue']);
+const VALUED = new Set(['json', 'body-file', 'business', 'api', 'email', 'gotrue', 'web']);
 const SWITCHES = new Set(['help', 'agent']);
 
 class UsageError extends Error {}
@@ -169,6 +171,7 @@ function body(flags: Parsed['flags']): Record<string, unknown> {
 const HELP = [
   'usage: pnpm cli <operation> [--json <object> | --body-file <path>] [--business <key>]',
   '                               [--api <url>] [--agent]',
+  '       pnpm cli <visual operation> [--json <object>] [--web <app origin>]',
   '       pnpm cli login --email <address> [--gotrue <url>]   (password from',
   '                               OPS_ASTRO_PASSWORD, the first line of piped stdin,',
   '                               or a prompt with echo off at a terminal)',
@@ -176,7 +179,7 @@ const HELP = [
   '',
   'environment: OPS_ASTRO_API_URL, OPS_ASTRO_BUSINESS, OPS_ASTRO_TOKEN, OPS_ASTRO_TOKEN_FILE,',
   '             OPS_ASTRO_GOTRUE_URL, OPS_ASTRO_AGENT=1, OPS_ASTRO_DELEGATION,',
-  '             OPS_ASTRO_DELEGATION_FILE',
+  '             OPS_ASTRO_DELEGATION_FILE, OPS_ASTRO_WEB_URL',
   'exit codes:  0 answered, 1 refused, 2 usage (no request sent), 3 transport failure,',
   '             4 fault (an answer that is neither a success nor a refusal)',
   '',
@@ -254,7 +257,9 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
   }
   const [verb, ...extra] = parsed.positional;
   if (verb === undefined || parsed.flags['help'] === true) {
-    for (const line of [...HELP, ...usage().map((name) => `  ${name}`)]) io.out(line);
+    for (const line of [...HELP, ...usage().map((name) => `  ${name}`), ...handoffHelp()]) {
+      io.out(line);
+    }
     return EXIT.ok;
   }
   const tokenFile = env['OPS_ASTRO_TOKEN_FILE'] ?? DEFAULTS.tokenFile;
@@ -276,6 +281,14 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
       if (!removed) return EXIT.fault;
       io.out(JSON.stringify({ ok: true }));
       return EXIT.ok;
+    }
+    // AW-09: a visual operation's answer is the app's page, and nothing is sent.
+    const handoff = handoffOf(verb);
+    if (handoff !== undefined) {
+      const web = text(parsed.flags, 'web') ?? env['OPS_ASTRO_WEB_URL'] ?? DEFAULT_WEB;
+      const handed = handOff(handoff, body(parsed.flags), web);
+      io.out(handed.line);
+      return handed.exit;
     }
     if (!accepts(verb)) {
       // Answered here, before any configuration is read or any request sent.

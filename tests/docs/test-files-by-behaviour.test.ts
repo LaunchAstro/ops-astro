@@ -337,6 +337,10 @@ const NO_PRODUCT_IMPORTER_YET = new Map([
     "the Vercel function entry, loaded by Vercel's Node.js runtime rather than imported",
   ],
   [
+    'apps/cli/main.ts',
+    'the command line process entry (`pnpm cli`), started by node rather than imported',
+  ],
+  [
     'apps/worker/main.ts',
     'the worker process entry (`pnpm worker`), started by node rather than imported',
   ],

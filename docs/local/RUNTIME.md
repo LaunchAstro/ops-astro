@@ -1939,6 +1939,49 @@ candidate audit, a dependency audit at each pinned commit, is part two's) and
 `aw-12-fakes`. The refusal tests, the representative case, the comparison
 families, the ledger and the gates wait on AW-08, AW-09 and AW-10.
 
+## The agent's output takes its own review round
+
+AW-09 (`review-round.ts`). Whatever the agent hands back with a successor is
+the reviewed output (AW-08), and it takes the same revision loop as any
+version (T3a): its own pending gate, two rounds of requested changes, then
+approve, reject or escalate, a reject terminal and a restart a new lineage on
+its own envelope. This holds when the task came from an approved automation:
+the standing approval accepts the task, never the output.
+
+A person completes the round, never the agent that produced it. The surfaces
+keep the agent out (its delegation never reaches `decide`, and the person
+prefix resolves only a person's login), and `decide` asks again itself,
+because its caller hands it the deciding actor and the schema checks only
+that the actor exists. On a reviewed output the decider's actor must be the
+active person actor of the person deciding; anything else is
+`DELEGATION_EXCLUDES_DECISION`, under the locks and before anything is
+written, for every decision, the escalate and the plan accept alike.
+
+An approval does not survive its version. When the agent's revision
+supersedes an approved version, the proposal ends that version's lease and
+delegation, so the agent's dispatch under it is `DELEGATION_NOT_LIVE` and marks
+nothing; with the lease somehow live, dispatch's locked recheck of the
+approved version answers `DECISION_STALE`.
+
+A stuck agent (a failed handback) tells the task's assignee as well as the
+person who authorised the run: one `waiting_run` item on the run, raised in
+the handback's transaction (`raiseRunSettled`). It is a pointer and grants
+nothing; the output it points at is still not the assignee's to decide (four
+eyes). An assignee who authorised the run is recorded once, as that person.
+
+"Reject this proposal" sits on the proposal's header, outside the gate card,
+on the task page's lineage and on the Agent pane alike. The pane tells the
+head version's story from its own hold (`headHold`): the settled hold of the
+run that handed the output back is history, so the output's pending gate is
+drawn armed, with approve, request changes and the header's reject on offer.
+
+`isReviewedOutput` is AW-08's (`reviewed-output.ts`): a version is a reviewed
+output when the handback marked it. Tests:
+`aw-09-reviewed-on-every-surface` (the invariant,
+`agent_output_is_reviewed_on_every_surface`), `aw-09-no-self-review`,
+`aw-09-isolation`, `aw-09-round-rules`, `aw-09-stuck-notice` and
+`aw-09-reject-header`.
+
 ## What is not here
 
 - **No machine write-off.** The worker (`apps/worker/`, T2b), effect

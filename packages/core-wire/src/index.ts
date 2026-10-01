@@ -97,3 +97,5 @@ export type {
 } from './views.ts';
 // the command catalogue and its parity check (API-1)
 export * from './catalogue.ts';
+// the operations whose value is visual, and the command line's hand-off to them (AW-09)
+export { handoffAddress, handoffOf, VISUAL_HANDOFFS, type VisualHandoff } from './handoff.ts';

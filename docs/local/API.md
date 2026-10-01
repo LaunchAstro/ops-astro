@@ -552,6 +552,17 @@ lease is written (`queue` and `pickup`, `core-runtime/src/pickup.ts`).
 Restoring the task brings the work back.
 `tests/runtime/trashed-task-work-and-notes.test.ts` holds it.
 
+**The agent's output takes its own review round (AW-09).** A handback's
+successor is a version like any other: `task.decide` on its gate, two rounds
+of `request_changes`, the third `CHANGE_ROUNDS_EXHAUSTED` 409 with approve,
+reject or escalate on offer, and the gate left open. A person decides it,
+never the agent: on the agent prefix `task.decide` is
+`DELEGATION_EXCLUDES_DECISION` 403, the agent's own login on the person
+prefix resolves to no person, and the runtime refuses any deciding actor that
+is not the person's own (`DELEGATION_EXCLUDES_DECISION`, RUNTIME.md). The
+review page itself is visual: the command line hands off to it with
+`review.view` (CLI.md, "Visual operations").
+
 **Alerts (T2h).** A run's transition into settled, failed or cancelled, or
 into a wait only a person can end, raises one alert on its task in the same
 transaction: T2d's settlement (`settled`, `failed`, or `awaiting_person` with
