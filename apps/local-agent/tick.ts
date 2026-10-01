@@ -162,13 +162,13 @@ export interface TaskTick {
   /** The step's fields for this work, each bound to a row or stated with its source (S3). */
   readonly fieldsFor: (entry: QueueEntry) => readonly unknown[];
   readonly leaseSeconds?: number;
-  /** The local approval gate; without one a released step is handed back as before. */
+  /** The local approval gate; without one a released step is handed back failed. */
   readonly gate?: TickGate;
 }
 
 export interface Ran {
   readonly taskId: string;
-  readonly outcome: 'completed' | 'refused';
+  readonly outcome: 'completed' | 'failed' | 'refused';
   /** The model's words, handed back once and never stored; null when no answer came. */
   readonly reply: string | null;
   /** The step that refused and its code, when one did. */
@@ -182,7 +182,7 @@ const refusedAt = (entry: QueueEntry, step: string, code: string): Ran => ({
   refusal: { step, code },
 });
 
-/** Pick one piece of queued work up, make its model step, hand it back completed. */
+/** Pick one piece of queued work up, make its model step, hand it back completed or failed. */
 async function runOne(options: TaskTick, entry: QueueEntry): Promise<Ran> {
   const { database, businessId, agent } = options;
   const picked = await executeAgentCommand(database, businessId, agent, undefined, {
@@ -203,26 +203,28 @@ async function runOne(options: TaskTick, entry: QueueEntry): Promise<Ran> {
     fields: options.fieldsFor(entry),
   } as never);
   if (isCommandRefusal(call)) return refusedAt(entry, 'model.call', call.code);
-  if (call.detail['state'] === 'released' && options.gate !== undefined) {
+  const released = call.detail['state'] === 'released';
+  if (released && options.gate !== undefined) {
     const lease = { leaseId: String(leaseId), fence: Number(fence), credential };
     const code = await options.gate.onReleased(lease);
     if (code !== undefined) return refusedAt(entry, 'model.call', code);
   }
   const text = call.detail['text'];
   const reply = typeof text === 'string' ? text : null;
+  // A release nothing explains is a step that never ran (seat past its stop, a failed run).
+  const outcome = released ? 'failed' : 'completed';
+  const said = reply === null ? 'gave no answer' : 'answered';
   const handedBack = await executeAgentCommand(database, businessId, agent, credential, {
     command: 'task.handback',
     operationId: randomUUID(),
     leaseId,
     fence,
-    outcome: 'completed',
-    report: {
-      summary: reply === null ? 'the model step gave no answer' : 'the model step answered',
-    },
+    outcome,
+    report: { summary: `the model step ${released ? 'was released without an answer' : said}` },
     actualMinor: null,
   } as never);
   if (isCommandRefusal(handedBack)) return refusedAt(entry, 'task.handback', handedBack.code);
-  return { taskId: entry.taskId, outcome: 'completed', reply, refusal: null };
+  return { taskId: entry.taskId, outcome, reply, refusal: null };
 }
 
 /** One pass over the business's queue: each approved piece of work run once, in order. */
