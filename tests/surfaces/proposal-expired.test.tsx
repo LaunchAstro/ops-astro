@@ -77,21 +77,23 @@ function server(gate: { readonly state: string; readonly expired: boolean }) {
   };
 
   const decided: unknown[] = [];
-  const fetch = (async (url: string | URL, init?: RequestInit) => {
+  const fetch = ((url: string | URL, init?: RequestInit) => {
     const at = String(url);
-    if (at.endsWith('/person/list')) return json({ ok: true, persons: [] });
-    if (at.endsWith('/task/read')) return json({ ok: true, task });
+    if (at.endsWith('/person/list')) return Promise.resolve(json({ ok: true, persons: [] }));
+    if (at.endsWith('/task/read')) return Promise.resolve(json({ ok: true, task }));
     if (at.endsWith('/task/decide')) {
       decided.push(JSON.parse(String(init?.body ?? '{}')));
-      return json({ refused: true, code: 'GATE_EXPIRED', names: [], fixes: [] }, 410);
+      return Promise.resolve(
+        json({ refused: true, code: 'GATE_EXPIRED', names: [], fixes: [] }, 410),
+      );
     }
-    return json({ refused: true, code: 'NOT_FOUND', names: [], fixes: [] }, 404);
+    return Promise.resolve(json({ refused: true, code: 'NOT_FOUND', names: [], fixes: [] }, 404));
   }) as unknown as typeof globalThis.fetch;
 
   const client = new OperationsClient({
     origin: '',
     businessKey: 'alpha',
-    token: 'a-token',
+    signedIn: true,
     fetch,
     newOperationId: () => 'operation-1',
   });

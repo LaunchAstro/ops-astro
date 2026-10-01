@@ -14,7 +14,9 @@
 //
 // One alert per cause and kind (`alerts_one_per_transition`, 0036); a replayed
 // transition's insert does nothing. Nothing delivers an alert: the task page
-// and the queue read show them to the team (C12-6).
+// and the queue read show them to the team (C12-6), and the inbox shows the
+// one on the run an item points at, on a readable item only (INB-1,
+// `core-records/src/inbox/items.ts`), and nowhere else.
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../../core-records/src/index.ts';

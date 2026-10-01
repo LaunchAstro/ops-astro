@@ -8,13 +8,19 @@
 
 export {
   COMMAND_SURFACE,
+  CSRF_HEADER,
   declarationOf,
   effectAttemptOf,
   effectOperationId,
+  EXTERNAL_WRITES,
+  admitsSelfWrite,
   DELEGATION_HEADER,
   pathOf,
   PREFIX,
   READS,
+  SESSION_COOKIE,
+  SESSION_PATH,
+  SESSION_HEADER,
   type CommandDeclaration,
   type CommandName,
   type Operand,
@@ -36,6 +42,9 @@ export type {
   ExecutionRun,
   GateView,
   HistoryEntry,
+  InboxCountResult,
+  InboxEntry,
+  InboxReadResult,
   InternalCommentView,
   InternalTaskDetail,
   InternalTaskRead,
@@ -65,3 +74,5 @@ export type {
   TaskStateView,
   TaskSummary,
 } from './views.ts';
+// the command catalogue and its parity check (API-1)
+export * from './catalogue.ts';

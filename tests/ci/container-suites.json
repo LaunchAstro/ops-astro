@@ -1,0 +1,13 @@
+{
+  "note": "Suites that start containers. local checks runs pnpm check without them (CONTAINER_SUITES=apart) and runs them in a later step, so no network interface appears while the browser captures load (net::ERR_NETWORK_CHANGED). tests/ci/container-suites-run-apart.test.ts keeps this list equal to the suites that start one.",
+  "suites": [
+    "tests/ci/restore-drill-keeps-staging-guards.test.ts",
+    "tests/ci/restore-drill.test.ts",
+    "tests/ci/restore-includes-sign-in-tables.test.ts",
+    "tests/ci/restore-includes-staging-guards.test.ts",
+    "tests/ci/staging-archive-restores-guards.test.ts",
+    "tests/ci/staging-backup-reach-live.test.ts",
+    "tests/ci/staging-containment.test.ts",
+    "tests/ci/staging-egress.test.ts"
+  ]
+}

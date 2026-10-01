@@ -2,6 +2,7 @@
 //
 // `task.handback`: a lease settled, with its report and any successor.
 
+import { raiseDecision, raiseIncident, raiseRunSettled } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import {
   handback,
@@ -43,6 +44,11 @@ export interface HandbackFields {
 }
 
 export const OUTCOMES: ReadonlySet<string> = new Set(['completed', 'failed', 'dropped']);
+
+/** The three ends a holder reports. */
+type Outcome = 'completed' | 'failed' | 'dropped';
+
+const isOutcome = (outcome: string): outcome is Outcome => OUTCOMES.has(outcome);
 
 /**
  * The handback refusals that have already written a report row the runtime
@@ -158,7 +164,8 @@ async function settle(
   fields: HandbackFields,
   claimant: Claimant,
 ): Promise<HandlerOutcome> {
-  if (!OUTCOMES.has(fields.outcome)) return refuseOutcome(fields.outcome);
+  const outcome = fields.outcome;
+  if (!isOutcome(outcome)) return refuseOutcome(outcome);
   if (!Number.isSafeInteger(fields.fence) || fields.fence < 0) return refuseFence(fields.fence);
   // Root ruling 2 (ROOT-01a437a): a present report is an object of named
   // values. Null, an array or a string is refused by name, never spread into
@@ -214,7 +221,7 @@ async function settle(
   const result = await handback(tx, {
     leaseId: fields.leaseId,
     fence: fields.fence,
-    outcome: fields.outcome as 'completed' | 'failed' | 'dropped',
+    outcome,
     ...(dropCause === undefined ? {} : { dropCause: dropCause as DropCause }),
     report: { ...fields.report },
     actualMinor: null,
@@ -235,6 +242,14 @@ async function settle(
   }
 
   const settled = result.value;
+  // INB-1: the launcher is told, and a successor's gate is a decision to raise.
+  const taskId = await raiseRunSettled(tx, { leaseId: settled.leaseId, outcome });
+  await raiseIncident(tx, [
+    { reservationId: settled.reservationId, state: settled.reservationState },
+  ]);
+  if (settled.successorGateId !== null) {
+    await raiseDecision(tx, { taskId, gateId: settled.successorGateId });
+  }
   return applied(null, null, {
     leaseId: settled.leaseId,
     reservationId: settled.reservationId,

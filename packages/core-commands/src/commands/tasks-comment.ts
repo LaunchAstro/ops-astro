@@ -35,7 +35,14 @@
 // is marked dispatched to this caller's own lease: no effect before its
 // dispatch, whichever entry sends it.
 
-import { audienceNotPermitted, writeComment } from '../../../core-records/src/index.ts';
+import {
+  audienceNotPermitted,
+  raiseMentions,
+  readMentions,
+  seenBy,
+  type Mentioned,
+  writeComment,
+} from '../../../core-records/src/index.ts';
 import { acquire } from '../../../core-runtime/src/index.ts';
 import type {
   TenantQuery,
@@ -45,6 +52,7 @@ import type {
 } from '../../../core-records/src/index.ts';
 import type { CommandContext, TaskRow } from './context.ts';
 import { effectAttemptOf, type CommandDeclaration } from '../../../core-wire/src/index.ts';
+import { isIdentifier } from './operands.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseUnstorable, storableText } from './values.ts';
@@ -72,6 +80,10 @@ const NO_COMMENT_TYPE_FIXES: readonly string[] = [
   'It is not a permission problem and retrying will not change it.',
 ];
 
+const MENTIONS_FIXES: readonly string[] = [
+  'Send mentions as a list of person ids, or leave it out.',
+];
+
 export async function commentOnTask(
   tx: TenantQuery,
   context: CommandContext,
@@ -79,6 +91,7 @@ export async function commentOnTask(
   body: unknown,
   audience: unknown,
   commentType: unknown,
+  mentions: unknown,
 ): Promise<HandlerOutcome> {
   const target = context.target;
   if (target === undefined) {
@@ -99,6 +112,7 @@ export async function commentOnTask(
     body,
     audience,
     commentType,
+    mentions,
   );
 }
 
@@ -163,6 +177,31 @@ async function effectRefusal(
   return held === undefined ? refuseCommand('EFFECT_NOT_DISPATCHED', [], EFFECT_FIXES) : undefined;
 }
 
+/**
+ * The refusal of mentions that cannot read the comment. It names each person
+ * only to an author who could already see them (`seenBy`), and otherwise gives
+ * back the identifier exactly as sent: its stored letter case would say it exists.
+ */
+async function unreadableMentions(
+  tx: TenantQuery,
+  on: CommentTarget,
+  named: readonly string[],
+  unreadable: readonly Mentioned[],
+): Promise<CommandRefusal> {
+  const ids = unreadable.map((person) => person.personId);
+  const seen = await seenBy(tx, on.authorActorId, ids);
+  const sent = new Map(named.map((id) => [id.toLowerCase(), id] as const));
+  const shown = (person: Mentioned): string =>
+    seen.has(person.personId)
+      ? person.label
+      : (sent.get(person.personId.toLowerCase()) ?? person.personId);
+  return refuseCommand(
+    'MENTION_NOT_READABLE',
+    ['mentions'],
+    unreadable.map((person) => `${shown(person)} cannot read this comment: remove the mention.`),
+  );
+}
+
 /** The attempt's step, when the attempt is dispatched to the author's own lease on this task. */
 async function dispatchedToAuthor(
   tx: TenantQuery,
@@ -197,6 +236,7 @@ export async function writeTaskComment(
   body: unknown,
   audience: unknown,
   commentType: unknown,
+  mentions: unknown = [],
 ): Promise<HandlerOutcome> {
   if (on.target.deleted_at !== null) return refused(refuseNotFound());
   const commentTypeId = on.commentTypeId;
@@ -230,6 +270,18 @@ export async function writeTaskComment(
   if (commentType !== undefined && (typeof commentType !== 'string' || !TYPES.has(commentType))) {
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['comment_type'], TYPE_FIXES));
   }
+  const named = mentions ?? [];
+  if (!Array.isArray(named) || !named.every((id) => isIdentifier(id))) {
+    return refused(refuseCommand('FIELD_VALUE_INVALID', ['mentions'], MENTIONS_FIXES));
+  }
+  // INB-1: a mention of someone who cannot read the comment is refused before
+  // it saves, rather than raising an item they could never open.
+  const task = { taskId: on.target.id, audience };
+  const mentioned = await readMentions(tx, task, named as string[]);
+  const unreadable = mentioned.filter((person) => !person.readable);
+  if (unreadable.length > 0) {
+    return refused(await unreadableMentions(tx, on, named as string[], unreadable));
+  }
 
   const effect = await effectRefusal(tx, on, audience);
   if (effect !== undefined) return refused(effect);
@@ -241,6 +293,7 @@ export async function writeTaskComment(
     body,
     source: on.entryPoint,
   });
+  await raiseMentions(tx, { ...task, commentId, authorActorId: on.authorActorId }, mentioned);
 
   return applied(on.target.id, on.target.revision, { commentId });
 }

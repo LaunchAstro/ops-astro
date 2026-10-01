@@ -6,29 +6,31 @@
 // deliberately does not contain — and it is the only place a caller's identity
 // enters the slice. Three properties are what make it that.
 //
-// **The token is the only input.** Not the body, not a host header, not a
-// forwarded header, not a query parameter. A request that carries `actorId`,
-// `businessId`, `X-Forwarded-For` or an `apikey` alongside its token is a
-// request with those fields nowhere to go (checklist N7). The signature is
-// what this function reads and the signature is all it reads.
+// **The token is the only input**, as a bearer or as the browser's session
+// cookie the bearer was traded for (`session.ts`). Not the body, not a host
+// header, not a forwarded header, not a query parameter. A request that
+// carries `actorId`, `businessId`, `X-Forwarded-For` or an `apikey` alongside
+// its token is a request with those fields nowhere to go (checklist N7). The
+// signature is what this function reads and the signature is all it reads.
 //
 // **A bad token and a missing token are the same answer.** Forged, unsigned
-// (`alg: none`), signed with the wrong secret, for another audience or issuer,
+// (`alg: none`), signed with an unpublished key, for another audience or issuer,
 // missing a `sub`, or absent: all of them return nothing, and the boundary turns nothing into one
 // `AUTH_UNKNOWN_LOGIN`. Distinguishing them tells an unauthenticated caller
 // which of their guesses was closer. The one exception is a bearer whose
-// signature verifies against this secret and whose `exp` has passed: it
+// signature verifies against a published key and whose `exp` has passed: it
 // returns `'expired'`, which the boundary answers `AUTH_SESSION_EXPIRED` (see
-// `Verified` and `signatureVerifies`).
+// `Verified` and `jwks.ts`).
 //
-// **It verifies; it does not decode.** `hono/jwt` checks the HS256 signature,
-// `exp`, audience and issuer against the secret GoTrue was started with. There is no
+// **It verifies; it does not decode.** `jwks.ts` checks the ES256 signature,
+// `exp`, audience and issuer against the provider's published keys. There is no
 // path through this file that reads a claim out of an unverified token, which
 // is the failure mode a hand-rolled base64 split invites.
 
 import type { Context } from 'hono';
-import { verify } from 'hono/jwt';
 import type { VerifiedSubject } from '../../../packages/core-records/src/index.ts';
+import { createKeySetVerifier, type KeySetFetch, type KeySetRefusal } from './jwks.ts';
+import { bearerOf, presentsCredential, sessionCookieOf } from './session.ts';
 
 /** The provider string the `logins` rows carry for tokens verified here. */
 export const SUPABASE_PROVIDER = 'supabase';
@@ -37,68 +39,80 @@ export const SUPABASE_PROVIDER = 'supabase';
 export const SUPABASE_AUDIENCE = 'authenticated';
 
 export interface SupabaseVerifierOptions {
-  /** The HS256 secret the local GoTrue signs with, from `.local/auth.env`. */
-  readonly secret: string;
   /** The `iss` GoTrue stamps on its tokens: its own URL, `GOTRUE_URL`. */
   readonly issuer: string;
+  /** The provider's published key set, `…/.well-known/jwks.json`. */
+  readonly keySetUrl: string;
+  readonly fetch?: KeySetFetch;
+  /** Told each refused answer from the provider, by reason only. */
+  readonly onRefusal?: (refusal: KeySetRefusal) => void;
 }
 
 /**
  * What the boundary learns about a caller: a verified subject, the one word
- * `'expired'`, or nothing.
+ * `'expired'`, `'absent'` when the request carries no credential at all, or
+ * nothing. `'absent'` is answered as nothing is; it only keeps a request that
+ * tried no sign-in out of the failed sign-in count (security line 9).
  *
  * **Why `expired` is told apart and the rest are not.** API.md's rule stands
  * for every other failure: a missing, forged, unsigned or subject-less token
  * all answer the same, because telling them apart tells an unauthenticated
  * caller which guess was closer. An expired token is not a guess. Its
- * signature verifies against this deployment's secret, so whoever sent it held
+ * signature verifies against a key the provider published, so whoever sent it held
  * a real credential this server issued a session for, and they learn nothing
  * from being told it has run out that they could not already prove. What they
  * gain is the difference between a door they can open and one they cannot:
  * `AUTH_SESSION_EXPIRED` is the re-login path and the browser already draws it
  * as one.
  */
-export type Verified = VerifiedSubject | 'expired';
-
-type Checks = Parameters<typeof verify>[2];
+export type Verified = VerifiedSubject | 'expired' | 'absent';
 
 export type Verifier = (request: Context['req']) => Promise<Verified | undefined>;
 
 /**
  * Build the verifier the API is constructed with.
  *
- * It is a factory taking the secret rather than a module reading the
- * environment, because what an operator can set, an operator can set by
- * accident. The composition root supplies the secret once.
+ * It is a factory taking the key set's address rather than a module reading
+ * the environment, because what an operator can set, an operator can set by
+ * accident. The composition root supplies it once.
  */
+const LOOPBACK = /^http:\/\/127\.0\.0\.1:\d+(?:\/|$)/u;
+
+/**
+ * The provider's key set, under its own address as GoTrue and a hosted project
+ * publish it. `named` (`SUPABASE_KEY_SET_URL`) stands in for it only where both
+ * are on loopback (a test's static set), so it cannot move a hosted check
+ * anywhere: named anywhere else, there is no key set, `undefined`.
+ */
+export function keySetUrlFor(named: string, issuer: string): string | undefined {
+  if (named === '') return `${issuer.replace(/\/+$/u, '')}/.well-known/jwks.json`;
+  return LOOPBACK.test(named) && LOOPBACK.test(issuer) ? named : undefined;
+}
+
 export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifier {
-  const { secret, issuer } = options;
-  if (secret === '') throw new Error('createSupabaseVerifier: the JWT secret is empty');
-  const expected = { alg: 'HS256', aud: SUPABASE_AUDIENCE, iss: issuer } as const;
+  const verifyToken = createKeySetVerifier({
+    keySetUrl: options.keySetUrl,
+    issuer: options.issuer,
+    audience: SUPABASE_AUDIENCE,
+    ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
+    ...(options.onRefusal === undefined ? {} : { onRefusal: options.onRefusal }),
+  });
 
   return async function verifySupabaseToken(
     request: Context['req'],
   ): Promise<Verified | undefined> {
-    const token = bearerOf(request.header('authorization'));
-    if (token === undefined) return undefined;
+    // The bearer when there is one (the command line), else the browser's
+    // session cookie; the door has already held a cookie to the CSRF check.
+    const token = bearerOf(request) ?? sessionCookieOf(request);
+    if (token === undefined) return presentsCredential(request) ? undefined : 'absent';
 
-    let claims: Record<string, unknown>;
-    try {
-      // HS256 named explicitly: passing the algorithm rather than reading it
-      // from the token's own header is what stops a token that nominates
-      // `none` from verifying against no key at all. `exp`, `aud` and `iss` too.
-      claims = (await verify(token, secret, expected)) as Record<string, unknown>;
-    } catch (cause) {
-      // The algorithm is still named when verifying rather than read from the
-      // token's own header, so a token nominating `alg: none` verifies against
-      // no key at all and lands here like any other forgery. Only a signature
-      // that did verify can be reported as expired.
-      const expired =
-        isExpiry(cause) && (await signatureVerifies(token, secret, { ...expected, exp: false }));
-      return expired ? 'expired' : undefined;
-    }
+    // ES256 pinned, the key chosen by `kid` from the published set, and only
+    // a signature that verified can be reported as expired (`jwks.ts`).
+    const verdict = await verifyToken(token);
+    if (verdict.outcome === 'expired') return 'expired';
+    if (verdict.outcome === 'refused') return undefined;
 
-    const subject = claims['sub'];
+    const subject = verdict.claims['sub'];
     if (typeof subject !== 'string' || subject === '') return undefined;
 
     // Only `sub` crosses. The token's `email`, `role`, `app_metadata` and
@@ -107,45 +121,4 @@ export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifi
     // transaction, not a claim a token can assert.
     return { provider: SUPABASE_PROVIDER, subject };
   };
-}
-
-/**
- * Whether Hono's verifier rejected a token for its `exp` rather than its
- * signature.
- *
- * `hono/jwt` throws a named error for expiry. It is matched by name rather
- * than by class so that a version bump changing the class hierarchy degrades
- * to "not expired" — which is `AUTH_UNKNOWN_LOGIN`, the stricter answer —
- * instead of reporting a forgery as an ended session.
- */
-function isExpiry(cause: unknown): boolean {
-  return cause instanceof Error && cause.name === 'JwtTokenExpired';
-}
-
-/**
- * Whether a token Hono called expired is signed by this deployment's secret.
- *
- * **Hono's name for the error is not proof of the signature.** `hono/jwt`
- * 4.13.9 checks `exp`, `iss` and `aud` before the signature (`utils/jwt/jwt.js`
- * `verify`), so a forged or unsigned bearer with a past `exp` throws
- * `JwtTokenExpired` too. It is verified again with the expiry check off and
- * everything else the first call checked still on: HS256 named, `nbf`, `iat`,
- * `aud` and `iss` checked. Only a bearer that passes is `AUTH_SESSION_EXPIRED`; the
- * rest are `AUTH_UNKNOWN_LOGIN` (API.md admission step 1).
- */
-async function signatureVerifies(token: string, secret: string, checks: Checks): Promise<boolean> {
-  try {
-    await verify(token, secret, checks);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** `Authorization: Bearer <token>`, and nothing else counts as one. */
-function bearerOf(header: string | undefined): string | undefined {
-  if (header === undefined) return undefined;
-  const match = /^Bearer\s+(?<token>[^\s]+)$/iu.exec(header.trim());
-  const token = match?.groups?.['token'];
-  return token === undefined || token === '' ? undefined : token;
 }

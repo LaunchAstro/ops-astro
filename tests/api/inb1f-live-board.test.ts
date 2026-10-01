@@ -1,0 +1,553 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines -- one database world and its open tabs, and the cases that share them */
+//
+// INB-1f, the board moves live, against a real database and the real
+// composition root.
+//
+// One event stream per tab carries every topic (browsers allow about six
+// HTTP/1.1 connections per origin): `GET <person prefix><business>/live`.
+// It is T2f's content-free channel, joined through the same door: `resync` on
+// connect, and again (no task named, ever) when a task the caller may read is
+// added, moved or completed, or its agent work moves, and `inbox` when the
+// caller's own inbox changes. A task the caller cannot read, another
+// business's, and another person's inbox never produce an event on it. The inbox signal is sent on commit, so the
+// count drops with the deciding transaction and never before it.
+
+import { randomUUID } from 'node:crypto';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import type { Hono } from 'hono';
+import {
+  connect,
+  connectListener,
+  raiseInboxItem,
+  readInboxItems,
+  type Database,
+  type Listener,
+} from '../../packages/core-records/src/index.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
+import { DELEGATION_HEADER, PREFIX } from '../../packages/core-wire/src/index.ts';
+import { runtimeKeys } from '../../packages/core-runtime/src/index.ts';
+import { composeApi } from '../../apps/api/server.ts';
+import { startLiveTopics, type LiveTopics } from '../../apps/api/live.ts';
+import { joinLiveBoard } from '../../packages/core-commands/src/reads/live-join.ts';
+import { authorised, ISSUER, tokenFor } from './fixture.ts';
+import { testSignIn } from '../support/sign-in.ts';
+import { enrol, grantTo, type Member } from '../commands/fixture.ts';
+import {
+  appliedDetail,
+  approve,
+  asPerson,
+  createTask,
+  freshPurpose,
+  openSchedules,
+  pickup,
+  propose,
+  revisionOf,
+  type Schedules,
+} from '../runtime/schedules-harness.ts';
+import { cq8World } from '../runtime/cq-8-world.ts';
+
+const serverUrl = databaseUrlFromEnvironment();
+
+if (serverUrl === undefined) {
+  console.warn('api/inb1f-live-board: DATABASE_URL is unset, so nothing below ran.');
+}
+
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+async function within(ms: number, check: () => boolean, what: string): Promise<void> {
+  const started = Date.now();
+  while (!check()) {
+    if (Date.now() - started > ms) throw new Error(`not within ${String(ms)} ms: ${what}`);
+    // eslint-disable-next-line no-await-in-loop
+    await sleep(10);
+  }
+}
+
+interface Heard {
+  readonly event: string;
+  readonly data: string;
+}
+
+interface Tab {
+  readonly status: number;
+  readonly body: string;
+  readonly heard: Heard[];
+  ended: boolean;
+  stop(): Promise<void>;
+}
+
+/** Open one tab's stream at `path` and record each event and its data. */
+async function openTab(api: Hono, path: string, headers: Record<string, string>): Promise<Tab> {
+  const response = await api.fetch(new Request(`http://api.test${path}`, { headers }));
+  const heard: Heard[] = [];
+  if (response.status !== 200 || response.body === null) {
+    return {
+      status: response.status,
+      body: await response.text(),
+      heard,
+      ended: true,
+      stop: async () => {},
+    };
+  }
+  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+  const tab: Tab = {
+    status: 200,
+    body: '',
+    heard,
+    ended: false,
+    stop: async () => await reader.cancel().catch(() => {}),
+  };
+  void (async () => {
+    let buffer = '';
+    for (;;) {
+      // eslint-disable-next-line no-await-in-loop
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += value;
+      for (let at = buffer.indexOf('\n\n'); at !== -1; at = buffer.indexOf('\n\n')) {
+        const lines = buffer.slice(0, at).split('\n');
+        const field = (name: string) =>
+          lines
+            .find((line) => line.startsWith(`${name}:`))
+            ?.slice(name.length + 1)
+            .trim();
+        const event = field('event');
+        if (event !== undefined) heard.push({ event, data: field('data') ?? '' });
+        buffer = buffer.slice(at + 2);
+      }
+    }
+  })()
+    .catch(() => {})
+    .finally(() => {
+      tab.ended = true;
+    });
+  return tab;
+}
+
+const moves = (tab: Tab): number => tab.heard.filter((one) => one.event === 'resync').length;
+
+describe.skipIf(serverUrl === undefined)(
+  'INB-1f the board moves live on one stream per tab',
+  { timeout: 30_000 },
+  // eslint-disable-next-line max-lines-per-function -- one database world and its open tabs, and the cases that share them
+  () => {
+    let s: Schedules;
+    let key: string;
+    let pool: Database;
+    let listener: Listener;
+    let topics: LiveTopics;
+    let api: Hono;
+    const opened: Tab[] = [];
+
+    const tabOf = async (who: Member, token?: string, businessKey = key): Promise<Tab> => {
+      const tab = await openTab(
+        api,
+        `${PREFIX.person}${businessKey}/live`,
+        authorised(token ?? (await tokenFor(who.presented.subject))),
+      );
+      opened.push(tab);
+      return tab;
+    };
+
+    const joined = async (tab: Tab): Promise<void> => {
+      expect(tab.status, tab.body).toBe(200);
+      await within(2_000, () => tab.heard.some((one) => one.event === 'resync'), 'resync');
+    };
+
+    /** Until `tab` hears nothing new for two rechecks: every earlier change has been said. */
+    const still = async (tab: Tab): Promise<number> => {
+      for (let heard = moves(tab); ; heard = moves(tab)) {
+        // eslint-disable-next-line no-await-in-loop
+        await sleep(450);
+        if (moves(tab) === heard) return heard;
+      }
+    };
+
+    /** A committed write on `barrier` that `tab` hears: everything before it has arrived. */
+    const settled = async (tab: Tab, barrier: string): Promise<void> => {
+      const before = moves(tab);
+      await pool.withBusiness(s.business, async (tx) => {
+        await tx.query('update public.records set data = data where id = $1', [barrier]);
+      });
+      await within(2_000, () => moves(tab) > before, 'the barrier');
+      await sleep(200);
+    };
+
+    /** An inbox item for `recipient` about `subject`, raised as the inbox raises one. */
+    const raiseFor = async (recipient: Member, subject: string): Promise<void> => {
+      await s.db.app.withBusiness(s.business, async (tx) => {
+        await raiseInboxItem(tx, {
+          recipientPersonId: recipient.personId,
+          subjectRecordId: subject,
+          reason: 'mention',
+          fact: { kind: 'record', id: randomUUID() },
+        });
+      });
+    };
+
+    beforeAll(async () => {
+      s = await openSchedules('inb1f', 1_000_000);
+      const rows = await s.db.admin.execute<{ key: string }>(
+        'select key from public.businesses where id = $1',
+        [s.business],
+      );
+      key = String(rows[0]?.key);
+      pool = connect(s.db.appUrl, { max: 4 });
+      listener = connectListener(s.db.appUrl);
+      topics = await startLiveTopics(listener);
+      api = composeApi({
+        database: pool,
+        admin: s.db.admin,
+        signIn: testSignIn(ISSUER),
+        keys: runtimeKeys({ ...process.env }),
+        live: { topics, recheckMs: 200 },
+      }).app;
+    }, 180_000);
+
+    afterAll(async () => {
+      await Promise.allSettled(opened.map(async (tab) => await tab.stop()));
+      await topics?.close();
+      await pool?.close();
+      await s?.db.drop();
+    });
+
+    it('INB-1 board live: a task added, moved and completed, and its agent work, reach an open tab within two seconds', async () => {
+      const tab = await tabOf(s.decider);
+      await joined(tab);
+
+      let seen = await still(tab);
+      const taskId = await createTask(s, `inb1f-added-${randomUUID()}`);
+      await within(2_000, () => moves(tab) > seen, 'the added task');
+
+      const board = await createTask(s, `inb1f-board-${randomUUID()}`);
+      seen = await still(tab);
+      appliedDetail(
+        await asPerson(s, {
+          command: 'task.move',
+          operationId: randomUUID(),
+          recordId: taskId,
+          expectedRevision: await revisionOf(s, taskId),
+          board,
+          boardSection: null,
+        }),
+        'task.move',
+      );
+      await within(2_000, () => moves(tab) > seen, 'the moved task');
+
+      seen = await still(tab);
+      appliedDetail(
+        await asPerson(s, {
+          command: 'task.complete',
+          operationId: randomUUID(),
+          recordId: taskId,
+          expectedRevision: await revisionOf(s, taskId),
+        }),
+        'task.complete',
+      );
+      await within(2_000, () => moves(tab) > seen, 'the completed task');
+
+      // Agent activity: the worker's pickup writes the run's `claimed` event.
+      const worked = await createTask(s, `inb1f-agent-${randomUUID()}`);
+      const decision = await approve(
+        s,
+        await propose(s, worked, { maximumMinor: 1_000, purpose: freshPurpose() }),
+      );
+      seen = await still(tab);
+      await pickup(s, decision['reservationId']);
+      await within(2_000, () => moves(tab) > seen, 'the agent’s pickup');
+    });
+
+    // eslint-disable-next-line max-lines-per-function -- one database world and its open tabs, and the cases that share them
+    it('INB-1 isolation (the live board stream): another business, another client and a person under a live delegation hear nothing and are refused', async () => {
+      const world = cq8World(s);
+      const mine = await createTask(s, `inb1f-mine-${randomUUID()}`);
+      const hidden = await createTask(s, `inb1f-hidden-${randomUUID()}`);
+
+      // A person here who reads exactly one task: the other never reaches them.
+      const narrow = await enrol(s.db.app, s.business, `inb1f-narrow-${randomUUID()}`);
+      await s.db.app.withBusiness(s.business, async (tx) => {
+        await grantTo(tx, narrow, 'read', { kind: 'record', id: mine });
+      });
+      const narrowTab = await tabOf(narrow);
+      await joined(narrowTab);
+      const narrowJoined = await still(narrowTab);
+
+      // Another business, writing its own task while both tabs are open.
+      const other = await world.party(`inb1f-other-${randomUUID().slice(0, 8)}`);
+      const [otherTask] = other.tasks;
+      if (otherTask === undefined) throw new Error('party: two tasks');
+      const [otherRow] = await s.db.admin.execute<{ key: string }>(
+        'select key from public.businesses where id = $1',
+        [other.id],
+      );
+      const otherTab = await tabOf(other.member, undefined, String(otherRow?.key));
+      await joined(otherTab);
+      const otherJoined = await still(otherTab);
+
+      const wholeTab = await tabOf(s.decider);
+      await joined(wholeTab);
+      await Promise.all(
+        Array.from({ length: 12 }, async (_, n) => {
+          const [business, id] =
+            n % 3 === 0
+              ? [s.business, hidden]
+              : n % 3 === 1
+                ? [other.id, otherTask.id]
+                : [s.business, mine];
+          await pool.withBusiness(business, async (tx) => {
+            await tx.query('update public.records set data = data where id = $1', [id]);
+          });
+        }),
+      );
+      await settled(wholeTab, mine);
+      await within(2_000, () => moves(narrowTab) > narrowJoined, 'the narrow tab hears its task');
+      await within(2_000, () => moves(otherTab) > otherJoined, 'the other business hears its own');
+
+      // Not a frame, not an identifier: a write only on the hidden task, or only
+      // in the other business, reaches no tab that cannot read it while the
+      // owner's barrier resync arrives.
+      const narrowNow = await still(narrowTab);
+      const otherNow = await still(otherTab);
+      await settled(wholeTab, hidden);
+      expect(moves(narrowTab)).toBe(narrowNow);
+      expect(moves(otherTab)).toBe(otherNow);
+      const wholeNow = await still(wholeTab);
+      await pool.withBusiness(other.id, async (tx) => {
+        await tx.query('update public.records set data = data where id = $1', [otherTask.id]);
+      });
+      await within(2_000, () => moves(otherTab) > otherNow, 'the other business’s barrier');
+      await sleep(200);
+      expect(moves(wholeTab)).toBe(wholeNow);
+      expect(moves(narrowTab)).toBe(narrowNow);
+      expect(JSON.stringify(narrowTab.heard)).not.toContain(hidden);
+      expect(JSON.stringify(narrowTab.heard)).not.toContain(otherTask.id);
+      expect(JSON.stringify(wholeTab.heard)).not.toContain(otherTask.id);
+      expect(JSON.stringify(otherTab.heard)).not.toContain(mine);
+      expect(JSON.stringify(otherTab.heard)).not.toContain(hidden);
+
+      // The other business's member under this business's key: refused.
+      const foreign = await tabOf(other.member, await tokenFor(other.member.presented.subject));
+      expect(foreign.status).not.toBe(200);
+      expect(foreign.body).not.toContain(mine);
+
+      // Another client here, holding a share of one task: an external reader
+      // stays off the internal channel entirely (T2f, Sol on #111).
+      await s.db.app.withBusiness(s.business, async (tx) => await grantTo(tx, s.decider, 'share'));
+      const client = await world.client(
+        s.business,
+        s.decider,
+        `inb1f-client-${randomUUID()}`,
+        mine,
+      );
+      const clientTab = await tabOf(client);
+      expect(clientTab.status).not.toBe(200);
+      expect(clientTab.body).not.toContain(hidden);
+
+      // A person under a live delegation: the agent's credential opens no tab,
+      // on the person path or the agent path.
+      const decision = await approve(
+        s,
+        await propose(s, mine, { maximumMinor: 1_000, purpose: freshPurpose() }),
+      );
+      const credential = String((await pickup(s, decision['reservationId']))['credential']);
+      const agentToken = await tokenFor(s.agent.subject);
+      for (const prefix of [PREFIX.person, PREFIX.agent]) {
+        // eslint-disable-next-line no-await-in-loop
+        const delegated = await openTab(api, `${prefix}${key}/live`, {
+          ...authorised(agentToken),
+          [DELEGATION_HEADER]: credential,
+        });
+        opened.push(delegated);
+        expect(delegated.status, prefix).not.toBe(200);
+        expect(delegated.body, prefix).not.toContain(hidden);
+      }
+    });
+
+    it('a client-scoped board reader hears their own client task move', async () => {
+      const clientA = randomUUID();
+      const clientB = randomUUID();
+      const taskA = await createTask(s, `inb1f-client-a-${randomUUID()}`);
+      const taskB = await createTask(s, `inb1f-client-b-${randomUUID()}`);
+      await s.db.admin.execute(
+        `update public.records set data = data || jsonb_build_object('client', $2::text)
+          where id = $1`,
+        [taskA, clientA],
+      );
+      await s.db.admin.execute(
+        `update public.records set data = data || jsonb_build_object('client', $2::text)
+          where id = $1`,
+        [taskB, clientB],
+      );
+      const reader = await enrol(s.db.app, s.business, `inb1f-party-reader-${randomUUID()}`);
+      await s.db.app.withBusiness(s.business, async (tx) => {
+        await grantTo(tx, reader, 'read', { kind: 'party', id: clientA });
+        const own = await raiseInboxItem(tx, {
+          recipientPersonId: reader.personId,
+          subjectRecordId: taskA,
+          reason: 'mention',
+          fact: { kind: 'record', id: randomUUID() },
+        });
+        const other = await raiseInboxItem(tx, {
+          recipientPersonId: reader.personId,
+          subjectRecordId: taskB,
+          reason: 'mention',
+          fact: { kind: 'record', id: randomUUID() },
+        });
+        const entries = await readInboxItems(tx, reader.personId);
+        expect(entries.find((entry) => entry.id === own)?.access).toBe('readable');
+        expect(entries.find((entry) => entry.id === other)?.access).toBe('withheld');
+      });
+      const tab = await tabOf(reader);
+      await joined(tab);
+      const owner = await tabOf(s.decider);
+      await joined(owner);
+      const seen = await still(tab);
+      await pool.withBusiness(s.business, async (tx) => {
+        await tx.query('update public.records set data = data where id = $1', [taskA]);
+      });
+      await within(2_000, () => moves(tab) > seen, 'the reader hears client A');
+      const heard = await still(tab);
+      await settled(owner, taskB);
+      expect(moves(tab)).toBe(heard);
+    });
+
+    it('INB-1 the owed count moves live: the same tab hears its own inbox on the deciding commit, never another person’s', async () => {
+      const taskId = await createTask(s, `inb1f-inbox-${randomUUID()}`);
+      const reviewer = await enrol(s.db.app, s.business, `inb1f-reviewer-${randomUUID()}`);
+      await s.db.app.withBusiness(s.business, async (tx) => {
+        for (const action of ['read', 'decide'] as const) {
+          // eslint-disable-next-line no-await-in-loop
+          await grantTo(tx, reviewer, action, { kind: 'record', id: taskId });
+        }
+      });
+      const bystander = await enrol(s.db.app, s.business, `inb1f-bystander-${randomUUID()}`);
+      await s.db.app.withBusiness(s.business, async (tx) => {
+        await grantTo(tx, bystander, 'read', { kind: 'record', id: taskId });
+      });
+      const tab = await tabOf(reviewer);
+      const quiet = await tabOf(bystander);
+      await joined(tab);
+      await joined(quiet);
+      const joinedAt = await still(tab);
+
+      // Raised: the proposal gives the reviewer a decision item.
+      const proposal = await propose(s, taskId, { maximumMinor: 1_000, purpose: freshPurpose() });
+      await within(2_000, () => moves(tab) > joinedAt, 'the raised item');
+
+      // A deciding transaction that rolls back sends nothing; the commit does.
+      const raised = await still(tab);
+      await expect(
+        pool.withBusiness(s.business, async (tx) => {
+          await tx.query(
+            `update public.inbox_items
+                set work_state = 'cleared', closed_at = now(), closed_by_person_id = $2
+              where business_id = $1 and recipient_person_id = $2 and work_state = 'open'`,
+            [s.business, reviewer.personId],
+          );
+          throw new Error('roll the decision back');
+        }),
+      ).rejects.toThrow('roll the decision back');
+      expect(await still(tab)).toBe(raised);
+
+      await approve(s, proposal);
+      await within(2_000, () => moves(tab) > raised, 'the cleared item');
+
+      // An item raised for the reviewer alone moves their tab, never the bystander's.
+      const cleared = await still(tab);
+      const bystanderSaw = await still(quiet);
+      await raiseFor(reviewer, taskId);
+      await within(2_000, () => moves(tab) > cleared, 'the reviewer’s own item');
+      expect(await still(quiet)).toBe(bystanderSaw);
+    });
+
+    it('a withheld other-client item moves nothing on the board stream', async () => {
+      const clientA = randomUUID();
+      const clientB = randomUUID();
+      const mine = await createTask(s, `sol-client-a-${randomUUID()}`);
+      const hidden = await createTask(s, `sol-client-b-${randomUUID()}`);
+      await s.db.admin.execute(
+        `update public.records set data = data || jsonb_build_object('client', $2::text)
+          where id = $1`,
+        [mine, clientA],
+      );
+      await s.db.admin.execute(
+        `update public.records set data = data || jsonb_build_object('client', $2::text)
+          where id = $1`,
+        [hidden, clientB],
+      );
+      const recipient = await enrol(s.db.app, s.business, `sol-scoped-${randomUUID()}`);
+      await s.db.app.withBusiness(s.business, async (tx) => {
+        await grantTo(tx, recipient, 'read', { kind: 'record', id: mine });
+      });
+      const tab = await tabOf(recipient);
+      await joined(tab);
+      const before = await still(tab);
+      const itemId = await s.db.app.withBusiness(
+        s.business,
+        async (tx) =>
+          await raiseInboxItem(tx, {
+            recipientPersonId: recipient.personId,
+            subjectRecordId: hidden,
+            reason: 'mention',
+            fact: { kind: 'record', id: randomUUID() },
+          }),
+      );
+      const [item] = await s.db.app.withBusiness(s.business, async (tx) =>
+        (await readInboxItems(tx, recipient.personId)).filter((entry) => entry.id === itemId),
+      );
+      expect(item?.access).toBe('withheld');
+      expect(await still(tab)).toBe(before);
+    });
+
+    /** Two people, each reading one task, and a tab opened as the first whose login then maps to the second. */
+    const remapped = async () => {
+      const first = await enrol(s.db.app, s.business, `sol-first-${randomUUID()}`);
+      const second = await enrol(s.db.app, s.business, `sol-second-${randomUUID()}`);
+      const firstTask = await createTask(s, `sol-first-task-${randomUUID()}`);
+      const secondTask = await createTask(s, `sol-second-task-${randomUUID()}`);
+      await s.db.app.withBusiness(s.business, async (tx) => {
+        await grantTo(tx, first, 'read', { kind: 'record', id: firstTask });
+        await grantTo(tx, second, 'read', { kind: 'record', id: secondTask });
+      });
+      const tab = await tabOf(first, await tokenFor(first.presented.subject));
+      await joined(tab);
+      await s.db.admin.execute(
+        `update public.person_logins set person_id = $2
+          where business_id = $1 and person_id = $3 and active`,
+        [s.business, second.personId, first.personId],
+      );
+      expect(await joinLiveBoard(pool, s.business, first.presented)).toEqual({
+        personId: second.personId,
+      });
+      return { first, second, firstTask, secondTask, tab };
+    };
+
+    it('a remapped login stops hearing the previous person’s inbox', async () => {
+      const { first, firstTask, tab } = await remapped();
+      // The rebind's own resync, from the stream's recheck, is said before this settles.
+      const rebound = await still(tab);
+      await raiseFor(first, firstTask);
+      expect(await still(tab)).toBe(rebound);
+    });
+
+    it('a remapped login stops hearing the previous person and hears the new person’s reads', async () => {
+      const { second, firstTask, secondTask, tab } = await remapped();
+      await still(tab);
+      // The new person's task and inbox are heard on their topic and read as them.
+      await settled(tab, secondTask);
+      const heard = await still(tab);
+      await raiseFor(second, secondTask);
+      await within(2_000, () => moves(tab) > heard, 'the new person’s own item');
+      // The previous person's task moves nothing the new person reads.
+      const own = await still(tab);
+      await pool.withBusiness(s.business, async (tx) => {
+        await tx.query('update public.records set data = data where id = $1', [firstTask]);
+      });
+      expect(await still(tab)).toBe(own);
+    });
+  },
+);

@@ -108,7 +108,16 @@ export type CommandName =
   // A person records what an unknown effect came to: one of three (T3d1).
   | 'budget.record_outcome'
   // A person closes an unknown hold at an amount, with a reason (T3c).
-  | 'budget.write_off';
+  | 'budget.write_off'
+  // The inbox inside Tasks (INB-1d): the caller's own items and owed count,
+  // and `seen` stamped on the caller's own attention row.
+  | 'inbox.read'
+  | 'inbox.count'
+  | 'inbox.seen'
+  // Items no path reaches, for the operations view (INB-1e), and the caller's
+  // own notification setting on one channel.
+  | 'inbox.unattended'
+  | 'notifications.set_channel';
 
 export interface CommandDeclaration {
   readonly name: CommandName;
@@ -158,8 +167,11 @@ export interface CommandDeclaration {
    * - `claim`: the task the body's reservation or lease belongs to, so a
    *   record-scoped writer works their own lease on that task. Own-lease work
    *   names its task only through the claim and writes no task revision.
+   * - `self`: the caller's own rows, which every signed-in person holds
+   *   without a grant (a self-scoped key such as `preference:write`). The
+   *   operation reaches no row but the caller's, and asks access per row.
    */
-  readonly authorisedOn: 'record' | 'business' | 'target' | 'claim';
+  readonly authorisedOn: 'record' | 'business' | 'target' | 'claim' | 'self';
   /**
    * Who locks a targeted task. `command`: the envelope locks it and compares
    * the revision before the handler runs, the ordinary task-write path.
@@ -211,6 +223,10 @@ export interface CommandDeclaration {
    * (`reads/catalogue.ts`), so it carries none here.
    */
   readonly operands?: OperandSpec;
+  // two-part keys (API-1); the handler checks past `action`
+  readonly authority?: readonly string[];
+  // a hold every path keeps, carried onto the catalogue row (API-1)
+  readonly rule?: string;
 }
 
 /**
@@ -242,6 +258,8 @@ function declare(
     readonly untargetedIdentifiers?: readonly string[];
     readonly runtimeShaped?: string;
     readonly agent?: CommandDeclaration['agent'];
+    readonly authority?: readonly string[];
+    readonly rule?: string;
   } = {},
 ): CommandDeclaration {
   const targetsExistingRecord = options.targetsExistingRecord ?? true;
@@ -252,6 +270,8 @@ function declare(
       : { untargetedIdentifiers: options.untargetedIdentifiers }),
     ...(options.runtimeShaped === undefined ? {} : { runtimeShaped: options.runtimeShaped }),
     ...(options.serialise === undefined ? {} : { serialise: options.serialise }),
+    ...(options.authority === undefined ? {} : { authority: options.authority }),
+    ...(options.rule === undefined ? {} : { rule: options.rule }),
     name,
     kind: 'write',
     collection: options.collection ?? TASK_COLLECTION,
@@ -267,6 +287,7 @@ const TASK_COLLECTION = 'task';
 const SETTINGS_COLLECTION = 'settings';
 const SESSION_COLLECTION = 'session';
 const BILLING_COLLECTION = 'billing';
+const INBOX_COLLECTION = 'inbox';
 
 /**
  * A read. It takes the `read` action on the collection it names, targets no
@@ -281,10 +302,12 @@ function read(
   options: {
     readonly action?: Action;
     readonly agent?: CommandDeclaration['agent'];
-    readonly authorisedOn?: 'record' | 'business';
+    readonly authorisedOn?: 'record' | 'business' | 'self';
+    readonly authority?: readonly string[];
   } = {},
 ): CommandDeclaration {
   return {
+    ...(options.authority === undefined ? {} : { authority: options.authority }),
     name,
     kind: 'read',
     collection,
@@ -316,7 +339,13 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'task.complete': TARGET,
   'task.reopen': { ...TARGET, reason: 'any' },
   'task.start': TARGET,
-  'task.comment': { ...TARGET, body: 'any', audience: 'any', commentType: 'any' },
+  'task.comment': {
+    ...TARGET,
+    body: 'any',
+    audience: 'any',
+    commentType: 'any',
+    mentions: 'any',
+  },
   'task.propose': {
     ...TARGET,
     purpose: 'any',
@@ -385,6 +414,8 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     usage: 'any',
     outcome: 'any',
   },
+  'inbox.seen': { itemId: 'id' },
+  'notifications.set_channel': { channel: 'text', mode: 'text', category: 'text?' },
 };
 
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
@@ -432,7 +463,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   declare('task.assign', 'assign'),
   declare('task.triage', 'write'),
   declare('task.set_stage', 'write'),
-  declare('task.set_party', 'share'),
+  declare('task.set_party', 'share', {
+    rule: 'once the task has content: refused CLIENT_LOCKED (409), writes nothing, on every path (S0-5)',
+  }),
   declare('task.set_audience', 'share'),
   declare('task.reparent', 'write', { serialise: TASK_PLACEMENT_LOCK }),
   declare('task.move', 'write', { serialise: TASK_PLACEMENT_LOCK }),
@@ -473,7 +506,8 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // An agent reaches it only under a delegation, where it answers the
   // delegation's purpose; before a pickup it is refused like every other
   // operation outside the two (minimum contract 8.2 case 9).
-  read('session.capabilities', SESSION_COLLECTION, { agent: 'delegated' }),
+  // It asks no grant of its own (`authority: []`), so discovery lists it for any holder.
+  read('session.capabilities', SESSION_COLLECTION, { agent: 'delegated', authority: [] }),
 
   // Neither settings command names a record. The setting is chosen by the
   // command, so a body carrying a `recordId` is a body the caller believes was
@@ -574,6 +608,29 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     authorisedOn: 'record',
     untargetedIdentifiers: ['recordId', 'attemptId'],
   }),
+
+  // The inbox is one person's: no agent reaches it, and each row answers the
+  // caller about their own items only, with access derived per item.
+  read('inbox.read', INBOX_COLLECTION, { authorisedOn: 'self' }),
+  read('inbox.count', INBOX_COLLECTION, { authorisedOn: 'self' }),
+  declare('inbox.seen', 'write', {
+    collection: 'preference',
+    targetsExistingRecord: false,
+    authorisedOn: 'self',
+    untargetedIdentifiers: ['itemId'],
+  }),
+  // `operations:read`: owner and administrators by default, never an agent
+  // (the catalogue's C55 row). It names other people's items, so it is not
+  // `self`.
+  read('inbox.unattended', 'operations'),
+  // Per channel, never per item: the body names no item. Self-scoped like
+  // `inbox.seen`, so it asks no grant and reaches the caller's own setting.
+  declare('notifications.set_channel', 'write', {
+    collection: 'preference',
+    targetsExistingRecord: false,
+    authorisedOn: 'self',
+    untargetedIdentifiers: [],
+  }),
 ];
 
 const BY_NAME = new Map(COMMAND_SURFACE.map((command) => [command.name, command]));
@@ -666,7 +723,27 @@ export const PREFIX = { person: '/api/b/', agent: '/api/a/b/' } as const;
  */
 export const DELEGATION_HEADER = 'x-agent-delegation';
 
+/**
+ * The browser's session (S0-6c, `apps/api/auth/session.ts`): the route that
+ * makes the cookie, the cookie prefix, the CSRF header and the tab's own session.
+ */
+export const SESSION_PATH = '/api/session';
+export const SESSION_COOKIE = 'ops-astro-session';
+export const CSRF_HEADER = 'x-ops-astro-csrf';
+export const SESSION_HEADER = 'x-ops-astro-session';
+
 /** The reads, which no caller may reach through the command envelope. */
+/**
+ * The writes an external party (R4) may reach: a comment, only in the client audience, and
+ * opening their own inbox item. `commands/prepare.ts` refuses every other write to a person
+ * without a membership, and `session.capabilities` and discovery read this same list.
+ */
+export const EXTERNAL_WRITES: readonly CommandName[] = ['task.comment', 'inbox.seen'];
+
+/** Whether a person of this standing may send this write: the envelope and discovery ask it. */
+export const admitsSelfWrite = (member: boolean, command: CommandName): boolean =>
+  member || EXTERNAL_WRITES.includes(command);
+
 export const READS: readonly CommandName[] = COMMAND_SURFACE.filter(
   (command) => command.kind === 'read',
 ).map((command) => command.name);

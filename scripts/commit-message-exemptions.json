@@ -1,0 +1,12 @@
+{
+  "commits": [
+    {
+      "sha": "eb39c3fc5d97ae4f8ba9f0ad4fd84e495ca080f8",
+      "reason": "SL04's 29 Sep rebase note: a 114-character Rebase-note footer commitlint refuses; kept in history because every slice holds batch/1 (ORCH47, 1 Oct 2026)"
+    },
+    {
+      "sha": "0b096723fe68f3d3e1c6d893e9436da058ad461c",
+      "reason": "SL04's 29 Sep rebase note: a 114-character Rebase-note footer commitlint refuses; kept in history because every slice holds batch/1 (ORCH47, 1 Oct 2026)"
+    }
+  ]
+}

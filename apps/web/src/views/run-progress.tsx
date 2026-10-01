@@ -11,7 +11,7 @@
 // (`drawRunState`'s fallback), never dropped.
 
 import type { ReactElement } from 'react';
-import { drawRunState, Empty, PaneEmpty, Spill } from '@launchastro/ui';
+import { drawRunState, Empty, Spill } from '@launchastro/ui';
 import {
   isRefusal,
   isUnavailable,
@@ -57,7 +57,7 @@ export function RunProgress(props: RunProgressProps): ReactElement {
         <span className="sb__k">The run</span>
       </div>
       {state.outcome === 'loading' ? (
-        <PaneEmpty say="Reading the run…" />
+        <Empty look="inline" title="Reading the run…" />
       ) : state.outcome === 'denied' ? (
         <p className="card__sub" data-run="denied">
           The server refused this read ({state.refusal.code}), so nothing about the run is shown.
@@ -177,7 +177,9 @@ function Run(props: {
 /**
  * The receipt of one attempt: the approval it came from, the version, the
  * effect, and the money line (held, spent, released). It carries no undo
- * control. An attempt not yet observed has no receipt, and says so.
+ * control. The server answers `NOT_FOUND` alike for an attempt with no
+ * observed effect and for one this reader may not see, so a refused read says
+ * only that the receipt could not be read, never that nothing happened.
  */
 function AttemptReceipt(props: {
   readonly client: OperationsClient;
@@ -194,8 +196,9 @@ function AttemptReceipt(props: {
   if (state.outcome === 'loading') return null;
   if (state.outcome !== 'ready' && state.outcome !== 'empty') {
     return (
-      <p className="card__sub" data-receipt="none" data-receipt-attempt={attemptId}>
-        No receipt for attempt {attemptId} yet: its effect has not been observed.
+      <p className="card__sub" data-receipt="unavailable" data-receipt-attempt={attemptId}>
+        The receipt for attempt {attemptId} could not be read. That is not a claim that no effect
+        happened.
       </p>
     );
   }
