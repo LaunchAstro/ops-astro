@@ -154,6 +154,10 @@ export function SignIn(props: SignInProps): ReactElement {
               <FieldError controlId="signin-password" say={because} />
             </div>
           )}
+          {/* C40: a reset by email, from a page that needs no sign-in. */}
+          <p className="field__hint">
+            <a href={pathTo('agency:forgot-password')}>Forgot password</a>
+          </p>
         </div>
         <div className="field">
           <label className="field__label" htmlFor="signin-business">
