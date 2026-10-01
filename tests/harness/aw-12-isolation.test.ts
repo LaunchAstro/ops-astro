@@ -4,8 +4,9 @@
 // thing in it that reads a business's rows. Three real crossings, each with
 // its status, a stored canary (the task's title and a reading no other run
 // has) checked in every answer, and a positive control: another business;
-// another client of the same business, one grant each; another person, an
-// agent under a live child delegation on the very run.
+// another client of the same business, by a grant on a task and by one on
+// the client itself; another person, an agent under a live child delegation
+// on the very run.
 
 import { randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';
@@ -77,6 +78,37 @@ it('AW-12 isolation: another client in the same business, one grant each', async
   // Control: the manager reads client two's run under the one grant.
   expect(await triggerAs(w.s, manager, two.runId)).toMatchObject({
     figures: { reading: { units: 200 } },
+  });
+});
+
+it('AW-12 isolation: another client in the same business, a grant on client two itself', async () => {
+  const canary = `aw12-client-grant-canary-${randomUUID()}`;
+  const one = await shapedWork(w.s, [CANARY_UNITS], w.helper, canary);
+  const two = await shapedWork(w.s, [300], w.helper);
+  const [clientOne, clientTwo] = [randomUUID(), randomUUID()];
+  for (const [task, client] of [
+    [one.work.taskId, clientOne],
+    [two.work.taskId, clientTwo],
+  ] as const) {
+    // eslint-disable-next-line no-await-in-loop -- one task at a time
+    await w.s.db.admin.execute(
+      `update public.records set data = data || jsonb_build_object('client', $3::text)
+        where business_id = $1 and id = $2`,
+      [w.s.business, task, client],
+    );
+  }
+  // task:read on client two (a party grant), never on a task or the business.
+  const manager = await enrol(w.s.db.app, w.s.business, 'aw12-client-manager');
+  await w.s.db.app.withBusiness(w.s.business, async (tx) => {
+    await grantTo(tx, manager, 'read', { kind: 'party', id: clientTwo });
+  });
+
+  const wrongClient = await triggerAs(w.s, manager, one.runId);
+  expect(wrongClient).toMatchObject({ code: 'NOT_FOUND' });
+  clean(wrongClient, canary, clientOne, one.runId, one.work.taskId);
+  // Control: the client grant reads client two's run.
+  expect(await triggerAs(w.s, manager, two.runId)).toMatchObject({
+    figures: { reading: { units: 300 } },
   });
 });
 
