@@ -42,6 +42,7 @@ import {
 import { openBilling } from '../runtime/t3d1-harness.ts';
 import { launched } from '../runtime/aw-08-world.ts';
 import { writeAuditEvent } from '../../packages/core-commands/src/commands/audit.ts';
+import { callerAudit } from '../../packages/core-commands/src/index.ts';
 import {
   broker,
   caller,
@@ -206,7 +207,7 @@ async function expectStarted(on: Schedules, work: Work): Promise<void> {
   throw new Error('the silent call never started');
 }
 
-/** The reconciliation pass over `on`'s businesses, as the API runs it, provider phase included. */
+/** The reconciliation pass over `on`'s businesses, as the API runs it (`startModelBroker`), provider phase included. */
 export async function pass(
   on: Schedules | readonly Schedules[] = s,
   with_: Broker = faultBroker(),
@@ -217,8 +218,14 @@ export async function pass(
     async (key) => await Promise.resolve(all[Number(key)]?.business),
     all.map((_, at) => String(at)),
     registerEffectLookup,
-    async (database, businessId) =>
-      await reconcileProviderCalls(database, businessId as BusinessId, with_),
+    async (database, businessId, unanswered) =>
+      await reconcileProviderCalls(
+        database,
+        businessId as BusinessId,
+        // The pass's events as the API writes them: as the agent whose call it was.
+        { ...with_, audit: callerAudit },
+        unanswered,
+      ),
   );
 }
 

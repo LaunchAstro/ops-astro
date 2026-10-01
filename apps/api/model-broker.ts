@@ -31,6 +31,7 @@ import {
   type Destination,
 } from '../../packages/core-custody/src/index.ts';
 import {
+  callerAudit,
   modelCallExecutor,
   type ModelCallExecutor,
 } from '../../packages/core-commands/src/index.ts';
@@ -156,7 +157,11 @@ export async function startModelBroker(
 ): Promise<{
   readonly executor: ModelCallExecutor;
   /** AW-10: the reconciliation pass's provider phase for one business. */
-  readonly reconcile: (database: Database, businessId: BusinessId) => Promise<unknown>;
+  readonly reconcile: (
+    database: Database,
+    businessId: BusinessId,
+    unanswered: Set<string>,
+  ) => Promise<unknown>;
   readonly stop: () => Promise<void>;
 }> {
   const custody = await startCustody(settings.custody);
@@ -169,8 +174,13 @@ export async function startModelBroker(
   };
   return {
     executor: modelCallExecutor(broker),
-    reconcile: async (database, businessId) =>
-      await reconcileProviderCalls(database, businessId, broker),
+    reconcile: async (database, businessId, unanswered) =>
+      await reconcileProviderCalls(
+        database,
+        businessId,
+        { ...broker, audit: callerAudit },
+        unanswered,
+      ),
     stop: async () => await custody.stop(),
   };
 }

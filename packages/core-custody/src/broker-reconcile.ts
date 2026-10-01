@@ -15,9 +15,11 @@
 // wait is bounded by the operation's timeout), then one to record the answer,
 // guarded on the call still being unknown with no outcome, so a person's
 // outcome recorded meanwhile wins and the answer writes nothing. A provider
-// that gives one lookup no answer is asked nothing more in that pass: its
-// other calls say the pass established nothing, so a hung provider costs the
-// pass one timeout, not one per call, and cannot stall every business's sweep.
+// that gives one lookup no answer is asked nothing more in that pass, in any
+// business (the pass holds the set): its other calls say the pass established
+// nothing, so a hung provider costs the pass one timeout, not one per call or
+// per business, and cannot stall every business's sweep. A release writes
+// `model.call_released` with its reason, as the settlement's release does.
 
 import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
 import { proofOf, reconcileModeOf, type Proof } from './broker-fault.ts';
@@ -41,21 +43,20 @@ interface Asked {
   readonly id: string;
   readonly operation_key: string;
   readonly route_key: string | null;
+  readonly reserved_minor: string;
 }
-
-type Providers = Omit<Broker, 'audit'>;
 
 const nothing = (reason: string): Proof => ({ proved: false, reason });
 
 /** How the call is reconciled; a call the sweep held from a lost worker learns it here. */
-function modeOf(broker: Providers, call: Asked): 'provider_lookup' | 'person' {
+function modeOf(broker: Broker, call: Asked): 'provider_lookup' | 'person' {
   const operation = broker.operations.get(call.operation_key);
   if (operation === undefined) return 'person';
   return reconcileModeOf(operation, broker.providers.get(operation.provider));
 }
 
 /** Ask the call's provider whether it began the call. Never throws: a failure is no proof. */
-async function ask(broker: Providers, call: Asked): Promise<Proof> {
+async function ask(broker: Broker, call: Asked): Promise<Proof> {
   const operation = broker.operations.get(call.operation_key);
   const adapter = operation === undefined ? undefined : broker.providers.get(operation.provider);
   if (operation === undefined || adapter?.lookup === undefined || !adapter.readLookup) {
@@ -86,34 +87,53 @@ async function ask(broker: Providers, call: Asked): Promise<Proof> {
 /** The answer on the call, only while it is still unknown and no person has decided. */
 async function record(
   tx: TenantQuery,
-  callId: string,
+  call: Asked,
   proof: Proof,
-  mode: 'provider_lookup' | 'person',
+  broker: Broker,
 ): Promise<ProviderProof> {
+  const callId = call.id;
   const reason = proof.proved ? `proved nothing happened: ${proof.code}` : proof.reason;
   const note = (proof.proved ? reason : `could establish nothing: ${reason}`).slice(0, NOTE_MOST);
-  await tx.query(
+  const moved = await tx.query(
     `update public.model_calls
         set reconcile_note = $3, reconcile_mode = coalesce(reconcile_mode, $5),
             state = case when $4 then 'released' else state end,
             ended_at = case when $4 then clock_timestamp() else ended_at end
-      where business_id = $1 and id = $2 and state = 'liability_unknown' and outcome is null`,
-    [tx.businessId, callId, note, proof.proved, mode],
+      where business_id = $1 and id = $2 and state = 'liability_unknown' and outcome is null
+      returning id`,
+    [tx.businessId, callId, note, proof.proved, modeOf(broker, call)],
   );
+  if (proof.proved && moved.length > 0) {
+    await broker.audit(tx, {
+      action: 'model.call_released',
+      outcome: 'applied',
+      refusalCode: null,
+      detail: {
+        callId,
+        operation: call.operation_key,
+        releasedMinor: Number(call.reserved_minor),
+        reason,
+      },
+    });
+  }
   return { callId, proved: proof.proved, reason };
 }
 
-/** The provider phase for one business, as system work. */
+/**
+ * The provider phase for one business, as system work. `unanswered` is the
+ * pass's: the providers that gave a lookup no answer in any business so far.
+ */
 export async function reconcileProviderCalls(
   database: Database,
   businessId: BusinessId,
-  broker: Providers,
+  broker: Broker,
+  unanswered: Set<string> = new Set(),
 ): Promise<readonly ProviderProof[]> {
   const asked = await database.withBusiness(
     businessId,
     async (tx) =>
       await tx.query<Asked>(
-        `select c.id, c.operation_key, c.route_key
+        `select c.id, c.operation_key, c.route_key, c.reserved_minor::text as reserved_minor
            from public.model_calls c
            join public.attempts att
              on att.business_id = c.business_id and att.reservation_id = c.reservation_id
@@ -125,7 +145,6 @@ export async function reconcileProviderCalls(
       ),
   );
   const proofs: ProviderProof[] = [];
-  const unanswered = new Set<string>();
   for (const call of asked) {
     const provider = broker.operations.get(call.operation_key)?.provider ?? '';
     // Sequential: one lookup at a time keeps the pass inside the route's ceiling.
@@ -137,7 +156,7 @@ export async function reconcileProviderCalls(
     // eslint-disable-next-line no-await-in-loop
     const recorded = await database.withBusiness(
       businessId,
-      async (tx) => await record(tx, call.id, proof, modeOf(broker, call)),
+      async (tx) => await record(tx, call, proof, broker),
     );
     proofs.push(recorded);
   }

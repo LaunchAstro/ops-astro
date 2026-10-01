@@ -10,7 +10,6 @@
 // lookup is not declared. The hold stays whole until a person decides.
 
 import { expect, it as vitestIt } from 'vitest';
-import { callerAudit } from '../../packages/core-commands/src/index.ts';
 import {
   REPLAY_LOOKUP_PATH,
   type ReplayLookupMode,
@@ -139,7 +138,7 @@ it("AW-10 audit: the provider's proof that releases a held call writes one model
   world.provider.lookupMode('honest');
   const run = await dropped('unavailable');
   const before = (await releasedEvents()).length;
-  await pass(s, { ...faultBroker(), audit: callerAudit });
+  await pass();
   expect(await after(run)).toMatchObject({ resumed: true, call: 'released' });
   expect((await releasedEvents()).slice(before)).toStrictEqual([{ actor_id: s.agentActorId }]);
 });
