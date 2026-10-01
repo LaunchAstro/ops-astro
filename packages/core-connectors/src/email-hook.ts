@@ -13,6 +13,10 @@
 // refused, so a captured event cannot be played later; a replayed id inside
 // the window is refused where the event lands (`broker-email-hook.ts`).
 //
+// The login provider's Send Email hook (C39-T) is signed the same way under
+// Standard Webhooks' header names: `verifySignedHook` takes the names, and
+// each caller reads its own body only after it answers.
+//
 // What survives is three values: the event's id, its type and the provider's
 // message id. The rest of the body (the recipient's address, the subject) is
 // never kept, returned or logged.
@@ -58,13 +62,37 @@ function keyOf(secret: string): Buffer | undefined {
   return SECRET.test(secret) ? Buffer.from(secret.slice('whsec_'.length), 'base64') : undefined;
 }
 
+/**
+ * The three headers' names. The provider's own are Svix's; the login
+ * provider's Send Email hook signs the same way under Standard Webhooks'
+ * names (C39-T).
+ */
+export interface HookHeaderNames {
+  readonly id: string;
+  readonly timestamp: string;
+  readonly signature: string;
+}
+
+export const SVIX_HEADERS: HookHeaderNames = {
+  id: 'svix-id',
+  timestamp: 'svix-timestamp',
+  signature: 'svix-signature',
+};
+
+export const STANDARD_WEBHOOK_HEADERS: HookHeaderNames = {
+  id: 'webhook-id',
+  timestamp: 'webhook-timestamp',
+  signature: 'webhook-signature',
+};
+
 /** The three headers, each exactly one well-formed value, or undefined. */
 function headersOf(
   header: HeaderOf,
+  names: HookHeaderNames,
 ): { id: string; timestamp: string; signatures: string[] } | undefined {
-  const id = header('svix-id');
-  const timestamp = header('svix-timestamp');
-  const signature = header('svix-signature');
+  const id = header(names.id);
+  const timestamp = header(names.timestamp);
+  const signature = header(names.signature);
   if (typeof id !== 'string' || !EVENT_ID.test(id)) return undefined;
   if (typeof timestamp !== 'string' || !TIMESTAMP.test(timestamp)) return undefined;
   if (typeof signature !== 'string') return undefined;
@@ -108,17 +136,21 @@ function eventOf(id: string, raw: Uint8Array): EmailHookEvent | undefined {
 }
 
 /**
- * Verify one event: the headers, the timestamp, the signature over the raw
- * body, and only then the body's shape. `nowSeconds` is the server's clock.
+ * Verify a signed body's headers, timestamp and signature over the raw
+ * bytes, under the given header names, and answer its id. Nothing of the
+ * body is read. `nowSeconds` is the server's clock.
  */
-export function verifyEmailHook(
+export function verifySignedHook(
   raw: Uint8Array,
   header: HeaderOf,
   secret: string,
   nowSeconds: number,
-): EmailHookVerdict {
+  names: HookHeaderNames,
+):
+  | { readonly ok: true; readonly id: string }
+  | { readonly ok: false; readonly code: Exclude<EmailHookRefusal, 'HOOK_MALFORMED'> } {
   const key = keyOf(secret);
-  const headers = headersOf(header);
+  const headers = headersOf(header, names);
   if (key === undefined || headers === undefined || raw.byteLength > EMAIL_HOOK_MAX_BYTES) {
     return { ok: false, code: 'HOOK_HEADERS' };
   }
@@ -128,6 +160,21 @@ export function verifyEmailHook(
   if (!signed(key, headers.id, headers.timestamp, raw, headers.signatures)) {
     return { ok: false, code: 'HOOK_SIGNATURE' };
   }
-  const event = eventOf(headers.id, raw);
+  return { ok: true, id: headers.id };
+}
+
+/**
+ * Verify one event: the headers, the timestamp, the signature over the raw
+ * body, and only then the body's shape. `nowSeconds` is the server's clock.
+ */
+export function verifyEmailHook(
+  raw: Uint8Array,
+  header: HeaderOf,
+  secret: string,
+  nowSeconds: number,
+): EmailHookVerdict {
+  const verified = verifySignedHook(raw, header, secret, nowSeconds, SVIX_HEADERS);
+  if (!verified.ok) return verified;
+  const event = eventOf(verified.id, raw);
   return event === undefined ? { ok: false, code: 'HOOK_MALFORMED' } : { ok: true, event };
 }

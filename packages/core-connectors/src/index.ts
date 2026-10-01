@@ -48,8 +48,12 @@ export {
   EMAIL_HOOK_MAX_BYTES,
   EMAIL_HOOK_TOLERANCE_S,
   isEmailHookSecret,
+  STANDARD_WEBHOOK_HEADERS,
+  SVIX_HEADERS,
   verifyEmailHook,
+  verifySignedHook,
   type EmailHookEvent,
+  type HookHeaderNames,
   type EmailHookRefusal,
   type EmailHookVerdict,
 } from './email-hook.ts';
