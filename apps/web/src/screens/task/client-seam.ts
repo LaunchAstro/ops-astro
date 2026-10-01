@@ -6,19 +6,13 @@
 // `client.list` (C32) and takes the task's client and whether it has content
 // (S0-5's lock) from `task.read`'s detail, so the field draws no Mock label.
 //
-// **The duplicate is made up** until `task.duplicate` joins this branch: the
-// form sends through `DuplicateSource`, and `MOCK_DUPLICATE` draws the design
-// system's one Mock corner label (`SourceRegion`, MP-1-6) on the form. Wiring
-// it is a `DuplicateSource` whose `send` is `client.mutate` of
-// `task.duplicate` with `confirmCarried` passed through, handed to the panel
-// (`TaskPanel`'s `duplicate`).
+// **The duplicate is real too.** "Duplicate without contents" sends through a
+// `DuplicateSource`; the panel's own (`realDuplicate`) is `client.mutate` of
+// `task.duplicate` with `confirmCarried` passed through. A host may hand the
+// panel another (`TaskPanel`'s `duplicate`); a made-up one draws the design
+// system's one Mock corner label (`SourceRegion`, MP-1-6) on the form.
 
-import type {
-  CallResult,
-  CommandOutcome,
-  OperationsClient,
-  WireRefusal,
-} from '../../operations/client.ts';
+import type { CallResult, CommandOutcome, OperationsClient } from '../../operations/client.ts';
 import type {
   ClientListResult,
   InternalTaskDetail as Task,
@@ -75,11 +69,11 @@ export interface DuplicateSource {
   readonly send: DuplicateSender;
 }
 
-/** What the panel's host hands the Client field; an absent duplicate is the made-up one. */
+/** What the panel's host hands the Client field; an absent seam is the real one. */
 export interface ClientSeams {
   /** The client list and the content answer; absent, the real ones (`realClientFacts`). */
   readonly clientFacts?: ClientFactsSource | undefined;
-  /** "Duplicate without contents"'s sender, made up until wired. */
+  /** "Duplicate without contents"'s sender; absent, the real one (`realDuplicate`). */
   readonly duplicate?: DuplicateSource | undefined;
   /** A duplicate landed: the host opens the new task by its key. */
   readonly onDuplicated?: ((key: string) => void) | undefined;
@@ -135,41 +129,17 @@ export function realClientFacts(client: OperationsClient): ClientFactsSource {
   };
 }
 
-// -- Made-up data. Every use is drawn with the Mock label.
-
-/** The made-up duplicate's old client, whose name its warning looks for. */
-const MOCK_CLIENTS: readonly ClientChoice[] = [
-  { id: 'mock-client-harbour', name: 'Harbour Physio' },
-  { id: 'mock-client-verity', name: 'Verity Dental' },
-  { id: 'mock-client-north', name: 'North Shore Allied Health' },
-];
-
-/** Made up: warns on the first made-up client's name, as the server will on the old client's. */
-export const MOCK_DUPLICATE: DuplicateSource = {
-  provenance: 'mock',
-  send: (request) => {
-    const name = (MOCK_CLIENTS[0]?.name ?? '').toLowerCase();
-    const carried = [
-      ['title', request.title],
-      ...request.stepNames.map((text, index) => [`stepNames.${index}`, text]),
-    ].filter(([, text]) => text?.toLowerCase().includes(name));
-    if (!request.confirmCarried && carried.length > 0) {
-      const code: string = CARRIED_TEXT_NAMES_CLIENT;
-      const refusal = {
-        refused: true,
-        code,
-        names: carried.map(([field]) => field ?? ''),
-        fixes: ['Carried text names the old task’s client. Edit it out, or confirm it.'],
-      };
-      return Promise.resolve(refusal as WireRefusal);
-    }
-    return Promise.resolve({
-      ok: true,
-      value: {
-        recordId: 'mock-task-duplicate',
-        revision: 1,
-        detail: { taskId: 'mock-task-duplicate', key: 'MOCK-DUPLICATE' },
-      },
-    });
-  },
-};
+/** The panel's own duplicate: `task.duplicate` on the person path, as the form sent it. */
+export function realDuplicate(client: OperationsClient): DuplicateSource {
+  return {
+    provenance: 'real',
+    send: async (request) =>
+      await client.mutate('task.duplicate', {
+        recordId: request.recordId,
+        client: request.client,
+        title: request.title,
+        stepNames: request.stepNames,
+        confirmCarried: request.confirmCarried,
+      }),
+  };
+}
