@@ -166,3 +166,62 @@ it('AW-08 mark: a lease marks only newer work on its lineage, never the plan it 
     'dispatch',
   );
 });
+
+// A2: only the lease's own hand-back is marked. The handback marks the
+// successor it writes, and `propose` marks a revision only when the lease's
+// holder proposed it; nothing else calls `markReviewedOutput`. So no path
+// lets a lease mark a person's newer version on its lineage: proven here
+// through the command entry, with no code of its own.
+it("AW-08 mark: a lease cannot mark a person's newer version on its lineage as reviewed output", async () => {
+  const handedBack = async (working: Record<string, unknown>) =>
+    await asAgent(
+      s,
+      handbackBody(working, {
+        purpose: freshPurpose(),
+        maximumMinor: 1_000,
+        currency: 'AUD',
+        payload: { change: 'output' },
+        step: EFFECT,
+      }),
+      String(working['credential']),
+    );
+  const personRevises = async (taskId: string, lineageId: unknown) =>
+    appliedDetail(
+      await asPerson(s, {
+        ...proposeBody(taskId, await revisionOf(s, taskId), {
+          purpose: freshPurpose(),
+          maximumMinor: 1_000,
+          lineageId: String(lineageId),
+        }),
+        step: EFFECT,
+      }),
+      'task.propose',
+    );
+  const working = async (taskId: string) => {
+    const plan = appliedDetail(
+      await asPerson(s, {
+        ...proposeBody(taskId, await revisionOf(s, taskId), { purpose: freshPurpose() }),
+        step: EFFECT,
+      }),
+      'task.propose',
+    );
+    return { plan, lease: await pickup(s, (await approve(s, plan))['reservationId']) };
+  };
+
+  // While the lease works: the person's newer version ends it, and its hand-back marks nothing.
+  const during = await createTask(s, `aw08-own-${randomUUID()}`);
+  const live = await working(during);
+  await personRevises(during, live.plan['lineageId']);
+  expect(codeOf(await handedBack(live.lease))).not.toBe('applied');
+  expect(await marksOf(s, during)).toEqual([]);
+
+  // Positive control: the lease's own hand-back is the one mark. A person's
+  // newer version after it is not marked, and the spent lease marks nothing more.
+  const after = await createTask(s, `aw08-own-${randomUUID()}`);
+  const done = await working(after);
+  const back = appliedDetail(await handedBack(done.lease), 'task.handback');
+  expect(await marksOf(s, after)).toEqual([back['successorVersionId']]);
+  await personRevises(after, done.plan['lineageId']);
+  expect(codeOf(await handedBack(done.lease))).not.toBe('applied');
+  expect(await marksOf(s, after)).toEqual([back['successorVersionId']]);
+});

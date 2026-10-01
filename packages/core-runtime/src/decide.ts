@@ -448,8 +448,8 @@ async function recheckDecision(
   if (await assignedTo(tx, found.task_id, request.decidedByPersonId)) {
     return { ok: false, refusal: fourEyesRequired() };
   }
-  // AW-09: an agent's output is decided by a person as themselves (`review-round.ts`).
-  const reviewer = await reviewedByPerson(tx, gate.value.version_id, request);
+  // AW-09: every decision is a person's, as themselves (`review-round.ts`).
+  const reviewer = await reviewedByPerson(tx, request);
   if (!reviewer.ok) return reviewer;
   const evidence = await recheckEvidence(tx, gate.value);
   if (!evidence.ok) return evidence;

@@ -9,10 +9,15 @@
 //
 // The mark is written by the handback, in the transaction that writes the
 // successor, under the handback's locks, naming the lease whose work produced
-// it. It is never rewritten, so a version is a reviewed output from the moment
-// it exists or never. Both calls run in the caller's tenant transaction; row
-// security keeps them to that business, and the trigger checks the version and
-// the lease's work are on the lineage the mark names.
+// it. The agent's revision of its output (a proposal on the lineage after
+// requested changes) is its output too, so `propose` marks it under the same
+// lease (AW-09). A mark is never rewritten, so a version is a reviewed output
+// from the moment it exists or never. The calls run in the caller's tenant
+// transaction; row security keeps them to that business, and the trigger checks
+// the version and the lease's work are on the lineage the mark names. The two
+// callers mark only the lease's own work: the handback the successor it has
+// just written, `propose` a revision its lease holder proposed. A person's
+// newer version on the agent's lineage is never the agent's output.
 
 import type { TenantQuery } from '../../core-records/src/index.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
@@ -33,6 +38,27 @@ export async function markReviewedOutput(tx: TenantQuery, mark: ReviewedOutputMa
      values ($1, $2, $3, $4)`,
     [tx.businessId, mark.versionId, mark.lineageId, mark.leaseId],
   );
+}
+
+/**
+ * AW-09: the revision `versionId` supersedes `supersededId`. When that was a
+ * reviewed output and the revision is its lease holder's own, the revision is
+ * the reviewed output now, under the same lease; a person's revision is not.
+ */
+export async function markRevision(
+  tx: TenantQuery,
+  versionId: string,
+  supersededId: string,
+): Promise<void> {
+  const [found] = await tx.query<{ readonly lineage_id: string; readonly lease_id: string }>(
+    `select ro.lineage_id, ro.lease_id from public.reviewed_outputs ro
+       join public.leases l on l.business_id = ro.business_id and l.id = ro.lease_id
+       join public.proposal_versions v on v.business_id = ro.business_id and v.id = $3
+      where ro.business_id = $1 and ro.version_id = $2 and v.proposed_by_actor_id = l.holder_actor_id`,
+    [tx.businessId, supersededId, versionId],
+  );
+  if (found === undefined) return;
+  await markReviewedOutput(tx, { versionId, lineageId: found.lineage_id, leaseId: found.lease_id });
 }
 
 /** Whether `versionId`, in the caller's business, is a reviewed output. */
