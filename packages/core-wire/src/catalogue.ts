@@ -7,6 +7,7 @@
 import {
   COMMAND_SURFACE,
   PREFIX,
+  admitsSelfWrite,
   pathOf,
   type CommandDeclaration,
   type CommandName,
@@ -60,7 +61,8 @@ const actionOf = (key: string): string => key.slice(key.indexOf(':') + 1);
 /** The profile the owning command declares, which every surface must ask. */
 export function profileOf(declaration: CommandDeclaration): Profile {
   const key = `${declaration.collection}:${declaration.action}`;
-  const authority = declaration.authority ?? [key];
+  // A self-scoped row asks no grant: every signed-in person reaches their own rows.
+  const authority = declaration.authorisedOn === 'self' ? [] : (declaration.authority ?? [key]);
   return {
     authority,
     authorisedOn: declaration.authorisedOn,
@@ -170,9 +172,14 @@ export interface HeldGrant {
 
 // Which commands `principal` may call, and where (issue 55). Business-scoped needs business-wide
 // keys; an agent reaches queue and pickup holding nothing (8.2) and never the person-only app.
+// A person's writes pass the envelope's own standing check (`member`, from the session). A row
+// asking no grant: a self-scoped write needs none; a read (the inbox, session.capabilities) is
+// served only to a holder of some live grant.
 export function reachableBy(
   rows: readonly CatalogueRow[],
-  principal: { readonly kind: 'person' | 'agent'; readonly grants: readonly HeldGrant[] },
+  principal:
+    | { readonly kind: 'person'; readonly grants: readonly HeldGrant[]; readonly member: boolean }
+    | { readonly kind: 'agent'; readonly grants: readonly HeldGrant[] },
 ): { readonly command: CommandName; readonly surfaces: readonly string[] }[] {
   const agent = principal.kind === 'agent';
   const holds = (key: string, wide: boolean) =>
@@ -181,8 +188,16 @@ export function reachableBy(
     .filter((row) => !agent || !row.personOnly)
     .filter(
       (row) =>
+        principal.kind === 'agent' ||
+        row.kind === 'read' ||
+        admitsSelfWrite(principal.member, row.command),
+    )
+    .filter(
+      (row) =>
         (agent && row.agent === 'before-pickup') ||
-        row.authority.every((key) => holds(key, row.authorisedOn === 'business')),
+        (row.authority.length === 0
+          ? (row.kind === 'write' && row.authorisedOn === 'self') || principal.grants.length > 0
+          : row.authority.every((key) => holds(key, row.authorisedOn === 'business'))),
     )
     .map((row) => ({
       command: row.command,

@@ -38,7 +38,7 @@ const business = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const person = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const task = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 
-const reads = (): Promise<boolean> => Promise.resolve(true);
+const reach = (): Promise<string> => Promise.resolve('tasks');
 const shown = (): Promise<string> => Promise.resolve('inbox');
 
 /** Each stream, started with `ask` as the question its recheck asks. */
@@ -54,7 +54,7 @@ const streams: [
         return person;
       };
       const on = { businessId: business, personId: person, recheckMs: 5 };
-      await followBoard(stream, topics, on, { joinedAs, reads, shown });
+      await followBoard(stream, topics, on, { joinedAs, reach, shown });
     },
   ],
   [
@@ -180,7 +180,11 @@ describe('INB-1 live stream stop', () => {
       };
     const late = abortable();
     const on = { businessId: business, personId: person, recheckMs: 5 };
-    await followBoard(late, topics, on, { joinedAs: count(person), reads, shown: count('inbox') });
+    await followBoard(late, topics, on, {
+      joinedAs: count(person),
+      reach: count('tasks'),
+      shown: count('inbox'),
+    });
     await setTimeout(20);
     expect(late.aborted, 'stopped at once').toBe(true);
     expect(asked, 'asks nothing').toBe(0);

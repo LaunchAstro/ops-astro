@@ -84,9 +84,12 @@ export async function captureBuiltPages(options: {
   return shots;
 }
 
-/** Which screen the app drew: its sign-in form, a gate, or the page itself. */
+/** Which screen the app drew: its sign-in form, a gate, its server error, or the page itself. */
 export function screenOf(): string {
   if (document.querySelector('.signin__form') !== null) return 'the sign-in form';
+  // main.tsx draws one bare paragraph when it cannot reach the server.
+  const bare = document.querySelector('#app > p:only-child')?.textContent ?? '';
+  if (bare.includes('cannot reach its server')) return 'the server error';
   const title = document.querySelector('.readstate .empty__title')?.textContent ?? '';
   if (title.startsWith('You are already signed in')) return 'the already-signed-in gate';
   if (title.startsWith('No screen is registered')) return 'the not-found gate';

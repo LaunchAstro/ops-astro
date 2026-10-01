@@ -46,6 +46,7 @@ import {
   agentAnswer,
   isCommandRefusal,
   isReadName,
+  boardReach,
   joinLiveBoard,
   shownInbox,
   refuseCommand,
@@ -205,11 +206,15 @@ async function admit(
   // verifier reads it (`auth/session.ts`).
   if (crossSiteSession(context.req)) return refuse(context, CROSS_SITE());
   const presented = await options.verify(context.req);
-  if (presented !== undefined && presented !== 'expired') context.set(PRESENTED, presented);
-  if (presented === undefined) {
+  if (typeof presented === 'object') context.set(PRESENTED, presented);
+  else clearNamedCookie(context);
+  if (presented === undefined || presented === 'absent') {
     // A tab that names no sign-in of its own reads nothing on the cookies of
     // others: not them, their business or their clients.
     if (unnamedSession(context.req)) return refuse(context, MISMATCH());
+    // No credential at all (a crawler, a probe) tried no sign-in: the same
+    // answer, and never counted as a failed one (security line 9).
+    if (presented === 'absent') context.set(NO_CREDENTIAL, true);
     return refuse(context, refuseCommand('AUTH_UNKNOWN_LOGIN', [], [SIGN_IN]));
   }
   // An expired bearer is its own answer on both paths. It is the re-login
@@ -231,6 +236,18 @@ async function admit(
   }
   if (businessId === undefined) return refuse(context, entry.unresolved());
   return { presented, businessId, body };
+}
+
+/**
+ * The page ends its session on `AUTH_SESSION_EXPIRED` and `AUTH_UNKNOWN_LOGIN`
+ * alike, and only the API can clear an `HttpOnly` cookie: a refused cookie
+ * left behind rides beside every later sign-in's until the headers are too
+ * large to answer. So the named sign-in's cookie goes with the refusal.
+ */
+function clearNamedCookie(context: Context): void {
+  const session = namedSession(context.req);
+  if (bearerOf(context.req) !== undefined || session === undefined) return;
+  deleteCookie(context, cookieNameFor(session), SESSION_COOKIE_OPTIONS);
 }
 
 export function createApi(options: ApiOptions): Hono {
@@ -282,7 +299,8 @@ export function createApi(options: ApiOptions): Hono {
         const response =
           admitted instanceof Response ? admitted : await run(context, declaration, admitted);
         const outcome = outcomeOf(context, declaration);
-        const signal = options.observe && signalOf(outcome);
+        const tried = (context as Context).get(NO_CREDENTIAL) !== true;
+        const signal = options.observe && tried && signalOf(outcome);
         if (signal) options.observe?.(signal);
         // Download volume (security line 9): the records each read handed out, per business and reader.
         const { business, person: who, items } = outcome;
@@ -364,9 +382,9 @@ export function createApi(options: ApiOptions): Hono {
         await follow(stream, live, admitted.businessId, taskId, may);
       });
     });
-    // INB-1f: the board's one stream per tab, through the same door. Each task
-    // it names is asked as the task's own stream asks it; the inbox topic is
-    // the caller's own person, which the join resolves, asked again each batch.
+    // INB-1f: the board's one stream per tab, through the same door. It digests
+    // the reads of the person the join resolves, asked again on every run, and
+    // hears that person's inbox topic (`live-board.ts`).
     api.get(`${PREFIX.person}:businessKey/live`, async (context) => {
       const admitted = await admit(options, context, PERSON, false);
       if (admitted instanceof Response) return admitted;
@@ -387,8 +405,8 @@ export function createApi(options: ApiOptions): Hono {
               const again = await join();
               return isCommandRefusal(again) ? undefined : again.personId;
             },
-            reads: async (taskId) =>
-              typeof (await mayWatch(options, context, admitted.businessId, taskId)) === 'string',
+            reach: async (personId) =>
+              await mayReach(options, context, admitted.businessId, personId),
             shown: async (personId) =>
               await mayShowInbox(options, context, admitted.businessId, personId),
           },
@@ -410,15 +428,14 @@ async function mayWatch(
   options: ApiOptions,
   context: Context,
   businessId: string,
-  recordId: string | undefined = context.req.param('recordId'),
 ): Promise<string | CommandRefusal> {
   const presented = await options.verify(context.req);
-  if (presented === undefined || presented === 'expired') {
+  if (typeof presented !== 'object') {
     return refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED_FIXES);
   }
   const read = await options.executeRead(options.database, businessId, presented, {
     read: 'task.execution',
-    recordId,
+    recordId: context.req.param('recordId'),
   });
   if (isCommandRefusal(read)) return read;
   if ('execution' in read) return read.execution.taskId;
@@ -432,10 +449,23 @@ async function mayJoinBoard(
   businessId: string,
 ): Promise<{ readonly personId: string } | CommandRefusal> {
   const presented = await options.verify(context.req);
-  if (presented === undefined || presented === 'expired') {
+  if (typeof presented !== 'object') {
     return refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED_FIXES);
   }
   return await joinLiveBoard(options.database, businessId, presented);
+}
+
+/** A digest of the tasks the stream's own person reads now, with the bearer verified again. */
+async function mayReach(
+  options: ApiOptions,
+  context: Context,
+  businessId: string,
+  personId: string,
+): Promise<string | undefined> {
+  const presented = await options.verify(context.req);
+  return typeof presented === 'object'
+    ? await boardReach(options.database, businessId, presented, personId)
+    : undefined;
 }
 
 /** What `inbox.read` shows the stream's own person now, asked with the bearer verified again. */
@@ -446,7 +476,7 @@ async function mayShowInbox(
   personId: string,
 ): Promise<string | undefined> {
   const presented = await options.verify(context.req);
-  if (presented === undefined || presented === 'expired') return undefined;
+  if (typeof presented !== 'object') return undefined;
   return await shownInbox(options.database, businessId, presented, personId);
 }
 
@@ -477,10 +507,13 @@ export async function follow(
     const signal = pending;
     pending = null;
     if (signal === null || stream.aborted) return;
-    if (typeof (await may()) !== 'string') {
-      await stream.writeSSE({ event: 'closed', data: taskId });
+    const allowed = typeof (await may()) === 'string';
+    // The tab may have left while the caller was asked: nothing is written after.
+    if (stream.aborted) return;
+    if (!allowed) {
+      await stream.writeSSE({ event: 'closed', data: '' });
       stream.abort();
-    } else if (signal !== 'check') await stream.writeSSE({ event: signal, data: taskId });
+    } else if (signal !== 'check') await stream.writeSSE({ event: signal, data: '' });
   };
   const want = (signal: LiveSignal | 'check'): void => {
     if (pending === null) chain = chain.then(send).catch(() => stream.abort());
@@ -497,7 +530,8 @@ export async function follow(
   const unsubscribe = live.topics.subscribe(businessId, taskId, want, stop);
   const timer = setInterval(() => want('check'), live.recheckMs ?? RECHECK_MS);
   try {
-    await stream.writeSSE({ event: 'resync', data: taskId });
+    // Topics closing stop a stream as it subscribes: nothing is written after.
+    if (!stream.aborted) await stream.writeSSE({ event: 'resync', data: '' });
     await ended;
   } finally {
     clearInterval(timer);
@@ -530,6 +564,7 @@ function refuse(context: Context, refusal: CommandRefusal): Response {
 const PRESENTED = 'presented';
 const REFUSAL = 'refusal';
 const HANDED_OUT = 'handed-out';
+const NO_CREDENTIAL = 'no-credential';
 
 /** How many records a read handed out: a task is one, a list is its length. */
 function recordsIn(read: object): number {

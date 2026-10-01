@@ -207,6 +207,35 @@ for trailers in \
   rm -rf "$dir"
 done
 
+# The closed exemption (owner ruling ORCH47, 1 Oct 2026): exactly two SL04 commits
+# whose 114-character Rebase-note footers commitlint refuses. Kept in history
+# because every slice holds batch/1; scripts/commit-message-exemptions.json.
+LONG_FOOTER=$'\n\nRebase-note: tests/db/named-suites.json invariant list resolved as a union with group E\'s two fixture suites (T4a)'
+for sha in eb39c3fc5d97ae4f8ba9f0ad4fd84e495ca080f8 0b096723fe68f3d3e1c6d893e9436da058ad461c; do
+  if git -C "$REPO_ROOT" cat-file -e "$sha^{commit}" 2>/dev/null; then
+    status="$( cd "$REPO_ROOT" && BASE_SHA="$sha^" HEAD_SHA="$sha" node "$CHECKER" >/dev/null 2>&1; echo $? )"
+    [ "$status" = "0" ] && pass "the exempt commit ${sha:0:7} passes (exit 0)" \
+      || fail "the exempt commit ${sha:0:7} passes" "expected exit 0, got $status"
+  else
+    fail "the exempt commit ${sha:0:7} passes" "the commit is not in this clone; fetch with history"
+  fi
+done
+
+dir="$(new_repo)"
+commit "$dir" "test(inbox): the same long footer on another commit$LONG_FOOTER$AGENT_TRAILERS"
+status="$(run_checker "$dir")"
+[ "$status" = "1" ] && pass "another commit with a 114-character footer still fails (exit 1)" \
+  || fail "another commit with a 114-character footer still fails" "expected exit 1, got $status"
+rm -rf "$dir"
+
+for entry in '{"sha":"eb39c3f","reason":"short"}' '{"sha":"EB39C3FC5D97AE4F8BA9F0AD4FD84E495CA080F8","reason":"upper"}' '{"sha":"eb39c3fc5d97ae4f8ba9f0ad4fd84e495ca080f8"}'; do
+  if node --input-type=module -e "import { parseExemptions } from '$REPO_ROOT/scripts/commit-exemptions.mjs'; parseExemptions(process.argv[1]);" "{\"commits\":[$entry]}" >/dev/null 2>&1; then
+    fail "an exemption that is not a full SHA with a reason is refused" "accepted: $entry"
+  else
+    pass "an exemption that is not a full SHA with a reason is refused: $entry"
+  fi
+done
+
 echo
 echo "commit-range cases: $PASSED passed, $FAILED failed"
 [ "$FAILED" -eq 0 ]

@@ -5,6 +5,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { readExemptions } from './commit-exemptions.mjs';
 import { messageProvenanceErrors } from './provenance.mjs';
 
 const base = process.env['BASE_SHA'];
@@ -68,6 +69,8 @@ const SUBJECT = new RegExp(`^(${TYPES.join('|')})(\\([a-z0-9 ,._-]+\\))?!?: .+`,
 
 // --- both rules, per commit -------------------------------------------------
 
+const exempt = readExemptions();
+
 for (const sha of shas) {
   const short = sha.slice(0, 9);
   const subject = git(['show', '-s', '--format=%s', sha]).trim();
@@ -79,7 +82,8 @@ for (const sha of shas) {
   }
 
   const message = git(['show', '-s', '--format=%B', sha]);
-  if (commitlintAvailable) {
+  // The closed list of commitlint exemptions, by full SHA (commit-message-exemptions.json).
+  if (commitlintAvailable && !exempt.has(sha)) {
     try {
       execFileSync(commitlintBin, ['--config', commitlintConfig], {
         input: message,

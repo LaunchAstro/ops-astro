@@ -24,10 +24,15 @@
     "tests/fixture/snapshot/snapshot-clone-and-privileges.test.ts",
     "tests/web/mp-2-1-isolation-api.test.tsx",
     "tests/api/api-1-isolation.test.ts",
+    "tests/api/leaked-client-read-isolation-assertion.test.ts",
     "tests/db/inbox-records.test.ts",
     "tests/reads/inbox.test.ts",
     "tests/commands/inbox-clearing-client-isolation.test.ts",
     "tests/reads/inbox-named.test.ts",
-    "tests/api/inb1f-live-board.test.ts"
+    "tests/api/inb1f-live-board.test.ts",
+    "tests/api/live-board-lost-access.test.ts",
+    "tests/api/live-board-scoped-revocation-review.test.ts",
+    "tests/api/live-board-client-move-review.test.ts",
+    "tests/api/live-board-client-move-prompt-review.test.ts"
   ]
 }
