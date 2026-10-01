@@ -193,6 +193,18 @@ function declaredCases2() {
     );
   }, 180_000);
 
+  it('never runs a second statement or a write smuggled into a predicate', () => {
+    const smuggled = `slot in ('num_3', 'num_4', 'num_5'));
+      update ops.slots set reservation = 'smuggled' where (true`;
+    const { status, output } = drill(
+      withPlanted([{ ...MARKS, changes: [{ ...MARKS.changes![0]!, where: smuggled }] }]),
+    );
+    expect(status).toBe(1);
+    // Refused by the server before anything was compared, not a write the drill then saw.
+    expect(output).toMatch(/upgrade-drill: failed: .*SQLSTATE/u);
+    expect(output).not.toMatch(/FAILED:/u);
+  }, 180_000);
+
   it('refuses a declaration naming a table or column the database has not got', () => {
     const { status, output } = drill(
       withPlanted([{ ...MARKS, changes: [{ ...MARKS.changes![0]!, columns: ['no_such'] }] }]),
