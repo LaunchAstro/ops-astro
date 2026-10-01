@@ -81,6 +81,8 @@ export async function classifyAuthorityLoss<T>(
     readonly delegationIds: readonly string[];
     readonly personLeases?: { readonly leaseIds: readonly string[]; readonly causeId: string };
     readonly revoke: (locks: LockSet) => Promise<RevocationWrite<T>>;
+    /** The person whose command cost the authority: the actor of each agent's clear. */
+    readonly actorId: string;
   },
 ): Promise<AuthorityLoss<T>> {
   const ids = [...new Set(request.delegationIds)].toSorted();
@@ -151,10 +153,10 @@ export async function classifyAuthorityLoss<T>(
       // credential answers as `DELEGATION_NARROWED`. After an explicit
       // `delegation.revoke` the row is already revoked with its own cause and
       // this writes nothing.
-      await revokeDelegation(tx, unit.revoke, 'authority_lost');
+      await revokeDelegation(tx, unit.revoke, 'authority_lost', request.actorId);
     }
     const work = workAfter.filter((row) => unit.match(row));
-    await retireWork(tx, work, locks);
+    await retireWork(tx, work, locks, request.actorId);
     ended.push(...work.map((row) => row.run_id));
     const holds = heldAfter.filter((row) => unit.match(row));
     classified.push(

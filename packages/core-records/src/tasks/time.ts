@@ -18,6 +18,11 @@
 // deleted. Notes and deletes reach only the person's own entries: another
 // person's entry is `absent`, the same answer as one that does not exist.
 //
+// **A purged task's entries stay** (ORCH58): time has its own retention
+// (CS-16.12) and feeds billing, so the purge detaches an entry from its task
+// rather than deleting it, and stops a running one first: a detached entry
+// can no longer be stopped by its task, and would hold its person's one timer.
+//
 // **A new entry takes its task's Ad hoc mark** (MP-4-10, `bool_2`), read in the
 // insert itself, so an entry cannot start from a different answer than the
 // task page shows.
@@ -56,12 +61,22 @@ interface Person {
 /** A day is the most one entry can hold (0078's check). */
 const MAX_MINUTES = 1440;
 
+/** A stopped timer's minutes: elapsed, rounded up, at least one, at most a day ($1). */
+const ELAPSED_MINUTES = `least($1::int, greatest(1, ceil(extract(epoch from now() - started_at) / 60)::int))`;
+
+/** "23h 59m" with room to spare: a longer duration is not one anybody typed. */
+const DURATION_LIMIT = 32;
+
 /**
  * Minutes from what a person types: "1h 30m", "1h30m", "2h", "90m" or "90".
  * Anything else, zero, or more than a day is undefined, never a guess.
+ *
+ * Capped before the pattern runs, and trimmed so no two adjacent quantifiers
+ * can match the same character: hostile spacing never backtracks.
  */
 export function parseDuration(text: string): number | undefined {
-  const match = /^\s*(?:(\d+)\s*h)?\s*(?:(\d+)\s*m?)?\s*$/u.exec(text);
+  if (text.length > DURATION_LIMIT) return undefined;
+  const match = /^(?:(\d+)\s*h\s*)?(?:(\d+)\s*m?)?$/u.exec(text.trim());
   if (match === null) return undefined;
   const [, hours, rest] = match;
   if (hours === undefined && rest === undefined) return undefined;
@@ -119,19 +134,31 @@ export async function stopTimer(
 > {
   if (!isUuid(input.taskId)) return { kind: 'none' };
   const rows = await tx.query<{ readonly id: string; readonly minutes: number }>(
-    `update public.time_entries
-        set ended_at = now(),
-            minutes = least($4::int,
-                            greatest(1, ceil(extract(epoch from now() - started_at) / 60)::int))
-      where business_id = $1 and task_id = $2::uuid and person_id = $3
+    `update public.time_entries set ended_at = now(), minutes = ${ELAPSED_MINUTES}
+      where business_id = $2 and task_id = $3::uuid and person_id = $4
         and ended_at is null and deleted_at is null
       returning id, minutes`,
-    [tx.businessId, input.taskId, input.personId, MAX_MINUTES],
+    [MAX_MINUTES, tx.businessId, input.taskId, input.personId],
   );
   const row = rows[0];
   return row === undefined
     ? { kind: 'none' }
     : { kind: 'stopped', entryId: row.id, minutes: row.minutes };
+}
+
+/**
+ * Keep the purged tasks' entries without their task: a running one is stopped
+ * with its elapsed minutes, as `stopTimer` would, and every other field stays.
+ */
+export async function detachTaskTime(tx: TenantQuery, taskIds: readonly string[]): Promise<void> {
+  await tx.query(
+    `update public.time_entries
+        set task_id = null,
+            minutes = coalesce(minutes, ${ELAPSED_MINUTES}),
+            ended_at = coalesce(ended_at, now())
+      where business_id = $2 and task_id = any ($3::uuid[])`,
+    [MAX_MINUTES, tx.businessId, taskIds],
+  );
 }
 
 /** A finished entry logged by hand, ending now. */

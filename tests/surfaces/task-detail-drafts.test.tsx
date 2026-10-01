@@ -24,6 +24,7 @@ import { act } from 'react';
 import { describe, expect, it } from 'vitest';
 import { TaskDetailScreen } from '../../apps/web/src/screens/TaskDetail.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
+import type { HistoryEntry } from '../../packages/core-wire/src/index.ts';
 import { mount } from './mount.tsx';
 
 const TASK = {
@@ -37,7 +38,7 @@ const TASK = {
   priority: null,
   completedAt: null,
   revision: 3,
-  history: [] as { at: string; actorId: string; operation: string }[],
+  history: [] as HistoryEntry[],
   board: null,
   rank: { number: null, score: null, calc: '' },
   adHoc: false,

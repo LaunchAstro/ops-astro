@@ -19,10 +19,15 @@
     },
     { "files": ["tests/review/sl01-s06-proof.test.ts"], "rules": { "no-await-in-loop": "off" } },
     {
+      "files": ["tests/commands/review-p03-unattended-escalated-decider.test.ts"],
+      "rules": { "max-lines-per-function": "off" }
+    },
+    {
       "files": [
         "tests/commands/parity-rejects-direct-ui-write.test.ts",
         "tests/commands/direct-entry-write-parity.test.ts",
-        "tests/commands/commented-sign-in-parity.test.ts"
+        "tests/commands/commented-sign-in-parity.test.ts",
+        "tests/ci/egress-short-hello-names-nothing.test.ts"
       ],
       "rules": { "no-inline-comments": "off" }
     },
@@ -88,6 +93,13 @@
         "require-await": "off",
         "unicorn/consistent-function-scoping": "off"
       }
+    },
+    {
+      "files": [
+        "tests/ci/s0-3-refused-store-stops-dump.test.ts",
+        "tests/ci/s0-3-unstarted-dump-stops.test.ts"
+      ],
+      "rules": { "no-inline-comments": "off" }
     }
   ]
 }

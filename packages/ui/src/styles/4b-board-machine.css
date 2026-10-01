@@ -100,8 +100,13 @@
   border-color: var(--accent);
 }
 
-/* The Review chip's live count (P-10). */
+/* The Review chip's live count (P-10): a badge, its figure on the accent
+   deepened toward the void, since --accent-ink on the plain accent is 4.4:1.
+   The void never flips, so the badge holds about 5.9:1 in both themes. */
 .cbd__count--accent {
+  padding: 0 5px;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--accent) 85%, var(--void-deep));
   color: var(--accent-ink);
 }
 
@@ -110,10 +115,11 @@
   color: var(--text-muted);
 }
 
-/* The typeahead: groups are presentation, options are the only stops. */
+/* The typeahead: groups are presentation, options are the only stops. It
+   opens over the sticky chip row (12) and heads (11), under the chrome (30). */
 .cbdta {
   position: absolute;
-  z-index: 5;
+  z-index: 13;
   top: calc(100% + 4px);
   left: 0;
   right: 0;
@@ -559,7 +565,8 @@ td[data-tight] {
   min-width: 14px;
   padding: 0 3px;
   border-radius: 999px;
-  background: var(--accent);
+  /* The Review count's deepened accent: --accent-ink on the plain accent is 4.4:1. */
+  background: color-mix(in oklch, var(--accent) 85%, var(--void-deep));
   color: var(--accent-ink);
   font: var(--type-badge);
   letter-spacing: var(--type-badge-tracking);
@@ -572,9 +579,12 @@ td[data-tight] {
 .cbd__cmt:focus-visible {
   color: var(--accent);
 }
+/* Hover and focus invert the badge, as the on preset does: ink ground and
+   paper figure in light, light ground and void figure in dark. */
 .cbd__cmt:hover .cbd__cmtn,
 .cbd__cmt:focus-visible .cbd__cmtn {
-  background: var(--ink);
+  background: var(--text);
+  color: var(--bg);
 }
 .brn {
   display: inline-flex;
@@ -770,11 +780,18 @@ tr:focus-within .cbd__routes--pop {
   color: var(--accent);
 }
 
-/* The td and the scrolling wrap lift their clipping while an editor is open,
-   or the menu would vanish into them. */
-.cbd__tbl td:has(.cbd__cell.is-editing),
-.cbd__wrap:has(.cbd__cell.is-editing) {
+/* The td lifts its clipping while an editor is open, or the menu would
+   vanish into it. The wrap lifts only where the table fits its card: below
+   1279 it scrolls, and lifting it would drop the scroll and spill the table
+   across the page, so there the menu stays inside the wrap's scroll. */
+.cbd__tbl td:has(.cbd__cell.is-editing) {
   overflow: visible;
+}
+
+@media (min-width: 1279px) {
+  .cbd__wrap:has(.cbd__cell.is-editing) {
+    overflow: visible;
+  }
 }
 
 /* Made-up category chips (no catalogue yet) under the one mock label (DS-PRIM-32):

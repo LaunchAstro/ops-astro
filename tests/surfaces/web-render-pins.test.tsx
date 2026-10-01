@@ -37,19 +37,6 @@ const tick = async (): Promise<void> => {
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
-/** A keystroke into the comment box, which is a textarea and has its own setter. */
-async function typeComment(page: Mounted, value: string): Promise<void> {
-  const field = page.find('#comment-body') as HTMLTextAreaElement;
-  const setter = Object.getOwnPropertyDescriptor(
-    window.HTMLTextAreaElement.prototype,
-    'value',
-  )?.set;
-  await act(async () => {
-    setter?.call(field, value);
-    field.dispatchEvent(new Event('input', { bubbles: true }));
-  });
-}
-
 const refused = (code: string, status: number): Response =>
   json({ refused: true, code, names: ['task'], fixes: ['Read the task again.'] }, status);
 
@@ -67,7 +54,16 @@ function taskWith(gate: { readonly state: string; readonly expired: boolean }) {
     priority: null,
     completedAt: null,
     revision: 3,
-    history: [{ at: '2026-09-22T01:00:00.000Z', actorId: 'p-1', operation: 'task.create' }],
+    history: [
+      {
+        at: '2026-09-22T01:00:00.000Z',
+        actorId: 'p-1',
+        personId: 'p-1',
+        actorKind: 'person',
+        actorName: 'Ada',
+        operation: 'task.create',
+      },
+    ],
     board: null,
     rank: { number: null, score: null, calc: '' },
     adHoc: false,
@@ -190,7 +186,7 @@ function theTaskPageCases1() {
       { '/task/comment': refused('SCOPE_NOT_GRANTED', 403) },
     );
     const page = await taskPage(client);
-    await typeComment(page, 'Hello');
+    await page.type('#comment-body', 'Hello');
     await page.click('[data-comment="post"]');
     await tick();
     expect(page.host.innerHTML).toMatchSnapshot();

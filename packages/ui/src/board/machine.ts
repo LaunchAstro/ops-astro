@@ -206,15 +206,18 @@ function columnStep<Row>(
       return record(state, `sort ${column.label}`, { ...view, sort: nextSort(view.sort, column) });
     }
     case 'resize': {
-      // One step per finished drag or arrow press, and only widths the board
-      // draws and the store could keep (MP-5-6).
+      // One step per finished drag or arrow press, and only widths the store
+      // could keep (MP-5-6). A width is for a column the board draws, or is
+      // the person's own width for one it does not draw now (the Client
+      // column under one client filter, P-23), carried unchanged.
       const column = context.columns.find((one) => one.key === action.key);
       const entries = Object.entries(action.widths);
       const known = (key: string): boolean => context.columns.some((one) => one.key === key);
+      const carried = (key: string, width: number): boolean => view.widths?.[key] === width;
       if (
         column === undefined ||
         entries.length === 0 ||
-        !entries.every(([key, width]) => known(key) && isWidth(width))
+        !entries.every(([key, width]) => isWidth(width) && (known(key) || carried(key, width)))
       ) {
         return state;
       }

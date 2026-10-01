@@ -41,6 +41,7 @@ import {
   resolveTaskId,
 } from './tasks.ts';
 import { readStateChoices } from './task-states.ts';
+import { decideReach } from './awaiting.ts';
 import { listPeople, listTeam, readAccess, readOwnName } from './people.ts';
 import { readTodos } from './todos.ts';
 import { readQueue } from './queue.ts';
@@ -296,6 +297,10 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     spine: true,
     authority: 'declared-within',
     outsiderNotFound: true,
+    // Staff's alone, as the ledger is (A4-1, A4-3: fail closed): a board row
+    // carries time, rank and comment counts, and anyone else reads a task's
+    // shared view through `task.read`. Asked here, so `admitRead` refuses too.
+    admits: async (_tx, session) => await Promise.resolve(isInternalReader(session.roleKey)),
     async serve(tx, session, operands, { spine }) {
       // The one read of the caller's grants: it admits, and it filters, so no
       // grant changes between the decision and the answer. It comes before
@@ -324,13 +329,12 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       if (unreadable(operands.board)) return refuseScope();
       // The caller's decide reach, for the Review mode's rows (MP-5-12). It
       // only marks rows already served under the read scope above.
-      const decide = await readableScope(tx, subjectsOf(session), 'task', 'decide');
       const { tasks, changedAt } = await readBoardStamped(
         tx,
         spine.taskTypeId,
         operands.board,
         scope.business ? null : scope.records,
-        decide.business ? null : decide.records,
+        await decideReach(tx, session),
         session.personId,
       );
       // The withheld count goes only to a member holding task:read on the

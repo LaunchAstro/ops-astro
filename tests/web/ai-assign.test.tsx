@@ -9,8 +9,8 @@
 // else's exists. The rules are tests/commands/task-assign-ai*.
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { TASK_ID, found, page, tick } from './task-page-stub.tsx';
-import { unmountAll } from './perspective-support.tsx';
+import { TASK_ID, found, tick } from './task-page-stub.tsx';
+import { page, unmountAll } from './perspective-support.tsx';
 import { panel, serving } from './panel-fields-support.tsx';
 
 afterEach(unmountAll);
@@ -79,5 +79,16 @@ describe('Assign to AI: the task page', () => {
     expect(view.find('[data-agent-assignee]')?.textContent).toBe(
       'Assigned to AI: draft_replies, for Ada',
     );
+  });
+
+  it('Assign to AI is locked while the title or due date is unsaved, as assigning is', async () => {
+    const view = await page('Proj-Verity-Pacing', found({ myAgents: MINE }));
+    const locked = (): boolean | undefined =>
+      view.find('#page-assign-ai')?.hasAttribute('disabled');
+    expect(locked()).toBe(false);
+    await view.type('#task-title', 'Budget pacing fix, renamed');
+    // The unsaved bar is up, the same lock the assignee and the state buttons are under.
+    expect(view.find('[data-draft-resolve="choice"]')).not.toBeNull();
+    expect(locked()).toBe(true);
   });
 });

@@ -17,9 +17,9 @@
 //
 // **Its own read, the page's rule.** The panel reads the task through
 // `task.read` as the page does, and a write here asks the host to count a
-// change (`onChanged`); the host hands the count back to both the page and
-// this panel as a read dependency, so each reads again and draws what the
-// server holds.
+// change (`onChanged`); the host hands the count back to both, so each reads
+// again. The panel keeps its last answer drawn meanwhile, so a re-read leaves
+// what is typed, the perspective and the folds where they were.
 //
 // **Its ids are its own.** The page and the panel are in one document, so
 // every id drawn here carries the `panel` scope.
@@ -38,6 +38,7 @@ import { useRead } from '../../data/use-read.ts';
 import { pathTo } from '../../routes.ts';
 import { RecordState } from '../../views/record-state.tsx';
 import { Comments, type CommentDraft } from './Comments.tsx';
+import type { RowEdit } from './Thread.tsx';
 import { TaskFacts } from './Facts.tsx';
 import { History } from './History.tsx';
 import {
@@ -52,6 +53,7 @@ import { PageLink, pageLinkDoor } from './PageLink.tsx';
 import type { DraftScope } from './DraftPanel.tsx';
 import { PanelFields, PanelName } from './PanelFields.tsx';
 import { withPageDefaults } from './read-defaults.ts';
+import { useRereadOn } from './reread-on.ts';
 import { TeamSubtasks } from './Subtasks.tsx';
 import { HandlingTicks } from './Ticks.tsx';
 import { BriefField, DescriptionField } from './Writing.tsx';
@@ -84,13 +86,14 @@ export function TaskPanel(props: TaskPanelProps): ReactElement {
   const { state, reload } = useRead<TaskReadResult>({
     grantKey: props.grantKey,
     run: () => client.read<TaskReadResult>('task.read', { recordId: opening.taskKey }),
-    deps: [opening.taskKey, props.changes ?? 0],
+    deps: [opening.taskKey],
     // The task's topic on the tab's one live stream (C4), as the task page reads it.
     live: {
       hub: hubOf(client),
       topic: (read) => ('task' in read ? `task:${read.task.id}` : undefined),
     },
   });
+  useRereadOn(props.changes ?? 0, reload);
   const onKeyDown = (event: KeyboardEvent<HTMLElement>): void => {
     if (event.key !== 'Escape' || event.defaultPrevented) return;
     const target = event.target as HTMLElement;
@@ -100,7 +103,7 @@ export function TaskPanel(props: TaskPanelProps): ReactElement {
   };
   return (
     <aside className="dtp" data-task-panel aria-label="Task panel" onKeyDown={onKeyDown}>
-      <RecordState state={state} subject="task" onRetry={reload}>
+      <RecordState state={state} subject="task" onRetry={reload} keep>
         {(value) =>
           'sharedTask' in value ? (
             <p className="card__sub">
@@ -213,6 +216,7 @@ function PanelConversation(props: SideProps): ReactElement {
       : { body: '', tab: opening.tab, replyTo: null, pending: null, stale: null },
   );
   const [refusal, setRefusal] = useState<string | null>(null);
+  const [editing, setEditing] = useState<RowEdit | null>(null);
   return (
     <Comments
       scope="panel"
@@ -225,6 +229,8 @@ function PanelConversation(props: SideProps): ReactElement {
       onPosted={props.onChanged}
       draft={draft}
       onDraft={setDraft}
+      editing={editing}
+      onEditing={setEditing}
     />
   );
 }
