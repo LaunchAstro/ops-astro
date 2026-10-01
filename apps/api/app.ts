@@ -469,15 +469,7 @@ export function createApi(options: ApiOptions): Hono {
       if (credential !== undefined) {
         const run = options.executeCredentialCommand;
         if (run === undefined) return refuse(context, AGENT.unresolved());
-        const address = (
-          context.env as { incoming?: { socket?: { remoteAddress?: string } } } | undefined
-        )?.incoming?.socket?.remoteAddress;
-        const call = {
-          credential,
-          now: now(),
-          quota,
-          ...(address === undefined ? {} : { address }),
-        };
+        const call = { credential, now: now(), quota };
         const answer = await run(options.database, businessId, call, {
           ...body,
           command: declaration.name,

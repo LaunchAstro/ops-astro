@@ -226,37 +226,8 @@ export async function resolveAgentCredential(
   secret: string,
   now: Date,
 ): Promise<CredentialStanding | CredentialNotLive> {
-  const rows = await tx.query<{
-    readonly id: string;
-    readonly agent_actor_id: string;
-    readonly issued_by_person_id: string;
-    readonly scope: readonly string[];
-    readonly expires_at: Date;
-    readonly revoked_at: Date | null;
-    readonly agent_active: boolean;
-    readonly member: boolean;
-    readonly role_key: string | null;
-  }>(
-    `select c.id, c.agent_actor_id, c.issued_by_person_id, c.scope, c.expires_at, c.revoked_at,
-            a.active as agent_active, m.id is not null as member, m.role_key
-       from public.agent_credentials c
-       join public.actors a on a.business_id = c.business_id and a.id = c.agent_actor_id
-       left join public.memberships m
-         on m.business_id = c.business_id and m.person_id = c.issued_by_person_id and m.active
-      where c.business_id = $1 and c.credential_hash = $2
-      for share of c`,
-    [tx.businessId, digestOf(secret)],
-  );
-  const row = rows[0];
-  if (
-    row === undefined ||
-    row.revoked_at !== null ||
-    now.getTime() >= row.expires_at.getTime() ||
-    !row.agent_active ||
-    !row.member
-  ) {
-    return 'not-live';
-  }
+  const row = await standingRow(tx, secret, 'for share of c');
+  if (row === undefined || !liveAt(row, now)) return 'not-live';
   return {
     credentialId: row.id,
     agentActorId: row.agent_actor_id,
@@ -265,6 +236,58 @@ export async function resolveAgentCredential(
     scope: row.scope,
   };
 }
+
+/**
+ * Whether a secret is a live credential of this business at `now`, read as
+ * `resolveAgentCredential` reads it but with no lock: one indexed read that
+ * holds nothing and writes nothing. Only a screen; a live answer is resolved
+ * again, under its lock, before it is served.
+ */
+export async function isAgentCredentialLive(
+  tx: TenantQuery,
+  secret: string,
+  now: Date,
+): Promise<boolean> {
+  const row = await standingRow(tx, secret, '');
+  return row !== undefined && liveAt(row, now);
+}
+
+interface StandingRow {
+  readonly id: string;
+  readonly agent_actor_id: string;
+  readonly issued_by_person_id: string;
+  readonly scope: readonly string[];
+  readonly expires_at: Date;
+  readonly revoked_at: Date | null;
+  readonly agent_active: boolean;
+  readonly member: boolean;
+  readonly role_key: string | null;
+}
+
+async function standingRow(
+  tx: TenantQuery,
+  secret: string,
+  lock: 'for share of c' | '',
+): Promise<StandingRow | undefined> {
+  const rows = await tx.query<StandingRow>(
+    `select c.id, c.agent_actor_id, c.issued_by_person_id, c.scope, c.expires_at, c.revoked_at,
+            a.active as agent_active, m.id is not null as member, m.role_key
+       from public.agent_credentials c
+       join public.actors a on a.business_id = c.business_id and a.id = c.agent_actor_id
+       left join public.memberships m
+         on m.business_id = c.business_id and m.person_id = c.issued_by_person_id and m.active
+      where c.business_id = $1 and c.credential_hash = $2
+      ${lock}`,
+    [tx.businessId, digestOf(secret)],
+  );
+  return rows[0];
+}
+
+const liveAt = (row: StandingRow, now: Date): boolean =>
+  row.revoked_at === null &&
+  now.getTime() < row.expires_at.getTime() &&
+  row.agent_active &&
+  row.member;
 
 /** A credential as presented at the door: its digest, under the credential's provider. */
 const presentedAs = (secret: string): VerifiedSubject => ({

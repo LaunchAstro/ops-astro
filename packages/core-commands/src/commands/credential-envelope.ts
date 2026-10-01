@@ -28,6 +28,7 @@
 // recorded against the agent.
 
 import {
+  isAgentCredentialLive,
   NO_ASSURANCE,
   recordCredentialRefusal,
   resolveAgentCredential,
@@ -80,19 +81,6 @@ export interface CredentialQuota {
   knock(businessId: string): boolean;
   /** A bearer turned away as not live, counted at the business's door. */
   turnedAway(businessId: string): void;
-  /**
-   * Asked only with the door full: whether this bearer is answered as limited
-   * before any transaction, because it was answered not live this window or
-   * its address is past its share. A bearer served live is never held.
-   */
-  screen(businessId: string, credential: string, address: string | undefined): boolean;
-  /** What the bearer was found to be, live or not, once it is resolved. */
-  resolved(
-    businessId: string,
-    credential: string,
-    address: string | undefined,
-    live: boolean,
-  ): void;
 }
 
 export interface CredentialCall {
@@ -100,8 +88,6 @@ export interface CredentialCall {
   /** The time expiry is read against. */
   readonly now: Date;
   readonly quota?: CredentialQuota;
-  /** The client's address where the target knows it (the server's socket); absent on the function. */
-  readonly address?: string;
 }
 
 const NOT_LIVE_FIXES: readonly string[] = [
@@ -133,8 +119,10 @@ export async function executeCredentialCommand(
 ): Promise<CommandResult | ReadResult> {
   // Asked before, answered after the bearer is resolved (`notLive`).
   const doorFull = call.quota?.knock(businessId) === false;
-  // Past a full door, a bearer known not live or from a flooding address opens no transaction.
-  if (doorFull && call.quota?.screen(businessId, call.credential, call.address) === true) {
+  // Past a full door, one unlocked read before the call's transaction: a bearer
+  // not live is limited with nothing held and nothing written, and a live one,
+  // never known before or made live again, goes on as below the door (round 4).
+  if (doorFull && !(await database.withBusiness(businessId, (tx) => live(tx, call)))) {
     return asCallerVisible(limited());
   }
   return await resolvedAndRun(database, businessId, call, request, doorFull);
@@ -155,7 +143,6 @@ async function resolvedAndRun(
       async () =>
         await database.withBusiness(businessId, async (tx) => {
           const standing = await resolveAgentCredential(tx, call.credential, call.now);
-          call.quota?.resolved(businessId, call.credential, call.address, standing !== 'not-live');
           if (standing === 'not-live') return await notLive(tx, call.credential, doorFull);
           const keys = {
             credentialId: standing.credentialId,
@@ -189,6 +176,9 @@ async function resolvedAndRun(
     slot?.leave(answer === undefined || isCommandRefusal(answer) ? undefined : answer);
   }
 }
+
+const live = async (tx: TenantQuery, call: CredentialCall): Promise<boolean> =>
+  await isAgentCredentialLive(tx, call.credential, call.now);
 
 /**
  * A credential turned away is an attempt at the door (I13), answered as every

@@ -24,6 +24,7 @@ export {
   credentialSubject,
   deriveAgentCredential,
   isAgentCredentialForm,
+  isAgentCredentialLive,
   issueAgentCredential,
   lockAgentCredential,
   recordCredentialRefusal,
