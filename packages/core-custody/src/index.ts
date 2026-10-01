@@ -46,6 +46,7 @@ export {
   type EmailPreferences,
   type EmailTiming,
 } from './email-timing.ts';
+export { deliverDue, type DeliveryPass } from './email-worker.ts';
 export {
   callModelForPlanning,
   PLANNING_CAP_DEFAULT,
