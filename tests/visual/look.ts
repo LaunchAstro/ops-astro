@@ -21,7 +21,7 @@
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { launchChromium } from '../support/chromium.ts';
 import { load, MOCKUP_ORIGIN, openSide, type Side } from './capture.ts';
-import { madeUpSession, serveApp } from './app-pages.ts';
+import { madeUpSession, PAGE_PARAMS, serveApp } from './app-pages.ts';
 import { answerMadeUp } from './made-up-api.ts';
 import { LOOK_SCREENS, type LookProbe, type LookScreen } from './look/index.ts';
 import {
@@ -158,7 +158,7 @@ async function checkProbe(
   }
   const side = await openSide(browser, packet, width, { app, session, colorScheme: theme });
   await answerMadeUp(side.context);
-  const address = addressOf(probe.app.page, { key: 'T-1' }) ?? '/';
+  const address = addressOf(probe.app.page, PAGE_PARAMS) ?? '/';
   const got = await measureOn(side, new URL(address, app).href, probe, 'app');
   if (got === null) {
     say(`red ${name}: the app draws no ${probe.app.selector}`, true);

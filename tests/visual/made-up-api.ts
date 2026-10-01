@@ -99,6 +99,7 @@ const DETAIL: InternalTaskDetail = {
   capCurrency: 'AUD',
   envelope: null,
   alerts: [],
+  ledger: null,
 };
 
 const READS = {
@@ -138,7 +139,14 @@ const READS = {
   } satisfies CapabilitiesResult,
   'task.queue': { ok: true, queue: [], alerts: [], outages: [] } satisfies QueueResult,
   'task.execution': {
-    execution: { outcome: 'no-run', runs: [], events: [], complete: true, next: null },
+    execution: {
+      outcome: 'no-run',
+      runs: [],
+      events: [],
+      complete: true,
+      next: null,
+      graph: { plan: 'unbound', sourceRevision: 1, complete: true, nodes: [] },
+    },
   } satisfies TaskExecutionResult,
   'inbox.read': {
     ok: true,

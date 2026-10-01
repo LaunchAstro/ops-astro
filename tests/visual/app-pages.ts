@@ -23,6 +23,9 @@ import { answerMadeUp } from './made-up-api.ts';
 import type { Packet, Theme } from './packet.ts';
 import { addressOf, builtPages, needsSession, overflowOf, type PageShot } from './report.ts';
 
+/** The value each route parameter takes in the harness: the made-up reads' own records. */
+export const PAGE_PARAMS: Readonly<Record<string, string>> = { key: 'T-1' };
+
 /** The app served from source by its own Vite config, at a free local port. */
 export async function serveApp(): Promise<{ app: URL; close: () => Promise<void> }> {
   // No API behind it on any machine: its proxy points at a closed port, never at
@@ -102,7 +105,7 @@ async function capturePages(
   const shots: PageShot[] = [];
   for (const id of builtPages()) {
     const name = `${id}@${width}-${theme}`;
-    const address = addressOf(id, { key: 'T-1' }) ?? '/';
+    const address = addressOf(id, PAGE_PARAMS) ?? '/';
     const side = needsSession(id) ? sides.signedIn : sides.signedOut;
     const page = await load(side, packet, new URL(address, app).href);
     // The intended screen is checked before the picture counts.
