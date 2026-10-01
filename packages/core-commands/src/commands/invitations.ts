@@ -7,8 +7,9 @@
 // - `invitation.create` names a person, their address and a role. It writes a
 //   new enduring person and the invitation, pending for the lifetime below.
 // - `invitation.resend` moves a pending invitation's expiry on by a lifetime
-//   and spends every token the invitation has: a link already mailed, or
-//   still on its way, is dead, and only the resend's own send mints a live one.
+//   and spends every token minted before it: a link already mailed, or still
+//   on its way, is dead. A token minted after it is live, whichever act's
+//   send mints it (a send that had not minted yet still mints one).
 // - `invitation.revoke` ends a pending invitation.
 //
 // Each create and resend is one act the send may answer with one email

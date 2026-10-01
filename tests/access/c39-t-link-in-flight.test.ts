@@ -5,8 +5,11 @@
 // leaves (`broker-invitation.ts`), so a revoke or a resend can land while the
 // message is at the mail provider. A revoked invitation's link is refused by
 // both accepts, which require the invitation pending under its row lock at
-// the bind. A resend spends every older token of the invitation at once, so
-// the link in flight is dead whether or not the resend's own send ever comes.
+// the bind. A resend spends every token minted before it at once, so the
+// link in flight is dead whether or not the resend's own send ever comes. A
+// token minted after the resend is live, whichever act's send mints it: a
+// send that had not minted when the resend landed still mints a link that
+// enrols (same address, the extended expiry).
 
 import { describe, expect, it } from 'vitest';
 import type { Broker } from '../../packages/core-custody/src/index.ts';
@@ -117,6 +120,32 @@ describe.skipIf(noDatabase)('C39-T link in flight', () => {
     expect(await send(id)).toMatchObject({ ok: true });
     expect(await enrolVia(tokenTo(address))).toStrictEqual(ENROLLED);
     expect(await spentOf(id)).toStrictEqual({ state: 'accepted', spent: 2, tokens: 2 });
+  });
+
+  it('C39-T resend spends older links: a resend whose own send never comes leaves the earlier link refused to the signed-in accept too, which binds nothing', async () => {
+    e.users.mode('accept');
+    const address = addressFor('resent-unsent-signed-in');
+    const login = await heldInBravo(address);
+    const { id, token } = await invited(c.admin, address);
+    await resend(id);
+    const rows = await identityRows(w.alpha);
+    expect(await bindVia(token, loginOf(login))).toStrictEqual(REFUSED);
+    expect(await identityRows(w.alpha)).toStrictEqual(rows);
+    expect(await boundTo(w.alpha, login)).toBeUndefined();
+    expect(await spentOf(id)).toStrictEqual({ state: 'pending', spent: 1, tokens: 1 });
+  });
+
+  it('C39-T resend spends older links: a send that mints after the resend landed mints a live link, which enrols', async () => {
+    e.users.mode('accept');
+    const address = addressFor('sent-after-resend');
+    w.provider.mode('accept');
+    const id = await invite(c.admin, address);
+    // The create's send has not minted when the resend lands; it mints after it.
+    await resend(id);
+    expect(await spentOf(id)).toStrictEqual({ state: 'pending', spent: 0, tokens: 0 });
+    expect(await send(id)).toMatchObject({ ok: true });
+    expect(await enrolVia(tokenTo(address))).toStrictEqual(ENROLLED);
+    expect(await spentOf(id)).toStrictEqual({ state: 'accepted', spent: 1, tokens: 1 });
   });
 
   it('C39-T resend spends older links: a link mailed while its invitation was resent is refused, and the resend’s own link enrols', async () => {
