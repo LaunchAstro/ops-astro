@@ -110,7 +110,7 @@ describe.skipIf(serverUrl === undefined)('the task commands: what a payload may 
       }
       expect(refusals).toStrictEqual(PROTECTED_FIELD_CODES);
       // Every field the spine calls protected has a code in
-      // `task-field-codes.ts`. A nineteenth field added to that list with no
+      // `task-field-codes.ts`. A twentieth field added to that list with no
       // entry there fails this line.
       expect(Object.keys(PROTECTED_FIELD_CODES).toSorted()).toStrictEqual(
         [...PROTECTED_TASK_FIELDS].toSorted(),

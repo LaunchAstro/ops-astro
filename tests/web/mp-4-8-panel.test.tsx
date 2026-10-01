@@ -5,15 +5,19 @@
 // MP-4-5, MP-4-7, MP-4-10 and MP-4-16 built for it. The frame it sits in
 // (seat line, float, sheet, back and forward, its one close path) is MP-3-1's;
 // the captures wait on MP-1-7; the name, assignee and due edits are
-// mp-4-8-panel-fields and mp-4-8-date-picker, and the client and the duplicate
+// mp-4-8-panel-fields and mp-4-8-date-picker, the trail fold kept as the
+// person's preference is mp-4-8-trail-fold, and the client and the duplicate
 // are later steps of MP-4-8.
 
 import { afterEach, describe, expect, it } from 'vitest';
+import { App } from '../../apps/web/src/App.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
+import { SessionStore, tabStorage } from '../../apps/web/src/session/token.ts';
 import { TaskDetailScreen } from '../../apps/web/src/screens/TaskDetail.tsx';
 import { TaskPanel, type PanelOpening } from '../../apps/web/src/screens/task/Panel.tsx';
 import { task, tick } from './task-page-stub.tsx';
 import { json, mount, open, press, unmountAll } from './perspective-support.tsx';
+import { unheld } from './task-look.ts';
 
 afterEach(unmountAll);
 
@@ -41,6 +45,7 @@ interface Sent {
 function serving(over: Readonly<Record<string, unknown>> = {}): {
   readonly client: OperationsClient;
   readonly sent: Sent[];
+  readonly fetch: typeof globalThis.fetch;
 } {
   const sent: Sent[] = [];
   const fetch = ((url: string | URL, init?: RequestInit) => {
@@ -50,10 +55,16 @@ function serving(over: Readonly<Record<string, unknown>> = {}): {
       return Promise.resolve(json({ ok: true, queue: [], alerts: [], outages: [] }));
     }
     if (where.endsWith('/task/execution')) return Promise.resolve(json({ ok: false }));
+    // The person's own preferences (MP-4-4's show finished): none stored.
+    if (where.endsWith('/preference/read'))
+      return Promise.resolve(json({ ok: true, preferences: {} }));
     // The tab's one live stream (C4), unavailable here.
     if (/\/live(\/task\/|\?|$)/u.test(where))
       return Promise.resolve(new Response(null, { status: 404 }));
     if (where.endsWith('/task/read')) return Promise.resolve(json({ ok: true, task: task(over) }));
+    if (where.endsWith('/task/board')) return Promise.resolve(json({ ok: true, tasks: [] }));
+    // The Client field's choices (MP-4-8, C32): none here.
+    if (where.endsWith('/client/list')) return Promise.resolve(json({ ok: true, clients: [] }));
     const body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as Sent['body'];
     sent.push({ to: where.slice(where.lastIndexOf('/task/')), body });
     return Promise.resolve(json({ recordId: 'r', revision: 5 }));
@@ -61,6 +72,7 @@ function serving(over: Readonly<Record<string, unknown>> = {}): {
   return {
     client: new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch }),
     sent,
+    fetch,
   };
 }
 
@@ -180,10 +192,6 @@ describe('MP-4-8 trail folded', () => {
     expect(view.find('[data-task-panel] [data-history="trail"]')).toBeNull();
     await view.unmount();
   });
-
-  it.todo(
-    'MP-4-16 preference saved: the fold is the person’s saved preference (no preference model yet)',
-  );
 });
 
 describe('MP-4-8 head', () => {
@@ -236,9 +244,49 @@ describe('MP-4-8 escape closes only the control', () => {
 });
 
 describe('MP-4-8 close uses the frame', () => {
-  it.todo('closing goes through MP-3-1’s close and MP-4-6’s stop-and-log (SL06 U08 not on main)');
+  it('the dock’s X closes the panel and logs the running timer through time.stop once', async () => {
+    const running = { entries: [], running: { entryId: 'e', startedAt: at(30) }, totalMinutes: 0 };
+    const stops: string[] = [];
+    const answer = serving({ time: running }).fetch;
+    const fetch = ((url: string | URL, init?: RequestInit) => {
+      if (String(url).endsWith('/time/stop')) stops.push('time.stop');
+      return answer(url, init);
+    }) as typeof globalThis.fetch;
+    const session = JSON.stringify({ token: 't', businessKey: 'alpha', email: 'mia@alpha.local' });
+    const seed = new Map([['ops-astro.session', session]]);
+    const sessions = new SessionStore({
+      getItem: (key) => seed.get(key) ?? null,
+      setItem: (key, value) => void seed.set(key, value),
+      removeItem: (key) => void seed.delete(key),
+    });
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 1100 });
+    const view = await mount(
+      <App
+        path={`/task/${KEY}`}
+        navigate={ignore}
+        sessions={sessions}
+        gotrueUrl="http://identity.invalid"
+        apiOrigin=""
+        fetch={fetch}
+        storage={tabStorage()}
+      />,
+    );
+    await tick();
+    await view.click('#perspective-panel-team [data-panel-door="log"]');
+    await tick();
+    expect(view.find('[data-task-panel]')).not.toBeNull();
+    await view.click('.dpanel[data-panel-id="task"] [data-act="close"]');
+    await tick();
+    expect(view.find('[data-task-panel]')).toBeNull();
+    expect(stops).toEqual(['time.stop']);
+  });
 });
 
 describe('MP-4-8 visual match', () => {
-  it.todo('matches the mockup at 1480, 900 and 390, light and dark (MP-1-7 harness)');
+  it('the panel’s field grid, labels and selects are held to the mockup at 1480, 900 and 390, light and dark', () => {
+    const fields = ['grid', 'label', 'project', 'stage', 'status'].map(
+      (one) => `task.panel-${one}`,
+    );
+    expect(unheld(fields)).toEqual([]);
+  });
 });

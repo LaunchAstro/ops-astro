@@ -84,8 +84,8 @@ const mine = (page: Awaited<ReturnType<typeof team>>['page']): string =>
   page.find('.tmc__me')?.textContent ?? '';
 
 it('MP-7-10 the Team panel opens from its dock tab with the people strip and availability', async () => {
-  const tab = PANELS.find((panel) => panel.id === 'team');
-  expect(tab?.route === null ? null : pathTo(tab?.route ?? 'agency:settings')).toBe('/team');
+  const tab = PANELS.team;
+  expect(tab === undefined ? null : pathTo(tab.route)).toBe('/team');
   const { page } = await team();
   // The kit's panel: the strip holds the reader's teammates, never the reader.
   expect(

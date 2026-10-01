@@ -76,7 +76,8 @@ const PINNED_IDENTIFIERS = {
   'task.read': ['recordId'],
   'task.receipt': ['attemptId'],
   'task.search': [],
-  'task.todos': [],
+  // A teammate or a client (MP-7-2), one at a time.
+  'task.todos': ['person', 'client'],
   'team.list': [],
 };
 

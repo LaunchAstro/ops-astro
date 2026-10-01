@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The dock task panel (MP-4-8), in the shell's panel slot until the dock frame
-// (MP-3-1) draws panels in place. A new door or task remounts it; a new-task
-// draft (MP-4-13) takes the same slot. Signed out, the slot is empty.
+// The dock task panel (MP-4-8), drawn by the dock as its `task` panel
+// (dock/task-dock.ts). A new door or task remounts it; a new-task draft
+// (MP-4-13) takes the same panel. Signed out, there is nothing to draw.
 // `useDockPanel` holds the panel's state for the application: the host a
-// screen opens rows through, and what the slot draws.
+// screen opens rows through, and what the dock draws.
 
 import type { ReactElement } from 'react';
+import { pathTo } from '../../routes.ts';
 import type { OperationsClient } from '../../operations/client.ts';
 import type { Session } from '../../session/token.ts';
 import { DraftPanel } from './DraftPanel.tsx';
@@ -22,10 +23,28 @@ interface DockPanelProps {
 
 export function useDockPanel(props: DockPanelProps): {
   readonly host: TaskPanelState['host'];
-  readonly panel: ReactElement | null;
+  /** What the dock draws: open while a task or a draft is, its door, and its own close. */
+  readonly panel: {
+    readonly open: boolean;
+    readonly body: ReactElement;
+    readonly door: string;
+    readonly close: () => void;
+  };
 } {
   const taskPanel = useTaskPanel();
-  return { host: taskPanel.host, panel: <DockPanel {...props} taskPanel={taskPanel} /> };
+  const { opening, draft } = taskPanel;
+  return {
+    host: taskPanel.host,
+    panel: {
+      open: props.session !== null && (opening !== null || draft !== null),
+      body: <DockPanel {...props} taskPanel={taskPanel} />,
+      door:
+        opening === null
+          ? pathTo('agency:projects-board')
+          : pathTo('agency:task-detail', { key: opening.taskKey }),
+      close: taskPanel.close,
+    },
+  };
 }
 
 function DockPanel(props: {
@@ -50,6 +69,7 @@ function DockPanel(props: {
           taskPanel.changed();
         }}
         onClose={taskPanel.close}
+        docked
       />
     );
   }
@@ -63,8 +83,13 @@ function DockPanel(props: {
       changes={taskPanel.host.changes}
       onChanged={taskPanel.changed}
       onClose={taskPanel.close}
+      docked
       onNewTask={taskPanel.openDraft}
       onLeaving={taskPanel.leaving}
+      onDuplicated={(key) => {
+        taskPanel.host.open(key, 'open');
+        taskPanel.changed();
+      }}
     />
   );
 }

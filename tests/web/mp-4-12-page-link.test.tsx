@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { unmountAll } from './perspective-support.tsx';
 import { TASK_ID, tick } from './task-page-stub.tsx';
 import { panel, serving } from './panel-fields-support.tsx';
+import { unheld } from './task-look.ts';
 
 afterEach(unmountAll);
 
@@ -105,5 +106,7 @@ describe('MP-4-12 pin comes back as drawn', () => {
 });
 
 describe('MP-4-12 visual match', () => {
-  it.todo('matches the mockup at 1480, 900 and 390, light and dark (MP-1-7 harness)');
+  it('the page link’s label and value are held to the mockup at 1480, 900 and 390, light and dark', () => {
+    expect(unheld(['task.panel-link-label', 'task.panel-link-value'])).toEqual([]);
+  });
 });

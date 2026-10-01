@@ -204,6 +204,7 @@ table exactly:
 | `agent_brief`       | unslotted, in `data` | `task.update` (0076, MP-4-7)                                   |
 | `page_link`         | unslotted, in `data` | `task.update` (0079, MP-4-12)                                  |
 | `estimated_minutes` | unslotted, in `data` | `task.update` (0080, MP-4-8)                                   |
+| `category`          | unslotted, in `data` | `task.set_category` (0084, MP-4-8)                             |
 | `agent`             | unslotted, in `data` | `task.assign` (0082, Assign to AI)                             |
 | `due`               | `ts_1`               | `task.update`                                                  |
 | `priority`          | `num_1`              | `task.update`                                                  |
@@ -219,6 +220,12 @@ table exactly:
 
 There is no `status` column and no second coarse field. Whether a task is done
 is the machine category of the state record the task points at.
+
+A task made by `task.duplicate` (MP-4-8) records where it came from as a row of
+`record_links` with `link_type` `duplicated_from`, from the new task to the old
+one. No field of the old task is copied beyond its type: the new task holds
+only the title, client and step names the person sent. `task.read` shows the
+link's target only to a reader who holds read on the old task.
 
 A task's tags are not a field. The business's vocabulary is `tags` (one name
 per business whatever its case, a unique index on the lower-cased name) and
@@ -451,7 +458,8 @@ Nine reads are declared in `COMMAND_SURFACE` with `kind: 'read'` and served by
   reader of the business's tasks
 - `task.todos {}` → the reader's own open tasks on any board, with their tags
   and the client messages owed a reply (MP-7-1), for a reader of the
-  business's tasks
+  business's tasks; `{ person }` a teammate's, `{ client }`
+  every one under that client (MP-7-2), under the same key
 - `team.list {}` → the staff with an active membership and each one's
   availability (`person_availability`, 0066, set only by that person), for the
   Team panel; a client of the business is answered `NOT_FOUND`

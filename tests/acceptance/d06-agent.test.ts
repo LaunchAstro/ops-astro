@@ -57,10 +57,11 @@ const AGENT_OPERATIONS: readonly CommandName[] = [
   // An author's edit and delete (MP-4-5), each on a comment the agent wrote.
   'task.edit_comment',
   'task.delete_comment',
-  // The three marks (MP-4-9) and the Ad hoc mark (MP-4-10), which an agent
-  // sets on its own task inside its delegation.
+  // The three marks (MP-4-9), the Ad hoc mark (MP-4-10) and the category
+  // (MP-4-8), which an agent sets on its own task inside its delegation.
   'task.set_scores',
   'task.set_adhoc',
+  'task.set_category',
   // The description and the brief (MP-4-7), the name, the due date and the
   // page link (MP-4-8, MP-4-12): the fields an agent writes through
   // `task.update` on its own task.

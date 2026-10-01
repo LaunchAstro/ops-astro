@@ -17,6 +17,7 @@ export type CommandName =
   // The owning operations the task type's field definitions name.
   | 'task.start'
   | 'task.set_state'
+  | 'task.duplicate'
   | 'task.assign'
   | 'task.triage'
   | 'task.set_stage'
@@ -26,6 +27,7 @@ export type CommandName =
   | 'task.move'
   | 'task.set_scores'
   | 'task.set_adhoc'
+  | 'task.set_category'
   | 'task.share_with_client'
   | 'task.revoke_client_share'
   | 'task.edit_comment'

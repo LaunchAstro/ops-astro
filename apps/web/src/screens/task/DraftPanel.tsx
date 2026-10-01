@@ -43,6 +43,8 @@ export interface DraftPanelProps {
   readonly scope: DraftScope;
   readonly onCreated: (key: string) => void;
   readonly onClose: () => void;
+  /** Drawn by the dock, whose X closes it: the head draws no Close of its own. */
+  readonly docked?: boolean;
 }
 
 const CONTROLS = new Set(['INPUT', 'SELECT', 'TEXTAREA']);
@@ -78,9 +80,11 @@ function DraftBody(
     <>
       <div className="dtp__head">
         <h2 className="t-title">New task</h2>
-        <button className="btn" type="button" data-draft="close" onClick={props.onClose}>
-          Close
-        </button>
+        {props.docked === true ? null : (
+          <button className="btn" type="button" data-draft="close" onClick={props.onClose}>
+            Close
+          </button>
+        )}
       </div>
       <p className="card__sub" data-draft-admission>
         New task, filed from {props.scope.from}. Nothing is stored until Create.

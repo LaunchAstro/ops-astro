@@ -58,9 +58,8 @@ export function createPositiveBody(
       case 'task.trash':
         return { body: await target() };
       case 'task.reopen': {
-        // Only a completed task can be reopened (`tasks-state.ts`), so this
-        // completes one first and writes against the revision that move
-        // produced rather than the one the create returned.
+        // Only a completed task can be reopened (`tasks-state.ts`): complete one,
+        // then write against that move's revision, not the create's.
         const task = await context.freshTask('a task to complete and reopen');
         const done = await context.asPerson('task.complete', {
           recordId: task.id,
@@ -92,6 +91,10 @@ export function createPositiveBody(
           },
         };
       }
+      case 'task.duplicate': {
+        const task = await context.freshTask('a task to duplicate, to no client');
+        return { body: { recordId: task.id, client: null, title: 'a copy', stepNames: [] } };
+      }
       case 'task.comment':
         return { body: { ...(await target()), body: 'a note', audience: 'internal' } };
       case 'task.edit_comment':
@@ -109,16 +112,24 @@ export function createPositiveBody(
         return { body: { ...(await target()), fields: { impact: 7, confidence: 9, ease: 8 } } };
       case 'task.set_adhoc':
         return { body: { ...(await target()), fields: { ad_hoc: true } } };
+      case 'task.set_category':
+        return { body: { ...(await target()), fields: { category: 'seo' } } };
       case 'task.share_with_client': {
         if (context.clientTask === undefined) return { body: await target() };
         const task = await context.clientTask('a task the admin shares with its client');
         return { body: { recordId: task.id, expectedRevision: task.revision } };
       }
-      case 'task.revoke_client_share':
-        return { body: await target() };
+      case 'task.revoke_client_share': {
+        // A share to take back; sharing leaves the task's revision as it was.
+        if (context.clientTask === undefined) return { body: await target() };
+        const task = await context.clientTask('a task the admin shares, then takes back');
+        const body = { recordId: task.id, expectedRevision: task.revision };
+        const shared = await context.asPerson('task.share_with_client', body);
+        if (shared.code !== 'ok') throw new Error(`matrix: share refused ${shared.code}`);
+        return { body };
+      }
       case 'task.set_party':
-        // The party link names a client of this business (C32), so the admin
-        // makes one first.
+        // The party link names a client of this business (C32), made first.
         return { body: { ...(await target()), fields: { client: await madeClient(context) } } };
       case 'task.reparent':
         return { body: { ...(await target()), parentId: null } };
@@ -139,10 +150,9 @@ export function createPositiveBody(
         return { body: { batchId: batchOf(trashed) } };
       }
       case 'task.purge': {
-        // The purge takes no window: it reads the business's installed
-        // retention_window_days, thirty days here, so this fresh trash stays
-        // and the case proves the authority and the operation's reach. The
-        // window boundary itself is `tests/commands/purge-retention.test.ts`.
+        // The purge reads the business's retention_window_days (thirty here),
+        // so this fresh trash stays: the case proves authority and reach. The
+        // window boundary is `tests/commands/purge-retention.test.ts`.
         const task = await context.freshTask('a task to trash and purge');
         await context.asPerson('task.trash', {
           recordId: task.id,
