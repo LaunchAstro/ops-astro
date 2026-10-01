@@ -88,6 +88,9 @@ export function server(
     if (at.endsWith('/session/person')) return Promise.resolve(json({ ok: true, person: {} }));
     if (at.endsWith('/preference/read'))
       return Promise.resolve(json({ ok: true, preferences: {} }));
+    // The dock bell's owed count (MP-7-3) and its board topic are the frame's too.
+    if (at.endsWith('/inbox/count')) return Promise.resolve(json({ ok: true, owed: 0 }));
+    if (at.includes('/live?')) return Promise.resolve(new Response(null, { status: 503 }));
     calls.push({
       url: at,
       body: JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>,
@@ -112,7 +115,10 @@ export const unmountAll = async (): Promise<void> => {
   await Promise.all(live.splice(0).map((view) => view.unmount()));
 };
 
-export async function open(fetch: typeof globalThis.fetch): Promise<Mounted> {
+export async function open(
+  fetch: typeof globalThis.fetch,
+  path = '/settings/access/',
+): Promise<Mounted> {
   const held = new Map([['ops-astro.session', JSON.stringify(SESSION)]]);
   const sessions = new SessionStore({
     getItem: (key) => held.get(key) ?? null,
@@ -125,7 +131,7 @@ export async function open(fetch: typeof globalThis.fetch): Promise<Mounted> {
   });
   const element: ReactElement = (
     <App
-      path="/settings/access/"
+      path={path}
       navigate={() => {
         // One address for the whole case.
       }}

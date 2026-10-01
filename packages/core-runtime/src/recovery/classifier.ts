@@ -464,12 +464,22 @@ export async function holdCoveringGrants(
   // approver): it never waits on a grant row there, and contention rolls back.
   wait: 'wait' | 'nowait' = 'wait',
 ): Promise<void> {
+  // A subject held within ticked keys (an agent credential) covers only those
+  // keys' grants in this collection: one row per ticked action; null is any.
+  const asked = subjects.flatMap((subject): { subject: Subject; action: string | null }[] =>
+    subject.within === undefined
+      ? [{ subject, action: null }]
+      : subject.within
+          .filter((key) => key.startsWith(`${collection}:`))
+          .map((key) => ({ subject, action: key.slice(collection.length + 1) })),
+  );
   await tx.query(
     `with recursive chain as (
        select g.id, g.parent_grant_id from public.grants g
         where g.business_id = $1 and g.collection = $2
-          and exists (select 1 from unnest($3::text[], $4::uuid[]) as s (kind, id)
-                       where s.kind = g.subject_kind and s.id = g.subject_id)
+          and exists (select 1 from unnest($3::text[], $4::uuid[], $5::text[]) as s (kind, id, action)
+                       where s.kind = g.subject_kind and s.id = g.subject_id
+                         and (s.action is null or s.action = g.action))
        union
        select p.id, p.parent_grant_id from public.grants p
          join chain c on p.id = c.parent_grant_id
@@ -482,8 +492,9 @@ export async function holdCoveringGrants(
     [
       tx.businessId,
       collection,
-      subjects.map((subject) => subject.kind),
-      subjects.map((subject) => subject.id),
+      asked.map(({ subject }) => subject.kind),
+      asked.map(({ subject }) => subject.id),
+      asked.map(({ action }) => action),
     ],
   );
 }
