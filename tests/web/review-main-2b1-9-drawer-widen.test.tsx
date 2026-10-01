@@ -48,7 +48,10 @@ function holds(media: string, width: number): boolean {
 let width = 820;
 const queries: Query[] = [];
 let undoLayout: () => void = () => {};
-let saved: { innerWidth?: PropertyDescriptor; matchMedia?: PropertyDescriptor } = {};
+let saved: {
+  innerWidth?: PropertyDescriptor | undefined;
+  matchMedia?: PropertyDescriptor | undefined;
+} = {};
 
 function standIn(): void {
   saved = {
@@ -60,7 +63,12 @@ function standIn(): void {
     configurable: true,
     writable: true,
     value: (media: string): MediaQueryList => {
-      const query: Query = { media, matches: holds(media, width), listeners: new Set(), onchange: null };
+      const query: Query = {
+        media,
+        matches: holds(media, width),
+        listeners: new Set(),
+        onchange: null,
+      };
       queries.push(query);
       const list = {
         get matches() {
@@ -71,10 +79,13 @@ function standIn(): void {
           return query.onchange;
         },
         set onchange(next: Listener | null) {
+          // The stand-in keeps a `MediaQueryList`'s own `onchange` slot.
+          // oxlint-disable-next-line unicorn/prefer-add-event-listener
           query.onchange = next;
         },
         addEventListener: (_type: string, listener: Listener) => query.listeners.add(listener),
-        removeEventListener: (_type: string, listener: Listener) => query.listeners.delete(listener),
+        removeEventListener: (_type: string, listener: Listener) =>
+          query.listeners.delete(listener),
         addListener: (listener: Listener) => query.listeners.add(listener),
         removeListener: (listener: Listener) => query.listeners.delete(listener),
         dispatchEvent: () => true,
@@ -133,7 +144,9 @@ describe('REVIEW-MAIN-2B1-9: a drawer opened at 900 and below is left open, and 
       'main is still inert after widening to 1200, with the hamburger, close button and backdrop hidden',
     ).toBe(false);
     expect(app.view.find('.dock__rail')?.hasAttribute('inert') ?? false).toBe(false);
-    expect(isOpen(app), 'the shell still says the drawer is open after widening to 1200').toBe(false);
+    expect(isOpen(app), 'the shell still says the drawer is open after widening to 1200').toBe(
+      false,
+    );
     await app.view.unmount();
   });
 });
