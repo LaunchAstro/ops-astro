@@ -185,7 +185,9 @@ read yet. The subtask list (`screens/task/Subtasks.tsx`, MP-4-4) is the read's
 `steps`: Enter adds one, a tick completes or reopens it, and finished and
 archived steps fold under "Show finished", which is the person's own
 `subtasks.showFinished` preference (`screens/task/show-finished.ts`, CS-4.27),
-read once and saved on each change. A step whose gate waits
+read once and saved on each change; a click before the store answers stands
+and is saved then, and the task page holds the fold above its read, so a
+reread keeps it as the person left it. A step whose gate waits
 (`awaitingApproval`) has no tick: an eye and the note "Waiting on a gate",
 which drops to its own line at 640px and below. The doors ("Open
 this task in the panel", "Add the first one in the task panel", "Log time in

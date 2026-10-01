@@ -37,7 +37,7 @@ const step = (id: string, done: boolean): StepView => ({
 });
 
 /** A client whose `preference.read` answers `read`; every write is recorded and applied. */
-function client(read: Response | (() => Response)) {
+function client(read: Response | (() => Response | Promise<Response>)) {
   const sent: Sent[] = [];
   const fetch = ((url: string | URL, init?: RequestInit) => {
     const at = String(url);
@@ -60,6 +60,15 @@ function client(read: Response | (() => Response)) {
     client: new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch }),
     saves: () => sent.filter((each) => each.call === 'preference.save').map((each) => each.body),
   };
+}
+
+/** A `preference.read` answer the test hands over when it chooses. */
+function later() {
+  let settle: ((response: Response) => void) | undefined;
+  const promise = new Promise<Response>((resolve) => {
+    settle = resolve;
+  });
+  return { promise, resolve: (response: Response) => settle?.(response) };
 }
 
 /** The store refusing the reader (no grant). */
@@ -143,4 +152,40 @@ describe('MP-4-4 show finished, remembered per person', () => {
     expect(rows(view)).toStrictEqual(['41']);
     expect(saves()).toMatchObject([{ preference: 'subtasks.showFinished', value: false }]);
   });
+});
+
+describe('MP-4-4 show finished, held through a slow store and a reread', () => {
+  it('a click before the stored choice arrives stands, and is saved once the store answers', async () => {
+    const late = later();
+    const { client: of, saves } = client(() => late.promise);
+    const view = await list(of);
+    await press(view, '[data-steps-finished]');
+    expect(rows(view)).toStrictEqual(['41', '43']);
+    await act(async () => {
+      late.resolve(json({ ok: true, preferences: { 'subtasks.showFinished': false } }));
+      await late.promise;
+    });
+    await tick();
+    expect(rows(view)).toStrictEqual(['41', '43']);
+    expect(saves()).toMatchObject([{ preference: 'subtasks.showFinished', value: true }]);
+  });
+
+  for (const [reader, read] of [
+    ['a reader the store keeps', () => json({ ok: true, preferences: {} })],
+    ['a reader the store refuses', refusal],
+  ] as const) {
+    it(`the task page keeps the fold open across a reread, for ${reader}`, async () => {
+      const { client: of } = client(read);
+      const view = await mount(
+        <TaskDetailScreen client={of} grantKey="alpha:member" taskKey="Proj-Verity-Pacing" />,
+      );
+      await tick();
+      await tick();
+      await press(view, '[data-steps-finished]');
+      expect(rows(view)).toStrictEqual(['41', '43']);
+      await press(view, '[data-refresh="task"]');
+      await tick();
+      expect(rows(view)).toStrictEqual(['41', '43']);
+    });
+  }
 });

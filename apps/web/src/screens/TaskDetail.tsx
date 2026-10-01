@@ -95,7 +95,7 @@ import type {
   TaskReadResult,
   TaskStateView,
 } from '../../../../packages/core-wire/src/index.ts';
-import { useRead } from '../data/use-read.ts';
+import { useRead, type UseReadResult } from '../data/use-read.ts';
 import type { ReadState } from '../data/authorised-read.ts';
 import { hubOf } from '../data/live.ts';
 import { usePresence } from '../data/presence.ts';
@@ -220,6 +220,7 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   const [topUpNote, setTopUpNote] = useHeld<TopUpNote>(identity, denied);
   const [perspective, setPerspective] = useHeld<Perspective>(identity, denied);
   const [showAllTime, setShowAllTime] = useHeld<boolean>(identity, denied);
+  const [showFinished, setShowFinished] = useHeld<boolean>(identity, denied);
 
   return (
     <div className="stack">
@@ -260,6 +261,8 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
                 onPerspective={setPerspective}
                 showAllTime={showAllTime ?? false}
                 onShowAllTime={setShowAllTime}
+                showFinished={showFinished}
+                onShowFinished={setShowFinished}
                 onOpenPanel={props.onOpenPanel}
                 onAttempt={(attempt) => {
                   setDraft((current) =>
@@ -557,6 +560,8 @@ interface LoadedProps {
   readonly perspective: Perspective;
   readonly onPerspective: (next: Perspective) => void;
   /** Whether the finished subtasks are unfolded, held above the read (MP-4-4). */
+  readonly showFinished: boolean | null;
+  readonly onShowFinished: (next: boolean | null) => void;
   /** Whether every time entry shows, not only the latest three, held above the read (MP-4-6). */
   readonly showAllTime: boolean;
   readonly onShowAllTime: (next: boolean) => void;
@@ -600,7 +605,6 @@ function Loaded(props: LoadedProps): ReactElement {
     task,
   };
   const dirty = props.draft !== null;
-  const status = { client, task, states: props.states, onChanged: props.onChanged };
 
   // C2: who else is here, for this task and for the app strip.
   const presence = usePresence(client, `task:${task.id}`);
@@ -618,11 +622,8 @@ function Loaded(props: LoadedProps): ReactElement {
     );
   };
 
-  const { busy, because, conflict, fields, lifecycle, onAssign, onFields } = useTaskWrites(props, {
-    title,
-    due,
-    base,
-  });
+  const writes = useTaskWrites(props, { title, due, base });
+  const { busy, because, conflict } = writes;
 
   const people = useRead<PersonListResult>({
     grantKey: props.grantKey,
@@ -667,54 +668,12 @@ function Loaded(props: LoadedProps): ReactElement {
         selected={props.perspective}
         onSelect={props.onPerspective}
         team={
-          <>
-            <Lifecycle
-              disabled={busy || dirty}
-              completed={task.completedAt !== null}
-              onLifecycle={lifecycle}
-            />
-
-            <PageStatus {...status} disabled={busy || dirty} />
-
-            <Assignee
-              people={people.state}
-              onRetry={people.reload}
-              assignee={task.assignee}
-              disabled={busy || dirty}
-              onAssign={onAssign}
-            />
-
-            <AssignToAI client={client} task={task} scope="page" onChanged={props.onChanged} />
-
-            <DetailsForm
-              formRef={fields}
-              busy={busy}
-              title={title}
-              due={due}
-              onEdit={edit}
-              onField={presence.mark}
-              onSubmit={onFields}
-            />
-
-            <DescriptionSection description={task.description} />
-
-            <TeamSubtasks {...props} />
-
-            <Comments
-              client={client}
-              comments={task.comments}
-              recordId={task.id}
-              revision={task.revision}
-              refusal={props.commentRefusal}
-              onRefused={props.onCommentRefused}
-              onPosted={props.onChanged}
-              onOpenPanel={props.onOpenPanel}
-              draft={props.commentDraft}
-              onDraft={props.onCommentDraft}
-            />
-
-            <History history={task.history} />
-          </>
+          <TeamSide
+            props={props}
+            people={people}
+            writes={writes}
+            form={{ title, due, dirty, onEdit: edit, onField: presence.mark }}
+          />
         }
         agent={
           <AgentSide
@@ -725,6 +684,95 @@ function Loaded(props: LoadedProps): ReactElement {
         }
       />
     </div>
+  );
+}
+
+/** What the Team side draws from: the page's props, the people, the writes and the form. */
+interface TeamSideProps {
+  readonly props: LoadedProps;
+  readonly people: UseReadResult<PersonListResult>;
+  readonly writes: TaskWrites;
+  readonly form: {
+    readonly title: string;
+    readonly due: string;
+    readonly dirty: boolean;
+    readonly onEdit: (next: { title?: string; due?: string }) => void;
+    readonly onField: (field: 'title' | 'due' | null) => void;
+  };
+}
+
+/**
+ * The Team side of the task (MP-4-3): its controls, the description, the
+ * subtasks and time, the conversation and the history.
+ */
+function TeamSide(side: TeamSideProps): ReactElement {
+  const { client, task } = side.props;
+  return (
+    <>
+      <TeamControls {...side} />
+
+      <DescriptionSection description={task.description} />
+
+      <TeamSubtasks {...side.props} />
+
+      <Comments
+        client={client}
+        comments={task.comments}
+        recordId={task.id}
+        revision={task.revision}
+        refusal={side.props.commentRefusal}
+        onRefused={side.props.onCommentRefused}
+        onPosted={side.props.onChanged}
+        onOpenPanel={side.props.onOpenPanel}
+        draft={side.props.commentDraft}
+        onDraft={side.props.onCommentDraft}
+      />
+
+      <History history={task.history} />
+    </>
+  );
+}
+
+/** The lifecycle, status, assignee, AI hand-off and details form, held while busy or dirty. */
+function TeamControls({ props, people, writes, form }: TeamSideProps): ReactElement {
+  const { client, task } = props;
+  const locked = writes.busy || form.dirty;
+  return (
+    <>
+      <Lifecycle
+        disabled={locked}
+        completed={task.completedAt !== null}
+        onLifecycle={writes.lifecycle}
+      />
+
+      <PageStatus
+        client={client}
+        task={task}
+        states={props.states}
+        onChanged={props.onChanged}
+        disabled={locked}
+      />
+
+      <Assignee
+        people={people.state}
+        onRetry={people.reload}
+        assignee={task.assignee}
+        disabled={locked}
+        onAssign={writes.onAssign}
+      />
+
+      <AssignToAI client={client} task={task} scope="page" onChanged={props.onChanged} />
+
+      <DetailsForm
+        formRef={writes.fields}
+        busy={writes.busy}
+        title={form.title}
+        due={form.due}
+        onEdit={form.onEdit}
+        onField={form.onField}
+        onSubmit={writes.onFields}
+      />
+    </>
   );
 }
 
