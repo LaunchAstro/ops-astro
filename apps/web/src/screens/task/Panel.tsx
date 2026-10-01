@@ -11,9 +11,9 @@
 // facts as the task page (MP-4-3, MP-4-9, MP-4-2).
 //
 // **The frame is not this file's.** Seating, floating, the sheet, back and
-// forward and the one close path are the dock frame's (MP-3-1); until it is
-// on main this body sits in the shell's panel slot and closes through
-// `onClose`.
+// forward and the one close path are the dock's (MP-3-1), which draws this
+// body as its `task` panel: there the dock's X is the close (`docked`), and
+// it closes through `onClose` as the panel's own Close does elsewhere.
 //
 // **Its own read, the page's rule.** The panel reads the task through
 // `task.read` as the page does, and a write here asks the host to count a
@@ -74,6 +74,8 @@ export interface TaskPanelProps extends ClientSeams {
   readonly changes?: number;
   readonly onChanged: () => void;
   readonly onClose: () => void;
+  /** Drawn by the dock, whose X closes it: the head draws no Close of its own. */
+  readonly docked?: boolean;
   /** The head's New task (MP-4-13): a draft filed from this task. Absent, the door is not drawn live. */
   readonly onNewTask?: (scope: DraftScope) => void;
   /** Hand the host this person's timer stop while it runs on the task, or null. */
@@ -246,7 +248,10 @@ function PanelAgent(props: SideProps): ReactElement {
   );
 }
 
-/** The head: the task's name, New task (a draft filed from here), its own page, and close. */
+/**
+ * The head: the task's name, New task (a draft filed from here), its own page,
+ * and close, which the dock draws instead where it hosts the panel.
+ */
 function PanelHead(props: SideProps): ReactElement {
   const { task, onNewTask } = props;
   return (
@@ -273,9 +278,11 @@ function PanelHead(props: SideProps): ReactElement {
         Open its page
       </a>
       <GoTo task={task} />
-      <button className="btn" type="button" data-panel-head="close" onClick={props.onClose}>
-        Close
-      </button>
+      {props.docked === true ? null : (
+        <button className="btn" type="button" data-panel-head="close" onClick={props.onClose}>
+          Close
+        </button>
+      )}
     </div>
   );
 }

@@ -20,7 +20,7 @@ import { drawContent } from './app-content.tsx';
 import { buildStamp, useCanonicalAddress, useOfflineSince, usePersonName } from './app-state.ts';
 import { FrameStrip } from './strip.tsx';
 import { HeldAddressNotice, heldAddressOffer, type HeldOffer } from './held-address.tsx';
-import { dockTabGo, dockTabs } from './panels.ts';
+import { shellDock, useDockShell, type DockAppProps } from './dock/dock-props.tsx';
 import { useDockPanel } from './screens/task/DockPanel.tsx';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, type Interruption, type Session, type SessionStore } from './session/token.ts';
@@ -29,7 +29,7 @@ import { signOut } from './session/sign-in.ts';
 import { PagePresenceProvider, StripPresence } from './views/presence.tsx';
 import { PageFreshnessProvider, StripFreshness } from './views/freshness.tsx';
 
-export interface AppProps {
+export interface AppProps extends DockAppProps {
   /** The address the application is drawing. Owned here, not read from a global. */
   readonly path: string;
   /** `replace` corrects the address of the page already open, adding no history entry. */
@@ -161,6 +161,9 @@ export function App(props: AppProps): ReactElement {
       }),
     [props.apiOrigin, props.fetch, session],
   );
+  const grantKey = grantKeyOf(session);
+  const taskDock = useDockPanel({ client, grantKey, session, storage: props.storage });
+  const docked = useDockShell(client, session, props.storage, props, taskDock.panel);
 
   // Sign-out (C23). The tab forgets the session first, so a server that never
   // answers cannot keep it. Then, with the ended session's own client:
@@ -190,8 +193,7 @@ export function App(props: AppProps): ReactElement {
   };
 
   const bare = here.split(/[?#]/u)[0] ?? here;
-  const grantKey = grantKeyOf(session);
-  const dock = useDockPanel({ client, grantKey, session, storage: props.storage });
+  const screen = { client, grantKey, storage: props.storage, navigate, taskPanel: taskDock.host };
   const { match, at, refused, rail, tabs, identity, face } = frameAt(
     bare,
     session?.businessKey ?? null,
@@ -218,12 +220,9 @@ export function App(props: AppProps): ReactElement {
     signedIn: session !== null,
     refused,
     signIn,
-    onGo: () => {
-      props.navigate(pathTo('agency:projects-board'));
-    },
+    onGo: () => props.navigate(pathTo('agency:projects-board')),
     screen: {
-      client,
-      grantKey,
+      ...screen,
       notice:
         notice === null || session === null ? null : (
           <HeldAddressNotice
@@ -232,9 +231,6 @@ export function App(props: AppProps): ReactElement {
             onSwitch={onSwitch}
           />
         ),
-      storage: props.storage,
-      navigate: props.navigate,
-      taskPanel: dock.host,
     },
   });
 
@@ -274,10 +270,11 @@ export function App(props: AppProps): ReactElement {
             </>
           }
           title={refused ? 'Not available' : (match?.route.title ?? at?.page.label ?? 'Not found')}
-          dock={session === null || face === 'client' ? [] : dockTabs(here)}
-          onDockTab={dockTabGo(here, props.navigate)}
-          seated={dock.seated}
-          panel={dock.panel}
+          // The client face has no dock (R17), and nobody signed out has one.
+          {...shellDock(
+            docked,
+            session === null || face === 'client' ? null : { ...screen, notice: null },
+          )}
         >
           <FaceProvider face={face}>{content}</FaceProvider>
         </Shell>

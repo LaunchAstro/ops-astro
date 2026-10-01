@@ -20,7 +20,7 @@
 // and starring (P-20). The actual is the time logged (MP-4-6).
 
 import { useState, type ReactElement } from 'react';
-import { Empty, ProjectsBoard, TabPanel, TabStrip, type ProjectRow } from '@launchastro/ui';
+import { Empty, ProjectsBoard, TabPanel, type ProjectRow } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
 import { assigneeOf, rowActions, type BoardPanelHost, type RowOpened } from './projects-row.ts';
 import { titleOf } from '../views/task-title.ts';
@@ -41,6 +41,7 @@ import { pathTo } from '../routes.ts';
 import { Inbox } from '../views/inbox.tsx';
 import { CreateTask } from './projects/CreateTask.tsx';
 import { WorkLog } from './projects/WorkLog.tsx';
+import { ProjectsTabs } from './projects/ProjectsTabs.tsx';
 
 export interface ProjectsProps {
   readonly client: OperationsClient;
@@ -53,12 +54,12 @@ export interface ProjectsProps {
 
 type ProjectsTab = 'board' | 'worklog';
 
-const TABS = [
-  { id: 'board', label: 'Board' },
-  { id: 'worklog', label: 'Work log' },
-] as const;
-
 const WORK_LOG = '#worklog';
+
+const TABS = [
+  { id: 'board', label: 'Board', href: pathTo('agency:projects-board') },
+  { id: 'worklog', label: 'Work log', href: `${pathTo('agency:projects-board')}${WORK_LOG}` },
+] as const;
 
 const tabInAddress = (): ProjectsTab =>
   globalThis.location?.hash === WORK_LOG ? 'worklog' : 'board';
@@ -82,7 +83,7 @@ export function Projects(props: ProjectsProps): ReactElement {
   };
   return (
     <div className="stack">
-      <TabStrip label="Projects" name="projects" tabs={TABS} selected={tab} onSelect={select} />
+      <ProjectsTabs label="Projects" name="projects" tabs={TABS} selected={tab} onSelect={select} />
       <TabPanel name="projects" tab="board" selected={tab}>
         <ProjectBoard
           client={props.client}

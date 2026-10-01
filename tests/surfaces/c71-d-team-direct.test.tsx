@@ -19,6 +19,8 @@ import {
   unreadOf,
   type DirectThread,
 } from '../../packages/ui/src/index.ts';
+import { dockTabs } from '../../apps/web/src/panels.ts';
+import { dockOf } from './dock-props.ts';
 import { mount, type Mounted } from './mount.tsx';
 import { ME, THREADS, chip, message, props, next } from './team-fixture.tsx';
 
@@ -250,9 +252,13 @@ function shell(threads: readonly DirectThread[]): Parameters<typeof Shell>[0] {
     rail: [],
     here: '/',
     title: 'Home',
-    dock: [{ id: 'team', label: 'Team', open: false, count: teamUnread(threads, ME) }],
-    onDockTab: () => null,
-    seated: false,
+    // The Team tab as the dock builds it, its count derived with the tab.
+    dock: {
+      ...dockOf([]),
+      tabs: dockTabs({ team: teamUnread(threads, ME) })
+        .filter((tab) => tab.id === 'team')
+        .map(({ id, label, icon, count }) => ({ id, label, icon, count, open: false })),
+    },
     children: null,
   };
 }

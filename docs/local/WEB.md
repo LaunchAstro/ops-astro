@@ -143,6 +143,20 @@ browser.
 `/task/:key` is a real address. A hard reload lands on it because the dev server
 falls back to `index.html`, and everything on the page is reread from the API.
 
+The dock's tabs are `PANELS` in `apps/web/src/panels.ts`, drawn in the rail's
+declared order: Notifications (the inbox at `/inbox/`), Team (`/team`),
+Clients (`/clients/`, a made-up client book under the mock mark until client
+records land) and Settings (`/settings`). Each tab opens its own panel: Settings opens the
+Settings panel beside the page rather than navigating (MP-3-1). A plain press shows one panel, shift adds one, each X
+closes only its own, Close all closes every one, and Escape closes the last
+opened unless a field, menu or editor took the key
+(`apps/web/src/dock/open-set.ts`). An open tab is announced as "Close
+Settings" (`aria-expanded="true"`, `Dock` in `packages/ui/src/surfaces/Dock.tsx`).
+Each panel draws the screen of the view it is on, and its door opens that
+view's own address, or its board's. The open set is kept in the tab's session
+storage per business, names the person it was written for, never holds the
+sign-in, and is removed when the tab leaves the business (a switch or sign-out).
+
 The task page's header (`screens/task/Header.tsx`, MP-4-1) is the crumb
 ("Projects →", the board `task.read` names, the key, the state), Copy link,
 the title and the run line. Copy link copies this origin plus `/task/<key>`,
@@ -206,14 +220,10 @@ is the actor's identifier until the read carries a name. The dock task panel
 folds the trail behind "Show all N changes" and "Hide the trail"; keeping that
 choice as the person's preference waits on a preference model.
 
-The dock has two tabs (`PANELS` in `apps/web/src/panels.ts`): Settings goes to
-The dock's tabs are `PANELS` in `apps/web/src/panels.ts`: Notifications goes to
-`/inbox/`, Settings to `/settings`, Projects to `/todos` (the reader's own
-to-dos, MP-7-1, `screens/todos/Todos.tsx`) and Team to `/team`. An open dock tab is announced as "Close Settings"
-(`aria-expanded="true"`, `Shell` in `packages/ui/src/surfaces/Shell.tsx`) and
-leaves its address for the board when pressed (`dockTabGo` in
-`apps/web/src/panels.ts`). The to-dos list reads `task.todos`: each row's name
-opens the task in the dock task panel beside its page door, its tick sends
+The dock's Projects tab (`todos` in `PANELS`) opens the reader's own to-dos
+(MP-7-1, `screens/todos/Todos.tsx`) in its panel, whose door is `/todos`. The
+to-dos list reads `task.todos`: each row's name opens the task in the dock's
+Task panel beside its page door, its tick sends
 `task.complete` at the row's revision, and its due reads as Overdue, Today,
 Tomorrow, This week or Later on the business day (`todo-list.ts`, one today,
 overdue included, for the words and the today scope). Typed tokens scope it by
@@ -234,18 +244,20 @@ the list (tasks carry no route family on this base).
 
 The dock task panel (`screens/task/Panel.tsx`, MP-4-8) is where a task is
 changed beside its page. A page door opens it (`useTaskPanel` in
-`screens/task/panel-host.ts`, held by `App`) in the shell's panel slot, since
-the dock frame that seats, floats and closes panels (MP-3-1) is not on main.
-Its place follows the seat line (T-D19, `screens/task/seat-line.ts`): it seats
-only when every open panel at the width asked for fits beside the 836px
-content floor (`n × per ≤ vw − rail − 40 − 836`, from 1440), else it floats at
-that width, never under 380; from 901 to 1279 it is the sheet under the
-content and at 640 and under the bottom sheet (`DockSeat.tsx`, styles in
-`styles/6-slice.css`). The frame's facts (rail state, panels open, width
-asked) come through `FrameFactsSource` (`frame-seam.ts`); until MP-3-1 joins,
-`MOCK_FRAME` reads the real window width, makes up the rest, and marks the
-panel with the one Mock corner label. The shell's `seated` follows it; the
-page's third track beside a seated panel is the frame's.
+`screens/task/panel-host.ts`, held by `App`) and the dock draws it as its
+`task` panel (`apps/web/src/dock/task-dock.ts`): the Task tab shows while a
+task or a draft is open, the dock's head names the panel and its door is the
+task's page, and it takes its place in the rank, the seated track, Escape's
+order and the phone's one panel. The dock's close, Close all and Escape close
+it through its own close (the timer's stop, focus back on its door), and its
+own close takes it out of the dock. A link inside it is followed, never a walk
+of the dock. Storage and the dock's history never reopen it.
+Its place is the dock's geometry (`dock/geometry.ts`, MP-3-2), which is the
+seat line (T-D19): it seats only when every open panel at the width asked for
+fits beside the 836px content floor (`n × per ≤ vw − rail − 40 − 836`, from
+1440, `rail` the nav rail as the person left it), else it floats at that
+width, never under 380; below 1280 it is the sheet and at 900 and under the
+phone strip.
 It reads the task through `task.read` as the page does and draws the same
 facts, rank, calc line and Team and Agent counts; the live Ad hoc and Client
 access ticks; the description on Team and the agent brief on Agent as
@@ -253,7 +265,7 @@ editable fields; the subtasks and time without their doors; the conversation
 on the tab the reply door named; and the folded trail. The Agent tab says it
 is not connected until the assistant is. Its head names the task, links to
 its page and opens a new-task draft (MP-4-13, `screens/task/DraftPanel.tsx`)
-in the same slot: name, due, estimate, tags, subtasks, time spent and a note,
+in the same panel: name, due, estimate, tags, subtasks, time spent and a note,
 kept in this browser under the business and the person until Create or Cancel
 (X and Escape keep it). Create sends `task.create`, then the client from the
 page's scope (none from the panel yet: the task's client is not on the wire),
@@ -580,6 +592,15 @@ stored appearance; the tab keeps a copy in `sessionStorage` as
 out, the copy is dropped, so one person's appearance never opens the next
 person's session.
 
+The rail's width and fold (MP-2-3), the dock's one panel width and the sheet's
+height (MP-3-2, MP-3-3) are the `rail.width`, `rail.collapsed`, `dock.width`
+and `dock.sheetHeight` keys of the same store (`shell/layout-store.ts`). A
+grip holds its moving value itself; the key is saved once when it is let go,
+and a fold saves at once. The tab keeps a copy per business as
+`ops-astro.layout.<business>`, naming its person, so a reload draws the layout
+on its first render; another person signed in to the tab never reads it, and a
+switch or sign-out removes it. The read then brings what another device saved.
+
 This business draws the two settings the model classifies `operation`:
 `four_eyes_threshold` and `client_sign_off_required`. Each is written through
 the command that owns it, `settings.set_four_eyes_threshold` or
@@ -882,8 +903,9 @@ places this build does not yet reach it.
   behind them are stored and read: `task.read` carries every proposal on the
   task with its gate's state and expiry (`docs/local/API.md`'s "Proposal
   projection", served by `packages/core-commands/src/reads/proposals.ts`). So this
-  is the web not drawing them yet and not the database failing to hold them, and
-  the panel registry stays empty until there is a screen for a tab to open.
+  is the web not drawing them yet and not the database failing to hold them; the
+  dock's panel registry (`apps/web/src/panels.ts`) gains an agent tab when there
+  is a screen for it to open.
 - Comments are built, in the tabbed Internal / Client / All
   activity conversation; replies, edits, deletes and the Answered, Seen and
   Not acknowledged signals are not built yet, and history stays its own

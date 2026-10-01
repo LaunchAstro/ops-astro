@@ -1,18 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The dock task panel (MP-4-8), in the shell's panel slot until the dock frame
-// (MP-3-1) draws panels in place. A new door or task remounts it; a new-task
-// draft (MP-4-13) takes the same slot. Signed out, the slot is empty.
+// The dock task panel (MP-4-8), drawn by the dock as its `task` panel
+// (dock/task-dock.ts). A new door or task remounts it; a new-task draft
+// (MP-4-13) takes the same panel. Signed out, there is nothing to draw.
 // `useDockPanel` holds the panel's state for the application: the host a
-// screen opens rows through, what the slot draws, and whether the open panel
-// is seated (the seat line, `seat-line.ts`, read from the frame's facts).
+// screen opens rows through, and what the dock draws.
 
 import type { ReactElement } from 'react';
+import { pathTo } from '../../routes.ts';
 import type { OperationsClient } from '../../operations/client.ts';
 import type { Session } from '../../session/token.ts';
-import { DockSeat, useSeat } from './DockSeat.tsx';
 import { DraftPanel } from './DraftPanel.tsx';
-import { MOCK_FRAME, type FrameFactsSource } from './frame-seam.ts';
 import { TaskPanel } from './Panel.tsx';
 import { useTaskPanel, type TaskPanelState } from './panel-host.ts';
 
@@ -21,40 +19,41 @@ interface DockPanelProps {
   readonly grantKey: string;
   readonly session: Session | null;
   readonly storage: Storage | null;
-  /** The dock frame's facts; made up (and marked) until MP-3-1 joins. */
-  readonly frame?: FrameFactsSource;
 }
 
 export function useDockPanel(props: DockPanelProps): {
   readonly host: TaskPanelState['host'];
-  readonly panel: ReactElement | null;
-  /** Whether an open panel sits seated, for the shell's `seated`. */
-  readonly seated: boolean;
+  /** What the dock draws: open while a task or a draft is, its door, and its own close. */
+  readonly panel: {
+    readonly open: boolean;
+    readonly body: ReactElement;
+    readonly door: string;
+    readonly close: () => void;
+  };
 } {
   const taskPanel = useTaskPanel();
-  const frame = props.frame ?? MOCK_FRAME;
-  const seat = useSeat(frame);
-  const open = props.session !== null && (taskPanel.draft !== null || taskPanel.opening !== null);
+  const { opening, draft } = taskPanel;
   return {
     host: taskPanel.host,
-    panel: <DockPanel {...props} frame={frame} taskPanel={taskPanel} />,
-    seated: open && seat.placement === 'seated',
+    panel: {
+      open: props.session !== null && (opening !== null || draft !== null),
+      body: <DockPanel {...props} taskPanel={taskPanel} />,
+      door:
+        opening === null
+          ? pathTo('agency:projects-board')
+          : pathTo('agency:task-detail', { key: opening.taskKey }),
+      close: taskPanel.close,
+    },
   };
 }
 
-function DockPanel(
-  props: DockPanelProps & {
-    readonly frame: FrameFactsSource;
-    readonly taskPanel: TaskPanelState;
-  },
-): ReactElement | null {
-  const body = panelBody(props);
-  return body === null ? null : <DockSeat source={props.frame}>{body}</DockSeat>;
-}
-
-function panelBody(
-  props: DockPanelProps & { readonly taskPanel: TaskPanelState },
-): ReactElement | null {
+function DockPanel(props: {
+  readonly client: OperationsClient;
+  readonly grantKey: string;
+  readonly session: Session | null;
+  readonly storage: Storage | null;
+  readonly taskPanel: TaskPanelState;
+}): ReactElement | null {
   const { client, grantKey, session, taskPanel } = props;
   if (session === null) return null;
   if (taskPanel.draft !== null) {
@@ -83,6 +82,7 @@ function panelBody(
       changes={taskPanel.host.changes}
       onChanged={taskPanel.changed}
       onClose={taskPanel.close}
+      docked
       onNewTask={taskPanel.openDraft}
       onLeaving={taskPanel.leaving}
       onDuplicated={(key) => {

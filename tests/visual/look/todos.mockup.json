@@ -1,0 +1,178 @@
+{
+  "about": "Mockup values for tests/visual/look/todos.ts, from look.ts --measure.",
+  "mockup": "7066bad7402c97b8a039447ad87f387cd719208c",
+  "probes": {
+    "todos.search": {
+      "1480-light": {
+        "padding-top": "4.8px",
+        "padding-left": "5.6px",
+        "border-top-color": "rgba(0,0,0,31)",
+        "border-top-width": "1px",
+        "background-color": "rgba(255,255,255,255)",
+        "box.height": "38"
+      },
+      "1480-dark": {
+        "padding-top": "4.8px",
+        "padding-left": "5.6px",
+        "border-top-color": "rgba(245,245,245,26)",
+        "border-top-width": "1px",
+        "background-color": "rgba(10,10,13,255)",
+        "box.height": "38"
+      }
+    },
+    "todos.search-input": {
+      "1480-light": {
+        "font-family": "Funnel Sans",
+        "font-size": "13px",
+        "color": "rgba(0,0,0,255)",
+        "padding-left": "4px",
+        "border-top-width": "0px",
+        "background-color": "rgba(0,0,0,0)"
+      },
+      "1480-dark": {
+        "font-family": "Funnel Sans",
+        "font-size": "13px",
+        "color": "rgba(248,248,248,255)",
+        "padding-left": "4px",
+        "border-top-width": "0px",
+        "background-color": "rgba(0,0,0,0)"
+      }
+    },
+    "todos.head": {
+      "1480-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "color": "rgba(140,133,127,255)",
+        "column-gap": "6.4px",
+        "padding-bottom": "6.4px",
+        "border-bottom-color": "rgba(0,0,0,31)",
+        "border-bottom-width": "1px"
+      },
+      "1480-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "color": "rgba(248,248,248,140)",
+        "column-gap": "6.4px",
+        "padding-bottom": "6.4px",
+        "border-bottom-color": "rgba(245,245,245,26)",
+        "border-bottom-width": "1px"
+      }
+    },
+    "todos.head-sorted": {
+      "1480-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "color": "rgba(0,0,0,255)"
+      },
+      "1480-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "color": "rgba(248,248,248,255)"
+      }
+    },
+    "todos.row": {
+      "1480-light": {
+        "padding-top": "9.6px",
+        "padding-bottom": "9.6px",
+        "column-gap": "6.4px",
+        "border-bottom-color": "rgba(0,0,0,31)",
+        "border-bottom-width": "1px"
+      },
+      "1480-dark": {
+        "padding-top": "9.6px",
+        "padding-bottom": "9.6px",
+        "column-gap": "6.4px",
+        "border-bottom-color": "rgba(255,255,255,36)",
+        "border-bottom-width": "1px"
+      }
+    },
+    "todos.tick": {
+      "1480-light": {
+        "box.width": "15",
+        "box.height": "15",
+        "border-top-color": "rgba(0,0,0,82)",
+        "border-top-width": "1px",
+        "background-color": "rgba(255,255,255,255)"
+      },
+      "1480-dark": {
+        "box.width": "15",
+        "box.height": "15",
+        "border-top-color": "rgba(250,250,250,51)",
+        "border-top-width": "1px",
+        "background-color": "rgba(10,10,13,255)"
+      }
+    },
+    "todos.avatar": {
+      "1480-light": {
+        "box.width": "22",
+        "box.height": "22",
+        "border-top-left-radius": "50%"
+      },
+      "1480-dark": {
+        "box.width": "22",
+        "box.height": "22",
+        "border-top-left-radius": "50%"
+      }
+    },
+    "todos.name": {
+      "1480-light": {
+        "font-family": "Funnel Sans",
+        "font-size": "14px",
+        "font-weight": "400",
+        "letter-spacing": "normal",
+        "text-transform": "none",
+        "color": "rgba(0,0,0,255)",
+        "text-decoration-line": "none"
+      },
+      "1480-dark": {
+        "font-family": "Funnel Sans",
+        "font-size": "14px",
+        "font-weight": "400",
+        "letter-spacing": "normal",
+        "text-transform": "none",
+        "color": "rgba(248,248,248,255)",
+        "text-decoration-line": "none"
+      }
+    },
+    "todos.due-overdue": {
+      "1480-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "500",
+        "color": "rgba(232,74,95,255)"
+      },
+      "1480-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "500",
+        "color": "rgba(248,113,113,255)"
+      }
+    },
+    "todos.due-today": {
+      "1480-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "500",
+        "color": "rgba(0,0,0,255)"
+      },
+      "1480-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "500",
+        "color": "rgba(248,248,248,255)"
+      }
+    },
+    "todos.priority": {
+      "1480-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "column-gap": "4.8px"
+      },
+      "1480-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "column-gap": "4.8px"
+      }
+    }
+  }
+}

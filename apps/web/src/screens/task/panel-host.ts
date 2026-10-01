@@ -2,7 +2,7 @@
 //
 // Which task the dock task panel shows, and the count of changes made in it
 // (MP-4-8). The application holds one of these; screens reach it as their
-// `taskPanel` and the shell draws the panel it names.
+// `taskPanel` and the dock draws the panel it names as its `task` panel.
 //
 // **One count for both sides.** A write in the panel counts a change; the
 // task page and the panel each read the task again on a new count, so the
@@ -16,9 +16,9 @@
 // task; opening a task replaces the draft in the panel and the draft stays
 // kept for its person (DN-04).
 //
-// The dock frame (MP-3-1: seat line, float, sheet, back and forward) is not on
-// main yet; until it is, this is the whole host and the shell's panel slot is
-// its place.
+// The panel's place (the seat line, float, sheet, back and forward) and its
+// one close are the dock's (MP-3-1, `dock/task-dock.ts`); this host names the
+// task, counts its changes and closes it when the dock's X asks.
 
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type { TaskPanelHost } from '../../screen-registry.tsx';

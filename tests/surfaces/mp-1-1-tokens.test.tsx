@@ -16,6 +16,7 @@ import { launchChromium } from '../support/chromium.ts';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterAll, describe, expect, it } from 'vitest';
 import { Shell } from '../../packages/ui/src/surfaces/Shell.tsx';
+import { dockOf } from './dock-props.ts';
 import { captureBuiltPages, madeUpSession, serveApp } from '../visual/app-pages.ts';
 import { comparePng } from '../visual/compare.ts';
 import { fetchAssets, MODE, readAssets, readPacket, themesOf } from '../visual/packet.ts';
@@ -100,6 +101,7 @@ const SHEETS = [
   `${styles}2-controls-and-marks.css`,
   `${styles}2-primitives.css`,
   `${styles}3-shell.css`,
+  `${styles}3-dock.css`,
   `${styles}4-board.css`,
   `${styles}5-task.css`,
   `${root}apps/web/src/styles/6-slice.css`,
@@ -227,7 +229,8 @@ describe('MP-1-1 tokens', () => {
 describe('MP-1-1 tokens', () => {
   it('MP-1-1 dock callout edge', () => {
     const sets = resolved();
-    const shell = read(`${styles}3-shell.css`).replaceAll(/\/\*[\s\S]*?\*\//gu, '');
+    // The dock's sheet, split from the shell's.
+    const shell = read(`${styles}3-dock.css`).replaceAll(/\/\*[\s\S]*?\*\//gu, '');
     const rule = /\.dock__tablabel\s*\{([^}]*)\}/u.exec(shell)?.[1] ?? '';
     const ground = /background:\s*var\((--[\w-]+)\)/u.exec(rule)?.[1] ?? '';
     const edge = /border:\s*1px solid var\((--[\w-]+)\)/u.exec(rule)?.[1] ?? '';
@@ -246,12 +249,10 @@ describe('MP-1-1 tokens', () => {
         rail={[]}
         here="/"
         title="Board"
-        dock={[
+        dock={dockOf([
           { id: 'assistant', label: 'Assistant', open: false },
           { id: 'clients', label: 'Clients', open: true },
-        ]}
-        onDockTab={() => {}}
-        seated={false}
+        ])}
       >
         <p>content</p>
       </Shell>,

@@ -116,24 +116,28 @@ export function CreateTask(props: {
         <label className="tf__k" htmlFor="create-title">
           New task
         </label>
-        <input
-          id="create-title"
-          className="input"
-          type="text"
-          required
-          placeholder="What needs doing"
-          disabled={locked}
-          value={title}
-          onChange={(event) => {
-            form.setTitle(event.target.value);
-          }}
-        />
+        {/* The board's quick-add field (P-02, B-01): the box is the field, the input draws nothing. */}
+        <div className="cbd__field">
+          <input
+            id="create-title"
+            type="text"
+            required
+            placeholder="What needs doing"
+            disabled={locked}
+            value={title}
+            onChange={(event) => {
+              form.setTitle(event.target.value);
+            }}
+          />
+        </div>
       </div>
+      {/* Pressable while the title is empty, as the mockup's is: the field is
+          `required` and onCreate sends nothing without a title. */}
       <button
-        className="btn btn--primary"
+        className="btn btn--secondary btn--sm"
         type="submit"
         data-attempt={retrying ? 'retry' : 'new'}
-        disabled={locked || title.trim() === ''}
+        disabled={locked}
       >
         {creating ? 'Creating…' : retrying ? 'Retry create' : 'Create task'}
       </button>
