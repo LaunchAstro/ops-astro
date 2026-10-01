@@ -211,13 +211,7 @@ export function App(props: AppProps): ReactElement {
       case 'open':
         return drawOpenScreen(gate.match, props);
       case 'signed-in-already':
-        return (
-          <SignedInAlready
-            onGo={() => {
-              props.navigate(pathTo('agency:projects-board'));
-            }}
-          />
-        );
+        return <SignedInAlready onGo={() => props.navigate(pathTo('agency:projects-board'))} />;
       case 'screen':
         return drawScreen(gate.match, {
           client,
