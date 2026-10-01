@@ -60,8 +60,16 @@ export const FRAME: LookScreen = {
         'color',
         'padding-top',
         'padding-bottom',
-        'box.x',
       ],
+      widths: WIDTHS,
+    },
+    {
+      // The row's first tab: where it starts holds the inset and owes nothing to
+      // the width of a tab's text, which Linux and macOS draw a pixel apart.
+      id: 'frame.tab-start',
+      mockup: { path: '/projects/', selector: 'a.tabbar__t' },
+      app: { page: 'agency:projects-board', selector: 'a.tabbar__t' },
+      props: ['box.x'],
       widths: WIDTHS,
     },
     {
