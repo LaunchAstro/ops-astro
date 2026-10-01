@@ -42,7 +42,7 @@ export let foreignLease: { leaseId: string; fence: unknown };
 export let foreignReservation: string;
 export let foreignPersonId = '';
 export let foreignTaskId = '';
-/** The run behind each picked-up task, and the agent's own lease: the crossing's positive control. */
+/** Each picked-up task's run, and the agent's own lease: the crossing's control. */
 export let foreignRunId = '';
 export let ownRunId = '';
 export let ownLease: { leaseId: string; fence: unknown };
@@ -115,17 +115,15 @@ async function seedClients(): Promise<string> {
   await fixture.db.app.withBusiness(fixture.business, async (tx) => {
     await grantTo(tx, clientOne, 'read', { kind: 'record', id: task.client1 });
     await grantTo(tx, clientTwo, 'read', { kind: 'record', id: task.client2 });
+    // The agent's delegating person: run:write on the whole business, so the pickup
+    // mints the delegation with `run` and its run operations meet the one-task scope.
+    await grantTo(tx, fixture.member, 'write', WHOLE_BUSINESS, false, 'run');
   });
   return alphaToken;
 }
 
 /** The agent's own delegation, then the second Alpha person's held reservation and live lease. */
 async function seedDelegations(alphaToken: string): Promise<void> {
-  // run:write on the whole business, so the pickup mints the delegation with `run`
-  // and its run operations meet the one-task scope, not a collection refusal.
-  await fixture.db.app.withBusiness(fixture.business, async (tx) => {
-    await grantTo(tx, fixture.member, 'write', WHOLE_BUSINESS, false, 'run');
-  });
   const ours = await pickUp(alphaToken, 'delegated');
   ({ agentToken, delegation, delegatedTask } = ours);
   ownLease = { leaseId: ours.leaseId, fence: ours.fence };

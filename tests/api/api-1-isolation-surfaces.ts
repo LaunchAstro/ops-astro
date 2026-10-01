@@ -100,6 +100,12 @@ export async function threeWays(
   return heard;
 }
 
+/** A revision, on a write to an existing record only: the catalogue names the rest. */
+const revisionOf = (row: CatalogueRow, body: Record<string, unknown>) =>
+  row.kind === 'write' && 'recordId' in body && !NEEDS_NO_EXPECTED_REVISION.has(row.command)
+    ? { expectedRevision: 1 }
+    : {};
+
 /** One command as the agent under its delegation, through the CLI and the API's agent route. */
 export async function asAgent(
   row: CatalogueRow,
@@ -116,15 +122,8 @@ export async function asAgent(
     heard.push({ status: response.status, code: parsed?.code, body: label(parsed) });
     return response;
   };
-  // The agent prefix takes an operation id on every call, reads included, and a
-  // revision on a write to an existing record only.
-  const revised =
-    row.kind === 'write' && 'recordId' in body && !NEEDS_NO_EXPECTED_REVISION.has(row.command);
-  const payload = {
-    ...body,
-    operationId: randomUUID(),
-    ...(revised ? { expectedRevision: 1 } : {}),
-  };
+  // The agent prefix takes an operation id on every call, reads included.
+  const payload = { ...body, operationId: randomUUID(), ...revisionOf(row, body) };
   const cli = createCli({
     businessKey,
     credential: agentToken,
