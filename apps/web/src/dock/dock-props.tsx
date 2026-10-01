@@ -17,6 +17,7 @@ import { useLayoutStore } from '../shell/layout-store.ts';
 import { railFrom, useRail, type RailModel } from '../shell/use-rail.ts';
 import { useDock, type DockModel } from './use-dock.ts';
 import { useDockLayout, type DockLayoutModel } from './use-layout.ts';
+import { taskPanelOf, useTaskDock, withTaskTab, type TaskDock } from './task-dock.ts';
 
 /** The person's dock, rail and the layout they make together, for one signed-in tab. */
 interface DockShell {
@@ -24,6 +25,8 @@ interface DockShell {
   readonly dock: DockModel;
   readonly nav: RailModel;
   readonly layout: DockLayoutModel;
+  /** The task panel (MP-4-8), drawn as the dock's `task` panel; null where there is none. */
+  readonly task: TaskDock | null;
 }
 
 /** What the application takes for the dock and the rail. */
@@ -38,6 +41,7 @@ export function useDockShell(
   session: Session | null,
   storage: StorageLike | null,
   props: DockAppProps,
+  task: TaskDock | null = null,
 ): DockShell {
   const registry = props.panels ?? PANELS;
   const dock = useDock(session, storage, registry);
@@ -48,7 +52,8 @@ export function useDockShell(
     store.save,
   );
   const layout = useDockLayout(dock, registry, nav.drawn, store);
-  return { registry, dock, nav, layout };
+  useTaskDock(dock, task);
+  return { registry, dock, nav, layout, task };
 }
 
 type ShellDock = Pick<
@@ -70,11 +75,11 @@ type ShellDock = Pick<
  * or none where `input` is null (signed out, and the client face, R17).
  */
 export const shellDock = (
-  { registry, dock, nav, layout }: DockShell,
+  { registry, dock, nav, layout, task }: DockShell,
   screen: DockInput['screen'] | null,
 ): ShellDock => ({
   onClick: dock.onDoor,
-  dock: screen === null ? null : dockProps({ registry, dock, layout, screen }),
+  dock: screen === null ? null : dockProps({ registry, dock, layout, screen, task }),
   railCollapsed: nav.collapsed,
   railWidth: nav.width,
   onRailFold: nav.fold,
@@ -89,22 +94,27 @@ interface DockInput {
   readonly dock: DockModel;
   readonly layout: DockLayoutModel;
   readonly screen: Omit<ScreenContext, 'params'>;
+  readonly task: TaskDock | null;
 }
 
 export function dockProps(input: DockInput): DockProps {
   const { registry, dock, layout } = input;
-  const tabs = dockTabs({}, registry);
-  // An id from a press is one of the tabs drawn, or nothing.
-  const byId = (id: string): PanelId | null =>
-    isPanelId(id) && tabs.some((tab) => tab.id === id) ? id : null;
-  return {
-    tabs: tabs.map((tab) => ({
+  const tabs = withTaskTab(
+    dockTabs({}, registry).map((tab) => ({
       id: tab.id,
       label: tab.label,
       icon: tab.icon,
       count: tab.count,
       open: dock.state.open.includes(tab.id),
     })),
+    input.task,
+    dock.state.open.includes('task'),
+  );
+  // An id from a press is one of the tabs drawn, or nothing.
+  const byId = (id: string): PanelId | null =>
+    isPanelId(id) && tabs.some((tab) => tab.id === id) ? id : null;
+  return {
+    tabs,
     layout: {
       mode: layout.geometry.mode,
       panelWidth: layout.geometry.panelWidth,
@@ -131,7 +141,14 @@ function dockPanels(input: DockInput): readonly DockPanel[] {
   return ranked(dock.state).flatMap((id) => {
     const panel = registry[id];
     // A panel R39 is closing draws nothing while the close lands.
-    if (panel === undefined || !drawn.has(id)) return [];
+    if (!drawn.has(id)) return [];
+    const walked = {
+      canBack: dock.history.canBack,
+      canForward: dock.history.canForward,
+      scrollTop: dock.history.restored.scroll[id],
+    };
+    if (id === 'task') return input.task === null ? [] : [taskPanelOf(input.task, walked)];
+    if (panel === undefined) return [];
     const place = dock.state.places[id];
     const door = screenAt(place) === null ? pathTo(panel.route) : (place ?? pathTo(panel.route));
     const view = screenAt(door);
@@ -142,9 +159,7 @@ function dockPanels(input: DockInput): readonly DockPanel[] {
         ariaLabel: panel.ariaLabel,
         door,
         icon: panel.icon,
-        canBack: dock.history.canBack,
-        canForward: dock.history.canForward,
-        scrollTop: dock.history.restored.scroll[id],
+        ...walked,
         body: view === null ? null : drawScreen(view.match, input.screen),
       },
     ];
@@ -177,7 +192,8 @@ function dockPresses(input: DockInput, byId: (id: string) => PanelId | null): Pr
     onDoor: input.screen.navigate,
     onBodyClick: (id, event) => {
       const panel = byId(id);
-      const href = panel === null ? null : walkedLink(event);
+      // The task panel's links are its own: its page, its page link, its doors.
+      const href = panel === null || panel === 'task' ? null : walkedLink(event);
       if (panel === null || href === null) return;
       event.preventDefault();
       dock.change((state) => visit(state, panel, href));
