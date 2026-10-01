@@ -38,6 +38,7 @@ import './styles/3-shell.css';
 import './styles/4-board.css';
 import './styles/5-task.css';
 import './styles/6-agent.css';
+import './styles/7-connections-region.css';
 
 export * from './state/corpus.ts';
 export * from './state/project.ts';
