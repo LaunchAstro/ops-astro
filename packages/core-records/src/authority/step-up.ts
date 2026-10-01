@@ -14,8 +14,8 @@
 // steps up with the second factor. A client, who may have none, signs in
 // afresh. While the installation's `money_step_up_required` setting is off, a
 // live session is enough; only `settings:manage` switches it, through
-// `settings.set_money_step_up`, which asks the step-up itself, and the
-// envelope audits every switch.
+// `settings.set_money_step_up`, which asks the step-up itself when it switches
+// it off, and the envelope audits every switch.
 
 import { refuseCommand, type CommandRefusal } from '../register.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
@@ -30,9 +30,10 @@ export const STEP_UP_WINDOW_SECONDS: number = 60 * 60;
 export const MONEY_STEP_UP_SETTING: string = 'money_step_up_required';
 
 /**
- * The command that switches the setting. It is asked the step-up whichever way
- * it switches and whatever the setting holds, or a stale sign-in refused a
- * money action could switch the step-up off and then move money.
+ * The command that switches the setting. Switching it off is asked the step-up
+ * whatever the setting holds, or a stale sign-in refused a money action could
+ * switch the step-up off and then move money. Switching it on asks nothing, so
+ * a person without a factor can always turn the protection back on.
  */
 export const MONEY_STEP_UP_SWITCH: string = 'settings.set_money_step_up';
 
@@ -92,7 +93,8 @@ const STEP_UP_FIXES: readonly string[] = [
  * Whether a command on this key is asked the step-up now: a key in the money
  * set while the setting is on. An absent setting row is read as on, so a
  * business that never installed it is not quietly exempt. Settings ▸ Access
- * marks its preview by this same answer (`reads/people.ts`).
+ * marks its preview by this same answer (`reads/people.ts`). The switch is
+ * judged separately, by `refuseStaleMoneyStep`.
  */
 export async function asksMoneyStepUp(
   tx: TenantQuery,
@@ -105,16 +107,18 @@ export async function asksMoneyStepUp(
 
 /**
  * The envelope's step-up, asked after the grant check has passed. Nothing for
- * a key `asksMoneyStepUp` passes over, unless the command is the switch;
- * otherwise the judgement against the database's own clock, inside the
- * serving transaction.
+ * a key `asksMoneyStepUp` passes over, unless the command is the switch
+ * switching it off (its `value` false); otherwise the judgement against
+ * the database's own clock, inside the serving transaction.
  */
 export async function refuseStaleMoneyStep(
   tx: TenantQuery,
   standing: Standing,
   key: { readonly name?: string; readonly collection: string; readonly action: Action },
+  request?: { readonly [field: string]: unknown },
 ): Promise<CommandRefusal | undefined> {
-  if (key.name !== MONEY_STEP_UP_SWITCH && !(await asksMoneyStepUp(tx, key))) return undefined;
+  const switchesOff = key.name === MONEY_STEP_UP_SWITCH && request?.['value'] === false;
+  if (!switchesOff && !(await asksMoneyStepUp(tx, key))) return undefined;
   // Whole seconds, as the token's times are: the boundary is one second either
   // side of sixty minutes, and a fraction of the clock is not a second.
   const rows = await tx.query<{ readonly now: number }>(
