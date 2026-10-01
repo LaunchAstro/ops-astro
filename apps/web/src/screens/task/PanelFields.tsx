@@ -89,7 +89,7 @@ export function PanelName(props: Omit<PanelFieldsProps, 'grantKey'>): ReactEleme
     <>
       {draft === null ? (
         <button
-          className="btn btn--ghost"
+          className="sb__name"
           type="button"
           data-panel-field="name"
           disabled={busy}
@@ -101,7 +101,7 @@ export function PanelName(props: Omit<PanelFieldsProps, 'grantKey'>): ReactEleme
       ) : (
         <input
           id="panel-field-name"
-          className="input"
+          className="sb__name"
           aria-label="Task name"
           // oxlint-disable-next-line jsx-a11y/no-autofocus -- the person pressed the name to edit it
           autoFocus

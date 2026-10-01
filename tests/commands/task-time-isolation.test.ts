@@ -8,8 +8,14 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import type { TaskTimeView } from '../../packages/core-wire/src/index.ts';
-import { grantTo } from './fixture.ts';
+import type {
+  HistoryEntry,
+  TaskLedgerResult,
+  TaskTimeView,
+} from '../../packages/core-wire/src/index.ts';
+import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
+import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
+import { grantTo, shareWithClient, type Member } from './fixture.ts';
 import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
 import { agentWorld, codeOf, detailOf, type AgentWorld } from './agent-fixture.ts';
 import { CANARY, WHOLE, entryIdOf, outcomeOf, timeWorld, type TimeWorld } from './time-world.ts';
@@ -128,6 +134,81 @@ describe.skipIf(serverUrl === undefined)('MP-4-6 isolation: another person', () 
   });
 });
 
+const isTime = (operation: string): boolean => operation.startsWith('time.');
+const readOf = (recordId: string) => ({ read: 'task.read', recordId }) as const;
+const LEDGER = { read: 'task.ledger', timeZone: 'UTC' } as const;
+
+/** The task's `task.read` history as `member` reads it: who did what to it. */
+async function historyFor(member: Member, taskId: string): Promise<readonly HistoryEntry[]> {
+  const read = await executeRead(w.db.app, w.alpha, member.presented, readOf(taskId));
+  if (isCommandRefusal(read) || !('task' in read)) throw new Error('task.read refused');
+  return read.task.history;
+}
+
+/** The ledger's events on the task, as `member` reads it. */
+async function ledgerFor(member: Member, taskId: string) {
+  const ledger = await executeRead(w.db.app, w.alpha, member.presented, LEDGER);
+  if (isCommandRefusal(ledger)) throw new Error(`task.ledger refused ${ledger.code}`);
+  const [key] = await w.db.admin.execute<{ readonly key: string }>(
+    'select txt_1 as key from public.records where id = $1',
+    [taskId],
+  );
+  return (ledger as TaskLedgerResult).days
+    .flatMap((day) => day.events)
+    .filter((event) => event.task.key === key?.key);
+}
+
+/** Ada logs, starts and stops on the task, and Noah logs on it. */
+async function adaAndNoahTime(task: string): Promise<void> {
+  const log = { command: 'time.log', taskId: task };
+  for (const [member, body] of [
+    [w.ada, { ...log, duration: '30' }],
+    [w.ada, { command: 'time.start', taskId: task }],
+    [w.ada, { command: 'time.stop', taskId: task }],
+    [w.noah, { ...log, duration: '10' }],
+  ] as const) {
+    // eslint-disable-next-line no-await-in-loop -- in order: the stop needs the start
+    expect(outcomeOf(await w.as(w.alpha, member, body)), body.command).toStrictEqual({
+      applied: true,
+    });
+  }
+}
+
+/** A client the task is shared with: whether its view names a time event, and its ledger's answer. */
+async function outsideReads(task: string): Promise<[boolean, string]> {
+  await w.db.app.withBusiness(w.alpha, async (tx) => {
+    await grantTo(tx, w.ada, 'share');
+  });
+  const outside = await shareWithClient(w.db.app, w.alpha, w.ada, task);
+  const shared = await executeRead(w.db.app, w.alpha, outside.presented, readOf(task));
+  if (isCommandRefusal(shared)) throw new Error(`shared task.read refused ${shared.code}`);
+  const ledger = await executeRead(w.db.app, w.alpha, outside.presented, LEDGER);
+  return [
+    /"time\./u.test(JSON.stringify(shared)),
+    isCommandRefusal(ledger) ? ledger.code : 'served',
+  ];
+}
+
+describe.skipIf(serverUrl === undefined)('RS-VAULT-9 isolation: the task’s history', () => {
+  it("Sol proof, criterion RS-VAULT-9: another person's time.* events are not in task.read history or task.ledger", async () => {
+    const task = await w.fresh(w.alpha, w.ada, 'shared history');
+    await adaAndNoahTime(task);
+    // An internal member (Noah): the task's creation shows, Ada's time does not.
+    const history = await historyFor(w.noah, task);
+    expect(history.map((entry) => entry.operation)).toContain('task.create');
+    expect(
+      history.filter((entry) => isTime(entry.operation) && entry.actorId !== w.noah.actorId),
+    ).toStrictEqual([]);
+    const ledger = await ledgerFor(w.noah, task);
+    expect(ledger.map((event) => event.operation)).toContain('task.create');
+    expect(
+      ledger.filter((event) => isTime(event.operation) && event.actorName !== 'noah'),
+    ).toStrictEqual([]);
+    // An outside reader: the shared view names no time event, and the ledger is not theirs.
+    expect(await outsideReads(task)).toStrictEqual([false, 'NOT_FOUND']);
+  });
+});
+
 /** An agent's picked-up task, with a time entry its decider logged on it. */
 async function agentWithEntry() {
   const world = await agentWorld('tta', `time-agent-${randomUUID().slice(0, 8)}`);
@@ -144,6 +225,19 @@ async function agentWithEntry() {
     note: CANARY,
   });
   return { world, picked, logged };
+}
+
+/** The operations in the agent's `task.read` history of its own task. */
+async function agentHistory(
+  world: AgentWorld,
+  picked: { readonly taskId: string; readonly credential: string },
+): Promise<readonly string[]> {
+  const read = await world.asAgent(
+    { command: 'task.read', operationId: randomUUID(), recordId: picked.taskId },
+    picked.credential,
+  );
+  const task = detailOf(read)['task'] as { history: readonly HistoryEntry[] };
+  return task.history.map((entry) => entry.operation);
 }
 
 describe.skipIf(serverUrl === undefined)(
@@ -188,6 +282,12 @@ describe.skipIf(serverUrl === undefined)(
         [picked.taskId],
       );
       expect(rows.map((row) => [row.note, row.gone])).toStrictEqual([[CANARY, false]]);
+    });
+
+    it("Sol proof, criterion RS-VAULT-9: the decider's time.* events are not in the agent's task.read history", async () => {
+      const operations = await agentHistory(world, picked);
+      expect(operations).toContain('task.create');
+      expect(operations.filter((operation) => isTime(operation))).toStrictEqual([]);
     });
   },
 );

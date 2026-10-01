@@ -89,6 +89,85 @@
   margin-block-end: 0;
 }
 
+/* The title box is the board's quick-add field (DS-COMP-16): the box draws the
+   border and the focus, the input inside it draws nothing. */
+.projects__create .cbd__field {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.3rem 0.55rem;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.projects__create .cbd__field:focus-within {
+  border-color: var(--accent);
+}
+
+.projects__create .cbd__field input {
+  width: 100%;
+  min-width: 3rem;
+  /* The control's own 1px 2px, which the mockup's field keeps: the box is 34 tall. */
+  padding: 1px 2px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+
+/* The Projects page's Board and Work log, drawn as the tab row (DS-COMP-2):
+   43 tall, the tabs 32 apart, the current one in --text at 500 over a 2px
+   accent rule. At 390 the row scrolls sideways with no scrollbar. */
+.routetabs {
+  display: flex;
+  align-items: stretch;
+  gap: var(--s-6);
+  min-width: 0;
+  padding: 0 var(--s-6);
+  overflow-x: auto;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  scrollbar-width: none;
+}
+
+.routetabs::-webkit-scrollbar {
+  display: none;
+}
+
+.routetabs__t {
+  flex: none;
+  padding: 0.65rem 0 0.525rem;
+  border-bottom: 2px solid transparent;
+  color: var(--text-2);
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.routetabs__t:hover {
+  color: var(--text);
+}
+
+.routetabs__t[aria-current='page'] {
+  border-bottom-color: var(--accent);
+  color: var(--text);
+  font: var(--type-body-strong);
+  letter-spacing: var(--type-body-strong-tracking);
+  text-transform: var(--type-body-strong-case);
+}
+
+/* The inbox is a flush card (DS-COMP-7): its head is padded by the card's
+   rule, and the list and its read states sit inside the same gutter. */
+.inbox > :not(.card__head) {
+  margin: 0;
+  padding: 0 var(--s-5) var(--s-5);
+}
+
 /* 390: the narrowest pinned comparison width. The create form stacks rather
    than scrolling sideways, because a horizontal scroll on a form is a control
    a thumb cannot reach. */
@@ -123,23 +202,198 @@
   overflow-wrap: anywhere;
 }
 
-/* The Projects dock panel's to-dos (MP-7-1). The list is its own container,
-   so the priority cell yields first when the list is narrower than 380px,
-   wherever the panel is seated. */
+/* The Projects dock panel's to-dos (MP-7-1), drawn as the mockup's Projects
+   panel list (PJ-02 to PJ-12, `assets/app.css` .tsearch and .tl). The list is
+   its own container, so the priority column yields first when the list is
+   narrower than 380px, wherever the panel is seated. */
 .todos {
   container-type: inline-size;
 }
 
-.todo {
+.dp__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+}
+
+.todos .tsearch__tags {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.35rem;
+  border: 1px solid var(--border);
+  background: var(--bg);
+}
+
+.todos .tsearch__tags:focus-within {
+  border-color: var(--accent);
+}
+
+.todos .tsearch__in {
+  flex: 1;
+  min-width: 7rem;
+  padding: 0.2rem 0.25rem;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+
+/* The box draws the focus: its border turns to the accent. */
+.todos .tsearch__in:focus {
+  outline: none;
+}
+
+.todos .tsearch__read {
+  margin: 0;
+  padding-top: var(--s-2);
+  color: var(--ink-faint);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
+
+.todos__acts {
+  display: flex;
+  flex-wrap: wrap;
   gap: var(--s-2);
+  padding-top: var(--s-2);
+}
+
+.todos__acts .input {
+  width: auto;
+}
+
+.todos .tl {
+  display: grid;
+  padding: 0.2rem 0.8rem 0.9rem 0;
+}
+
+.todos__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.todos .tl__row {
+  display: grid;
+  grid-template-columns: 0.95rem 1.35rem minmax(0, 1fr) 1.5rem 4.2rem 3.4rem;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.todos .tl__row {
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--rule-faint);
+}
+
+.todos .tl__row:hover {
+  background: color-mix(in oklch, var(--ink) 3%, transparent);
+}
+
+/* DS-PRIM-7, the task list's size. */
+.todos .sbbox {
+  display: grid;
+  place-items: center;
+  width: 0.95rem;
+  height: 0.95rem;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  background: var(--bg);
+  color: transparent;
+  cursor: pointer;
+}
+
+.todos .sbbox:hover {
+  border-color: var(--accent);
+}
+
+.todos .tl__av {
+  display: grid;
+  place-items: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  overflow: hidden;
+  border-radius: 50%;
+}
+
+.todos .tl__av .av {
+  width: 100%;
+  height: 100%;
+}
+
+.todos .tl__t {
+  min-width: 0;
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+}
+
+.todos .tl__t a {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.todos .tl__t a:hover {
+  color: var(--accent);
+}
+
+.todos .tl__cmt {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.todos .tl__cmtb {
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.todos .tl__due {
+  color: var(--text);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
+
+.todos .tl__due.is-now {
+  color: var(--text);
+}
+
+.todos .tl__due.is-bad {
+  color: var(--danger);
+}
+
+.todos .tl__pri {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--text-muted);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
+
+.todos .tl__pri .sline {
+  display: inline-block;
+  width: 3px;
+  height: 0.85em;
+  background: currentColor;
 }
 
 @container (max-width: 379px) {
   .todo__priority {
     display: none;
+  }
+
+  .todos .tl__row {
+    grid-template-columns: 0.95rem 1.35rem minmax(0, 1fr) 1.5rem 4.2rem;
   }
 }
 
@@ -215,4 +469,81 @@
   [data-theme-fade] * {
     transition: none !important;
   }
+}
+
+/* The dock task panel's body (MP-4-8), drawn as the mockup's panel (TASKS S1
+   to S3, `assets/app.css` .sb): the name an inline field in the display face,
+   the rank in mono, the fields on the paper, the description in mono and the
+   subtask add a bare line. Each text snaps to its canonical style (TOKENS.md
+   census, R53). Scoped to the panel: the task page draws the same parts its
+   own way. */
+.dtp .sb__name {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border-strong);
+  background: var(--bg);
+  color: var(--text);
+  font: var(--type-subheading);
+  letter-spacing: var(--type-subheading-tracking);
+  text-transform: var(--type-subheading-case);
+  text-align: start;
+  cursor: text;
+}
+
+.dtp .sb__name:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.dtp [data-fact='rank'] .sb__state {
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
+}
+
+.dtp .tpr__tick {
+  background: var(--bg);
+}
+
+/* A native select sizes to its font's own line: the height is set to the
+   mockup's button, a 14.4px 1.2 line, its padding and its border. */
+.dtp .dtp__fields select.input {
+  block-size: calc(0.9rem * 1.2 + 1.1rem + 2px);
+  padding: 0.55rem var(--s-3);
+  border-radius: 0;
+  background: var(--bg);
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+}
+
+.dtp .tf__ta {
+  padding: 0.5rem var(--s-3);
+  background: var(--bg);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
+
+.dtp .sb__k {
+  color: var(--ink-faint);
+}
+
+.dtp [data-step-add] {
+  width: 100%;
+  padding: 0.25rem 0;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  background: none;
+  color: var(--text);
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+}
+
+.dtp [data-step-add]:focus {
+  outline: none;
+  border-bottom-color: var(--accent);
 }

@@ -14,6 +14,8 @@ import { SHELL } from './shell.ts';
 import { RAIL } from './rail.ts';
 import { SIGN_IN } from './sign-in.ts';
 import { TASK } from './task.ts';
+import { TASK_PANEL } from './task-panel.ts';
+import { TODOS } from './todos.ts';
 import type { LookScreen } from './probe.ts';
 
 export type { LookPrep, LookProbe, LookScreen } from './probe.ts';
@@ -27,4 +29,6 @@ export const LOOK_SCREENS: readonly LookScreen[] = [
   SIGN_IN,
   CLIENTS,
   DOCK,
+  TODOS,
+  TASK_PANEL,
 ];

@@ -15,6 +15,7 @@
 // as the panel does.
 
 import { useState, type ReactElement } from 'react';
+import { Empty } from '@launchastro/ui';
 import type { OperationsClient } from '../../operations/client.ts';
 import type { TaskTodosResult, TodoView } from '../../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../../data/use-read.ts';
@@ -79,7 +80,7 @@ function TodoList(
   const today = todayOn((props.now ?? realTime)());
   const scope = scopeOf(query);
   return (
-    <>
+    <div className="dp__list">
       <TodoTools
         query={query}
         onQuery={setQuery}
@@ -96,14 +97,16 @@ function TodoList(
           {because}
         </p>
       )}
-      <TodoRows
-        rows={sorted(scoped(props.todos, scope, focus, today), by)}
-        today={today}
-        onTick={tick}
-        onFocus={setFocus}
-        {...(props.onOpen === undefined ? {} : { onOpen: props.onOpen })}
-      />
-    </>
+      <div className="tl">
+        <TodoRows
+          rows={sorted(scoped(props.todos, scope, focus, today), by)}
+          today={today}
+          onTick={tick}
+          onFocus={setFocus}
+          {...(props.onOpen === undefined ? {} : { onOpen: props.onOpen })}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -112,9 +115,9 @@ function TodoRows(
 ): ReactElement {
   const { rows, ...row } = props;
   return rows.length === 0 ? (
-    <p className="card__sub" data-todos-empty>
-      No to-dos here.
-    </p>
+    <div data-todos-empty>
+      <Empty look="inline" title="No to-dos here." />
+    </div>
   ) : (
     <ul className="todos__list">
       {rows.map((todo) => (
