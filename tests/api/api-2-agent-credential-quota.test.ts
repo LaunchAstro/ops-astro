@@ -293,3 +293,22 @@ async function attemptsIn(businessId: string): Promise<number> {
   );
   return Number(rows[0]?.n ?? '-1');
 }
+
+needsServer(
+  'API-2 door: the live-credential lookup is served by an index on business and hash',
+  async () => {
+    const credential = await issued();
+    const plan = await harness.world.db.app.withBusiness(harness.world.alpha, async (tx) => {
+      // The table is small, so the planner is told not to scan it whole.
+      await tx.query("select set_config('enable_seqscan', 'off', true)");
+      const rows = await tx.query<{ 'QUERY PLAN': string }>(
+        `explain select c.id from public.agent_credentials c
+          where c.business_id = $1 and c.credential_hash = encode(sha256($2::bytea), 'hex')`,
+        [harness.world.alpha, credential.secret],
+      );
+      return rows.map((row) => row['QUERY PLAN']).join('\n');
+    });
+    expect(plan).toContain('agent_credentials_door');
+    expect(plan).toMatch(/Index Cond: .*credential_hash/u);
+  },
+);
