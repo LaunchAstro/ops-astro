@@ -267,6 +267,16 @@ export {
   type ConversationTypes,
 } from './team/conversations.ts';
 export {
+  allStaff,
+  changeGroupMembers,
+  GROUP_NAME_LIMIT,
+  groupNameOf,
+  lockOwnGroup,
+  renameGroup,
+  startGroup,
+  type GroupMembership,
+} from './team/groups.ts';
+export {
   DERIVED_ON_CREATE,
   deriveSource,
   lockSiblings,

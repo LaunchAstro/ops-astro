@@ -206,6 +206,13 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'chat.conversations': READ,
   'chat.messages': READ,
   'chat.mark_read': writing(client('team_conversation_members')),
+  // C71-G: a group is a record with its members; a message a comment record
+  // and the sender's marker; a rename its record; a change or a leave rows.
+  'chat.start_group': writing(client('records', 'team_conversation_members')),
+  'chat.send_group': writing(client('records', 'team_conversation_members')),
+  'chat.rename_group': writing(client('records')),
+  'chat.change_members': writing(client('team_conversation_members')),
+  'chat.leave': writing(client('team_conversation_members')),
   'settings.set_four_eyes_threshold': SETTINGS,
   'settings.set_client_sign_off': SETTINGS,
   'settings.set_money_step_up': SETTINGS,

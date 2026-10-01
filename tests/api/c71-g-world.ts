@@ -15,10 +15,6 @@ import { createChatWorld, type ChatWorld } from './c71-d-world.ts';
 export type Body = Readonly<Record<string, unknown>>;
 export type Who = Parameters<ChatWorld['as']>[0];
 
-// Red: the group commands are not on the surface yet, so their names are text here.
-type Loose = (who: Who, name: string, body?: Body, business?: string) => Promise<Answer>;
-type LooseAgent = (name: string, body: Body, credential?: string) => Promise<Answer>;
-
 export interface GroupWorld {
   readonly chat: ChatWorld;
   readonly zed: Caller;
@@ -26,8 +22,8 @@ export interface GroupWorld {
   readonly groupName: string;
   /** The group Tess started. */
   readonly conversationId: string;
-  as: Loose;
-  asAgent: LooseAgent;
+  as: ChatWorld['as'];
+  asAgent: ChatWorld['harness']['asAgent'];
   start(by: Who, members: readonly unknown[], name?: string): Promise<Answer>;
   say(who: Who, body: string, id?: string): Promise<Answer>;
   /** The caller's view of a conversation, or undefined where it is not listed. */
@@ -43,6 +39,7 @@ export interface GroupWorld {
 
 export const detailOf = (answer: Answer): Body => (answer.body['detail'] as Body | undefined) ?? {};
 
+// eslint-disable-next-line max-lines-per-function -- one world, built in one place
 export async function createGroupWorld(part: string): Promise<GroupWorld> {
   const chat = await createChatWorld(part);
   const { world } = chat.harness;
@@ -51,9 +48,8 @@ export async function createGroupWorld(part: string): Promise<GroupWorld> {
     actions: ['comment'],
     collections: ['chat'],
   });
-  const as: Loose = async (...args) => await (chat.as as Loose)(...args);
-  const asAgent: LooseAgent = async (...args) =>
-    await (chat.harness.asAgent as LooseAgent)(...args);
+  const { as } = chat;
+  const asAgent: GroupWorld['asAgent'] = async (...args) => await chat.harness.asAgent(...args);
   const canary = `group-canary-${randomUUID()}`;
   const groupName = `Launch crew ${randomUUID().slice(0, 8)}`;
   const start: GroupWorld['start'] = async (by, members, name = groupName) =>

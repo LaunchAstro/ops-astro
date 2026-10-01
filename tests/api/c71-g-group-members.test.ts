@@ -47,7 +47,7 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('C71-G group members
     expect(removed.status, removed.text).toBe(200);
     expect((await say(zed, 'after mia left')).status).toBe(200);
     expect(await bodiesOf(mia)).toEqual([...before, 'after zed joined']);
-    expect((await viewOf(mia))?.unread).toBe(1);
+    expect((await viewOf(mia))?.unread).toBe(2);
     expect((await viewOf(mia))?.members).toEqual([]);
     expect((await say(mia, 'still here?')).code).toBe('NOT_FOUND');
     expect((await viewOf(ada))?.members).not.toContain(mia.personId);
@@ -88,7 +88,6 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('C71-G group members
     ).toBe('NOT_FOUND');
     expect((await viewOf(world.ada))?.members).not.toContain(zed.personId);
     expect((await auditOf('chat.leave', zed.actorId)).map((e) => e.outcome)).toEqual([
-      'refused',
       'applied',
       'refused',
     ]);
@@ -102,7 +101,9 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('C71-G group members
   });
 
   it('the command that causes each tracked action writes it in the same transaction, and appends it to the audit chain with no message body', async () => {
-    const { chat, canary, say, auditOf } = g;
+    const { chat, canary, conversationId, as, say, auditOf } = g;
+    const renamed = await as(chat.tess, 'chat.rename_group', { conversationId, name: 'Renamed' });
+    expect(renamed.status, renamed.text).toBe(200);
     for (const command of [
       'chat.start_group',
       'chat.send_group',

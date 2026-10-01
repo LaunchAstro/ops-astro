@@ -177,4 +177,11 @@ export type CommandName =
   | 'chat.send_direct'
   | 'chat.conversations'
   | 'chat.messages'
-  | 'chat.mark_read';
+  | 'chat.mark_read'
+  // Group conversations (C71-G): started, written to, renamed, their members
+  // changed, and left.
+  | 'chat.start_group'
+  | 'chat.send_group'
+  | 'chat.rename_group'
+  | 'chat.change_members'
+  | 'chat.leave';

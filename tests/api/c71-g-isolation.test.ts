@@ -15,7 +15,6 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { createChatWorld, type ChatWorld } from './c71-d-world.ts';
 
 type Body = Readonly<Record<string, unknown>>;
-type Who = Parameters<ChatWorld['as']>[0];
 
 /** Every group command, aimed at one conversation. */
 const aimedAt = (conversationId: string, someone: unknown) =>
@@ -32,12 +31,9 @@ const aimedAt = (conversationId: string, someone: unknown) =>
 describe.skipIf(databaseUrlFromEnvironment() === undefined)('C71-G isolation', () => {
   let chat: ChatWorld;
 
-  // Red: the group commands are not on the surface yet, so their names are text here.
-  type Loose = (who: Who, name: string, body?: Body, business?: string) => Promise<Answer>;
-  type LooseAgent = (name: string, body: Body, credential?: string) => Promise<Answer>;
-  const as: Loose = async (...args) => await (chat.as as Loose)(...args);
-  const asAgent: LooseAgent = async (...args) =>
-    await (chat.harness.asAgent as LooseAgent)(...args);
+  const as: ChatWorld['as'] = async (...args) => await chat.as(...args);
+  const asAgent: ChatWorld['harness']['asAgent'] = async (...args) =>
+    await chat.harness.asAgent(...args);
   const alphaCanary = `alpha-group-${randomUUID()}`;
   const bravoCanary = `bravo-group-${randomUUID()}`;
   let alphaGroup: string;
