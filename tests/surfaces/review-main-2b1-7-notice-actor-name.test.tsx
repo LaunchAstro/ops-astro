@@ -42,6 +42,7 @@ const PEOPLE = [
 ];
 
 /** One task, a stream the case writes into, and an update checked against the revision. */
+// oxlint-disable-next-line max-lines-per-function -- the stand-in API is one table of routes
 function server() {
   const task = {
     id: ID,
