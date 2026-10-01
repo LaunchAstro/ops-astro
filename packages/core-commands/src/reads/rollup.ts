@@ -10,8 +10,11 @@
 // fingerprint of the viewer's live grants, all taken inside the call's own
 // transaction after the login is resolved. So one viewer never receives
 // another's rollup, and a grant narrowed, revoked or delegated inside the
-// lifetime misses the cache rather than meeting a wider answer. What the
-// lifetime can leave stale is the data alone, for less than the floor.
+// lifetime misses the cache rather than meeting a wider answer. The call reads
+// at READ COMMITTED, so the fingerprint is taken again once the answer is worked
+// out: a grant issued or revoked between the two may be in the answer and not
+// in the key, and that answer is served once and never held. What the lifetime
+// can leave stale is the data alone, for less than the floor.
 
 import {
   grantFingerprint,
@@ -48,7 +51,11 @@ export interface RollupCacheOptions {
 /** One per server process; `readRollup` alone reads and fills it. */
 export interface RollupCache {
   readonly size: number;
-  answer(key: string, compute: () => Promise<object>): Promise<object>;
+  /** `compute` says whether its answer may be held under `key`, or only served. */
+  answer(
+    key: string,
+    compute: () => Promise<{ readonly value: object; readonly hold: boolean }>,
+  ): Promise<object>;
 }
 
 interface Held {
@@ -72,11 +79,14 @@ class ScopedRollupCache implements RollupCache {
     return this.#held.size;
   }
 
-  async answer(key: string, compute: () => Promise<object>): Promise<object> {
+  async answer(
+    key: string,
+    compute: () => Promise<{ readonly value: object; readonly hold: boolean }>,
+  ): Promise<object> {
     const held = this.#held.get(key);
     if (held !== undefined && this.#now() - held.at < this.#lifetimeMs) return held.value;
-    const value = await compute();
-    this.#hold(key, { value, at: this.#now() });
+    const { value, hold } = await compute();
+    if (hold) this.#hold(key, { value, at: this.#now() });
     return value;
   }
 
@@ -111,16 +121,22 @@ export async function readRollup<T extends object>(
 ): Promise<T | CommandRefusal> {
   const outcome = await withSession(database, businessId, presented, async (tx, session) => {
     if (!isInternalReader(session.roleKey)) return refuseNotFound();
+    const fingerprint = async (): Promise<string> =>
+      await grantFingerprint(tx, subjectsOf(session));
+    const taken = await fingerprint();
     const key = JSON.stringify([
       session.businessId,
       session.personId,
       session.actorId,
       session.roleKey,
       rollup.name,
-      await grantFingerprint(tx, subjectsOf(session)),
+      taken,
     ]);
     // The key names the rollup, so what is held under it is this rollup's `T`.
-    return (await cache.answer(key, async () => await rollup.compute(tx, session))) as T;
+    return (await cache.answer(key, async () => {
+      const value = await rollup.compute(tx, session);
+      return { value, hold: (await fingerprint()) === taken };
+    })) as T;
   });
   return isCommandRefusal(outcome) ? asCallerVisible(outcome) : outcome;
 }
