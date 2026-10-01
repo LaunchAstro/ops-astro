@@ -42,7 +42,9 @@ create policy authority_live_changes on public.live_changes
   using (true)
   with check (true);
 
-grant select, insert, update on public.live_changes to ops_astro_app;
+-- Delete is the purge's alone: a purged task takes its row with it, so the
+-- record says nothing of a task after it is gone (`purgeTrashedRecords`).
+grant select, insert, update, delete on public.live_changes to ops_astro_app;
 
 create or replace function public.live_task_topic()
   returns trigger
@@ -66,11 +68,17 @@ create or replace function public.live_record_topics()
   set search_path = pg_catalog, public
 as $$
 begin
+  -- Only a task, or a record naming one in `data ->> 'task'` (a comment), is a
+  -- task topic; any other record (a client, a legal version) stamps nothing.
   insert into public.live_changes as c (business_id, subject_kind, subject_id)
        select topics.business_id, 'task', topics.task::uuid
          from (select distinct changed.business_id,
                       lower(coalesce(changed.data ->> 'task', changed.id::text)) as task
-                 from changed) as topics
+                 from changed
+                where changed.data ->> 'task' is not null
+                   or exists (select 1 from public.record_types t
+                               where t.business_id = changed.business_id
+                                 and t.id = changed.record_type_id and t.key = 'task')) as topics
         where topics.task ~ '^[0-9a-fA-F]{8}-([0-9a-fA-F]{4}-){3}[0-9a-fA-F]{12}$'
         order by 3
   on conflict (business_id, subject_kind, subject_id)
@@ -79,7 +87,11 @@ begin
   perform pg_notify('ops_astro_live', topic)
      from (select distinct changed.business_id::text || ':task:'
                   || lower(coalesce(changed.data ->> 'task', changed.id::text)) as topic
-             from changed) as topics;
+             from changed
+            where changed.data ->> 'task' is not null
+               or exists (select 1 from public.record_types t
+                           where t.business_id = changed.business_id
+                             and t.id = changed.record_type_id and t.key = 'task')) as topics;
   return null;
 end;
 $$;
