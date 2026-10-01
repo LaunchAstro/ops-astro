@@ -22,7 +22,7 @@ const STAGING = 'abcdefghijabcdefghij';
 const PRODUCTION = 'zyxwvutsrqzyxwvutsrq';
 const POOLER = 'aws-0-ap-southeast-2.pooler.supabase.com';
 const admin = (ref: string, host = POOLER): string =>
-  `postgresql://postgres.${ref}:secret-admin@${host}:5432/postgres`;
+  `postgresql://postgres.${ref}:secret-admin@${host}:5432/postgres?sslmode=require`;
 
 const environment = (overrides: Record<string, string | undefined> = {}) => ({
   STAGING_PROJECT_REF: STAGING,
@@ -76,6 +76,28 @@ describe('S0-1 staging logins: refused before connecting, by setting name', () =
 });
 
 describe('S0-1 staging logins: every setting needed, no value named', () => {
+  it('refuses an admin address that does not require TLS: the verifiers cross it', () => {
+    const bare = admin(STAGING).replace('?sslmode=require', '');
+    for (const query of [
+      '',
+      '?sslmode=disable',
+      '?sslmode=allow',
+      '?sslmode=prefer',
+      '?ssl=false',
+    ]) {
+      expect(
+        loginsRefusal(environment({ DATABASE_ADMIN_URL: `${bare}${query}` }), ['before-reset']),
+      ).toBe('DATABASE_ADMIN_URL does not require TLS (add ?sslmode=require or stricter)');
+    }
+    for (const mode of ['require', 'verify-ca', 'verify-full']) {
+      expect(
+        loginsRefusal(environment({ DATABASE_ADMIN_URL: `${bare}?sslmode=${mode}` }), [
+          'before-reset',
+        ]),
+      ).toBeUndefined();
+    }
+  });
+
   it('needs every setting, and a folder for the new addresses', () => {
     for (const name of ['STAGING_PROJECT_REF', 'DATABASE_ADMIN_URL', 'OPS_LOGINS_DIR']) {
       expect(loginsRefusal(environment({ [name]: undefined }), ['before-reset'])).toBe(
