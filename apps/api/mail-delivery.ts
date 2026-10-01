@@ -210,8 +210,9 @@ export async function startMailDelivery(
     cadence,
   );
   return {
+    // The pass running ends first: custody stopped under a send would leave it unknown.
     stop: async () => {
-      worker.stop();
+      await worker.stop();
       await custody.stop();
     },
   };

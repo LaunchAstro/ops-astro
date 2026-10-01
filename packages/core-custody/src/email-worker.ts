@@ -133,20 +133,22 @@ export const AT_ONCE_EVERY_MS = 15_000;
  * Run both passes on their intervals over `targets`, one of each kind at a
  * time: a pass still running when its next is due is skipped, not stacked. A business
  * whose pass fails is logged by its kind of pass only (never an address, a
- * link or the fault's text) and the next tick tries it again.
+ * link or the fault's text) and the next tick tries it again. `stop` starts
+ * no pass and no business after it, and resolves once a pass already running
+ * ends, so custody and the pool outlive every send in flight.
  */
 export function startMailWorker(
   database: Database,
   targets: () => Promise<readonly MailTarget[]>,
   timing: EmailTiming,
   cadence: MailCadence = {},
-): { readonly stop: () => void } {
-  const running = { at_once: false, daily: false };
-  const once = async (kind: 'at_once' | 'daily'): Promise<void> => {
-    if (running[kind]) return;
-    running[kind] = true;
+): { readonly stop: () => Promise<void> } {
+  const running: Partial<Record<'at_once' | 'daily', Promise<void>>> = {};
+  let stopped = false;
+  const pass = async (kind: 'at_once' | 'daily'): Promise<void> => {
     try {
       for (const target of await targets()) {
+        if (stopped) break;
         try {
           // Sequential by design: one business's sends before the next's.
           // oxlint-disable-next-line no-await-in-loop
@@ -157,14 +159,24 @@ export function startMailWorker(
       }
     } catch {
       console.error('mail worker: the businesses to serve could not be read');
-    } finally {
-      running[kind] = false;
     }
   };
+  const once = (kind: 'at_once' | 'daily'): void => {
+    if (stopped || running[kind] !== undefined) return;
+    running[kind] = pass(kind).finally(() => {
+      delete running[kind];
+    });
+  };
   const timers = [
-    setInterval(() => void once('at_once'), cadence.atOnceMs ?? AT_ONCE_EVERY_MS),
-    setInterval(() => void once('daily'), cadence.dailyTickMs ?? (timing.dayMs ?? DAY_MS) / 24),
+    setInterval(() => once('at_once'), cadence.atOnceMs ?? AT_ONCE_EVERY_MS),
+    setInterval(() => once('daily'), cadence.dailyTickMs ?? (timing.dayMs ?? DAY_MS) / 24),
   ];
   for (const timer of timers) timer.unref();
-  return { stop: () => timers.forEach((timer) => clearInterval(timer)) };
+  return {
+    stop: async () => {
+      stopped = true;
+      for (const timer of timers) clearInterval(timer);
+      await Promise.all(Object.values(running));
+    },
+  };
 }
