@@ -67,6 +67,7 @@ async function openWorld(): Promise<World> {
     await tx.query(LINK, [tx.businessId, clientA, tasks.a]);
     await tx.query(LINK, [tx.businessId, clientB, tasks.b]);
     await grantTo(tx, ada, 'read');
+    await grantTo(tx, ada, 'share');
     await grantTo(tx, cleo, 'read', { kind: 'party', id: clientA });
   });
   await db.app.withBusiness(bravo, async (tx) => {
