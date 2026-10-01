@@ -40,7 +40,7 @@ import { pathTo } from '../../routes.ts';
 import { RecordState } from '../../views/record-state.tsx';
 import { Comments, type CommentDraft } from './Comments.tsx';
 import { TaskFacts } from './Facts.tsx';
-import { History } from './History.tsx';
+import { History, useShowTrail } from './History.tsx';
 import {
   Perspectives,
   perspectiveCounts,
@@ -83,9 +83,11 @@ export interface TaskPanelProps extends ClientSeams {
 }
 
 const CONTROLS = new Set(['INPUT', 'SELECT', 'TEXTAREA']);
+type Body = TaskPanelProps & { readonly fold: ReturnType<typeof useShowTrail> };
 
 export function TaskPanel(props: TaskPanelProps): ReactElement {
   const { client, opening } = props;
+  const body = { ...props, fold: useShowTrail(client) };
   const { state, reload } = useRead<TaskReadResult>({
     grantKey: props.grantKey,
     run: () => client.read<TaskReadResult>('task.read', { recordId: opening.taskKey }),
@@ -112,7 +114,7 @@ export function TaskPanel(props: TaskPanelProps): ReactElement {
               This task is shared with you; it is changed by its business.
             </p>
           ) : (
-            <PanelBody {...props} task={withPageDefaults(value.task)} states={statesOf(value)} />
+            <PanelBody {...body} task={withPageDefaults(value.task)} states={statesOf(value)} />
           )
         }
       </RecordState>
@@ -121,7 +123,7 @@ export function TaskPanel(props: TaskPanelProps): ReactElement {
 }
 
 function PanelBody(
-  props: TaskPanelProps & { readonly task: Task; readonly states: readonly TaskStateView[] },
+  props: Body & { readonly task: Task; readonly states: readonly TaskStateView[] },
 ): ReactElement {
   const { client, task } = props;
   const [perspective, setPerspective] = useState<Perspective>('team');
@@ -154,7 +156,7 @@ function PanelBody(
             />
             <PanelWork {...props} />
             <PanelConversation {...props} />
-            <History history={task.history} folded />
+            <History history={task.history} fold={props.fold} />
           </>
         }
         agent={<PanelAgent {...props} />}
