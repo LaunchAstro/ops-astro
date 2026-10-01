@@ -40,6 +40,7 @@
     "tests/api/api-2-agent-credential-quota.test.ts",
     "tests/api/api-2-agent-credential-create.test.ts",
     "tests/api/api-2-agent-credential-capabilities.test.ts",
+    "tests/api/api-2-review.test.ts",
     "tests/authority/c32-clients-and-grants.test.ts",
     "tests/authority/c32-clients-and-grants-refusals.test.ts",
     "tests/authority/c32-clients-and-grants-isolation.test.ts",

@@ -27,19 +27,29 @@
 // acting identity. Anything else is refused `DELEGATION_EXCLUDES_OPERATION`,
 // recorded against the agent.
 
-import { NO_ASSURANCE, resolveAgentCredential } from '../../../core-records/src/index.ts';
+import {
+  NO_ASSURANCE,
+  recordCredentialRefusal,
+  resolveAgentCredential,
+} from '../../../core-records/src/index.ts';
 import type {
   BusinessId,
   CredentialStanding,
   Database,
   Session,
+  TenantQuery,
 } from '../../../core-records/src/index.ts';
 import { COMMAND_SURFACE, declarationOf, profileOf } from '../../../core-wire/src/index.ts';
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import { runRead } from '../reads/dispatch.ts';
 import type { ReadRequest, ReadResult } from '../reads/requests.ts';
 import { enter, retryOnce, runCommand } from './envelope.ts';
-import { asCallerVisible, isCommandRefusal, refuseCommand } from './refusal.ts';
+import {
+  asCallerVisible,
+  isCommandRefusal,
+  refuseCommand,
+  type CommandRefusal,
+} from './refusal.ts';
 import type { CommandResult } from './register-store.ts';
 import type { UncheckedRequest } from './requests.ts';
 
@@ -90,50 +100,60 @@ const LIMITED_FIXES: readonly string[] = [
   'Wait a minute and try again.',
 ];
 
+/** The one answer for a credential not served: unknown, revoked, expired, or a key nobody holds. */
+export const credentialNotLive = (): CommandRefusal =>
+  refuseCommand('DELEGATION_NOT_LIVE', [], NOT_LIVE_FIXES);
+
 export async function executeCredentialCommand(
   database: Database,
   businessId: BusinessId,
   call: CredentialCall,
   request: UncheckedRequest,
 ): Promise<CommandResult | ReadResult> {
-  const result = await retryOnce(
-    async () =>
-      await database.withBusiness(businessId, async (tx) => {
-        const standing = await resolveAgentCredential(tx, call.credential, call.now);
-        if (standing === 'not-live') {
-          return refuseCommand('DELEGATION_NOT_LIVE', [], NOT_LIVE_FIXES);
-        }
-        const session = sessionOf(standing, tx.businessId);
-        if (!CREDENTIAL_REACH.has(request.command)) {
-          const outside = refuseCommand(
-            'DELEGATION_EXCLUDES_OPERATION',
-            [request.command],
-            OUTSIDE_FIXES,
-          );
-          return await enter(tx, session, request, { outside });
-        }
-        const keys = {
-          credentialId: standing.credentialId,
-          personId: standing.personId,
-          businessId,
-        };
-        const slot = call.quota?.enter(keys);
-        if (call.quota !== undefined && slot === undefined) {
-          return refuseCommand('AGENT_QUOTA_EXCEEDED', [], LIMITED_FIXES);
-        }
-        let answer: CommandResult | ReadResult | undefined;
-        try {
-          answer =
-            declarationOf(request.command).kind === 'read'
-              ? await runRead(tx, session, readOf(request))
-              : await runCommand(tx, session, 'api', request);
-          return answer;
-        } finally {
-          slot?.leave(answer === undefined || isCommandRefusal(answer) ? undefined : answer);
-        }
-      }),
-  );
-  return isCommandRefusal(result) ? asCallerVisible(result) : result;
+  // Entered once per request, outside `retryOnce`, so a retry is not a second call.
+  let slot: QuotaSlot | undefined;
+  let answer: CommandResult | ReadResult | undefined;
+  try {
+    answer = await retryOnce(
+      async () =>
+        await database.withBusiness(businessId, async (tx) => {
+          const standing = await resolveAgentCredential(tx, call.credential, call.now);
+          if (standing === 'not-live') return await refusedAtTheDoor(tx, call.credential);
+          const keys = {
+            credentialId: standing.credentialId,
+            personId: standing.personId,
+            businessId,
+          };
+          // Before the reach, so a call outside it counts too.
+          slot ??= call.quota?.enter(keys);
+          if (call.quota !== undefined && slot === undefined) {
+            return refuseCommand('AGENT_QUOTA_EXCEEDED', [], LIMITED_FIXES);
+          }
+          const session = sessionOf(standing, tx.businessId);
+          if (!CREDENTIAL_REACH.has(request.command)) {
+            const outside = refuseCommand(
+              'DELEGATION_EXCLUDES_OPERATION',
+              [request.command],
+              OUTSIDE_FIXES,
+            );
+            return await enter(tx, session, request, { outside });
+          }
+          return declarationOf(request.command).kind === 'read'
+            ? await runRead(tx, session, readOf(request))
+            : await runCommand(tx, session, 'api', request);
+        }),
+    );
+    return isCommandRefusal(answer) ? asCallerVisible(answer) : answer;
+  } finally {
+    slot?.leave(answer === undefined || isCommandRefusal(answer) ? undefined : answer);
+  }
+}
+
+/** A credential turned away is an attempt at the door (I13), answered as every other. */
+async function refusedAtTheDoor(tx: TenantQuery, credential: string): Promise<CommandRefusal> {
+  const refusal = credentialNotLive();
+  await recordCredentialRefusal(tx, credential, refusal.code);
+  return refusal;
 }
 
 /** The agent actor, acting for its person within the ticked keys, with no sign-in assurance. */

@@ -648,7 +648,10 @@ Every call looks the credential up by its digest in the path's business and
 locks the row `for share` (`resolveAgentCredential`), so a revocation either
 commits first and the call is refused, or waits for the call. Revoked, past its
 expiry, its agent actor inactive, its issuer no longer a member, or never
-issued: one answer, `DELEGATION_NOT_LIVE` 401, in plain words.
+issued: one answer, `DELEGATION_NOT_LIVE` 401, in plain words, and the same
+answer at a business key nobody holds. Each one writes a refused
+authentication attempt (owner `delegation`, the digest of the credential's
+digest, never the secret).
 
 The call runs through the person's command and read envelopes as the agent
 actor for the issuing person (`Session.credentialScope`). The audit event, the
@@ -669,6 +672,8 @@ its one-task delegation never does: `DELEGATION_OUT_OF_PURPOSE`, nothing written
 (`authorise`, the `business` row). The app holds a quota per credential, per
 person and per business on calls a minute, calls at once and records handed out
 a minute (`apps/api/auth/agent-quota.ts`), answered `AGENT_QUOTA_EXCEEDED` 429.
+A call counts once, retried or not, and a call outside the reach counts too.
+The quota is held in each API process, so it multiplies across instances.
 
 ## Settings ▸ Access (C32)
 

@@ -12,6 +12,7 @@ export { type AgentRequest } from './commands/agent-call.ts';
 export { agentAnswer, executeAgentCommand } from './commands/agent-envelope.ts';
 export {
   CREDENTIAL_REACH,
+  credentialNotLive,
   executeCredentialCommand,
   type CredentialQuota,
   type QuotaSlot,
