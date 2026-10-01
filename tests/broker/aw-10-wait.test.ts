@@ -53,7 +53,7 @@ it('AW-10 fair-share wait under a provider fault: the waiting run reads its RATE
         mine.picked['leaseId'],
       ]),
   );
-  expect(across).toStrictEqual([]);
+  expect(across).toHaveLength(0);
 
   // The hung call times out and is held unknown, a fault nobody can place; the place frees.
   expect(await hung).toMatchObject({ code: 'LIABILITY_UNKNOWN', fault: 'undetermined' });
@@ -70,5 +70,5 @@ it("AW-10 fair-share wait: a provider's own rate limit, declared as proof nothin
     await rows(s, `select state from public.model_calls where lease_id = $1`, [
       work.picked['leaseId'],
     ]),
-  ).toStrictEqual([{ state: 'released' }]);
+  ).toMatchObject([{ state: 'released' }]);
 });

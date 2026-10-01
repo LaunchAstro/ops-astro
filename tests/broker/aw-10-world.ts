@@ -39,9 +39,11 @@ import {
   type Work,
 } from '../runtime/schedules-harness.ts';
 import { openBilling } from '../runtime/t3d1-harness.ts';
+import { writeAuditEvent } from '../../packages/core-commands/src/commands/audit.ts';
 import {
   broker,
   caller,
+  digestOf,
   noDatabase,
   requestFor,
   s,
@@ -85,8 +87,37 @@ export const callIn = async (
 ): Promise<ModelCallResult> => {
   await stepOf(work);
   const asked = { ...caller(work), actorId: on.agentActorId };
-  return await callModel(on.db.app, on.business, asked, requestFor(work), with_);
+  // The broker's audit is written as the calling business's own agent.
+  const audit: Broker['audit'] = async (tx, note) => {
+    await writeAuditEvent(tx, {
+      actorId: on.agentActorId,
+      command: note.action,
+      outcome: note.outcome,
+      refusalCode: note.refusalCode,
+      payloadDigest: digestOf(note.detail),
+      attempted: note.outcome === 'refused' ? note.detail : null,
+    });
+  };
+  return await callModel(on.db.app, on.business, asked, requestFor(work), { ...with_, audit });
 };
+
+/**
+ * Room beside the kept hold, by the person who approved the work (T2e): a
+ * step proved absent keeps its first hold for a person (O6), so its
+ * replacement needs room of its own.
+ */
+export async function room(on: Schedules, work: Work): Promise<void> {
+  appliedDetail(
+    await asPerson(on, {
+      command: 'budget.top_up',
+      operationId: randomUUID(),
+      recordId: work.taskId,
+      amountMinor: 2_000,
+      fromMaximumMinor: 2_000,
+    }),
+    'budget.top_up',
+  );
+}
 
 export interface Dropped {
   readonly work: Work;
@@ -96,6 +127,7 @@ export interface Dropped {
 /** Live work whose model call meets `mode`, handed back `dropped` with the cause the broker recorded. */
 export async function dropped(mode: ReplayMode, on: Schedules = s): Promise<Dropped> {
   const work = await liveWork(on, `aw10 ${mode} ${randomUUID()}`, 2_000);
+  await room(on, work);
   world.provider.mode(mode);
   const result = await callIn(on, work);
   const cause = 'cause' in result ? result.cause : null;
@@ -115,6 +147,7 @@ export async function dropped(mode: ReplayMode, on: Schedules = s): Promise<Drop
 /** A worker lost mid-call: custody took the call and never answers, and the lease runs out. */
 export async function workerLost(on: Schedules = s): Promise<Work> {
   const work = await liveWork(on, `aw10 lost ${randomUUID()}`, 2_000);
+  await room(on, work);
   const silent: Broker = {
     ...faultBroker(),
     custody: { ...faultBroker().custody, dispatch: async () => await new Promise(() => {}) },

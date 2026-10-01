@@ -82,8 +82,8 @@ it('AW-10 isolation: business to business, the pass, the drops read and a record
     ['liability_unknown'],
   ]);
   // Drops are read in their own business only.
-  expect(await read(other, mine.work.taskId)).toStrictEqual([]);
-  expect(await read(s, theirs.work.taskId)).toStrictEqual([]);
+  expect(await read(other, mine.work.taskId)).toHaveLength(0);
+  expect(await read(s, theirs.work.taskId)).toHaveLength(0);
   // Positive controls: each in its own business.
   expect(await read(s, mine.work.taskId)).toHaveLength(1);
   expect(await read(other, theirs.work.taskId)).toHaveLength(1);

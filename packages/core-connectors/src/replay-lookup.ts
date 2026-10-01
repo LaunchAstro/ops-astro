@@ -50,7 +50,7 @@ export function operationOf(body: string): string | null {
 /** The stand-in's lookup body for the honest answer and the false claim; others it answers itself. */
 export function lookupBody(mode: ReplayLookupMode, begun: boolean): unknown {
   if (mode === 'honest') return { code: begun ? 'completed' : NOT_BEGUN_CODE };
-  // Says nothing happened in its own words, never the declared code.
-  if (mode === 'claims_success') return { code: 'not_found', nothing_happened: true, ok: true };
+  // Claims nothing happened in its own word, never the declared code.
+  if (mode === 'claims_success') return { code: 'not_found' };
   return undefined;
 }
