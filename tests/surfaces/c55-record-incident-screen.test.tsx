@@ -56,10 +56,26 @@ interface Call {
 }
 
 /** A stand-in API: `reads` answer `operations.read` in turn (the last repeats), `write` the rest. */
+const frameJson = (body: unknown): Response =>
+  new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } });
+
+/** The frame's reads, answered empty; undefined for every other address. */
+const frameAnswer = (url: string): Response | undefined => {
+  if (url.endsWith('/session/person')) return frameJson({ ok: true, person: {} });
+  if (url.endsWith('/preference/read')) return frameJson({ ok: true, preferences: {} });
+  if (url.endsWith('/inbox/count')) return frameJson({ ok: true, owed: 0 });
+  if (url.includes('/live?')) return new Response(null, { status: 503 });
+  return undefined;
+};
+
 function server(reads: readonly Response[], write: () => Response) {
   const calls: Call[] = [];
   let read = 0;
   const fetch = ((url: string | URL, init?: RequestInit) => {
+    // The frame's own reads (C23 person menu, MP-2-11 appearance, MP-7-3 bell and
+    // its board topic) are not this screen's calls.
+    const frame = frameAnswer(String(url));
+    if (frame !== undefined) return Promise.resolve(frame);
     const at = String(url);
     const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
     calls.push({ url: at, body });
