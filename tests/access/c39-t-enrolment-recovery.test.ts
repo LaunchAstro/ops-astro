@@ -6,9 +6,11 @@
 // link died, is found again and adopted by the next accept with the password
 // set then. A login that is not ours, another business's or one made
 // elsewhere, is never set: its holder is told to sign in. A login this
-// business has bound already is never set again, and nothing is asked.
+// business has bound already is never set again, and nothing is asked. A
+// hostile answer spends and binds nothing, and the same link then enrols.
 
 import { describe, expect, it } from 'vitest';
+import type { FakeUsersMode } from './c39-t-users-fake.ts';
 import {
   e,
   enrolVia,
@@ -50,6 +52,12 @@ async function personOf(invitationId: string): Promise<string> {
     [invitationId],
   );
   return String(row?.person_id);
+}
+
+/** The identity rows alpha holds, to show a refusal wrote none. */
+async function identityRows(): Promise<readonly number[]> {
+  const tables = ['logins', 'person_logins', 'memberships', 'actors', 'person_identifiers'];
+  return await Promise.all(tables.map(async (table) => await rowsIn(table, w.alpha)));
 }
 
 /** Accept once while the provider makes the user and answers too late. */
@@ -185,5 +193,49 @@ describe.skipIf(noDatabase)('C39-T enrolment recovery', () => {
     expect(await enrolVia(other.token)).toStrictEqual(ENROLLED);
     expect(await boundTo(w.alpha, String(oneLogin))).toBeUndefined();
     expect(e.users.passwords.get(String(oneLogin))).toBe(onePassword);
+  }, 30_000);
+
+  // eslint-disable-next-line max-lines-per-function -- every hostile answer, then the control
+  it('C39-T hostile provider: an answer echoing the password, oversized, redirected, malformed, naming another user, faulted or slow spends and binds nothing, and the same link then enrols', async () => {
+    const address = addressFor('hostile');
+    const { id, token } = await invited(c.admin, address);
+    const rows = await identityRows();
+    const modes: readonly FakeUsersMode[] = [
+      'echo',
+      'oversized',
+      'redirect',
+      'not_json',
+      'bad_id',
+      'other_id',
+      'fault',
+      'slow',
+    ];
+    const passwords: string[] = [];
+    for (const mode of modes) {
+      e.users.mode(mode);
+      const password = passwordFor();
+      passwords.push(password);
+      // oxlint-disable-next-line no-await-in-loop
+      expect(await enrolVia(token, password), mode).toStrictEqual({
+        status: 503,
+        body: { code: 'ENROLMENT_UNAVAILABLE' },
+        cookie: null,
+      });
+      // oxlint-disable-next-line no-await-in-loop
+      expect(await spentOf(id), mode).toStrictEqual({ state: 'pending', spent: 0, tokens: 1 });
+    }
+    expect(await identityRows()).toStrictEqual(rows);
+    const stored = await storedText();
+    for (const password of passwords) expect(stored.includes(password)).toBe(false);
+    for (const password of passwords) expect(w.custody.stderr()).not.toContain(password);
+    // The provider made one user, under our id, and nothing here bound it.
+    const made = String(e.users.users.get(address));
+    expect(await boundTo(w.alpha, made)).toBeUndefined();
+    // The control: an honest answer, and the same link enrols with that user.
+    e.users.mode('accept');
+    expect((await enrolVia(token)).body).toStrictEqual({ state: 'enrolled' });
+    expect(e.users.users.get(address)).toBe(made);
+    expect(await boundTo(w.alpha, made)).toBe(await personOf(id));
+    expect(await spentOf(id)).toStrictEqual({ state: 'accepted', spent: 1, tokens: 1 });
   }, 30_000);
 });
