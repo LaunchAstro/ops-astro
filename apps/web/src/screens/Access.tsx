@@ -21,6 +21,8 @@
 // A fifth, C39-T's: "Invite a team member" sends `invitation.create` under
 // `access:share`, drawn only when `session.capabilities` says the session
 // holds that key (`access/invite.tsx`); the server still refuses anyone else.
+// Under it, the business's invitations from `invitation.list`, each pending
+// one with `invitation.resend` and `invitation.revoke` (`access/invitations.tsx`).
 
 import { useState, type ReactElement } from 'react';
 import { useRead } from '../data/use-read.ts';
@@ -34,6 +36,7 @@ import type {
 } from '../../../../packages/core-wire/src/index.ts';
 import { ConfirmEnd, ConfirmRevokeGrant, GiveAccess, type Revoking } from './access/acts.tsx';
 import { holdsShare, InviteMember, type Invitation } from './access/invite.tsx';
+import { Invitations, type InvitationAct } from './access/invitations.tsx';
 import { Agents, People } from './access/rows.tsx';
 
 export interface AccessScreenProps {
@@ -68,6 +71,16 @@ const inviteWith =
       () => client.mutate('invitation.create', { ...invitation }),
       `Invited ${invitation.name}. The invitation is pending until it is accepted, resent, revoked or expires.`,
     );
+
+const actOnInvitationWith =
+  (client: OperationsClient, act: Act): InvitationAct =>
+  (command, invitation) => {
+    const done = command === 'invitation.resend' ? 'Sent again' : 'Revoked';
+    void act(
+      () => client.mutate(command, { invitationId: invitation.invitationId }),
+      `${done}: the invitation to ${invitation.name}.`,
+    );
+  };
 
 /** A refusal is drawn as Settings draws one; a success stays a quiet line. */
 const Outcome = (props: { readonly text: string; readonly refused: boolean }): ReactElement =>
@@ -133,6 +146,9 @@ function AccessLists(props: {
   readonly act: Act;
   readonly outcome: ReactElement | null;
   readonly canInvite: boolean;
+  readonly grantKey: string;
+  /** Moved on after each act that worked, so the invitations are read again. */
+  readonly version: number;
 }): ReactElement {
   const { client, result, act } = props;
   const { confirmations, onEnd, onRevokeGrant } = usePending(client, act);
@@ -157,10 +173,36 @@ function AccessLists(props: {
       {props.canInvite ? (
         <section className="sec">
           <InviteMember busy={props.busy} onInvite={inviteWith(client, act)} />
+          <Invitations
+            client={client}
+            grantKey={props.grantKey}
+            version={props.version}
+            onAct={actOnInvitationWith(client, act)}
+          />
         </section>
       ) : null}
     </>
   );
+}
+
+/** One write at a time; after one that worked, the list and the invitations are read again. */
+function useAct(reload: () => void) {
+  const [busy, setBusy] = useState(false);
+  const [version, setVersion] = useState(0);
+  const [outcome, setOutcome] = useState<{ text: string; refused: boolean } | null>(null);
+  const act: Act = async (send, done) => {
+    setBusy(true);
+    const result = await send();
+    const failure = describeFailure(result);
+    setBusy(false);
+    setOutcome({ text: failure ?? done, refused: failure !== null });
+    if (failure === null) {
+      reload();
+      setVersion((was) => was + 1);
+    }
+    return result;
+  };
+  return { act, busy, version, outcome };
 }
 
 export function AccessScreen(props: AccessScreenProps): ReactElement {
@@ -175,17 +217,7 @@ export function AccessScreen(props: AccessScreenProps): ReactElement {
     run: () => client.read<CapabilitiesResult>('session.capabilities', {}),
     deps: [client],
   });
-  const [busy, setBusy] = useState(false);
-  const [outcome, setOutcome] = useState<{ text: string; refused: boolean } | null>(null);
-  const act: Act = async (send, done) => {
-    setBusy(true);
-    const result = await send();
-    const failure = describeFailure(result);
-    setBusy(false);
-    setOutcome({ text: failure ?? done, refused: failure !== null });
-    if (failure === null) reload();
-    return result;
-  };
+  const { act, busy, version, outcome } = useAct(reload);
   // The top bar names the page; the body is the page kit's sections (PAGE-MAP SH-40 to 44).
   return (
     <div className="secs" data-screen="access" data-business={client.businessKey}>
@@ -202,6 +234,8 @@ export function AccessScreen(props: AccessScreenProps): ReactElement {
               act={act}
               outcome={outcome === null ? null : <Outcome {...outcome} />}
               canInvite={holdsShare(capabilities.state)}
+              grantKey={grantKey}
+              version={version}
             />
           </div>
         )}

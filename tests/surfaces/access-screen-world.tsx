@@ -87,8 +87,11 @@ export function server(
   reads: readonly Response[],
   write: () => Response = () => json({ recordId: 'r', revision: 1 }),
   grants: readonly unknown[] = MANAGE_ONLY,
+  invitations: readonly unknown[] = [],
 ) {
   const calls: Call[] = [];
+  /** Each `invitation.list` asked (C39-T), kept apart from the commands. */
+  const lists: string[] = [];
   let read = 0;
   const fetch = ((url: string | URL, init?: RequestInit) => {
     const at = String(url);
@@ -101,6 +104,10 @@ export function server(
     if (at.endsWith('/inbox/count')) return Promise.resolve(json({ ok: true, owed: 0 }));
     if (at.includes('/live?')) return Promise.resolve(new Response(null, { status: 503 }));
     // What the signed-in person holds, which opens or hides the invitation form (C39-T).
+    if (at.endsWith('/invitation/list')) {
+      lists.push(at);
+      return Promise.resolve(json({ ok: true, invitations }));
+    }
     if (at.endsWith('/session/capabilities')) {
       return Promise.resolve(
         json({ ok: true, personId: ADA.personId, businessKey: 'alpha', grants }),
@@ -120,6 +127,7 @@ export function server(
   return {
     fetch,
     calls,
+    lists,
     commands: () => calls.filter((call) => !call.url.endsWith('/access/read')),
   };
 }
