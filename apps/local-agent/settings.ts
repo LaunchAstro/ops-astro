@@ -14,7 +14,7 @@
 
 import { readFileSync } from 'node:fs';
 import { homedir, userInfo } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join } from 'node:path';
 
 export const SEATS = ['hey', 'nathan'] as const;
 export type Seat = (typeof SEATS)[number];
@@ -47,7 +47,12 @@ export interface RunnerSettings {
 }
 
 export type StartRefusal =
-  'LOCAL_ONLY' | 'LOCAL_SEAT_REFUSED' | 'KEY_REFUSED' | 'CAP_MALFORMED' | 'CAP_NOT_APPROVED';
+  | 'LOCAL_ONLY'
+  | 'LOCAL_SEAT_REFUSED'
+  | 'KEY_REFUSED'
+  | 'CAP_MALFORMED'
+  | 'CAP_NOT_APPROVED'
+  | 'HOME_NOT_ABSOLUTE';
 
 export type SettingsResult =
   | { readonly ok: true; readonly settings: RunnerSettings }
@@ -128,6 +133,9 @@ export function readSettings(
     );
   }
   const home = env['OPS_LOCAL_AGENT_HOME'] || join(userHome, '.ops-astro-local-agent');
+  // A relative home moves the ledger with the working folder and can put the child in a repository.
+  if (!isAbsolute(home))
+    return refuse('HOME_NOT_ABSOLUTE', 'OPS_LOCAL_AGENT_HOME is an absolute path');
   const capUsd = capOf(env['OPS_LOCAL_AGENT_CAP_USD']);
   if (capUsd === undefined) {
     return refuse('CAP_MALFORMED', 'OPS_LOCAL_AGENT_CAP_USD is a dollar amount above 0');
@@ -149,7 +157,8 @@ export function readSettings(
       claudeBin: env['OPS_LOCAL_AGENT_CLAUDE_BIN'] || 'claude',
       usageFile: env['OPS_LOCAL_AGENT_SEAT_USAGE_FILE'] || null,
       childEnv: childEnvOf(env, userHome),
-      timeoutMs: 120_000,
+      // Under custody's 120 s for the call, so the runner gives up first and charges the budget.
+      timeoutMs: 100_000,
     },
   };
 }

@@ -60,10 +60,10 @@ const ROUTE: BrokerRoute = {
   ceiling: 4,
 };
 
-// What carried a settled call is custody's credential: here the runner's own
-// loopback key (`api_key`), with the seat as its account. The subscription
-// itself stays in Claude Code and is never stored, so the route's kind is what
-// `mayCarry` ran on, and the route key names the local seat's route.
+// Custody carries the runner's own loopback key, with the seat as its account;
+// the subscription itself stays in Claude Code and is never stored. A settled
+// row records the route's kind, `subscription`, so the audit shows where LA-1's
+// carve-out was used (review 1, B7).
 let runner: StubRunner;
 const output: string[] = [];
 
@@ -149,7 +149,7 @@ it('LA-1 side panel: a conversation message is answered by the local session, se
     state: 'settled',
     route_key: 'local_claude',
     route_reach: 'local',
-    credential_kind: 'api_key',
+    credential_kind: 'subscription',
     account: SEAT_ACCOUNT,
     reserved_minor: '0',
   });
@@ -179,7 +179,7 @@ it('LA-1 task run: an unattended step is carried by the subscription under the l
     {
       state: 'settled',
       route_key: 'local_claude',
-      credential_kind: 'api_key',
+      credential_kind: 'subscription',
       account: SEAT_ACCOUNT,
       model_id: LOCAL_MODEL,
     },

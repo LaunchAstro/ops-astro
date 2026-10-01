@@ -25,8 +25,9 @@ export function ledgerTotal(home: string, capUsd: number): number {
   let text: string;
   try {
     text = readFileSync(ledgerFile(home), 'utf8');
-  } catch {
-    return 0;
+  } catch (error) {
+    // No ledger yet is nothing spent; a ledger that cannot be read is the cap.
+    return (error as NodeJS.ErrnoException).code === 'ENOENT' ? 0 : capUsd;
   }
   let total = 0;
   for (const line of text.split('\n')) {

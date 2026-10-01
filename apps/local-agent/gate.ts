@@ -57,7 +57,8 @@ export function decide(settings: RunnerSettings, model: string): Decision {
     return { ok: false, code: 'LOCAL_MODEL_NOT_APPROVED' };
   }
   const left = settings.capUsd - ledgerTotal(settings.home, settings.capUsd);
-  if (left <= 0) return { ok: false, code: 'LOCAL_CAP_REACHED' };
+  // Claude Code refuses a budget of 0.00, so under a cent left is the cap.
+  if (left < 0.01) return { ok: false, code: 'LOCAL_CAP_REACHED' };
   if (seatOverStop(settings)) return { ok: false, code: 'LOCAL_SEAT_OVER_STOP' };
   return { ok: true, budgetLeftUsd: left };
 }

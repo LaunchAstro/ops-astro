@@ -265,6 +265,7 @@ describe('the planted canary', () => {
     // USER and LOGNAME are how Claude Code finds the seat's login in the keychain.
     const passed = Object.keys(child?.env ?? {}).filter((name) => !name.startsWith('__CF_'));
     expect(passed.toSorted()).toEqual([
+      'CLAUDE_CODE_DISABLE_AUTO_MEMORY',
       'CLAUDE_CONFIG_DIR',
       'HOME',
       'LANG',

@@ -105,9 +105,9 @@ it('Sol proof, criterion 7: two runners on one home never both start a call unde
   if (!a.ok || !b.ok) throw new Error('settings refused');
   const first = await createRunner(a.settings, () => {});
   runners.push(first);
-  const second = await createRunner(b.settings, () => {}).catch(() => undefined);
+  const second = await createRunner(b.settings, () => {}).catch(() => null);
   // A second runner on the same home refusing to start also closes the race.
-  if (second === undefined) return;
+  if (second === null) return;
   runners.push(second);
   await Promise.all([call(first), call(second)]);
   expect(w.calls('hey').length + w.calls('nathan').length).toBe(1);

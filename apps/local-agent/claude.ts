@@ -64,8 +64,11 @@ export function promptOf(fields: Readonly<Record<string, string>>): string {
   return entries.map(([name, value]) => `${name}:\n${value}`).join('\n\n');
 }
 
+/** The budget a call is given: what is left, down to the cent. */
+export const budgetOf = (budgetLeftUsd: number): number => Math.floor(budgetLeftUsd * 100) / 100;
+
 export function claudeArgs(model: string, budgetLeftUsd: number): string[] {
-  const budget = (Math.floor(budgetLeftUsd * 100) / 100).toFixed(2);
+  const budget = budgetOf(budgetLeftUsd).toFixed(2);
   return [
     '-p',
     '--model',
@@ -76,31 +79,48 @@ export function claudeArgs(model: string, budgetLeftUsd: number): string[] {
     '',
     '--no-session-persistence',
     '--strict-mcp-config',
+    // No skills or slash commands from the prompt, and none of the seat's settings files.
+    '--disable-slash-commands',
+    '--restricted',
     '--max-budget-usd',
     budget,
   ];
 }
 
-/** Run one call. Resolves with Claude Code's result, or null for any failure to get one. */
+/** Auto memory off: the seat's memory is the owner's own, never this call's context. */
+const childEnvFor = (settings: RunnerSettings): NodeJS.ProcessEnv => ({
+  ...settings.childEnv,
+  CLAUDE_CONFIG_DIR: settings.seatDir,
+  CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
+});
+
+/** A call that ran but whose cost is unknown: killed, or ended with no result. */
+export const UNKNOWN = 'unknown';
+
+/**
+ * Run one call. Resolves with Claude Code's result; `unknown` when the call
+ * ran and its cost cannot be read (killed at the timeout or the output cap, or
+ * ended with no result); null when nothing was started.
+ */
 export async function runClaude(
   settings: RunnerSettings,
   model: string,
   prompt: string,
   budgetLeftUsd: number,
-): Promise<ClaudeResult | null> {
+): Promise<ClaudeResult | typeof UNKNOWN | null> {
   const cwd = join(settings.home, 'cwd');
   mkdirSync(cwd, { recursive: true });
   return await new Promise((resolve) => {
     const child = spawn(settings.claudeBin, claudeArgs(model, budgetLeftUsd), {
       cwd,
-      env: { ...settings.childEnv, CLAUDE_CONFIG_DIR: settings.seatDir },
+      env: childEnvFor(settings),
       stdio: ['pipe', 'pipe', 'ignore'],
       shell: false,
     });
     const parts: Buffer[] = [];
     let bytes = 0;
     let done = false;
-    const finish = (result: ClaudeResult | null): void => {
+    const finish = (result: ClaudeResult | typeof UNKNOWN | null): void => {
       if (done) return;
       done = true;
       clearTimeout(timer);
@@ -108,21 +128,21 @@ export async function runClaude(
     };
     const timer = setTimeout(() => {
       child.kill('SIGKILL');
-      finish(null);
+      finish(UNKNOWN);
     }, settings.timeoutMs);
     child.stdout.on('data', (chunk: Buffer) => {
       bytes += chunk.length;
       if (bytes > MAX_STDOUT_BYTES) {
         child.kill('SIGKILL');
-        finish(null);
+        finish(UNKNOWN);
         return;
       }
       parts.push(chunk);
     });
     child.on('error', () => finish(null));
-    child.on('close', (code) => {
+    child.on('close', () => {
       const result = readClaudeResult(Buffer.concat(parts).toString('utf8'), model);
-      finish(code !== 0 && result === undefined ? null : (result ?? null));
+      finish(result ?? UNKNOWN);
     });
     child.stdin.on('error', () => null);
     child.stdin.end(prompt);
