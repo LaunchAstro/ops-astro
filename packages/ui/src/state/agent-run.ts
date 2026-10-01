@@ -79,7 +79,7 @@ export interface RunStory {
   readonly gate: GateBox;
   readonly jobs: readonly Job[];
   readonly checks: readonly RunCheck[];
-  /** Whether a permitted person may cancel it now: a live lineage. */
+  /** Whether a permitted person may cancel it now: a live lineage not yet done. */
   readonly cancellable: boolean;
   readonly heldMinor: number;
   readonly actualMinor: number | null;
@@ -115,9 +115,16 @@ function stateOf(lineage: RunLineage, head: RunVersion): RunState {
   if (reservation?.state === 'quarantined') return 'unknown-outcome';
   // T3b's unknown effect: held until a person records what happened (C54).
   if (reservation?.attempt?.state === 'liability_unknown') return 'unknown-outcome';
-  if (reservation?.state === 'abandoned') return 'dropped';
+  // A hand-back releases the hold through the classifier, which leaves the
+  // reservation abandoned under `handback_completed` and the lineage live. A
+  // dropped hand-back is classified the same way but marks its attempt dropped.
+  if (reservation?.state === 'abandoned') {
+    return reservation.classifiedCause === 'handback_completed' &&
+      reservation.attempt?.state !== 'dropped'
+      ? 'done'
+      : 'dropped';
+  }
   if (lineage.state === 'completed' || reservation?.state === 'actual') return 'done';
-  if (reservation?.attempt?.state === 'handed_back') return 'done';
   if (reservation?.lease?.state === 'live') return 'running';
   const gate = head.gate;
   if (gate === null) return reservation === undefined ? 'gate-stale' : 'approved';
@@ -287,7 +294,7 @@ export function runStories(proposals: readonly RunLineage[] | undefined): readon
         gate: box,
         jobs,
         checks: head.checks,
-        cancellable: lineage.state === 'live',
+        cancellable: lineage.state === 'live' && state !== 'done',
         heldMinor: reservation?.heldMinor ?? 0,
         actualMinor: reservation?.actualMinor ?? null,
         unknownAttempt: unknownOf(reservation),
