@@ -1906,9 +1906,13 @@ or a receipt is refused; the line says the published policy matches it),
 `cloudflare-rolled` (the link shows the old credential refused; the line
 records the new one in custody) and `training-line` (item 5's dated line that
 model training is off on both model accounts, carrying a real `YYYY-MM-DD`
-date, with its evidence link). The eight items carry no line. The table holds
-the same rules. The mode moves from made-up to real only while every item and
-line is done, and never back; the row cannot be deleted.
+date, with its evidence link). The eight items carry no line. Item 3's tested
+manual privacy-request procedure has a line of its own (migration 0070),
+`privacy-procedure`: the procedure's dry run ([PRIVACY-RUNBOOK.md](PRIVACY-RUNBOOK.md)),
+recorded with its `https` link and no owner's line, and open until recorded,
+so item 3 done does not close it. The table holds the same rules. The mode
+moves from made-up to real only while every item and line is done, and never
+back; the row cannot be deleted.
 
 Two commands move the gate (migration 0062), each a person's under
 `operations:manage` in the business that operates the installation
@@ -1917,9 +1921,9 @@ agent's or a delegation's; any other caller, and every caller while no business
 operates it, is refused `SCOPE_NOT_GRANTED` 403 and writes nothing:
 
 - `operations.record_gate_item` takes `{ operationId, item, evidence,
-statement? }`: one of the eight items or three closing lines, one `https`
-  link of at most 2000 characters with no spaces, and the owner's line on a
-  closing line only, each refused `FIELD_VALUE_INVALID` 422 naming the field. An item is
+statement? }`: one of the eight items, three closing lines or the procedure
+  line, one `https` link of at most 2000 characters with no spaces, and the
+  owner's line on a closing line only, each refused `FIELD_VALUE_INVALID` 422 naming the field. An item is
   recorded once; a second record is refused `GATE_ITEM_ALREADY_RECORDED` 409
   and the first evidence stays.
 - `operations.change_installation_mode` takes `{ operationId, mode: 'real' }`.
