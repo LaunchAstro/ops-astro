@@ -17,27 +17,23 @@
 //    under a provider user id that is ours: the same every time for one
 //    address in one business (`loginSubject`). A login any business has
 //    bound under that id already (a signed-in accept binds one in another
-//    business, `invitation-bind.ts`) is never set again: the answer is
-//    `sign_in`, and nothing is asked. Otherwise it is made
-//    (`auth.create_user`), outside any lock: a create makes a new user or is
-//    refused, and never changes one the provider holds.
-// 3. In one transaction: the login id's lock (`lockLoginId`), then the
-//    invitation's row lock, every check again and whether a login is bound
-//    under the id now. When the create was refused because the address
-//    already holds a login, that login is set again under our id
-//    (`auth.update_user`) here, under those locks, which adopts one an
-//    earlier accept made and never bound (its answer came too late, or its
-//    link died before the bind), with the password set now. So two accepts
-//    for one address, racing on one link or on a revoked link and a fresh
-//    one, never set the password of the login the other bound. When there is
-//    no user under our id, the address's login is someone else's (another
-//    business's, or made elsewhere): it gets none and its password is not
-//    touched, the answer is `sign_in`, and nothing is spent, so its holder
-//    may accept once signed in (`acceptSignedIn`). A fault spends
-//    nothing and binds nothing; a login it stranded is adopted by the next
-//    accept. Then, still in the transaction: spend every unspent token of
-//    the invitation, mark it accepted, give its one enduring person an
-//    acting identity, a membership in the invited role and the confirmed
+//    business, `invitation-bind.ts`) answers `sign_in` and asks the provider
+//    nothing. Otherwise it is made (`auth.create_user`), outside any lock:
+//    a create makes a new user or is refused, and never changes one the
+//    provider holds. Refused, the address holds a login already, whoever
+//    made it: the answer is `sign_in`, nothing is set and nothing spent, and
+//    its holder accepts once signed in (`acceptSignedIn`). That is how a
+//    login an earlier accept made and never bound (its answer came too late,
+//    or its link died before the bind) is recovered: the provider made it
+//    with its holder's password and the address confirmed. No login is ever
+//    set again here, so no accept can change the password of a login
+//    another bound. A fault spends nothing and binds nothing.
+// 3. In one transaction, for the login this accept made: the login id's
+//    lock (`lockLoginId`), then the invitation's row lock, every check
+//    again and whether this business has bound a login under the id now (a
+//    signed-in accept with the new login may have). Then spend every unspent
+//    token of the invitation, mark it accepted, give its one enduring person
+//    an acting identity, a membership in the invited role and the confirmed
 //    address, map the new login to that person, and write both audit
 //    events. The link then does nothing, and nothing here opens a session:
 //    the person signs in with the login, as anyone does. The lock order is
@@ -47,12 +43,7 @@
 import { createHash } from 'node:crypto';
 import { payloadDigest } from '../../../core-digest/src/index.ts';
 import { advisoryLock, type Database, type TenantQuery } from '../../../core-records/src/index.ts';
-import {
-  createLogin,
-  updateLogin,
-  type Broker,
-  type LoginAsked,
-} from '../../../core-custody/src/index.ts';
+import { createLogin, type Broker } from '../../../core-custody/src/index.ts';
 import { writeAuditEvent } from './audit.ts';
 import { boundHere, LOGIN_PROVIDER, loginBound, loginSubject } from './invitation-login.ts';
 import { workerActor } from './conversation-lifecycle.ts';
@@ -103,8 +94,8 @@ export async function lockLogin(tx: TenantQuery, id: string): Promise<void> {
 /**
  * Lock the login id for one address in the transaction's business, and
  * return it. Taken before the invitation's row by every accept for the
- * address, so the check that no login is bound under the id, the
- * adopting update and the bind run for one accept at a time.
+ * address, so the check that this business binds no login under the id and
+ * the bind run for one accept at a time.
  */
 export async function lockLoginId(tx: TenantQuery, address: string): Promise<string> {
   const id = loginSubject(tx.businessId, address);
@@ -233,23 +224,12 @@ export async function spendAndSeat(
 
 const SIGN_IN = { ok: true, state: 'sign_in' } as const;
 
-/** Step 3, under the locks: the adopting update when the create was refused, then the bind. */
-async function enrol(
-  tx: TenantQuery,
-  broker: Broker,
-  hash: string,
-  login: { readonly asked: LoginAsked; readonly made: boolean },
-): Promise<AcceptResult> {
-  const id = await lockLoginId(tx, login.asked.email);
+/** Step 3, under the locks: the bind of the login this accept made. */
+async function enrol(tx: TenantQuery, hash: string, address: string): Promise<AcceptResult> {
+  const id = await lockLoginId(tx, address);
   const found = await liveToken(tx, hash, true);
   if (found === undefined) return { ok: false, code: 'ENROLMENT_LINK_INVALID' };
   if (await boundHere(tx, id)) return SIGN_IN;
-  if (!login.made) {
-    const set = await updateLogin(broker, login.asked);
-    if (!set.ok) {
-      return set.kind === 'refused' ? SIGN_IN : { ok: false, code: 'ENROLMENT_UNAVAILABLE' };
-    }
-  }
   await spendAndSeat(tx, found, id);
   return { ok: true, state: 'enrolled' };
 }
@@ -270,11 +250,10 @@ export async function acceptInvitation(
   if (found === undefined) return { ok: false, code: 'ENROLMENT_LINK_INVALID' };
   const id = loginSubject(found.business, found.address);
   if (await loginBound(database, businesses, id)) return SIGN_IN;
-  const asked: LoginAsked = { id, email: found.address, password: request.password };
-  const made = await createLogin(broker, asked);
-  if (!made.ok && made.kind !== 'refused') return { ok: false, code: 'ENROLMENT_UNAVAILABLE' };
-  return await database.withBusiness(
-    found.business,
-    async (tx) => await enrol(tx, broker, hash, { asked, made: made.ok }),
-  );
+  const made = await createLogin(broker, { id, email: found.address, password: request.password });
+  if (!made.ok) {
+    return made.kind === 'refused' ? SIGN_IN : { ok: false, code: 'ENROLMENT_UNAVAILABLE' };
+  }
+  const { address } = found;
+  return await database.withBusiness(found.business, async (tx) => await enrol(tx, hash, address));
 }

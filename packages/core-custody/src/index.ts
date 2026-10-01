@@ -35,7 +35,6 @@ export { deliverAuthMessage, type AuthMessageOutcome } from './broker-auth-email
 export {
   createLogin,
   readLogin,
-  updateLogin,
   type LoginAsked,
   type LoginMade,
   type LoginRead,

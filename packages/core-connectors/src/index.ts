@@ -34,11 +34,9 @@ export {
   AUTH_EXISTS_STATUS,
   AUTH_NOT_FOUND_STATUS,
   AUTH_READ_USER,
-  AUTH_UPDATE_USER,
   AUTH_USERS_PATH,
   authUserAdapter,
   authUserReadAdapter,
-  authUserUpdateAdapter,
   readAuthUserAnswer,
   readAuthUserReadAnswer,
 } from './auth-user.ts';
