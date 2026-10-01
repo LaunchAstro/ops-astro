@@ -25,3 +25,9 @@ create index second_factor_codes_subject on ops.second_factor_codes (subject_dig
 revoke all on ops.second_factor_codes from public;
 grant select (subject_digest, attempt, state, recorded_at), insert (subject_digest, attempt, state)
   on ops.second_factor_codes to ops_astro_app;
+
+-- The agent door's read-only live check looks a bearer up by business and
+-- hash (security review round 5); this index serves it, rather than a filter
+-- over the business's rows. Not unique: no constraint makes hashes unique.
+create index agent_credentials_door
+  on public.agent_credentials (business_id, credential_hash);
