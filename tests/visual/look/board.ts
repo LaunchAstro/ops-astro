@@ -236,4 +236,41 @@ const BOARD_PROBES: readonly LookProbe[] = [
   ),
 ];
 
-export const BOARD: LookScreen = { id: 'board', probes: BOARD_PROBES };
+/**
+ * Probes whose markup UI-POLISH's board polish builds (its FORKS line 04:17Z: the
+ * board waits on SL07's, batch 2). Picked onto b0/SL07 with the probes (590b55c)
+ * but not the markup, so they are held here and run once the polish lands; the
+ * rest already hold. Empty this list as each part is built.
+ */
+const AWAITING_POLISH: ReadonlySet<string> = new Set([
+  'board.tabrow',
+  'board.tab',
+  'board.tab-current',
+  'board.create-field',
+  'board.create-button',
+  'board.inbox-card',
+  'board.inbox-head',
+  'board.inbox-title',
+  'board.head',
+  'board.head-rule',
+  'board.group',
+  'board.group-first',
+  'board.group-label',
+  'board.group-reason',
+  'board.row',
+  'board.rank',
+  'board.name',
+  'board.chip',
+  'board.cell',
+  'board.assignee',
+  'board.avatar',
+  'board.due',
+  'board.due-today',
+  'board.due-overdue',
+  'board.dash',
+]);
+
+export const BOARD: LookScreen = {
+  id: 'board',
+  probes: BOARD_PROBES.filter((one) => !AWAITING_POLISH.has(one.id)),
+};
