@@ -51,6 +51,7 @@ function runFacts(runId: string, lineageId: string, planStepKey: string | null) 
         expired: false,
         revoked: false,
         cause: null,
+        parentFault: null,
         outcome: null,
         refusal: null,
         steps: [callFacts(`${runId}-call-1`), callFacts(`${runId}-call-2`)],
