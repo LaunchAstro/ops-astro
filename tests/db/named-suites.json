@@ -173,7 +173,9 @@
     "U14's CLI adds u14-access-cli (C32's access.read, access.grant and access.revoke and C34's operations.read through the CLI client and straight to the API as the same caller: the same record bar the minted values, the same refusal word for word per key, business to business by prefix and by id, another business's client, unknown, revoked and malformed ids, and the agent route; nothing refused wrote a row) and u14-access-end-cli (C58's access.end the same way, and each ended person's next call refused alike on both). Both share c32-clients-world; cli-parity.ts is their helper and must not be named.",
     "STAGING-DEPLOY (STAGING-PREP B3) adds s0-1-staging-logins-live (S0-1 staging logins: before the reset the runtime login in the app group, after it one noinherit login per lookup, backup and forwarder group, each address written owner-only in the pooler's form; an existing folder is refused and an address already given out keeps working).",
     "B1-END-FIX-OPS (batch 1 blind review A1, A5, A8) adds restore-includes-sign-in-tables (the restore drill passes the scheduled public, ops and auth archive), restore-includes-staging-guards (a staging archive restores after the seed installs its made-up guards) and hosted-expired-lease-recovery (the Vercel function runs the reconciliation pass and fences a lost worker's expired lease; fix round 1 adds hosted-recovery-waits-for-pass (every request waits on the pass in flight) and staging-archive-restores-guards (the complete staging archive restores with its guard triggers); round 2 adds restore-drill-keeps-staging-guards (the drill's target keeps the guard triggers).",
-    "SL09-2a-f3 adds c58-end-access-credentials (access.end revoking every live agent credential the ended person issued, each agent actor deactivated with it, in the same act; another person's credential in the same business and the same provider user's credential in bravo left live), named as an isolation suite too."
+    "SL09-2a-f3 adds c58-end-access-credentials (access.end revoking every live agent credential the ended person issued, each agent actor deactivated with it, in the same act; another person's credential in the same business and the same provider user's credential in bravo left live), named as an isolation suite too.",
+    "REVIEW-BATCH-2 #312 batch 3a adds review-3a-2-purge-conversation-scope (task.purge applies and purges another aged task while a trashed task is a conversation's scope) as conformance.",
+    "REVIEW-BATCH-2 #312 batch 3a adds review-3a-3-sweep-starvation (the idle sweep: a hundred older held conversations do not starve a younger due one, and a conversation on a trashed task is not held WORK_OPEN for ever) as conformance."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -627,6 +629,8 @@
     "tests/api/hosted-recovery-waits-for-pass.test.ts",
     "tests/ci/staging-archive-restores-guards.test.ts",
     "tests/ci/restore-drill-keeps-staging-guards.test.ts",
-    "tests/ci/s0-1-staging-logins-live.test.ts"
+    "tests/ci/s0-1-staging-logins-live.test.ts",
+    "tests/api/review-3a-2-purge-conversation-scope.test.ts",
+    "tests/api/review-3a-3-sweep-starvation.test.ts"
   ]
 }
