@@ -39,8 +39,10 @@ export interface ClientChoice {
 export interface TaskClientFacts {
   /** The business's clients the reader may put a task under (C32). */
   readonly choices: readonly ClientChoice[];
-  /** The client the task is under, by id, or null for none. */
+  /** The client the task is under, by id, or null for none or one the reader cannot see. */
   readonly current: string | null;
+  /** The task is under a client the reader's grants do not reach (`clientSet`, no id). */
+  readonly unseen: boolean;
   /** True once the task has content: its client is locked (S0-5). */
   readonly hasContent: boolean;
 }
@@ -91,6 +93,7 @@ function withTask(state: ReadState<ClientListResult>, task: Task): ReadState<Tas
   const facts = (listed: ClientListResult): TaskClientFacts => ({
     choices: listed.clients.map((each) => ({ id: each.clientId, name: each.name })),
     current: task.client,
+    unseen: task.clientSet && task.client === null,
     hasContent: task.hasContent,
   });
   switch (state.outcome) {

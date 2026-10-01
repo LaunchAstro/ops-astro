@@ -1307,8 +1307,11 @@ reads as no board. An agent's pool is its one task, so an agent always gets
 task's own record; the shared view carries neither.
 
 A member's `task.read` also carries `client`, the client the task is under by
-id (null for none), and `hasContent`, true once the task has content, the
-answer S0-5's lock gives `task.set_party` (`CLIENT_LOCKED`), for the dock
+id (null for none, and null for a client the reader's grants do not reach:
+`client.list`'s rule, a grant across the business or one on that client, so a
+reader held to client B and shared one of client A's tasks reads `client: null`
+beside `clientSet: true`, CS-4.12), and `hasContent`, true once the task has
+content, the answer S0-5's lock gives `task.set_party` (`CLIENT_LOCKED`), for the dock
 panel's Client field (MP-4-8). Both are read in `commands/task-content.ts`,
 the lock's own module, so the field and the lock agree. The client's name is
 never sent here: it is `client.list`'s, filtered by the reader's grants. An

@@ -34,6 +34,9 @@ import { DuplicateForm } from './DuplicateForm.tsx';
 export const LOCKED_LINE =
   'This task has content, so its client is locked. Duplicate it without contents to start one for another client.';
 
+/** The select's value for a client the reader cannot see, which no client id can equal. */
+const UNSEEN = 'unseen';
+
 export interface ClientFieldProps extends ClientSeams {
   readonly client: OperationsClient;
   readonly grantKey: string;
@@ -47,13 +50,16 @@ function ClientSelect(props: {
   readonly onChoose: (client: string) => void;
 }): ReactElement {
   const { choices, current, hasContent } = props.facts;
-  const unseen = current !== null && !choices.some((choice) => choice.id === current);
+  // A client the list does not name, or one task.read sent no id for (CS-4.12).
+  const unseen =
+    props.facts.unseen || (current !== null && !choices.some((choice) => choice.id === current));
+  const shown = current ?? (unseen ? UNSEEN : '');
   return (
     <select
       id="panel-field-client"
       className="input"
       disabled={hasContent || props.busy}
-      value={current ?? ''}
+      value={shown}
       onChange={(event) => props.onChoose(event.target.value)}
     >
       <option value="" disabled>
@@ -65,7 +71,7 @@ function ClientSelect(props: {
         </option>
       ))}
       {unseen ? (
-        <option value={current} disabled>
+        <option value={shown} disabled>
           A client you cannot see
         </option>
       ) : null}

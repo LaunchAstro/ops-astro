@@ -41,7 +41,7 @@ const facts = (over: Partial<TaskClientFacts> = {}): ClientFactsSource => ({
   useFacts: (_task, grantKey) => ({
     state: {
       outcome: 'ready',
-      value: { choices: [A, B], current: null, hasContent: false, ...over },
+      value: { choices: [A, B], current: null, unseen: false, hasContent: false, ...over },
       refusal: null,
       because: null,
       grantKey,

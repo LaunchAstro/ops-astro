@@ -514,8 +514,8 @@ export interface InternalTaskDetail extends TaskDetail {
   readonly comments: readonly InternalCommentView[];
   /**
    * The client the task is under, by id (C32), or null for none (MP-4-8). Its
-   * name is `client.list`'s; a client the reader's grants do not reach is an
-   * id the Client field cannot name.
+   * name is `client.list`'s. A client the reader's grants do not reach is sent
+   * as null too, beside `clientSet: true` (CS-4.12): no id `client.list` withholds.
    */
   readonly client: string | null;
   /** True once the task has content, so its client is locked (S0-5, `CLIENT_LOCKED`). */
