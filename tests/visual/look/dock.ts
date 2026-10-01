@@ -11,7 +11,7 @@
 // with it the rail's top, are ruled; that the rail stays centred on the right
 // edge is held against the pinned mockup box in tests/web/dock-visual.test.ts.
 
-import type { LookProbe, LookScreen } from './index.ts';
+import type { LookProbe, LookScreen } from './types.ts';
 
 const HOME = { path: '/dashboard/' } as const;
 const APP = { page: 'agency:projects-board' } as const;

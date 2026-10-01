@@ -2,7 +2,7 @@
 //
 // B4, the task page (TASK-PAGE.md; PAGE-MAP TASKS S5 to S8).
 
-import type { LookScreen } from './index.ts';
+import type { LookScreen } from './types.ts';
 
 export const TASK: LookScreen = {
   id: 'task',

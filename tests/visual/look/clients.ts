@@ -5,7 +5,7 @@
 // 1480 only: at 900 and under, the mockup draws its tab strip below the
 // viewport at rest (D-1), so its panel cannot be opened there to measure.
 
-import type { LookProbe, LookScreen } from './index.ts';
+import type { LookProbe, LookScreen } from './types.ts';
 
 const MOCKUP = { path: '/agency/projects/', open: '[data-dock-tab="clients"]' } as const;
 const APP = { page: 'agency:projects-board', open: '.dock__tab[data-panel="clients"]' } as const;

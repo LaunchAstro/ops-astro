@@ -12,7 +12,7 @@
 // replayed from its own store (`aa-rail-w`, what its grip writes), and the
 // app's grip is dragged by the same 96 px from 224.
 
-import type { LookProbe, LookScreen } from './index.ts';
+import type { LookProbe, LookScreen } from './types.ts';
 
 const DASHBOARD = { path: '/dashboard/' } as const;
 const PROJECTS = { path: '/agency/projects/' } as const;
