@@ -259,8 +259,9 @@ with the expiry check off, before it answers `AUTH_SESSION_EXPIRED`
 **Sessions (C58).** A session has no idle limit and an absolute limit of 12
 hours from the first sign-in, `SESSION_ABSOLUTE_SECONDS`
 (`core-records/src/identity/verified-subject.ts`), set there and nowhere else.
-The first sign-in is the `amr` first-factor time GoTrue stamps, which a refresh
-carries unchanged; never `iat`, which every refresh moves. A verified bearer
+The first sign-in is the earliest `amr` first-factor time GoTrue stamps, which a
+refresh carries unchanged, so a later re-sign-in in the same session never
+extends the 12; never `iat`, which every refresh moves. A verified bearer
 one second past the limit, with no first-sign-in time, or with one more than a
 minute ahead of the server's clock, is `AUTH_SESSION_EXPIRED` 401
 (`pastAbsoluteLimit`). A session left alone for hours inside the 12 is still
@@ -1561,7 +1562,8 @@ a case that cannot run yet prints `unrun` with its reason.
 
 The sign-in adapter (`apps/api/auth/supabase.ts`) passes the provider's
 assurance through beside `sub`: the level (`aal`), and from `amr` the time of
-the session's first sign-in and of its second factor. A refresh carries the
+the session's first sign-in (the earliest first factor) and of its latest
+second factor. A refresh carries the
 `amr` times unchanged, so the factor time is never renewed by one. A claim the
 adapter cannot read is the lowest level, `aal1` with no factor time.
 
