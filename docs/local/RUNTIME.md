@@ -1844,6 +1844,40 @@ C52-A fills from its own rows under the activation lock; its foreign keys and
 that read join at the batch 3 join. Tests: `aw-01-occurrence-run` and
 `aw-01-occurrence-run-isolation`.
 
+## The harness adoption test's trigger
+
+AW-12, part one: `core-runtime/src/harness-trigger.ts` and
+`core-commands/src/reads/harness-trigger.ts`. The round asks whether an agent
+framework has earned a role under the product's loop. It adopts nothing:
+adoption is the owner's separate decision.
+
+- **Two limbs, both needed.** The run's required reading must exceed one
+  window at the pinned provider: the replay provider's `replay-1`, 32 000
+  units, the only route catalogued. The work must also sub-delegate (AW-11's
+  `delegated` run event, depth one). The reading is the sum of the run's
+  accept-time manifest sizes (0192), counted in UTF-8 bytes, an upper bound on
+  any byte-level tokenizer's units. A run with no pin reads nothing.
+- **"Not yet" is a result.** Either limb missing, the reading is `not_yet`.
+  It names the missing limbs and carries the two figures: the reading against
+  the window, and the depth with the depth built. It is frozen and holds no
+  other number. `enterCandidates` enters no candidate on it. It throws on a
+  reading the trigger did not make, so nothing reaches the candidates unread.
+  The trigger is read from the work's shape, never from a date.
+- **Who reads it.** `readHarnessTrigger` is the team's: a person outside it,
+  or one with no live `task:read`, gets `SCOPE_NOT_GRANTED`. The run is
+  filtered by that grant inside the statement, so a run outside it, in another
+  business or missing, is one `NOT_FOUND`. A manifest entry with no whole size
+  is `DEFINITION_UNAVAILABLE`, never counted as nothing. No route, verb or
+  agent operation reaches it yet.
+- **What stays in the tests.** The pinned candidates with their licences read
+  (`tests/harness/candidates.ts`) and the four shared fakes, all in
+  `tests/harness/`, so none of them is in the product's dependency tree.
+
+Tests: `aw-12-trigger`, `aw-12-trigger-read`, `aw-12-isolation`,
+`aw-12-candidates` (with `AW-12 candidate audit`) and `aw-12-fakes`. The
+refusal tests, the representative case, the comparison families, the ledger
+and the gates wait on AW-08, AW-09 and AW-10.
+
 ## What is not here
 
 - **No machine write-off.** The worker (`apps/worker/`, T2b), effect
