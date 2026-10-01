@@ -47,7 +47,13 @@ const SMALL: ClientBook = {
 
 describe('Clients panel registers and draws its tab in rank', () => {
   it('is the clients tab, after team and before settings, on the users glyph, drawn at /clients/', () => {
-    expect(dockTabs().map((tab) => tab.id)).toEqual(['notifs', 'team', 'clients', 'settings']);
+    expect(dockTabs().map((tab) => tab.id)).toEqual([
+      'notifs',
+      'team',
+      'clients',
+      'todos',
+      'settings',
+    ]);
     const tab = dockTabs().find((each) => each.id === 'clients');
     expect(tab?.label).toBe('Clients');
     expect(tab?.icon).toBe('users');

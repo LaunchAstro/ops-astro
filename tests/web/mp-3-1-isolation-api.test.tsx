@@ -22,6 +22,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { act } from 'react';
+import { COMMAND_EFFECTS, type CommandName } from '../../packages/core-wire/src/index.ts';
 import { tokenFor } from '../api/fixture.ts';
 import {
   isolationWorld,
@@ -33,6 +34,8 @@ import {
   signedIn,
   type Heard,
 } from './mp-3-1-isolation-world.tsx';
+
+const NO_EFFECT = { writes: [], intake: [], outside: [], access: false };
 
 const w = isolationWorld('mp_3_1_isolation');
 describe.skipIf(serverUrl === undefined)('MP-3-1 isolation', () => {
@@ -156,8 +159,10 @@ describe.skipIf(serverUrl === undefined)('MP-3-1 isolation', () => {
     await quiet(heard);
     const opened = await since(seen);
     expect(opened.length).toBeGreaterThan(0);
+    // Each is a read by the catalogue's own effects (task.execution is one
+    // whose name does not end in .read): no write, intake, egress or access.
     for (const command of opened)
-      expect(command).toMatch(/^(?:[a-z]+\.read|session\.capabilities)$/u);
+      expect([command, COMMAND_EFFECTS[command as CommandName]]).toEqual([command, NO_EFFECT]);
 
     // Everything the dock does on its own: nothing audited, nothing asked.
     seen = new Set((await events()).map((row) => row['id']));

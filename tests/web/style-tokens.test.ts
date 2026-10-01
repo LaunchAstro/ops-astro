@@ -19,7 +19,9 @@ const SHEETS = [
   ...files('packages/ui/src/styles', '.css'),
   ...files('apps/web/src/styles', '.css'),
 ];
-const SOURCES = [...files('packages/ui/src', '.tsx'), ...files('apps/web/src', '.tsx')];
+const SOURCES = ['packages/ui/src', 'apps/web/src'].flatMap((dir) =>
+  files(dir, '.tsx').concat(files(dir, '.ts')),
+);
 
 /** Comments out, so a name in prose is neither a read nor a declaration. */
 const uncommented = (sheet: string): string => sheet.replaceAll(/\/\*[\s\S]*?\*\//gu, '');
@@ -30,8 +32,11 @@ const names = (text: string, pattern: RegExp): string[] =>
 /** Reads with no fallback: `var(--name)`, spaces and case as a browser takes them. */
 const unguardedReads = (sheet: string): string[] => names(sheet, /var\(\s*(--[\w-]+)\s*\)/giu);
 const declared = (sheet: string): string[] => names(sheet, /(?:^|[{;\s])(--[\w-]+)\s*:/gu);
-/** Names a component writes in a style object: `'--dock-w': ...`. */
-const writtenInline = (source: string): string[] => names(source, /['"](--[\w-]+)['"]\s*:/gu);
+/** Names code writes on an element: a style object's `'--dock-w': ...`, or `setProperty('--catw', ...)`. */
+const writtenInline = (source: string): string[] => [
+  ...names(source, /['"](--[\w-]+)['"]\s*:/gu),
+  ...names(source, /setProperty\(\s*['"`](--[\w-]+)['"`]/gu),
+];
 
 describe('MP-3-2 motion tokens: every custom property a sheet reads is declared', () => {
   it('finds none undeclared across the shared and the slice sheets', () => {
