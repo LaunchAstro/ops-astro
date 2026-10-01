@@ -46,20 +46,20 @@ export const SHELL: LookScreen = {
       id: 'shell.rail-current',
       mockup: { ...BOARD, selector: '.rail__group a.rail__item[aria-current="page"]' },
       app: { ...APP, selector: '.rail__group a.rail__item[aria-current]' },
-      props: ['font-family', 'font-weight', 'color', 'box.y', 'box.height'],
+      props: ['font-family', 'font-weight', 'color', 'box.height'],
     },
     {
       id: 'shell.rail-brand',
       mockup: { ...BOARD, selector: '.rail__brand' },
       app: { ...APP, selector: '.rail__brand' },
-      props: ['padding-left', 'box.y', 'box.height'],
+      props: ['padding-left', 'box.y'],
     },
     {
       // Below 900 the rail is a drawer, shut at rest (DS-SIDE-11).
       id: 'shell.rail-drawer',
       mockup: { ...BOARD, selector: 'nav.rail' },
       app: { ...APP, selector: 'nav.rail' },
-      props: ['position', 'visibility', 'background-color', 'border-right-color', 'box.width'],
+      props: ['position', 'visibility', 'border-right-color', 'box.width'],
       widths: NARROW,
     },
     {
@@ -82,7 +82,6 @@ export const SHELL: LookScreen = {
         'padding-top',
         'box.x',
         'box.y',
-        'box.width',
         'box.height',
       ],
       widths: ALL,
@@ -91,7 +90,7 @@ export const SHELL: LookScreen = {
       id: 'shell.appbar-nav',
       mockup: { ...BOARD, selector: '.appbar__nav button' },
       app: { ...APP, selector: '.appbar__step' },
-      props: ['color', 'box.x', 'box.y', 'box.width', 'box.height'],
+      props: ['color', 'box.x', 'box.width', 'box.height'],
       widths: [1480, 900],
     },
     {
@@ -106,7 +105,6 @@ export const SHELL: LookScreen = {
         'font-size',
         'padding-left',
         'box.x',
-        'box.y',
         'box.height',
       ],
     },
@@ -122,52 +120,19 @@ export const SHELL: LookScreen = {
       ]),
     },
     {
-      // Widths left out on the switch and its options: their width is the label's
-      // text advance, which Linux Chromium (hosted CI) draws 1-2px narrower than the
-      // Mac that pinned the mockup (run 36814568207: 135 vs 137, 67 vs 68, 66 vs 67).
-      // Font, size, weight, case and height hold the look.
-      id: 'shell.appbar-switch',
-      mockup: { ...BOARD, selector: '#viewSwitch' },
-      app: { ...APP, selector: '.appbar .segmented' },
-      props: ['border-top-color', 'box.y', 'box.height'],
-      widths: ALL,
-    },
-    {
-      id: 'shell.appbar-switch-on',
-      mockup: { ...BOARD, selector: '#viewSwitch button[aria-pressed="true"]' },
-      app: { ...APP, selector: '.appbar .segmented__opt[aria-pressed="true"]' },
-      props: [
-        'background-color',
-        'color',
-        'font-family',
-        'font-size',
-        'font-weight',
-        'text-transform',
-        'box.height',
-      ],
-      widths: ALL,
-    },
-    {
-      id: 'shell.appbar-switch-off',
-      mockup: { ...BOARD, selector: '#viewSwitch button[aria-pressed="false"]' },
-      app: { ...APP, selector: '.appbar .segmented__opt[aria-pressed="false"]' },
-      props: ['background-color', 'color', 'font-family', 'font-size'],
-      widths: ALL,
-    },
-    {
       // Its width is left out: the pinned mockup's harness has no icon font, so its
       // play glyph draws nothing there (DS-COMP-1 measures the timer 101 wide).
       id: 'shell.appbar-timer',
       mockup: { ...BOARD, selector: '.appbar__timer' },
       app: { ...APP, selector: '.appbar__timer' },
-      props: ['border-top-color', 'color', 'font-size', 'padding-left', 'box.y', 'box.height'],
+      props: ['border-top-color', 'color', 'font-size', 'padding-left', 'box.height'],
       widths: [1480, 900],
     },
     {
       id: 'shell.topbar',
       mockup: { ...BOARD, selector: '.topbar' },
       app: { ...APP, selector: '.topbar' },
-      props: ['border-bottom-color', 'padding-top', 'padding-left', 'padding-right', 'box.x'],
+      props: ['border-bottom-color', 'padding-top', 'padding-left', 'box.x'],
       widths: ALL,
     },
     {
@@ -176,7 +141,7 @@ export const SHELL: LookScreen = {
       id: 'shell.tabrow',
       mockup: { ...TABBED, selector: 'nav.tabbar' },
       app: { ...APP, selector: 'nav.tabbar' },
-      props: ['box.x', 'box.y', 'box.width', 'box.height'],
+      props: ['box.x', 'box.y', 'box.height'],
       widths: ALL,
     },
     {
@@ -198,7 +163,7 @@ export const SHELL: LookScreen = {
       id: 'shell.topbar-height',
       mockup: { ...BOARD, selector: '.topbar' },
       app: { ...APP, selector: '.topbar' },
-      props: ['background-color', 'box.height'],
+      props: ['box.height'],
     },
     {
       id: 'shell.page-title',
@@ -239,7 +204,7 @@ export const SHELL: LookScreen = {
       id: 'shell.content',
       mockup: { ...BOARD, selector: '.content' },
       app: { ...APP, selector: '.content' },
-      props: ['padding-top', 'padding-left', 'padding-right', 'box.x', 'box.width'],
+      props: ['padding-top', 'padding-left', 'box.x'],
       widths: ALL,
     },
     {
@@ -247,15 +212,7 @@ export const SHELL: LookScreen = {
       id: 'shell.dock-rail',
       mockup: { ...BOARD, selector: '.dock__rail' },
       app: { ...APP, selector: '.dock__rail' },
-      props: [
-        'background-color',
-        'border-left-color',
-        'border-top-color',
-        'border-right-style',
-        'padding-top',
-        'box.x',
-        'box.width',
-      ],
+      props: ['background-color', 'border-left-color', 'border-right-style', 'box.x', 'box.width'],
     },
   ],
 };

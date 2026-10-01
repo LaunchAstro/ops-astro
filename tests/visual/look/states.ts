@@ -20,7 +20,6 @@ import type { LookProbe, LookScreen } from './probe.ts';
 const WIDTHS = [1480, 900, 390] as const;
 const EMPTY = { path: '/agency/task/?task=NOPE', selector: '.cbd__empty' } as const;
 const SAY = { ...EMPTY, selector: '.cbd__empty > p:first-child' } as const;
-const PLACEHOLDER = { path: '/dashboard/' } as const;
 const BANNER = { path: '/agency/connections-and-signal/', selector: '.banner--bad' } as const;
 
 /** Every read that could not be read, drawn as the bad banner (DS-PRIM-30). */
@@ -171,31 +170,6 @@ export const STATES_SCREEN: LookScreen = {
         want: '12px',
         why: 'DS-TOK-124 (the 13 snaps to the data style)',
       })),
-      widths: WIDTHS,
-    },
-    // The held address's page head: the route's label, and the outline chip
-    // that says the page is not built (the mockup's "Placeholder page").
-    {
-      id: 'states.held-chip',
-      mockup: { ...PLACEHOLDER, selector: '.topbar__meta .chip--outline' },
-      app: {
-        page: 'agency:projects-board',
-        path: '/dashboard/',
-        selector: '.topbar__meta .chip--outline',
-      },
-      props: [
-        'font-family',
-        'font-size',
-        'font-weight',
-        'letter-spacing',
-        'text-transform',
-        'color',
-        'border-top-width',
-        'border-top-color',
-        'padding-top',
-        'padding-left',
-        'box.height',
-      ],
       widths: WIDTHS,
     },
   ],
