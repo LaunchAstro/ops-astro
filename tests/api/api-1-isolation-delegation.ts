@@ -74,6 +74,31 @@ export function delegationCrossing(): void {
       'task.observe': () => ({ ...notOwnLease, attemptId: randomUUID(), outcome: 'completed' }),
       'task.queue': () => null,
       'session.capabilities': () => null,
+      // The stack's run and model operations: the lease ones at the other
+      // person's lease, the run's state on the crossing's task, and a child
+      // handback from an agent that holds no child credential.
+      'task.check': () => ({ ...notOwnLease, name: 'made-up check', outcome: 'passed' }),
+      'model.call': () => ({
+        ...notOwnLease,
+        operation: 'compose',
+        fields: [{ name: 'note', source: 'business_internal', value: 'made-up' }],
+      }),
+      'run.delegate_child': () => ({
+        ...notOwnLease,
+        helperActorId: randomUUID(),
+        purpose: 'api_1_isolation',
+        collections: ['run'],
+        actions: ['read'],
+        expiresInSeconds: 60,
+      }),
+      'run.revise_state': (record) => ({
+        recordId: record,
+        runId: randomUUID(),
+        expectedVersion: 0,
+        knowledge: ['made-up'],
+        unknowns: [],
+      }),
+      'run.child_handback': () => ({ outcome: 'completed' }),
     };
     expect(Object.keys(target).toSorted()).toEqual(agentRows.map((row) => row.command).toSorted());
     // The lease: the delegation's one task is not the other lease's. The pickup: one live
