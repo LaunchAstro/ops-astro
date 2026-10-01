@@ -106,8 +106,11 @@ export async function follow(
   asks: Watching,
   seated?: Seated,
 ): Promise<void> {
+  // A stream that ended before this ran (the tab left while the route awaited)
+  // never calls a listener added now, so its end is taken as already here.
   const ended = new Promise<void>((resolve) => {
-    stream.onAbort(resolve);
+    if (stream.aborted) resolve();
+    else stream.onAbort(resolve);
   });
   let finished = noop;
   const done = new Promise<void>((resolve) => {
