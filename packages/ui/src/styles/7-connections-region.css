@@ -12,8 +12,9 @@
 .approval__meta {
   margin: 0;
   color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 
 .skcsec,
@@ -32,13 +33,17 @@
 .skc__count {
   margin: 0;
   color: var(--text);
-  font-size: var(--text-sm);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
 .skc__say {
   max-width: 68ch;
   margin: 0;
   color: var(--text-2);
-  font-size: var(--text-sm);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
 .skc {
   margin: 0;
@@ -63,7 +68,9 @@
 }
 .skc__what {
   color: var(--text);
-  font-size: var(--text-sm);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
 /* Mono: quantities read down a column. */
 .skc__fig {
@@ -71,8 +78,9 @@
   flex-wrap: wrap;
   align-items: baseline;
   gap: var(--s-4);
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 .skc__figv {
   display: inline-flex;
@@ -81,13 +89,17 @@
 }
 .skc__n {
   color: var(--text);
-  font-size: var(--text-sm);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
   font-variant-numeric: tabular-nums;
 }
 .skc__u,
 .skc__iok {
   color: var(--ink-faint);
-  letter-spacing: var(--tracking-label);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 .skc__spread {
   color: var(--text-2);
@@ -106,8 +118,9 @@
 .skc__fig--thin .skc__say,
 .skc__fig--none .skc__say {
   color: var(--text-muted);
-  font-family: var(--font-sans);
-  font-size: var(--text-overline);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
 }
 .skc__fig--none {
   color: var(--text-muted);
@@ -117,13 +130,16 @@
 .skc__alt {
   margin: 0;
   color: var(--text-2);
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 .skc__k {
   margin-right: 0.5rem;
   color: var(--ink-faint);
-  letter-spacing: var(--tracking-label);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 /* Exact model ids wrap; they never truncate. */
 .skc__model {
@@ -141,15 +157,18 @@
   gap: 0.3rem;
   margin: 0;
   color: var(--text-2);
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 .skc__leg {
   font-variant-numeric: tabular-nums;
 }
 .skc__leg b {
   color: var(--text);
-  font-weight: 400;
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 
 /* -- The client scope bar ------------------------------------------------ */
@@ -162,9 +181,9 @@
 }
 .gradbar__l {
   color: var(--ink-faint);
-  font-size: var(--fs-mono-sm);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
 }
 .gradbar select {
   width: auto;
@@ -208,14 +227,16 @@
 .grad__name b,
 .chan__name b,
 .exc__what b {
-  font-weight: var(--weight-medium);
+  font: var(--type-body-strong);
+  letter-spacing: var(--type-body-strong-tracking);
+  text-transform: var(--type-body-strong-case);
 }
 /* The action class reads exactly as typed: mono, never uppercased. */
 .grad__type {
   color: var(--ink-faint);
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
-  letter-spacing: var(--tracking-label);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 .grad__act,
 .chan__act,
@@ -230,7 +251,9 @@
 .autosw__lbl {
   max-width: 12.5rem;
   color: var(--text-muted);
-  font-size: var(--text-sm);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
   text-align: right;
 }
 .grad__rec {
@@ -240,21 +263,25 @@
   align-items: baseline;
   gap: var(--s-4);
   color: var(--text-muted);
-  font-size: var(--text-sm);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
 /* Three counts, never a score. */
 .grad__n b {
   color: var(--text);
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
-  font-weight: 400;
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 .grad__note {
   grid-column: 1 / -1;
   max-width: 62ch;
   margin: 0.25rem 0 0;
   color: var(--text-2);
-  font-size: var(--text-sm);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
 
 /* -- 011 Channels and 012 Exceptions: the graduation row's frame; each
@@ -262,8 +289,9 @@
 .chan__where,
 .exc__where {
   color: var(--ink-faint);
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
   overflow-wrap: anywhere;
 }
 .chan__meta {
@@ -273,7 +301,9 @@
   align-items: center;
   gap: var(--s-3);
   color: var(--text-muted);
-  font-size: var(--text-sm);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
 .chan__note,
 .exc__why {
@@ -281,7 +311,9 @@
   max-width: 74ch;
   margin: 0.25rem 0 0;
   color: var(--text-2);
-  font-size: var(--text-sm);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
 .exc__meta {
   display: flex;
@@ -290,10 +322,9 @@
   gap: var(--s-2) var(--s-4);
   margin-top: 0.3rem;
   color: var(--ink-faint);
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
 }
 
 /* The switch is on every row, the dead ones included: squared, its knob an
@@ -363,22 +394,25 @@
 .ps__text {
   margin: 0;
   color: var(--text);
-  font-size: var(--text-sm);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
 .ps__meta {
   margin-top: 0.25rem;
   color: var(--ink-faint);
-  font-size: var(--fs-mono-sm);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
 }
 .ps__x {
   padding: 0 0.2rem;
   border: 0;
   background: none;
   color: var(--text-muted);
-  font-size: 1.05rem;
-  line-height: 1;
+  font: var(--type-subheading);
+  letter-spacing: var(--type-subheading-tracking);
+  text-transform: var(--type-subheading-case);
   cursor: pointer;
 }
 .ps__x:hover {
@@ -403,9 +437,9 @@
   border: 1px solid var(--border);
   background: var(--paper);
   color: var(--text);
-  font: inherit;
-  font-size: 0.875rem;
-  line-height: 1.5;
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
 }
 .connnote__field:focus {
   border-color: var(--accent);
