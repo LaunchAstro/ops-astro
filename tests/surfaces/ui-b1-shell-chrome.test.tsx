@@ -111,7 +111,7 @@ describe('UI-POLISH B1 drawer and history', () => {
     const page = await mount(<Drawer steps={[]} />);
     await page.click('.topbar .navtoggle');
     expect(navOf(page)).toBe('open');
-    await act(async () => {
+    await act(() => {
       document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     });
     expect(navOf(page)).toBeUndefined();

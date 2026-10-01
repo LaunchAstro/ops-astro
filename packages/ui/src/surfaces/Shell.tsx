@@ -149,7 +149,7 @@ export function Shell(props: ShellProps): ReactElement {
   // The drawer shuts on the backdrop, on Escape and on an item (SIDEBAR T-R9).
   const { navOpen, onNav } = props;
   useEffect(() => {
-    if (navOpen !== true || onNav === undefined) return undefined;
+    if (navOpen !== true || onNav === undefined) return;
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') onNav(false);
     };
