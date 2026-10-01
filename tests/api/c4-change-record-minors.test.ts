@@ -34,8 +34,11 @@ async function purgedLeavesNoRow(): Promise<void> {
   expect(await rowsFor(two)).toBe(1);
   const purged = await s.db.app.withBusiness(alpha.id, async (tx) => {
     await tx.query(
-      `update public.records set deleted_at = now() - interval '1 day' where id = $1`,
-      [two],
+      `update public.records
+          set deleted_at = now() - interval '1 day', deleted_by_actor_id = $2,
+              trash_batch_id = gen_random_uuid()
+        where id = $1`,
+      [two, alpha.member.actorId],
     );
     const [type] = await tx.query<{ id: string }>(
       `select id from public.record_types where business_id = $1 and key = 'task'`,
