@@ -81,6 +81,7 @@ it('a record grant does not make business-wide create reachable', () => {
     kind: 'person' as const,
     keys: new Set(['task:write']),
     grants: [{ key: 'task:write', scope: { kind: 'record' as const, id: 'own-task' } }],
+    member: true,
   };
   const available = reachableBy(buildCatalogue([]), recordWriter);
   expect(available.map((one) => one.command)).not.toContain('task.create');

@@ -138,7 +138,7 @@ export async function restoreDrill({
           `set role ${APP_ROLE}`,
           `set app.business_id = '${scope.business}'`,
           `${EFFECTIVE_GRANTS} select (select string_agg(schemaname || '.' || tablename, ',') from pg_tables
-             where schemaname in ('public', 'ops')),
+             where schemaname not in ('pg_catalog', 'information_schema')),
              (exists (select from public.memberships where person_id = '${p}' and active)
              and exists (select from effective where subject_kind = 'person' and subject_id = '${p}'
                and collection = 'person' and (action = 'read' and (scope_kind = 'business'

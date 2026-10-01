@@ -53,11 +53,16 @@
     "tests/reads/c1-search-past-cap.test.ts",
     "tests/reads/c23-isolation.test.ts",
     "tests/api/api-1-isolation.test.ts",
+    "tests/api/leaked-client-read-isolation-assertion.test.ts",
     "tests/db/inbox-records.test.ts",
     "tests/reads/inbox.test.ts",
     "tests/commands/inbox-clearing-client-isolation.test.ts",
     "tests/reads/inbox-named.test.ts",
     "tests/api/inb1f-live-board.test.ts",
+    "tests/api/live-board-lost-access.test.ts",
+    "tests/api/live-board-scoped-revocation-review.test.ts",
+    "tests/api/live-board-client-move-review.test.ts",
+    "tests/api/live-board-client-move-prompt-review.test.ts",
     "tests/api/c4-notifications-live.test.ts"
   ]
 }

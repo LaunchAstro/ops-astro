@@ -9,7 +9,8 @@
 // pass (T3d's) and stands idle, and the inbox still reads back identically.
 //
 // Asked only by the runtime proofs' runner (`restart-proof.sh` with
-// L5_RUNTIME_PROOFS=1), on its own Postgres, as the T3d2 proofs are.
+// L5_RUNTIME_PROOFS=1), on its own Postgres, as the T3d2 proofs are; CI's
+// `local checks` runs it that way, and a skip there fails the step.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { hardKill, until } from './kill-harness.ts';
