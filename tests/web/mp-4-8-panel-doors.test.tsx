@@ -124,7 +124,8 @@ describe('MP-4-8 task page doors open the panel', () => {
     const door = '#perspective-panel-team [data-panel-door="timer"]';
     await view.click(door);
     await tick();
-    await view.click('[data-panel-head="close"]');
+    // The dock draws the panel (MP-3-1): its X is the panel's close.
+    await view.click('.dpanel[data-panel-id="task"] [data-act="close"]');
     await tick();
     expect(view.find('[data-task-panel]')).toBeNull();
     expect(document.activeElement).toBe(view.host.querySelector(door));

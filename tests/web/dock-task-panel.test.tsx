@@ -5,7 +5,8 @@
 // (DOCK.md section 2, row 6: Task, list-check). A task opened from a page
 // door draws inside the dock with one head, the dock's; its tab shows while
 // it is open; the dock's close, Close all and Escape close it through the
-// task panel's own close; on a phone one panel draws, the one opened last;
+// task panel's own close, which draws no button of its own beside the
+// dock's X; on a phone one panel draws, the one opened last;
 // seated, the group's track counts it; the new-task draft takes the same
 // panel. A link inside it is the task panel's, never a walk of the dock.
 
@@ -124,12 +125,10 @@ describe('MP-3-1 the Task panel closes from either side', () => {
     expect(view.host.querySelector(TAB)).toBeNull();
   });
 
-  it("the task panel's own close takes the Task panel and its tab out of the dock", async () => {
+  it("the task panel draws no close of its own in the dock: the dock's X is its one close", async () => {
     const view = await opened();
-    await view.click('[data-panel-head="close"]');
-    await tick();
-    expect(view.host.querySelector(TASK)).toBeNull();
-    expect(view.host.querySelector(TAB)).toBeNull();
+    expect(view.host.querySelector(`${TASK} [data-panel-head="close"]`)).toBeNull();
+    expect(view.host.querySelectorAll(`${TASK} [data-act="close"]`)).toHaveLength(1);
   });
 
   it('Escape closes the panel opened last, one per press: Clients, then the task', async () => {
