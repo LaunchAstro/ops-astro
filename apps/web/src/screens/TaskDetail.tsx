@@ -224,7 +224,7 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
 
   return (
     <div className="stack">
-      <RefreshRow held={held !== null} onRefresh={reload} />
+      <RefreshRow held={held !== null} outcome={state.outcome} onRefresh={reload} />
       {/*
         An id nothing is filed under is said as that, quoting the id as typed
         (MP-4-1). Every other refusal is the denied state, quoting its code.
@@ -332,8 +332,13 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
 /** The task page's Refresh, and why it waits while an edit is unsaved. */
 function RefreshRow(props: {
   readonly held: boolean;
+  /** The read's outcome: a failed read draws its own Try again. */
+  readonly outcome: ReadState<TaskReadResult>['outcome'];
   readonly onRefresh: () => void;
-}): ReactElement {
+}): ReactElement | null {
+  // The failed read draws its own Try again; a second button above it is the
+  // stray one the mockup never draws (UI-TRACK B4).
+  if (props.outcome === 'unavailable') return null;
   return (
     <>
       {/*
@@ -350,9 +355,9 @@ function RefreshRow(props: {
       does not reconcile them — the person does, with the Save or Discard
       choice the form is showing them.
     */}
-      <div className="btnrow">
+      <div className="btnrow tpr__refresh">
         <button
-          className="btn"
+          className="btn btn--sm btn--secondary"
           type="button"
           data-refresh="task"
           disabled={props.held}
@@ -674,6 +679,8 @@ function Loaded(props: LoadedProps): ReactElement {
         onSelect={props.onPerspective}
         team={
           <>
+            <DescriptionSection description={task.description} />
+
             <Lifecycle
               disabled={busy || dirty}
               completed={task.completedAt !== null}
@@ -705,8 +712,6 @@ function Loaded(props: LoadedProps): ReactElement {
               onField={presence.mark}
               onSubmit={onFields}
             />
-
-            <DescriptionSection description={task.description} />
 
             <TeamSubtasks {...props} />
 
@@ -792,7 +797,9 @@ function EditNotices(props: {
 /**
  * The Agent side of the task (MP-4-3): the brief (MP-4-7), the proposals and
  * their gates with the top-up (T2e), and the run as it goes (T2a progress,
- * T2h alerts, T3e2 outages).
+ * T2h alerts, T3e2 outages). DS-TASK-15 lays it out: the brief, the run and
+ * its gate in the main column, the standing facts about the task's run (its
+ * alerts, the team's outages) beside.
  */
 function AgentSide({
   props,
@@ -805,29 +812,33 @@ function AgentSide({
 }): ReactElement {
   const { client, task } = props;
   return (
-    <>
-      <BriefSection brief={task.agentBrief} />
-      <Proposals
-        capCurrency={task.capCurrency}
-        client={client}
-        note={props.note}
-        onChanged={props.onChanged}
-        onDecided={props.onDecided}
-        onProposeRefused={props.onProposeRefused}
-        proposeRefusal={props.proposeRefusal}
-        proposeDraft={props.proposeDraft}
-        onProposeDraft={props.onProposeDraft}
-        persons={persons}
-        proposals={task.proposals}
-        envelope={task.envelope ?? null}
-        topUpNote={props.topUpNote}
-        onTopUpNote={props.onTopUpNote}
-        recordId={task.id}
-        revision={task.revision}
-      />
-      <RunProgress client={client} grantKey={props.grantKey} readOf={task} taskKey={task.key} />
-      <Alerts alerts={task.alerts} />
-      {outages}
-    </>
+    <div className="tpg">
+      <div className="tpg__main">
+        <BriefSection brief={task.agentBrief} />
+        <RunProgress client={client} grantKey={props.grantKey} readOf={task} taskKey={task.key} />
+        <Proposals
+          capCurrency={task.capCurrency}
+          client={client}
+          note={props.note}
+          onChanged={props.onChanged}
+          onDecided={props.onDecided}
+          onProposeRefused={props.onProposeRefused}
+          proposeRefusal={props.proposeRefusal}
+          proposeDraft={props.proposeDraft}
+          onProposeDraft={props.onProposeDraft}
+          persons={persons}
+          proposals={task.proposals}
+          envelope={task.envelope ?? null}
+          topUpNote={props.topUpNote}
+          onTopUpNote={props.onTopUpNote}
+          recordId={task.id}
+          revision={task.revision}
+        />
+      </div>
+      <aside className="tpg__side">
+        <Alerts alerts={task.alerts} />
+        {outages}
+      </aside>
+    </div>
   );
 }

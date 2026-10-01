@@ -112,9 +112,11 @@ export function SignIn(props: SignInProps): ReactElement {
           </div>
         )}
         {props.ended === null && props.signedOut === true ? (
-          <p className="signin__ended" role="status" data-reason="signed-out">
-            You have signed out. Any edit you had not saved was not saved.
-          </p>
+          <div className="banner banner--info" role="status" data-reason="signed-out">
+            <p className="banner__body">
+              You have signed out. Any edit you had not saved was not saved.
+            </p>
+          </div>
         ) : null}
         <div className="field">
           <label className="field__label" htmlFor="signin-email">

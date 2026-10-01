@@ -5,6 +5,7 @@
 // and sent again as the same attempt, so a retry never makes a second task.
 
 import { useState, type FormEvent, type ReactElement } from 'react';
+import { Icon } from '@launchastro/ui';
 import type { OperationsClient } from '../../operations/client.ts';
 import { useCommand, type Settlement } from '../../records/use-command.ts';
 
@@ -111,26 +112,27 @@ export function CreateTask(props: {
   const retrying = pending !== null && pending.title === title.trim();
 
   return (
-    <form className="taskform projects__create" onSubmit={form.onCreate}>
-      <div className="field">
-        <label className="tf__k" htmlFor="create-title">
-          New task
-        </label>
-        {/* The board's quick-add field (P-02, B-01): the box is the field, the input draws nothing. */}
-        <div className="cbd__field">
-          <input
-            id="create-title"
-            type="text"
-            required
-            placeholder="What needs doing"
-            disabled={locked}
-            value={title}
-            onChange={(event) => {
-              form.setTitle(event.target.value);
-            }}
-          />
-        </div>
-      </div>
+    // The mockup's quick-add field ("Add another…", P-02) and its New task
+    // button (P-06): one form, sending task.create.
+    <form className="projects__create" onSubmit={form.onCreate}>
+      <label className="visually-hidden" htmlFor="create-title">
+        New task
+      </label>
+      {/* The board's quick-add field (P-02, B-01): the box is the field, the input draws nothing. */}
+      <span className="cbd__field">
+        <Icon name="plus" size="xs" />
+        <input
+          id="create-title"
+          type="text"
+          required
+          placeholder="Add a task…"
+          disabled={locked}
+          value={title}
+          onChange={(event) => {
+            form.setTitle(event.target.value);
+          }}
+        />
+      </span>
       {/* Pressable while the title is empty, as the mockup's is: the field is
           `required` and onCreate sends nothing without a title. */}
       <button
@@ -163,7 +165,7 @@ function Unresolved(props: {
     <>
       {pending === null ? null : (
         <button
-          className="btn"
+          className="btn btn--sm"
           type="button"
           data-attempt="discard"
           disabled={props.creating}

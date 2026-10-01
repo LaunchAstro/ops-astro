@@ -27,6 +27,14 @@ const probe = (
   extra: Partial<LookProbe> = {},
 ): LookProbe => ({ id, mockup, app: { ...APP, selector: app }, props, widths: WIDTHS, ...extra });
 
+/** One ruled value in both themes. */
+const themed = (
+  prop: string,
+  want: string,
+  why: string,
+): { at: string; want: string; why: string }[] =>
+  (['light', 'dark'] as const).map((theme) => ({ at: `${prop}@${theme}`, want, why }));
+
 // DR-10 folded the dark muted ink to 55 percent; the mockup drew 46.
 const MUTED_DARK = { at: 'color@dark', want: 'rgba(248,248,248,140)', why: 'DR-10' } as const;
 
@@ -36,10 +44,10 @@ const R53 = (prop: string, want: string) =>
 
 const BOARD_PROBES: readonly LookProbe[] = [
   // DS-COMP-2: the tab row and its tabs.
-  probe('board.tabrow', { path: '/agency/brief/', selector: 'nav.tabbar' }, 'nav.routetabs', [
+  // The row's 32px inset and tab gap live on its inner scroller in the app (the
+  // arrows and edge fade need them there); frame.tab-start holds where tabs start.
+  probe('board.tabrow', { path: '/agency/brief/', selector: 'nav.tabbar' }, 'nav.tabbar', [
     'box.height',
-    'padding-left',
-    'column-gap',
     'background-color',
     'border-bottom-color',
     'border-bottom-width',
@@ -47,13 +55,13 @@ const BOARD_PROBES: readonly LookProbe[] = [
   probe(
     'board.tab',
     { path: '/agency/brief/', selector: '.tabbar__t:not(.is-on)' },
-    'nav.routetabs a:not([aria-current])',
+    '.tabbar__t:not([aria-current])',
     [...TYPE, 'color', 'padding-top', 'padding-bottom', 'box.height'],
   ),
   probe(
     'board.tab-current',
     { path: '/agency/brief/', selector: '.tabbar__t.is-on' },
-    'nav.routetabs a[aria-current]',
+    '.tabbar__t[aria-current]',
     [...TYPE, 'color', 'box.height'],
   ),
   // The create field, dressed as the mockup's quick-add field (P-02, B-01).
@@ -88,13 +96,24 @@ const BOARD_PROBES: readonly LookProbe[] = [
     ['padding-left', 'column-gap', 'border-bottom-color'],
     { widths: WIDE },
   ),
+  // The board's head is the kit's one table head (DS-PRIM-20, MP-1-3): the
+  // mockup's board dialect (400 weight, 12px inset, a 34px row) folds into it.
   probe(
     'board.head',
     { ...PROJECTS, selector: '.cbd__tbl th:nth-child(2) .cbd__th' },
-    '.cbd__tbl th:nth-child(2) .cbd__th',
+    '.cbd__tbl th:nth-child(2)',
     [...TYPE, 'color', 'padding-top', 'padding-left', 'box.height'],
-    // The head is --type-eyebrow, light (R53); the mockup drew it at 400.
-    { widths: WIDE, ruled: [MUTED_DARK, ...R53('font-weight', '300')] },
+    // The head is the kit's one table head, --type-eyebrow light (R53, MP-1-3);
+    // the mockup drew it at 400.
+    {
+      widths: WIDE,
+      ruled: [
+        MUTED_DARK,
+        ...themed('font-weight', '300', 'DS-PRIM-20'),
+        ...themed('padding-left', '16px', 'DS-PRIM-20'),
+        ...themed('box.height', '35', 'DS-PRIM-20'),
+      ],
+    },
   ),
   probe(
     'board.head-rule',
@@ -105,8 +124,8 @@ const BOARD_PROBES: readonly LookProbe[] = [
       widths: WIDE,
       // One table head (MP-1-3): the kit's --rule, where the mockup's board drew --border-strong.
       ruled: [
-        { at: 'border-bottom-color@light', want: 'rgba(0,0,0,255)', why: 'MP-1-3' },
-        { at: 'border-bottom-color@dark', want: 'rgba(255,255,255,61)', why: 'MP-1-3' },
+        { at: 'border-bottom-color@light', want: 'rgba(0,0,0,255)', why: 'DS-PRIM-20' },
+        { at: 'border-bottom-color@dark', want: 'rgba(255,255,255,61)', why: 'DS-PRIM-20' },
       ],
     },
   ),
@@ -117,7 +136,7 @@ const BOARD_PROBES: readonly LookProbe[] = [
     // The mockup's first group is Active; the machine's group rows carry no name.
     'tr.cbd__grp:first-child > td',
     ['box.height', 'padding-top', 'padding-left', 'background-color'],
-    { widths: WIDE },
+    { widths: WIDE, ruled: themed('box.height', '33', 'DS-TOK-111') },
   ),
   probe(
     'board.group',
@@ -125,23 +144,28 @@ const BOARD_PROBES: readonly LookProbe[] = [
     // A later group, ruled off the one above, as On hold is in the mockup.
     'tr.cbd__grp:not(:first-child) > td',
     ['box.height', 'padding-top', 'padding-bottom', 'border-top-color', 'background-color'],
-    { widths: WIDE },
+    { widths: WIDE, ruled: themed('box.height', '41', 'DS-TOK-111') },
   ),
   probe(
     'board.group-label',
     { ...PROJECTS, selector: '.cbd__grpb' },
     '.cbd__grpb',
     [...TYPE, 'color'],
-    // --type-subheading (R53): 16 and tracked tight, where the mockup drew 16.8 untracked.
-    { widths: WIDE, ruled: [...R53('font-size', '16px'), ...R53('letter-spacing', '-0.16px')] },
+    {
+      widths: WIDE,
+      ruled: [
+        ...themed('font-size', '16px', 'DS-TOK-111'),
+        ...themed('letter-spacing', '-0.16px', 'DS-TOK-111'),
+      ],
+    },
   ),
   probe(
     'board.group-reason',
     { ...PROJECTS, selector: '.cbd__grpr' },
     '.cbd__grpr',
     ['font-size', 'color', 'padding-left', 'border-left-color'],
-    // --type-caption (R53): 12, where the mockup drew 12.5.
-    { widths: WIDE, ruled: R53('font-size', '12px') },
+    // --type-small (R53): 13, where the mockup drew 12.5.
+    { widths: WIDE, ruled: R53('font-size', '13px') },
   ),
   // Rows and cells.
   probe('board.row', { ...PROJECTS, selector: ROW }, APP_ROW, ['box.height', 'background-color'], {
@@ -194,8 +218,9 @@ const BOARD_PROBES: readonly LookProbe[] = [
     { ...PROJECTS, selector: '.tl__due.is-bad' },
     '.tl__due.is-bad',
     ['font-family', 'font-weight', 'color'],
-    // --type-data (R53): an overdue date keeps the regular weight; the danger ink says it.
-    { widths: WIDE, ruled: R53('font-weight', '400') },
+    // The overdue date carries the mockup's medium weight, a declared type
+    // exception (DS-COMP-17, 4-board.css), so nothing is ruled here.
+    { widths: WIDE },
   ),
   probe(
     'board.due-today',
@@ -218,8 +243,8 @@ const BOARD_PROBES: readonly LookProbe[] = [
       'color',
       'box.height',
     ],
-    // --type-caption (R53): 12, where the mockup drew the chip at 11.
-    { widths: WIDE, ruled: R53('font-size', '12px') },
+    // The mockup's 11 px chip, a declared type exception (DS-COMP-17, 4-board.css).
+    { widths: WIDE },
   ),
   probe(
     'board.dash',
@@ -247,8 +272,8 @@ const BOARD_PROBES: readonly LookProbe[] = [
     { path: '/agency/executive/', selector: '.card--flush .card__title' },
     'section.inbox .card__title',
     [...TYPE, 'color', 'line-height'],
-    // --type-card-title (R53): the title line is 1.1, where the mockup drew 1.2.
-    { ruled: R53('line-height', '16.5px') },
+    // TOKENS.md declares the card title 15/1.1; the mockup's card drew 15/1.2.
+    { ruled: themed('line-height', '16.5px', 'DS-TOK-119') },
   ),
   probe(
     'board.inbox-sub',

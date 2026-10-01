@@ -141,9 +141,9 @@ describe('WEB.md on the task page', () => {
 describe('WEB.md on the decision refusal and Start', () => {
   it('quotes a refused decision under its gate whether or not it is the head', () => {
     const proposals = read('apps/web/src/views/proposals.tsx');
-    // The quote is drawn by `Version`, not by the head-only `Decide`.
+    // The quote is drawn by `Version` inside its gate box, not by the head-only `Decide`.
     expect(proposals).toContain(
-      '{gate === null || props.note?.gateId !== gate.id ? null : <Refusal note={props.note} />}',
+      '{props.note?.gateId === gate.id ? <Refusal note={props.note} /> : null}',
     );
     expect(proposals).toContain("return 'lineage'");
     expect(proposals).toContain("return 'section'");

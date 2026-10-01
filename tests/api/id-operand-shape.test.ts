@@ -279,6 +279,13 @@ describe.skipIf(serverUrl === undefined)('id operand shape (TC:11, root ruling 2
         body: (delegationId) => ({ delegationId }),
       },
       {
+        op: 'credential.revoke',
+        operand: 'credentialId',
+        by: ada,
+        code: 'NOT_FOUND',
+        body: (credentialId) => ({ credentialId }),
+      },
+      {
         op: 'task.decide',
         operand: 'gateId',
         by: ada,

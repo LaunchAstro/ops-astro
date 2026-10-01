@@ -9,10 +9,12 @@
 import { ACCESS } from './access.ts';
 import { BOARD } from './board.ts';
 import { FRAME } from './frame.ts';
+import { GALLERY_LOOK } from './gallery.ts';
 import { INBOX } from './inbox.ts';
 import { SETTINGS } from './settings.ts';
 import { SHELL } from './shell.ts';
 import { SIGN_IN } from './sign-in.ts';
+import { STATES_SCREEN } from './states.ts';
 import { TASK } from './task.ts';
 import { TASK_PANEL } from './task-panel.ts';
 import { TEAM } from './team.ts';
@@ -29,6 +31,8 @@ export const LOOK_SCREENS: readonly LookScreen[] = [
   TASK,
   SETTINGS,
   SIGN_IN,
+  GALLERY_LOOK,
+  STATES_SCREEN,
   ACCESS,
   TELEMETRY,
   TODOS,

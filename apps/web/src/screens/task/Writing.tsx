@@ -25,6 +25,7 @@
 // rendered brief too; mono is kept for the brief's own markdown field.
 
 import { useState, type KeyboardEvent, type ReactElement } from 'react';
+import { Empty } from '@launchastro/ui';
 import type { OperationsClient } from '../../operations/client.ts';
 import { submitEdit } from '../../records/submit.ts';
 import { useCommand } from '../../records/use-command.ts';
@@ -43,9 +44,11 @@ export function DescriptionSection(props: { readonly description: string | null 
         <span className="sb__k">Description</span>
       </div>
       {blank(props.description) ? (
-        <p className="sbempty">No description on this one yet.</p>
+        <Empty look="inline" title="No description on this one yet." />
       ) : (
-        <Markdown source={props.description ?? ''} />
+        <div data-task-description="">
+          <Markdown source={props.description ?? ''} />
+        </div>
       )}
     </section>
   );

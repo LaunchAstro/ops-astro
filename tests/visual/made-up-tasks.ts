@@ -13,6 +13,7 @@ import type {
   TodoView,
 } from '../../packages/core-wire/src/index.ts';
 import { MIA, NATHAN } from './made-up-access.ts';
+import { PROPOSAL } from './made-up-data.ts';
 
 export const STATE: Readonly<Record<'active' | 'waiting' | 'hold', TaskStateView>> = {
   active: { id: 's-active', key: 'active', label: 'Active', machineCategory: 'started' },
@@ -124,7 +125,7 @@ export const DETAIL: InternalTaskDetail = {
       own: true,
     },
   ],
-  proposals: [],
+  proposals: [PROPOSAL],
   capCurrency: 'AUD',
   envelope: null,
   alerts: [],

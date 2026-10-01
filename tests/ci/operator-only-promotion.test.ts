@@ -67,7 +67,6 @@ function fakeDocker(path: string, calls: string): void {
   );
 }
 
-// eslint-disable-next-line max-lines-per-function -- one test, its body kept byte for byte
 function operatorOnlyCases6() {
   it('the operator deploys the staging unit without building an image: one record names the version and the operator', async () => {
     const fake = manager(false);
