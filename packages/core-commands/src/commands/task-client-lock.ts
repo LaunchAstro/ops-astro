@@ -5,9 +5,12 @@
 // `task.set_party` changes the client only while the task is empty: its history
 // holds nothing beyond its creation and earlier client changes, and no row
 // names it (a subtask naming it as parent, a proposal, a planned run, an envelope,
-// a lease, an alert). The check runs under the task's row lock, which the
-// preparation took (`lockTask`, `for update`), so a content write that holds
-// the same lock is either wholly before it or wholly after it.
+// a lease, an alert, a time entry, deleted or not). A time event names no
+// subject (RS-VAULT-9), so the entry's row is what the lock reads. A tag event
+// keeps the task as its subject: a removed tag leaves no row behind. The check
+// runs under the task's row lock, which the preparation took (`lockTask`,
+// `for update`), so a content write that holds the same lock is either wholly
+// before it or wholly after it.
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { COMMAND_SURFACE } from '../../../core-wire/src/index.ts';
@@ -39,7 +42,8 @@ async function hasContent(tx: TenantQuery, taskId: string): Promise<boolean> {
          or exists (select 1 from planned_runs where business_id = $1 and task_id = $2)
          or exists (select 1 from task_envelopes where business_id = $1 and task_id = $2)
          or exists (select 1 from leases where business_id = $1 and task_id = $2)
-         or exists (select 1 from alerts where business_id = $1 and task_id = $2) as content`,
+         or exists (select 1 from alerts where business_id = $1 and task_id = $2)
+         or exists (select 1 from time_entries where business_id = $1 and task_id = $2) as content`,
     [tx.businessId, taskId, CONTENT_COMMANDS],
   );
   return row?.content !== false;
