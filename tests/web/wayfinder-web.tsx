@@ -5,13 +5,16 @@
 // and the same envelopes the routes call. A screen mounted over it reads and
 // writes the real database; nothing stands in for the server.
 
-import { act } from 'react';
 import type { Hono } from 'hono';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { tokenFor } from '../api/fixture.ts';
 import { asBrowser } from '../support/sign-in.ts';
 import type { Member } from '../commands/fixture.ts';
 import { mount, type Mounted } from '../surfaces/mount.tsx';
+import { until } from './screen-until.tsx';
+
+// The wait lives beside it in screen-until.tsx; the wayfinder tests still take it from here.
+export { until };
 import { MapScreen } from '../../apps/web/src/screens/Map.tsx';
 import { must } from '../wayfinder/world.ts';
 import type { CliWorld } from '../cli/api-3-world.ts';
@@ -31,29 +34,6 @@ export async function browserFor(
       async (url, init) => await api.fetch(new Request(url, init)),
     ),
   });
-}
-
-/** Let the screen's reads and writes land, until `ready` holds or the wait runs out. */
-export async function until(
-  mounted: Mounted,
-  ready: () => boolean,
-  what: string,
-  timeout = 10_000,
-): Promise<void> {
-  const deadline = Date.now() + timeout;
-  const step = async (): Promise<void> => {
-    if (ready()) return;
-    if (Date.now() > deadline) {
-      throw new Error(`waited for ${what}; the page says: ${mounted.text()}`);
-    }
-    await act(async () => {
-      await new Promise<void>((resolve) => {
-        setTimeout(resolve, 20);
-      });
-    });
-    await step();
-  };
-  await step();
 }
 
 /** A charted map: its id and key, and each ticket's id by the ref it was charted with. */

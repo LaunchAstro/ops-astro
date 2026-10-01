@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { MapScreen } from '../../apps/web/src/screens/Map.tsx';
 import type { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { mount, type Mounted } from '../surfaces/mount.tsx';
-import { until } from './wayfinder-web.tsx';
+import { until } from './screen-until.tsx';
 import { WAYFINDER_READS } from '../visual/made-up-wayfinder.ts';
 
 const asked: string[] = [];
