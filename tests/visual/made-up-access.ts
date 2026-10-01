@@ -101,7 +101,10 @@ export const OPERATIONS: OperationsReadResult = {
   },
 };
 
-/** Two team invitations: one pending and sent, one revoked before it was sent (C39-T). */
+/**
+ * Team invitations, one in each state (C39-T): pending and sent, accepted,
+ * revoked before it was sent, and expired unanswered.
+ */
 export const INVITATIONS: InvitationListResult = {
   ok: true,
   invitations: [
@@ -116,6 +119,16 @@ export const INVITATIONS: InvitationListResult = {
       expiresAt: '2026-10-05T01:00:00.000Z',
     },
     {
+      invitationId: 'i-noor',
+      name: 'Noor',
+      address: 'noor@example.test',
+      role: 'member',
+      state: 'accepted',
+      createdAt: '2026-09-20T01:00:00.000Z',
+      sentAt: '2026-09-20T01:00:05.000Z',
+      expiresAt: '2026-09-27T01:00:00.000Z',
+    },
+    {
       invitationId: 'i-rex',
       name: 'Rex',
       address: 'rex@example.test',
@@ -124,6 +137,16 @@ export const INVITATIONS: InvitationListResult = {
       createdAt: '2026-09-27T01:00:00.000Z',
       sentAt: null,
       expiresAt: '2026-10-04T01:00:00.000Z',
+    },
+    {
+      invitationId: 'i-otto',
+      name: 'Otto',
+      address: 'otto@example.test',
+      role: 'member',
+      state: 'expired',
+      createdAt: '2026-09-15T01:00:00.000Z',
+      sentAt: '2026-09-15T01:00:05.000Z',
+      expiresAt: '2026-09-22T01:00:00.000Z',
     },
   ],
 };
