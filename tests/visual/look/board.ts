@@ -30,6 +30,10 @@ const probe = (
 // DR-10 folded the dark muted ink to 55 percent; the mockup drew 46.
 const MUTED_DARK = { at: 'color@dark', want: 'rgba(248,248,248,140)', why: 'DR-10' } as const;
 
+/** R53: the measured styles snap to the canonical type scale; the value it holds, in both themes. */
+const R53 = (prop: string, want: string) =>
+  (['light', 'dark'] as const).map((theme) => ({ at: `${prop}@${theme}`, want, why: 'R53' }));
+
 const BOARD_PROBES: readonly LookProbe[] = [
   // DS-COMP-2: the tab row and its tabs.
   probe('board.tabrow', { path: '/agency/brief/', selector: 'nav.tabbar' }, 'nav.routetabs', [
@@ -89,14 +93,22 @@ const BOARD_PROBES: readonly LookProbe[] = [
     { ...PROJECTS, selector: '.cbd__tbl th:nth-child(2) .cbd__th' },
     '.cbd__tbl th:nth-child(2) .cbd__th',
     [...TYPE, 'color', 'padding-top', 'padding-left', 'box.height'],
-    { widths: WIDE, ruled: [MUTED_DARK] },
+    // The head is --type-eyebrow, light (R53); the mockup drew it at 400.
+    { widths: WIDE, ruled: [MUTED_DARK, ...R53('font-weight', '300')] },
   ),
   probe(
     'board.head-rule',
     { ...PROJECTS, selector: '.cbd__tbl th:nth-child(2)' },
     '.cbd__tbl th:nth-child(2)',
     ['border-bottom-color', 'border-bottom-width'],
-    { widths: WIDE },
+    {
+      widths: WIDE,
+      // One table head (MP-1-3): the kit's --rule, where the mockup's board drew --border-strong.
+      ruled: [
+        { at: 'border-bottom-color@light', want: 'rgba(0,0,0,255)', why: 'MP-1-3' },
+        { at: 'border-bottom-color@dark', want: 'rgba(255,255,255,61)', why: 'MP-1-3' },
+      ],
+    },
   ),
   // Group headings: the first sits tight under the head, the rest carry a rule.
   probe(
@@ -120,14 +132,16 @@ const BOARD_PROBES: readonly LookProbe[] = [
     { ...PROJECTS, selector: '.cbd__grpb' },
     '.cbd__grpb',
     [...TYPE, 'color'],
-    { widths: WIDE },
+    // --type-subheading (R53): 16 and tracked tight, where the mockup drew 16.8 untracked.
+    { widths: WIDE, ruled: [...R53('font-size', '16px'), ...R53('letter-spacing', '-0.16px')] },
   ),
   probe(
     'board.group-reason',
     { ...PROJECTS, selector: '.cbd__grpr' },
     '.cbd__grpr',
     ['font-size', 'color', 'padding-left', 'border-left-color'],
-    { widths: WIDE },
+    // --type-caption (R53): 12, where the mockup drew 12.5.
+    { widths: WIDE, ruled: R53('font-size', '12px') },
   ),
   // Rows and cells.
   probe('board.row', { ...PROJECTS, selector: ROW }, APP_ROW, ['box.height', 'background-color'], {
@@ -180,7 +194,8 @@ const BOARD_PROBES: readonly LookProbe[] = [
     { ...PROJECTS, selector: '.tl__due.is-bad' },
     '.tl__due.is-bad',
     ['font-family', 'font-weight', 'color'],
-    { widths: WIDE },
+    // --type-data (R53): an overdue date keeps the regular weight; the danger ink says it.
+    { widths: WIDE, ruled: R53('font-weight', '400') },
   ),
   probe(
     'board.due-today',
@@ -203,7 +218,8 @@ const BOARD_PROBES: readonly LookProbe[] = [
       'color',
       'box.height',
     ],
-    { widths: WIDE },
+    // --type-caption (R53): 12, where the mockup drew the chip at 11.
+    { widths: WIDE, ruled: R53('font-size', '12px') },
   ),
   probe(
     'board.dash',
@@ -231,6 +247,8 @@ const BOARD_PROBES: readonly LookProbe[] = [
     { path: '/agency/executive/', selector: '.card--flush .card__title' },
     'section.inbox .card__title',
     [...TYPE, 'color', 'line-height'],
+    // --type-card-title (R53): the title line is 1.1, where the mockup drew 1.2.
+    { ruled: R53('line-height', '16.5px') },
   ),
   probe(
     'board.inbox-sub',
@@ -241,14 +259,11 @@ const BOARD_PROBES: readonly LookProbe[] = [
 ];
 
 /**
- * Probes held off until UI-POLISH's shared components move, each with its
- * reason. The board's own markup (route tabs, the board table, the create
- * form, the inbox card) is built on b0/SL07 and its probes run.
+ * Probes held off until UI-POLISH's shared components move. None: the board's
+ * own markup is built, and where the build holds a ruled value off the mockup
+ * the probe names it (`ruled`).
  */
-const AWAITING_POLISH: ReadonlySet<string> = new Set([
-  // The card title's 1.1 line height is the kit's --type-card-title (DS-COMP-7); the mockup's is 1.2.
-  'board.inbox-title',
-]);
+const AWAITING_POLISH: ReadonlySet<string> = new Set([]);
 
 export const BOARD: LookScreen = {
   id: 'board',

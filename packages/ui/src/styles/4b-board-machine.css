@@ -204,7 +204,11 @@
   align-items: center;
   gap: 0.4rem;
   box-sizing: border-box;
-  width: 100%;
+  /* The head cell is the one table head (`.table th`, MP-1-3); the label
+     button spans its padding edge to edge and carries the board's own
+     (DS-COMP-17, B-15), so it clips at the cell's edge where the grip sits. */
+  width: calc(100% + 32px);
+  margin: -8.8px -16px;
   /* The head's icon box (1rem) holds its height where the icon is not drawn. */
   min-height: calc(1rem + 1.1rem);
   border: 0;
@@ -215,16 +219,13 @@
   font: var(--type-eyebrow);
   letter-spacing: var(--type-eyebrow-tracking);
   text-transform: var(--type-eyebrow-case);
-  /* type-exception DS-COMP-17: the column head is Chivo Mono 12/12 at the regular weight */
-  font-weight: var(--weight-regular);
-  line-height: var(--leading-none);
   text-align: inherit;
   white-space: nowrap;
   cursor: pointer;
 }
 .cbd__th:hover,
-.cbd__tbl th[aria-sort='ascending'] .cbd__th,
-.cbd__tbl th[aria-sort='descending'] .cbd__th {
+.cbd__hd[aria-sort='ascending'] .cbd__th,
+.cbd__hd[aria-sort='descending'] .cbd__th {
   color: var(--text);
 }
 .cbd__tbl [data-align='end'] > .cbd__th {
@@ -503,13 +504,14 @@ td[data-tight] {
 }
 .cbd__tbl .tl__due.is-bad {
   color: var(--danger);
-  /* type-exception DS-COMP-17: an overdue date at the medium weight, as the board draws it */
-  font-weight: var(--weight-medium);
 }
-/* Top-aligned, so the 22px chip sits inside the cell's line and the row keeps 39. */
+/* 22 tall and top-aligned, so the chip sits inside the cell's line and the
+   row keeps 39 (DS-COMP-17); the caption's line is taller than the box. */
 .cbd__chip {
   display: inline-block;
   vertical-align: top;
+  box-sizing: border-box;
+  height: 22px;
   max-width: 100%;
   overflow: hidden;
   padding: 0.1rem 0.35rem;
@@ -518,8 +520,6 @@ td[data-tight] {
   font: var(--type-caption);
   letter-spacing: var(--type-caption-tracking);
   text-transform: var(--type-caption-case);
-  /* type-exception DS-COMP-17: the stage chip is sans 11 */
-  font-size: var(--text-overline);
   color: var(--text-2);
   /* A cell clips at its edge and never shortens its words (MP-5-1). */
   text-overflow: clip;
