@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // What a destination adds to a request, and which it takes (AW-13): fixed
-// headers custody sets on every request to it, and the few DELETE and GET
+// headers custody sets on every request to it, a header that carries the
+// credential's bare value as well (a hosted login provider's `apikey`, C39-T),
+// and the few DELETE and GET
 // routes it answers (the trace store's expiry and the read that confirms it;
 // the login provider's read of one user, C39-T). A destination may also list
 // the exact paths it takes a POST on (the login provider's create); one that
 // lists none takes a POST on any plain path. Custody never sends a PUT. Both are custody's own
-// list, read once at start; a caller names neither.
+// list, read once at start; a caller names none of them.
+
+import { presented, type StoredCredential } from './credentials.ts';
 
 /** A route: an exact path, or for a GET one trailing `/*` segment. A POST is only ever exact. */
 export interface Route {
@@ -45,6 +49,8 @@ const SEGMENT = /^[A-Za-z0-9_-]{1,128}$/u;
 
 export interface Extras {
   readonly headers?: Readonly<Record<string, string>>;
+  /** A header the provider also reads the credential's bare value from, as hosted secret keys need. */
+  readonly keyHeader?: string;
   readonly routes?: readonly Route[];
 }
 
@@ -76,13 +82,27 @@ function routeOf(value: unknown): Route | undefined {
   return undefined;
 }
 
-/** A destination entry's headers and routes, or `undefined` when either is malformed. */
+/** A key header's name: a header name custody does not own, and no fixed header's. */
+const keyHeaderOf = (
+  value: unknown,
+  fixed: Readonly<Record<string, string>>,
+): string | undefined =>
+  typeof value === 'string' && HEADER_NAME.test(value) && !RESERVED.has(value) && !(value in fixed)
+    ? value
+    : undefined;
+
+/** A destination entry's headers, key header and routes, or `undefined` when any is malformed. */
 export function parseExtras(entry: Readonly<Record<string, unknown>>): Extras | undefined {
-  const extras: { headers?: Record<string, string>; routes?: Route[] } = {};
+  const extras: { headers?: Record<string, string>; keyHeader?: string; routes?: Route[] } = {};
   if (entry['headers'] !== undefined) {
     const headers = headersOf(entry['headers']);
     if (headers === undefined) return undefined;
     extras.headers = headers;
+  }
+  if (entry['keyHeader'] !== undefined) {
+    const keyHeader = keyHeaderOf(entry['keyHeader'], extras.headers ?? {});
+    if (keyHeader === undefined) return undefined;
+    extras.keyHeader = keyHeader;
   }
   if (entry['routes'] !== undefined) {
     if (!Array.isArray(entry['routes'])) return undefined;
@@ -111,4 +131,25 @@ export function pathAllowed(extras: Extras, method: Method, path: string): boole
     const prefix = route.path.slice(0, -1);
     return path.startsWith(prefix) && SEGMENT.test(path.slice(prefix.length));
   });
+}
+
+/**
+ * The headers custody sets on one request: the destination's fixed ones, the
+ * framing, the credential in its own header and, where the destination names
+ * a key header, the bare credential there as well. No two names overlap.
+ */
+export function requestHeaders(
+  extras: Extras,
+  body: string,
+  credential: Pick<StoredCredential, 'header' | 'scheme' | 'value'> | null,
+): Record<string, string> {
+  const headers: Record<string, string> = {
+    ...extras.headers,
+    'content-type': 'application/json',
+    'content-length': String(Buffer.byteLength(body)),
+  };
+  if (credential === null) return headers;
+  headers[credential.header] = presented(credential);
+  if (extras.keyHeader !== undefined) headers[extras.keyHeader] = credential.value;
+  return headers;
 }

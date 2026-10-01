@@ -35,6 +35,8 @@ export interface UsersRequest {
   readonly method: string;
   readonly path: string;
   readonly authorization: string | undefined;
+  /** The `apikey` header, kept only when one came (a hosted provider's secret key, C39-T). */
+  readonly apikey?: string;
   readonly body: Record<string, unknown>;
 }
 
@@ -182,7 +184,9 @@ export async function startFakeUsers(): Promise<FakeUsers> {
       const body = await readAll(request);
       const path = request.url ?? '';
       const method = request.method ?? '';
-      received.push({ method, path, authorization: request.headers['authorization'], body });
+      const { authorization, apikey } = request.headers;
+      const keyed = typeof apikey === 'string' ? { apikey } : {};
+      received.push({ method, path, authorization, ...keyed, body });
       const work = kept.next;
       kept.next = undefined;
       await work?.();

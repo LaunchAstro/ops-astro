@@ -87,6 +87,8 @@ it("C39-T enrolment served: with enrolment on, POST /api/enrol enrols a link of 
       'POST /auth/v1/admin/users',
     ]);
     expect(made[0]?.authorization).toBe(`Bearer ${e.key}`);
+    // The auth destination asks for the key in `apikey` as well, as a hosted secret key needs.
+    expect(made[0]?.apikey).toBe(e.key);
     expect(await spentOf(alpha.id)).toStrictEqual({ state: 'accepted', spent: 1, tokens: 1 });
     expect(await spentOf(bravo.id)).toStrictEqual({ state: 'pending', spent: 0, tokens: 1 });
   } finally {
@@ -130,6 +132,27 @@ it("C39-T enrolment served: enrolment on without the login provider's origin, or
   }
 }, 90_000);
 
+it('C39-T enrolment fails closed: with enrolment on, a credentials file without auth_key stops the server before it listens, naming the reference and never a key', async () => {
+  const otherKey = `otherkey-${randomUUID()}`;
+  const withoutAuthKey = join(folder, 'credentials-without-auth-key.json');
+  const credential = { kind: 'api_key', account: 'mail-1', header: 'authorization' };
+  writeFileSync(
+    withoutAuthKey,
+    JSON.stringify([{ ref: 'email_key', destination: 'email', ...credential, value: otherKey }]),
+    { mode: 0o600 },
+  );
+  const served = await serveApi(w.db, 'alpha', {
+    ...enrolmentOn(),
+    ENROLMENT_CREDENTIALS_FILE: withoutAuthKey,
+  });
+  expect(served.ready).toBe(false);
+  expect(await served.stop()).toBe(1);
+  expect(served.output()).toContain('credential auth_key missing');
+  expect(served.output()).not.toContain('api: listening');
+  expect(served.output()).not.toContain(otherKey);
+  expect(served.output()).not.toContain(e.key);
+}, 90_000);
+
 it("C39-T enrolment settings: the login provider's origin is a bare https origin, or http on this machine only, and a problem names the setting, never its value", () => {
   const problem = (settings: Record<string, string>): string => {
     const read = enrolmentSettings({ ...enrolmentOn(), ...settings });
@@ -155,6 +178,7 @@ it("C39-T enrolment broker: it catalogues auth.create_user and auth.read_user an
   expect(settings.destination).toStrictEqual({
     key: 'auth',
     origin: e.users.origin,
+    keyHeader: 'apikey',
     routes: [
       { method: 'POST', path: '/auth/v1/admin/users' },
       { method: 'GET', path: '/auth/v1/admin/users/*' },
