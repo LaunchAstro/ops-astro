@@ -149,7 +149,8 @@
     "SL01 (REVB1SL01S34C) adds Sol's proof staging-reset-refuses-unwritable-record-before-emptying: a run record that cannot be opened for appending leaves the database unemptied.",
     "SL01 (REVB1SL01S34D) adds Sol's proof staging-reset-refuses-discarded-record-before-emptying: a record target that discards writes (a link to /dev/null) leaves the database unemptied. s0-1-staging-reset-record adds the family: a link to a file, a pipe, a device or a linked folder is refused the same way.",
     "B1-JOIN-FIX (REV187W): service-stop.test.ts's before-lookup refusals also run beside a live database of the named business and write no sign-in row to it; Sol's proof named-service-stop-reaches-database runs that suite alone through the conformance runner, which must see it reach the database.",
-    "SL12 (B1-TAKE, Opus interim review for Sol, SOL-LATER) adds column-grants-name-batch-1 (the column-grant contract names batch 1's column grants, 0046 and 0047) as conformance; its two siblings in tests/review read no database and are not named."
+    "SL12 (B1-TAKE, Opus interim review for Sol, SOL-LATER) adds column-grants-name-batch-1 (the column-grant contract names batch 1's column grants, 0046 and 0047) as conformance; its two siblings in tests/review read no database and are not named.",
+    "SL11-28 (AW-08 part b) names aw-08-approval-gate (the plan accept releases no effect, DECISION_STALE at dispatch; a superseded version PROPOSAL_SUPERSEDED, a rejected lineage LINEAGE_TERMINAL, a reset approval DECISION_STALE, a revoked delegation AUTHORITY_LOST, each with nothing marked), aw-08-client-sign-off (where the business requires the client's sign-off the launch cannot decide and dispatch refuses CLIENT_SIGNOFF_REQUIRED, a setting change in flight waited for and seen), aw-08-receipt-provider (AW-08 receipt link kept only https on the declared host, AW-08 hostile provider, AW-08 canary) and aw-08-isolation (another business, another client in the same business, another person's agent under a live delegation) as invariants, the isolation suite listed in isolation-suites.json too."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -427,6 +428,10 @@
     "tests/runtime/aw-06-observed-layer.test.ts",
     "tests/runtime/aw-06-isolation.test.ts",
     "tests/runtime/aw-06-planned-layer.test.ts",
+    "tests/runtime/aw-08-approval-gate.test.ts",
+    "tests/runtime/aw-08-client-sign-off.test.ts",
+    "tests/runtime/aw-08-isolation.test.ts",
+    "tests/api/aw-08-receipt-provider.test.ts",
     "tests/runtime/aw-13-export.test.ts",
     "tests/runtime/aw-13-isolation.test.ts",
     "tests/runtime/aw-13-late-event.test.ts",
