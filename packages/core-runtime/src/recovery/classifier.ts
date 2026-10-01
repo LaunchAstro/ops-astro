@@ -236,12 +236,9 @@ export async function classifyUnderLocks(
 }
 
 /**
- * Close a held reservation, guarded on `held`: spent, it settles at what its
- * model calls cost (0013: an actual is never zero, and carries no cause);
- * otherwise it is abandoned under the cause. The envelope gives the whole hold
- * back once, by the amount the changed row carried, and takes only the spend:
- * with no observation there is no number to justify, not even zero. False
- * when another transaction closed it first.
+ * Close a held reservation, guarded on `held` (false if another closed it): `actual` at
+ * its model calls' cost, else abandoned under the cause (0013: an actual is never zero).
+ * The envelope gives the hold back once and takes only that spend, never an invented zero.
  */
 export async function closeHold(
   tx: TenantQuery,
@@ -273,10 +270,8 @@ export async function closeHold(
 }
 
 /**
- * What a hold's model calls settled at, and whether one was sent and never
- * settled. A top-up has already moved the hold's spend to date to the
- * envelope's actual (AW-05, `budget-answer.ts`), so after one there is
- * nothing more to count.
+ * What a hold's model calls settled at, and whether one was sent and never settled.
+ * After a top-up there is nothing more: it moved the spend to date (AW-05, `budget-answer.ts`).
  */
 export async function modelCallsOn(
   tx: TenantQuery,
