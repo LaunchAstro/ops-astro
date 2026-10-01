@@ -174,8 +174,9 @@
     "SL01 (REVB1SL01S34D) adds Sol's proof staging-reset-refuses-discarded-record-before-emptying: a record target that discards writes (a link to /dev/null) leaves the database unemptied. s0-1-staging-reset-record adds the family: a link to a file, a pipe, a device or a linked folder is refused the same way.",
     "B1-JOIN-FIX (REV187W): service-stop.test.ts's before-lookup refusals also run beside a live database of the named business and write no sign-in row to it; Sol's proof named-service-stop-reaches-database runs that suite alone through the conformance runner, which must see it reach the database.",
     "SL12 (B1-TAKE, Opus interim review for Sol, SOL-LATER) adds column-grants-name-batch-1 (the column-grant contract names batch 1's column grants, 0046 and 0047) as conformance; its two siblings in tests/review read no database and are not named.",
-    "WF-7 research (SL14, ORCH47 (b)8) adds tests/wayfinder/wf-7-research.test.ts (model.research_compose in the API's broker catalogue: holds no credential, canary, hostile provider, the research skill pinned by digest on the run).",
-    "WF-7 inbox (SL14-14, U40) adds tests/wayfinder/wf-7-inbox.test.ts (twice failed: the second failed run on a research ticket writes a system comment on the ticket and raises one waiting_run item to the map's owner, in the handback; the launcher's waiting item under the worker lease; crossings business to business, ticket to ticket, person to person)."
+    "WF-7 research (SL14, ORCH47 (b)8) adds tests/wayfinder/wf-7-research.test.ts (model.research_compose in the API's broker catalogue: holds no credential, canary, hostile provider, the canary and the key each also absent from custody's stderr; the skill's pin moved to wf-7-pin.test.ts).",
+    "WF-7 inbox (SL14-14, U40) adds tests/wayfinder/wf-7-inbox.test.ts (twice failed: the second failed run on a research ticket writes a system comment on the ticket and raises one waiting_run item to the map's owner, in the handback; the launcher's waiting item under the worker lease; crossings business to business, ticket to ticket, person to person).",
+    "WF-7 skill pinned by digest (SL14-14, ORCH47 (b)8) adds tests/wayfinder/wf-7-pin.test.ts (a person starting a research run pins the vendored research skill on the run in the same transaction: one bootstrap_file pin, SKILL.md, with the folder's manifest; a tampered skill refuses DEFINITION_DIGEST_MISMATCH with no run, proposal, pin or claim written; an agent's research start, its delegation reaching run and the ticket unclaimed, is refused DELEGATION_EXCLUDES_ACTIVATION in Stage 1 (ORCH49-R2) and writes nothing; the pin helper by hand on an unpinned run: the upstream digest pinned, one byte changed refused, the bytes pinned the bytes checked) as conformance."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -626,6 +627,7 @@
     "tests/ci/staging-reset-refuses-unwritable-record-before-emptying.test.ts",
     "tests/ci/staging-reset-refuses-discarded-record-before-emptying.test.ts",
     "tests/ci/s0-1-staging-reset-record.test.ts",
-    "tests/review/column-grants-name-batch-1.test.ts"
+    "tests/review/column-grants-name-batch-1.test.ts",
+    "tests/wayfinder/wf-7-pin.test.ts"
   ]
 }
