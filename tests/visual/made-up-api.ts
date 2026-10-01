@@ -14,7 +14,6 @@
 // against the mockup's page. Every name and client is made up.
 
 import type {
-  AgentCostsResult,
   CapabilitiesResult,
   InboxCountResult,
   InboxReadResult,
@@ -30,6 +29,7 @@ import type {
 } from '../../packages/core-wire/src/index.ts';
 import type { BrowserContext } from 'playwright';
 import type { ReadName } from '../../apps/web/src/operations/read-names.ts';
+import { AGENT_COSTS_READ } from './made-up-costs.ts';
 
 const STATE = {
   active: { id: 's-active', key: 'active', label: 'Active', machineCategory: 'started' },
@@ -182,48 +182,7 @@ const READS = {
     ],
   } satisfies InboxReadResult,
   'inbox.count': { ok: true, owed: 2 } satisfies InboxCountResult,
-  // MP-14-6: a month of runs, one unpriced and one the agency's own.
-  'finance.agent_costs': {
-    ok: true,
-    period: { from: '2026-08-27T00:00:00.000Z', to: '2026-09-26T00:00:00.000Z' },
-    runs: [
-      {
-        runId: 'r-1',
-        taskId: 't-1',
-        agentActorId: 'a-51f0c2d9',
-        attachment: { kind: 'client', id: 'c-1', name: 'Meridian Dental' },
-        currency: 'AUD',
-        cost: '412',
-        unpriced: null,
-        startedAt: '2026-09-25T02:10:00.000Z',
-        models: { ids: ['claude-opus-5-5'], unnamedCalls: 0 },
-      },
-      {
-        runId: 'r-2',
-        taskId: 't-2',
-        agentActorId: 'a-51f0c2d9',
-        attachment: { kind: 'agency' },
-        currency: 'AUD',
-        cost: null,
-        unpriced: 'A call’s cost is not known yet: it is still running.',
-        startedAt: '2026-09-25T04:30:00.000Z',
-        models: { ids: ['claude-haiku-4-5-20251001'], unnamedCalls: 0 },
-      },
-    ],
-    byAgent: [
-      { agentActorId: 'a-51f0c2d9', currency: 'AUD', runs: 2, unpricedRuns: 1, total: '412' },
-    ],
-    byAttachment: [
-      {
-        attachment: { kind: 'client', id: 'c-1', name: 'Meridian Dental' },
-        currency: 'AUD',
-        runs: 1,
-        unpricedRuns: 0,
-        total: '412',
-      },
-      { attachment: { kind: 'agency' }, currency: 'AUD', runs: 1, unpricedRuns: 1, total: '0' },
-    ],
-  } satisfies AgentCostsResult,
+  'finance.agent_costs': AGENT_COSTS_READ,
 } as const satisfies Partial<Record<ReadName, unknown>>;
 
 /** The reads the harness answers; a read missing here draws its "could not be read" state. */

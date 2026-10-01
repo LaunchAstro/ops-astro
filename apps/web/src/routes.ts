@@ -86,9 +86,7 @@ export const ROUTES = {
     surface: 'none',
     authenticated: true,
   },
-  // The Executive page (MP-14-3's). Its section 005, what our agents cost us
-  // (MP-14-6), is the first built; 001 to 004 stand in until MP-14-3. The
-  // manifest places it in the Hub rail under Dashboard.
+  // MP-14-3's Executive page; section 005 (MP-14-6) is built, 001 to 004 stand in.
   'agency:executive': {
     namespace: 'agency',
     path: '/dashboard/executive/',
@@ -96,10 +94,7 @@ export const ROUTES = {
     surface: 'none',
     authenticated: true,
   },
-  // A new client's onboarding laid out in phases (C41-A). Started from the
-  // command palette or the CLI until the Clients board and the client
-  // workspace place its button; the manifest has no page for it, so no rail
-  // entry.
+  // A new client's onboarding in phases (C41-A); no manifest page, so no rail entry.
   'agency:onboarding': {
     namespace: 'agency',
     path: '/onboarding/',
