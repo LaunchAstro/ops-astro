@@ -127,7 +127,8 @@ function gateSettings(env: Readonly<Record<string, string | undefined>>): GateSe
   if (capUsd <= 0) return 'OPS_LOCAL_AGENT_CAP_USD';
   const seat = SEATS.find((known) => known === env['OPS_LOCAL_AGENT_SEAT']);
   const usageFile = env['OPS_LOCAL_AGENT_SEAT_USAGE_FILE'] || null;
-  return { home, capUsd, ...(seat === undefined ? {} : { seat }), usageFile };
+  const gate = { home, capUsd, capConfigured: cap !== '', usageFile };
+  return seat === undefined ? gate : { ...gate, seat };
 }
 
 /**

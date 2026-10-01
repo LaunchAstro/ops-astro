@@ -54,7 +54,7 @@ const released: ModelCallExecutor = async () => {
 const gateFor = (home: string): TickGate =>
   localGate(
     { environment: LOCAL, database: s.db.app, businessId: s.business, agent: s.agent, home },
-    { home, capUsd: 10 },
+    { home, capUsd: 10, capConfigured: false },
   );
 
 const taskTick = (gate?: TickGate): TaskTick => ({

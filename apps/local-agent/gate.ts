@@ -34,7 +34,7 @@ export const REFUSAL_MESSAGES: Readonly<Record<CallRefusal, string>> = {
  * What the gate reads: the runner's own folder and cap, and the seat reading
  * when one is kept. The tick process asks the same gate without the runner's key.
  */
-export type GateSettings = Pick<RunnerSettings, 'home' | 'capUsd'> &
+export type GateSettings = Pick<RunnerSettings, 'home' | 'capUsd' | 'capConfigured'> &
   Partial<Pick<RunnerSettings, 'seat' | 'usageFile'>>;
 
 /** The seat's reading, when the operator keeps one; past the stop for this seat refuses. */

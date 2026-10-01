@@ -30,7 +30,7 @@ it('the tick process reads its business, agent, worker and interval from the env
       agent: { provider: 'supabase', subject: 'agent-local-1' },
       workerActorId: WORKER,
       intervalMs: 30_000,
-      gate: { home: '/var/empty/la1-agent', capUsd: 10, usageFile: null },
+      gate: { home: '/var/empty/la1-agent', capUsd: 10, capConfigured: false, usageFile: null },
     },
   });
   expect(tickSettings(env())).toMatchObject({ ok: true, settings: { intervalMs: 60_000 } });

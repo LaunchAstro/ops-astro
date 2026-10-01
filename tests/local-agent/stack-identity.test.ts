@@ -60,7 +60,7 @@ it("the local stack writes the made-up business's id, agent subject and worker i
     OPS_LOCAL_AGENT_WORKER_ACTOR_ID: WORKER,
   });
   // The tick reads exactly these, once a database is named.
-  const tick = tickSettings({ ...written, DATABASE_URL: 'postgres://local/db' });
+  const tick = tickSettings({ ...written, DATABASE_URL: 'postgres://127.0.0.1/db' });
   expect(tick).toMatchObject({
     ok: true,
     settings: { businessId: BUSINESS, agent: { subject: SUBJECT }, workerActorId: WORKER },
