@@ -818,9 +818,10 @@ labelled pre-review; see [API.md](API.md).
 `conversation.allowance` is the drawer's allowance line. Its cap and what is
 left are the business's, a sum over every person's planning replies, so it is
 the team's (owner, administrator, member) holding `conversation:write`, the
-drawer's key, as the tab row asks it (`reads/allowance.ts`): a client, a member
-with no drawer and anyone else get `SCOPE_NOT_GRANTED` before any figure is
-read. The spend is the caller's own conversation's: a conversation named that
+drawer's key, on the whole business, as the tab row asks it
+(`reads/allowance.ts`): a client, a member with no drawer, a member whose
+drawer grant is one record's and anyone else get `SCOPE_NOT_GRANTED` before any
+figure is read. The spend is the caller's own conversation's: a conversation named that
 is not theirs is `NOT_FOUND`, the same bytes as a made-up id. No agent route.
 
 ## What is not here
