@@ -1,26 +1,30 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The two seams the panel's Client field stands on (MP-4-8, CS-4.12, DP-19),
-// and the made-up data each gives until its real owner joins.
+// The two seams the panel's Client field stands on (MP-4-8, CS-4.12, DP-19).
 //
-// **What is not on this base.** The business's client list (C32), which client
-// the task is under (`task.read` sends `clientSet` only), whether the task has
-// content (S0-5's lock) and the `task.duplicate` command are family B's, not
-// yet on this base. The field reads them through `ClientFactsSource` and sends
-// the duplicate through `DuplicateSource`; each says whether it is `real` or
-// `mock`, and a `mock` one draws the design system's one Mock corner label on
-// what it fills (`SourceRegion`, MP-1-6). A real source never carries it.
+// **The facts are real.** `realClientFacts` reads the business's clients from
+// `client.list` (C32) and takes the task's client and whether it has content
+// (S0-5's lock) from `task.read`'s detail, so the field draws no Mock label.
 //
-// **Wiring the real ones** is one small piece: a `ClientFactsSource` whose
-// `useFacts` is a `useRead` of the client list and the task's content answer,
-// and a `DuplicateSource` whose `send` is `client.mutate` of `task.duplicate`
-// with `confirmCarried` passed through; `DockPanel.tsx` hands both to the panel
-// (`TaskPanel`'s `clientFacts` and `duplicate`). Until then the panel uses the
-// two `MOCK_…` sources below.
+// **The duplicate is made up** until `task.duplicate` joins this branch: the
+// form sends through `DuplicateSource`, and `MOCK_DUPLICATE` draws the design
+// system's one Mock corner label (`SourceRegion`, MP-1-6) on the form. Wiring
+// it is a `DuplicateSource` whose `send` is `client.mutate` of
+// `task.duplicate` with `confirmCarried` passed through, handed to the panel
+// (`TaskPanel`'s `duplicate`).
 
-import type { CallResult, CommandOutcome, WireRefusal } from '../../operations/client.ts';
-import type { InternalTaskDetail as Task } from '../../../../../packages/core-wire/src/index.ts';
-import type { UseReadResult } from '../../data/use-read.ts';
+import type {
+  CallResult,
+  CommandOutcome,
+  OperationsClient,
+  WireRefusal,
+} from '../../operations/client.ts';
+import type {
+  ClientListResult,
+  InternalTaskDetail as Task,
+} from '../../../../../packages/core-wire/src/index.ts';
+import type { ReadState } from '../../data/authorised-read.ts';
+import { useRead, type UseReadResult } from '../../data/use-read.ts';
 
 /** Where a source's answers come from: `mock` is marked, `real` is not. */
 export type SourceProvenance = 'real' | 'mock';
@@ -69,9 +73,9 @@ export interface DuplicateSource {
   readonly send: DuplicateSender;
 }
 
-/** What the panel's host hands the Client field; each absent one is the made-up one. */
+/** What the panel's host hands the Client field; an absent duplicate is the made-up one. */
 export interface ClientSeams {
-  /** The client list and the content answer, made up until wired. */
+  /** The client list and the content answer; absent, the real ones (`realClientFacts`). */
   readonly clientFacts?: ClientFactsSource | undefined;
   /** "Duplicate without contents"'s sender, made up until wired. */
   readonly duplicate?: DuplicateSource | undefined;
@@ -82,38 +86,60 @@ export interface ClientSeams {
 /** The refusal code the carried-text warning arrives under. */
 export const CARRIED_TEXT_NAMES_CLIENT = 'CARRIED_TEXT_NAMES_CLIENT';
 
-// -- Made-up data, until family B joins. Every use is drawn with the Mock label.
+/** The client list's read state, carrying the task's own facts beside it. */
+function withTask(state: ReadState<ClientListResult>, task: Task): ReadState<TaskClientFacts> {
+  const facts = (listed: ClientListResult): TaskClientFacts => ({
+    choices: listed.clients.map((each) => ({ id: each.clientId, name: each.name })),
+    current: task.client,
+    hasContent: task.hasContent,
+  });
+  switch (state.outcome) {
+    case 'loading':
+      return { ...state, previous: state.previous === null ? null : facts(state.previous) };
+    case 'ready':
+    case 'empty':
+      return { ...state, value: facts(state.value) };
+    default:
+      return state;
+  }
+}
 
+/** An answer with no client list is not drawn as one: the field says it is unavailable. */
+function listOrUnavailable(answer: CallResult<ClientListResult>): CallResult<ClientListResult> {
+  if (!('ok' in answer) || Array.isArray(answer.value.clients)) return answer;
+  return {
+    unavailable: true,
+    because: 'The API answered with something this screen could not read.',
+  };
+}
+
+/**
+ * The real facts: `client.list`'s clients (those the reader's grants reach),
+ * and the task's client and content answer as `task.read` sent them. A client
+ * the list does not name is drawn "A client you cannot see".
+ */
+export function realClientFacts(client: OperationsClient): ClientFactsSource {
+  return {
+    provenance: 'real',
+    useFacts: (task, grantKey) => {
+      const { state, reload } = useRead<ClientListResult>({
+        grantKey,
+        run: async () => listOrUnavailable(await client.read<ClientListResult>('client.list', {})),
+        deps: [client],
+      });
+      return { state: withTask(state, task), reload };
+    },
+  };
+}
+
+// -- Made-up data. Every use is drawn with the Mock label.
+
+/** The made-up duplicate's old client, whose name its warning looks for. */
 const MOCK_CLIENTS: readonly ClientChoice[] = [
   { id: 'mock-client-harbour', name: 'Harbour Physio' },
   { id: 'mock-client-verity', name: 'Verity Dental' },
   { id: 'mock-client-north', name: 'North Shore Allied Health' },
 ];
-
-/** Made up: a task "has content" once it has a comment or a step. */
-function mockHasContent(task: Task): boolean {
-  return task.comments.length > 0 || task.steps.length > 0;
-}
-
-export const MOCK_CLIENT_FACTS: ClientFactsSource = {
-  provenance: 'mock',
-  useFacts: (task, grantKey) => ({
-    state: {
-      outcome: 'ready',
-      value: {
-        choices: MOCK_CLIENTS,
-        current: task.clientSet ? (MOCK_CLIENTS[0]?.id ?? null) : null,
-        hasContent: mockHasContent(task),
-      },
-      refusal: null,
-      because: null,
-      grantKey,
-    },
-    reload: () => {
-      /* made up: nothing to read again */
-    },
-  }),
-};
 
 /** Made up: warns on the first made-up client's name, as the server will on the old client's. */
 export const MOCK_DUPLICATE: DuplicateSource = {

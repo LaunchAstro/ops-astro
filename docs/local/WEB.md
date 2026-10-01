@@ -303,12 +303,15 @@ sender; a `CARRIED_TEXT_NAMES_CLIENT` refusal warns on each field it names
 confirmation, then resends with `confirmCarried: true`; editing a warned field
 clears its warning and the next send is checked again. Any other refusal is
 quoted; a landed duplicate's `detail.key` goes to `onDuplicated`, which the
-dock opens. The client list (C32), the task's client, its content answer (S0-5)
-and `task.duplicate` are not on this base: they come through the seams in
-`screens/task/client-seam.ts` (`TaskPanel`'s `clientFacts`, `duplicate` and
-`onDuplicated`), and until the host passes real ones the panel uses the made-up
-`MOCK_CLIENT_FACTS` and `MOCK_DUPLICATE`, each drawn under the one Mock corner
-label (`SourceRegion`). A real source carries no label. The Category select
+dock opens. The field's facts are real (`realClientFacts` in
+`screens/task/client-seam.ts`): the choices are `client.list`'s clients (C32),
+and the task's client and content answer (S0-5) are `task.read`'s `client` and
+`hasContent`; a client the list does not name is drawn "A client you cannot
+see", and an answer with no list is unavailable. `task.duplicate` is not on
+this base: the form sends through the `duplicate` seam (`TaskPanel`'s
+`duplicate` and `onDuplicated`), and until the host passes a real one it uses
+the made-up `MOCK_DUPLICATE`, drawn under the one Mock corner label
+(`SourceRegion`). A real source carries no label. The Category select
 (`screens/task/CategoryField.tsx`, CS-4.16) offers Not set and the nine of `TASK_CATEGORIES` (a stored value off
 the list stays as itself) and sends `task.set_category` with the id, or null
 for Not set, at the read revision; it is a work label only and changes no

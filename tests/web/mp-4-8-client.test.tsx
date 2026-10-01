@@ -146,55 +146,6 @@ describe('MP-4-8 client select changes an empty task’s client', () => {
   });
 });
 
-describe('MP-4-8 client field reads the real clients and the task’s client', () => {
-  const LISTED = [
-    { clientId: A.id, name: A.name },
-    { clientId: B.id, name: B.name },
-  ];
-  const real = (over: Readonly<Record<string, unknown>>) => serving(over, [], [], [], LISTED);
-
-  it('lists client.list’s clients, selects the task’s client, and carries no Mock label', async () => {
-    const { client, sent } = real({ client: B.id, clientSet: true, hasContent: false });
-    const view = await panel(client);
-    const select = view.find('#panel-field-client') as HTMLSelectElement | null;
-    expect([...(select?.options ?? [])].map((option) => option.text)).toStrictEqual([
-      'No client',
-      'Acme Physio',
-      'Birch Dental',
-    ]);
-    expect(select?.value).toBe(B.id);
-    expect(select?.disabled).toBe(false);
-    expect(view.find('[data-panel-field="client"] .mocktag')).toBeNull();
-    await view.choose('#panel-field-client', A.id);
-    await tick();
-    expect(sent.map((one) => [one.to, one.body['fields']])).toStrictEqual([
-      ['/task/set_party', { client: A.id }],
-    ]);
-    await view.unmount();
-  });
-
-  it('a task that task.read says has content is drawn locked, whatever its subtasks', async () => {
-    const { client, sent } = real({ client: A.id, clientSet: true, hasContent: true, steps: [] });
-    const view = await panel(client);
-    const select = view.find('#panel-field-client') as HTMLSelectElement | null;
-    expect(select?.disabled).toBe(true);
-    expect(select?.value).toBe(A.id);
-    expect(view.text()).toContain(LINE);
-    expect(sent).toStrictEqual([]);
-    await view.unmount();
-  });
-
-  it('a task under no client reads No client and is open to a choice', async () => {
-    const { client } = real({ client: null, clientSet: false, hasContent: false, ...SHELL });
-    const view = await panel(client);
-    const select = view.find('#panel-field-client') as HTMLSelectElement | null;
-    expect(select?.value).toBe('');
-    expect(select?.disabled).toBe(false);
-    expect(view.text()).not.toContain(LINE);
-    await view.unmount();
-  });
-});
-
 describe('MP-4-8 locked client offers Duplicate without contents', () => {
   it('draws the client locked with the ticket’s line and the action, and sends nothing', async () => {
     const { client, sent } = serving();

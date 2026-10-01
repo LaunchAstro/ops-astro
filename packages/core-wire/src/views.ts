@@ -507,6 +507,14 @@ export interface SessionCapabilities {
  */
 export interface InternalTaskDetail extends TaskDetail {
   readonly comments: readonly InternalCommentView[];
+  /**
+   * The client the task is under, by id (C32), or null for none (MP-4-8). Its
+   * name is `client.list`'s; a client the reader's grants do not reach is an
+   * id the Client field cannot name.
+   */
+  readonly client: string | null;
+  /** True once the task has content, so its client is locked (S0-5, `CLIENT_LOCKED`). */
+  readonly hasContent: boolean;
 }
 
 /** `task.read` on the person prefix: the whole detail, for a reader inside the business. */

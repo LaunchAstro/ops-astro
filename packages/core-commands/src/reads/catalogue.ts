@@ -53,6 +53,7 @@ import { searchTasks, wordsOf } from './search.ts';
 import { parseBreachNotices, readBreachNotices, readOperations } from './operations.ts';
 import { countOwed, readInbox, readUnattendedInbox } from './inbox.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
+import { readClientFacts } from '../commands/task-content.ts';
 import { isKnownTimeZone, readLedger } from './ledger.ts';
 
 export type ReadName = ReadRequest['read'];
@@ -303,7 +304,13 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       );
       // Not there, or there in another business: one answer, deliberately.
       if (task === undefined) return refuseNotFound();
-      return { ok: true, task, states: await readStateChoices(tx, spine.taskStateTypeId) };
+      // The Client field's facts (MP-4-8) go to a member alone: an agent's
+      // detail and the shared view are built apart and carry neither.
+      return {
+        ok: true,
+        task: { ...task, ...(await readClientFacts(tx, task.id)) },
+        states: await readStateChoices(tx, spine.taskStateTypeId),
+      };
     },
   },
   'task.board': {

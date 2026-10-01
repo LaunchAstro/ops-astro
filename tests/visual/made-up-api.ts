@@ -16,6 +16,7 @@
 import type {
   BoardTask,
   CapabilitiesResult,
+  ClientListResult,
   InboxCountResult,
   InboxReadResult,
   InternalTaskDetail,
@@ -111,6 +112,7 @@ export const TASKS: readonly BoardTask[] = [
   task(33, 'Paid social rebuild', STATE.hold, null),
 ];
 
+const VERITY = { clientId: 'client-verity', name: 'Verity Dental' };
 const DETAIL: InternalTaskDetail = {
   ...(TASKS[0] as BoardTask),
   agentBrief: null,
@@ -147,6 +149,8 @@ const DETAIL: InternalTaskDetail = {
       own: true,
     },
   ],
+  client: VERITY.clientId,
+  hasContent: true,
   proposals: [],
   capCurrency: 'AUD',
   envelope: null,
@@ -193,6 +197,7 @@ const READS = {
   } satisfies InternalTaskRead,
   'task.todos': { ok: true, todos: TODOS } satisfies TaskTodosResult,
   'tag.list': { ok: true, tags: TAGS } satisfies TagListResult,
+  'client.list': { ok: true, clients: [VERITY] } satisfies ClientListResult,
   'person.list': { ok: true, persons: [NATHAN, MIA] } satisfies PersonListResult,
   'settings.read': {
     ok: true,
