@@ -832,22 +832,13 @@ places this build does not yet reach it.
 - The board draws nine pinned columns. The client's name and the comment
   counts are not stored yet and draw the ported "not set" dash.
 - No facet menu, presets, undo/redo, typeahead or column drag-resize.
-- No Agent panel, gate or run surfaces, and no dock tab for them. The dock's
-  frame is built (MP-3-1); its geometry, sheet tiers and history are not. The records
+- No Agent panel, gate or run surfaces, and no dock tab for them. The records
   behind them are stored and read: `task.read` carries every proposal on the
   task with its gate's state and expiry (`docs/local/API.md`'s "Proposal
   projection", served by `packages/core-commands/src/reads/proposals.ts`). So this
-  is the web not drawing them yet and not the database failing to hold them, and
-  the panel registry holds only Settings until there is a screen for a tab to open.
-- Subtasks are not built. Comments are, and the task page draws them. The
-  mockup's tabbed Internal / Client / All activity conversation is not built:
-  the comments are one list with each row's audience on it, and history stays
-  its own section below.
-- **`system` is not offered as a comment kind.** The API takes `note`, `client`
-  and `system`; the form offers the first two. A system comment is one the
-
-  the panel registry stays empty until there is a screen for a tab to open.
-
+  is the web not drawing them yet and not the database failing to hold them; the
+  dock's panel registry (`apps/web/src/panels.ts`) gains an agent tab when there
+  is a screen for it to open.
 - Subtasks are not built. Comments are, in the tabbed Internal / Client / All
   activity conversation; replies, edits, deletes and the Answered, Seen and
   Not acknowledged signals are not built yet, and history stays its own
