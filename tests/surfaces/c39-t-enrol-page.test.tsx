@@ -13,7 +13,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { App } from '../../apps/web/src/App.tsx';
 import { CSRF_HEADER, SESSION_HEADER } from '../../packages/core-wire/src/index.ts';
-import { gateOf, matchRoute, pathTo } from '../../apps/web/src/routes.ts';
+import { gateOf } from '../../apps/web/src/route-gate.ts';
+import { matchRoute, pathTo } from '../../apps/web/src/routes.ts';
 import { SessionStore, tabStorage, type StorageLike } from '../../apps/web/src/session/token.ts';
 import { mount, settle, type Mounted } from './mount.tsx';
 
