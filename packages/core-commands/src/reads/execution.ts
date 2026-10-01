@@ -11,7 +11,7 @@
 // and `unavailable` are refusals and faults, and `loading` is the client's.
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
-import { PLAN_CANDIDATES, projectedPlan } from '../../../core-runtime/src/index.ts';
+import { PLAN_CANDIDATES, projectedPlan, spentNowOf } from '../../../core-runtime/src/index.ts';
 import { projectGraph, type ExecutionGraph } from './execution-graph.ts';
 import { DEFINITION_FACTS } from './execution-definition.ts';
 import { HELPER_FACTS } from './execution-helpers.ts';
@@ -107,7 +107,11 @@ const RUN_FACTS = `coalesce((select json_agg(json_build_object(
       from public.attempts a where a.business_id = $1 and a.run_id = run.id), false),
     'heldMinor', (select sum(res.held_minor)::float8 from public.reservations res
       where res.business_id = $1 and res.run_id = run.id and res.state = 'held'),
-    'spentMinor', (select sum(res.actual_minor)::float8 from public.reservations res
+    -- A classifier's settle counts its calls as they stand now (spentNowOf).
+    'spentMinor', (select nullif(sum(case when att.state = 'settled' then res.actual_minor
+                                          else ${spentNowOf('res')} end), 0)::float8
+      from public.reservations res
+      join public.attempts att on att.business_id = res.business_id and att.reservation_id = res.id
       where res.business_id = $1 and res.run_id = run.id and res.state = 'actual'),
     'lastKind', last.kind, 'lastFault', last.detail ->> 'fault',
     -- The helpers the run's work was handed to (AW-11, execution-helpers.ts).

@@ -202,14 +202,14 @@ export const settle = async (
  * The step again, as a new attempt on its own hold, on the still-approved
  * version. `keep` marks the old hold absence-proved first, so it stays held
  * beside the replacement (0037); a hold a person has just settled needs no
- * mark. The new hold is the old one less the spend it settled at; a spend
+ * mark. The new hold is the old one less its calls' spend now; a spend
  * that used the whole hold stops the run at its budget and asks (AW-05). A replacement the envelope or cap has no room for, or whose approval
  * moved, is not reserved, and the step keeps its stop (the savepoint takes the
  * mark back with it, so the next pass asks again).
  */
 export async function resume(tx: TenantQuery, row: Unknown, keep: boolean): Promise<string> {
   if (!row.approval_current) return 'not resumed: the approval behind it is no longer current';
-  // FIXMONEY: the old hold less the spend it settled at (`budget-stop.ts`).
+  // FIXMONEY: the old hold less its calls' spend as it stands (`budget-stop.ts`).
   const remaining = await remainingOf(tx, row.reservation_id);
   if (remaining.leftMinor <= 0) {
     const words = await stopAtSpentHold(tx, {

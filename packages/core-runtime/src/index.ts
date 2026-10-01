@@ -211,6 +211,7 @@ export {
   type BudgetStopTopUpRequest,
   type TopUpOutcome,
 } from './budget-answer.ts';
+export { spentNowOf } from './budget-stop.ts';
 export type {
   BudgetAnswerCode,
   BudgetAnswerRequest,

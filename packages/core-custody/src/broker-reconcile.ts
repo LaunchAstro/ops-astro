@@ -30,6 +30,7 @@
 
 import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
 import { proofOf, reconcileModeOf, type Proof } from './broker-fault.ts';
+import { giveBack } from './broker-give-back.ts';
 import { atCeiling } from './broker-reserve.ts';
 import type { Broker } from './broker-types.ts';
 
@@ -108,7 +109,11 @@ async function ask(
   }
 }
 
-/** The answer on the call, only while it is still unknown and no person has decided. */
+/**
+ * The answer on the call, only while it is still unknown and no person has
+ * decided. A release gives back what a top-up or a stop counted of it
+ * (`giveBack`), under its envelope's lock, taken first as settlement takes it.
+ */
 async function record(
   tx: TenantQuery,
   call: Asked,
@@ -118,6 +123,7 @@ async function record(
   const callId = call.id;
   const reason = proof.proved ? `proved nothing happened: ${proof.code}` : proof.reason;
   const note = (proof.proved ? reason : `could establish nothing: ${reason}`).slice(0, NOTE_MOST);
+  if (proof.proved) await lockEnvelope(tx, callId);
   const moved = await tx.query(
     `update public.model_calls
         set reconcile_note = $3, reconcile_mode = coalesce(reconcile_mode, $5),
@@ -128,6 +134,7 @@ async function record(
     [tx.businessId, callId, note, proof.proved, modeOf(broker, call)],
   );
   if (proof.proved && moved.length > 0) {
+    await giveBack(tx, callId);
     await broker.audit(tx, {
       action: 'model.call_released',
       outcome: 'applied',
@@ -141,6 +148,17 @@ async function record(
     });
   }
   return { callId, proved: proof.proved, reason };
+}
+
+/** The call's envelope, locked before the call's row, in settlement's order (`lockCall`). */
+async function lockEnvelope(tx: TenantQuery, callId: string): Promise<void> {
+  await tx.query(
+    `select 1 from public.model_calls c
+       join public.reservations r on r.business_id = c.business_id and r.id = c.reservation_id
+       join public.task_envelopes e on e.business_id = r.business_id and e.id = r.envelope_id
+      where c.business_id = $1 and c.id = $2 for update of e`,
+    [tx.businessId, callId],
+  );
 }
 
 /**
