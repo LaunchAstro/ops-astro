@@ -7,8 +7,10 @@
 // (`raiseRunSettled`); this adds the second failure's report and the owner's
 // item, once per ask. It stops: while that item is open, a start waits on the
 // map's owner (`research-run.ts`), whose own start is their decision and
-// clears it. Twice is counted since the owner's last item closed, so two more
-// failures after their decision ask again.
+// clears it. With no owner to ask it stops all the same, until a person
+// holding task:decide on the ticket starts it (ORCH52-SL14R): their start is
+// recorded as the lift, a system comment. Twice is counted since the last
+// item closed or lift, so two more failures after either stop it again.
 
 import {
   COMMENT_TYPE_KEY,
@@ -29,6 +31,9 @@ const UNASKED =
   'The run on this ticket failed twice. ' +
   "It has no map's owner to ask, so no one has been asked to look.";
 
+/** The lift's comment; only `researchLifted` writes a system comment with it. */
+const LIFTED = 'Research started again, after two failed runs, by a person who decides on it.';
+
 /** The owner's item: about the ticket itself, waiting on their move. */
 const ASK = `subject_record_id = $2 and reason = 'waiting_run'
   and fact_kind = 'record' and fact_id = $2`;
@@ -48,7 +53,7 @@ export async function researchFailed(
   const facts = await wayfinderFacts(tx, failed.taskId);
   if (facts?.type !== 'research') return;
   if ((await openAsk(tx, failed.taskId)) !== undefined) return;
-  if ((await failuresSinceAsked(tx, failed.taskId)) !== TWICE) return;
+  if ((await failuresSinceLift(tx, failed.taskId)) !== TWICE) return;
   const author = await holderOf(tx, failed.leaseId);
   const commentTypeId = await commentType(tx);
   if (commentTypeId !== undefined) {
@@ -91,21 +96,50 @@ export async function clearAsk(tx: TenantQuery, taskId: string, owner: string): 
   );
 }
 
+/** Whether the ticket failed twice since its last lift, its owner's or a decide-holder's. */
+export async function failedTwice(tx: TenantQuery, taskId: string): Promise<boolean> {
+  return (await failuresSinceLift(tx, taskId)) >= TWICE;
+}
+
+/** A decide-holder's start lifts the stop: a system comment on the ticket, in their name. */
+export async function researchLifted(
+  tx: TenantQuery,
+  taskId: string,
+  actorId: string,
+): Promise<void> {
+  const commentTypeId = await commentType(tx);
+  if (commentTypeId === undefined) return;
+  await writeComment(tx, commentTypeId, {
+    taskId,
+    authorActorId: actorId,
+    commentType: 'system',
+    audience: 'internal',
+    body: LIFTED,
+    source: 'automation',
+  });
+}
+
 /**
- * The ticket's settled failed handbacks since its last ask closed (or ever,
- * if it has had none), this one included. Called with no ask open.
+ * The ticket's settled failed handbacks since its last lift: its last ask
+ * closed, or a decide-holder's lift comment (or ever, if neither). Only this
+ * module writes an `automation` comment: no command runs from that entry point.
  */
-async function failuresSinceAsked(tx: TenantQuery, taskId: string): Promise<number> {
+async function failuresSinceLift(tx: TenantQuery, taskId: string): Promise<number> {
   const rows = await tx.query<{ readonly n: number }>(
     `select count(*)::int as n
        from public.handback_reports h
        join public.leases l on l.business_id = h.business_id and l.id = h.lease_id
       where h.business_id = $1 and l.task_id = $2
         and h.disposition = 'settled' and h.outcome = 'failed'
-        and h.created_at > coalesce(
+        and h.created_at > greatest(
           (select max(closed_at) from public.inbox_items where business_id = $1 and ${ASK}),
+          (select max(c.created_at) from public.records c
+             join public.record_types t on t.business_id = c.business_id
+              and t.id = c.record_type_id and t.key = $3
+            where c.business_id = $1 and c.data ->> 'task' = $2::uuid::text
+              and c.data ->> 'source' = 'automation' and c.data ->> 'body' = $4),
           '-infinity')`,
-    [tx.businessId, taskId],
+    [tx.businessId, taskId, COMMENT_TYPE_KEY, LIFTED],
   );
   return rows[0]?.n ?? 0;
 }
