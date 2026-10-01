@@ -708,7 +708,9 @@
     "tests/operations/c81-breach-drill-subject.test.ts",
     "tests/db/reservation-stop-cause.test.ts",
     "tests/db/lease-holder-guard.test.ts",
-    "tests/db/lease-pickup-path.test.ts"
+    "tests/db/lease-pickup-path.test.ts",
+    "tests/broker/aw-10-lookup-slot.test.ts",
+    "tests/broker/aw-10-lookup-slot-isolation.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
