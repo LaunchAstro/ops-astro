@@ -1989,6 +1989,12 @@ person of the new task's client learns that it was duplicated, not from where.
 `settings.read` and `session.capabilities` carry a null subject: neither is
 about one record, and naming one would make "who read this record" false.
 
+**Show finished subtasks is a key of the one store** (MP-4-4, CS-4.27).
+`subtasks.showFinished` takes `true` or `false` through `preference.save`;
+hidden, the default, is no row. The task page and the dock panel read it once
+and save each change; a reader the store refuses keeps the choice for the view
+and sends no save.
+
 ## Open items
 
 Named so they are not read as settled:
@@ -2347,6 +2353,11 @@ test harness and staging included, runs them. An installation with no mode
 row refuses them too, naming `installation`, and one whose readiness function
 is gone fails them. Only a database from before 0058, with neither the
 function nor `ops.installation`, runs them, as 0058 provisions it made-up.
+
+`task.share_with_client` is `client-data` (MP-4-10): a share gives the task to
+the client's existing people and enrols or invites no one, so it is shut while
+an item is open and is never an `invitation`. `task.revoke_client_share`
+gives no one anything and is not gated.
 
 The eight items are `ops.gate_items` rows, each with an `https` evidence link:
 `tested-backups`, `second-factor`, `legal-basics`, `privacy-act-statement`,

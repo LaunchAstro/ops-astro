@@ -18,13 +18,15 @@
 // in the order the server lists them.
 //
 // **Finished steps fold away.** A done step, and an archived one (it left the
-// count without being done, MP-4-15), sit under "Show finished", which the
-// page holds so a reread keeps it open. An archived step says when and why,
-// and carries no tick: it comes back only when its parent is reopened.
+// count without being done, MP-4-15), sit under "Show finished", the person's
+// own preference (`show-finished.ts`), so a reread keeps it open. An archived
+// step says when and why, and carries no tick: it comes back only when its
+// parent is reopened.
 
 import { useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
 import type { StepView, TaskTimeView } from '../../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../../operations/client.ts';
+import { useShowFinished } from './show-finished.ts';
 import { useCommand } from '../../records/use-command.ts';
 import { stepMarks } from './perspective-counts.ts';
 import { TeamWork, type PanelOpener } from './Perspectives.tsx';
@@ -240,8 +242,6 @@ export function TeamSubtasks(props: {
     readonly time: TaskTimeView | null;
     readonly estimateMinutes: number | null;
   };
-  readonly showFinished: boolean;
-  readonly onShowFinished: (value: boolean) => void;
   readonly showAllTime: boolean;
   readonly onShowAllTime: (value: boolean) => void;
   readonly onChanged: () => void;
@@ -250,6 +250,9 @@ export function TeamSubtasks(props: {
   readonly doors?: boolean;
 }): ReactElement {
   const { task } = props;
+  // The person's own choice (MP-4-4, CS-4.27). The member page and the panel
+  // draw this; the shared view does not, so an outside reader reads nothing more.
+  const [showFinished, setShowFinished] = useShowFinished(props.client);
   return (
     <TeamWork
       steps={stepMarks(task.steps)}
@@ -258,8 +261,8 @@ export function TeamSubtasks(props: {
           client={props.client}
           parentId={task.id}
           steps={task.steps}
-          showFinished={props.showFinished}
-          onShowFinished={props.onShowFinished}
+          showFinished={showFinished}
+          onShowFinished={setShowFinished}
           onChanged={props.onChanged}
         />
       }

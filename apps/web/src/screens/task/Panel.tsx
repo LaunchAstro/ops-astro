@@ -187,14 +187,11 @@ function useTimerStop(props: SideProps): void {
 
 /** The subtasks and time, without the doors: this is where their edits happen. */
 function PanelWork(props: SideProps): ReactElement {
-  const [showFinished, setShowFinished] = useState(false);
   const [showAllTime, setShowAllTime] = useState(false);
   return (
     <TeamSubtasks
       client={props.client}
       task={props.task}
-      showFinished={showFinished}
-      onShowFinished={setShowFinished}
       showAllTime={showAllTime}
       onShowAllTime={setShowAllTime}
       onChanged={props.onChanged}

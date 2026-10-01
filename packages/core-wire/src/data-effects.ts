@@ -92,6 +92,11 @@ const LEGAL = writing(business('legal_document_versions'));
 // A grant names a client only by its scope; it holds no content and admits
 // no one, and a party-scoped grant needs a client, which is gated itself.
 const GRANTS = writing(business('grants'));
+// A task shared with its client is that client's data reaching the client's
+// existing people: S0-5 classes it client-data, never an invitation, as it
+// enrols no one (MP-4-10, TR-S-PIR5-2). Taking the share back gives no one
+// anything, so `task.revoke_client_share` stays a business grant write.
+const SHARE = writing(client('grants'));
 const CREDENTIAL = writing(business('agent_credentials', 'actors'));
 
 /**
@@ -147,7 +152,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   // A duplicate is a new task with its subtasks and a link to the old one (MP-4-8).
   'task.duplicate': writing(client('records', 'record_unique_values', 'record_links')),
   // Client access (MP-4-10): a share grant on the task for its client's people.
-  'task.share_with_client': GRANTS,
+  'task.share_with_client': SHARE,
   'task.revoke_client_share': GRANTS,
   'task.set_party': TASK,
   'task.set_audience': TASK,

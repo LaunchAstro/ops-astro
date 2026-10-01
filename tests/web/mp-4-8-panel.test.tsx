@@ -51,6 +51,9 @@ function serving(over: Readonly<Record<string, unknown>> = {}): {
       return Promise.resolve(json({ ok: true, queue: [], alerts: [], outages: [] }));
     }
     if (where.endsWith('/task/execution')) return Promise.resolve(json({ ok: false }));
+    // The person's own preferences (MP-4-4's show finished): none stored.
+    if (where.endsWith('/preference/read'))
+      return Promise.resolve(json({ ok: true, preferences: {} }));
     // The tab's one live stream (C4), unavailable here.
     if (/\/live(\/task\/|\?|$)/u.test(where))
       return Promise.resolve(new Response(null, { status: 404 }));

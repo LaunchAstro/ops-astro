@@ -35,7 +35,10 @@ interface Deps {
  */
 async function clientTask({ world, freshTask, asPerson }: Deps, title: string): Promise<Task> {
   const task = await freshTask(title);
-  const client = randomUUID();
+  // The party link names a client of this business (C32), so one is made first.
+  const made = await asPerson('client.create', { name: `Client ${randomUUID().slice(0, 8)}` });
+  if (made.code !== 'ok') throw new Error(`matrix: client.create refused ${made.code}`);
+  const client = String((made.body['detail'] as Record<string, unknown>)['clientId']);
   const set = await asPerson('task.set_party', {
     recordId: task.id,
     expectedRevision: task.revision,
