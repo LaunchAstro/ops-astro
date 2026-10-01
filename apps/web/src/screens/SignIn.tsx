@@ -33,7 +33,9 @@
 import { useState, type FormEvent, type ReactElement } from 'react';
 import { BrandMark, FieldError } from '@launchastro/ui';
 import { buildStamp } from '../app-state.ts';
+import { pathTo } from '../routes.ts';
 import { openSession } from '../session/sign-in.ts';
+import { PUBLIC_DOCUMENTS } from './Legal.tsx';
 import type { Interruption, Session } from '../session/token.ts';
 
 export interface SignInProps {
@@ -178,6 +180,14 @@ export function SignIn(props: SignInProps): ReactElement {
           </button>
         </div>
       </form>
+      {/* The business's public legal documents (C81), for the business chosen above. */}
+      <nav aria-label="Legal documents">
+        {PUBLIC_DOCUMENTS.map(([document, words]) => (
+          <p key={document}>
+            <a href={pathTo('agency:legal', { business: businessKey, document })}>{words}</a>
+          </p>
+        ))}
+      </nav>
       {/* The version stamp's fixed place when there is no rail (S0-1). */}
       <p className="rail__build signin__build" data-build={build ?? ''}>
         {build === null ? 'Build not stamped' : `Build ${build}`}

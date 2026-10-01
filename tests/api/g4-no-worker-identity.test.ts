@@ -44,6 +44,8 @@ const OTHERS = [
   'POST /api/session/end',
 ];
 const SETTINGS = [
+  // API-2: the function's instance ceiling, a number that divides the agent limits.
+  'AGENT_QUOTA_INSTANCES',
   'ALERT_SCOPE_KEY',
   'DATABASE_LOOKUP_URL',
   'DATABASE_URL',
@@ -54,6 +56,8 @@ const SETTINGS = [
   'GOTRUE_URL',
   'OPS_ASTRO_CRASH_POINT',
   'OPS_ENVIRONMENT',
+  // C55: the error sink's web address, never its DSN (ORCH49).
+  'OPS_ERROR_SINK_URL',
   'OPS_RELEASE',
   'RECOVERY_BUSINESS_KEYS',
   'SERVED_HOST',
@@ -85,6 +89,7 @@ it('G4: the function entry reads no setting that could hold a worker identity', 
     SERVED_HOST: 'ops.example.test',
     OPS_ENVIRONMENT: 'staging',
     ALERT_SCOPE_KEY: 'ab'.repeat(32),
+    RECOVERY_BUSINESS_KEYS: 'none',
   };
   const settings = new Proxy(given, {
     get: (target, name) => {

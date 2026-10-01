@@ -148,6 +148,7 @@ async function build(): Promise<World> {
     SERVED_HOST: HOST,
     OPS_ENVIRONMENT: 'staging',
     ALERT_SCOPE_KEY: SCOPE_KEY,
+    RECOVERY_BUSINESS_KEYS: 'none',
   });
   return {
     c,

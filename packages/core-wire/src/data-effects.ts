@@ -78,7 +78,6 @@ const PROPOSAL = writing(
   client(
     'evidence_packs',
     'gates',
-    'inbox_items',
     'planned_runs',
     'planned_steps',
     'proposal_lineages',

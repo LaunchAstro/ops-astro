@@ -16,11 +16,12 @@
 // the live channel's LISTEN.
 //
 // **Recovery has one owner here: the function.** The worker holds no database,
-// so with `RECOVERY_BUSINESS_KEYS` set the function runs the reconciliation
-// pass (`passDeployment`: sweep, replay, the register's answers) over those
-// businesses, awaited by every request while it runs, again each
-// `SWEEP_INTERVAL_MS` after one succeeds, since an instance may be frozen once
-// it answers. Instances that pass at once meet
+// so the function runs the reconciliation pass (`passDeployment`: sweep,
+// replay, the register's answers) over the businesses `RECOVERY_BUSINESS_KEYS`
+// names, which a named environment (`OPS_ENVIRONMENT`) must set, if only to
+// `none`. Each business passes on its own, awaited by every request while it
+// runs, again each `SWEEP_INTERVAL_MS` after it succeeds, since an instance may
+// be frozen once it answers. Instances that pass at once meet
 // on the pass's own row locks. `server.ts` runs the same pass only where there
 // is no function.
 //
@@ -38,6 +39,14 @@
 // login, scopes keyed by `ALERT_SCOPE_KEY`, and the environment's forwarder
 // counts and sends (`apps/forwarder`). The sink's DSN is the forwarder's, so
 // the entry refuses to start beside it.
+//
+// **The agent quota is per instance (API-2).** Its counts live in one
+// process's memory and every instance starts its own, so each holds the
+// installation's limits divided by the deployment's instance ceiling,
+// `AGENT_QUOTA_INSTANCES` (4 unset; set it to the function's maximum
+// instances), rounded down. A ceiling above the smallest limit would round a
+// share up to one, so the entry refuses it at start-up. Together they stay
+// within what one server holds.
 
 import { join } from 'node:path';
 import {
@@ -54,7 +63,9 @@ import {
 } from '../../packages/core-runtime/src/index.ts';
 import { createOutboxAlerts, scopeKey } from './alerts/outbox.ts';
 import type { Alerts } from './alerts/sink.ts';
+import { DEFAULT_AGENT_LIMITS, type AgentLimits, type Tiers } from './auth/agent-quota.ts';
 import { publishableKey } from './auth/publishable-key.ts';
+import { errorSinkLink } from './health/error-sink-link.ts';
 import { keySetUrlFor } from './auth/supabase.ts';
 import {
   parseRecoveryScope,
@@ -96,10 +107,8 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
       'SUPABASE_KEY_SET_URL may name a loopback key set only, for a loopback issuer.',
     );
   }
-  // The keyring from the settings alone: without them `runtimeKeys` falls back
-  // to creating a local key file, and a function has none to share.
-  required('DELEGATION_CREDENTIAL_KEY_ID');
-  required('DELEGATION_CREDENTIAL_KEYS');
+  // The keyring from the settings alone: `runtimeKeys` would make a key file no instance shares.
+  for (const name of ['DELEGATION_CREDENTIAL_KEY_ID', 'DELEGATION_CREDENTIAL_KEYS']) required(name);
   const keys = runtimeKeys(settings);
   if (!keys.delegation.ok) {
     throw new Error(`delegation credential keys: ${keys.delegation.problem}`);
@@ -112,7 +121,9 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
     signIn: { issuer, keySetUrl },
     providerKey: publishableKey(settings['SUPABASE_PUBLISHABLE_KEY']),
     keys,
+    errorSink: errorSinkLink(settings),
     ...(alerts === undefined ? {} : { alerts }),
+    agentLimits: perInstance(settings['AGENT_QUOTA_INSTANCES']),
   });
   const pass = recoveryPass(settings, database, resolveBusiness, keys);
 
@@ -126,11 +137,49 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
   };
 }
 
+/** The most instances the limits split across with at least one of each. */
+const INSTANCES_MOST = Math.min(
+  ...[
+    DEFAULT_AGENT_LIMITS.requests,
+    DEFAULT_AGENT_LIMITS.concurrent,
+    DEFAULT_AGENT_LIMITS.exports,
+  ].flatMap((all) => Object.values(all)),
+  DEFAULT_AGENT_LIMITS.refused,
+);
+const INSTANCES_UNSET = INSTANCES_MOST;
+
+/** The default limits split across the instance ceiling, rounded down. */
+function perInstance(setting: string | undefined): AgentLimits {
+  const given = setting === undefined || setting === '' ? String(INSTANCES_UNSET) : setting;
+  const instances = /^\d+$/u.test(given) ? Number(given) : 0;
+  if (instances < 1) throw new Error('AGENT_QUOTA_INSTANCES is not a whole number of instances.');
+  if (instances > INSTANCES_MOST) {
+    throw new Error(
+      `AGENT_QUOTA_INSTANCES is above ${INSTANCES_MOST}, the smallest agent limit, so a share would round up.`,
+    );
+  }
+  const share = (limit: number): number => Math.floor(limit / instances);
+  const tiers = (all: Tiers): Tiers => ({
+    credential: share(all.credential),
+    person: share(all.person),
+    business: share(all.business),
+  });
+  const { requests, concurrent, exports, refused } = DEFAULT_AGENT_LIMITS;
+  return {
+    requests: tiers(requests),
+    concurrent: tiers(concurrent),
+    exports: tiers(exports),
+    refused: share(refused),
+  };
+}
+
 /**
  * The reconciliation pass the function owns, over `RECOVERY_BUSINESS_KEYS`:
- * at most once each `SWEEP_INTERVAL_MS` after one succeeds, awaited by every
- * request while it runs. Unset or `none`, it does nothing; a malformed value
- * throws at start.
+ * each business at most once each `SWEEP_INTERVAL_MS` after its pass succeeds,
+ * awaited by every request while it runs. A business passes on its own, so a key
+ * that does not resolve, or a pass that rolls back, holds up no other (#287 A8).
+ * `none` does nothing; unset does nothing only where no environment is named,
+ * and a malformed value throws at start.
  */
 function recoveryPass(
   settings: Settings,
@@ -138,31 +187,34 @@ function recoveryPass(
   resolveBusiness: (businessKey: string) => Promise<string | undefined>,
   keys: RuntimeKeys,
 ): () => Promise<void> {
-  const scope =
-    settings[RECOVERY_SCOPE_SETTING] === undefined
-      ? undefined
-      : parseRecoveryScope(settings[RECOVERY_SCOPE_SETTING]);
+  const raw = settings[RECOVERY_SCOPE_SETTING];
+  const named = (settings['OPS_ENVIRONMENT'] ?? '') !== '';
+  const scope = raw === undefined && !named ? undefined : parseRecoveryScope(raw);
   if (scope?.ok === false) throw new Error(scope.problem);
 
-  let due = 0;
+  const due = new Map<string, number>();
   let running: Promise<void> | undefined;
-  const run = async (scopeKeys: readonly string[]): Promise<void> => {
-    const outcome = await withRuntimeKeys(
-      keys,
-      async () => await passDeployment(database, resolveBusiness, scopeKeys, registerEffectLookup),
-    ).catch((cause: unknown) => ({
-      ok: false as const,
-      problem: cause instanceof Error ? cause.message : 'unknown',
-    }));
-    // Only a pass that finished marks the interval done; a failed one runs again.
-    if (outcome.ok) due = Date.now() + SWEEP_INTERVAL_MS;
-    else console.error(`api: reconciliation pass: ${outcome.problem}`);
+  const run = async (owed: readonly string[]): Promise<void> => {
+    for (const key of owed) {
+      // One business at a time, as `passDeployment` runs them.
+      // eslint-disable-next-line no-await-in-loop
+      const outcome = await withRuntimeKeys(
+        keys,
+        async () => await passDeployment(database, resolveBusiness, [key], registerEffectLookup),
+      ).catch((cause: unknown) => ({
+        ok: false as const,
+        problem: cause instanceof Error ? cause.message : 'unknown',
+      }));
+      // Only a pass that finished marks its interval done; a failed one runs again.
+      if (outcome.ok) due.set(key, Date.now() + SWEEP_INTERVAL_MS);
+      else console.error(`api: reconciliation pass: ${outcome.problem}`);
+    }
   };
   // Every request waits on the pass in flight, so none is served beside it.
   return async (): Promise<void> => {
-    if (scope === undefined || scope.keys.length === 0) return;
-    if (running === undefined && Date.now() >= due) {
-      running = run(scope.keys).finally(() => {
+    const owed = scope?.keys.filter((key) => Date.now() >= (due.get(key) ?? 0)) ?? [];
+    if (running === undefined && owed.length > 0) {
+      running = run(owed).finally(() => {
         running = undefined;
       });
     }

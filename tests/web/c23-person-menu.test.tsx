@@ -213,7 +213,7 @@ describe('C23 it draws no mockup surface: the kit’s avatar and menu, in the st
   });
 });
 
-// eslint-disable-next-line max-lines-per-function -- the three ways a sign-out is answered
+// eslint-disable-next-line max-lines-per-function -- the ways a sign-out is answered
 describe('C23 sign-out: check first, then act; it ends only its own session', () => {
   it('signs out even when neither the audit call nor the cookie route answers', async () => {
     const { fetch } = transport({ end: never, clear: never });
@@ -240,6 +240,28 @@ describe('C23 sign-out: check first, then act; it ends only its own session', ()
     expect(sessions.session).toBeNull();
     expect(document.body.textContent).not.toContain('offline');
     expect(view.find('form')).not.toBeNull();
+    await view.unmount();
+  });
+
+  it('records session.end before the sign-out route can end the session', async () => {
+    let finish: ((value: Response) => void) | undefined;
+    const held = (): Promise<Response> =>
+      new Promise<Response>((resolve) => {
+        finish = resolve;
+      });
+    const { fetch, asked } = transport({ end: held });
+    const { view, sessions } = await open('/projects/', { fetch, ...SIGNED_IN });
+    await settle();
+    await view.click(TRIGGER);
+    await view.click('.who__menu button[role="menuitem"]');
+    await settle();
+    expect(sessions.session).toBeNull();
+    const urls = (): string[] => asked.map((each) => each.url);
+    expect(urls().some((url) => url.endsWith('/account/sessions/sign-out'))).toBe(false);
+    finish?.(json({ recordId: null, detail: { ended: 'sign-out' } }));
+    await settle();
+    const ended = urls().findIndex((url) => url.endsWith('/account/sessions/sign-out'));
+    expect(ended).toBeGreaterThan(urls().findIndex((url) => url.endsWith('/b/alpha/session/end')));
     await view.unmount();
   });
 

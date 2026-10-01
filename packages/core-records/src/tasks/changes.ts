@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C4 (#429): *changes since* on the live change record (migration 0064,
+// C4 (#429): *changes since* on the live change record (migration 0065,
 // CS-15.19), for API-4. The tasks stamped after a point, filtered inside the
 // one query by the caller's live `task:read` grants exactly as `task.read`
 // admits them: at business scope, on the task itself, or on the map the task
@@ -15,7 +15,7 @@
 // re-read. Points never go backwards: the next is at least the one given.
 
 import type { TenantQuery } from '../tenancy/database.ts';
-import { EFFECTIVE, type Subject } from '../authority/grants.ts';
+import { EFFECTIVE, askedFor, type Subject } from '../authority/grants.ts';
 
 /** One task that changed after the point; nothing about what changed. */
 export interface TaskChange {
@@ -81,9 +81,10 @@ export async function changesSince(
   point: string | null,
 ): Promise<ChangesSince | 'POINT_INVALID'> {
   if (point !== null && !POINT.test(point)) return 'POINT_INVALID';
+  const asked = askedFor(subjects, { collection: 'task', action: 'read' });
   const [row] = await tx.query<Row>(CHANGES_SINCE, [
-    subjects.map((subject) => subject.kind),
-    subjects.map((subject) => subject.id),
+    asked.map((subject) => subject.kind),
+    asked.map((subject) => subject.id),
     point,
   ]);
   if (row === undefined) throw new Error('changes since answered no row');

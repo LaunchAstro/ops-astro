@@ -1,18 +1,25 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// S0-5's three closing lines (migration 0060) as `s0-5-gate-commands.test.ts`
-// runs them: each try that must keep a line shut, the record that closes it,
-// and the rows the table refuses by itself.
+// S0-5's three closing lines (migration 0060) and item 3's procedure line
+// (0071) as `s0-5-gate-commands.test.ts` runs them: each try that must keep a
+// line shut, the record that closes it, and the rows the table refuses by itself.
 
-import { OPT_IN_REGISTER, OWNER_LINES } from '../acceptance/role-case-gate-bodies.ts';
+import {
+  gateRecordBody,
+  OPT_IN_REGISTER,
+  OWNER_LINES,
+} from '../acceptance/role-case-gate-bodies.ts';
 import {
   admin,
+  CHANGE,
   evidence,
   fingerprint,
   names,
   readiness,
   RECORD,
+  refusedAlike,
   send,
+  type Attempt,
   type GateWorld,
 } from './s0-5-gate-world.ts';
 
@@ -154,4 +161,46 @@ export async function tableRefusals(w: GateWorld): Promise<string[]> {
     answers.push(answer);
   }
   return answers;
+}
+
+const PROCEDURE = 'privacy-procedure';
+
+const PROCEDURE_TRIES: readonly (readonly [string, object])[] = [
+  ['no evidence link', {}],
+  ['an http link', { evidence: 'http://evidence.example/privacy-procedure' }],
+  ["an owner's line, as on a closing line", { evidence: evidence('pp'), statement: 'Tested.' }],
+];
+
+/**
+ * Item 3's privacy-request procedure (0071): with every other item and line
+ * done, the procedure line keeps the gate shut until its evidence link is
+ * recorded. A record with no https link, or with an owner's line, is refused
+ * and leaves it open; the mode change is refused naming it alone.
+ */
+export async function procedureHeldOpen(w: GateWorld): Promise<string[]> {
+  const wrong: string[] = [];
+  for (const item of (await readiness(w)).open_items) {
+    if (item === PROCEDURE) continue;
+    // oxlint-disable-next-line no-await-in-loop
+    const answer = await send(w, RECORD, gateRecordBody(item));
+    if (answer.status !== 200) wrong.push(`${item}: ${String(answer.status)} ${answer.code}`);
+  }
+  const open = JSON.stringify((await readiness(w)).open_items);
+  if (open !== `["${PROCEDURE}"]`) wrong.push(`open with the procedure unevidenced: ${open}`);
+  wrong.push(
+    ...(await refusedAlike(
+      w,
+      PROCEDURE_TRIES.map(([label, body]): Attempt => [
+        label,
+        async () => await send(w, RECORD, { item: PROCEDURE, ...body }),
+      ]),
+      { status: 422, code: 'FIELD_VALUE_INVALID' },
+    )),
+  );
+  const before = await fingerprint(w);
+  const change = await send(w, CHANGE, { mode: 'real' });
+  const got = `${String(change.status)} ${change.code} ${JSON.stringify(names(change))}`;
+  if (got !== `409 INSTALLATION_NOT_READY ["${PROCEDURE}"]`) wrong.push(`the mode change: ${got}`);
+  if (before !== (await fingerprint(w))) wrong.push('the mode change wrote');
+  return wrong;
 }

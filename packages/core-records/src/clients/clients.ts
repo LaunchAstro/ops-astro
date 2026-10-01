@@ -83,6 +83,9 @@ export async function clientsReached(
   subjects: readonly Subject[],
   among: readonly string[] | null = null,
 ): Promise<readonly ClientRow[] | null> {
+  // An agent credential's subject is held within named keys, and no key names
+  // a client list, so it reaches none.
+  const asked = subjects.filter((subject) => subject.within === undefined);
   const rows = await tx.query<{
     readonly held: boolean;
     readonly client_id: string | null;
@@ -106,8 +109,8 @@ export async function clientsReached(
       order by lower(c.name), c.id`,
     [
       tx.businessId,
-      subjects.map((subject) => subject.kind),
-      subjects.map((subject) => subject.id),
+      asked.map((subject) => subject.kind),
+      asked.map((subject) => subject.id),
       among,
     ],
   );

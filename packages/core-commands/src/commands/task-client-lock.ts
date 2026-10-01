@@ -8,6 +8,12 @@
 // a lease, an alert). The check runs under the task's row lock, which the
 // preparation took (`lockTask`, `for update`), so a content write that holds
 // the same lock is either wholly before it or wholly after it.
+//
+// Not every content write takes the task lock. The runtime's own (heartbeat,
+// dispatch, observe) lock runtime rows, but each runs only on a task that
+// already holds a lineage, a planned run, a lease and a reservation, and
+// `task.propose` wrote the first of those under the task lock. Their history
+// rows are counted below all the same; they can never be a task's first content.
 
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { COMMAND_SURFACE } from '../../../core-wire/src/index.ts';

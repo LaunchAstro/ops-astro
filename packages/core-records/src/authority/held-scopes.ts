@@ -4,7 +4,7 @@
 // own walk (`EFFECTIVE` in grants.ts).
 
 import type { TenantQuery } from '../tenancy/database.ts';
-import { EFFECTIVE, type Scope, type ScopeRequest, type Subject } from './grants.ts';
+import { EFFECTIVE, askedFor, type Scope, type ScopeRequest, type Subject } from './grants.ts';
 
 /**
  * Every live grant of this collection and action, at whatever scope it names.
@@ -20,6 +20,7 @@ export async function heldScopes(
   subjects: readonly Subject[],
   request: Omit<ScopeRequest, 'scope'>,
 ): Promise<readonly Scope[]> {
+  const asked = askedFor(subjects, request);
   return await tx.query<Scope>(
     `${EFFECTIVE}
      select distinct e.scope_kind as kind, e.scope_id as id
@@ -31,8 +32,8 @@ export async function heldScopes(
     [
       request.collection,
       request.action,
-      subjects.map((subject) => subject.kind),
-      subjects.map((subject) => subject.id),
+      asked.map((subject) => subject.kind),
+      asked.map((subject) => subject.id),
     ],
   );
 }

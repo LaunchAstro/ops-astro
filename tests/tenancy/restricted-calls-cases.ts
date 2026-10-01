@@ -24,10 +24,17 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['', 'ops.schema_migrations'],
   // 0045: the installation's operating business; the application reads it only.
   ['s', 'ops.operating_business'],
+  // 0070 (C55): the date of the last tested restore; the application reads it
+  // only, and the drill writes it through ops.record_tested_restore().
+  ['s', 'ops.last_tested_restore'],
   // 0047: the API's outbox; the application inserts its four columns, and reads nothing.
   ['i', 'ops.api_events'],
   // 0048: the forwarder's kept alerts; the application holds nothing on them.
   ['', 'ops.api_alerts'],
+  // 0069 (C55): the forwarder's alert log; the application selects its kind
+  // and time columns alone, and changes nothing. A column grant: this suite's
+  // `select 1` needs one column, and c55-security-alerts proves which.
+  ['s', 'ops.security_alert_log'],
   ['s', 'ops.slots'],
   // 0058 (S0-5): the installation's mode and the gate items are read by the
   // application through first_client_readiness().
@@ -42,6 +49,10 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'ops.ended_provider_sessions'],
   // 0063 (C58): other sessions ended in every business, by subject digest.
   ['si', 'ops.ended_subject_sessions'],
+  // 0064 (C59): a second factor verified or removed, by subject digest, for every business.
+  ['si', 'ops.second_factor_subjects'],
+  // 0072 (C59): a second-factor code sent or answered, by subject digest, for every business.
+  ['si', 'ops.second_factor_codes'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],
   ['si', 'alerts handback_reports operations run_events'],
   // 0042: an attempt and a seen stamp are observations, never rewritten (INB-1a).
@@ -72,11 +83,12 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['siu', 'access_endings'],
   // 0057 (C58): an ended session is written once; never changed or deleted.
   ['si', 'ended_sessions'],
-  // 0064: the live change record, stamped by the writes' own triggers (C4).
-  ['siu', 'live_changes'],
-  // 0065: a person's own availability, set by them alone (MP-7-10).
+  // 0065: the live change record, stamped by the writes' own triggers (C4);
+  // the trash purge deletes a purged task's row.
+  ['siud', 'live_changes'],
+  // 0066: a person's own availability, set by them alone (MP-7-10).
   ['siu', 'person_availability'],
-  // 0066: a second save of a key replaces its value; nothing deletes one (MP-2-11a).
+  // 0067: a second save of a key replaces its value; nothing deletes one (MP-2-11a).
   ['siu', 'person_preferences'],
   // 0078: a time entry is deleted by a mark, never a row delete.
   ['siu', 'time_entries'],

@@ -14,12 +14,10 @@
 // against the mockup's page. Every name and client is made up.
 
 import type {
-  AccessReadResult,
   CapabilitiesResult,
   InboxCountResult,
   InboxReadResult,
   InternalTaskRead,
-  OperationsReadResult,
   PersonListResult,
   QueueResult,
   SessionPersonResult,
@@ -34,12 +32,10 @@ import type {
 } from '../../packages/core-wire/src/index.ts';
 import type { BrowserContext } from 'playwright';
 import type { ReadName } from '../../apps/web/src/operations/read-names.ts';
-import { DETAIL, MIA, NATHAN, STATE, TAGS, TASKS, TODOS } from './made-up-tasks.ts';
+import { ACCESS, HARBOUR, MERIDIAN, MIA, NATHAN, OPERATIONS } from './made-up-access.ts';
+import { DETAIL, STATE, TAGS, TASKS, TODOS } from './made-up-tasks.ts';
 
 export { TASKS } from './made-up-tasks.ts';
-
-const HARBOUR = { clientId: 'c-harbour', name: 'Harbour Physio' };
-const MERIDIAN = { clientId: 'c-meridian', name: 'Meridian Dental' };
 
 /** The Work log's two days, newest first, as `task.ledger` answers them (MP-8-4). */
 const LEDGER: TaskLedgerResult = {
@@ -196,21 +192,8 @@ const READS = {
     ok: true,
     hits: TASKS.slice(0, 3).map(({ id, key, title }) => ({ id, key, title })),
   } satisfies TaskSearchResult,
-  'access.read': {
-    ok: true,
-    team: [
-      { ...NATHAN, permissions: [], grants: [] },
-      { ...MIA, permissions: [], grants: [] },
-    ],
-    clients: [],
-    agents: [],
-    clientRecords: [HARBOUR, MERIDIAN],
-  } satisfies AccessReadResult,
-  'operations.read': {
-    ok: true,
-    privacyIncidents: [],
-    breachRunbook: null,
-  } satisfies OperationsReadResult,
+  'access.read': ACCESS,
+  'operations.read': OPERATIONS,
 } as const satisfies Partial<Record<ReadName, unknown>>;
 
 /** The reads the harness answers; a read missing here draws its "could not be read" state. */

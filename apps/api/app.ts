@@ -35,6 +35,7 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { deleteCookie, setCookie } from 'hono/cookie';
+import { createAgentQuota, DEFAULT_AGENT_LIMITS, type AgentLimits } from './auth/agent-quota.ts';
 import {
   NO_MEMBERSHIP_FIXES,
   NO_AGENT_FIXES,
@@ -45,9 +46,7 @@ import {
 import type { Database, VerifiedSubject } from '../../packages/core-records/src/index.ts';
 import {
   agentAnswer,
-  endOtherSessions,
-  enrolSecondFactor,
-  listOwnSessions,
+  credentialNotLive,
   isCommandRefusal,
   isReadName,
   boardReach,
@@ -57,9 +56,6 @@ import {
   refuseNotFound,
   setOwnAvailability,
   viewerOf,
-  removeSecondFactor,
-  signOutSession,
-  verifySecondFactor,
 } from '../../packages/core-commands/src/index.ts';
 import {
   readServiceHealth,
@@ -81,12 +77,14 @@ import type { CommandDeclaration } from '../../packages/core-wire/src/index.ts';
 import type {
   executeCommand,
   executeAgentCommand,
+  executeCredentialCommand,
   CommandRefusal,
   executeRead,
   admitReads,
   AdmissionAt,
 } from '../../packages/core-commands/src/index.ts';
 import type { Verifier } from './auth/supabase.ts';
+import { presentedBy } from './auth/agent-bearer.ts';
 import type { SSEStreamingApi } from 'hono/streaming';
 import type { LiveSignal, LiveTopics } from './live.ts';
 import { markOf, presenceAskOf, type LivePresence, type SeatAsk } from './live-presence.ts';
@@ -102,8 +100,9 @@ import {
   type Watching,
 } from './live-follow.ts';
 import { followBoard } from './live-board.ts';
-import { mountPublicLegal, signOutRefused } from './account-routes.ts';
+import { mountFactorRoutes, mountPublicLegal } from './account-routes.ts';
 import { signalOf, type Outcome, type SecuritySignal } from './alerts/detect.ts';
+import type { ErrorSinkLink } from './health/error-sink-link.ts';
 import {
   bearerOf,
   cookieMaxAge,
@@ -115,7 +114,6 @@ import {
   namedSession,
   sessionIdOf,
   unnamedSession,
-  sessionCookieOf,
   SESSION_COOKIE_OPTIONS,
 } from './auth/session.ts';
 
@@ -171,6 +169,12 @@ export interface ApiOptions {
    */
   readonly executeAgentCommand?: AgentExecutor;
   /**
+   * An agent credential's calls on the agent prefix (API-2),
+   * `commands/credential-envelope.ts` in every deployment that mounts the
+   * agent prefix. Absent, a credential answers as an unknown agent does.
+   */
+  readonly executeCredentialCommand?: typeof executeCredentialCommand;
+  /**
    * The sign-in provider's second-factor calls (C59), `auth/factors.ts` in a
    * deployment. Absent means the three factor routes are not mounted, which is
    * the honest answer for a deployment whose provider has no second factor.
@@ -184,6 +188,8 @@ export interface ApiOptions {
    * grant check, outside the serving transaction.
    */
   readonly health?: HealthSources;
+  /** The error sink's web address (C55), served by `operations.read`; absent is null. */
+  readonly errorSink?: ErrorSinkLink;
   /**
    * The sign-in provider's calls for a login whose access has ended (C58),
    * `auth/logins.ts` in a deployment. `access.end` ends access locally either
@@ -203,6 +209,14 @@ export interface ApiOptions {
    * with no content. Absent in a deployment without an error sink.
    */
   readonly observe?: (signal: SecuritySignal) => void;
+  /**
+   * The agent credential on the agent route (API-2): the clock its expiry is
+   * read against and its quota. Absent, the wall clock and the defaults.
+   */
+  readonly agentCredentials?: {
+    readonly now?: () => Date;
+    readonly limits?: AgentLimits;
+  };
 }
 
 /** The live task channel (T2f); absent, unmounted. `recheckMs`: how often a quiet stream re-asks. */
@@ -254,6 +268,8 @@ const AGENT: Entry = {
 
 interface Admitted {
   readonly presented: VerifiedSubject;
+  /** The agent credential the bearer is, on the agent prefix only; `presented` then names its digest. */
+  readonly credential?: string;
   readonly businessId: string;
   readonly body: Readonly<Record<string, unknown>>;
 }
@@ -277,7 +293,7 @@ async function admit(
   // A session cookie from another site's page stops here, before the
   // verifier reads it (`auth/session.ts`).
   if (crossSiteSession(context.req)) return refuse(context, CROSS_SITE());
-  const presented = await options.verify(context.req);
+  const { presented, credential } = await presentedBy(options.verify, context.req, entry === AGENT);
   if (typeof presented === 'object') context.set(PRESENTED, presented);
   else clearNamedCookie(context);
   if (presented === undefined || presented === 'absent') {
@@ -301,13 +317,17 @@ async function admit(
   const businessId = await options.resolveBusiness(context.req.param('businessKey') ?? '');
   if (body === undefined) {
     // An admission refusal: the resolved business, the verified subject (ruling 4).
-    if (businessId !== undefined) {
+    if (businessId !== undefined && credential === undefined) {
       await recordBodyRefusal(options.database, businessId, entry.owner, presented);
     }
     return refuse(context, refuseCommand('COMMAND_BODY_INVALID', [], [OBJECT]));
   }
-  if (businessId === undefined) return refuse(context, entry.unresolved());
-  return { presented, businessId, body };
+  // A credential at a key nobody holds answers as one not live, so its answer
+  // cannot tell a key that exists from one that does not.
+  if (businessId === undefined) {
+    return refuse(context, credential === undefined ? entry.unresolved() : credentialNotLive());
+  }
+  return { presented, businessId, body, ...(credential === undefined ? {} : { credential }) };
 }
 
 /**
@@ -324,6 +344,12 @@ function clearNamedCookie(context: Context): void {
 
 export function createApi(options: ApiOptions): Hono {
   const api = new Hono();
+  const now = options.agentCredentials?.now ?? (() => new Date());
+  const quota = createAgentQuota(
+    options.agentCredentials?.limits ?? DEFAULT_AGENT_LIMITS,
+    now,
+    recordsIn,
+  );
 
   // The browser trades the provider's token for the session cookie here, and
   // gives it back at `/end`; both only from this application's own pages.
@@ -408,7 +434,7 @@ export function createApi(options: ApiOptions): Hono {
       // holds a transaction open.
       if (name === 'operations.read') {
         const serviceHealth = await readServiceHealth(options.health ?? {}, new Date());
-        return context.json({ ...read, serviceHealth }, 200);
+        return context.json({ ...read, serviceHealth, errorSink: options.errorSink ?? null }, 200);
       }
       return context.json(read, 200);
     }
@@ -439,7 +465,20 @@ export function createApi(options: ApiOptions): Hono {
   const agentExecutor = options.executeAgentCommand;
   if (agentExecutor !== undefined) {
     mountSurface(`${PREFIX.agent}:businessKey`, AGENT, async (context, declaration, admitted) => {
-      const { presented, businessId, body } = admitted;
+      const { presented, businessId, body, credential } = admitted;
+      if (credential !== undefined) {
+        const run = options.executeCredentialCommand;
+        if (run === undefined) return refuse(context, AGENT.unresolved());
+        const call = { credential, now: now(), quota };
+        const answer = await run(options.database, businessId, call, {
+          ...body,
+          command: declaration.name,
+        });
+        if (isCommandRefusal(answer)) return refuse(context, answer);
+        // Shaped as the person prefix shapes it: a read flat, a command its handle.
+        if (declaration.kind === 'read') context.set(HANDED_OUT, recordsIn(answer));
+        return context.json({ ...answer }, 200);
+      }
       // From the route, never from the body, exactly as on the person path: a
       // caller must not be able to post to one endpoint and have another
       // operation run. `operationId` is passed as the JSON carried it, absent
@@ -537,9 +576,13 @@ export function createApi(options: ApiOptions): Hono {
     const { presence } = live;
     if (presence !== undefined) {
       api.post(`${PREFIX.person}:businessKey/live/mark`, async (context) => {
-        const body = await readObject(context);
-        const asked =
-          body === undefined ? refuseCommand('COMMAND_BODY_INVALID', [], [OBJECT]) : markOf(body);
+        // The door first, then the body, as every other route reads it.
+        const asked = async () => {
+          const body = await readObject(context);
+          return body === undefined
+            ? refuseCommand('COMMAND_BODY_INVALID', [], [OBJECT])
+            : markOf(body);
+        };
         return await onSeat(options, live, context, asked, (mark, viewer, businessId) =>
           presence.mark(businessId, mark.taskId, mark.seat, viewer, mark.field)
             ? { marked: true }
@@ -547,7 +590,7 @@ export function createApi(options: ApiOptions): Hono {
         );
       });
       api.get(`${PREFIX.person}:businessKey/live/presence`, async (context) => {
-        const asked = presenceAskOf(context.req.queries());
+        const asked = () => presenceAskOf(context.req.queries());
         return await onSeat(options, live, context, asked, (ask, viewer, businessId) => {
           const seenBy = presence.seenBy(businessId, ask.taskId, ask.seat, viewer);
           return seenBy === undefined ? undefined : { seenBy };
@@ -556,7 +599,14 @@ export function createApi(options: ApiOptions): Hono {
     }
   }
   const factors = options.factors;
-  if (factors !== undefined) mountFactorRoutes(api, options, factors);
+  if (factors !== undefined) {
+    mountFactorRoutes(api, options, factors, {
+      prefix: PREFIX.person,
+      admit: async (context) => await admit(options, context, PERSON),
+      refuse,
+      unknownLogin: () => refuseCommand('AUTH_UNKNOWN_LOGIN', [], [SIGN_IN]),
+    });
+  }
   mountPublicLegal(api, options);
 
   // MP-7-10: the person's own availability, on the person prefix alone (their
@@ -578,19 +628,20 @@ export function createApi(options: ApiOptions): Hono {
 }
 
 /**
- * A presence route once its input has passed: the door, the caller's standing
- * (nothing recorded), the task asked about again as the stream asks, then
+ * A presence route: the door, then its input (read only once the door has
+ * passed), the caller's standing (nothing recorded), the task asked about again as the stream asks, then
  * `answer` for the caller's own person; undefined from it is no such seat.
  */
 async function onSeat<A extends SeatAsk>(
   options: ApiOptions,
   live: LiveOptions,
   context: Context,
-  asked: A | CommandRefusal,
+  ask: () => A | CommandRefusal | Promise<A | CommandRefusal>,
   answer: (asked: A, personId: string, businessId: string) => object | undefined,
 ): Promise<Response> {
   const admitted = await admit(options, context, PERSON, false);
   if (admitted instanceof Response) return admitted;
+  const asked = await ask();
   if (isCommandRefusal(asked)) return refuse(context, asked);
   const { businessId, presented } = admitted;
   const viewer = await (live.viewer ?? viewerOf)(options.database, businessId, presented);
@@ -760,49 +811,6 @@ async function mayShowInbox(
  * person route. The bearer goes to the provider as the person's own; the body
  * is the code, or nothing.
  */
-function mountFactorRoutes(api: Hono, options: ApiOptions, factors: FactorProvider): void {
-  const routes = new Hono();
-  type Caller = Parameters<typeof enrolSecondFactor>[0];
-  const acts = {
-    'factor/enrol': async (caller: Caller) => await enrolSecondFactor(caller, factors),
-    'factor/verify': async (caller: Caller, body: unknown) =>
-      await verifySecondFactor(caller, body, factors),
-    'factor/remove': async (caller: Caller, body: unknown) =>
-      await removeSecondFactor(caller, body, factors),
-    'sessions/list': async (caller: Caller, body: unknown) => await listOwnSessions(caller, body),
-    'sessions/end-others': async (caller: Caller, body: unknown) =>
-      await endOtherSessions(caller, body, factors),
-    'sessions/sign-out': async (caller: Caller, body: unknown) =>
-      await signOutSession(caller, body, factors),
-  } as const;
-  for (const [name, act] of Object.entries(acts)) {
-    routes.post(`/account/${name}`, async (context) => {
-      const admitted = await admit(options, context, PERSON);
-      if (admitted instanceof Response) return admitted;
-      // The person's own token, as the door took it: the bearer, or the browser's session cookie.
-      const accessToken = bearerOf(context.req) ?? sessionCookieOf(context.req);
-      if (accessToken === undefined) {
-        return refuse(context, refuseCommand('AUTH_UNKNOWN_LOGIN', [], [SIGN_IN]));
-      }
-      const caller = {
-        database: options.database,
-        businessId: admitted.businessId,
-        presented: admitted.presented,
-        accessToken,
-      };
-      const result = await act(caller, admitted.body);
-      if (isCommandRefusal(result)) {
-        if (name === 'sessions/sign-out' && result.code !== 'COMMAND_BODY_INVALID') {
-          await signOutRefused(options, caller, factors);
-        }
-        return refuse(context, result);
-      }
-      return context.json(result, 200);
-    });
-  }
-  api.route(`${PREFIX.person}:businessKey`, routes);
-}
-
 const noop = (): void => {};
 const RANK = { check: 0, invalidate: 1, resync: 2 } as const;
 

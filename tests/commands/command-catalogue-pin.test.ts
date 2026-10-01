@@ -379,6 +379,7 @@ const PINNED_AGENT_SURFACE = [
   // The assignee of its own task under a delegation holding assign (MP-4-8).
   'task.assign',
   'task.comment',
+  'task.create',
   'task.decide',
   'task.delete_comment',
   'task.dispatch',
@@ -727,7 +728,7 @@ describe('the per-command tables at 06ab232', () => {
     );
   });
 
-  it('lets an agent reach the same seventeen, two of them before a pickup', () => {
+  it('lets an agent reach the same eighteen, two of them before a pickup', () => {
     expect(agentReach(['delegated', 'before-pickup'])).toStrictEqual(PINNED_AGENT_SURFACE);
     expect(agentReach(['before-pickup'])).toStrictEqual(PINNED_BEFORE_PICKUP);
     expect([...AGENT_SURFACE].toSorted()).toStrictEqual(PINNED_AGENT_SURFACE);

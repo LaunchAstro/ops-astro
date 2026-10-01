@@ -4,20 +4,20 @@
 // issues it to a fresh agent actor of theirs, with no lease and no run. The
 // table is `public.agent_credentials` (migration 0054).
 //
-// **Scope.** The ticked `collection:action` keys, each one the issuer holds at
-// business scope when it is issued (the grant check's own walk), and never
-// decide, share or manage, whatever they hold. **Expiry.** At most
-// `CREDENTIAL_MAX_DAYS` from issue; the limit is set here and nowhere else.
+// **Scope.** The ticked `collection:action` keys, each one the issuer holds at business scope when
+// it is issued (the grant check's own walk), and never decide, share or manage, whatever they hold.
+// **Expiry.** At most `CREDENTIAL_MAX_DAYS` from issue; the limit is set here and nowhere else.
 //
-// **The secret.** Derived as a delegation's credential is, HMAC-SHA256 under
-// the delegation credential key (`credential-keys.ts`), in the agent
-// credential's own domain, over the business, the agent actor and the
-// credential's id. The row keeps its SHA-256, the scheme and the key id; the
-// secret itself is in the issue answer only, and an issuer's replay of that
-// same issue derives it again rather than reading it from anywhere.
+// **The secret.** Derived as a delegation's credential is, HMAC-SHA256 under the delegation
+// credential key (`credential-keys.ts`), in the agent credential's own domain, over the business,
+// the agent actor and the credential's id. The row keeps its SHA-256, the scheme and the key id;
+// the secret itself is in the issue answer only, and an issuer's replay of that same issue
+// derives it again rather than reading it from anywhere.
 //
 // **Revocation** locks the row and sets it once. The issuer revokes their own;
 // anyone else needs `access:manage`, which the command asks before this runs.
+//
+// **At the door**, a presented credential is read in `agent-credential-standing.ts`.
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
@@ -62,6 +62,8 @@ export interface AgentCredential {
   readonly issuedByPersonId: string;
   readonly keyId: string;
   readonly credentialHash: string;
+  /** The ticked keys as `collection:action`. */
+  readonly scope: readonly string[];
   readonly expiresAt: Date;
   readonly revokedAt: Date | null;
 }
@@ -141,10 +143,11 @@ export async function lockAgentCredential(
     readonly issued_by_person_id: string;
     readonly credential_key_id: string;
     readonly credential_hash: string;
+    readonly scope: readonly string[];
     readonly expires_at: Date;
     readonly revoked_at: Date | null;
   }>(
-    `select id, agent_actor_id, issued_by_person_id, credential_key_id, credential_hash,
+    `select id, agent_actor_id, issued_by_person_id, credential_key_id, credential_hash, scope,
             expires_at, revoked_at
        from public.agent_credentials
       where business_id = $1 and id = $2
@@ -159,6 +162,7 @@ export async function lockAgentCredential(
     issuedByPersonId: row.issued_by_person_id,
     keyId: row.credential_key_id,
     credentialHash: row.credential_hash,
+    scope: row.scope,
     expiresAt: row.expires_at,
     revokedAt: row.revoked_at,
   };

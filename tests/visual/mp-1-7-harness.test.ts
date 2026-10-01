@@ -152,16 +152,20 @@ function zeroHorizontalOverflow(): void {
   });
 }
 
-// The registry's pages: wave 0's four, the task page with no key (MP-4-1), U14's two,
-// MP-7-3's inbox, MP-1-3's gallery, My to-dos (MP-7-1) and MP-7-10's Team.
-const BUILT_SO_FAR = [
+// The registry's pages: wave 0's four, the public legal page (C81), the task page
+// with no key (MP-4-1), Settings ▸ Access, Telemetry (U14), Operations (C55),
+// MP-7-3's inbox, the component gallery (MP-1-3, U04), My to-dos (MP-7-1) and
+// MP-7-10's Team.
+const BUILT_PAGES = [
   'agency:sign-in',
+  'agency:legal',
   'agency:projects-board',
   'agency:task-detail',
   'agency:task-unnamed',
   'agency:settings',
   'agency:access',
   'agency:telemetry',
+  'agency:operations',
   'agency:inbox',
   'agency:gallery',
   'agency:todos',
@@ -170,7 +174,7 @@ const BUILT_SO_FAR = [
 
 function everyPageBuiltSoFar(): void {
   it('MP-1-7 every page built so far: each registered route has a picture at each width', () => {
-    expect(builtPages()).toEqual(BUILT_SO_FAR);
+    expect(builtPages()).toEqual(BUILT_PAGES);
     const all = report(packet, builtPages(), everyShot(packet.widths));
     expect(all.failed).toBe(0);
     expect(all.lines.at(-1)).toBe(

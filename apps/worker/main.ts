@@ -9,12 +9,13 @@
 // the API until its one proposal is made, then until a person's approval lets it
 // apply that proposal once (T2c2), then exits; `--once` tries once.
 //
-// After each pass the API answered, it pings `OPS_WORKER_HEARTBEAT_URL`, the
+// After each pass the API answered, it pings `OPS_WORKER_HEARTBEAT_URL` (no more
+// often than `OPS_HEARTBEAT_EVERY_MS` when that is set), the
 // watcher's heartbeat (S0-2): a pass with no answer, a fault or a refusal pings
 // nothing, so a stopped or broken worker goes quiet and the watcher mails.
 
 import { httpTransport } from '../cli/client.ts';
-import { offEgress, ping, UNREACHABLE } from './heartbeat.ts';
+import { heartbeatEvery, offEgress, paced, ping, UNREACHABLE } from './heartbeat.ts';
 import { SYNTHETIC_USAGE } from './usage.ts';
 import { createWorker } from './worker.ts';
 
@@ -31,6 +32,8 @@ function refusal(env: Readonly<Record<string, string | undefined>>): string | un
   if (heartbeat && (url?.protocol !== 'https:' || UNREACHABLE.test(url.hostname))) {
     return `${HEARTBEAT} must be a public https address`;
   }
+  const every = heartbeatEvery(env);
+  if (typeof every === 'string') return every;
   return offEgress(env, [[HEARTBEAT, 'OPS_EGRESS_HEARTBEAT_HOST']]);
 }
 
@@ -44,6 +47,7 @@ export async function main(
     process.stderr.write(`worker: ${refused}\n`);
     return EXIT.usage;
   }
+  const pacedBeat = paced(Number(heartbeatEvery(env)), beat);
   const api = (env['OPS_ASTRO_API_URL'] ?? 'http://127.0.0.1:8790').replace(/\/$/u, '');
   const worker = createWorker({
     transport: httpTransport(api),
@@ -69,7 +73,7 @@ export async function main(
     if (outcome !== undefined) process.stdout.write(`${JSON.stringify(outcome)}\n`);
     if (outcome !== undefined && 'proposed' in outcome) proposedOn = outcome.proposed.taskId;
     // oxlint-disable-next-line no-await-in-loop -- one ping per pass the API answered
-    if (outcome && !('fault' in outcome || 'refused' in outcome)) await beat(env[HEARTBEAT]);
+    if (outcome && !('fault' in outcome || 'refused' in outcome)) await pacedBeat(env[HEARTBEAT]);
     const settled = outcome !== undefined && 'applied' in outcome;
     if (argv.includes('--once') || settled) {
       if (outcome === undefined) return EXIT.fault;
