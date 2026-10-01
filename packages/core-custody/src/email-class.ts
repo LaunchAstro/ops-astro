@@ -97,23 +97,48 @@ export async function windowSpent(
   return row?.spent === true;
 }
 
-/** Emails in flight for this business: items whose last email observation is still `asked`. */
-async function emailsInFlight(tx: TenantQuery): Promise<number> {
-  const [flight] = await tx.query<{ readonly n: number }>(
-    `select count(*)::int as n from (
-       select distinct on (item_id) state from public.inbox_delivery_attempts
-        where business_id = $1 and channel = 'email'
-        order by item_id, observed_seq desc) last
-      where state = 'asked'`,
-    [tx.businessId],
-  );
-  return flight?.n ?? 0;
+/**
+ * How long past custody's own timeout an ask may still be a live send: the
+ * outcome's commit after the call ended. Custody ends every dispatch by the
+ * operation's `timeoutMs` (one abort signal over the lookup, the request and
+ * the answer), so an ask older than both was answered or its sender died.
+ * Either way the provider holds no call of it open, and the ceiling bounds
+ * provider calls. The attempt itself stays `asked`: unknown, never sent
+ * again (`mayStillSend`), and still spending its day and its client's week.
+ */
+export const IN_FLIGHT_GRACE_MS = 60_000;
+
+/**
+ * Emails in flight for this business: asks younger than the bound whose item's
+ * last email observation is still `asked`. One email is one provider call: a
+ * daily batch's asks share their person and their transaction's `now()`, so
+ * they count once; an email sent at once covers one item.
+ */
+function emailsInFlight(boundMs: number): (tx: TenantQuery) => Promise<number> {
+  return async (tx) => {
+    const [flight] = await tx.query<{ readonly n: number }>(
+      `select count(distinct case when last.evidence like 'batch:daily%'
+                                  then 'batch:' || last.recipient || ':' || last.observed_at::text
+                                  else 'item:' || last.item_id::text end)::int as n
+         from (select distinct on (a.item_id) a.item_id, a.state, a.evidence, a.observed_at,
+                      i.recipient_person_id::text as recipient
+                 from public.inbox_delivery_attempts a
+                 join public.inbox_items i on i.business_id = a.business_id and i.id = a.item_id
+                where a.business_id = $1 and a.channel = 'email'
+                  and a.observed_at > now() - make_interval(secs => $2::double precision / 1000)
+                order by a.item_id, a.observed_seq desc) last
+        where last.state = 'asked'`,
+      [tx.businessId, boundMs],
+    );
+    return flight?.n ?? 0;
+  };
 }
 
 /**
  * The catalogued concurrency, as a durable limit: an ask counts until its
- * outcome is kept. Checked under the limit's lock just before `asked` is
- * written, so a refusal writes nothing.
+ * outcome is kept, or until custody's timeout and the grace have passed.
+ * Checked under the limit's lock just before `asked` is written, so a refusal
+ * writes nothing.
  */
 export type Room = () => Promise<boolean>;
 
@@ -121,7 +146,7 @@ export function roomFor(tx: TenantQuery, operation: ModelOperation): Room {
   const limit = {
     name: `email:${operation.key}`,
     limit: operation.concurrency,
-    count: emailsInFlight,
+    count: emailsInFlight(operation.timeoutMs + IN_FLIGHT_GRACE_MS),
   };
   return async () => await hasRoom(tx, [limit]);
 }
