@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // WF-7 (#640) "Twice failed, it stops": a run approved before the second
-// failure and picked up after it begins only on a word given after the stop.
-// An approval given before the stop is not the map owner's decision, nor a
-// decide-holder's start: with an owner the run waits and the owner's item
-// stays open; with none the run waits and no lift is recorded. The shared
-// cases are in wf-7-failures.ts. On the real commands against Postgres.
+// failure is not picked up after it. An approval given before the stop is not
+// the map owner's decision, nor a decide-holder's start: the stop withdraws the
+// run, and with an owner the owner's item stays open; with none no lift is
+// recorded. The shared cases are in wf-7-failures.ts. On the real commands
+// against Postgres.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it as vitestIt } from 'vitest';
@@ -133,7 +133,7 @@ it('WF-7 twice failed with no map owner: an approval given before the stop does 
   await fail(s, await pickup(s, second['reservationId']));
   const said = async () => (await commentsOn(s, ticket)).map((comment) => comment.body);
   const before = await said();
-  // No decide-holder has started it since the stop: the run waits and nothing records a lift.
+  // No decide-holder has started it since the stop: no run begins and nothing records a lift.
   await tryPickup(third['reservationId']);
   expect(await leasesOn(ticket)).toBe(2);
   expect(await said()).toStrictEqual(before);

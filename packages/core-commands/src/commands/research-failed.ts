@@ -11,8 +11,7 @@
 // holding task:decide on the ticket starts it (ORCH52-SL14R): their start is
 // recorded as the lift, a system comment. Twice is counted since the last
 // item closed or lift, so two more failures after either stop it again. The
-// stop withdraws the ticket's runs no one has picked up, so a run begins after
-// it only on a word given after it.
+// stop withdraws the ticket's live lineages with an open run and no live lease.
 
 import {
   COMMENT_TYPE_KEY,
@@ -137,18 +136,20 @@ export async function researchLifted(
 }
 
 /**
- * The stop withdraws the ticket's live lineages whose run waits, undecided or
- * approved and not picked up, through `task.cancel`'s runtime path. A lineage
- * with a run picked up is left to its handback.
+ * The stop withdraws, through `task.cancel`'s runtime path, the ticket's live
+ * lineages with a planned or claimed run and no live lease: undecided,
+ * approved and not picked up, or picked up under a lease that has ended.
  */
 async function withdrawWaiting(tx: TenantQuery, taskId: string): Promise<void> {
   const waiting = await tx.query<{ readonly id: string }>(
     `select l.id from public.proposal_lineages l
       where l.business_id = $1 and l.task_id = $2 and l.state = 'live'
         and exists (select 1 from public.planned_runs r where r.business_id = $1
-                     and r.lineage_id = l.id and r.state = 'planned')
-        and not exists (select 1 from public.planned_runs r where r.business_id = $1
-                         and r.lineage_id = l.id and r.state = 'claimed')
+                     and r.lineage_id = l.id and r.state in ('planned', 'claimed'))
+        and not exists (select 1 from public.leases s
+                          join public.planned_runs r on r.business_id = s.business_id
+                           and r.id = s.run_id
+                         where s.business_id = $1 and r.lineage_id = l.id and s.state = 'live')
       order by l.id`,
     [tx.businessId, taskId],
   );

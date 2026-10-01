@@ -4,8 +4,8 @@
 // that no one has picked up, so the map owner's start is the one run that
 // begins after it; and a lift that cannot be recorded on the ticket begins no
 // run; and a successor the stopping handback asks for is withdrawn with them,
-// so no one is asked to decide it. The shared cases are in wf-7-failures.ts. On the real commands against
-// Postgres.
+// its answer names none, and no one is asked to decide it. The shared cases
+// are in wf-7-failures.ts. On the real commands against Postgres.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it as vitestIt } from 'vitest';
@@ -101,6 +101,28 @@ const lineageOf = async (gateId: unknown): Promise<string | undefined> =>
     )
   )[0]?.state;
 
+/** The state of the lineage a run is on. */
+const lineageOfRun = async (runId: string): Promise<string | undefined> =>
+  (
+    await s.db.admin.execute<{ state: string }>(
+      `select l.state from public.planned_runs r
+         join public.proposal_lineages l on l.business_id = r.business_id and l.id = r.lineage_id
+        where r.business_id = $1 and r.id = $2`,
+      [s.business, runId],
+    )
+  )[0]?.state;
+
+/** The open decision items about a ticket, whoever holds them. */
+const decisionsAbout = async (ticket: string): Promise<number> =>
+  (
+    await s.db.admin.execute<{ n: number }>(
+      `select count(*)::int as n from public.inbox_items
+        where business_id = $1 and subject_record_id = $2 and reason = 'decision'
+          and work_state = 'open'`,
+      [s.business, ticket],
+    )
+  )[0]?.n ?? 0;
+
 const ownerStarts = async (ticket: string): Promise<CommandResult> =>
   await executeCommand(s.db.app, s.business, owner.presented, 'api', {
     ...proposeBody(ticket, await revisionOf(s, ticket), { purpose: freshPurpose() }),
@@ -177,13 +199,20 @@ it('WF-7 a failed handback that does not stop the ticket raises the decision on 
   expect(await asksOn(s, ticket)).toStrictEqual([]);
 }, 240_000);
 
-it('WF-7 twice failed: the successor the stopping handback asks for is withdrawn and no one is asked to decide it', async () => {
+it('WF-7 twice failed: the successor the stopping handback asks for is withdrawn, its answer names none, and no one is asked to decide it', async () => {
   const ticket = await researchOnMap(s, owner, 'wf7 successor on the stopping failure');
   await failedRun(s, ticket);
-  const settled = await fail(s, (await runOn(s, ticket)).picked, SUCCESSOR);
-  expect(settled['successorGateId']).toStrictEqual(expect.any(String));
-  expect(await lineageOf(settled['successorGateId'])).toBe('cancelled');
-  expect(await decisionsOn(settled['successorGateId'])).toBe(0);
+  const { runId, picked } = await runOn(s, ticket);
+  const settled = await fail(s, picked, SUCCESSOR);
+  expect(settled).toMatchObject({
+    successorVersionId: null,
+    successorGateId: null,
+    successorRunId: null,
+    successorStepId: null,
+  });
+  // The successor is proposed on the failed run's lineage, which the stop cancels.
+  expect(await lineageOfRun(runId)).toBe('cancelled');
+  expect(await decisionsAbout(ticket)).toBe(0);
   expect(await asksOn(s, ticket)).toStrictEqual([
     { recipient: owner.personId, state: 'open', closedBy: null },
   ]);
