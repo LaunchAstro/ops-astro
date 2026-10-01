@@ -457,7 +457,7 @@ const ROWS = [
     source: 'C81 TR-SEC-11',
   },
   // API-2, the agent credential: never wider than its issuer, never decide,
-  // share or manage (403), and revoked once (409).
+  // share or manage, never a money key (403), and revoked once (409).
   {
     code: 'CREDENTIAL_SCOPE_WIDENS',
     status: 403,
@@ -469,6 +469,12 @@ const ROWS = [
     status: 403,
     meaning: 'An agent credential never carries decide, share or manage',
     source: 'API-2',
+  },
+  {
+    code: 'CREDENTIAL_MONEY_KEY_EXCLUDED',
+    status: 403,
+    meaning: 'An agent may hold no money key, so an agent credential never carries one',
+    source: 'API-2 CAPABILITY-SLICES.md',
   },
   {
     code: 'CREDENTIAL_ALREADY_REVOKED',

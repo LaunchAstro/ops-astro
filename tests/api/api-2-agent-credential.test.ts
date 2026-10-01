@@ -104,7 +104,9 @@ describe.skipIf(serverUrl === undefined)('API-2 the agent credential, issued and
     }
     expect(await credentialCount(harness.world.alpha)).toBe(before);
   });
+});
 
+describe.skipIf(serverUrl === undefined)('API-2 the agent credential, issued and revoked', () => {
   it('replaying the issue of a live credential holding a money key is refused by name, with no secret', async () => {
     const body = issueBody();
     const first = await issue(body);

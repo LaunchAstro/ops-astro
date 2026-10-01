@@ -5,13 +5,13 @@
 // (`agent credential revoked`), both under `credential:write`.
 //
 // An issue is always the caller's own. Its scope is the ticked keys, each held
-// by the caller at business scope now, and never decide, share or manage; its
-// expiry is at most `CREDENTIAL_MAX_DAYS` out. A money key (C59's set) is
-// issued only on a sign-in inside the money window, as the person's own money
-// command is: the agent using it is never asked again. The secret is in the
-// issue answer alone: the register keeps the answer with the credential nulled
-// (`envelope.ts`), and the issuer's replay of the same operation derives it
-// again while the credential is live (`replayIssue`).
+// by the caller at business scope now, never decide, share or manage, and
+// never a money key (C59's set, `isMoneyKey`): CAPABILITY-SLICES.md says an
+// agent may hold none, and every credential is an agent's. Its expiry is at
+// most `CREDENTIAL_MAX_DAYS` out. The secret is in the issue answer alone: the
+// register keeps the answer with the credential nulled (`envelope.ts`), and
+// the issuer's replay of the same operation derives it again while the
+// credential is live and carries no money key (`replayIssue`).
 //
 // A revocation locks the row and decides under it. The issuer revokes their
 // own; anyone else needs `access:manage` too, and without it another person's
@@ -27,7 +27,6 @@ import {
   isMoneyKey,
   issueAgentCredential,
   lockAgentCredential,
-  refuseStaleMoneyStep,
   revokeAgentCredential,
   subjectsOf,
 } from '../../../core-records/src/index.ts';
@@ -119,11 +118,20 @@ const WIDENS = refuseCommand(
   ['Tick only keys you hold across the whole business.'],
 );
 
-/**
- * The scope's refusal, or undefined: a ticked key the caller does not hold at
- * business scope, then C59's step-up after the grant walk, as in `prepare.ts`.
- * The credential carries a money key past the window, so it is asked at issue.
- */
+// CAPABILITY-SLICES.md: an agent may hold no money key, billing:read included.
+const MONEY = refuseCommand(
+  'CREDENTIAL_MONEY_KEY_EXCLUDED',
+  ['scope'],
+  [
+    'An agent credential never carries a billing key, offer:decide, mandate:manage or spend:decide.',
+    'Untick them; money actions stay with a person.',
+  ],
+);
+
+const holdsMoney = (keys: readonly { readonly collection: string; readonly action: Action }[]) =>
+  keys.some((key) => isMoneyKey(key.collection, key.action));
+
+/** A ticked key the caller does not hold at business scope, or undefined. */
 async function refuseScope(
   tx: TenantQuery,
   session: Session,
@@ -137,8 +145,7 @@ async function refuseScope(
     });
     if (!decision.ok) return WIDENS;
   }
-  const money = keys.find((key) => isMoneyKey(key.collection, key.action));
-  return money === undefined ? undefined : await refuseStaleMoneyStep(tx, session, money);
+  return undefined;
 }
 
 export async function issueCredential(
@@ -148,6 +155,7 @@ export async function issueCredential(
 ): Promise<HandlerOutcome> {
   const keys = keysOf(request.scope);
   if (keys === undefined) return invalid('scope');
+  if (holdsMoney(keys)) return refused(MONEY);
   if (keys.some((key) => EXCLUDED.has(key.action))) {
     return refused(
       refuseCommand(
@@ -217,7 +225,9 @@ export async function revokeCredential(
 /**
  * The issuer's replay of an issue: the stored answer, with the secret derived
  * again while the credential is theirs and live. Revoked, expired or no
- * longer the caller's, it goes out as stored, with the credential null.
+ * longer the caller's, it goes out as stored, with the credential null. A
+ * live one carrying a money key, issued before the rule, is refused as an
+ * issue of it is.
  */
 export async function replayIssue(
   tx: TenantQuery,
@@ -234,6 +244,11 @@ export async function replayIssue(
   ) {
     return stored;
   }
+  const scope = held.scope.map((key) => {
+    const [collection = '', action = ''] = key.split(':');
+    return { collection, action: action as Action };
+  });
+  if (holdsMoney(scope)) return MONEY;
   const keys = delegationCredentialKeys();
   const credential = keys.ok
     ? deriveAgentCredential(keys.keys, held.keyId, tx.businessId, held)

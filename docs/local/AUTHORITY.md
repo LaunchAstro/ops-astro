@@ -621,11 +621,13 @@ a fresh agent actor of theirs, with no lease and no run
 `credential:write` and is always the caller's own. Its scope is the ticked
 `collection:action` keys, each one the caller holds at business scope when it
 is issued, by the grant check's own walk (`CREDENTIAL_SCOPE_WIDENS` otherwise),
-and never decide, share or manage (`CREDENTIAL_ACTION_EXCLUDED`). A scope
-holding a money key (C59's set, `isMoneyKey`) is issued only when the issuer's
-sign-in meets the money step-up a money command of their own would
-(`refuseStaleMoneyStep`, after the grant walk), otherwise `STEP_UP_REQUIRED`:
-the agent using it is not asked again. Its expiry is at most
+and never decide, share or manage (`CREDENTIAL_ACTION_EXCLUDED`). It never
+holds a money key either (C59's set, `isMoneyKey`, `billing:read` included):
+the permission key catalogue (`docs/design-system/CAPABILITY-SLICES.md`) says
+an agent may hold none, and every credential is an agent's, so a scope with
+one is `CREDENTIAL_MONEY_KEY_EXCLUDED` before any grant walk, on any sign-in.
+No credential is held by a person, so no money step-up is asked at issue.
+Its expiry is at most
 `CREDENTIAL_MAX_DAYS` (90) from issue, set in that one constant.
 
 The secret is derived as a delegation's credential is, under the delegation
@@ -633,7 +635,8 @@ credential key, in its own domain (`AGENT_CREDENTIAL_DOMAIN`), so it can never
 equal a delegation's. It is in the issue answer only: the row keeps its SHA-256,
 the scheme and the key id, the register keeps the answer with the credential
 null, and the issuer's replay of the same operation derives it again while the
-credential is theirs and live.
+credential is theirs and live. A live one holding a money key, issued before
+that rule, is refused `CREDENTIAL_MONEY_KEY_EXCLUDED` on replay instead.
 
 `credential.revoke` is `credential:write` too. The issuer revokes their own;
 anyone else needs `access:manage` as well, and without it another person's
