@@ -84,7 +84,7 @@ async function brokerOver(
   };
 }
 
-it('Sol proof, criterion 6: a provider 5xx is not positive proof nothing was sent, so no second email goes', async () => {
+it('a provider 5xx is not positive proof nothing was sent, so no second email goes', async () => {
   const provider = await ownProvider((res) => {
     res.writeHead(500, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ name: 'internal_server_error' }));
@@ -108,7 +108,7 @@ it('Sol proof, criterion 6: a provider 5xx is not positive proof nothing was sen
   }
 });
 
-it('Sol proof, criterion 6: a redirect is an answer from a provider that had the message, so no second email goes', async () => {
+it('a redirect is an answer from a provider that had the message, so no second email goes', async () => {
   w.provider.mode('redirect');
   const item = await itemFor(w.task, 'incident');
   const before = w.provider.received.length;
@@ -119,7 +119,7 @@ it('Sol proof, criterion 6: a redirect is an answer from a provider that had the
   expect(w.provider.received.length - before).toBe(1);
 });
 
-it('Sol proof, criterion 1: the catalogued concurrency of email.send bounds the sends in flight for one business', async () => {
+it('the catalogued concurrency of email.send bounds the sends in flight for one business', async () => {
   const provider = await ownProvider((res) => {
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ id: randomUUID() }));

@@ -343,8 +343,8 @@ are staged. Unset or `off`, none of the three is read and the log says
 `api: trace export off`. `on` with any of them missing or malformed, or any
 other value, stops the server before it listens with a problem naming the
 setting, never its value. The exporter's custody starts before the port is
-bound; the export then runs every 30 seconds over the recovered businesses
-(`RECOVERY_BUSINESS_KEYS`), beside the sweep, and nothing on the wire reaches it
+bound; the export then runs on its interval over the businesses the sweep
+covers (`RECOVERY_BUSINESS_KEYS`), beside the sweep, and nothing on the wire reaches it
 ([RUNTIME.md](RUNTIME.md#the-diagnostic-trace-export)).
 
 ## Task, board and people operations

@@ -146,7 +146,7 @@
     "SL01 (REVB1SL01S34C) adds Sol's proof staging-reset-refuses-unwritable-record-before-emptying: a run record that cannot be opened for appending leaves the database unemptied.",
     "SL01 (REVB1SL01S34D) adds Sol's proof staging-reset-refuses-discarded-record-before-emptying: a record target that discards writes (a link to /dev/null) leaves the database unemptied. s0-1-staging-reset-record adds the family: a link to a file, a pipe, a device or a linked folder is refused the same way.",
     "B1-JOIN-FIX (REV187W): service-stop.test.ts's before-lookup refusals also run beside a live database of the named business and write no sign-in row to it; Sol's proof named-service-stop-reaches-database runs that suite alone through the conformance runner, which must see it reach the database.",
-    "SL12 (B1-TAKE, Opus interim review for Sol, SOL-LATER) adds sol-proof-sl12-take-column-grants (the column-grant contract names batch 1's column grants, 0046 and 0047) as conformance; its two siblings in tests/review read no database and are not named."
+    "SL12 (B1-TAKE, Opus interim review for Sol, SOL-LATER) adds column-grants-name-batch-1 (the column-grant contract names batch 1's column grants, 0046 and 0047) as conformance; its two siblings in tests/review read no database and are not named."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -394,7 +394,7 @@
     "tests/broker/aw-05-four-eyes-one-rule.test.ts",
     "tests/broker/aw-07b-email.test.ts",
     "tests/broker/aw-07b-email-hostile.test.ts",
-    "tests/broker/sol-aw-07b-proofs.test.ts",
+    "tests/broker/aw-07b-no-second-send.test.ts",
     "tests/broker/c60-egress-before-route.test.ts",
     "tests/broker/c60-route-and-carry.test.ts",
     "tests/broker/s3-bound-source.test.ts",
@@ -535,6 +535,6 @@
     "tests/ci/staging-reset-refuses-unwritable-record-before-emptying.test.ts",
     "tests/ci/staging-reset-refuses-discarded-record-before-emptying.test.ts",
     "tests/ci/s0-1-staging-reset-record.test.ts",
-    "tests/review/sol-proof-sl12-take-column-grants.test.ts"
+    "tests/review/column-grants-name-batch-1.test.ts"
   ]
 }
