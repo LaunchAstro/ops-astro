@@ -6,66 +6,16 @@
 // the login reaches; over C39-T's hook world (the fake email provider on
 // loopback, custody holding the mail key, a verified sender).
 
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
-import {
-  insertActor,
-  insertLogin,
-  insertMapping,
-  insertMembership,
-  insertPerson,
-} from '../identity/fixture.ts';
 import { mountAuthHook, postAuth, signAuth, tokenHash } from './c39-t-hook-world.ts';
 import { noDatabase, useInvitationWorld, w } from './c39-t-world.ts';
+import { digest, loginIn, mailsTo, recoveryFor, type Login } from './c40-reset-world.ts';
 
 useInvitationWorld({ auth: true });
 
 const C40 = describe.skipIf(noDatabase);
 const REQUESTED = 'account.password_reset_requested';
-const digest = (text: string): string => createHash('sha256').update(text).digest('hex');
-
-interface Login {
-  readonly subject: string;
-  readonly address: string;
-  /** The login's actor in each business it is mapped in. */
-  readonly actors: Readonly<Record<string, string>>;
-}
-
-/** A login under a provider user id, mapped to a person in each of `businesses`. */
-async function loginIn(businesses: readonly string[], address?: string): Promise<Login> {
-  const subject = randomUUID();
-  const actors: Record<string, string> = {};
-  for (const business of businesses) {
-    // oxlint-disable-next-line no-await-in-loop -- one business at a time
-    actors[business] = await w.db.app.withBusiness(business, async (tx) => {
-      const personId = await insertPerson(tx, `reset-${subject.slice(0, 8)}`);
-      const actorId = await insertActor(tx, personId);
-      await insertMembership(tx, personId);
-      await insertMapping(tx, await insertLogin(tx, subject), personId, actorId);
-      return actorId;
-    });
-  }
-  return { subject, address: address ?? `reset-${subject.slice(0, 8)}@example.test`, actors };
-}
-
-/** A recovery message as the login provider sends it, its one-time code a canary. */
-const recoveryFor = (login: Login, hash: string = tokenHash(), otp = '305805'): string =>
-  JSON.stringify({
-    user: { id: login.subject, aud: 'authenticated', email: login.address, user_metadata: {} },
-    email_data: {
-      token: otp,
-      token_hash: hash,
-      redirect_to: 'https://ops.example.test',
-      email_action_type: 'recovery',
-      site_url: 'https://ops.example.test',
-      token_new: '',
-      token_hash_new: '',
-    },
-  });
-
-const mailsTo = (address: string): readonly string[] =>
-  w.provider.received.map((one) => one.body).filter((body) => body.includes(`"${address}"`));
-
 const audited = async (business: string): Promise<readonly { actor_id: string; row: string }[]> =>
   await w.db.app.withBusiness(
     business,

@@ -3,11 +3,16 @@
 // C40, ask and mail: a signed-out person asks for a reset by address, and the
 // login provider's Send Email hook asks for the reset mail.
 //
-// **The ask** (`requestPasswordReset`) only hands the address to the login
+// **The ask** (`requestPasswordReset`) hands the address to the login
 // provider through custody (`auth.recover`); the provider mints its own
 // single-use, short-lived token and asks the hook to mail it. The route
-// answers before the provider has answered, the same for every address, so
-// neither the answer nor its time says whether an account exists.
+// answers before any of this, the same for every address, so neither the
+// answer nor its time says whether an account exists. Asking mints a token
+// that voids the last mailed link, and spends the provider's mail and custody
+// budget, so the limits are counted first and a refused ask never reaches the
+// provider: the ask's source (`RESET_SOURCE_LIMIT`, 0226, refused asks
+// included) and the address's reset mail (`RESET_LIMIT`, 0225), in the last
+// hour.
 //
 // **The mail** (`sendPasswordReset`), system work under the hook's verified
 // signature. The message's login is looked for in each of the deployment's
@@ -43,17 +48,55 @@ export const PASSWORD_RESET_REQUESTED = 'account.password_reset_requested';
 /** Reset mails per login, and per address, in `RESET_WINDOW_SECONDS` (SP-14). */
 export const RESET_LIMIT = 3;
 export const RESET_WINDOW_SECONDS: number = 60 * 60;
+/** Reset asks per client address in `RESET_WINDOW_SECONDS`, refused ones included. */
+export const RESET_SOURCE_LIMIT = 10;
 
 /** An address as the provider keeps one: no space, one `@`, bounded. */
 const ADDRESS = /^[^@\s]{1,64}@[^@\s]{1,189}$/u;
 
 const digest = (text: string): string => createHash('sha256').update(text).digest('hex');
 
+/** One ask: the address as sent, and the client address it came from. */
+export interface ResetAsk {
+  readonly address: unknown;
+  readonly source: string;
+}
+
+/** The ask names no business: its rows (0225, 0226) are the installation's. */
+const NO_BUSINESS: BusinessId = '00000000-0000-0000-0000-000000000000';
+
+/** Whether an ask is within both limits; its own row is written, and committed, first. */
+async function withinLimits(database: Database, source: string, address: string): Promise<boolean> {
+  // Committed before the count, so of asks racing from one source at most the
+  // limit see a count within it: the last one to commit counts every other.
+  await database.withBusiness(NO_BUSINESS, async (tx) => {
+    await tx.query('insert into ops.password_reset_asks (source_digest) values ($1)', [source]);
+  });
+  const [counted] = await database.withBusiness(
+    NO_BUSINESS,
+    async (tx) =>
+      await tx.query<{ source: number; address: number }>(
+        `select (select count(*) from ops.password_reset_asks where source_digest = $1
+                   and recorded_at > now() - make_interval(secs => $3))::int as source,
+                (select count(*) from ops.password_reset_attempts where state = 'asked'
+                   and address_digest = $2
+                   and recorded_at > now() - make_interval(secs => $3))::int as address`,
+        [source, address, RESET_WINDOW_SECONDS],
+      ),
+  );
+  return (counted?.source ?? 0) <= RESET_SOURCE_LIMIT && (counted?.address ?? 0) < RESET_LIMIT;
+}
+
 /** Hand one address to the login provider; nothing is said back, whatever happened. */
-export async function requestPasswordReset(broker: Broker, address: unknown): Promise<void> {
-  if (typeof address !== 'string') return;
-  const asked = address.trim().toLowerCase();
+export async function requestPasswordReset(
+  database: Database,
+  broker: Broker,
+  asking: ResetAsk,
+): Promise<void> {
+  if (typeof asking.address !== 'string') return;
+  const asked = asking.address.trim().toLowerCase();
   if (!ADDRESS.test(asked)) return;
+  if (!(await withinLimits(database, digest(asking.source), digest(asked)))) return;
   await askRecovery(broker, asked);
 }
 
