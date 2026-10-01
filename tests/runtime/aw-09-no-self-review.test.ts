@@ -99,18 +99,18 @@ describe.skipIf(serverUrl === undefined)('AW-09 no self-review', () => {
 
   it('AW-09 no self-review: the agent is refused every decision on the agent prefix, under its spent pickup and a live delegation', async () => {
     const output = await agentOutput(s);
+    // A body each, so neither answer is the other's replay.
+    const bodyFor = (kind: string) => ({
+      ...decideBody(output, kind),
+      ...(kind === 'escalate' ? { recipientPersonId: s.decider.personId } : {}),
+    });
     for (const kind of KINDS) {
-      // A body each, so neither answer is the other's replay.
-      const body = () => ({
-        ...decideBody(output, kind),
-        ...(kind === 'escalate' ? { recipientPersonId: s.decider.personId } : {}),
-      });
       // The pickup's own credential is spent by the handback; a live one is
       // refused the decision itself.
       // eslint-disable-next-line no-await-in-loop -- one refusal at a time
-      expect(codeOf(await asAgent(s, body(), output.credential))).not.toBe('applied');
+      expect(codeOf(await asAgent(s, bodyFor(kind), output.credential))).not.toBe('applied');
       // eslint-disable-next-line no-await-in-loop -- one refusal at a time
-      expect(codeOf(await asAgent(s, body(), String(output['delegation'])))).toBe(
+      expect(codeOf(await asAgent(s, bodyFor(kind), String(output['delegation'])))).toBe(
         'DELEGATION_EXCLUDES_DECISION',
       );
     }

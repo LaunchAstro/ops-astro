@@ -26,9 +26,10 @@ async function cli(args: readonly string[], env: Record<string, string> = {}) {
   return { code, out, err, json: out.length === 1 ? JSON.parse(out[0] as string) : undefined };
 }
 
-const view = async (body: unknown, env: Record<string, string> = { OPS_ASTRO_WEB_URL: WEB }) =>
-  await cli(['review.view', '--json', JSON.stringify(body)], env);
+const view = async (body: unknown, env?: Record<string, string>) =>
+  await cli(['review.view', '--json', JSON.stringify(body)], env ?? { OPS_ASTRO_WEB_URL: WEB });
 
+// eslint-disable-next-line max-lines-per-function -- one hand-off, its hostile bodies beside it
 describe('AW-09 review.view hands off to the app', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
