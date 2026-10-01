@@ -95,7 +95,8 @@ describe.skipIf(serverUrl === undefined)('MP-4-8 duplicate carries only the shel
     const kinds = contentKinds();
     expect(kinds.filter((kind) => DECLARED[kind] === undefined)).toStrictEqual([]);
     expect(Object.keys(DECLARED).filter((kind) => !kinds.includes(kind))).toStrictEqual([]);
-    expect(kinds).toContain('task.duplicate');
+    // A duplicate is a creation, as task.create is: never content of the task it makes (CS-4.12).
+    expect(kinds).not.toContain('task.duplicate');
 
     const old = await plantedTask();
     const oldBefore = await revisionOf(old);

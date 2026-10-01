@@ -124,6 +124,9 @@ async function otherBusiness(): Promise<{
 describe.skipIf(serverUrl === undefined)('MP-4-8 agent duplicate refused', () => {
   it('MP-4-8 agent duplicate refused', async () => {
     const decider = await world.decider('dup-decider');
+    await world.db.app.withBusiness(world.business, async (tx) => {
+      await grantTo(tx, decider, 'share');
+    });
     const picked = await world.pickUp(decider, CANARY);
     // The delegator holds task:write across the business, so the delegation reaches the old
     // task's client and the chosen one alike: the refusal is the operation's, not a scope's.
