@@ -5,9 +5,9 @@
 // launched lease and mark; another client's work in the same business; and
 // another person's work, reached under a live delegation of the same agent.
 // Each refusal marks nothing, changes no mark and carries no foreign id. The
-// mark itself only names its own lineage. Two transactions at once: a launch
-// dispatch waits on a revocation in flight and is refused; two launch
-// dispatches mark the step once.
+// mark itself only names its own lineage. Transactions at once: two dispatches
+// of a plan's lease are both refused; behind a grant change in flight that
+// rolls back, a plan's dispatch is refused and a launch's applies.
 
 import { randomUUID } from 'node:crypto';
 import { beforeAll, expect, it as vitestIt } from 'vitest';
@@ -244,31 +244,48 @@ it("AW-08 race: two dispatches of a plan's lease at once on two backends are bot
   }
 });
 
-// The launch keeps dispatch's effect-time authority check: the mark is read after it,
-// so a revocation in flight still wins over a reviewed output.
-it('AW-08 race: a launch dispatch waits on a revocation in flight and is refused AUTHORITY_LOST', async () => {
-  const work = await launched(racing, 'aw08 race revoke');
+// A grant change in flight holds a plan's dispatch and a launch's; it rolls
+// back, and the gate decides under the lock each waited on: the plan's lease is
+// refused and the launch dispatches. With no gate both would mark their step.
+// A revocation that commits refuses a launch AUTHORITY_LOST
+// (`recheck_inside_dispatch`, t2c1-dispatch).
+it("AW-08 race: behind a grant change in flight, a plan's dispatch is refused LAUNCH_NOT_DECIDED and the launch's applies", async () => {
+  const work = await launched(racing, 'aw08 race launch');
+  const plan = await proposeEffect(racing, 'aw08 race plan');
+  const working = await pickup(racing, (await approve(racing, plan.plan))['reservationId']);
   const revoker = racer(racing);
   const held = barrier();
   const locked = barrier();
-  const revoking = revoker.withBusiness(racing.business, async (tx) => {
-    await tx.query(
-      `update public.grants set revoked_at = now()
-        where business_id = $1 and subject_id = $2 and action = 'write'`,
-      [racing.business, racing.decider.personId],
-    );
-    locked.release();
-    await held.held;
-  });
+  const rolledBack = new Error('the grant change rolls back');
+  const revoking = revoker
+    .withBusiness(racing.business, async (tx) => {
+      await tx.query(
+        `update public.grants set revoked_at = now()
+          where business_id = $1 and subject_id = $2 and action = 'write'`,
+        [racing.business, racing.decider.personId],
+      );
+      locked.release();
+      await held.held;
+      throw rolledBack;
+    })
+    .catch((error: unknown) => {
+      if (error !== rolledBack) throw error;
+    });
   const release = held.release;
   try {
     await locked.held;
-    const dispatching = dispatchAs(racing, work.picked, work.picked);
-    await awaitParked(racing, 'grants', 1);
+    const both = [
+      dispatchAs(racing, working, working),
+      dispatchAs(racing, work.picked, work.picked),
+    ];
+    await awaitParked(racing, 'grants', 2);
     release();
     await revoking;
-    expect(codeOf(await dispatching)).toBe('AUTHORITY_LOST');
-    expect(await marked(racing, work.taskId)).toBe(0);
+    expect((await Promise.all(both)).map((one) => codeOf(one))).toEqual([
+      'LAUNCH_NOT_DECIDED',
+      'applied',
+    ]);
+    expect([await marked(racing, plan.taskId), await marked(racing, work.taskId)]).toEqual([0, 1]);
   } finally {
     release();
     await revoker.close();
