@@ -510,8 +510,9 @@ async function main(): Promise<void> {
 
   const stop = (): void => {
     sweeper.stop();
-    // The live streams first: a question one has in flight ends before its pool does.
-    void Promise.allSettled([topics.close()])
+    // The live streams and the mail worker's running pass first: a question
+    // or a send in flight ends before its pool does.
+    void Promise.allSettled([topics.close(), mail?.stop()])
       .then(
         async () =>
           await Promise.allSettled([
@@ -519,7 +520,6 @@ async function main(): Promise<void> {
             admin.close(),
             broker?.stop(),
             tracer?.stop(),
-            mail?.stop(),
           ]),
       )
       .then(() => process.exit(0));
