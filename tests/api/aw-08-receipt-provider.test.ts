@@ -13,11 +13,11 @@
 //   row, audit payload, log or refusal body.
 
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { expect, it as vitestIt, vi } from 'vitest';
-import { receiptLinkOf } from '../../packages/core-runtime/src/receipt-link.ts';
+import { RECEIPT_LINK_SHAPE, receiptLinkOf } from '../../packages/core-runtime/src/receipt-link.ts';
 import { pathOf } from '../../packages/core-wire/src/surface.ts';
 import type { Provider } from '../../apps/worker/usage.ts';
-import { BUSINESS_KEY } from './fixture.ts';
 import {
   answering,
   appliedWith,
@@ -87,19 +87,24 @@ vitestIt(
     // Control: the column's own alphabet is still kept.
     const kept = `https://${HOST}/a-b_c~d%20e!$&'()*+,;=:@/f`;
     expect(receiptLinkOf(kept, 'synthetic_comment')).toBe(kept);
+    // The pattern is the column's, character for character.
+    const column = RECEIPT_LINK_SHAPE.source.replaceAll('\\/', '/').replaceAll("'", "''");
+    const migration = new URL('../../migrations/0214_attempt_receipt_link.sql', import.meta.url);
+    expect(readFileSync(migration, 'utf8')).toContain(`receipt_link ~ '${column}')`);
   },
 );
 
 it('AW-08 hostile provider: a null provider answer is handed back as a drop', async () => {
   const { taskId, credential } = await launched();
-  const handBack = `/api/b/${BUSINESS_KEY}${pathOf('task.handback')}`;
   const sent = vi.spyOn(r.api, 'request');
   try {
     const nothing = { call: async () => await Promise.resolve(null) } as unknown as Provider;
     const outcome = await workerOn(credential, nothing).applyOnce(taskId);
     expect(outcome).toStrictEqual({ dropped: { taskId, cause: 'provider_unavailable' } });
     const drops = sent.mock.calls.filter(
-      ([path, init]) => path === handBack && String(init?.body).includes('"outcome":"dropped"'),
+      ([path, init]) =>
+        String(path).endsWith(pathOf('task.handback')) &&
+        String(init?.body).includes('"outcome":"dropped"'),
     );
     expect(drops).toHaveLength(1);
   } finally {

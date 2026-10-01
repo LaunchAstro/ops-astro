@@ -52,13 +52,15 @@ export const PROVIDER_ANSWER_MAX = 4_096;
 
 /**
  * AW-08: the receipt link a provider answered with, or a `ProviderFault` for a
- * hostile answer: redirected, any other non-success status, oversized, or not
- * a JSON object. A hostile answer may still have acted, so it is handed back
- * as a drop and the whole hold stays unknown: no money moves and nothing is
- * marked live. Its content is never kept, logged or put in the fault.
+ * hostile answer: null or not an object, redirected, any other non-success
+ * status, oversized, or not a JSON object. A hostile answer may still have
+ * acted, so it is handed back as a drop and the whole hold stays unknown: no
+ * money moves and nothing is marked live. Its content is never kept, logged or put in the fault.
  */
 export function readProviderAnswer(answer: ProviderAnswer | undefined | void): unknown {
   if (answer === undefined) return undefined;
+  if (typeof answer !== 'object' || answer === null)
+    throw new ProviderFault('provider_unavailable');
   const hostile =
     !(answer.status >= 200 && answer.status <= 299) ||
     typeof answer.body !== 'string' ||
