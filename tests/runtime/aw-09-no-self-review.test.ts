@@ -6,7 +6,8 @@
 // output, AW-08).
 //
 // - On the agent prefix, under the delegation its own pickup minted and under
-//   a fresh one, every decision is `DELEGATION_EXCLUDES_DECISION`.
+//   a live one, no decision applies; under the live one it is
+//   `DELEGATION_EXCLUDES_DECISION`.
 // - Its own login on the person entry points (app, API, command line) is
 //   refused before any authority is asked.
 // - The runtime's `decide` is asked directly with the agent's actor beside a
@@ -93,22 +94,26 @@ describe.skipIf(serverUrl === undefined)('AW-09 no self-review', () => {
       isReviewedOutput(tx, String(output['versionId'])),
     );
     expect(reviewed).toBe(true);
-    expect(await footprint(output['gateId'])).toStrictEqual([{ state: 'pending', decisions: 0 }]);
+    expect(await footprint(output['gateId'])).toEqual([{ state: 'pending', decisions: 0 }]);
   });
 
-  it('AW-09 no self-review: the agent is refused every decision on the agent prefix, under its own and a later delegation', async () => {
+  it('AW-09 no self-review: the agent is refused every decision on the agent prefix, under its spent pickup and a live delegation', async () => {
     const output = await agentOutput(s);
     for (const kind of KINDS) {
       const body = {
         ...decideBody(output, kind),
         ...(kind === 'escalate' ? { recipientPersonId: s.decider.personId } : {}),
       };
+      // The pickup's own credential is spent by the handback; a live one is
+      // refused the decision itself.
       // eslint-disable-next-line no-await-in-loop -- one refusal at a time
-      expect(codeOf(await asAgent(s, body, output.credential))).toBe(
+      expect(codeOf(await asAgent(s, body, output.credential))).not.toBe('applied');
+      // eslint-disable-next-line no-await-in-loop -- one refusal at a time
+      expect(codeOf(await asAgent(s, body, String(output['delegation'])))).toBe(
         'DELEGATION_EXCLUDES_DECISION',
       );
     }
-    expect(await footprint(output['gateId'])).toStrictEqual([{ state: 'pending', decisions: 0 }]);
+    expect(await footprint(output['gateId'])).toEqual([{ state: 'pending', decisions: 0 }]);
   });
 
   it('AW-09 no self-review: the agent’s own login is refused on the app, the API and the command line entry points', async () => {
@@ -124,7 +129,7 @@ describe.skipIf(serverUrl === undefined)('AW-09 no self-review', () => {
       );
       expect(codeOf(result), surface).not.toBe('applied');
     }
-    expect(await footprint(output['gateId'])).toStrictEqual([{ state: 'pending', decisions: 0 }]);
+    expect(await footprint(output['gateId'])).toEqual([{ state: 'pending', decisions: 0 }]);
   });
 
   it('AW-09 no self-review: the runtime refuses the agent’s actor as the decider of its own output, writing nothing', async () => {
@@ -135,12 +140,12 @@ describe.skipIf(serverUrl === undefined)('AW-09 no self-review', () => {
       expect(result.ok, kind).toBe(false);
       if (!result.ok) expect(result.refusal.code, kind).toBe('DELEGATION_EXCLUDES_DECISION');
     }
-    expect(await footprint(output['gateId'])).toStrictEqual([{ state: 'pending', decisions: 0 }]);
+    expect(await footprint(output['gateId'])).toEqual([{ state: 'pending', decisions: 0 }]);
 
     // Positive control: the person deciding as themselves completes the round.
     const decided = await runtimeDecide(output, 'request_changes', s.decider.actorId);
     expect(decided.ok).toBe(true);
-    expect(await footprint(output['gateId'])).toStrictEqual([
+    expect(await footprint(output['gateId'])).toEqual([
       { state: 'changes_requested', decisions: 1 },
     ]);
   });

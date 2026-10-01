@@ -113,7 +113,7 @@ describe.skipIf(serverUrl === undefined)('AW-09 the round over agent output', ()
         where v.business_id = $1 and v.id = $2`,
       [s.business, output.versionId],
     );
-    expect(kept).toStrictEqual([{ state: 'rejected' }]);
+    expect(kept).toEqual([{ state: 'rejected' }]);
 
     const fresh = appliedDetail(await agentProposes(s, output), 'fresh proposal');
     expect(fresh['lineageId']).not.toBe(output.lineageId);

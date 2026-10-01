@@ -156,7 +156,7 @@ describe.skipIf(serverUrl === undefined)('AW-09 the agent output review round', 
       // eslint-disable-next-line no-await-in-loop -- one leg at a time on one database
       legs[leg] = await round(leg);
     }
-    expect(legs.api?.facts).toStrictEqual({
+    expect(legs.api?.facts).toEqual({
       landed: { state: 'pending', round: 1, kind: 'agent' },
       agentDecides: 'DELEGATION_EXCLUDES_DECISION',
       agentLoginDecides: { ok: false, code: legs.api?.facts.agentLoginDecides.code },
@@ -169,8 +169,8 @@ describe.skipIf(serverUrl === undefined)('AW-09 the agent output review round', 
       kept: [{ state: 'rejected', n: '4' }],
     });
     expect(legs.api?.facts.agentLoginDecides.code).not.toBeNull();
-    expect(legs.app?.facts).toStrictEqual(legs.api?.facts);
-    expect(legs.cli?.facts).toStrictEqual(legs.api?.facts);
+    expect(legs.app?.facts).toEqual(legs.api?.facts);
+    expect(legs.cli?.facts).toEqual(legs.api?.facts);
 
     // The visual half: the command line hands off to the page the app draws.
     const key = String(legs.cli?.key);

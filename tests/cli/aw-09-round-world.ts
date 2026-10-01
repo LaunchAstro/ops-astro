@@ -249,7 +249,7 @@ export async function revise(
   maximumMinor: number = PLAN.maximumMinor,
 ): Promise<Said> {
   const revision = await r.world.db.admin.execute<{ readonly revision: number }>(
-    `select revision from public.records where business_id = $1 and id = $2`,
+    `select revision::int as revision from public.records where business_id = $1 and id = $2`,
     [r.world.alpha, output.taskId],
   );
   return await asAgent(
