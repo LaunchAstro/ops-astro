@@ -72,8 +72,7 @@ export async function readAwaitingReview(
   taskTypeId: string,
   collection: string,
 ): Promise<readonly AwaitingReviewView[] | CommandRefusal> {
-  const subjects = subjectsOf(session);
-  const scopes = await coveredScopes(tx, subjects, { collection, action: 'decide' });
+  const scopes = await coveredScopes(tx, subjectsOf(session), { collection, action: 'decide' });
   if (!scopes.business && scopes.records.length === 0) {
     return refuseCommand(
       'SCOPE_NOT_GRANTED',
@@ -87,10 +86,34 @@ export async function readAwaitingReview(
     scopes.business,
     scopes.records,
   ]);
-  // The escalation role is one question for every escalated row: decide at
-  // business scope, asked as `task.decide` asks it.
+  return (await decidable(tx, session, collection, rows)).map((row) => ({
+    gateId: row.gate_id,
+    versionId: row.version_id,
+    version: Number(row.version),
+    lineageId: row.lineage_id,
+    taskId: row.task_id,
+    taskTitle: row.title ?? '',
+    purpose: row.purpose,
+    maximumMinor: Number(row.maximum_minor),
+    currency: row.currency,
+    round: row.round,
+    expiresAt: new Date(row.expires_at).toISOString(),
+  }));
+}
+
+/**
+ * The rows `task.decide` would let this caller decide, by decide's own checks.
+ * The escalation role is one question for every escalated row: decide at
+ * business scope, asked as `task.decide` asks it.
+ */
+async function decidable(
+  tx: TenantQuery,
+  session: Session,
+  collection: string,
+  rows: readonly PendingRow[],
+): Promise<readonly PendingRow[]> {
   const ask = {
-    subjects,
+    subjects: subjectsOf(session),
     collection,
     decision: 'approve',
     decidedByPersonId: session.personId,
@@ -104,19 +127,5 @@ export async function readAwaitingReview(
   const mine = await Promise.all(
     open.map(async (row) => await assignedTo(tx, row.task_id, session.personId)),
   );
-  return open
-    .filter((_, index) => !mine[index])
-    .map((row) => ({
-      gateId: row.gate_id,
-      versionId: row.version_id,
-      version: Number(row.version),
-      lineageId: row.lineage_id,
-      taskId: row.task_id,
-      taskTitle: row.title ?? '',
-      purpose: row.purpose,
-      maximumMinor: Number(row.maximum_minor),
-      currency: row.currency,
-      round: row.round,
-      expiresAt: new Date(row.expires_at).toISOString(),
-    }));
+  return open.filter((_, index) => !mine[index]);
 }
