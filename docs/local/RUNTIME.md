@@ -1671,7 +1671,9 @@ totals.
 - **The drawer's allowance line.** `conversation.allowance` serves it
   ([API.md](API.md#a-persons-conversation-with-the-agent)) to the team holding
   `conversation:write`, since the cap and what is left are the business's; a
-  named conversation must be the caller's own, or it is `NOT_FOUND`. The drawer
+  member reads them as the owner does, the cap `settings.read` shows (owner
+  ruling, 1 October 2026). A named conversation must be the caller's own, or
+  it is `NOT_FOUND`. The drawer
   draws the line above the transcript from before the first message, and adds
   the tab's own spend and hold once its conversation has started
   (`apps/web/src/views/allowance-line.tsx`).
