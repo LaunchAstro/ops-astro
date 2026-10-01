@@ -14,6 +14,7 @@
 // against the mockup's page. Every name and client is made up.
 
 import type {
+  AllowanceResult,
   CapabilitiesResult,
   ConversationListResult,
   ConversationReadResult,
@@ -239,6 +240,16 @@ const READS = {
       },
     ],
   } satisfies ConversationListResult,
+  'conversation.allowance': {
+    ok: true,
+    allowance: {
+      set: false,
+      currency: 'AUD',
+      limitMinor: 5000,
+      leftMinor: 3860,
+      conversation: { spentMinor: 940, heldMinor: 200 },
+    },
+  } satisfies AllowanceResult,
 } as const satisfies Partial<Record<ReadName, unknown>>;
 
 /** The reads the harness answers; a read missing here draws its "could not be read" state. */
