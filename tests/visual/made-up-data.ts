@@ -4,7 +4,9 @@
 // pinned mockup's Projects board. Every name and client is made up. Test side only.
 
 import type {
+  AccessReadResult,
   InternalTaskDetail,
+  OperationsReadResult,
   ProposalView,
   ReceiptResult,
   TaskExecutionResult,
@@ -162,5 +164,78 @@ export const RECEIPT: ReceiptResult = {
     version: { id: 'v-1', number: 1 },
     effect: { kind: 'comment', audience: 'internal' },
     settlement: { state: 'settled', heldMinor: 12_000, spentMinor: 9_500, releasedMinor: 2_500 },
+  },
+};
+
+// Settings ▸ Access (C32): two people on Team, a client contact, no agent.
+const ALL_TASKS = { kind: 'business', id: null } as const;
+export const ACCESS: AccessReadResult = {
+  ok: true,
+  team: [
+    {
+      ...NATHAN,
+      permissions: [{ collection: 'tasks', action: 'manage', scope: ALL_TASKS, stepUp: false }],
+      grants: [{ grantId: 'g-nathan-1', collection: 'tasks', action: 'manage', scope: ALL_TASKS }],
+    },
+    {
+      ...MIA,
+      permissions: [{ collection: 'tasks', action: 'write', scope: ALL_TASKS, stepUp: false }],
+      grants: [{ grantId: 'g-mia-1', collection: 'tasks', action: 'write', scope: ALL_TASKS }],
+    },
+  ],
+  clients: [
+    {
+      personId: 'p-sam',
+      name: 'Sam',
+      permissions: [
+        { collection: 'tasks', action: 'read', scope: { kind: 'party', id: 'c-1' }, stepUp: false },
+      ],
+      grants: [
+        {
+          grantId: 'g-sam-1',
+          collection: 'tasks',
+          action: 'read',
+          scope: { kind: 'party', id: 'c-1' },
+        },
+      ],
+    },
+  ],
+  agents: [],
+  clientRecords: [{ clientId: 'c-1', name: 'Harbour Physio' }],
+};
+
+// Telemetry's service health (C34): the four service states, one optional source off.
+export const OPERATIONS: OperationsReadResult = {
+  ok: true,
+  privacyIncidents: [],
+  breachRunbook: null,
+  serviceHealth: {
+    checkedAt: '2026-10-01T08:00:00.000Z',
+    sources: [
+      { source: 'watcher', state: 'read', fault: null },
+      { source: 'error-sink', state: 'read', fault: null },
+      { source: 'tracing', state: 'off', fault: null },
+    ],
+    services: [
+      {
+        source: 'watcher',
+        name: 'api',
+        state: 'healthy',
+        lastObservedAt: '2026-10-01T07:59:00.000Z',
+      },
+      {
+        source: 'watcher',
+        name: 'worker',
+        state: 'stale',
+        lastObservedAt: '2026-10-01T07:40:00.000Z',
+      },
+      {
+        source: 'error-sink',
+        name: 'web',
+        state: 'healthy',
+        lastObservedAt: '2026-10-01T07:58:00.000Z',
+      },
+      { source: 'watcher', name: 'backup', state: 'never-observed', lastObservedAt: null },
+    ],
   },
 };

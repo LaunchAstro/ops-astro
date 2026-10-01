@@ -26,7 +26,16 @@ import type {
 } from '../../packages/core-wire/src/index.ts';
 import type { BrowserContext } from 'playwright';
 import type { ReadName } from '../../apps/web/src/operations/read-names.ts';
-import { DETAIL, EXECUTION, MIA, NATHAN, RECEIPT, TASKS } from './made-up-data.ts';
+import {
+  ACCESS,
+  DETAIL,
+  EXECUTION,
+  MIA,
+  NATHAN,
+  OPERATIONS,
+  RECEIPT,
+  TASKS,
+} from './made-up-data.ts';
 
 const READS = {
   'task.board': { ok: true, tasks: TASKS } satisfies TaskBoardResult,
@@ -98,6 +107,8 @@ const READS = {
     ],
   } satisfies InboxReadResult,
   'inbox.count': { ok: true, owed: 2 } satisfies InboxCountResult,
+  'access.read': ACCESS,
+  'operations.read': OPERATIONS,
 } as const satisfies Partial<Record<ReadName, unknown>>;
 
 /** The reads the harness answers; a read missing here draws its "could not be read" state. */
