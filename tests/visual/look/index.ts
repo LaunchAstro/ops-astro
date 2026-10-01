@@ -6,7 +6,9 @@
 // `<screen>.mockup.json` and `look.ts` holds the app to them. A screen's file
 // is the one place its look is asserted, so two screens never share a list.
 
+import { AGENT_DRAWER } from './agent-drawer.ts';
 import { BOARD } from './board.ts';
+import { CONVERSATION } from './conversation.ts';
 import { SETTINGS } from './settings.ts';
 import { SHELL } from './shell.ts';
 import { SIGN_IN } from './sign-in.ts';
@@ -35,4 +37,12 @@ export interface LookScreen {
   readonly probes: readonly LookProbe[];
 }
 
-export const LOOK_SCREENS: readonly LookScreen[] = [SHELL, BOARD, TASK, SETTINGS, SIGN_IN];
+export const LOOK_SCREENS: readonly LookScreen[] = [
+  SHELL,
+  BOARD,
+  TASK,
+  SETTINGS,
+  SIGN_IN,
+  AGENT_DRAWER,
+  CONVERSATION,
+];
