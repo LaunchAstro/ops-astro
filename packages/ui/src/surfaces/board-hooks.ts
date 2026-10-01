@@ -39,6 +39,8 @@ interface Follow {
   readonly onAddress?: (address: string) => void;
   /** Told the widths to keep whenever they change. */
   readonly onWidths?: (widths: ColumnWidths | null) => void;
+  /** Another panel is showing (D-03): the address and the undo keys stand down. */
+  readonly hidden?: boolean;
 }
 
 /** The machine and its dispatch; the address and the widths follow its view out. */
@@ -54,20 +56,26 @@ export function useBoardMachine<Row>(
     setMachine((current) => reduceBoard(current, action, context));
   };
   useFollow(machine.view, follow);
-  useUndoKeys(setMachine, context);
+  useUndoKeys(setMachine, context, follow.hidden === true);
   return { machine, dispatch };
 }
 
-/** The address and the widths to keep follow the view; the first of each is where it came from. */
+/**
+ * The address and the widths to keep follow the view; the first of each is
+ * where it came from. A hidden board writes no address, since the address
+ * belongs to the panel showing; it catches up when the board shows again.
+ */
 function useFollow(view: BoardView, follow: Follow): void {
   const written = useRef(writeView(view));
   const { onAddress, onWidths } = follow;
+  const hidden = follow.hidden === true;
   useEffect(() => {
+    if (hidden) return;
     const next = writeView(view);
     if (next === written.current) return;
     written.current = next;
     onAddress?.(next);
-  }, [view, onAddress]);
+  }, [view, onAddress, hidden]);
   const reported = useRef(view.widths);
   useEffect(() => {
     if (view.widths === reported.current) return;
@@ -79,12 +87,15 @@ function useFollow(view: BoardView, follow: Follow): void {
 /**
  * ⌘Z and ⌘⇧Z (Ctrl on other systems) step the view anywhere on the page,
  * except in a field that has its own undo: the search field and any other.
+ * A hidden board listens for neither.
  */
 function useUndoKeys<Row>(
   setMachine: Dispatch<SetStateAction<MachineState>>,
   context: BoardContext<Row>,
+  hidden: boolean,
 ): void {
   useEffect(() => {
+    if (hidden) return;
     const onKey = (event: KeyboardEvent): void => {
       if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'z') return;
       const target = event.target;
@@ -103,7 +114,7 @@ function useUndoKeys<Row>(
     return () => {
       document.removeEventListener('keydown', onKey);
     };
-  }, [setMachine, context]);
+  }, [setMachine, context, hidden]);
 }
 
 /** The card's width: the one handed in, else measured as it resizes. */

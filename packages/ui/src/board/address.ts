@@ -18,9 +18,15 @@ const MAX_WORD_LENGTH = 64;
 // characters are never typed.
 const UNREADABLE = /[�\p{Cc}]/u;
 
+/**
+ * The address for a view. `f` is always written, empty when no filter is on,
+ * so a reload after Clear all or a mode that dropped the viewer's filter keeps
+ * none on: only an address with no `f` at all opens on the viewer preset
+ * (REVIEW-2C1-5, `openWithViewer`).
+ */
 export function writeView(view: BoardView): string {
   const params = new URLSearchParams();
-  if (view.ids.length > 0) params.set('f', view.ids.join(','));
+  params.set('f', view.ids.join(','));
   if (view.text.length > 0) params.set('q', view.text.join(' '));
   if (view.sort !== null) params.set('sort', `${view.sort.key}.${view.sort.dir}`);
   if (view.mode !== null) params.set('mode', view.mode);

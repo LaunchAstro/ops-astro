@@ -40,13 +40,16 @@ export interface Sent {
 
 /**
  * A server whose reads answer the threads queued, one per read (the last
- * repeats), and which records every command it is sent, by its path.
+ * repeats), and which records every command it is sent, by its path. A
+ * command whose path is in `answers` gets that answer instead of a stored one.
  */
 export function conversing(...threads: readonly (readonly unknown[])[]): {
   readonly view: () => Promise<Mounted>;
   readonly sent: Sent[];
+  readonly answers: Map<string, () => Promise<Response>>;
 } {
   const sent: Sent[] = [];
+  const answers = new Map<string, () => Promise<Response>>();
   let reads = 0;
   const fetch = ((url: string | URL, init?: RequestInit) => {
     const at = String(url);
@@ -70,11 +73,12 @@ export function conversing(...threads: readonly (readonly unknown[])[]): {
     }
     const to = at.slice(at.lastIndexOf('/task/'));
     sent.push({ to, body: JSON.parse(typeof init?.body === 'string' ? init.body : '{}') });
-    return Promise.resolve(json({ recordId: 'r', revision: 4 }));
+    return answers.get(to)?.() ?? Promise.resolve(json({ recordId: 'r', revision: 4 }));
   }) as unknown as typeof globalThis.fetch;
   const client = new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
   return {
     sent,
+    answers,
     view: async () => {
       const view = await mount(
         <TaskDetailScreen client={client} grantKey="alpha:member" taskKey="Proj-Verity-Pacing" />,

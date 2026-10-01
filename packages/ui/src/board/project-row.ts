@@ -43,6 +43,8 @@ export interface ProjectRow {
    * (MP-4-12), already checked as one; absent, the door is the task's own page.
    */
   readonly page?: string;
+  /** The revision the row was read at; an edit opened on it is sent against it. Absent, none. */
+  readonly revision?: number;
   readonly comments: {
     readonly client: number;
     readonly mentions: number;

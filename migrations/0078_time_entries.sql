@@ -15,12 +15,22 @@
 -- **Elapsed time is never dropped.** A stopped or logged entry carries at
 -- least one whole minute, and an entry is either running (no end, no minutes)
 -- or finished (both): the checks below hold that shape. A delete is a mark,
--- `deleted_at`, so a deleted entry stays evidence of what was recorded.
+-- `deleted_at`, so a deleted entry stays evidence of what was recorded, and
+-- nothing deletes a row: the application holds no delete grant.
+--
+-- **A purged task's entries stay, detached** (ORCH58). Time keeps its own
+-- retention (CS-16.12) and feeds billing, so the trash purge clears an
+-- entry's `task_id` and keeps the rest, rather than deleting it. The key to
+-- `records` stays a plain one: a cascade or `on delete set null` would act on
+-- any delete of a task row, and a plain `set null` on this composite key
+-- would clear `business_id` too. A detached entry is always finished (the
+-- purge stops a running one first), so a running timer always has a task its
+-- person can stop it by, and the one-timer rule never holds a person forever.
 
 create table public.time_entries (
   business_id uuid        not null,
   id          uuid        not null,
-  task_id     uuid        not null,
+  task_id     uuid,
   person_id   uuid        not null,
   actor_id    uuid        not null,
   started_at  timestamptz not null,
@@ -44,6 +54,7 @@ create table public.time_entries (
   constraint time_entries_source_known check (source in ('timer', 'log')),
   constraint time_entries_shape
     check ((ended_at is null) = (minutes is null)),
+  constraint time_entries_detached_finished check (task_id is not null or ended_at is not null),
   constraint time_entries_minutes_whole check (minutes is null or minutes between 1 and 1440),
   constraint time_entries_note_bounded check (char_length(note) <= 500)
 );

@@ -80,7 +80,8 @@ describe('MP-7-3 inbox one list', () => {
     expect(matchRoute('/inbox/')?.id).toBe('agency:inbox');
     const draw = drawInbox();
     expect(draw, 'the inbox route has a screen').toBeTypeOf('function');
-    const { client, calls } = served(2);
+    // Two rows are owed; the server counts five, so a tally of the rows shows 2.
+    const { client, calls } = served(5);
     const opened: string[] = [];
     view = await mount(
       (draw as Draw)({
@@ -102,7 +103,7 @@ describe('MP-7-3 inbox one list', () => {
       '/task/T-3',
     ]);
     // The owed figure is inbox.count's, never a tally of the rows drawn.
-    expect(view.find('.nt__sum b')?.textContent).toBe('2');
+    expect(view.find('.nt__sum b')?.textContent).toBe('5');
     // Beside the two reads, only the tab's live stream (C4 notifications live).
     expect(calls.toSorted()).toEqual([
       '/api/b/alpha/inbox/count',

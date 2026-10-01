@@ -1651,6 +1651,8 @@ member of the business, so `task.read` gives it `externalCommentProjection`'s
 answer and an internal note is absent from it rather than hidden in it (I09).
 Its `history` leaves out `task.comment` entries too, so no comment, internal or
 client, shows an author or time there (`historyOf`, `reads/task-history.ts`).
+Nor does its `history` name a person behind any actor: `personId` and
+`actorName` are null on every entry, and only `actorId` and `actorKind` remain.
 An agent's `task.comment` is `internal` only: `client` is
 `AUDIENCE_NOT_PERMITTED` 422 on the agent prefix, and the agent credential on
 the person prefix is `AUTH_NO_MEMBERSHIP` 403
@@ -1975,10 +1977,11 @@ nothing to replay. A read of one task carries that task as the subject, which
 is what makes "who looked at this" answerable. The task's own `history`
 excludes the reads, because a history is what happened _to_ the task.
 Each history entry names who made the change (MP-4-16): `actorKind`
-(`person`, `agent` or `worker`) and, for a person's actor, `actorName`, the
-person's display name, joined inside the business; the page draws a person
-by name and the other two as "An agent" and "The system", never an actor
-identifier.
+(`person`, `agent` or `worker`) and, for a person's actor, `personId` and
+`actorName`, the person's display name, joined inside the business; the page
+draws a person by name and the other two as "An agent" and "The system", never
+an actor identifier. Only an internal reader gets the person: the agent
+prefix, read as an outside reader, gets null for both.
 `settings.read`, `session.capabilities` and `task.search` carry a null
 subject: none is about one record, and naming one would make "who read this
 record" false.

@@ -78,6 +78,21 @@ export async function holdsOnTask(
 }
 
 /**
+ * Whether a person holds `task:<action>` across the business now: what an
+ * escalated gate asks of its decider (T3a), through the same walk.
+ */
+export async function holdsAcrossBusiness(
+  tx: TenantQuery,
+  personId: string,
+  action: Action,
+): Promise<boolean> {
+  const subjects = await recipientSubjects(tx, personId);
+  const scope: Scope = { kind: 'business', id: null };
+  const grants = await effectiveGrants(tx, subjects, { collection: 'task', action, scope });
+  return grants.length > 0;
+}
+
+/**
  * Where a person reads tasks now, for a query that filters inside itself
  * (INB-1e): the whole business, these tasks, or these clients' tasks. The
  * same grants `taskAccess` asks, listed once instead of asked per task.

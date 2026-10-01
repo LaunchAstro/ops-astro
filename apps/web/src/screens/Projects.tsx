@@ -19,7 +19,7 @@
 // as such: the client's name (the client model), the comment counts (INB-1)
 // and starring (P-20). The actual is the time logged (MP-4-6).
 
-import { useState, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { Empty, ProjectsBoard, TabPanel, type ProjectRow } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
 import { assigneeOf, rowActions, type BoardPanelHost, type RowOpened } from './projects-row.ts';
@@ -37,6 +37,7 @@ import {
 import { useRead } from '../data/use-read.ts';
 import { useBoardLive } from '../data/board-live.ts';
 import { RecordState } from '../views/record-state.tsx';
+import { useRereadOn } from './task/reread-on.ts';
 import { pathTo } from '../routes.ts';
 import { Inbox } from '../views/inbox.tsx';
 import { CreateTask } from './projects/CreateTask.tsx';
@@ -110,9 +111,20 @@ function ProjectBoard(props: Omit<ProjectsProps, 'navigate'>): ReactElement {
     grantKey: props.grantKey,
     run: () => client.read<TaskBoardResult>('task.board', { board: null }),
     isEmpty: (value) => value.tasks.length === 0,
-    // A change made in the panel is the board's next read, as it is the task page's.
-    deps: [panel?.changes ?? 0],
+    deps: [],
   });
+  // A change made in the panel is the board's next read, as it is the task page's.
+  useRereadOn(panel?.changes ?? 0, reload);
+  // The last board write's refusal or unknown outcome, in the server's words.
+  // It belongs to the grant the write was sent under: another business's
+  // board never draws it, a late answer included.
+  const [refused, setRefused] = useState<{ grant: string; text: string | null } | null>(null);
+  const grantKey = props.grantKey;
+  const said = refused?.grant === grantKey ? refused.text : null;
+  const live = useRef(grantKey);
+  useEffect(() => {
+    live.current = grantKey;
+  }, [grantKey]);
 
   // The people the assignee editor offers (MP-5-10); until they answer, the
   // assignee cell draws no editor.
@@ -133,10 +145,20 @@ function ProjectBoard(props: Omit<ProjectsProps, 'navigate'>): ReactElement {
       <Inbox client={client} grantKey={props.grantKey} follow={followInbox} />
       <CreateTask client={client} onCreated={reload} />
 
+      {said === null ? null : (
+        <p className="field__error" role="alert" data-board-refusal>
+          {said}
+        </p>
+      )}
+      {/*
+        Kept drawn while it reads again: a re-read after an edit or a live
+        change leaves the filters, an open editor and focus where they were.
+      */}
       <RecordState
         state={state}
         subject="board"
         onRetry={reload}
+        keep
         empty={
           <Empty
             title="No tasks on this board yet."
@@ -156,10 +178,12 @@ function ProjectBoard(props: Omit<ProjectsProps, 'navigate'>): ReactElement {
             href={(row) => pathTo('agency:task-detail', { key: row.key })}
             actions={rowActions({
               client,
-              tasks: value.tasks,
               people: persons,
               href: (key) => pathTo('agency:task-detail', { key }),
               reload,
+              onSettled: (text) => {
+                if (live.current === grantKey) setRefused({ grant: grantKey, text });
+              },
               ...(panel === undefined ? {} : { panel: { host: panel, opened, setOpened } }),
             })}
             address={window.location.search}
@@ -191,6 +215,7 @@ function rowOf(task: BoardTask): ProjectRow {
     id: task.id,
     key: task.key,
     name: titleOf(task.title),
+    revision: task.revision,
     rank: { number: task.rank.number, calc: task.rank.calc },
     // No ticket builds starring yet, so the starred tier is empty (P-20).
     starred: false,

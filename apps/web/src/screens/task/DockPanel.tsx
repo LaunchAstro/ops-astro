@@ -31,12 +31,17 @@ export function useDockPanel(props: DockPanelProps): {
     readonly close: () => void;
   };
 } {
-  const taskPanel = useTaskPanel();
+  const { grantKey, session, storage } = props;
+  const taskPanel = useTaskPanel({
+    key: grantKey,
+    person: session === null ? null : `${session.businessKey}:${session.email}`,
+    storage,
+  });
   const { opening, draft } = taskPanel;
   return {
     host: taskPanel.host,
     panel: {
-      open: props.session !== null && (opening !== null || draft !== null),
+      open: session !== null && (opening !== null || draft !== null),
       body: <DockPanel {...props} taskPanel={taskPanel} />,
       door:
         opening === null
@@ -59,7 +64,7 @@ function DockPanel(props: {
   if (taskPanel.draft !== null) {
     return (
       <DraftPanel
-        key={`${session.businessKey}:${session.email}`}
+        key={grantKey}
         client={client}
         storage={props.storage}
         person={`${session.businessKey}:${session.email}`}
@@ -70,13 +75,14 @@ function DockPanel(props: {
         }}
         onClose={taskPanel.close}
         docked
+        hold={taskPanel.hold}
       />
     );
   }
   if (taskPanel.opening === null) return null;
   return (
     <TaskPanel
-      key={`${taskPanel.opening.taskKey}\u0000${taskPanel.opening.door}\u0000${taskPanel.opening.tab ?? ''}`}
+      key={`${grantKey}\u0000${taskPanel.opening.taskKey}\u0000${taskPanel.opening.door}\u0000${taskPanel.opening.tab ?? ''}`}
       client={client}
       grantKey={grantKey}
       opening={taskPanel.opening}

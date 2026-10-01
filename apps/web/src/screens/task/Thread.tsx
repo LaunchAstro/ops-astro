@@ -14,22 +14,34 @@
 // as the read marks them. The commands check the author again whatever the
 // screen draws. Editing: Esc puts the old words back, Ctrl or Cmd and Enter or
 // leaving the box stores the new ones, and an emptied box keeps the old words
-// (the × is how words are taken back). The × deletes by the row's own id.
+// (the × is how words are taken back). The box stays open, busy, until the
+// answer, and only a stored edit closes it: a refusal keeps the words, held
+// above the read (a stale one rereads the task). The × deletes by its id.
 //
 // **Where a client message stands is a label, never a control** (DT-19, R56):
 // Reply owed, Not acknowledged or Answered, with a title saying what it means.
 // Seen waits on the portal's read receipt.
 
-import { useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
 import { Empty } from '@launchastro/ui';
 import type { InternalCommentView } from '../../../../../packages/core-wire/src/index.ts';
 import { parentOf, threadOf } from './thread-shape.ts';
+
+/** The row being edited: its words as last sent or opened, and why they were refused. */
+export interface RowEdit {
+  readonly commentId: string;
+  readonly body: string;
+  readonly because: string | null;
+}
 
 /** What a row can ask of the conversation around it. */
 export interface RowActions {
   readonly onReply: (commentId: string) => void;
   readonly onEdit: (commentId: string, body: string) => void;
   readonly onDelete: (commentId: string) => void;
+  /** The edit open on a row, or null; opened, and closed without a write, here. */
+  readonly editing: RowEdit | null;
+  readonly onEditing: (edit: RowEdit | null) => void;
   /** A write is in flight: no row starts another. */
   readonly busy: boolean;
 }
@@ -80,7 +92,7 @@ function Row(props: {
   readonly children?: ReactElement;
 }): ReactElement {
   const { comment, actions } = props;
-  const [editing, setEditing] = useState(false);
+  const edit = actions.editing?.commentId === comment.id ? actions.editing : null;
   const isReply = parentOf(comment) !== null;
   return (
     <article
@@ -89,24 +101,26 @@ function Row(props: {
       data-audience={comment.audience}
     >
       <RowMeta comment={comment} />
-      {editing ? (
+      {edit === null ? (
+        <p className="card__body">{comment.body}</p>
+      ) : (
         <EditBox
-          body={comment.body}
+          saved={comment.body}
+          body={edit.body}
+          busy={actions.busy}
           onDone={(next) => {
-            setEditing(false);
-            if (next !== null) actions.onEdit(comment.id, next);
+            if (next === null) actions.onEditing(null);
+            else actions.onEdit(comment.id, next);
           }}
         />
-      ) : (
-        <p className="card__body">{comment.body}</p>
       )}
       <RowActs
         comment={comment}
         reply={isReply}
-        editing={editing}
+        editing={edit !== null}
         actions={actions}
         onEditing={() => {
-          setEditing(true);
+          actions.onEditing({ commentId: comment.id, body: comment.body, because: null });
         }}
       />
       {props.children}
@@ -199,21 +213,27 @@ function Act(props: {
 }
 
 /**
- * The box a row's words are edited in. It hands back the new words, or null
- * when nothing is to be stored: Esc, words unchanged, or an emptied box.
+ * The box a row's words are edited in, opening on `body`. It hands back the
+ * new words, or null when nothing is to be stored: Esc, words the same as the
+ * stored ones (`saved`), or an emptied box.
  */
 function EditBox(props: {
+  readonly saved: string;
   readonly body: string;
+  readonly busy: boolean;
   readonly onDone: (next: string | null) => void;
 }): ReactElement {
   const [text, setText] = useState(props.body);
   // Esc or a commit ends the edit once; the blur that can follow the box
-  // leaving the page must not end it a second time.
+  // leaving the page must not end it a second time. A refusal reopens it.
   const ended = useRef(false);
+  useEffect(() => {
+    if (!props.busy) ended.current = false;
+  }, [props.busy]);
   const end = (next: string | null): void => {
-    if (ended.current) return;
+    if (ended.current || props.busy) return;
     ended.current = true;
-    props.onDone(next === null || next.trim() === '' || next === props.body ? null : next);
+    props.onDone(next === null || next.trim() === '' || next === props.saved ? null : next);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>): void => {
     if (event.key === 'Escape') {
@@ -232,6 +252,8 @@ function EditBox(props: {
       aria-label="Edit your message"
       data-comment-edit=""
       rows={3}
+      readOnly={props.busy}
+      aria-busy={props.busy}
       // oxlint-disable-next-line jsx-a11y/no-autofocus -- the pencil was pressed to write here
       autoFocus
       value={text}

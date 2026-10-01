@@ -5,7 +5,9 @@
 // marked suggestion or commits what was typed, Escape and a press outside
 // close it, and Backspace in an empty field drops the last filter. Group
 // headings and the "+n more" line are presentation, so the keyboard only ever
-// lands on an option.
+// lands on an option. Focus stays in the field (the WAI-ARIA combobox pattern):
+// it points `aria-activedescendant` at the marked option, so a screen reader
+// hears the mark move.
 
 import {
   Fragment,
@@ -48,7 +50,8 @@ export function BoardSearch<Row>(props: BoardSearchProps<Row>): ReactElement {
     props.onTake(item);
     done();
   };
-  const onKeyDown = keysOf({ props, items: groups.flatMap((group) => group.items), active, draft });
+  const items = groups.flatMap((group) => group.items);
+  const onKeyDown = keysOf({ props, items, active, draft });
   const any = props.have.ids.length > 0 || props.have.text.length > 0;
   return (
     <div className="cbdm__search" ref={host}>
@@ -61,6 +64,7 @@ export function BoardSearch<Row>(props: BoardSearchProps<Row>): ReactElement {
         aria-expanded={groups.length > 0}
         aria-controls={listId}
         aria-autocomplete="list"
+        aria-activedescendant={items[active] === undefined ? undefined : optionId(listId, active)}
         placeholder={any ? 'Add another…' : `Filter ${props.noun}s…`}
         value={draft}
         onChange={(event) => {
@@ -77,6 +81,11 @@ export function BoardSearch<Row>(props: BoardSearchProps<Row>): ReactElement {
       )}
     </div>
   );
+}
+
+/** The id of the option at `index` in the whole list, unique to this field. */
+function optionId(listId: string, index: number): string {
+  return `${listId}-${String(index)}`;
 }
 
 /** A press outside the search closes its suggestions. */
@@ -161,6 +170,7 @@ function Suggestions(props: {
           {group.items.map((item, at) => (
             <li
               key={`${item.kind}:${item.label}`}
+              id={optionId(props.id, (offsets[index] ?? 0) + at)}
               className="sel__opt cbdta__opt"
               role="option"
               aria-selected={(offsets[index] ?? 0) + at === props.active}
