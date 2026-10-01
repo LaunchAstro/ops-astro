@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // S0-5's step-up sweep (TR-SEC2-5, TR-A2-14, TR-A5-1): the gate stays shut
-// until every real money command refuses a stale sign-in while the money
-// step-up setting is on.
+// until every real money command, and the switch that turns the step-up off,
+// refuses a stale sign-in while the money step-up setting is on.
 //
 // The money set is C59's (`isMoneyKey`: every `billing` key, `offer:decide`,
 // `mandate:manage`, `spend:decide`), and the commands in it are read from the
-// catalogue, never listed by hand. `SWEPT` is the one hand-kept list, and the
-// closed-world case holds it to the catalogue both ways, so a money command
-// declared later fails here until it joins, and a name that has left the money
-// set fails until it is taken out. Each one is driven through the real API
-// with a token whose second factor is past C59's sixty minutes, and with one
-// that never gave a factor; both are refused `STEP_UP_REQUIRED` and write
-// nothing. The same body then runs on a fresh sign-in, so the refusal is the
+// catalogue, never listed by hand, with `MONEY_STEP_UP_SWITCH` beside them.
+// `SWEPT` is the one hand-kept list, and the closed-world case holds it to the
+// catalogue both ways, so a money command declared later fails here until it
+// joins, and a name that has left the money set fails until it is taken out.
+// Each one is driven through the real API with a token whose second factor is
+// past C59's sixty minutes, and with one that never gave a factor; both are
+// refused `STEP_UP_REQUIRED` and write nothing. The same body then runs on a fresh sign-in, so the refusal is the
 // step-up's and not the body's. C59's seeded money stand-in is proved in
 // `tests/identity/c59-second-factor-commands.test.ts`.
 
@@ -25,6 +25,7 @@ import {
 import {
   isMoneyKey,
   MONEY_STEP_UP_SETTING,
+  MONEY_STEP_UP_SWITCH,
   readBusinessSetting,
 } from '../../packages/core-records/src/index.ts';
 import { createHarness, type Harness } from '../acceptance/role-case-harness.ts';
@@ -32,14 +33,20 @@ import { serverUrl, tokenFor } from '../acceptance/world.ts';
 
 /**
  * The money commands this sweep proves. A money command declared later joins here:
- * the four-eyes threshold is `spend:decide` (MP-2-11, owner line 71).
+ * the four-eyes threshold is `spend:decide` (MP-2-11, owner line 71). The switch
+ * asks the step-up too, so a stale sign-in cannot turn it off (C59).
  */
 const SWEPT: readonly string[] = [
   'budget.top_up',
   'budget.record_outcome',
   'budget.write_off',
   'settings.set_four_eyes_threshold',
+  'settings.set_money_step_up',
 ];
+
+/** Whether a command is asked the step-up while the setting is on. */
+const stepsUp = (one: CommandDeclaration): boolean =>
+  isMoneyKey(one.collection, one.action) || one.name === MONEY_STEP_UP_SWITCH;
 
 /**
  * The owner's sixty minutes (28 September 2026), written here rather than read
@@ -59,9 +66,7 @@ function sweepGaps(
   surface: readonly CommandDeclaration[],
   swept: readonly string[],
 ): { readonly missing: string[]; readonly extra: string[] } {
-  const money: readonly string[] = surface
-    .filter((one) => isMoneyKey(one.collection, one.action))
-    .map((one) => one.name);
+  const money: readonly string[] = surface.filter((one) => stepsUp(one)).map((one) => one.name);
   return {
     missing: money.filter((name) => !swept.includes(name)),
     extra: swept.filter((name) => !money.includes(name)),
@@ -144,7 +149,7 @@ describe.skipIf(serverMissing)('S0-5 step-up sweep', () => {
       }),
       'no second factor': await tokenFor(world.ada.subject),
     };
-    const money = COMMAND_SURFACE.filter((one) => isMoneyKey(one.collection, one.action));
+    const money = COMMAND_SURFACE.filter((one) => stepsUp(one));
     expect(money.map((one) => one.name).toSorted()).toEqual([...SWEPT].toSorted());
 
     const wrong: string[] = [];

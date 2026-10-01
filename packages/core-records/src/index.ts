@@ -122,6 +122,7 @@ export {
   isMoneyKey,
   judgeStepUp,
   MONEY_STEP_UP_SETTING,
+  MONEY_STEP_UP_SWITCH,
   refuseStaleMoneyStep,
   STEP_UP_WINDOW_SECONDS,
 } from './authority/step-up.ts';

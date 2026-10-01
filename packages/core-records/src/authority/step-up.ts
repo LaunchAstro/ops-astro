@@ -14,7 +14,8 @@
 // steps up with the second factor. A client, who may have none, signs in
 // afresh. While the installation's `money_step_up_required` setting is off, a
 // live session is enough; only `settings:manage` switches it, through
-// `settings.set_money_step_up`, and the envelope audits every switch.
+// `settings.set_money_step_up`, which asks the step-up itself, and the
+// envelope audits every switch.
 
 import { refuseCommand, type CommandRefusal } from '../register.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
@@ -27,6 +28,13 @@ export const STEP_UP_WINDOW_SECONDS: number = 60 * 60;
 
 /** The business setting that switches the money step-up; on by default. */
 export const MONEY_STEP_UP_SETTING: string = 'money_step_up_required';
+
+/**
+ * The command that switches the setting. It is asked the step-up whichever way
+ * it switches and whatever the setting holds, or a stale sign-in refused a
+ * money action could switch the step-up off and then move money.
+ */
+export const MONEY_STEP_UP_SWITCH: string = 'settings.set_money_step_up';
 
 /**
  * Tolerance for a factor time ahead of the database clock, which is the
@@ -97,15 +105,16 @@ export async function asksMoneyStepUp(
 
 /**
  * The envelope's step-up, asked after the grant check has passed. Nothing for
- * a key `asksMoneyStepUp` passes over; otherwise the judgement against the
- * database's own clock, inside the serving transaction.
+ * a key `asksMoneyStepUp` passes over, unless the command is the switch;
+ * otherwise the judgement against the database's own clock, inside the
+ * serving transaction.
  */
 export async function refuseStaleMoneyStep(
   tx: TenantQuery,
   standing: Standing,
-  key: { readonly collection: string; readonly action: Action },
+  key: { readonly name?: string; readonly collection: string; readonly action: Action },
 ): Promise<CommandRefusal | undefined> {
-  if (!(await asksMoneyStepUp(tx, key))) return undefined;
+  if (key.name !== MONEY_STEP_UP_SWITCH && !(await asksMoneyStepUp(tx, key))) return undefined;
   // Whole seconds, as the token's times are: the boundary is one second either
   // side of sixty minutes, and a fraction of the clock is not a second.
   const rows = await tx.query<{ readonly now: number }>(
