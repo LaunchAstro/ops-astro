@@ -10,108 +10,30 @@
 // the observation record beside the entry, and the two agree. Every provider
 // here is a double: nothing reaches a live system.
 
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
-import { codeOf, detailOf } from '../commands/agent-fixture.ts';
-import { c80World, type C80World } from './c80-world.ts';
+import { describe, expect, it } from 'vitest';
 import { doubles } from './c80-runner-doubles.ts';
-import {
-  runLivePublish,
-  runLiveRevert,
-  type RunnerPorts,
-} from '../../packages/core-commands/src/index.ts';
 import {
   correctionEffectId,
   registerCorrectionEffect,
 } from '../../packages/core-commands/src/commands/live-correction-effect.ts';
+import { runLivePublish } from '../../packages/core-commands/src/index.ts';
 import { effectOperationId } from '../../packages/core-wire/src/index.ts';
+import {
+  approved,
+  at,
+  entries,
+  expireLease,
+  lease,
+  publish,
+  receipt,
+  renewLease,
+  revert,
+  serverUrl,
+  useRegisterWorld,
+  w,
+} from './c80-register-world.ts';
 
-const serverUrl = databaseUrlFromEnvironment();
-if (serverUrl === undefined)
-  console.warn('C80 runner register: DATABASE_URL is unset, so nothing ran.');
-
-let w: C80World;
-let lease: { leaseId: string; fence: number; taskId: string; holder: string };
-
-beforeAll(async () => {
-  if (serverUrl === undefined) return;
-  w = await c80World('c80reg');
-  await w.setApprover(w.ben.personId);
-  const picked = await w.world.pickUp(w.cal, 'publish the About correction');
-  const rows = await w.world.db.admin.execute<{
-    readonly id: string;
-    readonly fence: string;
-    readonly holder: string;
-  }>(
-    `select id, fence::text as fence, holder_actor_id as holder
-       from public.leases where task_id = $1 and state = 'live'`,
-    [picked.taskId],
-  );
-  const row = rows[0];
-  if (row === undefined) throw new Error('no live lease after pickup');
-  lease = { leaseId: row.id, fence: Number(row.fence), taskId: picked.taskId, holder: row.holder };
-}, 120_000);
-afterAll(async () => {
-  if (serverUrl !== undefined) await w.world.drop();
-});
-
-async function approved(): Promise<string> {
-  const detail = detailOf(await w.request(w.ava, { taskId: lease.taskId }));
-  const id = String(detail['correctionId']);
-  expect(codeOf(await w.approve(w.ben, id, String(detail['versionId'])))).toBe('not-a-refusal');
-  return id;
-}
-
-const at = (correctionId: string, business = w.world.business) => ({
-  business,
-  correctionId,
-  leaseId: lease.leaseId,
-  fence: lease.fence,
-});
-const publish = async (id: string, ports: RunnerPorts) =>
-  await runLivePublish(w.world.db.app, at(id), ports);
-const revert = async (id: string, ports: RunnerPorts) =>
-  await runLiveRevert(w.world.db.app, at(id), ports);
-
-interface Entry {
-  readonly operation_id: string;
-  readonly command: string;
-  readonly actor_id: string;
-  readonly outcome: string;
-  readonly detail: Record<string, string>;
-}
-
-/** The register's effect entries for one correction (not its request or decision). */
-async function entries(id: string): Promise<readonly Entry[]> {
-  return await w.world.db.admin.execute<Entry>(
-    `select operation_id, command, actor_id, outcome, result -> 'detail' as detail
-       from public.operations where record_id = $1 and command like 'site.%'
-      order by created_at, id`,
-    [id],
-  );
-}
-
-async function receipt(id: string, step: string): Promise<Record<string, { observed: string }>> {
-  const rows = await w.world.db.admin.execute<{ readonly o: Record<string, { observed: string }> }>(
-    `select observations as o from public.live_correction_receipts
-      where correction_id = $1 and step = $2 order by created_at desc, id desc limit 1`,
-    [id, step],
-  );
-  return rows[0]?.o ?? {};
-}
-
-async function expireLease(): Promise<void> {
-  await w.world.db.admin.execute(
-    `update public.leases set expires_at = now() - interval '1 second' where id = $1`,
-    [lease.leaseId],
-  );
-}
-async function renewLease(): Promise<void> {
-  await w.world.db.admin.execute(
-    `update public.leases set expires_at = now() + interval '1 hour' where id = $1`,
-    [lease.leaseId],
-  );
-}
+useRegisterWorld();
 
 describe.skipIf(serverUrl === undefined)('C80 runner on the effect register', () => {
   it('registers the accepted publish under the identity derived from the correction', async () => {
@@ -140,7 +62,9 @@ describe.skipIf(serverUrl === undefined)('C80 runner on the effect register', ()
       observed: entry?.detail['dispatchToken'],
     });
   });
+});
 
+describe.skipIf(serverUrl === undefined)('C80 runner on the effect register, a second run', () => {
   it('observes a publish accepted under a lost lease on the next run, never dispatching again', async () => {
     const id = await approved();
     const lost = doubles({
@@ -185,7 +109,9 @@ describe.skipIf(serverUrl === undefined)('C80 runner on the effect register', ()
     expect([ports.seen.dispatched.length, asked]).toEqual([1, ['dep-2', 'dep-2']]);
     expect((await entries(id)).length).toBe(1);
   });
+});
 
+describe.skipIf(serverUrl === undefined)('C80 runner on the effect register, reconciling', () => {
   it('reconciles an unknown publish through the register: absent it waits, present it is observed', async () => {
     const id = await approved();
     const timeout = doubles({
