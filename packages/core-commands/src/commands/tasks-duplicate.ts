@@ -28,6 +28,7 @@
 // old task (`reads/tasks.ts`), so the new client's people learn nothing of it.
 
 import {
+  clientsReached,
   deriveSource,
   isClientHere,
   isRecordsRefusal,
@@ -115,25 +116,33 @@ function folded(text: string): string {
 }
 
 /**
- * The old client's name, folded, from the business's client model (C32). The
- * model records no alias yet; an alias joins the list when it does.
+ * The old client's name, folded, from the business's client model (C32), and
+ * only when the caller may read it: `client.list`'s rule, a grant across the
+ * business or on that client. A caller held to the old task alone is never
+ * told which text is the client's name, so the guard is no oracle for it.
+ * The model records no alias yet; an alias joins the list when it does.
  */
-async function clientNames(tx: TenantQuery, client: string | null): Promise<readonly string[]> {
+async function clientNames(
+  tx: TenantQuery,
+  context: CommandContext,
+  client: string | null,
+): Promise<readonly string[]> {
   if (client === null) return [];
-  const rows = await tx.query<{ readonly name: string }>(
-    'select name from public.clients where business_id = $1 and id = $2::uuid',
-    [tx.businessId, client],
-  );
-  return rows.map((row) => folded(row.name)).filter((one) => one !== '');
+  const reached = (await clientsReached(tx, subjectsOf(context.session))) ?? [];
+  return reached
+    .filter((one) => one.clientId === client)
+    .map((one) => folded(one.name))
+    .filter((one) => one !== '');
 }
 
 /** The carried fields that name the old client, sorted; empty when none does. */
 async function namingFields(
   tx: TenantQuery,
+  context: CommandContext,
   oldClient: string | null,
   shell: Shell,
 ): Promise<readonly string[]> {
-  const names = await clientNames(tx, oldClient);
+  const names = await clientNames(tx, context, oldClient);
   if (names.length === 0) return [];
   const fields: [string, string][] = [
     ['title', shell.title],
@@ -242,7 +251,7 @@ export async function duplicateTask(
   const old = await readOld(tx, context.spine.taskTypeId, oldId, shell.client);
   if (old === undefined) return refused(refuseNotFound());
 
-  const naming = await namingFields(tx, old.client, shell);
+  const naming = await namingFields(tx, context, old.client, shell);
   if (naming.length > 0 && request.confirmCarried !== true) {
     return refused(
       refuseCommand('CARRIED_TEXT_NAMES_CLIENT', naming, [

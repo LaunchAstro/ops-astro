@@ -9,7 +9,14 @@
 // client of the business.
 
 import { randomUUID } from 'node:crypto';
-import { insertBusiness } from '../identity/fixture.ts';
+import {
+  insertActor,
+  insertBusiness,
+  insertLogin,
+  insertMapping,
+  insertPerson,
+} from '../identity/fixture.ts';
+import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
@@ -153,6 +160,25 @@ export async function clientOf(business: BusinessId, by: Member, name: string): 
   return String(made.detail?.['clientId']);
 }
 
+/** One of `client`'s people: a login and no membership, on the client by a party-scoped read. */
+export const clientStander = async (client: string): Promise<void> => {
+  await db.app.withBusiness(alpha, async (tx) => {
+    const subject = `client-person-${randomUUID()}`;
+    const personId = await insertPerson(tx, subject);
+    await insertActor(tx, personId);
+    await insertMapping(tx, await insertLogin(tx, subject), personId, owner.actorId);
+    const issued = await issueGrant(tx, [], {
+      subject: { kind: 'person', id: personId },
+      scope: { kind: 'party', id: client },
+      collection: 'task',
+      action: 'read',
+      parentGrantId: null,
+      grantedByActorId: owner.actorId,
+    });
+    if (!issued.ok) throw new Error(`clientStander: refused ${issued.refusal.code}`);
+  });
+};
+
 export async function setUp(): Promise<void> {
   db = await createFreshDatabase({ part: 'h' });
   alpha = (await insertBusiness(db.app, 'dup-alpha')) as BusinessId;
@@ -168,6 +194,7 @@ export async function setUp(): Promise<void> {
     }
     await grantTo(tx, owner, 'write', undefined, false, 'time');
     await grantTo(tx, owner, 'write', undefined, false, 'tag');
+    await grantTo(tx, owner, 'share', undefined, false, 'access');
   });
   await db.app.withBusiness(bravo, async (tx) => {
     await grantTo(tx, bravoWriter, 'write');

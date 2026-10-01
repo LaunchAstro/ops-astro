@@ -8,7 +8,7 @@
 import { COMMAND_SURFACE, TASK_STAGES } from '../../packages/core-wire/src/index.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
-import { CANARY, alpha, as, owner, revisionOf } from './duplicate-world.ts';
+import { CANARY, alpha, as, clientA, clientStander, owner, revisionOf } from './duplicate-world.ts';
 
 export type Carry = 'carried' | 'name only' | 'not carried';
 type Plant = (taskId: string) => Promise<CommandResult>;
@@ -40,9 +40,19 @@ const tagged = async (taskId: string): Promise<CommandResult> => {
   return await as(alpha, owner, { command: 'task.add_tag', recordId: taskId, tagId });
 };
 
+/** The old task shared with one of client A's people, who stands on it by a party grant. */
+const shared = async (taskId: string): Promise<CommandResult> => {
+  await clientStander(clientA);
+  return await as(alpha, owner, {
+    command: 'task.share_with_client',
+    recordId: taskId,
+    expectedRevision: await revisionOf(taskId),
+  });
+};
+
 /**
  * Every task-content kind in the catalogue (S0-5's derivation: each write but
- * task.create and task.set_party), declared once: what a duplicate carries of
+ * task.create, task.duplicate and task.set_party), declared once: what a duplicate carries of
  * it, and how this test plants its canary. A kind this base cannot plant on a
  * plain task says why; a new kind with no row fails the first case.
  */
@@ -114,7 +124,7 @@ export const DECLARED: Readonly<
   'budget.write_off': { carry: 'not carried', plant: 'needs an unknown hold' },
   'task.triage': { carry: 'not carried', plant: 'intake_state: an intake task only' },
   'task.set_audience': { carry: 'not carried', plant: 'client_visible needs a client share' },
-  'task.share_with_client': { carry: 'not carried', plant: 'needs the client model' },
+  'task.share_with_client': { carry: 'not carried', plant: shared },
   'task.revoke_client_share': { carry: 'not carried', plant: 'needs a share' },
   'task.edit_comment': { carry: 'not carried', plant: 'rewrites a comment, planted above' },
   'task.delete_comment': { carry: 'not carried', plant: 'removes a comment' },
@@ -124,7 +134,6 @@ export const DECLARED: Readonly<
   'task.trash': { carry: 'not carried', plant: 'a trashed task is not duplicated' },
   'task.restore': { carry: 'not carried', plant: 'a batch, not a task' },
   'task.purge': { carry: 'not carried', plant: 'the business window, not a task' },
-  'task.duplicate': { carry: 'not carried', plant: 'the old task keeps its own link only' },
   'time.start': { carry: 'not carried', plant: 'a running entry; time.log plants time' },
   'time.stop': { carry: 'not carried', plant: 'a running entry; time.log plants time' },
   'time.set_note': { carry: 'not carried', plant: 'a note on time; time.log plants one' },
@@ -164,7 +173,9 @@ export const NAME_FIELDS = ['title', 'stepNames'] as const;
 /** S0-5's derivation from the catalogue, read here rather than listed. */
 export const contentKinds = (): readonly string[] =>
   COMMAND_SURFACE.filter(
-    (one) => one.kind === 'write' && one.name !== 'task.create' && one.name !== 'task.set_party',
+    (one) =>
+      one.kind === 'write' &&
+      !['task.create', 'task.duplicate', 'task.set_party'].includes(one.name),
   ).map((one) => one.name);
 
 /** Plant every plantable kind on `taskId`, in order; the kinds planted, each with its answer. */

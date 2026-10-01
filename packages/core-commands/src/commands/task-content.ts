@@ -9,10 +9,14 @@
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { COMMAND_SURFACE } from '../../../core-wire/src/index.ts';
 
-/** Writes whose history event is content; creation and client changes are not. */
+/**
+ * Writes whose history event is content; creation and client changes are not.
+ * A duplicate is a creation too (CS-4.12): its steps are subtasks, which count.
+ */
 const CONTENT_COMMANDS: readonly string[] = COMMAND_SURFACE.filter(
   (declaration) =>
-    declaration.kind === 'write' && !['task.create', 'task.set_party'].includes(declaration.name),
+    declaration.kind === 'write' &&
+    !['task.create', 'task.duplicate', 'task.set_party'].includes(declaration.name),
 ).map((declaration) => declaration.name);
 
 /**
