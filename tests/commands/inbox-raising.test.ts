@@ -304,6 +304,12 @@ describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
       { factKind: 'planned_run', factId: proposed['runId'], owed: true },
     ]);
     expect(await launcher('run_finished')).toStrictEqual([]);
+    // The alert agrees, as observe's does for the same state: a person records the outcome.
+    const alerts = await fixture.db.admin.execute(
+      'select kind, waiting_reason from public.alerts where task_id = $1',
+      [task.id],
+    );
+    expect(alerts).toEqual([{ kind: 'awaiting_person', waiting_reason: 'liability_unknown' }]);
   });
 
   it('raises an assignment for the assignee, moves it on reassignment, and never for oneself', async () => {
