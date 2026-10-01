@@ -92,6 +92,7 @@ async function bounded(running: Promise<unknown>): Promise<'resolved' | 'hung'> 
 describe.skipIf(serverUrl === undefined)(
   'FIX-2B1 RS2: a tab that leaves at the door of each real live route',
   { timeout: 30_000 },
+  // oxlint-disable-next-line max-lines-per-function -- one world, three routes
   () => {
     let s: Schedules;
     let key: string;
@@ -113,7 +114,10 @@ describe.skipIf(serverUrl === undefined)(
 
     it.each([
       ['T2f /live/task/:id', (task: string) => `/live/task/${task}`],
-      ['C4 /live?topic=task:<id>', (task: string) => `/live?topic=${encodeURIComponent(`task:${task}`)}`],
+      [
+        'C4 /live?topic=task:<id>',
+        (task: string) => `/live?topic=${encodeURIComponent(`task:${task}`)}`,
+      ],
       ['INB-1f /live (the board)', () => '/live'],
     ] as const)(
       'FIX-2B1-RS2: %s, left while its door is awaited, ends, frees its topic and seat, and lets topics.close() resolve',
@@ -151,9 +155,13 @@ describe.skipIf(serverUrl === undefined)(
           expect
             .soft(now, 'no topic is still subscribed for the tab that left')
             .toMatchObject({ tasks: 0, boards: 0 });
-          expect.soft(presence.held, 'the presence book holds no seat for the tab that left').toBe(0);
+          expect
+            .soft(presence.held, 'the presence book holds no seat for the tab that left')
+            .toBe(0);
         } finally {
-          expect.soft(await bounded(topics.close()), 'topics.close() (shutdown) resolves').toBe('resolved');
+          expect
+            .soft(await bounded(topics.close()), 'topics.close() (shutdown) resolves')
+            .toBe('resolved');
         }
       },
       20_000,
