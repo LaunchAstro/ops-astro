@@ -53,6 +53,7 @@ import type {
 } from '../../packages/core-records/src/index.ts';
 import {
   agentAnswer,
+  credentialNotLive,
   endOtherSessions,
   enrolSecondFactor,
   listOwnSessions,
@@ -317,7 +318,11 @@ async function admit(
     }
     return refuse(context, refuseCommand('COMMAND_BODY_INVALID', [], [OBJECT]));
   }
-  if (businessId === undefined) return refuse(context, entry.unresolved());
+  // A credential at a key nobody holds answers as one not live, so its answer
+  // cannot tell a key that exists from one that does not.
+  if (businessId === undefined) {
+    return refuse(context, credential === undefined ? entry.unresolved() : credentialNotLive());
+  }
   return { presented, businessId, body, ...(credential === undefined ? {} : { credential }) };
 }
 
