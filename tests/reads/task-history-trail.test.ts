@@ -15,6 +15,7 @@ import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import type { BusinessId } from '../../packages/core-records/src/index.ts';
 import { agentWorld, detailOf, type AgentWorld } from '../commands/agent-fixture.ts';
+import { clientHere } from './client-rows.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -63,7 +64,7 @@ const make = async (by: Member, stager: Member, client: string, times: number) =
     command: 'task.set_party',
     recordId,
     expectedRevision: await revision(recordId),
-    fields: { client },
+    fields: { client: await clientHere(world.db.admin, world.business, client) },
   });
   for (let index = 0; index < times; index += 1) {
     // eslint-disable-next-line no-await-in-loop -- each write moves the revision

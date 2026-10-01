@@ -20,6 +20,7 @@ import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import type { BusinessId } from '../../packages/core-records/src/index.ts';
 import { agentWorld, detailOf, type AgentWorld } from '../commands/agent-fixture.ts';
+import { clientHere } from './client-rows.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -67,20 +68,21 @@ async function make(
 ): Promise<string> {
   const made = await command(db, business, by, { command: 'task.create', fields: { title: 't' } });
   const recordId = made.recordId ?? '';
+  // The client first: once the task holds content its client is locked (S0-5).
+  if (facts.client !== undefined) {
+    await command(db, business, by, {
+      command: 'task.set_party',
+      recordId,
+      expectedRevision: await revisionOf(db, recordId),
+      fields: { client: await clientHere(db.admin, business, facts.client) },
+    });
+  }
   await command(db, business, by, {
     command: 'task.set_stage',
     recordId,
     expectedRevision: await revisionOf(db, recordId),
     fields: { stage: facts.stage },
   });
-  if (facts.client !== undefined) {
-    await command(db, business, by, {
-      command: 'task.set_party',
-      recordId,
-      expectedRevision: await revisionOf(db, recordId),
-      fields: { client: facts.client },
-    });
-  }
   return recordId;
 }
 

@@ -17,6 +17,7 @@ import {
 } from '../support/fresh-database.ts';
 
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
+import { clientHere } from './client-rows.ts';
 
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 
@@ -95,6 +96,15 @@ export const make: (
 ) => {
   const made = await command(business, by, { command: 'task.create', fields: { title } });
   const recordId = made.recordId ?? '';
+  // The client first: once the task holds content its client is locked (S0-5).
+  if (client !== undefined) {
+    await command(business, by, {
+      command: 'task.set_party',
+      recordId,
+      expectedRevision: await revisionOf(recordId),
+      fields: { client: await clientHere(db.admin, business, client) },
+    });
+  }
   const [impact, confidence, ease] = marks;
   await command(business, by, {
     command: 'task.set_scores',
@@ -102,14 +112,6 @@ export const make: (
     expectedRevision: await revisionOf(recordId),
     fields: { impact, confidence, ease },
   });
-  if (client !== undefined) {
-    await command(business, by, {
-      command: 'task.set_party',
-      recordId,
-      expectedRevision: await revisionOf(recordId),
-      fields: { client },
-    });
-  }
   ids[name] = recordId;
   return recordId;
 };
