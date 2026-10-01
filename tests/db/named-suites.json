@@ -646,6 +646,8 @@
     "tests/broker/aw-07b-client-cap.test.ts",
     "tests/broker/aw-07b-in-flight.test.ts",
     "tests/broker/aw-07b-worker.test.ts",
+    "tests/review/sl12-18-hook-batch-proof.test.ts",
+    "tests/review/sl12-18-mention-timing-proof.test.ts",
     "tests/api/live-board-lost-access.test.ts",
     "tests/api/live-board-scoped-revocation-review.test.ts",
     "tests/api/live-board-client-move-review.test.ts",
