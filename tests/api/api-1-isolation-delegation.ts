@@ -188,13 +188,14 @@ export function delegationCrossing(): void {
       const row = rows.find((one) => one.command === command) as CatalogueRow;
       // eslint-disable-next-line no-await-in-loop -- one command at a time reads as a list
       const heard = await asAgent(row, 'alpha', ours[command]?.(delegatedTask) ?? {});
-      const codes = heard.map((one) => one.code);
-      expect(codes, `${command} ${JSON.stringify(heard)}`).not.toContain(
-        'DELEGATION_OUT_OF_PURPOSE',
-      );
+      const where = `${command} ${JSON.stringify(heard)}`;
+      expect(
+        heard.map((one) => one.code),
+        where,
+      ).not.toContain('DELEGATION_OUT_OF_PURPOSE');
       // Past the delegation and served; the model call answers that no broker is set.
-      if (command === 'model.call') expect(heard[0]?.code, command).toBe('DEPENDENCY_NOT_LANDED');
-      else expect(heard[0]?.status, command).toBe(200);
+      if (command === 'model.call') expect(heard[0]?.code, where).toBe('DEPENDENCY_NOT_LANDED');
+      else expect(heard[0]?.status, where).toBe(200);
     }
   }, 60_000);
   /* eslint-enable max-lines-per-function, unicorn/consistent-function-scoping */

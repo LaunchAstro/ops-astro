@@ -7,6 +7,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { CatalogueRow } from '../../packages/core-wire/src/index.ts';
+import { NEEDS_NO_EXPECTED_REVISION } from '../../packages/core-wire/src/surface.ts';
 import { createCli } from '../../apps/cli/client.ts';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { tokenFor } from './fixture.ts';
@@ -115,11 +116,14 @@ export async function asAgent(
     heard.push({ status: response.status, code: parsed?.code, body: label(parsed) });
     return response;
   };
-  // The agent prefix takes an operation id on every call, reads included.
+  // The agent prefix takes an operation id on every call, reads included, and a
+  // revision on a write to an existing record only.
+  const revised =
+    row.kind === 'write' && 'recordId' in body && !NEEDS_NO_EXPECTED_REVISION.has(row.command);
   const payload = {
     ...body,
     operationId: randomUUID(),
-    ...(row.kind === 'write' && 'recordId' in body ? { expectedRevision: 1 } : {}),
+    ...(revised ? { expectedRevision: 1 } : {}),
   };
   const cli = createCli({
     businessKey,

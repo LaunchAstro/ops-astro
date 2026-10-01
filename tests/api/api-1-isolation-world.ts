@@ -11,7 +11,7 @@ import { afterAll, beforeAll } from 'vitest';
 import type { Hono } from 'hono';
 import { buildCatalogue, type CatalogueRow } from '../../packages/core-wire/src/index.ts';
 import { authorised, createApiFixture, post, tokenFor, type ApiFixture } from './fixture.ts';
-import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
+import { enrol, grantTo, installSpine, WHOLE_BUSINESS, type Member } from '../commands/fixture.ts';
 import { insertBusiness, insertLogin } from '../identity/fixture.ts';
 
 export type Name = 'client1' | 'client2' | 'bravo' | 'other';
@@ -121,6 +121,11 @@ async function seedClients(): Promise<string> {
 
 /** The agent's own delegation, then the second Alpha person's held reservation and live lease. */
 async function seedDelegations(alphaToken: string): Promise<void> {
+  // run:write on the whole business, so the pickup mints the delegation with `run`
+  // and its run operations meet the one-task scope, not a collection refusal.
+  await fixture.db.app.withBusiness(fixture.business, async (tx) => {
+    await grantTo(tx, fixture.member, 'write', WHOLE_BUSINESS, false, 'run');
+  });
   const ours = await pickUp(alphaToken, 'delegated');
   ({ agentToken, delegation, delegatedTask } = ours);
   ownLease = { leaseId: ours.leaseId, fence: ours.fence };
