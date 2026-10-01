@@ -207,11 +207,14 @@ function useEarlierDays(client: OperationsClient): EarlierDays {
 /**
  * What the search was read as, and how many events pass of those in view.
  * No time is tracked in the ledger yet, so the count line never sums any.
+ * `partial`: the search's matches go past what it reads (C1's bound, 500),
+ * so some are not listed and the count says so.
  */
 function SearchLines(props: {
   readonly reading: string | null;
   readonly passed: number;
   readonly inView: number;
+  readonly partial: boolean;
 }): ReactElement {
   return (
     <>
@@ -221,8 +224,13 @@ function SearchLines(props: {
         </p>
       )}
       {props.inView === 0 ? null : (
-        <p className="act__count" data-ledger-count>
+        <p
+          className="act__count"
+          data-ledger-count
+          data-ledger-more-matches={props.partial ? '' : undefined}
+        >
           {`${String(props.passed)} of ${String(props.inView)} entries`}
+          {props.partial ? '; more match than the search reads (500+)' : null}
         </p>
       )}
     </>
@@ -246,7 +254,12 @@ function LedgerPages(props: {
   const reading = readingLine(search, passed);
   return (
     <>
-      <SearchLines reading={reading} passed={passed} inView={inView} />
+      <SearchLines
+        reading={reading}
+        passed={passed}
+        inView={inView}
+        partial={first.query !== null && first.ledger.more === true}
+      />
       {reading !== null && passed === 0 ? (
         <Empty
           title="Nothing matches that."
