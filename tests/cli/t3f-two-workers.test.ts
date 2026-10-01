@@ -3,7 +3,7 @@
 // T3f, T3-N1: two worker processes, one lease. Two OS processes, each the
 // shipped worker (`apps/worker/worker.ts` over the command line's HTTP
 // transport, as `apps/worker/main.ts` builds it) under a delegation of its
-// own, race to apply one approved task on the served API process. Exactly one
+// own, race to apply one launched task (AW-08) on the served API process. Exactly one
 // applies: one lease on the task, one effect. The other finds the work gone
 // (`idle`) or its pickup refused. Named by the winner's lease and fence, the
 // loser's identity is refused `LEASE_NOT_OWNED`, because a lease is its
@@ -130,11 +130,40 @@ describe.skipIf(serverUrl === undefined)('T3f two worker processes, one lease', 
         step: { kind: 'synthetic_comment', payload: {} },
       }),
     );
-    detailOf(
+    const plan = detailOf(
       await asAda({
         command: 'task.decide',
         gateId: gate['gateId'],
         versionId: gate['versionId'],
+        decision: 'approve',
+        note: 'the plan',
+      }),
+    );
+    // AW-08: the plan fires nothing. Ada works it under her own lease and hands
+    // the output back for review; her accept of it is the launch the two race for.
+    const working = detailOf(
+      await asAda({ command: 'task.pickup', reservationId: plan['reservationId'] }),
+    );
+    const handed = detailOf(
+      await asAda({
+        command: 'task.handback',
+        leaseId: working['leaseId'],
+        fence: working['fence'],
+        outcome: 'completed',
+        successor: {
+          purpose: `t3f_${randomUUID().slice(0, 8)}`,
+          maximumMinor: 2_000,
+          currency: 'AUD',
+          payload: { change: 'the reviewed output' },
+          step: { kind: 'synthetic_comment', payload: {} },
+        },
+      }),
+    );
+    detailOf(
+      await asAda({
+        command: 'task.decide',
+        gateId: handed['successorGateId'],
+        versionId: handed['successorVersionId'],
         decision: 'approve',
         note: 'two workers race for it',
       }),
@@ -169,8 +198,13 @@ describe.skipIf(serverUrl === undefined)('T3f two worker processes, one lease', 
       JSON.stringify(loser),
     ).toBe(true);
 
+    // The launch's leases: ada's own on the plan ended at its hand-back.
     const leases = await world.db.admin.execute<{ readonly id: string; readonly fence: string }>(
-      'select id, fence::text as fence from public.leases where task_id = $1',
+      `select l.id, l.fence::text as fence from public.leases l
+         join public.reservations res on res.business_id = l.business_id and res.id = l.reservation_id
+         join public.reviewed_outputs ro
+           on ro.business_id = res.business_id and ro.version_id = res.version_id
+        where l.task_id = $1`,
       [taskId],
     );
     expect(leases).toHaveLength(1);

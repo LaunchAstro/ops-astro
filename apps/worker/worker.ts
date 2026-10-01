@@ -2,7 +2,9 @@
 //
 // The worker's composition root and its two jobs: propose one versioned
 // synthetic change to the task its delegation is for (T2b), and once a person
-// approves it, apply it once (T2c2): pick the work up, dispatch the step, write
+// approves it, hand that plan's work back for review (AW-08: its accept fires
+// nothing), and once a person launches the reviewed output, apply it once
+// (T2c2): pick the work up, dispatch the step, write
 // the one team-only comment under the operation identity derived from the
 // attempt, and observe it. Each step retried after a lost answer presents the
 // same identity, so it replays rather than repeats.
@@ -72,10 +74,10 @@ interface Answered {
   readonly detail: Record<string, unknown>;
 }
 
-/** The effect's text: a note to the team, and nothing leaves the app. */
 /** The reviewed output's change, as the successor names it. */
 const REVIEWED_CHANGE = 'a team-only comment, reviewed; this changes nothing outside the app';
 
+/** The effect's text: a note to the team, and nothing leaves the app. */
 export const EFFECT_BODY =
   'Synthetic change applied: a team-only comment. This demonstration changes nothing outside the app.';
 

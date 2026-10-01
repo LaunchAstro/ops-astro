@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // T2c2 through the served API: the worker proposes, a person approves that
-// version, and the worker applies it once through the agent routes (pickup,
+// version, the worker hands the work back for review and the person launches
+// it (AW-08), and the worker applies it once through the agent routes (pickup,
 // dispatch, the team-only comment under the attempt's operation identity,
 // observe). The person reads the receipt through the command line's client,
 // and it names the approval it came from. A second worker pass finds nothing
@@ -19,6 +20,7 @@ import { readIdentity } from '../../apps/api/identity.ts';
 import { createCli, type Transport } from '../../apps/cli/client.ts';
 import { createWorker, EFFECT_BODY } from '../../apps/worker/worker.ts';
 import { ProviderFault, SYNTHETIC_USAGE } from '../../apps/worker/usage.ts';
+import { launchThrough } from '../support/launch-worker.ts';
 import {
   authorised,
   BUSINESS_KEY,
@@ -98,8 +100,15 @@ describe.skipIf(serverUrl === undefined)('T2c2: the worker applies one approved 
       note: 'approve this version',
     });
     expect(decided.status, JSON.stringify(decided.body)).toBe(200);
-    const decisionId = String((decided.body['detail'] as Record<string, unknown>)['decisionId']);
-    return { taskId, worker, versionId, decisionId, credential };
+    // AW-08: that accept fires nothing. The worker hands the work back, and the
+    // person's accept of the reviewed output is the launch the receipt names.
+    const { handed, accepted } = await launchThrough(worker, taskId, async (body) => {
+      const launch = await asPerson('task.decide', body);
+      expect(launch.status, JSON.stringify(launch.body)).toBe(200);
+      return launch.body['detail'] as Record<string, unknown>;
+    });
+    const decisionId = String(accepted['decisionId']);
+    return { taskId, worker, versionId: handed.versionId, decisionId, credential };
   }
 
   const comments = async (taskId: string): Promise<readonly Record<string, unknown>[]> => {
@@ -265,6 +274,9 @@ describe.skipIf(serverUrl === undefined)('T2c2: the worker applies one approved 
          from public.attempts att
          join public.reservations res on res.business_id = att.business_id and res.id = att.reservation_id
          join public.planned_runs run on run.business_id = res.business_id and run.id = res.run_id
+         -- The launch's attempts (AW-08): the plan's own was handed back for review.
+         join public.reviewed_outputs ro
+           on ro.business_id = res.business_id and ro.version_id = res.version_id
         where att.business_id = $1 and run.task_id = $2 order by att.created_at, att.id`,
       [fixture.business, taskId],
     );

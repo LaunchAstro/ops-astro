@@ -18,6 +18,7 @@ import { pathOf } from '../../packages/core-wire/src/surface.ts';
 import { httpTransport } from '../../apps/cli/client.ts';
 import { createWorker } from '../../apps/worker/worker.ts';
 import { SYNTHETIC_USAGE } from '../../apps/worker/usage.ts';
+import { launchThrough } from '../support/launch-worker.ts';
 import type { AgentIdentity } from './cast.ts';
 import { startWorker, type WorkerProcess } from './kill-harness.ts';
 import { startApi, type RunningApi } from './restart-process.ts';
@@ -112,13 +113,19 @@ export async function openProofWorld(part: string): Promise<ProofWorld> {
     if (!('proposed' in proposed)) throw new Error(`propose: ${JSON.stringify(proposed)}`);
     const read = await asAda('task.read', { recordId: taskId });
     const task = read['task'] as { proposals: { versions: { versionId: string }[] }[] };
-    const decided = await asAda('task.decide', {
+    await asAda('task.decide', {
       gateId: proposed.proposed.gateId,
       versionId: String(task.proposals[0]?.versions[0]?.versionId),
       decision: 'approve',
       note: 'approve this version',
     });
-    const decisionId = String((decided['detail'] as Record<string, unknown>)['decisionId']);
+    // AW-08: that accept fires nothing. The worker hands the work back, and ada's
+    // accept of the reviewed output is the launch the parked worker applies.
+    const { accepted } = await launchThrough(proposer, taskId, async (body) => {
+      const launch = await asAda('task.decide', body);
+      return launch['detail'] as Record<string, unknown>;
+    });
+    const decisionId = String(accepted['decisionId']);
     return { taskId, delegation, decisionId, token: agent.token };
   };
 
@@ -158,6 +165,9 @@ export async function openProofWorld(part: string): Promise<ProofWorld> {
         `select att.id, att.state, att.drop_cause from public.attempts att
            join public.reservations res on res.business_id = att.business_id and res.id = att.reservation_id
            join public.task_envelopes env on env.business_id = res.business_id and env.id = res.envelope_id
+           -- The launch's attempts (AW-08): the plan's own was handed back for review.
+           join public.reviewed_outputs ro
+             on ro.business_id = res.business_id and ro.version_id = res.version_id
           where att.business_id = $1 and env.task_id = $2 order by att.created_at, att.id`,
         [world.alpha, taskId],
       ),

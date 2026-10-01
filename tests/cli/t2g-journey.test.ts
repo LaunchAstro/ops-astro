@@ -4,7 +4,9 @@
 // The whole journey runs twice against the real served API: once with every
 // person's step through the command line as its own process, once through the
 // person's HTTP route the app posts to. The worker proposes and applies under
-// its own login and delegation both times. Each leg records the same facts,
+// its own login and delegation both times; it hands the plan's work back, and
+// a person's accept of that reviewed output on the leg is the launch (AW-08).
+// Each leg records the same facts,
 // the receipt read and the run's events included, and refuses the same things:
 //
 // - the task's assignee may not decide its gate (`FOUR_EYES_REQUIRED`);
@@ -28,6 +30,7 @@ import { pathOf } from '../../packages/core-wire/src/surface.ts';
 import { httpTransport } from '../../apps/cli/client.ts';
 import { createWorker } from '../../apps/worker/worker.ts';
 import { SYNTHETIC_USAGE } from '../../apps/worker/usage.ts';
+import { launchThrough } from '../support/launch-worker.ts';
 import { runCli, serveApi, type ServedApi } from './cli-process-harness.ts';
 
 type Leg = 'cli' | 'app';
@@ -149,6 +152,13 @@ describe.skipIf(serverUrl === undefined)('T2g journey_parity_cli', () => {
     );
     const approved = await step(leg, 'task.decide', decide('approve'), mia);
     const twice = await step(leg, 'task.decide', decide('approve'), mia);
+    // AW-08: the plan's accept fires nothing. The worker hands the work back, and
+    // Mia's accept of the reviewed output, on this leg, is the launch.
+    const { handed, accepted: launch } = await launchThrough(
+      worker,
+      taskId,
+      async (body) => await step(leg, 'task.decide', body, mia),
+    );
 
     const applied = await worker.applyOnce(taskId);
     if (!('applied' in applied)) throw new Error(`apply: ${JSON.stringify(applied)}`);
@@ -179,13 +189,16 @@ describe.skipIf(serverUrl === undefined)('T2g journey_parity_cli', () => {
         whileOpen: whileOpen.code,
         approved: approved.ok,
         twice: twice.code,
+        launched: launch.ok,
         receipt: {
           ok: receipt.ok,
+          // The receipt names the launch: its decision and the reviewed output's version.
           decision:
             (receiptBody['decision'] as Record<string, unknown> | undefined)?.['id'] ===
-            detail(approved)['decisionId'],
+            detail(launch)['decisionId'],
           version:
-            (receiptBody['version'] as Record<string, unknown> | undefined)?.['id'] === versionId,
+            (receiptBody['version'] as Record<string, unknown> | undefined)?.['id'] ===
+            handed.versionId,
           // The money line as the receipt carries it (T2d): held, spent, released.
           settlement: receiptBody['settlement'] ?? null,
         },
@@ -229,6 +242,7 @@ describe.skipIf(serverUrl === undefined)('T2g journey_parity_cli', () => {
     expect(cli.facts.whileOpen).toBe('GATE_PENDING');
     expect(cli.facts.approved).toBe(true);
     expect(cli.facts.twice).toBe('GATE_ALREADY_DECIDED');
+    expect(cli.facts.launched).toBe(true);
     expect(cli.facts.receipt).toMatchObject({ ok: true, decision: true, version: true });
     // Real money on both legs: the hold settles at the smaller observed cost
     // and the rest is released, and the two legs' amounts are the same numbers.

@@ -17,6 +17,7 @@ import { readIdentity } from '../../apps/api/identity.ts';
 import { createCli, type Transport } from '../../apps/cli/client.ts';
 import { createWorker } from '../../apps/worker/worker.ts';
 import { SYNTHETIC_USAGE } from '../../apps/worker/usage.ts';
+import { launchThrough } from '../support/launch-worker.ts';
 import { enrol, grantTo, installSpine } from '../commands/fixture.ts';
 import { insertBusiness } from '../identity/fixture.ts';
 import {
@@ -124,6 +125,11 @@ describe.skipIf(serverUrl === undefined)('T2h: the alert on every surface', () =
       note: 'approve this version',
     });
     expect(decided.status, JSON.stringify(decided.body)).toBe(200);
+    // AW-08: the worker hands the plan's work back; the person's accept is the launch.
+    await launchThrough(worker, taskId, async (body) => {
+      const launch = await asPerson('task.decide', body);
+      expect(launch.status, JSON.stringify(launch.body)).toBe(200);
+    });
     const applied = await worker.applyOnce(taskId);
     if (!('applied' in applied)) throw new Error(`apply: ${JSON.stringify(applied)}`);
 
