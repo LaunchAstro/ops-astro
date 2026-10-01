@@ -42,6 +42,11 @@ export const PAGE_PARAMS: Readonly<Record<string, string>> = {
   token: 'made-up-enrolment-link',
 };
 
+/** The fragment a page's address carries in the harness: C40's reset link, made up, draws its form. */
+export const PAGE_FRAGMENTS: Readonly<Record<string, string>> = {
+  'agency:reset': '#token_hash=made-up-reset-link&type=recovery',
+};
+
 /** The app served from source by its own Vite config, at a free local port. */
 export async function serveApp(): Promise<{ app: URL; close: () => Promise<void> }> {
   // No API behind it on any machine: its proxy points at a closed port, never at
@@ -155,7 +160,7 @@ async function capturePages(
   const shots: PageShot[] = [];
   for (const id of at.pages ?? builtPages()) {
     const name = `${id}@${width}-${theme}`;
-    const address = addressOf(id, PAGE_PARAMS) ?? '/';
+    const address = `${addressOf(id, PAGE_PARAMS) ?? '/'}${PAGE_FRAGMENTS[id] ?? ''}`;
     const side = needsSession(id) ? sides.signedIn : sides.signedOut;
     const page = await load(side, packet, new URL(address, app).href);
     // The intended screen is checked before the picture counts.

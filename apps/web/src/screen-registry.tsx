@@ -15,10 +15,12 @@ import type { AuthenticatedRouteId, OpenRouteId, ParamsOf, RouteMatch } from './
 import type { OperationsClient } from './operations/client.ts';
 import { AccessScreen } from './screens/Access.tsx';
 import { ConversationScreen } from './screens/Conversation.tsx';
+import { ForgotPassword } from './screens/ForgotPassword.tsx';
 import { InboxScreen } from './screens/Inbox.tsx';
 import { LegalScreen } from './screens/Legal.tsx';
 import { OperationsScreen } from './screens/Operations.tsx';
 import { Projects } from './screens/Projects.tsx';
+import { SetPassword } from './screens/SetPassword.tsx';
 import { SettingsGeneralScreen } from './screens/SettingsGeneral.tsx';
 import { OwnSessions } from './screens/settings/sessions.tsx';
 import { TaskDetailScreen } from './screens/TaskDetail.tsx';
@@ -105,6 +107,11 @@ export function drawScreen<Id extends AuthenticatedRouteId>(
 export interface OpenContext {
   readonly apiOrigin: string;
   readonly fetch: typeof globalThis.fetch;
+  /** Where the login provider is: the reset link's token is verified there (C40). */
+  readonly gotrueUrl: string;
+  readonly navigate: (path: string, options?: { readonly replace?: boolean }) => void;
+  /** The address's fragment, `#` and all, or empty: where the reset link carries its token. */
+  readonly fragment: string;
 }
 
 /** The screen each open route draws, with or without a session; keyed so none is missed. */
@@ -120,8 +127,13 @@ const OPEN_SCREENS: {
       read={context.fetch}
     />
   ),
+  'agency:forgot-password': (_params, context) => <ForgotPassword app={context} />,
+  'agency:reset': (_params, context) => <SetPassword fragment={context.fragment} app={context} />,
 };
 
-export function drawOpenScreen(match: RouteMatch<OpenRouteId>, context: OpenContext): ReactElement {
+export function drawOpenScreen<Id extends OpenRouteId>(
+  match: RouteMatch<Id>,
+  context: OpenContext,
+): ReactElement {
   return OPEN_SCREENS[match.id](match.params, context);
 }

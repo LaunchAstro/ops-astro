@@ -30,7 +30,7 @@ export function drawContent(props: {
   readonly enrol: (token: string) => ReactElement;
   readonly screen: Omit<ScreenContext, 'params'>;
   /** What a public page reads with: the API's origin and the fetch. */
-  readonly open: OpenContext;
+  readonly open: Omit<OpenContext, 'fragment'>;
 }): ReactElement {
   const { match, at } = props;
   // A manifest page with no screen yet: sign-in first, then the grant check.
@@ -47,10 +47,16 @@ export function drawContent(props: {
     case 'enrol':
       return props.enrol(gate.token);
     case 'open':
-      return drawOpenScreen(gate.match, props.open);
+      return drawOpenScreen(gate.match, { ...props.open, fragment: fragmentOf(props.here) });
     case 'signed-in-already':
       return <SignedInAlready onGo={props.onGo} />;
     case 'screen':
       return drawScreen(gate.match, props.screen);
   }
 }
+
+/** The address's fragment, `#` and all, or empty when it has none. */
+const fragmentOf = (address: string): string => {
+  const at = address.indexOf('#');
+  return at === -1 ? '' : address.slice(at);
+};
