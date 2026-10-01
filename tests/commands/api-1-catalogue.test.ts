@@ -145,6 +145,20 @@ function scannerAndGrantSkip(): void {
   });
 }
 
+/** Every command name the app's screens send. */
+function commandsTheAppCalls(): Set<string> {
+  const called = new Set<string>();
+  // The app's client lists every verb it may send; that is the web surface, not an action.
+  for (const [file, text] of webFiles()) {
+    if (file === 'operations/client.ts') continue;
+    for (const match of text.matchAll(/'([a-z]+\.[a-z_]+)'/gu)) {
+      if (NAMESPACES.has((match[1] as string).split('.')[0] as string))
+        called.add(match[1] as string);
+    }
+  }
+  return called;
+}
+
 function exemptAndMergedTickets(): void {
   it('API-1 exempt list: view-only actions are exempt with a reason, and nothing that writes a record is', () => {
     expect(VIEW_ONLY_EXEMPT.length).toBeGreaterThan(0);
@@ -163,23 +177,22 @@ function exemptAndMergedTickets(): void {
 
   it('API-1 covers merged tickets: every command the app calls today is in the catalogue with its route', () => {
     const { rows } = real();
-    const called = new Set<string>();
-    // The app's client lists every verb it may send; that is the web surface, not an action.
-    for (const [file, text] of webFiles()) {
-      if (file === 'operations/client.ts') continue;
-      for (const match of text.matchAll(/'([a-z]+\.[a-z_]+)'/gu)) {
-        if (NAMESPACES.has((match[1] as string).split('.')[0] as string))
-          called.add(match[1] as string);
-      }
-    }
-    for (const command of called) {
+    for (const command of commandsTheAppCalls()) {
       const row = rows.find((one) => one.command === command);
       expect(row, command).toBeDefined();
       expect(row?.ui.length, command).toBeGreaterThan(0);
     }
     const ui = (name: string) => rows.find((row) => row.command === name)?.ui ?? [];
-    expect(ui('task.create')).toEqual(['agency:projects-board (screens/Projects.tsx)']);
-    expect(ui('task.start')).toEqual(['agency:task-detail (screens/task/Lifecycle.tsx)']);
+    expect(ui('task.create')).toEqual([
+      'agency:projects-board (screens/Projects.tsx)',
+      'agency:task-detail (screens/task/History.tsx)',
+      'agency:task-detail (screens/task/Subtasks.tsx)',
+      'app shell (screens/task/task-draft.ts)',
+    ]);
+    expect(ui('task.start')).toEqual([
+      'agency:task-detail (screens/task/History.tsx)',
+      'agency:task-detail (screens/task/Lifecycle.tsx)',
+    ]);
     expect(ui('settings.set_client_sign_off')).toEqual([
       'agency:settings (screens/settings/use-settings.ts)',
     ]);

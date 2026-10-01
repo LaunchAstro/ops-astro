@@ -41,6 +41,13 @@ let bravoOwner: Member;
 const ids: Record<string, string> = {};
 const gates: Record<string, string> = {};
 
+/** A gate's id as opened in the world; one never opened fails here, never passes silently. */
+const gateOf = (name: string): string => {
+  const gate = gates[name];
+  expect(gate, `gate ${name} was opened`).toMatch(/^[0-9a-f-]{36}$/u);
+  return gate ?? '';
+};
+
 const id = (name: string): string => ids[name] ?? `missing-${name}`;
 
 const done = (result: Awaited<ReturnType<AgentWorld['asPerson']>>, what: string): Body => {
@@ -169,8 +176,8 @@ describe.skipIf(serverUrl === undefined)('MP-4-4 isolation', () => {
     expect(marks(steps)).toStrictEqual({ [id('gated')]: true, [id('quiet')]: false });
     expect(text).not.toContain(CANARY);
     expect(text).not.toContain(id('hidden'));
-    expect(text).not.toContain(gates['hidden'] ?? 'none');
-    expect(text).not.toContain(gates['gated'] ?? 'none');
+    expect(text).not.toContain(gateOf('hidden'));
+    expect(text).not.toContain(gateOf('gated'));
   });
 
   it('another business: its reader is refused the parent, shown no step, mark or gate', async () => {
@@ -197,6 +204,6 @@ describe.skipIf(serverUrl === undefined)('MP-4-4 isolation', () => {
     const text = JSON.stringify(own);
     expect(text).not.toContain(CANARY);
     expect(text).not.toContain(id('agentStep'));
-    expect(text).not.toContain(gates['agentStep'] ?? 'none');
+    expect(text).not.toContain(gateOf('agentStep'));
   });
 });
