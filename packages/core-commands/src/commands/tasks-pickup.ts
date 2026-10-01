@@ -154,8 +154,7 @@ async function claim(
           mintedByActorId: approver.actorId,
         });
   if (!result.ok) return refused(result.refusal);
-  // WF-7: an approval given before a research ticket stopped begins no run
-  // after it but on its map's owner's word, asked under the claim's task lock.
+  // WF-7: a stopped research ticket's run begins only on its map owner's word.
   const stopped = await stopRefusal(tx, result.value.taskId, approver.personId);
   if (stopped !== undefined) return refused(stopped);
   return applied(result.value.taskId, null, pickupDetail(result.value));
