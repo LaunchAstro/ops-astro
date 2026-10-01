@@ -46,6 +46,20 @@ export function useDrawerFocus(
     };
   }, [open, onToggle]);
 
+  // The drawer is the narrow view's. Past 900 the stylesheet hides its way
+  // out, so widening closes it and takes `inert` off the page.
+  useEffect(() => {
+    if (!open || onToggle === undefined || typeof window.matchMedia !== 'function') return;
+    const narrow = window.matchMedia('(width <= 900px)');
+    const onChange = (): void => {
+      if (!narrow.matches) onToggle(false);
+    };
+    narrow.addEventListener('change', onChange);
+    return () => {
+      narrow.removeEventListener('change', onChange);
+    };
+  }, [open, onToggle]);
+
   return (event) => {
     if (open) keepTabInside(event, railRef.current);
   };
