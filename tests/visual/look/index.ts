@@ -9,16 +9,29 @@
 import { BOARD } from './board.ts';
 import { SETTINGS } from './settings.ts';
 import { SHELL } from './shell.ts';
+import { RAIL } from './rail.ts';
 import { SIGN_IN } from './sign-in.ts';
 import { TASK } from './task.ts';
+
+/**
+ * Before measuring: `store` puts values in the page's localStorage before it
+ * loads (a state the mockup replays before paint, such as its dragged rail
+ * width), and `drag` moves an element's centre by `by` pixels along x with
+ * the pointer, the way a person drags an edge.
+ */
+export interface LookPrep {
+  readonly open?: string;
+  readonly store?: Readonly<Record<string, string>>;
+  readonly drag?: { readonly selector: string; readonly by: number };
+}
 
 export interface LookProbe {
   /** `<screen>.<element>`, unique across screens. */
   readonly id: string;
   /** The mockup page path and the element there; `open` clicks before measuring. */
-  readonly mockup: { readonly path: string; readonly selector: string; readonly open?: string };
+  readonly mockup: LookPrep & { readonly path: string; readonly selector: string };
   /** The app page (drawn from the made-up reads) and the element there. */
-  readonly app: { readonly page: string; readonly selector: string; readonly open?: string };
+  readonly app: LookPrep & { readonly page: string; readonly selector: string };
   /** Computed style properties (colours compared as painted), or `box.width|height|x|y`. */
   readonly props: readonly string[];
   /**
@@ -35,4 +48,4 @@ export interface LookScreen {
   readonly probes: readonly LookProbe[];
 }
 
-export const LOOK_SCREENS: readonly LookScreen[] = [SHELL, BOARD, TASK, SETTINGS, SIGN_IN];
+export const LOOK_SCREENS: readonly LookScreen[] = [SHELL, RAIL, BOARD, TASK, SETTINGS, SIGN_IN];
