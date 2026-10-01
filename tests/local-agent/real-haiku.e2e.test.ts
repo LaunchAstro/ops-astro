@@ -147,7 +147,7 @@ async function tickTasks(tasks: Schedules, executor: ModelCallExecutor) {
 
 describe.skipIf(!enabled)('LA-1 end to end on a real seat (Haiku)', () => {
   useBrokerWorld('la1e2e');
-  const folder = mkdtempSync(join(tmpdir(), 'la1-e2e-'));
+  let folder = '';
   const key = randomBytes(24).toString('hex');
   let runner: Runner;
   let custody: Custody;
@@ -161,6 +161,7 @@ describe.skipIf(!enabled)('LA-1 end to end on a real seat (Haiku)', () => {
       .map((line) => JSON.parse(line) as Ledgered);
 
   beforeAll(async () => {
+    folder = mkdtempSync(join(tmpdir(), 'la1-e2e-'));
     ({ runner, custody, started } = await startLocalStack(folder, key));
     tasks = await openSchedules('la1e2etask', 1_000_000);
   }, 180_000);
@@ -170,7 +171,7 @@ describe.skipIf(!enabled)('LA-1 end to end on a real seat (Haiku)', () => {
     await custody?.stop();
     await runner?.close();
     await tasks?.db.drop();
-    rmSync(folder, { recursive: true, force: true });
+    if (folder !== '') rmSync(folder, { recursive: true, force: true });
   });
 
   it('a side-panel message is answered by the local session on Haiku', async () => {
