@@ -272,7 +272,9 @@ whom it refuses. `model_route_room` (migration 0191, AW-01's fair share) is
 the second, and the one read across businesses: a route's ceiling is the
 installation's, which a tenant transaction cannot count under row security.
 It answers one whole number, 1 when the transaction's own business may hold
-one more call on the route and 0 when it may not, with no id and no count;
+one more call on the route and 0 when it may not, with no id and no count; a
+provider lookup's unexpired slot counts as a call (migration 0217 replaces it,
+keeping its grants and rights);
 the business is `app_business_id()`, never an argument, and none is 0. It
 runs with `row_security = off`, so an owner that does not bypass row security
 is refused rather than answered from one business's rows. PUBLIC and the

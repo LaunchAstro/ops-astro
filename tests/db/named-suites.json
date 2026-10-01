@@ -511,7 +511,9 @@
     "tests/db/reservation-stop-cause.test.ts",
     "tests/db/lease-holder-guard.test.ts",
     "tests/db/lease-pickup-path.test.ts",
-    "tests/surfaces/aw-09-reject-header.test.tsx"
+    "tests/surfaces/aw-09-reject-header.test.tsx",
+    "tests/broker/aw-10-lookup-slot.test.ts",
+    "tests/broker/aw-10-lookup-slot-isolation.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

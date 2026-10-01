@@ -1558,7 +1558,17 @@ both tenancy-scoped with row security forced, and the fair share's count
   each through the gate a model call takes (`atCeiling`: the operation's
   ceiling for the business, then the route's ceiling and the business's fair
   share). A lookup with no room is not sent and writes nothing; the next pass
-  asks again. Only an answer in the
+  asks again. With room, the same transaction, under the gate's locks, takes
+  the lookup's slot on the asked call (`lookup_until`, `0217_lookup_slot`)
+  before anything is sent. The route's ceiling, the fair share and the
+  business's own ceiling for the operation all count an unexpired slot as a
+  call in flight: the lookup uses the provider's capacity as a call does, so
+  two passes, or a pass and a model call, cannot both take the last place. A
+  call another pass holds a slot on waits too. The slot is given back when the
+  lookup ends, with proof, without, or when custody throws; a worker lost
+  while asking leaves it counting until the operation's timeout plus 60
+  seconds (`SLOT_MARGIN_MS`; custody's deadline covers the whole lookup).
+  Only an answer in the
   lookup's own shape with a declared code releases the call; the step then
   resumes through the register's answer (`withProviderCalls`). Anything else
   writes only `reconcile_note` ("could establish nothing: ..."); a provider
