@@ -556,6 +556,7 @@
   font: var(--type-eyebrow);
   letter-spacing: var(--type-eyebrow-tracking);
   text-transform: var(--type-eyebrow-case);
+  color: var(--text);
 }
 
 .dtp .tpr__tick {
