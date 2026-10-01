@@ -149,7 +149,8 @@ async function historyOf(
   return rows.map((row) => ({
     at: row.occurred_at.toISOString(),
     actorId: row.actor_id,
-    personId: row.person_id,
+    // An outside reader (and an agent, read as one) is shown no person behind an actor.
+    personId: internal ? row.person_id : null,
     operation: row.command,
   }));
 }
