@@ -11,7 +11,7 @@
 // current face belong to `apps/web`, because `packages/ui` owns visual controls
 // and layout and may not own a session [ui-reference CONTRACT.md:305 rule 3].
 
-import type { ReactElement, ReactNode } from 'react';
+import { useEffect, type ReactElement, type ReactNode } from 'react';
 import { BrandMark } from '../primitives/BrandMark.tsx';
 import { Icon, type GlyphName } from '../primitives/Icon.tsx';
 
@@ -146,6 +146,18 @@ function FaceSwitch(props: { readonly face: ShellProps['face'] }): ReactElement 
 }
 
 export function Shell(props: ShellProps): ReactElement {
+  // The drawer shuts on the backdrop, on Escape and on an item (SIDEBAR T-R9).
+  const { navOpen, onNav } = props;
+  useEffect(() => {
+    if (navOpen !== true || onNav === undefined) return undefined;
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') onNav(false);
+    };
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [navOpen, onNav]);
   return (
     <div
       className="shell"
@@ -170,6 +182,9 @@ export function Shell(props: ShellProps): ReactElement {
               // same descriptor list the router resolves, so the mark cannot go
               // missing without the route going missing too.
               {...(entry.href === props.here ? { 'aria-current': 'page' as const } : {})}
+              onClick={() => {
+                if (props.navOpen === true) props.onNav?.(false);
+              }}
             >
               <span>{entry.label}</span>
             </a>

@@ -6,7 +6,7 @@
 // not-yet-built treatment; the hamburger opens the rail's drawer at 900 and
 // below (DS-SIDE-17, 18); the person and the way out stay in reach.
 
-import { useState, type ReactElement } from 'react';
+import { act, useState, type ReactElement } from 'react';
 import { describe, expect, it } from 'vitest';
 import { Shell, type ShellProps } from '../../packages/ui/src/surfaces/Shell.tsx';
 import { mount, type Mounted } from './mount.tsx';
@@ -104,6 +104,23 @@ describe('UI-POLISH B1 drawer and history', () => {
     await page.click('.navbackdrop');
     expect(navOf(page)).toBeUndefined();
     expect(page.find('.navbackdrop')).toBeNull();
+    await page.unmount();
+  });
+
+  it('shuts the drawer on Escape and on a rail item, as SIDEBAR T-R9 asks', async () => {
+    const page = await mount(<Drawer steps={[]} />);
+    await page.click('.topbar .navtoggle');
+    expect(navOf(page)).toBe('open');
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    expect(navOf(page)).toBeUndefined();
+
+    await page.click('.topbar .navtoggle');
+    expect(navOf(page)).toBe('open');
+    // The page already open: moving does not change `here`, so the click shuts it.
+    await page.click('.rail__item[aria-current="page"]');
+    expect(navOf(page)).toBeUndefined();
     await page.unmount();
   });
 
