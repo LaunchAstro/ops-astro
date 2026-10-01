@@ -44,9 +44,10 @@ it.skipIf(databaseUrlFromEnvironment() === undefined)(
 it.skipIf(databaseUrlFromEnvironment() === undefined)(
   'the remapped-board case goes red when its inbox digest follows the previous person',
   () => {
+    // The board's questions live in C4's followBoardOn (family B's app.ts since main's merge).
     const result = runMutated('apps/api/app.ts',
-      'await mayShowInbox(options, context, admitted.businessId, personId),',
-      'await mayShowInbox(options, context, admitted.businessId, joined.personId),');
+      'shown: async (personId) => await mayShowInbox(options, context, businessId, personId),',
+      'shown: async () => await mayShowInbox(options, context, businessId, joined.personId),');
     expect(result).not.toBe(0);
   }, 40_000,
 );

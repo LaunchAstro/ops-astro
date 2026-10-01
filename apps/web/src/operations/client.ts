@@ -51,6 +51,7 @@
 // `operation_id`. There is one spelling on the wire and this is it.
 
 import {
+  ACCOUNT_AVAILABILITY_PATH,
   CSRF_HEADER,
   PREFIX,
   SESSION_HEADER,
@@ -164,7 +165,7 @@ export class OperationsClient {
    * to be idempotent about and no revision to be stale against.
    */
   async read<T>(name: ReadName, body: Readonly<Record<string, unknown>>): Promise<CallResult<T>> {
-    return await this.#post<T>(name, body);
+    return await this.#post<T>(pathOf(name), body);
   }
 
   /**
@@ -183,44 +184,47 @@ export class OperationsClient {
     if (options.expectedRevision !== undefined) {
       payload['expectedRevision'] = options.expectedRevision;
     }
-    return await this.#post<CommandOutcome>(name, payload);
+    return await this.#post<CommandOutcome>(pathOf(name), payload);
   }
 
-  /** The task's live channel (T2f), or nothing if the join is refused or unreachable. */
+  /** The person's own availability (MP-7-10), on the path the surface names. */
+  setAvailability(body: Readonly<Record<string, unknown>>): Promise<CallResult<unknown>> {
+    return this.#post(ACCOUNT_AVAILABILITY_PATH, body);
+  }
+
+  /** One live stream naming every topic (C4), or nothing if the join is refused or unreachable. */
   async openLive(
-    recordId: string,
+    topics: readonly string[],
     signal: AbortSignal,
   ): Promise<ReadableStream<Uint8Array> | null> {
-    return await this.#openStream(`/live/task/${encodeURIComponent(recordId)}`, signal);
+    const query = topics.map((topic) => `topic=${encodeURIComponent(topic)}`).join('&');
+    return (await this.#live(`?${query}`, { signal }))?.body ?? null;
   }
 
-  /** The board's one stream for the tab (INB-1f), or nothing if refused or unreachable. */
-  async openBoardLive(signal: AbortSignal): Promise<ReadableStream<Uint8Array> | null> {
-    return await this.#openStream('/live', signal);
+  /** A presence route under `live/` (C2), its JSON when it answered 2xx, else null. */
+  async live(path: string, init: RequestInit): Promise<unknown> {
+    const response = await this.#live(`/${path}`, init);
+    return response === null ? null : await response.json().catch(() => null);
   }
 
-  async #openStream(path: string, signal: AbortSignal): Promise<ReadableStream<Uint8Array> | null> {
+  /** The live channel at `path`, credentials as `#post` sends them: 2xx, else null. */
+  async #live(path: string, init: RequestInit): Promise<Response | null> {
     const { origin, businessKey, sessionId } = this.#options;
-    const url = `${origin}${PREFIX.person}${encodeURIComponent(businessKey)}${path}`;
-    // The cookie is the credential, as on every call (S0-6c): the door's own-page
-    // check, and the sign-in this tab names.
-    const headers: Record<string, string> = { [CSRF_HEADER]: '1' };
-    if (sessionId !== undefined) headers[SESSION_HEADER] = sessionId;
+    const url = `${origin}${PREFIX.person}${encodeURIComponent(businessKey)}/live${path}`;
+    const headers = new Headers(init.headers);
+    headers.set(CSRF_HEADER, '1');
+    if (sessionId !== undefined) headers.set(SESSION_HEADER, sessionId);
     try {
-      const response = await this.#options.fetch(url, { headers, signal });
-      return response.ok ? response.body : null;
+      const response = await this.#options.fetch(url, { ...init, headers });
+      return response.ok ? response : null;
     } catch {
       return null;
     }
   }
 
-  async #post<T>(
-    name: CommandName,
-    body: Readonly<Record<string, unknown>>,
-  ): Promise<CallResult<T>> {
-    const url = `${this.#options.origin}${PREFIX.person}${encodeURIComponent(this.#options.businessKey)}${pathOf(name)}`;
-    // The browser adds the cookie, the only credential. No actor, business or
-    // forwarded header for a tampered request to reach (checklist N7).
+  async #post<T>(path: string, body: Readonly<Record<string, unknown>>): Promise<CallResult<T>> {
+    const url = `${this.#options.origin}${PREFIX.person}${encodeURIComponent(this.#options.businessKey)}${path}`;
+    // The browser's cookie (S0-6c) is the only credential; no actor or business header (N7).
     const headers: Record<string, string> = {
       'content-type': 'application/json',
       [CSRF_HEADER]: '1',

@@ -51,10 +51,18 @@ export async function enrol(database: Database, businessId: string, name: string
     const subject = `${name}-${randomUUID()}`;
     const loginId = await insertLogin(tx, subject);
     await insertMapping(tx, loginId, personId, actorId);
-    const now = Math.floor(Date.now() / 1000);
-    const assurance = { level: 'aal2', signedInAt: now, factorAt: now } as const;
-    return { personId, actorId, presented: { provider: 'supabase', subject, assurance } };
+    return { personId, actorId, presented: freshSubject(subject) };
   });
+}
+
+/** `subject` signed in just now with the second factor: inside C59's step-up window. */
+export function freshSubject(subject: string): VerifiedSubject {
+  const now = Math.floor(Date.now() / 1000);
+  return {
+    provider: 'supabase',
+    subject,
+    assurance: { level: 'aal2', signedInAt: now, factorAt: now },
+  };
 }
 
 /** A root grant, which only an administrative path issues. */

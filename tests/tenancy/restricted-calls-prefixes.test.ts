@@ -181,6 +181,13 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     session_id: randomUUID(),
     reason: 'sign_out',
   },
+  'public.person_availability': {
+    person_id: randomUUID(),
+    state: 'away',
+    reason: 'restricted calls seed',
+  },
+  // 0061: nothing in the journey saves a preference yet.
+  'public.person_preferences': { person_id: randomUUID(), key: 'appearance', value: '"dark"' },
 };
 
 type Reference = ReadonlyMap<string, readonly Record<string, unknown>[]>;

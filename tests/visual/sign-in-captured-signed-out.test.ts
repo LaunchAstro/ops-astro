@@ -20,7 +20,8 @@ vi.mock('./capture.ts', () => ({
     session: source.session,
     width,
     theme: source.colorScheme,
-    context: { close: () => {} },
+    // The made-up answers route on the signed-in context; nothing is fetched here.
+    context: { close: () => {}, route: async () => {} },
   }),
   load: (
     side: { session?: string; width: number; theme: string },

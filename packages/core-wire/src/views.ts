@@ -364,6 +364,60 @@ export interface TaskBoardResult {
   readonly tasks: readonly TaskSummary[];
 }
 
+/**
+ * One applied write to a task, as the activity ledger lists it (MP-8-4). The
+ * actor is named, never identified: the ledger is read by people, and an
+ * actor's identifier tells them nothing a name does not.
+ */
+export interface LedgerEventView {
+  readonly id: string;
+  readonly at: string;
+  /** The person who acted, or what kind of actor it was when no person did. */
+  readonly actorName: string;
+  /** The command that was applied, by its surface name. */
+  readonly operation: string;
+  readonly task: { readonly key: string; readonly title: string | null };
+}
+
+/** One day in the reader's zone and every event on it, newest first. */
+export interface LedgerDayView {
+  /** `YYYY-MM-DD` in the zone the reader asked for. */
+  readonly day: string;
+  readonly events: readonly LedgerEventView[];
+}
+
+/**
+ * `task.ledger`'s answer: whole days, newest first, never split across pages.
+ * `earlier` says whether a day before the last one here has events.
+ */
+export interface TaskLedgerResult {
+  readonly ok: true;
+  readonly days: readonly LedgerDayView[];
+  readonly earlier: boolean;
+  /**
+   * Only with `query`: the reader's own matching tasks go past the most the
+   * ledger's search reads (C1's bound, 500), so some are not listed.
+   */
+  readonly more?: boolean;
+}
+
+/** A teammate on the Team panel's people strip (MP-7-10): no row is available. */
+export interface TeamMemberView {
+  readonly personId: string;
+  readonly name: string;
+  readonly availability: {
+    readonly state: 'available' | 'away';
+    readonly reason: string | null;
+  } | null;
+}
+
+export interface TeamListResult {
+  readonly ok: true;
+  /** The reader's own person, so the panel knows which entry is theirs. */
+  readonly you: string;
+  readonly people: readonly TeamMemberView[];
+}
+
 export interface PersonListResult {
   readonly ok: true;
   readonly persons: readonly PersonView[];
@@ -403,6 +457,21 @@ export interface OutageView {
 export interface PresetPlanResult {
   readonly ok: true;
   readonly plan: PresetPlan;
+}
+
+/** One task a search found: enough to list it and to open it. */
+export interface SearchHit {
+  readonly id: string;
+  readonly key: string;
+  readonly title: string | null;
+}
+
+/** `task.search`'s answer. No match in scope is `[]`, and there is no count. */
+export interface TaskSearchResult {
+  readonly ok: true;
+  readonly hits: readonly SearchHit[];
+  /** Only for a server caller that passed a limit: its own matches go past it. */
+  readonly more?: boolean;
 }
 
 export interface SettingsReadResult {
@@ -472,6 +541,16 @@ export interface ReceiptResult {
         }
       | { readonly state: string; readonly heldMinor: number };
   };
+}
+
+/**
+ * Who is signed in (C23): the caller's own name, for the person menu, and
+ * nothing else about anybody. No identifier: the menu needs none, and an answer
+ * that carries only a name cannot carry someone else's.
+ */
+export interface SessionPersonResult {
+  readonly ok: true;
+  readonly person: { readonly name: string };
 }
 
 /** One permission in effect: an action on a collection, over the scope it reaches. */

@@ -11,17 +11,30 @@
 export { type AgentRequest } from './commands/agent-call.ts';
 export { agentAnswer, executeAgentCommand } from './commands/agent-envelope.ts';
 export { describeFault, executeCommand } from './commands/envelope.ts';
+export { setOwnAvailability } from './commands/availability.ts';
 export {
   GATE_ITEMS,
   gateDecision,
   type GateItem,
   type Readiness,
 } from './commands/first-client-gate.ts';
-export { isCommandRefusal, refuseCommand, type CommandRefusal } from './commands/refusal.ts';
+export {
+  isCommandRefusal,
+  refuseCommand,
+  refuseNotFound,
+  type CommandRefusal,
+} from './commands/refusal.ts';
 export { type CommandRequest } from './commands/requests.ts';
 // T3d1: the pass asks the register whether an unknown step's effect happened.
 export { lookupEffect } from './commands/register-store.ts';
-export { executeRead } from './reads/execute.ts';
+export {
+  admitReads,
+  executeRead,
+  viewerOf,
+  type Admission,
+  type AdmissionAt,
+  type Viewer,
+} from './reads/execute.ts';
 export { boardReach, joinLiveBoard, shownInbox } from './reads/live-join.ts';
 export { isReadName } from './reads/catalogue.ts';
 export {
@@ -33,6 +46,13 @@ export {
   type SourceAnswer,
 } from './reads/service-health.ts';
 export { type ReadRequest } from './reads/requests.ts';
+export {
+  createRollupCache,
+  readRollup,
+  type Rollup,
+  type RollupCache,
+  type RollupCacheOptions,
+} from './reads/rollup.ts';
 export {
   enrolSecondFactor,
   removeSecondFactor,

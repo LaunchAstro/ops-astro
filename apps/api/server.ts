@@ -50,12 +50,13 @@ import {
   readEnvFile,
 } from '../../packages/core-records/src/index.ts';
 import type { AdminConnection, Database } from '../../packages/core-records/src/index.ts';
-import { createApi, type LiveOptions, type ReadExecutor } from './app.ts';
+import { createApi, type LiveOptions, type ReadAdmitter, type ReadExecutor } from './app.ts';
 import { createAlerts, faultCode, sinkFrom, type Alerts } from './alerts/sink.ts';
 import {
   executeAgentCommand,
   executeCommand,
   executeRead as readExecutor,
+  admitReads,
   type LoginProvider,
 } from '../../packages/core-commands/src/index.ts';
 import {
@@ -74,6 +75,7 @@ import {
   type SupabaseVerifierOptions,
 } from './auth/supabase.ts';
 import { startLiveTopics } from './live.ts';
+import { createLivePresence } from './live-presence.ts';
 import { isLoopback, migrationHead, readIdentity, type ServedIdentity } from './identity.ts';
 import {
   describeRecovered,
@@ -194,8 +196,11 @@ export interface ApiConfig {
   readonly executeRead?: ReadExecutor;
   /** Read once at process start (`identity.ts`); absent, the identity route is not mounted. */
   readonly identity?: ServedIdentity;
-  /** The live task channel, started by `main`; absent, the event route is not mounted. */
-  readonly live?: LiveOptions;
+  /**
+   * The live task channel, started by `main`; absent, the event route is not
+   * mounted. Its check is `admitReads` unless a test hands in its own to count.
+   */
+  readonly live?: Omit<LiveOptions, 'admit'> & { readonly admit?: ReadAdmitter };
   /** The error sink and the security detections (ticket S0-2); absent without a sink. */
   readonly alerts?: Alerts;
 }
@@ -302,7 +307,9 @@ export function composeApi(config: ApiConfig): ComposedApi {
       executeRead,
       executeCommand,
       executeAgentCommand,
-      ...(config.live === undefined ? {} : { live: config.live }),
+      ...(config.live === undefined
+        ? {}
+        : { live: { ...config.live, admit: config.live.admit ?? admitReads } }),
       // The provider GoTrue is: the one destination its factor calls reach.
       factors: createGoTrueFactors({ baseUrl: config.signIn.issuer }),
       logins,
@@ -408,7 +415,7 @@ async function main(): Promise<void> {
     admin,
     signIn: { issuer: issuer as string, keySetUrl },
     keys,
-    live: { topics },
+    live: { topics, presence: createLivePresence() },
     ...(adminKey === undefined ? {} : { providerAdminKey: adminKey }),
     ...(tracingUrl === undefined || tracingUrl === '' ? {} : { tracingUrl }),
     ...(alerts === undefined ? {} : { alerts }),

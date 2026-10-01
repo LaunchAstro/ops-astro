@@ -132,25 +132,35 @@ export async function resolveLogin(
   presented: VerifiedSubject,
   rule: SecondFactorRule = 'required',
 ): Promise<Session | Refusal> {
+  const standing = await standingOf(tx, presented, rule);
+  if ('refused' in standing) return await recordRefusal(tx, presented, standing);
+  await recordResolved(tx, presented, standing);
+  return standing;
+}
+
+/** Steps 2 to 4 as `resolveLogin` takes them, recording nothing (`standing.ts` asks it again). */
+export async function standingOf(
+  tx: TenantQuery,
+  presented: VerifiedSubject,
+  rule: SecondFactorRule,
+): Promise<Session | Refusal> {
   const rows = await tx.query<ResolutionRow>(RESOLUTION, [presented.provider, presented.subject]);
   const found = rows[0];
 
   if (found === undefined || found.person_id === null) {
-    return await recordRefusal(tx, presented, refuse('AUTH_NO_MEMBERSHIP', NO_MEMBERSHIP_FIXES));
+    return refuse('AUTH_NO_MEMBERSHIP', NO_MEMBERSHIP_FIXES);
   }
   if (found.membership_id === null && !(await standsOnShares(tx, found.person_id))) {
-    return await recordRefusal(tx, presented, refuse('AUTH_NO_MEMBERSHIP', NO_MEMBERSHIP_FIXES));
+    return refuse('AUTH_NO_MEMBERSHIP', NO_MEMBERSHIP_FIXES);
   }
-  if (found.actor_id === null) {
-    return await recordRefusal(tx, presented, refuse('ACTOR_INACTIVE', INACTIVE_FIXES));
-  }
+  if (found.actor_id === null) return refuse('ACTOR_INACTIVE', INACTIVE_FIXES);
 
   // A session the person has ended (C58: signed out, or ended from another
   // session or by a factor change) is over from that commit, whatever the
   // token's own expiry says. Before the factor, so an ended session is told
   // to sign in again rather than to give a code.
   if (await sessionEnded(tx, presented)) {
-    return await recordRefusal(tx, presented, refuse('AUTH_SESSION_EXPIRED', ENDED_FIXES));
+    return refuse('AUTH_SESSION_EXPIRED', ENDED_FIXES);
   }
 
   // After the person is known and active, because only a person has a factor,
@@ -158,14 +168,10 @@ export async function resolveLogin(
   // not yet a sign-in for someone who enrolled a second factor (C59, LF-4).
   const assurance = presented.assurance ?? NO_ASSURANCE;
   if (rule === 'required' && stoppedAtPassword(assurance, found)) {
-    return await recordRefusal(
-      tx,
-      presented,
-      refuse('AUTH_SECOND_FACTOR_REQUIRED', SECOND_FACTOR_FIXES),
-    );
+    return refuse('AUTH_SECOND_FACTOR_REQUIRED', SECOND_FACTOR_FIXES);
   }
 
-  const session: Session = {
+  return {
     businessId: tx.businessId,
     loginId: found.login_id,
     personId: found.person_id,
@@ -173,8 +179,6 @@ export async function resolveLogin(
     roleKey: found.role_key,
     assurance,
   };
-  await recordResolved(tx, presented, session);
-  return session;
 }
 
 /** A sign-in short of `aal2` for a person whose second factor is verified (C59, LF-4). */
@@ -225,6 +229,7 @@ const STANDING = `
      and ((g.subject_kind = 'person' and g.subject_id = $1)
           or (g.subject_kind = 'actor' and a.person_id = $1))`;
 
+/** Exported so the Access preview (C32) asks the one rule sign-in asks. */
 export async function standsOnShares(tx: TenantQuery, personId: string): Promise<boolean> {
   const rows = await tx.query<{ readonly shares: number; readonly business: number }>(STANDING, [
     personId,
