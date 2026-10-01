@@ -749,13 +749,13 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same seventy-one from an expected revision', () => {
+  it('exempts the same eighty-one from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );
   });
 
-  it('lets an agent reach the same fifteen, two of them before a pickup', () => {
+  it('lets an agent reach the same seventeen, two of them before a pickup', () => {
     expect(agentReach(['delegated', 'before-pickup'])).toStrictEqual(PINNED_AGENT_SURFACE);
     expect(agentReach(['before-pickup'])).toStrictEqual(PINNED_BEFORE_PICKUP);
     expect([...AGENT_SURFACE].toSorted()).toStrictEqual(PINNED_AGENT_SURFACE);

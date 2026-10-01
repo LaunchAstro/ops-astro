@@ -172,6 +172,9 @@ const OPERANDS = {
   'task.receipt': { attemptId: 'a' },
   'preset.plan': { recordTypeKey: 'preset', presetKey: 'p', fields: [] },
   'task.ledger': { before: null, timeZone: 'Australia/Brisbane', query: null },
+  'definition.attribution': { digest: 'a'.repeat(64) },
+  'trace.read': { recordId: 'r' },
+  'harness.read': { runId: 'r' },
   'privacy.draft_breach_notices': {
     incidentId: '00000000-0000-4000-8000-000000000000',
     oaic: { name: 'o', address: 'a' },
