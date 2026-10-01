@@ -163,6 +163,7 @@ export const TASK: LookScreen = {
       mockup: { ...PANEL, selector: '.dpanel .sb__sect--hist .sb__k' },
       app: { ...APP_PANEL, selector: 'aside.dtp [data-history] .sb__k' },
       props: TYPE,
+      ruled: [{ at: 'color@dark', want: 'rgba(248,248,248,140)', why: 'DR-10' }],
     }),
     probe({
       id: 'task.panel-history-latest',

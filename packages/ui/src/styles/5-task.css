@@ -268,9 +268,8 @@
   letter-spacing: var(--type-eyebrow-tracking);
   text-transform: var(--type-eyebrow-case);
 }
-.sb__k {
-  color: var(--text);
-}
+/* A section's mono head is faint ink, as the mockup's one .sb__k rule draws it. */
+.sb__k,
 .sb__meta {
   color: var(--ink-faint);
 }

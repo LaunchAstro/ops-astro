@@ -198,6 +198,7 @@ const DETAIL: InternalTaskDetail = {
   adHoc: false,
   clientAccess: false,
   board: null,
+  pageLink: '/agency/clients/harbour-physio/',
   estimateMinutes: 90,
   steps: STEPS,
   time: TIME,
