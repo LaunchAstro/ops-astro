@@ -32,6 +32,8 @@ export function pgDump(sourceUrl) {
   const args = [
     'run',
     '--rm',
+    // Attached output still streams; none of the dump goes to a log on the host's disk.
+    '--log-driver=none',
     `--name=${staging['x-ops-astro'].ownPrefix}-backup-${randomBytes(4).toString('hex')}`,
     `--network=${staging.networks.staging.name}`,
     '--env=PGPASSWORD',
