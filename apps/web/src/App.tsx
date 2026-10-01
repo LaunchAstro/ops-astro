@@ -233,6 +233,7 @@ export function App(props: AppProps): ReactElement {
       storage: props.storage,
       navigate: props.navigate,
     },
+    open: props,
   });
 
   // Signed out, the page is the form alone: no rail entry opens without a session (B6).

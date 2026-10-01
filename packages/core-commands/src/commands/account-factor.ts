@@ -20,6 +20,7 @@
 
 import {
   liveFactor,
+  loginHasVerifiedFactor,
   recordFactorEnrolled,
   recordFactorRemoved,
   recordFactorVerified,
@@ -28,6 +29,7 @@ import {
 import type {
   BusinessId,
   Database,
+  SecondFactor,
   Session,
   TenantQuery,
   VerifiedSubject,
@@ -71,7 +73,8 @@ const LOCKED_FIXES: readonly string[] = [
 /**
  * First enrolment: a person with no factor, after a fresh password sign-in
  * inside the step-up window (TR-A2-2). A person who already has a verified
- * factor replaces it by removing it first, with a code.
+ * factor, here or through any business the login reaches (0064), replaces it
+ * by removing it first, with a code.
  */
 export async function enrolSecondFactor(
   caller: FactorCaller,
@@ -82,8 +85,7 @@ export async function enrolSecondFactor(
     caller,
     act,
     async (tx, session) => {
-      const live = await liveFactor(tx, session.personId);
-      if (live?.status === 'verified')
+      if (await holdsVerified(tx, caller, await liveFactor(tx, session.personId)))
         return refuseCommand('FACTOR_ALREADY_ENROLLED', [], ENROLLED_FIXES);
       return (await freshSignIn(tx, session))
         ? undefined
@@ -97,7 +99,7 @@ export async function enrolSecondFactor(
   const recorded = await judged(caller, act, async (tx, session) => {
     if (!issued.ok) return providerRefusal(issued.fault, 'answer');
     const live = await liveFactor(tx, session.personId, { lock: true });
-    if (live?.status === 'verified')
+    if (await holdsVerified(tx, caller, live))
       return refuseCommand('FACTOR_ALREADY_ENROLLED', [], ENROLLED_FIXES);
     // An enrolment never completed is replaced, not stacked: the newest
     // unverified factor is the one the first code completes.
@@ -118,7 +120,9 @@ export async function enrolSecondFactor(
 
 /**
  * A code checked against the person's live factor. The first good code
- * completes an enrolment; a wrong one is refused and recorded as failed.
+ * completes an enrolment; a wrong one is refused and recorded as failed. An
+ * enrolment is not completed while the login holds a verified factor through
+ * any business (0064), as it is not started then.
  */
 export async function verifySecondFactor(
   caller: FactorCaller,
@@ -127,7 +131,7 @@ export async function verifySecondFactor(
 ): Promise<(FactorSession & { readonly otherSessions?: SessionsEnded }) | CommandRefusal> {
   const act = 'account.factor_verify';
   const code = codeOf(body);
-  let factor: { readonly id: string; readonly providerFactorId: string } | undefined;
+  let factor: SecondFactor | undefined;
   const precondition = await judged(
     caller,
     act,
@@ -138,7 +142,7 @@ export async function verifySecondFactor(
       factor = await liveFactor(tx, session.personId);
       return factor === undefined
         ? refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES)
-        : undefined;
+        : await enrolledElsewhere(tx, caller, factor);
     },
     'before',
   );
@@ -154,6 +158,8 @@ export async function verifySecondFactor(
     const live = await liveFactor(tx, session.personId, { lock: true });
     // Removed or replaced by another tab between the two transactions.
     if (live?.id !== target.id) return refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES);
+    const elsewhere = await enrolledElsewhere(tx, caller, live);
+    if (elsewhere !== undefined) return elsewhere;
     // The first good code completes an enrolment, which is a factor change;
     // a later one is a step-up and changes nothing.
     if (live.status !== 'verified') ended = await endOthersOnChange(tx, session, caller.presented);
@@ -224,6 +230,26 @@ export async function removeSecondFactor(
     otherSessions: await signOutOthers(provider, proved.value.accessToken, ended),
   };
 }
+
+/** A verified factor here, or one the login holds through any business (0064). */
+const holdsVerified = async (
+  tx: TenantQuery,
+  caller: FactorCaller,
+  live: { readonly status: string } | undefined,
+) => live?.status === 'verified' || (await loginHasVerifiedFactor(tx, caller.presented.subject));
+
+/**
+ * An enrolment here not yet completed is refused as a new one would be while
+ * the login holds a verified factor through any business (0064).
+ */
+const enrolledElsewhere = async (
+  tx: TenantQuery,
+  caller: FactorCaller,
+  live: { readonly status: string },
+) =>
+  live.status !== 'verified' && (await loginHasVerifiedFactor(tx, caller.presented.subject))
+    ? refuseCommand('FACTOR_ALREADY_ENROLLED', [], ENROLLED_FIXES)
+    : undefined;
 
 /** The caller's factor, and the login's subject that holds it in every business (0064). */
 const ownFactor = (caller: FactorCaller, session: Session, factorId: string) => ({

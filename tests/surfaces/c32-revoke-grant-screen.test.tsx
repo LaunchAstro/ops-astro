@@ -61,6 +61,7 @@ describe('C32 revoke one grant on Settings ▸ Access', () => {
     expect(api.calls.filter((call) => call.url.endsWith('/access/read'))).toHaveLength(2);
     expect(view.find('[data-revoke-grant="g-mia-acme"]')).toBeNull();
     expect(view.find('[data-access-outcome]')?.textContent).toContain(MIA.name);
+    expect(view.find('[data-access-outcome]')?.getAttribute('role')).toBe('status');
   });
 
   it('C32 revoke grant can be called off: nothing is sent', async () => {
@@ -79,8 +80,10 @@ describe('C32 revoke one grant on Settings ▸ Access', () => {
     expect(rowOf(view, MIA.personId)).toContain('a client not listed here');
     expect(view.find('[data-screen="access"]')?.textContent).not.toContain(HIDDEN);
   });
+});
 
-  it("C32 revoke grant: a refusal is shown in the server's words and the list is not reread", async () => {
+describe('C32 revoke one grant on Settings ▸ Access, refused', () => {
+  it("C32 revoke grant: a refusal is shown as an alert in the server's words and the list is not reread", async () => {
     const api = server([json(access([ADA, MIA_HOLDING]))], () => refusal('SCOPE_NOT_GRANTED', 403));
     const view = await open(api.fetch);
     await view.click('[data-revoke-grant="g-mia-acme"] button');
@@ -88,6 +91,9 @@ describe('C32 revoke one grant on Settings ▸ Access', () => {
     await settle();
     await settle();
     expect(view.find('[data-access-outcome]')?.textContent).toContain('SCOPE_NOT_GRANTED');
+    // Drawn as Settings draws a refusal: an alert, never the quiet line a success gets.
+    expect(view.find('[data-access-outcome="refused"]')?.getAttribute('role')).toBe('alert');
+    expect(view.find('[data-access-outcome]')?.className).toContain('field__error');
     expect(api.calls.filter((call) => call.url.endsWith('/access/read'))).toHaveLength(1);
     expect(view.find('[data-revoke-grant="g-mia-acme"]')).not.toBeNull();
   });

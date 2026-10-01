@@ -56,6 +56,7 @@ import {
 import { createOutboxAlerts, scopeKey } from './alerts/outbox.ts';
 import type { Alerts } from './alerts/sink.ts';
 import { publishableKey } from './auth/publishable-key.ts';
+import { errorSinkLink } from './health/error-sink-link.ts';
 import { keySetUrlFor } from './auth/supabase.ts';
 import {
   parseRecoveryScope,
@@ -99,8 +100,7 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
   }
   // The keyring from the settings alone: without them `runtimeKeys` falls back
   // to creating a local key file, and a function has none to share.
-  required('DELEGATION_CREDENTIAL_KEY_ID');
-  required('DELEGATION_CREDENTIAL_KEYS');
+  for (const name of ['DELEGATION_CREDENTIAL_KEY_ID', 'DELEGATION_CREDENTIAL_KEYS']) required(name);
   const keys = runtimeKeys(settings);
   if (!keys.delegation.ok) {
     throw new Error(`delegation credential keys: ${keys.delegation.problem}`);
@@ -113,6 +113,7 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
     signIn: { issuer, keySetUrl },
     providerKey: publishableKey(settings['SUPABASE_PUBLISHABLE_KEY']),
     keys,
+    errorSink: errorSinkLink(settings),
     ...(alerts === undefined ? {} : { alerts }),
   });
   const pass = recoveryPass(settings, database, resolveBusiness, keys);

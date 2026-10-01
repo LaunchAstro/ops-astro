@@ -144,7 +144,8 @@ describe('the settings screen', () => {
     // would be this screen telling a person something nobody asked the server.
     expect(page.find('[data-settings="four-eyes-known"]')?.textContent).toContain('not known');
     // Both reads were asked for. Neither was answered, and nothing was written.
-    expect(api.sent).toHaveLength(2);
+    // (The person's own sessions list is C58's panel below, not these reads.)
+    expect(api.sent.filter((call) => !call.at.includes('/account/'))).toHaveLength(2);
     expect(writes(api)).toHaveLength(0);
     await page.unmount();
   });

@@ -21,12 +21,17 @@ export {
 export {
   CREDENTIAL_EXCLUDED_ACTIONS,
   CREDENTIAL_MAX_DAYS,
+  credentialSubject,
   deriveAgentCredential,
+  isAgentCredentialForm,
   issueAgentCredential,
   lockAgentCredential,
+  recordCredentialRefusal,
+  resolveAgentCredential,
   revokeAgentCredential,
   type AgentCredential,
   type CredentialKey,
+  type CredentialStanding,
 } from './authority/agent-credentials.ts';
 export { readEnvFile } from './env-file.ts';
 export {
@@ -84,7 +89,10 @@ export {
   resolveAgentLogin,
   type AgentSession,
 } from './identity/agent-login.ts';
-export { recordBodyRefusal } from './identity/authentication-attempts.ts';
+export {
+  recordAuthenticationAttempt,
+  recordBodyRefusal,
+} from './identity/authentication-attempts.ts';
 export {
   NO_MEMBERSHIP_FIXES,
   standsOnShares,
@@ -103,6 +111,7 @@ export {
 } from './identity/verified-subject.ts';
 export {
   liveFactor,
+  loginHasVerifiedFactor,
   recordFactorEnrolled,
   recordFactorRemoved,
   recordFactorVerified,
@@ -134,6 +143,7 @@ export {
   type PrivacyIncident,
   type PrivacyIncidentFacts,
 } from './operations/privacy-incidents.ts';
+export { readSecurityAlerts, type SecurityAlert } from './operations/security-alerts.ts';
 export {
   draftBreachNotices,
   type BreachNotice,
