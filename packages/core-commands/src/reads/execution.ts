@@ -86,7 +86,11 @@ const ISO = `'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'`;
 const RUN_FACTS = `coalesce((select json_agg(json_build_object(
     'runId', run.id, 'state', run.state,
     'superseded', ver.superseded_at is not null,
-    'currency', ver.currency, 'gateState', gate.state,
+    'currency', ver.currency,
+    -- A pending gate past its deadline reads expired, derived as task.read
+    -- derives it (reads/proposals.ts): the stored row stays pending.
+    'gateState', case when gate.state = 'pending' and gate.expires_at <= now()
+                      then 'expired' else gate.state end,
     'lease', (select json_build_object(
         'state', l.state,
         'expiresAt', to_char(l.expires_at at time zone 'UTC', ${ISO}),
