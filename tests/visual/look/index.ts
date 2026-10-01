@@ -6,13 +6,31 @@
 // `<screen>.mockup.json` and `look.ts` holds the app to them. A screen's file
 // is the one place its look is asserted, so two screens never share a list.
 
+import { ACCESS } from './access.ts';
 import { BOARD } from './board.ts';
+import { FRAME } from './frame.ts';
+import { INBOX } from './inbox.ts';
 import { SETTINGS } from './settings.ts';
 import { SHELL } from './shell.ts';
 import { SIGN_IN } from './sign-in.ts';
 import { TASK } from './task.ts';
+import { TEAM } from './team.ts';
+import { TELEMETRY } from './telemetry.ts';
+import { WORKLOG } from './worklog.ts';
 import type { LookScreen } from './probe.ts';
 
 export { RULED_PAINT, type LookProbe, type LookScreen } from './probe.ts';
 
-export const LOOK_SCREENS: readonly LookScreen[] = [SHELL, BOARD, TASK, SETTINGS, SIGN_IN];
+export const LOOK_SCREENS: readonly LookScreen[] = [
+  SHELL,
+  BOARD,
+  TASK,
+  SETTINGS,
+  SIGN_IN,
+  ACCESS,
+  TELEMETRY,
+  INBOX,
+  TEAM,
+  WORKLOG,
+  FRAME,
+];

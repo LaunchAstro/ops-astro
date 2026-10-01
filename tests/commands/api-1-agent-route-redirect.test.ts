@@ -39,7 +39,7 @@ it('a person-only agent route redirect fails parity', () => {
       [
         '--input-type=module',
         '-e',
-        "import { createApi } from './apps/api/app.ts'; let called = ''; const api = createApi({ database: {}, verify: async () => ({ subject: 'test' }), resolveBusiness: async () => 'business', executeRead: async () => ({}), executeCommand: async () => ({ recordId: 'record', revision: 1 }), executeAgentCommand: async (_db, _business, _subject, _credential, request) => { called = request.command; return { recordId: 'record', revision: 1 }; } }); await api.fetch(new Request('http://api.test/api/a/b/b/task/decide', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' })); process.stdout.write(called);",
+        "import { createApi } from './apps/api/app.ts'; let called = ''; const api = createApi({ database: {}, verify: async () => ({ subject: 'test' }), resolveBusiness: async () => 'business', executeRead: async () => ({}), executeCommand: async () => ({ recordId: 'record', revision: 1 }), executeAgentCommand: async (_db, _business, _subject, _credential, request) => { called = request.command; return { recordId: 'record', revision: 1 }; } }); await api.fetch(new Request('http://api.test/api/a/b/b/task/decide', { method: 'POST', headers: { 'content-type': 'application/json', authorization: 'Bearer parity.probe.token' }, body: '{}' })); process.stdout.write(called);",
       ],
       { cwd: copy, encoding: 'utf8', timeout: 30_000 },
     );

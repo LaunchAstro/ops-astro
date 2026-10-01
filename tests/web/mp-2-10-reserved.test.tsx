@@ -87,7 +87,12 @@ describe('MP-2-10 each undesigned address stays out of the navigation, and a typ
     expect(docs?.navigable).toBe(false);
     const settings = SECTIONS.find((each) => each.namespace === 'agency' && each.id === 'general');
     expect(settings?.navigable).toBe(true);
-    expect(settings?.tabs.map((page) => page.label)).toEqual(['General', 'Access', 'Telemetry']);
+    expect(settings?.tabs.map((page) => page.label)).toEqual([
+      'General',
+      'Access',
+      'Telemetry',
+      'Operations',
+    ]);
   });
 });
 

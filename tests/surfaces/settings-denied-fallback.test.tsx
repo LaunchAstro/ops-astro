@@ -56,7 +56,10 @@ function api(): Server {
           ok: true,
           personId: 'p',
           businessKey: 'alpha',
-          grants: [{ collection: 'settings', action: 'manage' }],
+          grants: [
+            { collection: 'settings', action: 'manage' },
+            { collection: 'spend', action: 'decide' },
+          ],
         }),
       );
     }
