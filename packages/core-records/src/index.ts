@@ -149,19 +149,21 @@ export {
   APPROVER_SETTING,
   GATE_COLLECTION,
   RUN_COLLECTION,
-  holdsAnywhere,
   insertLiveCorrection,
   isActiveMember,
   listCoveredCorrections,
   lockConfiguredApprover,
   lockCoveredCorrection,
-  readCoveredDecision,
   writeCorrectionDecision,
-  type CorrectionDecision,
   type CorrectionState,
   type LiveCorrection,
   type NewLiveCorrection,
 } from './site/live-corrections.ts';
+export {
+  holdsAnywhere,
+  readCoveredDecision,
+  type CorrectionDecision,
+} from './site/correction-decisions.ts';
 export {
   readCorrectionForRun,
   recordObservedResult,

@@ -93,7 +93,9 @@ describe('C80 decision read on the card', () => {
       },
     });
   });
+});
 
+describe('C80 decision read on the card', () => {
   it('a decision still waiting stays checkable, and one the read cannot find is refused', async () => {
     const waiting = server({ ...approved, state: 'requested', approver: null });
     const desk = liveDesk(waiting.client, () => Promise.resolve(target));
@@ -109,7 +111,9 @@ describe('C80 decision read on the card', () => {
     expect((await other.recheck?.(CORRECTION))?.kind).toBe('refused');
     expect((await other.recheck?.('made-up-elsewhere'))?.kind).toBe('refused');
   });
+});
 
+describe('C80 decision read on the card', () => {
   it('in the drawer, Check again redraws the live card approved, with no mock mark', async () => {
     const { client } = server(approved);
     const page = track(
@@ -133,7 +137,7 @@ describe('C80 decision read on the card', () => {
     await page.click('[data-correction-check] button');
     await settle();
     const card = page.find('[data-correction]');
-    expect(card?.getAttribute('data-correction')).toBe('approved');
+    expect((card as HTMLElement | null)?.dataset['correction']).toBe('approved');
     expect(page.find('[data-correction-state]')?.textContent).toBe('Approved by Ben Approver');
     expect(card?.closest('.is-mock')).toBeNull();
   });
