@@ -233,8 +233,7 @@ export function SubtaskList(props: {
   );
 }
 
-/** The Team side's subtask and time sections, each placed in it, as the task page draws them. */
-export function TeamSubtasks(props: {
+interface TeamSubtasksProps {
   readonly client: OperationsClient;
   readonly task: {
     readonly id: string;
@@ -251,7 +250,10 @@ export function TeamSubtasks(props: {
   readonly onOpenPanel: PanelOpener | undefined;
   /** False inside the dock task panel, where the edit already happens. */
   readonly doors?: boolean;
-}): ReactElement {
+}
+
+/** The Team side's subtask and time sections, each placed in it, as the task page draws them. */
+export function TeamSubtasks(props: TeamSubtasksProps): ReactElement {
   const { task } = props;
   // The person's own choice (MP-4-4, CS-4.27). The member page and the panel
   // draw this; the shared view does not, so an outside reader reads nothing more.
