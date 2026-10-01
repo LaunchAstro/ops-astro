@@ -185,6 +185,7 @@ export {
 } from './inbox/read.ts';
 export {
   owes,
+  toldAtOnce,
   raiseInboxItem,
   stampSeen,
   recordDeliveryAttempt,
