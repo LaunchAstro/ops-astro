@@ -20,7 +20,14 @@ export async function ping(
   const url = URL.parse(address);
   if (url === null || url.protocol !== 'https:' || UNREACHABLE.test(url.hostname)) return 'refused';
   try {
-    const answer = await get(url, { redirect: 'manual', signal: AbortSignal.timeout(10_000) });
+    // An empty POST: GlitchTip's heartbeat check-in takes nothing else, and
+    // Healthchecks.io and UptimeRobot take it too.
+    const answer = await get(url, {
+      method: 'POST',
+      body: '',
+      redirect: 'manual',
+      signal: AbortSignal.timeout(10_000),
+    });
     await answer.body?.cancel();
     return answer.status >= 200 && answer.status < 300 ? 'sent' : 'failed';
   } catch {
