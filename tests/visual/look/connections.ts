@@ -5,7 +5,7 @@
 // 003 to 005, and the signal (grants, tripwires, the night round). Sections
 // 009 to 012 are in connections-costing.ts.
 
-import type { LookProbe, LookScreen } from './index.ts';
+import type { LookProbe, LookScreen } from './probe.ts';
 
 const PAGE = { path: '/agency/connections-and-signal/' } as const;
 const APP = { page: 'agency:connections' } as const;
