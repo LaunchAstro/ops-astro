@@ -14,20 +14,17 @@
 //
 // **The service key stays in custody.** A custody process of its own holds
 // it; this process names the file and never reads it. The broker catalogues
-// `auth.create_user`, `auth.update_user` and `auth.read_user` and nothing
-// else, and custody lets the `auth` destination take the create's POST on
-// `/auth/v1/admin/users`, and the update's PUT and the read's GET on
-// `/auth/v1/admin/users/<id>`, no other method or path: no sign-in link,
-// invite, code or factor route.
+// `auth.create_user` and `auth.read_user` and nothing else, and custody lets
+// the `auth` destination take the create's POST on `/auth/v1/admin/users`
+// and the read's GET on `/auth/v1/admin/users/<id>`, no other method or
+// path: no update, sign-in link, invite, code or factor route.
 
 import {
   AUTH_CREATE_USER,
   AUTH_READ_USER,
-  AUTH_UPDATE_USER,
   AUTH_USERS_PATH,
   authUserAdapter,
   authUserReadAdapter,
-  authUserUpdateAdapter,
   catalogue,
 } from '../../packages/core-connectors/src/index.ts';
 import {
@@ -57,14 +54,13 @@ const invalid = (problem: string): EnrolmentSettings => ({ kind: 'invalid', prob
 /** Plain http only to this machine, as the trace export's target. */
 const LOOPBACK = /^(?:127(?:\.\d{1,3}){3}|\[::1\])$/u;
 
-/** The login provider as custody lists it: the origin, the create's one POST and the update's PUT. */
+/** The login provider as custody lists it: the origin, the create's one POST and the read's GET. */
 export function authDestination(origin: string): Destination {
   return {
     key: AUTH_CREATE_USER.destination,
     origin,
     routes: [
       { method: 'POST', path: AUTH_USERS_PATH },
-      { method: 'PUT', path: `${AUTH_USERS_PATH}/*` },
       { method: 'GET', path: `${AUTH_USERS_PATH}/*` },
     ],
   };
@@ -102,21 +98,16 @@ const route = (provider: string): BrokerRoute => ({
   ceiling: AUTH_CREATE_USER.concurrency,
 });
 
-/** The broker over custody: `auth.create_user`, `auth.update_user`, `auth.read_user`, nothing else. */
+/** The broker over custody: `auth.create_user` and `auth.read_user`, nothing else. */
 export function enrolmentBroker(custody: Custody): Broker {
   return {
     custody,
-    operations: catalogue([AUTH_CREATE_USER, AUTH_UPDATE_USER, AUTH_READ_USER]),
+    operations: catalogue([AUTH_CREATE_USER, AUTH_READ_USER]),
     providers: new Map([
       [AUTH_CREATE_USER.provider, { build: authUserAdapter, price: () => 0 }],
-      [AUTH_UPDATE_USER.provider, { build: authUserUpdateAdapter, price: () => 0 }],
       [AUTH_READ_USER.provider, { build: authUserReadAdapter, price: () => 0 }],
     ]),
-    routes: [
-      route(AUTH_CREATE_USER.provider),
-      route(AUTH_UPDATE_USER.provider),
-      route(AUTH_READ_USER.provider),
-    ],
+    routes: [route(AUTH_CREATE_USER.provider), route(AUTH_READ_USER.provider)],
     installation: 'here',
     // The accept records its own audit events in its transaction, never the model audit.
     audit: async () => {},

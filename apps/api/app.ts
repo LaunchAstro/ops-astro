@@ -159,7 +159,7 @@ export interface ApiOptions {
    * C39-T's enrolment route, `POST /api/enrol` (`enrolment.ts`): an invitation
    * accepted on its one-time link, with no sign-in. Absent where the
    * composition root has not given it the businesses and a broker that
-   * catalogues the login provider's `auth.create_user` and `auth.update_user`;
+   * catalogues the login provider's `auth.create_user` and `auth.read_user`;
    * then it is not mounted.
    */
   readonly enrolment?: EnrolmentOptions;

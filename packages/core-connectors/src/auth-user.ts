@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The login provider's three catalogued operations (C39-T, piece P3), read
-// the way every catalogued operation is (`operation.ts`): `auth.create_user`,
-// a login made when an invitation is accepted, `auth.update_user`, the same
-// login set again when an earlier accept made it and never bound it, and
-// `auth.read_user`, one login's address and whether the provider confirmed
-// it, asked when a signed-in person accepts with the login they hold.
+// The login provider's two catalogued operations (C39-T, piece P3), read the
+// way every catalogued operation is (`operation.ts`): `auth.create_user`, a
+// login made when an invitation is accepted, and `auth.read_user`, one
+// login's address and whether the provider confirmed it, asked when a
+// signed-in person accepts with the login they hold. No login is ever set
+// again: a login the provider holds is recovered by its holder signing in.
 //
 // Each adapter takes the user's id, the invited address and the password the
 // enrolment page set, and asks Supabase Auth's admin route for a user under
@@ -18,8 +18,8 @@
 // nowhere else.
 //
 // An address that already holds a login is answered 422 by the provider, and
-// nothing is made or changed (`AUTH_EMAIL_EXISTS`); an update naming no user
-// is answered 404, and nothing is changed (`AUTH_USER_NOT_FOUND`).
+// nothing is made (`AUTH_EMAIL_EXISTS`); a read naming no user is answered
+// 404 (`AUTH_USER_NOT_FOUND`).
 
 import type { AdapterRequest, ModelAnswer, ModelOperationDeclaration } from './operation.ts';
 
@@ -32,7 +32,7 @@ export const AUTH_EMAIL_EXISTS = 'email_exists';
 /** The HTTP status the provider answers `email_exists` with. */
 export const AUTH_EXISTS_STATUS = 422;
 
-/** The provider's code for an update naming no user: nothing was changed. */
+/** The provider's code for a read naming no user. */
 export const AUTH_USER_NOT_FOUND = 'user_not_found';
 
 /** The HTTP status the provider answers `user_not_found` with. */
@@ -58,16 +58,6 @@ export function authUserAdapter(values: Readonly<Record<string, string>>): Adapt
     path: AUTH_USERS_PATH,
     method: 'POST',
     body: JSON.stringify({ id, email, password, email_confirm: true }),
-  };
-}
-
-/** The same in, the one user's update out: its id is the path's one segment. */
-export function authUserUpdateAdapter(values: Readonly<Record<string, string>>): AdapterRequest {
-  const { id, email, password } = userValues(values);
-  return {
-    path: `${AUTH_USERS_PATH}/${id}`,
-    method: 'PUT',
-    body: JSON.stringify({ email, password, email_confirm: true }),
   };
 }
 
@@ -129,21 +119,10 @@ export const AUTH_CREATE_USER: ModelOperationDeclaration = {
 };
 
 /**
- * One login set again, under the id it was made with. Its own provider key,
- * so its adapter is its own; the route is the same login provider's.
- */
-export const AUTH_UPDATE_USER: ModelOperationDeclaration = {
-  ...AUTH_CREATE_USER,
-  key: 'auth.update_user',
-  provider: 'supabase_auth_update',
-  nothingHappened: [AUTH_USER_NOT_FOUND, AUTH_EMAIL_EXISTS],
-};
-
-/**
  * One login's address, read under the id the signed-in session carries. Its
- * own provider key, as the update has; custody sends it only as the GET its
- * destination routes. Nothing is made or changed: an id the provider does not
- * hold is answered 404 (`AUTH_USER_NOT_FOUND`).
+ * own provider key, so its adapter is its own; custody sends it only as the
+ * GET its destination routes. Nothing is made or changed: an id the
+ * provider does not hold is answered 404 (`AUTH_USER_NOT_FOUND`).
  */
 export const AUTH_READ_USER: ModelOperationDeclaration = {
   ...AUTH_CREATE_USER,

@@ -1,26 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // What a destination adds to a request, and which it takes (AW-13): fixed
-// headers custody sets on every request to it, and the few DELETE, GET and
-// PUT routes it answers (the trace store's expiry and the read that confirms
-// it; the login provider's update of one user, C39-T). A destination may also
-// list the exact paths it takes a POST on (the login provider's create); one
-// that lists none takes a POST on any plain path. Both are custody's own
+// headers custody sets on every request to it, and the few DELETE and GET
+// routes it answers (the trace store's expiry and the read that confirms it;
+// the login provider's read of one user, C39-T). A destination may also list
+// the exact paths it takes a POST on (the login provider's create); one that
+// lists none takes a POST on any plain path. Custody never sends a PUT. Both are custody's own
 // list, read once at start; a caller names neither.
 
-/**
- * A route: an exact path, or for a GET one trailing `/*` segment. A PUT is
- * only ever one `/*` segment under a prefix, never an exact path; a POST only
- * ever an exact path.
- */
+/** A route: an exact path, or for a GET one trailing `/*` segment. A POST is only ever exact. */
 export interface Route {
-  readonly method: 'POST' | 'DELETE' | 'GET' | 'PUT';
+  readonly method: 'POST' | 'DELETE' | 'GET';
   readonly path: string;
 }
 
 export type Method = Route['method'];
 
-export const METHODS: readonly Method[] = ['POST', 'DELETE', 'GET', 'PUT'];
+export const METHODS: readonly Method[] = ['POST', 'DELETE', 'GET'];
 
 /** A lower-case token: one spelling per name, so no two can collide by case. */
 const HEADER_NAME = /^[a-z][a-z0-9-]{0,62}$/u;
@@ -77,7 +73,6 @@ function routeOf(value: unknown): Route | undefined {
   }
   const prefix = path.endsWith('/*') ? path.slice(0, -2) : path;
   if (method === 'GET' && ROUTE_PATH.test(prefix)) return { method, path };
-  if (method === 'PUT' && prefix !== path && ROUTE_PATH.test(prefix)) return { method, path };
   return undefined;
 }
 
