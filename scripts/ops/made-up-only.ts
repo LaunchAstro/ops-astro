@@ -128,12 +128,20 @@ export async function productionSigns(
   return [...signs, ...(await specialSigns(admin))];
 }
 
+/** What a marked database's guard says about its sign-ins, which no reset empties. */
+const SIGN_IN_SIGNS = new Set([SIGNS['auth.users'], SIGNS['guard'], UNGUARDED]);
+
 /**
- * Whether the staging reset may empty this database: the seed marked it, or no
- * tenant table has ever held a row. Judged from the mark and storage sizes alone.
+ * Whether the staging reset may empty this database: no tenant or sign-in
+ * table has ever held a row, or it is marked and its guard vouches for every
+ * sign-in. The reset keeps the provider's sign-ins, their guard and the ledger's
+ * notes on them (`markEmptied`), so the guard judges every sign-in it carries
+ * over or makes. Judged from the mark, the guard and storage sizes alone.
  */
 export async function resettable(admin: OwnerQuery): Promise<boolean> {
-  return (await marked(admin)) || (await yes(admin, NEVER_HELD_A_ROW));
+  if (await marked(admin))
+    return !(await guardSigns(admin)).some((sign) => SIGN_IN_SIGNS.has(sign));
+  return yes(admin, NEVER_HELD_A_ROW);
 }
 
 /** A marked database: what its guard's ledger names, and any table left unguarded. */
@@ -230,6 +238,23 @@ export async function guardMadeUp(admin: OwnerQuery): Promise<void> {
     // One table's guard at a time: each is DDL on its own table.
     // oxlint-disable-next-line no-await-in-loop
     await admin.execute('select ops_astro_made_up.protect($1)', [oid]);
+}
+
+/**
+ * After the staging reset empties the product's schemas: the ledger forgets the
+ * emptied tables, keeps its notes on sign-ins and guards (no reset empties
+ * those), then guard and mark. A new database had no guard on `auth.users`, so
+ * it is judged again under the guard, as the seed's admission is: a sign-in
+ * made since the reset's check stops the reset, and the next run refuses it.
+ */
+export async function markEmptied(admin: OwnerQuery): Promise<void> {
+  if (await yes(admin, `to_regclass('${LEDGER}') is not null`))
+    await admin.execute(`delete from ${LEDGER} where relation not in ('auth.users', 'guard')`);
+  const wasMarked = await marked(admin);
+  await guardMadeUp(admin);
+  if (!wasMarked && !(await yes(admin, NEVER_HELD_A_ROW)))
+    throw new Error('made-up-only: a sign-in was made before the guard stood');
+  await markMadeUp(admin, []);
 }
 
 /** Guard the database, then mark it with the businesses and people the seed made. */
