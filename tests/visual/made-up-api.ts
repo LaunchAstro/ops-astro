@@ -184,6 +184,8 @@ const READS = {
       { collection: 'tasks', action: 'read' },
       { collection: 'tasks', action: 'write' },
       { collection: 'settings', action: 'manage' },
+      // Settings ▸ Access draws its invite form and invitations under this (C39-T).
+      { collection: 'access', action: 'share' },
     ],
   } satisfies CapabilitiesResult,
   'task.queue': { ok: true, queue: [], alerts: [], outages: [] } satisfies QueueResult,
