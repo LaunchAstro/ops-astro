@@ -59,15 +59,20 @@ export function TodoScopeSwitch(props: TodoScopeSwitchProps): ReactElement {
   );
 }
 
-/** A client, its waiting comments and its route family: one client scope, replaced whole. */
-function ClientScope(props: TodoScopeSwitchProps): ReactElement {
-  const { scope, onScope } = props;
+/** The business's clients the reader's grants reach (`client.list`, C32); none until it lands. */
+function useClients(props: TodoScopeSwitchProps): readonly ClientView[] {
   const listed = useRead<ClientListResult>({
     grantKey: props.grantKey,
     run: () => props.client.read<ClientListResult>('client.list', {}),
     deps: [],
   });
-  const clients = listed.state.outcome === 'ready' ? listed.state.value.clients : [];
+  return listed.state.outcome === 'ready' ? listed.state.value.clients : [];
+}
+
+/** A client, its waiting comments and its route family: one client scope, replaced whole. */
+function ClientScope(props: TodoScopeSwitchProps): ReactElement {
+  const { scope, onScope } = props;
+  const clients = useClients(props);
   const chosen =
     scope.kind === 'client' ? clients.find((each) => each.clientId === scope.clientId) : undefined;
   const to = (client: ClientView | undefined, over: { waiting?: boolean; family?: string }) => {
@@ -100,23 +105,39 @@ function ClientScope(props: TodoScopeSwitchProps): ReactElement {
           to(chosen, { waiting: !waiting });
         }}
       />
-      <SourceRegion provenance="mock">
-        <Choice
-          id="todos-family"
-          label="Route family"
-          none="Any route"
-          disabled={chosen === undefined}
-          value={scope.kind === 'client' ? (scope.family ?? '') : ''}
-          options={(chosen === undefined ? [] : ROUTE_FAMILIES).map((family) => ({
-            value: family,
-            label: family,
-          }))}
-          onPick={(value) => {
-            to(chosen, value === '' ? {} : { family: value });
-          }}
-        />
-      </SourceRegion>
+      <FamilyChoice
+        scope={scope}
+        chosen={chosen !== undefined}
+        onPick={(value) => {
+          to(chosen, value === '' ? {} : { family: value });
+        }}
+      />
     </div>
+  );
+}
+
+/** A client's route family: made-up (no source yet), so drawn under the one mock label. */
+function FamilyChoice(props: {
+  readonly scope: TodoScope;
+  readonly chosen: boolean;
+  readonly onPick: (value: string) => void;
+}): ReactElement {
+  const { scope } = props;
+  return (
+    <SourceRegion provenance="mock">
+      <Choice
+        id="todos-family"
+        label="Route family"
+        none="Any route"
+        disabled={!props.chosen}
+        value={scope.kind === 'client' ? (scope.family ?? '') : ''}
+        options={(props.chosen ? ROUTE_FAMILIES : []).map((family) => ({
+          value: family,
+          label: family,
+        }))}
+        onPick={props.onPick}
+      />
+    </SourceRegion>
   );
 }
 
