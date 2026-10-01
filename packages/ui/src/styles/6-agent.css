@@ -69,8 +69,10 @@
   color: var(--text);
 }
 .gate__say {
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
   margin: 0.3rem 0 0;
-  font-size: var(--text-sm);
   color: var(--text-2);
   max-width: 74ch;
 }
@@ -82,7 +84,9 @@
   gap: var(--s-3);
 }
 .sout__where {
-  font-size: var(--fs-mono-sm);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
   color: var(--ink-faint);
 }
 .sout__row {
@@ -90,24 +94,29 @@
   gap: 0.3rem;
 }
 .sout__v {
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
   color: var(--text-2);
 }
 .sout__t {
-  font-size: var(--text-sm);
-  line-height: 1.5;
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
   color: var(--text);
 }
 .sout__meta {
-  font-size: var(--fs-mono-sm);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
   color: var(--ink-faint);
 }
 .sout__say {
-  font-size: var(--text-sm);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
   color: var(--text-muted);
   margin: 0;
-  line-height: 1.45;
 }
 
 /* The diff is two stacked halves, not side by side: the dock's panel is 380px
@@ -150,7 +159,9 @@
   gap: 0.25rem;
 }
 .sout__adname {
-  font-size: var(--text-sm);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
   color: var(--text);
 }
 .sout__band {
@@ -190,9 +201,10 @@
   min-width: 0;
 }
 .trs__say {
+  font: var(--type-small-strong);
+  letter-spacing: var(--type-small-strong-tracking);
+  text-transform: var(--type-small-strong-case);
   margin: 0;
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
   color: var(--text);
 }
 /* MP-6-2: the run's figures (the mockup's `.tph__stats`, taskrun.js runHero). */
@@ -207,8 +219,9 @@
   min-width: 0;
 }
 .tph__n {
-  font-family: var(--font-mono);
-  font-size: var(--text-h2);
+  font: var(--type-num-sm);
+  letter-spacing: var(--type-num-sm-tracking);
+  text-transform: var(--type-num-sm-case);
   color: var(--text);
 }
 .tph__of {
@@ -237,7 +250,9 @@
   padding-bottom: 0;
 }
 .trs__v {
-  font-size: var(--text-sm);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
   color: var(--text);
   overflow-wrap: anywhere;
 }
@@ -340,11 +355,15 @@
   min-width: 0;
 }
 .wf__t {
-  font-size: var(--text-sm);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
   color: var(--text);
 }
 .wf__fail {
-  font-size: var(--text-overline);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
   color: var(--danger);
 }
 .wf__state {
@@ -356,10 +375,11 @@
   margin: var(--s-1) 0;
 }
 .wf__parlab {
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
   display: block;
   padding-top: var(--s-1);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
 }
 .wf__par .wf__row:first-of-type {
   border-top: 0;
@@ -390,12 +410,13 @@
   padding: var(--s-3) 0 0;
 }
 .mstamp__v {
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
   display: flex;
   align-items: center;
   gap: 0.4rem;
   flex-wrap: wrap;
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
   color: var(--text-2);
 }
 .mstamp__lock {
@@ -415,15 +436,18 @@
   color: var(--accent);
 }
 .mstamp__say {
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
   color: var(--ink-faint);
 }
 
 /* C36: a conversation at its own address, and the drawer's link to it. */
 .aip__address {
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
   padding: var(--s-2) var(--s-5) 0;
-  font-size: var(--text-overline);
 }
 .convrec {
   display: grid;
@@ -472,8 +496,10 @@
   gap: 0.3rem var(--s-3);
 }
 .tokpanel__by {
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
   color: var(--text-muted);
-  font-size: var(--text-overline);
 }
 .tokpanel__chips,
 .tokrun__skills {
@@ -486,15 +512,18 @@
 }
 /* A skill chip is a door to the Docs panel, drawn unavailable until it exists. */
 .tokchip {
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
   background: none;
   cursor: not-allowed;
   color: var(--text-muted);
-  text-transform: none;
 }
 .tokest__n,
 .tokrun__n {
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
   font-variant-numeric: tabular-nums;
   color: var(--text);
 }
@@ -511,9 +540,10 @@
   background: var(--danger);
 }
 .brn__over {
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
   flex: none;
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
   color: var(--danger);
   white-space: nowrap;
 }
@@ -551,8 +581,9 @@
 }
 /* The run id keeps its case: mono family, never `.u-mono`, never truncated. */
 .tokrun__model {
-  font-family: var(--font-mono);
-  font-size: var(--fs-mono-sm);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
   color: var(--text-2);
   word-break: break-word;
 }
@@ -565,8 +596,10 @@
 .tokrun__k,
 .tokrun__when,
 .tokpanel__reason {
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
   color: var(--text-muted);
-  font-size: var(--text-overline);
 }
 .tokpanel__reason {
   margin: 0;
