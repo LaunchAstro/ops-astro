@@ -22,7 +22,8 @@
       "files": [
         "tests/commands/parity-rejects-direct-ui-write.test.ts",
         "tests/commands/direct-entry-write-parity.test.ts",
-        "tests/commands/commented-sign-in-parity.test.ts"
+        "tests/commands/commented-sign-in-parity.test.ts",
+        "tests/ci/egress-short-hello-names-nothing.test.ts"
       ],
       "rules": { "no-inline-comments": "off" }
     },
