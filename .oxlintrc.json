@@ -89,6 +89,13 @@
         "require-await": "off",
         "unicorn/consistent-function-scoping": "off"
       }
+    },
+    {
+      "files": [
+        "tests/ci/s0-3-refused-store-stops-dump.test.ts",
+        "tests/ci/s0-3-unstarted-dump-stops.test.ts"
+      ],
+      "rules": { "no-inline-comments": "off" }
     }
   ]
 }
