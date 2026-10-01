@@ -242,6 +242,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'delegation.revoke',
   'gate.pending',
   'grant.revoke',
+  'harness.read',
   'inbox.count',
   'inbox.read',
   'inbox.seen',

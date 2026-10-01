@@ -46,6 +46,9 @@ it('AW-12 harness read isolation: another business’s run is NOT_FOUND over the
   // Bravo's member naming alpha's run in bravo: not there.
   const crossed = await harnessOver(w.bravo, w.bravo.decider, alpha.runId);
   expect(crossed).toMatchObject({ status: 404, body: { code: 'NOT_FOUND' } });
+  // A made-up run is the same answer, byte for byte: the refusal tells nothing apart.
+  const madeUp = await harnessOver(w.bravo, w.bravo.decider, randomUUID());
+  expect(JSON.stringify(madeUp)).toBe(JSON.stringify(crossed));
   // Alpha's member on bravo's address: no standing there at all.
   const carried = await harnessOver(w.bravo, w.s.decider, alpha.runId);
   expect(carried.body).toMatchObject({ refused: true });

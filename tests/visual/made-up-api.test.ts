@@ -17,6 +17,8 @@ const NOT_DRAWN = new Set([
   'definition.attribution',
   // AW-13 readers: no screen draws a trace yet.
   'trace.read',
+  // AW-12: no screen draws the harness result in this piece.
+  'harness.read',
 ]);
 
 describe('the made-up reads the width-and-theme harness draws from', () => {

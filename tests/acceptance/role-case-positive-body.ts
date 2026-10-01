@@ -237,6 +237,11 @@ export function createPositiveBody(
       case 'run.revise_state':
         // MP-6-2: a proposal's planned run, its state revised under run:write.
         return await revisedRunBody(context, PROPOSAL);
+      case 'harness.read': {
+        // AW-12: the harness result on a proposal's planned run, under the admin's task read.
+        const run = await revisedRunBody(context, PROPOSAL);
+        return 'body' in run ? { body: { runId: run.body['runId'] } } : run;
+      }
       case 'task.heartbeat':
         // The person renews their own lease (ledger line 38, "current lease
         // owner"). The agent's renewal is in the agent journey.

@@ -39,6 +39,7 @@ import { listConversations, readConversation } from './conversation.ts';
 import { readAllowance } from './allowance.ts';
 import { DIGEST, readAttribution } from './attribution.ts';
 import { countOwed, readInbox, readUnattendedInbox } from './inbox.ts';
+import { readHarnessTrigger } from './harness-trigger.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
 
 export type ReadName = ReadRequest['read'];
@@ -533,6 +534,24 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
         return refuseNotFound();
       }
       return { ok: true, trace: { taskId: recordId, ...(await readTaskTrace(tx, recordId)) } };
+    },
+  },
+  // AW-12: the harness test's result on one run. No subject record and no
+  // spine: the run names its task, and the read filters it by the caller's
+  // task `read` inside its statement (`reads/harness-trigger.ts`), so the
+  // door asks for any grant and the read refuses the rest itself.
+  'harness.read': {
+    identifiers: [],
+    parse: ({ runId }) =>
+      typeof runId === 'string'
+        ? parsed({ runId })
+        : rejected('runId', 'Send runId as the run’s identifier.'),
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    async serve(tx, session, { runId }) {
+      const harness = await readHarnessTrigger(tx, session, runId);
+      return 'refused' in harness ? harness : { ok: true, harness };
     },
   },
 };

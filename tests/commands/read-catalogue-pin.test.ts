@@ -30,6 +30,7 @@ const PINNED_SHAPE = {
   'conversation.read': { spine: false, subject: false, authority: 'holds-any-grant' },
   'definition.attribution': { spine: true, subject: false, authority: 'holds-any-grant' },
   'gate.pending': { spine: true, subject: false, authority: 'holds-any-grant' },
+  'harness.read': { spine: false, subject: false, authority: 'holds-any-grant' },
   'inbox.count': { spine: false, subject: false, authority: 'self' },
   'inbox.read': { spine: false, subject: false, authority: 'self' },
   'inbox.unattended': { spine: false, subject: false, authority: 'declared' },
@@ -51,6 +52,7 @@ const PINNED_IDENTIFIERS = {
   'conversation.read': ['conversationId'],
   'definition.attribution': [],
   'gate.pending': [],
+  'harness.read': [],
   'inbox.count': [],
   'inbox.read': [],
   'inbox.unattended': [],
@@ -166,6 +168,12 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'inbox.read': BODIES.map(() => null),
   'inbox.count': BODIES.map(() => null),
   'inbox.unattended': BODIES.map(() => null),
+  // AW-12: the run, which none of these bodies carries.
+  'harness.read': BODIES.map(() => ({
+    code: 'FIELD_VALUE_INVALID',
+    names: ['runId'],
+    fixes: ['Send runId as the run’s identifier.'],
+  })),
 };
 
 /** The refusal without its `refused` flag, or null. */

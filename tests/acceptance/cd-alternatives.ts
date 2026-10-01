@@ -113,6 +113,13 @@ export function alternativeFor(name: CommandName): string | undefined {
       "compares another business's child credential and a fabricated one by status and bytes"
     );
   }
+  if (name === 'harness.read') {
+    // AW-12: the body names a run, not a task, so the (c) and (d) cells' recordId misses it.
+    return (
+      'executed alternative: aw-12-harness-read-isolation.test.ts "another business" ' +
+      "compares another business's run and a fabricated one by status and bytes"
+    );
+  }
   if (TARGET_FREE.some(([op]) => op === name)) {
     return (
       `not applicable: target-free (SC2, root ruling 3); identifier-negatives.test.ts ` +

@@ -53,6 +53,6 @@ it('AW-12 harness read: the same result on the command line', async () => {
 
 it('AW-12 harness read: a run id that is not a string is refused naming runId, before any lookup', async () => {
   const answer = await harnessOver(w.s, w.s.decider, 7 as unknown as string);
-  expect(answer.status).toBe(400);
+  expect(answer.status).toBe(422);
   expect(answer.body).toMatchObject({ code: 'FIELD_VALUE_INVALID', names: ['runId'] });
 });
