@@ -136,3 +136,15 @@ export async function mayStillSend(tx: TenantQuery, itemId: string): Promise<boo
   );
   return last === undefined || (last.state === 'failed' && NOTHING_SENT.has(last.evidence ?? ''));
 }
+
+/** What a delivery refuses before any item is asked. */
+export type DeliverRefusal = 'OPERATION_NOT_CATALOGUED' | 'SENDER_NOT_VERIFIED';
+
+/** The report vouches for one subdomain: mail from any other domain is not verified. */
+export function fromVerifiedSender(
+  from: string,
+  sender: { readonly verified: boolean; readonly subdomain: string },
+): boolean {
+  const domain = from.slice(from.lastIndexOf('@') + 1).toLowerCase();
+  return sender.verified && domain === sender.subdomain.toLowerCase();
+}

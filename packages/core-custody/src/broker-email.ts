@@ -32,12 +32,14 @@ import {
   type InboxReason,
   type TenantQuery,
 } from '../../core-records/src/index.ts';
-import type { ModelOperation } from '../../core-connectors/src/index.ts';
+import type { ModelOperation, SenderReport } from '../../core-connectors/src/index.ts';
 import type { Broker, BrokerRoute, ProviderAdapter } from './broker-types.ts';
 import type { CustodyOutcome } from './custody.ts';
 import {
   askedEvidence,
   classOf,
+  type DeliverRefusal,
+  fromVerifiedSender,
   mayStillSend,
   roomFor,
   WEEK_MS,
@@ -55,9 +57,12 @@ export const EMAIL_OPERATION = 'email.send';
 export interface MailSettings {
   readonly appOrigin: string;
   readonly from: string;
+  /** The sending subdomain's setup check (`checkSender`): nothing is sent until it verified. */
+  readonly sender: SenderReport;
 }
 
 export type EmailRefusal =
+  | 'SENDER_NOT_VERIFIED'
   | 'OPERATION_NOT_CATALOGUED'
   | 'ITEM_NOT_OPEN'
   | 'ITEM_WITHHELD'
@@ -102,10 +107,9 @@ export interface CheckedItem {
 }
 
 /**
- * Every check on one item, in its business, locking it: open, its recipient
- * can read its task now (so another client's task is never mailed about),
- * they have not seen it in the app, they have a confirmed address, and no
- * earlier email attempt on it might have gone out. Writes nothing.
+ * Every check on one item, in its business, locking it: open, its recipient can read its task
+ * now (so another client's task is never mailed about), they have not seen it in the app, they
+ * have a confirmed address, and no earlier email attempt on it might have gone out. Writes nothing.
  */
 export async function checkItem(
   tx: TenantQuery,
@@ -215,7 +219,7 @@ function observed(
 }
 
 export type Delivered<R extends string> =
-  | { readonly ok: false; readonly code: R | 'OPERATION_NOT_CATALOGUED' }
+  | { readonly ok: false; readonly code: R | DeliverRefusal }
   | {
       readonly ok: true;
       readonly state: 'accepted' | 'failed';
@@ -224,9 +228,8 @@ export type Delivered<R extends string> =
     };
 
 /**
- * Steps 1 to 3 for one email: `ask` checks and records `asked` in one
- * transaction (or refuses, writing nothing), the message leaves through
- * custody, and what came back is recorded on every item the email covers.
+ * Steps 1 to 3 for one email from the verified sender only: `ask` checks and records `asked` in
+ * one transaction (or refuses, writing nothing), custody sends, and what came back is recorded.
  */
 export async function deliver<R extends string>(
   database: Database,
@@ -235,6 +238,8 @@ export async function deliver<R extends string>(
   mail: MailSettings,
   ask: (tx: TenantQuery, room: Room) => Promise<Asked | R>,
 ): Promise<Delivered<R>> {
+  if (!fromVerifiedSender(mail.from, mail.sender))
+    return { ok: false, code: 'SENDER_NOT_VERIFIED' };
   const found = routed(broker);
   if (found === undefined) return { ok: false, code: 'OPERATION_NOT_CATALOGUED' };
   const { operation, route, adapter } = found;
@@ -287,7 +292,7 @@ export async function sendInboxEmail(
 /** The one-item answer from a delivery. */
 export function emailResult<R extends string>(
   sent: Delivered<R>,
-): EmailResult | { readonly ok: false; readonly code: R | 'OPERATION_NOT_CATALOGUED' } {
+): EmailResult | { readonly ok: false; readonly code: R | DeliverRefusal } {
   if (!sent.ok) return sent;
   const attemptId = sent.attemptIds[0] ?? '';
   if (sent.state === 'accepted') return { ok: true, attemptId, state: 'accepted' };

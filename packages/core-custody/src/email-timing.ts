@@ -42,7 +42,7 @@ import {
   type MailSettings,
   type Room,
 } from './broker-email.ts';
-import { DAY_MS, WEEK_MS, windowSpent } from './email-class.ts';
+import { DAY_MS, WEEK_MS, windowSpent, type DeliverRefusal } from './email-class.ts';
 
 export type EmailChoice = 'instant' | 'daily_batch' | 'off';
 
@@ -65,8 +65,7 @@ export type BatchResult =
   | { readonly ok: true; readonly items: number; readonly attemptIds: readonly string[] }
   | {
       readonly ok: false;
-      readonly code:
-        'NOTHING_WAITING' | 'BATCH_ALREADY_SENT' | 'EMAIL_AT_CEILING' | 'OPERATION_NOT_CATALOGUED';
+      readonly code: 'NOTHING_WAITING' | 'BATCH_ALREADY_SENT' | 'EMAIL_AT_CEILING' | DeliverRefusal;
     }
   | { readonly ok: false; readonly code: 'EMAIL_FAILED'; readonly fault: string };
 

@@ -48,7 +48,11 @@ import {
   KEY_FILE_VARIABLE,
   readEnvFile,
 } from '../../packages/core-records/src/index.ts';
-import type { AdminConnection, Database } from '../../packages/core-records/src/index.ts';
+import type {
+  AdminConnection,
+  BusinessId,
+  Database,
+} from '../../packages/core-records/src/index.ts';
 import { createApi, type LiveOptions, type ReadExecutor } from './app.ts';
 import { createAlerts, faultCode, sinkFrom, type Alerts } from './alerts/sink.ts';
 import {
@@ -72,6 +76,7 @@ import {
 } from './auth/supabase.ts';
 import { startLiveTopics } from './live.ts';
 import { isLoopback, migrationHead, readIdentity, type ServedIdentity } from './identity.ts';
+import { mailHookSettings, mountMailHook, type MailHookOptions } from './mail-hook.ts';
 import { brokerSettings, startModelBroker } from './model-broker.ts';
 import { startTraceExporter, traceExportSettings } from './trace-exporter.ts';
 import {
@@ -185,6 +190,8 @@ export interface ApiConfig {
   readonly identity?: ServedIdentity;
   /** The live task channel, started by `main`; absent, the event route is not mounted. */
   readonly live?: LiveOptions;
+  /** The email provider's delivery hook (AW-07b); absent, the hook route is not mounted. */
+  readonly mailHook?: MailHookOptions;
   /** `model.call` through the credential broker; absent where none is configured. */
   readonly executeModelCall?: ModelCallExecutor;
   /** AW-03's exchange through the same broker; absent where none is configured. */
@@ -273,6 +280,10 @@ export function composeApi(config: ApiConfig): ComposedApi {
       return context.json({ ...identity, migrationHead: migrationHead(ledger) }, 200);
     });
   }
+
+  // AW-07b: the provider's delivery and bounce events, verified by signature,
+  // as system work with no sign-in (`mail-hook.ts`).
+  if (config.mailHook !== undefined) mountMailHook(server, database, config.mailHook);
 
   server.route(
     '/',
@@ -389,6 +400,16 @@ async function main(): Promise<void> {
     brokerConfig.kind === 'configured' ? await startModelBroker(brokerConfig) : undefined;
   console.log(`api: credential broker ${broker === undefined ? 'not configured' : 'started'}`);
   const alerts = alertsFrom(environment);
+  // AW-07b: the provider's delivery hook, mounted only with a hook secret in
+  // the provider's form; a malformed one stops the server, naming the setting.
+  const hookConfig = mailHookSettings(environment);
+  if (hookConfig.kind === 'invalid') {
+    console.error(`api: ${hookConfig.problem}`);
+    process.exit(1);
+  }
+  // The hook's events land over the businesses restart recovery resolves, set
+  // below before the port is bound.
+  let hookBusinesses: readonly BusinessId[] = [];
 
   // Wiring only: nothing here runs a statement or binds a port, so building it
   // before recovery changes nothing recovery sees, and recovery resolves its
@@ -404,7 +425,16 @@ async function main(): Promise<void> {
       ? {}
       : { executeModelCall: broker.executor, answerConversation: broker.answerConversation }),
     ...(alerts === undefined ? {} : { alerts }),
+    ...(hookConfig.kind === 'configured'
+      ? {
+          mailHook: {
+            secret: hookConfig.secret,
+            businesses: async () => await Promise.resolve(hookBusinesses),
+          },
+        }
+      : {}),
   });
+  console.log(`api: email hook ${hookConfig.kind === 'configured' ? 'mounted' : 'not mounted'}`);
 
   // Restart recovery (TRANSACTION-CONTRACT 84, 92), awaited before the port is
   // bound: a process start is the resume entry, and a failure is a failed
@@ -430,6 +460,7 @@ async function main(): Promise<void> {
   // an interval; nothing on the wire reaches it. Started before the port is
   // bound, so a custody that cannot start stops the server first.
   const traced = recovered.businesses.map((business) => business.businessId);
+  hookBusinesses = traced;
   const tracer =
     traceConfig.kind === 'on'
       ? await startTraceExporter(traceConfig, database, async () => await Promise.resolve(traced))
