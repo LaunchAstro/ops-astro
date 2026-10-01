@@ -128,11 +128,23 @@ it('MP-1-6 the header freshness marker is an indicator only, in five states, and
   expect(rulesMentioning('.fresh').filter((r) => /:(hover|focus|active)/u.test(r))).toEqual([]);
   // No page draws a sync control. (The task page's Refresh re-reads after a
   // conflict; whether live updates replace it is the live page kit's to decide.)
-  const offenders = sources().filter(
-    ({ text }) =>
-      />\s*(Sync|Sync now|Resync)\s*</u.test(text) ||
-      /(label|aria-label|busy)="(Sync|Resync)[^"]*"/u.test(text),
-  );
+  // One named exception: MP-14-7 keeps a connector's Sync now as a fallback on
+  // a stuck source only, shown unavailable until connectors exist. That exact
+  // form, gated on isStuck, is taken out before the check; any other is caught.
+  const stuckFallback =
+    /isStuck\(row, props\.now\) \? <Unavailable action="sync" label="Sync now" \/> : null/u;
+  const offenders = sources()
+    .map(({ path, text }) => ({
+      path,
+      text: path.endsWith('screens/connections/fleet-row.tsx')
+        ? text.replace(stuckFallback, '')
+        : text,
+    }))
+    .filter(
+      ({ text }) =>
+        />\s*(Sync|Sync now|Resync)\s*</u.test(text) ||
+        /(label|aria-label|busy)="(Sync|Resync)[^"]*"/u.test(text),
+    );
   expect(offenders.map((o) => o.path)).toEqual([]);
 });
 
