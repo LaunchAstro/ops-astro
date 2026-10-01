@@ -186,6 +186,7 @@
     "tests/web/dock-door-isolation-api.test.tsx",
     "tests/api/preference-write-client-user.test.ts",
     "tests/db/lease-pickup-path.test.ts",
+    "tests/db/take-lease-path.test.ts",
     "tests/broker/aw-10-lookup-slot-isolation.test.ts"
   ]
 }

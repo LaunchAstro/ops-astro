@@ -459,6 +459,7 @@ async function roleClasses(
                  when r.rolname = 'ops_astro_forwarder' then 'forwarder'
                  when r.rolname = 'ops_astro_restore_drill' then 'restore drill'
                  when r.rolname = 'ops_astro_upkeep' then 'upkeep'
+                 when r.rolname = 'ops_astro_lease_path' then 'lease path'
                  when r.rolcanlogin and not r.rolbypassrls and not r.rolcreaterole
                       and not r.rolcreatedb then 'outsider'
                  else 'unclassified' end as class
@@ -551,6 +552,9 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     // 20261002105957: the daily upkeep deletes second-factor codes past their horizon through
     // ops.expire_second_factor_codes(), proved in tests/db/second-factor-codes-retention.test.ts.
     expect(classes['upkeep']).toStrictEqual(['ops_astro_upkeep']);
+    // 0220: the pickup path's role owns public.take_lease and inserts leases under row security,
+    // proved in tests/db/take-lease-path.test.ts.
+    expect(classes['lease path']).toStrictEqual(['ops_astro_lease_path']);
     expect(classes['application login']).toContain(world.db.loginRole);
     expect(classes['outsider']).toContain(world.db.restrictedRole);
   });
@@ -720,7 +724,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
   // stamp (C55) writes only now(), and only the drill's identity runs it. The
   // codes expiry (20261002105957) deletes only rows past its fixed horizon, and only the
   // upkeep identity runs it. The pickup path (SL11-30, 0220) is the one way a lease is
-  // written, in the caller's own business (tests/db/lease-pickup-path.test.ts).
+  // written, in the caller's own business (tests/db/take-lease-path.test.ts).
   describe('the security definer functions', () => {
     const definers = (): readonly CatalogueFunction[] => functions.filter((fn) => fn.definer);
     const definer = (signature: string): CatalogueFunction | undefined =>
