@@ -12,9 +12,9 @@
 // The cases run in order on one database: the mode only ever moves one way,
 // so once it is real it stays real. Every command's body is prepared first,
 // while the installation is still made-up, because the fixtures themselves
-// create tasks and clients.
+// create tasks and clients. The run's worker's commands are the agent's, never
+// a person's: they are sent on the agent prefix, under one pickup's credential.
 
-import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   COMMAND_EFFECTS,
@@ -26,6 +26,7 @@ import { GATE_ITEMS } from '../../packages/core-commands/src/index.ts';
 import { gateRecordBody } from '../acceptance/role-case-gate-bodies.ts';
 import { createHarness, type Harness } from '../acceptance/role-case-harness.ts';
 import { serverUrl } from '../acceptance/world.ts';
+import { type Call, ON_THE_PICKUP, pickupCalls } from './s0-5-readiness-pickup.ts';
 
 if (serverUrl === undefined) {
   console.warn('operations/s0-5-readiness: DATABASE_URL is unset, so nothing below ran.');
@@ -43,7 +44,12 @@ const GATED = COMMAND_SURFACE.filter(
 );
 
 let harness: Harness;
-const bodies = new Map<string, Record<string, unknown>>();
+const calls = new Map<string, Call>();
+
+const send = async (name: string, call: Call) =>
+  call.credential === undefined
+    ? await harness.asPerson(name as CommandDeclaration['name'], call.body)
+    : await harness.asAgent(name as CommandDeclaration['name'], call.body, call.credential);
 let agentPickup: Record<string, unknown>;
 
 const admin = async <T>(sql: string, params: unknown[] = []): Promise<T[]> =>
@@ -106,7 +112,7 @@ async function notShut(
   const found: string[] = [];
   for (const { name } of declarations) {
     // eslint-disable-next-line no-await-in-loop
-    const answer = await harness.asPerson(name, bodies.get(name)!);
+    const answer = await send(name, calls.get(name)!);
     const fixes = answer.body['fixes'];
     const plain =
       Array.isArray(fixes) && fixes.length > 0 && fixes.every((fix) => typeof fix === 'string');
@@ -119,15 +125,8 @@ async function notShut(
   return found;
 }
 
-/** The positive recipe, or, for a live delegation (the recipe has none), one made here. */
+/** The positive recipe. */
 async function bodyFor(declaration: CommandDeclaration): Promise<Record<string, unknown>> {
-  if (declaration.name === 'delegation.revoke') {
-    const task = await harness.freshTask(`s0-5 gate ${randomUUID()}`);
-    const decided = await harness.reserve(task, 'draft_the_gate_reply');
-    const reservationId = (decided.body['detail'] as Record<string, unknown>)['reservationId'];
-    const picked = await harness.asAgent('task.pickup', { reservationId });
-    return { delegationId: (picked.body['detail'] as Record<string, unknown>)['delegationId'] };
-  }
   const prepared = await harness.positiveBody(declaration);
   if ('exception' in prepared) throw new Error(`${declaration.name}: ${prepared.exception}`);
   return { ...prepared.body };
@@ -220,7 +219,7 @@ async function gatedRan(): Promise<string[]> {
   const ran: string[] = [];
   for (const { name } of GATED) {
     // eslint-disable-next-line no-await-in-loop
-    const answer = await harness.asPerson(name, bodies.get(name)!);
+    const answer = await send(name, calls.get(name)!);
     if (answer.status < 400) ran.push(`${name}: ${answer.status} ${answer.code}`);
   }
   return ran;
@@ -229,10 +228,11 @@ async function gatedRan(): Promise<string[]> {
 /** One harness, every gated command's body, and an agent pickup, all while made-up. */
 async function prepare(): Promise<void> {
   harness = await createHarness('s05_gate');
-  for (const declaration of GATED) {
+  for (const declaration of GATED.filter(({ name }) => !ON_THE_PICKUP.has(name))) {
     // eslint-disable-next-line no-await-in-loop
-    bodies.set(declaration.name, await bodyFor(declaration));
+    calls.set(declaration.name, { body: await bodyFor(declaration) });
   }
+  for (const [name, call] of await pickupCalls(harness)) calls.set(name, call);
   const decided = await harness.reserve(await harness.freshTask('s0-5 agent'), 'draft_the_reply');
   agentPickup = {
     reservationId: (decided.body['detail'] as Record<string, unknown>)['reservationId'],
