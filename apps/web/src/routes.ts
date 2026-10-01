@@ -228,6 +228,8 @@ export type Gate =
  */
 export function gateOf(match: RouteMatch | null, signedIn: boolean): Gate {
   if (match === null) return { kind: 'not-found' };
+  // The enrolment page needs no session and is the same with one.
+  if (match.id === 'agency:enrol') return { kind: 'enrol', token: match.params.token };
   if (!signedIn) return { kind: 'sign-in' };
   if (!needsSession(match)) return { kind: 'signed-in-already' };
   return { kind: 'screen', match };

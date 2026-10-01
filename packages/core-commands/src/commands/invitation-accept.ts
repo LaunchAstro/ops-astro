@@ -26,8 +26,24 @@
 //    write both audit events. The link then does nothing, and nothing here
 //    opens a session: the person signs in with the login, as anyone does.
 
+import { createHash } from 'node:crypto';
+import { payloadDigest } from '../../../core-digest/src/index.ts';
+import type { Database, TenantQuery } from '../../../core-records/src/index.ts';
+import { createLogin, type Broker } from '../../../core-custody/src/index.ts';
+import { writeAuditEvent } from './audit.ts';
+import { workerActor } from './conversation-lifecycle.ts';
+
 export const ACCEPT_OPERATION = 'invitation.accept';
 export const LOGIN_CREATE_OPERATION = 'login.create';
+
+/** The provider the `logins` rows name for Supabase Auth (`apps/api/auth/supabase.ts`). */
+const LOGIN_PROVIDER = 'supabase';
+
+/** A password the provider will hash in full: 12 to 72 bytes (bcrypt reads no more). */
+const PASSWORD_BYTES = { least: 12, most: 72 } as const;
+
+/** The token a send mints: 32 random bytes, base64url, 43 characters. */
+const TOKEN = /^[\w-]{43}$/u;
 
 export interface AcceptRequest {
   readonly token: string;
@@ -41,12 +57,150 @@ export type AcceptResult =
       readonly code: 'ENROLMENT_LINK_INVALID' | 'PASSWORD_INVALID' | 'ENROLMENT_UNAVAILABLE';
     };
 
-/** Accept the invitation a one-time enrolment token names: not built yet, every link refused. */
+interface Found {
+  readonly business: string;
+  readonly tokenId: string;
+  readonly invitationId: string;
+  readonly personId: string;
+  readonly roleKey: string;
+  readonly address: string;
+}
+
+/** The token's row and its invitation, when the token is live; locked when `lock`. */
+async function liveToken(
+  tx: TenantQuery,
+  hash: string,
+  lock: boolean,
+): Promise<Omit<Found, 'business'> | undefined> {
+  const [row] = await tx.query<Omit<Found, 'business'> & { live: boolean }>(
+    `select t.id as "tokenId", i.id as "invitationId", i.person_id as "personId",
+            i.role_key as "roleKey", i.address,
+            (t.spent_at is null and t.expires_at > now()
+              and i.state = 'pending' and i.expires_at > now()
+              and not exists (select 1 from enrolment_tokens n
+                               where n.business_id = t.business_id
+                                 and n.invitation_id = t.invitation_id
+                                 and n.created_at > t.created_at)) as live
+       from enrolment_tokens t
+       join invitations i on i.business_id = t.business_id and i.id = t.invitation_id
+      where t.business_id = $1 and t.token_hash = $2
+      ${lock ? 'for update of i' : ''}`,
+    [tx.businessId, hash],
+  );
+  if (row?.live !== true) return undefined;
+  const { live: _live, ...found } = row;
+  return found;
+}
+
+/** Step 1: the one business whose live token this is, or none. */
+async function find(
+  database: Database,
+  businesses: readonly string[],
+  hash: string,
+): Promise<Found | undefined> {
+  const found: Found[] = [];
+  for (const business of businesses) {
+    // oxlint-disable-next-line no-await-in-loop -- one business at a time, every one of them
+    const row = await database.withBusiness(
+      business,
+      async (tx) => await liveToken(tx, hash, false),
+    );
+    if (row !== undefined) found.push({ business, ...row });
+  }
+  return found.length === 1 ? found[0] : undefined;
+}
+
+/** The invitation's person seated: an actor, a membership, the address, and the login mapped. */
+async function seat(
+  tx: TenantQuery,
+  found: Omit<Found, 'business'>,
+  subject: string,
+  worker: string,
+): Promise<string | null> {
+  await tx.query(
+    `with actor as (
+       insert into actors (business_id, id, kind, person_id)
+       values ($1, gen_random_uuid(), 'person', $2)),
+     membership as (
+       insert into memberships (business_id, id, person_id, role_key)
+       values ($1, gen_random_uuid(), $2, $3))
+     insert into person_identifiers
+       (business_id, id, person_id, kind, value, observed_value, source_system, review_state)
+     values ($1, gen_random_uuid(), $2, 'email', $4, $4, 'invitation', 'confirmed')`,
+    [tx.businessId, found.personId, found.roleKey, found.address],
+  );
+  // The login first, then its mapping: the mapping's trigger locks the login row.
+  const [login] = await tx.query<{ id: string }>(
+    `insert into logins (business_id, id, provider, subject)
+     values ($1, gen_random_uuid(), $2, $3) returning id`,
+    [tx.businessId, LOGIN_PROVIDER, subject],
+  );
+  await tx.query(
+    `insert into person_logins (business_id, id, login_id, person_id, linked_by_actor_id)
+     values ($1, gen_random_uuid(), $2, $3, $4)`,
+    [tx.businessId, login?.id, found.personId, worker],
+  );
+  return login?.id ?? null;
+}
+
+/** Step 3: everything the acceptance changes, in one transaction; false when the token died. */
+async function bind(tx: TenantQuery, hash: string, subject: string): Promise<boolean> {
+  const found = await liveToken(tx, hash, true);
+  if (found === undefined) return false;
+  const { invitationId, personId, tokenId } = found;
+  await tx.query(
+    `update enrolment_tokens set spent_at = now()
+      where business_id = $1 and invitation_id = $2 and spent_at is null`,
+    [tx.businessId, invitationId],
+  );
+  await tx.query(
+    `update invitations set state = 'accepted', ended_at = now(), revision = revision + 1
+      where business_id = $1 and id = $2`,
+    [tx.businessId, invitationId],
+  );
+  const worker = await workerActor(tx);
+  const loginId = await seat(tx, found, subject, worker);
+  const event = { actorId: worker, outcome: 'applied' } as const;
+  await writeAuditEvent(tx, {
+    ...event,
+    command: ACCEPT_OPERATION,
+    operationId: `${ACCEPT_OPERATION}:${tokenId}`,
+    subjectRecordId: invitationId,
+    payloadDigest: payloadDigest({ invitationId, personId }),
+  });
+  await writeAuditEvent(tx, {
+    ...event,
+    command: LOGIN_CREATE_OPERATION,
+    operationId: `${LOGIN_CREATE_OPERATION}:${tokenId}`,
+    subjectRecordId: loginId,
+    payloadDigest: payloadDigest({ personId, loginId, businessId: tx.businessId }),
+  });
+  return true;
+}
+
+/** Accept the invitation a one-time enrolment token names, with the password its holder set. */
 export async function acceptInvitation(
-  _database: unknown,
-  _businesses: readonly string[],
-  _broker: unknown,
-  _request: AcceptRequest,
+  database: Database,
+  businesses: readonly string[],
+  broker: Broker,
+  request: AcceptRequest,
 ): Promise<AcceptResult> {
-  return await Promise.resolve({ ok: false, code: 'ENROLMENT_LINK_INVALID' });
+  const bytes = Buffer.byteLength(request.password, 'utf8');
+  if (bytes < PASSWORD_BYTES.least || bytes > PASSWORD_BYTES.most) {
+    return { ok: false, code: 'PASSWORD_INVALID' };
+  }
+  const hash = createHash('sha256').update(request.token).digest('hex');
+  const found = TOKEN.test(request.token) ? await find(database, businesses, hash) : undefined;
+  if (found === undefined) return { ok: false, code: 'ENROLMENT_LINK_INVALID' };
+  const login = await createLogin(broker, found.address, request.password);
+  if (!login.ok) {
+    return login.kind === 'exists'
+      ? { ok: true, state: 'sign_in' }
+      : { ok: false, code: 'ENROLMENT_UNAVAILABLE' };
+  }
+  const bound = await database.withBusiness(
+    found.business,
+    async (tx) => await bind(tx, hash, login.subject),
+  );
+  return bound ? { ok: true, state: 'enrolled' } : { ok: false, code: 'ENROLMENT_LINK_INVALID' };
 }
