@@ -134,6 +134,8 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['inbox.count', {}],
   ['inbox.unattended', {}],
   ['notifications.set_channel', { channel: 'in_app', mode: 'on' }],
+  // The reader's own team conversations (C71-D).
+  ['chat.conversations', {}],
 ];
 
 /** The thirty identifier-bearing operations outside (c) and (d): operand and executed case. */
@@ -173,6 +175,16 @@ export const IDENTIFIER_BEARING: Readonly<
 };
 
 /**
+ * Identifier-bearing operations whose foreign-against-fabricated comparison is
+ * in their own isolation suite rather than in identifier-negatives.
+ */
+const OWN_SUITE: Readonly<Partial<Record<CommandName, string>>> = {
+  'chat.send_direct': 'teammateId',
+  'chat.messages': 'conversationId',
+  'chat.mark_read': 'conversationId',
+};
+
+/**
  * The named row for an operation the (c) and (d) cells do not reach, or
  * `undefined` for one this file does not know, which the matrix throws on.
  */
@@ -183,6 +195,13 @@ export function alternativeFor(name: CommandName): string | undefined {
     return (
       `executed alternative: identifier-negatives.test.ts "${CASE[kase]}" compares a foreign ` +
       `and a fabricated ${operand} by status and raw bytes, audited at home (ledger I03)`
+    );
+  }
+  const own = OWN_SUITE[name];
+  if (own !== undefined) {
+    return (
+      `executed alternative: c71-d-isolation.test.ts compares a foreign and a fabricated ` +
+      `${own} by status and raw bytes, audited at home`
     );
   }
   if (TARGET_FREE.some(([op]) => op === name)) {

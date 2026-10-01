@@ -24,7 +24,7 @@
 
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import { OPERATION_ID } from './register-store.ts';
-import type { CommentRequest } from './requests-comments.ts';
+import type { ChatRequest, CommentRequest } from './requests-comments.ts';
 import type { TagRequest } from './requests-tags.ts';
 import type { TimeRequest } from './requests-time.ts';
 import type { PrivacyRequest } from './requests-privacy.ts';
@@ -288,4 +288,6 @@ export type CommandRequest =
   // Time tracking (MP-4-6), in `requests-time.ts`.
   | TimeRequest<Envelope>
   // Tags (MP-4-11), in `requests-tags.ts`.
-  | TagRequest<Envelope>;
+  | TagRequest<Envelope>
+  // Team conversations (C71-D), beside the comment shapes.
+  | ChatRequest<Envelope>;

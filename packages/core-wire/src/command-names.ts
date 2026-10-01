@@ -170,4 +170,11 @@ export type CommandName =
   // Items no path reaches, for the operations view (INB-1e), and the caller's
   // own notification setting on one channel.
   | 'inbox.unattended'
-  | 'notifications.set_channel';
+  | 'notifications.set_channel'
+  // Team conversations (C71-D): a direct message on the one comment record,
+  // the reader's conversations and one conversation's messages, and the
+  // reader's own read marker.
+  | 'chat.send_direct'
+  | 'chat.conversations'
+  | 'chat.messages'
+  | 'chat.mark_read';

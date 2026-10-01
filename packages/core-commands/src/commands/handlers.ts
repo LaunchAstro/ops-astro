@@ -55,6 +55,7 @@ import { addTagToTask, createTagNamed, removeTagFromTask } from './tasks-tags.ts
 import { endOwnSession } from './session-end.ts';
 import { dismissOwnTip, saveOwnPreference } from './preference-save.ts';
 import { stampOwnSeen } from './inbox-seen.ts';
+import { markOwnRead, sendDirect } from './chat.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
@@ -189,6 +190,12 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'preference.dismiss_tip': (tx, context, request) => dismissOwnTip(tx, context, request),
   'inbox.seen': (tx, context, request) => stampOwnSeen(tx, context, request.itemId),
   'notifications.set_channel': setNotificationChannel,
+  // C71-D. The sender and the reader are the session's; a body names only
+  // the teammate or the conversation.
+  'chat.send_direct': (tx, context, request) =>
+    sendDirect(tx, context, request.teammateId, request.body),
+  'chat.mark_read': (tx, context, request) =>
+    markOwnRead(tx, context, request.conversationId, request.upTo),
 };
 
 function writeOwned(

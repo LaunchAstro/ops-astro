@@ -63,6 +63,24 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('C71-D isolation', (
       expect(answer.code, `${name} ${answer.text}`).toBe('NOT_FOUND');
       clean(answer, name);
     }
+    // A foreign identifier answers as one never issued, in the same bytes.
+    for (const [name, foreign, fabricated] of [
+      ['chat.messages', { conversationId: bravoConversation }, { conversationId: randomUUID() }],
+      [
+        'chat.mark_read',
+        { conversationId: bravoConversation, upTo },
+        { conversationId: randomUUID(), upTo },
+      ],
+      [
+        'chat.send_direct',
+        { teammateId: world.bea.personId, body: 'across' },
+        { teammateId: randomUUID(), body: 'across' },
+      ],
+    ] as const) {
+      const one = await chat.as(world.ada, name, foreign);
+      const other = await chat.as(world.ada, name, fabricated);
+      expect([one.status, one.text], name).toStrictEqual([other.status, other.text]);
+    }
     const listed = await chat.as(world.ada, 'chat.conversations');
     expect(
       (listed.body['conversations'] as readonly Body[]).map((c) => c['conversationId']),

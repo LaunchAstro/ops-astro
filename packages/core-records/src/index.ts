@@ -255,6 +255,18 @@ export {
 export { UNPRODUCED_CODES } from './register-unproduced.ts';
 export * from './tasks/content.ts';
 export {
+  CONVERSATION_TYPE_KEY,
+  directConversation,
+  isStaff,
+  listConversations,
+  moveReadMarker,
+  readConversation,
+  readConversationTypes,
+  type ConversationMessage,
+  type ConversationSummary,
+  type ConversationTypes,
+} from './team/conversations.ts';
+export {
   DERIVED_ON_CREATE,
   deriveSource,
   lockSiblings,
