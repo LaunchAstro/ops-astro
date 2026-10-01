@@ -47,10 +47,9 @@ const PENDING = `select g.id as gate_id, ver.id as version_id, ver.version::text
       where g.business_id = $1
         and r.record_type_id = $2
         and r.deleted_at is null
-        and g.state = 'pending'
+        and g.state in ('pending', 'superseded')
         and g.expires_at > now()
         and lin.state = 'live'
-        and ver.superseded_at is null
         and ($3::boolean or r.id = any($4::uuid[]))
       order by g.expires_at, g.id`;
 
