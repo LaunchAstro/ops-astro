@@ -58,6 +58,25 @@ it('AW-12 trigger read: it fires only when the reading exceeds the window and th
   });
 });
 
+it('AW-12 trigger read: the same bytes at two paths are one file, read once', async () => {
+  const { runId } = await shapedWork(w.s, [], w.helper);
+  const digest = 'd'.repeat(64);
+  await pinReading(
+    w.s,
+    runId,
+    [16_001],
+    [
+      { path: 'skills/a.md', digest, size: 16_001 },
+      { path: 'skills/copy-of-a.md', digest, size: 16_001 },
+    ],
+  );
+  expect(await triggerAs(w.s, w.s.decider, runId)).toEqual({
+    result: 'not_yet',
+    missing: ['reading'],
+    figures: figures(16_001, 1),
+  });
+});
+
 it('AW-12 trigger read: a manifest it cannot count is refused, never read as nothing', async () => {
   const hostile: unknown[][] = [
     [{ path: 'a.md', digest: 'x', size: '40000' }],
@@ -68,7 +87,7 @@ it('AW-12 trigger read: a manifest it cannot count is refused, never read as not
     // Each size whole, the sum past what a figure can hold exactly.
     Array.from({ length: 10 }, (_, i) => ({
       path: `b${String(i)}.md`,
-      digest: 'x',
+      digest: `x${String(i)}`,
       size: 999_999_999_999_999,
     })),
   ];
