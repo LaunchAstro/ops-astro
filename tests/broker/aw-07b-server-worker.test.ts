@@ -13,6 +13,7 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, expect, it as vitestIt } from 'vitest';
+import { mailDeliverySettings, startMailDelivery } from '../../apps/api/mail-delivery.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { sharedKeySetUrl } from '../support/sign-in.ts';
 import { attemptsOf, itemFor, MAIL, noDatabase, useEmailWorld, w } from './email-world.ts';
@@ -166,3 +167,33 @@ it('AW-07b server worker: mail delivery set in any form but off or mock stops th
   expect(served.output()).toContain('MAIL_DELIVERY');
   expect(served.output()).not.toContain('api: listening');
 }, 60_000);
+
+const settle = async (): Promise<void> => {
+  await new Promise((resolve) => {
+    setTimeout(resolve, 400);
+  });
+};
+
+it('AW-07b server worker: once its stop is called, the delivery sends nothing more', async () => {
+  const settings = mailDeliverySettings(mockDelivery());
+  if (settings.kind !== 'mock') throw new Error(`mail delivery settings: ${settings.kind}`);
+  const first = await itemFor(w.task, 'decision');
+  const delivery = await startMailDelivery(
+    settings,
+    w.db.app,
+    async () => await Promise.resolve([w.alpha]),
+    { atOnceMs: 50, dailyTickMs: 80 },
+  );
+  try {
+    await expect
+      .poll(async () => (await attemptsOf(first)).map((row) => row.state), { timeout: 10_000 })
+      .toEqual(['asked', 'accepted']);
+  } finally {
+    await delivery.stop();
+  }
+  // A pass already running given time to end, then a new decision waits unsent.
+  await settle();
+  const after = await itemFor(w.task, 'decision');
+  await settle();
+  expect(await attemptsOf(after)).toEqual([]);
+}, 30_000);
