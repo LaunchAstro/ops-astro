@@ -122,10 +122,14 @@ export const SHELL: LookScreen = {
       ]),
     },
     {
+      // Widths left out on the switch and its options: their width is the label's
+      // text advance, which Linux Chromium (hosted CI) draws 1-2px narrower than the
+      // Mac that pinned the mockup (run 36814568207: 135 vs 137, 67 vs 68, 66 vs 67).
+      // Font, size, weight, case and height hold the look.
       id: 'shell.appbar-switch',
       mockup: { ...BOARD, selector: '#viewSwitch' },
       app: { ...APP, selector: '.appbar .segmented' },
-      props: ['border-top-color', 'box.y', 'box.width', 'box.height'],
+      props: ['border-top-color', 'box.y', 'box.height'],
       widths: ALL,
     },
     {
@@ -139,7 +143,6 @@ export const SHELL: LookScreen = {
         'font-size',
         'font-weight',
         'text-transform',
-        'box.width',
         'box.height',
       ],
       widths: ALL,
@@ -148,7 +151,7 @@ export const SHELL: LookScreen = {
       id: 'shell.appbar-switch-off',
       mockup: { ...BOARD, selector: '#viewSwitch button[aria-pressed="false"]' },
       app: { ...APP, selector: '.appbar .segmented__opt[aria-pressed="false"]' },
-      props: ['background-color', 'color', 'font-family', 'font-size', 'box.width'],
+      props: ['background-color', 'color', 'font-family', 'font-size'],
       widths: ALL,
     },
     {
