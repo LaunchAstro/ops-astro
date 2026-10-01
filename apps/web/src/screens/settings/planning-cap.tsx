@@ -14,7 +14,8 @@
 import { useState, type ReactElement } from 'react';
 import type { OperationsClient } from '../../operations/client.ts';
 import type { ReadState } from '../../data/authorised-read.ts';
-import { useCommand } from '../../records/use-command.ts';
+import { useMoneyCommand } from '../../records/use-money-command.ts';
+import { StepUpPrompt } from '../../views/step-up-prompt.tsx';
 import type {
   CapabilitiesResult,
   SettingsReadResult,
@@ -127,7 +128,7 @@ function CapForm(props: {
 
 export function PlanningCapSection(props: PlanningCapProps): ReactElement {
   const cap = rowsInHand(props.read)?.planningCap ?? null;
-  const command = useCommand();
+  const command = useMoneyCommand(props.client);
   const [typed, setTyped] = useState('');
   const [complaint, setComplaint] = useState<string | null>(null);
   const may = holdsBillingDecide(props.capabilities);
@@ -143,8 +144,8 @@ export function PlanningCapSection(props: PlanningCapProps): ReactElement {
     }
     setComplaint(null);
     command.run(
-      () =>
-        props.client.mutate('budget.set_planning_cap', {
+      (client) =>
+        client.mutate('budget.set_planning_cap', {
           limitMinor,
           currency: cap.currency,
           fromLimitMinor: cap.limitMinor,
@@ -158,6 +159,7 @@ export function PlanningCapSection(props: PlanningCapProps): ReactElement {
   return (
     <section className="sb__sect" data-settings="planning-cap">
       <CapNotes cap={cap} may={may} because={because} />
+      {command.stepUp === null ? null : <StepUpPrompt ask={command.stepUp} />}
       <CapForm
         typed={typed}
         onType={setTyped}

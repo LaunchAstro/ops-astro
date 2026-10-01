@@ -25,7 +25,9 @@ import type {
   ProposalView,
   TaskLedgerView,
 } from '../../../../packages/core-wire/src/index.ts';
-import { useCommand, type Settlement } from '../records/use-command.ts';
+import type { Settlement } from '../records/use-command.ts';
+import { useMoneyCommand, type StepUpAsk } from '../records/use-money-command.ts';
+import { StepUpPrompt } from './step-up-prompt.tsx';
 
 export interface AgentSectionProps {
   readonly client: OperationsClient;
@@ -58,7 +60,12 @@ interface AgentControls {
   readonly endAtStop: (runId: string, askId: string) => void;
   /** The server's word that the last top-up at a stop waits on a second person, or null. */
   readonly stopAwaiting: string | null;
+  /** The money step-up prompt, while a refused money write waits on a code. */
+  readonly stepUp: StepUpAsk | null;
 }
+
+/** One write, handed the client of the sign-in it goes on. */
+type Call = (client: OperationsClient) => ReturnType<OperationsClient['mutate']>;
 
 /** The `detail.state` a command's answer carries, if any. */
 const stateOf = (value: unknown): unknown =>
@@ -73,7 +80,7 @@ const STOP_AWAITING =
 
 /** The pane's controls on the real commands, each ending in a reread. */
 function useAgentControls(props: AgentSectionProps): AgentControls {
-  const { busy, run } = useCommand();
+  const { busy, run, stepUp } = useMoneyCommand(props.client);
   const [refusal, setRefusal] = useState<string | null>(null);
   const [awaiting, setAwaiting] = useState<string | null>(null);
   const [stopAwaiting, setStopAwaiting] = useState<string | null>(null);
@@ -87,8 +94,8 @@ function useAgentControls(props: AgentSectionProps): AgentControls {
   const decide: AgentControls['decide'] = (gate, decision) => {
     if (busy) return;
     run(
-      () =>
-        props.client.mutate('task.decide', {
+      (client) =>
+        client.mutate('task.decide', {
           gateId: gate.gateId,
           versionId: gate.versionId,
           decision,
@@ -100,8 +107,8 @@ function useAgentControls(props: AgentSectionProps): AgentControls {
   const cancel = (lineageId: string): void => {
     if (busy) return;
     run(
-      () =>
-        props.client.mutate('task.cancel', {
+      (client) =>
+        client.mutate('task.cancel', {
           recordId: props.recordId,
           lineageId,
           reason: 'Cancelled from the Agent pane.',
@@ -109,24 +116,24 @@ function useAgentControls(props: AgentSectionProps): AgentControls {
       settle,
     );
   };
-  const send = (call: () => ReturnType<OperationsClient['mutate']>): void => {
+  const send = (call: Call): void => {
     run(call, settle);
   };
   const acts = { ...unknownControls(props, busy, send), ...stopControls(props, busy, send) };
-  return { busy, refusal, decide, cancel, awaiting, stopAwaiting, ...acts };
+  return { busy, refusal, decide, cancel, awaiting, stopAwaiting, stepUp, ...acts };
 }
 
 /** C54's two answers at a budget stop, each on its owning command (AW-05). */
 function stopControls(
   props: AgentSectionProps,
   busy: boolean,
-  send: (call: () => ReturnType<OperationsClient['mutate']>) => void,
+  send: (call: Call) => void,
 ): Pick<AgentControls, 'topUpAtStop' | 'endAtStop'> {
   return {
     topUpAtStop: (runId, askId, amountMinor, currency) => {
       if (busy) return;
-      send(() =>
-        props.client.mutate('run.top_up', {
+      send((client) =>
+        client.mutate('run.top_up', {
           recordId: props.recordId,
           runId,
           askId,
@@ -137,8 +144,8 @@ function stopControls(
     },
     endAtStop: (runId, askId) => {
       if (busy) return;
-      send(() =>
-        props.client.mutate('run.end_at_budget_stop', { recordId: props.recordId, runId, askId }),
+      send((client) =>
+        client.mutate('run.end_at_budget_stop', { recordId: props.recordId, runId, askId }),
       );
     },
   };
@@ -148,13 +155,13 @@ function stopControls(
 function unknownControls(
   props: AgentSectionProps,
   busy: boolean,
-  send: (call: () => ReturnType<OperationsClient['mutate']>) => void,
+  send: (call: Call) => void,
 ): Pick<AgentControls, 'recordOutcome' | 'writeOff'> {
   return {
     recordOutcome: (attemptId, outcome) => {
       if (busy) return;
-      send(() =>
-        props.client.mutate('budget.record_outcome', {
+      send((client) =>
+        client.mutate('budget.record_outcome', {
           recordId: props.recordId,
           attemptId,
           outcome,
@@ -163,8 +170,8 @@ function unknownControls(
     },
     writeOff: (attemptId, amountMinor, reason) => {
       if (busy) return;
-      send(() =>
-        props.client.mutate('budget.write_off', {
+      send((client) =>
+        client.mutate('budget.write_off', {
           recordId: props.recordId,
           attemptId,
           amountMinor,
@@ -211,6 +218,7 @@ export function AgentSection(props: AgentSectionProps): ReactElement {
         onEndAtStop={controls.endAtStop}
         stopAwaiting={controls.stopAwaiting}
       />
+      {controls.stepUp === null ? null : <StepUpPrompt ask={controls.stepUp} />}
     </section>
   );
 }
