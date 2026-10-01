@@ -10,7 +10,10 @@
 // lookup is not declared. The hold stays whole until a person decides.
 
 import { expect, it as vitestIt } from 'vitest';
-import type { ReplayLookupMode } from '../../packages/core-connectors/src/index.ts';
+import {
+  REPLAY_LOOKUP_PATH,
+  type ReplayLookupMode,
+} from '../../packages/core-connectors/src/index.ts';
 import {
   attemptsOf,
   callsOf,
@@ -100,4 +103,23 @@ it('AW-10 no false proof: an answer claiming success in its own words, the provi
   expect(String(run.note)).toMatch(/a person records/u);
   // One request: the call itself. The lookup was never sent.
   expect(world.provider.seen.length).toBe(before + 1);
+});
+
+/** How many lookups the stand-in has been sent. */
+const asked = (): number =>
+  world.provider.seen.filter((one) => one.path === REPLAY_LOOKUP_PATH).length;
+
+it('AW-10 hostile provider: a provider silent to one lookup is not asked again in that pass, so it cannot stall the sweep, and every call it holds says the pass established nothing', async () => {
+  world.provider.lookupMode('slow');
+  const runs = [await dropped('unavailable'), await dropped('unavailable')];
+  const before = asked();
+  await pass();
+  // One lookup timed out; the rest of the pass waited on no other.
+  expect(asked() - before).toBe(1);
+  for (const run of runs) {
+    // eslint-disable-next-line no-await-in-loop
+    const seen = await after(run);
+    expect(seen).toMatchObject({ resumed: false, call: 'liability_unknown' });
+    expect(String(seen.note)).toMatch(/^could establish nothing: /u);
+  }
 });
