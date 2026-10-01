@@ -10,7 +10,7 @@
 // — the words and tones a state may print — and not as a source of rows.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
-import { Shell, type StripSteps } from '@launchastro/ui';
+import { Chip, Shell, type StripSteps } from '@launchastro/ui';
 import { FaceProvider } from './face.tsx';
 import { SearchPalette, useSearch, useSearchKey } from './search.tsx';
 import { pathTo } from './routes.ts';
@@ -270,6 +270,9 @@ export function App(props: AppProps): ReactElement {
                 }
               />
               {session === null ? null : <StripPresence />}
+              {/* A page not built yet says so in its head too, as the mockup's
+                  placeholder does, in the product's own words (R2). */}
+              {match === null && at !== null && !refused ? <Chip>Not built yet</Chip> : null}
             </>
           }
           title={refused ? 'Not available' : (match?.route.title ?? at?.page.label ?? 'Not found')}
