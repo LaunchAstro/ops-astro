@@ -4,7 +4,18 @@
 // and records handed out a minute, each held per credential, per person and
 // per business; and the made-up or dead bearers a business key is sent a
 // minute, past which a not-live one is answered as limited and not recorded.
+//
+// With the door full, a bearer is answered as limited before any transaction
+// when it was answered not live this window, or when its address has sent the
+// business its share (`refused`) of not-live bearers this window, unless it
+// has been served live since the process started. So past the door each
+// made-up bearer costs a lookup only from an address under its share. The
+// address is the server's socket. The Vercel function trusts no client-address
+// header (the repo trusts none), so there only the not-live digests and the
+// platform's own request limit stand in front of the lookup. The held bearers
+// are digests, never the secrets.
 
+import { createHash } from 'node:crypto';
 import type { CredentialQuota } from '../../../packages/core-commands/src/index.ts';
 
 /** One limit at each of the three levels a credential's call counts against. */
@@ -79,7 +90,49 @@ export function createAgentQuota(
   now: () => Date,
   handedOut: (answer: object) => number,
 ): CredentialQuota {
-  return { ...doorOf(limits.refused, now), ...callsOf(limits, now, handedOut) };
+  return {
+    ...doorOf(limits.refused, now),
+    ...screenOf(limits.refused, now),
+    ...callsOf(limits, now, handedOut),
+  };
+}
+
+const LIVE_HELD = 10_000;
+const digestOf = (credential: string): string =>
+  createHash('sha256').update(credential, 'utf8').digest('hex');
+
+/** The bearers past a full door: digests answered not live, addresses' counts, digests served live. */
+function screenOf(refused: number, now: () => Date): Pick<CredentialQuota, 'screen' | 'resolved'> {
+  const dead = new Map<string, Window>();
+  const addresses = new Map<string, Window>();
+  const live = new Set<string>();
+  const running = (windows: Map<string, Window>, key: string): Window | undefined => {
+    const held = windows.get(key);
+    return held !== undefined && now().getTime() - held.start < WINDOW_MS ? held : undefined;
+  };
+  return {
+    screen(businessId, credential, address) {
+      const digest = digestOf(credential);
+      if (running(dead, `${businessId}:${digest}`) !== undefined) return true;
+      if (address === undefined || live.has(digest)) return false;
+      return (running(addresses, `${businessId}:${address}`)?.requests ?? 0) >= refused;
+    },
+    resolved(businessId, credential, address, served) {
+      const digest = digestOf(credential);
+      if (served) {
+        dead.delete(`${businessId}:${digest}`);
+        live.delete(digest);
+        live.add(digest);
+        // The longest unseen goes first, so the set cannot grow without end.
+        if (live.size > LIVE_HELD) live.delete(live.values().next().value ?? '');
+        return;
+      }
+      currentWindow(dead, `${businessId}:${digest}`, now().getTime());
+      if (address !== undefined) {
+        currentWindow(addresses, `${businessId}:${address}`, now().getTime()).requests += 1;
+      }
+    },
+  };
 }
 
 /** The three levels' counts; `createAgentQuota` adds the door. */
