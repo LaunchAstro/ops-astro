@@ -72,7 +72,6 @@ import {
   SESSION_PATH,
   pathOf,
 } from '../../packages/core-wire/src/index.ts';
-import { canonicalPayload } from '../../packages/core-digest/src/index.ts';
 import type { CommandDeclaration } from '../../packages/core-wire/src/index.ts';
 import type {
   executeCommand,
@@ -88,8 +87,9 @@ import type {
 } from '../../packages/core-commands/src/index.ts';
 import type { Verifier } from './auth/supabase.ts';
 import { presentedBy } from './auth/agent-bearer.ts';
-import type { SSEStreamingApi } from 'hono/streaming';
-import type { LiveSignal, LiveTopics } from './live.ts';
+import type { LiveTopics } from './live.ts';
+import { follow } from './live-task.ts';
+import { readObject } from './request-body.ts';
 import { markOf, presenceAskOf, type LivePresence, type SeatAsk } from './live-presence.ts';
 import {
   BOARD,
@@ -121,6 +121,9 @@ import {
   unnamedSession,
   SESSION_COOKIE_OPTIONS,
 } from './auth/session.ts';
+
+export { follow } from './live-task.ts';
+export { MAX_BODY_BYTES } from './request-body.ts';
 
 /**
  * A read, run under the same tenancy wrapper and the same grant path:
@@ -877,65 +880,6 @@ async function mayShowInbox(
  * person route. The bearer goes to the provider as the person's own; the body
  * is the code, or nothing.
  */
-const noop = (): void => {};
-const RANK = { check: 0, invalidate: 1, resync: 2 } as const;
-
-/**
- * One open stream: `resync` once subscribed, then each signal once the caller
- * is asked again, and `closed` the first time the answer is no. Signals that
- * arrive while one is pending merge into it, the strongest kept. Stopping it
- * (the tab leaving, or the topics closing) lets go only once no question it
- * asked is in flight.
- */
-export async function follow(
-  stream: SSEStreamingApi,
-  live: { readonly topics: LiveTopics; readonly recheckMs?: number },
-  businessId: string,
-  taskId: string,
-  may: () => Promise<string | CommandRefusal>,
-): Promise<void> {
-  const ended = new Promise<void>((resolve) => {
-    stream.onAbort(resolve);
-  });
-  let pending: LiveSignal | 'check' | null = null;
-  let chain = Promise.resolve();
-  const send = async (): Promise<void> => {
-    const signal = pending;
-    pending = null;
-    if (signal === null || stream.aborted) return;
-    const allowed = typeof (await may()) === 'string';
-    // The tab may have left while the caller was asked: nothing is written after.
-    if (stream.aborted) return;
-    if (!allowed) {
-      await stream.writeSSE({ event: 'closed', data: '' });
-      stream.abort();
-    } else if (signal !== 'check') await stream.writeSSE({ event: signal, data: '' });
-  };
-  const want = (signal: LiveSignal | 'check'): void => {
-    if (pending === null) chain = chain.then(send).catch(() => stream.abort());
-    if (pending === null || RANK[signal] > RANK[pending]) pending = signal;
-  };
-  let finished = noop;
-  const done = new Promise<void>((resolve) => {
-    finished = resolve;
-  });
-  const stop = async (): Promise<void> => {
-    stream.abort();
-    await done;
-  };
-  const unsubscribe = live.topics.subscribe(businessId, taskId, want, stop);
-  const timer = setInterval(() => want('check'), live.recheckMs ?? RECHECK_MS);
-  try {
-    // Topics closing stop a stream as it subscribes: nothing is written after.
-    if (!stream.aborted) await stream.writeSSE({ event: 'resync', data: '' });
-    await ended;
-  } finally {
-    clearInterval(timer);
-    await chain;
-    unsubscribe();
-    finished();
-  }
-}
 
 /**
  * One way out for every refusal, so the ones the boundary raises itself go
@@ -996,56 +940,6 @@ const SIGN_IN = 'Sign in. This endpoint reads the caller from verified authentic
 const CROSS_SITE = (): CommandRefusal => refuseCommand('AUTH_CROSS_SITE', [], CROSS_SITE_FIXES);
 const MISMATCH = (): CommandRefusal => refuseCommand('AUTH_SESSION_MISMATCH', [], MISMATCH_FIXES);
 const OBJECT = 'Send a JSON object holding the command’s own fields.';
-
-/** The largest body a surface route reads. Files go by signed link, never through the API. */
-export const MAX_BODY_BYTES = 1_048_576;
-
-/**
- * A body that is not an object is refused rather than coerced into one, and
- * so is one over `MAX_BODY_BYTES`.
- *
- * So is one with no canonical form. `JSON.parse` reads a number too large for
- * a double, 1e400, as Infinity, and every entry takes the payload digest
- * before anything else, so that body would fault with nothing recorded.
- * Here it is a malformed body like any other.
- */
-async function readObject(
-  context: Context,
-): Promise<Readonly<Record<string, unknown>> | undefined> {
-  try {
-    const text = await readLimited(context.req.raw, MAX_BODY_BYTES);
-    if (text === undefined) return undefined;
-    const parsed: unknown = JSON.parse(text);
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return undefined;
-    canonicalPayload(parsed);
-    return parsed as Readonly<Record<string, unknown>>;
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * The body as text, or nothing past `limit` bytes: counted as they arrive, so
- * a body with no Content-Length, or a wrong one, stops at the limit.
- */
-async function readLimited(request: Request, limit: number): Promise<string | undefined> {
-  if (Number(request.headers.get('content-length')) > limit) return undefined;
-  let total = 0;
-  const counted = request.body?.pipeThrough(
-    new TransformStream<Uint8Array, Uint8Array>({
-      transform(chunk, controller) {
-        total += chunk.byteLength;
-        if (total > limit) controller.error(new RangeError('over the body limit'));
-        else controller.enqueue(chunk);
-      },
-    }),
-  );
-  try {
-    return await new Response(counted).text();
-  } catch {
-    return undefined;
-  }
-}
 
 /** The endings an `access.end` answer names (C58): ids, and nothing else. */
 function endingIdsOf(result: object): readonly string[] {

@@ -16,6 +16,11 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const VIEWS = 'packages/core-wire/src/views.ts';
+// The read types split out of views.ts, checked with it.
+const VIEWS_SPLIT = [
+  'packages/core-wire/src/views-access.ts',
+  'packages/core-wire/src/views-operations.ts',
+];
 const CLIENT_ROOTS = ['apps/web/src', 'apps/cli'];
 
 /** Every `interface X` and `type X = {` in a source, with its own top-level field names. */
@@ -62,7 +67,9 @@ describe('CQ-7 no shadow types', () => {
   });
 
   it('declares no server read type again in the web or the command line', () => {
-    const server = declarations(readFileSync(VIEWS, 'utf8'));
+    const server = declarations(
+      [VIEWS, ...VIEWS_SPLIT].map((file) => readFileSync(file, 'utf8')).join('\n'),
+    );
     expect(server.size).toBeGreaterThan(20);
     const shadows: string[] = [];
     for (const file of CLIENT_ROOTS.flatMap(sources)) {
