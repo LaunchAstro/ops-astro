@@ -71,9 +71,11 @@ describe('REVIEW-MAIN-2B1-1 the search does not feed its own reading', () => {
     expect(api.asked).toHaveLength(1);
 
     await view.type('input[type="search"]', 'dee');
+    // oxlint-disable-next-line no-await-in-loop -- each tick waits on the last
     for (let i = 0; i < 6; i += 1) await tick();
     const askedThen = api.asked.length;
     const drawnThen = drawn(view);
+    // oxlint-disable-next-line no-await-in-loop -- each tick waits on the last
     for (let i = 0; i < 4; i += 1) await tick();
 
     // One read for the newest days, one for `dee`, and no more.
