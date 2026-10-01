@@ -214,7 +214,8 @@
     "B1-JOIN-FIX (REV187W): service-stop.test.ts's before-lookup refusals also run beside a live database of the named business and write no sign-in row to it; Sol's proof named-service-stop-reaches-database runs that suite alone through the conformance runner, which must see it reach the database.",
     "B1-END-FIX-OPS (batch 1 blind review A1, A5, A8) adds restore-includes-sign-in-tables (the restore drill passes the scheduled public, ops and auth archive), restore-includes-staging-guards (a staging archive restores after the seed installs its made-up guards) and hosted-expired-lease-recovery (the Vercel function runs the reconciliation pass and fences a lost worker's expired lease; fix round 1 adds hosted-recovery-waits-for-pass (every request waits on the pass in flight) and staging-archive-restores-guards (the complete staging archive restores with its guard triggers); round 2 adds restore-drill-keeps-staging-guards (the drill's target keeps the guard triggers).",
     "SL08 names mp-4-4-preferences (subtasks.showFinished is the person's own preference key), task-duplicate-client-name-guard (task.duplicate's carried-text guard names a client only to a caller who may read it; an empty duplicate is not client-locked), s0-5-share-grant (task.share_with_client is client data under the S0-5 gate; a revoke stays a business grant write), task-client-facts and task-read-client-reach (task.read sends client and hasContent to members, the client id only where the reader's grants reach it) and task-client-facts-isolation (its three crossings).",
-    "SL08 names history-trail-preference (history.showTrail, the task panel's trail fold, is the person's own preference key: saved, read back, and another person's value never reached)."
+    "SL08 names history-trail-preference (history.showTrail, the task panel's trail fold, is the person's own preference key: saved, read back, and another person's value never reached).",
+    "SL06 (Clients row door) adds board-row-client (each task.board row carries its client by id and name only where the reader's grants reach it, read back against task.read and client.list; the crossings: another business names none of alpha's clients, a reader of client A is never sent B, a task holder without the client reads null beside clientSet, the agent under a live delegation is refused)."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -455,6 +456,7 @@
     "tests/reads/mp-5-8-board-rank-steps.test.ts",
     "tests/reads/mp-5-8-board-actual.test.ts",
     "tests/reads/mp-5-8-board-estimate.test.ts",
+    "tests/reads/board-row-client.test.ts",
     "tests/commands/task-set-state.test.ts",
     "tests/commands/task-set-state-agent.test.ts",
     "tests/commands/task-set-category.test.ts",

@@ -558,6 +558,12 @@ export interface BoardTask extends TaskSummary {
   /** True when the task is put under a client (`task.set_party`). */
   readonly clientSet: boolean;
   /**
+   * The task's client by id and name (the Clients row door), as `task.read` and
+   * `client.list` answer them: null for none, and null beside `clientSet: true`
+   * for a client the reader's grants do not reach (CS-4.12).
+   */
+  readonly client: ClientView | null;
+  /**
    * Every finished minute logged on the task (MP-4-6), the total `task.read`'s
    * time answers: one number, no names. Derived at read; 0 for none.
    */

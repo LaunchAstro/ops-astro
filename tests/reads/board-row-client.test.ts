@@ -53,7 +53,7 @@ interface World {
   readonly bravo: BusinessId;
   readonly owner: Member;
   readonly bravoOwner: Member;
-  /** Reads client A's work through a grant on client A. */
+  /** Holds A's task by a record grant and reaches client A by a grant on it. */
   readonly clientReader: Member;
   /** Holds B's task by a record grant, and no grant on client B. */
   readonly taskHolder: Member;
@@ -146,6 +146,7 @@ async function plant(): Promise<void> {
   ]);
   await w.db.app.withBusiness(alpha, async (tx) => {
     await grantTo(tx, clientReader, 'read', { kind: 'party', id: CLIENT_A });
+    await grantTo(tx, clientReader, 'read', { kind: 'record', id: idOf('a-work') });
     await grantTo(tx, taskHolder, 'read', { kind: 'record', id: idOf('b-work') });
   });
 }

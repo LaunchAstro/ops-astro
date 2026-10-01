@@ -16,8 +16,11 @@
 // the due and the estimate (MP-4-8) come from
 // stored records, and the hover door goes to the task's page link (MP-4-12).
 // What the product does not store yet draws a dash or nothing and is recorded
-// as such: the client's name (the client model), the comment counts (INB-1)
-// and starring (P-20). The actual is the time logged (MP-4-6).
+// as such: starring (P-20). The actual is the time logged (MP-4-6). The client
+// is the read's, by name, where the reader reaches it, so a Clients row door
+// (`?f=client:<slug>`, the Client facet) opens the board on that client's work;
+// the board takes its view from the address it is drawn at, a panel's place
+// included, so the door filters the board in the dock as on the page.
 
 import { useState, type ReactElement } from 'react';
 import { Empty, ProjectsBoard, TabPanel, type ProjectRow } from '@launchastro/ui';
@@ -50,7 +53,13 @@ export interface ProjectsProps {
   readonly navigate: (path: string) => void;
   /** The dock task panel (MP-4-8): rows open beside the board through it. Absent, they open the task page. */
   readonly taskPanel?: BoardPanelHost;
+  /** The whole address the board is drawn at, the page's or a panel's place; its query is the view. */
+  readonly address?: string;
 }
+
+/** The view part of an address (`?f=...`); the page's own query when none is given. */
+const queryOf = (address: string | undefined): string =>
+  address === undefined ? window.location.search : new URL(address, 'http://here').search;
 
 type ProjectsTab = 'board' | 'worklog';
 
@@ -89,6 +98,7 @@ export function Projects(props: ProjectsProps): ReactElement {
           client={props.client}
           grantKey={props.grantKey}
           {...(props.taskPanel === undefined ? {} : { taskPanel: props.taskPanel })}
+          {...(props.address === undefined ? {} : { address: props.address })}
         />
       </TabPanel>
       <TabPanel name="projects" tab="worklog" selected={tab}>
@@ -147,6 +157,8 @@ function ProjectBoard(props: Omit<ProjectsProps, 'navigate'>): ReactElement {
       >
         {(value) => (
           <ProjectsBoard
+            // A new place is a new view: the board opens on it afresh.
+            key={props.address === undefined ? undefined : queryOf(props.address)}
             rows={value.tasks.map((task) => rowOf(task))}
             withheld={value.withheld ?? 0}
             changedAt={value.changedAt ?? null}
@@ -162,7 +174,7 @@ function ProjectBoard(props: Omit<ProjectsProps, 'navigate'>): ReactElement {
               reload,
               ...(panel === undefined ? {} : { panel: { host: panel, opened, setOpened } }),
             })}
-            address={window.location.search}
+            address={queryOf(props.address)}
             onAddress={(query) => {
               window.history.replaceState(
                 window.history.state,
@@ -184,7 +196,8 @@ const STAGE_LABELS = TASK_STAGES.list().map((stage) => stage.label);
 function rowOf(task: BoardTask): ProjectRow {
   // A read from a server that predates Assign to AI, the category or the
   // comment counts carries none of them: none.
-  const read: Partial<Pick<BoardTask, 'agent' | 'myAgents' | 'category' | 'comments'>> = task;
+  const read: Partial<Pick<BoardTask, 'agent' | 'myAgents' | 'category' | 'comments' | 'client'>> =
+    task;
   const agent = read.agent ?? null;
   const category = read.category ?? null;
   return {
@@ -194,9 +207,9 @@ function rowOf(task: BoardTask): ProjectRow {
     rank: { number: task.rank.number, calc: task.rank.calc },
     // No ticket builds starring yet, so the starred tier is empty (P-20).
     starred: false,
-    // The client's name waits on the client model; `clientSet` says only
-    // that there is one.
-    client: null,
+    // The client by name where the reader reaches it (C32's rule); a server
+    // that predates it, or a client out of reach, sends none.
+    client: read.client?.name ?? null,
     assignee: assigneeOf(task, agent),
     // The reader's own agents for the task; the read sends no one else's.
     agents: (read.myAgents ?? []).map((one) => ({ id: one.delegationId, name: one.purpose })),

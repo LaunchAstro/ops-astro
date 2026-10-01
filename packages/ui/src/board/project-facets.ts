@@ -36,7 +36,10 @@ function byField(
 }
 
 /** A category's facet key: its words, lower-case and hyphenated. */
-export const categorySlug = slug;
+export const categorySlug: (value: string) => string = slug;
+
+/** The Client filter on one client, by name: the address a Clients row door opens the board at. */
+export const clientFacetId = (name: string): string => `client:${slug(name)}`;
 
 /** The assignee filter on one person (the viewer preset's, P-11). */
 export const viewerFacetId = (person: string): string => `assignee:${person}`;
