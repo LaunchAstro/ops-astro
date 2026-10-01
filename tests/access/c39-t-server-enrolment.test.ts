@@ -190,3 +190,39 @@ it("C39-T enrolment broker: it catalogues auth.create_user and auth.update_user 
     await started.stop();
   }
 }, 30_000);
+
+it("C39-T enrolment broker: its custody sends the login provider no POST but the create's, so the service key mints no sign-in link and makes no other user", async () => {
+  const settings = enrolmentSettings(enrolmentOn());
+  if (settings.kind !== 'on') throw new Error(`enrolment settings: ${settings.kind}`);
+  const started = await startEnrolment(settings, async () => await Promise.resolve([w.alpha]));
+  try {
+    const asked = e.users.received.length;
+    const body = JSON.stringify({ type: 'magiclink', email: 'name@example.test' });
+    const paths = [
+      '/auth/v1/admin/generate_link',
+      '/auth/v1/invite',
+      `/auth/v1/admin/users/${randomUUID()}/factors`,
+      '/auth/v1/otp',
+    ];
+    for (const path of paths) {
+      const request = {
+        method: 'POST' as const,
+        path,
+        body,
+        timeoutMs: 600,
+        maxResponseBytes: 1024,
+      };
+      // oxlint-disable-next-line no-await-in-loop -- one request at a time
+      const outcome = await started.options.broker.custody.dispatch('auth_key', {
+        destination: 'auth',
+        ...request,
+      });
+      expect(outcome.kind === 'answered' && outcome.outbound.ok, `POST ${path}`).toBe(false);
+    }
+    expect(e.users.received.slice(asked).map((one) => `${one.method} ${one.path}`)).toStrictEqual(
+      [],
+    );
+  } finally {
+    await started.stop();
+  }
+}, 30_000);
