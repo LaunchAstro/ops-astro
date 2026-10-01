@@ -219,8 +219,12 @@
   min-width: 0;
 }
 .tph__n {
-  font-family: var(--font-mono);
+  /* type-exception DR-6: the run hero's mono 20 number, the one mono figure */
+  font: var(--type-mono);
+  letter-spacing: var(--type-mono-tracking);
+  text-transform: var(--type-mono-case);
   font-size: var(--text-h2);
+  line-height: var(--leading-none);
   color: var(--text);
 }
 .tph__of {
