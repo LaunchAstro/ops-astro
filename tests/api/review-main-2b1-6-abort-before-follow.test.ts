@@ -83,6 +83,7 @@ async function bounded(running: Promise<unknown>): Promise<'resolved' | 'hung'> 
   ]);
 }
 
+// oxlint-disable-next-line max-lines-per-function -- one table of cases for follow and followBoard
 describe('REVIEW-MAIN-2B1-6: a live stream aborted before follow starts never ends', () => {
   it.each([
     ['the tab drops between sharesOf and follow (while seatOf is awaited)', false],
@@ -100,7 +101,12 @@ describe('REVIEW-MAIN-2B1-6: a live stream aborted before follow starts never en
       stream.abort();
       expect(share.aborted, 'the share reads as aborted before follow starts').toBe(true);
 
-      const session = { sessionId: 'seat-1', personId: person, name: 'Ana Bell', side: 'staff' as const };
+      const session = {
+        sessionId: 'seat-1',
+        personId: person,
+        name: 'Ana Bell',
+        side: 'staff' as const,
+      };
       const running = follow(
         share,
         { topics, recheckMs: 60_000 },
@@ -110,13 +116,17 @@ describe('REVIEW-MAIN-2B1-6: a live stream aborted before follow starts never en
       );
 
       expect
-        .soft(await bounded(running), `follow on an aborted share ends within ${String(BOUND_MS)} ms`)
+        .soft(
+          await bounded(running),
+          `follow on an aborted share ends within ${String(BOUND_MS)} ms`,
+        )
         .toBe('resolved');
+      expect.soft(presence.held, 'the presence book holds no seat for the dropped tab').toBe(0);
       expect
-        .soft(presence.held, 'the presence book holds no seat for the dropped tab')
-        .toBe(0);
-      expect
-        .soft(await bounded(topics.close()), `topics.close() resolves within ${String(BOUND_MS)} ms`)
+        .soft(
+          await bounded(topics.close()),
+          `topics.close() resolves within ${String(BOUND_MS)} ms`,
+        )
         .toBe('resolved');
     },
   );
