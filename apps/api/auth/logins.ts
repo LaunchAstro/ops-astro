@@ -2,7 +2,8 @@
 //
 // The sign-in provider's calls for a login whose access has ended (C58): end
 // every session the login has, and deactivate the login so it cannot sign in
-// again.
+// again. And C59's admin removal of one factor, an owner's reset of a lost
+// authenticator: `DELETE /admin/users/<id>/factors/<factor id>`.
 //
 // Both are GoTrue's `PUT /admin/users/<id>` with a ban of 100 years, under the
 // admin API's key (`SUPABASE_SERVICE_KEY`, sent as the bearer and as
@@ -65,20 +66,29 @@ export function createGoTrueLogins(options: GoTrueLoginOptions): LoginProvider {
   // The ban is both steps: each is done once the ban holds, and asking twice is safe.
   const ban = async (subject: string): Promise<ProviderAnswer<void>> => {
     if (!isUserId(subject)) return { ok: false, fault: 'refused' };
-    const sent = await call(to, `/admin/users/${subject}`, await options.adminKey(), {
+    const sent = await call(to, 'PUT', `/admin/users/${subject}`, await options.adminKey(), {
       ban_duration: BAN_DURATION,
     });
     if ('fault' in sent) return { ok: false, fault: sent.fault };
     return bannedAnswer(sent.text, subject);
   };
-  return { endSessions: ban, deactivate: ban };
+  // C59 (ORCH65-Q3): an owner's reset of a lost factor. Done is the factor named back.
+  const deleteFactor = async (subject: string, factorId: string): Promise<ProviderAnswer<void>> => {
+    if (!isUserId(subject) || !isUserId(factorId)) return { ok: false, fault: 'refused' };
+    const path = `/admin/users/${subject}/factors/${factorId}`;
+    const sent = await call(to, 'DELETE', path, await options.adminKey());
+    if ('fault' in sent) return { ok: false, fault: sent.fault };
+    return namedBack(sent.text, factorId);
+  };
+  return { endSessions: ban, deactivate: ban, deleteFactor };
 }
 
 async function call(
   to: Destination,
+  method: 'PUT' | 'DELETE',
   path: string,
   key: string,
-  body: Readonly<Record<string, unknown>>,
+  body?: Readonly<Record<string, unknown>>,
 ): Promise<Sent> {
   // The path is built here from fixed segments and a subject already shaped;
   // the origin is the configured one, and the base's own path (`/auth/v1` on
@@ -88,7 +98,7 @@ async function call(
   let response: Response;
   try {
     const sent = to.send(url, {
-      method: 'PUT',
+      method,
       redirect: 'error',
       signal: AbortSignal.timeout(to.timeoutMs),
       headers: {
@@ -97,7 +107,7 @@ async function call(
         'content-type': 'application/json',
         accept: 'application/json',
       },
-      body: JSON.stringify(body),
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     // Raced as well as signalled: an answer that ignores the signal still runs
     // out of time here.
@@ -137,7 +147,22 @@ function bannedAnswer(text: string, subject: string): ProviderAnswer<void> {
     : { ok: false, fault: 'malformed' };
 }
 
-/** GoTrue's user id: a UUID, and nothing else is sent as one. */
+/** The factor named back by its id, as GoTrue answers a removal. */
+function namedBack(text: string, factorId: string): ProviderAnswer<void> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return { ok: false, fault: 'malformed' };
+  }
+  const named =
+    typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
+      ? (parsed as Readonly<Record<string, unknown>>)['id']
+      : undefined;
+  return named === factorId ? { ok: true, value: undefined } : { ok: false, fault: 'malformed' };
+}
+
+/** GoTrue's user and factor ids: a UUID, and nothing else is sent as one. */
 function isUserId(value: string): boolean {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u.test(value);
 }
