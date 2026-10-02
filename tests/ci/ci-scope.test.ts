@@ -7,8 +7,8 @@
 // unknown path or shared tooling runs everything; a shard with nothing in
 // scope skips while every in-scope suite still lands in one shard; and the
 // workflow keeps every required check's name.
-import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -206,6 +206,40 @@ describe('changed files', () => {
       expect(() => changedFiles('0000000000000000000000000000000000000000', repo)).toThrow();
     } finally {
       rmSync(repo, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('the wrapper as a process', () => {
+  it('runs the command on a merge group and passes its exit code, called by any path', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ci-scope-link-'));
+    try {
+      const link = join(dir, 'ci-scope.ts');
+      symlinkSync(join(root, 'scripts/ci-scope.ts'), link);
+      for (const script of [join(root, 'scripts/ci-scope.ts'), link]) {
+        const run = spawnSync(
+          process.execPath,
+          [script, 'isolation tests', '--', 'sh', '-c', 'exit 7'],
+          {
+            cwd: root,
+            env: { ...process.env, GITHUB_EVENT_NAME: 'merge_group' },
+            encoding: 'utf8',
+          },
+        );
+        expect(run.status, script).toBe(7);
+      }
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('every isolation suite is a named suite, so its area is read like theirs', () => {
+    const isolation = JSON.parse(read('tests/db/isolation-suites.json')) as Record<string, unknown>;
+    const lists = Object.entries(isolation).filter(([key]) => key !== 'comment');
+    expect(lists.map(([key]) => key)).toEqual(['invariant']);
+    const all = new Set(named);
+    for (const [, list] of lists) {
+      expect((list as string[]).filter((s) => !all.has(s))).toEqual([]);
     }
   });
 });

@@ -152,6 +152,24 @@ export const changedFiles = (base: string, cwd: string): string[] =>
     .split('\0')
     .filter((p) => p !== '');
 
+/** On a pull request, the base `scripts/merge-group.mjs` judges it against. */
+const pullRequestBase = (root: string): string =>
+  execFileSync(process.execPath, [join(root, 'scripts/merge-group.mjs'), 'base'], {
+    cwd: root,
+    encoding: 'utf8',
+  }).trim();
+
+/**
+ * Isolation runs when one of its own suites is reached; every one is also a named
+ * suite (tests/ci/ci-scope.test.ts), so its area is read the same way.
+ */
+const isolationSuites = (root: string): string[] =>
+  (
+    JSON.parse(readFileSync(join(root, 'tests/db/isolation-suites.json'), 'utf8')) as {
+      invariant?: string[];
+    }
+  ).invariant ?? [];
+
 function main(argv: readonly string[]): number {
   const root = resolve(import.meta.dirname, '..');
   const split = argv.indexOf('--');
@@ -163,19 +181,13 @@ function main(argv: readonly string[]): number {
     throw new Error('give -- <command> to run, or --decide');
   }
   const event = process.env['GITHUB_EVENT_NAME'] ?? '';
-  const base =
-    event === 'pull_request'
-      ? execFileSync(process.execPath, [join(root, 'scripts/merge-group.mjs'), 'base'], {
-          cwd: root,
-          encoding: 'utf8',
-        }).trim()
-      : '';
   const map = readScopeMap(join(root, 'scripts/ci-scope.json'));
-  const changed = event === 'pull_request' ? changedFiles(base, root) : [];
+  const changed = event === 'pull_request' ? changedFiles(pullRequestBase(root), root) : [];
   const manifest = readNamedSuites(root);
   const named = [...manifest.invariant, ...manifest.conformance];
   const scope = scopeOf(event, changed, map, dependentsOf(root, named));
-  let run = checkRuns(check, scope, changed, map, named);
+  const subject = check === 'isolation tests' ? isolationSuites(root) : named;
+  let run = checkRuns(check, scope, changed, map, subject);
   const extra: string[] = [];
   if (check === 'database conformance' && run && !scope.everything && shardAt !== -1) {
     const scoped = suitesInScope(scope, named);
@@ -200,7 +212,7 @@ function main(argv: readonly string[]): number {
   return child.status ?? 1;
 }
 
-if (process.argv[1] !== undefined && resolve(process.argv[1]) === import.meta.filename) {
+if (import.meta.main) {
   try {
     process.exitCode = main(process.argv.slice(2));
   } catch (error) {
