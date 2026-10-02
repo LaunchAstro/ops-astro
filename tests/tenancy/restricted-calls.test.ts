@@ -458,6 +458,7 @@ async function roleClasses(
                  when r.rolname = 'ops_astro_lookup' then 'lookup'
                  when r.rolname = 'ops_astro_forwarder' then 'forwarder'
                  when r.rolname = 'ops_astro_restore_drill' then 'restore drill'
+                 when r.rolname = 'ops_astro_upkeep' then 'upkeep'
                  when r.rolcanlogin and not r.rolbypassrls and not r.rolcreaterole
                       and not r.rolcreatedb then 'outsider'
                  else 'unclassified' end as class
@@ -547,6 +548,9 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     // C55: the restore drill stamps the date of the last tested restore through
     // ops.record_tested_restore() (0070), proved in tests/operations/c55-last-tested-restore.test.ts.
     expect(classes['restore drill']).toStrictEqual(['ops_astro_restore_drill']);
+    // 20261002105957: the daily upkeep deletes second-factor codes past their horizon through
+    // ops.expire_second_factor_codes(), proved in tests/db/second-factor-codes-retention.test.ts.
+    expect(classes['upkeep']).toStrictEqual(['ops_astro_upkeep']);
     expect(classes['application login']).toContain(world.db.loginRole);
     expect(classes['outsider']).toContain(world.db.restrictedRole);
   });
@@ -707,22 +711,25 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(wrong).toStrictEqual([]);
   });
 
+  // Exactly four, each for a named reason. The append-only trigger refuses
+  // the owner itself. The fair share's count (AW-01, ORCH-DECISION SL11
+  // AW-01) is the one read across businesses: a provider route's ceiling is
+  // the installation's, which a tenant transaction cannot count under row
+  // security. It answers one number and no id, and only the broker's role
+  // may execute it (tests/broker/aw-01-broker-fair-share.test.ts). The drill
+  // stamp (C55) writes only now(), and only the drill's identity runs it. The
+  // codes expiry (20261002105957) deletes only rows past its fixed horizon, and only the
+  // upkeep identity runs it.
   describe('the security definer functions', () => {
     const definers = (): readonly CatalogueFunction[] => functions.filter((fn) => fn.definer);
     const definer = (signature: string): CatalogueFunction | undefined =>
       definers().find((fn) => fn.signature === signature);
 
-    // Exactly three, each for a named reason. The append-only trigger refuses
-    // the owner itself. The fair share's count (AW-01, ORCH-DECISION SL11
-    // AW-01) is the one read across businesses: a provider route's ceiling is
-    // the installation's, which a tenant transaction cannot count under row
-    // security. It answers one number and no id, and only the broker's role
-    // may execute it (tests/broker/aw-01-broker-fair-share.test.ts). The drill
-    // stamp (C55) writes only now(), and only the drill's identity runs it.
-    it('are exactly three, each with its search path pinned', () => {
+    it('are exactly four, each with its search path pinned', () => {
       expect(definers().map((fn) => fn.signature)).toStrictEqual([
         'handback_reports_append_only()',
         'model_route_room(text,integer)',
+        'ops.expire_second_factor_codes()',
         'ops.record_tested_restore()',
       ]);
     });
@@ -743,7 +750,16 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
       expect(fn?.firedBy).toStrictEqual([]);
     });
 
-    it('the third is the drill stamp, taking no argument', () => {
+    it('the third is the codes expiry, taking no argument', () => {
+      // 20261002105957: no argument, so it deletes only rows past its fixed horizon; only the
+      // upkeep identity executes it (second-factor-codes-retention).
+      const expiry = definer('ops.expire_second_factor_codes()');
+      expect(expiry?.trigger).toBe(false);
+      expect(expiry?.argumentTypes).toStrictEqual([]);
+      expect(expiry?.config).toStrictEqual(['search_path=pg_catalog']);
+    });
+
+    it('the fourth is the drill stamp, taking no argument', () => {
       // 0070 (C55): no argument, so it writes only now(); only the drill's
       // identity executes it (c55-last-tested-restore), refused above to every caller here.
       const stamp = definer('ops.record_tested_restore()');

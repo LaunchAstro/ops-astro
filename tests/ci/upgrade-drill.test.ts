@@ -198,8 +198,9 @@ function upgradeDrillCases3() {
   }, 180_000);
 
   it("upgrades from main's newest migration to a UTC timestamp ID, as CI drills it", () => {
+    // In 2099, so it sorts after every real migration, timestamped ones included.
     const planted = withPlanted(
-      '20261002013000_planted_stamped.sql',
+      '20991231000000_planted_stamped.sql',
       `alter table public.records add column planted_stamp boolean not null default false`,
     );
     // CI names the base (ci.yml: --base "$BASE_SHA"); a newest migration that
@@ -207,7 +208,7 @@ function upgradeDrillCases3() {
     const base = spawnSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
     const { status, result } = drill(head.slice(0, head.indexOf('_')), planted, true, base);
     expect(result?.from).toBe(head);
-    expect(result?.applied).toStrictEqual(['20261002013000_planted_stamped']);
+    expect(result?.applied).toStrictEqual(['20991231000000_planted_stamped']);
     expect(result?.differences).toStrictEqual([]);
     expect(status).toBe(0);
   }, 180_000);
