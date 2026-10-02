@@ -98,7 +98,7 @@ it.each([
   ],
   [
     'a database host that is not Supabase',
-    { DATABASE_URL: 'postgres://a.b:pw@example.com/x' },
+    { DATABASE_URL: 'postgres://a.b:example@example.com/x' },
     'DATABASE_URL',
   ],
 ])('staging with %s is refused, named by setting', (_label, overrides, words) => {
