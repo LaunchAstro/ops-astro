@@ -179,6 +179,32 @@ describe('money step-up by signing in again', () => {
     expect(server.to(WRITE)).toHaveLength(1);
   });
 
+  it('money sign-in again: a session ended during the password check signs the new token out at GoTrue and trades nothing', async () => {
+    const password = held();
+    const { view, server, end } = await refused((call) =>
+      call.url === `${GOTRUE}/token?grant_type=password` ? password.wait() : null,
+    );
+    await signInWith(view, PASSWORD);
+    await end();
+    password.answer(json({ access_token: FRESH, refresh_token: 'r' }));
+    await settle();
+    expect(server.to('/logout?scope=local')).toMatchObject([
+      { url: `${GOTRUE}/logout?scope=local`, authorization: `Bearer ${FRESH}` },
+    ]);
+    expect(trades(server.calls)).toEqual([]);
+    expect(server.to(WRITE)).toHaveLength(1);
+  });
+
+  it('money sign-in again: a cookie trade the API refuses signs the new token out at GoTrue and sends nothing', async () => {
+    const { view, server, sessions } = await refused((call) =>
+      call.url === '/api/session' ? Promise.resolve(refusal('AUTH_UNKNOWN_LOGIN', [], 401)) : null,
+    );
+    await signInWith(view, PASSWORD);
+    expect(server.to('/logout?scope=local')).toMatchObject([{ authorization: `Bearer ${FRESH}` }]);
+    expect(server.to(WRITE)).toHaveLength(1);
+    expect(sessions.session?.sessionId).toBe('sid-old');
+  });
+
   it('money sign-in again: the old sign-in is signed out at the API, the provider and its cookie once the tab has moved', async () => {
     const { view, server } = await refused();
     await signInWith(view, PASSWORD);
