@@ -111,6 +111,12 @@ const KEY = 'ops-astro.session';
 export const settingsCacheKey = (businessKey: string): string =>
   `ops-astro.settings.${businessKey}`;
 
+/** Where the dock keeps its open set, per business. A switch or sign-out removes it. */
+export const dockKey = (businessKey: string): string => `ops-astro.dock.${businessKey}`;
+
+/** The tab's copy of the person's rail and dock sizes, per business. A switch or sign-out removes it. */
+export const layoutKey = (businessKey: string): string => `ops-astro.layout.${businessKey}`;
+
 /**
  * How many times a session has ended in this tab: the session generation.
  *
@@ -211,6 +217,13 @@ export class SessionStore {
   set(session: Session): void {
     // Held in memory first, so a storage that refuses cannot take the sign-in
     // with it; the reload will ask again.
+    const leaving = this.#session?.businessKey;
+    // A switch keeps the sign-in: the dock of the business it leaves goes now,
+    // or sign-out, which clears only the business it ends in, would miss it.
+    if (leaving !== undefined && leaving !== session.businessKey) {
+      jsonSlot(this.#storage, dockKey(leaving), isRecord).remove();
+      jsonSlot(this.#storage, layoutKey(leaving), isRecord).remove();
+    }
     this.#session = session;
     this.#kept.write(session);
   }
@@ -223,6 +236,8 @@ export class SessionStore {
     this.#kept.remove();
     if (ending !== null) {
       jsonSlot(this.#storage, settingsCacheKey(ending.businessKey), isRecord).remove();
+      jsonSlot(this.#storage, dockKey(ending.businessKey), isRecord).remove();
+      jsonSlot(this.#storage, layoutKey(ending.businessKey), isRecord).remove();
     }
   }
 

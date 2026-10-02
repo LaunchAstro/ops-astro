@@ -106,8 +106,9 @@ command catalogue replaces capability-map discovery, which was not ported.
 **Amended 29 September 2026** (API-1). `packages/core-wire/src/catalogue.ts`
 answers what the first slice's capability-map discovery answered: which
 commands a principal may call, and through which surface. That discovery is
-replaced by the catalogue, not ported. The required check `command parity`
-runs `node scripts/command-parity.mjs --check`.
+replaced by the catalogue, not ported. The check `command parity` runs
+`node scripts/command-parity.mjs --check` on every pull request; it is not in
+the live ruleset's required checks (see `docs/plan/ruleset.md`).
 
 **Amended 30 September 2026** (S0-5, its first part). Each catalogue row
 carries the command's data effects (`packages/core-wire/src/data-effects.ts`):

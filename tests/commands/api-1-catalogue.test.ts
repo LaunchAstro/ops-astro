@@ -145,6 +145,20 @@ function scannerAndGrantSkip(): void {
   });
 }
 
+/** Every command name the app's screens send. */
+function commandsTheAppCalls(): Set<string> {
+  const called = new Set<string>();
+  // The app's client lists every verb it may send; that is the web surface, not an action.
+  for (const [file, text] of webFiles()) {
+    if (file === 'operations/client.ts') continue;
+    for (const match of text.matchAll(/'([a-z]+\.[a-z_]+)'/gu)) {
+      if (NAMESPACES.has((match[1] as string).split('.')[0] as string))
+        called.add(match[1] as string);
+    }
+  }
+  return called;
+}
+
 /** Where the app names `task.create` and `task.start`, as the catalogue computes it. */
 const CREATE_UI = [
   'agency:projects-board (screens/projects/CreateTask.tsx)',
@@ -175,16 +189,7 @@ function exemptAndMergedTickets(): void {
 
   it('API-1 covers merged tickets: every command the app calls today is in the catalogue with its route', () => {
     const { rows } = real();
-    const called = new Set<string>();
-    // The app's client lists every verb it may send; that is the web surface, not an action.
-    for (const [file, text] of webFiles()) {
-      if (file === 'operations/client.ts') continue;
-      for (const match of text.matchAll(/'([a-z]+\.[a-z_]+)'/gu)) {
-        if (NAMESPACES.has((match[1] as string).split('.')[0] as string))
-          called.add(match[1] as string);
-      }
-    }
-    for (const command of called) {
+    for (const command of commandsTheAppCalls()) {
       const row = rows.find((one) => one.command === command);
       expect(row, command).toBeDefined();
       expect(row?.ui.length, command).toBeGreaterThan(0);
@@ -197,8 +202,8 @@ function exemptAndMergedTickets(): void {
     ]);
     const workflow = readFileSync('.github/workflows/ci.yml', 'utf8');
     expect(workflow).toContain('node scripts/command-parity.mjs --check');
-    const required = readFileSync('.github/required-checks.json', 'utf8');
-    expect(required).toContain('"command parity"');
+    // command parity runs on every pull request. It is not a required check: the live ruleset's
+    // 13 required checks leave it out, so the recorded list no longer claims it.
   });
 }
 

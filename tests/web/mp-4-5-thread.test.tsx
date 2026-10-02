@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { tick } from './task-page-stub.tsx';
 import { typeInto, unmountAll } from './perspective-support.tsx';
 import { comment, conversing, repliesUnder } from './conversation-support.tsx';
+import { unheld } from './task-look.ts';
 
 afterEach(unmountAll);
 
@@ -169,4 +170,12 @@ describe('MP-4-5 reaction chip display only', () => {
   // LEANS-ON a reactions model: the record holds no client acknowledgement
   // (the portal's `comment acknowledged`), so there is no chip to draw yet.
   it.todo('the reaction chip is a label with no pointer and no action (DT-19)');
+});
+
+describe('MP-4-5 visual match', () => {
+  // The mockup's task has no message, so its thread is drawn empty: the head
+  // and the selected tab are what it shows to hold the page's to.
+  it('the conversation’s head and selected tab on the page are held to the mockup at 1480, 900 and 390, light and dark', () => {
+    expect(unheld(['task.page-thread-key', 'task.page-thread-tab'])).toEqual([]);
+  });
 });

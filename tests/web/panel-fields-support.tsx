@@ -6,7 +6,7 @@
 // A harness, not a suite: nothing here runs on its own.
 
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
-import { TaskPanel } from '../../apps/web/src/screens/task/Panel.tsx';
+import { TaskPanel, type TaskPanelProps } from '../../apps/web/src/screens/task/Panel.tsx';
 import { task, tick } from './task-page-stub.tsx';
 import { json, mount } from './perspective-support.tsx';
 
@@ -27,6 +27,12 @@ export function serving(
   over: Readonly<Record<string, unknown>> = {},
   /** The business's tag vocabulary `tag.list` answers (MP-4-11). */
   vocabulary: readonly { readonly id: string; readonly name: string }[] = [],
+  /** The projects `task.board` answers for the Projects board (MP-4-8). */
+  projects: readonly { readonly id: string; readonly title: string | null }[] = [],
+  /** The business's task states `task.read` answers, the Status select's choices. */
+  states: readonly Readonly<Record<string, string>>[] = [],
+  /** The clients `client.list` answers (C32), the Client field's choices. */
+  clients: readonly { readonly clientId: string; readonly name: string }[] = [],
 ): {
   readonly client: OperationsClient;
   readonly sent: Sent[];
@@ -41,11 +47,19 @@ export function serving(
       return Promise.resolve(json({ ok: true, queue: [], alerts: [], outages: [] }));
     }
     if (where.endsWith('/task/execution')) return Promise.resolve(json({ ok: false }));
+    if (where.endsWith('/preference/read'))
+      return Promise.resolve(json({ ok: true, preferences: {} }));
     // The tab's one live stream (C4), unavailable here.
     if (/\/live(\/task\/|\?|$)/u.test(where))
       return Promise.resolve(new Response(null, { status: 404 }));
-    if (where.endsWith('/task/read')) return Promise.resolve(json({ ok: true, task: task(over) }));
+    if (where.endsWith('/task/read')) {
+      return Promise.resolve(json({ ok: true, task: task(over), states }));
+    }
     if (where.endsWith('/tag/list')) return Promise.resolve(json({ ok: true, tags: vocabulary }));
+    if (where.endsWith('/client/list')) return Promise.resolve(json({ ok: true, clients }));
+    if (where.endsWith('/task/board')) {
+      return Promise.resolve(json({ ok: true, tasks: projects, changedAt: null, viewer: 'p-1' }));
+    }
     const body = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as Sent['body'];
     sent.push({ to: where.slice(where.search(/\/[a-z]+\/[a-z_]+$/u)), body });
     // A new tag answers with its identifier, as `tag.create` does.
@@ -67,6 +81,8 @@ export const panel = async (
     readonly close?: () => void;
     /** What the panel hands its host to stop before leaving (MP-4-13). */
     readonly leaving?: (stop: (() => void) | null) => void;
+    /** The Client field's seams and the duplicate's landing (MP-4-8, CS-4.12). */
+    readonly client?: Pick<TaskPanelProps, 'clientFacts' | 'duplicate' | 'onDuplicated'>;
   } = {},
 ) => {
   const view = await mount(
@@ -87,6 +103,7 @@ export const panel = async (
         })
       }
       {...(on.leaving === undefined ? {} : { onLeaving: on.leaving })}
+      {...on.client}
     />,
   );
   await tick();

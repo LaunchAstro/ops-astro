@@ -48,6 +48,7 @@ const version = (id: string, n: number, withGate: boolean) => ({
   payload: { change: 'a team-only comment' },
   supersededAt: null,
   runId: null,
+  checks: [],
   evidence: null,
   gate: withGate ? gate(`g-${id}`) : null,
 });
@@ -130,7 +131,8 @@ describe('B4 the gate box', () => {
     const page = await open(withProposal([version('v-2', 2, true)]));
     await tick();
 
-    const box = page.find('.gatebox');
+    // The proposals section's gate box; the agent section above draws its own (MP-6-1).
+    const box = page.find('[data-proposals="section"] .gatebox');
     expect(box).not.toBeNull();
     expect(box?.classList.contains('gatebox--stale')).toBe(false);
     expect(box?.querySelector('.gate.gate--armed .gate__word')?.textContent).toBe(
@@ -151,7 +153,7 @@ describe('B4 the gate box', () => {
     const page = await open(withProposal([version('v-3', 3, false), version('v-2', 2, true)]));
     await tick();
 
-    const box = page.find('.gatebox--stale');
+    const box = page.find('[data-proposals="section"] .gatebox--stale');
     expect(box).not.toBeNull();
     expect(box?.querySelector('.gate--armed')).toBeNull();
     expect(box?.querySelector('[data-gate="stale"]')).not.toBeNull();

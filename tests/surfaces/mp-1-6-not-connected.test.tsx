@@ -173,6 +173,7 @@ it('MP-1-6 CS-1.4 on a real client no pink ever shows', () => {
     'packages/ui/src/surfaces/BoardCommandBar.tsx',
   ];
   expect(users).toEqual([
+    'apps/web/src/screens/Clients.tsx',
     'apps/web/src/screens/operations/held-sections.tsx',
     'packages/ui/src/kit/gallery-feedback.tsx',
     'packages/ui/src/kit/treatments.tsx',

@@ -126,6 +126,14 @@ describe.skipIf(serverUrl === undefined)(
           ...(declaration.name === 'task.handback'
             ? { leaseId: randomUUID(), fence: 1, outcome: 'completed' }
             : {}),
+          ...(declaration.name === 'model.call'
+            ? {
+                leaseId: randomUUID(),
+                fence: 1,
+                operation: 'model.replay_compose',
+                fields: [],
+              }
+            : {}),
         });
         answers.set(declaration.name, { status: answer.status, code: answer.body['code'] });
       }

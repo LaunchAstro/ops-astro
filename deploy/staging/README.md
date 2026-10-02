@@ -213,6 +213,27 @@ the built output's own declaration, which `buildOutputProblems` holds every
 function to before the deploy. It is not a region Vercel reports. The folder,
 `.vercel` included, is removed either way.
 
+The sign-in server's own MFA endpoints take the app's bearer directly, so
+`scripts/local/auth-up.sh` gives the local one two settings: once a login
+has a verified factor, a new enrolment is refused
+(`GOTRUE_MFA_MAX_VERIFIED_FACTORS=1`), and a tighter MFA challenge and
+verify rate (`GOTRUE_MFA_RATE_LIMIT_CHALLENGE_AND_VERIFY=5`). The limit is
+checked only at enrolment, so factors enrolled before any is verified can
+each be verified later; #300 reconciles what the provider holds against the
+record. The rate counts per address, and only with a forwarded-address
+setting, which the local one lacks, so locally it counts nothing; where it
+counts, its fixed burst of 30 a minute is far looser than the app's five
+wrong codes in fifteen minutes. That lockout guards only the app's own
+route: a code sent to the sign-in server's verify endpoint with the bearer
+passes it. Hosted staging and production sign in through a hosted Supabase
+project, whose settings name the enrolled-factor limit but neither of these
+two, so the hosted half, the direct verify path included, is a Supabase
+support request or an accepted gap, decided at the owner sitting. Nothing
+here changes hosted settings. The enrolled-factor limit stays at its default
+until #300 (ruled 1 October): a code the provider accepts and the record refuses leaves a
+verified factor there, and a limit would block that person's next
+enrolment until it is reconciled.
+
 `scripts/ops/web-deploy.mjs --maintenance`, behind the same gate, puts the
 maintenance page on the main address the same way (`maintenance recorded`)
 without asking the database: one static page for every path, nothing that

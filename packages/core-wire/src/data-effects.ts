@@ -91,6 +91,11 @@ const LEGAL = writing(business('legal_document_versions'));
 // A grant names a client only by its scope; it holds no content and admits
 // no one, and a party-scoped grant needs a client, which is gated itself.
 const GRANTS = writing(business('grants'));
+// A task shared with its client is that client's data reaching the client's
+// existing people: S0-5 classes it client-data, never an invitation, as it
+// enrols no one (MP-4-10). Taking the share back gives no one
+// anything, so `task.revoke_client_share` stays a business grant write.
+const SHARE = writing(client('grants'));
 const CREDENTIAL = writing(business('agent_credentials', 'actors'));
 
 /**
@@ -137,12 +142,16 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.assign': writing(client('records', 'record_unique_values', 'inbox_items')),
   'task.triage': TASK,
   'task.set_stage': TASK,
-  // The status select (Stage 1 adds), the marks (MP-4-9) and Ad hoc (MP-4-10).
+  // The status select (Stage 1 adds), the marks (MP-4-9), Ad hoc (MP-4-10) and
+  // the category (MP-4-8).
   'task.set_state': TASK,
   'task.set_scores': TASK,
   'task.set_adhoc': TASK,
+  'task.set_category': TASK,
+  // A duplicate is a new task with its subtasks and a link to the old one (MP-4-8).
+  'task.duplicate': writing(client('records', 'record_unique_values', 'record_links')),
   // Client access (MP-4-10): a share grant on the task for its client's people.
-  'task.share_with_client': GRANTS,
+  'task.share_with_client': SHARE,
   'task.revoke_client_share': GRANTS,
   'task.set_party': TASK,
   'task.set_audience': TASK,
@@ -216,6 +225,38 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'credential.issue': CREDENTIAL,
   'credential.revoke': CREDENTIAL,
   'client.create': writing(client('clients')),
+  // SL12 (batch 3a join, BATCH3-INTEG): a conversation can hold a task's
+  // content once scoped to it, so its rows count as client-scoped.
+  'gate.pending': READ,
+  'conversation.read': READ,
+  'conversation.list': READ,
+  'conversation.start': writing(client('conversations', 'conversation_messages')),
+  'conversation.message': writing(client('conversations', 'conversation_messages')),
+  'conversation.rename': writing(client('conversations')),
+  'conversation.set_scope': writing(client('conversations')),
+  // AW-01: the broker's hold on the lease's run and its prompt copy's
+  // registration. At the approved ceiling the refusal commits the stop instead
+  // (AW-05): the ask, the lease released, the delegation retired, the run
+  // waiting. The provider call goes through the credential broker; a client's
+  // task never reaches a route (C60), so it is the business's own.
+  'model.call': writing(
+    [
+      ...client('model_calls', 'budget_asks', 'leases', 'planned_runs'),
+      ...business('copy_registrations', 'delegations'),
+    ],
+    [{ provider: 'model', forClient: false }],
+  ),
+  // AW-05: the two answers at the budget stop, and MP-6-2's state revised.
+  // None of the four below writes `run_events`: only pickup, hand-back and a drop append it.
+  'run.top_up': writing(
+    client('budget_answers', 'budget_approvals', 'planned_runs', 'reservations', 'task_envelopes'),
+  ),
+  'run.end_at_budget_stop': writing(
+    client('budget_answers', 'planned_runs', 'reservations', 'task_envelopes'),
+  ),
+  'run.revise_state': writing(client('run_states')),
+  // MP-6-1's check on a task's run.
+  'task.check': writing(client('run_checks')),
   'access.grant': GRANTS,
   'access.revoke': GRANTS,
   // C58: the team member signed out and deactivated at the identity provider.

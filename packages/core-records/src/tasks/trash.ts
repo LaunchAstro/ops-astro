@@ -57,6 +57,13 @@ export const RETENTION_CLASS_BY_TABLE: Readonly<Record<string, RetentionClass>> 
   // T3e2: an outage's one report and the runs it dropped, kept with them.
   outage_reports: 'runtime',
   outage_runs: 'runtime',
+  // AW-02 (skill-migration contract 4.4): the audit copy of a run's
+  // instruction bytes may hold client material, so it retains exactly as the
+  // run records it copies and goes only with them; the pin and the read
+  // ledger it answers for retain alike.
+  bootstrap_bytes: 'runtime',
+  bootstrap_reads: 'runtime',
+  run_definition_pins: 'runtime',
 };
 
 /**
@@ -535,6 +542,14 @@ export async function purgeTrashedRecords(
       where business_id = $1 and scope_kind = 'record' and scope_id = any ($2::uuid[])
         and revoked_at is null
       returning id`,
+    [tx.businessId, gone],
+  );
+  // A conversation opened on a purged task keeps its body, its wrap-ups and
+  // its address and loses only the scope: 0092's key to `records` does not
+  // cascade, and deleting the task under it would fault the whole purge.
+  await tx.query(
+    `update public.conversations set scope_kind = null, scope_record_id = null
+      where business_id = $1 and scope_record_id = any ($2::uuid[])`,
     [tx.businessId, gone],
   );
   // Time entries (0078) and task tags (0081) key to `records` with no cascade:

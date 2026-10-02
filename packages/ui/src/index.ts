@@ -18,11 +18,13 @@
 // controls and layout; session-scoped panel registration, open state and drafts
 // belong to `apps/web` [ui-reference CONTRACT.md:305].
 //
-// **The working slice exports only what its screens mount.** There is no
-// `AgentTab`, `AgentPanel` or `Gate`: each draws a surface the slice's three
-// screens do not reach, over records no part of this build stores, and an
-// exported component that nothing mounts is an estate to maintain, not a
-// capability. They arrive with the phase that owns them.
+// **The working slice exports only what its screens mount.** `AgentPane`
+// arrived with MP-6-1, mounted on the task page over the proposals `task.read`
+// stores; `AssistantPanel` arrived with MP-7-11, mounted as the dock's Agent
+// drawer over AW-03's conversations; its ask sparkle is exported when the
+// first host page mounts it. `ConversationRecord` arrived with C36, mounted at
+// a conversation's own address. An exported component that nothing mounts is an
+// estate to maintain, not a capability.
 
 // The package's stylesheets, in their load order: the font faces, then tokens,
 // then primitives, then the shell, then the board, then the task surfaces. They enter through this
@@ -35,17 +37,25 @@ import './styles/2-primitives.css';
 import './styles/2-empty.css';
 import './styles/2-forms.css';
 import './styles/3-shell.css';
-import './styles/3-search.css';
+import './styles/3-agent-panel.css';
+import './styles/3-dock.css';
 import './styles/4-board.css';
 import './styles/4b-board-machine.css';
 import './styles/5-task.css';
+import './styles/6-agent.css';
 import './styles/7-page-kit.css';
 import './styles/8-notifications.css';
 import './styles/9-ledger.css';
 import './styles/10-team.css';
+import './styles/11-clients.css';
 
 export * from './state/corpus.ts';
 export * from './state/project.ts';
+export * from './state/run-projection.ts';
+export * from './state/agent-run.ts';
+export * from './state/agent-staged.ts';
+export * from './state/agent-scope.ts';
+export * from './state/token-ledger.ts';
 export * from './kit/blocks.tsx';
 export * from './kit/charts.tsx';
 export * from './kit/controls.tsx';
@@ -61,6 +71,7 @@ export * from './primitives/Icon.tsx';
 export * from './primitives/Status.tsx';
 export * from './primitives/Tabs.tsx';
 export * from './surfaces/Shell.tsx';
+export * from './surfaces/Dock.tsx';
 export * from './surfaces/Frame.tsx';
 export * from './surfaces/TabRow.tsx';
 export * from './surfaces/PersonMenu.tsx';
@@ -69,6 +80,9 @@ export * from './surfaces/BoardMachine.tsx';
 export * from './surfaces/ProjectsBoard.tsx';
 export * from './board/index.ts';
 export * from './surfaces/TaskPage.tsx';
+export * from './surfaces/AgentPane.tsx';
+export * from './surfaces/AssistantPanel.tsx';
+export * from './surfaces/ConversationRecord.tsx';
 export * from './surfaces/Notifications.tsx';
 export * from './surfaces/Ledger.tsx';
 export * from './surfaces/Team.tsx';
@@ -81,3 +95,5 @@ export * from './page-kit/table.tsx';
 export { nextSort, sortRows, type SortState } from './page-kit/table.tsx';
 export * from './page-kit/bars.tsx';
 export * from './page-kit/detail.tsx';
+// Money in a currency's own minor digits, the server's rule; the task page shares it.
+export { major, minorDigits, minorOf } from './surfaces/agent/format.ts';

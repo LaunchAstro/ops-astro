@@ -14,6 +14,9 @@
 import { type AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
 
 export const WORKER_ROLE = 'ops_astro_worker';
+/** The broker's role (AW-01): it executes the fair share's one count, and holds nothing else. */
+export const BROKER_ROLE = 'ops_astro_broker';
+export const OCCURRENCE_ROLE = 'ops_astro_occurrence';
 
 /**
  * The contract: what the migrations grant the application group, table by table,
@@ -55,11 +58,37 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'ops.second_factor_codes'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],
   ['si', 'alerts handback_reports operations run_events'],
+  // A run's checks, append only as handback_reports is (MP-6-1).
+  ['si', 'run_checks'],
+  // 0095 (MP-6-2): a run's state, each revision a version, never rewritten.
+  ['si', 'run_states'],
+  // 0092 (AW-03): a conversation, its body (deleted only by the purge, never
+  // edited) and its wrap-ups (append only, never purged).
+  ['siu', 'conversations'],
+  ['sid', 'conversation_messages'],
+  ['si', 'conversation_wrap_ups'],
+  // AW-01: the model-call ledger, and the copy register, which is append only.
+  ['siu', 'model_calls'],
+  ['si', 'copy_registrations'],
+  // AW-02: the pin and the read ledger are never rewritten; the audit copy is
+  // kept and never read back by a run role.
+  ['si', 'bootstrap_reads run_definition_pins'],
+  ['i', 'bootstrap_bytes'],
+  // AW-05: a budget ask is the persisted count and is never rewritten.
+  ['si', 'budget_asks'],
+  // AW-05: an answer and its approvals are never rewritten.
+  ['si', 'budget_answers budget_approvals'],
+  // AW-13: the export's cursor moves; its gaps are facts and never rewritten.
+  ['siu', 'trace_export_cursors'],
+  ['si', 'trace_export_gaps'],
   // 0042: an attempt and a seen stamp are observations, never rewritten (INB-1a).
   ['si', 'inbox_attention inbox_delivery_attempts'],
   ['siu', 'inbox_items'],
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
-  ['siu', 'leases planned_runs planned_steps proposal_lineages proposal_versions'],
+  ['siu', 'leases planned_steps proposal_lineages proposal_versions'],
+  // AW-02: a historical run is never rewritten; the application moves its
+  // state alone, by the column grant in COLUMN_UPDATES.
+  ['si', 'planned_runs'],
   ['siu', 'outage_reports outage_runs reservations task_envelopes'],
   // 0049 (C59): a factor is written and moved on, never deleted.
   ['siu', 'second_factors'],
@@ -117,6 +146,8 @@ export const APPLICATION_GRANTS: Readonly<Record<string, string>> = Object.fromE
 const REVOKED: Readonly<Record<string, { readonly from: string; readonly letters: string }>> = {
   'public.person_logins': { from: '0028', letters: 'd' },
   'public.person_merges': { from: '0028', letters: 'd' },
+  // 0086 takes back update on the whole run and grants it on `state` alone.
+  'public.planned_runs': { from: '0086', letters: 'u' },
 };
 
 /**
@@ -149,94 +180,6 @@ export const APPLICATION_EXECUTES: readonly string[] = [
   // 0058 (S0-5): security invoker, so it reads no more than the caller may.
   'public.first_client_readiness',
 ];
-
-export interface CatalogueTable {
-  readonly qualified: string;
-  readonly kind: string;
-  /** Carries `business_id`, so the tenancy policy is what filters it. */
-  readonly tenant: boolean;
-  readonly forced: boolean;
-  readonly firstColumn: string;
-}
-
-export interface CatalogueFunction {
-  readonly qualified: string;
-  readonly signature: string;
-  readonly argumentTypes: readonly string[];
-  readonly definer: boolean;
-  readonly trigger: boolean;
-  readonly config: readonly string[];
-  /** For a trigger function: the tables whose triggers fire it, with the events. */
-  readonly firedBy: readonly { readonly table: string; readonly events: string }[];
-}
-
-export async function catalogueTables(admin: AdminConnection): Promise<readonly CatalogueTable[]> {
-  const rows = await admin.execute<{
-    qualified: string;
-    kind: string;
-    tenant: boolean;
-    forced: boolean;
-    first_column: string;
-  }>(
-    `select n.nspname || '.' || c.relname as qualified, c.relkind::text as kind,
-            exists (select 1 from pg_attribute a where a.attrelid = c.oid
-                     and a.attname = 'business_id' and not a.attisdropped) as tenant,
-            c.relforcerowsecurity as forced,
-            (select a.attname from pg_attribute a where a.attrelid = c.oid and a.attnum > 0
-                and not a.attisdropped order by a.attnum limit 1) as first_column
-       from pg_class c join pg_namespace n on n.oid = c.relnamespace
-      where n.nspname in ('public', 'ops') and c.relkind in ('r', 'v', 'm', 'p')
-      order by 1`,
-  );
-  return rows.map((row) => ({
-    qualified: row.qualified,
-    kind: row.kind,
-    tenant: row.tenant,
-    forced: row.forced,
-    firstColumn: row.first_column,
-  }));
-}
-
-export async function catalogueFunctions(
-  admin: AdminConnection,
-): Promise<readonly CatalogueFunction[]> {
-  const rows = await admin.execute<{
-    qualified: string;
-    signature: string;
-    argument_types: string[];
-    definer: boolean;
-    trigger: boolean;
-    config: string[] | null;
-    fired_by: { table: string; events: string }[] | null;
-  }>(
-    `select n.nspname || '.' || p.proname as qualified, p.oid::regprocedure::text as signature,
-            coalesce((select array_agg(format_type(t, null) order by i)
-                        from unnest(p.proargtypes) with ordinality as a(t, i)), '{}') as argument_types,
-            p.prosecdef as definer, p.prorettype = 'trigger'::regtype as trigger, p.proconfig as config,
-            (select json_agg(json_build_object(
-                      'table', tn.nspname || '.' || tc.relname,
-                      'events', concat_ws(' ',
-                        case when t.tgtype & 4 <> 0 then 'insert' end,
-                        case when t.tgtype & 8 <> 0 then 'delete' end,
-                        case when t.tgtype & 16 <> 0 then 'update' end)))
-               from pg_trigger t join pg_class tc on tc.oid = t.tgrelid
-               join pg_namespace tn on tn.oid = tc.relnamespace
-              where t.tgfoid = p.oid and not t.tgisinternal) as fired_by
-       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-      where n.nspname in ('public', 'ops') and p.prokind = 'f'
-        and not exists (select 1 from pg_depend d where d.objid = p.oid and d.deptype = 'e')
-      order by 2`,
-  );
-  return rows.map((row) => ({
-    qualified: row.qualified,
-    signature: row.signature,
-    argumentTypes: row.argument_types,
-    definer: row.definer,
-    trigger: row.trigger,
-    config: row.config ?? [],
-    firedBy: row.fired_by ?? [],
-  }));
-}
 
 /** What the server said, reduced to what a contract can name. */
 export type Outcome =
