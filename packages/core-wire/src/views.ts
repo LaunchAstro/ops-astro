@@ -919,6 +919,13 @@ export interface ClientListResult {
  * nothing of the task or the fact it points at (INB-1g reads them at the same
  * read, so the item stays a pointer and never a copy).
  */
+/** A team conversation an inbox item is about (C71): a group's name, null on a direct one. */
+export interface InboxConversation {
+  readonly conversationId: string;
+  readonly kind: 'direct' | 'group';
+  readonly name: string | null;
+}
+
 export interface InboxEntry {
   readonly id: string;
   readonly reason: InboxReason;
@@ -938,6 +945,8 @@ export interface InboxEntry {
   readonly closedByPersonId?: string | null;
   /** The task the item is about, for its link and its name. */
   readonly task?: { readonly key: string; readonly title: string | null };
+  /** The team conversation a mention is about (C71), in place of a task. */
+  readonly conversation?: InboxConversation;
   /** Who closed it, by name: a cleared decision names who decided. */
   readonly closedBy?: PersonView | null;
   /**

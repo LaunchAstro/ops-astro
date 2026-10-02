@@ -148,6 +148,7 @@
     "tests/api/mp-9-1-tip-dismiss-security.test.ts",
     "tests/api/preference-write-client-user.test.ts",
     "tests/api/c71-d-isolation.test.ts",
-    "tests/api/c71-g-isolation.test.ts"
+    "tests/api/c71-g-isolation.test.ts",
+    "tests/api/c71-live-conversations.test.ts"
   ]
 }

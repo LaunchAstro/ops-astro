@@ -81,7 +81,6 @@ import type {
   CommandRefusal,
   executeRead,
   admitReads,
-  AdmissionAt,
 } from '../../packages/core-commands/src/index.ts';
 import type { Verifier } from './auth/supabase.ts';
 import { presentedBy } from './auth/agent-bearer.ts';
@@ -100,6 +99,7 @@ import {
   type Watching,
 } from './live-follow.ts';
 import { followBoard } from './live-board.ts';
+import { hearing, watching } from './live-watching.ts';
 import { mountFactorRoutes, mountPublicLegal } from './account-routes.ts';
 import { signalOf, type Outcome, type SecuritySignal } from './alerts/detect.ts';
 import type { ErrorSinkLink } from './health/error-sink-link.ts';
@@ -539,7 +539,13 @@ export function createApi(options: ApiOptions): Hono {
       }
       const asks = watching(options, live, context, businessId);
       const tasks = named.watches;
-      const answers = tasks.length === 0 ? [] : await asks.atDoor(tasks.map((each) => each.taskId));
+      const answers =
+        tasks.length === 0
+          ? []
+          : await asks.atDoor(
+              tasks.map((each) => each.taskId),
+              tasks,
+            );
       const board = named.board ? await mayJoinBoard(options, context, businessId) : undefined;
       const watched = tasks.filter((_, at) => typeof answers[at] === 'string');
       const joined = board === undefined || isCommandRefusal(board) ? undefined : board;
@@ -673,57 +679,6 @@ async function seatOf(
   return { presence, session: session as Seated['session'] };
 }
 
-function watching(
-  options: ApiOptions,
-  live: LiveOptions,
-  context: Context,
-  businessId: string,
-): Watching {
-  const ask = async (taskIds: readonly string[], at: AdmissionAt) => {
-    const answers = await mayWatch(options, live, context, businessId, taskIds, at);
-    return isCommandRefusal(answers) ? taskIds.map(() => answers) : answers;
-  };
-  return {
-    businessId,
-    atDoor: async (taskIds) => await ask(taskIds, 'door'),
-    async again(taskId) {
-      const [answer] = await ask([taskId], 'recheck');
-      if (answer === undefined) throw new Error('the recheck answered no topic');
-      return answer;
-    },
-  };
-}
-
-/**
- * Whether this caller may watch each task, asked after verifying the bearer
- * again, of `task.execution`'s own admission, the internal activity the channel
- * reports: expiry, a lost membership, a revoked grant, a trashed or foreign
- * task and any external reader all refuse. It serves and audits nothing, since
- * the channel shows the person no content (C4 live-sync 6). Each answer is the
- * task's identifier, the topic, or its refusal.
- */
-async function mayWatch(
-  options: ApiOptions,
-  live: LiveOptions,
-  context: Context,
-  businessId: string,
-  taskIds: readonly string[],
-  at: AdmissionAt,
-): Promise<readonly (string | CommandRefusal)[] | CommandRefusal> {
-  const presented = await options.verify(context.req);
-  if (typeof presented !== 'object') {
-    return refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED_FIXES);
-  }
-  const requests = taskIds.map((recordId) => ({ read: 'task.execution' as const, recordId }));
-  const admitted = await live.admit(options.database, businessId, presented, requests, at);
-  if (isCommandRefusal(admitted)) return admitted;
-  return admitted.map((answer) => {
-    if (isCommandRefusal(answer)) return answer;
-    if (answer.recordId === undefined) throw new Error('task.execution admitted no task');
-    return answer.recordId;
-  });
-}
-
 /**
  * INB-1f: the board's one stream per tab, through the same door. It digests
  * the reads of the person the join resolves, asked again on every run, and
@@ -762,6 +717,7 @@ async function followBoardOn(
       },
       reach: async (personId) => await mayReach(options, context, businessId, personId),
       shown: async (personId) => await mayShowInbox(options, context, businessId, personId),
+      hears: hearing(options, context, businessId),
     },
   );
 }

@@ -25,10 +25,14 @@
 // read raises nothing for anyone, and it writes no item, grant or decision.
 // The list is the operations view's (C55) and the API's and the command
 // line's `inbox.unattended`, both behind `operations:read`.
+//
+// An item about a team conversation (C71, a mention in it) is listed only to
+// a viewer who is a current member of it, as only its members read it; its
+// path is a recipient who signs in and is a current member.
 
 import { standsOnShares } from '../identity/login-resolution.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
-import { holdsOnTask, REACH } from './access.ts';
+import { holdsOnTask, inConversation, IS_CONVERSATION, REACH } from './access.ts';
 import type { InboxFactKind, InboxReason } from './items.ts';
 
 export interface UnattendedItem {
@@ -46,6 +50,8 @@ const SHARED: ReadonlySet<InboxReason> = new Set(['decision', 'incident']);
 
 type OpenRow = UnattendedItem & {
   readonly clientId: string | null;
+  /** Null unless the item is about a conversation; then whether its recipient is in it. */
+  readonly inside: boolean | null;
   readonly member: boolean;
   readonly loginAndActor: boolean;
 };
@@ -65,6 +71,8 @@ export async function readUnattended(
      select i.id, i.recipient_person_id as "recipientPersonId",
             i.subject_record_id as "subjectRecordId", i.reason, i.fact_kind as "factKind",
             i.fact_id as "factId", i.raised_at as "raisedAt", r.uuid_7 as "clientId",
+            case when ${IS_CONVERSATION} then ${inConversation('i.recipient_person_id')} end
+              as inside,
             exists (select 1 from public.memberships m
                      where m.business_id = i.business_id and m.person_id = i.recipient_person_id
                        and m.active) as member,
@@ -78,8 +86,9 @@ export async function readUnattended(
        join public.records r
          on r.business_id = i.business_id and r.id = i.subject_record_id and r.deleted_at is null
       where i.business_id = $1 and i.work_state = 'open'
-        and ((select business from reach) or r.id = any((select records from reach)::uuid[])
-             or r.uuid_7 = any((select parties from reach)::uuid[]))
+        and (case when ${IS_CONVERSATION} then ${inConversation('$2')}
+             else ((select business from reach) or r.id = any((select records from reach)::uuid[])
+                   or r.uuid_7 = any((select parties from reach)::uuid[])) end)
       order by i.raised_at, i.id`,
     [tx.businessId, viewerPersonId],
   );
@@ -109,6 +118,7 @@ function obligationOf(item: UnattendedItem): string {
 async function reaches(tx: TenantQuery, row: OpenRow): Promise<boolean> {
   if (!row.loginAndActor) return false;
   if (!row.member && !(await standsOnShares(tx, row.recipientPersonId))) return false;
+  if (row.inside !== null) return row.inside;
   const task = { id: row.subjectRecordId, clientId: row.clientId };
   if (!(await holdsOnTask(tx, row.recipientPersonId, task, 'read'))) return false;
   return (

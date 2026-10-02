@@ -2,6 +2,8 @@
 //
 // An inbox item's access axis (INB-1a), derived on every read from the
 // recipient's live grants and never stored: readable, withheld or gone.
+// An item about a team conversation (C71, a mention in it) is held by the
+// conversation's current members alone, whatever task grants they hold.
 import {
   EFFECTIVE,
   effectiveGrants,
@@ -20,19 +22,37 @@ import type { TenantQuery } from '../tenancy/database.ts';
  */
 export type InboxAccess = 'readable' | 'withheld' | 'gone';
 
-/** One person's access to one task, derived as every read derives it. */
+/** Whether record `r` is a team conversation (C71), in a query that names it `r`. */
+export const IS_CONVERSATION = `exists (select 1 from public.record_types ct
+   where ct.business_id = r.business_id and ct.id = r.record_type_id
+     and ct.key = 'team_conversation')`;
+
+/** Whether `person` (an SQL expression) is a current member of conversation `r`. */
+export const inConversation = (person: string): string =>
+  `exists (select 1 from public.team_conversation_members cm
+   where cm.business_id = r.business_id and cm.conversation_id = r.id
+     and cm.person_id = ${person} and cm.left_at is null)`;
+
+/** One person's access to one task, or to one conversation, derived as every read derives it. */
 export async function taskAccess(
   tx: TenantQuery,
   personId: string,
   taskId: string,
 ): Promise<InboxAccess> {
-  const rows = await tx.query<{ readonly trashed: boolean; readonly clientId: string | null }>(
-    `select deleted_at is not null as trashed, uuid_7 as "clientId" from public.records
-      where business_id = $1 and id = $2`,
-    [tx.businessId, taskId],
+  const rows = await tx.query<{
+    readonly trashed: boolean;
+    readonly clientId: string | null;
+    readonly conversation: boolean;
+    readonly member: boolean;
+  }>(
+    `select r.deleted_at is not null as trashed, r.uuid_7 as "clientId",
+            ${IS_CONVERSATION} as conversation, ${inConversation('$3::uuid')} as member
+       from public.records r where r.business_id = $1 and r.id = $2`,
+    [tx.businessId, taskId, personId],
   );
   const task = rows[0];
   if (task === undefined) return 'gone';
+  if (task.conversation) return task.member ? (task.trashed ? 'gone' : 'readable') : 'withheld';
   // A business grant, a grant on this task, or a party grant on the task's
   // own client: a party grant on another client reaches nothing here, which
   // is the client separation.
