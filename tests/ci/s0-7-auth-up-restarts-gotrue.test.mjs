@@ -47,7 +47,7 @@ case "$*" in
       *State.Running*) if [ -f '${removed}' ]; then exit 1; else printf '%s\\n' true; fi ;;
       'inspect ops-astro-local-auth')
         if [ -f '${removed}' ]; then exit 1; fi
-        printf '%s\\n' '"GOTRUE_JWT_ISSUER=http://127.0.0.1:54391"' ;;
+        printf '%s\\n' '"GOTRUE_JWT_ISSUER=http://127.0.0.1:54391"' '"GOTRUE_MFA_MAX_VERIFIED_FACTORS=1"' ;;
       'rm -f ops-astro-local-auth')
         printf '%s\\n' rm-auth >> '${calls}'
         : > '${removed}' ;;
