@@ -50,7 +50,7 @@ it('the matrix numbers its shards 1 to n, and the runner is told which of n it i
     Array.from({ length: shardCount }, (_, i) => i + 1),
   );
   expect(shardJob).toContain(
-    'run: pnpm run db:conformance --shard ${{ matrix.shard }}/${{ strategy.job-total }}',
+    '-- pnpm run db:conformance --shard ${{ matrix.shard }}/${{ strategy.job-total }}',
   );
   expect(shardJob).toContain('fail-fast: false');
   expect(shardJob).toMatch(/image: postgres@sha256:[0-9a-f]{64}/u);
