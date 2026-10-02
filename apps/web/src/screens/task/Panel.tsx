@@ -6,14 +6,15 @@
 // (`clientSet` only), so a draft filed from here starts with no client. Its own field edits (the name, the assignee and the due
 // date) are `PanelFields.tsx`. It mounts the pieces built for it: the
 // handling ticks (MP-4-10), the description and agent brief fields (MP-4-7),
-// the subtasks and time (MP-4-4, MP-4-6), the conversation (MP-4-5) and the
-// folded trail (MP-4-16), under the same Team and Agent counts and the same
-// facts as the task page (MP-4-3, MP-4-9, MP-4-2).
+// the subtasks and time (MP-4-4, MP-4-6), the conversation (MP-4-5,
+// `PanelConversation.tsx`) and the folded trail (MP-4-16), under the same
+// Team and Agent counts and the same facts as the task page (MP-4-3, MP-4-9,
+// MP-4-2).
 //
 // **The frame is not this file's.** Seating, floating, the sheet, back and
-// forward and the one close path are the dock frame's (MP-3-1); until it is
-// on main this body sits in the shell's panel slot and closes through
-// `onClose`.
+// forward and the one close path are the dock's (MP-3-1), which draws this
+// body as its `task` panel: there the dock's X is the close (`docked`), and
+// it closes through `onClose` as the panel's own Close does elsewhere.
 //
 // **Its own read, the page's rule.** The panel reads the task through
 // `task.read` as the page does, and a write here asks the host to count a
@@ -32,15 +33,14 @@ import type { OperationsClient } from '../../operations/client.ts';
 import type {
   InternalTaskDetail as Task,
   TaskReadResult,
+  TaskStateView,
 } from '../../../../../packages/core-wire/src/index.ts';
 import { hubOf } from '../../data/live.ts';
 import { useRead } from '../../data/use-read.ts';
 import { pathTo } from '../../routes.ts';
 import { RecordState } from '../../views/record-state.tsx';
-import { Comments, type CommentDraft } from './Comments.tsx';
-import type { RowEdit } from './Thread.tsx';
 import { TaskFacts } from './Facts.tsx';
-import { History } from './History.tsx';
+import { History, useShowTrail } from './History.tsx';
 import {
   Perspectives,
   perspectiveCounts,
@@ -50,9 +50,11 @@ import {
   type Perspective,
 } from './Perspectives.tsx';
 import { PageLink, pageLinkDoor } from './PageLink.tsx';
+import { PanelConversation } from './PanelConversation.tsx';
 import type { DraftScope } from './DraftPanel.tsx';
+import type { ClientSeams } from './client-seam.ts';
 import { PanelFields, PanelName } from './PanelFields.tsx';
-import { withPageDefaults } from './read-defaults.ts';
+import { statesOf, withPageDefaults } from './read-defaults.ts';
 import { useRereadOn } from './reread-on.ts';
 import { TeamSubtasks } from './Subtasks.tsx';
 import { HandlingTicks } from './Ticks.tsx';
@@ -65,7 +67,8 @@ export interface PanelOpening {
   readonly tab: ConversationTab | null;
 }
 
-export interface TaskPanelProps {
+/** The Client field's seams (`client-seam.ts`) come in beside the rest. */
+export interface TaskPanelProps extends ClientSeams {
   readonly client: OperationsClient;
   readonly grantKey: string;
   readonly opening: PanelOpening;
@@ -73,6 +76,8 @@ export interface TaskPanelProps {
   readonly changes?: number;
   readonly onChanged: () => void;
   readonly onClose: () => void;
+  /** Drawn by the dock, whose X closes it: the head draws no Close of its own. */
+  readonly docked?: boolean;
   /** The head's New task (MP-4-13): a draft filed from this task. Absent, the door is not drawn live. */
   readonly onNewTask?: (scope: DraftScope) => void;
   /** Hand the host this person's timer stop while it runs on the task, or null. */
@@ -80,9 +85,11 @@ export interface TaskPanelProps {
 }
 
 const CONTROLS = new Set(['INPUT', 'SELECT', 'TEXTAREA']);
+type Body = TaskPanelProps & { readonly fold: ReturnType<typeof useShowTrail> };
 
 export function TaskPanel(props: TaskPanelProps): ReactElement {
   const { client, opening } = props;
+  const body = { ...props, fold: useShowTrail(client) };
   const { state, reload } = useRead<TaskReadResult>({
     grantKey: props.grantKey,
     run: () => client.read<TaskReadResult>('task.read', { recordId: opening.taskKey }),
@@ -110,7 +117,7 @@ export function TaskPanel(props: TaskPanelProps): ReactElement {
               This task is shared with you; it is changed by its business.
             </p>
           ) : (
-            <PanelBody {...props} task={withPageDefaults(value.task)} />
+            <PanelBody {...body} task={withPageDefaults(value.task)} states={statesOf(value)} />
           )
         }
       </RecordState>
@@ -118,7 +125,9 @@ export function TaskPanel(props: TaskPanelProps): ReactElement {
   );
 }
 
-function PanelBody(props: TaskPanelProps & { readonly task: Task }): ReactElement {
+function PanelBody(
+  props: Body & { readonly task: Task; readonly states: readonly TaskStateView[] },
+): ReactElement {
   const { client, task } = props;
   const [perspective, setPerspective] = useState<Perspective>('team');
   useTimerStop(props);
@@ -130,12 +139,7 @@ function PanelBody(props: TaskPanelProps & { readonly task: Task }): ReactElemen
   return (
     <div className="stack" data-task={task.id} data-revision={task.revision}>
       <PanelHead {...props} />
-      <PanelFields
-        client={client}
-        grantKey={props.grantKey}
-        task={task}
-        onChanged={props.onChanged}
-      />
+      <PanelFields {...props} />
       <PageLink client={client} task={task} onChanged={props.onChanged} />
       <TaskFacts task={task} />
       <HandlingTicks client={client} task={task} onChanged={props.onChanged} />
@@ -154,8 +158,13 @@ function PanelBody(props: TaskPanelProps & { readonly task: Task }): ReactElemen
               onSaved={props.onChanged}
             />
             <PanelWork {...props} />
-            <PanelConversation {...props} />
-            <History history={task.history} folded />
+            <PanelConversation
+              client={client}
+              task={task}
+              tab={props.opening.tab}
+              onChanged={props.onChanged}
+            />
+            <History history={task.history} fold={props.fold} />
           </>
         }
         agent={<PanelAgent {...props} />}
@@ -190,47 +199,16 @@ function useTimerStop(props: SideProps): void {
 
 /** The subtasks and time, without the doors: this is where their edits happen. */
 function PanelWork(props: SideProps): ReactElement {
-  const [showFinished, setShowFinished] = useState(false);
   const [showAllTime, setShowAllTime] = useState(false);
   return (
     <TeamSubtasks
       client={props.client}
       task={props.task}
-      showFinished={showFinished}
-      onShowFinished={setShowFinished}
       showAllTime={showAllTime}
       onShowAllTime={setShowAllTime}
       onChanged={props.onChanged}
       onOpenPanel={undefined}
       doors={false}
-    />
-  );
-}
-
-/** The conversation, opening on the tab the reply door was pressed from. */
-function PanelConversation(props: SideProps): ReactElement {
-  const { task, opening } = props;
-  const [draft, setDraft] = useState<CommentDraft | null>(
-    opening.tab === null
-      ? null
-      : { body: '', tab: opening.tab, replyTo: null, pending: null, stale: null },
-  );
-  const [refusal, setRefusal] = useState<string | null>(null);
-  const [editing, setEditing] = useState<RowEdit | null>(null);
-  return (
-    <Comments
-      scope="panel"
-      client={props.client}
-      comments={task.comments}
-      recordId={task.id}
-      revision={task.revision}
-      refusal={refusal}
-      onRefused={setRefusal}
-      onPosted={props.onChanged}
-      draft={draft}
-      onDraft={setDraft}
-      editing={editing}
-      onEditing={setEditing}
     />
   );
 }
@@ -255,7 +233,10 @@ function PanelAgent(props: SideProps): ReactElement {
   );
 }
 
-/** The head: the task's name, New task (a draft filed from here), its own page, and close. */
+/**
+ * The head: the task's name, New task (a draft filed from here), its own page,
+ * and close, which the dock draws instead where it hosts the panel.
+ */
 function PanelHead(props: SideProps): ReactElement {
   const { task, onNewTask } = props;
   return (
@@ -282,9 +263,11 @@ function PanelHead(props: SideProps): ReactElement {
         Open its page
       </a>
       <GoTo task={task} />
-      <button className="btn" type="button" data-panel-head="close" onClick={props.onClose}>
-        Close
-      </button>
+      {props.docked === true ? null : (
+        <button className="btn" type="button" data-panel-head="close" onClick={props.onClose}>
+          Close
+        </button>
+      )}
     </div>
   );
 }

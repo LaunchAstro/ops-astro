@@ -16,6 +16,7 @@
 
 import {
   clientsReached,
+  isClientHere,
   planPresetSync,
   isUuid,
   listTags,
@@ -46,13 +47,16 @@ import { listPeople, listTeam, readAccess, readOwnName } from './people.ts';
 import { readTodos } from './todos.ts';
 import { readQueue } from './queue.ts';
 import { readTaskExecution } from './execution.ts';
+import { readAwaitingReview } from './awaiting-review.ts';
 import { readSettings } from './settings.ts';
 import { readCapabilities } from './capabilities.ts';
 import { parseReceipt, receiptSubject, serveReceipt } from './receipts.ts';
+import { listConversations, readConversation } from './conversation.ts';
 import { SERVER_HIT_LIMIT, searchTasks, wordsOf } from './search.ts';
 import { parseBreachNotices, readBreachNotices, readOperations } from './operations.ts';
 import { countOwed, readInbox, readUnattendedInbox } from './inbox.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
+import { readClientFacts } from '../commands/task-content.ts';
 import { isKnownTimeZone, readLedger } from './ledger.ts';
 
 export type ReadName = ReadRequest['read'];
@@ -233,7 +237,60 @@ const NO_GRANT_AT_ALL = refuseCommand(
   ['no live grant covers it', 'ask a holder who may delegate'],
 );
 
+/**
+ * `task.todos`'s scope (MP-7-2): none, one teammate or one client, each a
+ * well-formed identifier. A malformed one is refused rather than read as no
+ * scope, which would answer the reader's own list to a question about someone
+ * else's.
+ */
+function parseTodoScope({
+  person,
+  client,
+}: Readonly<Record<string, unknown>>): Parsed<'task.todos'> {
+  if (person !== undefined && client !== undefined) {
+    return rejected('client', 'Send a person or a client, not both.');
+  }
+  if (person !== undefined && !(typeof person === 'string' && isUuid(person))) {
+    return rejected('person', 'Send person as a teammate’s person identifier.');
+  }
+  if (client !== undefined && !(typeof client === 'string' && isUuid(client))) {
+    return rejected('client', 'Send client as the client’s identifier.');
+  }
+  return parsed({
+    ...(typeof person === 'string' ? { person: person.toLowerCase() } : {}),
+    ...(typeof client === 'string' ? { client: client.toLowerCase() } : {}),
+  });
+}
+
 export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
+  // AW-03. No collection is asked at the door: the owner reads their own
+  // without the read-any grant, so the rule is the read's own
+  // (`reads/conversation.ts`), and a caller holding nothing is refused there.
+  'conversation.read': {
+    identifiers: ['conversationId'],
+    // Any body parses: a caller holding nothing is refused SCOPE_NOT_GRANTED
+    // before the identifier is looked at (the matrix's case (e)), so the
+    // read checks the identifier itself, after that.
+    parse: ({ conversationId }) => parsed({ conversationId }),
+    spine: false,
+    authority: 'holds-any-grant',
+    // The door asks no grant, so this flag has nothing to answer; the read
+    // itself tells a caller with no membership NOT_FOUND.
+    outsiderNotFound: false,
+    serve: async (tx, session, { conversationId }) =>
+      await readConversation(tx, session, conversationId),
+  },
+  // MP-7-11. The caller's own conversations; the rule is the read's own, as
+  // `conversation.read`'s is, because the owner lists without the read-any
+  // grant and the read-any grant lists nothing.
+  'conversation.list': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session) => await listConversations(tx, session),
+  },
   'task.read': {
     identifiers: ['recordId'],
     parse: ({ recordId }) =>
@@ -278,7 +335,13 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       );
       // Not there, or there in another business: one answer, deliberately.
       if (task === undefined) return refuseNotFound();
-      return { ok: true, task, states: await readStateChoices(tx, spine.taskStateTypeId) };
+      // The Client field's facts (MP-4-8) go to a member alone: an agent's
+      // detail and the shared view are built apart and carry neither.
+      return {
+        ok: true,
+        task: { ...task, ...(await readClientFacts(tx, task.id, subjectsOf(session))) },
+        states: await readStateChoices(tx, spine.taskStateTypeId),
+      };
     },
   },
   'task.board': {
@@ -431,17 +494,33 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
   },
   // The reader's own to-dos (MP-7-1), asked at the business (`task:read`) like
   // the tag vocabulary: a reader held to one client's records is refused, and
-  // the list is filtered by the reader's person inside the query.
+  // the list is filtered by the reader's person inside the query. Scoped to a
+  // teammate or a client (MP-7-2) under the same key, and no other: the key
+  // already reaches every task in the business, so a scope narrows what the
+  // reader may read and never widens it, and the reader held to some records
+  // is refused before any person is looked up, told no count.
   'task.todos': {
-    identifiers: [],
-    parse: NONE,
+    identifiers: ['person', 'client'],
+    parse: parseTodoScope,
     spine: true,
     authority: 'declared',
     outsiderNotFound: false,
-    serve: async (tx, session, _operands, { spine }) => ({
-      ok: true,
-      todos: await readTodos(tx, spine, session.personId),
-    }),
+    async serve(tx, session, { person, client }, { spine }) {
+      // A teammate is an active member here, the people `person.list` offers.
+      // Another business's person, a former member and a made-up id are one
+      // answer, and nothing is listed.
+      if (
+        person !== undefined &&
+        !(await listPeople(tx)).some((each) => each.personId === person)
+      ) {
+        return refuseNotFound();
+      }
+      // A client is one of this business's; another business's and a made-up
+      // id are one NOT_FOUND, never an empty list (minimum contract 8.2).
+      if (client !== undefined && !(await isClientHere(tx, client))) return refuseNotFound();
+      const scope = client === undefined ? { person: person ?? session.personId } : { client };
+      return { ok: true, todos: await readTodos(tx, spine, scope) };
+    },
   },
   // The Team panel (MP-7-10) is staff only: a client holding `person:read`
   // still meets NOT_FOUND, and the list names staff alone.
@@ -501,6 +580,20 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     async serve(tx, _session, operands, { recordId }) {
       if (recordId === undefined) return refuseNotFound();
       return { ok: true, execution: await readTaskExecution(tx, recordId, operands.cursor) };
+    },
+  },
+  // No subject record, as the queue: the list is about the gates the caller
+  // may decide. The door asks for any grant; the rows are filtered by the
+  // caller's `decide` inside the query, and a caller holding none is refused.
+  'gate.pending': {
+    identifiers: [],
+    parse: NONE,
+    spine: true,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    async serve(tx, session, _operands, { spine }) {
+      const awaiting = await readAwaitingReview(tx, session, spine.taskTypeId, 'task');
+      return Array.isArray(awaiting) ? { ok: true, awaiting } : (awaiting as CommandRefusal);
     },
   },
   'preset.plan': {

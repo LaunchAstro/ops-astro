@@ -126,7 +126,7 @@ async function workInProgress(view: View): Promise<void> {
   await settle();
   await view.click('[data-task-panel] [data-panel-head="new"]');
   await view.type('#panel-draft-name', CANARY);
-  await view.click('[data-draft="close"]');
+  await view.click(`.dpanel[data-panel-id="task"] [data-act="close"]`);
   await view.click('[data-panel-door="open"]');
   await settle();
   expect(panelTitle(view)).toBe(TITLES['alpha']);

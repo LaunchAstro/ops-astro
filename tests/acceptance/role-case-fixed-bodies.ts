@@ -19,6 +19,9 @@ type Body = Readonly<Record<string, unknown>>;
 // The caller's own inbox (INB-1d) needs a live grant of any kind, as above;
 // `inbox.unattended` needs `operations:read`, which the seed grants the admin (INB-1e, C55).
 const EMPTY: readonly CommandName[] = [
+  // The pending gates the admin may decide: the admin holds `decide` on the
+  // whole business, so the list answers (MP-6-1).
+  'gate.pending',
   'task.queue',
   'person.list',
   'team.list',
@@ -73,6 +76,12 @@ export function probeOperands(name: CommandName): Body {
   if (READ_OPERANDS.has(name)) return FIXED_BODIES[name] ?? {};
   if (name === 'task.receipt') return { attemptId: randomUUID() };
   if (name === 'task.set_state') return { stateId: randomUUID() };
+  if (name === 'task.duplicate') return { client: null, title: 'a copy', stepNames: [] };
+  // Well formed, so what answers is authority: the call's operands are read
+  // by type before the delegation, as a handback's are (AW-01).
+  if (name === 'model.call') {
+    return { leaseId: randomUUID(), fence: 1, operation: 'model.replay_compose', fields: [] };
+  }
   if (name === 'privacy.draft_breach_notices') return breachDrillBody();
   return {};
 }

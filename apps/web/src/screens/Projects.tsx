@@ -29,14 +29,17 @@ import type {
   PersonListResult,
   TaskBoardResult,
 } from '../../../../packages/core-wire/src/index.ts';
-import { TASK_STAGES, isInProductLink } from '../../../../packages/core-wire/src/index.ts';
+import {
+  TASK_CATEGORIES,
+  TASK_STAGES,
+  isInProductLink,
+} from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
 import { useBoardLive } from '../data/board-live.ts';
 import { RecordState } from '../views/record-state.tsx';
 import { useRereadOn } from './task/reread-on.ts';
 import { pathTo } from '../routes.ts';
 import { Inbox } from '../views/inbox.tsx';
-import { CATEGORIES_ARE_MOCK, categoryOf } from './category-mock.ts';
 import { CreateTask } from './projects/CreateTask.tsx';
 import { WorkLog } from './projects/WorkLog.tsx';
 import { ProjectsTabs } from './projects/ProjectsTabs.tsx';
@@ -172,7 +175,6 @@ function ProjectBoard(props: Omit<ProjectsProps, 'navigate'>): ReactElement {
             stages={STAGE_LABELS}
             viewer={value.viewer ?? null}
             {...(value.owed === undefined ? {} : { owed: value.owed })}
-            mockCategories={CATEGORIES_ARE_MOCK}
             href={(row) => pathTo('agency:task-detail', { key: row.key })}
             actions={rowActions({
               client,
@@ -204,10 +206,11 @@ const STAGE_LABELS = TASK_STAGES.list().map((stage) => stage.label);
 
 /** One task from the read as a Projects board row (MP-5-8). */
 function rowOf(task: BoardTask): ProjectRow {
-  // A read from a server that predates Assign to AI, or the comment counts,
-  // carries none of them: none.
-  const read: Partial<Pick<BoardTask, 'agent' | 'myAgents' | 'comments'>> = task;
+  // A read from a server that predates Assign to AI, the category or the
+  // comment counts carries none of them: none.
+  const read: Partial<Pick<BoardTask, 'agent' | 'myAgents' | 'category' | 'comments'>> = task;
   const agent = read.agent ?? null;
+  const category = read.category ?? null;
   return {
     id: task.id,
     key: task.key,
@@ -233,8 +236,9 @@ function rowOf(task: BoardTask): ProjectRow {
     // A run awaiting approval is the one wait the read carries; the banner
     // prints the mockup's word for it (B-21).
     waitReason: task.waitReason === 'needs_approval' ? 'approval' : null,
-    // No task category is stored yet: SL08's catalogue replaces this mock seam.
-    category: categoryOf(task),
+    // The stored category by its label (TASK_CATEGORIES); a value outside
+    // the list draws as stored, and none offers no chip (P-13).
+    category: category === null ? null : TASK_CATEGORIES.labelOf(category),
     awaitingDecision: task.awaitingDecision,
     estimate:
       task.estimateMinutes === null ? null : { kind: 'time', minutes: task.estimateMinutes },

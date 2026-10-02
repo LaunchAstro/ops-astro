@@ -25,6 +25,7 @@ import { createStatementLog } from '../../packages/core-records/src/tenancy/stat
 import { serverUrl } from '../acceptance/world.ts';
 import { createHarness, type Harness } from '../acceptance/role-case-harness.ts';
 import {
+  endLive,
   DRIVER_TYPE_LOOKUP,
   expectedShape,
   observe,
@@ -46,6 +47,9 @@ async function positiveCall(
   harness: Harness,
   declaration: CommandDeclaration,
 ): Promise<CapturedCall> {
+  // AW-05's answers need a run the agent picked up and the broker stopped, and
+  // the agent holds one live delegation at a time: the captured pickup's ends first.
+  if (declaration.name.startsWith('run.')) await endLive(harness);
   const prepared = await harness.positiveBody(declaration);
   if ('body' in prepared) return { name: declaration.name, prefix: 'person', body: prepared.body };
   const recipe = AGENT_RECIPES[declaration.name];

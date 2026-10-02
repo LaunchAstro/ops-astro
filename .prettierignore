@@ -16,6 +16,9 @@ skills-lock.json
 # so a reader can compare them with the patch. See issue #174.
 tests/runtime/t2d-proof-body-byte-identity.test.ts
 
+# AW-13's pinned trace target: the vendor's files byte-for-byte at the pin, and
+# the model `docker compose config` renders from them, compared as rendered.
+scripts/local/trace-target
 # The public edition of the design system is a checked copy, kept byte for byte as it
 # crossed (ticket C82); docs/design-system/COPY-RECORD.md holds each digest.
 docs/design-system
@@ -115,3 +118,7 @@ tests/ci/inb1f-rebind-mutation-review.test.ts
 
 # REVIEW-MAIN-B1's p01-2 proof, byte-for-byte as the reviewer committed it.
 tests/review/main-b1-p01-closed-tab-cookies-proof.test.ts
+
+# The condense pass's interim review proof (Opus, standing in for Sol), byte-for-byte apart from
+# its title, which names what it proves (tests/docs/test-files-by-behaviour.test.ts).
+tests/visual/coloured-summary-rejects-skipped-wrapper.test.ts

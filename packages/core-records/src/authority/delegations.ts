@@ -64,6 +64,21 @@ export type DelegationDecision<T> =
 export type DelegableAction = Exclude<Action, 'decide'>;
 
 /**
+ * The actions a collection carries in a delegation, where that is fewer than
+ * every action. A delegation's reach is its collections times its actions, so
+ * `run` is held to `write` (MP-6-2's `state revised`, ORCH34): an agent whose
+ * person holds `run:write` may revise its run's state, and reaches nothing
+ * else on `run`, since no other `run` key exists.
+ */
+const CEILING: Readonly<Record<string, readonly DelegableAction[]>> = { run: ['write'] };
+
+const withinCeiling = (collection: string, action: string): boolean =>
+  CEILING[collection]?.includes(action as DelegableAction) ?? true;
+
+const ceilingWords = (collection: string): string =>
+  `${collection} carries ${(CEILING[collection] ?? []).join(' and ')} only`;
+
+/**
  * The one resource a delegation was minted for.
  *
  * `record` only, and mandatory. R5 is "R1's delegated agent, purpose-scoped to
@@ -205,7 +220,15 @@ export async function mintDelegation(
 
   const person = [{ kind: 'person', id: request.delegatePersonId }] as const;
   for (const collection of request.collections) {
-    for (const action of request.actions) {
+    const actions = request.actions.filter((action) => withinCeiling(collection, action));
+    if (actions.length === 0) {
+      return refuse(
+        'DELEGATION_WIDENS',
+        `${ceilingWords(collection)}, and the purpose asks for none of it`,
+        'narrow the purpose, or grant the person that authority first',
+      );
+    }
+    for (const action of actions) {
       // Sequential on purpose: one transaction, one connection, and a refusal
       // that names the first pair the person does not hold.
       // oxlint-disable-next-line no-await-in-loop
@@ -535,6 +558,13 @@ export async function checkDelegatedAuthority(
     return refuse(
       'DELEGATION_OUT_OF_PURPOSE',
       `the purpose ${delegation.purpose} does not reach ${request.collection}`,
+      'ask the authorising person for a delegation whose purpose covers it',
+    );
+  }
+  if (!withinCeiling(request.collection, request.action)) {
+    return refuse(
+      'DELEGATION_OUT_OF_PURPOSE',
+      `the purpose ${delegation.purpose} reaches ${ceilingWords(request.collection)}`,
       'ask the authorising person for a delegation whose purpose covers it',
     );
   }

@@ -51,6 +51,8 @@ export interface DraftPanelProps {
   readonly scope: DraftScope;
   readonly onCreated: (key: string) => void;
   readonly onClose: () => void;
+  /** Drawn by the dock, whose X closes it: the head draws no Close of its own. */
+  readonly docked?: boolean;
   /** Hold the host while Create is out; the release says whether the session is still the same. */
   readonly hold: () => () => boolean;
 }
@@ -86,7 +88,7 @@ function DraftBody(
   const { kept, creating } = props;
   return (
     <>
-      <DraftHead busy={creating.busy} onClose={props.onClose} />
+      <DraftHead busy={creating.busy} docked={props.docked === true} onClose={props.onClose} />
       <p className="card__sub" data-draft-admission>
         New task, filed from {props.scope.from}. Nothing is stored until Create.
       </p>
@@ -122,20 +124,29 @@ function DraftBody(
   );
 }
 
-/** The draft's title and Close; Close waits while Create is out. */
-function DraftHead(props: { readonly busy: boolean; readonly onClose: () => void }): ReactElement {
+/**
+ * The draft's title and Close; Close waits while Create is out. Drawn by the
+ * dock, whose X closes it, the head draws no Close of its own.
+ */
+function DraftHead(props: {
+  readonly busy: boolean;
+  readonly docked: boolean;
+  readonly onClose: () => void;
+}): ReactElement {
   return (
     <div className="dtp__head">
       <h2 className="t-title">New task</h2>
-      <button
-        className="btn"
-        type="button"
-        data-draft="close"
-        disabled={props.busy}
-        onClick={props.onClose}
-      >
-        Close
-      </button>
+      {props.docked ? null : (
+        <button
+          className="btn"
+          type="button"
+          data-draft="close"
+          disabled={props.busy}
+          onClick={props.onClose}
+        >
+          Close
+        </button>
+      )}
     </div>
   );
 }

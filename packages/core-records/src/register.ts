@@ -1,30 +1,31 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The refusal register. One table of codes, their statuses, and the
-// visibility rule.
+// The refusal register. One table of codes, their statuses, and the visibility rule.
 //
-// This is T1f's register. It does not replace the modules' own refusal
-// unions, because a module keeps the codes it can produce and that keeps its
-// own types narrow. It is the one place that says a code exists, what it means, which contract row owns it, which
-// HTTP status carries it, and whether a caller may see it at all. A code is
-// declared once, as a row: `RefusalCode` is read off the rows, the runtime's
-// own union is read off the rows marked `runtime`, and the HTTP door reads the
-// status column through `statusOf`.
+// This is T1f's register. It does not replace the modules' own refusal unions, because a
+// module keeps the codes it can produce and that keeps its own types narrow. It is the one
+// place that says a code exists, what it means, which contract row owns it, which HTTP
+// status carries it, and whether a caller may see it at all. A code is declared once, as a
+// row: `RefusalCode` is read off the rows, the runtime's own union is read off the rows
+// marked `runtime`, and the HTTP door reads the status column through `statusOf`.
 //
-// **Why a table rather than a union alone.** A union stops a typo. It cannot
-// say that `WRONG_BUSINESS` is never returned to a caller, and that rule is
-// the whole of case T1-N5: a cross-business read is `NOT_FOUND`, and it must
-// be indistinguishable in status, code, body and timing from a read of an
-// identifier nobody ever issued. A boolean beside the code makes that a fact
-// the envelope enforces once, rather than a rule every command remembers.
+// **Why a table rather than a union alone.** A union stops a typo. It cannot say that
+// `WRONG_BUSINESS` is never returned to a caller, and that rule is the whole of case
+// T1-N5: a cross-business read is `NOT_FOUND`, and it must be indistinguishable in status,
+// code, body and timing from a read of an identifier nobody ever issued. A boolean beside
+// the code makes that a fact the envelope enforces once, rather than a rule every command
+// remembers.
 //
-// **Why codes nothing produces yet are in it.** The contract's register is
-// twenty-four codes (minimum contract 4.4) and its command table names seven
-// more. Several belong to gates, leases and delegations, which land in later
-// parts. Registering them now costs a line each; leaving them out means the
-// part that builds those commands invents its own spelling of a code the
-// contract already named. `UNPRODUCED_CODES` (`register-unproduced.ts`) names them, so a later part
-// closing one shows as a diff to this file rather than as nothing at all.
+// **Why codes nothing produces yet are in it.** The contract's register is twenty-four
+// codes (minimum contract 4.4) and its command table names seven more. Several belong to
+// gates, leases and delegations, which land in later parts. Registering them now costs a
+// line each; leaving them out means the part that builds those commands invents its own
+// spelling of a code the contract already named. `UNPRODUCED_CODES`
+// (`register-unproduced.ts`) names them, so a later part closing one shows as a diff to
+// this file rather than as nothing at all.
+
+import { DEFINITION_ROWS } from './register-definitions.ts';
+import { EFFECT_ROWS } from './register-effects.ts';
 
 export type Visibility = 'caller' | 'audit';
 
@@ -65,7 +66,7 @@ interface Declared {
   readonly runtime?: true;
 }
 
-const ROWS = [
+const ROWS_HEAD = [
   // Identity, T1b. Not signed in, or signed in as nobody this business knows.
   {
     code: 'AUTH_UNKNOWN_LOGIN',
@@ -250,6 +251,12 @@ const ROWS = [
     meaning: 'The lifecycle does not allow this transition',
     source: 'contract 4.3',
     runtime: true,
+  },
+  {
+    code: 'CARRIED_TEXT_NAMES_CLIENT',
+    status: 409,
+    meaning: 'Text carried from the old task names its client, unconfirmed',
+    source: 'MP-4-8, owner line 76',
   },
   // The operation is declared and what it rests on has not been built. Not a
   // permission problem and not a bad request, and saying so is the honest answer
@@ -808,64 +815,24 @@ const ROWS = [
     source: 'L4 RUNTIME.md',
     runtime: true,
   },
-  // T2c1, the dispatch transaction's recheck of the effect-time facts
-  // (`core-runtime/src/dispatch.ts`). Each is 409: the call was well formed,
-  // and state moved under it, so nothing was dispatched.
-  {
-    code: 'AUTHORITY_LOST',
-    status: 409,
-    meaning: 'The authority behind the work was lost before its effect was dispatched',
-    source: 'T2 T2c1',
-    runtime: true,
-  },
-  {
-    code: 'DECISION_STALE',
-    status: 409,
-    meaning: 'The approval behind the work is no longer current, so its effect is not dispatched',
-    source: 'T2 T2c1',
-    runtime: true,
-  },
-  {
-    code: 'EFFECT_NOT_RECONCILABLE',
-    status: 409,
-    meaning: 'The effect can be neither replayed nor reconciled, and no gate accepts a duplicate',
-    source: 'T2 T2c1',
-    runtime: true,
-  },
-  // T2c2: an effect is applied only after its dispatch mark, and observed only
-  // once the operation register holds it (`core-runtime/src/observe.ts`).
-  {
-    code: 'EFFECT_NOT_DISPATCHED',
-    status: 409,
-    meaning: 'The attempt this effect names is not dispatched to this caller, so nothing applied',
-    source: 'T2 T2c2',
-  },
-  {
-    code: 'EFFECT_NOT_OBSERVED',
-    status: 409,
-    meaning:
-      'The operation register holds no applied effect for this attempt, so nothing is observed',
-    source: 'T2 T2c2',
-    runtime: true,
-  },
-  {
-    code: 'LIABILITY_NOT_UNKNOWN',
-    status: 409,
-    meaning: 'The attempt is not held as an unknown liability, so there is no outcome to record',
-    source: 'T3 T3d1',
-    runtime: true,
-  },
 ] as const;
 
+// AW-02's and AW-01 J's definition codes sit here, in `register-definitions.ts`; the
+// effect and broker codes follow them, in `register-effects.ts`.
+
 /** Every registered code. Declared by the rows above and nowhere else. */
-export type RefusalCode = (typeof ROWS)[number]['code'];
+/** Every row, in register order: the head, the definition codes, the effect codes. */
+type Row =
+  (typeof ROWS_HEAD)[number] | (typeof DEFINITION_ROWS)[number] | (typeof EFFECT_ROWS)[number];
+
+export type RefusalCode = Row['code'];
 
 /**
  * The codes `core-runtime` returns as its own (`core-runtime/src/refusals.ts`).
  * A narrow union for that module's own types, taken from the rows marked
  * `runtime` rather than spelled a second time there.
  */
-export type RuntimeRefusalCode = Extract<(typeof ROWS)[number], { readonly runtime: true }>['code'];
+export type RuntimeRefusalCode = Extract<Row, { readonly runtime: true }>['code'];
 
 export interface RegisterEntry {
   readonly code: RefusalCode;
@@ -881,16 +848,18 @@ export interface RegisterEntry {
   readonly runtime: boolean;
 }
 
-export const REFUSAL_REGISTER: readonly RegisterEntry[] = ROWS.map(
-  (row: Declared & { readonly code: RefusalCode }) => ({
-    code: row.code,
-    status: row.status,
-    visibility: row.visibility ?? 'caller',
-    meaning: row.meaning,
-    source: row.source,
-    runtime: row.runtime ?? false,
-  }),
-);
+export const REFUSAL_REGISTER: readonly RegisterEntry[] = [
+  ...ROWS_HEAD,
+  ...DEFINITION_ROWS,
+  ...EFFECT_ROWS,
+].map((row: Declared & { readonly code: RefusalCode }) => ({
+  code: row.code,
+  status: row.status,
+  visibility: row.visibility ?? 'caller',
+  meaning: row.meaning,
+  source: row.source,
+  runtime: row.runtime ?? false,
+}));
 
 const BY_CODE = new Map(REFUSAL_REGISTER.map((row) => [row.code, row]));
 
@@ -946,52 +915,6 @@ export function refuseCommand<C extends RefusalCode>(
     throw new Error(`refuseCommand: ${code} is not in the refusal register. Add it or use one.`);
   }
   return { refused: true, code, names, fixes };
-}
-
-// The gate codes' constructors (T2g, build plan 5): one way to raise each code.
-
-/** Completing a task while a gate on it is open (contract 4.3, `task.complete`). */
-export function gatePending(): CommandRefusal<'GATE_PENDING'> {
-  return refuseCommand(
-    'GATE_PENDING',
-    [],
-    [
-      'An approval gate on this task is still open, so the task is not complete.',
-      'Decide the gate, or let it expire, then complete the task.',
-    ],
-  );
-}
-
-/** A second decision on a gate that carries one (G03). */
-export function gateAlreadyDecided(
-  gateId: string,
-  state: string,
-): CommandRefusal<'GATE_ALREADY_DECIDED'> {
-  return refuseCommand(
-    'GATE_ALREADY_DECIDED',
-    [],
-    [
-      `gate ${gateId} is ${state}`,
-      'Read the decision that was recorded. A second decision on one version is never taken.',
-    ],
-  );
-}
-
-/** A comment in an audience this caller may not write in. */
-export function audienceNotPermitted(fix: string): CommandRefusal<'AUDIENCE_NOT_PERMITTED'> {
-  return refuseCommand('AUDIENCE_NOT_PERMITTED', ['audience'], [fix]);
-}
-
-/** The task's assignee asked to decide its own gate: another person decides. */
-export function fourEyesRequired(): CommandRefusal<'FOUR_EYES_REQUIRED'> {
-  return refuseCommand(
-    'FOUR_EYES_REQUIRED',
-    [],
-    [
-      'The task is assigned to you, so its gate is decided by someone else.',
-      'Ask another person who holds the decision grant on this task.',
-    ],
-  );
 }
 
 /** The discriminant every result is read through. */

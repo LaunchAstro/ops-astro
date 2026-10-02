@@ -121,6 +121,7 @@ function server(options: ServerOptions = {}) {
     payload: { step: 'draft the quote' },
     supersededAt: null,
     runId: null,
+    checks: [],
     evidence: {
       id: 'e-2222',
       renderer: 'core-runtime/evidence@1',
@@ -140,6 +141,7 @@ function server(options: ServerOptions = {}) {
     payload: { step: 'the first attempt' },
     supersededAt: '2026-09-23T02:30:00.000Z',
     runId: null,
+    checks: [],
     evidence: null,
     gate: null,
   };

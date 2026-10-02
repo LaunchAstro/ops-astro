@@ -10,6 +10,7 @@
     "tests/ci/staging-containment.test.ts",
     "tests/ci/staging-egress.test.ts",
     "tests/operations/s0-5-client-lock.test.ts",
-    "tests/operations/s0-5-lock-order.test.ts"
+    "tests/operations/s0-5-lock-order.test.ts",
+    "tests/runtime/aw-13-local-target.test.ts"
   ]
 }

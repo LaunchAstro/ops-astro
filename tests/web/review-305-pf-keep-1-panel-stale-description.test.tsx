@@ -32,6 +32,8 @@ function serving() {
     if (where.endsWith('/task/execution')) return Promise.resolve(json({ ok: false }));
     if (/\/live(\/task\/|\?|$)/u.test(where))
       return Promise.resolve(new Response(null, { status: 404 }));
+    // The panel's Project field (SL08) reads the Projects board.
+    if (where.endsWith('/task/board')) return Promise.resolve(json({ ok: true, tasks: [] }));
     if (where.endsWith('/task/read')) {
       reads += 1;
       // First read: our text at revision 4. Later reads: a colleague changed it.

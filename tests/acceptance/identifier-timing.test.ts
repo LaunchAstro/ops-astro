@@ -22,9 +22,11 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { COMMAND_SURFACE } from '../../packages/core-wire/src/surface.ts';
+import { grantTo, type Member } from '../commands/fixture.ts';
 import { PROPOSAL } from './role-case-bodies.ts';
 import { targetKeyOf } from './role-case-harness.ts';
 import { TARGET_FREE as TARGET_FREE_BODIES } from './cd-alternatives.ts';
+import { foreignConversation } from './foreign-conversation.ts';
 import { serverUrl, type AgentIdentity, type Caller } from './world.ts';
 import { createIdentWorld, type IdentWorld, type RawAnswer } from './ident-audit-cases.ts';
 
@@ -76,6 +78,8 @@ const INJECTED_BOUNDS = 3;
 const TARGET_FREE: ReadonlySet<CommandName> = new Set(TARGET_FREE_BODIES.map(([op]) => op));
 
 const NOBODY = 'text nobody should find in an audit row';
+/** The ask an AW-05 answer names: the run is refused before any ask is read. */
+const ASK_ID = randomUUID();
 /** A tag no business has: the task is what the tag cells compare. */
 const TAG = randomUUID();
 
@@ -143,6 +147,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
 
   beforeAll(async () => {
     w = await createIdentWorld('ident_timing');
+    // MP-6-2's revision asks run:write, which the cast's admin holds on no
+    // run; on the whole business, so a foreign task is judged by the handler.
+    await w.h.world.db.app.withBusiness(w.h.world.alpha, async (tx) => {
+      await grantTo(tx, w.h.world.ada as Member, 'write', undefined, false, 'run');
+    });
   }, 180_000);
   afterAll(async () => {
     await w?.close();
@@ -215,6 +224,7 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       'task.set_audience': { fields: { client_visible: true } },
       'task.set_scores': { fields: { impact: 5 } },
       'task.set_adhoc': { fields: { ad_hoc: true } },
+      'task.set_category': { fields: { category: 'seo' } },
       'task.share_with_client': {},
       'task.revoke_client_share': {},
       'task.reparent': { parentId: null },
@@ -262,6 +272,22 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       fabricated: () => ({ gateId: randomUUID(), versionId: randomUUID(), ...decision }),
     });
     byAda('task.board', 'board', f.task.id, (board) => ({ board }));
+    const conversation = await foreignConversation(w.h.world.db.admin, w.h.world.bravo);
+    byAda('conversation.read', 'conversationId', conversation, (conversationId) => ({
+      conversationId,
+    }));
+    byAda('conversation.message', 'conversationId', conversation, (conversationId) => ({
+      conversationId,
+      body: NOBODY,
+    }));
+    byAda('conversation.rename', 'conversationId', conversation, (conversationId) => ({
+      conversationId,
+      title: NOBODY,
+    }));
+    byAda('conversation.set_scope', 'conversationId', conversation, (conversationId) => ({
+      conversationId,
+      page: null,
+    }));
     byAda('task.restore', 'batchId', f.batchId, (batchId) => ({ batchId }));
     // MP-4-6: a task names what is timed, an entry what is noted or deleted.
     byAda('time.start', 'taskId', f.task.id, (taskId) => ({ taskId }));
@@ -272,6 +298,13 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     // MP-4-11: the task names what is tagged.
     byAda('task.add_tag', 'recordId', f.task.id, (recordId) => ({ recordId, tagId: TAG }));
     byAda('task.remove_tag', 'recordId', f.task.id, (recordId) => ({ recordId, tagId: TAG }));
+    // MP-4-8: the old task names what is duplicated; the copy goes to no client.
+    byAda('task.duplicate', 'recordId', f.task.id, (recordId) => ({
+      recordId,
+      client: null,
+      title: NOBODY,
+      stepNames: [],
+    }));
     byAda('grant.revoke', 'grantId', f.grantId, (grantId) => ({ grantId }));
     byAda('access.revoke', 'grantId', f.grantId, (grantId) => ({ grantId }));
     byAda('access.grant', 'holderId', f.admin.personId as string, (holderId) => ({
@@ -318,6 +351,31 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       amountMinor: 0,
       reason: 'identifier timing',
     }));
+    // AW-05's answers name the task and the run on it: bravo's run, the one
+    // its pickup claimed, beside alpha's own task.
+    const [bravoRun] = await w.h.world.db.admin.execute<{ readonly run_id: string }>(
+      'select run_id from public.reservations where id = $1',
+      [f.picked.reservationId],
+    );
+    byAda('run.top_up', 'runId', String(bravoRun?.run_id), (runId) => ({
+      recordId: own.task.id,
+      runId,
+      askId: ASK_ID,
+      amountMinor: 100,
+      currency: 'AUD',
+    }));
+    byAda('run.end_at_budget_stop', 'runId', String(bravoRun?.run_id), (runId) => ({
+      recordId: own.task.id,
+      runId,
+      askId: ASK_ID,
+    }));
+    byAda('run.revise_state', 'runId', String(bravoRun?.run_id), (runId) => ({
+      recordId: own.task.id,
+      runId,
+      expectedVersion: 0,
+      knowledge: [NOBODY],
+      unknowns: [],
+    }));
     // Bravo's proposal raised its holders an inbox item (INB-1b); stamping it
     // from alpha is the same NOT_FOUND as stamping an item that never existed.
     const [bravoItem] = await w.h.world.db.admin.execute<{ id: string }>(
@@ -344,7 +402,15 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       ['task.heartbeat', {}],
       ['task.dispatch', {}],
       ['task.observe', { attemptId: randomUUID() }],
+      ['task.check', { name: NOBODY, outcome: 'passed' }],
       ['task.handback', { outcome: 'completed', report: { wrote: NOBODY } }],
+      [
+        'model.call',
+        {
+          operation: 'model.replay_compose',
+          fields: [{ name: 'tone', source: 'business_internal', value: NOBODY }],
+        },
+      ],
     ];
     for (const [op, extra] of byLease) {
       out.push({
@@ -359,15 +425,15 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 54 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 65 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(54);
-    expect(names).toHaveLength(54);
+    expect(new Set(names).size, 'distinct operations').toBe(65);
+    expect(names).toHaveLength(65);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();
-    expect(names.toSorted(), 'every declaration outside the nine target-free ones').toStrictEqual(
+    expect(names.toSorted(), 'every declaration outside the twelve target-free ones').toStrictEqual(
       bearing,
     );
     const outside: string[] = [];

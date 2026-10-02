@@ -5,6 +5,7 @@
 // its refusal above the read.
 
 import { useState, type FormEvent, type ReactElement } from 'react';
+import { minorOf } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
 import type { TaskEnvelope } from '../../../../packages/core-wire/src/index.ts';
 import { useCommand, type Settlement } from '../records/use-command.ts';
@@ -106,7 +107,7 @@ export function Propose(props: ProposeProps): ReactElement {
             // Money crosses the wire in minor units. The conversion happens once,
             // here, because three places that each convert are three places that
             // can disagree about what a dollar is.
-            maximumMinor: minorOf(maximum),
+            maximumMinor: minorOf(maximum, attempt.currency),
             currency,
             payload: { step: purpose },
             // **`step` is an object, not the purpose again.** The contract is
@@ -284,11 +285,6 @@ function ProposeFields(props: {
   );
 }
 
-/** Dollars as the server's minor units, rounded rather than truncated. */
-function minorOf(amount: string): number {
-  return Math.round(Number(amount) * 100);
-}
-
 /** The envelope and its top-up (T2e), of the maximum drawn here so a moved envelope is refused. */
 /** A first approval waiting on a second person, or a refusal as the server said it. */
 export interface TopUpNote {
@@ -311,12 +307,13 @@ export function TopUp(props: {
   const command = useCommand();
   const [amount, setAmount] = useState('');
   const submit = (): void => {
-    if (command.locked || minorOf(amount) <= 0) return;
+    const minor = minorOf(amount, envelope.currency);
+    if (command.locked || minor === null || minor <= 0) return;
     command.run(
       () =>
         props.client.mutate('budget.top_up', {
           recordId: props.recordId,
-          amountMinor: minorOf(amount),
+          amountMinor: minor,
           fromMaximumMinor: envelope.maximumMinor,
         }),
       (settlement) => {
@@ -337,7 +334,8 @@ export function TopUp(props: {
       </div>
       <p className="card__sub" data-top-up="envelope">
         approved {money(envelope.maximumMinor, envelope.currency)} · held{' '}
-        {money(envelope.heldMinor, '')} · spent {money(envelope.actualMinor, '')}
+        {money(envelope.heldMinor, envelope.currency)} · spent{' '}
+        {money(envelope.actualMinor, envelope.currency)}
       </p>
       {note === null ? null : (
         <p

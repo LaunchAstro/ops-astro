@@ -75,6 +75,12 @@ export interface BodyContext {
   /** A person of this business, for the one field that must name one. */
   readonly assigneePersonId: string;
   asPerson(name: CommandName, body: Readonly<Record<string, unknown>>): Promise<Answer>;
+  /** The agent's own prefix, where a harness has one (`stopped-run.ts`). */
+  asAgent?(
+    name: CommandName,
+    body: Readonly<Record<string, unknown>>,
+    credential?: string,
+  ): Promise<Answer>;
   freshTask(title: string): Promise<Task>;
   /**
    * A task on a client with one person standing on it, which is what
@@ -88,6 +94,8 @@ export interface BodyContext {
   freshMember?(): Promise<string>;
   /** S0-5: a gate item's record removed by the owner, so the next record of it applies. */
   clearGateItem?(item: string): Promise<void>;
+  /** C81: the links to the published legal versions gate items 3 to 6 take (`legalEvidence`). */
+  legalEvidence?(): Promise<Readonly<Record<string, string>>>;
 }
 
 export const batchOf = (answer: Answer): string =>

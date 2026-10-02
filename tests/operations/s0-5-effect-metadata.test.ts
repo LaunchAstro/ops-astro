@@ -41,6 +41,9 @@ const BOOKKEEPING: ReadonlySet<string> = new Set([
   'live_changes',
 ]);
 
+/** Commands no person path reaches, so this person-path proof cannot run them. */
+const AGENT_ONLY: ReadonlySet<string> = new Set(['model.call']);
+
 let harness: Harness;
 
 /**
@@ -145,6 +148,10 @@ function declaredFaults(
 async function runFaults(declaration: CommandDeclaration): Promise<string[]> {
   const { name } = declaration;
   const prepared = await bodyFor(declaration);
+  // `model.call` answers on the agent prefix only (AW-01); the person path this
+  // proof drives refuses it by design, so its writes are not proved here
+  // (batch 3a join; an agent-path proof is owed, SOL-OWED).
+  if ('exception' in prepared && AGENT_ONLY.has(name)) return [];
   if ('exception' in prepared) return [`${name}: no fixture (${prepared.exception})`];
   const before = await fingerprint();
   const answer = await harness.asPerson(name, prepared.body);
@@ -161,8 +168,29 @@ async function runFaults(declaration: CommandDeclaration): Promise<string[]> {
     ...written
       .filter((table) => !declared.some((kind) => kind.kind === table))
       .map((table) => `${name}: wrote ${table}, undeclared`),
+    ...(EXACT.has(name)
+      ? declared
+          .filter(({ kind }) => !written.includes(kind))
+          .map(({ kind }) => `${name}: declares ${kind}, which its fixture did not write`)
+      : []),
   ];
 }
+
+/**
+ * Commands whose declaration is also proved the other way: every kind they
+ * declare, their fixture writes, so a kind they never write is not claimed.
+ * SL12's commands (batch 3a); each writes all it declares on its one path.
+ */
+const EXACT: ReadonlySet<string> = new Set([
+  'task.check',
+  'conversation.start',
+  'conversation.message',
+  'conversation.rename',
+  'conversation.set_scope',
+  'run.top_up',
+  'run.end_at_budget_stop',
+  'run.revise_state',
+]);
 
 /**
  * Write commands whose fixture changes no row, each with where its write is

@@ -34,7 +34,8 @@ import { serverUrl, tokenFor } from '../acceptance/world.ts';
 
 /**
  * The money commands this sweep proves. A money command declared later joins here:
- * the four-eyes threshold is `spend:decide` (MP-2-11, owner line 71). The switch
+ * the four-eyes threshold is `spend:decide` (MP-2-11, owner line 71), and a
+ * run's top-up at its budget stop is `billing:decide` (AW-05). The switch
  * asks the step-up too, so a stale sign-in cannot turn it off (C59).
  */
 const SWEPT: readonly string[] = [
@@ -42,6 +43,7 @@ const SWEPT: readonly string[] = [
   'budget.record_outcome',
   'budget.write_off',
   'settings.set_four_eyes_threshold',
+  'run.top_up',
   'settings.set_money_step_up',
 ];
 
