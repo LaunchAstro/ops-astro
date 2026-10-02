@@ -37,6 +37,19 @@ describe('MP-7-11 drawer: head and tab row', () => {
     expect(page.find('[role="tablist"]')?.getAttribute('aria-label')).toBe('Conversations');
   });
 
+  it('draws the head and tab controls as the licensed glyphs (AI-01, AI-03, AI-05, AI-07, AI-08)', async () => {
+    const page = await drawer();
+    const glyphs = (selector: string): number => page.all(`${selector} svg.icon`).length;
+    expect(glyphs('.aip__id')).toBe(1);
+    expect(glyphs('[data-assistant="add-page"]')).toBe(1);
+    expect(glyphs('[data-assistant="close"]')).toBe(1);
+    expect(glyphs('.aip__tabx')).toBe(page.all('.aip__tabx').length);
+    expect(glyphs('.aip__new')).toBe(1);
+    // The words are the buttons' names; nothing is drawn as a typed letter.
+    expect(page.find('[data-assistant="add-page"]')?.textContent).toBe('');
+    expect(page.find('[data-assistant="close"]')?.textContent).toBe('');
+  });
+
   it('MP-7-11 switch conversations', async () => {
     const page = await drawer();
     expect(page.find('[data-chat="1"]')?.getAttribute('aria-selected')).toBe('true');

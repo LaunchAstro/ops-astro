@@ -53,6 +53,12 @@ import {
 } from './prepare.ts';
 import { retainLateHandback } from './agent-late-handback.ts';
 import { modelCallOperands, type ModelCallOperands } from './model-call-operands.ts';
+import {
+  childHandbackOperands,
+  delegateChildOperands,
+  serveChildHandback,
+  serveDelegateChild,
+} from './agent-child.ts';
 import type {
   AgentCall,
   AgentRequest,
@@ -74,7 +80,8 @@ interface AgentOperationRow<O extends object> {
   /** The operands read before any authority, after the system-owned fields. */
   readonly operands: (request: AgentRequest) => O | Refused;
   /** How a stored success is released on replay (`agent-replay.ts`). */
-  readonly replay: 'reauthorise' | 'pickup' | 'capabilities' | 'settledHandback';
+  readonly replay:
+    'reauthorise' | 'pickup' | 'capabilities' | 'settledHandback' | 'childPickup' | 'childHandback';
   /** What an authority refusal keeps, when the operation keeps anything. */
   readonly onRefused?: (
     tx: TenantQuery,
@@ -96,6 +103,8 @@ interface AgentOperationRow<O extends object> {
  *   is about, found where `subjectTask` says, and served on that task;
  * - `decision`, the runtime's `decideAsAgent`, which always refuses, so it has
  * no `serve` at all;
+ * - `helper`, AW-11's handback: the presented child credential itself, which
+ *   the runtime binds to the helper's own login, under no resolved delegation;
  * - `business`, the operation's own key over the whole business, which a
  *   delegation bounded to one task never reaches (`checkDelegatedAuthority`
  *   refuses it `DELEGATION_OUT_OF_PURPOSE`), so it has no `serve` either.
@@ -132,6 +141,15 @@ export type TypedOperation<O extends object> =
       ) => Promise<HandlerOutcome>;
     })
   | (AgentOperationRow<O> & { readonly authority: 'decision' })
+  | (AgentOperationRow<O> & {
+      readonly authority: 'helper';
+      readonly serve: (
+        tx: TenantQuery,
+        call: AgentCall,
+        operands: O,
+        credential: string,
+      ) => Promise<HandlerOutcome>;
+    })
   | (AgentOperationRow<O> & { readonly authority: 'business' });
 
 /**
@@ -652,6 +670,7 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
             attemptId: request['attemptId'],
             usage: request['usage'],
             outcome: request['outcome'],
+            receiptLink: request['receiptLink'],
           },
           {
             actorId: session.actorId,
@@ -878,6 +897,27 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
           session.actorId,
         );
       },
+    }),
+  ],
+  [
+    'run.delegate_child',
+    row({
+      authority: 'record',
+      subjectTask: 'lease',
+      replay: 'childPickup',
+      operands: delegateChildOperands,
+      // The parent is the delegation `authorise` resolved for this call.
+      serve: async (tx, call, operands, delegation) =>
+        await serveDelegateChild(tx, call, operands, delegation),
+    }),
+  ],
+  [
+    'run.child_handback',
+    row({
+      authority: 'helper',
+      replay: 'childHandback',
+      operands: childHandbackOperands,
+      serve: serveChildHandback,
     }),
   ],
   [

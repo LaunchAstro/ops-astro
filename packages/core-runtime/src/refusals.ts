@@ -39,6 +39,8 @@ export type RuntimeResult<T> =
   | {
       readonly ok: false;
       readonly refusal: CommandRefusal<RuntimeRefusalCode | DelegationRefusalCode>;
+      /** The refusal commits what it wrote: a pickup that stopped the run at its budget (AW-05). */
+      readonly retains?: true;
     };
 
 export function refuse(
@@ -75,6 +77,8 @@ const DELEGATION_CODES: Readonly<Record<DelegationRefusalCode, true>> = {
   DELEGATION_NOT_LIVE: true,
   DELEGATION_WIDENS: true,
   DELEGATION_ALREADY_LIVE: true,
+  DELEGATION_EXPIRED: true,
+  DELEGATION_REVOKED: true,
 };
 
 /**

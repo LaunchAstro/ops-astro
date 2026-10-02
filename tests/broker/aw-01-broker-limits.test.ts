@@ -2,7 +2,9 @@
 //
 // AW-01 on the database, continued from aw-01-broker.test.ts: the data-class route, the
 // credential rule, the durable ceiling, the last room in a reservation, revocation and an
-// expired lease. Every case needs the database; without one the file is skipped.
+// expired lease (`AW-01 expired-lease settlement`; its cost half is also shown by `AW-01
+// settlement by the call`, whose name the SL11 handback pins). Every case needs the
+// database; without one the file is skipped.
 
 import { expect, it as vitestIt } from 'vitest';
 import { catalogue, REPLAY_COMPOSE } from '../../packages/core-connectors/src/index.ts';
@@ -10,7 +12,6 @@ import {
   callModel,
   reserveModelCall,
   sendReservedCall,
-  type Broker,
   type ModelCallField,
 } from '../../packages/core-custody/src/index.ts';
 import { openCustodyWorld } from '../custody/custody-world.ts';
@@ -32,6 +33,7 @@ import {
   call,
   rowsOf,
   callCount,
+  fenceMoving,
 } from './broker-world.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
@@ -210,7 +212,7 @@ it('AW-01 revocation between the hold and the send: nothing is sent and the hold
   ]);
 });
 
-it('AW-01 expired lease: the cost settles and the work is refused', async () => {
+it('AW-01 expired-lease settlement: the cost settles and the work is refused', async () => {
   const work = await liveWork(s, 'expires mid-call', 2_000);
   await stepOf(work);
   world.provider.mode('slow');
@@ -277,19 +279,7 @@ it('AW-01 settlement by the call: a lease that left the caller mid-call settles 
   await stepOf(work);
   world.provider.mode('answer');
   // The lease leaves the caller while custody has the request: its fence moves on.
-  const moving: Broker = {
-    ...broker,
-    custody: {
-      ...world.custody,
-      dispatch: async (credentialRef, request) => {
-        await s.db.admin.execute(`update public.leases set fence = fence + 1 where id = $1`, [
-          work.picked['leaseId'],
-        ]);
-        return await world.custody.dispatch(credentialRef, request);
-      },
-    },
-  };
-  const result = await call(work, {}, moving);
+  const result = await call(work, {}, fenceMoving(work));
   expect(result).toMatchObject({ ok: false, code: 'LEASE_NOT_OWNED' });
   const callId = result.ok ? null : result.callId;
   expect(callId).not.toBeNull();

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The worker's composition root and its two jobs: propose one versioned
-// synthetic change to the task its delegation is for (T2b), and once a person
-// approves it, apply it once (T2c2): pick the work up, dispatch the step, write
+// synthetic change to the task its delegation is for (T2b), hand the approved
+// plan back for review (AW-08), and once a person launches the reviewed
+// output, apply it once (T2c2): pick the work up, dispatch the step, write
 // the one team-only comment under the operation identity derived from the
 // attempt, and observe it. Each step retried after a lost answer presents the
 // same identity, so it replays rather than repeats.
@@ -17,7 +18,8 @@
 import { randomUUID } from 'node:crypto';
 import { effectOperationId } from '../../packages/core-wire/src/index.ts';
 import { createCli, isRefusal, type CliAnswer, type Transport } from '../cli/client.ts';
-import { ProviderFault, SYNTHETIC_PROVIDER, type Provider, type UsageReporter } from './usage.ts';
+import { handedBackFrom, reviewBody, type HandedBack } from './review.ts';
+import { callProvider, ProviderFault, type Provider, type UsageReporter } from './usage.ts';
 
 export interface WorkerOptions {
   readonly transport: Transport;
@@ -48,6 +50,8 @@ export type WorkerOutcome =
         readonly commentId: string;
       };
     }
+  /** The plan's work, handed back for review (AW-08, `review.ts`); its launch applies next. */
+  | { readonly handedBack: HandedBack }
   /** The provider dropped the step before it acted; handed back, and the work comes back (T3e1). */
   | { readonly dropped: { readonly taskId: string; readonly cause: string } }
   /** Nothing approved and unpicked on the task: done already, or not yet approved. */
@@ -90,14 +94,13 @@ interface Held {
   readonly lease: { readonly leaseId: unknown; readonly fence: unknown };
   readonly attemptId: string;
   readonly credential: string;
-  /**
-   * Set once the provider dropped this attempt: only the hand-back is sent
-   * again, under its first operation identity, so it replays.
-   */
+  /** Set once the provider dropped this attempt: only its hand-back is sent again, and replays. */
   readonly drop?: {
     readonly cause: 'provider_unavailable' | 'connection_lost';
     readonly operationId: string;
   };
+  /** Set once the plan's lease went back for review: the hand-back is asked again under it. */
+  readonly review?: { readonly operationId: string };
 }
 
 /** A pickup asked for and not yet answered: asked again under its identity, it replays. */
@@ -191,6 +194,15 @@ async function effectOnce(
   // A drop whose hand-back answer was lost: send the hand-back again, and
   // never call the provider a second time for this attempt.
   if (held.drop !== undefined) return await handBackDrop(held.drop);
+  const handBackForReview = async (operationId: string): Promise<WorkerOutcome> => {
+    const maximumMinor = options.reporter.estimate(SYNTHETIC_STEP);
+    const back = await call(
+      'task.handback',
+      reviewBody(lease, operationId, SYNTHETIC_STEP, maximumMinor),
+    );
+    return 'body' in back ? handedBackFrom(taskId, back.detail) : back;
+  };
+  if (held.review !== undefined) return await handBackForReview(held.review.operationId);
   // The mark first: a provider call may act and then
   // lose its answer, so it is made only once the step is marked. A fault is
   // then handed back as a drop, and the step's whole hold stays unknown until
@@ -198,6 +210,12 @@ async function effectOnce(
   // comment, so the pass cannot prove the provider did nothing.
   // Nothing is released or reserved again on the worker's word.
   const dispatched = await call('task.dispatch', lease);
+  // AW-08: a plan's lease fires nothing; refused before any mark, it goes back for review.
+  if ('refused' in dispatched && dispatched.refused.code === 'LAUNCH_NOT_DECIDED') {
+    const review = { operationId: randomUUID() };
+    keep({ ...held, review });
+    return await handBackForReview(review.operationId);
+  }
   if (!('body' in dispatched)) return dispatched;
   // The provider start is made durable before the call, so a
   // worker lost after it is known to have reached a provider that may have
@@ -205,8 +223,9 @@ async function effectOnce(
   // fault, and the provider is not called until the start is recorded.
   const starting = await call('task.heartbeat', { ...lease, providerStarting: true });
   if (!('body' in starting)) return starting;
+  let link: { readonly receiptLink?: string };
   try {
-    await (options.provider ?? SYNTHETIC_PROVIDER).call(SYNTHETIC_STEP);
+    link = await callProvider(SYNTHETIC_STEP, options.provider);
   } catch (fault) {
     if (!(fault instanceof ProviderFault)) throw fault;
     const drop = { cause: fault.dropCause, operationId: randomUUID() };
@@ -221,7 +240,8 @@ async function effectOnce(
   });
   if (!('body' in effect)) return effect;
   const usage = options.reporter.observe(SYNTHETIC_STEP);
-  const observed = await call('task.observe', { ...lease, attemptId, usage });
+  // The link rides as the provider gave it; observe keeps it only on the declared host.
+  const observed = await call('task.observe', { ...lease, attemptId, usage, ...link });
   if (!('body' in observed)) return observed;
   return { applied: { taskId, attemptId, commentId: String(effect.detail['commentId']) } };
 }

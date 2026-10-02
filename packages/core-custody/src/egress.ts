@@ -19,8 +19,10 @@ import { request as httpRequest, type IncomingMessage, type RequestOptions } fro
 import { request as httpsRequest } from 'node:https';
 import { BlockList, isIP, type LookupFunction } from 'node:net';
 import { presented, type StoredCredential } from './credentials.ts';
+import { parseExtras, pathAllowed, type Extras, type Method } from './egress-routes.ts';
 
-export interface Destination {
+/** A listed origin, with any fixed headers and non-POST routes of its own (AW-13). */
+export interface Destination extends Extras {
   readonly key: string;
   readonly origin: string;
 }
@@ -98,7 +100,9 @@ export function parseDestinations(
     ) {
       return { ok: false, code: 'DESTINATION_FORBIDDEN', at };
     }
-    destinations.set(key, { key, origin: url.origin });
+    const extras = parseExtras(shape);
+    if (extras === undefined) return { ok: false, code: 'DESTINATION_MALFORMED', at };
+    destinations.set(key, { key, origin: url.origin, ...extras });
   }
   return { ok: true, destinations };
 }
@@ -106,7 +110,7 @@ export function parseDestinations(
 export interface OutboundRequest {
   readonly destination: string;
   readonly path: string;
-  readonly method: 'POST';
+  readonly method: Method;
   readonly body: string;
   readonly timeoutMs: number;
   readonly maxResponseBytes: number;
@@ -125,9 +129,6 @@ export type OutboundFault =
 export type Outbound =
   | { readonly ok: true; readonly status: number; readonly body: string }
   | { readonly ok: false; readonly fault: OutboundFault; readonly status: number | null };
-
-/** A path under the origin: starts with one slash, no scheme, no authority, no traversal, no control bytes. */
-const PATH = /^\/(?!\/)[A-Za-z0-9._~\-/]*$/u;
 
 async function readBounded(
   response: IncomingMessage,
@@ -256,8 +257,9 @@ async function exchange(
 }
 
 /**
- * Send one request to a listed destination with the credential header
- * custody adds. The caller never supplies the origin.
+ * Send one request to a listed destination with the credential header and
+ * the destination's fixed headers custody adds. The caller never supplies the
+ * origin, a header, or a method the destination does not route.
  */
 export async function send(
   destinations: ReadonlyMap<string, Destination>,
@@ -267,7 +269,7 @@ export async function send(
 ): Promise<Outbound> {
   const destination = destinations.get(request.destination);
   if (destination === undefined) return { ok: false, fault: 'unlisted', status: null };
-  if (!PATH.test(request.path) || request.path.includes('..')) {
+  if (!pathAllowed(destination, request.method, request.path)) {
     return { ok: false, fault: 'bad_path', status: null };
   }
   const url = new URL(request.path, destination.origin);
@@ -277,7 +279,9 @@ export async function send(
   const addresses = await checkedAddresses(url, resolve, signal);
   if (addresses === 'timeout') return { ok: false, fault: 'timeout', status: null };
   if (addresses.length === 0) return { ok: false, fault: 'forbidden', status: null };
+  // The destination's fixed headers first; their names never overlap these.
   const headers: Record<string, string> = {
+    ...destination.headers,
     'content-type': 'application/json',
     'content-length': String(Buffer.byteLength(request.body)),
   };

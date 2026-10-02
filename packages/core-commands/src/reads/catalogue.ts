@@ -23,8 +23,9 @@ import {
   readableScope,
   readPreferences,
   subjectsOf,
+  taskAccess,
 } from '../../../core-records/src/index.ts';
-import { readAlerts, readOutages } from '../../../core-runtime/src/index.ts';
+import { readAlerts, readOutages, readTaskTrace } from '../../../core-runtime/src/index.ts';
 import type { TenantQuery, Session, PresetField } from '../../../core-records/src/index.ts';
 import {
   isCommandRefusal,
@@ -48,13 +49,17 @@ import { readTodos } from './todos.ts';
 import { readQueue } from './queue.ts';
 import { readTaskExecution } from './execution.ts';
 import { readAwaitingReview } from './awaiting-review.ts';
+import { readPlanningCap } from '../../../core-custody/src/index.ts';
 import { readSettings } from './settings.ts';
 import { readCapabilities } from './capabilities.ts';
 import { parseReceipt, receiptSubject, serveReceipt } from './receipts.ts';
 import { listConversations, readConversation } from './conversation.ts';
+import { readAllowance } from './allowance.ts';
+import { DIGEST, readAttribution } from './attribution.ts';
 import { SERVER_HIT_LIMIT, searchTasks, wordsOf } from './search.ts';
 import { parseBreachNotices, readBreachNotices, readOperations } from './operations.ts';
 import { countOwed, readInbox, readUnattendedInbox } from './inbox.ts';
+import { readHarnessTrigger } from './harness-trigger.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
 import { readClientFacts } from '../commands/task-content.ts';
 import { isKnownTimeZone, readLedger } from './ledger.ts';
@@ -290,6 +295,20 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     authority: 'holds-any-grant',
     outsiderNotFound: false,
     serve: async (tx, session) => await listConversations(tx, session),
+  },
+  // AW-04 (U10): the drawer's allowance line. The rule is the read's own, as
+  // the list's is: the team's, holding `conversation:write`; the conversation
+  // is optional (an empty drawer has none yet) and must be the caller's own.
+  'conversation.allowance': {
+    identifiers: ['conversationId'],
+    // Any body parses, so a caller holding nothing is refused before the
+    // identifier is looked at, as `conversation.read` does.
+    parse: ({ conversationId }) => parsed({ conversationId }),
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session, { conversationId }) =>
+      await readAllowance(tx, session, conversationId),
   },
   'task.read': {
     identifiers: ['recordId'],
@@ -582,6 +601,25 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       return { ok: true, execution: await readTaskExecution(tx, recordId, operands.cursor) };
     },
   },
+  // AW-04: the runs that read one file, by its digest, and what they reached.
+  // Pre-review, the team's only, each run filtered by the caller's task `read`
+  // inside the query (`reads/attribution.ts`). No subject record: a digest is
+  // not one, and naming one run's task would make the audit row false for the
+  // others. The door asks for any grant; the read refuses the rest itself.
+  'definition.attribution': {
+    identifiers: [],
+    parse: ({ digest }) =>
+      typeof digest === 'string' && DIGEST.test(digest)
+        ? parsed({ digest })
+        : rejected('digest', 'Send digest as the file’s sha-256, 64 lowercase hex characters.'),
+    spine: true,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    async serve(tx, session, { digest }, { spine }) {
+      const attribution = await readAttribution(tx, session, spine.taskTypeId, digest);
+      return 'refused' in attribution ? attribution : { ok: true, attribution };
+    },
+  },
   // No subject record, as the queue: the list is about the gates the caller
   // may decide. The door asks for any grant; the rows are filtered by the
   // caller's `decide` inside the query, and a caller holding none is refused.
@@ -654,7 +692,14 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
     spine: false,
     authority: 'declared',
     outsiderNotFound: false,
-    serve: async (tx) => ({ ok: true, settings: await readSettings(tx) }),
+    // The planning cap beside the settings (AW-04): the business's own
+    // configuration too, and every settings reader may see it; only
+    // `billing:decide` moves it (`budget.set_planning_cap`).
+    serve: async (tx) => ({
+      ok: true,
+      settings: await readSettings(tx),
+      planningCap: await readPlanningCap(tx),
+    }),
   },
   // `session.capabilities` has no collection of its own to hold a grant on:
   // it reports the caller's grants, so it is answered only to a caller who
@@ -806,6 +851,50 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       ok: true,
       unattended: await readUnattendedInbox(tx, session.personId),
     }),
+  },
+  // AW-13 readers: a task's runs' trace. `operations:read` (C55: the owner and
+  // administrators by install default, never a member, never an agent) at the
+  // task's record scope, then the task's own read, so another client's task is
+  // NOT_FOUND like one that is not there.
+  'trace.read': {
+    identifiers: ['recordId'],
+    parse: ({ recordId }) =>
+      typeof recordId === 'string'
+        ? parsed({ recordId })
+        : rejected('recordId', 'Send recordId as the task’s identifier or its key.'),
+    spine: true,
+    subject: (tx, spine, operands) => resolveTaskId(tx, spine.taskTypeId, operands.recordId),
+    authority: 'declared',
+    outsiderNotFound: true,
+    async serve(tx, session, _operands, { spine, recordId }) {
+      if (
+        recordId === undefined ||
+        !isInternalReader(session.roleKey) ||
+        !(await liveTask(tx, spine.taskTypeId, recordId)) ||
+        (await taskAccess(tx, session.personId, recordId)) !== 'readable'
+      ) {
+        return refuseNotFound();
+      }
+      return { ok: true, trace: { taskId: recordId, ...(await readTaskTrace(tx, recordId)) } };
+    },
+  },
+  // AW-12: the harness test's result on one run. No subject record and no
+  // spine: the run names its task, and the read filters it by the caller's
+  // task `read` inside its statement (`reads/harness-trigger.ts`), so the
+  // door asks for any grant and the read refuses the rest itself.
+  'harness.read': {
+    identifiers: [],
+    parse: ({ runId }) =>
+      typeof runId === 'string'
+        ? parsed({ runId })
+        : rejected('runId', 'Send runId as the run’s identifier.'),
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    async serve(tx, session, { runId }) {
+      const harness = await readHarnessTrigger(tx, session, runId);
+      return 'refused' in harness ? harness : { ok: true, harness };
+    },
   },
 };
 

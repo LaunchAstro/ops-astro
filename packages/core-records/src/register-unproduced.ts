@@ -19,7 +19,8 @@ import { UNPRODUCED_DEFINITION_CODES } from './register-definitions.ts';
  * write-off. The write-off is deferred, so nothing in `apps/` or `packages/`
  * returns `GATE_NOT_APPROVED`: it is registered, unproduced and not on this
  * list, so this list is not every code nothing produces. `FOUR_EYES_REQUIRED`
- * is produced by the top-up (T2e, `core-runtime/src/budget.ts`) and, since
+ * is produced by the top-up (T2e, `core-runtime/src/budget.ts`), by AW-05's
+ * top-up at the budget stop, `run.top_up` (`core-runtime/src/budget-answer.ts`), and, since
  * T2g, by the gate: the task's assignee is refused a decision on its gate.
  * Asserted by name in `tests/commands/refusal-register.test.ts`, so a part
  * that closes one has to come here and take it off the list.
@@ -50,19 +51,18 @@ export const UNPRODUCED_CODES: ReadonlySet<RefusalCode> = new Set([
   // mint reads the approver's live grants when the agent picks the work up, not
   // when the person approved it, so a grant revoked or expired in between
   // leaves the pickup asking for authority the approver no longer holds
-  // (`tests/commands/delegation-widens.test.ts`). These
-  // three name a delegation lifecycle (intake, expiry as its own answer, an
-  // explicit revocation) that this head's one-task purpose does not
-  // distinguish.
+  // (`tests/commands/delegation-widens.test.ts`).
+  // `DELEGATION_EXCLUDES_INTAKE` is not on this list: an agent calling
+  // `task.triage`, the intake operation, is refused it (`agent-envelope.ts`).
+  // `DELEGATION_EXPIRED` and `DELEGATION_REVOKED` are not on this list: a
+  // child delegation's call walks to its parent (AW-11), and a parent that has
+  // run out, or was handed back or withdrawn, answers with them.
   // `DELEGATION_ALREADY_LIVE` is not on this list:
   // `authority/delegations.ts` refuses a second mint under a purpose the agent
   // already holds live, and `task.pickup` reaches it as a 409 rather than the
   // unique index's 503. Nor is `DELEGATION_EXCLUDES_OPERATION`:
   // `agent-envelope.ts` refuses with it any operation outside
   // `AGENT_SURFACE`, and `tests/commands/unproduced-reach.test.ts` reaches it.
-  'DELEGATION_EXCLUDES_INTAKE',
-  'DELEGATION_EXPIRED',
-  'DELEGATION_REVOKED',
   // `GATE_PENDING` left the list with T2g, which raises it on completing a
   // task whose gate is open; `PROPOSAL_SUPERSEDED` and
   // `PROPOSAL_SCOPE_EXCEEDED` left it with T3a, which gave each its producer.

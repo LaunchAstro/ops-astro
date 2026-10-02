@@ -7,10 +7,11 @@
 //
 // Each recipient comes from a fact the transition already holds: decide
 // grants on the task for a decision, the person who authorised the lease for
-// a settled run, the new assignee, the people a comment names, the task's
-// managers for a quarantined hold (an incident). Nobody is told of their own assignment or
-// mention. A decision goes to every holder, the proposer included, because
-// authority and not authorship decides who owes it, and a decision a person is
+// a settled run (and the task's assignee when an agent is stuck), the new
+// assignee, the people a comment names, the task's managers for a quarantined
+// hold (an incident). Nobody is told of their own assignment or mention. A
+// decision goes to every holder, the proposer included, because authority
+// and not authorship decides who owes it, and a decision a person is
 // responsible for is never switched off, but the task's assignee is owed none:
 // four eyes (T2g) refuses their decision. Mentions are `mentions.ts`.
 
@@ -116,10 +117,13 @@ export async function raiseEscalation(
  * A lease's run as its launcher, the person who authorised the lease, is told
  * of it. A completed run finished and owes nothing. A failed one, or one held
  * as an unknown liability that only a person can resolve (T2d), is waiting on
- * their move: restart, cancel, or record the outcome. A dropped one raises
- * nothing: unmarked work comes back by itself and marked work waits on the
- * reconciliation pass, while the outage report tells a person (T3e). Answers
- * the lease's task.
+ * their move: restart, cancel, or record the outcome. A stuck agent (AW-09)
+ * tells the task's assignee too, with the same waiting item: a pointer that
+ * grants nothing, so the output stays theirs to see and never theirs to decide
+ * (four eyes). An assignee who launched the run is recorded once, as the
+ * launcher. A dropped one raises nothing: unmarked work comes back by itself
+ * and marked work waits on the reconciliation pass, while the outage report
+ * tells a person (T3e). Answers the lease's task.
  */
 export async function raiseRunSettled(
   tx: TenantQuery,
@@ -128,20 +132,35 @@ export async function raiseRunSettled(
     readonly outcome: 'completed' | 'failed' | 'dropped' | 'liability_unknown';
   },
 ): Promise<string> {
-  const rows = await tx.query<{ readonly taskId: string; runId: string; launcher: string }>(
-    `select task_id as "taskId", run_id as "runId", authorised_by_person_id as launcher
+  const rows = await tx.query<{
+    readonly taskId: string;
+    readonly runId: string;
+    readonly launcher: string;
+    readonly agent: boolean;
+  }>(
+    `select task_id as "taskId", run_id as "runId", authorised_by_person_id as launcher,
+            delegation_id is not null as agent
        from public.leases where business_id = $1 and id = $2`,
     [tx.businessId, settled.leaseId],
   );
   const lease = rows[0];
   if (lease === undefined) throw new Error('raiseRunSettled: the settled lease is not here');
   if (settled.outcome === 'dropped') return lease.taskId;
-  await raiseInboxItem(tx, {
-    recipientPersonId: lease.launcher,
-    subjectRecordId: lease.taskId,
-    reason: settled.outcome === 'completed' ? 'run_finished' : 'waiting_run',
-    fact: { kind: 'planned_run', id: lease.runId },
-  });
+  const reason = settled.outcome === 'completed' ? 'run_finished' : 'waiting_run';
+  const told = [lease.launcher];
+  if (reason === 'waiting_run' && lease.agent) {
+    const assignee = await assigneeOf(tx, lease.taskId);
+    if (assignee !== null && assignee !== lease.launcher) told.push(assignee);
+  }
+  for (const person of told) {
+    // oxlint-disable-next-line no-await-in-loop
+    await raiseInboxItem(tx, {
+      recipientPersonId: person,
+      subjectRecordId: lease.taskId,
+      reason,
+      fact: { kind: 'planned_run', id: lease.runId },
+    });
+  }
   return lease.taskId;
 }
 

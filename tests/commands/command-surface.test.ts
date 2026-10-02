@@ -41,7 +41,7 @@ if (serverUrl === undefined) {
 
 /** Every path is a collection and an operation; the collections are named in the case below. */
 const PATH_SHAPE =
-  /^\/(?:task|team|person|preset|settings|session|grant|delegation|budget|time|tag|gate|conversation|model|run|preference|access|operations|privacy|legal|credential|client|inbox|notifications)\/[a-z_]+$/u;
+  /^\/(?:task|team|person|preset|settings|session|grant|delegation|budget|time|tag|gate|conversation|model|run|definition|trace|harness|preference|access|operations|privacy|legal|credential|client|inbox|notifications)\/[a-z_]+$/u;
 
 describe('the surface as a table', () => {
   it('carries the contract’s nine, named', () => {
@@ -83,8 +83,8 @@ describe('the surface as a table', () => {
     // asked with `decide` on tasks. `conversation` is a person's conversation
     // with the agent (AW-03), its writes and its read at its address. `model`
     // is AW-01's call through the broker, asked of the lease's task. `run` is
-    // AW-05's two answers at the budget stop, asked of the run's task.
-    // `operations`
+    // AW-05's budget stop answers; `definition`, AW-04's attribution; `trace`, AW-13's readers;
+    // `harness`, AW-12's result. `operations`
     // and `privacy` are C55's view and its incident record, and `legal` is C81's
     // documents, asked of `privacy`. `credential` is API-2's agent credential.
     // `time` is MP-4-6's: a person's time entries, which are rows beside a task.
@@ -97,9 +97,12 @@ describe('the surface as a table', () => {
 const DECLARED_READS = [
   'access.read',
   'client.list',
+  'conversation.allowance',
   'conversation.list',
   'conversation.read',
+  'definition.attribution',
   'gate.pending',
+  'harness.read',
   'inbox.count',
   'inbox.read',
   'inbox.unattended',
@@ -121,10 +124,11 @@ const DECLARED_READS = [
   'task.search',
   'task.todos',
   'team.list',
+  'trace.read',
 ];
 
 describe('the surface as a table', () => {
-  it('declares the twenty-six reads as reads, and everything else as a write', () => {
+  it('declares the thirty reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual(DECLARED_READS);
     for (const command of COMMAND_SURFACE) {
       expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));

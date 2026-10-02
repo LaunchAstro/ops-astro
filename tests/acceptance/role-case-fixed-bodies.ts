@@ -7,7 +7,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
-import { breachDrillBody } from './role-case-bodies.ts';
+import { breachDrillBody, childProbe } from './role-case-bodies.ts';
 
 type Body = Readonly<Record<string, unknown>>;
 
@@ -51,8 +51,11 @@ export const FIXED_BODIES: Readonly<Partial<Record<CommandName, Body>>> = {
   // Self-scoped (INB-1e): in-app is always on, the one mode it takes.
   'notifications.set_channel': { channel: 'in_app', mode: 'on' },
   'preset.plan': { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] },
+  'definition.attribution': { digest: 'a'.repeat(64) },
   'settings.set_four_eyes_threshold': { value: 1200 },
-  'settings.set_client_sign_off': { value: true },
+  // Off, the default: since AW-08 the setting holds every launch and
+  // dispatch in the business, and this world's other cells decide.
+  'settings.set_client_sign_off': { value: false },
   'settings.set_money_step_up': { value: true },
   // Inside C122-1's bounds whichever runs first: seven or more, and the
   // retention window never below the conversation window.
@@ -66,6 +69,7 @@ const READ_OPERANDS: ReadonlySet<CommandName> = new Set<CommandName>([
   'task.search',
   'task.ledger',
   'preset.plan',
+  'definition.attribution',
 ]);
 
 /**
@@ -75,6 +79,7 @@ const READ_OPERANDS: ReadonlySet<CommandName> = new Set<CommandName>([
 export function probeOperands(name: CommandName): Body {
   if (READ_OPERANDS.has(name)) return FIXED_BODIES[name] ?? {};
   if (name === 'task.receipt') return { attemptId: randomUUID() };
+  if (name === 'harness.read') return { runId: randomUUID() };
   if (name === 'task.set_state') return { stateId: randomUUID() };
   if (name === 'task.duplicate') return { client: null, title: 'a copy', stepNames: [] };
   // Well formed, so what answers is authority: the call's operands are read
@@ -82,6 +87,10 @@ export function probeOperands(name: CommandName): Body {
   if (name === 'model.call') {
     return { leaseId: randomUUID(), fence: 1, operation: 'model.replay_compose', fields: [] };
   }
+  if (name === 'run.delegate_child') {
+    return { leaseId: randomUUID(), fence: 1, ...childProbe(randomUUID()) };
+  }
+  if (name === 'run.child_handback') return { outcome: 'completed' };
   if (name === 'privacy.draft_breach_notices') return breachDrillBody();
   return {};
 }

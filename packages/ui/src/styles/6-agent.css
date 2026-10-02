@@ -75,6 +75,9 @@
   margin: 0.3rem 0 0;
   color: var(--text-2);
   max-width: 74ch;
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
 
 .sout__box {
@@ -88,6 +91,9 @@
   letter-spacing: var(--type-data-tracking);
   text-transform: var(--type-data-case);
   color: var(--ink-faint);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
 }
 .sout__row {
   display: grid;
@@ -98,20 +104,34 @@
   letter-spacing: var(--type-data-tracking);
   text-transform: var(--type-data-case);
   color: var(--text-2);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 .sout__t {
   font: var(--type-small);
   letter-spacing: var(--type-small-tracking);
   text-transform: var(--type-small-case);
   color: var(--text);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
 .sout__meta {
   font: var(--type-data);
   letter-spacing: var(--type-data-tracking);
   text-transform: var(--type-data-case);
   color: var(--ink-faint);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
 }
 .sout__say {
+  color: var(--text-muted);
+  margin: 0;
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
   font: var(--type-small);
   letter-spacing: var(--type-small-tracking);
   text-transform: var(--type-small-case);
@@ -163,6 +183,9 @@
   letter-spacing: var(--type-small-tracking);
   text-transform: var(--type-small-case);
   color: var(--text);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
 .sout__band {
   color: var(--text-muted);
@@ -206,6 +229,9 @@
   text-transform: var(--type-small-strong-case);
   margin: 0;
   color: var(--text);
+  font: var(--type-small-strong);
+  letter-spacing: var(--type-small-strong-tracking);
+  text-transform: var(--type-small-strong-case);
 }
 /* MP-6-2: the run's figures (the mockup's `.tph__stats`, taskrun.js runHero). */
 .tph__stats {
@@ -249,6 +275,9 @@
   text-transform: var(--type-small-case);
   color: var(--text);
   overflow-wrap: anywhere;
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
 .trs__snap {
   color: var(--text-muted);
@@ -353,12 +382,18 @@
   letter-spacing: var(--type-small-tracking);
   text-transform: var(--type-small-case);
   color: var(--text);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
 }
 .wf__fail {
   font: var(--type-caption);
   letter-spacing: var(--type-caption-tracking);
   text-transform: var(--type-caption-case);
   color: var(--danger);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
 }
 .wf__state {
   flex: none;
@@ -374,6 +409,9 @@
   text-transform: var(--type-eyebrow-case);
   display: block;
   padding-top: var(--s-1);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
 }
 .wf__par .wf__row:first-of-type {
   border-top: 0;
@@ -412,6 +450,9 @@
   gap: 0.4rem;
   flex-wrap: wrap;
   color: var(--text-2);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 .mstamp__lock {
   inline-size: 0.6rem;
@@ -434,6 +475,9 @@
   letter-spacing: var(--type-data-tracking);
   text-transform: var(--type-data-case);
   color: var(--ink-faint);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 
 /* C36: a conversation at its own address, and the drawer's link to it. */
@@ -442,6 +486,9 @@
   letter-spacing: var(--type-caption-tracking);
   text-transform: var(--type-caption-case);
   padding: var(--s-2) var(--s-5) 0;
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
 }
 .convrec {
   display: grid;
@@ -453,6 +500,9 @@
 .convrec__note {
   color: var(--text-muted);
 }
+/* The drawer's transcript at the conversation's own address: its messages
+   wear `.aip__msg` (AI-09), the agent's on the left and the person's on the
+   right, so the column is a flex column as the drawer's is. */
 /* The messages stack as the drawer's do: the agent's at the start, the person's at the end. */
 .convrec__log {
   display: flex;
@@ -501,6 +551,9 @@
   letter-spacing: var(--type-caption-tracking);
   text-transform: var(--type-caption-case);
   color: var(--text-muted);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
 }
 .tokpanel__chips,
 .tokrun__skills {
@@ -527,6 +580,9 @@
   text-transform: var(--type-data-case);
   font-variant-numeric: tabular-nums;
   color: var(--text);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 .tokpanel .tt__bar {
   height: 4px;
@@ -547,6 +603,9 @@
   flex: none;
   color: var(--danger);
   white-space: nowrap;
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 .tokruns {
   display: grid;
@@ -587,6 +646,9 @@
   text-transform: var(--type-data-case);
   color: var(--text-2);
   word-break: break-word;
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 .tokrun__io {
   display: inline-flex;
@@ -597,6 +659,10 @@
 .tokrun__k,
 .tokrun__when,
 .tokpanel__reason {
+  color: var(--text-muted);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
   font: var(--type-caption);
   letter-spacing: var(--type-caption-tracking);
   text-transform: var(--type-caption-case);

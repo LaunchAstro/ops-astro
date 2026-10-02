@@ -1,25 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The positive control's recipes for the budget, the person's own lease and the
-// admin's own conversation, beside role-case-positive-body.ts to keep that file
+// The positive control's recipes for the person's own lease and the admin's own
+// conversation, beside role-case-positive-body.ts to keep that file
 // under the line limit. Moved whole from its switch: same bodies, same order.
 
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { ownConversation } from './foreign-conversation.ts';
 import {
-  PROPOSAL,
   type Prepared,
   type BodyContext,
-  approvedTaskId,
+  ownLaunchedLease,
   ownLease,
   ownAppliedEffect,
-  ownUnknownAttempt,
 } from './role-case-bodies.ts';
-
-type BudgetCommand = Extract<
-  CommandName,
-  'budget.top_up' | 'budget.record_outcome' | 'budget.write_off'
->;
 
 type LeaseCommand = Extract<
   CommandName,
@@ -32,37 +25,10 @@ type ConversationCommand = Extract<
   | 'conversation.message'
   | 'conversation.read'
   | 'conversation.list'
+  | 'conversation.allowance'
   | 'conversation.rename'
   | 'conversation.set_scope'
 >;
-
-export async function budgetBody(name: BudgetCommand, context: BodyContext): Promise<Prepared> {
-  switch (name) {
-    case 'budget.top_up':
-      // The admin approved the plan and holds billing, so a top-up under
-      // the band is hers alone (T2e).
-      return {
-        body: {
-          recordId: await approvedTaskId(context),
-          amountMinor: 100,
-          fromMaximumMinor: PROPOSAL.maximumMinor,
-        },
-      };
-    case 'budget.record_outcome':
-      // The admin holds billing, so any unknown attempt on the business's
-      // tasks is hers to record (O8, T3d1).
-      return { body: { ...(await ownUnknownAttempt(context)), outcome: 'happened' } };
-    case 'budget.write_off':
-      // The same unknown hold, closed at nothing with a reason (T3c).
-      return {
-        body: {
-          ...(await ownUnknownAttempt(context)),
-          amountMinor: 0,
-          reason: 'The matrix writes its own unknown hold off.',
-        },
-      };
-  }
-}
 
 export async function leaseBody(name: LeaseCommand, context: BodyContext): Promise<Prepared> {
   switch (name) {
@@ -71,8 +37,8 @@ export async function leaseBody(name: LeaseCommand, context: BodyContext): Promi
       // owner"). The agent's renewal is in the agent journey.
       return { body: await ownLease(context) };
     case 'task.dispatch':
-      // The person marks their own lease's step dispatched (T2c1).
-      return { body: await ownLease(context) };
+      // The person marks their own launched lease's step dispatched (T2c1, AW-08).
+      return { body: await ownLaunchedLease(context) };
     case 'task.check':
       // A check recorded under the person's own lease (MP-6-1). The agent's
       // check under its delegation is in the agent journey.
@@ -109,6 +75,9 @@ export async function conversationBody(
     // on the conversation the admin just started.
     case 'conversation.list':
       return { body: {} };
+    // AW-04: the drawer's allowance line, on the admin's own conversation.
+    case 'conversation.allowance':
+      return { body: { conversationId: await ownConversation(context) } };
     case 'conversation.rename':
       return { body: { conversationId: await ownConversation(context), title: 'Renamed' } };
     case 'conversation.set_scope':

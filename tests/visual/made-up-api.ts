@@ -14,6 +14,7 @@
 // against the mockup's page. Every name and client is made up.
 
 import type {
+  AllowanceResult,
   CapabilitiesResult,
   ClientListResult,
   CommandRefusal,
@@ -73,6 +74,7 @@ const READS = {
       setting('conversation_window_days', 30, 1),
       setting('retention_window_days', 365, 1),
     ],
+    planningCap: { limitMinor: 5000, currency: 'AUD', set: false },
   } satisfies SettingsReadResult,
   // The person's own store (MP-2-11a): no appearance, so the capture's colour
   // scheme draws; two dismissals no page draws, so the reset has a count.
@@ -157,6 +159,16 @@ const READS = {
   'access.read': ACCESS,
   'operations.read': OPERATIONS,
   ...AGENT_READS,
+  'conversation.allowance': {
+    ok: true,
+    allowance: {
+      set: false,
+      currency: 'AUD',
+      limitMinor: 5000,
+      leftMinor: 3860,
+      conversation: { spentMinor: 940, heldMinor: 200 },
+    },
+  } satisfies AllowanceResult,
   // The business's clients (C32), as the task's client field and the to-dos'
   // client scope ask them.
   'client.list': { ok: true, clients: [HARBOUR, MERIDIAN] } satisfies ClientListResult,

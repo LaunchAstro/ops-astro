@@ -27,6 +27,7 @@
 import type { PresetField } from '../../../core-records/src/index.ts';
 import type { BreachNoticeOperands } from './operations.ts';
 import type {
+  AttributionResult,
   AccessReadResult,
   BreachNoticesResult,
   ClientListResult,
@@ -43,6 +44,7 @@ import type {
   QueueResult,
   AwaitingReviewResult,
   ConversationListResult,
+  AllowanceResult,
   ConversationReadResult,
   SettingsReadResult,
   SharedTaskRead,
@@ -53,7 +55,7 @@ import type {
   TaskLedgerResult,
 } from '../../../core-wire/src/index.ts';
 import type { TaskExecution } from './execution.ts';
-import type { Receipt } from '../../../core-runtime/src/index.ts';
+import type { ReadSpan, Receipt, TriggerReading } from '../../../core-runtime/src/index.ts';
 
 // The result types live in `views.ts`, which the clients import; the server's
 // own modules keep importing them from here.
@@ -151,6 +153,10 @@ export interface ReadOperands {
   readonly 'conversation.read': { readonly conversationId: unknown };
   /** The caller's own conversations, for the assistant panel's tab row (MP-7-11). */
   readonly 'conversation.list': NoOperands;
+  /** The drawer's planning allowance, and the caller's own conversation's spend (AW-04). */
+  readonly 'conversation.allowance': { readonly conversationId: unknown };
+  /** The runs that read one file, by its digest: pre-review (AW-04). */
+  readonly 'definition.attribution': { readonly digest: string };
   /** Who is signed in: the caller's own name (C23). It takes no grant either. */
   readonly 'session.person': NoOperands;
   /** The caller's own saved preferences (MP-2-11a). */
@@ -171,6 +177,10 @@ export interface ReadOperands {
   readonly 'inbox.count': NoOperands;
   /** The business's items no path reaches, for `operations:read` (INB-1e). */
   readonly 'inbox.unattended': NoOperands;
+  /** The task whose runs' trace is read (AW-13 readers). */
+  readonly 'trace.read': { readonly recordId: string };
+  /** The run whose harness test result is read (AW-12). */
+  readonly 'harness.read': { readonly runId: string };
 }
 
 /** A read about the business as a whole, which takes nothing. */
@@ -211,6 +221,17 @@ export type ReadResult =
   | ClientListResult
   | OperationsReadResult
   | BreachNoticesResult
+  | AllowanceResult
+  | AttributionResult
   | InboxReadResult
   | InboxCountResult
-  | { readonly ok: true; readonly unattended: readonly UnattendedView[] };
+  | { readonly ok: true; readonly unattended: readonly UnattendedView[] }
+  | {
+      readonly ok: true;
+      readonly trace: {
+        readonly taskId: string;
+        readonly spans: readonly ReadSpan[];
+        readonly complete: boolean;
+      };
+    }
+  | { readonly ok: true; readonly harness: TriggerReading };

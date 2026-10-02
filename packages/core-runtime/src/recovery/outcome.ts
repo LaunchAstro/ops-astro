@@ -20,6 +20,7 @@ import { checkAuthorityAt, closeHold, holdCoveringGrants } from './classifier.ts
 import { modelCallsOn } from '../model-calls-on.ts';
 import { endLease } from './lease-retirement.ts';
 import { locksOf, resume, settle, UNKNOWN_SELECT, type Unknown } from './reconcile.ts';
+import { resolveHeldCalls } from './broker-effect.ts';
 
 export const RECORDED_OUTCOMES = ['nothing_happened', 'happened', 'happened_differently'] as const;
 export type RecordedOutcome = (typeof RECORDED_OUTCOMES)[number];
@@ -199,6 +200,11 @@ export async function recordOutcome(
     request.outcome === 'nothing_happened'
       ? await release(tx, row)
       : await settle(tx, row, BigInt(row.held_minor), 'completed');
+  // AW-10: the step's held broker calls take the same outcome, with the person's name.
+  const person = request.subjects.find((one) => one.kind === 'person');
+  if (person !== undefined) {
+    await resolveHeldCalls(tx, row.reservation_id, request.outcome, person.id);
+  }
   const resumes = request.outcome !== 'happened' && !row.absence_proved;
   // Nothing happened: the step resumes on what its model calls left.
   const left =

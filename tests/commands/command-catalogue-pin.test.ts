@@ -54,6 +54,9 @@
 // handler map. The thirteenth is AW-05's two answers at the budget stop:
 // untargeted person writes naming the task and the run on it, which no agent
 // reaches.
+// The fourteenth is AW-11's hand-over and handback: untargeted writes on
+// `run` an agent reaches under its delegation, and a person is refused both
+// by name.
 //
 // This suite moves the database counter by zero, so it is a unit suite and
 // must not be named in `tests/db/named-suites.json`.
@@ -201,6 +204,10 @@ vi.mock('../../packages/core-commands/src/commands/tasks-decide.ts', async (orig
   ...(await original<object>()),
   decideOnGate: recorder('decideOnGate'),
 }));
+vi.mock('../../packages/core-commands/src/commands/plan-accept.ts', async (original) => ({
+  ...(await original<object>()),
+  acceptPlanOnGate: recorder('acceptPlanOnGate'),
+}));
 vi.mock('../../packages/core-commands/src/commands/tasks-pickup.ts', async (original) => ({
   ...(await original<object>()),
   pickupAsPerson: recorder('pickupAsPerson'),
@@ -275,9 +282,17 @@ vi.mock('../../packages/core-commands/src/commands/budget-write-off.ts', async (
   ...(await original<object>()),
   writeOffOnTask: recorder('writeOffOnTask'),
 }));
+vi.mock('../../packages/core-commands/src/commands/budget-planning-cap.ts', async (original) => ({
+  ...(await original<object>()),
+  setPlanningCap: recorder('setPlanningCap'),
+}));
 vi.mock('../../packages/core-commands/src/commands/model-call-person.ts', async (original) => ({
   ...(await original<object>()),
   refuseModelCallAsPerson: recorder('refuseModelCallAsPerson'),
+}));
+vi.mock('../../packages/core-commands/src/commands/child-work-person.ts', async (original) => ({
+  ...(await original<object>()),
+  refuseChildWorkAsPerson: recorder('refuseChildWorkAsPerson'),
 }));
 vi.mock('../../packages/core-commands/src/commands/run-answers.ts', async (original) => ({
   ...(await original<object>()),
@@ -297,10 +312,12 @@ const PINNED_RUNTIME_SHAPED = {
   'task.observe': 'leaseId',
   'task.pickup': 'reservationId',
   'model.call': 'leaseId',
+  'run.delegate_child': 'leaseId',
 };
 
 const PINNED_UNTARGETED_IDENTIFIERS = {
   'budget.record_outcome': ['recordId', 'attemptId'],
+  'budget.set_planning_cap': [],
   'budget.top_up': ['recordId'],
   'budget.write_off': ['recordId', 'attemptId'],
   'access.end': ['holderId'],
@@ -327,6 +344,8 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'privacy.record_incident': [],
   'privacy.set_data_class': [],
   'privacy.set_overseas_service': [],
+  'run.child_handback': [],
+  'run.delegate_child': ['leaseId'],
   'run.end_at_budget_stop': ['recordId', 'runId'],
   'run.revise_state': ['recordId', 'runId'],
   'run.top_up': ['recordId', 'runId'],
@@ -337,6 +356,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'settings.set_money_step_up': [],
   'settings.set_conversation_window': [],
   'settings.set_retention_window': [],
+  'task.accept_plan': ['gateId', 'versionId', 'conversationId'],
   'task.cancel': ['recordId', 'lineageId'],
   'task.check': ['leaseId'],
   'task.create': ['parentId', 'board', 'boardSection', 'conversationId'],
@@ -366,10 +386,12 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'access.read',
   'access.revoke',
   'budget.record_outcome',
+  'budget.set_planning_cap',
   'budget.top_up',
   'budget.write_off',
   'client.create',
   'client.list',
+  'conversation.allowance',
   'conversation.list',
   'conversation.message',
   'conversation.read',
@@ -378,9 +400,11 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'conversation.start',
   'credential.issue',
   'credential.revoke',
+  'definition.attribution',
   'delegation.revoke',
   'gate.pending',
   'grant.revoke',
+  'harness.read',
   'inbox.count',
   'inbox.read',
   'inbox.seen',
@@ -402,6 +426,8 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'privacy.record_incident',
   'privacy.set_data_class',
   'privacy.set_overseas_service',
+  'run.child_handback',
+  'run.delegate_child',
   'run.end_at_budget_stop',
   'run.revise_state',
   'run.top_up',
@@ -416,6 +442,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'settings.set_retention_window',
   'tag.create',
   'tag.list',
+  'task.accept_plan',
   'task.add_tag',
   'task.board',
   'task.cancel',
@@ -445,10 +472,13 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'time.set_note',
   'time.start',
   'time.stop',
+  'trace.read',
 ];
 
 const PINNED_AGENT_SURFACE = [
   'model.call',
+  'run.child_handback',
+  'run.delegate_child',
   'run.revise_state',
   'session.capabilities',
   // The assignee of its own task under a delegation holding assign (MP-4-8).
@@ -516,6 +546,17 @@ const REQUESTS: readonly CommandRequest[] = [
     versionId: 'v',
     decision: 'approve',
     note: 'n',
+  },
+  {
+    command: 'task.accept_plan',
+    operationId: 'op',
+    gateId: 'g-accept',
+    versionId: 'v-accept',
+    note: 'n-accept',
+    planText: 't-accept',
+    plan: {},
+    entryPath: 'e-accept',
+    paths: [],
   },
   { command: 'task.pickup', operationId: 'op', reservationId: 'res' },
   { command: 'task.handback', operationId: 'op', leaseId: 'l', fence: 2, outcome: 'done' },
@@ -644,6 +685,13 @@ const REQUESTS: readonly CommandRequest[] = [
     reason: 'why',
   },
   {
+    command: 'budget.set_planning_cap',
+    operationId: 'op',
+    limitMinor: 2_000,
+    currency: 'AUD',
+    fromLimitMinor: null,
+  },
+  {
     command: 'task.check',
     operationId: 'op',
     leaseId: 'l',
@@ -681,6 +729,8 @@ const REQUESTS: readonly CommandRequest[] = [
     knowledge: [],
     unknowns: [],
   },
+  { command: 'run.delegate_child', operationId: 'op' },
+  { command: 'run.child_handback', operationId: 'op' },
   { command: 'time.start', operationId: 'op', taskId: 't-start' },
   { command: 'time.stop', operationId: 'op', taskId: 't-stop' },
   { command: 'time.log', operationId: 'op', taskId: 't-log', duration: '1h', note: 'n-log' },
@@ -721,6 +771,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'task.delete_comment': ['deleteTaskComment', 'c-delete'],
   'task.propose': ['proposeOnTask', 'request'],
   'task.decide': ['decideOnGate', 'request'],
+  'task.accept_plan': ['acceptPlanOnGate', 'request'],
   'task.pickup': ['pickupAsPerson', 'request'],
   'task.handback': ['handbackOwnLease', 'request'],
   'task.start': ['setState', 'started'],
@@ -796,6 +847,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'budget.top_up': ['topUpOnTask', 'request'],
   'budget.record_outcome': ['recordOutcomeOnTask', 'request'],
   'budget.write_off': ['writeOffOnTask', 'request'],
+  'budget.set_planning_cap': ['setPlanningCap', 'request'],
   'task.check': ['checkOwnLease', 'request'],
   'conversation.start': ['startConversation', 'request'],
   'conversation.message': ['messageConversation', 'request'],
@@ -805,6 +857,8 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'run.top_up': ['topUpOnRun', 'request'],
   'run.end_at_budget_stop': ['endOnRun', 'request'],
   'run.revise_state': ['reviseStateOnRun', 'request'],
+  'run.child_handback': ['refuseChildWorkAsPerson', 'request'],
+  'run.delegate_child': ['refuseChildWorkAsPerson', 'request'],
   'time.start': ['startTime', 't-start'],
   'time.stop': ['stopTime', 't-stop'],
   'time.log': ['logTimeEntry', 't-log', '1h', 'n-log'],
@@ -842,7 +896,7 @@ const agentReach = (reach: readonly string[]) =>
     .toSorted();
 
 describe('the per-command tables at 06ab232', () => {
-  it('shapes the same runtime identifier for the same four commands', () => {
+  it('shapes the same runtime identifier for the same eight commands', () => {
     expect({ ...RUNTIME_SHAPED }).toStrictEqual(PINNED_RUNTIME_SHAPED);
   });
 
@@ -857,13 +911,13 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same eighty-two from an expected revision', () => {
+  it('exempts the same ninety-two from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );
   });
 
-  it('lets an agent reach the same twenty-one, two of them before a pickup', () => {
+  it('lets an agent reach the same twenty-four, two of them before a pickup', () => {
     expect(agentReach(['delegated', 'before-pickup'])).toStrictEqual(PINNED_AGENT_SURFACE);
     expect(agentReach(['before-pickup'])).toStrictEqual(PINNED_BEFORE_PICKUP);
     expect([...AGENT_SURFACE].toSorted()).toStrictEqual(PINNED_AGENT_SURFACE);

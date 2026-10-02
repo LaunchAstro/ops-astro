@@ -160,6 +160,30 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     manifest_digest: SEED_DIGEST,
     pinned_by_actor_id: randomUUID(),
   },
+  // AW-04: nothing binds a plan before a plan accept.
+  'public.plan_records': {
+    id: randomUUID(),
+    gate_id: randomUUID(),
+    decision_id: randomUUID(),
+    run_id: randomUUID(),
+    plan_text: 'restricted calls seed',
+    text_digest: SEED_DIGEST,
+    record: { steps: [] },
+    record_digest: SEED_DIGEST,
+    bound_by_actor_id: randomUUID(),
+  },
+  // AW-08: no output is handed back for review before a plan's work runs.
+  'public.reviewed_outputs': {
+    version_id: randomUUID(),
+    lineage_id: randomUUID(),
+    lease_id: randomUUID(),
+  },
+  // AW-04 (U10): no planning reply is priced before a cap is set.
+  'public.planning_envelopes': {
+    cap_id: randomUUID(),
+    conversation_id: randomUUID(),
+    owner_person_id: randomUUID(),
+  },
   'public.bootstrap_reads': {
     run_id: randomUUID(),
     sequence: 1,
@@ -198,6 +222,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
   // AW-13: nothing starts the exporter on the journey.
   'public.trace_export_cursors': {},
   'public.trace_export_gaps': { code: 'target_unreachable', events: 1 },
+  'public.trace_expiry_batches': { window_days: 30, runs: 1, expired_run_ids: [randomUUID()] },
   'public.bootstrap_bytes': {
     content_digest: SEED_DIGEST,
     content_size: 4,
@@ -442,15 +467,19 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at every pre
   // Read from the directory, not counted here, so the next migration is covered
   // with no edit to this suite (docs/local/DATA.md, "A new migration extends the
   // proof by itself").
-  it('reads every migration on disk, numbered from 0001 with no gap, and covers each below', () => {
+  it('reads every migration on disk, 0001 up with no gap then UTC timestamps, and covers each', () => {
     expect(onDisk.map((migration) => `${migration.version}.sql`)).toStrictEqual(
       readdirSync('migrations')
         .filter((name) => name.endsWith('.sql'))
         .toSorted(),
     );
-    expect(onDisk.map((migration) => migration.version.slice(0, 4))).toStrictEqual(
-      Array.from({ length: onDisk.length }, (_, i) => String(i + 1).padStart(4, '0')),
+    const ids = onDisk.map(({ version }) => version.slice(0, version.indexOf('_')));
+    const numbered = ids.filter((id) => id.length === 4);
+    expect(numbered).toStrictEqual(
+      Array.from({ length: numbered.length }, (_, i) => String(i + 1).padStart(4, '0')),
     );
+    expect(ids.slice(numbered.length).filter((id) => !/^\d{14}$/u.test(id))).toStrictEqual([]);
+    expect(new Set(ids).size).toBe(ids.length);
   });
 
   for (const migration of onDisk) {

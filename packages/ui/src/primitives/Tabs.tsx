@@ -16,11 +16,18 @@
 // [docs/design-system.md], so the pattern is completed here and the addition is
 // recorded in `DECISIONS.tsv` rather than smuggled in as a port.
 //
-// The sliding mark is CSS-positioned from the selected tab rather than measured
-// in JavaScript, because a measurement needs a layout and this package must
-// render on a server as well as in a browser.
+// The sliding mark is placed under the selected tab after layout (the mockup's
+// `placeMark`): a server render draws it with no width, and the browser places
+// it on arrival.
 
-import type { KeyboardEvent, ReactElement, ReactNode } from 'react';
+import {
+  useLayoutEffect,
+  useRef,
+  type KeyboardEvent,
+  type ReactElement,
+  type ReactNode,
+  type RefObject,
+} from 'react';
 
 export interface TabDescriptor {
   /** Stable within the strip, and the anchor for the `aria-controls` pairing. */
@@ -41,25 +48,11 @@ export interface TabStripProps {
 }
 
 export function TabStrip(props: TabStripProps): ReactElement {
-  const index = props.tabs.findIndex((tab) => tab.id === props.selected);
-  const move = (by: number): void => {
-    const count = props.tabs.length;
-    if (count === 0) return;
-    const next = props.tabs[(((index + by) % count) + count) % count];
-    if (next !== undefined) props.onSelect(next.id);
-  };
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>): void => {
-    // Left and right only. Up and down belong to the page's own scroll, and a
-    // strip that swallows them is a strip a reader cannot escape.
-    if (event.key === 'ArrowRight') move(1);
-    else if (event.key === 'ArrowLeft') move(-1);
-    else if (event.key === 'Home') move(-index);
-    else if (event.key === 'End') move(props.tabs.length - 1 - index);
-    else return;
-    event.preventDefault();
-  };
+  const row = usePlacedMark();
+  const onKeyDown = arrowKeys(props);
   return (
     <div
+      ref={row}
       className="cmtabs"
       role="tablist"
       aria-label={props.label}
@@ -92,6 +85,68 @@ export function TabStrip(props: TabStripProps): ReactElement {
       <span className="cmtabs__mark" aria-hidden="true" />
     </div>
   );
+}
+
+/** The strip's keys: left and right move the selection, Home and End go to the ends. */
+function arrowKeys(props: TabStripProps): (event: KeyboardEvent<HTMLDivElement>) => void {
+  const index = props.tabs.findIndex((tab) => tab.id === props.selected);
+  const move = (by: number): void => {
+    const count = props.tabs.length;
+    if (count === 0) return;
+    const next = props.tabs[(((index + by) % count) + count) % count];
+    if (next !== undefined) props.onSelect(next.id);
+  };
+  return (event) => {
+    // Left and right only. Up and down belong to the page's own scroll, and a
+    // strip that swallows them is a strip a reader cannot escape.
+    if (event.key === 'ArrowRight') move(1);
+    else if (event.key === 'ArrowLeft') move(-1);
+    else if (event.key === 'Home') move(-index);
+    else if (event.key === 'End') move(props.tabs.length - 1 - index);
+    else return;
+    event.preventDefault();
+  };
+}
+
+/**
+ * Puts the strip's mark under the selected tab: snapped on arrival, sliding on
+ * a switch, and placed again on every render (a count changes a tab's width)
+ * and once the faces have loaded, because a tab's width is its word's width.
+ */
+function usePlacedMark(): RefObject<HTMLDivElement | null> {
+  const row = useRef<HTMLDivElement>(null);
+  const placed = useRef(false);
+  const place = (snap: boolean): void => {
+    const strip = row.current;
+    if (strip === null) return;
+    const mark = strip.querySelector<HTMLElement>(':scope > .cmtabs__mark');
+    const on = strip.querySelector<HTMLElement>(':scope > .cmtab[aria-selected="true"]');
+    if (mark === null || on === null) return;
+    if (snap) strip.classList.add('is-placing');
+    mark.style.left = `${String(on.offsetLeft)}px`;
+    mark.style.width = `${String(on.offsetWidth)}px`;
+    // A snap lands with the transition off: reading a layout value commits the
+    // new place before the class comes away, so only a switch slides.
+    if (snap) {
+      void mark.offsetWidth;
+      strip.classList.remove('is-placing');
+    }
+  };
+  useLayoutEffect(() => {
+    if (placed.current) {
+      place(false);
+      return;
+    }
+    placed.current = true;
+    place(true);
+    if ('fonts' in document) {
+      void (async () => {
+        await document.fonts.ready;
+        place(true);
+      })();
+    }
+  });
+  return row;
 }
 
 export interface TabPanelProps {

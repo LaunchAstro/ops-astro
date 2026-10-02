@@ -24,11 +24,21 @@ export {
   type OutboundRequest,
 } from './egress.ts';
 export { startCustody, type Custody, type CustodyConfig, type CustodyOutcome } from './custody.ts';
+export { raiseBudgetWait, stopWords } from './broker-wait.ts';
+export { giveBack } from './broker-give-back.ts';
 export {
   callModelInConversation,
   type ConversationCallRequest,
   type ConversationScope,
 } from './broker-conversation.ts';
+export {
+  callModelForPlanning,
+  PLANNING_CAP_DEFAULT,
+  readPlanningAllowance,
+  readPlanningCap,
+  type PlanningAllowance,
+  type PlanningCapView,
+} from './broker-planning.ts';
 export {
   EMAIL_OPERATION,
   sendInboxEmail,
@@ -53,9 +63,12 @@ export {
   type ModelCallField,
   type ModelCallRequest,
   type ModelCallResult,
+  type CallFault,
+  type DropCause as CallDropCause,
   type ProviderAdapter,
   type Reservation,
   type ResolvedField,
   type ReservedCall,
   type ReserveRefusal,
 } from './broker.ts';
+export { reconcileProviderCalls, type ProviderProof } from './broker-reconcile.ts';

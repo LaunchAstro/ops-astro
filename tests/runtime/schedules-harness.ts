@@ -302,7 +302,7 @@ export async function envelopeHeld(s: Schedules, taskId: string): Promise<number
 }
 
 /** A promise the test resolves by hand, which is how a transaction is held open. */
-function barrier(): { readonly held: Promise<void>; readonly release: () => void } {
+export function barrier(): { readonly held: Promise<void>; readonly release: () => void } {
   let release!: () => void;
   const held = new Promise<void>((resolve) => {
     release = resolve;

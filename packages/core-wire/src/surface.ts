@@ -280,6 +280,14 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     untargetedIdentifiers: ['gateId', 'versionId'],
     agent: 'delegated',
   }),
+  // AW-04: the plan accept is `task.decide`'s approval asked on the gate's own
+  // task, with the plan bound and the run's instruction file pinned in the
+  // same transaction. Out of the agent's reach: only a person activates.
+  declare('task.accept_plan', 'decide', {
+    targetsExistingRecord: false,
+    authorisedOn: 'target',
+    untargetedIdentifiers: ['gateId', 'versionId', 'conversationId'],
+  }),
   // Own-lease work is `write` on the task the reservation or lease belongs to,
   // the scope the runtime and `grant.revoke` ask under their locks: a
   // record-scoped writer picks up, renews and hands back on that task.
@@ -368,6 +376,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // `decide` on tasks (`gate:decide`), asked per row inside the query, so a
   // record-scoped decider sees its own records' gates (`reads/awaiting-review.ts`).
   read('gate.pending', TASK_COLLECTION, { action: 'decide' }),
+  // `read` on tasks, asked per run inside the query, so a record-scoped reader
+  // sees its own tasks' runs (`reads/attribution.ts`). No agent route.
+  read('definition.attribution', TASK_COLLECTION),
   // The activity ledger. `read` on tasks across the business, because it
   // lists every task's writes; an agent works one delegated task and has no
   // use for the whole business's trail, so it is not offered one.
@@ -443,6 +454,12 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // The grant that rule asks is `conversation:write`, the owner's key, so the
   // catalogue names that one (API-1), not the declared pair.
   read('conversation.list', CONVERSATION_COLLECTION, { authority: ['conversation:write'] }),
+  // AW-04 (U10): the drawer's allowance line, under the list's rule and the
+  // team's only, since the cap and what is left are the business's; the spend
+  // is the caller's own conversation's (`reads/allowance.ts`). No agent entry.
+  // Its rule asks `conversation:write`, as the list's does, so the catalogue
+  // names that one (API-1).
+  read('conversation.allowance', CONVERSATION_COLLECTION, { authority: ['conversation:write'] }),
   declare('conversation.rename', 'write', {
     collection: CONVERSATION_COLLECTION,
     targetsExistingRecord: false,
@@ -626,7 +643,7 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     agent: 'delegated',
   }),
   // The lease owner's too, asked as heartbeat is; the runtime rechecks the
-  // four effect-time facts under its own locks.
+  // effect-time facts under its own locks.
   declare('task.dispatch', 'write', {
     targetsExistingRecord: false,
     authorisedOn: 'claim',
@@ -679,6 +696,13 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     authorisedOn: 'record',
     untargetedIdentifiers: ['recordId', 'attemptId'],
   }),
+  // `billing:decide` on the whole business (AW-04, U10): owners and
+  // administrators set the planning cap; no agent route serves it.
+  declare('budget.set_planning_cap', 'decide', {
+    collection: BILLING_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+  }),
   // The lease holder's, asked of the lease's task like the heartbeat. The
   // agent path checks the delegation; the broker then verifies the lease, the
   // delegation and the reservation again under their locks when it holds the
@@ -716,6 +740,26 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     authorisedOn: 'record',
     untargetedIdentifiers: ['recordId', 'runId'],
+    agent: 'delegated',
+  }),
+  // AW-11: `run:write` inside the parent's delegation, asked of its lease's
+  // task like the heartbeat; the runtime binds the parent to that lease at its
+  // fence under the locks. A person holding a lease has no route to it.
+  declare('run.delegate_child', 'write', {
+    collection: 'run',
+    targetsExistingRecord: false,
+    authorisedOn: 'claim',
+    untargetedIdentifiers: ['leaseId'],
+    runtimeShaped: 'leaseId',
+    agent: 'delegated',
+  }),
+  // The helper's handback answers to its own child credential, bound to its
+  // own login by the runtime, not to a grant: a revoked or run-out child still
+  // hands its partial work back, and the handback grants nothing.
+  declare('run.child_handback', 'write', {
+    collection: 'run',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
     agent: 'delegated',
   }),
   // Sign-out: the caller's own account, never anyone else's and never an
@@ -805,6 +849,15 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // (the catalogue's C55 row). It names other people's items, so it is not
   // `self`.
   read('inbox.unattended', 'operations'),
+  // AW-13 readers: a task's runs' trace, `operations:read` asked at the task's
+  // record scope and, inside it, the task's own read. Never an agent: no
+  // agent-reachable operation returns a trace (the ticket's `no agent read`).
+  read('trace.read', 'operations', { authorisedOn: 'record' }),
+  // AW-12: the harness test's result on one run, computed from its frozen
+  // manifest. `read` on tasks, asked inside the statement on the run's task
+  // (`reads/harness-trigger.ts`). Never an agent: the owner reads it, and no
+  // framework under test reaches its own verdict.
+  read('harness.read', TASK_COLLECTION),
   // Per channel, never per item: the body names no item. Self-scoped like
   // `inbox.seen`, so it asks no grant and reaches the caller's own setting.
   declare('notifications.set_channel', 'write', {

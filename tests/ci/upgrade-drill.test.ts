@@ -72,9 +72,10 @@ interface Run {
 }
 
 /** The command itself, as CI runs it, with its one-line JSON result read back. */
-function drill(from: string, migrationsDirectory?: string, json = true): Run {
+function drill(from: string, migrationsDirectory?: string, json = true, base?: string): Run {
   const args = ['scripts/local/upgrade-drill.mjs', '--from', from];
   if (migrationsDirectory !== undefined) args.push('--migrations', migrationsDirectory);
+  if (base !== undefined) args.push('--base', base);
   if (json) args.push('--json');
   const run = spawnSync(process.execPath, args, {
     encoding: 'utf8',
@@ -153,8 +154,8 @@ function upgradeDrillCases2() {
   }, 180_000);
 
   it('a migration that erases existing decisions fails the drill', () => {
-    // Cascade: budget_asks (budget wait) holds a foreign key to the decisions, and a bare
-    // truncate of a referenced table is refused (0A000) before it erases anything.
+    // cascade: later tables hold foreign keys to gate_decisions (0193 budget waits,
+    // 0102 plan records), and a bare truncate of a referenced table is refused (0A000).
     const planted = withPlanted(
       '9999_planted_decision_loss.sql',
       'truncate public.gate_decisions cascade',
@@ -196,11 +197,26 @@ function upgradeDrillCases3() {
     expect(status).toBe(0);
   }, 180_000);
 
+  it("upgrades from main's newest migration to a UTC timestamp ID, as CI drills it", () => {
+    const planted = withPlanted(
+      '20261002013000_planted_stamped.sql',
+      `alter table public.records add column planted_stamp boolean not null default false`,
+    );
+    // CI names the base (ci.yml: --base "$BASE_SHA"); a newest migration that
+    // reached this line through a merge has no adding commit for the search to find.
+    const base = spawnSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
+    const { status, result } = drill(head.slice(0, head.indexOf('_')), planted, true, base);
+    expect(result?.from).toBe(head);
+    expect(result?.applied).toStrictEqual(['20261002013000_planted_stamped']);
+    expect(result?.differences).toStrictEqual([]);
+    expect(status).toBe(0);
+  }, 180_000);
+
   it('refuses a starting point that is unknown or already the head, building nothing', () => {
     const unknown = drill('0999', undefined, false);
     expect(unknown.status).toBe(2);
     expect(unknown.output).toMatch(/no migration/u);
-    const atHead = drill(head.slice(0, 4), undefined, false);
+    const atHead = drill(head.slice(0, head.indexOf('_')), undefined, false);
     expect(atHead.status).toBe(2);
     expect(atHead.output).toMatch(/nothing to upgrade/u);
   }, 60_000);

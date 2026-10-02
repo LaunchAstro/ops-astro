@@ -20,14 +20,17 @@
 //    maximum is held out of the reservation's room: a row in `model_calls`,
 //    state `reserved`, with the outbound prompt's copy registered beside it.
 //    A refusal after the facts hold is recorded as a step (state `refused`);
-//    a refusal of the facts themselves writes nothing.
+//    a refusal of the facts themselves writes nothing. An attempt with a call
+//    dropped and held unknown takes no other call (`LIABILITY_UNKNOWN`), so a
+//    framework's own retry is refused and only a new attempt calls again.
 // 2. Start. The six facts, the client link and the task's source are read again
-//    under their locks, and a call whose authority went, whose task gained a
-//    client, or whose route its task's source no longer allows, since the hold is
-//    released unsent. The values sent are the ones read here. The call is marked
-//    `dispatched` with its route and credential kind before custody is
-//    asked, so a crash after this point leaves a call the sweep holds as
-//    unknown liability and never releases.
+//    under their locks, and a call whose authority went, whose attempt had a
+//    sibling call dropped and held unknown, whose task gained a client, or whose
+//    route its task's source no longer allows, since the hold is released unsent.
+//    The values sent are the ones read here. The call is marked `dispatched`
+//    with its route and credential kind before custody is asked, so a crash
+//    after this point leaves a call the sweep holds as unknown liability and
+//    never releases.
 // 3. Send, through custody, with a request the adapter built from registered
 //    fields. The broker's process opens no connection.
 // 4. Settle, under the same locks taken by the call's own rows, with the
@@ -43,6 +46,7 @@
 import type { BusinessId, Database, TenantQuery } from '../../core-records/src/index.ts';
 import { eligibleRoutes } from '../../core-connectors/src/index.ts';
 import { lockFacts, type Checked } from './broker-facts.ts';
+import { heldUnknown } from './broker-holds.ts';
 import { resolveFields } from './broker-sources.ts';
 import { promptCopyRegistered, reserveModelCall, type ReservedCall } from './broker-reserve.ts';
 import { settle, settlementOf } from './broker-settle.ts';
@@ -61,7 +65,9 @@ export type {
   BrokerRefusal,
   BoundField,
   BrokerRoute,
+  CallFault,
   ClaimedField,
+  DropCause,
   ModelCaller,
   ModelCallField,
   ModelCallRequest,
@@ -81,9 +87,9 @@ export {
 /**
  * Step 2, as the effect applies: the six facts and the client link again
  * under their locks, so a lease, delegation or reservation lost since the
- * hold, or a client put on the task since, sends nothing. The hold is then
- * released, never started, with the route it would have taken and no start
- * time. Only then is the call marked `dispatched`.
+ * hold, a sibling call held unknown since, or a client put on the task since,
+ * sends nothing. The hold is then released, never started, with the route it
+ * would have taken and no start time. Only then is the call marked `dispatched`.
  */
 async function markStarted(
   database: Database,
@@ -95,7 +101,9 @@ async function markStarted(
 ): Promise<{ readonly fields: readonly ResolvedField[] } | BrokerRefusal> {
   return await database.withBusiness(businessId, async (tx) => {
     const route = [reserved.route.key, reserved.route.reach, reserved.route.credentialKind];
-    const checked = startable(await lockFacts(tx, caller, request), request, reserved);
+    const facts = await lockFacts(tx, caller, request);
+    const unknown = facts.ok && (await heldUnknown(tx, facts.facts.reservationId));
+    const checked = startable(facts, request, reserved, unknown);
     if (!checked.ok) {
       await tx.query(
         `update public.model_calls
@@ -125,19 +133,23 @@ async function markStarted(
 }
 
 /**
- * The start's own decision, on the facts read again under their locks: a task
- * that gained a client, or a task that became unreadable or stopped being a
- * business-internal source, releases the call unsent (C60, S3). The
+ * The start's own decision, on the facts read again under their locks: a
+ * sibling call of the attempt dropped and held unknown since this one was held
+ * (read under the reservation lock its settle takes), a task that gained a
+ * client, or a task that became unreadable or stopped being a
+ * business-internal source, releases the call unsent (AW-12 A7, C60, S3). The
  * values sent are the ones read here, under the share locks.
  */
 function startable(
   facts: Checked,
   request: ModelCallRequest,
   reserved: ReservedCall,
+  siblingUnknown: boolean,
 ):
   | { readonly ok: true; readonly fields: readonly ResolvedField[] }
   | { readonly ok: false; readonly code: BrokerRefusal } {
   if (!facts.ok) return facts;
+  if (siblingUnknown) return { ok: false, code: 'LIABILITY_UNKNOWN' };
   if (facts.facts.clientId !== null) return { ok: false, code: 'CLIENT_MODEL_USE_OFF' };
   const resolved = resolveFields(request.fields, facts.facts.source);
   if (!resolved.ok) return resolved;
@@ -180,7 +192,7 @@ export async function sendReservedCall(
   const adapter = broker.providers.get(reserved.operation.provider);
   if (adapter === undefined) throw new Error(`no adapter for ${reserved.operation.provider}`);
   const values = Object.fromEntries(started.fields.map((field) => [field.name, field.value]));
-  const built = adapter.build(values);
+  const built = adapter.build(values, reserved.callId);
   const outcome = await broker.custody.dispatch(reserved.route.credentialRef, {
     destination: reserved.operation.destination,
     path: built.path,
@@ -203,7 +215,8 @@ export async function sweepModelCalls(
 ): Promise<{ readonly held: number; readonly released: number }> {
   const held = await tx.query(
     `update public.model_calls c
-        set state = 'liability_unknown', fault = 'ours', drop_state = 'dropped_no_answer'
+        set state = 'liability_unknown', fault = 'ours', drop_state = 'dropped_no_answer',
+            unknown_since = clock_timestamp()
        from public.leases l
       where c.business_id = $1 and l.business_id = c.business_id and l.id = c.lease_id
         and c.state = 'dispatched' and (l.state <> 'live' or l.expires_at <= clock_timestamp())
@@ -215,7 +228,8 @@ export async function sweepModelCalls(
   // so a lost process never leaves it counting as in flight.
   const conversations = await tx.query(
     `update public.model_calls
-        set state = 'liability_unknown', fault = 'ours', drop_state = 'dropped_no_answer'
+        set state = 'liability_unknown', fault = 'ours', drop_state = 'dropped_no_answer',
+            unknown_since = clock_timestamp()
       where business_id = $1 and conversation_id is not null and state = 'dispatched'
         and started_at <= clock_timestamp() - interval '10 minutes'
       returning id`,

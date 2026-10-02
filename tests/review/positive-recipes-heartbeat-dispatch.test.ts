@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-// From the take's interim review (5930cc2): the ratchet split must not drop a positive
+//
+// From SL12's take interim review: the ratchet split must not drop a positive
 // control recipe. Every recipe is reached with a context whose every call
 // throws a sentinel; a declaration with a recipe throws the sentinel, one
 // without throws "no positive control recipe".

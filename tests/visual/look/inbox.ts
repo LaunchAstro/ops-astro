@@ -83,6 +83,38 @@ export const INBOX: LookScreen = {
       ruled: SMALL,
     },
     {
+      // SL10 gap 2: a tab's count is plain muted mono text (`.cmtab .cbadge--plain`).
+      id: 'inbox.tab-count',
+      mockup: { ...PANEL, selector: '[data-nt-tab="owed"] .cbadge' },
+      app: { ...APP, selector: '[role="tab"][id$="-tab-owed"] .cbadge' },
+      props: [...TYPE, 'background-color', 'padding-left', 'display'],
+    },
+    {
+      // SL10 gap 3: the selected tab's underline (`.cmtabs__mark`) is drawn.
+      // Its width is the tab's, and the made-up count has fewer digits.
+      id: 'inbox.tab-mark',
+      mockup: { ...PANEL, selector: '[data-nt-tabs] .cmtabs__mark' },
+      app: { ...APP, selector: '.nt__tabs .cmtabs__mark' },
+      props: ['box.drawn', 'box.height', 'background-color', 'bottom'],
+    },
+    {
+      // SL10 gap 4: the row is a grid of the kind mark and the text, 8px
+      // apart; with the 2px rule and 12px padding the text sits 40px in.
+      id: 'inbox.row-grid',
+      mockup: { ...PANEL, selector: '.nt__row' },
+      app: { ...APP, selector: '.nt__row' },
+      props: ['display', 'column-gap'],
+    },
+    {
+      // A teammate's mark (the mockup's mention, the made-up assignment) in the
+      // second ink; 12.8px folds to --type-small.
+      id: 'inbox.row-mark',
+      mockup: { ...PANEL, selector: '.nt__mark--team' },
+      app: { ...APP, selector: '.nt__mark--team' },
+      props: ['box.width', 'font-size', 'line-height', 'color'],
+      ruled: SMALL,
+    },
+    {
       id: 'inbox.info-row',
       mockup: { ...INFO.mockup, selector: '[data-nt-pane="info"] .nt__row' },
       app: { ...INFO.app, selector: '[id$="-panel-info"] .nt__row' },

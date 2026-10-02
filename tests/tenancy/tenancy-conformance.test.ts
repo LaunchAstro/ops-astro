@@ -80,11 +80,15 @@ describe.skipIf(serverUrl === undefined)('tenancy_conformance', () => {
   });
 
   describe('the migrations', () => {
-    it('finds the migrations on disk numbered from 0001 with no gap', () => {
-      expect(onDisk.length).toBeGreaterThan(0);
-      expect(onDisk.map((version) => version.slice(0, 4))).toStrictEqual(
-        Array.from({ length: onDisk.length }, (_, i) => String(i + 1).padStart(4, '0')),
+    it('finds the migrations on disk numbered from 0001 with no gap, then UTC timestamps', () => {
+      const ids = onDisk.map((version) => version.slice(0, version.indexOf('_')));
+      const numbered = ids.filter((id) => id.length === 4);
+      expect(numbered.length).toBeGreaterThan(0);
+      expect(numbered).toStrictEqual(
+        Array.from({ length: numbered.length }, (_, i) => String(i + 1).padStart(4, '0')),
       );
+      expect(ids.slice(numbered.length).filter((id) => !/^\d{14}$/u.test(id))).toStrictEqual([]);
+      expect(new Set(ids).size).toBe(ids.length);
     });
 
     it('applies every migration to a database created empty', () => {

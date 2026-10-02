@@ -178,6 +178,36 @@ the last one, because the next migration would make it wrong.
 `tests/tenancy/restricted-calls.test.ts` all read the list from `migrations/`,
 so a new migration edits none of them.
 
+A migration is `migrations/<id>_<name>.sql`, a regular file, the name lower
+case, digits and underscores. A new migration's ID is the UTC time it was
+written, to the second, as fourteen digits starting `20`:
+`20261002013000_task_labels.sql` for 01:30:00 UTC on 2 October 2026. Lanes
+writing migrations at once then pick different IDs without asking each other.
+The migrations written before that, `0001` up to the last four-digit one, keep
+their numbers: an applied migration is never renamed. Every four-digit ID sorts
+before every timestamp, and the four-digit range has no gap. Until the first
+timestamp is on `main`, the check below also passes a new four-digit ID that
+leaves no gap; after it, a four-digit ID sorts before `main`'s newest and is
+refused.
+
+Two places hold the rule (`packages/core-records/src/tenancy/migration-ids.ts`).
+The runner refuses a directory holding a malformed `.sql` name, one that is not
+a regular file, or one ID twice. The `commit messages and provenance` check
+(`scripts/migration-ids.mjs`) runs on a pull request and again in the merge
+queue. It judges every commit on the first-parent line from the base to the
+head against that commit's own first parent, and the head against the base as
+a whole: a pull request's merge with `main` as it stood when GitHub built the
+merge, and in the queue, the run that holds, each entry against `main` and the
+entries queued ahead of it. It refuses a duplicate ID, a migration that sorts
+before the newest one already there, a gap in the four-digit range, a file that
+is not a regular, non-executable file, a name ending in an upper-case `.SQL`
+(a Mac checkout folds it onto the `.sql` of the same name), and a timestamp
+more than an hour ahead of the clock (local time written as UTC). A migration not yet on `main` that fails it takes
+a new timestamp; one on `main` is never renamed. The runner itself still
+applies whatever is pending, in ID order, even below its ledger's newest, and
+nothing checks a push to `main` that bypasses the queue: a database that ran a
+migration before it reached `main` is out of step.
+
 The upgrade drill (`pnpm verify:upgrade-drill`) fails a migration that changes a
 row an installation already holds. A migration that does so on purpose, such as
 a slot reservation or a field's owners, says so in
@@ -410,8 +440,8 @@ names the schemas it found, so
 and no `storage` schema, which is an absence, not a denial.
 
 A new migration extends the proof by itself. The harness reads the prefixes
-from `migrations/`, with no list here, in the suite or in a manifest. Add the
-next `migrations/NNNN_*.sql` and it is covered.
+from `migrations/`, with no list here, in the suite or in a manifest. Add a
+`migrations/<UTC timestamp>_*.sql` (see "What the schema is") and it is covered.
 
 ## What a write is checked against
 

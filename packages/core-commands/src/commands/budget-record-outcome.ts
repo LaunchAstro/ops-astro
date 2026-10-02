@@ -2,13 +2,15 @@
 //
 // `budget.record_outcome` (T3d1): the envelope asked `decide` on `billing`;
 // here the task, the attempt on it and the outcome are checked, and the
-// runtime records it under the step's locks. A retry replays by operation
+// runtime records it under the step's locks. A planning reply (AW-04) has no
+// task: its conversation and call stand in for them (`recordPlanningOutcome`). A retry replays by operation
 // identity through the register, before this runs.
 
 import { isUuid, subjectsOf, type TenantQuery } from '../../../core-records/src/index.ts';
 import {
   RECORDED_OUTCOMES,
   recordOutcome,
+  recordPlanningOutcome,
   type RecordedOutcome,
 } from '../../../core-runtime/src/index.ts';
 import type { CommandContext } from './context.ts';
@@ -55,13 +57,25 @@ export async function recordOutcomeOnTask(
         and task.record_type_id = $4 and task.deleted_at is null`,
     [tx.businessId, attemptId.toLowerCase(), taskId, context.spine.taskTypeId],
   );
-  if (found.length === 0) return refused(refuseNotFound());
+  const subjects = subjectsOf(context.session);
+  const { collection } = context.declaration;
+  if (found.length === 0) {
+    const planning = await recordPlanningOutcome(tx, {
+      conversationId: taskId,
+      callId: attemptId.toLowerCase(),
+      outcome: fields.outcome,
+      subjects,
+      collection,
+    });
+    if (planning === undefined) return refused(refuseNotFound());
+    return planning.ok ? applied(taskId, null, { ...planning.value }) : refused(planning.refusal);
+  }
   const result = await recordOutcome(tx, {
     taskId,
     attemptId: attemptId.toLowerCase(),
     outcome: fields.outcome,
-    subjects: subjectsOf(context.session),
-    collection: context.declaration.collection,
+    subjects,
+    collection,
     actorId: context.session.actorId,
   });
   return result.ok ? applied(taskId, null, { ...result.value }) : refused(result.refusal);

@@ -27,6 +27,9 @@
 //
 // A started tab links to the conversation's own address (C36), where it stays
 // after it is taken out of the tab row.
+//
+// The planning allowance line (AW-04) sits above the transcript, from before
+// the first message (`allowance-line.tsx`).
 
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { AssistantPanel, type AssistantMessage, type AssistantPage } from '@launchastro/ui';
@@ -54,6 +57,7 @@ import type {
 } from '../operations/client.ts';
 import { settle } from '../records/use-command.ts';
 import { pathTo, ROUTES, type RouteId } from '../routes.ts';
+import { AllowanceLine } from './allowance-line.tsx';
 
 export const KEPT = 'Kept in this conversation. The agent does not answer here yet.';
 
@@ -225,6 +229,14 @@ function useWrites(
   };
 }
 
+/** The tab's allowance line, read again as each of its answers settles. */
+function allowanceFor(client: OperationsClient, chat: Chat | undefined): ReactElement {
+  // Every message but the person's own is a settled answer: a reply, a note or a failure.
+  const settled = chat?.messages.filter((message) => message.role !== 'user').length ?? 0;
+  const conversationId = chat?.conversationId ?? null;
+  return <AllowanceLine client={client} conversationId={conversationId} settled={settled} />;
+}
+
 export function AssistantView(props: AssistantViewProps): ReactElement {
   const store = useStore();
   const { state, update } = store;
@@ -238,7 +250,8 @@ export function AssistantView(props: AssistantViewProps): ReactElement {
   const subject = subjectFor({ route: props.route, ...state.scope });
   const sender = useSender(props, store, subject);
   const writes = useWrites(props, store, sender.report);
-  const opened = state.chats.find((chat) => chat.key === state.selected)?.conversationId ?? null;
+  const chat = state.chats.find((each) => each.key === state.selected);
+  const opened = chat?.conversationId ?? null;
   return (
     <AssistantPanel
       subject={subject}
@@ -249,6 +262,7 @@ export function AssistantView(props: AssistantViewProps): ReactElement {
         opened === null ? null : pathTo('agency:agent-conversation', { conversation: opened })
       }
       citation={state.citation}
+      allowance={allowanceFor(props.client, chat)}
       draft={state.draft}
       onSelect={(key) => {
         update((current) => select(current, key));

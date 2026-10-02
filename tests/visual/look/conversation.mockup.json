@@ -7,23 +7,23 @@
         "font-family": "Funnel Sans",
         "font-size": "14px",
         "line-height": "21px",
+        "color": "rgba(0,0,0,255)",
+        "background-color": "rgba(242,242,242,255)",
+        "border-top-width": "1px",
         "padding-top": "9.6px",
         "padding-left": "12.8px",
-        "background-color": "rgba(242,242,242,255)",
-        "color": "rgba(0,0,0,255)",
-        "border-top-color": "rgba(0,0,0,31)",
-        "border-top-width": "1px"
+        "border-top-color": "rgba(0,0,0,31)"
       },
       "1480-dark": {
         "font-family": "Funnel Sans",
         "font-size": "14px",
         "line-height": "21px",
+        "color": "rgba(248,248,248,255)",
+        "background-color": "rgba(23,22,25,255)",
+        "border-top-width": "1px",
         "padding-top": "9.6px",
         "padding-left": "12.8px",
-        "background-color": "rgba(23,22,25,255)",
-        "color": "rgba(248,248,248,255)",
-        "border-top-color": "rgba(245,245,245,26)",
-        "border-top-width": "1px"
+        "border-top-color": "rgba(245,245,245,26)"
       },
       "900-light": {
         "font-family": "Funnel Sans",
@@ -75,19 +75,21 @@
         "font-family": "Funnel Sans",
         "font-size": "14px",
         "line-height": "21px",
-        "padding-top": "9.6px",
-        "padding-left": "12.8px",
+        "color": "rgba(255,255,255,255)",
         "background-color": "rgba(0,0,0,255)",
-        "color": "rgba(255,255,255,255)"
+        "border-top-width": "0px",
+        "padding-top": "9.6px",
+        "padding-left": "12.8px"
       },
       "1480-dark": {
         "font-family": "Funnel Sans",
         "font-size": "14px",
         "line-height": "21px",
-        "padding-top": "9.6px",
-        "padding-left": "12.8px",
+        "color": "rgba(10,10,13,255)",
         "background-color": "rgba(248,248,248,255)",
-        "color": "rgba(10,10,13,255)"
+        "border-top-width": "0px",
+        "padding-top": "9.6px",
+        "padding-left": "12.8px"
       },
       "900-light": {
         "font-family": "Funnel Sans",

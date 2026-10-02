@@ -14,8 +14,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { ConversationReadResult } from '../../packages/core-wire/src/index.ts';
 import { AssistantView } from '../../apps/web/src/views/assistant.tsx';
 import { drawScreen } from '../../apps/web/src/screen-registry.tsx';
+import { pageAt } from '../../apps/web/src/manifest.ts';
 import { gateOf } from '../../apps/web/src/route-gate.ts';
-import { matchRoute, pathTo, ROUTES } from '../../apps/web/src/routes.ts';
+import { matchRoute, pathTo } from '../../apps/web/src/routes.ts';
 import type { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { mount, settle } from './mount.tsx';
 import { press, track, unmountAll } from './mp-7-11-drawer-fixtures.tsx';
@@ -89,10 +90,14 @@ interface Asked {
   readonly body: Readonly<Record<string, unknown>>;
 }
 
+const AWAY = { unavailable: true, because: 'not asked here' };
+
 function reader(answer: unknown): { readonly client: OperationsClient; readonly asked: Asked[] } {
   const asked: Asked[] = [];
   const client = {
     read: (name: string, body: Readonly<Record<string, unknown>>) => {
+      // The drawer's allowance line (AW-04) is not what these cases are about.
+      if (name === 'conversation.allowance') return Promise.resolve(AWAY);
       asked.push({ name, body });
       // A refusal comes back as it is; a result comes back as the call's value.
       const refused = typeof answer === 'object' && answer !== null && 'refused' in answer;
@@ -144,7 +149,7 @@ describe('C36 conversation address', () => {
     expect(match?.id).toBe('agency:agent-conversation');
     expect(match?.params).toStrictEqual({ conversation: ID });
     expect(pathTo('agency:agent-conversation', { conversation: ID })).toBe(`/agent/${ID}`);
-    expect(ROUTES['agency:agent-conversation']).toMatchObject({ authenticated: true });
+    expect(pageAt(`/agent/${ID}`), 'the manifest places no rail entry here').toBeNull();
     expect(gateOf(matchRoute(`/agent/${ID}`), false).kind).toBe('sign-in');
   });
 
@@ -156,6 +161,17 @@ describe('C36 conversation address', () => {
     expect(said).toStrictEqual(['What did the supplier quote?', '<b>Four hundred</b> dollars']);
     expect(page.find('b')).toBeNull();
     expect(page.find('[data-conversation="wrap-up"]')).toBeNull();
+  });
+
+  it('the transcript wears the drawer message look (AI-09), each speaker still named to a reader', async () => {
+    const { page } = await address(`/agent/${ID}`, LIVE);
+    const looks = page
+      .all('[data-conversation="transcript"] > li')
+      .map((each) => [...each.classList].filter((name) => name.startsWith('aip__msg')).join(' '));
+    expect(looks).toStrictEqual(['aip__msg aip__msg--user', 'aip__msg aip__msg--ai']);
+    const who = page.all('.convrec__who');
+    expect(who.map((each) => each.textContent)).toStrictEqual(['You', 'Agent']);
+    expect(who.every((each) => each.classList.contains('visually-hidden'))).toBe(true);
   });
 
   it('after the body purges, the address shows the wrap-up with working links, never a transcript', async () => {

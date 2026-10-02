@@ -42,7 +42,7 @@ function tipStore(
   };
 }
 
-describe('MP-9-1 a tip dismissal is stored per person against its page and version', () => {
+describe('MP-9-1 tip dismissal per person: a tip dismissal is stored per person against its page and version', () => {
   it('keys the dismissal as the one store does: page and tip id, the version beside it', () => {
     const tip = { page: '/dashboard/portfolio/', id: 'intro', version: 1, text: 'Read it here.' };
     expect(tipKey(tip)).toBe('/dashboard/portfolio/#intro');
@@ -65,7 +65,7 @@ describe('MP-9-1 a tip dismissal is stored per person against its page and versi
     expect(mounted.find('.sectip')).toBeNull();
   });
 
-  it('a dismissed tip stays hidden on the next load, a new version comes back', () => {
+  it('MP-9-1 rewritten tip returns: a dismissed tip stays hidden on the next load, a new version comes back', () => {
     const tip = { page: '/p/', id: 'intro', version: 1, text: 'Old words.' };
     const store = tipStore({ dismissed: { [tipKey(tip)]: 1 } });
     expect(visibleTip(tip, store)).toBe(false);
@@ -78,7 +78,7 @@ describe('MP-9-1 a tip dismissal is stored per person against its page and versi
   });
 });
 
-describe('MP-9-1 layers open or shut as drawn', () => {
+describe('MP-9-1 layers as drawn: layers open or shut as drawn', () => {
   it('first and second layers open, third layers shut, and a drawn state wins', async () => {
     mounted = await mount(
       <div>
@@ -175,7 +175,7 @@ describe('MP-9-1 KPI tiles with delta, term tips and of-tracks: the track', () =
   });
 });
 
-describe('MP-9-1 stat rows follow the column rules at 1279, 900 and 640', () => {
+describe('MP-9-1 stat row columns: stat rows follow the column rules at 1279, 900 and 640', () => {
   it('declares the columns as a prop and narrows at each width', async () => {
     mounted = await mount(
       <StatRow columns={5}>
@@ -201,7 +201,7 @@ describe('MP-9-1 stat rows follow the column rules at 1279, 900 and 640', () => 
   });
 });
 
-describe('MP-9-1 no hint button ships without an action', () => {
+describe('MP-9-1 no hint without action: no hint button ships without an action', () => {
   it('a hint with an action draws the kit ghost button that runs it', async () => {
     let ran = 0;
     mounted = await mount(

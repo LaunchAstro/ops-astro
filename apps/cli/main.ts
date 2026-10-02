@@ -11,7 +11,8 @@
 //
 // Credentials stay off the command line and off stdout. The bearer comes from
 // `OPS_ASTRO_TOKEN` or the file `login` writes; the delegation credential from
-// `OPS_ASTRO_DELEGATION` or the file a successful agent `task.pickup` writes.
+// `OPS_ASTRO_DELEGATION` or the file a successful agent `task.pickup` writes
+// (a `run.delegate_child` saves the helper's beside it).
 // A pickup's answer is printed with the credential replaced by where it was
 // saved, so a terminal log or a shell history never holds it.
 
@@ -39,6 +40,8 @@ import {
   usage,
   type CliAnswer,
 } from './client.ts';
+import { handoffOf } from '../../packages/core-wire/src/index.ts';
+import { DEFAULT_WEB, handOff, handoffHelp } from './handoff.ts';
 
 const ROOT = join(import.meta.dirname, '..', '..');
 
@@ -64,7 +67,7 @@ interface Parsed {
 }
 
 /** Flags that take a value; every other `--name` is a switch. */
-const VALUED = new Set(['json', 'body-file', 'business', 'api', 'email', 'gotrue']);
+const VALUED = new Set(['json', 'body-file', 'business', 'api', 'email', 'gotrue', 'web']);
 const SWITCHES = new Set(['help', 'agent']);
 
 class UsageError extends Error {}
@@ -168,6 +171,7 @@ function body(flags: Parsed['flags']): Record<string, unknown> {
 const HELP = [
   'usage: pnpm cli <operation> [--json <object> | --body-file <path>] [--business <key>]',
   '                               [--api <url>] [--agent]',
+  '       pnpm cli <visual operation> [--json <object>] [--web <app origin>]',
   '       pnpm cli login --email <address> [--gotrue <url>]   (password from',
   '                               OPS_ASTRO_PASSWORD, the first line of piped stdin,',
   '                               or a prompt with echo off at a terminal)',
@@ -175,7 +179,7 @@ const HELP = [
   '',
   'environment: OPS_ASTRO_API_URL, OPS_ASTRO_BUSINESS, OPS_ASTRO_TOKEN, OPS_ASTRO_TOKEN_FILE,',
   '             OPS_ASTRO_GOTRUE_URL, OPS_ASTRO_AGENT=1, OPS_ASTRO_DELEGATION,',
-  '             OPS_ASTRO_DELEGATION_FILE',
+  '             OPS_ASTRO_DELEGATION_FILE, OPS_ASTRO_WEB_URL',
   'exit codes:  0 answered, 1 refused, 2 usage (no request sent), 3 transport failure,',
   '             4 fault (an answer that is neither a success nor a refusal)',
   '',
@@ -186,6 +190,22 @@ const HELP = [
 function pickedUpCredential(answer: CliAnswer): string | undefined {
   const detail = (answer.body as { detail?: { credential?: unknown } } | null)?.detail;
   return typeof detail?.credential === 'string' ? detail.credential : undefined;
+}
+
+/**
+ * A hand-over's helper credential (AW-11) and the child delegation that names
+ * its file. A child id that is not a uuid is not a file name, and the
+ * credential is still never printed.
+ */
+function helperCredential(
+  answer: CliAnswer,
+): { readonly credential: string; readonly child: string } | undefined {
+  const credential = pickedUpCredential(answer);
+  if (credential === undefined) return undefined;
+  const child = (answer.body as { detail: { childDelegationId?: unknown } }).detail
+    .childDelegationId;
+  const named = typeof child === 'string' && /^[0-9a-f-]{36}$/u.test(child) ? child : 'unnamed';
+  return { credential, child: named };
 }
 
 function redact(answer: CliAnswer, where: string): unknown {
@@ -237,7 +257,9 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
   }
   const [verb, ...extra] = parsed.positional;
   if (verb === undefined || parsed.flags['help'] === true) {
-    for (const line of [...HELP, ...usage().map((name) => `  ${name}`)]) io.out(line);
+    for (const line of [...HELP, ...usage().map((name) => `  ${name}`), ...handoffHelp()]) {
+      io.out(line);
+    }
     return EXIT.ok;
   }
   const tokenFile = env['OPS_ASTRO_TOKEN_FILE'] ?? DEFAULTS.tokenFile;
@@ -260,6 +282,14 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
       io.out(JSON.stringify({ ok: true }));
       return EXIT.ok;
     }
+    // AW-09: a visual operation's answer is the app's page, and nothing is sent.
+    const handoff = handoffOf(verb);
+    if (handoff !== undefined) {
+      const web = text(parsed.flags, 'web') ?? env['OPS_ASTRO_WEB_URL'] ?? DEFAULT_WEB;
+      const handed = handOff(handoff, body(parsed.flags), web);
+      io.out(handed.line);
+      return handed.exit;
+    }
     if (!accepts(verb)) {
       // Answered here, before any configuration is read or any request sent.
       io.out(JSON.stringify(unknownVerb(verb).body));
@@ -279,7 +309,9 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
     const delegation = agent
       ? (env['OPS_ASTRO_DELEGATION'] ?? readOptional(delegationFile))
       : undefined;
-    if (agent && verb === 'task.pickup') assertWritable(delegationFile, "a pickup's credential");
+    if (agent && (verb === 'task.pickup' || verb === 'run.delegate_child')) {
+      assertWritable(delegationFile, `${verb}'s credential`);
+    }
     const api = (text(parsed.flags, 'api') ?? env['OPS_ASTRO_API_URL'] ?? DEFAULTS.api).replace(
       /\/$/u,
       '',
@@ -334,6 +366,24 @@ export async function main(argv: readonly string[], env: Environment, io: Io): P
         return EXIT.fault;
       }
       io.out(JSON.stringify(redact(answer, delegationFile)));
+      return EXIT.ok;
+    }
+    // AW-11: the helper's credential, saved beside the parent's and never printed.
+    const handed =
+      agent && verb === 'run.delegate_child' && ok ? helperCredential(answer) : undefined;
+    if (handed !== undefined) {
+      const file = `${delegationFile}.child-${handed.child}`;
+      try {
+        writeSecret(file, handed.credential);
+      } catch (cause) {
+        io.err(
+          `cli: hand-over applied but its helper's credential could not be saved to ${file}: ` +
+            (cause as Error).message,
+        );
+        io.err(`cli: operationId ${String(request['operationId'])}; ${REPLAY}`);
+        return EXIT.fault;
+      }
+      io.out(JSON.stringify(redact(answer, file)));
       return EXIT.ok;
     }
     // Only the credential this handback was sent with is over: an older one

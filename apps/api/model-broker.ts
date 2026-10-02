@@ -14,13 +14,17 @@
 
 import {
   catalogue,
+  readReplayLookup,
   CONVERSATION_ANSWER,
   REPLAY_COMPOSE,
   replayAdapter,
   replayCostMinor,
+  replayLookup,
 } from '../../packages/core-connectors/src/index.ts';
+import type { BusinessId, Database } from '../../packages/core-records/src/index.ts';
 import {
   parseDestinations,
+  reconcileProviderCalls,
   startCustody,
   type BrokerRoute,
   type CredentialKind,
@@ -28,6 +32,7 @@ import {
   type Destination,
 } from '../../packages/core-custody/src/index.ts';
 import {
+  callerAudit,
   conversationExchange,
   modelCallExecutor,
   type ConversationExchange,
@@ -52,7 +57,18 @@ export type BrokerSettings =
   | { readonly kind: 'invalid'; readonly problem: string };
 
 const OPERATIONS = catalogue([REPLAY_COMPOSE, CONVERSATION_ANSWER]);
-const PROVIDERS = new Map([['replay', { build: replayAdapter, price: replayCostMinor }]]);
+const PROVIDERS = new Map([
+  [
+    'replay',
+    {
+      build: replayAdapter,
+      price: replayCostMinor,
+      // AW-10: the reconciliation pass asks the provider about an unknown call.
+      lookup: replayLookup,
+      readLookup: readReplayLookup,
+    },
+  ],
+]);
 
 const REACHES: ReadonlySet<string> = new Set(['local', 'cloud']);
 const KINDS: ReadonlySet<string> = new Set<CredentialKind>([
@@ -176,6 +192,12 @@ export async function startModelBroker(
   settings: Extract<BrokerSettings, { kind: 'configured' }>,
 ): Promise<{
   readonly executor: ModelCallExecutor;
+  /** AW-10: the reconciliation pass's provider phase for one business. */
+  readonly reconcile: (
+    database: Database,
+    businessId: BusinessId,
+    unanswered: Set<string>,
+  ) => Promise<unknown>;
   readonly answerConversation: ConversationExchange;
   readonly stop: () => Promise<void>;
 }> {
@@ -189,6 +211,13 @@ export async function startModelBroker(
   };
   return {
     executor: modelCallExecutor(broker),
+    reconcile: async (database, businessId, unanswered) =>
+      await reconcileProviderCalls(
+        database,
+        businessId,
+        { ...broker, audit: callerAudit },
+        unanswered,
+      ),
     answerConversation: conversationExchange(broker),
     stop: async () => await custody.stop(),
   };

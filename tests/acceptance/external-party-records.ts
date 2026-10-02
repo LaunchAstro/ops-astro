@@ -9,7 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { expect } from 'vitest';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { enrol } from '../commands/fixture.ts';
-import type { BodyContext } from './role-case-bodies.ts';
+import { childProbe, type BodyContext } from './role-case-bodies.ts';
 import { legalEvidence } from './role-case-gate-bodies.ts';
 import type { Answer, Caller, World } from './world.ts';
 
@@ -79,5 +79,8 @@ export function revocationBodies(): Readonly<Record<string, Readonly<Record<stri
       operation: 'model.replay_compose',
       fields: [],
     },
+    // AW-11's hand-over and handback are the agent's too, read by type first.
+    'run.delegate_child': { leaseId: randomUUID(), fence: 1, ...childProbe(randomUUID()) },
+    'run.child_handback': { outcome: 'completed' },
   };
 }
