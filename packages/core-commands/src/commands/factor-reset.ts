@@ -18,11 +18,15 @@
 // The provider holds one set of factors per sign-in login, so clearing one
 // clears it in every business that login reaches. While the login is live in
 // another business the reset is refused, in the same words as every other
-// refusal of this code, which never say where else the login is.
+// refusal of this code, which never say where else the login is. So is a
+// reset upward: the caller must hold every business-wide grant the member
+// holds (ORCH66-FACTORM2), so one owner may reset another, never a lesser
+// holder of `settings:manage` the owner.
 
 import {
   endOtherSeenSessions,
   factorLoginLiveElsewhere,
+  heldPermissions,
   isUuid,
   judgeStepUp,
   liveFactor,
@@ -83,6 +87,7 @@ export async function resetFactorOnSettings(
   if (member.length === 0) {
     return refused(refuseCommand('NOT_FOUND', ['holderId'], NOT_MEMBER_FIXES));
   }
+  if (await outranks(tx, personId, context.session.personId)) return resetRefused();
   const held = await heldFactor(tx, personId);
   if ('refusal' in held) return held;
   const { login, factor } = held;
@@ -109,6 +114,19 @@ async function steppedUp(tx: TenantQuery, context: CommandContext): Promise<bool
   );
   const now = clock[0]?.now ?? Number.POSITIVE_INFINITY;
   return judgeStepUp(context.session, now) === 'fresh';
+}
+
+/** Whether the member holds a business-wide grant the caller does not. */
+async function outranks(tx: TenantQuery, personId: string, callerId: string): Promise<boolean> {
+  const wide = (await heldPermissions(tx)).filter((each) => each.scope.kind === 'business');
+  const keys = (id: string) =>
+    new Set(
+      wide
+        .filter((each) => each.personId === id)
+        .map((each) => `${each.collection}:${each.action}`),
+    );
+  const caller = keys(callerId);
+  return [...keys(personId)].some((key) => !caller.has(key));
 }
 
 /**
@@ -140,6 +158,9 @@ async function heldFactor(
   if (factor?.status !== 'verified') {
     return refused(refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES));
   }
-  if (await factorLoginLiveElsewhere(tx, login.subject)) return resetRefused();
+  // Holds to the commit only because no path maps a login meanwhile: any path
+  // that maps a login into a business must take the subject lock `liveFactor`
+  // took above, first (SEC-B1 M3).
+  if (await factorLoginLiveElsewhere(tx, login.id)) return resetRefused();
   return { login, factor };
 }

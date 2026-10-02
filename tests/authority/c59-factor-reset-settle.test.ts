@@ -17,12 +17,14 @@ import { retryOwedSteps } from '../../apps/endings/pass.ts';
 import { settleFactorResets, type LoginProvider } from '../../packages/core-commands/src/index.ts';
 import { serverUrl } from '../acceptance/world.ts';
 import type { Member } from '../commands/fixture.ts';
+import { insertLogin } from '../identity/fixture.ts';
 import { apiWith, harness, outcome, useEndAccessWorld } from './c58-end-access-world.ts';
 import {
   CANARY,
   factorFake,
   liveInBravo,
   memberWithFactor,
+  owedReset,
   reset,
   resetState,
 } from './c59-factor-reset-world.ts';
@@ -36,15 +38,6 @@ const settle = async (provider: LoginProvider, only?: readonly string[], claimSe
     claimSeconds,
     ...(only === undefined ? {} : { only }),
   });
-
-/** A member reset with no provider at hand: the step is owed. Answers its id. */
-async function owedReset(name: string): Promise<{ person: Member; factorId: string; id: string }> {
-  const member = await memberWithFactor(name);
-  const answer = await reset(apiWith(), member.person.personId);
-  expect(outcome(answer)).toEqual(OK);
-  const id = String((answer.body['detail'] as Record<string, unknown>)['resetId']);
-  return { person: member.person, factorId: member.factorId, id };
-}
 
 const doneAt = async (person: Member): Promise<string | null> =>
   (
@@ -174,7 +167,7 @@ async function canaryNeverLeaks(): Promise<void> {
   expect(stored.map((each) => each.row).join('\n')).not.toContain(CANARY);
 }
 
-const SIGNATURE = 'public.factor_login_live_elsewhere(text)';
+const SIGNATURE = 'public.factor_login_live_elsewhere(uuid)';
 
 async function definerNotPublic(): Promise<void> {
   const { admin } = harness.world.db;
@@ -184,10 +177,14 @@ async function definerNotPublic(): Promise<void> {
     readonly definer: boolean;
     readonly returns: string;
     readonly config: readonly string[];
+    readonly takes: string;
+    readonly subject: boolean;
   }>(
     `select has_function_privilege('public', $1, 'execute') as anyone,
             has_function_privilege('ops_astro_app', $1, 'execute') as app,
-            p.prosecdef as definer, p.prorettype::regtype::text as returns, p.proconfig as config
+            p.prosecdef as definer, p.prorettype::regtype::text as returns, p.proconfig as config,
+            pg_get_function_identity_arguments(p.oid) as takes,
+            to_regprocedure('public.factor_login_live_elsewhere(text)') is not null as subject
        from pg_proc p where p.oid = $1::regprocedure`,
     [SIGNATURE],
   );
@@ -197,6 +194,8 @@ async function definerNotPublic(): Promise<void> {
     definer: true,
     returns: 'boolean',
     config: ['search_path=pg_catalog, public', 'row_security=off'],
+    takes: 'login uuid',
+    subject: false,
   });
   // A role granted nothing of its own is refused the call itself.
   const nobody = `c59_nobody_${randomUUID().slice(0, 8)}`;
@@ -205,7 +204,7 @@ async function definerNotPublic(): Promise<void> {
   try {
     const called = admin.transaction(async (execute) => {
       await execute(`set local role ${nobody}`);
-      return await execute(`select public.factor_login_live_elsewhere('x') as live`);
+      return await execute(`select public.factor_login_live_elsewhere(gen_random_uuid()) as live`);
     });
     await expect(called).rejects.toMatchObject({ code: '42501' });
     await expect(called).rejects.toThrow(/function/u);
@@ -215,29 +214,52 @@ async function definerNotPublic(): Promise<void> {
   }
 }
 
-/** The definer's answer for `subject`, asked inside alpha's tenancy on the app login. */
-const askInAlpha = async (subject: string): Promise<readonly Record<string, unknown>[]> =>
+/** The definer's answer for a login id, asked inside alpha's tenancy on the app login. */
+const askInAlpha = async (login: string): Promise<readonly Record<string, unknown>[]> =>
   await harness.world.db.app.withBusiness(
     harness.world.alpha,
     async (tx) =>
       await tx.query<Record<string, unknown>>(
         'select public.factor_login_live_elsewhere($1) as live',
-        [subject],
+        [login],
       ),
   );
+
+/** Alpha's login id for a member. */
+const loginOf = async (member: Member): Promise<string> =>
+  (
+    await harness.world.db.app.withBusiness(
+      harness.world.alpha,
+      async (tx) =>
+        await tx.query<{ readonly id: string }>(
+          `select id from public.logins where provider = 'supabase' and subject = $1`,
+          [member.presented.subject],
+        ),
+    )
+  )[0]?.id ?? '';
 
 async function definerAnswersBoolean(): Promise<void> {
   const shared = await memberWithFactor('xi');
   await liveInBravo(shared.person.presented.subject);
   const alone = await memberWithFactor('yo');
-  expect(await askInAlpha(shared.person.presented.subject)).toEqual([{ live: true }]);
-  expect(await askInAlpha(alone.person.presented.subject)).toEqual([{ live: false }]);
+  expect(await askInAlpha(await loginOf(shared.person))).toEqual([{ live: true }]);
+  expect(await askInAlpha(await loginOf(alone.person))).toEqual([{ live: false }]);
   // With no business set, the answer refuses.
   const [unset] = await harness.world.db.admin.execute<{ readonly live: boolean }>(
     `select public.factor_login_live_elsewhere($1) as live`,
-    [alone.person.presented.subject],
+    [await loginOf(alone.person)],
   );
   expect(unset).toEqual({ live: true });
+}
+
+async function definerOtherBusinessLogin(): Promise<void> {
+  // Bravo's login, live in no other business: not a login here, so it refuses.
+  const bravos = await harness.world.db.app.withBusiness(
+    harness.world.bravo,
+    async (tx) => await insertLogin(tx, `stray-${randomUUID()}`),
+  );
+  expect(await askInAlpha(bravos)).toEqual([{ live: true }]);
+  expect(await askInAlpha(randomUUID())).toEqual([{ live: true }]);
 }
 
 describe.skipIf(serverUrl === undefined)("C59 a reset's provider step", () => {
@@ -253,11 +275,15 @@ describe.skipIf(serverUrl === undefined)("C59 a reset's provider step", () => {
     canaryNeverLeaks,
   );
   it(
-    'C59 definer: factor_login_live_elsewhere is not executable by PUBLIC, only by the app role, pinned',
+    'C59 definer: factor_login_live_elsewhere takes a login id, no subject, and is not executable by PUBLIC, only by the app role, pinned',
     definerNotPublic,
   );
   it(
     'C59 definer: it answers a boolean alone, and true with no business set',
     definerAnswersBoolean,
+  );
+  it(
+    'C59 definer: a login id of another business, or of none, answers true',
+    definerOtherBusinessLogin,
   );
 });

@@ -6,6 +6,7 @@
 // session, and readers of what a reset wrote. Every name below is made up.
 
 import { randomUUID } from 'node:crypto';
+import { expect } from 'vitest';
 import type { LoginProvider, ProviderAnswer } from '../../packages/core-commands/src/index.ts';
 import {
   recordFactorEnrolled,
@@ -223,4 +224,15 @@ export async function moneyStepUp(value: boolean): Promise<void> {
     bearer(harness.world.ada.token),
   );
   if (switched.code !== 'ok') throw new Error(`moneyStepUp: refused ${switched.code}`);
+}
+
+/** A member reset with no provider at hand: the step is owed. Answers its id. */
+export async function owedReset(
+  name: string,
+): Promise<{ readonly person: Member; readonly factorId: string; readonly id: string }> {
+  const member = await memberWithFactor(name);
+  const answer = await reset(apiWith(), member.person.personId);
+  expect({ status: answer.status, code: answer.code }).toEqual({ status: 200, code: 'ok' });
+  const id = String((answer.body['detail'] as Record<string, unknown>)['resetId']);
+  return { person: member.person, factorId: member.factorId, id };
 }
