@@ -109,122 +109,136 @@ async function refusedAlike(attempts: readonly (readonly [string, string])[]): P
   return wrong;
 }
 
+/** A later draft of the statement, never approved, as version 9.0; answers its words. */
+async function draftOnly(): Promise<string> {
+  const words = statementWords(randomUUID());
+  const drafted = await call(
+    harness.world.api,
+    personPath('alpha', '/legal/draft_version'),
+    { operationId: `c81g-${randomUUID()}`, document: 'data-handling', version: '9.0', body: words },
+    bearer(harness.world.ada.token),
+  );
+  expect(drafted.code, 'a later draft, never approved').toBe('ok');
+  return words;
+}
+
+async function c81DataHandlingStatement(): Promise<void> {
+  await reopen();
+  const words = statementWords(randomUUID());
+  const { body: sent } = await released({ document: 'data-handling', body: words });
+  const later = await draftOnly();
+
+  const shown = await readPublic('alpha', 'data-handling');
+  expect(shown.status).toBe(200);
+  const served = JSON.parse(shown.text) as Record<string, unknown>;
+  expect(served['body']).toBe(words);
+  expect(String(served['body'])).toContain(CLAUSE_1);
+  expect(served['version']).toBe(sent.version);
+
+  const unapproved = versionLink('alpha', 'data-handling', '9.0', digestOf(later));
+  expect(await refusedAlike([['privacy-act-statement', unapproved]])).toStrictEqual([]);
+  const link = versionLink('alpha', 'data-handling', sent.version, digestOf(words));
+  expect((await recordItem('privacy-act-statement', link)).code).toBe('ok');
+  expect(await gateRows()).toContainEqual({ item: 'privacy-act-statement', evidence: link });
+}
+
+/** The breach runbook's version and digest, as the operations view's privacy incidents read it. */
+async function runbookOnTheView(): Promise<string> {
+  const read = await call(
+    harness.world.api,
+    personPath('alpha', '/operations/read'),
+    { operationId: `c81g-${randomUUID()}` },
+    bearer(harness.world.ada.token),
+  );
+  const runbook = read.body['breachRunbook'] as Record<string, unknown>;
+  return versionLink(
+    'alpha',
+    'breach-runbook',
+    String(runbook['version']),
+    String(runbook['digest']),
+  );
+}
+
+async function c81BreachRunbookOnePage(): Promise<void> {
+  await reopen();
+  const longer = `${runbookWords(randomUUID())}\n${'More made-up steps. '.repeat(400)}\n`;
+  expect(wordsIn(longer)).toBeGreaterThan(ONE_PAGE_WORDS);
+  const tooLong = await publishLink('breach-runbook', longer);
+  expect(await refusedAlike([['breach-runbook', tooLong]])).toStrictEqual([]);
+
+  const words = runbookWords(randomUUID());
+  expect(wordsIn(words)).toBeLessThanOrEqual(ONE_PAGE_WORDS);
+  expect(words).toMatch(/the owner decides/iu);
+  expect(words).toMatch(/the second operator assists/iu);
+  expect(words).toMatch(/within 30 calendar days/iu);
+  expect(words).toMatch(/^## Template: notice to affected people$/mu);
+  const link = await publishLink('breach-runbook', words);
+  expect((await recordItem('breach-runbook', link)).code).toBe('ok');
+  expect(await gateRows()).toContainEqual({ item: 'breach-runbook', evidence: link });
+  expect(await runbookOnTheView()).toBe(link);
+}
+
+/** Two policies published in alpha, the first superseded, and one in bravo; answers their links. */
+async function policies(): Promise<{ first: string; policy: string; bravo: string }> {
+  const first = await publishLink('privacy-policy', `# Privacy policy\n\n${randomUUID()}\n`);
+  const policy = await publishLink('privacy-policy', `# Privacy policy\n\n${randomUUID()}\n`);
+  const theirs = await released(
+    { document: 'privacy-policy', body: 'Bravo.' },
+    harness.world.bea.token,
+    'bravo',
+  );
+  const bravo = versionLink('bravo', 'privacy-policy', theirs.body.version, digestOf('Bravo.'));
+  return { first, policy, bravo };
+}
+
+async function c81GateEvidenceLinks(): Promise<void> {
+  await reopen();
+  const statement = await publishLink('data-handling', statementWords(randomUUID()));
+  const runbook = await publishLink('breach-runbook', runbookWords(randomUUID()));
+  const unpublished = versionLink('alpha', 'privacy-policy', '0.1', digestOf('none'));
+  const beforePolicy = await refusedAlike([
+    ['legal-basics', unpublished],
+    ['overseas-register', unpublished],
+    ['legal-basics', 'https://evidence.example/legal-basics'],
+  ]);
+  expect(beforePolicy).toStrictEqual([]);
+
+  const { first, policy, bravo } = await policies();
+  const wrongLinks = await refusedAlike([
+    ['legal-basics', first],
+    ['legal-basics', statement],
+    ['overseas-register', runbook],
+    ['privacy-act-statement', policy],
+    ['breach-runbook', statement],
+    ['legal-basics', bravo],
+  ]);
+  expect(wrongLinks).toStrictEqual([]);
+
+  const links = {
+    'breach-runbook': runbook,
+    'legal-basics': policy,
+    'overseas-register': policy,
+    'privacy-act-statement': statement,
+  };
+  const answers = await Promise.all(
+    Object.entries(links).map(async ([item, link]) => (await recordItem(item, link)).code),
+  );
+  expect(answers).toStrictEqual(['ok', 'ok', 'ok', 'ok']);
+  expect((await gateRows()).filter((row) => ITEMS.includes(row.item))).toStrictEqual(
+    Object.entries(links).map(([item, evidence]) => ({ item, evidence })),
+  );
+}
+
 describe.skipIf(serverUrl === undefined)('C81 the gate evidence', () => {
   it("C81 data-handling statement: it says every client's personal information is treated as covered by the Privacy Act, is served at its public address without sign-in once published, and its published version is item 4's evidence", async () => {
-    await reopen();
-    const words = statementWords(randomUUID());
-    const { body: sent } = await released({ document: 'data-handling', body: words });
-    const draftOnly = statementWords(randomUUID());
-    const drafted = await call(
-      harness.world.api,
-      personPath('alpha', '/legal/draft_version'),
-      {
-        operationId: `c81g-${randomUUID()}`,
-        document: 'data-handling',
-        version: '9.0',
-        body: draftOnly,
-      },
-      bearer(harness.world.ada.token),
-    );
-    expect(drafted.code, 'a later draft, never approved').toBe('ok');
-
-    const shown = await readPublic('alpha', 'data-handling');
-    expect(shown.status).toBe(200);
-    const served = JSON.parse(shown.text) as Record<string, unknown>;
-    expect(served['body']).toBe(words);
-    expect(String(served['body'])).toContain(CLAUSE_1);
-    expect(served['version']).toBe(sent.version);
-
-    expect(
-      await refusedAlike([
-        [
-          'privacy-act-statement',
-          versionLink('alpha', 'data-handling', '9.0', digestOf(draftOnly)),
-        ],
-      ]),
-    ).toStrictEqual([]);
-    const link = versionLink('alpha', 'data-handling', String(sent.version), digestOf(words));
-    expect((await recordItem('privacy-act-statement', link)).code).toBe('ok');
-    expect(await gateRows()).toContainEqual({ item: 'privacy-act-statement', evidence: link });
+    await c81DataHandlingStatement();
   });
 
   it('C81 breach runbook one page: the runbook item 6 takes fits on one page and names who decides, who assists, the 30-day assessment clock and the templates; one longer than a page is refused; the privacy incidents on the operations view carry the version it links', async () => {
-    await reopen();
-    const longer = `${runbookWords(randomUUID())}\n${'More made-up steps. '.repeat(400)}\n`;
-    expect(wordsIn(longer)).toBeGreaterThan(ONE_PAGE_WORDS);
-    const tooLong = await publishLink('breach-runbook', longer);
-    expect(await refusedAlike([['breach-runbook', tooLong]])).toStrictEqual([]);
-
-    const words = runbookWords(randomUUID());
-    expect(wordsIn(words)).toBeLessThanOrEqual(ONE_PAGE_WORDS);
-    expect(words).toMatch(/the owner decides/iu);
-    expect(words).toMatch(/the second operator assists/iu);
-    expect(words).toMatch(/within 30 calendar days/iu);
-    expect(words).toMatch(/^## Template: notice to affected people$/mu);
-    const link = await publishLink('breach-runbook', words);
-    expect((await recordItem('breach-runbook', link)).code).toBe('ok');
-    expect(await gateRows()).toContainEqual({ item: 'breach-runbook', evidence: link });
-
-    const read = await call(
-      harness.world.api,
-      personPath('alpha', '/operations/read'),
-      { operationId: `c81g-${randomUUID()}` },
-      bearer(harness.world.ada.token),
-    );
-    const runbook = read.body['breachRunbook'] as Record<string, unknown>;
-    expect(link).toBe(
-      versionLink('alpha', 'breach-runbook', String(runbook['version']), String(runbook['digest'])),
-    );
+    await c81BreachRunbookOnePage();
   });
 
   it("C81 gate evidence links: items 3 to 6 each link their document's published version; a link to no published version, another document's, a superseded one or another business's is refused and writes nothing", async () => {
-    await reopen();
-    const statement = await publishLink('data-handling', statementWords(randomUUID()));
-    const runbook = await publishLink('breach-runbook', runbookWords(randomUUID()));
-    const unpublished = versionLink('alpha', 'privacy-policy', '0.1', digestOf('none'));
-    expect(
-      await refusedAlike([
-        ['legal-basics', unpublished],
-        ['overseas-register', unpublished],
-        ['legal-basics', 'https://evidence.example/legal-basics'],
-      ]),
-    ).toStrictEqual([]);
-
-    const first = await publishLink('privacy-policy', `# Privacy policy\n\n${randomUUID()}\n`);
-    const policy = await publishLink('privacy-policy', `# Privacy policy\n\n${randomUUID()}\n`);
-    const bravo = await released(
-      { document: 'privacy-policy', body: 'Bravo.' },
-      harness.world.bea.token,
-      'bravo',
-    );
-    expect(
-      await refusedAlike([
-        ['legal-basics', first],
-        ['legal-basics', statement],
-        ['overseas-register', runbook],
-        ['privacy-act-statement', policy],
-        ['breach-runbook', statement],
-        [
-          'legal-basics',
-          versionLink('bravo', 'privacy-policy', bravo.body.version, digestOf('Bravo.')),
-        ],
-      ]),
-    ).toStrictEqual([]);
-
-    const links = {
-      'legal-basics': policy,
-      'privacy-act-statement': statement,
-      'overseas-register': policy,
-      'breach-runbook': runbook,
-    };
-    const answers = await Promise.all(
-      Object.entries(links).map(async ([item, link]) => (await recordItem(item, link)).code),
-    );
-    expect(answers).toStrictEqual(['ok', 'ok', 'ok', 'ok']);
-    expect((await gateRows()).filter((row) => ITEMS.includes(row.item))).toStrictEqual(
-      Object.entries(links)
-        .map(([item, evidence]) => ({ item, evidence }))
-        .toSorted((a, b) => a.item.localeCompare(b.item)),
-    );
+    await c81GateEvidenceLinks();
   });
 });
