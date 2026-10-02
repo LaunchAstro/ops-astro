@@ -20,7 +20,7 @@ type Reach = (url: string, script: string) => Promise<string>;
 type Bounds = { connectSeconds?: number; timeoutMs?: number };
 type ReachModule = {
   psqlOn: (network: string, bounds?: Bounds) => Reach;
-  reachArgs: (network: string, names?: string[]) => string[];
+  reachArgs: (network: string, names?: string[], options?: { init?: boolean }) => string[];
   reachEnv: (url: string, connectSeconds?: number) => Record<string, string>;
 };
 type Job = {
@@ -166,7 +166,20 @@ it('the Vercel function refuses to start holding the upkeep login', async () => 
 });
 
 it('a psql that never answers is stopped at the reach deadline; only a bounded reach names a connect bound', async () => {
-  writeFileSync(join(bin, 'docker'), '#!/bin/sh\nexec /bin/sleep 30\n');
+  // psql is the container's PID 1 and deaf to SIGTERM, unless docker runs an init (`--init`)
+  // that passes the signal on: the stand-in answers SIGTERM only when given `--init`.
+  writeFileSync(
+    join(bin, 'docker'),
+    [
+      '#!/bin/sh',
+      'init=no',
+      'for arg in "$@"; do [ "$arg" = --init ] && init=yes; done',
+      `if [ $init = yes ]; then trap 'kill $child; exit 143' TERM; else trap '' TERM; fi`,
+      '/bin/sleep 2 & child=$!',
+      'wait $child',
+      '',
+    ].join('\n'),
+  );
   chmodSync(join(bin, 'docker'), 0o755);
   const path = process.env['PATH'];
   process.env['PATH'] = bin;
@@ -177,14 +190,16 @@ it('a psql that never answers is stopped at the reach deadline; only a bounded r
   } finally {
     process.env['PATH'] = path;
   }
-  expect(performance.now() - started).toBeLessThan(5000);
+  expect(performance.now() - started).toBeLessThan(1500);
   expect(reachEnv(UPKEEP, 15)['PGCONNECT_TIMEOUT']).toBe('15');
   expect(reachEnv(STORE)).not.toHaveProperty('PGCONNECT_TIMEOUT');
   expect(reachArgs('none', Object.keys(reachEnv(UPKEEP, 15)))).toContain('--env=PGCONNECT_TIMEOUT');
-  // The store's reach is as before: the same login names, no bound.
+  expect(reachArgs('none', ['PGHOST'], { init: true })).toContain('--init');
+  // The store's reach is as before: the same login names, no bound, no init.
   expect(fixed(reachArgs('none'))).toStrictEqual(
     fixed(reachArgs('none', Object.keys(reachEnv(STORE)))),
   );
+  expect(reachArgs('none')).not.toContain('--init');
 });
 
 it('the job reaches the store unbounded as before, then the purge with its connect bound', () => {

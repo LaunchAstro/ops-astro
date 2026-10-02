@@ -50,12 +50,17 @@ export function reachEnv(url, connectSeconds) {
   };
 }
 
-/** `docker` arguments for one psql script on `network`: no port, the login by name only. */
-export function reachArgs(network, names = LOGIN) {
+/**
+ * `docker` arguments for one psql script on `network`: no port, the login by
+ * name only. With `init`, docker runs an init as the container's PID 1, which
+ * passes SIGTERM on to psql; psql as PID 1 has no handler and would ignore it.
+ */
+export function reachArgs(network, names = LOGIN, { init = false } = {}) {
   return [
     'run',
     '--rm',
     '-i',
+    ...(init ? ['--init'] : []),
     // Attached output still streams; nothing psql prints goes to a log on the host's disk.
     '--log-driver=none',
     `--name=${staging['x-ops-astro'].ownPrefix}-store-${randomBytes(4).toString('hex')}`,
@@ -76,12 +81,14 @@ export function reachArgs(network, names = LOGIN) {
 /**
  * A reach through psql on `network`: `script` is text or pieces of text. With
  * `bounds`, psql gives up connecting after `connectSeconds` and is stopped
- * after `timeoutMs` whatever it is waiting on; the store's reach has neither.
+ * after `timeoutMs` whatever it is waiting on (SIGTERM, reaching psql through
+ * the container's init); the store's reach has neither.
  */
 export function psqlOn(network, { connectSeconds, timeoutMs } = {}) {
   return async (url, script, onLine) => {
     const login = reachEnv(url, connectSeconds);
-    const child = spawn('docker', reachArgs(network, Object.keys(login)), {
+    const args = reachArgs(network, Object.keys(login), { init: timeoutMs !== undefined });
+    const child = spawn('docker', args, {
       env: { ...process.env, ...login },
       stdio: ['pipe', 'pipe', 'ignore'],
       ...(timeoutMs === undefined ? {} : { timeout: timeoutMs }),
