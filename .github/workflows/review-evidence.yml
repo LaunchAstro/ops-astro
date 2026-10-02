@@ -55,6 +55,8 @@ jobs:
   review-evidence:
     name: review evidence for this revision
     runs-on: ubuntu-latest
+    # Its slowest green run in the day to 1 October 2026: 1.1 min.
+    timeout-minutes: 10
     steps:
       # Retargeting a pull request is an edit too, and every other check was
       # measured against the old base: the size, the commit range and the

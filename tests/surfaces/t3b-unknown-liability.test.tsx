@@ -43,6 +43,22 @@ const reservation = (id: string, attemptState: string, extra: Record<string, unk
   ...extra,
 });
 
+/** A lineage is read only with a version; its currency counts the money. */
+const VERSION = {
+  versionId: 'v-5555',
+  version: 1,
+  purpose: 'send_the_reply',
+  maximumMinor: 2_500,
+  currency: 'AUD',
+  payloadDigest: 'digest-5555',
+  payload: {},
+  supersededAt: null,
+  runId: null,
+  checks: [],
+  evidence: null,
+  gate: null,
+};
+
 function client(): OperationsClient {
   const task = {
     id: TASK_ID,
@@ -61,7 +77,7 @@ function client(): OperationsClient {
       {
         lineageId: 'l-5555',
         state: 'live',
-        versions: [],
+        versions: [VERSION],
         decisions: [],
         reservations: [
           reservation('r-unknown', 'liability_unknown', {}),

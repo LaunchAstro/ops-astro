@@ -48,10 +48,15 @@ const onDisk = readMigrations('migrations');
 // Through T2a's 0032 run_events, which the runtime that seeds below writes to.
 const THROUGH_0032 = (version: string): boolean => version.slice(0, 4) <= '0032';
 // And T2h's 0036 alerts: that runtime raises an alert when it hands back.
-// 0036 reads nothing 0033 to 0035 add, and the runner applies whatever is
+// And AW-11's 0100 delegation parent: that runtime's pickup mints with it.
+// And AW-06's 0105 plan step key: that runtime's proposal writes its step with it.
+// And AW-01's 0085 model calls with AW-05's 0087 and 0088 budget asks and
+// answers: its classifier reads a hold's model calls when it hands back.
+// None reads anything 0033 to 0035 add, and the runner applies whatever is
 // pending, so the upgrade below still applies 0033 onto these rows.
 const SEEDED = (version: string): boolean =>
-  THROUGH_0032(version) || version.slice(0, 4) === '0036';
+  THROUGH_0032(version) ||
+  ['0036', '0085', '0087', '0088', '0100', '0105'].includes(version.slice(0, 4));
 
 /** Proposes work on the task and approves it, answering the reservation the approval made. */
 async function approvedReservation(
@@ -129,10 +134,11 @@ async function work(
   });
 }
 
-/** Every attempt and step, row by row, as the owner reads them. */
+/** Every attempt and step, row by row, as the owner reads them, less the columns later migrations add. */
 async function rows(db: EmptyDatabase): Promise<unknown> {
   return await db.admin.execute(
-    `select (select json_agg(to_jsonb(a) - 'drop_cause' - 'provider_started_at' order by a.id) from public.attempts a) as attempts,
+    `select (select json_agg(to_jsonb(a) - 'drop_cause' - 'provider_started_at' - 'receipt_link'
+                    order by a.id) from public.attempts a) as attempts,
             (select json_agg(to_jsonb(s) - 'dispatch_attempt_id' - 'dispatch_marked'
                              order by s.id) from public.planned_steps s) as steps`,
   );

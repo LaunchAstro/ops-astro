@@ -11,6 +11,7 @@ import { App } from '../../apps/web/src/App.tsx';
 import { SessionStore, tabStorage, type StorageLike } from '../../apps/web/src/session/token.ts';
 import { Shell } from '../../packages/ui/src/index.ts';
 import { BUILD_SELECTOR } from '../browser/served-build.ts';
+import { dockOf } from './dock-props.ts';
 import { mount, settle } from './mount.tsx';
 
 const STAMP = '0123456789ab';
@@ -22,11 +23,7 @@ function shell(build: string | null) {
       rail={[{ id: 'agency:projects-board', label: 'Projects', href: '/projects/' }]}
       here="/projects/"
       title="Projects"
-      dock={[]}
-      onDockTab={() => {
-        /* No panel in this test. */
-      }}
-      seated={false}
+      dock={dockOf([])}
       build={build}
     >
       <p>content</p>

@@ -29,7 +29,7 @@ const rows: readonly Row[] = [
   { name: 'Delta', hours: 9.5 },
 ];
 
-describe('MP-9-1 tables sort on the raw value, numbers first descending, flip on a second click and scroll inside their box', () => {
+describe('MP-9-1 table sort raw value: tables sort on the raw value, numbers first descending, flip on a second click and scroll inside their box', () => {
   it('sorts on the raw number, not its text, descending first, empties last', () => {
     const sorted = sortRows(rows, columns, { column: 'hours', direction: 'desc' });
     expect(sorted.map((row) => row.hours)).toEqual([10, 9.5, 2, null]);

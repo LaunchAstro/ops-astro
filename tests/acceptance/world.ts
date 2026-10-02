@@ -33,7 +33,10 @@
 // database — but its shape is followed so that a case proved here is a case
 // about the product a person actually signs into.
 
+import { openReplayBroker, type ReplayBroker } from '../broker/replay-broker.ts';
 import { randomUUID } from 'node:crypto';
+import { join } from 'node:path';
+import { INSTRUCTION_ROOT_VARIABLE } from '../../packages/core-runtime/src/index.ts';
 import {
   createFreshDatabase,
   databaseUrlFromEnvironment,
@@ -94,6 +97,8 @@ export interface World {
   readonly agent: AgentIdentity;
   /** The real application, built the way `apps/api/server.ts` builds it. */
   readonly api: ReturnType<typeof createApi>;
+  /** The credential broker the app mounts, over the replay provider on loopback. */
+  readonly broker: ReplayBroker;
   close(): Promise<void>;
 }
 /**
@@ -105,6 +110,12 @@ export interface World {
 export async function createWorld(part: string): Promise<World> {
   process.env['GATE_SIGNING_KEY_ID'] ??= `test/acceptance@1`;
   process.env['GATE_SIGNING_SECRET'] ??= randomUUID();
+  // AW-04: the plan accept reads the run's instruction file from the server's
+  // root. By directory, not `import.meta.url`: a jsdom suite's is not a file URL.
+  process.env[INSTRUCTION_ROOT_VARIABLE] ??= join(
+    import.meta.dirname,
+    '../support/instruction-root',
+  );
 
   const db = await createFreshDatabase({ part });
   const alpha = (await insertBusiness(db.app, 'alpha')) as BusinessId;
@@ -172,6 +183,7 @@ export async function createWorld(part: string): Promise<World> {
   }
 
   const byKey: Readonly<Record<string, BusinessId>> = { alpha, bravo };
+  const broker = await openReplayBroker();
   const api = createApi({
     database: db.app,
     verify: createSupabaseVerifier(testSignIn(ACCEPTANCE_ISSUER)),
@@ -182,6 +194,7 @@ export async function createWorld(part: string): Promise<World> {
     executeCommand,
     executeRead,
     executeAgentCommand,
+    executeModelCall: broker.executor,
     executeCredentialCommand,
   });
 
@@ -198,7 +211,9 @@ export async function createWorld(part: string): Promise<World> {
     bea,
     agent,
     api,
+    broker,
     close: async () => {
+      await broker.close();
       await db.drop();
     },
   };
@@ -230,6 +245,7 @@ export function rebuildApi(world: World): {
       executeCommand,
       executeRead,
       executeAgentCommand,
+      executeModelCall: world.broker.executor,
       executeCredentialCommand,
     }),
     close: async () => {

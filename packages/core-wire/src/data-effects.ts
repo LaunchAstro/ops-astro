@@ -1,65 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// S0-5: what each command does to data, declared beside its permission key,
-// and the class the gate reads, derived from it and never set by hand.
+// S0-5: what each command does to data, declared beside its permission key.
+// Its shapes and the class the gate reads, derived from it and never set by
+// hand, are in `data-effects-types.ts`, re-exported here.
 
 import type { CommandName } from './surface.ts';
+import type { DataEffects, OutsideEffect, RecordWrite } from './data-effects-types.ts';
 
-/** `client`: a row that holds a task's id or a client's (ADR 0014); `business`: the agency's own. */
-export type EffectScope = 'business' | 'client';
-
-/** One record kind a command creates, changes or deletes: its table, and that table's scope. */
-export interface RecordWrite {
-  readonly kind: string;
-  readonly scope: EffectScope;
-}
-
-/** Where new content comes from when it is not the app's own. */
-export type Intake =
-  | 'upload'
-  | 'import'
-  | 'provider-sync'
-  | 'webhook'
-  | 'page-capture'
-  | 'public-form'
-  | 'outside-person-input';
-
-/** A provider write, a link or a stored credential; `forClient` when it is made for a client. */
-export interface OutsideEffect {
-  readonly provider: string;
-  readonly forClient: boolean;
-}
-
-export interface DataEffects {
-  readonly writes: readonly RecordWrite[];
-  readonly intake: readonly Intake[];
-  readonly outside: readonly OutsideEffect[];
-  /** Admits a new outside person: an invitation or a login for a client person, guest or reviewer. */
-  readonly access: boolean;
-}
-
-export type DataClass = 'invitation' | 'client-data' | 'made-up-safe';
-
-export interface ClassedEffects extends DataEffects {
-  readonly class: DataClass;
-}
-
-/**
- * The class, from what the command does: `invitation` if it admits a new
- * outside person; `client-data` if it writes a client-scoped row, takes any
- * intake, or makes an outside effect for a client; `made-up-safe` otherwise.
- */
-export function classOf(effects: DataEffects): DataClass {
-  if (effects.access) return 'invitation';
-  if (
-    effects.writes.some((write) => write.scope === 'client') ||
-    effects.intake.length > 0 ||
-    effects.outside.some((effect) => effect.forClient)
-  ) {
-    return 'client-data';
-  }
-  return 'made-up-safe';
-}
+export type {
+  ClassedEffects,
+  DataClass,
+  DataEffects,
+  EffectScope,
+  Intake,
+  OutsideEffect,
+  RecordWrite,
+} from './data-effects-types.ts';
+export { classOf } from './data-effects-types.ts';
 
 const business = (...kinds: string[]): RecordWrite[] =>
   kinds.map((kind) => ({ kind, scope: 'business' }));
@@ -91,6 +48,11 @@ const LEGAL = writing(business('legal_document_versions'));
 // A grant names a client only by its scope; it holds no content and admits
 // no one, and a party-scoped grant needs a client, which is gated itself.
 const GRANTS = writing(business('grants'));
+// A task shared with its client is that client's data reaching the client's
+// existing people: S0-5 classes it client-data, never an invitation, as it
+// enrols no one (MP-4-10). Taking the share back gives no one
+// anything, so `task.revoke_client_share` stays a business grant write.
+const SHARE = writing(client('grants'));
 const CREDENTIAL = writing(business('agent_credentials', 'actors'));
 
 /**
@@ -109,27 +71,25 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   // A comment's own edit and deletion (MP-4-5), on its record.
   'task.edit_comment': writing(client('records')),
   'task.delete_comment': writing(client('records')),
-  'task.propose': PROPOSAL,
+  // AW-09: the lease holder's revision of its output is the reviewed output too.
+  // A restart opens a new lineage, which supersedes nothing, so it marks none.
+  'task.propose': writing([...PROPOSAL.writes, ...client('reviewed_outputs')]),
   'task.decide': writing(
     client('attempts', 'gate_decisions', 'gates', 'inbox_items', 'reservations', 'task_envelopes'),
   ),
-  // An agent's pickup also mints its delegation.
+  // An agent's pickup also mints its delegation. A step whose calls spent its
+  // whole hold stops at its budget instead (AW-05): the ask, and after the
+  // run's last ask a person told on the task.
   'task.pickup': writing([
-    ...client('attempts', 'leases', 'planned_runs', 'reservations', 'run_events'),
+    ...client('alerts', 'attempts', 'budget_asks', 'leases', 'planned_runs', 'reservations'),
+    ...client('run_events'),
     ...business('delegations'),
   ]),
+  // A successor is a proposal on the lineage, and the reviewed output (AW-08).
   'task.handback': writing([
-    ...client(
-      'alerts',
-      'attempts',
-      'handback_reports',
-      'inbox_items',
-      'leases',
-      'planned_runs',
-      'reservations',
-      'run_events',
-      'task_envelopes',
-    ),
+    ...client('alerts', 'attempts', 'evidence_packs', 'gates', 'handback_reports', 'inbox_items'),
+    ...client('leases', 'planned_runs', 'planned_steps', 'proposal_versions', 'reservations'),
+    ...client('reviewed_outputs', 'run_events', 'task_envelopes'),
     ...business('delegations'),
   ]),
   'task.start': TASK,
@@ -137,12 +97,16 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.assign': writing(client('records', 'record_unique_values', 'inbox_items')),
   'task.triage': TASK,
   'task.set_stage': TASK,
-  // The status select (Stage 1 adds), the marks (MP-4-9) and Ad hoc (MP-4-10).
+  // The status select (Stage 1 adds), the marks (MP-4-9), Ad hoc (MP-4-10) and
+  // the category (MP-4-8).
   'task.set_state': TASK,
   'task.set_scores': TASK,
   'task.set_adhoc': TASK,
+  'task.set_category': TASK,
+  // A duplicate is a new task with its subtasks and a link to the old one (MP-4-8).
+  'task.duplicate': writing(client('records', 'record_unique_values', 'record_links')),
   // Client access (MP-4-10): a share grant on the task for its client's people.
-  'task.share_with_client': GRANTS,
+  'task.share_with_client': SHARE,
   'task.revoke_client_share': GRANTS,
   'task.set_party': TASK,
   'task.set_audience': TASK,
@@ -216,6 +180,63 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'credential.issue': CREDENTIAL,
   'credential.revoke': CREDENTIAL,
   'client.create': writing(client('clients')),
+  // SL12 (batch 3a join, BATCH3-INTEG): a conversation can hold a task's
+  // content once scoped to it, so its rows count as client-scoped.
+  'gate.pending': READ,
+  'conversation.read': READ,
+  'conversation.list': READ,
+  'conversation.start': writing(client('conversations', 'conversation_messages')),
+  'conversation.message': writing(client('conversations', 'conversation_messages')),
+  'conversation.rename': writing(client('conversations')),
+  'conversation.set_scope': writing(client('conversations')),
+  // AW-01: the broker's hold on the lease's run and its prompt copy's
+  // registration. At the approved ceiling the refusal commits the stop instead
+  // (AW-05): the ask, the lease released, the delegation retired, the run
+  // waiting. The provider call goes through the credential broker; a client's
+  // task never reaches a route (C60), so it is the business's own.
+  'model.call': writing(
+    [
+      ...client('model_calls', 'budget_asks', 'leases', 'planned_runs'),
+      ...business('copy_registrations', 'delegations'),
+    ],
+    [{ provider: 'model', forClient: false }],
+  ),
+  // AW-05: the two answers at the budget stop, and MP-6-2's state revised.
+  // None of the four below writes `run_events`: only pickup, hand-back and a drop append it.
+  // At a hold its calls spent whole, the top-up is the step's fresh hold: a new attempt.
+  'run.top_up': writing([
+    ...client('attempts', 'budget_answers', 'budget_approvals', 'planned_runs', 'reservations'),
+    ...client('task_envelopes'),
+  ]),
+  'run.end_at_budget_stop': writing(
+    client('budget_answers', 'planned_runs', 'reservations', 'task_envelopes'),
+  ),
+  'run.revise_state': writing(client('run_states')),
+  // MP-6-1's check on a task's run.
+  'task.check': writing(client('run_checks')),
+  // SL11 (batch 3b join, BATCH3-INTEG): AW-04's reads and planning cap,
+  // AW-13's trace read, AW-12's harness result, AW-11's child work, and the
+  // accepted plan.
+  'conversation.allowance': READ,
+  'definition.attribution': READ,
+  'trace.read': READ,
+  'harness.read': READ,
+  'budget.set_planning_cap': writing(business('budget_caps', 'business_settings')),
+  'run.delegate_child': writing([...client('run_events'), ...business('delegations')]),
+  'run.child_handback': writing([...client('run_events'), ...business('delegations')]),
+  'task.accept_plan': writing(
+    client(
+      'attempts',
+      'gate_decisions',
+      'gates',
+      'inbox_items',
+      'plan_records',
+      'reservations',
+      'run_definition_pins',
+      'run_events',
+      'task_envelopes',
+    ),
+  ),
   'access.grant': GRANTS,
   'access.revoke': GRANTS,
   // C58: the team member signed out and deactivated at the identity provider.
@@ -242,6 +263,13 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.observe': writing(client('attempts')),
   'task.receipt': READ,
   'budget.top_up': writing(client('task_envelopes')),
-  'budget.record_outcome': writing(client('alerts', 'attempts', 'reservations', 'task_envelopes')),
-  'budget.write_off': writing(client('attempts', 'reservations', 'task_envelopes')),
+  // AW-10: the step's held calls take the outcome. A replacement stopped, or a
+  // resume at a hold its calls spent whole, ends the lease and the delegation
+  // and stops the run at its budget (AW-05).
+  'budget.record_outcome': writing([
+    ...client('alerts', 'attempts', 'budget_asks', 'leases', 'model_calls', 'planned_runs'),
+    ...client('reservations', 'task_envelopes'),
+    ...business('delegations'),
+  ]),
+  'budget.write_off': writing(client('attempts', 'model_calls', 'reservations', 'task_envelopes')),
 };

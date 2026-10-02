@@ -65,6 +65,15 @@ export const LOGINS: readonly Login[] = [
     inherit: false,
     port: 5432,
   },
+  {
+    // 20261002105957: the daily upkeep job's second-factor purge (backup.mjs expire).
+    step: 'after-reset',
+    setting: 'DATABASE_UPKEEP_URL',
+    role: 'ops_astro_upkeep_login',
+    group: 'ops_astro_upkeep',
+    inherit: false,
+    port: 5432,
+  },
 ];
 
 type Environment = Readonly<Record<string, string | undefined>>;

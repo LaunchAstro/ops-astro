@@ -3,7 +3,7 @@
 // The refusal code each protected task field earns on the generic editor,
 // for `task-fields.test.ts`.
 //
-// The code each of the eighteen earns, asserted by name rather than by rule,
+// The code each of the nineteen earns, asserted by name rather than by rule,
 // so relaxing one is a visible diff (minimum contract 5.3 assertion 2).
 // Three kinds, and the difference between them is the point: a field an
 // operation owns names that operation, a derived field names nobody
@@ -16,6 +16,7 @@ export const PROTECTED_FIELD_CODES: Readonly<Record<string, string>> = {
   archived_at: 'FIELD_NOT_WRITABLE',
   archived_why: 'FIELD_NOT_WRITABLE',
   assignee: 'TRANSITION_PROTECTED',
+  category: 'TRANSITION_PROTECTED',
   client: 'TRANSITION_PROTECTED',
   client_visible: 'TRANSITION_PROTECTED',
   completed_at: 'FIELD_NOT_WRITABLE',

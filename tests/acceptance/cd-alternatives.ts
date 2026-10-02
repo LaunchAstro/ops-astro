@@ -2,7 +2,7 @@
 //
 // Root ruling 3 (ROOT-906613f-RULINGS.md, section 3) and ledger I03: every
 // declared operation stays in the matrix. The (c) and (d) cells swap a task
-// `recordId`, which reaches 16 of the 44. For each of the other 28 this file
+// `recordId`, which reaches 17 of the 62. For each of the other 45 this file
 // names where its target comparison is executed instead, or why it has none,
 // once, so the matrix row and the case it points at cannot drift apart:
 // `identifier-negatives.test.ts` titles its cases from `CASE` below.
@@ -23,11 +23,14 @@ export const CASE = {
   pickup: 'refuses a pickup alike on a foreign, a fabricated and a claimed reservation',
   time: 'refuses a foreign and a fabricated task or time entry alike on the time commands',
   tag: 'refuses a foreign and a fabricated task alike on the tag commands',
+  duplicate: 'refuses a duplicate of a foreign and a fabricated task alike',
   targetFree: 'refuses a target a target-free operation has no use for (SC2 reading)',
+  conversation:
+    'refuses a foreign and a fabricated conversation alike, NOT_FOUND byte for byte (AW-03)',
 } as const;
 
 /**
- * The thirty-seven operations that name no identifier, each with a minimal valid body.
+ * The thirty-nine operations that name no identifier, each with a minimal valid body.
  *
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed
  * at bravo is refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line
@@ -53,12 +56,19 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
     },
   ],
   ['task.queue', {}],
+  ['gate.pending', {}],
   ['task.ledger', { timeZone: 'UTC' }],
   ['person.list', {}],
   ['team.list', {}],
   ['preset.plan', { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] }],
   ['settings.read', {}],
   ['session.capabilities', {}],
+  ['conversation.start', { body: 'a conversation started while bravo is watched' }],
+  ['conversation.list', {}],
+  // AW-04: a digest names a file's bytes, not a record of any business.
+  ['definition.attribution', { digest: 'a'.repeat(64) }],
+  // AW-04 (U10): the business's own planning cap, moved once from the default.
+  ['budget.set_planning_cap', { limitMinor: 2_000, currency: 'AUD', fromLimitMinor: 5_000 }],
   // A name the vocabulary takes once, so each run makes its own (MP-4-11).
   ['tag.create', { name: `tag ${randomUUID().slice(0, 8)}` }],
   ['tag.list', {}],
@@ -136,7 +146,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['notifications.set_channel', { channel: 'in_app', mode: 'on' }],
 ];
 
-/** The thirty identifier-bearing operations outside (c) and (d): operand and executed case. */
+/** The forty identifier-bearing operations outside (c) and (d): operand and executed case. */
 export const IDENTIFIER_BEARING: Readonly<
   Partial<Record<CommandName, readonly [operand: string, kase: keyof typeof CASE]>>
 > = {
@@ -146,16 +156,29 @@ export const IDENTIFIER_BEARING: Readonly<
   'grant.revoke': ['grantId', 'control'],
   'delegation.revoke': ['delegationId', 'control'],
   'task.decide': ['gateId', 'gate'],
+  'task.accept_plan': ['gateId', 'gate'],
   'task.board': ['board', 'board'],
   'task.heartbeat': ['leaseId', 'agent'],
   'task.dispatch': ['leaseId', 'agent'],
   'task.observe': ['leaseId', 'agent'],
   'task.receipt': ['attemptId', 'control'],
+  'task.check': ['leaseId', 'agent'],
   'task.handback': ['leaseId', 'agent'],
+  'model.call': ['leaseId', 'agent'],
+  'run.delegate_child': ['leaseId', 'agent'],
   'task.pickup': ['reservationId', 'pickup'],
   'budget.top_up': ['recordId', 'control'],
   'budget.record_outcome': ['attemptId', 'control'],
   'budget.write_off': ['attemptId', 'control'],
+  'conversation.message': ['conversationId', 'conversation'],
+  'conversation.read': ['conversationId', 'conversation'],
+  // AW-04: the drawer's allowance names the caller's own conversation, or none.
+  'conversation.allowance': ['conversationId', 'conversation'],
+  'conversation.rename': ['conversationId', 'conversation'],
+  'conversation.set_scope': ['conversationId', 'conversation'],
+  'run.top_up': ['runId and recordId', 'control'],
+  'run.end_at_budget_stop': ['runId and recordId', 'control'],
+  'run.revise_state': ['runId and recordId', 'control'],
   'time.start': ['taskId', 'time'],
   'time.stop': ['taskId', 'time'],
   'time.log': ['taskId', 'time'],
@@ -169,6 +192,7 @@ export const IDENTIFIER_BEARING: Readonly<
   'access.grant': ['holderId and clientId', 'control'],
   'access.revoke': ['grantId', 'control'],
   'access.end': ['holderId', 'control'],
+  'task.duplicate': ['recordId', 'duplicate'],
   'inbox.seen': ['itemId', 'control'],
 };
 
@@ -183,6 +207,21 @@ export function alternativeFor(name: CommandName): string | undefined {
     return (
       `executed alternative: identifier-negatives.test.ts "${CASE[kase]}" compares a foreign ` +
       `and a fabricated ${operand} by status and raw bytes, audited at home (ledger I03)`
+    );
+  }
+  if (name === 'run.child_handback') {
+    // AW-11: the body names nothing; the helper's own child credential is the
+    // target, so a foreign one and a made-up one are the operand compared.
+    return (
+      'executed alternative: aw-11-child-commands-isolation.test.ts "another business" ' +
+      "compares another business's child credential and a fabricated one by status and bytes"
+    );
+  }
+  if (name === 'harness.read') {
+    // AW-12: the body names a run, not a task, so the (c) and (d) cells' recordId misses it.
+    return (
+      'executed alternative: aw-12-harness-read-isolation.test.ts "another business" ' +
+      "compares another business's run and a fabricated one by status and bytes"
     );
   }
   if (TARGET_FREE.some(([op]) => op === name)) {

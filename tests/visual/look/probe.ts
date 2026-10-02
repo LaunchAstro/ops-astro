@@ -5,20 +5,27 @@
 
 import type { MadeUpVariant } from '../made-up-api.ts';
 
+/**
+ * Before measuring: `store` puts values in the page's localStorage before it
+ * loads (a state the mockup replays before paint, such as its dragged rail
+ * width), and `drag` moves an element's centre by `by` pixels along x with
+ * the pointer, the way a person drags an edge.
+ */
+export interface LookPrep {
+  readonly open?: string | readonly string[];
+  readonly store?: Readonly<Record<string, string>>;
+  readonly drag?: { readonly selector: string; readonly by: number };
+}
+
 export interface LookProbe {
   /** `<screen>.<element>`, unique across screens. */
   readonly id: string;
   /** The mockup page path and the element there; `open` clicks, in turn, before measuring. */
-  readonly mockup: {
-    readonly path: string;
-    readonly selector: string;
-    readonly open?: string | readonly string[];
-  };
+  readonly mockup: LookPrep & { readonly path: string; readonly selector: string };
   /** The app page (drawn from the made-up reads) and the element there. */
-  readonly app: {
+  readonly app: LookPrep & {
     readonly page: string;
     readonly selector: string;
-    readonly open?: string | readonly string[];
     /**
      * An address to draw instead of the page's, signed in: a held address, an
      * unknown one, or sign-in with a session already held.
@@ -27,7 +34,10 @@ export interface LookProbe {
     /** The made-up reads in another state (`made-up-api.ts`): a read's other renderings. */
     readonly reads?: MadeUpVariant;
   };
-  /** Computed style properties (colours compared as painted), or `box.width|height|x|y`. */
+  /**
+   * Computed style properties (colours compared as painted), or
+   * `box.width|height|x|y`, or `box.drawn`: whether it paints any area at all.
+   */
   readonly props: readonly string[];
   /**
    * Where a ruling moved the build off the mockup: `at` is `<prop>@<theme>`,

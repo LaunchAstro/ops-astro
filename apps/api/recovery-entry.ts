@@ -31,11 +31,13 @@
 
 import type { BusinessId, Database, TenantQuery } from '../../packages/core-records/src/index.ts';
 import { lookupEffect } from '../../packages/core-commands/src/index.ts';
+import { sweepModelCalls } from '../../packages/core-custody/src/index.ts';
 import {
   EFFECT_OPERATIONS,
   reconcileUnknown,
   replayRecordedTransitions,
   sweepLostWorkers,
+  withProviderCalls,
 } from '../../packages/core-runtime/src/index.ts';
 import type {
   Classification,
@@ -131,7 +133,11 @@ export async function recoverDeployment(
  * configured businesses, each in its own transaction on the tenancy
  * connection, as system work. `server.ts` runs it on an interval once the port
  * is bound. A business that fails rolls back alone and is named; the next pass
- * sweeps it again, which is the bound.
+ * sweeps it again, which is the bound. The model-call half (AW-01) runs in
+ * the same transaction, after the lease locks the lost-worker sweep took, the
+ * order the broker's settle takes them in: a call sent on a lease that ended
+ * is held as unknown liability, one never sent is released. The classifier
+ * already kept a hold with a sent call on it whole.
  */
 export async function sweepDeployment(
   database: Database,
@@ -144,7 +150,11 @@ export async function sweepDeployment(
     keys,
     'sweep',
     // T3e1: the sweep with its drop step, so a lost worker's work comes back.
-    async (tx) => await sweepLostWorkers(tx),
+    async (tx) => {
+      const classified = await sweepLostWorkers(tx);
+      await sweepModelCalls(tx);
+      return classified;
+    },
   );
 }
 
@@ -294,17 +304,32 @@ export async function passDeployment(
   resolveBusiness: (businessKey: string) => Promise<string | undefined>,
   keys: readonly string[],
   lookup: EffectLookup,
+  // AW-10: the provider phase, after the sweep and before the answers.
+  providers?: (
+    database: Database,
+    businessId: BusinessId,
+    unanswered: Set<string>,
+  ) => Promise<unknown>,
 ): Promise<RecoveryOutcome> {
   const swept = await sweepDeployment(database, resolveBusiness, keys);
   if (!swept.ok) return swept;
   const replayed = await recoverDeployment(database, resolveBusiness, keys);
   if (!replayed.ok) return replayed;
+  if (providers !== undefined) {
+    // One set for the pass: a provider silent in one business is not asked again in the next.
+    const unanswered = new Set<string>();
+    for (const business of swept.businesses) {
+      // One business at a time, each in its own transactions.
+      // eslint-disable-next-line no-await-in-loop
+      await providers(database, business.businessId, unanswered);
+    }
+  }
   const answered = await eachBusiness(
     database,
     resolveBusiness,
     keys,
     'reconcile',
-    async (tx) => await reconcileUnknown(tx, lookup),
+    async (tx) => await reconcileUnknown(tx, withProviderCalls(lookup)),
   );
   if (!answered.ok) return answered;
   return {

@@ -43,6 +43,7 @@ import {
   type Classification,
 } from './classifier.ts';
 import { endLease } from './lease-retirement.ts';
+import { holdLostCalls } from './broker-effect.ts';
 
 /**
  * Holds bound to a live lease whose deadline has passed at `at`, in this
@@ -83,6 +84,12 @@ export async function sweepExpiredLeases(
     changed:
       'sweep: the expired set changed under discovery; roll back and sweep again on the next pass',
   });
+  // AW-10: a call the lost worker left started is held and its step marked,
+  // under these locks, before the classifier reads whether the step may have acted.
+  await holdLostCalls(
+    tx,
+    found.map((row) => row.reservation_id),
+  );
   const classified = await classifyAll(
     tx,
     found,

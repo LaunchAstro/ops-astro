@@ -47,6 +47,7 @@ import {
   TEST_SIGNING_KEY,
   type RuntimeFixture,
 } from './fixture.ts';
+import { seedLaunchOn } from './launch-seed.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -117,12 +118,13 @@ async function approved(
 
 /** Propose, approve and pick up as the agent, on a new task, through the runtime. */
 async function leased(
-  database: Database,
+  db: FreshDatabase,
   fixture: RuntimeFixture,
   kind = 'synthetic_comment',
 ): Promise<Leased> {
+  const database = db.app;
   const taskId = await newTask(database, fixture.businessId, fixture.decider);
-  return await database.withBusiness(fixture.businessId, async (tx) => {
+  const work: Leased = await database.withBusiness(fixture.businessId, async (tx) => {
     const { versionId, reservationId } = await approved(tx, fixture, taskId, kind);
     const picked = await pickup(tx, {
       claimant: 'agent',
@@ -153,12 +155,15 @@ async function leased(
       },
     };
   });
+  await seedLaunchOn(db.admin, fixture.businessId, work.leaseId);
+  return work;
 }
 
 /** A step approved and picked up by the business's own person, as `leased` does for its agent. */
-async function personLeased(database: Database, fixture: RuntimeFixture) {
+async function personLeased(db: FreshDatabase, fixture: RuntimeFixture) {
+  const database = db.app;
   const taskId = await newTask(database, fixture.businessId, fixture.decider);
-  return await database.withBusiness(fixture.businessId, async (tx) => {
+  const work = await database.withBusiness(fixture.businessId, async (tx) => {
     const proposed = await propose(tx, {
       taskId,
       collection: TASK_COLLECTION,
@@ -197,6 +202,8 @@ async function personLeased(database: Database, fixture: RuntimeFixture) {
     if (!picked.ok) throw new Error(`pickup refused ${picked.refusal.code}`);
     return picked.value;
   });
+  await seedLaunchOn(db.admin, fixture.businessId, work.leaseId);
+  return work;
 }
 
 /** The attempt and the step a dispatch could mark, as the owner reads them. */
@@ -243,15 +250,24 @@ describe.skipIf(serverUrl === undefined)('T2c1 the dispatch transaction', () => 
     await db?.drop();
   });
 
-  it('enumerates the four effect-time facts in code, and declares the synthetic effect replayable', () => {
+  it('enumerates the effect-time facts in code, and declares the synthetic effect replayable', () => {
     expect([...EFFECT_TIME_FACTS].toSorted()).toStrictEqual(
-      ['approvedVersion', 'authority', 'budget', 'lease'].toSorted(),
+      [
+        'approvedVersion',
+        'authority',
+        'budget',
+        'lease',
+        'superseded',
+        'lineage',
+        'launch',
+        'signOff',
+      ].toSorted(),
     );
     expect(EFFECT_OPERATIONS['synthetic_comment']).toBe('replay');
   });
 
   it('marks the attempt, then names it on its step, once; a second dispatch writes nothing new', async () => {
-    const work = await leased(db.app, fixture);
+    const work = await leased(db, fixture);
     const first = await run(fixture, work.request);
     expect(first.ok, JSON.stringify(first)).toBe(true);
     if (!first.ok) return;
@@ -279,7 +295,7 @@ describe.skipIf(serverUrl === undefined)('T2c1 the dispatch transaction', () => 
   });
 
   it('recheck_inside_dispatch: a revocation in flight is seen, and the dispatch is refused AUTHORITY_LOST', async () => {
-    const work = await leased(db.app, fixture);
+    const work = await leased(db, fixture);
     const { held, release } = gate();
     const revoking = rival.withBusiness(fixture.businessId, async (tx) => {
       await tx.query(
@@ -320,7 +336,7 @@ describe.skipIf(serverUrl === undefined)('T2c1 the dispatch transaction', () => 
   }, 20_000);
 
   it('a settled delegation cannot dispatch while its lease is live', async () => {
-    const work = await leased(db.app, fixture);
+    const work = await leased(db, fixture);
     await db.admin.execute(
       `update public.delegations set settled_at = now()
         where business_id = $1 and id = $2`,
@@ -341,8 +357,8 @@ describe.skipIf(serverUrl === undefined)('T2c1 the dispatch transaction', () => 
       'delegationId',
     ],
     [
-      'approvedVersion',
-      'DECISION_STALE',
+      'superseded',
+      'PROPOSAL_SUPERSEDED',
       'update public.proposal_versions set superseded_at = now() where id = $1',
       'versionId',
     ],
@@ -360,7 +376,7 @@ describe.skipIf(serverUrl === undefined)('T2c1 the dispatch transaction', () => 
       'reservationId',
     ],
   ] as const)('the %s fact moved refuses %s, and marks nothing', async (_fact, code, move, key) => {
-    const work = await leased(db.app, fixture);
+    const work = await leased(db, fixture);
     await db.admin.execute(move, [work[key]]);
     const answer = await run(fixture, work.request);
     expect(answer.ok).toBe(false);
@@ -369,7 +385,7 @@ describe.skipIf(serverUrl === undefined)('T2c1 the dispatch transaction', () => 
   });
 
   it('refuses EFFECT_NOT_RECONCILABLE for an effect declaring neither replay nor reconciliation', async () => {
-    const work = await leased(db.app, fixture, 'local.draft');
+    const work = await leased(db, fixture, 'local.draft');
     const answer = await run(fixture, work.request);
     expect(answer.ok).toBe(false);
     if (!answer.ok) expect(answer.refusal.code).toBe('EFFECT_NOT_RECONCILABLE');
@@ -377,7 +393,7 @@ describe.skipIf(serverUrl === undefined)('T2c1 the dispatch transaction', () => 
   });
 
   it('answers a stale fence and another holder as LEASE_NOT_OWNED', async () => {
-    const work = await leased(db.app, fixture);
+    const work = await leased(db, fixture);
     const stale = await run(fixture, { ...work.request, fence: work.fence + 1 });
     const stranger = await run(fixture, {
       ...work.request,
@@ -391,8 +407,8 @@ describe.skipIf(serverUrl === undefined)('T2c1 the dispatch transaction', () => 
   });
 
   it('answers an agent naming a person’s own lease as LEASE_NOT_OWNED, not a fault', async () => {
-    const personLease = await personLeased(db.app, fixture);
-    const mine = await leased(db.app, fixture);
+    const personLease = await personLeased(db, fixture);
+    const mine = await leased(db, fixture);
     const answer = await run(fixture, {
       ...mine.request,
       leaseId: personLease.leaseId,
@@ -404,7 +420,7 @@ describe.skipIf(serverUrl === undefined)('T2c1 the dispatch transaction', () => 
   });
 
   it('T2 isolation: another business’s lease is not owned and nothing there moves', async () => {
-    const theirs = await leased(db.app, other);
+    const theirs = await leased(db, other);
     const before = await marks(db, theirs.attemptId);
     const answer = await run(fixture, theirs.request);
     expect(answer.ok).toBe(false);
@@ -412,7 +428,7 @@ describe.skipIf(serverUrl === undefined)('T2c1 the dispatch transaction', () => 
     expect(await marks(db, theirs.attemptId)).toStrictEqual(before);
 
     // Through the command T2c1 serves, `task.dispatch`, as each business's own person calls it.
-    const person = await personLeased(db.app, other);
+    const person = await personLeased(db, other);
     const untouched = await marks(db, person.attemptId);
     const dispatchAs = async (on: RuntimeFixture) =>
       await executeCommand(db.app, on.businessId, on.decider.presented, 'api', {
@@ -438,8 +454,8 @@ describe.skipIf(serverUrl === undefined)('T2c1 the dispatch transaction', () => 
   });
 
   it('T2 isolation: a dispatch never waits on another business’s step', async () => {
-    const theirs = await leased(db.app, other);
-    const mine = await leased(db.app, fixture);
+    const theirs = await leased(db, other);
+    const mine = await leased(db, fixture);
     const { held, release } = gate();
     const locking = rival.withBusiness(other.businessId, async (tx) => {
       await tx.query(

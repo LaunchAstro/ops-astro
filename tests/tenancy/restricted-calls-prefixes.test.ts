@@ -29,7 +29,7 @@
 // not exist it is not called, and the tally says which.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { readdirSync } from 'node:fs';
 import {
   createEmptyDatabase,
@@ -40,15 +40,17 @@ import { describePrefix, proveEachPrefix } from '../support/prefix-harness.ts';
 import { readMigrations } from '../../packages/core-records/src/tenancy/migrate.ts';
 import type { AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
 import { createWorld } from '../acceptance/world.ts';
-import { walkTheJourney, walkTheOtherLineages } from '../acceptance/restart-harness.ts';
 import {
-  APPLICATION_EXECUTES,
-  WORKER_ROLE,
+  callModelOnTheJourney,
+  walkTheJourney,
+  walkTheOtherLineages,
+} from '../acceptance/restart-harness.ts';
+import { APPLICATION_EXECUTES, WORKER_ROLE, describeOutcome } from './restricted-calls-cases.ts';
+import {
   catalogueFunctions,
   catalogueTables,
-  describeOutcome,
   type CatalogueTable,
-} from './restricted-calls-cases.ts';
+} from './restricted-calls-catalogue.ts';
 import {
   APPLICATION_CALLERS,
   OPERATIONS,
@@ -65,9 +67,13 @@ import {
   type CallerName,
   type Callers,
 } from './restricted-calls-callers.ts';
+import { columnUpdateFindings } from './restricted-calls-columns.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 const onDisk = readMigrations('migrations');
+
+/** SHA-256 of the four bytes `seed`, so the audit copy's own check holds. */
+const SEED_DIGEST = createHash('sha256').update('seed').digest('hex');
 
 /** Rows for the tables the journey leaves empty; foreign keys are off when they are written. */
 const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
@@ -97,6 +103,130 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     run_id: randomUUID(),
     task_id: randomUUID(),
     reactivated: false,
+  },
+  // The journey records no check (MP-6-1); the row is written with foreign
+  // keys off, as every reference row is.
+  // The journey revises no run's state (MP-6-2).
+  'public.run_states': {
+    run_id: randomUUID(),
+    task_id: randomUUID(),
+    version: 1,
+    knowledge: [],
+    unknowns: [],
+    revised_by_actor_id: randomUUID(),
+  },
+  'public.run_checks': {
+    task_id: randomUUID(),
+    run_id: randomUUID(),
+    version_id: randomUUID(),
+    lease_id: randomUUID(),
+    attempt_id: randomUUID(),
+    actor_id: randomUUID(),
+    fence: 1,
+    name: 'restricted calls seed',
+    outcome: 'passed',
+  },
+  // The journey holds no conversation (AW-03).
+  'public.conversations': {
+    owner_actor_id: randomUUID(),
+    owner_person_id: randomUUID(),
+    title: 'restricted calls seed',
+  },
+  'public.conversation_messages': {
+    conversation_id: randomUUID(),
+    role: 'person',
+    author_actor_id: randomUUID(),
+    body: 'restricted calls seed',
+  },
+  'public.conversation_wrap_ups': {
+    conversation_id: randomUUID(),
+    version: 1,
+    written_by_operation: 'conversation.wrap_up',
+    code_revision: 'seed',
+    request_quotation: 'restricted calls seed',
+    items: [{}, {}, {}, {}, {}, {}, {}],
+    left_open: [],
+    activity_through: new Date(),
+  },
+  // AW-02: nothing writes a pin before AW-04's plan accept.
+  'public.run_definition_pins': {
+    run_id: randomUUID(),
+    ref_kind: 'bootstrap_file',
+    path: 'skills/seed.md',
+    content_digest: SEED_DIGEST,
+    content_size: 4,
+    read_at: '2026-09-30T00:00:00Z',
+    manifest: [],
+    manifest_digest: SEED_DIGEST,
+    pinned_by_actor_id: randomUUID(),
+  },
+  // AW-04: nothing binds a plan before a plan accept.
+  'public.plan_records': {
+    id: randomUUID(),
+    gate_id: randomUUID(),
+    decision_id: randomUUID(),
+    run_id: randomUUID(),
+    plan_text: 'restricted calls seed',
+    text_digest: SEED_DIGEST,
+    record: { steps: [] },
+    record_digest: SEED_DIGEST,
+    bound_by_actor_id: randomUUID(),
+  },
+  // AW-08: no output is handed back for review before a plan's work runs.
+  'public.reviewed_outputs': {
+    version_id: randomUUID(),
+    lineage_id: randomUUID(),
+    lease_id: randomUUID(),
+  },
+  // AW-04 (U10): no planning reply is priced before a cap is set.
+  'public.planning_envelopes': {
+    cap_id: randomUUID(),
+    conversation_id: randomUUID(),
+    owner_person_id: randomUUID(),
+  },
+  'public.bootstrap_reads': {
+    run_id: randomUUID(),
+    sequence: 1,
+    path: 'skills/seed.md',
+    content_digest: SEED_DIGEST,
+    content_size: 4,
+    is_entry: true,
+  },
+  // AW-05: nothing raises an ask before a run reaches its ceiling.
+  'public.budget_asks': {
+    run_id: randomUUID(),
+    reservation_id: randomUUID(),
+    lease_id: randomUUID(),
+    decision_id: randomUUID(),
+    ask_number: 1,
+    kind: 'stop',
+    ceiling_minor: 400,
+    spent_minor: 0,
+    currency: 'AUD',
+  },
+  // AW-05: nothing answers a stop that was never raised.
+  'public.budget_approvals': {
+    ask_id: randomUUID(),
+    run_id: randomUUID(),
+    person_id: randomUUID(),
+    actor_id: randomUUID(),
+    amount_minor: 300,
+    currency: 'AUD',
+  },
+  'public.budget_answers': {
+    ask_id: randomUUID(),
+    run_id: randomUUID(),
+    kind: 'end',
+    first_person_id: randomUUID(),
+  },
+  // AW-13: nothing starts the exporter on the journey.
+  'public.trace_export_cursors': {},
+  'public.trace_export_gaps': { code: 'target_unreachable', events: 1 },
+  'public.trace_expiry_batches': { window_days: 30, runs: 1, expired_run_ids: [randomUUID()] },
+  'public.bootstrap_bytes': {
+    content_digest: SEED_DIGEST,
+    content_size: 4,
+    bytes: '\\x73656564',
   },
   // 0078: no journey step logs time yet.
   'public.time_entries': {
@@ -215,7 +345,7 @@ async function referenceRows(): Promise<Reference> {
   const world = await createWorld('rcpw');
   try {
     await walkTheOtherLineages(world);
-    await walkTheJourney(world);
+    await callModelOnTheJourney(world, await walkTheJourney(world));
     const rows = new Map(Object.entries(UNREACHED).map(([name, row]) => [name, [row]]));
     for (const table of await catalogueTables(world.db.admin)) {
       if (!table.tenant || table.qualified === 'public.businesses') continue;
@@ -337,15 +467,19 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at every pre
   // Read from the directory, not counted here, so the next migration is covered
   // with no edit to this suite (docs/local/DATA.md, "A new migration extends the
   // proof by itself").
-  it('reads every migration on disk, numbered from 0001 with no gap, and covers each below', () => {
+  it('reads every migration on disk, 0001 up with no gap then UTC timestamps, and covers each', () => {
     expect(onDisk.map((migration) => `${migration.version}.sql`)).toStrictEqual(
       readdirSync('migrations')
         .filter((name) => name.endsWith('.sql'))
         .toSorted(),
     );
-    expect(onDisk.map((migration) => migration.version.slice(0, 4))).toStrictEqual(
-      Array.from({ length: onDisk.length }, (_, i) => String(i + 1).padStart(4, '0')),
+    const ids = onDisk.map(({ version }) => version.slice(0, version.indexOf('_')));
+    const numbered = ids.filter((id) => id.length === 4);
+    expect(numbered).toStrictEqual(
+      Array.from({ length: numbered.length }, (_, i) => String(i + 1).padStart(4, '0')),
     );
+    expect(ids.slice(numbered.length).filter((id) => !/^\d{14}$/u.test(id))).toStrictEqual([]);
+    expect(new Set(ids).size).toBe(ids.length);
   });
 
   for (const migration of onDisk) {
@@ -419,6 +553,10 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at every pre
           if (before !== after) wrong.push(`${line}, the table changed`);
         }
       }
+
+      wrong.push(
+        ...(await columnUpdateFindings(db.admin, callers, activeCallers, alpha, migration.version)),
+      );
 
       for (const fn of functions) {
         for (const caller of [...activeCallers, 'owner'] as const) {

@@ -9,44 +9,31 @@
 // the failure. The corpus survives in `packages/ui` as the drawn *vocabulary*
 // — the words and tones a state may print — and not as a source of rows.
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
-import { Shell, type StripSteps } from '@launchastro/ui';
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
+import { Shell } from '@launchastro/ui';
 import { FaceProvider } from './face.tsx';
 import { SearchPalette, useSearch, useSearchKey } from './search.tsx';
 import { pathTo } from './routes.ts';
-import { NO_CLIENT_GRANTS, type ClientAccess } from './manifest.ts';
+import { NO_CLIENT_GRANTS } from './manifest.ts';
 import { frameAt } from './route-views.tsx';
 import { drawContent } from './app-content.tsx';
 import { buildStamp, useCanonicalAddress, useOfflineSince, usePersonName } from './app-state.ts';
+import { SignedInName } from './app-state.ts';
 import { FrameStrip } from './strip.tsx';
-import { HeldAddressNotice, heldAddressOffer, type HeldOffer } from './held-address.tsx';
-import { useDock } from './dock.ts';
+import { HeldAddressNotice } from './held-address.tsx';
+import { shellDock, useDockShell } from './dock/dock-props.tsx';
 import { useDockPanel } from './screens/task/DockPanel.tsx';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
-import { grantKeyOf, type Interruption, type Session, type SessionStore } from './session/token.ts';
+import { grantKeyOf, sessionGeneration, type Session } from './session/token.ts';
+import { useSignedIn, type HeldNotice } from './session/use-signed-in.ts';
+import { stepUpSession, type StepUpResult } from './session/step-up.ts';
+import { StepUpContext } from './records/use-money-command.ts';
 import { SignIn } from './screens/SignIn.tsx';
 import { endThenSignOut } from './sign-out.ts';
 import { PagePresenceProvider, StripPresence } from './views/presence.tsx';
 import { PageFreshnessProvider, StripFreshness } from './views/freshness.tsx';
-
-export interface AppProps {
-  /** The address the application is drawing. Owned here, not read from a global. */
-  readonly path: string;
-  /** `replace` corrects the address of the page already open, adding no history entry. */
-  readonly navigate: (path: string, options?: { readonly replace?: boolean }) => void;
-  /** The tab's Back and Forward, when the entry owns a history (MP-2-5). */
-  readonly steps?: StripSteps;
-  readonly sessions: SessionStore;
-  /** Where the identity provider is. Injected so a test never needs a network. */
-  readonly gotrueUrl: string;
-  /** The API's origin: empty behind the dev proxy, which serves `/api` on the page's own. */
-  readonly apiOrigin: string;
-  readonly fetch: typeof globalThis.fetch;
-  /** This tab's storage, read once by the entry, or null where it is blocked. */
-  readonly storage: Storage | null;
-  /** Which clients the session may open. None until MP-10-1 supplies client records. */
-  readonly clientAccess?: ClientAccess;
-}
+import { AssistantView } from './views/assistant.tsx';
+import type { AppProps } from './app-props.ts';
 
 export function App(props: AppProps): ReactElement {
   const [session, setSession] = useState<Session | null>(props.sessions.session);
@@ -65,53 +52,11 @@ export function App(props: AppProps): ReactElement {
   // Why the board was reached instead of the address that was held. Drawn on
   // the board and nowhere else, and gone when this session is. The offer is the
   // server's answer on whether to name the business the address belongs to.
-  const [notice, setNotice] = useState<{
-    readonly held: Interruption;
-    readonly offer: HeldOffer | null;
-  } | null>(null);
+  const [notice, setNotice] = useState<HeldNotice | null>(null);
   // The person signed out here, so sign-in says their unsaved edit went with it (C58).
   const [signedOut, setSignedOut] = useState(false);
 
-  const onSignedIn = useCallback(
-    (next: Session) => {
-      // Spent here, so the next ordinary sign-in is not redirected by an
-      // interruption somebody already answered.
-      const back = props.sessions.takeInterruption();
-      props.sessions.set(next);
-      setSession(next);
-      setNotice(null);
-      setSignedOut(false);
-      if (back === null) {
-        props.navigate(pathTo('agency:projects-board'));
-        return;
-      }
-      // **The held address only means anything in the business it was held
-      // in.** A task key is business-local, so replaying the string under a
-      // different business does not reopen the task the person was promised:
-      // it refuses, or -- worse, because it looks like success -- it draws an
-      // unrelated record that happens to share the key. A deliberate change of
-      // business is not a mistake, so it is not refused; it goes to that
-      // business's board and says why.
-      if (back.businessKey === next.businessKey) {
-        props.navigate(back.address);
-        return;
-      }
-      setNotice({ held: back, offer: null });
-      props.navigate(pathTo('agency:projects-board'));
-      void heldAddressOffer({
-        held: back,
-        next,
-        apiOrigin: props.apiOrigin,
-        fetch: props.fetch,
-      }).then((offer) => {
-        // Only onto the notice it was asked for: a sign-out or a switch since
-        // has replaced or cleared it.
-        setNotice((current) => (current?.held === back ? { held: back, offer } : current));
-        return offer;
-      });
-    },
-    [props],
-  );
+  const onSignedIn = useSignedIn(props, setSession, setNotice, setSignedOut);
 
   // **The session ending is a fact about the application, not about a screen.**
   // The client raises it once, from wherever the refusal arrived, and this is
@@ -161,6 +106,16 @@ export function App(props: AppProps): ReactElement {
       }),
     [props.apiOrigin, props.fetch, session],
   );
+  const grantKey = grantKeyOf(session);
+  const bare = here.split(/[?#]/u)[0] ?? here;
+  const { match, at, refused, rail, tabs, identity, face } = frameAt(
+    bare,
+    session?.businessKey ?? null,
+    props.clientAccess ?? NO_CLIENT_GRANTS,
+  );
+  const taskDock = useDockPanel({ client, grantKey, session, storage: props.storage });
+  const agency = face === 'agency';
+  const docked = useDockShell(client, session, props.storage, props, taskDock.panel, agency);
 
   // Sign-out (C23). The tab forgets the session first, so a server that never
   // answers cannot keep it. Then, with the ended session's own client:
@@ -177,6 +132,27 @@ export function App(props: AppProps): ReactElement {
     void endThenSignOut(() => client.mutate('session.end', {}), props, ended);
   };
 
+  // The money step-up (C59): the tab moves to the stepped-up sign-in as a sign-in does, without
+  // going anywhere, and only while the session that asked is still the one in hand.
+  const stepUp = async (code: string): Promise<StepUpResult> => {
+    const from = session;
+    if (from === null) return { ok: false, because: 'Sign in first.' };
+    const generation = sessionGeneration();
+    return await stepUpSession({
+      code,
+      client,
+      route: { apiOrigin: props.apiOrigin, fetch: props.fetch },
+      from: from.sessionId,
+      current: () => generation === sessionGeneration() && sessionRef.current === from,
+      adopt: (sessionId) => {
+        const next = { ...from, sessionId };
+        props.sessions.set(next);
+        sessionRef.current = next;
+        setSession(next);
+      },
+    });
+  };
+
   const personName = usePersonName(client, session, props.storage);
   const onSwitch = (businessKey: string, address: string): void => {
     if (session === null) return;
@@ -187,17 +163,10 @@ export function App(props: AppProps): ReactElement {
     props.navigate(address);
   };
 
-  const bare = here.split(/[?#]/u)[0] ?? here;
-  const grantKey = grantKeyOf(session);
-  const taskDock = useDockPanel({ client, grantKey, session, storage: props.storage });
-  const { match, at, refused, rail, tabs, identity, face } = frameAt(
-    bare,
-    session?.businessKey ?? null,
-    props.clientAccess ?? NO_CLIENT_GRANTS,
-  );
-  const searchable = session !== null && face === 'agency';
+  const [taskPanel, openPanel] = [taskDock.host, docked.dock.open];
+  const screen = { client, grantKey, storage: props.storage, navigate, taskPanel, openPanel };
+  const searchable = session !== null && agency;
   useSearchKey(searchable, search.open);
-  const dock = useDock({ client, session, agency: face === 'agency', here, navigate });
 
   const signIn = (
     <SignIn
@@ -217,12 +186,10 @@ export function App(props: AppProps): ReactElement {
     signedIn: session !== null,
     refused,
     signIn,
-    onGo: () => {
-      props.navigate(pathTo('agency:projects-board'));
-    },
+    onGo: () => props.navigate(pathTo('agency:projects-board')),
     screen: {
-      client,
-      grantKey,
+      ...screen,
+      address: here,
       notice:
         notice === null || session === null ? null : (
           <HeldAddressNotice
@@ -231,69 +198,77 @@ export function App(props: AppProps): ReactElement {
             onSwitch={onSwitch}
           />
         ),
-      storage: props.storage,
-      navigate: props.navigate,
-      taskPanel: taskDock.host,
     },
     open: props,
   });
 
   // Signed out, the page is the form alone: no rail entry opens without a session (B6).
   if (content === signIn) return signIn;
+  const title = refused ? 'Not available' : (match?.route.title ?? at?.page.label ?? 'Not found');
+  // The client face has no dock (R17), and nobody signed out has one.
+  const dockScreen = session === null || face === 'client' ? null : { ...screen, notice: null };
+  // The Agent drawer (MP-7-11): a dock panel with no address, carrying this
+  // page's standing scope only. Keyed on grantKey, so a change of business,
+  // person or session drops every tab and a late reply has nowhere to land.
+  const agent =
+    dockScreen === null || match === null ? null : (
+      <AssistantView key={grantKey} client={client} route={match.id} here={here} entry={null} />
+    );
   return (
-    <PageFreshnessProvider>
-      <PagePresenceProvider>
-        <Shell
-          face={face}
-          build={buildStamp()}
-          rail={rail}
-          here={bare}
-          strip={
-            <FrameStrip
-              face={face}
-              identity={identity}
-              clientSlug={at?.client ?? null}
-              steps={props.steps}
-              onSearch={searchable ? search.open : null}
-              searchRef={search.box}
-              session={session}
-              personName={personName}
-              navigate={navigate}
-              onSignOut={onSignOut}
-            />
-          }
-          tabs={tabs}
-          nav={{ open: navOpen, onToggle: setNavOpen }}
-          onNavigate={navigate}
-          meta={
-            <>
-              <StripFreshness
-                fallback={
-                  offlineSince === null ? null : { state: 'offline', lastRead: offlineSince }
-                }
+    <SignedInName value={personName}>
+      <PageFreshnessProvider>
+        <PagePresenceProvider>
+          <Shell
+            face={face}
+            build={buildStamp()}
+            rail={rail}
+            here={bare}
+            strip={
+              <FrameStrip
+                face={face}
+                identity={identity}
+                clientSlug={at?.client ?? null}
+                steps={props.steps}
+                onSearch={searchable ? search.open : null}
+                searchRef={search.box}
+                session={session}
+                personName={personName}
+                navigate={navigate}
+                onSignOut={onSignOut}
               />
-              {session === null ? null : <StripPresence />}
-            </>
-          }
-          title={refused ? 'Not available' : (match?.route.title ?? at?.page.label ?? 'Not found')}
-          dock={dock.tabs}
-          onDockTab={dock.press}
-          seated={false}
-          panel={taskDock.panel}
-        >
-          <FaceProvider face={face}>{content}</FaceProvider>
-        </Shell>
-        {search.showing && searchable ? (
-          <SearchPalette
-            client={client}
-            onOpen={(address) => {
-              search.dismiss();
-              navigate(address);
-            }}
-            onClose={search.close}
-          />
-        ) : null}
-      </PagePresenceProvider>
-    </PageFreshnessProvider>
+            }
+            tabs={tabs}
+            nav={{ open: navOpen, onToggle: setNavOpen }}
+            onNavigate={navigate}
+            meta={
+              <>
+                <StripFreshness
+                  fallback={
+                    offlineSince === null ? null : { state: 'offline', lastRead: offlineSince }
+                  }
+                />
+                {session === null ? null : <StripPresence />}
+              </>
+            }
+            title={title}
+            {...shellDock(docked, dockScreen, agent)}
+          >
+            <StepUpContext.Provider value={session === null ? null : stepUp}>
+              <FaceProvider face={face}>{content}</FaceProvider>
+            </StepUpContext.Provider>
+          </Shell>
+          {search.showing && searchable ? (
+            <SearchPalette
+              client={client}
+              onOpen={(address) => {
+                search.dismiss();
+                navigate(address);
+              }}
+              onClose={search.close}
+            />
+          ) : null}
+        </PagePresenceProvider>
+      </PageFreshnessProvider>
+    </SignedInName>
   );
 }

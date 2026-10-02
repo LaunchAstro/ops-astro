@@ -9,15 +9,26 @@
 // nor a row of the trail here.
 //
 // **The head reads the latest change**: how long ago, who, and what. The page
-// shows the whole trail open; the dock task panel folds it (MP-4-8). With no
-// change the head has nothing after it and the page says so.
+// shows the whole trail open; the dock task panel folds it (MP-4-8), and
+// whether it shows is the person's own `history.showTrail` preference
+// (`useShowTrail`), read by the panel above its task read. With no change the head
+// has nothing after it and the page says so.
 //
 // Who is the person's name the read carries for a person's actor, and "An
 // agent" or "The system" for the other two kinds (`whoOf`).
 
-import { useState, type ReactElement } from 'react';
+import type { ReactElement } from 'react';
 import { Empty } from '@launchastro/ui';
 import type { InternalTaskDetail as Task } from '../../../../../packages/core-wire/src/index.ts';
+import type { OperationsClient } from '../../operations/client.ts';
+import { useSavedFlag } from './saved-flag.ts';
+
+export const SHOW_TRAIL = 'history.showTrail';
+
+/** Whether the panel's trail shows: the person's own key, folded by default. */
+export const useShowTrail = (
+  client: OperationsClient,
+): readonly [boolean, (open: boolean) => void] => useSavedFlag(client, SHOW_TRAIL);
 
 type Entry = Task['history'][number];
 
@@ -37,6 +48,7 @@ const WHAT: Readonly<Record<string, string>> = {
   'task.set_audience': 'Audience set',
   'task.set_scores': 'Rank marks set',
   'task.set_adhoc': 'Ad hoc changed',
+  'task.set_category': 'Category changed',
   'task.share_with_client': 'Shared with the client',
   'task.revoke_client_share': 'Client access withdrawn',
   'task.propose': 'Proposed',
@@ -80,22 +92,21 @@ const whoOf = (entry: Entry): string => {
 export function History(props: {
   readonly history: Task['history'];
   /**
-   * The dock task panel folds the trail behind "Show all N changes" (MP-4-16).
-   * Unfolding lasts while the panel shows this task; keeping it as the
-   * person's preference waits on a preference model.
+   * The dock task panel folds the trail behind "Show all N changes" (MP-4-16):
+   * whether it shows, and the change, from `useShowTrail`. Absent, it is open.
    */
-  readonly folded?: boolean;
+  readonly fold?: readonly [boolean, (open: boolean) => void];
 }): ReactElement {
   const now = Date.now();
   const changes = props.history.filter((entry) => !NOT_TRANSITIONS.has(entry.operation));
   const latest = changes.at(-1);
-  const [open, setOpen] = useState(props.folded !== true);
+  const open = props.fold?.[0] ?? true;
   return (
     <section className="sb__sect" data-history>
       <div className="sb__sh">
         <span className="sb__k">History</span>
         {latest === undefined ? null : (
-          <span className="sbact__meta" data-history="latest">
+          <span className="sb__meta" data-history="latest">
             {`${ago(latest.at, now)} · ${whoOf(latest)} · ${whatOf(latest)}`}
           </span>
         )}
@@ -105,8 +116,8 @@ export function History(props: {
           <Empty look="inline" title="Nothing has changed on this one yet." />
         </div>
       ) : null}
-      {changes.length === 0 || props.folded !== true ? null : (
-        <TrailFold open={open} count={changes.length} onToggle={setOpen} />
+      {changes.length === 0 || props.fold === undefined ? null : (
+        <TrailFold open={open} count={changes.length} onToggle={props.fold[1]} />
       )}
       {changes.length === 0 || !open ? null : (
         <div className="sbact" data-history="trail">

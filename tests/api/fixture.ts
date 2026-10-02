@@ -20,7 +20,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Hono } from 'hono';
 import { createFreshDatabase, type FreshDatabase } from '../support/fresh-database.ts';
-import type { BusinessId } from '../../packages/core-records/src/tenancy/database.ts';
+import type { BusinessId, Database } from '../../packages/core-records/src/tenancy/database.ts';
 import type { VerifiedSubject } from '../../packages/core-records/src/identity/login-resolution.ts';
 import { insertBusiness, insertLogin } from '../identity/fixture.ts';
 import { enrol, grantTo, installSpine, type Member } from '../commands/fixture.ts';
@@ -65,8 +65,12 @@ export interface ApiFixture {
    * first one did with it.
    */
   readonly environment: GateEnvironment;
-  /** A composition root from `composeApi`: a fresh boundary, resolver cache and keys. */
-  compose(keys?: Partial<RuntimeKeys>, identity?: ServedIdentity): Hono;
+  /**
+   * A composition root from `composeApi`: a fresh boundary, resolver cache and
+   * keys. `database` replaces the one-connection pool, for a case whose two
+   * requests must hold transactions at once.
+   */
+  compose(keys?: Partial<RuntimeKeys>, identity?: ServedIdentity, database?: Database): Hono;
   drop(): Promise<void>;
 }
 
@@ -194,11 +198,11 @@ export async function createApiFixture(part: string): Promise<ApiFixture> {
     agent,
     agentActorId,
     environment,
-    compose(keys?: Partial<RuntimeKeys>, identity?: ServedIdentity): Hono {
+    compose(keys?: Partial<RuntimeKeys>, identity?: ServedIdentity, database?: Database): Hono {
       // The keys go in as values, as `server.ts` hands over the ones it read.
       return composeApi({
         keys: { ...runtimeKeys({ ...environment }), ...keys },
-        database: db.app,
+        database: database ?? db.app,
         admin: db.admin,
         signIn: testSignIn(ISSUER),
         executeRead,

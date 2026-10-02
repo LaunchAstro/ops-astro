@@ -19,6 +19,7 @@ import type { Browser } from 'playwright';
 import { createServer } from 'vite';
 import { load, openSide, shoot, type Catalogue, type Side } from './capture.ts';
 import { scrollMetrics } from './drift.ts';
+import { CONVERSATION_ID } from './made-up-agent.ts';
 import { answerMadeUp } from './made-up-api.ts';
 import type { Packet, Theme } from './packet.ts';
 import {
@@ -97,8 +98,16 @@ export async function captureBuiltPages(options: {
   return shots;
 }
 
-/** The parameters a page's address is filled with: a made-up task, business and document. */
-export const MADE_UP_PARAMS = { key: 'T-1', business: 'alpha', document: 'privacy-policy' };
+/**
+ * The parameters a page's address is filled with: a made-up task, business,
+ * document and conversation (the made-up reads' own records).
+ */
+export const MADE_UP_PARAMS: Readonly<Record<string, string>> = {
+  key: 'T-1',
+  business: 'alpha',
+  document: 'privacy-policy',
+  conversation: CONVERSATION_ID,
+};
 
 /** Each read named answers its made-up body; a route added last is asked first. */
 export async function answer(

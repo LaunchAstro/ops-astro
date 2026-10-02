@@ -73,6 +73,7 @@ function lineageOf(spec: LineageSpec) {
         payload: { step: 'draft the quote' },
         supersededAt: null,
         runId: null,
+        checks: [],
         evidence: null,
         gate: {
           id: spec.gateId,

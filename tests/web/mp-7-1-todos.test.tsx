@@ -20,7 +20,7 @@ afterEach(unmountAll);
 
 describe('MP-7-1 the Projects dock panel', () => {
   it('the dock carries a Projects panel at an address of its own', () => {
-    const panel = PANELS.find((entry) => entry.id === 'todos');
+    const panel = PANELS.todos;
     expect(panel?.label).toBe('Projects');
     expect(panel?.route).toBe('agency:todos');
     expect(matchRoute(pathTo('agency:todos'))?.id).toBe('agency:todos');
@@ -87,7 +87,10 @@ describe('MP-7-1 The done tick runs the one completion transition', () => {
     const { view } = await todos({ client: server.client });
     await view.click('[data-todo-row="Proj-Bravo"] [data-todo-tick]');
     await tick();
-    const writes = server.sent.filter((one) => one.to !== '/task/todos');
+    // The reads (the list, and the scope switch's teammates since MP-7-2) are not writes.
+    const writes = server.sent.filter(
+      (one) => !['/task/todos', '/person/list', '/client/list'].includes(one.to),
+    );
     expect(
       writes.map((one) => [one.to, one.body['recordId'], one.body['expectedRevision']]),
     ).toStrictEqual([['/task/complete', 'id-Proj-Bravo', 3]]);

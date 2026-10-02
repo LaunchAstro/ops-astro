@@ -25,10 +25,24 @@ const BOOKKEEPING: ReadonlySet<string> = new Set([
 /** Commands that write a client-scoped kind but are not content on an existing task. */
 const NOT_CONTENT: Readonly<Record<string, string>> = {
   'task.create': 'the creation itself',
+  'task.duplicate': 'creates a new task from the shell; the old task is untouched (MP-4-8)',
   'task.set_party': 'a client change, which the lock allows while the task is empty',
   'client.create': 'writes a client, not a task',
+  'task.share_with_client': 'a share grant: who sees the task, not what it holds',
   'task.purge': 'removes the task; nothing is left to change the client of',
   'inbox.seen': "the caller's own seen stamp on an item, not the task's content",
+  // SL12 (batch 3a): a conversation is its owner's; citing a task writes nothing on it.
+  'conversation.start': "the caller's own conversation, which may cite a task",
+  'conversation.message': "a message in the caller's own conversation",
+  'conversation.rename': "the caller's own conversation's title",
+  'conversation.set_scope': "the page the caller's own conversation is about",
+  'model.call':
+    'the agent prefix only (the person path refuses it), under a lease: the task already has content',
+  // SL11 (batch 3b): AW-11's two, agent-only like `model.call`.
+  'run.delegate_child':
+    "the agent prefix only, under the parent's lease: the task already has content",
+  'run.child_handback':
+    "the agent prefix only, on a child the parent's lease made: the task already has content",
 };
 
 export const CONTENT: readonly CommandDeclaration[] = COMMAND_SURFACE.filter(
@@ -145,6 +159,11 @@ const MARKER_HELD: ReadonlySet<string> = new Set([
   'budget.top_up',
   'budget.record_outcome',
   'budget.write_off',
+  // SL12 (batch 3a): each acts on a run the task already holds.
+  'task.check',
+  'run.top_up',
+  'run.end_at_budget_stop',
+  'run.revise_state',
   // The task's own rows beside it (MP-4-5 comments, MP-4-6 time, MP-4-11 tags):
   // a comment's edit or removal, a time entry, a tag on the task.
   'task.edit_comment',
@@ -156,6 +175,8 @@ const MARKER_HELD: ReadonlySet<string> = new Set([
   'time.delete',
   'task.add_tag',
   'task.remove_tag',
+  // SL11 (batch 3b): approves the proposal's gate as `task.decide` does, then pins and binds.
+  'task.accept_plan',
 ]);
 
 /** Per task, a digest of every row that names it, in the tables the lock reads. */

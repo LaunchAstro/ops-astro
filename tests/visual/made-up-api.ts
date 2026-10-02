@@ -10,11 +10,13 @@
 // a screen from a shape the API no longer sends. Test side only: the page
 // asks the same addresses it asks the real API; nothing here is a back end.
 //
-// The rows (made-up-tasks.ts) follow the pinned mockup's Projects board, so a capture reads
+// The rows (made-up-rows.ts) follow the pinned mockup's Projects board, so a capture reads
 // against the mockup's page. Every name and client is made up.
 
 import type {
+  AllowanceResult,
   CapabilitiesResult,
+  ClientListResult,
   CommandRefusal,
   InboxCountResult,
   InboxReadResult,
@@ -25,7 +27,6 @@ import type {
   SettingsReadResult,
   TagListResult,
   TaskBoardResult,
-  TaskLedgerResult,
   TaskSearchResult,
   TaskTodosResult,
   TeamListResult,
@@ -33,49 +34,11 @@ import type {
 import type { BrowserContext } from 'playwright';
 import type { ReadName } from '../../apps/web/src/operations/read-names.ts';
 import { ACCESS, HARBOUR, MERIDIAN, MIA, NATHAN, OPERATIONS } from './made-up-access.ts';
+import { AGENT_READS } from './made-up-agent.ts';
 import { EXECUTION, RECEIPT } from './made-up-data.ts';
-import { DETAIL, STATE, TAGS, TASKS, TODOS } from './made-up-tasks.ts';
+import { DETAIL, LEDGER, STATE, TAGS, TASKS, TODOS } from './made-up-rows.ts';
 
-export { TASKS } from './made-up-tasks.ts';
-
-/** The Work log's two days, newest first, as `task.ledger` answers them (MP-8-4). */
-const LEDGER: TaskLedgerResult = {
-  ok: true,
-  earlier: true,
-  days: [
-    {
-      day: '2026-09-26',
-      events: [
-        {
-          id: 'e-3',
-          at: '2026-09-26T01:20:00.000Z',
-          actorName: NATHAN.name,
-          operation: 'task.complete',
-          task: { key: 'T-13', title: 'Approve the four review replies before they go out' },
-        },
-        {
-          id: 'e-2',
-          at: '2026-09-25T23:05:00.000Z',
-          actorName: MIA.name,
-          operation: 'task.comment',
-          task: { key: 'T-15', title: 'Ads rebuild: cost per enquiry' },
-        },
-      ],
-    },
-    {
-      day: '2026-09-25',
-      events: [
-        {
-          id: 'e-1',
-          at: '2026-09-25T03:40:00.000Z',
-          actorName: NATHAN.name,
-          operation: 'task.update',
-          task: { key: 'T-1', title: 'Contract review pack, 31 July' },
-        },
-      ],
-    },
-  ],
-};
+export { TASKS } from './made-up-rows.ts';
 
 /** One business setting as `settings.read` answers it, last written by Nathan. */
 const setting = (key: string, value: number | boolean, revision: number) => ({
@@ -111,6 +74,7 @@ const READS = {
       setting('conversation_window_days', 30, 1),
       setting('retention_window_days', 365, 1),
     ],
+    planningCap: { limitMinor: 5000, currency: 'AUD', set: false },
   } satisfies SettingsReadResult,
   // The person's own store (MP-2-11a): no appearance, so the capture's colour
   // scheme draws; two dismissals no page draws, so the reset has a count.
@@ -194,6 +158,20 @@ const READS = {
   } satisfies TaskSearchResult,
   'access.read': ACCESS,
   'operations.read': OPERATIONS,
+  ...AGENT_READS,
+  'conversation.allowance': {
+    ok: true,
+    allowance: {
+      set: false,
+      currency: 'AUD',
+      limitMinor: 5000,
+      leftMinor: 3860,
+      conversation: { spentMinor: 940, heldMinor: 200 },
+    },
+  } satisfies AllowanceResult,
+  // The business's clients (C32), as the task's client field and the to-dos'
+  // client scope ask them.
+  'client.list': { ok: true, clients: [HARBOUR, MERIDIAN] } satisfies ClientListResult,
 } as const satisfies Partial<Record<ReadName, unknown>>;
 
 /** The reads the harness answers; a read missing here draws its "could not be read" state. */

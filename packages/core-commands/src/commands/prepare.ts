@@ -385,6 +385,21 @@ const BUSINESS: Scope = { kind: 'business', id: null };
  * scope, and a record-scoped manager could tell a same-business delegation
  * outside their scope from a fabricated one by the answer.
  */
+/** The task a gate's run belongs to, at record scope. */
+const GATE_TASK: ScopeLookup = [
+  'gateId',
+  async (tx, id) => {
+    const rows = await tx.query<{ readonly id: string }>(
+      `select run.task_id as id
+         from public.gates g
+         join public.planned_runs run on run.business_id = g.business_id and run.id = g.run_id
+        where g.business_id = $1 and g.id = $2`,
+      [tx.businessId, id],
+    );
+    return rows[0] === undefined ? undefined : { kind: 'record', id: rows[0].id };
+  },
+];
+
 const TARGET_LOOKUPS: Readonly<Record<string, ScopeLookup>> = {
   'grant.revoke': [
     'grantId',
@@ -400,18 +415,14 @@ const TARGET_LOOKUPS: Readonly<Record<string, ScopeLookup>> = {
   // reaches the runtime, which asks it again under its locks and, once the
   // gate is escalated, asks business scope. A gate that resolves to nothing
   // is asked at business scope, so a foreign and a fabricated id answer alike.
-  'task.decide': [
-    'gateId',
-    async (tx, id) => {
-      const rows = await tx.query<{ readonly id: string }>(
-        `select run.task_id as id
-           from public.gates g
-           join public.planned_runs run on run.business_id = g.business_id and run.id = g.run_id
-          where g.business_id = $1 and g.id = $2`,
-        [tx.businessId, id],
-      );
-      return rows[0] === undefined ? undefined : { kind: 'record', id: rows[0].id };
-    },
+  'task.decide': GATE_TASK,
+  // AW-04: the plan accept is that decision, asked the same way.
+  'task.accept_plan': GATE_TASK,
+  // MP-4-8: a duplicate is asked of the client it creates for, at party
+  // scope; a body naming no client is asked of the business.
+  'task.duplicate': [
+    'client',
+    (_tx, id) => Promise.resolve({ kind: 'party', id: id.toLowerCase() }),
   ],
   'delegation.revoke': [
     'delegationId',

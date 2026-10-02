@@ -7,6 +7,7 @@
 
 import { randomUUID } from 'node:crypto';
 import type { CatalogueRow } from '../../packages/core-wire/src/index.ts';
+import { NEEDS_NO_EXPECTED_REVISION } from '../../packages/core-wire/src/surface.ts';
 import { createCli } from '../../apps/cli/client.ts';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { tokenFor } from './fixture.ts';
@@ -23,13 +24,13 @@ export interface Heard {
   readonly raw?: unknown;
 }
 
-/** Every task, title, lease, reservation, business or person any answer names, refusals included, but the caller's own. */
+/** Every task, title, lease, run, reservation, business or person any answer names, refusals included, but the caller's own. */
 export function foreign(heard: readonly Heard[], own: Name | null): string[] {
   const named = heard
     .flatMap((one) =>
       Array.from(
         JSON.stringify(one.body).matchAll(
-          /<(client1|client2|bravo|other) (?:task|title|lease|reservation|business|person)>/gu,
+          /<(client1|client2|bravo|other) (?:task|title|lease|run|reservation|business|person)>/gu,
         ),
       ),
     )
@@ -101,6 +102,12 @@ export async function threeWays(
   return heard;
 }
 
+/** A revision, on a write to an existing record only: the catalogue names the rest. */
+const revisionOf = (row: CatalogueRow, body: Record<string, unknown>) =>
+  row.kind === 'write' && 'recordId' in body && !NEEDS_NO_EXPECTED_REVISION.has(row.command)
+    ? { expectedRevision: 1 }
+    : {};
+
 /** One command as the agent under its delegation, through the CLI and the API's agent route. */
 export async function asAgent(
   row: CatalogueRow,
@@ -118,11 +125,7 @@ export async function asAgent(
     return response;
   };
   // The agent prefix takes an operation id on every call, reads included.
-  const payload = {
-    ...body,
-    operationId: randomUUID(),
-    ...(row.kind === 'write' && 'recordId' in body ? { expectedRevision: 1 } : {}),
-  };
+  const payload = { ...body, operationId: randomUUID(), ...revisionOf(row, body) };
   const cli = createCli({
     businessKey,
     credential: agentToken,

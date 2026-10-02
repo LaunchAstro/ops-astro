@@ -15,6 +15,7 @@ import type { RecordedStatement } from '../../packages/core-records/src/tenancy/
 import { pathOf, PREFIX } from '../../packages/core-wire/src/surface.ts';
 import { createWorker } from '../../apps/worker/worker.ts';
 import { SYNTHETIC_USAGE } from '../../apps/worker/usage.ts';
+import { launchThrough } from '../support/launch-worker.ts';
 import { createWorld, serverUrl, type World } from '../acceptance/world.ts';
 import { delegate } from '../journey/passes.ts';
 
@@ -75,6 +76,8 @@ describe.skipIf(serverUrl === undefined)('the runtime sends no NOTIFY (RN-01)', 
       decision: 'approve',
       note: 'approve this version',
     });
+    // AW-08: the worker hands the plan's work back; ada's accept of it is the launch.
+    await launchThrough(worker, taskId, async (body) => await asAda('task.decide', body));
     const applied = await worker.applyOnce(taskId);
     if (!('applied' in applied)) throw new Error(`apply: ${JSON.stringify(applied)}`);
     await asAda('task.receipt', { attemptId: applied.applied.attemptId });

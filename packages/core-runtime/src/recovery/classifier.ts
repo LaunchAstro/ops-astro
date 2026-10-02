@@ -13,6 +13,7 @@ import type {
   Subject,
 } from '../../../core-records/src/index.ts';
 import type { LockRequest, LockSet } from '../locks.ts';
+import { modelCallsOn } from '../model-calls-on.ts';
 
 /** The durable causes that make an exact attempt nonclaimable. Nothing else is one. */
 export type NonclaimableCause =
@@ -26,7 +27,7 @@ export type NonclaimableCause =
 export interface Classification {
   readonly reservationId: string;
   readonly released: boolean;
-  readonly state: 'abandoned' | 'held' | 'quarantined' | 'liability_unknown';
+  readonly state: 'abandoned' | 'actual' | 'held' | 'quarantined' | 'liability_unknown';
   /** Why it was left alone, when it was. A classification with no reason is a guess. */
   readonly reason: string;
 }
@@ -103,7 +104,7 @@ export async function classifyUnderLocks(
     return {
       reservationId: request.reservationId,
       released: false,
-      state: row.state === 'quarantined' ? 'quarantined' : 'abandoned',
+      state: row.state === 'quarantined' || row.state === 'actual' ? row.state : 'abandoned',
       reason: `already ${row.state}; a terminal reservation is never reclassified or revived`,
     };
   }
@@ -187,19 +188,31 @@ export async function classifyUnderLocks(
     };
   }
 
+  // AW-01. The hold's model calls: one sent and not settled may have cost up
+  // to its maximum, so the whole hold stays for a person (0085: never released
+  // by a machine), and what the settled ones cost is the hold's actual.
+  const calls = await modelCallsOn(tx, request.reservationId);
+  if (calls.open) {
+    await tx.query(
+      `update public.attempts set state = 'liability_unknown'
+        where business_id = $1 and id = $2 and state <> 'liability_unknown'`,
+      [tx.businessId, row.attempt_id],
+    );
+    return {
+      reservationId: request.reservationId,
+      released: false,
+      state: 'liability_unknown',
+      reason: `a model call on this hold was sent and never settled; its full hold is kept as an unknown liability under ${request.cause} until a person records its outcome`,
+    };
+  }
+
   // R1. The guarded update reports the row it actually changed, and everything
   // after it is conditional on that row. A classifier whose conditional update
   // affected nothing has lost the race, and it must not then move the attempt
   // or subtract a hold the winner has already subtracted.
-  const changed = await tx.query<{ readonly held_minor: string }>(
-    `update public.reservations
-        set state = 'abandoned', classified_cause = $3, classified_cause_id = $4, terminal_at = now()
-      where business_id = $1 and id = $2 and state = 'held'
-      returning held_minor::text as held_minor`,
-    [tx.businessId, request.reservationId, request.cause, request.causeId],
-  );
-  const released = changed[0];
-  if (released === undefined) {
+  const hold = { reservationId: request.reservationId, envelopeId: row.envelope_id };
+  const closed = await closeHold(tx, hold, request, calls.spentMinor);
+  if (!closed) {
     return {
       reservationId: request.reservationId,
       released: false,
@@ -207,26 +220,55 @@ export async function classifyUnderLocks(
       reason: 'another transaction classified this reservation first; the hold was released once',
     };
   }
+  // A hand-back that spent finished its work: its attempt stays `handed_back`.
   await tx.query(
     `update public.attempts set state = 'abandoned', outcome = coalesce(outcome, 'abandoned')
-      where business_id = $1 and id = $2`,
-    [tx.businessId, row.attempt_id],
+      where business_id = $1 and id = $2 and not ($3 and state = 'handed_back')`,
+    [tx.businessId, row.attempt_id, calls.spentMinor > 0n],
   );
-  // Subtracted once, from the held total only, and by the amount the changed
-  // row carried. Nothing is added to `actual`: there is no observation to
-  // justify a number, not even zero.
-  await tx.query(
-    `update public.task_envelopes set held_minor = held_minor - $3
-      where business_id = $1 and id = $2`,
-    [tx.businessId, row.envelope_id, Number(released.held_minor)],
-  );
-
   return {
     reservationId: request.reservationId,
     released: true,
-    state: 'abandoned',
-    reason: `abandoned under ${request.cause} (${request.causeId}); the hold was released once and no cost was recorded`,
+    state: calls.spentMinor > 0n ? 'actual' : 'abandoned',
+    reason:
+      calls.spentMinor > 0n
+        ? `settled under ${request.cause} (${request.causeId}) at the ${calls.spentMinor.toString()} its model calls cost; the rest of the hold was released once`
+        : `abandoned under ${request.cause} (${request.causeId}); the hold was released once and no cost was recorded`,
   };
+}
+
+/**
+ * Close a held reservation, guarded on `held` (false if another closed it): `actual` at
+ * its model calls' cost, else abandoned under the cause (0013: an actual is never zero).
+ * The envelope gives the hold back once and takes only that spend, never an invented zero.
+ */
+export async function closeHold(
+  tx: TenantQuery,
+  hold: { readonly reservationId: string; readonly envelopeId: string },
+  cause: { readonly cause: string; readonly causeId: string },
+  spentMinor: bigint,
+): Promise<boolean> {
+  const spent = spentMinor > 0n;
+  const [changed] = await tx.query<{ readonly held_minor: string }>(
+    spent
+      ? `update public.reservations set state = 'actual', actual_minor = $3, terminal_at = now()
+          where business_id = $1 and id = $2 and state = 'held'
+          returning held_minor::text as held_minor`
+      : `update public.reservations
+            set state = 'abandoned', classified_cause = $3, classified_cause_id = $4, terminal_at = now()
+          where business_id = $1 and id = $2 and state = 'held'
+          returning held_minor::text as held_minor`,
+    spent
+      ? [tx.businessId, hold.reservationId, spentMinor.toString()]
+      : [tx.businessId, hold.reservationId, cause.cause, cause.causeId],
+  );
+  if (changed === undefined) return false;
+  await tx.query(
+    `update public.task_envelopes set held_minor = held_minor - $3, actual_minor = actual_minor + $4
+      where business_id = $1 and id = $2`,
+    [tx.businessId, hold.envelopeId, changed.held_minor, spentMinor.toString()],
+  );
+  return true;
 }
 
 interface CauseRow {
@@ -380,15 +422,21 @@ export async function discoverEligible(
                            and unknown_att.state = 'liability_unknown')
         and (lin.state in ('rejected', 'cancelled')
              or ver.superseded_at is not null
-             -- A revocation that committed without its classification:
-             -- the delegation row records it, and the lease may still be live.
-             or held_delegation.revoked_at is not null
-             -- R5. A hold still bound to a lease the server has already fenced
-             -- has a recorded transition and no classification, which is the
-             -- exactly-once case W04 asks recovery to finish. It is still not
-             -- a clock: the lease's own terminal state is the fact, and a live
-             -- lease -- expired by its timestamp or not -- is not in this set.
-             or held_lease.state in ('expired', 'released'))
+             -- AW-05: a run waiting for budget ended its own lease and
+             -- retired its delegation when it stopped, and its hold is the
+             -- approved ceiling kept for a person's answer. Neither fact is
+             -- a transition to classify; the answer is (migration 0087).
+             or (run.state <> 'waiting_budget'
+                 -- A revocation that committed without its classification:
+                 -- the delegation row records it, and the lease may still be live.
+                 and (held_delegation.revoked_at is not null
+                      -- R5. A hold still bound to a lease the server has already
+                      -- fenced has a recorded transition and no classification,
+                      -- which is the exactly-once case W04 asks recovery to
+                      -- finish. It is still not a clock: the lease's own terminal
+                      -- state is the fact, and a live lease -- expired by its
+                      -- timestamp or not -- is not in this set.
+                      or held_lease.state in ('expired', 'released'))))
       order by res.id`,
     [tx.businessId, lineageId],
   );

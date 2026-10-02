@@ -11,7 +11,7 @@
 // (`drawRunState`'s fallback), never dropped.
 
 import type { ReactElement } from 'react';
-import { Banner, drawRunState, Empty, Spill } from '@launchastro/ui';
+import { Banner, drawRunState, Empty, major, Spill } from '@launchastro/ui';
 import {
   isRefusal,
   isUnavailable,
@@ -21,10 +21,12 @@ import {
 import type {
   ExecutionRun,
   ExecutionEvent,
+  ExecutionNode,
   ReceiptResult,
   TaskExecutionResult,
 } from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
+import { Observed } from './run-observed.tsx';
 
 export interface RunProgressProps {
   readonly client: OperationsClient;
@@ -100,6 +102,7 @@ function Runs(props: {
           events={value.events}
           grantKey={props.grantKey}
           key={run.runId}
+          node={value.graph?.nodes.find((each) => each.nodeId === run.runId)}
           readOf={props.readOf}
           run={run}
         />
@@ -145,6 +148,7 @@ function Run(props: {
   readonly readOf: unknown;
   readonly run: ExecutionRun;
   readonly events: readonly ExecutionEvent[];
+  readonly node: ExecutionNode | undefined;
 }): ReactElement {
   const { run } = props;
   const mine = props.events.filter((event) => event.runId === run.runId);
@@ -155,6 +159,7 @@ function Run(props: {
         <Spill state={drawRunState({ state: run.state, waitReason: null })} />
         <span className="sbact__meta">run {run.runId}</span>
       </div>
+      {props.node === undefined ? null : <Observed node={props.node} />}
       <div className="sbact">
         {mine.map((event) => (
           <div className="sbact__row" data-event-kind={event.kind} key={event.eventId}>
@@ -167,6 +172,7 @@ function Run(props: {
         <AttemptReceipt
           attemptId={attemptId}
           client={props.client}
+          currency={props.node?.observed.currency ?? null}
           grantKey={props.grantKey}
           key={attemptId}
           readOf={props.readOf}
@@ -188,6 +194,8 @@ function AttemptReceipt(props: {
   readonly grantKey: string;
   readonly readOf: unknown;
   readonly attemptId: string;
+  /** The run's currency, from its observed node; null when the graph names none. */
+  readonly currency: string | null;
 }): ReactElement | null {
   const { client, attemptId } = props;
   const { state } = useRead<ReceiptResult>({
@@ -205,16 +213,22 @@ function AttemptReceipt(props: {
       </div>
     );
   }
-  return <ReceiptBox attemptId={attemptId} receipt={state.value.receipt} />;
+  return (
+    <ReceiptBox attemptId={attemptId} receipt={state.value.receipt} currency={props.currency} />
+  );
 }
 
 /** DS-TASK-6, the live body: the mockup's evidence box, one row per fact. */
 function ReceiptBox(props: {
   readonly attemptId: string;
   readonly receipt: ReceiptResult['receipt'];
+  /** The run's currency, from its observed node; null when the graph names none. */
+  readonly currency: string | null;
 }): ReactElement {
   const { attemptId, receipt } = props;
   const { settlement } = receipt;
+  const amount = (minor: number): string =>
+    props.currency === null ? `${String(minor)} minor units` : major(minor, props.currency);
   return (
     <section
       className="sb__sect sout"
@@ -249,8 +263,4 @@ function ReceiptBox(props: {
       </div>
     </section>
   );
-}
-
-function amount(minor: number): string {
-  return (minor / 100).toFixed(2);
 }

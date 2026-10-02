@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only
    ============================================================================
-   Layer 3 of 4: the shell (S6) and the Agent panel (S5).
+   Layer 3 of 4: the shell (S6). The Agent panel (S5) is `3-agent-panel.css`,
+   loaded straight after this sheet.
 
    Ported from the pinned mockup's `assets/app.css` at 7066bad. Geometry is
    reproduced exactly; the class names are the mockup's so a visual comparison
@@ -25,9 +26,12 @@
   min-height: 100vh;
 }
 /* The third track is the dock, and the shell is the only thing that writes
-   --dock-w, so there is no second opinion about how wide the edge is. */
+   --dock-w, so there is no second opinion about how wide the edge is. At rest
+   the track is empty: the dock's rail floats over the page's right gutter, as
+   the mockup's does, and the content runs to the window's edge. */
 @media not all and (max-width: 900px) {
   .shell[data-face='agency'] {
+    --dock-w: 0px;
     grid-template-columns: var(--rail-w) minmax(0, 1fr) var(--dock-w);
   }
 }
@@ -175,7 +179,6 @@
     z-index: 60;
     width: min(300px, 84vw);
     height: 100dvh;
-    background: var(--bg);
     transform: translateX(-100%);
     visibility: hidden;
     transition:
@@ -194,12 +197,11 @@
     display: inline-flex;
   }
 }
-.rail__brand {
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-}
+/* In the drawer's top corner, so the brand keeps its stack (DS-SIDE-12). */
 .navclose {
+  position: absolute;
+  top: var(--s-5);
+  right: var(--s-3);
   align-items: center;
   justify-content: center;
   width: 32px;
@@ -256,6 +258,116 @@
   }
 }
 
+/* -- The rail folds (MP-2-3). Above 900 it folds to a 56px strip of glyphs,
+      each with its name on hover, and its right edge drags it from 170 to
+      400. At 900 and below the rail is the drawer: no fold, no grip, and the
+      strip's rules do not reach it. The shell writes --rail-w; the grid's
+      transition runs once the shell is ready and never during a drag
+      (the mockup's drag trailed the cursor, DS-SIDE-D4). */
+/* On the label's line, 2px under the wordmark's foot: the mockup's touched
+   it and overlapped the end of the word (DR-61). */
+.railfold {
+  position: absolute;
+  top: calc(var(--s-5) + 20px);
+  right: var(--s-3);
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease);
+}
+.railfold:hover,
+.railfold:focus-visible {
+  color: var(--text);
+  background: var(--surface);
+}
+.rail__glyph {
+  display: none;
+}
+/* Right: 0 rather than straddling the border, because the rail scrolls and
+   would clip or scroll sideways to show anything past its edge. */
+.railgrip {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.railgrip:hover,
+.railgrip:focus-visible,
+.shell[data-rail-dragging] .railgrip {
+  background: var(--accent-ring);
+  outline: none;
+}
+.shell[data-rail-dragging],
+.shell[data-rail-dragging] * {
+  transition: none !important;
+  cursor: col-resize;
+  user-select: none;
+}
+@media not all and (max-width: 900px) {
+  .shell[data-rail='collapsed'] .rail {
+    padding-top: calc(var(--s-5) + 30px);
+  }
+  .shell[data-rail='collapsed'] .railfold {
+    top: var(--s-5);
+    right: 16px;
+  }
+  /* The strip keeps the brand as the planet mark, centred (DS-SIDE-12). */
+  .shell[data-rail='collapsed'] .rail__brand {
+    align-items: center;
+    padding: 0;
+  }
+  .shell[data-rail='collapsed'] .rail__brand .brand--wordmark {
+    width: 24px;
+    aspect-ratio: 566.93 / 463.61;
+    mask-image: url('../brand/planet.svg');
+    mask-position: center;
+  }
+  .shell[data-rail='collapsed'] .rail__item {
+    justify-content: center;
+    padding-inline: 0;
+  }
+  .shell[data-rail='collapsed'] .rail__icon,
+  .shell[data-rail='collapsed'] .rail__glyph {
+    display: grid;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+    font: var(--type-small-strong);
+    letter-spacing: var(--type-small-strong-tracking);
+    text-transform: var(--type-small-strong-case);
+  }
+  /* Hidden from sight only: each label stays its item's accessible name. */
+  .shell[data-rail='collapsed'] .rail__hub,
+  .shell[data-rail='collapsed'] .rail__build,
+  .shell[data-rail='collapsed'] .rail__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+@media (width <= 900px) {
+  .railfold,
+  .railgrip {
+    display: none;
+  }
+}
+
 /* -- The page strip and the content column ------------------------------- */
 .main {
   display: flex;
@@ -287,7 +399,9 @@
   display: flex;
   align-items: center;
   gap: var(--s-4);
-  min-height: 45px;
+  /* A 32px row (search, the face switch) inside its padding, as the mockup's
+     44.8: its controls centre on the same half pixel as the mockup's. */
+  min-height: calc(32px + 0.8rem);
   box-sizing: border-box;
   padding: 0.4rem var(--s-4);
   background: var(--app-chrome);
@@ -632,6 +746,7 @@
   min-height: 2.9rem;
   padding: var(--s-3) var(--s-6);
   border-bottom: 1px solid var(--border);
+  background: var(--bg);
 }
 .topbar__title {
   display: flex;
@@ -657,6 +772,13 @@
   flex: 1;
   padding: var(--s-6);
 }
+/* Above 900 the agency face's right gutter clears the dock's rail, which
+   floats over it: 16px past the rail's 40 (the mockup's calc). */
+@media not all and (max-width: 900px) {
+  .shell[data-face='agency'] :is(.topbar, .content) {
+    padding-right: calc(var(--s-4) + 40px);
+  }
+}
 @media (width <= 900px) {
   .topbar {
     justify-content: flex-start;
@@ -667,252 +789,6 @@
   .content {
     padding: var(--s-4);
   }
-}
-
-/* -- The dock rail. It does not disappear below 900: it ROTATES onto the
-      bottom edge, and one panel draws, because a phone holds one thing.
-      (The contract describes an icon-only topbar fallback at this width. At
-      the pinned revision that control is `display: none !important` at EVERY
-      width and the rail is the way in; see DECISIONS.tsv.) ---------------- */
-.dock__rail {
-  display: flex;
-  flex: none;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.15rem;
-  width: 40px;
-  padding: var(--s-3) 0;
-  border-left: 1px solid var(--border);
-  background: var(--rail-bg);
-}
-.dock__tab {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--ink-faint);
-  font: var(--type-badge);
-  letter-spacing: var(--type-badge-tracking);
-  text-transform: var(--type-badge-case);
-  cursor: pointer;
-}
-/* The panel's count rides the tab's corner: the kit's `cbadge`, placed. */
-.dock__count {
-  position: absolute;
-  top: -3px;
-  right: -3px;
-}
-.dock__tab:hover {
-  color: var(--text);
-  background: var(--surface);
-}
-/* Open is an OUTLINE and a rule, never a fill. */
-.dock__tab[aria-expanded='true'] {
-  color: var(--accent);
-}
-.dock__tab[aria-expanded='true']::before {
-  content: '';
-  position: absolute;
-  left: -1px;
-  top: 4px;
-  bottom: 4px;
-  width: 2px;
-  background: var(--accent);
-}
-/* The callout: a dark chip to the tab's left, the side the panels open on.
-   Display-gated, so it never widens the page or takes a click. In dark its
-   ground is the page's own, so the edge is what shows where it ends; in light
-   the edge sits on the dark chip and cannot be seen. The padding gives back
-   the edge's pixel so the chip keeps its size. */
-.dock__tablabel {
-  display: none;
-  position: absolute;
-  top: 50%;
-  right: calc(100% + 7px);
-  z-index: 80;
-  max-width: 14rem;
-  padding: calc(0.35rem - 1px) calc(0.6rem - 1px);
-  border: 1px solid var(--border-strong);
-  background: var(--void);
-  color: var(--on-dark);
-  font: var(--type-caption);
-  letter-spacing: var(--type-caption-tracking);
-  text-transform: var(--type-caption-case);
-  white-space: nowrap;
-  transform: translateY(-50%);
-  pointer-events: none;
-}
-.dock__tab:hover .dock__tablabel,
-.dock__tab:focus-visible .dock__tablabel {
-  display: block;
-}
-@media (width <= 900px) {
-  .dock__tablabel {
-    top: auto;
-    right: auto;
-    bottom: calc(100% + 7px);
-    left: 50%;
-    transform: translateX(-50%);
-  }
-  .dock__rail {
-    order: 2;
-    flex-direction: row;
-    justify-content: center;
-    gap: var(--s-4);
-    width: auto;
-    height: 40px;
-    padding: 0;
-    border-left: 0;
-    border-top: 1px solid var(--border);
-  }
-  .dock__tab[aria-expanded='true']::before {
-    left: 4px;
-    right: 4px;
-    top: -1px;
-    bottom: auto;
-    width: auto;
-    height: 2px;
-  }
-}
-
-/* -- The Agent panel (S5) ------------------------------------------------
-   Docked, it is a grid TRACK beside the rail and the content; below 1280 it is
-   fixed and out of flow. Same parent in both forms, which is why it is a child
-   of the shell rather than of the document body. */
-.aipanel {
-  position: fixed;
-  inset: 0 0 0 auto;
-  z-index: 70;
-  display: flex;
-  flex-direction: column;
-  width: min(400px, 92vw);
-  height: 100dvh;
-  border-left: 1px solid var(--border);
-  background: var(--rail-bg);
-  box-shadow: var(--shadow-overlay);
-}
-.aipanel[hidden] {
-  display: none;
-}
-@media not all and (max-width: 1439px) {
-  .shell[data-dock='seated'] .aipanel {
-    position: sticky;
-    inset: 0 auto auto auto;
-    width: var(--aip-dock);
-    height: 100vh;
-    box-shadow: none;
-  }
-}
-.aip__head {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--s-3);
-  padding: var(--s-4) var(--s-5);
-  border-bottom: 1px solid var(--border);
-}
-.aip__id {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-.aip__title {
-  font: var(--type-subheading);
-  letter-spacing: var(--type-subheading-tracking);
-  text-transform: var(--type-subheading-case);
-}
-.aip__hmodel {
-  margin-left: auto;
-  min-width: 0;
-}
-.aip__acts {
-  display: flex;
-  align-items: center;
-  align-self: center;
-  gap: 0.15rem;
-}
-.aip__actdiv {
-  flex: none;
-  width: 1px;
-  align-self: stretch;
-  margin: 0.15rem 0.25rem;
-  background: var(--border);
-}
-.aip__scroll {
-  flex: 1;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-3);
-  padding: var(--s-4) var(--s-5);
-}
-.aip__msg {
-  max-width: 92%;
-  padding: 0.6rem 0.8rem;
-  font: var(--type-body);
-  letter-spacing: var(--type-body-tracking);
-  text-transform: var(--type-body-case);
-}
-.aip__msg--ai {
-  align-self: flex-start;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-}
-.aip__msg--user {
-  align-self: flex-end;
-  background: var(--ink);
-  color: var(--paper);
-}
-.aip__msg--note {
-  background: transparent;
-  border: 1px dashed var(--border);
-  font: var(--type-caption);
-  letter-spacing: var(--type-caption-tracking);
-  text-transform: var(--type-caption-case);
-  color: var(--text-muted);
-}
-.aip__chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  padding: 0 var(--s-5) var(--s-3);
-}
-.aip__chip {
-  padding: 0.3em 0.75em;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: var(--surface-2);
-  color: var(--text-2);
-  font: var(--type-caption);
-  letter-spacing: var(--type-caption-tracking);
-  text-transform: var(--type-caption-case);
-  cursor: pointer;
-}
-.aip__inputrow {
-  display: flex;
-  align-items: stretch;
-  gap: var(--s-2);
-  padding: var(--s-3) var(--s-5) var(--s-4);
-  border-top: 1px solid var(--border);
-}
-.aip__input {
-  flex: 1;
-  min-width: 0;
-  padding: 0 0.6rem;
-  border: 1px solid var(--border);
-  background: var(--paper);
-  color: var(--text);
-  font: inherit;
-}
-.aip__tabs {
-  padding: var(--s-3) var(--s-5) 0;
-  border-bottom: 1px solid var(--border);
 }
 
 /* -- Search (C1): a modal palette over a scrim, one field, the hits the

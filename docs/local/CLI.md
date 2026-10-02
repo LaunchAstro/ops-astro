@@ -50,6 +50,7 @@ sends any request. It prints
 | `--agent`            | `OPS_ASTRO_AGENT=1`         | Call the agent prefix instead of the person prefix.                                             |
 |                      | `OPS_ASTRO_DELEGATION`      | Agent mode: the delegation credential. When unset, the file a pickup wrote is used.             |
 |                      | `OPS_ASTRO_DELEGATION_FILE` | Where an agent pickup saves its credential. Default `.local/cli-delegation` (owner-only).       |
+| `--web <url>`        | `OPS_ASTRO_WEB_URL`         | A visual operation only: the app origin its link is under. Default `http://127.0.0.1:5190`.     |
 
 The bearer and the delegation credential are never taken as flags, so they do
 not appear in a process listing or shell history, and the command line never
@@ -73,7 +74,10 @@ also names its operationId, including one the caller supplied:
 Make the location writable and send the same body again with that id to get
 the credential back. The same applies to an agent `task.handback` that was
 applied but whose saved credential could not be removed: make the location
-writable and send the same body again with the id named on stderr.
+writable and send the same body again with the id named on stderr. A
+`run.delegate_child` whose helper's credential could not be saved says
+`cli: hand-over applied but its helper's credential could not be saved to <file>: <reason>`;
+the same body again with that id derives the credential again.
 
 ## Person and agent use
 
@@ -91,23 +95,65 @@ agent then passes `--agent` or sets `OPS_ASTRO_AGENT=1`, and calls go to
 `DELEGATION_EXCLUDES_OPERATION`. A successful `task.pickup` saves the
 delegation credential to the delegation file and prints the answer with that
 credential replaced by `(saved to <file>)`. Later calls
-(`task.heartbeat`, `task.read`, `task.comment`, `task.handback`) send it in the
+(`task.heartbeat`, `task.read`, `task.comment`, `model.call`, `task.handback`) send it in the
 `x-agent-delegation` header. A successful `task.handback` removes the file when
 it holds the credential that handback was sent with. A handback sent with
 another credential through `OPS_ASTRO_DELEGATION`, such as a replay of an older
 lease, leaves the saved one alone (`tests/cli/cli-delegation-replay.test.ts`).
+A successful `run.delegate_child` (AW-11) saves the helper's credential to
+`<delegation file>.child-<childDelegationId>`, owner-readable only, and prints
+the answer with it replaced by `(saved to <file>)`; the parent's own file is
+left alone. The helper sends it with `OPS_ASTRO_DELEGATION` for its calls and
+its `run.child_handback`.
 
 ```sh
 export OPS_ASTRO_AGENT=1 OPS_ASTRO_BUSINESS=alpha
 pnpm cli task.queue
 pnpm cli task.pickup --json '{"reservationId":"<reservationId>","operationId":"<your-id>"}'
 pnpm cli task.heartbeat --json '{"leaseId":"<leaseId>","fence":<fence>}'
+pnpm cli model.call --json '{"leaseId":"<leaseId>","fence":<fence>,"operation":"model.replay_compose","fields":[{"name":"tone","from":{"recordId":"<taskId>","key":"title"}}]}'
 pnpm cli task.handback --json '{"leaseId":"<leaseId>","fence":<fence>,"outcome":"completed","report":{}}'
+pnpm cli run.delegate_child --json '{"leaseId":"<leaseId>","fence":<fence>,"helperActorId":"<agentActorId>","purpose":"draft_help","collections":["task"],"actions":["read"],"expiresInSeconds":600}'
+OPS_ASTRO_DELEGATION="$(cat <delegation file>.child-<childDelegationId>)" pnpm cli run.child_handback --json '{"outcome":"completed"}'
+```
+
+A person answers a run waiting at its approved ceiling on the person prefix
+(AW-05), naming the stop they answer (`askId`, from `task.read`'s ledger). The
+top-up is in the currency's minor units; above the business's four-eyes
+threshold a second person sends the same body to complete it.
+
+```sh
+pnpm cli run.top_up --json '{"recordId":"<taskId>","runId":"<runId>","askId":"<askId>","amountMinor":1000,"currency":"AUD"}'
+pnpm cli run.end_at_budget_stop --json '{"recordId":"<taskId>","runId":"<runId>","askId":"<askId>"}'
+pnpm cli run.revise_state --json '{"recordId":"<taskId>","runId":"<runId>","expectedVersion":0,"knowledge":["the brief is agreed"],"unknowns":["the launch date"]}'
 ```
 
 `reservationId` comes from the queue; `leaseId` and `fence` from the pickup's
 `detail`. `operationId` is optional on each of them; naming your own lets you
 send the same body again after a lost answer and get the replay.
+
+## Visual operations
+
+Some operations are a page someone looks at, not a request with an answer.
+The command line's honest answer to one is the address of the app's page for
+it (AW-09; `VISUAL_HANDOFFS`, `packages/core-wire/src/handoff.ts`). It sends
+nothing and needs no bearer or business: the page asks for its own session
+and reads through its own commands.
+
+```sh
+pnpm cli review.view --json '{"key":"T-12"}'
+# {"handoff":"http://127.0.0.1:5190/task/T-12","operation":"review.view","why":"..."}
+```
+
+`review.view` is the review round's page: the agent's output and its stored
+evidence beside the version history, the rounds used and the decisions on
+offer. `task.read` answers the same facts as JSON, and `task.decide` makes
+each decision. The body holds the route's one parameter and nothing else; a
+key that is not one path segment (letters, digits, `.`, `_` or `-`, at most
+64), an undeclared field, or an origin with a path, query, credentials or a
+scheme other than http or https is refused with `FIELD_VALUE_INVALID` and exit 2. `--help` lists the visual operations after the others, and
+`scripts/command-parity.mjs` fails a hand-off whose route the app does not
+register or whose name is a command's.
 
 ## Output and exit codes
 
@@ -117,13 +163,13 @@ printed exactly as the API returned it (`refused`, `code`, `names`, `fixes`).
 The one exception is a successful agent `task.pickup`, whose credential is
 replaced by where it was saved.
 
-| Exit | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 0    | Answered: a 2xx with a JSON body. Also `--help`, and a `login` or `logout` that succeeded.                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| 1    | Refused: the API's body carries `refused: true`. Also a `login` that got no token, whether the identity provider refused it or did not answer.                                                                                                                                                                                                                                                                                                                                                                                                                |
-| 2    | Usage: an unknown operation (`COMMAND_UNKNOWN`), a bad flag or body (including a number with no canonical form, such as `1e400`, which the command line refuses rather than sending as `null`), no bearer or business, an agent `task.pickup` whose delegation file (`OPS_ASTRO_DELEGATION_FILE`) cannot be written, or a `login` whose token file (`OPS_ASTRO_TOKEN_FILE`) cannot be written. No request sent.                                                                                                                                               |
-| 3    | Transport: no answer arrived.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| 4    | Fault: any other non-2xx, for example a 500 `DECISION_INTEGRITY` or a 503, or an answer that is not JSON. Also an agent `task.pickup` that the API applied but whose credential could not be saved (stderr names the operationId); an agent `task.handback` that the API applied but whose spent credential could not be removed (stdout carries the answer; stderr names the operationId, and a replay with it removes the file); a `login` whose issued token could not be saved; and a `logout` that could not remove a credential file (stderr names it). |
+| Exit | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0    | Answered: a 2xx with a JSON body. Also `--help`, and a `login` or `logout` that succeeded.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| 1    | Refused: the API's body carries `refused: true`. Also a `login` that got no token, whether the identity provider refused it or did not answer.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| 2    | Usage: an unknown operation (`COMMAND_UNKNOWN`), a bad flag or body (including a number with no canonical form, such as `1e400`, which the command line refuses rather than sending as `null`), no bearer or business, an agent `task.pickup` whose delegation file (`OPS_ASTRO_DELEGATION_FILE`) cannot be written, or a `login` whose token file (`OPS_ASTRO_TOKEN_FILE`) cannot be written. No request sent.                                                                                                                                                                                                                                      |
+| 3    | Transport: no answer arrived.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| 4    | Fault: any other non-2xx, for example a 500 `DECISION_INTEGRITY` or a 503, or an answer that is not JSON. Also an agent `task.pickup` that the API applied but whose credential could not be saved (stderr names the operationId); an agent `run.delegate_child` whose helper's credential could not be saved (the same); an agent `task.handback` that the API applied but whose spent credential could not be removed (stdout carries the answer; stderr names the operationId, and a replay with it removes the file); a `login` whose issued token could not be saved; and a `logout` that could not remove a credential file (stderr names it). |
 
 ## What it does not do
 

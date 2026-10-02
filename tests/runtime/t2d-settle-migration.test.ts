@@ -42,6 +42,10 @@ if (serverUrl === undefined) {
 
 const onDisk = readMigrations('migrations');
 const THROUGH_0033 = (version: string): boolean => version.slice(0, 4) <= '0033';
+// And AW-06's 0105 plan step key: the runtime that seeds below proposes with
+// it, and it reads nothing the migrations under test add, so it is applied
+// with the seed and the runner applies whatever is pending after it.
+const SEEDED = (version: string): boolean => THROUGH_0033(version) || version.startsWith('0105');
 const BACKSTOP_0026 = '28554fabfe72a262c5344f6bc22885a646b959c44982137b373d441e9c9be97e';
 
 /** One approved piece of work: its held reservation and its attempt. */
@@ -87,12 +91,14 @@ async function held(
 
 // T3d1: 0037 adds `absence_proved_at` to every hold, null on a row it did not
 // answer, and T3e1's 0038 `drop_cause` and `provider_started_at` to every attempt; the comparison is of
-// the rows 0034 must not rewrite, as T2c1's is.
+// the rows 0034 must not rewrite, as T2c1's is. AW-08's 0109 adds `receipt_link`
+// to every attempt, after the rows compared here.
 async function rows(db: EmptyDatabase): Promise<unknown> {
   return await db.admin.execute(
     `select (select json_agg(to_jsonb(r) - 'absence_proved_at' order by r.id)
                from public.reservations r) as reservations,
-            (select json_agg(to_jsonb(a) - 'drop_cause' - 'provider_started_at' order by a.id) from public.attempts a) as attempts`,
+            (select json_agg(to_jsonb(a) - 'drop_cause' - 'provider_started_at' - 'receipt_link'
+                    order by a.id) from public.attempts a) as attempts`,
   );
 }
 
@@ -127,7 +133,7 @@ describe.skipIf(serverUrl === undefined)('0034 settlement at the observed cost',
     upgraded = await createEmptyDatabase({ part: 't2dmigup' });
     await applyMigrations(
       upgraded.admin,
-      onDisk.filter((m) => THROUGH_0033(m.version)),
+      onDisk.filter((m) => SEEDED(m.version)),
     );
     const seed = await buildFixture(upgraded.app, 't2d-seed');
     await held(upgraded.app, seed);

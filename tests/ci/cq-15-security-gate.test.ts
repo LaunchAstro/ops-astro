@@ -193,7 +193,9 @@ describe('CQ-15 security gate', () => {
     expect(invariant.filter((s) => !named.has(String(s)))).toEqual([]);
   });
 
-  it('CQ-15 ruleset: the four checks are required beside the existing ones, strict mode kept', () => {
+  // Strict mode went off on 2 October 2026 (AEST) with the merge queue: the queue tests each pull
+  // request on top of main and the entries ahead of it, so a branch need not be up to date itself.
+  it('CQ-15 ruleset: the four checks are required beside the existing ones, strict mode off under the queue', () => {
     type Required = { strict_required_status_checks_policy: boolean; required_status_checks: L };
     const list = JSON.parse(read('.github/required-checks.json')) as Required;
     const names = JSON.stringify(list.required_status_checks);
@@ -206,7 +208,7 @@ describe('CQ-15 security gate', () => {
     expect([
       list.strict_required_status_checks_policy,
       four.filter((n) => !names.includes(`"${n}"`)),
-    ]).toEqual([true, []]);
+    ]).toEqual([false, []]);
   });
 });
 

@@ -24,6 +24,7 @@ import {
 import { effectOperationId } from '../../packages/core-wire/src/index.ts';
 import { createWorld, serverUrl, type World } from '../acceptance/world.ts';
 import { runCli, serveApi, type Run, type ServedApi } from './cli-process-harness.ts';
+import { seedLaunchOn } from '../runtime/launch-seed.ts';
 
 const MAXIMUM = 2_000;
 
@@ -115,6 +116,8 @@ describe.skipIf(serverUrl === undefined)('T3c budget.write_off on every surface'
     const picked = detailOf(pickup);
     const lease = { leaseId: picked['leaseId'], fence: picked['fence'] };
     const attemptId = String(picked['attemptId']);
+    // AW-08: the effect is a launched version's (the mark seeded); a plan's lease fires nothing.
+    await seedLaunchOn(world.db.admin, world.alpha, picked['leaseId']);
     expect(
       isCommandRefusal(await asAgent(credential, { command: 'task.dispatch', ...lease })),
     ).toBe(false);

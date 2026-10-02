@@ -17,11 +17,12 @@ const CI = '.github/workflows/ci.yml';
 const REVIEW = '.github/workflows/review-evidence.yml';
 const BINDS = 'The review must cover the head being merged';
 const CODEQL = read('.github/workflows/codeql.yml');
-const required = (
-  JSON.parse(read('.github/required-checks.json')) as {
-    required_status_checks: { context: string; integration_id: number }[];
-  }
-).required_status_checks;
+const list = JSON.parse(read('.github/required-checks.json')) as {
+  required_status_checks: { context: string; integration_id: number }[];
+  code_scanning: { tool: string; alerts_threshold: string; security_alerts_threshold: string }[];
+};
+const required = list.required_status_checks;
+const scanning = list.code_scanning;
 const jobs = (text: string) =>
   top(text, 'jobs')
     .split(/^(?= {2}[\w-]+:$)/mu)
@@ -217,10 +218,16 @@ describe('merge group: CodeQL reports on a group', () => {
     expect(CODEQL).toContain("category: '/language:${{ matrix.language }}'");
   });
 
-  it('reports no Actions check named CodeQL: that name is the code scanning results check, integration 57789', () => {
+  // GitHub never posts the CodeQL results check on a merge group, so a required CodeQL check
+  // would hold every group. The ruleset's code scanning rule gates on CodeQL's results instead.
+  it('reports no Actions check named CodeQL, and CodeQL gates as a code scanning rule, not a required check', () => {
     expect(CODEQL).not.toMatch(/^ {4}name: CodeQL$/mu);
-    const codeql = required.find((c) => c.context === 'CodeQL');
-    expect(codeql?.integration_id).toBe(57789);
+    expect(required.find((c) => c.context === 'CodeQL')).toBeUndefined();
+    expect(scanning).toContainEqual({
+      tool: 'CodeQL',
+      alerts_threshold: 'errors',
+      security_alerts_threshold: 'high_or_higher',
+    });
   });
 
   it('only the analysis may write, and only its results', () => {

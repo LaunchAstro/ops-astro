@@ -40,6 +40,8 @@ jobs:
     # it is not made acceptable by passing its type checks.
     name: contamination gate
     runs-on: ubuntu-latest
+    # Its slowest green run in the day to 1 October 2026: 5.2 min.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -107,6 +109,8 @@ jobs:
     # order; only `needs` is.
     needs: [gate]
     runs-on: ubuntu-latest
+    # Its slowest green run in the day to 1 October 2026: 0.7 min.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -136,6 +140,8 @@ jobs:
     name: local checks
     needs: [gate]
     runs-on: ubuntu-latest
+    # Its slowest green run in the day to 1 October 2026: 33.6 min.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -223,6 +229,8 @@ jobs:
     name: database conformance gate
     needs: [gate]
     runs-on: ubuntu-latest
+    # Its slowest green run in the day to 1 October 2026: 2.4 min.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
@@ -249,6 +257,8 @@ jobs:
     name: database conformance shard ${{ matrix.shard }}
     needs: [gate]
     runs-on: ubuntu-latest
+    # Its slowest green run in the day to 1 October 2026: 18.6 min.
+    timeout-minutes: 35
     strategy:
       # Every shard runs to the end, so one red names all of its suites.
       fail-fast: false
@@ -366,6 +376,8 @@ jobs:
     needs: [database-shard]
     if: always()
     runs-on: ubuntu-latest
+    # Its slowest green run in the day to 1 October 2026: 0.2 min.
+    timeout-minutes: 10
     steps:
       - name: Every shard succeeded
         env:
@@ -378,6 +390,8 @@ jobs:
     name: OSI licence allowlist
     needs: [gate]
     runs-on: ubuntu-latest
+    # Its slowest green run in the day to 1 October 2026: 1.7 min.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
@@ -396,6 +410,8 @@ jobs:
     # On a push to main, no pull request: the range is the gate's, from the root.
     if: github.event_name != 'push'
     runs-on: ubuntu-latest
+    # Its slowest green run in the day to 1 October 2026: 3.1 min.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -414,12 +430,21 @@ jobs:
         run: node scripts/merge-group.mjs each node scripts/migrations-unchanged.mjs
       - name: The migration check's own cases
         run: node --test tests/ci/migrations-unchanged-cases.mjs
+      # METHOD step 7: every first-parent commit from the base to the head
+      # against its own first parent: a pull request's merge with main as main
+      # now stands; in the queue, each entry after main and the entries ahead.
+      - name: Migration IDs are unique and sort after the base branch's newest
+        run: BASE_SHA="$(node scripts/merge-group.mjs base)" HEAD_SHA="$(git rev-parse HEAD)" node scripts/migration-ids.mjs
+      - name: The migration ID check's own cases
+        run: node --test tests/ci/migration-ids-cases.mjs
 
   pr-size:
     name: pull request size
     needs: [gate]
     if: github.event_name != 'push'
     runs-on: ubuntu-latest
+    # Its slowest green run in the day to 1 October 2026: 1.3 min.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -437,6 +462,8 @@ jobs:
     name: dependency audit
     needs: [gate]
     runs-on: ubuntu-latest
+    # Its slowest green run in the day to 1 October 2026: 0.7 min.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
@@ -453,6 +480,8 @@ jobs:
     name: static analysis
     needs: [gate]
     runs-on: ubuntu-latest
+    # Its slowest green run in the day to 1 October 2026: 2.0 min.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -476,6 +505,8 @@ jobs:
     name: isolation tests
     needs: [gate]
     runs-on: ubuntu-latest
+    # Its slowest green run in the day to 1 October 2026: 21.2 min.
+    timeout-minutes: 40
     services:
       postgres:
         # The same digest and throwaway password as `database conformance`.
@@ -524,6 +555,8 @@ jobs:
     name: command parity
     needs: [gate]
     runs-on: ubuntu-latest
+    # Its slowest green run in the day to 1 October 2026: 0.8 min.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
@@ -544,6 +577,8 @@ jobs:
     name: visual drift
     needs: [gate]
     runs-on: ubuntu-latest
+    # Its slowest green run in the day to 1 October 2026: 13.4 min.
+    timeout-minutes: 25
     steps:
       # Full history: on a pull request the scope reads the change from its base.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

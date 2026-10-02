@@ -36,6 +36,8 @@ function serving(): { readonly client: OperationsClient; readonly reads: { count
     if (/\/live(\/task\/|\?|$)/u.test(where)) {
       return Promise.resolve(new Response(null, { status: 404 }));
     }
+    // The panel's Project field (SL08) reads the Projects board.
+    if (where.endsWith('/task/board')) return Promise.resolve(json({ ok: true, tasks: [] }));
     if (where.endsWith('/task/read')) {
       reads.count += 1;
       return Promise.resolve(json({ ok: true, task: task() }));

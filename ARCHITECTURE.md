@@ -19,8 +19,8 @@ review of the integrated head has been recorded, so nothing here is accepted.
 | Payload digest              | `packages/core-digest`     | The canonical payload and its hash, shared by the server and the command line, with tests.                        |
 | Runtime and agent execution | `packages/core-runtime`    | Propose, decide, pick up, hand back and the recovery classifier, with tests. Nothing dispatches and nothing acts. |
 | Records engine              | `packages/core-records`    | Tenancy, identity, authority, fixed-slot records, the task type and the refusal register, with tests.             |
-| Credential broker           | `packages/core-custody`    | Not built. The package is created by the ticket that builds it.                                                   |
-| Provider operations         | `packages/core-connectors` | Not built. The package is created by the ticket that builds it.                                                   |
+| Credential broker           | `packages/core-custody`    | Custody's own process holds provider credentials and is a model call's one egress (AW-01), with tests.            |
+| Provider operations         | `packages/core-connectors` | Model operations and their twelve declarations, data classes, the replay provider (AW-01), with tests.            |
 | Shared interface components | `packages/ui`              | Primitives, state, styles and the slice's surfaces, with tests.                                                   |
 | HTTP boundary               | `apps/api`                 | Hono, one route per declared command, with tests.                                                                 |
 | Command line                | `apps/cli`                 | A client of that same API, holding no privileged path.                                                            |
@@ -43,15 +43,16 @@ apps/cli ─► core-wire, core-digest
 core-commands ─► core-wire, core-digest
 ```
 
-The four rows marked not built are empty directories holding only a
+The rows marked not built are empty directories holding only a
 `.gitkeep`. The rest are source with tests beside them, run against a real
 local Postgres on one machine. [The local slice](docs/local/README.md) holds
 the commands, the evidence and the limits. A green tooling run proves this
 checkout builds, types, lints and passes its own tests. It proves nothing about
 a deployment, and there is no deployment.
 
-No provider dispatch and no worker effect exist. The runtime makes no
-provider call. A constraint keeps `planned_steps.dispatched_at` null, and an
+No worker effect exists, and the runtime makes no provider call. Custody's
+process can send one to a listed destination (AW-01); nothing in the runtime
+asks it to yet. A constraint keeps `planned_steps.dispatched_at` null, and an
 attempt names no provider and no model. An earlier proposal described a
 deterministic worker that performs one local effect. That part was not built.
 [The runtime](docs/local/RUNTIME.md) says where the seam is.

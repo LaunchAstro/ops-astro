@@ -178,6 +178,36 @@ the last one, because the next migration would make it wrong.
 `tests/tenancy/restricted-calls.test.ts` all read the list from `migrations/`,
 so a new migration edits none of them.
 
+A migration is `migrations/<id>_<name>.sql`, a regular file, the name lower
+case, digits and underscores. A new migration's ID is the UTC time it was
+written, to the second, as fourteen digits starting `20`:
+`20261002013000_task_labels.sql` for 01:30:00 UTC on 2 October 2026. Lanes
+writing migrations at once then pick different IDs without asking each other.
+The migrations written before that, `0001` up to the last four-digit one, keep
+their numbers: an applied migration is never renamed. Every four-digit ID sorts
+before every timestamp, and the four-digit range has no gap. Until the first
+timestamp is on `main`, the check below also passes a new four-digit ID that
+leaves no gap; after it, a four-digit ID sorts before `main`'s newest and is
+refused.
+
+Two places hold the rule (`packages/core-records/src/tenancy/migration-ids.ts`).
+The runner refuses a directory holding a malformed `.sql` name, one that is not
+a regular file, or one ID twice. The `commit messages and provenance` check
+(`scripts/migration-ids.mjs`) runs on a pull request and again in the merge
+queue. It judges every commit on the first-parent line from the base to the
+head against that commit's own first parent, and the head against the base as
+a whole: a pull request's merge with `main` as it stood when GitHub built the
+merge, and in the queue, the run that holds, each entry against `main` and the
+entries queued ahead of it. It refuses a duplicate ID, a migration that sorts
+before the newest one already there, a gap in the four-digit range, a file that
+is not a regular, non-executable file, a name ending in an upper-case `.SQL`
+(a Mac checkout folds it onto the `.sql` of the same name), and a timestamp
+more than an hour ahead of the clock (local time written as UTC). A migration not yet on `main` that fails it takes
+a new timestamp; one on `main` is never renamed. The runner itself still
+applies whatever is pending, in ID order, even below its ledger's newest, and
+nothing checks a push to `main` that bypasses the queue: a database that ran a
+migration before it reached `main` is out of step.
+
 The upgrade drill (`pnpm verify:upgrade-drill`) fails a migration that changes a
 row an installation already holds. A migration that does so on purpose, such as
 a slot reservation or a field's owners, says so in
@@ -193,8 +223,12 @@ identity, grant, record and command-envelope spine ported from
 `ops-astro-t1-draft@60f2009`. Two companion files describe the later ones.
 [AUTHORITY.md](AUTHORITY.md) covers the agent-authority, settings and
 delegation migrations, and [RUNTIME.md](RUNTIME.md) covers the proposal, gate,
-decision, budget, lease and attempt migrations. Read `ls migrations/` for the
-current set.
+decision, budget, lease and attempt migrations, and the model-call ledger and
+copy register (`0085_model_calls`), and the pinned instruction files
+(`0086_bootstrap_pins`), the budget wait (`0087_budget_wait`), its answers
+(`0088_budget_answers`) and the diagnostic trace export (`0089_trace_export`, and `0090_trace_export_horizon`,
+which stamps each run event with its writing transaction's id).
+Read `ls migrations/` for the current set.
 
 There is no `tasks` table. A task is a record of the built-in `task` record
 type in fixed typed slots, and the slots are the acceptance checklist's field
@@ -209,6 +243,7 @@ table exactly:
 | `agent_brief`       | unslotted, in `data` | `task.update` (0076, MP-4-7)                                   |
 | `page_link`         | unslotted, in `data` | `task.update` (0079, MP-4-12)                                  |
 | `estimated_minutes` | unslotted, in `data` | `task.update` (0080, MP-4-8)                                   |
+| `category`          | unslotted, in `data` | `task.set_category` (0084, MP-4-8)                             |
 | `agent`             | unslotted, in `data` | `task.assign` (0082, Assign to AI)                             |
 | `due`               | `ts_1`               | `task.update`                                                  |
 | `priority`          | `num_1`              | `task.update`                                                  |
@@ -224,6 +259,12 @@ table exactly:
 
 There is no `status` column and no second coarse field. Whether a task is done
 is the machine category of the state record the task points at.
+
+A task made by `task.duplicate` (MP-4-8) records where it came from as a row of
+`record_links` with `link_type` `duplicated_from`, from the new task to the old
+one. No field of the old task is copied beyond its type: the new task holds
+only the title, client and step names the person sent. `task.read` shows the
+link's target only to a reader who holds read on the old task.
 
 A task's tags are not a field. The business's vocabulary is `tags` (one name
 per business whatever its case, a unique index on the lower-cased name) and
@@ -295,7 +336,31 @@ foreign insert into `delegations` is refused with `check_violation`
 (migration 0018), but no application role reaches it: the group holds only
 `select` and `insert` on `handback_reports`, so the privilege check refuses
 `update` and `delete` before the trigger runs. Its only live caller is the owner,
-whom it refuses.
+whom it refuses. `model_route_room` (migration 0085, AW-01's fair share) is
+the second, and the one read across businesses: a route's ceiling is the
+installation's, which a tenant transaction cannot count under row security.
+It answers one whole number, 1 when the transaction's own business may hold
+one more call on the route and 0 when it may not, with no id and no count;
+the business is `app_business_id()`, never an argument, and none is 0. It
+runs with `row_security = off`, so an owner that does not bypass row security
+is refused rather than answered from one business's rows. PUBLIC and the
+application group may not execute it. Only `ops_astro_broker` may, a
+`nologin` role that holds nothing else; the group may take it (`SET`) but does
+not inherit it, so the broker takes it for the one statement with
+`set_config('role', ..., true)` and gives it back. The suites sort that role
+into a class of its own (`broker`). `tests/broker/aw-01-broker-fair-share.test.ts`
+proves the separation and the grants.
+
+`ops_astro_occurrence` (migration 0097, AW-01 J) follows the same pattern
+without a function: it holds `insert` on `planned_runs`, `select` on a task's
+`business_id`, `id` and `revision` (for 0032's trigger), the columns of
+`live_changes` that 0035's trigger upserts as the inserting role (insert of the
+task's key, update of the stamp, a read of both; no delete) and execute on
+`app_business_id()`, and nothing else. The worker's occurrence path takes it
+for the one insert of an occurrence's run; the trigger
+`planned_runs_occurrence_origin` refuses an origin written by any other role
+and any later change to one. The suites sort it into a class of its own
+(`occurrence`), and the column-grant contract names each of its column grants.
 
 At every migration prefix, every tenant table holds an owner-written row per
 business before the calls, so cross-tenant reads are asked of rows that exist
@@ -375,8 +440,8 @@ names the schemas it found, so
 and no `storage` schema, which is an absence, not a denial.
 
 A new migration extends the proof by itself. The harness reads the prefixes
-from `migrations/`, with no list here, in the suite or in a manifest. Add the
-next `migrations/NNNN_*.sql` and it is covered.
+from `migrations/`, with no list here, in the suite or in a manifest. Add a
+`migrations/<UTC timestamp>_*.sql` (see "What the schema is") and it is covered.
 
 ## What a write is checked against
 
@@ -456,7 +521,8 @@ Nine reads are declared in `COMMAND_SURFACE` with `kind: 'read'` and served by
   reader of the business's tasks
 - `task.todos {}` → the reader's own open tasks on any board, with their tags
   and the client messages owed a reply (MP-7-1), for a reader of the
-  business's tasks
+  business's tasks; `{ person }` a teammate's, `{ client }`
+  every one under that client (MP-7-2), under the same key
 - `team.list {}` → the staff with an active membership and each one's
   availability (`person_availability`, 0066, set only by that person), for the
   Team panel; a client of the business is answered `NOT_FOUND`
@@ -676,7 +742,12 @@ when. Installation-wide, no business, person or reason. The factor routes
 refuse `SECOND_FACTOR_LOCKED` while five codes sent in the last fifteen
 minutes have no `answered` row, counted under a transaction-scoped lock on the
 subject's digest. The application may insert the digest, the attempt and the
-state and read the four columns; nothing changes or deletes a row.
+state and read the four columns; it changes and deletes nothing. The daily
+upkeep job deletes rows recorded more than 24 hours ago, far past the window,
+through `ops.expire_second_factor_codes()` (20261002105957): a security
+definer with its search path pinned and no argument, run as `ops_astro_upkeep`,
+a role no one logs in as that holds execute on it and nothing else. PUBLIC and the
+application may not run it.
 
 ## Overseas-services register (0052, C81)
 
