@@ -135,4 +135,27 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('C71 chat mentions',
     expect(await mentionsOf(world.mia, g.conversationId)).toEqual([]);
     expect(await owedOf(world.mia)).toBe(owed - 1);
   });
+
+  it('CS-7.42 a re-added member reads from the new join only: a mention raised before they were re-added is not shown or counted (ORCH64-REJOIN)', async () => {
+    const { world } = g.chat.harness;
+    // Mia was mentioned, then removed (the test above): her item is held from her.
+    expect(await mentionsOf(world.mia, g.conversationId)).toEqual([]);
+    const owed = await owedOf(world.mia);
+    const added = await g.as(g.chat.tess, 'chat.change_members', {
+      conversationId: g.conversationId,
+      add: [world.mia.personId],
+    });
+    expect(added.status, added.text).toBe(200);
+    expect(await mentionsOf(world.mia, g.conversationId)).toEqual([]);
+    expect(await owedOf(world.mia)).toBe(owed);
+    // A mention after the re-join is hers, as any member's.
+    const after = await g.as(g.chat.tess, 'chat.send_group', {
+      conversationId: g.conversationId,
+      body: `@Mia again ${randomUUID()}`,
+      mentions: [world.mia.personId],
+    });
+    expect(after.status, after.text).toBe(200);
+    expect(await mentionsOf(world.mia, g.conversationId)).toHaveLength(1);
+    expect(await owedOf(world.mia)).toBe(owed + 1);
+  });
 });

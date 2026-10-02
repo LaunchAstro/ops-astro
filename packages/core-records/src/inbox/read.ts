@@ -36,9 +36,10 @@ type ItemRow = InboxItemAxes &
 /**
  * Whether the recipient reads the row's task now, from the statement's own
  * `reach` (`REACH`): the same grants `taskAccess` asks, walked once for every row.
- * A conversation's item (C71) is held by its current members alone.
+ * A conversation's item (C71) is held by its current members alone, each from
+ * their latest join: an item raised before a re-join stays held.
  */
-const HELD = `(case when ${IS_CONVERSATION} then ${inConversation('$2')}
+const HELD = `(case when ${IS_CONVERSATION} then ${inConversation('$2', 'i.raised_at')}
          else ((select business from reach) or i.subject_record_id = any((select records from reach)::uuid[])
                or r.uuid_7 = any((select parties from reach)::uuid[])) end)`;
 
