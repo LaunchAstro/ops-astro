@@ -172,5 +172,7 @@ export const STATES_SCREEN: LookScreen = {
       })),
       widths: WIDTHS,
     },
+    // No held-chip probe: a held address draws no chip in its head (R2; the
+    // 2b1 join's ruling), though the mockup's placeholder page has one.
   ],
 };

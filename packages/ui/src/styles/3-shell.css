@@ -26,9 +26,12 @@
   min-height: 100vh;
 }
 /* The third track is the dock, and the shell is the only thing that writes
-   --dock-w, so there is no second opinion about how wide the edge is. */
+   --dock-w, so there is no second opinion about how wide the edge is. At rest
+   the track is empty: the dock's rail floats over the page's right gutter, as
+   the mockup's does, and the content runs to the window's edge. */
 @media not all and (max-width: 900px) {
   .shell[data-face='agency'] {
+    --dock-w: 0px;
     grid-template-columns: var(--rail-w) minmax(0, 1fr) var(--dock-w);
   }
 }
@@ -176,7 +179,6 @@
     z-index: 60;
     width: min(300px, 84vw);
     height: 100dvh;
-    background: var(--bg);
     transform: translateX(-100%);
     visibility: hidden;
     transition:
@@ -397,7 +399,9 @@
   display: flex;
   align-items: center;
   gap: var(--s-4);
-  min-height: 45px;
+  /* A 32px row (search, the face switch) inside its padding, as the mockup's
+     44.8: its controls centre on the same half pixel as the mockup's. */
+  min-height: calc(32px + 0.8rem);
   box-sizing: border-box;
   padding: 0.4rem var(--s-4);
   background: var(--app-chrome);
@@ -742,6 +746,7 @@
   min-height: 2.9rem;
   padding: var(--s-3) var(--s-6);
   border-bottom: 1px solid var(--border);
+  background: var(--bg);
 }
 .topbar__title {
   display: flex;
@@ -766,6 +771,13 @@
   gap: var(--s-6);
   flex: 1;
   padding: var(--s-6);
+}
+/* Above 900 the agency face's right gutter clears the dock's rail, which
+   floats over it: 16px past the rail's 40 (the mockup's calc). */
+@media not all and (max-width: 900px) {
+  .shell[data-face='agency'] :is(.topbar, .content) {
+    padding-right: calc(var(--s-4) + 40px);
+  }
 }
 @media (width <= 900px) {
   .topbar {
