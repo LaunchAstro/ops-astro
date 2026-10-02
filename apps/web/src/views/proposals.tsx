@@ -270,6 +270,7 @@ function Version(props: VersionProps): ReactElement {
   // on a version the lineage has moved past is stale.
   const stale = gate !== null && gate.state === 'pending' && !lapsed(gate) && !props.head;
   const gateWord = gate === null ? '' : stale ? 'stale' : lapsed(gate) ? 'expired' : gate.state;
+  const armed = gate !== null && props.head && gate.state === 'pending' && !lapsed(gate);
   return (
     <div
       className="sb__sect"
@@ -322,41 +323,62 @@ function Version(props: VersionProps): ReactElement {
           No approval gate was raised on this version.
         </p>
       ) : (
-        <div
-          className="card__sub"
-          data-gate-expired={String(lapsed(gate))}
-          data-gate-state={gateWord}
-        >
-          Gate {gateWord}, round {gate.round}
-          {gate.expiresAt === null ? null : lapsed(gate) ? (
-            <span data-gate="expired"> · deadline {gate.expiresAt} passed with no decision</span>
-          ) : (
-            <span> · expires {gate.expiresAt}</span>
-          )}
+        // The gate box (DS-TASK-7, TA-03): the gate line, the exact version it
+        // is bound to, then its controls. Armed only while it can be decided.
+        <div className={stale ? 'gatebox gatebox--stale' : 'gatebox'}>
+          <div className={armed ? 'gate gate--armed' : 'gate'}>
+            <span className="gate__mark" aria-hidden="true" />
+            <div>
+              <div className="gate__word">Human approval gate</div>
+              <p
+                className="gate__say"
+                data-gate-expired={String(lapsed(gate))}
+                data-gate-state={gateWord}
+              >
+                Gate {gateWord}, round {gate.round}
+                {gate.expiresAt === null ? null : lapsed(gate) ? (
+                  <span data-gate="expired">
+                    {' '}
+                    · deadline {gate.expiresAt} passed with no decision
+                  </span>
+                ) : (
+                  <span> · expires {gate.expiresAt}</span>
+                )}
+              </p>
+            </div>
+          </div>
+          <div className="sout__box">
+            <div className="sout__row">
+              <span className="tf__k">Exact artefact</span>
+              <span className="sb__state">
+                v{version.version} <span className="sbact__meta">{gate.payloadDigest}</span>
+              </span>
+            </div>
+          </div>
+
+          {stale ? (
+            <p className="card__sub" data-gate="stale">
+              A stale gate cannot be approved: the run has to raise it again against the current
+              version.
+            </p>
+          ) : null}
+          {props.head || stale ? (
+            <Decide
+              client={props.client}
+              gate={gate}
+              lineageId={props.lineageId}
+              lineageState={props.lineageState}
+              note={props.note}
+              onChanged={props.onChanged}
+              onDecided={props.onDecided}
+              persons={props.persons}
+              stale={stale}
+              versionId={version.versionId}
+            />
+          ) : null}
+          {props.note?.gateId === gate.id ? <Refusal note={props.note} /> : null}
         </div>
       )}
-
-      {stale ? (
-        <p className="card__sub" data-gate="stale">
-          A stale gate cannot be approved: the run has to raise it again against the current
-          version.
-        </p>
-      ) : null}
-      {gate === null || !(props.head || stale) ? null : (
-        <Decide
-          client={props.client}
-          gate={gate}
-          lineageId={props.lineageId}
-          lineageState={props.lineageState}
-          note={props.note}
-          onChanged={props.onChanged}
-          onDecided={props.onDecided}
-          persons={props.persons}
-          stale={stale}
-          versionId={version.versionId}
-        />
-      )}
-      {gate === null || props.note?.gateId !== gate.id ? null : <Refusal note={props.note} />}
     </div>
   );
 }

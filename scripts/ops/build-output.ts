@@ -22,8 +22,9 @@
 // is the one passing answer. Nothing it cannot read is taken as passing.
 
 import { createHash } from 'node:crypto';
-import { lstatSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { lstatSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { STAMP_FILE } from '../../apps/web/build-stamp.ts';
 
 /** A Node.js runtime as Vercel names one, and only that. */
 const NODE_RUNTIME = /^nodejs\d+\.x$/u;
@@ -97,9 +98,8 @@ function walk(root: string, directory: string, found: string[], problems: string
 
 /** Every reason the build output at `root` may not deploy; empty when it may. */
 export function buildOutputProblems(root: string): string[] {
-  let functions: string;
+  const functions = join(root, 'functions');
   try {
-    functions = join(root, 'functions');
     if (!lstatSync(functions).isDirectory()) return ['functions is not a directory.'];
   } catch {
     return ['The build output has no functions directory.'];
@@ -125,7 +125,7 @@ function filesUnder(directory: string): string[] {
  */
 function digested(out: string, path: string): Buffer {
   const bytes = readFileSync(join(out, path));
-  if (path !== 'build.json') return bytes;
+  if (path !== STAMP_FILE) return bytes;
   const { digest, ...record } = JSON.parse(bytes.toString('utf8')) as Record<string, unknown>;
   const written = Buffer.from(JSON.stringify({ ...record, digest }));
   return bytes.equals(written) ? Buffer.from(JSON.stringify(record)) : bytes;
@@ -140,4 +140,26 @@ export function outputDigest(out: string): string {
     hash.update(`${path}\0`).update(digested(out, path)).update('\0');
   }
   return `sha256:${hash.digest('hex')}`;
+}
+
+/**
+ * Stamps the output at `out` with `build` and its digest, as a release does:
+ * `build.json` is written first without the digest, so the digest covers it,
+ * then again with it. Answers what it recorded.
+ */
+export function stampOutput(out: string, build: string): { build: string; digest: string } {
+  writeFileSync(join(out, STAMP_FILE), JSON.stringify({ build }));
+  const record = { build, digest: outputDigest(out) };
+  writeFileSync(join(out, STAMP_FILE), JSON.stringify(record));
+  return record;
+}
+
+/** The stamp and digest the output at `out` records, each undefined when it records none. */
+export function recordedStamp(out: string): { build?: unknown; digest?: unknown } {
+  try {
+    // `null` is valid JSON and names nothing.
+    return (JSON.parse(readFileSync(join(out, STAMP_FILE), 'utf8')) as object | null) ?? {};
+  } catch {
+    return {};
+  }
 }

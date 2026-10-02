@@ -91,6 +91,11 @@ const LEGAL = writing(business('legal_document_versions'));
 // A grant names a client only by its scope; it holds no content and admits
 // no one, and a party-scoped grant needs a client, which is gated itself.
 const GRANTS = writing(business('grants'));
+// A task shared with its client is that client's data reaching the client's
+// existing people: S0-5 classes it client-data, never an invitation, as it
+// enrols no one (MP-4-10). Taking the share back gives no one
+// anything, so `task.revoke_client_share` stays a business grant write.
+const SHARE = writing(client('grants'));
 const CREDENTIAL = writing(business('agent_credentials', 'actors'));
 
 /**
@@ -106,6 +111,9 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.complete': TASK,
   'task.reopen': TASK,
   'task.comment': writing(client('records')),
+  // A comment's own edit and deletion (MP-4-5), on its record.
+  'task.edit_comment': writing(client('records')),
+  'task.delete_comment': writing(client('records')),
   'task.propose': PROPOSAL,
   'task.decide': writing(
     client('attempts', 'gate_decisions', 'gates', 'inbox_items', 'reservations', 'task_envelopes'),
@@ -134,6 +142,17 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.assign': writing(client('records', 'record_unique_values', 'inbox_items')),
   'task.triage': TASK,
   'task.set_stage': TASK,
+  // The status select (Stage 1 adds), the marks (MP-4-9), Ad hoc (MP-4-10) and
+  // the category (MP-4-8).
+  'task.set_state': TASK,
+  'task.set_scores': TASK,
+  'task.set_adhoc': TASK,
+  'task.set_category': TASK,
+  // A duplicate is a new task with its subtasks and a link to the old one (MP-4-8).
+  'task.duplicate': writing(client('records', 'record_unique_values', 'record_links')),
+  // Client access (MP-4-10): a share grant on the task for its client's people.
+  'task.share_with_client': SHARE,
+  'task.revoke_client_share': GRANTS,
   'task.set_party': TASK,
   'task.set_audience': TASK,
   'task.reparent': TASK,
@@ -145,6 +164,19 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.read': READ,
   'task.board': READ,
   'task.queue': READ,
+  // The reader's own to-dos (MP-7-1) and the tag vocabulary (MP-4-11).
+  'task.todos': READ,
+  'tag.list': READ,
+  // Time entries (MP-4-6) hold the task's id.
+  'time.start': writing(client('time_entries')),
+  'time.stop': writing(client('time_entries')),
+  'time.log': writing(client('time_entries')),
+  'time.set_note': writing(client('time_entries')),
+  'time.delete': writing(client('time_entries')),
+  // A name in the business's vocabulary, and a task's tags (MP-4-11).
+  'tag.create': writing(business('tags')),
+  'task.add_tag': writing(client('task_tags')),
+  'task.remove_tag': writing(client('task_tags')),
   // Search (C1): finds what the caller may read, and stores nothing.
   'task.search': READ,
   // The activity ledger (MP-8-4): reads audit events, writes nothing.

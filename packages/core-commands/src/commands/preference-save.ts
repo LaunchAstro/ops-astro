@@ -19,13 +19,14 @@ import { refuseCommand } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 
 const KEY_FIXES: readonly string[] = [
-  'Name a preference this store keeps: appearance, rail.width, dock.width, dock.sheetHeight, columns.widths, tips.enabled or tips.dismissed.',
+  'Name a preference this store keeps: appearance, rail.width, rail.collapsed, dock.width, dock.sheetHeight, columns.widths, tips.enabled, tips.dismissed, subtasks.showFinished or history.showTrail.',
 ];
 
 const VALUE_FIXES: readonly string[] = [
   'appearance takes light, dark or system.',
-  'A width or height is a whole number of pixels above zero; columns.widths maps each column id to one.',
-  'tips.enabled takes true or false; tips.dismissed takes only {}, which brings every tip back.',
+  'A width or height is a whole number of pixels above zero; columns.widths maps at most 64 column ids, of at most 64 characters, to one each.',
+  'rail.collapsed takes true or false.',
+  'tips.enabled, subtasks.showFinished and history.showTrail take true or false; tips.dismissed takes only {}, which brings every tip back.',
 ];
 
 const TIP_FIXES: readonly string[] = [

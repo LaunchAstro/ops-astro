@@ -16,6 +16,8 @@ export type CommandName =
   | 'task.handback'
   // The owning operations the task type's field definitions name.
   | 'task.start'
+  | 'task.set_state'
+  | 'task.duplicate'
   | 'task.assign'
   | 'task.triage'
   | 'task.set_stage'
@@ -23,6 +25,13 @@ export type CommandName =
   | 'task.set_audience'
   | 'task.reparent'
   | 'task.move'
+  | 'task.set_scores'
+  | 'task.set_adhoc'
+  | 'task.set_category'
+  | 'task.share_with_client'
+  | 'task.revoke_client_share'
+  | 'task.edit_comment'
+  | 'task.delete_comment'
   // The mechanics specification 14.2 and 14.3 name.
   | 'task.rank'
   | 'task.trash'
@@ -129,6 +138,23 @@ export type CommandName =
   | 'budget.record_outcome'
   // A person closes an unknown hold at an amount, with a reason (T3c).
   | 'budget.write_off'
+  // Time tracking (MP-4-6): a person's own time entries on a task, under
+  // `time:write`. None names the task's revision: a time entry is a row
+  // beside the task, not a write to it.
+  | 'time.start'
+  | 'time.stop'
+  | 'time.log'
+  | 'time.set_note'
+  | 'time.delete'
+  // Tags (MP-4-11): a name in the business's vocabulary under `tag:write`,
+  // and a task's tags under `task:write` on the task. Neither names the
+  // task's revision: a tag is a row beside the task, not a write to it.
+  | 'tag.create'
+  | 'task.add_tag'
+  | 'task.remove_tag'
+  | 'tag.list'
+  // The reader's own to-dos (MP-7-1): open tasks assigned to the reader.
+  | 'task.todos'
   // Sign-out (C23, CS-2.9): records `session ended (sign-out)` on the audit
   // chain. `account:write`, which every signed-in person holds on their own
   // account and nobody holds on another's, so it names no one: the account is

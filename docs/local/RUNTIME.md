@@ -1376,7 +1376,7 @@ under a dedicated delegation credential key
   or the gitignored 0600 file `.local/delegation.env`
   (`credential-keys.ts:120-165`, `:177-211`). `scripts/local-seed.mjs` or the
   first use creates that file once, with a fresh random key id, and never
-  rewrites it (`local-seed.mjs:799-810`). With neither setting present, the
+  rewrites it (`local-seed.mjs:808-819`). With neither setting present, the
   file is read, and created if absent (`configuredCredentialKeys`, `:220-230`).
   `DELEGATION_CREDENTIAL_KEY_FILE` names another file to use in its place
   (`KEY_FILE_VARIABLE`, `:53`). With `DELEGATION_CREDENTIAL_KEY_FILE` set in the
@@ -1439,7 +1439,11 @@ legacy row as derivable, and 0022's trigger forbids it.
   command envelope, which owns the actor and the operation identity. The first
   attempt to write one from `handback.ts` aborted the whole transaction on a
   column that does not exist, which is the right answer to a second writer
-  reaching into another unit's trail.
+  reaching into another unit's trail. One exception sits below this package:
+  a revoke clearing an agent from the tasks it held (Assign to AI) writes one
+  applied `task.assign` event per task in records' `revokeDelegation`, as the
+  agent's own actor when the runtime revokes (`authority_lost`,
+  `work_retired`).
 - **No HTTP surface of its own.** This package is reached only through L3's
   command surface: `task.propose`, `task.decide`, `task.pickup`,
   `task.handback`, `task.queue`, `task.cancel`, `task.restart` and

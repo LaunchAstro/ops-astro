@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { ROUTES, matchRoute, pathTo } from '../../apps/web/src/routes.ts';
-import { PANELS } from '../../apps/web/src/panels.ts';
+import { dockTabs } from '../../apps/web/src/panels.ts';
 import { SCREENS } from '../../apps/web/src/screen-registry.tsx';
 
 // Never called: each is a type error. A route's parameters are read off its
@@ -43,9 +43,8 @@ describe('the route registry', () => {
   });
 
   it('points every panel at a route the registry serves', () => {
-    for (const panel of PANELS) {
-      if (panel.route === null) continue;
-      expect(matchRoute(pathTo(panel.route))?.id).toBe(panel.route);
+    for (const tab of dockTabs()) {
+      expect(matchRoute(pathTo(tab.route))?.id).toBe(tab.route);
     }
   });
 });

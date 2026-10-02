@@ -73,13 +73,13 @@ const SPECIAL: Readonly<Record<string, string>> = {
       join pg_depend d on d.classid = 'pg_rewrite'::regclass and d.objid = w.oid
      where d.refobjid in (${GUARDED}) and v.relowner is distinct from
        (select oid from pg_roles where rolname = 'ops_astro_app'))`,
-  // The database owner's own definer functions are the guard's to judge: their
-  // writes run as the owner and are noted.
+  // The owner's definer functions are the guard's to judge: their writes are noted. So are
+  // hosted Supabase's own: superuser supabase_admin, exact name (supabase/postgres@9b0996e).
   'a definer function runs as a role past row security': `exists (select from pg_proc p
       join pg_namespace n on n.oid = p.pronamespace join pg_roles r on r.oid = p.proowner
      where p.prosecdef and n.nspname not in ('pg_catalog', 'information_schema')
        and not (n.nspname = 'ops_astro_made_up' and p.proname in ('note', 'protect', 'watch'))
-       and r.oid <> ${OWNER}
+       and r.oid <> ${OWNER} and not (r.rolname = 'supabase_admin' and r.rolsuper)
        and (r.rolbypassrls or r.rolsuper or pg_has_role(r.oid, ${OWNER}, 'member')))`,
   // The name is split in this text, so another preflight's last query is not a match.
   'the seed tag is readable in another session': `exists (select from pg_stat_activity

@@ -152,21 +152,25 @@ function zeroHorizontalOverflow(): void {
   });
 }
 
-// The registry's pages: wave 0's four, the public legal page (C81), Settings ▸
-// Access, Telemetry (U14), Operations (C55), MP-7-3's inbox, the component
-// gallery (MP-1-3, U04) and MP-7-10's Team.
+// The registry's pages: wave 0's four, the public legal page (C81), the task page
+// with no key (MP-4-1), Settings ▸ Access, Telemetry (U14), Operations (C55),
+// MP-7-3's inbox, the component gallery (MP-1-3, U04), My to-dos (MP-7-1),
+// MP-7-10's Team and SL06's Clients book.
 const BUILT_PAGES = [
   'agency:sign-in',
   'agency:legal',
   'agency:projects-board',
   'agency:task-detail',
+  'agency:task-unnamed',
   'agency:settings',
   'agency:access',
   'agency:telemetry',
   'agency:operations',
   'agency:inbox',
   'agency:gallery',
+  'agency:todos',
   'agency:team',
+  'agency:clients',
 ];
 
 function everyPageBuiltSoFar(): void {

@@ -212,9 +212,12 @@ function declare(
 }
 
 const TASK_COLLECTION = 'task';
+const ACCESS_COLLECTION = 'access';
 const SETTINGS_COLLECTION = 'settings';
 const SESSION_COLLECTION = 'session';
 const BILLING_COLLECTION = 'billing';
+const TIME_COLLECTION = 'time';
+const TAG_COLLECTION = 'tag';
 const SPEND_COLLECTION = 'spend';
 const ACCOUNT_COLLECTION = 'account';
 const PREFERENCE_COLLECTION = 'preference';
@@ -274,13 +277,26 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'task.complete': TARGET,
   'task.reopen': { ...TARGET, reason: 'any' },
   'task.start': TARGET,
+  'task.set_state': { ...TARGET, stateId: 'id' },
+  // The old task, the chosen client and the shell the person edited: no
+  // operand for anything else, so nothing else can carry over (MP-4-8).
+  'task.duplicate': {
+    recordId: 'id',
+    client: 'id|null',
+    title: 'text',
+    stepNames: 'any',
+    confirmCarried: 'flag?',
+  },
   'task.comment': {
     ...TARGET,
     body: 'any',
     audience: 'any',
     commentType: 'any',
+    parentId: 'any',
     mentions: 'any',
   },
+  'task.edit_comment': { ...TARGET, commentId: 'any', body: 'any' },
+  'task.delete_comment': { ...TARGET, commentId: 'any' },
   'task.propose': {
     ...TARGET,
     purpose: 'any',
@@ -315,6 +331,11 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
   'task.set_stage': FIELDS,
   'task.set_party': FIELDS,
   'task.set_audience': FIELDS,
+  'task.set_scores': FIELDS,
+  'task.set_adhoc': FIELDS,
+  'task.set_category': FIELDS,
+  'task.share_with_client': TARGET,
+  'task.revoke_client_share': TARGET,
   'task.reparent': { ...TARGET, parentId: 'any' },
   'task.move': { ...TARGET, board: 'any', boardSection: 'any' },
   'task.rank': { ...TARGET, afterId: 'id?|null', beforeId: 'id?|null' },
@@ -387,6 +408,15 @@ const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
     usage: 'any',
     outcome: 'any',
   },
+  // A duration is text the handler parses and answers in its own words.
+  'time.start': { taskId: 'id' },
+  'time.stop': { taskId: 'id' },
+  'time.log': { taskId: 'id', duration: 'any', note: 'any' },
+  'time.set_note': { entryId: 'id', note: 'any' },
+  'time.delete': { entryId: 'id' },
+  'tag.create': { name: 'any' },
+  'task.add_tag': { recordId: 'id', tagId: 'id' },
+  'task.remove_tag': { recordId: 'id', tagId: 'id' },
   'session.end': {},
   'preference.save': { preference: 'text', value: 'any' },
   'preference.dismiss_tip': { page: 'text', tip: 'text', version: 'count' },
@@ -402,7 +432,10 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     untargetedIdentifiers: ['parentId', 'board', 'boardSection'],
     agent: 'delegated',
   }),
-  declare('task.update', 'write'),
+  // An agent writes the description, its brief, the name, the due date and
+  // the page link on its own task inside its delegation (MP-4-7, MP-4-8,
+  // MP-4-12), and no other field: `updateTaskAsAgent` refuses the rest.
+  declare('task.update', 'write', { agent: 'delegated' }),
   declare('task.complete', 'write'),
   declare('task.reopen', 'write'),
   declare('task.comment', 'comment', { agent: 'delegated' }),
@@ -439,7 +472,25 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   }),
 
   declare('task.start', 'write'),
-  declare('task.assign', 'assign'),
+  // Any state of the business's own workflow but a completed one, by its
+  // record id (the status select: Waiting on client, On hold). A person's
+  // call: an agent's lifecycle stays pickup and handback.
+  declare('task.set_state', 'write'),
+  // Duplicate without contents (MP-4-8, CS-4.12): a new task for the chosen
+  // client from the shell sent. `task:write` is asked there (`target`: party
+  // scope, the business for none); the handler asks it again with `read` on the
+  // old task in `recordId`, and `share` at the chosen client when it differs from the old
+  // task's (ORCH57B11), all on current grants. A person's only, whatever a delegation holds.
+  declare('task.duplicate', 'write', {
+    targetsExistingRecord: false,
+    authorisedOn: 'target',
+    untargetedIdentifiers: ['recordId'],
+    authority: ['task:read', 'task:write'],
+    rule: 'carried text naming the old client: refused CARRIED_TEXT_NAMES_CLIENT (409) until confirmed',
+  }),
+  // An agent sets the assignee of its own task when its delegation holds
+  // `task:assign` (MP-4-8), and not the delegate: `assignTaskAsAgent`.
+  declare('task.assign', 'assign', { agent: 'delegated' }),
   declare('task.triage', 'write'),
   declare('task.set_stage', 'write'),
   declare('task.set_party', 'share', {
@@ -448,6 +499,27 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   declare('task.set_audience', 'share'),
   declare('task.reparent', 'write', { serialise: TASK_PLACEMENT_LOCK }),
   declare('task.move', 'write', { serialise: TASK_PLACEMENT_LOCK }),
+  // The three marks the rank reads (MP-4-9). `task:write`, as `task.update`
+  // asks, and an agent sets them inside its delegation like a comment.
+  declare('task.set_scores', 'write', { agent: 'delegated' }),
+  // The Ad hoc mark (MP-4-10, CS-4.9): `task:write`, and an agent sets it on
+  // its own task inside its delegation.
+  declare('task.set_adhoc', 'write', { agent: 'delegated' }),
+  // The task's work label (MP-4-8, CS-4.16): `task:write`, and an agent sets
+  // it on its own task inside its delegation. A label only (R76): it reaches
+  // no grant, delegation or scope.
+  declare('task.set_category', 'write', { agent: 'delegated' }),
+  // Client access (MP-4-10, CS-4.10, R45): the task's share grants to its
+  // client's people, created and withdrawn under `access:share`, which an
+  // agent never holds (contract 2.3 to 2.6). The target row is the lock, so
+  // two at once on one task leave one share per person.
+  declare('task.share_with_client', 'share', { collection: ACCESS_COLLECTION }),
+  declare('task.revoke_client_share', 'share', { collection: ACCESS_COLLECTION }),
+  // An author's own message or reply, rewritten or deleted (MP-4-5,
+  // CS-4.34): `task:comment` on the task, as the comment itself, and an
+  // agent inside its delegation on its own words only (the handler's check).
+  declare('task.edit_comment', 'comment', { agent: 'delegated' }),
+  declare('task.delete_comment', 'comment', { agent: 'delegated' }),
 
   declare('task.rank', 'write'),
   declare('task.trash', 'write'),
@@ -764,6 +836,49 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     audited: false,
   }),
 
+  // Time tracking (MP-4-6, CS-4.1, CS-4.28 to CS-4.30): `write` on `time`,
+  // asked of the business, and the handler then asks `task:read` on the task
+  // the entry is against, so a person times only a task they may read. Each
+  // reaches only the caller's own entries. The key catalogue lets an agent
+  // hold `time:write` inside its delegation; the agent path does not serve
+  // these yet, so it is `never` here until it does.
+  ...(['time.start', 'time.stop', 'time.log'] as const).map((name) =>
+    declare(name, 'write', {
+      collection: TIME_COLLECTION,
+      targetsExistingRecord: false,
+      untargetedIdentifiers: ['taskId'],
+    }),
+  ),
+  ...(['time.set_note', 'time.delete'] as const).map((name) =>
+    declare(name, 'write', {
+      collection: TIME_COLLECTION,
+      targetsExistingRecord: false,
+      untargetedIdentifiers: ['entryId'],
+    }),
+  ),
+
+  // Tags (MP-4-11, CS-4.19 to CS-4.21). A new tag is `tag:write` on the
+  // business; adding and removing are `task:write` on the task named in
+  // `recordId`; the vocabulary is `task:read` on the business, so a reader
+  // held to one client's records is not shown the business's tags. The key
+  // catalogue lets an agent hold these inside its delegation; the agent path
+  // does not serve them yet, so they are `never` here until it does, as the
+  // time commands are.
+  declare('tag.create', 'write', {
+    collection: TAG_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+  }),
+  ...(['task.add_tag', 'task.remove_tag'] as const).map((name) =>
+    declare(name, 'write', {
+      targetsExistingRecord: false,
+      authorisedOn: 'record',
+      untargetedIdentifiers: ['recordId', 'tagId'],
+    }),
+  ),
+  read('tag.list', TASK_COLLECTION),
+  read('task.todos', TASK_COLLECTION),
+
   // The inbox is one person's: no agent reaches it, and each row answers the
   // caller about their own items only, with access derived per item.
   read('inbox.read', INBOX_COLLECTION, { authorisedOn: 'self' }),
@@ -862,14 +977,18 @@ export {
 /** The reads, which no caller may reach through the command envelope. */
 /**
  * The writes an external party (R4) may reach: a comment, only in the client audience; signing
- * out, which writes only the record that this person's session ended (C23); and opening their
- * own inbox item. `commands/prepare.ts` refuses every other write to a person
- * without a membership, and `session.capabilities` and discovery read this same list.
+ * out, which writes only the record that this person's session ended (C23); opening their
+ * own inbox item; and their own preference rows, which every signed-in person writes
+ * (`preference:write`, CAPABILITY-SLICES.md; ORCH50's ruling). `commands/prepare.ts` refuses
+ * every other write to a person without a membership, and `session.capabilities` and
+ * discovery read this same list.
  */
 export const EXTERNAL_WRITES: readonly CommandName[] = [
   'task.comment',
   'session.end',
   'inbox.seen',
+  'preference.save',
+  'preference.dismiss_tip',
 ];
 
 /** Whether a person of this standing may send this write: the envelope and discovery ask it. */

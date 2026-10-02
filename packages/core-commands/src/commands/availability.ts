@@ -12,7 +12,7 @@
 // writes nothing.
 
 import { payloadDigest } from '../../../core-digest/src/index.ts';
-import { withStanding } from '../../../core-records/src/index.ts';
+import { withSession } from '../../../core-records/src/index.ts';
 import type {
   BusinessId,
   Database,
@@ -73,8 +73,9 @@ function refusalFor(
 /**
  * Set the signed-in person's own availability, with its audit event, in one
  * transaction. A refusal of a signed-in person is audited too, refused and
- * with its code (I13), and writes no row; a caller with no standing here is
- * refused before there is anyone to audit.
+ * with its code, and writes no row; a caller with no standing here is
+ * refused before there is anyone to audit. Either way the sign-in is one
+ * authentication attempt, resolved or refused (I13).
  */
 export async function setOwnAvailability(
   database: Database,
@@ -83,7 +84,7 @@ export async function setOwnAvailability(
   body: Readonly<Record<string, unknown>>,
 ): Promise<{ readonly availability: Availability } | CommandRefusal> {
   const asked = availabilityOf(body);
-  const outcome = await withStanding(database, businessId, presented, async (tx, session) => {
+  const outcome = await withSession(database, businessId, presented, async (tx, session) => {
     const wanted = 'refused' in asked ? undefined : asked;
     const refusal = refusalFor(session, asked);
     await writeAuditEvent(tx, {

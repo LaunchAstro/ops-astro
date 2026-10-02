@@ -18,7 +18,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll } from 'vitest';
-import { outputDigest } from '../../scripts/ops/build-output.ts';
+import { stampOutput } from '../../scripts/ops/build-output.ts';
 
 export const CANARY = 'canary-7c2f41-operator-secret';
 
@@ -26,12 +26,10 @@ export const OPERATOR: string = new URL('../../scripts/ops/operator.mjs', import
 
 export const PROMOTE: string = new URL('../../scripts/ops/promote.mjs', import.meta.url).pathname;
 
-export const DRILL: string = new URL('../../scripts/ops/restore-drill.mjs', import.meta.url)
-  .pathname;
+const DRILL = new URL('../../scripts/ops/restore-drill.mjs', import.meta.url).pathname;
 
-export const DEPLOY: string = new URL('../../scripts/ops/deploy.mjs', import.meta.url).pathname;
-export const WEB_DEPLOY: string = new URL('../../scripts/ops/web-deploy.mjs', import.meta.url)
-  .pathname;
+const DEPLOY = new URL('../../scripts/ops/deploy.mjs', import.meta.url).pathname;
+const WEB_DEPLOY = new URL('../../scripts/ops/web-deploy.mjs', import.meta.url).pathname;
 
 export const definition = JSON.parse(
   readFileSync(new URL('../../deploy/staging/compose.json', import.meta.url), 'utf8'),
@@ -70,11 +68,7 @@ export const store = (): string => {
   const root = mkdtempSync(join(scratch, 'store-'));
   const build = join(root, definition['x-ops-astro'].artefact.replace('{version}', STAGED));
   mkdirSync(build);
-  writeFileSync(join(build, 'build.json'), JSON.stringify({ build: STAGED }));
-  writeFileSync(
-    join(build, 'build.json'),
-    JSON.stringify({ build: STAGED, digest: outputDigest(build) }),
-  );
+  stampOutput(build, STAGED);
   return root;
 };
 

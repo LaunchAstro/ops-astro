@@ -9,7 +9,7 @@
 
 import { afterEach, describe, expect, it } from 'vitest';
 import { settle } from './mount.tsx';
-import { ADA, MIA, access, json, open, server, unmountAll } from './access-screen-world.tsx';
+import { ADA, CLEO, MIA, access, json, open, server, unmountAll } from './access-screen-world.tsx';
 
 afterEach(unmountAll);
 
@@ -47,5 +47,14 @@ describe('C58 End access on Settings ▸ Access', () => {
     const api = server([json(access([ADA, MIA]))]);
     const view = await open(api.fetch);
     expect(view.find('[data-access="agents"] [data-end]')).toBeNull();
+  });
+
+  it('C58 end access: a client holds no membership to end, so the Clients list offers no End access', async () => {
+    // access.end refuses anyone without an active membership (NOT_FOUND), and a
+    // client stands on shares only, so the button could only ever be refused.
+    const api = server([json(access([ADA, MIA]))]);
+    const view = await open(api.fetch);
+    expect(view.find(`[data-access="clients"] [data-person="${CLEO.personId}"]`)).not.toBeNull();
+    expect(view.find(`[data-end="${CLEO.personId}"]`)).toBeNull();
   });
 });

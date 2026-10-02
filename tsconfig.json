@@ -39,6 +39,7 @@
     "apps/web",
     "packages/ui",
     "tests/surfaces",
+    "tests/web",
     "tests/api/live-board-closed-recheck-review.test.ts",
     "tests/api/live-board-revoked-after-final-read-review.test.ts",
     "tests/api/live-board-revoked-during-rejoin-review.test.ts",

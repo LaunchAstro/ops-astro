@@ -8,7 +8,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll } from 'vitest';
-import { outputDigest } from '../../scripts/ops/build-output.ts';
+import { stampOutput } from '../../scripts/ops/build-output.ts';
 
 const definition = JSON.parse(
   readFileSync(new URL('../../deploy/staging/compose.json', import.meta.url), 'utf8'),
@@ -32,9 +32,7 @@ export const store = (builds: Record<string, string | null>): string => {
     mkdirSync(join(root, name), { recursive: true });
     writeFileSync(join(root, name, 'index.html'), `<meta name="ops-astro-build">`);
     if (stamp === null) continue;
-    writeFileSync(join(root, name, 'build.json'), JSON.stringify({ build: stamp }));
-    const digest = outputDigest(join(root, name));
-    writeFileSync(join(root, name, 'build.json'), JSON.stringify({ build: stamp, digest }));
+    stampOutput(join(root, name), stamp);
   }
   return root;
 };

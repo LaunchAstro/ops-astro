@@ -124,7 +124,15 @@ export async function eachBuiltPage<T>(
         for (const id of options.pages ?? builtPages()) {
           const side = needsSession(id) ? signedIn : signedOut;
           const address = addressOf(id, MADE_UP_PARAMS) ?? '/';
-          const page = await load(side, packet, new URL(address, app).href);
+          // A page that draws nothing is named, so a timed-out run says which one.
+          let page: Awaited<ReturnType<typeof load>>;
+          try {
+            page = await load(side, packet, new URL(address, app).href);
+          } catch (error) {
+            throw new Error(`built page ${id} (${address}) drew nothing into #app`, {
+              cause: error,
+            });
+          }
           out.push(
             await visit({ id, name: `${id}@${String(width)}-${theme}`, width, theme, page }),
           );

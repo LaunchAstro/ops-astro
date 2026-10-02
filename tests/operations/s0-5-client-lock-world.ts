@@ -25,8 +25,10 @@ const BOOKKEEPING: ReadonlySet<string> = new Set([
 /** Commands that write a client-scoped kind but are not content on an existing task. */
 const NOT_CONTENT: Readonly<Record<string, string>> = {
   'task.create': 'the creation itself',
+  'task.duplicate': 'creates a new task from the shell; the old task is untouched (MP-4-8)',
   'task.set_party': 'a client change, which the lock allows while the task is empty',
   'client.create': 'writes a client, not a task',
+  'task.share_with_client': 'a share grant: who sees the task, not what it holds',
   'task.purge': 'removes the task; nothing is left to change the client of',
   'inbox.seen': "the caller's own seen stamp on an item, not the task's content",
 };
@@ -145,6 +147,17 @@ const MARKER_HELD: ReadonlySet<string> = new Set([
   'budget.top_up',
   'budget.record_outcome',
   'budget.write_off',
+  // The task's own rows beside it (MP-4-5 comments, MP-4-6 time, MP-4-11 tags):
+  // a comment's edit or removal, a time entry, a tag on the task.
+  'task.edit_comment',
+  'task.delete_comment',
+  'time.start',
+  'time.stop',
+  'time.log',
+  'time.set_note',
+  'time.delete',
+  'task.add_tag',
+  'task.remove_tag',
 ]);
 
 /** Per task, a digest of every row that names it, in the tables the lock reads. */
@@ -155,6 +168,8 @@ async function rowsNaming(): Promise<ReadonlyMap<string, string>> {
     ['task_envelopes', 'task_id'],
     ['leases', 'task_id'],
     ['alerts', 'task_id'],
+    ['time_entries', 'task_id'],
+    ['task_tags', 'task_id'],
   ]
     .map(
       ([table, column]) =>
@@ -162,7 +177,7 @@ async function rowsNaming(): Promise<ReadonlyMap<string, string>> {
            from public.${table} t group by ${column}`,
     )
     .concat(
-      `select uuid_4::text, md5(string_agg(id::text, '|' order by id)) from public.records
+      `select uuid_4::text, md5(string_agg(t::text, '|' order by t.id)) from public.records t
         where uuid_4 is not null group by uuid_4`,
     )
     .join(' union all ');

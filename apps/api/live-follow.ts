@@ -89,6 +89,23 @@ export function sharesOf(
   });
 }
 
+/**
+ * Ends `stream` with its request. A tab that leaves while the route still
+ * awaits its door closes the socket before the stream exists, and the stream
+ * never hears of it; the request's signal does (FIX-2B1 RS B1).
+ */
+export function endsWithRequest(stream: Pick<LiveStream, 'abort'>, request: AbortSignal): void {
+  if (request.aborted) stream.abort();
+  else
+    request.addEventListener(
+      'abort',
+      () => {
+        stream.abort();
+      },
+      { once: true },
+    );
+}
+
 export const RECHECK_MS = 30_000;
 const noop = (): void => {};
 const RANK = { check: 0, invalidate: 1, resync: 2 } as const;
@@ -106,8 +123,11 @@ export async function follow(
   asks: Watching,
   seated?: Seated,
 ): Promise<void> {
+  // A stream that ended before this ran (the tab left while the route awaited)
+  // never calls a listener added now, so its end is taken as already here.
   const ended = new Promise<void>((resolve) => {
-    stream.onAbort(resolve);
+    if (stream.aborted) resolve();
+    else stream.onAbort(resolve);
   });
   let finished = noop;
   const done = new Promise<void>((resolve) => {
