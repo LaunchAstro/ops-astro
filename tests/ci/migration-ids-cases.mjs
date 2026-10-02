@@ -22,7 +22,7 @@ const numbered = (from, to) =>
 /** Main once batch 3a (#324) has landed: 0001 to 0099. */
 const MAIN_AFTER_3A = numbered(1, 99);
 
-/** Batch 3b (#327) as it lands after this check, on b3integ 5e293e3: 0100 to 0111. */
+/** Batch 3b (#327) as it lands after this check, as its final dry run cut it: 0100 to 0111. */
 const BATCH_3B = [
   '0100_delegation_children',
   '0101_child_work_events',

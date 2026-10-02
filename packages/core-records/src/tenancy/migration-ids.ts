@@ -9,7 +9,7 @@
 // - Four digits, 0001 upward with no gap: every migration written before the
 //   move to timestamps. An applied migration is never renamed, so these stay.
 // - A UTC timestamp, YYYYMMDDHHMMSS: every migration written since (Code
-//   Factory METHOD, Phase 2 step 7). Lanes writing migrations at once pick
+//   Factory METHOD, Phase 2 step 7). Changes written at the same time pick
 //   different IDs without asking each other, and a fixed width makes the
 //   string order the time order.
 //
