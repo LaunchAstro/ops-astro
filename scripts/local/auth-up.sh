@@ -182,11 +182,12 @@ else
   # GoTrue will not start without a JWT secret. It signs with the key above, so
   # this one is made for the container and kept nowhere.
   #
-  # GoTrue's own MFA endpoints take the app's bearer directly, so GoTrue holds
-  # one verified factor per login too. A factor it verified that the record
-  # then refused (an orphan, reconciled by #300) blocks a fresh enrolment
-  # until it goes, which is the limit working. The enrolled-factor limit stays
-  # GoTrue's default until #300: one could refuse a retried enrolment.
+  # GoTrue's own MFA endpoints take the app's bearer directly, so GoTrue
+  # refuses a new enrolment once a login has a verified factor. It checks
+  # only at enrolment: factors enrolled before any is verified can each be
+  # verified, and an orphan the record refused blocks a fresh enrolment until
+  # #300 reconciles it. The enrolled-factor limit stays GoTrue's default until
+  # #300: one could refuse a retried enrolment.
   # The MFA rate is per minute, tighter than GoTrue's 15, as defence in depth
   # only. GoTrue counts it per address with a fixed burst of 30, so it cannot
   # match the app's five wrong codes in fifteen minutes, which stays the real

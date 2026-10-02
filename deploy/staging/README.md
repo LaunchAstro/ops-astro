@@ -214,17 +214,22 @@ function to before the deploy. It is not a region Vercel reports. The folder,
 `.vercel` included, is removed either way.
 
 The sign-in server's own MFA endpoints take the app's bearer directly, so
-hosted staging, and production later, take the two settings
-`scripts/local/auth-up.sh` gives the local one. This change applies neither
-there; both are an owner sitting item. `GOTRUE_MFA_RATE_LIMIT_CHALLENGE_AND_VERIFY=5`
-needs a forwarded-address setting (`GOTRUE_RATE_LIMIT_HEADER`) beside it, or
-it counts nothing, and even then its fixed burst of 30 a minute per address
-cannot match the app's five wrong codes in fifteen minutes, which stays the
-real guard. `GOTRUE_MFA_MAX_VERIFIED_FACTORS=1` waits for #300 (reconciling
-factors the provider holds and the record does not), as ruled on 1 October:
-until then a code the provider accepts and the record refuses leaves a
-verified factor there, and the limit would block that person's next
-enrolment. The enrolled-factor limit stays GoTrue's default until #300 too.
+`scripts/local/auth-up.sh` gives the local one two settings: once a login
+has a verified factor, a new enrolment is refused
+(`GOTRUE_MFA_MAX_VERIFIED_FACTORS=1`), and MFA challenges and verifies are
+held to 5 a minute (`GOTRUE_MFA_RATE_LIMIT_CHALLENGE_AND_VERIFY=5`). The
+limit is checked only at enrolment, so factors enrolled before any is
+verified can each be verified later; #300 reconciles what the provider holds
+against the record. The rate counts per address with a fixed burst of 30,
+so it cannot match the app's five wrong codes in fifteen minutes, which
+stays the real guard. Hosted staging and production sign in through a
+hosted Supabase project, whose settings name the enrolled-factor limit but
+neither of these two, so the hosted half is a Supabase support request or
+an accepted gap, decided at the owner sitting. Nothing here changes hosted
+settings. The enrolled-factor limit stays at its default until #300 (ruled
+1 October): a code the provider accepts and the record refuses leaves a
+verified factor there, and a limit would block that person's next
+enrolment until it is reconciled.
 
 `scripts/ops/web-deploy.mjs --maintenance`, behind the same gate, puts the
 maintenance page on the main address the same way (`maintenance recorded`)

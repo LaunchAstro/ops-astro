@@ -194,7 +194,7 @@ test("the contract's own stopped Postgres is the same cluster: started, and GoTr
 });
 
 // GoTrue's own MFA endpoints take the app's bearer directly, so the provider
-// holds the same line the app does: one verified factor per login, and a
+// refuses a new enrolment once a login has a verified factor, and holds a
 // tighter verify rate. The enrolled-factor limit stays GoTrue's own until #300.
 test('auth-up starts GoTrue with one verified factor and the MFA verify rate limit', () => {
   const calls = runToEnd(null);
