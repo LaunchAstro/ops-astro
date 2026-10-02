@@ -187,16 +187,17 @@ the last four-digit one, keep their numbers: an applied migration is never
 renamed. Every four-digit ID sorts before every timestamp, and the four-digit
 range has no gap.
 
-Three places hold the rule (`packages/core-records/src/tenancy/migration-ids.ts`).
-The runner refuses a directory holding a malformed name or one ID twice, and
-refuses a pending migration that sorts before the newest one its database has
-applied, since a fresh install would apply the two in the other order. The
+Two places hold the rule (`packages/core-records/src/tenancy/migration-ids.ts`).
+The runner refuses a directory holding a malformed name or one ID twice. The
 `commit messages and provenance` check (`scripts/migration-ids.mjs`) refuses,
 on a pull request and again in the merge queue against `main` as it stands, a
 duplicate ID, a migration that sorts before the base's newest, a gap in the
 four-digit range, and a timestamp more than an hour ahead of the clock (local
 time written as UTC). A migration not yet on `main` that fails it takes a new
-timestamp; one on `main` is never renamed.
+timestamp; one on `main` is never renamed. The runner itself still applies
+whatever is pending, in ID order, even below its ledger's newest: a database
+that ran a migration before it reached `main` is out of step, and the check
+is what keeps such a migration off `main` below the newest.
 
 The upgrade drill (`pnpm verify:upgrade-drill`) fails a migration that changes a
 row an installation already holds. A migration that does so on purpose, such as

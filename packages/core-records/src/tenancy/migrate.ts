@@ -5,10 +5,8 @@
 //
 // The properties it holds, each because its absence has a known failure.
 //
-// - Files apply in version order, and a version's ID is unique
-//   (migration-ids.ts). A database never applies a migration that sorts before
-//   one it already holds: a fresh install would apply the two in the other
-//   order, and the two schemas could differ.
+// - Files apply in version order, and every ID in the directory is well
+//   formed and unique (migration-ids.ts), so a fresh install has one order.
 // - One run is all or nothing. Every pending file is applied in one
 //   transaction, each file's ledger row written after its statements, with one
 //   commit at the end. A file and its ledger row therefore commit together, and
@@ -349,15 +347,6 @@ export async function applyMigrations(
   // is the ledger's last version, whatever list the caller passed.
   const last = [...(ledger?.keys() ?? [])].toSorted().at(-1);
   const startedAt = last === undefined ? 'without any migration' : `at ${last}`;
-  const early = names.filter((version) => last !== undefined && version < last);
-  if (early.length > 0) {
-    throw new Error(
-      `migrate: ${early.join(', ')} ${early.length === 1 ? 'sorts' : 'sort'} before ${String(last)}, the newest migration this ` +
-        `database has applied. A fresh install applies them first, so this database would end ` +
-        `with a schema no fresh install builds. Nothing was applied; give each a new UTC ` +
-        `timestamp ID that sorts after ${String(last)}.`,
-    );
-  }
 
   // The check runs before the transaction, inside it before each file, and
   // once more before the commit, so a session that connects after the first

@@ -3,11 +3,11 @@
 // migration the head adds sorts after the base's newest (Code Factory
 // METHOD, Phase 2 step 7). The rule is packages/core-records/src/tenancy/migration-ids.ts.
 //
-// `migrate` already refuses a duplicate ID or a migration below its ledger's
-// newest, but only when it runs against a database. This catches both before
-// approval and again in the merge queue, where the head is the group's and the
-// base is main as it stands, so two pull requests that each pass against main
-// alone are judged together. Only names are read, never a file's statements.
+// `migrate` refuses a malformed or duplicate ID, but only when it runs, and it
+// applies a pending migration below its ledger's newest without a word. This
+// catches both before approval and again in the merge queue, where the head is
+// the group's and the base is main as it stands, so two pull requests that each
+// pass against main alone are judged together. Only names are read.
 
 import { execFileSync } from 'node:child_process';
 import {

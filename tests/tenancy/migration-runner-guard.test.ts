@@ -230,29 +230,8 @@ describe.skipIf(serverUrl === undefined)('the runner refuses while connected', (
     expect(await state(built)).toBe(before);
   }, 120_000);
 
-  // MIG-TIMESTAMP: a fresh install applies in ID order, so an upgrade that
-  // applied a migration below the newest one in its ledger would build a
-  // schema no fresh install builds.
-  it('refuses a pending migration that sorts before the newest one applied, and changes nothing', async () => {
-    const on = await at0023('mtorder');
-    const stamped = syntheticMigration(
-      '20261002013000_mt_stamped',
-      'create table ops.mt_stamped (id int)',
-    );
-    await applyMigrations(on.admin, [...THROUGH_0023, stamped]);
-    const before = await state(on);
-
-    await expect(migrate(on.admin, 'migrations')).rejects.toThrow(
-      new RegExp(
-        `^migrate: ${String(PENDING_AFTER_0023[0])}, .* sort before 20261002013000_mt_stamped, ` +
-          `the newest migration this database has applied\\.`,
-        'u',
-      ),
-    );
-    expect(await state(on)).toBe(before);
-    expect(await lastApplied(on)).toBe('20261002013000_mt_stamped');
-  }, 120_000);
-
+  // MIG-TIMESTAMP: an installation at main's newest four-digit migration
+  // upgrades onto timestamp IDs, one run at a time, in ID order.
   it("upgrades a database at main's newest migration to timestamp IDs, in ID order", async () => {
     const built = await createEmptyDatabase({ part: 'mtupgrade' });
     db = built;
