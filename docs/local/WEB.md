@@ -147,8 +147,8 @@ traded for a new cookie, the tab moved to it, then the old sign-in signed out
 at the API, the provider and its cookie (`session/sign-in-again.ts`). Either
 way the refused write goes once more, on the client built for the new
 sign-in, and only while the session that asked is still the one in hand; a
-password sign-in that lands after that session ended is signed out the same
-way and sends nothing. A
+password sign-in the tab does not keep (the session ended, or the API refused
+the trade) is signed out at GoTrue with its own token, and sends nothing. A
 wrong code shows the server's words and a wrong password GoTrue's, and
 neither sends the write. The password leaves the field as it is sent and is
 kept nowhere.

@@ -45,11 +45,18 @@ export async function signInAgainSession(request: SignInAgainRequest): Promise<S
     fetch: route.fetch,
   });
   if (!signedIn.ok) return signedIn;
-  if (!request.current()) return { ok: false, because: ENDED };
+  // Until the tab holds it, a refusal signs the new provider session out with its own token.
+  const drop = async (result: StepUpResult): Promise<StepUpResult> => {
+    await signOutAtProvider(request.gotrueUrl, signedIn.token, route.fetch);
+    return result;
+  };
+  if (!request.current()) return await drop({ ok: false, because: ENDED });
   const traded = await tradeForCookie(route, signedIn.token);
-  if (!traded.ok) return traded;
+  if (!traded.ok) return await drop(traded);
   const { sessionId } = traded;
-  if (sessionId === undefined) return { ok: false, because: 'The API named no new sign-in.' };
+  if (sessionId === undefined) {
+    return await drop({ ok: false, because: 'The API named no new sign-in.' });
+  }
   // A new provider session nobody will use: ended where it lives, as the old one is below.
   if (!request.current()) {
     await signOutOf(route, { sessionId, businessKey: request.businessKey });
@@ -61,4 +68,20 @@ export async function signInAgainSession(request: SignInAgainRequest): Promise<S
     await signOutOf(route, { sessionId: request.from, businessKey: request.businessKey });
   }
   return { ok: true, sessionId };
+}
+
+/** GoTrue's own sign-out of this one session (`scope=local`), with the token it issued. */
+async function signOutAtProvider(
+  gotrueUrl: string,
+  token: string,
+  fetch: typeof globalThis.fetch,
+): Promise<void> {
+  try {
+    await fetch(`${gotrueUrl.replace(/\/$/u, '')}/logout?scope=local`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}` },
+    });
+  } catch {
+    // Unreachable: the token is held nowhere, and runs out within the hour.
+  }
 }
