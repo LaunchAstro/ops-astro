@@ -26,6 +26,23 @@ export const OWNER_LINES: Readonly<Record<string, string>> = {
   'training-line': 'Model training switched off on both model accounts, 2026-09-28.',
 };
 
+/**
+ * The evidence link for a published legal version (C81): the public page for
+ * the three public documents, the operations view for the breach runbook,
+ * each pinned to the version and its digest.
+ */
+export function versionLink(
+  key: string,
+  document: string,
+  version: string,
+  digest: string,
+): string {
+  const pin = `digest=${digest}`;
+  return document === 'breach-runbook'
+    ? `https://evidence.example/settings/operations/?runbook=${version}&${pin}`
+    : `https://evidence.example/legal/${key}/${document}/?version=${version}&${pin}`;
+}
+
 /** A record that closes this item or line, with made-up evidence. */
 export function gateRecordBody(item: string): Record<string, string> {
   const statement = OWNER_LINES[item];
