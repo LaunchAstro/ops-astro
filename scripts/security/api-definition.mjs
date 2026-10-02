@@ -4,9 +4,7 @@
 // api-definition.ts). With --only, a target at any other origin is refused.
 //
 //   node scripts/security/api-definition.mjs --target <origin> --business <key>
-//        --out <file> [--only <origin>]
-//
-// Exit 0 when written, 1 when refused, 2 on a usage mistake.
+//        --out <file> [--only <origin>]   (exit 0 written, 1 refused, 2 usage)
 
 import { writeFileSync } from 'node:fs';
 import { apiDefinition, DefinitionRefused, onlyTarget } from './api-definition.ts';

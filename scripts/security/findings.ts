@@ -146,12 +146,13 @@ const CELL_ESCAPES: Readonly<Record<string, string>> = {
   '<': '&lt;',
   '>': '&gt;',
   '|': '\\|',
+  '\\': '\\\\',
 };
 /** One table cell: no pipe, line break or markup can leave it. */
 function cell(value: string): string {
   return value
     .replaceAll(/\s+/gu, ' ')
-    .replaceAll(/[&<>|]/gu, (found) => CELL_ESCAPES[found] ?? '')
+    .replaceAll(/[&<>|\\]/gu, (found) => CELL_ESCAPES[found] ?? '')
     .trim();
 }
 

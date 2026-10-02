@@ -167,7 +167,9 @@ it('a pipe, a newline or markup in the evidence cannot break the table', () => {
     report([
       {
         riskcode: '1',
-        instances: [{ uri: 'https://s.test/a|b', evidence: 'one | two\n<script>x</script>' }],
+        instances: [
+          { uri: 'https://s.test/a|b', evidence: 'one | two \\| three\n<script>x</script>' },
+        ],
       },
     ]),
   );
@@ -175,8 +177,11 @@ it('a pipe, a newline or markup in the evidence cannot break the table', () => {
     .split('\n')
     .find((line) => line.startsWith('| minor'));
   expect(row).toBeDefined();
-  // Five cells: severity, scan, URL, rule, evidence; every pipe inside one is escaped.
-  expect(row?.replaceAll('\\|', '').split('|').length).toBe(7);
+  // Five cells, so six pipes Markdown reads as borders: one after an even run of backslashes.
+  const borders = [...(row ?? '').matchAll(/(\\*)\|/gu)].filter(
+    (match) => (match[1] ?? '').length % 2 === 0,
+  );
+  expect(borders.length).toBe(6);
   expect(row).not.toContain('<script>');
 });
 
