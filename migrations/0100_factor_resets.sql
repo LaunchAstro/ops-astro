@@ -21,6 +21,12 @@
 -- else. The provider factor id is an identifier, shaped as 0049 shapes it.
 --
 -- Written by `access.reset_factor` and by the retry; never deleted.
+--
+-- The live-elsewhere check below holds to the commit only while nothing else
+-- makes the login live in a business meanwhile. No runtime path maps a login
+-- today (the seed scripts alone write `person_logins`). Any path that maps a
+-- login into a business must first take the `second-factor-subject:<digest>`
+-- lock the reset holds before its check, so the two serialise (SEC-B1 M3).
 
 create table public.factor_resets (
   business_id         uuid        not null,
@@ -73,23 +79,26 @@ create policy authority_factor_resets on public.factor_resets
 -- No delete: a reset is part of the person's history.
 grant select, insert, update on public.factor_resets to ops_astro_app;
 
--- Whether a provider subject is live in a business other than the tenant
--- transaction's own: a login of that subject elsewhere, mapped to a person,
--- whose access has not been ended there (C58's `loginLiveElsewhere`, asked
--- here from inside the command's transaction, which the hosted API serves
--- without the owner's login). A reset there would clear that business's
--- sign-in too, so the command refuses it.
+-- Whether a login of the tenant transaction's own business is live in another
+-- business: a login of the same provider subject elsewhere, mapped to a
+-- person, whose access has not been ended there (C58's `loginLiveElsewhere`,
+-- asked here from inside the command's transaction, which the hosted API
+-- serves without the owner's login). A reset there would clear that
+-- business's sign-in too, so the command refuses it.
 --
 -- It runs as its definer with row security off, the one way to see past the
 -- tenant, and is kept narrow on purpose:
+--   * it takes a login id, never a subject: the subject is read inside, from
+--     a login of the transaction's own business (`app_business_id`), so only
+--     a login this business already holds can be asked about;
 --   * it answers one boolean: no id, business, person or count;
---   * the business is the transaction's own (`app_business_id`), never an
---     argument; with none set the answer is true, which refuses;
+--   * with no business set, or an id that is not a login here, the answer is
+--     true, which refuses;
 --   * PUBLIC may not execute it; only the application's group may;
 --   * its search path is pinned.
 -- With an owner that does not bypass row security the query is refused rather
 -- than answered from one business's rows: `row_security = off` fails closed.
-create function public.factor_login_live_elsewhere(subject text)
+create function public.factor_login_live_elsewhere(login uuid)
   returns boolean
   language sql
   stable
@@ -97,20 +106,22 @@ create function public.factor_login_live_elsewhere(subject text)
   set search_path = pg_catalog, public
   set row_security = off
 as $$
-  select case
-           when public.app_business_id() is null then true
-           else exists (
+  select coalesce((
+    select exists (
              select 1
                from public.logins l
                join public.person_logins m
                  on m.business_id = l.business_id and m.login_id = l.id and m.active
-              where l.provider = 'supabase' and l.subject = factor_login_live_elsewhere.subject
-                and l.business_id <> public.app_business_id()
+              where l.provider = l0.provider and l.subject = l0.subject
+                and l.business_id <> l0.business_id
                 and not exists (
                   select 1 from public.access_endings e
                    where e.business_id = l.business_id and e.login_id = l.id))
-         end
+      from public.logins l0
+     where l0.business_id = public.app_business_id()
+       and l0.id = factor_login_live_elsewhere.login
+       and l0.provider = 'supabase'), true)
 $$;
 
-revoke all on function public.factor_login_live_elsewhere(text) from public;
-grant execute on function public.factor_login_live_elsewhere(text) to ops_astro_app;
+revoke all on function public.factor_login_live_elsewhere(uuid) from public;
+grant execute on function public.factor_login_live_elsewhere(uuid) to ops_astro_app;
