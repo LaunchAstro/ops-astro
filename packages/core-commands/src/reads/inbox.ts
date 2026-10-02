@@ -14,9 +14,12 @@
 // would say that another client's task exists. It stays stored and comes back
 // at the first read after access returns. A gone item, a trashed task the
 // caller still holds read on, is listed as gone and names nothing of the task
-// or the fact it points at.
+// or the fact it points at. A mention in a team conversation (C71) is about
+// the conversation, held by its current members alone, and is named by it:
+// its kind and a group's name, never a task.
 
 import {
+  CONVERSATION_TYPE_KEY,
   clientsReached,
   countOwedItems,
   readInboxItems,
@@ -25,7 +28,12 @@ import {
   type Subject,
 } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
-import type { InboxEntry, PersonView, UnattendedView } from '../../../core-wire/src/index.ts';
+import type {
+  InboxConversation,
+  InboxEntry,
+  PersonView,
+  UnattendedView,
+} from '../../../core-wire/src/index.ts';
 
 const iso = (at: Date | null): string | null => (at === null ? null : at.toISOString());
 
@@ -75,24 +83,34 @@ export async function countOwed(tx: TenantQuery, personId: string): Promise<numb
   return await countOwedItems(tx, personId);
 }
 
-/** Each task's key, title and client link, read at the read. */
+interface Named {
+  readonly key: string;
+  readonly title: string | null;
+  readonly clientId: string | null;
+  /** Set when the subject is a team conversation: `key` is then its kind, `title` a group's name. */
+  readonly conversation: boolean;
+}
+
+/** Each task's key, title and client link, or each conversation's kind and name, read at the read. */
 async function taskNames(
   tx: TenantQuery,
   taskIds: readonly string[],
-): Promise<ReadonlyMap<string, { key: string; title: string | null; clientId: string | null }>> {
+): Promise<ReadonlyMap<string, Named>> {
   const rows = await tx.query<{
     readonly id: string;
     readonly key: string | null;
     readonly title: string | null;
     readonly clientId: string | null;
+    readonly conversation: boolean;
   }>(
-    `select id, txt_1 as key, txt_4 as title, uuid_7 as "clientId" from public.records
-      where business_id = $1 and id = any($2::uuid[]) and deleted_at is null`,
-    [tx.businessId, taskIds],
+    `select r.id, r.txt_1 as key, case when t.key = $3 then r.txt_2 else r.txt_4 end as title,
+            r.uuid_7 as "clientId", t.key = $3 as conversation
+       from public.records r
+       join public.record_types t on t.business_id = r.business_id and t.id = r.record_type_id
+      where r.business_id = $1 and r.id = any($2::uuid[]) and r.deleted_at is null`,
+    [tx.businessId, taskIds, CONVERSATION_TYPE_KEY],
   );
-  return new Map(
-    rows.map((row) => [row.id, { key: row.key ?? '', title: row.title, clientId: row.clientId }]),
-  );
+  return new Map(rows.map((row) => [row.id, { ...row, key: row.key ?? '' }]));
 }
 
 /**
@@ -137,13 +155,27 @@ async function named(
     const task = tasks.get(entry.subjectRecordId ?? '');
     const client = reached.get(task?.clientId ?? '');
     const decider = entry.closedByPersonId ?? null;
+    const naming =
+      task === undefined
+        ? {}
+        : task.conversation
+          ? { conversation: conversationOf(entry.subjectRecordId ?? '', task) }
+          : { task: { key: task.key, title: task.title } };
     return {
       ...entry,
-      ...(task === undefined ? {} : { task: { key: task.key, title: task.title } }),
+      ...naming,
       ...(client === undefined ? {} : { client }),
       closedBy: decider === null ? null : (people.get(decider) ?? null),
     };
   });
+}
+
+function conversationOf(conversationId: string, subject: Named): InboxConversation {
+  return {
+    conversationId,
+    kind: subject.key === 'group' ? 'group' : 'direct',
+    name: subject.title,
+  };
 }
 
 /**

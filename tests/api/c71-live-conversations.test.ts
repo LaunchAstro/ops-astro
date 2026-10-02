@@ -19,6 +19,9 @@ const BOARD = 'board';
 /** The status and every byte of a refused join: two refusals that differ in nothing. */
 const refusalOf = (joined: Joined): string => `${String(joined.status)} ${joined.raw}`;
 
+/** The board runs its digest before it asks of a conversation: slower than a task topic. */
+const BOARD_MS = 10_000;
+
 // eslint-disable-next-line max-lines-per-function -- one world, the ticket's lines
 describe.skipIf(databaseUrlFromEnvironment() === undefined)('C71 live conversations', () => {
   let w: LiveGroupWorld;
@@ -103,12 +106,12 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('C71 live conversati
       expect(tab.status, JSON.stringify(tab.refusal)).toBe(200);
     }
     await within(
-      3_000,
+      BOARD_MS,
       () => [tess, zed, bea].every((t) => count(t, 'resync', BOARD) >= 1),
       'joined',
     );
     expect((await g.say(world.ada, `chip ${randomUUID()}`)).status).toBe(200);
-    await within(3_000, () => count(tess, 'conversation', BOARD) === 1, 'a member was told');
+    await within(BOARD_MS, () => count(tess, 'conversation', BOARD) === 1, 'a member was told');
     // Each stream's signals are handled in order: a later conversation of their
     // own told to Zed and to Bea proves the group's message was handled for them
     // first, and said nothing.
@@ -116,8 +119,8 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('C71 live conversati
     expect(
       (await g.chat.send(g.chat.bo, world.bea, `to bea ${randomUUID()}`, 'bravo')).status,
     ).toBe(200);
-    await within(3_000, () => count(zed, 'conversation', BOARD) === 1, 'Zed told of his own');
-    await within(3_000, () => count(bea, 'conversation', BOARD) === 1, 'Bea told of her own');
+    await within(BOARD_MS, () => count(zed, 'conversation', BOARD) === 1, 'Zed told of his own');
+    await within(BOARD_MS, () => count(bea, 'conversation', BOARD) === 1, 'Bea told of her own');
     await sleep(500);
     expect(count(zed, 'conversation', BOARD)).toBe(1);
     expect(count(bea, 'conversation', BOARD)).toBe(1);

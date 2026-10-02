@@ -152,15 +152,16 @@ export interface CommentTarget {
  * The refusal of mentions that cannot read the comment. It names each person
  * only to an author who could already see them (`seenBy`), and otherwise gives
  * back the identifier exactly as sent: its stored letter case would say it exists.
+ * A team conversation's message (C71) is refused by it too.
  */
-async function unreadableMentions(
+export async function unreadableMentions(
   tx: TenantQuery,
-  on: CommentTarget,
+  authorActorId: string,
   named: readonly string[],
   unreadable: readonly Mentioned[],
 ): Promise<CommandRefusal> {
   const ids = unreadable.map((person) => person.personId);
-  const seen = await seenBy(tx, on.authorActorId, ids);
+  const seen = await seenBy(tx, authorActorId, ids);
   const sent = new Map(named.map((id) => [id.toLowerCase(), id] as const));
   const shown = (person: Mentioned): string =>
     seen.has(person.personId)
@@ -171,6 +172,15 @@ async function unreadableMentions(
     ['mentions'],
     unreadable.map((person) => `${shown(person)} cannot read this comment: remove the mention.`),
   );
+}
+
+/** The people a comment names, or its refusal: a list of person ids, absent meaning none. */
+export function mentionsOf(mentions: unknown): readonly string[] | HandlerOutcome {
+  const named = mentions ?? [];
+  if (!Array.isArray(named) || !named.every((id) => isIdentifier(id))) {
+    return refused(refuseCommand('FIELD_VALUE_INVALID', ['mentions'], MENTIONS_FIXES));
+  }
+  return named as string[];
 }
 
 /**
@@ -234,17 +244,15 @@ export async function writeTaskComment(
   if (commentType !== undefined && (typeof commentType !== 'string' || !TYPES.has(commentType))) {
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['comment_type'], TYPE_FIXES));
   }
-  const named = mentions ?? [];
-  if (!Array.isArray(named) || !named.every((id) => isIdentifier(id))) {
-    return refused(refuseCommand('FIELD_VALUE_INVALID', ['mentions'], MENTIONS_FIXES));
-  }
+  const named = mentionsOf(mentions);
+  if (!Array.isArray(named)) return named as HandlerOutcome;
   // INB-1: a mention of someone who cannot read the comment is refused before
   // it saves, rather than raising an item they could never open.
   const task = { taskId: on.target.id, audience };
-  const mentioned = await readMentions(tx, task, named as string[]);
+  const mentioned = await readMentions(tx, task, named);
   const unreadable = mentioned.filter((person) => !person.readable);
   if (unreadable.length > 0) {
-    return refused(await unreadableMentions(tx, on, named as string[], unreadable));
+    return refused(await unreadableMentions(tx, on.authorActorId, named, unreadable));
   }
 
   const effect = await effectRefusal(tx, on, audience);
