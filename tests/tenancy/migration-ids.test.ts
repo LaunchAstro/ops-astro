@@ -58,6 +58,7 @@ describe('the migration ID rule, in the runner', () => {
       '20261302013000_month_13',
       '20260230013000_february_30',
       '0100_Upper',
+      '19990101000000_last_century',
       'loose',
     ]) {
       expect(() => readMigrations(directoryOf(['0001_one', name])), name).toThrow(

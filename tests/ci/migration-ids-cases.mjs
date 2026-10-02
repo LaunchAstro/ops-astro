@@ -8,7 +8,7 @@
 
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
@@ -42,43 +42,81 @@ const BATCH_3B = [
 const stamp = (hours) =>
   new Date(Date.now() + hours * 3_600_000).toISOString().replaceAll(/[-:T]/gu, '').slice(0, 14);
 
-/** Run the check over a base holding `base` and a head that adds `added`. */
-function check(base, added) {
+/** A throwaway repository on `main` with an empty `migrations/`; `done` removes it. */
+function repository() {
   const dir = mkdtempSync(join(tmpdir(), 'migration-ids-'));
-  try {
-    const git = (...args) =>
-      execFileSync('git', args, {
-        cwd: dir,
-        encoding: 'utf8',
-        env: {
-          ...process.env,
-          GIT_AUTHOR_NAME: 'case',
-          GIT_AUTHOR_EMAIL: 'case@example.invalid',
-          GIT_COMMITTER_NAME: 'case',
-          GIT_COMMITTER_EMAIL: 'case@example.invalid',
-        },
-      }).trim();
-    const write = (version) =>
-      writeFileSync(join(dir, 'migrations', `${version}.sql`), 'select 1;\n');
-    git('init', '-q', '-b', 'main');
-    git('config', 'commit.gpgsign', 'false');
-    mkdirSync(join(dir, 'migrations'));
-    for (const version of base) write(version);
-    writeFileSync(join(dir, 'migrations', '0001_m.changes.json'), '[]\n');
-    git('add', '.');
-    git('commit', '-q', '-m', 'base');
-    const baseSha = git('rev-parse', 'HEAD');
-    for (const version of added) write(version);
-    git('add', '-A');
-    git('commit', '-q', '--allow-empty', '-m', 'change');
-    const headSha = git('rev-parse', 'HEAD');
-    return spawnSync(process.execPath, [script], {
+  const git = (...args) =>
+    execFileSync('git', args, {
       cwd: dir,
       encoding: 'utf8',
-      env: { ...process.env, BASE_SHA: baseSha, HEAD_SHA: headSha },
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: 'case',
+        GIT_AUTHOR_EMAIL: 'case@example.invalid',
+        GIT_COMMITTER_NAME: 'case',
+        GIT_COMMITTER_EMAIL: 'case@example.invalid',
+      },
+    }).trim();
+  git('init', '-q', '-b', 'main');
+  git('config', 'commit.gpgsign', 'false');
+  mkdirSync(join(dir, 'migrations'));
+  writeFileSync(join(dir, 'migrations', '0001_m.changes.json'), '[]\n');
+  /** Commit `versions` as new migrations on the current branch; returns the commit. */
+  const commit = (versions, message = 'change') => {
+    for (const version of versions) {
+      writeFileSync(join(dir, 'migrations', `${version}.sql`), 'select 1;\n');
+    }
+    git('add', '-A');
+    git('commit', '-q', '--allow-empty', '-m', message);
+    return git('rev-parse', 'HEAD');
+  };
+  const run = (base, head) =>
+    spawnSync(process.execPath, [script], {
+      cwd: dir,
+      encoding: 'utf8',
+      env: { ...process.env, BASE_SHA: base, HEAD_SHA: head },
     });
+  return { dir, git, commit, run, done: () => rmSync(dir, { recursive: true, force: true }) };
+}
+
+/** Run the check over a base holding `base` and a head that adds `added`. */
+function check(base, added) {
+  const repo = repository();
+  try {
+    const baseSha = repo.commit(base, 'base');
+    return repo.run(baseSha, repo.commit(added));
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    repo.done();
+  }
+}
+
+/**
+ * A merge queue group on `base` (holding `main`): one queue merge per pull
+ * request, in order, each pull request branched from `base` and adding its
+ * migrations. Returns the check's run over the base and the group's head.
+ */
+function group(main, pulls) {
+  const repo = repository();
+  try {
+    const base = repo.commit(main, 'base');
+    const heads = pulls.map((added, i) => {
+      repo.git('checkout', '-q', '-b', `pr-${String(i + 1)}`, base);
+      return repo.commit(added);
+    });
+    repo.git('checkout', '-q', '-b', 'queue', base);
+    for (const [i, head] of heads.entries()) {
+      repo.git(
+        'merge',
+        '-q',
+        '--no-ff',
+        '-m',
+        `Merge pull request #${String(i + 1)} from x/pr`,
+        head,
+      );
+    }
+    return repo.run(base, repo.git('rev-parse', 'HEAD'));
+  } finally {
+    repo.done();
   }
 }
 
@@ -146,6 +184,8 @@ test('refuses a name that is neither a four-digit number nor a UTC timestamp', (
     '20261002246000_minute_60',
     '0100_Upper_Case',
     '0100-dash',
+    '19990101000000_last_century',
+    '01000101000000_year_100',
     'loose',
   ]) {
     refuses(check(MAIN_AFTER_3A, [name]), new RegExp(name, 'u'));
@@ -156,6 +196,51 @@ test('refuses a timestamp ahead of the clock, as local time written for UTC woul
   // Townsville is UTC+10: its wall clock read as UTC is ten hours ahead.
   refuses(check(MAIN_AFTER_3A, [`${stamp(10)}_local_time`]), /ahead of the clock/u);
   passes(check(MAIN_AFTER_3A, [`${stamp(0)}_just_now`]));
+});
+
+test('refuses a queue group whose later entry adds a migration below an earlier one', () => {
+  // B wrote its migration first but queued second: main would stand at A's
+  // migration, then apply B's below it, the other order from a fresh install.
+  const main = [...MAIN_AFTER_3A, '20261002000000_on_main'];
+  refuses(
+    group(main, [['20261002020000_a'], ['20261002010000_b']]),
+    /20261002010000_b sorts before 20261002020000_a/u,
+  );
+  passes(group(main, [['20261002010000_b'], ['20261002020000_a']]));
+});
+
+test('refuses two queue entries that add the same ID', () => {
+  refuses(group(MAIN_AFTER_3A, [['0100_one'], ['0100_two']]), /0100_one and 0100_two/u);
+});
+
+test("judges a pull request's merge against main as it now stands, not the event's older base", () => {
+  const repo = repository();
+  try {
+    const stale = repo.commit(MAIN_AFTER_3A, 'base');
+    repo.git('checkout', '-q', '-b', 'pr', stale);
+    const pr = repo.commit(['20261002020000_pr']);
+    repo.git('checkout', '-q', 'main');
+    repo.commit(['20261002030000_main_moved']);
+    repo.git('merge', '-q', '--no-ff', '-m', 'Merge pr into main', pr);
+    refuses(
+      repo.run(stale, repo.git('rev-parse', 'HEAD')),
+      /20261002020000_pr sorts before 20261002030000_main_moved/u,
+    );
+  } finally {
+    repo.done();
+  }
+});
+
+test('refuses a migration that is not a regular file, such as a symlink', () => {
+  const repo = repository();
+  try {
+    const base = repo.commit(MAIN_AFTER_3A, 'base');
+    writeFileSync(join(repo.dir, 'elsewhere.sql'), 'select 1;\n');
+    symlinkSync('../elsewhere.sql', join(repo.dir, 'migrations', '20261002013000_link.sql'));
+    refuses(repo.run(base, repo.commit([])), /20261002013000_link is not a regular file/u);
+  } finally {
+    repo.done();
+  }
 });
 
 test('needs both commits, as migrations-unchanged does', () => {
