@@ -225,6 +225,7 @@ code on this head, and where that is shown.
 | `FRESH_SIGN_IN_REQUIRED`                                                     | 403    | yes, on `/account/factor/enrol` (C59)                                                                                                                                                                                                                          |
 | `FACTOR_ALREADY_ENROLLED`                                                    | 409    | yes, on `/account/factor/enrol` (C59)                                                                                                                                                                                                                          |
 | `FACTOR_NOT_ENROLLED`                                                        | 409    | yes, on `/account/factor/verify` and `/remove` (C59)                                                                                                                                                                                                           |
+| `FACTOR_RESET_REFUSED`                                                       | 409    | yes, on `access.reset_factor`: own person, a member holding more, not one login, or live elsewhere (C59)                                                                                                                                                       |
 | `SECOND_FACTOR_INVALID`                                                      | 422    | yes, on `/account/factor/verify` and `/remove` (C59)                                                                                                                                                                                                           |
 | `SECOND_FACTOR_LOCKED`                                                       | 429    | yes, after five wrong codes in fifteen minutes (C59)                                                                                                                                                                                                           |
 | `AGENT_QUOTA_EXCEEDED`                                                       | 429    | yes, an agent credential past a limit a minute or at once (API-2)                                                                                                                                                                                              |
@@ -728,6 +729,12 @@ issued in that business with its agent actor, and ends the membership and the
 person's acting identity. The delegations lose their ceiling with the grants and are
 revoked with the cause `authority_lost`. Nobody ends the last business-wide
 `access:manage` of a person who can sign in.
+
+Resetting a member's lost authenticator (`access.reset_factor`, C59) is
+`settings:manage`, never an agent's, behind the caller's own fresh step-up. It
+is refused `FACTOR_RESET_REFUSED` unless the caller holds every business-wide
+grant the member holds (ORCH66-FACTORM2): no reset upward, owner to owner
+allowed. [The API](API.md#resetting-a-members-authenticator-c59) has the rest.
 
 A party-scoped grant is checked at party scope. The task reads and writes ask
 record scope, so they do not yet resolve a grant over a client through the
