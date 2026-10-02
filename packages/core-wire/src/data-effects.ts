@@ -251,6 +251,11 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
     ),
     [{ provider: 'identity', forClient: false }],
   ),
+  // C59: a member's factor cleared here and at the identity provider.
+  'access.reset_factor': writing(
+    business('factor_resets', 'second_factors', 'people', 'ended_sessions'),
+    [{ provider: 'identity', forClient: false }],
+  ),
   'grant.revoke': GRANTS,
   'delegation.revoke': writing([
     ...client('attempts', 'leases', 'planned_runs', 'reservations', 'task_envelopes'),

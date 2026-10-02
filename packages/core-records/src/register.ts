@@ -343,6 +343,14 @@ const ROWS_HEAD = [
     meaning: 'This person has no second factor to verify or remove',
     source: 'C59 TR-A2-2',
   },
+  // C59 (ORCH65-Q3): an owner's reset of a member's factor that this business
+  // may not make. One set of words for every reason, so none is told apart.
+  {
+    code: 'FACTOR_RESET_REFUSED',
+    status: 409,
+    meaning: "This member's second factor cannot be reset from this business",
+    source: 'C59 ORCH65-Q3',
+  },
   {
     code: 'SECOND_FACTOR_INVALID',
     status: 422,

@@ -45,6 +45,12 @@ import type { CommandRequest } from './requests.ts';
 export interface LoginProvider {
   endSessions(subject: string): Promise<ProviderAnswer<void>>;
   deactivate(subject: string): Promise<ProviderAnswer<void>>;
+  /**
+   * C59 (ORCH65-Q3): remove one factor of the login, an owner's reset of a
+   * lost authenticator (`factor-reset.ts`). Absent where no admin key is
+   * held: then nothing is sent and the step stays owed.
+   */
+  deleteFactor?(subject: string, factorId: string): Promise<ProviderAnswer<void>>;
 }
 
 /** What one pass over a business's owed endings did, by count only. */
