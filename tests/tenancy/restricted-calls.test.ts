@@ -654,20 +654,20 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(wrong).toStrictEqual([]);
   });
 
+  // Exactly four, each for a named reason. The append-only trigger refuses
+  // the owner itself. The fair share's count (AW-01, ORCH-DECISION SL11
+  // AW-01) is the one read across businesses: a provider route's ceiling is
+  // the installation's, which a tenant transaction cannot count under row
+  // security. It answers one number and no id, and only the broker's role
+  // may execute it (tests/broker/aw-01-broker-fair-share.test.ts). The drill
+  // stamp (C55) writes only now(), and only the drill's identity runs it. The
+  // codes expiry (0100) deletes only rows past its fixed horizon, and only the
+  // upkeep identity runs it.
   describe('the security definer functions', () => {
     const definers = (): readonly CatalogueFunction[] => functions.filter((fn) => fn.definer);
     const definer = (signature: string): CatalogueFunction | undefined =>
       definers().find((fn) => fn.signature === signature);
 
-    // Exactly four, each for a named reason. The append-only trigger refuses
-    // the owner itself. The fair share's count (AW-01, ORCH-DECISION SL11
-    // AW-01) is the one read across businesses: a provider route's ceiling is
-    // the installation's, which a tenant transaction cannot count under row
-    // security. It answers one number and no id, and only the broker's role
-    // may execute it (tests/broker/aw-01-broker-fair-share.test.ts). The drill
-    // stamp (C55) writes only now(), and only the drill's identity runs it. The
-    // codes expiry (0100) deletes only rows past its fixed horizon, and only the
-    // upkeep identity runs it.
     it('are exactly four, each with its search path pinned', () => {
       expect(definers().map((fn) => fn.signature)).toStrictEqual([
         'handback_reports_append_only()',
