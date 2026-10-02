@@ -27,11 +27,17 @@ export const IS_CONVERSATION = `exists (select 1 from public.record_types ct
    where ct.business_id = r.business_id and ct.id = r.record_type_id
      and ct.key = 'team_conversation')`;
 
-/** Whether `person` (an SQL expression) is a current member of conversation `r`. */
-export const inConversation = (person: string): string =>
+/**
+ * Whether `person` (an SQL expression) is a current member of conversation `r`,
+ * and, given `since`, has been since then: a re-added member reads from the new
+ * join only, an item raised before it included (AUTHORITY.md, team chat).
+ */
+export const inConversation = (person: string, since?: string): string =>
   `exists (select 1 from public.team_conversation_members cm
    where cm.business_id = r.business_id and cm.conversation_id = r.id
-     and cm.person_id = ${person} and cm.left_at is null)`;
+     and cm.person_id = ${person} and cm.left_at is null${
+       since === undefined ? '' : ` and cm.joined_at <= ${since}`
+     })`;
 
 /** One person's access to one task, or to one conversation, derived as every read derives it. */
 export async function taskAccess(
