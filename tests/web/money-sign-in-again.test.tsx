@@ -162,7 +162,7 @@ describe('money step-up by signing in again', () => {
     expect(sessions.session?.sessionId).toBe('sid-old');
   });
 
-  it('money sign-in again: a session ended during the sign-in sends nothing and ends the new cookie', async () => {
+  it('money sign-in again: a session ended during the sign-in sends nothing and signs the new sign-in out at the provider and its cookie', async () => {
     const trade = held();
     const { view, server, end } = await refused((call) =>
       call.url === '/api/session' ? trade.wait() : null,
@@ -173,7 +173,9 @@ describe('money step-up by signing in again', () => {
     await settle();
     const ended = server.calls.filter((call) => call.url === '/api/session/end');
     expect(ended.map((call) => call.session)).toStrictEqual(['sid-new']);
-    expect(server.to('/account/sessions/sign-out')).toEqual([]);
+    expect(server.to('/account/sessions/sign-out').map((call) => call.session)).toStrictEqual([
+      'sid-new',
+    ]);
     expect(server.to(WRITE)).toHaveLength(1);
   });
 
