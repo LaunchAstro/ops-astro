@@ -81,6 +81,11 @@ export interface IssuedFactor {
   readonly uri: string;
 }
 
+/** What `account/factor/remove` answers. */
+export interface FactorRemoved {
+  readonly removed: true;
+}
+
 export interface ClientOptions {
   /**
    * Where the API is served from: empty for the page's own origin, an absolute origin in a test.
@@ -179,6 +184,14 @@ export class OperationsClient {
    */
   async enrolFactor(): Promise<CallResult<IssuedFactor>> {
     return await this.#post<IssuedFactor>('/account/factor/enrol', {});
+  }
+
+  /**
+   * The person's authenticator app removed (C59), with the current code from it, entered for this
+   * change. The server ends the person's other sessions.
+   */
+  async removeFactor(code: string): Promise<CallResult<FactorRemoved>> {
+    return await this.#post<FactorRemoved>('/account/factor/remove', { code });
   }
 
   /** The person's own availability (MP-7-10), on the path the surface names. */
