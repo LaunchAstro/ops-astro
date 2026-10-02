@@ -131,23 +131,17 @@ it("the scan login is a made-up member of the made-up business, with a member's 
   ]);
 });
 
-it('the login file is read back only in its own shape', () => {
+it('the login file is read back only in its own shape: the address and the sign-in', () => {
   const made = {
     email: 'scan-0123456789ab@alpha.local',
     userId: '11111111-1111-4111-8111-111111111111',
-    businessId: '22222222-2222-4222-8222-222222222222',
-    personId: '33333333-3333-4333-8333-333333333333',
   };
   expect(loginRecord(JSON.stringify(made))).toStrictEqual(made);
-  // Made only as far as the sign-in: removal still finds it.
-  expect(loginRecord(JSON.stringify({ email: made.email, userId: made.userId }))).toStrictEqual({
-    email: made.email,
-    userId: made.userId,
-  });
+  // The person is never taken from the file: removal finds it from the sign-in's own mapping.
+  expect(loginRecord(JSON.stringify({ ...made, personId: 'x' }))).toStrictEqual(made);
   expect(() => loginRecord('{')).toThrow();
   expect(() => loginRecord(JSON.stringify({ ...made, userId: 'x' }))).toThrow();
   expect(() => loginRecord(JSON.stringify({ ...made, email: 'ada@alpha.local' }))).toThrow();
-  expect(() => loginRecord(JSON.stringify({ ...made, personId: "1' or '1'='1" }))).toThrow();
 });
 
 it('removal checks first: it refuses any sign-in or person that is not the scan login', () => {
@@ -170,5 +164,9 @@ it('removal checks first: it refuses any sign-in or person that is not the scan 
   ).toContain('sign-in');
   expect(removalRefusal({ email, providerEmail: email, displayName: 'Ada Alpha' })).toContain(
     'person',
+  );
+  // A sign-in the provider answers for with no address is not known to be the scan login's.
+  expect(removalRefusal({ email, providerEmail: '', displayName: SCAN_PERSON })).toContain(
+    'sign-in',
   );
 });

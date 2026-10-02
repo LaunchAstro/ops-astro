@@ -51,6 +51,8 @@ jobs:
             "$RUNNER_TEMP/scan-login.json" "$RUNNER_TEMP/scan-token" >> "$GITHUB_ENV"
           node scripts/security/api-definition.mjs --target "$TARGET" --only "$STAGING_WEB_URL" \
             --business alpha --out "$WORK/api-definition.json"
+          # Every later step scans the origin that was checked, not the raw input.
+          echo "SCAN_TARGET=$(node -e 'console.log(new URL(process.env.TARGET).origin)')" >> "$GITHUB_ENV"
 
       - name: Make the made-up scan login
         env:
@@ -69,7 +71,7 @@ jobs:
         run: |
           rc=0
           docker run --rm -v "$WORK:/zap/wrk:rw" "$ZAP_IMAGE" \
-            zap-baseline.py -t "$TARGET" -J baseline.json -r baseline.html -I || rc=$?
+            zap-baseline.py -t "$SCAN_TARGET" -J baseline.json -r baseline.html -I || rc=$?
           # 0 passed, 2 warnings (judged below by the findings table); 1 or 3 is ZAP's own failure.
           [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ] || { echo "ZAP baseline stopped ($rc)"; exit 1; }
 
@@ -77,7 +79,7 @@ jobs:
         run: |
           ZAP_AUTH_HEADER_VALUE="Bearer $(cat "$SCAN_TOKEN_FILE")"
           # ZAP matches the site by host name alone: with a port in it, no request carries the token.
-          ZAP_AUTH_HEADER_SITE="$(node -e 'console.log(new URL(process.env.TARGET).hostname)')"
+          ZAP_AUTH_HEADER_SITE="$(node -e 'console.log(new URL(process.env.SCAN_TARGET).hostname)')"
           export ZAP_AUTH_HEADER_VALUE ZAP_AUTH_HEADER_SITE
           rc=0
           docker run --rm -v "$WORK:/zap/wrk:rw" -e ZAP_AUTH_HEADER_VALUE -e ZAP_AUTH_HEADER_SITE \
@@ -93,7 +95,7 @@ jobs:
           export SCAN_BEARER
           rc=0
           node scripts/security/findings.mjs --report baseline="$WORK/baseline.json" \
-            --report api="$WORK/api.json" --out "$WORK/findings" --redact-env SCAN_BEARER || rc=$?
+            --report api="$WORK/api.json" --out "$WORK/findings" --redact-env SCAN_BEARER --signed-in api || rc=$?
           [ -f "$WORK/findings/findings.md" ] && cat "$WORK/findings/findings.md" >> "$GITHUB_STEP_SUMMARY"
           exit "$rc"
 

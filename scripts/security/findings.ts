@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The security pass's findings table and severity gate (S0-5 item 7), from
-// ZAP's JSON reports (`-J`, ZAP 2.17), by the closing rule's mapping: high is a
-// blocker, medium a major, low a minor. Blockers and majors fail the run; minors
-// are listed for the owner; informational alerts are listed apart and never
-// fail (ORCH65, 2 Oct 2026); a blank or unknown risk code is a blocker.
+// The security pass's findings table and severity gate (S0-5 item 7), from ZAP's
+// JSON reports (`-J`, ZAP 2.17), by the closing rule's mapping below (S0-5.md
+// closing rule; informational per ORCH65, 2 Oct 2026).
 
 export type Severity = 'blocker' | 'major' | 'minor';
 
@@ -33,7 +31,6 @@ export interface Finding {
   readonly evidence: string;
 }
 
-/** An informational rule, once per alert, with how many URLs it was seen on. */
 export interface Listed {
   readonly scan: string;
   readonly rule: string;
@@ -157,7 +154,10 @@ function cell(value: string): string {
 }
 
 /** The findings table the run keeps as its artefact, in Markdown. */
-export function findingsTable(scans: readonly ScanFindings[]): string {
+export function findingsTable(
+  scans: readonly ScanFindings[],
+  problems: readonly string[] = [],
+): string {
   const gate = severityGate(scans);
   const findings = scans
     .flatMap((each) => each.findings)
@@ -168,7 +168,11 @@ export function findingsTable(scans: readonly ScanFindings[]): string {
     `Scans: ${scans.map((each) => each.scan).join(', ')}. ` +
       `Blockers ${String(gate.blocker)}, majors ${String(gate.major)}, ` +
       `minors ${String(gate.minor)}, informational ${String(gate.info)}. ` +
-      (gate.fails ? 'The run fails: every blocker and major is fixed first.' : 'The run passes.'),
+      (problems.length > 0
+        ? `The run fails: ${problems.join('; ')}.`
+        : gate.fails
+          ? 'The run fails: every blocker and major is fixed first.'
+          : 'The run passes.'),
     '',
   ];
   if (findings.length === 0) lines.push('No findings.');
@@ -195,4 +199,18 @@ export function findingsTable(scans: readonly ScanFindings[]): string {
       );
   }
   return `${lines.join('\n')}\n`;
+}
+
+/** ZAP's passive rule for a 4xx answer: its evidence is the status code. */
+const CLIENT_ERROR_RULE = '100000';
+
+/** An API scan was not signed in when most of the 4xx answers it saw were 401. */
+export function signedOut(report: unknown): boolean {
+  const sites = isObject(report) && Array.isArray(report['site']) ? report['site'] : [];
+  const codes = (sites as readonly unknown[])
+    .flatMap((site) => (isObject(site) && Array.isArray(site['alerts']) ? site['alerts'] : []))
+    .filter((alert) => isObject(alert) && alert['pluginid'] === CLIENT_ERROR_RULE)
+    .flatMap((alert) => (Array.isArray(alert['instances']) ? alert['instances'] : []))
+    .map((instance) => (isObject(instance) ? text(instance['evidence']) : ''));
+  return codes.filter((code) => code === '401').length * 2 > codes.length;
 }

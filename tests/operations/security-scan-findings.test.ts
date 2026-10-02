@@ -17,6 +17,7 @@ import {
   findingsTable,
   ReportRefused,
   severityGate,
+  signedOut,
 } from '../../scripts/security/findings.ts';
 
 const MARKER = 'planted-bearer-9f3c1d7e5b2a4680';
@@ -206,6 +207,28 @@ it('a blocker or a major fails the run; minors alone pass and are listed for the
   expect(table).toContain('impact, a compensating control and an expiry');
 });
 
+const answered = (codes: readonly string[]) =>
+  report([
+    {
+      riskcode: '0',
+      pluginid: '100000',
+      instances: codes.map((evidence) => ({ uri: 'https://s.test/', evidence })),
+    },
+  ]);
+
+it('an API scan whose answers are mostly 401 was not signed in', () => {
+  expect(signedOut(answered(['401', '401', '401', '400']))).toBe(true);
+  expect(signedOut(answered(['400', '409', '422', '401']))).toBe(false);
+  expect(signedOut(report([{ riskcode: '1' }]))).toBe(false);
+});
+
+it('a problem beside the findings fails the run in the table too', () => {
+  const clean = findingsOf('baseline', report([]));
+  const table = findingsTable([clean], ['the api report could not be read (ENOENT)']);
+  expect(table).toContain('The run fails: the api report could not be read (ENOENT).');
+  expect(table).not.toContain('The run passes');
+});
+
 it('a clean scan passes with an empty table', () => {
   const clean = findingsOf('baseline', report([]));
   expect(severityGate([clean]).fails).toBe(false);
@@ -240,6 +263,15 @@ it('writes the table and the JSON, exits 1 on a major and keeps the planted mark
   expect(table).toContain('| major | api |');
 });
 
+it('exits 1 when the scan named by --signed-in was answered 401', () => {
+  const planted = join(dir, 'signed-out.json');
+  writeFileSync(planted, JSON.stringify(answered(['401', '401', '400'])));
+  const out = join(dir, 'out-signed-out');
+  const run = command(['--report', `api=${planted}`, '--out', out, '--signed-in', 'api']);
+  expect(run.status).toBe(1);
+  expect(readFileSync(join(out, 'findings.md'), 'utf8')).toContain('was not signed in');
+});
+
 it('exits 0 on minors alone and 1 on a missing report', () => {
   const planted = join(dir, 'baseline.json');
   writeFileSync(planted, JSON.stringify(report([{ riskcode: '1' }])));
@@ -253,4 +285,5 @@ it('exits 0 on minors alone and 1 on a missing report', () => {
   ]);
   expect(missing.status).toBe(1);
   expect(missing.stderr).toContain('baseline');
+  expect(readFileSync(join(dir, 'out-missing', 'findings.md'), 'utf8')).toContain('The run fails');
 });

@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The security pass's scan login (S0-5 item 7): the API scan signs in as a
-// made-up member the job makes and removes, so no seeded person's password is
-// handed to a scanner. Every refusal is made before anything connects, named
-// by setting, never by value: on staging each address must be in staging's
-// project and not production's; the local place takes this machine only.
+// The security pass's scan login (S0-5 item 7), a made-up member the job makes
+// and removes. Every refusal comes before anything connects, named by setting:
+// on staging each address is staging's project and not production's; the local
+// place takes this machine only.
 // Removal checks first that the sign-in and the person are the scan login's.
 
 import { databaseProject, Refusal } from '../ops/staging-reset.ts';
@@ -108,34 +107,20 @@ export function scanLoginRefusal(
 export interface LoginRecord {
   readonly email: string;
   readonly userId: string;
-  readonly businessId?: string;
-  readonly personId?: string;
 }
 
-/** The login file `make` wrote, read back only in its own shape. */
+/** The login file `make` wrote: the address and the sign-in, nothing else read from it. */
 export function loginRecord(text: string): LoginRecord {
   const parsed: unknown = JSON.parse(text);
-  if (typeof parsed !== 'object' || parsed === null)
-    throw new Refusal('the login file is not a record');
-  const record = parsed as Readonly<Record<string, unknown>>;
-  const email = record['email'];
-  const userId = record['userId'];
+  const record = (typeof parsed === 'object' && parsed !== null ? parsed : {}) as Readonly<
+    Record<string, unknown>
+  >;
+  const { email, userId } = record;
   if (typeof email !== 'string' || !SCAN_EMAIL.test(email))
     throw new Refusal('the login file names no scan login');
   if (typeof userId !== 'string' || !UUID.test(userId))
     throw new Refusal('the login file names no sign-in');
-  const out: { email: string; userId: string; businessId?: string; personId?: string } = {
-    email,
-    userId,
-  };
-  for (const name of ['businessId', 'personId'] as const) {
-    const value = record[name];
-    if (value === undefined) continue;
-    if (typeof value !== 'string' || !UUID.test(value))
-      throw new Refusal(`the login file's ${name} is not an id`);
-    out[name] = value;
-  }
-  return out;
+  return { email, userId };
 }
 
 /** Check first: the provider's sign-in and the person must be the scan login's own. */

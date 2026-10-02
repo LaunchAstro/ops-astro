@@ -1,11 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The OpenAPI document the API scan reads (S0-5 item 7). The API keeps no
-// hand-written definition: every route is `POST /api/b/<business>` plus the
-// command's path (`docs/local/API.md`, "Routes"), so this derives one from
-// COMMAND_SURFACE with each command's operands typed, and a command added later
-// is scanned the day it lands. The person prefix only: the agent prefix needs
-// an agent credential.
+// The OpenAPI document the API scan reads (S0-5 item 7), derived from
+// COMMAND_SURFACE as the routes are (`docs/local/API.md`, "Routes"), operands
+// typed, so a command added later is scanned the day it lands. The person
+// prefix only: the agent prefix needs an agent credential.
 
 import {
   COMMAND_SURFACE,

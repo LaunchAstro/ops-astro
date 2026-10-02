@@ -3,14 +3,13 @@
 // The security pass's scan login, the command (ticket S0-5 item 7). The
 // decisions are in `scan-login.ts`; this file runs them.
 //
-//   node scripts/security/scan-login.mjs make
-//   node scripts/security/scan-login.mjs remove
+//   node scripts/security/scan-login.mjs make|remove
 //
-// Settings: deploy/staging/SECURITY-SCAN.md, plus SCAN_LOGIN_PLACE (staging
-// or local) and SCAN_LOGIN_FILE and SCAN_TOKEN_FILE (written owner-only).
-// `make` writes SCAN_LOGIN_FILE as it goes, so `remove` finds whatever was made
-// even when `make` stopped part way. Exit 0 when done, 1 when refused or
-// stopped. Nothing printed carries an address, a key, a password or the token.
+// Settings: deploy/staging/SECURITY-SCAN.md, plus SCAN_LOGIN_PLACE (staging or
+// local), SCAN_LOGIN_FILE and SCAN_TOKEN_FILE (written owner-only). `make` writes
+// SCAN_LOGIN_FILE once the sign-in exists, so `remove` finds it even when `make`
+// stopped part way. Exit 0 when done, 1 when refused or stopped. Nothing
+// printed carries an address, a key, a password or the token.
 
 import { randomBytes, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -130,8 +129,7 @@ async function make() {
   const business = await businessId();
   const db = connect(env.DATABASE_URL, { source: 'scan-login' });
   try {
-    const personId = await db.withBusiness(business, (tx) => member(tx, userId));
-    keep(env.SCAN_LOGIN_FILE, JSON.stringify({ email, userId, businessId: business, personId }));
+    await db.withBusiness(business, (tx) => member(tx, userId));
   } finally {
     await db.close();
   }
@@ -150,45 +148,56 @@ async function make() {
   console.log(`scan-login: made ${email}, a member of ${SCAN_BUSINESS}, signed in`);
 }
 
-/** Check first, then end the person's grants, membership and acting identity. */
+// Check first, then end what the sign-in is mapped to, found from its own login
+// row and never from the file: a lost reply is found, a tampered file names no one.
 async function endRows(record, providerEmail) {
-  if (record.businessId !== undefined && record.personId !== undefined) {
-    const db = connect(env.DATABASE_URL, { source: 'scan-login' });
-    try {
-      await db.withBusiness(record.businessId, async (tx) => {
-        const rows = await tx.query('select display_name from public.people where id = $1', [
-          record.personId,
-        ]);
-        const why = removalRefusal({
-          email: record.email,
-          providerEmail,
-          displayName: rows[0]?.display_name,
-        });
-        if (why !== undefined) stop(why);
-        if (rows.length === 0) return;
-        const actor = await tx.query(
-          `select id from public.actors where person_id = $1 and kind = 'person'`,
-          [record.personId],
-        );
-        await endPersonAuthority(tx, record.personId, actor[0]?.id ?? record.personId);
-        await tx.query(
-          `update public.memberships set active = false, ended_at = now()
-            where business_id = $1 and person_id = $2::uuid and active`,
-          [tx.businessId, record.personId],
-        );
-        await tx.query(
-          `update public.actors set active = false, deactivated_at = now()
-            where business_id = $1 and person_id = $2::uuid and kind = 'person' and active`,
-          [tx.businessId, record.personId],
-        );
-      });
-    } finally {
-      await db.close();
-    }
-  } else {
-    const why = removalRefusal({ email: record.email, providerEmail, displayName: undefined });
-    if (why !== undefined) stop(why);
+  const db = connect(env.DATABASE_URL, { source: 'scan-login' });
+  try {
+    await db.withBusiness(await businessId(), async (tx) => {
+      const mapped = await tx.query(
+        `select pl.person_id, p.display_name from public.logins l
+           join public.person_logins pl on pl.login_id = l.id
+           join public.people p on p.id = pl.person_id
+          where l.provider = 'supabase' and l.subject = $1`,
+        [record.userId],
+      );
+      // The sign-in is checked even when nothing is mapped to it; each person too.
+      const why = [undefined, ...mapped.map((row) => row.display_name)]
+        .map((displayName) => removalRefusal({ email: record.email, providerEmail, displayName }))
+        .find((each) => each !== undefined);
+      if (why !== undefined) stop(why);
+      for (const { person_id: personId } of mapped) {
+        // eslint-disable-next-line no-await-in-loop -- one person, in one transaction
+        await endPerson(tx, personId, record.userId);
+      }
+    });
+  } finally {
+    await db.close();
   }
+}
+
+/** As `access.end` ends a person (`access-end.ts`), and the login's mapping with it. */
+async function endPerson(tx, personId, subject) {
+  const actor = await tx.query(
+    `select id from public.actors where person_id = $1 and kind = 'person'`,
+    [personId],
+  );
+  await endPersonAuthority(tx, personId, actor[0]?.id ?? personId);
+  await tx.query(
+    `update public.memberships set active = false, ended_at = now()
+      where business_id = $1 and person_id = $2::uuid and active`,
+    [tx.businessId, personId],
+  );
+  await tx.query(
+    `update public.actors set active = false, deactivated_at = now()
+      where business_id = $1 and person_id = $2::uuid and kind = 'person' and active`,
+    [tx.businessId, personId],
+  );
+  await tx.query(
+    `update public.person_logins set active = false where person_id = $1::uuid
+        and login_id in (select id from public.logins where subject = $2)`,
+    [personId, subject],
+  );
 }
 
 async function remove() {
@@ -201,6 +210,8 @@ async function remove() {
   if (found.status !== 200 && found.status !== 404)
     stop(`the admin API did not read the sign-in (${found.status})`);
   const providerEmail = found.status === 404 ? undefined : found.body?.email;
+  if (found.status === 200 && typeof providerEmail !== 'string')
+    stop('the admin API answered for the sign-in with no address; nothing was removed');
 
   await endRows(record, providerEmail);
 
