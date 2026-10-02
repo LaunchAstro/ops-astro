@@ -141,13 +141,13 @@ export function severityGate(scans: readonly ScanFindings[]): GateResult {
   };
 }
 
-/** One table cell: no pipe, line break or markup can leave it. */
 const CELL_ESCAPES: Readonly<Record<string, string>> = {
   '&': '&amp;',
   '<': '&lt;',
   '>': '&gt;',
   '|': '\\|',
 };
+/** One table cell: no pipe, line break or markup can leave it. */
 function cell(value: string): string {
   return value
     .replaceAll(/\s+/gu, ' ')
