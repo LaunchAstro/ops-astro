@@ -61,8 +61,16 @@ export interface HistoryEntry {
   readonly actorId: string;
   /** `person`, `agent` or `worker` (MP-4-16); null for an actor this business does not hold. */
   readonly actorKind: string | null;
-  /** The person's display name for a person's actor; null for any other. */
+  /**
+   * The person's display name for a person's actor; null for any other, and for a
+   * reader not shown people (the agent prefix).
+   */
   readonly actorName: string | null;
+  /**
+   * The person the actor is; null for an agent or a worker, and for a reader
+   * not shown people (the agent prefix).
+   */
+  readonly personId: string | null;
   readonly operation: string;
   /**
    * On a `task.duplicate` entry only (MP-4-8): the task it was duplicated

@@ -287,6 +287,7 @@ async function revokeGrantRow(
       leaseIds: candidates.flatMap((each) => (each.delegation_id === null ? [each.lease_id] : [])),
       causeId: grantId,
     },
+    actorId: context.session.actorId,
     revoke: async () => {
       // The candidate set is part of the lock set, so it is rechecked like
       // the rest of it: a pickup that committed in between is a lease these
@@ -356,6 +357,7 @@ export async function revokeDelegationAsManager(
 
   const loss = await classifyAuthorityLoss(tx, {
     delegationIds: [delegationId],
+    actorId: context.session.actorId,
     revoke: async () => {
       const live = await tx.query<{ readonly live: boolean }>(
         `select (revoked_at is null and settled_at is null and expires_at > now()) as live
@@ -472,11 +474,13 @@ export interface EndedAuthority {
  * order `task.pickup` holds its covering grants in. Locking them one at a time
  * between classifications would wait on a grant row while holding runtime
  * locks, the cycle `revokeGrantRow` is written to avoid. One classification
- * takes one complete lock set.
+ * takes one complete lock set. `endedBy` is the actor of the person ending
+ * the access, whom each agent's clear from its task names.
  */
 export async function endPersonAuthority(
   tx: TenantQuery,
   personId: string,
+  endedBy: string,
 ): Promise<EndedAuthority> {
   const { grantIds, given } = await heldAndGiven(tx, personId);
   const discover = async (): Promise<readonly Dependent[]> => {
@@ -499,6 +503,7 @@ export async function endPersonAuthority(
       // The recorded cause of a person's own lease: a grant this act revoked.
       causeId: grantIds[0] ?? personId,
     },
+    actorId: endedBy,
     revoke: async () => {
       requireUnchanged(
         candidates,

@@ -97,10 +97,9 @@ const CONSTANT = new Set([
 ]);
 const COLOUR_PROPERTY =
   /^(color|background(-color|-image)?|border(-(top|right|bottom|left|block|inline)(-start|-end)?)?(-color)?|outline(-color)?|box-shadow|fill|stroke|caret-color|accent-color|text-decoration(-color)?|column-rule(-color)?)$/u;
+const KIT_SHEETS = ['2-controls-and-marks', '2-primitives', '2-empty', '2-forms', '3-shell'];
 const SHEETS = [
-  ...'2-controls-and-marks 2-primitives 2-forms 3-shell 3-dock 4-board 5-task'
-    .split(' ')
-    .map((sheet) => `${styles}${sheet}.css`),
+  ...[...KIT_SHEETS, '3-dock', '4-board', '5-task'].map((sheet) => `${styles}${sheet}.css`),
   `${root}apps/web/src/styles/6-slice.css`,
 ];
 const lightOnly = (sets: Sets, name: string, css: string): string[] => {

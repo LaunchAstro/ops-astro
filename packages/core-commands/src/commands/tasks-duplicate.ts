@@ -10,12 +10,14 @@
 // the chosen client, one subtask per step name, and nothing else. It reads one
 // thing of the old task, its type; the old task is untouched.
 //
-// Both parts of the authority are asked here, inside the transaction that
-// creates the task, with the caller's task grants held for share: `task:write` for the chosen
-// client (party scope, or the business when there is none) and `task:read` on
-// the old task, at record scope as `task.read` asks it. So a read revoked after
-// the draft opened refuses the create. An agent never reaches this: the row is
-// person-only on every surface.
+// All three asks of the authority are made here, inside the transaction that
+// creates the task, with the caller's task grants held for share: `task:read`
+// on the old task, at record scope as `task.read` asks it; `task:write` at the
+// chosen client (party scope, or the business when there is none); and
+// `task:share` at the chosen client when it differs from the old task's (none
+// counts as a client), since that moves the work across clients (ORCH57B11,
+// REVIEW-2D-2). So a read revoked after the draft opened refuses the create.
+// An agent never reaches this: the row is person-only on every surface.
 //
 // The carried text guard comes from here, so the app, the API and the command
 // line give the same answer: a title or step name that names the old task's
@@ -155,40 +157,6 @@ async function namingFields(
 }
 
 /**
- * Both parts of the authority, asked with the caller's task grants held for
- * share, before the old task's row is locked (grants before records, as
- * `task.decide` holds them): a revocation that committed first is seen, and
- * one that comes second waits for this transaction. Asked at the clock after
- * the hold, so a grant that lapsed while this waited no longer counts.
- */
-async function refuseAuthority(
-  tx: TenantQuery,
-  context: CommandContext,
-  oldId: string,
-  client: string | null,
-): Promise<CommandRefusal | undefined> {
-  const subjects = subjectsOf(context.session);
-  const there: Scope =
-    client === null ? { kind: 'business', id: null } : { kind: 'party', id: client };
-  await holdCoveringGrants(tx, subjects, 'task');
-  const at = await lockedInstant(tx);
-  const reads = await checkAuthorityAt(
-    tx,
-    subjects,
-    { collection: 'task', action: 'read', scope: { kind: 'record', id: oldId } },
-    at,
-  );
-  if (!reads.ok) return reads.refusal;
-  const writes = await checkAuthorityAt(
-    tx,
-    subjects,
-    { collection: 'task', action: 'write', scope: there },
-    at,
-  );
-  return writes.ok ? undefined : writes.refusal;
-}
-
-/**
  * The old task's type and client, read under a share lock so it cannot be
  * purged while the link to it is written. Live only: a trashed task is
  * answered as a missing one. So is any task when the chosen client is not one
@@ -209,6 +177,39 @@ async function readOld(
   const row = rows[0];
   if (row === undefined || (chosen !== null && !(await isClientHere(tx, chosen)))) return undefined;
   return { typeId: row.type_id, client: row.client };
+}
+
+/**
+ * The authority, asked with the caller's task grants held for share, before
+ * the old task's row is locked (grants before records, as `task.decide` holds
+ * them): a revocation that committed first is seen, and one that comes second
+ * waits for this transaction. Asked at the clock after the hold, so a grant
+ * that lapsed while this waited no longer counts. Share is asked last, of the
+ * old task's client as read under its lock, so it cannot move meanwhile.
+ * Answers the old task, or the refusal.
+ */
+async function authorise(
+  tx: TenantQuery,
+  context: CommandContext,
+  oldId: string,
+  client: string | null,
+): Promise<CommandRefusal | { readonly typeId: string; readonly client: string | null }> {
+  const subjects = subjectsOf(context.session);
+  const there: Scope =
+    client === null ? { kind: 'business', id: null } : { kind: 'party', id: client };
+  await holdCoveringGrants(tx, subjects, 'task');
+  const at = await lockedInstant(tx);
+  const ask = async (action: 'read' | 'write' | 'share', scope: Scope) =>
+    await checkAuthorityAt(tx, subjects, { collection: 'task', action, scope }, at);
+  const reads = await ask('read', { kind: 'record', id: oldId });
+  if (!reads.ok) return reads.refusal;
+  const writes = await ask('write', there);
+  if (!writes.ok) return writes.refusal;
+  const old = await readOld(tx, context.spine.taskTypeId, oldId, client);
+  if (old === undefined) return refuseNotFound();
+  if (old.client === client) return old;
+  const shares = await ask('share', there);
+  return shares.ok ? old : shares.refusal;
 }
 
 /** The new top-level task: the shell's title, the chosen client, the server's placement. */
@@ -246,10 +247,8 @@ export async function duplicateTask(
   const shell = checkShell(request);
   if ('code' in shell) return refused(shell);
   const oldId = request.recordId.toLowerCase();
-  const unauthorised = await refuseAuthority(tx, context, oldId, shell.client);
-  if (unauthorised !== undefined) return refused(unauthorised);
-  const old = await readOld(tx, context.spine.taskTypeId, oldId, shell.client);
-  if (old === undefined) return refused(refuseNotFound());
+  const old = await authorise(tx, context, oldId, shell.client);
+  if ('code' in old) return refused(old);
 
   const naming = await namingFields(tx, context, old.client, shell);
   if (naming.length > 0 && request.confirmCarried !== true) {

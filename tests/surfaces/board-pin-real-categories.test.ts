@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 // The board render pin draws the real categories, no database.
 //
 // The take retired SL07's made-up category seam (category-mock.ts), but the

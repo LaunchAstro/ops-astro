@@ -9,20 +9,19 @@
 // The operator gate (`operator.ts`) answers before any argument is read and
 // before Docker is asked; a refusal writes nothing. The live services are read
 // through S0-1a's service report, never a saved one, and compared with its own
-// compare. It builds no image: the app is on Vercel (`web-deploy.mjs`), and
-// Compose starts the M5's unit on its pinned images. The deployment record is
-// written only once staging is up on its pinned images with every
-// live service unchanged. Exit 0 when deployed, 1 when refused or failed, 2
-// when the arguments are unusable.
+// compare, both imported. It builds no image: the app is on Vercel
+// (`web-deploy.mjs`), and Compose starts the M5's unit on its pinned images.
+// The deployment record is written only once staging is up on its pinned
+// images with every live service unchanged. Exit 0 when deployed, 1 when
+// refused or failed, 2 when the arguments are unusable.
 
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
+import { parseArgs } from 'node:util';
 import { deploy } from './deploy.ts';
 import { recordDeployment, requireOperator } from './operator.ts';
+import { compare, snapshot } from './service-report.mjs';
 
-const REPORT = new URL('./service-report.mjs', import.meta.url).pathname;
 const DEFINITION = new URL('../../deploy/staging/compose.json', import.meta.url).pathname;
 
 function usage(message) {
@@ -36,18 +35,15 @@ if (!gate.ok) {
   process.exit(1);
 }
 
-const VALUED = new Set(['--version', '--artefacts']);
-const args = process.argv.slice(2);
-const given = new Map();
-for (let at = 0; at < args.length; at += 1) {
-  const arg = args[at];
-  if (!VALUED.has(arg)) usage(`${arg} is not an argument of the staging deploy`);
-  const value = args[at + 1];
-  if (value === undefined || value.startsWith('--')) usage(`${arg} needs a value`);
-  given.set(arg, value);
-  at += 1;
+let values;
+try {
+  ({ values } = parseArgs({
+    options: { version: { type: 'string' }, artefacts: { type: 'string' } },
+  }));
+} catch (error) {
+  usage(error.message);
 }
-const [version, store] = ['--version', '--artefacts'].map((n) => given.get(n));
+const { version, artefacts: store } = values;
 if (version === undefined || store === undefined)
   usage('--version and --artefacts are both needed');
 
@@ -55,24 +51,8 @@ const definition = JSON.parse(readFileSync(DEFINITION, 'utf8'));
 const containers = Object.entries(definition.services).map(([n, s]) => s.container_name ?? n);
 
 const effects = {
-  snapshot() {
-    return execFileSync(process.execPath, [REPORT, 'snapshot'], { encoding: 'utf8' });
-  },
-  compare(before, after) {
-    const folder = mkdtempSync(join(tmpdir(), 'ops-astro-deploy-'));
-    try {
-      writeFileSync(join(folder, 'before.json'), before);
-      writeFileSync(join(folder, 'after.json'), after);
-      const result = spawnSync(
-        process.execPath,
-        [REPORT, 'compare', join(folder, 'before.json'), join(folder, 'after.json')],
-        { encoding: 'utf8' },
-      );
-      return { unchanged: result.status === 0, report: `${result.stdout}${result.stderr}`.trim() };
-    } finally {
-      rmSync(folder, { recursive: true, force: true });
-    }
-  },
+  snapshot,
+  compare,
   up() {
     execFileSync('docker', ['compose', '--file', DEFINITION, 'up', '--detach', '--wait'], {
       stdio: 'inherit',

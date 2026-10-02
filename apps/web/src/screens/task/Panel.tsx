@@ -6,9 +6,10 @@
 // (`clientSet` only), so a draft filed from here starts with no client. Its own field edits (the name, the assignee and the due
 // date) are `PanelFields.tsx`. It mounts the pieces built for it: the
 // handling ticks (MP-4-10), the description and agent brief fields (MP-4-7),
-// the subtasks and time (MP-4-4, MP-4-6), the conversation (MP-4-5) and the
-// folded trail (MP-4-16), under the same Team and Agent counts and the same
-// facts as the task page (MP-4-3, MP-4-9, MP-4-2).
+// the subtasks and time (MP-4-4, MP-4-6), the conversation (MP-4-5,
+// `PanelConversation.tsx`) and the folded trail (MP-4-16), under the same
+// Team and Agent counts and the same facts as the task page (MP-4-3, MP-4-9,
+// MP-4-2).
 //
 // **The frame is not this file's.** Seating, floating, the sheet, back and
 // forward and the one close path are the dock's (MP-3-1), which draws this
@@ -17,9 +18,9 @@
 //
 // **Its own read, the page's rule.** The panel reads the task through
 // `task.read` as the page does, and a write here asks the host to count a
-// change (`onChanged`); the host hands the count back to both the page and
-// this panel as a read dependency, so each reads again and draws what the
-// server holds.
+// change (`onChanged`); the host hands the count back to both, so each reads
+// again. The panel keeps its last answer drawn meanwhile, so a re-read leaves
+// what is typed, the perspective and the folds where they were.
 //
 // **Its ids are its own.** The page and the panel are in one document, so
 // every id drawn here carries the `panel` scope.
@@ -38,7 +39,6 @@ import { hubOf } from '../../data/live.ts';
 import { useRead } from '../../data/use-read.ts';
 import { pathTo } from '../../routes.ts';
 import { RecordState } from '../../views/record-state.tsx';
-import { Comments, type CommentDraft } from './Comments.tsx';
 import { TaskFacts } from './Facts.tsx';
 import { History, useShowTrail } from './History.tsx';
 import {
@@ -50,10 +50,12 @@ import {
   type Perspective,
 } from './Perspectives.tsx';
 import { PageLink, pageLinkDoor } from './PageLink.tsx';
+import { PanelConversation } from './PanelConversation.tsx';
 import type { DraftScope } from './DraftPanel.tsx';
 import type { ClientSeams } from './client-seam.ts';
 import { PanelFields, PanelName } from './PanelFields.tsx';
 import { statesOf, withPageDefaults } from './read-defaults.ts';
+import { useRereadOn } from './reread-on.ts';
 import { TeamSubtasks } from './Subtasks.tsx';
 import { HandlingTicks } from './Ticks.tsx';
 import { BriefField, DescriptionField } from './Writing.tsx';
@@ -91,13 +93,14 @@ export function TaskPanel(props: TaskPanelProps): ReactElement {
   const { state, reload } = useRead<TaskReadResult>({
     grantKey: props.grantKey,
     run: () => client.read<TaskReadResult>('task.read', { recordId: opening.taskKey }),
-    deps: [opening.taskKey, props.changes ?? 0],
+    deps: [opening.taskKey],
     // The task's topic on the tab's one live stream (C4), as the task page reads it.
     live: {
       hub: hubOf(client),
       topic: (read) => ('task' in read ? `task:${read.task.id}` : undefined),
     },
   });
+  useRereadOn(props.changes ?? 0, reload);
   const onKeyDown = (event: KeyboardEvent<HTMLElement>): void => {
     if (event.key !== 'Escape' || event.defaultPrevented) return;
     const target = event.target as HTMLElement;
@@ -107,7 +110,7 @@ export function TaskPanel(props: TaskPanelProps): ReactElement {
   };
   return (
     <aside className="dtp" data-task-panel aria-label="Task panel" onKeyDown={onKeyDown}>
-      <RecordState state={state} subject="task" onRetry={reload}>
+      <RecordState state={state} subject="task" onRetry={reload} keep>
         {(value) =>
           'sharedTask' in value ? (
             <p className="card__sub">
@@ -155,7 +158,12 @@ function PanelBody(
               onSaved={props.onChanged}
             />
             <PanelWork {...props} />
-            <PanelConversation {...props} />
+            <PanelConversation
+              client={client}
+              task={task}
+              tab={props.opening.tab}
+              onChanged={props.onChanged}
+            />
             <History history={task.history} fold={props.fold} />
           </>
         }
@@ -201,31 +209,6 @@ function PanelWork(props: SideProps): ReactElement {
       onChanged={props.onChanged}
       onOpenPanel={undefined}
       doors={false}
-    />
-  );
-}
-
-/** The conversation, opening on the tab the reply door was pressed from. */
-function PanelConversation(props: SideProps): ReactElement {
-  const { task, opening } = props;
-  const [draft, setDraft] = useState<CommentDraft | null>(
-    opening.tab === null
-      ? null
-      : { body: '', tab: opening.tab, replyTo: null, pending: null, stale: null },
-  );
-  const [refusal, setRefusal] = useState<string | null>(null);
-  return (
-    <Comments
-      scope="panel"
-      client={props.client}
-      comments={task.comments}
-      recordId={task.id}
-      revision={task.revision}
-      refusal={refusal}
-      onRefused={setRefusal}
-      onPosted={props.onChanged}
-      draft={draft}
-      onDraft={setDraft}
     />
   );
 }

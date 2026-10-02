@@ -109,11 +109,14 @@ export async function endLease(
  * makes on that credential re-evaluates it and is refused.
  *
  * Under the caller's locks, which must include every row named here.
+ * `actorId` is the person whose command ended the work, and the clear of the
+ * agent from its task is audited as theirs; null on a path no person acted on.
  */
 export async function retireWork(
   tx: TenantQuery,
   work: readonly LiveWork[],
   locks: LockSet,
+  actorId: string | null = null,
 ): Promise<void> {
   for (const row of work) {
     locks.require('lease', row.lease_id);
@@ -124,7 +127,7 @@ export async function retireWork(
       // Cancellation or supersession. A delegation authority loss already
       // revoked keeps that first cause; this write is then a no-op.
       // eslint-disable-next-line no-await-in-loop
-      await revokeDelegation(tx, row.delegation_id, 'work_retired');
+      await revokeDelegation(tx, row.delegation_id, 'work_retired', actorId);
     }
   }
 }
@@ -234,6 +237,8 @@ export async function cancelAndClassify(
        * its locks refuses the cancel.
        */
       readonly alsoDecide?: boolean;
+      /** The person's own actor, whom the clear of an agent from the task names. */
+      readonly actorId: string;
     };
   },
 ): Promise<RuntimeResult<readonly Classification[]>> {
@@ -358,7 +363,7 @@ export async function cancelAndClassify(
     raised: { kind: 'cancelled' },
   });
 
-  await retireWork(tx, workAfter, locks);
+  await retireWork(tx, workAfter, locks, authority?.actorId ?? null);
   // Nothing in this head dispatches, so the ordinary cancellation completes as
   // cancelled (T5). A run already handed back keeps that outcome as history.
   for (const id of runsAfter) locks.require('run', id);

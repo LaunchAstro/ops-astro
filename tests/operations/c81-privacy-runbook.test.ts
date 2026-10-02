@@ -13,20 +13,17 @@
 // searches a backup restored from before the erasure waits on S0-3's restore.
 // The cases run in order and share the plant.
 
-import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { promisify } from 'node:util';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { createHarness, type Harness } from '../acceptance/role-case-harness.ts';
 import { bearer, call, personPath, serverUrl } from '../acceptance/world.ts';
+import { findCopies, type Hit } from './c81-privacy-runbook-finder.ts';
 
-const run = promisify(execFile);
 const RUNBOOK = readFileSync(
   new URL('../../docs/local/PRIVACY-RUNBOOK.md', import.meta.url),
   'utf8',
 );
-const FINDER = new URL('../../scripts/privacy/find-copies.mjs', import.meta.url).pathname;
 
 // One word the search column keeps whole, so the index copy is found too.
 const CANARY = `qx7canary${randomUUID().slice(0, 8)}`;
@@ -36,13 +33,6 @@ if (serverUrl === undefined) {
   console.warn(
     'operations/c81-privacy-runbook: DATABASE_URL is unset, so the dry run did not run.',
   );
-}
-
-interface Hit {
-  readonly table: string;
-  readonly id: string;
-  readonly columns: readonly string[];
-  readonly row?: Record<string, unknown>;
 }
 
 const test = it.skipIf(serverUrl === undefined);
@@ -62,30 +52,9 @@ afterAll(async () => {
   await harness?.close();
 });
 
-/**
- * The finder as an operator runs it, for one business (alpha unless named;
- * null runs it with none). Its output never holds the connection string.
- */
-async function find(args: readonly string[], business: string | null = 'alpha') {
-  const scope = business === null ? [] : ['--business', business];
-  const done = await run('node', [FINDER, ...scope, ...args], {
-    env: { ...process.env, DATABASE_ADMIN_URL: adminUrl },
-  }).then(
-    (out) => ({ code: 0, ...out }),
-    (error: { readonly code?: number; readonly stdout?: string; readonly stderr?: string }) => ({
-      code: error.code ?? -1,
-      stdout: error.stdout ?? '',
-      stderr: error.stderr ?? '',
-    }),
-  );
-  const password = new URL(adminUrl).password;
-  if (password !== '') expect(`${done.stdout}${done.stderr}`).not.toContain(password);
-  const hits = done.stdout
-    .split('\n')
-    .filter((line) => line !== '')
-    .map((line) => JSON.parse(line) as Hit);
-  return { code: done.code, hits, stdout: done.stdout, stderr: done.stderr };
-}
+/** The finder as an operator runs it, for one business (alpha unless named). */
+const find = (args: readonly string[], business: string | null = 'alpha') =>
+  findCopies(adminUrl, args, business);
 
 /** The canary person: their row, an identifier, a task and an incident naming them. */
 async function plantCanaryPerson(): Promise<string> {
@@ -283,4 +252,29 @@ test('find-copies finds nothing in another business', async () => {
   expect(inBravo.hits.map((hit) => hit.row?.['business_id'])).toEqual([world.bravo, world.bravo]);
   expect(inBravo.stdout).toContain(bravoCanary);
   expect(inBravo.stdout).not.toContain(ids.alpha);
+});
+
+test('find-copies finds the person by name in every kind of copy the runbook lists, memberships included', async () => {
+  const { world } = harness;
+  const member = `qx7member${randomUUID().slice(0, 8)}`;
+  const personId = randomUUID();
+  const membershipId = randomUUID();
+  await world.db.app.withBusiness(world.alpha, async (tx) => {
+    await tx.query(
+      `insert into public.people (business_id, id, display_name) values ($1, $2, $3)`,
+      [world.alpha, personId, `Riley ${member}`],
+    );
+    await tx.query(
+      `insert into public.memberships (business_id, id, person_id, role_key) values ($1, $2, $3, 'staff')`,
+      [world.alpha, membershipId, personId],
+    );
+  });
+  // The runbook's Records copy names memberships; a reply that misses the
+  // person's membership misses a copy of them.
+  const found = await find(['--text', member]);
+  expect(found.code).toBe(0);
+  expect(found.hits.map((hit) => [hit.table, hit.id])).toContainEqual([
+    'memberships',
+    membershipId,
+  ]);
 });

@@ -61,10 +61,11 @@ export interface ChangedSince {
 
 /**
  * Told from the re-read, never from the live message (which carries a topic
- * only). Who: the history the re-read added, named from the people this
- * reader can list, and "someone" for anyone else, so the notice names no one
- * the reader cannot see. What: the fields that differ from where the edit
- * began, and comments added.
+ * only). Who: the history the re-read added, each entry named by its actor's
+ * person from the people this reader can list, and "someone" for anyone else
+ * (an agent or a worker included), so the notice names no one the reader
+ * cannot see. What: the fields that differ from where the edit began, and
+ * comments added.
  */
 export function changedSince(
   before: InternalTaskDetail,
@@ -85,7 +86,11 @@ export function changedSince(
   if (added > 0) what.push(added === 1 ? 'a comment' : `${String(added)} comments`);
   const last = before.history.at(-1)?.at ?? '';
   const who = new Set(
-    now.history.filter((entry) => entry.at > last).map((e) => names.get(e.actorId) ?? 'someone'),
+    now.history
+      .filter((entry) => entry.at > last)
+      .map(
+        (entry) => (entry.personId === null ? undefined : names.get(entry.personId)) ?? 'someone',
+      ),
   );
   return {
     who: who.size === 0 ? ['someone'] : [...who],

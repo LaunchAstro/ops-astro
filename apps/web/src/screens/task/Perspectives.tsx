@@ -17,14 +17,17 @@
 // **The panes are hidden, never unmounted** (`TabPanel`), so what was typed
 // on one side survives a trip to the other. Which side is showing belongs to
 // this reading of the task, not to the task: the page holds it above the read
-// so a reread after a write keeps it.
+// so a reread after a write keeps it. The strip's sliding mark sits under the
+// selected tab, as the mockup's `placeMark` puts it. The switch and its panes
+// are one block, so the page's stack spacing never parts the switch from the
+// pane: the mark sits on the first section's rule, as the mockup draws it.
 //
 // **The doors send an edit to the panel** (TT-06). The page reads; the dock
 // task panel is where subtasks are ticked, time logged and the timer started.
 // A door with no panel to open is drawn and cannot be pressed.
 
+import { useLayoutEffect, useRef, type ReactElement, type ReactNode } from 'react';
 import { CountBadge, TabPanel, TabStrip } from '@launchastro/ui';
-import type { ReactElement, ReactNode } from 'react';
 import type { Perspective, PerspectiveCounts, StepMark } from './perspective-counts.ts';
 
 export {
@@ -86,33 +89,39 @@ export function Perspectives(props: {
   const { counts } = props;
   const name = props.name ?? 'perspective';
   const teamTitle = `${counts.team} unfinished ${counts.team === 1 ? 'subtask' : 'subtasks'}`;
+  const strip = useRef<HTMLDivElement>(null);
+  usePlacedMark(strip, props.selected);
   return (
     <div className="tpr__perspectives" data-perspectives>
-      <TabStrip
-        name={name}
-        label="Team and agent views of this task"
-        selected={props.selected}
-        onSelect={(next) => {
-          props.onSelect(next === 'agent' ? 'agent' : 'team');
-        }}
-        tabs={[
-          {
-            id: 'team',
-            label: 'Team',
-            badge: <CountBadge count={counts.team} title={teamTitle} />,
-          },
-          {
-            id: 'agent',
-            label: 'Agent',
-            badge: <CountBadge count={counts.agent} title={counts.agentTitle} />,
-          },
-        ]}
-      />
+      <div ref={strip}>
+        <TabStrip
+          name={name}
+          label="Team and agent views of this task"
+          selected={props.selected}
+          onSelect={(next) => {
+            props.onSelect(next === 'agent' ? 'agent' : 'team');
+          }}
+          tabs={[
+            {
+              id: 'team',
+              label: 'Team',
+              badge: <CountBadge count={counts.team} title={teamTitle} />,
+            },
+            {
+              id: 'agent',
+              label: 'Agent',
+              badge: <CountBadge count={counts.agent} title={counts.agentTitle} />,
+            },
+          ]}
+        />
+      </div>
       <TabPanel name={name} tab="team" selected={props.selected}>
-        {props.team}
+        <div className="stack" data-tp-pane="team">
+          {props.team}
+        </div>
       </TabPanel>
       <TabPanel name={name} tab="agent" selected={props.selected}>
-        {props.agent}
+        <div data-tp-pane="agent">{props.agent}</div>
       </TabPanel>
     </div>
   );
@@ -159,4 +168,43 @@ export function TeamWork(props: {
       </section>
     </>
   );
+}
+
+/**
+ * Puts the strip's sliding mark under the selected tab (the mockup's
+ * `placeMark`): snapped on arrival, sliding on a switch, and placed again once
+ * the faces have loaded, because a tab's width is its word's width.
+ */
+function usePlacedMark(host: { readonly current: HTMLElement | null }, selected: string): void {
+  const placed = useRef(false);
+  useLayoutEffect(() => {
+    const place = (snap: boolean): void => {
+      const row = host.current?.querySelector<HTMLElement>('.cmtabs');
+      const mark = row?.querySelector<HTMLElement>('.cmtabs__mark');
+      const on = row?.querySelector<HTMLElement>('.cmtab[aria-selected="true"]');
+      if (row === undefined || row === null || mark === null || mark === undefined) return;
+      if (on === null || on === undefined) return;
+      if (snap) row.classList.add('is-placing');
+      mark.style.left = `${String(on.offsetLeft)}px`;
+      mark.style.width = `${String(on.offsetWidth)}px`;
+      // A snap lands with the transition off: reading a layout value commits
+      // the new place before the class comes away, so only a switch slides.
+      if (snap) {
+        void mark.offsetWidth;
+        row.classList.remove('is-placing');
+      }
+    };
+    if (placed.current) {
+      place(false);
+      return;
+    }
+    placed.current = true;
+    place(true);
+    if ('fonts' in document) {
+      void (async () => {
+        await document.fonts.ready;
+        place(true);
+      })();
+    }
+  }, [host, selected]);
 }

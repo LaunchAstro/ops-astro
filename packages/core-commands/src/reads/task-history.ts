@@ -14,6 +14,7 @@ import type { RankPool } from './rank.ts';
 interface HistoryRow {
   readonly occurred_at: Date;
   readonly actor_id: string;
+  readonly person_id: string | null;
   readonly command: string;
   readonly actor_kind: string | null;
   readonly actor_name: string | null;
@@ -50,11 +51,12 @@ export async function historyOf(
     //
     // Who is the actor's kind and, for a person's actor, that person's name,
     // joined inside this business: an actor or a person of another business
-    // matches nothing (MP-4-16).
+    // matches nothing (MP-4-16). The actor's person, so a page names who acted
+    // by the people it may list.
     //
     // A duplicate's event carries the task it came from (MP-4-8), filtered
     // below to a viewer who holds read on that task now.
-    `select e.occurred_at, e.actor_id, e.command, a.kind as actor_kind,
+    `select e.occurred_at, e.actor_id, a.person_id, e.command, a.kind as actor_kind,
             case when a.kind = 'person' then p.display_name end as actor_name,
             l.to_record_id::text as duplicated_from
        from public.audit_events e
@@ -72,20 +74,24 @@ export async function historyOf(
     // than absent (API.md, the agent's task.read).
     [tx.businessId, recordId, internal ? READ_COMMANDS : [...READ_COMMANDS, 'task.comment']],
   );
-  return await Promise.all(rows.map(async (row) => await entryOf(tx, viewer, row)));
+  return await Promise.all(rows.map(async (row) => await entryOf(tx, viewer, internal, row)));
 }
 
 /** One row as a reader is shown it; a duplicate's source only as `shownSource` allows. */
 async function entryOf(
   tx: TenantQuery,
   viewer: readonly Subject[] | null,
+  internal: boolean,
   row: HistoryRow,
 ): Promise<HistoryEntry> {
   const entry: HistoryEntry = {
     at: row.occurred_at.toISOString(),
     actorId: row.actor_id,
     actorKind: row.actor_kind,
-    actorName: row.actor_name,
+    // An outside reader (and an agent, read as one) is shown no person behind an actor:
+    // neither the person's id nor their name.
+    personId: internal ? row.person_id : null,
+    actorName: internal ? row.actor_name : null,
     operation: row.command,
   };
   if (row.command !== 'task.duplicate') return entry;

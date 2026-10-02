@@ -276,6 +276,7 @@ export function TeamSubtasks(props: TeamSubtasksProps): ReactElement {
           onChanged={props.onChanged}
         />
       }
+      // The burn bar draws against the task's own estimate, and waits while it has none.
       time={
         task.time === null ? undefined : (
           <TimeLog

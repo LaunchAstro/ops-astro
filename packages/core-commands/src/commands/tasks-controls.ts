@@ -167,6 +167,7 @@ export async function cancelOnTask(
       collection: context.declaration.collection,
       taskId: found.taskId,
       alsoDecide: true,
+      actorId: context.session.actorId,
     },
   });
   if (!result.ok) return refused(result.refusal);

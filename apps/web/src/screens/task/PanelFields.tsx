@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The dock task panel's field edits (MP-4-8): the name, the assignee, the due
-// date, the estimate and the stage; the project is `ProjectField.tsx`, the
-// category `CategoryField.tsx`, the status `StatusField.tsx`, the client and
-// its duplicate `ClientField.tsx` (reads through `client-seam.ts`) and the tags
-// `TagField.tsx` (MP-4-11).
+// date (`PanelDue.tsx`), the estimate and the stage; the project is
+// `ProjectField.tsx`, the category `CategoryField.tsx`, the status
+// `StatusField.tsx`, the client and its duplicate `ClientField.tsx` (reads
+// through `client-seam.ts`) and the tags `TagField.tsx` (MP-4-11).
 //
 // **Each field through its own command, at the revision the panel read.** The
 // name, the due date and the estimate go out through `task.update`
@@ -29,9 +29,8 @@ import { useRead } from '../../data/use-read.ts';
 import { useCommand } from '../../records/use-command.ts';
 import { submitEdit } from '../../records/submit.ts';
 import { RecordState } from '../../views/record-state.tsx';
-import { DatePicker } from './DatePicker.tsx';
-import { todayOn } from './due-dates.ts';
 import { ESTIMATE_CHOICES, estimateWords } from './estimates.ts';
+import { DueField } from './PanelDue.tsx';
 import { TagField } from './TagField.tsx';
 import { AssignToAI } from './AssignToAI.tsx';
 import { ProjectField } from './ProjectField.tsx';
@@ -51,16 +50,20 @@ export interface PanelFieldsProps extends ClientSeams {
 
 type FieldCommand = 'task.update' | 'task.assign' | 'task.set_stage';
 
-/** One field write at the read revision; a landed one is counted. */
+/** One field write at the read revision, or the one an edit started from; a landed one is counted. */
 function useFieldWrite(props: Omit<PanelFieldsProps, 'grantKey'>) {
   const { busy, because, run } = useCommand();
-  const write = (command: FieldCommand, fields: Readonly<Record<string, unknown>>): void => {
+  const write = (
+    command: FieldCommand,
+    fields: Readonly<Record<string, unknown>>,
+    revision = props.task.revision,
+  ): void => {
     run(
       () =>
         submitEdit(props.client, {
           command,
           recordId: props.task.id,
-          expectedRevision: props.task.revision,
+          expectedRevision: revision,
           fields,
         }),
       (settlement) => {
@@ -82,15 +85,19 @@ const Refusal = (props: { readonly because: string | null }): ReactElement | nul
 export function PanelName(props: Omit<PanelFieldsProps, 'grantKey'>): ReactElement {
   const { task } = props;
   const { busy, because, write } = useFieldWrite(props);
-  const [draft, setDraft] = useState<string | null>(null);
+  // The name being typed and the revision the rename opened at: a re-read
+  // keeps the panel mounted, and a colleague's change since answers stale.
+  const [draft, setDraft] = useState<{ text: string; revision: number } | null>(null);
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
     if (event.key === 'Escape') {
       setDraft(null);
-    } else if (event.key === 'Enter') {
+    } else if (event.key === 'Enter' && draft !== null) {
       event.preventDefault();
-      const name = (draft ?? '').trim();
+      const name = draft.text.trim();
       setDraft(null);
-      if (name !== '' && name !== task.title) write('task.update', { title: name });
+      if (name !== '' && name !== task.title) {
+        write('task.update', { title: name }, draft.revision);
+      }
     }
   };
   return (
@@ -102,7 +109,7 @@ export function PanelName(props: Omit<PanelFieldsProps, 'grantKey'>): ReactEleme
           data-panel-field="name"
           disabled={busy}
           title="Rename"
-          onClick={() => setDraft(task.title)}
+          onClick={() => setDraft({ text: task.title ?? '', revision: task.revision })}
         >
           {task.title}
         </button>
@@ -113,8 +120,8 @@ export function PanelName(props: Omit<PanelFieldsProps, 'grantKey'>): ReactEleme
           aria-label="Task name"
           // oxlint-disable-next-line jsx-a11y/no-autofocus -- the person pressed the name to edit it
           autoFocus
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
+          value={draft.text}
+          onChange={(event) => setDraft({ ...draft, text: event.target.value })}
           onKeyDown={onKeyDown}
         />
       )}
@@ -195,39 +202,6 @@ function AssigneeField(props: FieldProps): ReactElement {
           </select>
         )}
       </RecordState>
-    </>
-  );
-}
-
-/** The due date, chosen in the picker; choosing the day it already has sends nothing. */
-function DueField(props: FieldProps): ReactElement {
-  const [picking, setPicking] = useState(false);
-  const due = props.task.due?.slice(0, 10) ?? null;
-  const choose = (day: string | null): void => {
-    setPicking(false);
-    if (day !== due) props.write('task.update', { due: day });
-  };
-  return (
-    <>
-      <span className="tf__k">Due</span>
-      <button
-        className="btn"
-        type="button"
-        data-panel-field="due"
-        aria-expanded={picking}
-        disabled={props.busy}
-        onClick={() => setPicking(!picking)}
-      >
-        {due ?? 'Not set'}
-      </button>
-      {picking ? (
-        <DatePicker
-          value={due}
-          today={todayOn(new Date())}
-          onChoose={choose}
-          onClose={() => setPicking(false)}
-        />
-      ) : null}
     </>
   );
 }

@@ -90,6 +90,7 @@ export async function draft(
       scope={over.scope ?? NO_CLIENT}
       onCreated={(key) => (outcome.created = key)}
       onClose={() => (outcome.closed += 1)}
+      hold={() => () => true}
     />,
   );
   await tick();
@@ -146,7 +147,7 @@ export function PanelWithDoor(props: { readonly onNewTask: () => void }): ReactE
 
 /** The host with buttons for each gesture, and a stop armed before each. */
 export function Host(props: { readonly onStop: (why: string) => void }): ReactElement {
-  const host = useTaskPanel();
+  const host = useTaskPanel({ key: 'alpha:ada:0', person: ADA, storage: null });
   useEffect(() => {
     host.host.open('Proj-Verity-Pacing', 'open');
     // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on mount

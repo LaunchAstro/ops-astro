@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // @vitest-environment jsdom
+/* eslint-disable max-lines -- the dock's cases through one shared application mount */
 //
 // MP-3-1c to e, through the application: the open set outlives navigation and
 // a reload, Escape takes the last opened panel and never a field's Escape, the
@@ -12,6 +13,7 @@ import { App } from '../../apps/web/src/App.tsx';
 import type { PanelRegistry } from '../../apps/web/src/panels.ts';
 import { SessionStore, dockKey, type StorageLike } from '../../apps/web/src/session/token.ts';
 import { mount, type Mounted } from '../surfaces/mount.tsx';
+import { granted } from './mp-2-1-support.tsx';
 
 const SESSION = { token: 'tok', businessKey: 'alpha', email: 'mia@alpha.local' };
 
@@ -67,6 +69,7 @@ function app(path: string, storage: StorageLike, went: string[] = []) {
       fetch={pending}
       storage={storage as Storage}
       panels={REGISTRY}
+      clientAccess={granted}
     />
   );
 }
@@ -296,5 +299,12 @@ describe('MP-3-1 data-backed tabs', () => {
     const signedOut = memory();
     signedOut.removeItem('ops-astro.session');
     expect((await at('/sign-in', signedOut)).all('.dock__tab')).toHaveLength(0);
+    // Signed in, with the panels registered: a Hub address draws the tabs, so
+    // the portal's empty dock is the client face's doing (R17).
+    expect((await at('/projects/', memory())).all('.dock__tab').length).toBeGreaterThan(0);
+    const portal = await at('/portal/acme-dental/', memory());
+    expect((portal.find('.appbar') as HTMLElement | null)?.dataset['face']).toBe('client');
+    expect(portal.all('.dock')).toHaveLength(0);
+    expect(portal.all('.dock__tab')).toHaveLength(0);
   });
 });

@@ -98,13 +98,14 @@ export function useDock(
   });
 
   const apply = useCallback(
-    (after: DockState) => {
+    (after: DockState, walking = false) => {
       const before = ref.current;
       if (after === before.state) return;
       const moved = { owner: before.owner, state: after };
       ref.current = moved;
-      // A walk lands on the entry in hand, which record() leaves as it is.
-      trail.history = record(trail.history, after);
+      // A walk only moves along the history: the entry it lands on may hold a
+      // panel the dock cannot draw, so recording what it drew would cut ahead.
+      if (!walking) trail.history = record(trail.history, after);
       dockSlot(storage, session).write(after);
       setHeld(moved);
       for (const id of closedBy(before.state, after)) registry[id]?.onClose?.();
@@ -131,6 +132,7 @@ export function useDock(
           entry,
           entry.open.filter((id) => tabs.has(id)),
         ),
+        true,
       );
       setRestored((last) => ({ walk: last.walk + 1, scroll: entry.scroll }));
     },

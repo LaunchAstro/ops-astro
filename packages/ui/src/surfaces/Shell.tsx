@@ -201,7 +201,13 @@ export function Shell(props: ShellProps): ReactElement {
         )}
         <div className="rail__group" ref={mark.holder}>
           {sections.map((entry) => (
-            <RailItem key={entry.id} entry={entry} collapsed={collapsed} />
+            <RailItem
+              key={entry.id}
+              entry={entry}
+              collapsed={collapsed}
+              // A press shuts the drawer, on the page already open too (T-R9).
+              onPress={() => onToggle?.(false)}
+            />
           ))}
           <span
             className="railmark"

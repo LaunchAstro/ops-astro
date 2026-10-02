@@ -22,11 +22,12 @@
 // settings when it runs. The output is checked with `buildOutputProblems`
 // before this step reports it; a problem fails the release.
 
-import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { build } from 'vite';
-import { buildOutputProblems, outputDigest } from './build-output.ts';
+import { readStamp } from '../../apps/web/build-stamp.ts';
+import { buildOutputProblems, outputDigest, stampOutput } from './build-output.ts';
 
 export { outputDigest };
 
@@ -57,10 +58,8 @@ export interface Release {
 
 /** Writes the build output at `out` from the stamped web build at `dist`. */
 export async function release({ dist, out }: { dist: string; out: string }): Promise<Release> {
-  const { build: stamp } = JSON.parse(readFileSync(join(dist, 'build.json'), 'utf8')) as {
-    build?: unknown;
-  };
-  if (typeof stamp !== 'string' || stamp === '') throw new Error('the web build is not stamped');
+  const stamp = readStamp(dist);
+  if (stamp === undefined) throw new Error('the web build is not stamped');
   rmSync(out, { recursive: true, force: true });
   cpSync(dist, join(out, 'static'), { recursive: true });
   const func = join(out, 'functions', 'api.func');
@@ -82,10 +81,7 @@ export async function release({ dist, out }: { dist: string; out: string }): Pro
   writeFileSync(join(out, 'config.json'), JSON.stringify(CONFIG, null, 2));
   const problems = buildOutputProblems(out);
   if (problems.length > 0) throw new Error(problems.join('\n'));
-  writeFileSync(join(out, 'build.json'), JSON.stringify({ build: stamp }));
-  const record: Release = { build: stamp, digest: outputDigest(out) };
-  writeFileSync(join(out, 'build.json'), JSON.stringify(record));
-  return record;
+  return stampOutput(out, stamp);
 }
 
 if (import.meta.main) {

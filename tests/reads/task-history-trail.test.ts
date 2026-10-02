@@ -172,6 +172,11 @@ describe.skipIf(serverUrl === undefined)(
       );
       expect(Object.keys(detailOf(own))).toContain('task');
       expect(JSON.stringify(own)).not.toContain(other.actorId);
+      // Read as an outside reader: no person behind any actor, by id or by name.
+      const { history } = detailOf(own)['task'] as { readonly history: unknown };
+      expect(JSON.stringify(history)).toContain('"actorName":null');
+      expect(JSON.stringify(history)).not.toContain('"actorName":"');
+      expect(JSON.stringify(history)).not.toContain('"personId":"');
       const across = await world.asAgent(
         { command: 'task.read', operationId: randomUUID(), recordId: ids['clientB'] ?? '' },
         picked.credential,
