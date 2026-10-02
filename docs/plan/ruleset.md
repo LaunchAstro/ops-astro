@@ -8,6 +8,7 @@ only during an authorised hosted preparation step.
 
 The primary `main` protection ruleset requires a pull request, passing required
 status checks, signed commits, blocked force pushes, and restricted deletions.
+It also requires the merge queue and carries CodeQL as a code scanning rule.
 Its bypass list is empty, including for the maintainer.
 
 A separate review ruleset requires an approving review. A solo maintainer may
@@ -34,6 +35,27 @@ preserve the signed commits and keep the merge an invoked act with a named
 actor behind it. That actor is an agent on Nathan's credential once every
 required check is green; automatic merging would remove the actor entirely.
 
+## Merge through the queue
+
+Since 2 October 2026 (AEST) every pull request reaches `main` through GitHub's
+merge queue. The queue tests each pull request on top of `main` and the entries ahead
+of it, merges by merge commit, and drops an entry whose checks fail. Its
+settings: build at most 2 groups at once, merge 1 to 3 entries per group, wait
+up to 5 minutes for a group to fill, and fail an entry whose checks have not
+reported within 90 minutes. A pull request joins the queue only when an agent
+enqueues it, so the merge stays an invoked act.
+
+"Require branches to be up to date" is off
+(`strict_required_status_checks_policy: false`). The queue already tests each
+entry against the current `main`, so strict mode would only make every open
+pull request wait for a re-run after each merge.
+
+CodeQL is a code scanning rule, not a required status check. GitHub posts the
+CodeQL results check on pull requests but never on a merge group, so a required
+CodeQL check would hold every group until it timed out. The code scanning rule
+blocks a merge on CodeQL errors and on security alerts of high severity or
+above.
+
 ## Bind checks to real hosted results
 
 Read the effective workflow check names and originating apps from a real run.
@@ -41,8 +63,10 @@ Require the applicable CI, contamination, secret, licence, provenance,
 review-evidence, pull-request-size and DCO results, and, for a change to any
 of the eight protected components, each affected component's conformance
 proof. Check that each expected result exists for the final revision.
-`.github/required-checks.json` records the required list; a change that drops
-a check from it fails `CQ-13 no check dropped`.
+`.github/required-checks.json` records the 13 required checks, the code
+scanning rule and the queue settings as the live ruleset holds them; a change
+that drops a check from it fails `CQ-13 no check dropped`. `command parity`
+and `visual drift` run on every pull request but are not required.
 
 Do not require a Copilot check by name. Copilot's review runs from the
 separate review ruleset. The check run it produces does not count towards a
