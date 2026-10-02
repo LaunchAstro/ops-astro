@@ -63,6 +63,13 @@ export const gated = (
       payload: {},
       supersededAt,
       runId: null,
+      // Batch 3a's run facts (MP-6-1, MP-6-2): no run, so none.
+      startedAt: null,
+      endedAt: null,
+      tokenUnits: null,
+      pins: [],
+      reads: [],
+      checks: [],
       evidence: null,
       gate:
         gate === null
@@ -79,6 +86,7 @@ export const gated = (
   ],
   decisions: [],
   reservations: [],
+  scopes: [],
 });
 
 export const open = (name: string): ProposalView => gated(name, { state: 'pending' });

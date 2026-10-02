@@ -29,9 +29,12 @@ export {
   type OperandKind,
   type OperandSpec,
 } from './surface.ts';
+// A currency's minor digits, the ISO 4217 table the server and the browser share.
+export { minorDigits } from './currency.ts';
 // What a task's page link may hold, for the server's check and the web's door.
 export { PAGE_LINK_LIMIT, isInProductLink } from './page-link.ts';
 export { TASK_STAGES, type TaskStage } from './task-stages.ts';
+export { TASK_CATEGORIES, type TaskCategory } from './task-categories.ts';
 // The keys a grant may carry (C32).
 export { GRANTABLE_KEYS, isGrantableKey, SELF_SCOPED_COLLECTIONS } from './permission-keys.ts';
 export {
@@ -54,6 +57,18 @@ export type {
   AccessPreview,
   AccessReadResult,
   AttemptView,
+  AwaitingReviewResult,
+  ConversationMessageView,
+  ConversationPointerView,
+  ConversationListResult,
+  ConversationReadResult,
+  ConversationTabView,
+  WrapUpItemView,
+  WrapUpView,
+  AwaitingReviewView,
+  CheckView,
+  RunPinView,
+  RunReadView,
   BoardCrumb,
   BreachNoticeDraft,
   BreachNoticesResult,
@@ -78,6 +93,8 @@ export type {
   DecisionLink,
   EvidenceView,
   ExecutionEvent,
+  ExecutionGraph,
+  ExecutionNode,
   ExecutionRun,
   GateView,
   HistoryEntry,
@@ -103,11 +120,17 @@ export type {
   PresetPlanResult,
   ProposalVersionView,
   ProposalView,
+  RunScopeView,
+  CoveringGrantView,
   QueuedWork,
   QueueResult,
   RankView,
   ReceiptResult,
   ReservationView,
+  EnvelopeView,
+  BudgetStopView,
+  RunStateView,
+  TaskLedgerView,
   SearchHit,
   SettingsReadResult,
   SessionCapabilities,

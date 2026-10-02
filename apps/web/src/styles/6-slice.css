@@ -557,6 +557,14 @@
   }
 }
 
+/* The to-dos panel's scope switch (MP-7-2): its controls wrap in a narrow panel. */
+.todos__scope {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2);
+}
+
 /* The dock task panel's body (MP-4-8), drawn as the mockup's panel (TASKS S1
    to S3, `assets/app.css` .sb): the name an inline field in the display face,
    the rank in mono, the fields on the paper, the description in mono and the
@@ -587,6 +595,7 @@
   font: var(--type-eyebrow);
   letter-spacing: var(--type-eyebrow-tracking);
   text-transform: var(--type-eyebrow-case);
+  color: var(--text);
 }
 
 .dtp .tpr__tick {

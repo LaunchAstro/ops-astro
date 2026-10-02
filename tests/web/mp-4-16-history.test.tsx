@@ -13,6 +13,7 @@ import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { found, task, tick } from './task-page-stub.tsx';
 import { json, mount, page, unmountAll } from './perspective-support.tsx';
 import type { Mounted } from '../surfaces/mount.tsx';
+import { unheld } from './task-look.ts';
 
 const NOW = new Date('2026-09-29T12:00:00.000Z');
 
@@ -160,7 +161,10 @@ describe('MP-4-16 a change on the page appears at once', () => {
 });
 
 describe('MP-4-16 visual match', () => {
-  it.todo('matches the mockup at 1480, 900 and 390, light and dark (MP-1-7 harness)');
+  it('the history head, its latest change and its fold are held to the mockup at 1480, 900 and 390, light and dark', () => {
+    const fold = ['task.panel-history-key', 'task.panel-history-latest', 'task.panel-history-more'];
+    expect(unheld(fold)).toEqual([]);
+  });
 });
 
 describe('MP-4-16 who: the page names whoever made each change', () => {

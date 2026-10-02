@@ -24,7 +24,12 @@
 
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import { OPERATION_ID } from './register-store.ts';
+import type { CheckRequest } from './requests-check.ts';
+import type { ConversationRequest } from './requests-conversation.ts';
+import type { RunRequest } from './requests-run.ts';
+import type { Envelope } from './request-envelope.ts';
 import type { CommentRequest } from './requests-comments.ts';
+import type { DuplicateRequest } from './requests-duplicate.ts';
 import type { TagRequest } from './requests-tags.ts';
 import type { TimeRequest } from './requests-time.ts';
 import type { PrivacyRequest } from './requests-privacy.ts';
@@ -59,11 +64,6 @@ export function hasIdentity(request: UncheckedRequest): request is IdentifiedReq
 
 // Type aliases rather than interfaces, so each member of the union is also an
 // `UncheckedRequest`: a parsed request is still the body it was parsed from.
-type Envelope = {
-  /** The repeat-request identity. Required on every command in the surface. */
-  readonly operationId: string;
-};
-
 type Targeted = Envelope & {
   readonly recordId: string;
   readonly expectedRevision?: number;
@@ -77,12 +77,15 @@ export type CommandRequest =
       readonly board?: string | null;
       readonly boardSection?: string | null;
       readonly stateKey?: string;
+      readonly conversationId?: string | null;
     } & Envelope)
   | ({ readonly command: 'task.update'; readonly fields: FieldValues } & Targeted)
   | ({ readonly command: 'task.complete' } & Targeted)
   | ({ readonly command: 'task.reopen'; readonly reason: string } & Targeted)
   | ({ readonly command: 'task.start' } & Targeted)
   | ({ readonly command: 'task.set_state'; readonly stateId: string } & Targeted)
+  // Duplicate without contents (MP-4-8), in `requests-duplicate.ts`.
+  | DuplicateRequest<Envelope>
   // A comment, its edit and its deletion (MP-4-5), in `requests-comments.ts`.
   | CommentRequest<Targeted>
   // A proposal is a record beside the task and targets it, so it names the
@@ -173,7 +176,8 @@ export type CommandRequest =
         | 'task.set_party'
         | 'task.set_audience'
         | 'task.set_scores'
-        | 'task.set_adhoc';
+        | 'task.set_adhoc'
+        | 'task.set_category';
       readonly fields: FieldValues;
     } & Targeted)
   | ({ readonly command: 'task.reparent'; readonly parentId: string | null } & Targeted)
@@ -284,6 +288,11 @@ export type CommandRequest =
       readonly amountMinor: unknown;
       readonly reason: unknown;
     } & Envelope)
+  | CheckRequest
+  | ConversationRequest
+  // Read by its own parser (`model-call.ts`), never by a person handler.
+  | ({ readonly command: 'model.call' } & Envelope)
+  | RunRequest
   | SelfRequest<Envelope>
   // Time tracking (MP-4-6), in `requests-time.ts`.
   | TimeRequest<Envelope>

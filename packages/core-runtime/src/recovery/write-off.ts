@@ -19,7 +19,6 @@
 // less than the amount charged.
 
 import {
-  readBusinessSetting,
   refuseCommand,
   type CommandRefusal,
   type RefusalCode,
@@ -29,7 +28,9 @@ import {
 import { raiseAlert } from '../alerts.ts';
 import { lockedInstant } from '../clock.ts';
 import { lockRediscovered } from '../rediscovery.ts';
-import { checkAuthorityAt, holdCoveringGrants } from './classifier.ts';
+import { checkAuthorityAt, closeHold, holdCoveringGrants } from './classifier.ts';
+import { modelCallsOn } from '../model-calls-on.ts';
+import { fourEyesBandMinor, pairFor, type Holds } from '../four-eyes.ts';
 import { locksOf, UNKNOWN_SELECT, type Unknown } from './reconcile.ts';
 
 export interface WriteOffRequest {
@@ -84,77 +85,40 @@ async function firstApprovers(
 }
 
 /**
- * Close the hold at the amount: a positive figure settles it (the attempt's
+ * Close the hold at the amount: a positive figure settles the attempt (its
  * outcome stays `unknown`, since nobody observed the effect), nothing
- * abandons it under the write-off. Either way the envelope gives the whole
- * hold back and takes the amount.
+ * abandons it under the write-off. The hold is charged the amount, and never
+ * less than what its model calls settled at, which did happen (AW-01,
+ * `closeHold`). Either way the envelope gives the whole hold back and takes
+ * the charge.
  */
 async function close(tx: TenantQuery, row: Unknown, amount: bigint): Promise<void> {
-  const [business, held] = [tx.businessId, row.held_minor];
-  if (amount > 0n) {
-    await tx.query(
-      `update public.attempts
-          set state = 'settled', actual_minor = $3, outcome = 'unknown', settled_at = now()
-        where business_id = $1 and id = $2`,
-      [business, row.attempt_id, amount.toString()],
-    );
-    await tx.query(
-      `update public.reservations set state = 'actual', actual_minor = $3, terminal_at = now()
-        where business_id = $1 and id = $2`,
-      [business, row.reservation_id, amount.toString()],
-    );
-  } else {
-    await tx.query(
-      `update public.attempts set state = 'abandoned', outcome = 'abandoned'
-        where business_id = $1 and id = $2`,
-      [business, row.attempt_id],
-    );
-    await tx.query(
-      `update public.reservations
-          set state = 'abandoned', classified_cause = 'written_off',
-              classified_cause_id = $3, terminal_at = now()
-        where business_id = $1 and id = $2`,
-      [business, row.reservation_id, row.attempt_id],
-    );
-  }
+  const { spentMinor } = await modelCallsOn(tx, row.reservation_id);
+  const charge = amount > spentMinor ? amount : spentMinor;
   await tx.query(
-    `update public.task_envelopes
-        set held_minor = held_minor - $3, actual_minor = actual_minor + $4
-      where business_id = $1 and id = $2`,
-    [business, row.envelope_id, held, amount.toString()],
+    amount > 0n
+      ? `update public.attempts
+            set state = 'settled', actual_minor = $3, outcome = 'unknown', settled_at = now()
+          where business_id = $1 and id = $2`
+      : `update public.attempts set state = 'abandoned', outcome = 'abandoned'
+          where business_id = $1 and id = $2`,
+    amount > 0n
+      ? [tx.businessId, row.attempt_id, amount.toString()]
+      : [tx.businessId, row.attempt_id],
   );
-  if (amount > 0n) {
+  await closeHold(
+    tx,
+    { reservationId: row.reservation_id, envelopeId: row.envelope_id },
+    { cause: 'written_off', causeId: row.attempt_id },
+    charge,
+  );
+  if (charge > 0n) {
     await raiseAlert(tx, {
       taskId: row.task_id,
       causeId: row.attempt_id,
       raised: { kind: 'settled' },
     });
   }
-}
-
-type Holds = (subjects: readonly Subject[]) => Promise<boolean>;
-type Approver = Awaited<ReturnType<typeof firstApprovers>>[number];
-
-/**
- * Above the band, the first approver this write-off pairs with: a different
- * person naming the same figure whose grant is live at the locked instant.
- * `undefined` asks for a pair and has none; `null` needs none.
- */
-async function pairFor(
-  tx: TenantQuery,
-  held: bigint,
-  request: WriteOffRequest,
-  of: { readonly firsts: readonly Approver[]; readonly holds: Holds },
-): Promise<Approver | null | undefined | 'own'> {
-  // Null is the band switched off; a business with no row has the shipped 500.
-  const setting = await readBusinessSetting(tx, 'four_eyes_threshold');
-  const band = setting === undefined ? 500 : setting.value;
-  if (typeof band !== 'number' || held <= BigInt(Math.round(band * 100))) return null;
-  const others = of.firsts.filter((first) => first.personId !== request.personId);
-  const live = await Promise.all(others.map(async (one) => (await of.holds(one.subjects)) && one));
-  const pair = live.find((one) => one !== false);
-  if (pair === undefined && of.firsts.length > others.length) return 'own';
-  return pair;
 }
 
 /**
@@ -203,7 +167,10 @@ export async function writeOff(tx: TenantQuery, request: WriteOffRequest): Promi
       `Charge the reserved maximum (${row.held_minor}), a lesser figure the evidence shows, or 0.`,
     );
   }
-  const pair = await pairFor(tx, held, request, { firsts, holds });
+  // The one four-eyes rule (`four-eyes.ts`), on the hold: the band read under
+  // the step's locks, and a different first approver live at the locked instant.
+  const band = await fourEyesBandMinor(tx, row.currency);
+  const pair = await pairFor(held, band, request.personId, firsts, holds);
   if (pair === 'own') {
     return refused('FOUR_EYES_REQUIRED', 'you gave the first approval', 'Another holder approves.');
   }

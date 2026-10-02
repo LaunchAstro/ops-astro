@@ -134,6 +134,7 @@
   text-transform: var(--type-eyebrow-case);
   color: var(--text-muted);
 }
+/* A field's value as words (TP-10): DS-TOK-117 in the secondary ink. */
 .sb__state {
   margin: 0;
   padding: 0.45rem 0;
@@ -142,6 +143,35 @@
   text-transform: var(--type-body-case);
   color: var(--text-2);
   overflow-wrap: anywhere;
+}
+
+/* The dock task panel's field grid (DP-18 to DP-25, `.sb__grid`): label and
+   control pairs, two to a line, one below 641; a field that is more than a
+   pair (Assign to AI, the tags, a refusal) takes the whole line. */
+.dtp__fields {
+  display: grid;
+  grid-template-columns: 4.4rem minmax(0, 1fr) 4.4rem minmax(0, 1fr);
+  align-items: center;
+  gap: 0.4rem var(--s-3);
+}
+@media (width <= 640px) {
+  .dtp__fields {
+    grid-template-columns: 4.4rem minmax(0, 1fr);
+  }
+}
+.dtp__fields > :is(.field, .tf__tags, .field__error, p) {
+  grid-column: 1 / -1;
+}
+/* DS-PRIM-5, the field select, on the panel and the page's Status: 37 tall. */
+.dtp__fields select.input,
+[data-task-status] select.input {
+  box-sizing: border-box;
+  block-size: 2.3125rem;
+  padding: 0 var(--s-3);
+  background: var(--paper);
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
 }
 
 /* The page's ruled sections (DS-COMP-22): a rule above, the 24 gutter. The
@@ -303,7 +333,9 @@
   gap: var(--s-3);
 }
 .sb__k,
-.sb__meta {
+.sb__meta,
+.tpr__crumb [data-crumb='key'],
+.sb__steplist [data-step-count] {
   font: var(--type-eyebrow);
   letter-spacing: var(--type-eyebrow-tracking);
   text-transform: var(--type-eyebrow-case);
@@ -528,6 +560,46 @@
 }
 .tt__more:disabled {
   cursor: default;
+}
+
+/* The burn bar (MP-4-6, DT-09): logged time against the estimate, capped at
+   the track's end; the fill turns danger only past the estimate. */
+.sb__burn {
+  height: 4px;
+  margin: var(--s-1) 0;
+  background: var(--border);
+}
+.sb__burn > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+.sb__burn[data-danger='true'] > span {
+  background: var(--danger);
+}
+
+/* A gate step (MP-4-4, DT-04): no tick; the note sits right of the title on
+   one line, and at 640 and below drops to a line of its own (D-17). */
+.sb__step[data-gate] {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s-2);
+}
+.sb__gate-note {
+  margin-inline-start: auto;
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+@media (width <= 640px) {
+  .sb__gate-note {
+    flex-basis: 100%;
+    margin-inline-start: 0;
+    white-space: normal;
+  }
 }
 
 /* -- The description and the agent brief (MP-4-7, DP-34, DP-35, TT-01, TA-10).

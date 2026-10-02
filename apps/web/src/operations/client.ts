@@ -50,53 +50,20 @@ import {
   SESSION_HEADER,
   pathOf,
 } from '../../../../packages/core-wire/src/index.ts';
-import type { CommandName, CommandRefusal } from '../../../../packages/core-wire/src/index.ts';
+import type { CommandName } from '../../../../packages/core-wire/src/index.ts';
 import type { AccountRoute, NotARead, ReadName } from './read-names.ts';
+import type { CallResult, CommandOutcome, WireRefusal } from './results.ts';
 
 export { READ_NAMES } from './read-names.ts';
 export type { AccountRoute, NotARead, ReadName } from './read-names.ts';
-
-/** What a mutation returns when it worked: a durable handle and a new revision. */
-export interface CommandOutcome {
-  readonly recordId: string;
-  readonly revision: number;
-  /**
-   * Whatever the operation has to say about what it did, in its own words.
-   *
-   * It is the envelope's third field (`commands/outcome.ts`) and the API passes it through
-   * unchanged. `task.comment` puts the new comment's identifier in it; the two settings commands
-   * put the key and the value the row now holds, which is the only thing in this build that tells
-   * a caller what a setting was set to — there is no settings read. Optional, because most
-   * operations have nothing to add beyond the handle and the revision.
-   */
-  readonly detail?: Readonly<Record<string, unknown>>;
-}
-
-/**
- * A refusal as it arrives over HTTP: the server's one refusal shape, taken
- * type-only through the wire contract, so the browser declares no second one.
- * `isWireRefusal` still checks the flag and the code on the parsed body before
- * anything reads it. `code` is what code branches on; `names` and `fixes` are
- * what a person reads, and this module never rewrites either (checklist B7, N3).
- */
-export type WireRefusal = CommandRefusal;
-
-/** The transport did not produce an answer at all. Not a refusal: an absence. */
-export interface Unavailable {
-  readonly unavailable: true;
-  /** Why, in words, for the reader. Never a stand-in for a server's refusal. */
-  readonly because: string;
-}
-
-export type CallResult<T> = { readonly ok: true; readonly value: T } | WireRefusal | Unavailable;
-
-export function isRefusal<T>(result: CallResult<T>): result is WireRefusal {
-  return 'refused' in result;
-}
-
-export function isUnavailable<T>(result: CallResult<T>): result is Unavailable {
-  return 'unavailable' in result;
-}
+export { isRefusal, isUnavailable } from './results.ts';
+export type {
+  CallResult,
+  CommandOutcome,
+  ConversationReply,
+  Unavailable,
+  WireRefusal,
+} from './results.ts';
 
 export interface ClientOptions {
   /**
