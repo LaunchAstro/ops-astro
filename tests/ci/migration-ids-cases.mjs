@@ -187,6 +187,8 @@ test('refuses a name that is neither a four-digit number nor a UTC timestamp', (
     '19990101000000_last_century',
     '01000101000000_year_100',
     'loose',
+    // Cut at the tab, this name would read as a well-formed `<stamp>_abcd`.
+    `${stamp(0)}_abcdefgh\t`,
   ]) {
     refuses(check(MAIN_AFTER_3A, [name]), new RegExp(name, 'u'));
   }
@@ -250,42 +252,22 @@ test('refuses a head that merged main in with no merge on top, judged against ma
   }
 });
 
-test('refuses a migration that is not a regular file, such as a symlink', () => {
+test('refuses a symlink, and a .SQL twin, which a Mac checkout folds onto the applied .sql', () => {
   const repo = repository();
   try {
     const base = repo.commit(MAIN_AFTER_3A, 'base');
     writeFileSync(join(repo.dir, 'elsewhere.sql'), 'select 1;\n');
     symlinkSync('../elsewhere.sql', join(repo.dir, 'migrations', '20261002013000_link.sql'));
-    refuses(repo.run(base, repo.commit([])), /20261002013000_link is not a regular file/u);
-  } finally {
-    repo.done();
-  }
-});
-
-test('refuses a name holding a tab, judging the whole name and not the text before the tab', () => {
-  // Cut at the tab, the name would read as `<stamp>_abcd`, well formed.
-  refuses(check(MAIN_AFTER_3A, [`${stamp(0)}_abcdefgh\t`]), /abcdefgh/u);
-});
-
-test('refuses a .SQL name, which the runner skips on Linux and a Mac folds onto .sql', () => {
-  const repo = repository();
-  try {
-    const base = repo.commit(MAIN_AFTER_3A, 'base');
-    writeFileSync(join(repo.dir, 'migrations', `${stamp(0)}_shout.SQL`), 'select 1;\n');
-    refuses(repo.run(base, repo.commit([])), /_shout\.SQL/u);
-  } finally {
-    repo.done();
-  }
-});
-
-test('refuses a .SQL twin of an applied migration, which replaces it on a Mac checkout', () => {
-  const repo = repository();
-  try {
-    const base = repo.commit(MAIN_AFTER_3A, 'base');
+    repo.git('add', '-A');
+    // The twin goes in by hand, as a Linux client commits it; no add -A after it.
     const blob = repo.git('rev-parse', `${base}:migrations/0001_m.sql`);
     repo.git('update-index', '--add', '--cacheinfo', `100644,${blob},migrations/0001_m.SQL`);
-    repo.git('commit', '-q', '-m', 'twin');
-    refuses(repo.run(base, repo.git('rev-parse', 'HEAD')), /0001_m\.SQL/u);
+    repo.git('commit', '-q', '-m', 'change');
+    refuses(
+      repo.run(base, repo.git('rev-parse', 'HEAD')),
+      /20261002013000_link is not a regular file/u,
+      /0001_m\.SQL ends in a \.sql that is not lower case/u,
+    );
   } finally {
     repo.done();
   }

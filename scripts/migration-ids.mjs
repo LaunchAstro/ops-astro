@@ -28,24 +28,34 @@ if (!base || !head) {
 
 const git = (...args) => execFileSync('git', args, { encoding: 'utf8' });
 
-/** The `migrations/*.sql` entries at a commit: version and git file mode. */
-const entriesAt = (commit) =>
+/** The `migrations/` entries at a commit: path and git file mode. A path may hold a tab. */
+const treeAt = (commit) =>
   git('ls-tree', '-z', commit, 'migrations/')
     .split('\0')
-    .filter((line) => line.endsWith('.sql'))
+    .filter(Boolean)
     .map((line) => {
-      const [meta, path] = line.split('\t');
-      return {
-        mode: meta.split(' ')[0],
-        version: path.slice('migrations/'.length, -'.sql'.length),
-      };
+      const tab = line.indexOf('\t');
+      return { mode: line.slice(0, tab).split(' ')[0], path: line.slice(tab + 1) };
     });
+
+/** The `migrations/*.sql` entries at a commit: version and git file mode. */
+const entriesAt = (commit) =>
+  treeAt(commit)
+    .filter((entry) => entry.path.endsWith('.sql'))
+    .map((entry) => ({
+      mode: entry.mode,
+      version: entry.path.slice('migrations/'.length, -'.sql'.length),
+    }));
 
 /** What is wrong with `commit` as a change to `parent`. */
 function judge(parent, commit) {
   const entries = entriesAt(commit);
   const versions = entries.map((entry) => entry.version);
   return [
+    // The runner skips it on Linux; a Mac checkout folds it onto the .sql of the same name.
+    ...treeAt(commit)
+      .filter((entry) => /\.sql$/iu.test(entry.path) && !entry.path.endsWith('.sql'))
+      .map((entry) => `${entry.path} ends in a .sql that is not lower case`),
     ...entries
       .filter((entry) => entry.mode !== '100644')
       .map((entry) => `${entry.version} is not a regular file (git mode ${entry.mode})`),

@@ -200,8 +200,9 @@ a whole: a pull request's merge with `main` as it stood when GitHub built the
 merge, and in the queue, the run that holds, each entry against `main` and the
 entries queued ahead of it. It refuses a duplicate ID, a migration that sorts
 before the newest one already there, a gap in the four-digit range, a file that
-is not a regular, non-executable file, and a timestamp more than an hour ahead of the clock
-(local time written as UTC). A migration not yet on `main` that fails it takes
+is not a regular, non-executable file, a name ending in an upper-case `.SQL`
+(a Mac checkout folds it onto the `.sql` of the same name), and a timestamp
+more than an hour ahead of the clock (local time written as UTC). A migration not yet on `main` that fails it takes
 a new timestamp; one on `main` is never renamed. The runner itself still
 applies whatever is pending, in ID order, even below its ledger's newest, and
 nothing checks a push to `main` that bypasses the queue: a database that ran a
