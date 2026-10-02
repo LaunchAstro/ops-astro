@@ -809,7 +809,7 @@ describe.skipIf(serverUrl === undefined)('the runtime review findings', () => {
 
     const moveRun = `update public.planned_runs set task_id = $3 where business_id = $1 and id = $2`;
     const parameters = [fixture.businessId, onOther.runId, fixture.taskId];
-    // The application may not rewrite a run's task at all (AW-02, 0192)...
+    // The application may not rewrite a run's task at all (AW-02, 0086)...
     await expect(
       database.app.withBusiness(
         fixture.businessId,

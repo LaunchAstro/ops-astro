@@ -1,0 +1,1 @@
+[{ "table": "ops.slots", "columns": ["reservation"], "where": "slot = 'bool_2'" }]

@@ -26,6 +26,15 @@ function task(fields: { readonly title: string | null; readonly capCurrency?: st
     revision: 3,
     description: null,
     history: [],
+    // The board row's fields (MP-5-8): this stub answers task.board too.
+    board: null,
+    rank: { number: null, score: null, calc: '' },
+    adHoc: false,
+    clientAccess: false,
+    stage: null,
+    clientSet: false,
+    steps: [],
+    time: null,
     comments: [],
     proposals: [],
     ...(fields.capCurrency === undefined ? {} : { capCurrency: fields.capCurrency }),
@@ -41,7 +50,13 @@ function client(detail: ReturnType<typeof task>) {
     if (at.endsWith('/inbox/count')) return Response.json({ ok: true, owed: 0 });
     const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
     if (at.endsWith('/task/board'))
-      return Promise.resolve(Response.json({ ok: true, tasks: [detail] }));
+      // A board row's comments are the reader's open counts, not the page's list (MP-5-8).
+      return Promise.resolve(
+        Response.json({
+          ok: true,
+          tasks: [{ ...detail, comments: { client: 0, mentions: 0, latest: null } }],
+        }),
+      );
     if (at.endsWith('/person/list'))
       return Promise.resolve(Response.json({ ok: true, persons: [] }));
     if (at.endsWith('/task/read'))
@@ -67,7 +82,9 @@ function client(detail: ReturnType<typeof task>) {
 describe('CQ-7 untitled placeholder', () => {
   it('draws a task with no title as "Untitled task" on the board', async () => {
     const { operations } = client(task({ title: null }));
-    const view = await mount(<Projects client={operations} grantKey="alpha:ada" />);
+    const view = await mount(
+      <Projects client={operations} grantKey="alpha:ada" navigate={() => {}} />,
+    );
     await settle();
     expect(view.text()).toContain('Untitled task');
     await view.unmount();

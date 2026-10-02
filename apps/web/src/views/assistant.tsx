@@ -10,7 +10,8 @@
 //
 // **One start per tab.** A second question asked while the first is still
 // starting waits for that start and joins the conversation it made, so a
-// quick second press never opens a second conversation.
+// quick second press never opens a second conversation. Where that start is
+// refused, the next queued question starts the tab and the rest wait on it.
 //
 // **Nothing about a client's material is sent** (owner line 72): the drawer
 // refuses the question itself while the offer is empty with a reason
@@ -19,8 +20,10 @@
 // seam); the catalogue is empty until the business's price book is readable
 // here, so the picker offers nothing and the choice is not sent.
 //
-// The agent does not answer yet: the exchange runs on AW-01's model seam. A
-// kept question says so in plain words.
+// The agent's answer comes back beside each kept question (AW-03's exchange,
+// on AW-01's conversation seam) and is drawn as the agent's line, as text.
+// Where the deployment answers nothing, or no model may take the question,
+// the tab says so in plain words: the server's own, for a refusal.
 //
 // A started tab links to the conversation's own address (C36), where it stays
 // after it is taken out of the tab row.
@@ -46,7 +49,12 @@ import {
 } from '../assistant/chats.ts';
 import { entryFor, type EntryPoint } from '../assistant/entries.ts';
 import { modelOffer, subjectFor, type ModelChoice, type Subject } from '../assistant/subject.ts';
-import type { CallResult, CommandOutcome, OperationsClient } from '../operations/client.ts';
+import type {
+  CallResult,
+  CommandOutcome,
+  ConversationReply,
+  OperationsClient,
+} from '../operations/client.ts';
 import { settle } from '../records/use-command.ts';
 import { pathTo, ROUTES, type RouteId } from '../routes.ts';
 import { AllowanceLine } from './allowance-line.tsx';
@@ -63,7 +71,8 @@ export interface AssistantViewProps {
   readonly here: string;
   /** The entry point the drawer was last opened from, if any: asked through the one seam. */
   readonly entry: EntryPoint | null;
-  readonly onClose: () => void;
+  /** Its own close and title; the dock leaves it out, as its panel head closes and names it. */
+  readonly onClose?: () => void;
 }
 
 type Move = (state: AssistantState) => AssistantState;
@@ -107,7 +116,14 @@ interface Opening {
   readonly scope: { readonly kind: 'task'; readonly id: string } | null;
 }
 
-/** The tab's first question, then the page it was given before it started. */
+/** The agent's answer to a kept question, why there is none, or that none comes here. */
+function replied(store: Store, key: string, reply: ConversationReply | undefined): void {
+  if (reply === undefined) store.line(key, 'note', KEPT);
+  else if (reply.answered) store.line(key, 'ai', reply.body);
+  else store.line(key, 'failed', reply.words);
+}
+
+/** The tab's first question, its answer, then the page it was given before it started. */
 async function startWith(
   client: OperationsClient,
   store: Store,
@@ -133,6 +149,7 @@ async function startWith(
     return null;
   }
   store.update((current) => started(current, chat.key, id));
+  replied(store, chat.key, settled.kind === 'ok' ? settled.value.reply : undefined);
   const page = store.chat(chat.key)?.page ?? null;
   if (page !== null) await report(chat.key, setScope(client, id, page));
   return id;
@@ -156,21 +173,26 @@ function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
     const chat = store.chat(key);
     if (chat === undefined) return;
     store.line(key, 'user', body);
-    const pending = starts.current.get(key);
-    const known = chat.conversationId ?? (pending === undefined ? null : await pending);
-    let kept: boolean;
+    let known = chat.conversationId;
     if (known === null) {
-      const starting = start(chat, body);
-      starts.current.set(key, starting);
-      kept = (await starting) !== null;
-      if (!kept) starts.current.delete(key);
-    } else {
-      kept = await report(
-        key,
-        props.client.mutate('conversation.message', { conversationId: known, body }),
-      );
+      // Queued behind the tab's last start: joins what it made, or starts
+      // itself only once that start is refused.
+      let asked = false;
+      const before = starts.current.get(key) ?? Promise.resolve(null);
+      const turn = before.then(async (id) => {
+        if (id !== null) return id;
+        asked = true;
+        return await start(chat, body);
+      });
+      starts.current.set(key, turn);
+      known = await turn;
+      if (asked || known === null) return;
     }
-    if (kept) store.line(key, 'note', KEPT);
+    const settled = settle(
+      await props.client.mutate('conversation.message', { conversationId: known, body }),
+    );
+    if (settled.kind === 'ok') replied(store, key, settled.value.reply);
+    else store.line(key, 'failed', settled.because);
   };
   return { report, send };
 }
@@ -256,9 +278,7 @@ export function AssistantView(props: AssistantViewProps): ReactElement {
         update((current) => chooseModel(current, key, model));
       }}
       onAddPage={writes.addPage}
-      onSend={(key, text) => {
-        void sender.send(key, text);
-      }}
+      onSend={sender.send}
       onClose={props.onClose}
     />
   );

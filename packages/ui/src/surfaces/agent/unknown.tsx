@@ -10,7 +10,7 @@
 
 import { useState, type ReactElement } from 'react';
 import type { RunStory } from '../../state/agent-run.ts';
-import { minorOf } from './format.ts';
+import { major, minorOf } from './format.ts';
 
 export type RecordedOutcome = 'nothing_happened' | 'happened' | 'happened_differently';
 
@@ -79,15 +79,16 @@ export function UnknownOutcome(props: UnknownOutcomeProps): ReactElement | null 
 function WriteOff(
   props: UnknownOutcomeProps & { readonly attemptId: string; readonly heldMinor: number },
 ): ReactElement {
-  const [amount, setAmount] = useState((props.heldMinor / 100).toFixed(2));
+  const { currency } = props.story.head;
+  const [amount, setAmount] = useState(major(props.heldMinor, currency));
   const [reason, setReason] = useState('');
-  const charge = minorOf(amount);
+  const charge = minorOf(amount, currency);
   const ready = !props.busy && charge !== null && reason.trim() !== '';
   return (
     <div className="sbact" data-agent="write-off">
       <Fields
         busy={props.busy}
-        currency={props.story.head.currency}
+        currency={currency}
         amount={amount}
         reason={reason}
         onAmount={setAmount}

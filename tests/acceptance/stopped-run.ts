@@ -37,13 +37,13 @@ function expectOk(answer: Answer, what: string): void {
 /**
  * A run waiting at its approved ceiling: proposed under one call's price and
  * approved by the context's person, picked up by the agent, and stopped by the
- * broker at its first call. Answers the task and the run.
+ * broker at its first call. Answers the task, the run and the ask the read shows.
  */
 async function stoppedRun(
   context: StopContext,
   asAgent: Call,
   proposal: Readonly<Record<string, unknown>>,
-): Promise<{ readonly recordId: string; readonly runId: string }> {
+): Promise<{ readonly recordId: string; readonly runId: string; readonly askId: string }> {
   const task = await context.freshTask('a task whose run stops at its ceiling');
   const proposed = await context.asPerson('task.propose', {
     recordId: task.id,
@@ -78,7 +78,15 @@ async function stoppedRun(
   if (call.code !== 'BUDGET_UNAVAILABLE') {
     throw new Error(`matrix: the call past the ceiling answered ${call.code}, not the stop`);
   }
-  return { recordId: task.id, runId: String(lease['runId']) };
+  // The ask a person answers is the one the task's read shows them (MP-6-5).
+  const read = await context.asPerson('task.read', { recordId: task.id });
+  expectOk(read, 'task.read');
+  const { ledger } = read.body['task'] as {
+    readonly ledger: { readonly stops: readonly { readonly askId: string }[] };
+  };
+  const askId = ledger.stops.at(-1)?.askId;
+  if (askId === undefined) throw new Error('matrix: the read shows no stop to answer');
+  return { recordId: task.id, runId: String(lease['runId']), askId };
 }
 
 /**

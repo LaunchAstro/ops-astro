@@ -36,12 +36,13 @@ const onDisk = readMigrations('migrations');
 const head = onDisk.at(-1)?.version ?? '';
 const scratch: string[] = [];
 
-/** The real migrations, plus one planted after the head. */
+/** The real migrations with their declared changes, plus one planted after the head. */
 function withPlanted(name: string, sql: string): string {
   const directory = mkdtempSync(join(tmpdir(), 'upgrade-drill-'));
   scratch.push(directory);
   for (const file of readdirSync('migrations')) {
-    if (file.endsWith('.sql')) copyFileSync(join('migrations', file), join(directory, file));
+    if (/\.(sql|changes\.json)$/u.test(file))
+      copyFileSync(join('migrations', file), join(directory, file));
   }
   writeFileSync(join(directory, name), `${sql}\n`);
   return directory;
@@ -153,7 +154,7 @@ function upgradeDrillCases2() {
 
   it('a migration that erases existing decisions fails the drill', () => {
     // cascade: later tables hold foreign keys to gate_decisions (0193 budget waits,
-    // 0207 plan records), and a bare truncate of a referenced table is refused (0A000).
+    // 0102 plan records), and a bare truncate of a referenced table is refused (0A000).
     const planted = withPlanted(
       '9999_planted_decision_loss.sql',
       'truncate public.gate_decisions cascade',
@@ -222,7 +223,9 @@ describe('S0-3 upgrade drill in CI', () => {
       workflow.indexOf('\n  database-lookahead:'),
     );
     const step = job.slice(job.indexOf('- name: The upgrade drill'));
-    expect(step).toContain("if: github.event_name == 'pull_request'");
+    // CI-QUEUE: on a pull request and on a merge group, from main as it stands.
+    expect(step).toContain("if: github.event_name != 'push'");
+    expect(step).toContain('BASE_SHA="$(node scripts/merge-group.mjs base)"');
     expect(step).toContain('git diff --name-only --diff-filter=A "$BASE_SHA" HEAD -- migrations/');
     expect(step).toContain('git ls-tree --name-only "$BASE_SHA" migrations/');
     expect(step).toContain(

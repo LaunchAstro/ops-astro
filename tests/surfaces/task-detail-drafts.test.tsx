@@ -24,6 +24,7 @@ import { act } from 'react';
 import { describe, expect, it } from 'vitest';
 import { TaskDetailScreen } from '../../apps/web/src/screens/TaskDetail.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
+import type { HistoryEntry } from '../../packages/core-wire/src/index.ts';
 import { mount } from './mount.tsx';
 
 const TASK = {
@@ -37,7 +38,15 @@ const TASK = {
   priority: null,
   completedAt: null,
   revision: 3,
-  history: [] as { at: string; actorId: string; operation: string }[],
+  history: [] as HistoryEntry[],
+  board: null,
+  rank: { number: null, score: null, calc: '' },
+  adHoc: false,
+  clientAccess: false,
+  stage: null,
+  clientSet: false,
+  steps: [],
+  time: null,
   // `task.read` carries the task's comments. This stub is not about them, so
   // the list is the empty one the read gives a task nobody has spoken on — an
   // absent key would be a shape the API never sends.

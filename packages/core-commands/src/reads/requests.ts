@@ -25,12 +25,21 @@
 // the bug would live in the client.
 
 import type { PresetField } from '../../../core-records/src/index.ts';
+import type { BreachNoticeOperands } from './operations.ts';
 import type {
   AttributionResult,
+  AccessReadResult,
+  BreachNoticesResult,
+  ClientListResult,
   CapabilitiesResult,
+  SessionPersonResult,
+  OperationsReadResult,
   InboxCountResult,
   InboxReadResult,
   PersonListResult,
+  TagListResult,
+  TaskTodosResult,
+  TeamListResult,
   PresetPlanResult,
   QueueResult,
   AwaitingReviewResult,
@@ -41,10 +50,12 @@ import type {
   SharedTaskRead,
   TaskBoardResult,
   TaskDetail,
+  UnattendedView,
+  TaskSearchResult,
+  TaskLedgerResult,
 } from '../../../core-wire/src/index.ts';
 import type { TaskExecution } from './execution.ts';
 import type { ReadSpan, Receipt, TriggerReading } from '../../../core-runtime/src/index.ts';
-import type { UnattendedEntry } from './inbox.ts';
 
 // The result types live in `views.ts`, which the clients import; the server's
 // own modules keep importing them from here.
@@ -68,7 +79,30 @@ export interface ReadOperands {
   readonly 'task.read': { readonly recordId: string };
   /** `null` is the business's unboarded tasks, which is where a created task starts. */
   readonly 'task.board': { readonly board: string | null };
+  /**
+   * The activity ledger's page: the newest days with events before `before`
+   * (a `YYYY-MM-DD` in `timeZone`), or the newest days of all when it is
+   * null. The zone is the reader's, and it is what a day means: an event at
+   * 23:30 in Townsville is on a different day than it is in UTC.
+   */
+  readonly 'task.ledger': {
+    readonly before: string | null;
+    readonly timeZone: string;
+    /** Words for C1's search (MP-8-4); null lists every task's events. */
+    readonly query: string | null;
+  };
   readonly 'person.list': NoOperands;
+  /** The business's tag vocabulary (MP-4-11). */
+  readonly 'tag.list': NoOperands;
+  /**
+   * The reader's own open tasks (MP-7-1); or, scoped (MP-7-2), a teammate's
+   * open tasks (`person`) or every open task under a client (`client`). One
+   * scope at a time.
+   */
+  readonly 'task.todos': { readonly person?: string; readonly client?: string };
+  /** The words to find among the tasks the caller may read (C1). */
+  readonly 'task.search': { readonly query: string };
+  readonly 'team.list': NoOperands;
   /** Approved, held and unpicked. A projection; reading it claims nothing. */
   readonly 'task.queue': NoOperands;
   /** The pending gates the caller may decide, filtered by their `decide` in the query. */
@@ -123,6 +157,20 @@ export interface ReadOperands {
   readonly 'conversation.allowance': { readonly conversationId: unknown };
   /** The runs that read one file, by its digest: pre-review (AW-04). */
   readonly 'definition.attribution': { readonly digest: string };
+  /** Who is signed in: the caller's own name (C23). It takes no grant either. */
+  readonly 'session.person': NoOperands;
+  /** The caller's own saved preferences (MP-2-11a). */
+  readonly 'preference.read': NoOperands;
+  /** Who may do what here: Team, Clients and Agents with their previews (C32). */
+  readonly 'access.read': NoOperands;
+  readonly 'client.list': NoOperands;
+  /** What needs the operator's eye: privacy incidents first (C55). */
+  readonly 'operations.read': NoOperands;
+  /**
+   * The breach drill's notices from the published runbook (C81), for the
+   * recipients named. It writes nothing and sends nothing, so it is a read.
+   */
+  readonly 'privacy.draft_breach_notices': BreachNoticeOperands;
   /** The caller's own inbox items, each with its access derived now (INB-1d). */
   readonly 'inbox.read': NoOperands;
   /** The caller's owed count: the counted entries of `inbox.read`. */
@@ -152,7 +200,12 @@ export type ReadResult =
   | { readonly ok: true; readonly task: TaskDetail }
   | SharedTaskRead
   | TaskBoardResult
+  | TaskSearchResult
+  | TaskLedgerResult
   | PersonListResult
+  | TagListResult
+  | TaskTodosResult
+  | TeamListResult
   | QueueResult
   | AwaitingReviewResult
   | PresetPlanResult
@@ -162,11 +215,17 @@ export type ReadResult =
   | CapabilitiesResult
   | ConversationReadResult
   | ConversationListResult
+  | SessionPersonResult
+  | { readonly ok: true; readonly preferences: Readonly<Record<string, unknown>> }
+  | AccessReadResult
+  | ClientListResult
+  | OperationsReadResult
+  | BreachNoticesResult
   | AllowanceResult
   | AttributionResult
   | InboxReadResult
   | InboxCountResult
-  | { readonly ok: true; readonly unattended: readonly UnattendedEntry[] }
+  | { readonly ok: true; readonly unattended: readonly UnattendedView[] }
   | {
       readonly ok: true;
       readonly trace: {

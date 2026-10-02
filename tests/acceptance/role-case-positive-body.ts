@@ -5,7 +5,6 @@
 // Split from that file so each stays under the per-file cap; the seam is the
 // same one: this is still the matrix's only knowledge of what a task is.
 
-import { randomUUID } from 'node:crypto';
 import { type CommandDeclaration } from '../../packages/core-wire/src/surface.ts';
 import {
   ACCEPTED_PLAN,
@@ -17,23 +16,37 @@ import {
   approvableGate,
   approvedReservationId,
   moneyBody,
-  ownLaunchedLease,
   ownLease,
-  ownAppliedEffect,
 } from './role-case-bodies.ts';
-import { ownConversation } from './foreign-conversation.ts';
 import { answerAtTheStop } from './stopped-run.ts';
 import { revisedRunBody } from './revised-run.ts';
+import { commentChangeBody } from './role-case-comment-bodies.ts';
+import { tagRecipes } from './tag-recipes.ts';
+import { timeRecipes } from './time-recipes.ts';
+import { privacyBody } from './role-case-privacy-bodies.ts';
+import { credentialBody } from './role-case-credential-bodies.ts';
+import { accessBody, madeClient } from './role-case-access-bodies.ts';
+import { createGateBody } from './role-case-gate-bodies.ts';
+import { conversationBody, leaseBody } from './role-case-run-bodies.ts';
+import { FIXED_BODIES } from './role-case-fixed-bodies.ts';
 
 export function createPositiveBody(
   context: BodyContext,
-): (declaration: CommandDeclaration) => Promise<Prepared> {
+): (declaration: CommandDeclaration, author?: unknown) => Promise<Prepared> {
+  const time = timeRecipes(context);
+  const tags = tagRecipes(context);
+  const gateBody = createGateBody(context);
   // eslint-disable-next-line max-lines-per-function -- one recipe per declaration reads as a table
-  return async function positiveBody(declaration: CommandDeclaration): Promise<Prepared> {
+  return async function positiveBody(
+    declaration: CommandDeclaration,
+    author?: unknown,
+  ): Promise<Prepared> {
     const target = async (): Promise<Record<string, unknown>> => {
       const task = await context.freshTask(`a task for ${declaration.name}`);
       return { recordId: task.id, expectedRevision: task.revision };
     };
+    const fixed = FIXED_BODIES[declaration.name];
+    if (fixed !== undefined) return { body: { ...fixed } };
     switch (declaration.name) {
       case 'task.create':
         return { body: { fields: { title: 'the admin creates a task' } } };
@@ -44,9 +57,8 @@ export function createPositiveBody(
       case 'task.trash':
         return { body: await target() };
       case 'task.reopen': {
-        // Only a completed task can be reopened (`tasks-state.ts`), so this
-        // completes one first and writes against the revision that move
-        // produced rather than the one the create returned.
+        // Only a completed task can be reopened (`tasks-state.ts`): complete one,
+        // then write against that move's revision, not the create's.
         const task = await context.freshTask('a task to complete and reopen');
         const done = await context.asPerson('task.complete', {
           recordId: task.id,
@@ -60,8 +72,33 @@ export function createPositiveBody(
           },
         };
       }
+      case 'task.set_state': {
+        // A state id is the business's own, so it is read off a fresh task
+        // (its first state), which is then started and set back to it.
+        const task = await context.freshTask('a task to start and set back');
+        const read = await context.asPerson('task.read', { recordId: task.id });
+        const state = (read.body['task'] as { state: { id: string } | null }).state;
+        const started = await context.asPerson('task.start', {
+          recordId: task.id,
+          expectedRevision: task.revision,
+        });
+        return {
+          body: {
+            recordId: task.id,
+            expectedRevision: Number(started.body['revision']),
+            stateId: state?.id,
+          },
+        };
+      }
+      case 'task.duplicate': {
+        const task = await context.freshTask('a task to duplicate, to no client');
+        return { body: { recordId: task.id, client: null, title: 'a copy', stepNames: [] } };
+      }
       case 'task.comment':
         return { body: { ...(await target()), body: 'a note', audience: 'internal' } };
+      case 'task.edit_comment':
+      case 'task.delete_comment':
+        return { body: await commentChangeBody(context, declaration.name, author) };
       case 'task.assign':
         return { body: { ...(await target()), fields: { assignee: context.assigneePersonId } } };
       case 'task.triage':
@@ -70,14 +107,29 @@ export function createPositiveBody(
         return { body: { ...(await target()), fields: { stage: 'drafting' } } };
       case 'task.set_audience':
         return { body: { ...(await target()), fields: { client_visible: true } } };
+      case 'task.set_scores':
+        return { body: { ...(await target()), fields: { impact: 7, confidence: 9, ease: 8 } } };
+      case 'task.set_adhoc':
+        return { body: { ...(await target()), fields: { ad_hoc: true } } };
+      case 'task.set_category':
+        return { body: { ...(await target()), fields: { category: 'seo' } } };
+      case 'task.share_with_client': {
+        if (context.clientTask === undefined) return { body: await target() };
+        const task = await context.clientTask('a task the admin shares with its client');
+        return { body: { recordId: task.id, expectedRevision: task.revision } };
+      }
+      case 'task.revoke_client_share': {
+        // A share to take back; sharing leaves the task's revision as it was.
+        if (context.clientTask === undefined) return { body: await target() };
+        const task = await context.clientTask('a task the admin shares, then takes back');
+        const body = { recordId: task.id, expectedRevision: task.revision };
+        const shared = await context.asPerson('task.share_with_client', body);
+        if (shared.code !== 'ok') throw new Error(`matrix: share refused ${shared.code}`);
+        return { body };
+      }
       case 'task.set_party':
-        // The party link takes a uuid and nothing in this tree resolves one:
-        // the party model is not installed, and `tasks-state.ts` says so where
-        // it excludes `client` from the person links it checks. So this is the
-        // operation succeeding on a well-formed identifier, which is the whole
-        // of what it claims to check — written down so a reader is not left
-        // believing a party was proved to exist.
-        return { body: { ...(await target()), fields: { client: randomUUID() } } };
+        // The party link names a client of this business (C32), made first.
+        return { body: { ...(await target()), fields: { client: await madeClient(context) } } };
       case 'task.reparent':
         return { body: { ...(await target()), parentId: null } };
       case 'task.move':
@@ -97,10 +149,9 @@ export function createPositiveBody(
         return { body: { batchId: batchOf(trashed) } };
       }
       case 'task.purge': {
-        // The purge takes no window: it reads the business's installed
-        // retention_window_days, thirty days here, so this fresh trash stays
-        // and the case proves the authority and the operation's reach. The
-        // window boundary itself is `tests/commands/purge-retention.test.ts`.
+        // The purge reads the business's retention_window_days (thirty here),
+        // so this fresh trash stays: the case proves authority and reach. The
+        // window boundary is `tests/commands/purge-retention.test.ts`.
         const task = await context.freshTask('a task to trash and purge');
         await context.asPerson('task.trash', {
           recordId: task.id,
@@ -133,33 +184,11 @@ export function createPositiveBody(
       case 'task.execution':
       case 'trace.read':
         return { body: { recordId: context.alphaTaskId } };
-      case 'task.board':
-        return { body: { board: null } };
-      // The pending gates the admin may decide: the admin holds `decide` on
-      // the whole business, so the list answers.
-      case 'gate.pending':
-      case 'task.queue':
-      case 'person.list':
-      // Both take an empty body and neither carries an `expectedRevision`:
-      // `settings.read` because `business_settings` has no revision column to
-      // be stale against, `session.capabilities` because it reports the
-      // caller's own grants and there is nothing of the caller's to be stale.
-      // `settings.read` needs `settings:read`, which the seed grants the
-      // admin; `session.capabilities` needs a live grant of any kind, which
-      // the admin holds, so the admin reaches both here.
-      // falls through
-      case 'settings.read':
-      case 'session.capabilities':
-      case 'inbox.read':
-      case 'inbox.count':
-      case 'inbox.unattended':
-        // The caller's own inbox (INB-1d) needs a live grant of any kind, as
-        // above; `inbox.unattended` needs `operations:read`, which the seed
-        // grants the admin (INB-1e, C55).
-        return { body: {} };
-      case 'notifications.set_channel':
-        // Self-scoped (INB-1e): in-app is always on, the one mode it takes.
-        return { body: { channel: 'in_app', mode: 'on' } };
+      case 'client.create':
+      case 'access.grant':
+      case 'access.revoke':
+      case 'access.end':
+        return await accessBody(declaration.name, context);
       case 'inbox.seen': {
         // The caller's own item: a proposal raises a decision item for every
         // decide holder, the admin among them, read back from their inbox.
@@ -168,16 +197,24 @@ export function createPositiveBody(
         const items = listed.body['inbox'] as readonly Record<string, unknown>[];
         return { body: { itemId: String(items.at(-1)?.['id']) } };
       }
-      case 'preset.plan':
-        return { body: { recordTypeKey: 'task', presetKey: 'acceptance', fields: [] } };
-      case 'definition.attribution':
-        return { body: { digest: 'a'.repeat(64) } };
-      case 'settings.set_four_eyes_threshold':
-        return { body: { value: 1200 } };
-      // Off, the default: since AW-08 the setting holds every launch and
-      // dispatch in the business, and this world's other cells decide.
-      case 'settings.set_client_sign_off':
-        return { body: { value: false } };
+      // C81: the admin holds `privacy:manage`, as the owner does.
+      case 'legal.draft_version':
+      case 'legal.approve_version':
+      case 'legal.publish_version':
+      case 'privacy.set_overseas_service':
+      case 'privacy.set_data_class':
+      case 'privacy.draft_breach_notices':
+      case 'privacy.record_incident':
+        return await privacyBody(declaration.name, context);
+      // API-2: the admin holds `credential:write`, as the owner does.
+      case 'credential.issue':
+      case 'credential.revoke':
+        return await credentialBody(declaration.name, context);
+      // S0-5: the admin holds `operations:manage` in alpha, which operates the
+      // harness's installation.
+      case 'operations.record_gate_item':
+      case 'operations.change_installation_mode':
+        return await gateBody(declaration.name);
       case 'budget.top_up':
       case 'budget.record_outcome':
       case 'budget.write_off':
@@ -242,53 +279,33 @@ export function createPositiveBody(
         const run = await revisedRunBody(context, PROPOSAL);
         return 'body' in run ? { body: { runId: run.body['runId'] } } : run;
       }
+      case 'time.start':
+      case 'time.stop':
+      case 'time.log':
+      case 'time.set_note':
+      case 'time.delete':
+        return await time[declaration.name]();
+      case 'tag.create':
+      case 'task.add_tag':
+      case 'task.remove_tag':
+      case 'tag.list':
+        return await tags[declaration.name]();
       case 'task.heartbeat':
-        // The person renews their own lease (ledger line 38, "current lease
-        // owner"). The agent's renewal is in the agent journey.
-        return { body: await ownLease(context) };
       case 'task.dispatch':
-        // The person marks their own launched lease's step dispatched (T2c1, AW-08).
-        return { body: await ownLaunchedLease(context) };
       case 'task.check':
-        // A check recorded under the person's own lease (MP-6-1). The agent's
-        // check under its delegation is in the agent journey.
-        return {
-          body: { ...(await ownLease(context)), name: 'the admin checks', outcome: 'passed' },
-        };
       case 'task.observe':
-        // The person observes the effect they applied on their own lease (T2c2).
-        return { body: await ownAppliedEffect(context) };
-      case 'task.receipt': {
-        // The receipt of an effect the person applied and observed (T2c2).
-        const applied = await ownAppliedEffect(context);
-        const observed = await context.asPerson('task.observe', applied);
-        if (observed.code !== 'ok') throw new Error(`matrix: observe refused ${observed.code}`);
-        return { body: { attemptId: applied.attemptId } };
-      }
-      // AW-03. The admin holds `conversation:write`, so starts one of their own;
-      // the message and the read name a conversation the admin just started.
+      case 'task.receipt':
+        // The person's own lease and the effect applied on it: `role-case-run-bodies.ts`.
+        return await leaseBody(declaration.name, context);
       case 'conversation.start':
-        return { body: { body: 'the admin asks the agent', subject: 'acceptance' } };
       case 'conversation.message':
-        return { body: { conversationId: await ownConversation(context), body: 'and again' } };
       case 'conversation.read':
-        return { body: { conversationId: await ownConversation(context) } };
-      // MP-7-11. The tab row: the admin's own list, and a title and a page
-      // on the conversation the admin just started.
       case 'conversation.list':
-        return { body: {} };
-      // AW-04: the drawer's allowance line, on the admin's own conversation.
       case 'conversation.allowance':
-        return { body: { conversationId: await ownConversation(context) } };
       case 'conversation.rename':
-        return { body: { conversationId: await ownConversation(context), title: 'Renamed' } };
       case 'conversation.set_scope':
-        return {
-          body: {
-            conversationId: await ownConversation(context),
-            page: { address: '/settings', shows: 'Settings' },
-          },
-        };
+        // AW-03 and MP-7-11, the admin's own conversation: `role-case-run-bodies.ts`.
+        return await conversationBody(declaration.name, context);
       default:
         throw new Error(`matrix: no positive control recipe for ${String(declaration.name)}`);
     }

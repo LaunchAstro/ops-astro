@@ -29,14 +29,16 @@ import {
   BROKER_ROLE,
   OCCURRENCE_ROLE,
   APPLICATION_GRANTS,
-  catalogueFunctions,
-  catalogueTables,
   classify,
   describeOutcome,
-  type CatalogueFunction,
-  type CatalogueTable,
   type Outcome,
 } from './restricted-calls-cases.ts';
+import {
+  catalogueFunctions,
+  catalogueTables,
+  type CatalogueFunction,
+  type CatalogueTable,
+} from './restricted-calls-catalogue.ts';
 import {
   APPLICATION_CALLERS,
   OPERATIONS,
@@ -147,6 +149,63 @@ const UNREACHED: Readonly<Record<string, string>> = {
        join public.people p on p.business_id = a.business_id
        join public.actors actor on actor.business_id = a.business_id
       order by p.id, actor.id limit 1 returning 1`,
+  // C59: no journey enrols a second factor, so one is written here.
+  'public.second_factors': `insert into public.second_factors
+       (business_id, id, person_id, provider, provider_factor_id)
+     select business_id, gen_random_uuid(), id, 'supabase', 'restricted-calls-seed'
+       from public.people where business_id = $1 order by id limit 1 returning 1`,
+  // C55: no journey records a privacy incident, so one is written here.
+  'public.privacy_incidents': `insert into public.privacy_incidents
+       (business_id, id, what_happened, found_at, found_by, affected, information_kinds,
+        recorded_by_actor)
+     select business_id, gen_random_uuid(), 'restricted calls seed', now(), 'seed', 'nobody',
+            array['other'], id
+       from public.actors where business_id = $1 order by id limit 1 returning 1`,
+  // C81: no journey drafts a legal document version, so one is written here.
+  'public.legal_document_versions': `insert into public.legal_document_versions
+       (business_id, id, document, version, body, body_digest, drafted_by_actor)
+     select business_id, gen_random_uuid(), 'breach-runbook', '0.1', 'restricted calls seed', '',
+            id
+       from public.actors where business_id = $1 order by id limit 1 returning 1`,
+  // C81: no journey sets a register row, so one is written here.
+  'public.overseas_services': `insert into public.overseas_services
+       (business_id, id, service, receives, stored_where, trains_on_it, contract, to_confirm,
+        in_use, updated_by_actor)
+     select business_id, gen_random_uuid(), 'restricted calls seed', 'nothing', 'nowhere', 'no',
+            'none', false, true, id
+       from public.actors where business_id = $1 order by id limit 1 returning 1`,
+  // C81: no journey sets a data class, so one is written here.
+  'public.data_classes': `insert into public.data_classes
+       (business_id, id, data_class, purpose, disclosures, retention, deletion, in_use,
+        updated_by_actor)
+     select business_id, gen_random_uuid(), 'restricted calls seed', 'nothing', 'no one',
+            'a day', 'deleted', true, id
+       from public.actors where business_id = $1 order by id limit 1 returning 1`,
+  // API-2: no journey issues an agent credential, so one is written here.
+  'public.agent_credentials': `insert into public.agent_credentials
+       (business_id, id, agent_actor_id, issued_by_person_id, issued_by_actor_id, purpose, scope,
+        credential_hash, credential_scheme, credential_key_id, expires_at)
+     select business_id, gen_random_uuid(), id, person_id, id, 'restricted calls seed',
+            array['task:read'], repeat('0', 64), 'hmac-sha256-v1', 'seed', now() + interval '1 day'
+       from public.actors where business_id = $1 and kind = 'person'
+      order by id limit 1 returning 1`,
+  // C32: no journey makes a client, so one is written here.
+  'public.clients': `insert into public.clients (business_id, id, name, created_by_actor_id)
+     select business_id, gen_random_uuid(), 'restricted calls seed', id
+       from public.actors where business_id = $1 order by id limit 1 returning 1`,
+  // C58: no journey ends a person's access, so an ending is written here for a
+  // person's own login, as `access.end` writes one.
+  'public.access_endings': `insert into public.access_endings
+       (business_id, person_id, login_id, ended_by_actor_id)
+     select pl.business_id, pl.person_id, pl.login_id, a.id
+       from public.person_logins pl
+       join public.actors a on a.business_id = pl.business_id and a.person_id = pl.person_id
+      where pl.business_id = $1 order by pl.login_id limit 1 returning 1`,
+  // C58: an ended session, as signing out writes one for a person's own session.
+  'public.ended_sessions': `insert into public.ended_sessions
+       (business_id, person_id, session_id, reason)
+     select business_id, id, gen_random_uuid(), 'sign_out'
+       from public.people where business_id = $1 order by id limit 1 returning 1`,
   'public.record_links': `insert into public.record_links
        (business_id, id, link_type, from_record_id, to_record_id)
      select a.business_id, gen_random_uuid(), 'restricted_calls', a.id, b.id
@@ -194,7 +253,7 @@ const UNREACHED: Readonly<Record<string, string>> = {
        left join public.gates g on g.business_id = d.business_id and g.id = d.gate_id
      returning 1`,
   // AW-08: the mark rides on a lease the journey made and a version newer than
-  // its work on its run's lineage, proposed by its holder (0213, 0218), which the
+  // its work on its run's lineage, proposed by its holder (0108, 0111), which the
   // owner writes beside it, superseded, since the journey hands nothing back. A
   // business with none gets made-up ids, written with foreign keys off.
   'public.reviewed_outputs': `with picked as (
@@ -291,6 +350,16 @@ const UNREACHED: Readonly<Record<string, string>> = {
   'public.bootstrap_bytes': `insert into public.bootstrap_bytes
        (business_id, content_digest, content_size, bytes)
      values ($1, encode(sha256('seed'::bytea), 'hex'), 4, 'seed'::bytea) returning 1`,
+  // Nothing in the journey saves a preference (MP-2-11a adds the command).
+  'public.person_preferences': `insert into public.person_preferences
+       (business_id, person_id, key, value)
+     select business_id, id, 'appearance', '"dark"'::jsonb from public.people
+      where business_id = $1 order by id limit 1 returning 1`,
+  // 0043: set by a person in the Team panel (MP-7-10), which the journey never opens.
+  'public.person_availability': `insert into public.person_availability
+       (business_id, person_id, state, reason)
+     select business_id, id, 'away', 'restricted calls seed'
+       from public.people where business_id = $1 order by id limit 1 returning 1`,
   // Nothing in the journey raises an inbox item yet (INB-1b does), so one item,
   // its recipient's attention row and one attempt are written here, in order.
   'public.inbox_items': `insert into public.inbox_items
@@ -319,6 +388,32 @@ const UNREACHED_OWN: Readonly<Record<string, string>> = {
        join public.attempts att on att.business_id = r.business_id
        join public.planned_runs run on run.business_id = att.business_id and run.id = att.run_id
       where r.business_id = $1 order by att.id limit 1 returning 1`,
+  // 0078: no journey step logs time yet, so one finished entry is written here.
+  'public.time_entries': `insert into public.time_entries
+       (business_id, id, task_id, person_id, actor_id, started_at, ended_at, minutes,
+        ad_hoc, source)
+     select r.business_id, gen_random_uuid(), r.id, p.id, a.id, now(), now(), 1, false, 'log'
+       from public.records r
+       join public.people p on p.business_id = r.business_id
+       join public.actors a on a.business_id = r.business_id
+      where r.business_id = $1 order by r.id, p.id, a.id limit 1 returning 1`,
+  // 0081: no journey step tags a task yet, so one tag is named here...
+  'public.tags': `insert into public.tags (business_id, id, name, actor_id)
+     select a.business_id, gen_random_uuid(), 'restricted ' || left(gen_random_uuid()::text, 8), a.id
+       from public.actors a
+      where a.business_id = $1 order by a.id limit 1 returning 1`,
+  // ...and one task carries a tag of its own, made in the same statement.
+  'public.task_tags': `with made as (
+       insert into public.tags (business_id, id, name, actor_id)
+       select a.business_id, gen_random_uuid(), 'carried ' || left(gen_random_uuid()::text, 8), a.id
+         from public.actors a
+        where a.business_id = $1 order by a.id limit 1
+       returning business_id, id, actor_id)
+     insert into public.task_tags (business_id, task_id, tag_id, actor_id)
+     select m.business_id, r.id, m.id, m.actor_id
+       from made m
+       join public.records r on r.business_id = m.business_id
+      order by r.id limit 1 returning 1`,
 };
 
 /** Thrown to end the wrapper's transaction once the insert has answered. */
@@ -362,6 +457,7 @@ async function roleClasses(
                  when r.rolname = 'ops_astro_backup_restore' then 'backup restore'
                  when r.rolname = 'ops_astro_lookup' then 'lookup'
                  when r.rolname = 'ops_astro_forwarder' then 'forwarder'
+                 when r.rolname = 'ops_astro_restore_drill' then 'restore drill'
                  when r.rolcanlogin and not r.rolbypassrls and not r.rolcreaterole
                       and not r.rolcreatedb then 'outsider'
                  else 'unclassified' end as class
@@ -448,6 +544,9 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     // S0-2: the outbox forwarder reads and deletes ops.api_events and keeps its raised alerts in
     // ops.api_alerts (0048), proved in tests/db/api-events.test.ts.
     expect(classes['forwarder']).toStrictEqual(['ops_astro_forwarder']);
+    // C55: the restore drill stamps the date of the last tested restore through
+    // ops.record_tested_restore() (0070), proved in tests/operations/c55-last-tested-restore.test.ts.
+    expect(classes['restore drill']).toStrictEqual(['ops_astro_restore_drill']);
     expect(classes['application login']).toContain(world.db.loginRole);
     expect(classes['outsider']).toContain(world.db.restrictedRole);
   });
@@ -587,7 +686,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(inserting.length).toBeGreaterThan(0);
   }, 120_000);
 
-  it('calls every function as every caller, and only the granted two run', async () => {
+  it('calls every function as every caller, and only the granted three run', async () => {
     const wrong: string[] = [];
     for (const fn of functions) {
       for (const caller of [...TABLE_CALLERS, 'owner'] as const) {
@@ -613,16 +712,18 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     const definer = (signature: string): CatalogueFunction | undefined =>
       definers().find((fn) => fn.signature === signature);
 
-    // Exactly two, each for a named reason. The append-only trigger refuses
+    // Exactly three, each for a named reason. The append-only trigger refuses
     // the owner itself. The fair share's count (AW-01, ORCH-DECISION SL11
     // AW-01) is the one read across businesses: a provider route's ceiling is
     // the installation's, which a tenant transaction cannot count under row
     // security. It answers one number and no id, and only the broker's role
-    // may execute it (tests/broker/aw-01-broker-fair-share.test.ts).
-    it('are exactly two, each with its search path pinned', () => {
+    // may execute it (tests/broker/aw-01-broker-fair-share.test.ts). The drill
+    // stamp (C55) writes only now(), and only the drill's identity runs it.
+    it('are exactly three, each with its search path pinned', () => {
       expect(definers().map((fn) => fn.signature)).toStrictEqual([
         'handback_reports_append_only()',
         'model_route_room(text,integer)',
+        'ops.record_tested_restore()',
       ]);
     });
 
@@ -640,6 +741,15 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
       expect(fn?.trigger).toBe(false);
       expect(fn?.config).toStrictEqual(['search_path=pg_catalog, public', 'row_security=off']);
       expect(fn?.firedBy).toStrictEqual([]);
+    });
+
+    it('the third is the drill stamp, taking no argument', () => {
+      // 0070 (C55): no argument, so it writes only now(); only the drill's
+      // identity executes it (c55-last-tested-restore), refused above to every caller here.
+      const stamp = definer('ops.record_tested_restore()');
+      expect(stamp?.trigger).toBe(false);
+      expect(stamp?.argumentTypes).toStrictEqual([]);
+      expect(stamp?.config).toStrictEqual(['search_path=pg_catalog']);
     });
   });
 

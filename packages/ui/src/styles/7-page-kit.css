@@ -1,0 +1,287 @@
+/* SPDX-License-Identifier: AGPL-3.0-only */
+/* The page kit's composites: section head (DS-COMP-4), stat row (DS-COMP-6),
+   disclosure layer (DS-COMP-12), the sortable table's box, the bar list, the
+   meter's label line, the legend and the row that opens to its detail. The
+   primitives they place (banner, stat, meter, table, term tip, hint) are styled
+   by the kit; a test holds this file to that. */
+
+.sec__meta {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s-4);
+  padding-top: var(--s-3);
+  border-top: 1px solid var(--rule);
+  font: var(--type-tag);
+  letter-spacing: var(--type-tag-tracking);
+  text-transform: var(--type-tag-case);
+}
+.sec__right {
+  color: var(--text-muted);
+}
+
+.statrow {
+  display: grid;
+  border-bottom: 1px dotted var(--border-strong);
+}
+.statrow--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.statrow--3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.statrow--4 {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+.statrow--5 {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.statrow--6 {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+.statrow > .stat {
+  padding: var(--s-4) var(--s-5) var(--s-4) 0;
+}
+.delta--up {
+  color: var(--success);
+}
+.delta--down {
+  color: var(--danger);
+}
+.delta--flat {
+  color: var(--text-muted);
+}
+
+.layer {
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.layer__sum {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  border-bottom: 1px solid var(--rule);
+  cursor: pointer;
+  list-style: none;
+}
+.layer__sum::-webkit-details-marker {
+  display: none;
+}
+.layer__sum:hover {
+  background: var(--surface-2);
+}
+.layer__count {
+  color: var(--text-muted);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
+.layer__chev {
+  margin-left: auto;
+  width: 8px;
+  height: 8px;
+  border-right: 1px solid currentcolor;
+  border-bottom: 1px solid currentcolor;
+  transform: rotate(45deg);
+}
+.layer[open] > .layer__sum .layer__chev {
+  transform: rotate(225deg);
+}
+.layer__body {
+  padding: 17px;
+}
+
+.tbl-box {
+  max-width: 100%;
+  overflow: auto;
+}
+
+.barlist {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.barlist__row {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr) auto;
+  gap: var(--s-3);
+  align-items: center;
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+}
+.barlist__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.barlist__track {
+  position: relative;
+  height: 16px;
+  overflow: hidden;
+  background: var(--surface-2);
+}
+.barlist__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: color-mix(in oklch, var(--ink) 82%, transparent);
+}
+.barlist__val {
+  min-width: 66px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
+
+.pmeter {
+  display: grid;
+  gap: var(--s-2);
+}
+.pmeter__line {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s-3);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+.pmeter__val {
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--text-2);
+  font: var(--type-eyebrow);
+  letter-spacing: var(--type-eyebrow-tracking);
+  text-transform: var(--type-eyebrow-case);
+}
+.legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.legend__key {
+  width: 10px;
+  height: 10px;
+}
+.legend__key--ink {
+  background: var(--ink);
+}
+.legend__key--accent {
+  background: var(--accent);
+}
+.legend__key--muted {
+  background: var(--ink-faint);
+}
+.legend__key--success {
+  background: var(--success);
+}
+.legend__key--warning {
+  background: var(--warning);
+}
+.legend__key--danger {
+  background: var(--danger);
+}
+
+.opp {
+  border-bottom: 1px solid var(--rule-faint);
+}
+.opp:last-child {
+  border-bottom: 0;
+}
+.opp__sum {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-3);
+  padding: 0.55rem var(--s-5);
+  cursor: pointer;
+  list-style: none;
+}
+.opp__sum::-webkit-details-marker {
+  display: none;
+}
+.opp__sum:hover .opp__t {
+  color: var(--accent);
+}
+.opp__chev {
+  flex: none;
+  color: var(--ink-faint);
+  transition: transform var(--dur-1);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+.opp[open] .opp__chev {
+  transform: rotate(90deg);
+}
+.opp__t {
+  min-width: 0;
+}
+.opp__save {
+  margin-left: auto;
+  white-space: nowrap;
+}
+.opp__body {
+  padding: 0 var(--s-5) var(--s-4) calc(var(--s-5) + 1.15rem);
+}
+.opp__detail {
+  margin: 0;
+  color: var(--text-2);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+.opp__items {
+  margin: var(--s-3) 0 0;
+  padding-left: 1.05rem;
+  color: var(--ink-faint);
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
+
+@media (width <= 1279px) {
+  .statrow--4,
+  .statrow--5,
+  .statrow--6 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (width <= 900px) {
+  .statrow--3,
+  .statrow--4,
+  .statrow--5,
+  .statrow--6 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (width <= 640px) {
+  .statrow--2,
+  .statrow--3,
+  .statrow--4,
+  .statrow--5,
+  .statrow--6 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .statrow .stat__num {
+    font: var(--type-num-md);
+    letter-spacing: var(--type-num-md-tracking);
+    text-transform: var(--type-num-md-case);
+  }
+}

@@ -19,7 +19,13 @@ describe('SL04 live Tasks screen', () => {
       state: null,
       assignee: null,
       due: null,
+      // The rest of a board row as the wire carries it (MP-5-8), so the
+      // Projects board can draw it.
+      completedAt: null,
       revision: 1,
+      rank: { number: null, score: null, calc: '' },
+      stage: null,
+      clientSet: false,
     };
     const item = {
       id: 'item-1',
@@ -54,6 +60,9 @@ describe('SL04 live Tasks screen', () => {
       if (path.endsWith('/inbox/read')) {
         return Promise.resolve(Response.json({ ok: true, inbox: changed ? [item] : [] }));
       }
+      // The assignee editor's people (MP-5-10), none.
+      if (path.endsWith('/person/list'))
+        return Promise.resolve(Response.json({ ok: true, persons: [] }));
       if (path.endsWith('/inbox/count')) {
         return Promise.resolve(Response.json({ ok: true, owed: changed ? 1 : 0 }));
       }
@@ -65,7 +74,9 @@ describe('SL04 live Tasks screen', () => {
       signedIn: true,
       fetch,
     });
-    const view = await mount(<Projects client={client} grantKey="alpha:recipient" />);
+    const view = await mount(
+      <Projects client={client} grantKey="alpha:recipient" navigate={() => {}} />,
+    );
     try {
       await settle();
       expect((view.find('[data-inbox-count]') as HTMLElement | null)?.dataset['inboxCount']).toBe(
@@ -75,7 +86,7 @@ describe('SL04 live Tasks screen', () => {
 
       changed = true;
       for (const stream of streams) {
-        stream.enqueue(new TextEncoder().encode('event: invalidate\ndata: task-1\n\n'));
+        stream.enqueue(new TextEncoder().encode('event: invalidate\ndata: board\n\n'));
       }
       await vi.waitFor(
         async () => {

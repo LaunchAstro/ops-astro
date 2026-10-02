@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// AW-01 on the database, continued from aw-01-broker.test.ts: the data-class
-// route, the credential rule, the durable ceiling, the last room in a
-// reservation, revocation and an expired lease.
-//
-// The ticket's `AW-01 expired-lease settlement` is the case of that name here;
-// its cost half is also shown by `AW-01 settlement by the call`, whose name
-// the SL11 handback pins.
+// AW-01 on the database, continued from aw-01-broker.test.ts: the data-class route, the
+// credential rule, the durable ceiling, the last room in a reservation, revocation and an
+// expired lease (`AW-01 expired-lease settlement`; its cost half is also shown by `AW-01
+// settlement by the call`, whose name the SL11 handback pins). Every case needs the
+// database; without one the file is skipped.
 
 import { expect, it as vitestIt } from 'vitest';
 import { catalogue, REPLAY_COMPOSE } from '../../packages/core-connectors/src/index.ts';
@@ -38,7 +36,6 @@ import {
   callCount,
 } from './broker-world.ts';
 
-/** Every case needs the database; without one the file is skipped. */
 const it = noDatabase ? vitestIt.skip : vitestIt;
 
 useBrokerWorld('aw01limits');
@@ -72,6 +69,22 @@ it('AW-01 personal information stays local, on the broker: refused before any ro
   ]);
 });
 
+it('REVIEW-3A-1: the route the data classes chose carries the call, not another sharing its key', async () => {
+  const work = await liveWork(s, `chosen route ${PLANTED_PROMPT}`, 2_000);
+  world.provider.mode('answer');
+  const personal: readonly ModelCallField[] = [
+    { name: 'instruction', source: 'client_row', value: 'Reply to jo@example.test' },
+  ];
+  // A cloud route listed first under the local route's key: only the local one is eligible,
+  // and it is the one recorded and sent on (the start's recheck refuses the cloud one).
+  const twin = { ...CLOUD, key: LOCAL.key };
+  const answer = await call(work, { fields: personal }, withRoutes([twin, LOCAL]));
+  expect(await rowsOf((answer as { callId: string }).callId)).toMatchObject([
+    { route_key: LOCAL.key, route_reach: 'local' },
+  ]);
+  expect(answer).toMatchObject({ ok: true });
+});
+
 it('AW-01 subscription refusal, on the broker: an unattended run on a subscription is refused by name', async () => {
   const work = await liveWork(s, 'subscription', 2_000);
   const before = world.provider.seen.length;
@@ -80,9 +93,8 @@ it('AW-01 subscription refusal, on the broker: an unattended run on a subscripti
     ok: false,
     code: 'SUBSCRIPTION_UNATTENDED',
   });
-  expect(
-    await call(work, {}, withRoutes([{ ...subscription, installation: 'there' }])),
-  ).toMatchObject({
+  const elsewhere = withRoutes([{ ...subscription, installation: 'there' }]);
+  expect(await call(work, {}, elsewhere)).toMatchObject({
     ok: false,
     code: 'SUBSCRIPTION_OTHER_TENANT',
   });
@@ -216,7 +228,11 @@ it('AW-01 expired-lease settlement: the cost settles and the work is refused', a
   );
   world.provider.mode('answer');
   const result = await pending;
-  expect(result).toMatchObject({ ok: false });
+  expect(result).toEqual({ ok: false, code: 'LEASE_EXPIRED', callId: expect.any(String) });
+  // Slow mode answers usage 1/1, priced 1 + 2 * 1 = 3: settled, not held.
+  expect(await rowsOf((result as { callId: string }).callId)).toMatchObject([
+    { state: 'settled', actual_minor: '3' },
+  ]);
 });
 
 it('AW-01 recovery: custody lost mid-dispatch holds the maximum as dropped_worker_lost, fault ours, never resent', async () => {

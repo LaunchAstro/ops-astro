@@ -15,6 +15,7 @@
 import {
   catalogue,
   readReplayLookup,
+  CONVERSATION_ANSWER,
   REPLAY_COMPOSE,
   replayAdapter,
   replayCostMinor,
@@ -32,7 +33,9 @@ import {
 } from '../../packages/core-custody/src/index.ts';
 import {
   callerAudit,
+  conversationExchange,
   modelCallExecutor,
+  type ConversationExchange,
   type ModelCallExecutor,
 } from '../../packages/core-commands/src/index.ts';
 
@@ -53,7 +56,7 @@ export type BrokerSettings =
     }
   | { readonly kind: 'invalid'; readonly problem: string };
 
-const OPERATIONS = catalogue([REPLAY_COMPOSE]);
+const OPERATIONS = catalogue([REPLAY_COMPOSE, CONVERSATION_ANSWER]);
 const PROVIDERS = new Map([
   [
     'replay',
@@ -78,6 +81,10 @@ const ROUTE_TEXT = ['key', 'reach', 'provider', 'credentialRef', 'credentialKind
 const ROUTE_KEYS = [...ROUTE_TEXT, 'ceiling'];
 
 const invalid = (problem: string): BrokerSettings => ({ kind: 'invalid', problem });
+
+/** This machine, by address only (127.0.0.0/8 or [::1]), as the trace export reads it: a name can resolve anywhere. */
+const LOOPBACK = /^(?:127(?:\.\d{1,3}){3}|\[::1\])$/u;
+const onLoopback = (origin: string): boolean => LOOPBACK.test(new URL(origin).hostname);
 
 function parsedJson(text: string): { readonly ok: true; readonly value: unknown } | undefined {
   try {
@@ -106,6 +113,33 @@ function routeOf(entry: unknown): BrokerRoute | undefined {
   if (!REACHES.has(text('reach')) || !KINDS.has(text('credentialKind'))) return undefined;
   if (!PROVIDERS.has(text('provider'))) return undefined;
   return shape as unknown as BrokerRoute;
+}
+
+/**
+ * Plain http only to this machine. A call goes to its operation's
+ * destination, so a local route's every operation must send to this machine
+ * too, or its reach is only a label.
+ */
+function offMachineProblem(
+  listed: ReadonlyMap<string, Destination>,
+  routes: readonly BrokerRoute[],
+): string | undefined {
+  if (
+    [...listed.values()].some(({ origin }) => origin.startsWith('http:') && !onLoopback(origin))
+  ) {
+    return 'MODEL_BROKER_DESTINATIONS has a plain http origin off this machine; use https';
+  }
+  const local = routes.filter((route) => route.reach === 'local');
+  const leaves = [...OPERATIONS.values()].some((operation) => {
+    const destination = listed.get(operation.destination);
+    return (
+      local.some((route) => route.provider === operation.provider) &&
+      (destination === undefined || !onLoopback(destination.origin))
+    );
+  });
+  return leaves
+    ? "MODEL_BROKER_ROUTES has a local route whose destination is not this machine's loopback address"
+    : undefined;
 }
 
 export function brokerSettings(
@@ -139,6 +173,8 @@ export function brokerSettings(
         'provider and a whole-number ceiling of at least 1',
     );
   }
+  const offMachine = offMachineProblem(destinations.destinations, routes as readonly BrokerRoute[]);
+  if (offMachine !== undefined) return invalid(offMachine);
 
   return {
     kind: 'configured',
@@ -151,7 +187,7 @@ export function brokerSettings(
   };
 }
 
-/** Custody's own process, started, and the executor over it. */
+/** Custody's own process, started, and the executor and the conversation exchange over it. */
 export async function startModelBroker(
   settings: Extract<BrokerSettings, { kind: 'configured' }>,
 ): Promise<{
@@ -162,6 +198,7 @@ export async function startModelBroker(
     businessId: BusinessId,
     unanswered: Set<string>,
   ) => Promise<unknown>;
+  readonly answerConversation: ConversationExchange;
   readonly stop: () => Promise<void>;
 }> {
   const custody = await startCustody(settings.custody);
@@ -181,6 +218,7 @@ export async function startModelBroker(
         { ...broker, audit: callerAudit },
         unanswered,
       ),
+    answerConversation: conversationExchange(broker),
     stop: async () => await custody.stop(),
   };
 }

@@ -25,6 +25,14 @@ export interface RunGate {
   readonly payloadDigest: string;
 }
 
+/** The run's pinned definition reference: a skill file by path, or a definition version. */
+export interface RunPin {
+  readonly kind: string;
+  readonly path: string | null;
+  readonly digest: string;
+  readonly definitionVersionId: string | null;
+}
+
 export interface RunVersion {
   readonly versionId: string;
   readonly version: number;
@@ -35,6 +43,13 @@ export interface RunVersion {
   readonly payload: unknown;
   readonly supersededAt: string | null;
   readonly runId: string | null;
+  /** The run's first claim and a hand-back with none after it (MP-6-2); absent on an older read. */
+  readonly startedAt?: string | null;
+  readonly endedAt?: string | null;
+  /** The token units the run's model calls recorded (MP-6-2); absent on an older read. */
+  readonly tokenUnits?: number | null;
+  /** What the run was given at its start (MP-6-2, TA-09); absent on an older read. */
+  readonly pins?: readonly RunPin[];
   readonly evidence: { readonly digest: string; readonly body: unknown } | null;
   readonly gate: RunGate | null;
   readonly checks: readonly RunCheck[];
@@ -114,17 +129,35 @@ export function unknownOf(reservation: RunReservation | undefined): UnknownAttem
 }
 
 /**
- * The hold that tells the head's story: the newest, unless it is a settled
- * hold of an earlier version's run. A handback's successor (AW-09) or a
- * revision has no hold of its own yet, so its gate is the story; a hold whose
- * outcome is unknown stays the story (C54). A read without run ids keeps the
- * newest.
+ * The newest reservation for the head's run. A read made before MP-6-5 names
+ * no run, so each of its reservations counts.
  */
-export function headHold(lineage: RunLineage, head: RunVersion): RunReservation | undefined {
-  const newest = lineage.reservations.at(-1);
-  if (newest?.runId === undefined || head.runId === null || newest.runId === head.runId) {
-    return newest;
-  }
-  const unknown = newest.state === 'quarantined' || newest.attempt?.state === 'liability_unknown';
-  return unknown ? newest : undefined;
+function ownReservation(lineage: RunLineage, head: RunVersion): RunReservation | undefined {
+  return lineage.reservations.findLast(
+    (reservation) => reservation.runId === undefined || reservation.runId === head.runId,
+  );
+}
+
+/**
+ * The reservation that matters now. A hold whose effect is unknown stays
+ * reserved until a person answers, on whatever run it was for (C54), so it
+ * decides first: a hand-back with a successor leaves one on the old run.
+ * Otherwise the head's run decides; an older version's run says nothing of it.
+ */
+export function headReservation(lineage: RunLineage, head: RunVersion): RunReservation | undefined {
+  const unknown = lineage.reservations.findLast(
+    (reservation) =>
+      reservation.state === 'quarantined' || reservation.attempt?.state === 'liability_unknown',
+  );
+  return unknown ?? ownReservation(lineage, head);
+}
+
+/**
+ * What the story holds: the reservation that matters, and beside an unknown
+ * hold on an older run, the head run's own as well.
+ */
+export function heldMinorOf(lineage: RunLineage, head: RunVersion): number {
+  const decides = headReservation(lineage, head);
+  const own = ownReservation(lineage, head);
+  return (decides?.heldMinor ?? 0) + (own === undefined || own === decides ? 0 : own.heldMinor);
 }

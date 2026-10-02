@@ -46,11 +46,26 @@ const TASK = {
   completedAt: null,
   revision: 3,
   history: [],
+  // The board row's fields (MP-5-8): this stub answers task.board too.
+  board: null,
+  rank: { number: null, score: null, calc: '' },
+  adHoc: false,
+  clientAccess: false,
+  stage: null,
+  clientSet: false,
+  steps: [],
+  time: null,
   // `task.read` carries the task's comments. This stub is not about them, so
   // the list is the empty one the read gives a task nobody has spoken on — an
   // absent key would be a shape the API never sends.
   comments: [],
 };
+
+/** The board's row for a task: its comments are the reader's open counts (MP-5-8). */
+const boardRow = <T extends object>(task: T) => ({
+  ...task,
+  comments: { client: 0, mentions: 0, latest: null },
+});
 
 const PEOPLE = [{ personId: 'p1', name: 'Mia Alpha' }];
 
@@ -76,6 +91,16 @@ function storage(seed: Record<string, string> = {}): {
 
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+
+/** The frame's reads on every screen: C23's name, and MP-2-11's appearance (none stored). */
+const FRAME: Readonly<Record<string, unknown>> = {
+  '/session/person': { ok: true, person: { name: 'Mia Hart' } },
+  '/preference/read': { ok: true, preferences: {} },
+};
+const frame = (at: string): Promise<Response> | undefined => {
+  const end = Object.keys(FRAME).find((path) => at.endsWith(path));
+  return end === undefined ? undefined : Promise.resolve(json(FRAME[end]));
+};
 
 // Each refusal is minted per call and never shared. A `Response` body is read
 // once, and a second reader of the same object gets an empty one -- which the
@@ -123,6 +148,8 @@ function server(options: { readonly reads?: 'ok' | 'ended' | 'scope' } = {}) {
       mutations = 'ok';
       return Promise.resolve(json({ access_token: 'ops-astro-test-only-a-fresh-token' }));
     }
+    const framed = frame(at);
+    if (framed !== undefined) return framed;
     if (at.endsWith('/person/list')) return Promise.resolve(json({ ok: true, persons: PEOPLE }));
     if (at.endsWith('/task/read') || at.endsWith('/task/board')) {
       if (reads === 'ended') return Promise.resolve(unknownLogin());
@@ -130,7 +157,7 @@ function server(options: { readonly reads?: 'ok' | 'ended' | 'scope' } = {}) {
       return Promise.resolve(
         at.endsWith('/task/read')
           ? json({ ok: true, task: TASK })
-          : json({ ok: true, tasks: [TASK] }),
+          : json({ ok: true, tasks: [boardRow(TASK)] }),
       );
     }
     // Every mutation: create, assign, the three lifecycle commands, update.
@@ -315,6 +342,9 @@ function byBearer(): {
     }
     const stale = cookie === OLD_TOKEN;
 
+    // The frame's reads (C23's name, MP-2-11's appearance) answer on either cookie.
+    const framed = frame(at);
+    if (framed !== undefined) return framed;
     if (at.endsWith('/task/read')) return Promise.resolve(json({ ok: true, task: TASK }));
     if (at.endsWith('/person/list')) {
       // The old token's people read never comes back on its own. The test
@@ -422,9 +452,13 @@ function perBusiness(): typeof globalThis.fetch {
 
     const business = /\/b\/([^/]+)\//u.exec(at)?.[1] ?? '?';
     const task = { ...TASK, title: `The ${business} task called TSK-1` };
+    const framed = frame(at);
+    if (framed !== undefined) return framed;
     if (at.endsWith('/person/list')) return Promise.resolve(json({ ok: true, persons: PEOPLE }));
     if (at.endsWith('/task/read')) return Promise.resolve(json({ ok: true, task }));
-    if (at.endsWith('/task/board')) return Promise.resolve(json({ ok: true, tasks: [task] }));
+    if (at.endsWith('/task/board')) {
+      return Promise.resolve(json({ ok: true, tasks: [boardRow(task)] }));
+    }
     return Promise.resolve(json({ recordId: TASK.id, revision: TASK.revision + 1 }));
   }) as unknown as typeof globalThis.fetch;
 }

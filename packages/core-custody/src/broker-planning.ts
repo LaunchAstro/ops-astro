@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// AW-04's planning budget (U10, migration 0212): every planning reply before
+// AW-04's planning budget (U10, migration 0107): every planning reply before
 // the accept is priced, against a small budget of its own. The business's
 // planning cap (`budget_caps` key `planning`) is the allowance: AUD 50 until a
 // person moves it (the owner, NATHAN-STAGE1-TODAY 4), and the first hold writes

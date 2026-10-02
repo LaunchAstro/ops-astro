@@ -68,7 +68,7 @@ function catalogueMatchesCode(): void {
       );
       expect(row.cli).toBe(row.command);
       expect(row.api.person).toMatch(/^\/api\/b\/:businessKey\//u);
-      expect(row.dataEffects).toBeNull();
+      expect(row.dataEffects, 'S0-5 fills it').not.toBeNull();
     }
     const party = rows.find((row) => row.command === 'task.set_party');
     expect(party?.rule).toContain('CLIENT_LOCKED (409)');
@@ -145,6 +145,32 @@ function scannerAndGrantSkip(): void {
   });
 }
 
+/** Every command name the app's screens send. */
+function commandsTheAppCalls(): Set<string> {
+  const called = new Set<string>();
+  // The app's client lists every verb it may send; that is the web surface, not an action.
+  for (const [file, text] of webFiles()) {
+    if (file === 'operations/client.ts') continue;
+    for (const match of text.matchAll(/'([a-z]+\.[a-z_]+)'/gu)) {
+      if (NAMESPACES.has((match[1] as string).split('.')[0] as string))
+        called.add(match[1] as string);
+    }
+  }
+  return called;
+}
+
+/** Where the app names `task.create` and `task.start`, as the catalogue computes it. */
+const CREATE_UI = [
+  'agency:projects-board (screens/projects/CreateTask.tsx)',
+  'agency:task-detail (screens/task/History.tsx)',
+  'agency:task-detail (screens/task/Subtasks.tsx)',
+  'app shell (screens/task/task-draft.ts)',
+];
+const START_UI = [
+  'agency:task-detail (screens/task/History.tsx)',
+  'agency:task-detail (screens/task/Lifecycle.tsx)',
+];
+
 function exemptAndMergedTickets(): void {
   it('API-1 exempt list: view-only actions are exempt with a reason, and nothing that writes a record is', () => {
     expect(VIEW_ONLY_EXEMPT.length).toBeGreaterThan(0);
@@ -163,30 +189,21 @@ function exemptAndMergedTickets(): void {
 
   it('API-1 covers merged tickets: every command the app calls today is in the catalogue with its route', () => {
     const { rows } = real();
-    const called = new Set<string>();
-    // The app's client lists every verb it may send; that is the web surface, not an action.
-    for (const [file, text] of webFiles()) {
-      if (file === 'operations/client.ts') continue;
-      for (const match of text.matchAll(/'([a-z]+\.[a-z_]+)'/gu)) {
-        if (NAMESPACES.has((match[1] as string).split('.')[0] as string))
-          called.add(match[1] as string);
-      }
-    }
-    for (const command of called) {
+    for (const command of commandsTheAppCalls()) {
       const row = rows.find((one) => one.command === command);
       expect(row, command).toBeDefined();
       expect(row?.ui.length, command).toBeGreaterThan(0);
     }
     const ui = (name: string) => rows.find((row) => row.command === name)?.ui ?? [];
-    expect(ui('task.create')).toEqual(['agency:projects-board (screens/Projects.tsx)']);
-    expect(ui('task.start')).toEqual(['agency:task-detail (screens/task/Lifecycle.tsx)']);
+    expect(ui('task.create')).toEqual(CREATE_UI);
+    expect(ui('task.start')).toEqual(START_UI);
     expect(ui('settings.set_client_sign_off')).toEqual([
       'agency:settings (screens/settings/use-settings.ts)',
     ]);
     const workflow = readFileSync('.github/workflows/ci.yml', 'utf8');
     expect(workflow).toContain('node scripts/command-parity.mjs --check');
-    const required = readFileSync('.github/required-checks.json', 'utf8');
-    expect(required).toContain('"command parity"');
+    // command parity runs on every pull request. It is not a required check: the live ruleset's
+    // 13 required checks leave it out, so the recorded list no longer claims it.
   });
 }
 

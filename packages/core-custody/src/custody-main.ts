@@ -53,18 +53,39 @@ function load(): Loaded {
 }
 
 /**
+ * JSON text written back as JSON.stringify writes it, so an escape the
+ * provider chose (`\/`, `c`) cannot hide a spelling that the broker's
+ * parse would make whole again. Other text is left as it came.
+ */
+function plain(text: string): string {
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(text);
+  } catch {
+    return text;
+  }
+  try {
+    return JSON.stringify(decoded);
+  } catch {
+    // Too deep to write back: no body, which the broker reads as no answer.
+    return '';
+  }
+}
+
+/**
  * Remove every spelling of the credential a provider might echo back: the
- * value, and a Basic pair's secret half alone.
+ * value, and a Basic pair's secret half alone, each as JSON text spells it.
  */
 function redact(text: string, credential: StoredCredential): string {
   const { value } = credential;
   const secrets = credential.scheme === 'basic' ? [value, value.split(':')[1] ?? value] : [value];
   const spellings = secrets.flatMap((secret) => [
     secret,
+    JSON.stringify(secret).slice(1, -1),
     encodeURIComponent(secret),
     Buffer.from(secret).toString('base64'),
   ]);
-  return spellings.reduce((out, spelling) => out.split(spelling).join('[redacted]'), text);
+  return spellings.reduce((out, spelling) => out.split(spelling).join('[redacted]'), plain(text));
 }
 
 /** Exactly these keys: a request naming a header, an origin or anything else is refused whole. */

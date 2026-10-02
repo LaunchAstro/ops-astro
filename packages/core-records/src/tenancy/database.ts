@@ -31,8 +31,10 @@ export function isBusinessId(value: string): value is BusinessId {
 
 /**
  * The one advisory lock in the product: a transaction-scoped lock on `key`,
- * released at commit or rollback like a row lock. Every caller builds a key
- * that names its business, so two businesses never wait on each other.
+ * released at commit or rollback like a row lock. Every key names its business,
+ * so two businesses never wait on each other, except C59's two installation-wide keys,
+ * `second-factor-codes:` and `second-factor-subject:` with a login's subject digest, so
+ * its businesses do: each is taken first in its transaction, before any row or chain lock.
  *
  * Where it sits in the lock order is `core-runtime/src/locks.ts`: the chain
  * class is `acquire`'s own first class, and the command layer's keys (the

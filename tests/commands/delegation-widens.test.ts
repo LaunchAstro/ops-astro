@@ -31,7 +31,7 @@ import { executeCommand } from '../../packages/core-commands/src/commands/envelo
 import { executeAgentCommand } from '../../packages/core-commands/src/commands/agent-envelope.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import { readAuditEvents } from '../../packages/core-commands/src/commands/audit.ts';
-import { UNPRODUCED_CODES } from '../../packages/core-records/src/register.ts';
+import { UNPRODUCED_CODES } from '../../packages/core-records/src/register-unproduced.ts';
 import type { BusinessId } from '../../packages/core-records/src/tenancy/database.ts';
 import type { VerifiedSubject } from '../../packages/core-records/src/identity/login-resolution.ts';
 import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';

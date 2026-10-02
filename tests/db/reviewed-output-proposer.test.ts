@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // AW-08 in the schema: a reviewed output is the work of the lease it names
-// (`0218_reviewed_output_proposer`). The application role may insert into
+// (`0111_reviewed_output_proposer`). The application role may insert into
 // `reviewed_outputs`, so the trigger is the barrier behind the handback and
 // `markRevision`: the version's proposer must be the lease's holder. Without
 // it a direct insert could mark a person's version, or another actor's, as

@@ -198,9 +198,8 @@ function routeFor(
     words: LOCAL_MODEL_REQUIRED_WORDS,
   } as const;
   if (!choice.ok) return local;
-  const route = broker.routes.find((candidate) =>
-    choice.routes.some((eligible) => eligible.key === candidate.key),
-  );
+  // The route the data classes found eligible, itself: never another that shares its key.
+  const route = broker.routes.find((candidate) => choice.routes.includes(candidate));
   if (route === undefined) return local;
   const carry = mayCarry(route.credentialKind, {
     unattended: caller.attendedByPersonId === null,
@@ -240,7 +239,7 @@ export async function atCeiling(
 /**
  * The fair share: whether this business may hold one more call on the route,
  * given every business's calls in flight there. Only the broker's role may ask
- * (migration 0191, `model_route_room`); the application takes it for this one
+ * (migration 0085, `model_route_room`); the application takes it for this one
  * statement and gives it back, transaction-local as the wrapper sets the
  * business (`set_config(..., true)`: no `set` statement is sent). A failed
  * statement aborts the transaction, which undoes the role with the rest.
@@ -286,7 +285,7 @@ async function insertHold(
 const CALL_COLUMNS = `business_id, id, run_id, step_id, lease_id, version_id, reservation_id,
        delegation_id, caller_delegation_id`;
 
-/** The call's facts in `CALL_COLUMNS`' order: the lease's delegation, then the caller's (0209). */
+/** The call's facts in `CALL_COLUMNS`' order: the lease's delegation, then the caller's (0104). */
 function callFacts(facts: Facts): readonly (string | null)[] {
   return [
     facts.runId,

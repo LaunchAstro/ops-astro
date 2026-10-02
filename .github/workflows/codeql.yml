@@ -1,0 +1,58 @@
+name: codeql
+
+# CI-QUEUE: CodeQL's advanced setup, in place of default setup. Default setup
+# never runs on a merge queue's build (GitHub: code scanning merge protection
+# "will not apply to merge queue groups"), so it cannot scan a group. This
+# workflow scans what default setup scanned, with its settings:
+# the languages it found (actions, javascript-typescript, python), the
+# default query suite, no build, on a pull request, a push to main and a
+# weekly schedule, and on `merge_group` as well.
+#
+# `CodeQL` is not a job here. It is the code scanning results check that
+# GitHub Advanced Security (integration 57789) posts on a commit once an
+# analysis of it is uploaded, named after the tool, as default setup's
+# uploads made it. GitHub does not post it on a merge group either, so it is
+# not a required check: the ruleset's code scanning rule gates on CodeQL's
+# results instead (docs/plan/ruleset.md). The jobs below report as
+# `Analyze (<language>)`, required by nothing. Default setup is off, so
+# GitHub accepts this workflow's uploads.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  merge_group:
+  schedule:
+    - cron: '41 3 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    # Upload only: the analysis writes its results to code scanning and
+    # nothing else.
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [actions, javascript-typescript, python]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+      - uses: github/codeql-action/analyze@cdf488f595d80d6e07e03d4674febd5ab45fa938 # v4.37.9
+        with:
+          category: '/language:${{ matrix.language }}'

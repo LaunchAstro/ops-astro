@@ -16,7 +16,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { COMMAND_SURFACE } from '../../packages/core-wire/src/surface.ts';
-import { ADMIN_ACTIONS, ADMIN_COLLECTIONS, MEMBER_ACTIONS } from './cast.ts';
+import { ADMIN_ACTIONS, ADMIN_COLLECTIONS, ADMIN_EXTRA_PAIRS, MEMBER_ACTIONS } from './cast.ts';
 
 type Pair = readonly [collection: string, action: string];
 
@@ -44,7 +44,8 @@ const held = (role: string): readonly string[] =>
  * the read-any grant `conversation:read`, which no role holds on install), so
  * its declared pair is deliberately seeded to nobody; `conversation.list`
  * asks its own rule too (`conversation:write`, the caller's own only), and so
- * does `conversation.allowance` (AW-04), the team's only.
+ * does `conversation.allowance` (AW-04), the team's only;
+ * nor does `client.list` (C32), which answers the clients the caller's grants reach.
  */
 const NOT_SEEDED = new Set([
   'session.capabilities',
@@ -52,9 +53,13 @@ const NOT_SEEDED = new Set([
   'conversation.list',
   'conversation.allowance',
 ]);
+const ASKS_NOTHING: ReadonlySet<string> = new Set(['session.capabilities', 'client.list']);
 // A `self` row (the inbox) asks no grant either: it answers about the caller's own rows.
 const asked = COMMAND_SURFACE.filter(
-  (each) => !NOT_SEEDED.has(each.name) && each.authorisedOn !== 'self',
+  // The `self` operations ask about nothing either: the caller's own account
+  // (C23) or own rows (the inbox), which every signed-in person holds.
+  (each) =>
+    !NOT_SEEDED.has(each.name) && !ASKS_NOTHING.has(each.name) && each.authorisedOn !== 'self',
 )
   .map((each) =>
     each.name === 'preset.plan' ? 'task:manage' : `${each.collection}:${each.action}`,
@@ -69,7 +74,12 @@ describe('the seeded roles', () => {
 
   it('gives the seeded admin every grant a declaration on the surface asks for', () => {
     expect(asked.length).toBeGreaterThan(0);
-    expect(asked.filter((pair) => !held('admin').includes(pair))).toStrictEqual([]);
+    // Bar `operations:manage`, the operator's key (S0-1 G1): the operator cast member holds it
+    // alone and no role has it by default, so the seeded admin is no operator. S0-5's gate
+    // commands ask it too, so the operator moves the gate.
+    expect(asked.filter((pair) => !held('admin').includes(pair))).toStrictEqual([
+      'operations:manage',
+    ]);
   });
 
   it('gives the seeded member exactly what docs/local/PROOFS.md says it holds', () => {
@@ -101,11 +111,12 @@ describe('the acceptance cast against the seed', () => {
   });
 
   it('gives the fixture admin every grant the seeded admin holds but run:write', () => {
-    const cast = new Set(
-      ADMIN_COLLECTIONS.flatMap((collection) =>
+    const cast = new Set([
+      ...ADMIN_COLLECTIONS.flatMap((collection) =>
         ADMIN_ACTIONS.map((action) => `${collection}:${action}`),
       ),
-    );
+      ...ADMIN_EXTRA_PAIRS.map(([collection, action]) => `${collection}:${action}`),
+    ]);
     // The one difference (ORCH38): a fixture admin holds no run, so its
     // pickups mint the task delegation the agent suites pin.
     expect(held('admin').filter((pair) => !cast.has(pair))).toStrictEqual(['run:write']);

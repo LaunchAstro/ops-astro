@@ -14,8 +14,8 @@
 // write-off's second approver above the band is the server's. The top-up is
 // the task page's own (T2e). A run stopped at its ceiling (AW-05) is answered
 // with `run.top_up` (`billing:decide`) or `run.end_at_budget_stop`
-// (`gate:decide`), naming the task and the run the read showed. Every outcome
-// ends in a reread, as the proposals section's does.
+// (`gate:decide`), naming the task, the run and the stop the read showed.
+// Every outcome ends in a reread, as the proposals section's does.
 
 import { useState, type ReactElement } from 'react';
 import { AgentPane, type GateDecision, type RecordedOutcome } from '@launchastro/ui';
@@ -49,8 +49,13 @@ interface AgentControls {
   readonly writeOff: (attemptId: string, amountMinor: number, reason: string) => void;
   /** The server's word that the last write-off waits on a second person, or null. */
   readonly awaiting: string | null;
-  readonly topUpAtStop: (runId: string, amountMinor: number, currency: string) => void;
-  readonly endAtStop: (runId: string) => void;
+  readonly topUpAtStop: (
+    runId: string,
+    askId: string,
+    amountMinor: number,
+    currency: string,
+  ) => void;
+  readonly endAtStop: (runId: string, askId: string) => void;
   /** The server's word that the last top-up at a stop waits on a second person, or null. */
   readonly stopAwaiting: string | null;
 }
@@ -118,21 +123,22 @@ function stopControls(
   send: (call: () => ReturnType<OperationsClient['mutate']>) => void,
 ): Pick<AgentControls, 'topUpAtStop' | 'endAtStop'> {
   return {
-    topUpAtStop: (runId, amountMinor, currency) => {
+    topUpAtStop: (runId, askId, amountMinor, currency) => {
       if (busy) return;
       send(() =>
         props.client.mutate('run.top_up', {
           recordId: props.recordId,
           runId,
+          askId,
           amountMinor,
           currency,
         }),
       );
     },
-    endAtStop: (runId) => {
+    endAtStop: (runId, askId) => {
       if (busy) return;
       send(() =>
-        props.client.mutate('run.end_at_budget_stop', { recordId: props.recordId, runId }),
+        props.client.mutate('run.end_at_budget_stop', { recordId: props.recordId, runId, askId }),
       );
     },
   };

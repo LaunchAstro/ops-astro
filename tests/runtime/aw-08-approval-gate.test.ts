@@ -10,7 +10,7 @@
 // command entry refuses a dead delegation before it reaches dispatch).
 //
 // The launch is the accept of a handed-back successor, marked a reviewed output
-// by AW-08 (a)'s handback (0213); the plan accept's work is `LAUNCH_NOT_DECIDED`.
+// by AW-08 (a)'s handback (0108); the plan accept's work is `LAUNCH_NOT_DECIDED`.
 
 import { expect, it as vitestIt } from 'vitest';
 import { noDatabase, useAw04World, w } from './aw-04-world.ts';

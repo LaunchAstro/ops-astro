@@ -4,7 +4,8 @@
 // waiting at its approved ceiling (AW-05), as commands over the runtime
 // functions that own them (`core-runtime/src/budget-answer.ts`).
 //
-// Both name the task and the run on it, like the work controls. The envelope
+// Both name the task, the run on it and the ask the person was shown, so an
+// answer to an earlier stop never lands on a later one. The envelope
 // has already asked the declaration's `decide` (on `billing` for a top-up, on
 // `gate` for the end) of the named task; here the task is found in this
 // business and the run is checked against it, so authority on one task never
@@ -25,8 +26,16 @@ import type { CommandContext } from './context.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseCommand, refuseNotFound } from './refusal.ts';
 
+/** What an answer names: the task, the run on it and the ask the person was shown. */
+interface Named {
+  readonly recordId: unknown;
+  readonly runId: unknown;
+  readonly askId: unknown;
+}
+
 /**
- * The run on the named task, as the runtime's request, or the refusal.
+ * The run on the named task, as the runtime's request, or the refusal. The
+ * runtime refuses any ask but the run's open one, under its locks.
  *
  * `trashed` says whether a task in the trash still answers. The end reaches
  * one, as cancel does: it only ends the run and releases what it holds, and a
@@ -37,19 +46,20 @@ import { refuseCommand, refuseNotFound } from './refusal.ts';
 async function runOnTask(
   tx: TenantQuery,
   context: CommandContext,
-  recordId: unknown,
-  runId: unknown,
+  named: Named,
   trashed: 'reachable' | 'gone',
 ): Promise<{ readonly taskId: string; readonly request: BudgetAnswerRequest } | HandlerOutcome> {
+  const { recordId, runId, askId } = named;
   // Absent is the body's shape, and is said so; present and malformed is an
   // identifier that names nothing, and answers as one.
   const absent = [
     ...(typeof recordId === 'string' ? [] : ['recordId']),
     ...(typeof runId === 'string' ? [] : ['runId']),
+    ...(typeof askId === 'string' ? [] : ['askId']),
   ];
   if (absent.length > 0) {
     return refused(
-      refuseCommand('COMMAND_BODY_INVALID', absent, ['Name the task and the run on it.']),
+      refuseCommand('COMMAND_BODY_INVALID', absent, ['Name the task, the run and the stop.']),
     );
   }
   if (!isUuid(recordId)) return refused(refuseNotFound());
@@ -73,6 +83,7 @@ async function runOnTask(
     taskId,
     request: {
       runId: runId.toLowerCase(),
+      askId: String(askId).toLowerCase(),
       caller: {
         kind: 'person',
         personId: context.session.personId,
@@ -88,14 +99,9 @@ const isOutcome = (value: object): value is HandlerOutcome => !('request' in val
 export async function topUpOnRun(
   tx: TenantQuery,
   context: CommandContext,
-  fields: {
-    readonly recordId: unknown;
-    readonly runId: unknown;
-    readonly amountMinor: unknown;
-    readonly currency: unknown;
-  },
+  fields: Named & { readonly amountMinor: unknown; readonly currency: unknown },
 ): Promise<HandlerOutcome> {
-  const found = await runOnTask(tx, context, fields.recordId, fields.runId, 'gone');
+  const found = await runOnTask(tx, context, fields, 'gone');
   if (isOutcome(found)) return found;
   // The runtime checks both by value (a whole number above zero, a
   // three-letter code) and answers in its own words; a wrong kind is handed
@@ -129,9 +135,9 @@ export async function topUpOnRun(
 export async function endOnRun(
   tx: TenantQuery,
   context: CommandContext,
-  fields: { readonly recordId: unknown; readonly runId: unknown },
+  fields: Named,
 ): Promise<HandlerOutcome> {
-  const found = await runOnTask(tx, context, fields.recordId, fields.runId, 'reachable');
+  const found = await runOnTask(tx, context, fields, 'reachable');
   if (isOutcome(found)) return found;
   const result = await endAtBudgetStop(tx, found.request);
   if (!result.ok) return refused(result.refusal);

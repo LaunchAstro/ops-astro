@@ -16,7 +16,8 @@ import { lockedInstant } from '../clock.ts';
 import type { LockRequest } from '../locks.ts';
 import { lockRediscovered } from '../rediscovery.ts';
 import { refuse, type RuntimeResult } from '../refusals.ts';
-import { checkAuthorityAt, holdCoveringGrants } from './classifier.ts';
+import { checkAuthorityAt, closeHold, holdCoveringGrants } from './classifier.ts';
+import { modelCallsOn } from '../model-calls-on.ts';
 import { endLease } from './lease-retirement.ts';
 import { locksOf, resume, settle, UNKNOWN_SELECT, type Unknown } from './reconcile.ts';
 import { resolveHeldCalls } from './broker-effect.ts';
@@ -26,32 +27,29 @@ export type RecordedOutcome = (typeof RECORDED_OUTCOMES)[number];
 
 /**
  * Nothing happened, in a person's word: the whole hold goes back, by amount,
- * and nothing is spent. The reservation is abandoned under the recorded
- * outcome (0013: an abandonment names its cause, and an actual is never zero).
+ * and the step's work cost nothing. What its model calls settled at did
+ * happen, so the hold settles at that (AW-01, `closeHold`); with none, it is
+ * abandoned under the recorded outcome (0013: an abandonment names its cause,
+ * and an actual is never zero).
  */
 async function release(
   tx: TenantQuery,
   row: Pick<Unknown, 'reservation_id' | 'attempt_id' | 'envelope_id' | 'held_minor'>,
   causeId: string = row.attempt_id,
 ): Promise<Settlement> {
-  await tx.query(
-    `update public.reservations
-        set state = 'abandoned', classified_cause = 'outcome_recorded',
-            classified_cause_id = $3, terminal_at = now()
-      where business_id = $1 and id = $2 and state = 'held'`,
-    [tx.businessId, row.reservation_id, causeId],
+  const { spentMinor } = await modelCallsOn(tx, row.reservation_id);
+  await closeHold(
+    tx,
+    { reservationId: row.reservation_id, envelopeId: row.envelope_id },
+    { cause: 'outcome_recorded', causeId },
+    spentMinor,
   );
   await tx.query(
     `update public.attempts set state = 'abandoned', outcome = 'abandoned'
       where business_id = $1 and id = $2`,
     [tx.businessId, row.attempt_id],
   );
-  await tx.query(
-    `update public.task_envelopes set held_minor = held_minor - $3
-      where business_id = $1 and id = $2`,
-    [tx.businessId, row.envelope_id, row.held_minor],
-  );
-  return settledAt(BigInt(row.held_minor), 0n);
+  return settledAt(BigInt(row.held_minor), spentMinor);
 }
 
 /** A hold the pass reserved beside this step's first attempt, when it proved absence. */
@@ -97,11 +95,19 @@ const replacementLocks = (replacements: readonly Replacement[]): readonly LockRe
  * `happened` says the work is finished, so
  * a replacement not yet dispatched is stopped under the outcome's locks: its
  * lease ends, its delegation is revoked and its hold goes back, by amount,
- * under the recorded outcome. It never dispatches.
+ * under the recorded outcome. It never dispatches. The clear of its agent from
+ * the task is audited as `actorId`, the person who recorded the outcome.
  */
-async function stopReplacement(tx: TenantQuery, one: Replacement, causeId: string): Promise<void> {
+async function stopReplacement(
+  tx: TenantQuery,
+  one: Replacement,
+  causeId: string,
+  actorId: string,
+): Promise<void> {
   if (one.lease_id !== null) await endLease(tx, one.lease_id, 'released');
-  if (one.delegation_id !== null) await revokeDelegation(tx, one.delegation_id, 'work_retired');
+  if (one.delegation_id !== null) {
+    await revokeDelegation(tx, one.delegation_id, 'work_retired', actorId);
+  }
   await release(tx, one, causeId);
 }
 
@@ -111,6 +117,8 @@ export interface OutcomeRequest {
   readonly outcome: RecordedOutcome;
   readonly subjects: readonly Subject[];
   readonly collection: string;
+  /** The recording person's actor, whom the clear of an agent from the task names. */
+  readonly actorId: string;
 }
 
 export interface OutcomeRecorded {
@@ -185,7 +193,7 @@ export async function recordOutcome(
     for (const one of replacements) {
       // Sequential: each moves the one envelope the step shares.
       // eslint-disable-next-line no-await-in-loop
-      await stopReplacement(tx, one, row.attempt_id);
+      await stopReplacement(tx, one, row.attempt_id, request.actorId);
     }
   }
   const settlement =
@@ -198,13 +206,18 @@ export async function recordOutcome(
     await resolveHeldCalls(tx, row.reservation_id, request.outcome, person.id);
   }
   const resumes = request.outcome !== 'happened' && !row.absence_proved;
+  // Nothing happened: the step resumes on what its model calls left.
+  const left =
+    request.outcome === 'nothing_happened' && settlement.state === 'settled'
+      ? { ...row, spent_minor: String(settlement.spentMinor) }
+      : row;
   return {
     ok: true,
     value: {
       attemptId: row.attempt_id,
       outcome: request.outcome,
       settlement,
-      resumed: resumes ? await resume(tx, row, false) : null,
+      resumed: resumes ? await resume(tx, left, false, request.actorId) : null,
     },
   };
 }

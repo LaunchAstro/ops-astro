@@ -24,6 +24,7 @@ import type { TenantQuery } from '../tenancy/database.ts';
 import { refuse, type RecordsRefusal } from '../records/refusals.ts';
 import { slotOf, TASK_SPINE } from './spine.ts';
 import { COMMENT_SPINE } from './comments.ts';
+import { detachTaskTime } from './time.ts';
 
 const PARENT = slotOf(TASK_SPINE, 'parent');
 const BOARD = slotOf(TASK_SPINE, 'board');
@@ -547,6 +548,23 @@ export async function purgeTrashedRecords(
       returning id`,
     [tx.businessId, gone],
   );
+  // A conversation opened on a purged task keeps its body, its wrap-ups and
+  // its address and loses only the scope: 0092's key to `records` does not
+  // cascade, and deleting the task under it would fault the whole purge.
+  await tx.query(
+    `update public.conversations set scope_kind = null, scope_record_id = null
+      where business_id = $1 and scope_record_id = any ($2::uuid[])`,
+    [tx.businessId, gone],
+  );
+  // Time entries (0078) and task tags (0081) key to `records` with no cascade:
+  // left naming the task, they fault the delete below and roll back the whole
+  // purge. Entries are kept, detached (ORCH58: own retention, billing); a tag
+  // stays in the vocabulary and only the task's carrying of it goes.
+  await detachTaskTime(tx, ids);
+  await tx.query(
+    `delete from public.task_tags where business_id = $1 and task_id = any ($2::uuid[])`,
+    [tx.businessId, ids],
+  );
   if (commentIds.length > 0) {
     await tx.query(`delete from records where business_id = $1 and id = any ($2::uuid[])`, [
       tx.businessId,
@@ -561,6 +579,13 @@ export async function purgeTrashedRecords(
         and deleted_at is not null and deleted_at < $3
       returning id`,
     [tx.businessId, ids, options.trashedBefore],
+  );
+  // The live change record (0065) names a task with no key to it; a purged
+  // task's row goes with it, so nothing there says the task ever existed.
+  await tx.query(
+    `delete from public.live_changes
+      where business_id = $1 and subject_kind = 'task' and subject_id = any ($2::uuid[])`,
+    [tx.businessId, purged.map((each) => each.id)],
   );
   return {
     recordIds: purged.map((each) => each.id).toSorted(),

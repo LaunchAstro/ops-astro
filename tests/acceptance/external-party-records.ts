@@ -8,6 +8,9 @@
 import { randomUUID } from 'node:crypto';
 import { expect } from 'vitest';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
+import { enrol } from '../commands/fixture.ts';
+import { childProbe, type BodyContext } from './role-case-bodies.ts';
+import { legalEvidence } from './role-case-gate-bodies.ts';
 import type { Answer, Caller, World } from './world.ts';
 
 export const TITLE = 'Quarterly retainer: draft for review';
@@ -18,6 +21,13 @@ export const SIBLING_TITLE = 'Sibling task the client must never learn about';
 
 /** One call on the person path, as the test file sends it. */
 type As = (who: Caller, name: CommandName, body: Record<string, unknown>) => Promise<Answer>;
+
+/** The admin's hooks item 3's bodies need: a member to end (C58), items 3 to 6's links (C81). */
+export const adminHooks = (world: World): Pick<BodyContext, 'freshMember' | 'legalEvidence'> => ({
+  freshMember: async () =>
+    (await enrol(world.db.app, world.alpha, `ended-${randomUUID().slice(0, 8)}`)).personId,
+  legalEvidence: async () => await legalEvidence(world.db.admin, world.alpha),
+});
 
 /** Writes the shared task, its two comments and the sibling, as the admin. */
 export async function seedRecords(
@@ -51,4 +61,26 @@ export async function seedRecords(
     fields: { title: SIBLING_TITLE },
   });
   return { shared, sibling: String(other.body['recordId']) };
+}
+
+/**
+ * The bodies item 3 sends for the writes the matrix gives no body, each naming a row of its
+ * own kind. Moved from `external-party.test.ts` to keep that file under the line limit.
+ */
+export function revocationBodies(): Readonly<Record<string, Readonly<Record<string, unknown>>>> {
+  return {
+    'grant.revoke': { grantId: randomUUID() },
+    'delegation.revoke': { delegationId: randomUUID() },
+    // No person body either: it is the agent's (AW-01). Sent well formed,
+    // naming a lease, so the answer is authority's.
+    'model.call': {
+      leaseId: randomUUID(),
+      fence: 1,
+      operation: 'model.replay_compose',
+      fields: [],
+    },
+    // AW-11's hand-over and handback are the agent's too, read by type first.
+    'run.delegate_child': { leaseId: randomUUID(), fence: 1, ...childProbe(randomUUID()) },
+    'run.child_handback': { outcome: 'completed' },
+  };
 }

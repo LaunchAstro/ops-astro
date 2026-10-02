@@ -15,7 +15,15 @@ import { PNG } from 'pngjs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { comparePng } from './compare.ts';
 import { checkRenderer, readPacket, rendererOf, themesOf, type Packet } from './packet.ts';
-import { builtPages, DARK_PENDING, overflowOf, report, type PageShot } from './report.ts';
+import { MADE_UP_PARAMS } from './app-pages.ts';
+import {
+  addressOf,
+  builtPages,
+  DARK_PENDING,
+  overflowOf,
+  report,
+  type PageShot,
+} from './report.ts';
 
 type Rgb = readonly [number, number, number];
 const WHITE: Rgb = [255, 255, 255];
@@ -135,6 +143,7 @@ describe('MP-1-7', () => {
 describe('MP-1-7 report', () => {
   zeroHorizontalOverflow();
   everyPageBuiltSoFar();
+  everyPageAtItsAddress();
   pinnedMockupBaseline();
 });
 
@@ -152,18 +161,38 @@ function zeroHorizontalOverflow(): void {
   });
 }
 
+function everyPageAtItsAddress(): void {
+  it('MP-1-7 every page at its own address: the harness fills each route parameter, never drawing `/` in its place', () => {
+    // The conversation's id (C36) as much as the task's key.
+    for (const page of builtPages()) expect(addressOf(page, MADE_UP_PARAMS), page).toBeDefined();
+  });
+}
+
+// The registry's pages: wave 0's four, the public legal page (C81), the task page
+// with no key (MP-4-1), Settings ▸ Access, Telemetry (U14), Operations (C55),
+// MP-7-3's inbox, the component gallery (MP-1-3, U04), My to-dos (MP-7-1),
+// MP-7-10's Team, SL06's Clients book and a conversation's own address (C36).
+const BUILT_PAGES = [
+  'agency:sign-in',
+  'agency:legal',
+  'agency:projects-board',
+  'agency:task-detail',
+  'agency:task-unnamed',
+  'agency:settings',
+  'agency:access',
+  'agency:telemetry',
+  'agency:operations',
+  'agency:inbox',
+  'agency:gallery',
+  'agency:todos',
+  'agency:team',
+  'agency:agent-conversation',
+  'agency:clients',
+];
+
 function everyPageBuiltSoFar(): void {
   it('MP-1-7 every page built so far: each registered route has a picture at each width', () => {
-    // The wave 0 pages and the others already built: the route registry's
-    // four, and the component gallery (MP-1-3, U04).
-    expect(builtPages()).toEqual([
-      'agency:sign-in',
-      'agency:projects-board',
-      'agency:task-detail',
-      'agency:settings',
-      'agency:gallery',
-      'agency:agent-conversation',
-    ]);
+    expect(builtPages()).toEqual(BUILT_PAGES);
     const all = report(packet, builtPages(), everyShot(packet.widths));
     expect(all.failed).toBe(0);
     expect(all.lines.at(-1)).toBe(

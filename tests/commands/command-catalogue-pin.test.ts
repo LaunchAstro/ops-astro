@@ -17,14 +17,46 @@
 // The five untargeted commands that `refuseIrrelevantTarget` never checked
 // were pinned as `unchecked` at 06ab232. Architecture observation 2 flipped
 // them, red first (`stray-identifiers.test.ts`): each now names the
-// identifiers its request type declares, and that change was the first
-// deliberate edit to this pin. AW-01's `model.call` is another: a new
-// untargeted lease write an agent reaches under its delegation, added to each
-// table it belongs in and to the handler map. AW-05's two answers at the
-// budget stop are two more: untargeted person writes naming the task and the
-// run on it, which no agent reaches. AW-11's hand-over and handback are two
-// more: untargeted writes on `run` an agent reaches under its delegation, and
-// a person is refused both by name.
+// identifiers its request type declares, and that change was the one
+// deliberate edit to this pin. The second is MP-4-9's `task.set_scores`, a new
+// write an agent reaches inside its delegation: one row added to each table
+// that lists every write or every agent operation, nothing else moved. The
+// third is MP-4-10's `task.set_adhoc`, the same shape as the second. The
+// fourth is MP-4-10's Client access, `task.share_with_client` and
+// `task.revoke_client_share`: two writes an agent never reaches, one row each
+// in the tables that list every write. The fifth is MP-4-5's author-only
+// `task.edit_comment` and `task.delete_comment`, two writes an agent reaches
+// inside its delegation, one row each in the tables that list every write or
+// every agent operation, and `task.comment` handing on its `parentId`.
+// The sixth is MP-4-4's parent scope behind S0-5's client lock: `task.set_party`
+// goes to `setPartyWhileEmpty`, which refuses once the task has content and
+// otherwise hands an empty task to `setParty` (parent scope, carry-down).
+// The seventh is MP-4-6's five `time.*` writes: untargeted, an agent never
+// reaches them, one row each in the tables that list every write or every
+// untargeted one.
+// The eighth is MP-4-11's tags: `tag.create`, `task.add_tag` and
+// `task.remove_tag`, untargeted writes an agent never reaches, and the
+// `tag.list` read, one row each in the tables that list every write, every
+// untargeted one or every operation with no expected revision.
+// The ninth is the status select's `task.set_state`: a targeted write an
+// agent never reaches, to `setStateById` with its state id, one row each in
+// the tables that list every write.
+// The tenth is the category's `task.set_category` (MP-4-8, CS-4.16), the
+// same shape as the third: a write an agent reaches inside its delegation, to
+// `setCategory`, one row each in the tables that list every write or every
+// agent operation.
+// The eleventh is MP-4-8's `task.duplicate`: an untargeted write naming the old
+// task in `recordId`, an agent never reaches it, to `duplicateTask` with its
+// request, one row each in the tables that list every write, every untargeted
+// one or every operation with no expected revision.
+// The twelfth is AW-01's `model.call`: a new untargeted lease write an agent
+// reaches under its delegation, added to each table it belongs in and to the
+// handler map. The thirteenth is AW-05's two answers at the budget stop:
+// untargeted person writes naming the task and the run on it, which no agent
+// reaches.
+// The fourteenth is AW-11's hand-over and handback: untargeted writes on
+// `run` an agent reaches under its delegation, and a person is refused both
+// by name.
 //
 // This suite moves the database counter by zero, so it is a unit suite and
 // must not be named in `tests/db/named-suites.json`.
@@ -64,6 +96,15 @@ vi.mock('../../packages/core-commands/src/commands/conversation-tabs.ts', async 
   renameConversation: recorder('renameConversation'),
   setConversationScope: recorder('setConversationScope'),
 }));
+vi.mock('../../packages/core-commands/src/commands/session-end.ts', async (original) => ({
+  ...(await original<object>()),
+  endOwnSession: recorder('endOwnSession'),
+}));
+vi.mock('../../packages/core-commands/src/commands/preference-save.ts', async (original) => ({
+  ...(await original<object>()),
+  saveOwnPreference: recorder('saveOwnPreference'),
+  dismissOwnTip: recorder('dismissOwnTip'),
+}));
 vi.mock('../../packages/core-commands/src/commands/tasks-write.ts', async (original) => ({
   ...(await original<object>()),
   createTask: recorder('createTask'),
@@ -72,7 +113,33 @@ vi.mock('../../packages/core-commands/src/commands/tasks-write.ts', async (origi
 vi.mock('../../packages/core-commands/src/commands/tasks-state.ts', async (original) => ({
   ...(await original<object>()),
   setState: recorder('setState'),
+  setStateById: recorder('setStateById'),
   writeOwnedFields: recorder('writeOwnedFields'),
+}));
+vi.mock('../../packages/core-commands/src/commands/tasks-scores.ts', async (original) => ({
+  ...(await original<object>()),
+  setScores: recorder('setScores'),
+}));
+vi.mock('../../packages/core-commands/src/commands/tasks-adhoc.ts', async (original) => ({
+  ...(await original<object>()),
+  setAdHoc: recorder('setAdHoc'),
+}));
+vi.mock('../../packages/core-commands/src/commands/tasks-category.ts', async (original) => ({
+  ...(await original<object>()),
+  setCategory: recorder('setCategory'),
+}));
+vi.mock('../../packages/core-commands/src/commands/task-client-lock.ts', async (original) => ({
+  ...(await original<object>()),
+  setPartyWhileEmpty: recorder('setPartyWhileEmpty'),
+}));
+vi.mock('../../packages/core-commands/src/commands/tasks-duplicate.ts', async (original) => ({
+  ...(await original<object>()),
+  duplicateTask: recorder('duplicateTask'),
+}));
+vi.mock('../../packages/core-commands/src/commands/tasks-client-access.ts', async (original) => ({
+  ...(await original<object>()),
+  shareWithClient: recorder('shareWithClient'),
+  revokeClientShare: recorder('revokeClientShare'),
 }));
 vi.mock('../../packages/core-commands/src/commands/tasks-place.ts', async (original) => ({
   ...(await original<object>()),
@@ -90,10 +157,44 @@ vi.mock('../../packages/core-commands/src/commands/tasks-comment.ts', async (ori
   ...(await original<object>()),
   commentOnTask: recorder('commentOnTask'),
 }));
+vi.mock('../../packages/core-commands/src/commands/tasks-comment-edit.ts', async (original) => ({
+  ...(await original<object>()),
+  changeFrom: () => 'change',
+  editTaskComment: recorder('editTaskComment'),
+  deleteTaskComment: recorder('deleteTaskComment'),
+}));
 vi.mock('../../packages/core-commands/src/commands/settings-write.ts', async (original) => ({
   ...(await original<object>()),
   setBusinessSetting: recorder('setBusinessSetting'),
   setNotificationChannel: recorder('setNotificationChannel'),
+}));
+vi.mock('../../packages/core-commands/src/commands/privacy-write.ts', async (original) => ({
+  ...(await original<object>()),
+  recordIncident: recorder('recordIncident'),
+}));
+vi.mock('../../packages/core-commands/src/commands/overseas-write.ts', async (original) => ({
+  ...(await original<object>()),
+  setService: recorder('setService'),
+}));
+vi.mock('../../packages/core-commands/src/commands/data-class-write.ts', async (original) => ({
+  ...(await original<object>()),
+  setClass: recorder('setClass'),
+}));
+vi.mock('../../packages/core-commands/src/commands/credential-write.ts', async (original) => ({
+  ...(await original<object>()),
+  issueCredential: recorder('issueCredential'),
+  revokeCredential: recorder('revokeCredential'),
+}));
+vi.mock('../../packages/core-commands/src/commands/gate-write.ts', async (original) => ({
+  ...(await original<object>()),
+  recordGateItem: recorder('recordGateItem'),
+  changeInstallationMode: recorder('changeInstallationMode'),
+}));
+vi.mock('../../packages/core-commands/src/commands/legal-write.ts', async (original) => ({
+  ...(await original<object>()),
+  draftVersion: recorder('draftVersion'),
+  approveVersion: recorder('approveVersion'),
+  publishVersion: recorder('publishVersion'),
 }));
 vi.mock('../../packages/core-commands/src/commands/tasks-propose.ts', async (original) => ({
   ...(await original<object>()),
@@ -135,6 +236,30 @@ vi.mock('../../packages/core-commands/src/commands/authority-controls.ts', async
   ...(await original<object>()),
   revokeDelegationAsManager: recorder('revokeDelegationAsManager'),
   revokeGrantAsManager: recorder('revokeGrantAsManager'),
+  revokeGrantOnAccess: recorder('revokeGrantOnAccess'),
+}));
+vi.mock('../../packages/core-commands/src/commands/access-write.ts', async (original) => ({
+  ...(await original<object>()),
+  createClientRecord: recorder('createClientRecord'),
+  grantOnAccess: recorder('grantOnAccess'),
+}));
+vi.mock('../../packages/core-commands/src/commands/access-end.ts', async (original) => ({
+  ...(await original<object>()),
+  endAccessOnSettings: recorder('endAccessOnSettings'),
+}));
+vi.mock('../../packages/core-commands/src/commands/tasks-time.ts', async (original) => ({
+  ...(await original<object>()),
+  startTime: recorder('startTime'),
+  stopTime: recorder('stopTime'),
+  logTimeEntry: recorder('logTimeEntry'),
+  setEntryNote: recorder('setEntryNote'),
+  deleteEntry: recorder('deleteEntry'),
+}));
+vi.mock('../../packages/core-commands/src/commands/tasks-tags.ts', async (original) => ({
+  ...(await original<object>()),
+  createTagNamed: recorder('createTagNamed'),
+  addTagToTask: recorder('addTagToTask'),
+  removeTagFromTask: recorder('removeTagFromTask'),
 }));
 vi.mock('../../packages/core-commands/src/commands/inbox-seen.ts', async (original) => ({
   ...(await original<object>()),
@@ -195,13 +320,30 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'budget.set_planning_cap': [],
   'budget.top_up': ['recordId'],
   'budget.write_off': ['recordId', 'attemptId'],
+  'access.end': ['holderId'],
+  'access.grant': ['holderId', 'clientId'],
+  'access.revoke': ['grantId'],
+  'client.create': [],
   'conversation.message': ['conversationId'],
   'conversation.rename': ['conversationId'],
   'conversation.set_scope': ['conversationId'],
   'conversation.start': [],
   'delegation.revoke': [],
+  'credential.issue': [],
+  'credential.revoke': ['credentialId'],
   'grant.revoke': [],
+  'preference.save': [],
+  'preference.dismiss_tip': [],
+  'session.end': [],
+  'legal.approve_version': ['versionId'],
+  'legal.draft_version': [],
+  'legal.publish_version': ['versionId'],
   'model.call': ['leaseId'],
+  'operations.change_installation_mode': [],
+  'operations.record_gate_item': [],
+  'privacy.record_incident': [],
+  'privacy.set_data_class': [],
+  'privacy.set_overseas_service': [],
   'run.child_handback': [],
   'run.delegate_child': ['leaseId'],
   'run.end_at_budget_stop': ['recordId', 'runId'],
@@ -211,6 +353,9 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'notifications.set_channel': [],
   'settings.set_client_sign_off': [],
   'settings.set_four_eyes_threshold': [],
+  'settings.set_money_step_up': [],
+  'settings.set_conversation_window': [],
+  'settings.set_retention_window': [],
   'task.accept_plan': ['gateId', 'versionId', 'conversationId'],
   'task.cancel': ['recordId', 'lineageId'],
   'task.check': ['leaseId'],
@@ -219,18 +364,33 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'task.handback': ['leaseId'],
   'task.heartbeat': ['leaseId'],
   'task.dispatch': ['leaseId'],
+  'task.duplicate': ['recordId'],
   'task.observe': ['leaseId', 'attemptId'],
   'task.pickup': ['reservationId'],
   'task.purge': [],
   'task.restart': ['recordId', 'lineageId'],
   'task.restore': ['batchId'],
+  'tag.create': [],
+  'task.add_tag': ['recordId', 'tagId'],
+  'task.remove_tag': ['recordId', 'tagId'],
+  'time.delete': ['entryId'],
+  'time.log': ['taskId'],
+  'time.set_note': ['entryId'],
+  'time.start': ['taskId'],
+  'time.stop': ['taskId'],
 };
 
 const PINNED_NEEDS_NO_EXPECTED_REVISION = [
+  'access.end',
+  'access.grant',
+  'access.read',
+  'access.revoke',
   'budget.record_outcome',
   'budget.set_planning_cap',
   'budget.top_up',
   'budget.write_off',
+  'client.create',
+  'client.list',
   'conversation.allowance',
   'conversation.list',
   'conversation.message',
@@ -238,6 +398,8 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'conversation.rename',
   'conversation.set_scope',
   'conversation.start',
+  'credential.issue',
+  'credential.revoke',
   'definition.attribution',
   'delegation.revoke',
   'gate.pending',
@@ -247,37 +409,69 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'inbox.read',
   'inbox.seen',
   'inbox.unattended',
+  'legal.approve_version',
+  'legal.draft_version',
+  'legal.publish_version',
   'model.call',
   'notifications.set_channel',
+  'operations.change_installation_mode',
+  'operations.read',
+  'operations.record_gate_item',
   'person.list',
+  'preference.dismiss_tip',
+  'preference.read',
+  'preference.save',
   'preset.plan',
+  'privacy.draft_breach_notices',
+  'privacy.record_incident',
+  'privacy.set_data_class',
+  'privacy.set_overseas_service',
   'run.child_handback',
   'run.delegate_child',
   'run.end_at_budget_stop',
   'run.revise_state',
   'run.top_up',
   'session.capabilities',
+  'session.end',
+  'session.person',
   'settings.read',
   'settings.set_client_sign_off',
+  'settings.set_conversation_window',
   'settings.set_four_eyes_threshold',
+  'settings.set_money_step_up',
+  'settings.set_retention_window',
+  'tag.create',
+  'tag.list',
   'task.accept_plan',
+  'task.add_tag',
   'task.board',
   'task.cancel',
   'task.check',
   'task.create',
   'task.decide',
   'task.dispatch',
+  'task.duplicate',
   'task.execution',
   'task.handback',
   'task.heartbeat',
+  'task.ledger',
   'task.observe',
   'task.pickup',
   'task.purge',
   'task.queue',
   'task.read',
   'task.receipt',
+  'task.remove_tag',
   'task.restart',
   'task.restore',
+  'task.search',
+  'task.todos',
+  'team.list',
+  'time.delete',
+  'time.log',
+  'time.set_note',
+  'time.start',
+  'time.stop',
   'trace.read',
 ];
 
@@ -287,10 +481,15 @@ const PINNED_AGENT_SURFACE = [
   'run.delegate_child',
   'run.revise_state',
   'session.capabilities',
+  // The assignee of its own task under a delegation holding assign (MP-4-8).
+  'task.assign',
   'task.check',
   'task.comment',
+  'task.create',
   'task.decide',
+  'task.delete_comment',
   'task.dispatch',
+  'task.edit_comment',
   'task.handback',
   'task.heartbeat',
   'task.observe',
@@ -298,6 +497,10 @@ const PINNED_AGENT_SURFACE = [
   'task.propose',
   'task.queue',
   'task.read',
+  'task.set_adhoc',
+  'task.set_category',
+  'task.set_scores',
+  'task.update',
 ];
 
 const PINNED_BEFORE_PICKUP = ['task.pickup', 'task.queue'];
@@ -315,8 +518,17 @@ const REQUESTS: readonly CommandRequest[] = [
     body: 'b-comment',
     audience: 'a-comment',
     commentType: 't-comment',
+    parentId: 'p-comment',
     mentions: 'm-comment',
   },
+  {
+    command: 'task.edit_comment',
+    operationId: 'op',
+    recordId: 'r',
+    commentId: 'c-edit',
+    body: 'b-edit',
+  },
+  { command: 'task.delete_comment', operationId: 'op', recordId: 'r', commentId: 'c-delete' },
   {
     command: 'task.propose',
     operationId: 'op',
@@ -349,6 +561,15 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'task.pickup', operationId: 'op', reservationId: 'res' },
   { command: 'task.handback', operationId: 'op', leaseId: 'l', fence: 2, outcome: 'done' },
   { command: 'task.start', operationId: 'op', recordId: 'r' },
+  { command: 'task.set_state', operationId: 'op', recordId: 'r', stateId: 'state' },
+  {
+    command: 'task.duplicate',
+    operationId: 'op',
+    recordId: 'r',
+    client: null,
+    title: 't-duplicate',
+    stepNames: [],
+  },
   { command: 'task.assign', operationId: 'op', recordId: 'r', fields: { assignee: 'f-assign' } },
   { command: 'task.triage', operationId: 'op', recordId: 'r', fields: { intake: 'f-triage' } },
   { command: 'task.set_stage', operationId: 'op', recordId: 'r', fields: { stage: 'f-stage' } },
@@ -359,6 +580,11 @@ const REQUESTS: readonly CommandRequest[] = [
     recordId: 'r',
     fields: { audience: 'f-audience' },
   },
+  { command: 'task.set_scores', operationId: 'op', recordId: 'r', fields: { impact: 7 } },
+  { command: 'task.set_adhoc', operationId: 'op', recordId: 'r', fields: { ad_hoc: true } },
+  { command: 'task.set_category', operationId: 'op', recordId: 'r', fields: { category: 'seo' } },
+  { command: 'task.share_with_client', operationId: 'op', recordId: 'r' },
+  { command: 'task.revoke_client_share', operationId: 'op', recordId: 'r' },
   { command: 'task.reparent', operationId: 'op', recordId: 'r', parentId: 'parent' },
   { command: 'task.move', operationId: 'op', recordId: 'r', board: 'b', boardSection: 's' },
   { command: 'task.rank', operationId: 'op', recordId: 'r', afterId: 'after' },
@@ -372,6 +598,63 @@ const REQUESTS: readonly CommandRequest[] = [
     expectedRevision: 3,
   },
   { command: 'settings.set_client_sign_off', operationId: 'op', value: true },
+  { command: 'settings.set_money_step_up', operationId: 'op', value: false },
+  { command: 'settings.set_conversation_window', operationId: 'op', value: 14 },
+  { command: 'settings.set_retention_window', operationId: 'op', value: 90 },
+  {
+    command: 'privacy.record_incident',
+    operationId: 'op',
+    whatHappened: 'w',
+    foundAt: 'f',
+    foundBy: 'b',
+    affected: 'a',
+    informationKinds: ['other'],
+  },
+  { command: 'legal.draft_version', operationId: 'op', document: 'd', version: 'v', body: 'b' },
+  { command: 'legal.approve_version', operationId: 'op', versionId: 'version', digest: 'x' },
+  { command: 'legal.publish_version', operationId: 'op', versionId: 'version' },
+  {
+    command: 'privacy.set_overseas_service',
+    operationId: 'op',
+    service: 's',
+    receives: 'r',
+    where: 'w',
+    trainsOnIt: 't',
+    contract: 'c',
+    toConfirm: false,
+    inUse: true,
+  },
+  {
+    command: 'privacy.set_data_class',
+    operationId: 'op',
+    dataClass: 'd',
+    purpose: 'p',
+    disclosures: 'd',
+    retention: 'r',
+    deletion: 'd',
+    inUse: true,
+  },
+  {
+    command: 'credential.issue',
+    operationId: 'op',
+    scope: [{ collection: 'task', action: 'read' }],
+    expiresAt: 'e',
+    purpose: 'p',
+  },
+  { command: 'credential.revoke', operationId: 'op', credentialId: 'credential' },
+  { command: 'operations.record_gate_item', operationId: 'op', item: 'i', evidence: 'e' },
+  { command: 'operations.change_installation_mode', operationId: 'op', mode: 'm' },
+  { command: 'client.create', operationId: 'op', name: 'n' },
+  {
+    command: 'access.grant',
+    operationId: 'op',
+    holderId: 'person',
+    collection: 'task',
+    action: 'read',
+    clientId: null,
+  },
+  { command: 'access.revoke', operationId: 'op', grantId: 'grant' },
+  { command: 'access.end', operationId: 'op', holderId: 'person' },
   { command: 'grant.revoke', operationId: 'op', grantId: 'grant' },
   { command: 'delegation.revoke', operationId: 'op', delegationId: 'delegation' },
   { command: 'task.cancel', operationId: 'op', recordId: 'r', lineageId: 'lin', reason: 'stop' },
@@ -426,10 +709,17 @@ const REQUESTS: readonly CommandRequest[] = [
     operationId: 'op',
     recordId: 'r',
     runId: 'run',
+    askId: 'ask',
     amountMinor: 700,
     currency: 'AUD',
   },
-  { command: 'run.end_at_budget_stop', operationId: 'op', recordId: 'r', runId: 'run' },
+  {
+    command: 'run.end_at_budget_stop',
+    operationId: 'op',
+    recordId: 'r',
+    runId: 'run',
+    askId: 'ask',
+  },
   {
     command: 'run.revise_state',
     operationId: 'op',
@@ -441,6 +731,23 @@ const REQUESTS: readonly CommandRequest[] = [
   },
   { command: 'run.delegate_child', operationId: 'op' },
   { command: 'run.child_handback', operationId: 'op' },
+  { command: 'time.start', operationId: 'op', taskId: 't-start' },
+  { command: 'time.stop', operationId: 'op', taskId: 't-stop' },
+  { command: 'time.log', operationId: 'op', taskId: 't-log', duration: '1h', note: 'n-log' },
+  { command: 'time.set_note', operationId: 'op', entryId: 'e-note', note: 'n-note' },
+  { command: 'time.delete', operationId: 'op', entryId: 'e-delete' },
+  { command: 'tag.create', operationId: 'op', name: 'n-tag' },
+  { command: 'task.add_tag', operationId: 'op', recordId: 'r-add', tagId: 'g-add' },
+  { command: 'task.remove_tag', operationId: 'op', recordId: 'r-remove', tagId: 'g-remove' },
+  { command: 'session.end', operationId: 'op' },
+  { command: 'preference.save', operationId: 'op', preference: 'appearance', value: 'dark' },
+  {
+    command: 'preference.dismiss_tip',
+    operationId: 'op',
+    page: 'agency:inbox',
+    tip: 'triage',
+    version: 1,
+  },
   { command: 'inbox.seen', operationId: 'op', itemId: 'item' },
   { command: 'notifications.set_channel', operationId: 'op', channel: 'in_app', mode: 'on' },
 ];
@@ -451,18 +758,35 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'task.update': ['updateTask', 'request'],
   'task.complete': ['setState', 'completed'],
   'task.reopen': ['setState', 'unstarted', 'why-reopen'],
-  'task.comment': ['commentOnTask', 'op', 'b-comment', 'a-comment', 't-comment', 'm-comment'],
+  'task.comment': [
+    'commentOnTask',
+    'op',
+    'b-comment',
+    'a-comment',
+    't-comment',
+    'p-comment',
+    'm-comment',
+  ],
+  'task.edit_comment': ['editTaskComment', 'c-edit', 'b-edit'],
+  'task.delete_comment': ['deleteTaskComment', 'c-delete'],
   'task.propose': ['proposeOnTask', 'request'],
   'task.decide': ['decideOnGate', 'request'],
   'task.accept_plan': ['acceptPlanOnGate', 'request'],
   'task.pickup': ['pickupAsPerson', 'request'],
   'task.handback': ['handbackOwnLease', 'request'],
   'task.start': ['setState', 'started'],
+  'task.set_state': ['setStateById', 'state'],
+  'task.duplicate': ['duplicateTask', 'request'],
   'task.assign': ['writeOwnedFields', 'task.assign', { assignee: 'f-assign' }],
   'task.triage': ['writeOwnedFields', 'task.triage', { intake: 'f-triage' }],
   'task.set_stage': ['writeOwnedFields', 'task.set_stage', { stage: 'f-stage' }],
-  'task.set_party': ['writeOwnedFields', 'task.set_party', { party: 'f-party' }],
+  'task.set_party': ['setPartyWhileEmpty', { party: 'f-party' }],
   'task.set_audience': ['writeOwnedFields', 'task.set_audience', { audience: 'f-audience' }],
+  'task.set_scores': ['setScores', { impact: 7 }],
+  'task.set_adhoc': ['setAdHoc', { ad_hoc: true }],
+  'task.set_category': ['setCategory', { category: 'seo' }],
+  'task.share_with_client': ['shareWithClient'],
+  'task.revoke_client_share': ['revokeClientShare'],
   'task.reparent': ['reparentTask', 'parent'],
   'task.move': ['moveTask', 'b', 's'],
   'task.rank': ['rankTask', 'after', null],
@@ -481,6 +805,38 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
     true,
     undefined,
   ],
+  'settings.set_money_step_up': [
+    'setBusinessSetting',
+    'settings.set_money_step_up',
+    false,
+    undefined,
+  ],
+  'settings.set_conversation_window': [
+    'setBusinessSetting',
+    'settings.set_conversation_window',
+    14,
+    undefined,
+  ],
+  'settings.set_retention_window': [
+    'setBusinessSetting',
+    'settings.set_retention_window',
+    90,
+    undefined,
+  ],
+  'privacy.record_incident': ['recordIncident', 'request'],
+  'legal.draft_version': ['draftVersion', 'request'],
+  'legal.approve_version': ['approveVersion', 'request'],
+  'legal.publish_version': ['publishVersion', 'request'],
+  'privacy.set_overseas_service': ['setService', 'request'],
+  'privacy.set_data_class': ['setClass', 'request'],
+  'credential.issue': ['issueCredential', 'request'],
+  'credential.revoke': ['revokeCredential', 'request'],
+  'operations.record_gate_item': ['recordGateItem', 'request'],
+  'operations.change_installation_mode': ['changeInstallationMode', 'request'],
+  'client.create': ['createClientRecord', 'request'],
+  'access.grant': ['grantOnAccess', 'request'],
+  'access.revoke': ['revokeGrantOnAccess', 'grant'],
+  'access.end': ['endAccessOnSettings', 'request'],
   'grant.revoke': ['revokeGrantAsManager', 'grant'],
   'delegation.revoke': ['revokeDelegationAsManager', 'delegation'],
   'task.cancel': ['cancelOnTask', 'request'],
@@ -501,8 +857,19 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'run.top_up': ['topUpOnRun', 'request'],
   'run.end_at_budget_stop': ['endOnRun', 'request'],
   'run.revise_state': ['reviseStateOnRun', 'request'],
-  'run.delegate_child': ['refuseChildWorkAsPerson', 'request'],
   'run.child_handback': ['refuseChildWorkAsPerson', 'request'],
+  'run.delegate_child': ['refuseChildWorkAsPerson', 'request'],
+  'time.start': ['startTime', 't-start'],
+  'time.stop': ['stopTime', 't-stop'],
+  'time.log': ['logTimeEntry', 't-log', '1h', 'n-log'],
+  'time.set_note': ['setEntryNote', 'e-note', 'n-note'],
+  'time.delete': ['deleteEntry', 'e-delete'],
+  'tag.create': ['createTagNamed', 'n-tag'],
+  'task.add_tag': ['addTagToTask', 'r-add', 'g-add'],
+  'task.remove_tag': ['removeTagFromTask', 'r-remove', 'g-remove'],
+  'session.end': ['endOwnSession', 'request'],
+  'preference.save': ['saveOwnPreference', 'appearance', 'dark'],
+  'preference.dismiss_tip': ['dismissOwnTip', 'request'],
   'inbox.seen': ['stampOwnSeen', 'item'],
   'notifications.set_channel': ['setNotificationChannel', 'request'],
 };
@@ -544,13 +911,13 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same forty-seven from an expected revision', () => {
+  it('exempts the same eighty-two from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );
   });
 
-  it('lets an agent reach the same sixteen, two of them before a pickup', () => {
+  it('lets an agent reach the same twenty-one, two of them before a pickup', () => {
     expect(agentReach(['delegated', 'before-pickup'])).toStrictEqual(PINNED_AGENT_SURFACE);
     expect(agentReach(['before-pickup'])).toStrictEqual(PINNED_BEFORE_PICKUP);
     expect([...AGENT_SURFACE].toSorted()).toStrictEqual(PINNED_AGENT_SURFACE);
@@ -566,7 +933,9 @@ describe('the per-command requests and handlers at 06ab232', () => {
     expect(REQUESTS.map((request) => request.command).toSorted()).toStrictEqual(writes.toSorted());
     expect(Object.keys(PINNED_HANDLERS).toSorted()).toStrictEqual(writes.toSorted());
   });
+});
 
+describe('the per-command tables at 06ab232', () => {
   it.each(REQUESTS.map((request) => [request.command, request] as const))(
     'hands %s to the same handler with the same operands',
     async (name, request) => {

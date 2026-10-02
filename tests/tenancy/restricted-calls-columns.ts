@@ -6,12 +6,12 @@
 
 import type { AdminConnection } from '../../packages/core-records/src/tenancy/database.ts';
 import { APPLICATION_ROLE } from '../support/fresh-database.ts';
+import { describeOutcome } from './restricted-calls-cases.ts';
 import {
   catalogueColumnGrants,
   columnUpdatesAt,
-  describeOutcome,
   roleColumnGrantsAt,
-} from './restricted-calls-cases.ts';
+} from './restricted-calls-catalogue.ts';
 import {
   APPLICATION_CALLERS,
   fingerprint,

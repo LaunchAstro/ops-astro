@@ -19,7 +19,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Page } from 'playwright';
 import { launchChromium } from '../support/chromium.ts';
-import { madeUpSession, screenOf, serveApp } from '../visual/app-pages.ts';
+import { MADE_UP_PARAMS, madeUpSession, screenOf, serveApp } from '../visual/app-pages.ts';
 import { load, openSide, type Side } from '../visual/capture.ts';
 import { scrollMetrics } from '../visual/drift.ts';
 import { WIDTHS } from '../visual/gallery-views.ts';
@@ -37,6 +37,9 @@ import { addressOf, builtPages, needsSession, overflowOf } from '../visual/repor
 export type PageCensus = {
   /** `<page>@<width>-<theme>`. */
   name: string;
+  /** The address the page was loaded at, and the one it drew at once it settled. */
+  address: string;
+  landed: string;
   /** Which screen was drawn: the page itself, or sign-in for the public page. */
   drew: string;
   sideways: number;
@@ -124,7 +127,7 @@ export function matchStyles(
   names: string[],
   looks: Look[],
   drawn: Drawn[],
-): Omit<PageCensus, 'name' | 'drew' | 'sideways'> {
+): Omit<PageCensus, 'name' | 'address' | 'landed' | 'drew' | 'sideways'> {
   const styles: Record<string, number> = {};
   const exceptions: Record<string, number> = {};
   const strays: string[] = [];
@@ -143,14 +146,15 @@ export function matchStyles(
 async function measure(
   page: Page,
   given: { names: string[]; exceptions: string[] },
-): Promise<Omit<PageCensus, 'name'>> {
+): Promise<Omit<PageCensus, 'name' | 'address'>> {
   // Served from source, the sheets arrive as modules: measure once none is in flight.
   await page.waitForLoadState('networkidle');
+  const landed = new URL(page.url()).pathname;
   const drew = await page.evaluate(screenOf);
   const sideways = overflowOf(await page.evaluate(scrollMetrics));
   const looks = await page.evaluate(looksOfStyles, given.names);
   const drawn = await page.evaluate(drawnText, given.exceptions);
-  return { drew, sideways, ...matchStyles(given.names, looks, drawn) };
+  return { landed, drew, sideways, ...matchStyles(given.names, looks, drawn) };
 }
 
 /** Every built page at one width in one theme, each on the side its route asks for. */
@@ -162,9 +166,16 @@ async function eachPage(
   const out: PageCensus[] = [];
   for (const id of builtPages()) {
     const side = needsSession(id) ? sides.signedIn : sides.signedOut;
-    const address = addressOf(id, { key: 'T-1' }) ?? '/';
-    const page = await load(side, at.packet, new URL(address, at.app).href);
-    out.push({ name: `${id}@${String(at.width)}-${at.theme}`, ...(await measure(page, given)) });
+    const address = addressOf(id, MADE_UP_PARAMS) ?? '/';
+    const page = await load(side, at.packet, new URL(address, at.app).href).catch(
+      (error: unknown) => {
+        throw new Error(`MP-1-4 census: ${id} (${address}) drew nothing into #app`, {
+          cause: error,
+        });
+      },
+    );
+    const name = `${id}@${String(at.width)}-${at.theme}`;
+    out.push({ name, address, ...(await measure(page, given)) });
     await page.close();
   }
   return out;

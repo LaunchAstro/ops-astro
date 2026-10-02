@@ -33,35 +33,37 @@ if (serverUrl === undefined) {
   );
 }
 
+/** 2^54 + 3: a valid bigint that a JavaScript number rounds to 2^54 + 4. */
+const LIMIT = '18014398509481987';
+let s: Schedules;
+
+beforeAll(async () => {
+  if (serverUrl === undefined) return;
+  s = await openSchedules('s6suc', 1);
+  // Set as text, so the parameter never passes through a number.
+  await s.db.admin.execute(
+    `update public.budget_caps set limit_minor = $3::text::bigint
+      where business_id = $1 and id = $2`,
+    [s.business, s.capId, LIMIT],
+  );
+}, 90_000);
+
+afterAll(async () => {
+  if (serverUrl === undefined) return;
+  await s?.db.drop();
+});
+
+async function committed(): Promise<string> {
+  const found = await rows<{ readonly n: string }>(
+    s,
+    `select coalesce(sum(held_minor + actual_minor), 0)::text as n
+       from public.task_envelopes where business_id = $1 and cap_id = $2`,
+    [s.business, s.capId],
+  );
+  return found[0]?.n ?? '';
+}
+
 describe.skipIf(serverUrl === undefined)('a successor is bounded exactly', () => {
-  /** 2^54 + 3: a valid bigint that a JavaScript number rounds to 2^54 + 4. */
-  const LIMIT = '18014398509481987';
-  let s: Schedules;
-
-  beforeAll(async () => {
-    s = await openSchedules('s6suc', 1);
-    // Set as text, so the parameter never passes through a number.
-    await s.db.admin.execute(
-      `update public.budget_caps set limit_minor = $3::text::bigint
-        where business_id = $1 and id = $2`,
-      [s.business, s.capId, LIMIT],
-    );
-  }, 90_000);
-
-  afterAll(async () => {
-    await s?.db.drop();
-  });
-
-  async function committed(): Promise<string> {
-    const found = await rows<{ readonly n: string }>(
-      s,
-      `select coalesce(sum(held_minor + actual_minor), 0)::text as n
-         from public.task_envelopes where business_id = $1 and cap_id = $2`,
-      [s.business, s.capId],
-    );
-    return found[0]?.n ?? '';
-  }
-
   it('refuses a ceiling of 4 with 2 left, and accepts a ceiling of 2', async () => {
     // Two of the largest safe holds and the live work's 3: 2^54 + 1 committed.
     for (const title of ['the first large hold', 'the second large hold']) {

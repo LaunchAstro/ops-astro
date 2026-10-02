@@ -37,7 +37,12 @@ export interface Member {
   readonly presented: VerifiedSubject;
 }
 
-/** A person who can sign in. No grants: those are the caller's to issue. */
+/**
+ * A person who can sign in. No grants: those are the caller's to issue. They
+ * signed in with the second factor as they were enrolled, so a money act of
+ * theirs is inside C59's step-up window; a case about the step-up itself
+ * presents the assurance it means instead.
+ */
 export async function enrol(database: Database, businessId: string, name: string): Promise<Member> {
   return await database.withBusiness(businessId, async (tx) => {
     const personId = await insertPerson(tx, name);
@@ -46,8 +51,18 @@ export async function enrol(database: Database, businessId: string, name: string
     const subject = `${name}-${randomUUID()}`;
     const loginId = await insertLogin(tx, subject);
     await insertMapping(tx, loginId, personId, actorId);
-    return { personId, actorId, presented: { provider: 'supabase', subject } };
+    return { personId, actorId, presented: freshSubject(subject) };
   });
+}
+
+/** `subject` signed in just now with the second factor: inside C59's step-up window. */
+export function freshSubject(subject: string): VerifiedSubject {
+  const now = Math.floor(Date.now() / 1000);
+  return {
+    provider: 'supabase',
+    subject,
+    assurance: { level: 'aal2', signedInAt: now, factorAt: now },
+  };
 }
 
 /** A root grant, which only an administrative path issues. */
@@ -105,5 +120,25 @@ export async function shareWithClient(
     const shared = await shareRecord(tx, sharer, { collection: 'task', recordId, personId });
     if (!shared.ok) throw new Error(`shareWithClient: refused ${shared.refusal.code}`);
     return { personId, actorId, presented: { provider: 'supabase', subject } };
+  });
+}
+
+/**
+ * A client of this business under a chosen id (C32): `task.set_party` and a
+ * party-scoped grant name only a client the business holds, so a world that
+ * puts tasks on clients makes them as rows first, through the application role.
+ */
+export async function addClient(
+  database: Database,
+  businessId: string,
+  clientId: string,
+  by: Member,
+): Promise<void> {
+  await database.withBusiness(businessId, async (tx) => {
+    await tx.query(
+      `insert into public.clients (business_id, id, name, created_by_actor_id)
+       values ($1, $2, $3, $4)`,
+      [tx.businessId, clientId, `client ${clientId}`, by.actorId],
+    );
   });
 }

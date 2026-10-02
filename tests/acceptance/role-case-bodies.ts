@@ -23,6 +23,7 @@
 // honest: an operation added to the surface cannot be skipped here quietly,
 // because being skipped is a thrown error rather than an absent row.
 
+import { randomUUID } from 'node:crypto';
 import { effectOperationId, type CommandName } from '../../packages/core-wire/src/surface.ts';
 import type { Answer } from './world.ts';
 
@@ -51,6 +52,15 @@ export const ACCEPTED_PLAN = {
 } as const;
 
 /** A proposal on `task`, answering with the lineage it opened. */
+/** A well-formed drill (C81), so a refusal is authority's and not the body's. */
+export const breachDrillBody = (): Record<string, unknown> => ({
+  incidentId: randomUUID(),
+  oaic: { name: 'A made-up regulator', address: 'regulator@example.test' },
+  people: [{ name: 'A made-up person', address: 'person@example.test' }],
+  containment: 'Nothing real happened.',
+  steps: 'Nothing to do.',
+});
+
 export async function lineageOn(context: BodyContext, task: Task): Promise<string> {
   const proposed = await context.asPerson('task.propose', {
     recordId: task.id,
@@ -83,6 +93,20 @@ export interface BodyContext {
     credential?: string,
   ): Promise<Answer>;
   freshTask(title: string): Promise<Task>;
+  /**
+   * A task on a client with one person standing on it, which is what
+   * `task.share_with_client` needs to succeed (MP-4-10). Absent where a case
+   * only needs the body shape, and the share is refused on authority anyway.
+   */
+  clientTask?(title: string): Promise<Task>;
+  /** A comment `author` (the admin when absent) wrote on a fresh task (MP-4-5). */
+  ownComment?(author?: unknown): Promise<Task & { readonly commentId: string }>;
+  /** C58: a new member of this business with a login, for a case that ends one. */
+  freshMember?(): Promise<string>;
+  /** S0-5: a gate item's record removed by the owner, so the next record of it applies. */
+  clearGateItem?(item: string): Promise<void>;
+  /** C81: the links to the published legal versions gate items 3 to 6 take (`legalEvidence`). */
+  legalEvidence?(): Promise<Readonly<Record<string, string>>>;
 }
 
 export const batchOf = (answer: Answer): string =>

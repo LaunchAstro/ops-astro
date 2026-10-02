@@ -1,33 +1,31 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The refusal register. One table of codes, their statuses, and the
-// visibility rule.
+// The refusal register. One table of codes, their statuses, and the visibility rule.
 //
-// This is T1f's register. It does not replace the modules' own refusal
-// unions, because a module keeps the codes it can produce and that keeps its
-// own types narrow. It is the one place
-// that says a code exists, what it means, which contract row owns it, which
-// HTTP status carries it, and whether a caller may see it at all. A code is
-// declared once, as a row: `RefusalCode` is read off the rows, the runtime's
-// own union is read off the rows marked `runtime`, and the HTTP door reads the
-// status column through `statusOf`.
+// This is T1f's register. It does not replace the modules' own refusal unions, because a
+// module keeps the codes it can produce and that keeps its own types narrow. It is the one
+// place that says a code exists, what it means, which contract row owns it, which HTTP
+// status carries it, and whether a caller may see it at all. A code is declared once, as a
+// row: `RefusalCode` is read off the rows, the runtime's own union is read off the rows
+// marked `runtime`, and the HTTP door reads the status column through `statusOf`.
 //
-// **Why a table rather than a union alone.** A union stops a typo. It cannot
-// say that `WRONG_BUSINESS` is never returned to a caller, and that rule is
-// the whole of case T1-N5: a cross-business read is `NOT_FOUND`, and it must
-// be indistinguishable in status, code, body and timing from a read of an
-// identifier nobody ever issued. A boolean beside the code makes that a fact
-// the envelope enforces once, rather than a rule every command remembers.
+// **Why a table rather than a union alone.** A union stops a typo. It cannot say that
+// `WRONG_BUSINESS` is never returned to a caller, and that rule is the whole of case
+// T1-N5: a cross-business read is `NOT_FOUND`, and it must be indistinguishable in status,
+// code, body and timing from a read of an identifier nobody ever issued. A boolean beside
+// the code makes that a fact the envelope enforces once, rather than a rule every command
+// remembers.
 //
-// **Why codes nothing produces yet are in it.** The contract's register is
-// twenty-four codes (minimum contract 4.4) and its command table names seven
-// more. Several belong to gates, leases and delegations, which land in later
-// parts. Registering them now costs a line each; leaving them out means the
-// part that builds those commands invents its own spelling of a code the
-// contract already named. `UNPRODUCED_CODES` names them, so a later part
-// closing one shows as a diff to this file rather than as nothing at all.
+// **Why codes nothing produces yet are in it.** The contract's register is twenty-four
+// codes (minimum contract 4.4) and its command table names seven more. Several belong to
+// gates, leases and delegations, which land in later parts. Registering them now costs a
+// line each; leaving them out means the part that builds those commands invents its own
+// spelling of a code the contract already named. `UNPRODUCED_CODES`
+// (`register-unproduced.ts`) names them, so a later part closing one shows as a diff to
+// this file rather than as nothing at all.
 
-import { DEFINITION_ROWS, UNPRODUCED_DEFINITION_CODES } from './register-definitions.ts';
+import { DEFINITION_ROWS } from './register-definitions.ts';
+import { EFFECT_ROWS } from './register-effects.ts';
 import { LAUNCH_ROWS } from './register-launch.ts';
 
 export type Visibility = 'caller' | 'audit';
@@ -52,7 +50,7 @@ export type Visibility = 'caller' | 'audit';
  * 501, the operation is declared and what it rests on is not built. 402 and
  * 410 are the runtime's, and the rows that carry them say why.
  */
-export type RefusalStatus = 400 | 401 | 402 | 403 | 404 | 409 | 410 | 422 | 501;
+export type RefusalStatus = 400 | 401 | 402 | 403 | 404 | 409 | 410 | 422 | 429 | 501 | 502;
 
 /**
  * A row as it is declared. `visibility` is `caller` unless the row says
@@ -255,6 +253,12 @@ const ROWS_HEAD = [
     source: 'contract 4.3',
     runtime: true,
   },
+  {
+    code: 'CARRIED_TEXT_NAMES_CLIENT',
+    status: 409,
+    meaning: 'Text carried from the old task names its client, unconfirmed',
+    source: 'MP-4-8, owner line 76',
+  },
   // The operation is declared and what it rests on has not been built. Not a
   // permission problem and not a bad request, and saying so is the honest answer
   // rather than a 404 that reads as "no such endpoint".
@@ -299,6 +303,204 @@ const ROWS_HEAD = [
     status: 401,
     meaning: 'The verified token has expired; sign in again',
     source: 'L2 AUTHORITY.md',
+  },
+  // C59. A person with a verified second factor who presents a sign-in
+  // without it is not yet signed in: 401, the door that asks for the code.
+  // A money command asked of a sign-in older than the step-up window is signed
+  // in and not recent enough: 403, like any other authority refusal.
+  {
+    code: 'AUTH_SECOND_FACTOR_REQUIRED',
+    status: 401,
+    meaning: 'This person has a second factor and the sign-in did not use it',
+    source: 'C59 LF-4',
+  },
+  {
+    code: 'STEP_UP_REQUIRED',
+    status: 403,
+    meaning: 'A money action needs a sign-in with the second factor inside the step-up window',
+    source: 'C59 TR-SEC4-6',
+  },
+  // C59, a person's own factor. A first enrolment needs a password sign-in
+  // inside the step-up window; a second one needs the first removed; a code is
+  // checked by the provider, and a provider answer that is malformed,
+  // oversized, slow or unreachable is refused by its kind (502: the fault is
+  // upstream, and nothing was changed).
+  {
+    code: 'FRESH_SIGN_IN_REQUIRED',
+    status: 403,
+    meaning: 'Setting up a second factor needs a password sign-in inside the step-up window',
+    source: 'C59 TR-A2-2',
+  },
+  {
+    code: 'FACTOR_ALREADY_ENROLLED',
+    status: 409,
+    meaning: 'This person already has a verified second factor',
+    source: 'C59 TR-A2-2',
+  },
+  {
+    code: 'FACTOR_NOT_ENROLLED',
+    status: 409,
+    meaning: 'This person has no second factor to verify or remove',
+    source: 'C59 TR-A2-2',
+  },
+  {
+    code: 'SECOND_FACTOR_INVALID',
+    status: 422,
+    meaning: 'The code was not accepted by the sign-in provider',
+    source: 'C59 TR-A2-2',
+  },
+  {
+    code: 'SECOND_FACTOR_LOCKED',
+    status: 429,
+    meaning: 'Too many wrong codes in fifteen minutes; the provider is not asked again yet',
+    source: 'C59 TR-A2-2',
+  },
+  {
+    code: 'PROVIDER_ANSWER_INVALID',
+    status: 502,
+    meaning: 'The sign-in provider answered malformed, oversized, slowly or not at all',
+    source: 'C59 TR-SEC4R-5',
+  },
+  // C81, the legal documents. A version is written once, approved as the
+  // bytes the approver read, and published only once that exact version is
+  // approved (standing gate 5). Each is a state the caller can fix by
+  // drafting or approving, so 409; a foreign or made-up version is NOT_FOUND.
+  {
+    code: 'LEGAL_VERSION_EXISTS',
+    status: 409,
+    meaning: 'This document already has this version; a change is a new version',
+    source: 'C81 CS-16.20',
+  },
+  {
+    code: 'LEGAL_DIGEST_MISMATCH',
+    status: 409,
+    meaning: 'The approval names bytes other than this version holds',
+    source: 'C81 TR-S-B2-2',
+  },
+  {
+    code: 'LEGAL_ALREADY_APPROVED',
+    status: 409,
+    meaning: 'This version is already approved',
+    source: 'C81 CS-16.20',
+  },
+  {
+    code: 'LEGAL_NOT_APPROVED',
+    status: 409,
+    meaning: 'Only a version the owner approved can be published',
+    source: 'C81 TR-S-B2-2',
+  },
+  {
+    code: 'LEGAL_ALREADY_PUBLISHED',
+    status: 409,
+    meaning: 'This version is already published',
+    source: 'C81 CS-16.20',
+  },
+  // C81: a privacy policy reads the overseas-services register (SP-25).
+  {
+    code: 'LEGAL_REGISTER_CHANGED',
+    status: 409,
+    meaning: 'The overseas-services register changed since this policy was drafted',
+    source: 'C81 SP-25',
+  },
+  {
+    code: 'LEGAL_REGISTER_UNCONFIRMED',
+    status: 409,
+    meaning: 'A service on the overseas-services register is still to confirm',
+    source: 'C81 SP-25',
+  },
+  // S0-5: a task's client is locked once the task has content (owner line 75).
+  {
+    code: 'CLIENT_LOCKED',
+    status: 409,
+    meaning: 'This task has content, so its client is locked',
+    source: 'S0-5 owner line 75',
+  },
+  // S0-5: a real-data installation refuses client data and invitations until
+  // every gate item is done.
+  {
+    code: 'GATE_SHUT',
+    status: 409,
+    meaning:
+      'This installation takes no real client data or client invitation until every gate item is done',
+    source: 'S0-5 TR-SEC5-1',
+  },
+  // S0-5: the gate's own commands (0059).
+  {
+    code: 'GATE_ITEM_ALREADY_RECORDED',
+    status: 409,
+    meaning: 'This gate item is already done; its evidence stays as first recorded',
+    source: 'S0-5 ORCH38',
+  },
+  {
+    code: 'INSTALLATION_NOT_READY',
+    status: 409,
+    meaning: 'The installation moves to real data only once every gate item is done',
+    source: 'S0-5 mode one way',
+  },
+  {
+    code: 'INSTALLATION_MODE_ONE_WAY',
+    status: 409,
+    meaning: 'An installation moves from made-up to real data only, never back',
+    source: 'S0-5 mode one way',
+  },
+  // C81: a privacy policy reads the data-class register.
+  {
+    code: 'LEGAL_DATA_CLASSES_CHANGED',
+    status: 409,
+    meaning: 'The data-class register changed since this policy was drafted',
+    source: 'C81 CS-16.20',
+  },
+  // C81: the breach drill drafts notices from the published breach runbook.
+  {
+    code: 'BREACH_RUNBOOK_UNPUBLISHED',
+    status: 409,
+    meaning: 'No breach runbook is published to draft the notices from',
+    source: 'C81 TR-SEC-11',
+  },
+  {
+    code: 'BREACH_TEMPLATE_UNFILLED',
+    status: 409,
+    meaning: 'The published breach runbook has no notice template the drill can fill',
+    source: 'C81 TR-SEC-11',
+  },
+  // API-2, the agent credential: never wider than its issuer, never decide,
+  // share or manage, never a money key (403), and revoked once (409).
+  {
+    code: 'CREDENTIAL_SCOPE_WIDENS',
+    status: 403,
+    meaning: 'A ticked key is one the issuer does not hold at business scope',
+    source: 'API-2',
+  },
+  {
+    code: 'CREDENTIAL_ACTION_EXCLUDED',
+    status: 403,
+    meaning: 'An agent credential never carries decide, share or manage',
+    source: 'API-2',
+  },
+  {
+    code: 'CREDENTIAL_MONEY_KEY_EXCLUDED',
+    status: 403,
+    meaning: 'An agent may hold no money key, so an agent credential never carries one',
+    source: 'API-2 CAPABILITY-SLICES.md',
+  },
+  {
+    code: 'CREDENTIAL_ALREADY_REVOKED',
+    status: 409,
+    meaning: 'This agent credential is already revoked',
+    source: 'API-2',
+  },
+  // C32: the client record and Settings ▸ Access.
+  {
+    code: 'CLIENT_NAME_TAKEN',
+    status: 409,
+    meaning: 'This business already has a client of that name',
+    source: 'C32 CS-2.15',
+  },
+  {
+    code: 'ACCESS_LAST_MANAGER',
+    status: 409,
+    meaning: 'It would leave the business with nobody who can change access',
+    source: 'C32 CS-2.15',
   },
   // S0-6c. 403s: the session may be good, and ending it would hand the sign-out to others.
   {
@@ -351,6 +553,7 @@ const ROWS_HEAD = [
     meaning: 'The delegation is expired, revoked or settled',
     source: 'L2 AUTHORITY.md',
   },
+  { code: 'AGENT_QUOTA_EXCEEDED', status: 429, meaning: 'Past an agent quota', source: 'API-2' },
   {
     code: 'DELEGATION_WIDENS',
     status: 403,
@@ -613,133 +816,13 @@ const ROWS_HEAD = [
   },
 ] as const;
 
-// AW-02's and AW-01 J's definition codes sit here, in `register-definitions.ts`.
-
-const ROWS_TAIL = [
-  // T2c1, the dispatch transaction's recheck of the effect-time facts
-  // (`core-runtime/src/dispatch.ts`). Each is 409: the call was well formed,
-  // and state moved under it, so nothing was dispatched.
-  {
-    code: 'AUTHORITY_LOST',
-    status: 409,
-    meaning: 'The authority behind the work was lost before its effect was dispatched',
-    source: 'T2 T2c1',
-    runtime: true,
-  },
-  {
-    code: 'DECISION_STALE',
-    status: 409,
-    meaning: 'The approval behind the work is no longer current, so its effect is not dispatched',
-    source: 'T2 T2c1',
-    runtime: true,
-  },
-  {
-    code: 'EFFECT_NOT_RECONCILABLE',
-    status: 409,
-    meaning: 'The effect can be neither replayed nor reconciled, and no gate accepts a duplicate',
-    source: 'T2 T2c1',
-    runtime: true,
-  },
-  // T2c2: an effect is applied only after its dispatch mark, and observed only
-  // once the operation register holds it (`core-runtime/src/observe.ts`).
-  {
-    code: 'EFFECT_NOT_DISPATCHED',
-    status: 409,
-    meaning: 'The attempt this effect names is not dispatched to this caller, so nothing applied',
-    source: 'T2 T2c2',
-  },
-  {
-    code: 'EFFECT_NOT_OBSERVED',
-    status: 409,
-    meaning:
-      'The operation register holds no applied effect for this attempt, so nothing is observed',
-    source: 'T2 T2c2',
-    runtime: true,
-  },
-  {
-    code: 'LIABILITY_NOT_UNKNOWN',
-    status: 409,
-    meaning: 'The attempt is not held as an unknown liability, so there is no outcome to record',
-    source: 'T3 T3d1',
-    runtime: true,
-  },
-  // The broker's model call (AW-01, `core-custody/src/broker.ts`). The six
-  // facts are verified against rows under lock; everything after them is
-  // recorded as a step of the run. AUTHORITY_LOST, DECISION_STALE and
-  // EFFECT_NOT_RECONCILABLE are the core's (T2c1, above), and the broker
-  // answers with them.
-  {
-    code: 'OPERATION_NOT_CATALOGUED',
-    status: 403,
-    meaning: 'The operation is not in the reviewed catalogue, whatever the grant',
-    source: 'AW-01',
-  },
-  // Owner line 72: the product has no local-model route yet, so the call waits
-  // on one. 501, because what it rests on is not built.
-  {
-    code: 'LOCAL_MODEL_REQUIRED',
-    status: 501,
-    meaning: 'Personal information stays out of cloud AI until a local model exists',
-    source: 'AW-01, owner line 72',
-  },
-  // C60 (LF-5): a client's model use is off by default and, while no local
-  // model exists, cannot be switched on, so a call on its task reaches no route.
-  {
-    code: 'CLIENT_MODEL_USE_OFF',
-    status: 403,
-    meaning: "Model use is off for the task's client, so no route is chosen",
-    source: 'C60, LF-5, owner line 72',
-  },
-  // S3: a bound field's row is another business's, made up, trashed, or holds
-  // no text at the key. The same words whoever's row it was.
-  {
-    code: 'SOURCE_UNREADABLE',
-    status: 422,
-    meaning: "A bound field's row could not be read, so the call is not made",
-    source: 'AW-01 S3, owner line 72',
-  },
-  {
-    code: 'SUBSCRIPTION_UNATTENDED',
-    status: 403,
-    meaning: "A subscription carries only a person's own attended work",
-    source: 'AW-01, LF-5',
-  },
-  {
-    code: 'SUBSCRIPTION_OTHER_TENANT',
-    status: 403,
-    meaning: "A subscription never carries another installation's tenant",
-    source: 'AW-01, LF-5',
-  },
-  {
-    code: 'SUBSCRIPTION_NOT_OWN_WORK',
-    status: 403,
-    meaning: "A subscription never carries another person's work",
-    source: 'AW-01, LF-5',
-  },
-  {
-    code: 'RATE_LIMITED',
-    status: 409,
-    meaning: "The operation's ceiling on calls in flight is reached; wait and ask again",
-    source: 'AW-01',
-  },
-  {
-    code: 'COPY_NOT_REGISTERED',
-    status: 409,
-    meaning: 'A copy of business content was not registered before it was made',
-    source: 'AW-01',
-  },
-  {
-    code: 'LIABILITY_UNKNOWN',
-    status: 409,
-    meaning: 'The provider may have acted; the maximum is held until a person records an outcome',
-    source: 'AW-01, O6, O9',
-  },
-] as const;
+// AW-02's and AW-01 J's definition codes sit here, in `register-definitions.ts`; the
+// effect and broker codes follow them, in `register-effects.ts`.
 
 /** Every registered code. Declared by the rows above and nowhere else. */
-/** Every row, in register order: the head, the definition codes, the tail, the launch. */
+/** Every row, in register order: the head, the definition codes, the effect codes, the launch. */
 type Row = (
-  typeof ROWS_HEAD | typeof DEFINITION_ROWS | typeof ROWS_TAIL | typeof LAUNCH_ROWS
+  typeof ROWS_HEAD | typeof DEFINITION_ROWS | typeof EFFECT_ROWS | typeof LAUNCH_ROWS
 )[number];
 
 export type RefusalCode = Row['code'];
@@ -768,7 +851,7 @@ export interface RegisterEntry {
 export const REFUSAL_REGISTER: readonly RegisterEntry[] = [
   ...ROWS_HEAD,
   ...DEFINITION_ROWS,
-  ...ROWS_TAIL,
+  ...EFFECT_ROWS,
   ...LAUNCH_ROWS,
 ].map((row: Declared & { readonly code: RefusalCode }) => ({
   code: row.code,
@@ -835,162 +918,7 @@ export function refuseCommand<C extends RefusalCode>(
   return { refused: true, code, names, fixes };
 }
 
-/**
- * The gate codes' production constructors (T2g, build plan section 5), so each
- * producer raises its code one way and a test can name the constructor.
- */
-
-/** Completing a task while a gate on it is open (contract 4.3, `task.complete`). */
-export function gatePending(): CommandRefusal<'GATE_PENDING'> {
-  return refuseCommand(
-    'GATE_PENDING',
-    [],
-    [
-      'An approval gate on this task is still open, so the task is not complete.',
-      'Decide the gate, or let it expire, then complete the task.',
-    ],
-  );
-}
-
-/** A second decision on a gate that carries one (G03). */
-export function gateAlreadyDecided(
-  gateId: string,
-  state: string,
-): CommandRefusal<'GATE_ALREADY_DECIDED'> {
-  return refuseCommand(
-    'GATE_ALREADY_DECIDED',
-    [],
-    [
-      `gate ${gateId} is ${state}`,
-      'Read the decision that was recorded. A second decision on one version is never taken.',
-    ],
-  );
-}
-
-/** A comment in an audience this caller may not write in. */
-export function audienceNotPermitted(fix: string): CommandRefusal<'AUDIENCE_NOT_PERMITTED'> {
-  return refuseCommand('AUDIENCE_NOT_PERMITTED', ['audience'], [fix]);
-}
-
-/** The task's assignee asked to decide its own gate: another person decides. */
-export function fourEyesRequired(): CommandRefusal<'FOUR_EYES_REQUIRED'> {
-  return refuseCommand(
-    'FOUR_EYES_REQUIRED',
-    [],
-    [
-      'The task is assigned to you, so its gate is decided by someone else.',
-      'Ask another person who holds the decision grant on this task.',
-    ],
-  );
-}
-
 /** The discriminant every result is read through. */
 export function isCommandRefusal(value: object): value is CommandRefusal {
   return 'refused' in value && value.refused === true;
 }
-
-/**
- * Registered, and nothing in the tree can produce one yet.
- *
- * Why each is unreachable is written beside its row below.
- *
- * Three budget codes are not on the list. `BUDGET_EXHAUSTED` is what the
- * enforcing path returns when an attempt would cross a ceiling a person
- * approved (`core-runtime/src/budget.ts`). `GATE_NOT_APPROVED` and
- * `FOUR_EYES_REQUIRED` belong to the gated money decisions, a top-up and a
- * write-off. The write-off is deferred, so nothing in `apps/` or `packages/`
- * returns `GATE_NOT_APPROVED`: it is registered, unproduced and not on this
- * list, so this list is not every code nothing produces. `FOUR_EYES_REQUIRED`
- * is produced by the top-up (T2e, `core-runtime/src/budget.ts`), by AW-05's
- * top-up at the budget stop, `run.top_up` (`core-runtime/src/budget-answer.ts`), and, since
- * T2g, by the gate: the task's assignee is refused a decision on its gate.
- * Asserted by name in `tests/commands/refusal-register.test.ts`, so a part
- * that closes one has to come here and take it off the list.
- * `AUTH_UNKNOWN_LOGIN` was on this list until a review pointed out that the
- * HTTP boundary produces it: a request nothing verified is refused with it
- * before any command runs.
- *
- * **`WRONG_BUSINESS` is on this list by contract, not as a gap.** Minimum
- * contract 4.4 (`research/minimum-contract-2026-09-10/CONTRACT.md:365-371`,
- * corrected 14 September 2026) registers it as unproducible and struck the
- * requirement that the audit record it; 8.2 case 1 (`:491`) repeats the
- * correction. Telling "another business holds this identifier" from "no such
- * identifier" needs a read that is not scoped to the caller's business, and
- * the tenancy law forbids one: row security is forced, the application role
- * owns nothing, and a definer-rights function that answered the question is
- * exactly what case T1-N14 exists to attack. So a cross-business probe is
- * refused `NOT_FOUND` to the caller and audited as `NOT_FOUND` in the prober's
- * own business, and the probed business is not told (the known limit the
- * contract records at `:371`). The code stays registered and unreachable;
- * `tests/tenancy/production-lookup.test.ts` asserts it absent from the audit.
- */
-export const UNPRODUCED_CODES: ReadonlySet<RefusalCode> = new Set([
-  'WRONG_BUSINESS',
-  // Delegation codes no reachable operation raises. `DELEGATION_NARROWED` is
-  // not on this list: `grant.revoke` reaches it by revoking the delegating
-  // person's grant between a pickup and the agent's next call.
-  // `DELEGATION_WIDENS` is reached on the same route, one step earlier: the
-  // mint reads the approver's live grants when the agent picks the work up, not
-  // when the person approved it, so a grant revoked or expired in between
-  // leaves the pickup asking for authority the approver no longer holds
-  // (`tests/commands/delegation-widens.test.ts`).
-  // `DELEGATION_EXCLUDES_INTAKE` is not on this list: an agent calling
-  // `task.triage`, the intake operation, is refused it (`agent-envelope.ts`).
-  // `DELEGATION_EXPIRED` and `DELEGATION_REVOKED` are not on this list: a
-  // child delegation's call walks to its parent (AW-11), and a parent that has
-  // run out, or was handed back or withdrawn, answers with them.
-  // `DELEGATION_ALREADY_LIVE` is not on this list:
-  // `authority/delegations.ts` refuses a second mint under a purpose the agent
-  // already holds live, and `task.pickup` reaches it as a 409 rather than the
-  // unique index's 503. Nor is `DELEGATION_EXCLUDES_OPERATION`:
-  // `agent-envelope.ts` refuses with it any operation outside
-  // `AGENT_SURFACE`, and `tests/commands/unproduced-reach.test.ts` reaches it.
-  // `GATE_PENDING` left the list with T2g, which raises it on completing a
-  // task whose gate is open; `PROPOSAL_SUPERSEDED` and
-  // `PROPOSAL_SCOPE_EXCEEDED` left it with T3a, which gave each its producer.
-  'TASK_NOT_PICKABLE',
-  // The two runtime codes that need something no caller can reach.
-  //
-  // `EVIDENCE_MISMATCH` needs a gate whose stored digest and version's own
-  // disagree, and `propose` writes both from one value, so only an amended row
-  // produces it. `LEASE_EXPIRED` needs a handback on a lease that has expired
-  // or left `live`, and the agent path meets something else first: `pickup`
-  // mints the delegation with the lease's own expiry, so an expired lease
-  // arrives as `DELEGATION_NOT_LIVE`; a newer pickup answers
-  // `LEASE_NOT_OWNED`; and the handback that settles a lease settles its
-  // delegation too.
-  //
-  // `GATE_EXPIRED` and `CHANGE_ROUNDS_EXHAUSTED` are not on this list: a
-  // command case reaches each (`tests/commands/unproduced-reach.test.ts`):
-  // `task.propose` takes `expiresInSeconds`, so a one-second window closes
-  // before the decision, and `task.propose` on a lineage plus `task.decide`
-  // reach the third round. `LEASE_HELD` is reached the same way
-  // (`tests/commands/lease-held-reach.test.ts`). A second pickup of the *same*
-  // reservation meets `RESERVATION_NOT_CLAIMABLE` first, but pickup keeps a
-  // reservation `held`, and a handback releases its hold without closing the
-  // task's envelope, so two new lineages approved on one task give two held
-  // reservations: the second pickup meets the first one's live lease.
-  'EVIDENCE_MISMATCH',
-  'LEASE_EXPIRED',
-  ...UNPRODUCED_DEFINITION_CODES,
-  // Three codes are deliberately **not** on this list, and each is a command
-  // path rather than a module one.
-  //
-  // `LINEAGE_NOT_ON_TASK`: `task.propose` takes `lineageId` from the caller,
-  // so naming a live lineage opened on another task of the same business is an
-  // ordinary request, and R3 refuses it. `task.cancel` and `task.restart`
-  // answer it from `lineageOnTask` (`tasks-controls.ts`) before the runtime.
-  //
-  // `CAP_BINDING_MISMATCH`: `decide` still raises it, as the second barrier
-  // behind the proposal, and no command case reaches it. The cap half of R2 is
-  // not command-reachable, since `readBusinessCapId` hands every decision on a
-  // business the same cap. Nor is the currency half: `task.propose` checks
-  // the currency against the task's
-  // cap (its envelope's, else the business cap) before the first write, and
-  // refuses another currency `PROPOSAL_SCOPE_EXCEEDED`, so no version in another
-  // currency reaches a decision. It stays off this list because the runtime
-  // produces it; the list names codes nothing produces.
-  //
-  // `ACTUAL_EXPENDITURE_UNSUPPORTED`: `task.handback` refuses any non-null
-  // `actualMinor`, so a caller reporting a cost — including zero — produces it.
-]);
