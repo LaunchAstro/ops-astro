@@ -1,0 +1,6 @@
+{
+  "rules": {
+    "eslint(max-lines-per-function)": 5,
+    "eslint(require-await)": 3
+  }
+}

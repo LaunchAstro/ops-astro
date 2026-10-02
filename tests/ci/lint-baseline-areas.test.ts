@@ -6,8 +6,8 @@
 // without losing or inventing an entry, on fixtures and on this repository's
 // real warnings.
 
-import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync, spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -142,8 +142,17 @@ describe("CI-SCOPED lint areas: on this repository's real warnings", () => {
     expect(joinAreas(splitBaseline(totals, current))).toEqual(totals);
   });
 
-  it("split then join equals main's real lint-baseline.json for every rule", (context) => {
-    const single = parseRules(readFileSync(join(ROOT, 'lint-baseline.json'), 'utf8'), 'main');
+  it("split then join equals the cut parent's real lint-baseline.json for every rule", (context) => {
+    // The cut replaced the single file with lint-baseline/; its last copy is on the cut parent.
+    const cutCopy = execFileSync(
+      'git',
+      ['show', '423256029fd230222d0637b1306cd560d7081edb:lint-baseline.json'],
+      {
+        cwd: ROOT,
+        encoding: 'utf8',
+      },
+    );
+    const single = parseRules(cutCopy, 'the cut parent');
     const slack = Object.entries(single).filter(([rule, n]) => n !== (totals[rule] ?? 0));
     if (slack.length > 0) {
       context.skip(`main's baseline is not tight: ${slack.map(([r]) => r).join(', ')}`);

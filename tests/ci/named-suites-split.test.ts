@@ -3,10 +3,10 @@
 // one file per area under tests/db/named-suites/ (code-factory METHOD Phase 2
 // step 6). This proves the split of the real manifest loses nothing, the
 // reader refuses a folder it cannot trust and names the file, and with no
-// folder the readers get the single file's lists exactly as before.
-import { spawnSync } from 'node:child_process';
+// folder the readers get the single file's lists exactly as before. The cut
+// removed the single file, so "the real manifest" is the cut parent's copy.
+import { execFileSync, spawnSync } from 'node:child_process';
 import {
-  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -24,7 +24,13 @@ import { readNamedSuites, splitNamedSuites, splitToFolder } from '../../scripts/
 const ROOT = join(import.meta.dirname, '../..');
 const SINGLE = 'tests/db/named-suites.json';
 const FOLDER = 'tests/db/named-suites';
-const real = JSON.parse(readFileSync(join(ROOT, SINGLE), 'utf8')) as {
+/** The commit the cut was made on: the last one that held the single file. */
+const CUT_PARENT = '423256029fd230222d0637b1306cd560d7081edb';
+const realText = execFileSync('git', ['show', `${CUT_PARENT}:${SINGLE}`], {
+  cwd: ROOT,
+  encoding: 'utf8',
+});
+const real = JSON.parse(realText) as {
   comment: string[];
   invariant: string[];
   conformance: string[];
@@ -63,8 +69,7 @@ const API = 'tests/api/a.test.ts';
 const RUNTIME = 'tests/runtime/b.test.ts';
 
 it('splits the real manifest and reads back the same suites, each once, and every comment line', async () => {
-  const root = tempRoot();
-  copyFileSync(join(ROOT, SINGLE), join(root, SINGLE));
+  const root = tempRoot(realText);
   await splitToFolder(root);
   const joined = readNamedSuites(root);
   expect(joined.comment).toStrictEqual(real.comment);
@@ -87,19 +92,15 @@ it('splits the real manifest and reads back the same suites, each once, and ever
   expect(formatted.every(Boolean), 'every file is already prettier-formatted').toBe(true);
 });
 
-it('split --check proves the round trip in a temp folder and writes nothing in the repository', () => {
+it('split, run as a command in the repository, refuses now the folder exists and changes nothing', () => {
+  const before = readdirSync(join(ROOT, FOLDER));
   const script = join(ROOT, 'scripts/named-suites.ts');
-  const run = spawnSync(process.execPath, [script, 'split', '--check'], {
-    cwd: ROOT,
-    encoding: 'utf8',
-  });
-  expect(run.status, run.stderr).toBe(0);
-  expect(run.stdout).toContain(
-    `${String(real.invariant.length)} invariant, ${String(real.conformance.length)} conformance`,
-  );
-  expect(existsSync(join(ROOT, FOLDER))).toBe(false);
-  expect(existsSync(join(ROOT, SINGLE))).toBe(true);
-});
+  const run = spawnSync(process.execPath, [script, 'split'], { cwd: ROOT, encoding: 'utf8' });
+  expect(run.status).toBe(1);
+  expect(run.stderr).toMatch(/already exists/u);
+  expect(readdirSync(join(ROOT, FOLDER))).toStrictEqual(before);
+  expect(existsSync(join(ROOT, SINGLE))).toBe(false);
+}, 60_000);
 
 it('split refuses when the folder already exists, and leaves it alone', async () => {
   const root = folder({ 'tests-api.json': { invariant: [API] } });
@@ -130,8 +131,7 @@ it('splitNamedSuites files each suite under its own area and keeps the comment a
   });
 });
 it('without the folder, reads the single file exactly as before, in its own order', () => {
-  expect(existsSync(join(ROOT, FOLDER))).toBe(false);
-  expect(readNamedSuites(ROOT)).toStrictEqual(real);
+  expect(readNamedSuites(tempRoot(realText))).toStrictEqual(real);
 });
 
 it('joins the comment as history then each area in file order, and sorts the suites', () => {
