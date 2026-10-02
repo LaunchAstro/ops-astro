@@ -1,6 +1,6 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 --
--- 0217 a provider lookup in flight holds a slot on its route (AW-10, AW-01).
+-- 20261002235500 a provider lookup in flight holds a slot on its route (AW-10, AW-01).
 --
 -- The reconciliation pass asks a provider about a call held as unknown
 -- liability (`reconcileProviderCalls`, core-custody/src/broker-reconcile.ts).
@@ -19,7 +19,7 @@
 -- A call counts on its route and against its business's ceiling for the
 -- operation while it is held or sent, as before, or while its slot is
 -- unexpired. `model_route_room` is replaced to count the slot too; its
--- grants, owner, definer rights and `row_security = off` are kept as 0191
+-- grants, owner, definer rights and `row_security = off` are kept as 0085
 -- set them, and its answer is still only 1 or 0.
 -- No table, role or grant is added: the slot lives on the call's row, under
 -- its business's row security and the grants the call already carries.
@@ -34,10 +34,10 @@ create index model_calls_lookup_slot_idx
   on public.model_calls (route_key)
   where lookup_until is not null;
 
--- 0191's function, with the unexpired slot counted as in flight beside the
+-- 0085's function, with the unexpired slot counted as in flight beside the
 -- held and sent calls. `create or replace` keeps the owner and the grants
 -- (PUBLIC revoked, `ops_astro_broker` alone executes); the clauses below
--- restate 0191's definer rights, search path and `row_security = off`.
+-- restate 0085's definer rights, search path and `row_security = off`.
 create or replace function public.model_route_room(route text, route_ceiling integer)
   returns integer
   language sql

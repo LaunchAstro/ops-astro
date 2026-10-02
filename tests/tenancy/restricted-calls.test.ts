@@ -552,7 +552,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     // 20261002105957: the daily upkeep deletes second-factor codes past their horizon through
     // ops.expire_second_factor_codes(), proved in tests/db/second-factor-codes-retention.test.ts.
     expect(classes['upkeep']).toStrictEqual(['ops_astro_upkeep']);
-    // 0220: the pickup path's role owns public.take_lease and inserts leases under row security,
+    // 20261002235700: the pickup path's role owns public.take_lease and inserts leases under row security,
     // proved in tests/db/take-lease-path.test.ts.
     expect(classes['lease path']).toStrictEqual(['ops_astro_lease_path']);
     expect(classes['application login']).toContain(world.db.loginRole);
@@ -723,7 +723,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
   // may execute it (tests/broker/aw-01-broker-fair-share.test.ts). The drill
   // stamp (C55) writes only now(), and only the drill's identity runs it. The
   // codes expiry (20261002105957) deletes only rows past its fixed horizon, and only the
-  // upkeep identity runs it. The pickup path (SL11-30, 0220) is the one way a lease is
+  // upkeep identity runs it. The pickup path (SL11-30, 20261002235700) is the one way a lease is
   // written, in the caller's own business (tests/db/take-lease-path.test.ts).
   describe('the security definer functions', () => {
     const definers = (): readonly CatalogueFunction[] => functions.filter((fn) => fn.definer);

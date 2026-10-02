@@ -26,7 +26,7 @@
 // the business's fair share of it. With no room the lookup waits: nothing is
 // sent and nothing written, so the next pass asks again. With room, the
 // transaction that read the gate, still under its locks, takes the lookup's
-// slot on the asked call's row (`lookup_until`, migration 0217), which every
+// slot on the asked call's row (`lookup_until`, migration 20261002235500), which every
 // one of those counts sees, so a second pass or a model call cannot take the
 // same place. The slot is given back when the lookup ends, whatever it
 // answered or if custody threw; a worker lost while asking leaves it to

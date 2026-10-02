@@ -652,7 +652,7 @@ interface NewLease {
 /**
  * Take the lease through the pickup path, bind the hold, attempt and run to it
  * once, and record the claim as the run's progress (T2a). The application role
- * inserts no lease: `take_lease` (migration 0220) checks the business, the
+ * inserts no lease: `take_lease` (migration 20261002235700) checks the business, the
  * reservation and the claimant's authority again as its definer, and writes
  * the lease at the task's next fence.
  */

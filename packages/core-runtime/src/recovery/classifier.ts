@@ -213,7 +213,7 @@ export async function classifyUnderLocks(
   //
   // Above zero the hold settles at its calls' spend, at zero it is abandoned;
   // either way the row records the cause that stopped it and the cause's
-  // identity (T5; 0219 admits a cause on `actual`).
+  // identity (T5; 20261002235600 admits a cause on `actual`).
   const hold = { reservationId: request.reservationId, envelopeId: row.envelope_id };
   const closed = await closeHold(tx, hold, request, calls.spentMinor, { stopped: true });
   if (!closed) {
@@ -245,7 +245,7 @@ export async function classifyUnderLocks(
  * Close a held reservation, guarded on `held` (false if another closed it): `actual` at
  * its model calls' cost, else abandoned under the cause (0013: an actual is never zero).
  * The envelope gives the hold back once and takes only that spend, never an invented zero.
- * A hold the classifier `stopped` records its cause on `actual` too (0219); a person's
+ * A hold the classifier `stopped` records its cause on `actual` too (20261002235600); a person's
  * write-off or recorded outcome that settles it records none, as before.
  */
 export async function closeHold(

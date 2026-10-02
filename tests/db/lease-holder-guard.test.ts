@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// A lease's holder is written once, by the pickup path (`0220_lease_pickup_path`).
-// 0218 refuses a reviewed output its lease's holder did not propose, which is
+// A lease's holder is written once, by the pickup path (`20261002235700_lease_pickup_path`).
+// 0111 refuses a reviewed output its lease's holder did not propose, which is
 // only as strong as the holder column: while the application role could
 // update `leases.holder_actor_id` or insert a lease of its own, it could name
 // any actor the holder. The application role now updates only the columns the
@@ -75,7 +75,7 @@ describe.skipIf(serverUrl === undefined)('a lease names the holder its pickup to
   it('the app role cannot insert a lease directly', async () => {
     const work = await liveWork(s, `insert ${randomUUID()}`, 2_000);
     const forged = randomUUID();
-    // A copy of a real lease naming the decider as its holder: the row 0218's
+    // A copy of a real lease naming the decider as its holder: the row 0111's
     // check would then read as the decider's own work.
     const inserted = await asApp(
       s,
