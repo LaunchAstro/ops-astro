@@ -24,8 +24,9 @@ declare
   topic record;
 begin
   -- A task, or a record naming one in `data ->> 'task'` (a comment), is a task
-  -- topic; a conversation, or a record naming one in `data ->> 'conversation'`
-  -- (a message), a conversation topic; any other record stamps nothing. Each
+  -- topic; a conversation, or a message (a comment naming one in
+  -- `data ->> 'conversation'`, the one type 0341 reserves that key on), a
+  -- conversation topic; any other record stamps nothing. Each
   -- is stamped in kind and id order, so two bulk writes lock rows alike.
   for topic in
     select distinct changed.business_id, k.kind, lower(k.subject) as subject
@@ -37,7 +38,8 @@ begin
         where changed.data ->> 'task' is not null or t.key = 'task'
        union all
        select 'conversation', coalesce(changed.data ->> 'conversation', changed.id::text)
-        where changed.data ->> 'conversation' is not null or t.key = 'team_conversation'
+        where (changed.data ->> 'conversation' is not null and t.key = 'task_comment')
+           or t.key = 'team_conversation'
      ) as k
      order by 2, 3
   loop

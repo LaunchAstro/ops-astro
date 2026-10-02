@@ -52,6 +52,37 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('C71 live conversati
     );
   });
 
+  it("CS-7.42 only a message stamps a conversation topic: another type's record carrying a conversation key stamps and notifies nothing", async () => {
+    const { g, payloads } = w;
+    const { world } = g.chat.harness;
+    const payload = `${world.alpha}:conversation:${g.conversationId}`;
+    await world.db.admin.execute(
+      `delete from public.live_changes where business_id = $1 and subject_id = $2`,
+      [world.alpha, g.conversationId],
+    );
+    const heard = payloads.filter((one) => one === payload).length;
+    // A record of another type (a task state) given a `conversation` key, as a
+    // preset field keyed `conversation` on a custom type would carry one.
+    const touched = await world.db.admin.execute<{ readonly id: string }>(
+      `update public.records r set data = r.data || jsonb_build_object('conversation', $2::text)
+         from public.record_types t
+        where r.id = (select r2.id from public.records r2 join public.record_types t2
+                        on t2.business_id = r2.business_id and t2.id = r2.record_type_id
+                       where r2.business_id = $1 and t2.key = 'task_state' limit 1)
+          and t.business_id = r.business_id and t.id = r.record_type_id
+       returning r.id::text as id`,
+      [world.alpha, g.conversationId],
+    );
+    expect(touched).toHaveLength(1);
+    await sleep(500);
+    const stamped = await world.db.admin.execute(
+      `select 1 from public.live_changes where business_id = $1 and subject_id = $2`,
+      [world.alpha, g.conversationId],
+    );
+    expect(stamped).toHaveLength(0);
+    expect(payloads.filter((one) => one === payload)).toHaveLength(heard);
+  });
+
   it('CS-7.42 a new message shows in the open thread: a member following conversation:<id> on the tab stream hears it without a refresh', async () => {
     const { g } = w;
     const topic = conversationTopic(g.conversationId);
