@@ -1,14 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The OpenAPI document the security pass's authenticated API scan reads
-// (ticket S0-5 item 7). ZAP's API scan needs a definition to know the routes,
-// and the API has no hand-kept one: every route is `POST /api/b/<business>`
-// plus the command's path, derived from COMMAND_SURFACE (`docs/local/API.md`,
-// "Routes"). So this derives the document from the same table, with each
-// command's operands typed, and a command added later is scanned the day it
-// lands. The person prefix only: the agent prefix needs an agent credential,
-// which the scan login is not. The decisions are here; `api-definition.mjs`
-// writes the file.
+// The OpenAPI document the API scan reads (S0-5 item 7). The API keeps no
+// hand-written definition: every route is `POST /api/b/<business>` plus the
+// command's path (`docs/local/API.md`, "Routes"), so this derives one from
+// COMMAND_SURFACE with each command's operands typed, and a command added later
+// is scanned the day it lands. The person prefix only: the agent prefix needs
+// an agent credential.
 
 import {
   COMMAND_SURFACE,
@@ -48,12 +45,7 @@ export interface ApiDefinition {
 }
 
 /** This machine, and Docker's name for it from inside the ZAP container. */
-const LOCAL_HOSTS: ReadonlySet<string> = new Set([
-  '127.0.0.1',
-  'localhost',
-  '[::1]',
-  'host.docker.internal',
-]);
+const LOCAL_HOSTS: ReadonlySet<string> = new Set(['127.0.0.1', 'host.docker.internal']);
 const BUSINESS_KEY = /^[a-z0-9][a-z0-9-]{0,62}$/u;
 
 const KIND_SCHEMA: Readonly<Record<string, Schema>> = {

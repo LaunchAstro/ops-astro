@@ -1,18 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The security pass's scan login (ticket S0-5 item 7): the authenticated API
-// scan signs in as a made-up member the job makes before the scan and removes
-// after it, so no seeded person's password is ever handed to a scanner. It is
-// a member of staging's made-up business with a member's grants (the local
-// seed's `member` row) and no more, at a made-up `.local` address the
-// made-up-data guard admits (`scripts/ops/made-up-only.ts`).
-//
-// Every refusal here is made before anything connects, named by setting and
-// never by value. On staging each address must be in staging's project and not
-// production's (`databaseProject`, as the staging reset judges); the local
-// place, for the dry run, takes only addresses on this machine. Removal checks
-// first: it ends nothing unless the provider's sign-in and the person are the
-// scan login's own. The decisions are here; `scan-login.mjs` runs them.
+// The security pass's scan login (S0-5 item 7): the API scan signs in as a
+// made-up member the job makes and removes, so no seeded person's password is
+// handed to a scanner. Every refusal is made before anything connects, named
+// by setting, never by value: on staging each address must be in staging's
+// project and not production's; the local place takes this machine only.
+// Removal checks first that the sign-in and the person are the scan login's.
 
 import { databaseProject, Refusal } from '../ops/staging-reset.ts';
 

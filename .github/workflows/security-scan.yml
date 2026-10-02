@@ -1,20 +1,10 @@
 name: security scan
 
-# The security pass against staging (ticket S0-5 item 7; the sittings
-# checklist's B-5): an OWASP ZAP baseline scan of the address it is given, then
-# an authenticated ZAP API scan of every command route, signed in as a made-up
-# member the job makes before the scan and removes after it. Its artefact is
-# the findings table (severity, URL, rule, evidence): blockers and majors fail
-# the run, minors are listed for the owner, informational alerts are listed
-# apart. See deploy/staging/SECURITY-SCAN.md.
-#
-# Started by hand only. It never runs on a pull request, a push or the merge
-# queue, and no required check names it. It scans made-up data only: the
-# target must be the staging address its environment names, and every setting
-# comes from the `staging-scan` environment's secrets, read by name.
-#
-# Every action is pinned to a full commit hash, and the ZAP image to its
-# digest (docs/supply-chain-pins.md).
+# The security pass against staging (S0-5 item 7; deploy/staging/SECURITY-SCAN.md):
+# the ZAP baseline scan, then the ZAP API scan signed in as a made-up scan login
+# the job makes and removes. Started by hand only: never on a pull request, a
+# push or the merge queue, and no required check names it. Actions are pinned
+# by commit and the ZAP image by digest (docs/supply-chain-pins.md).
 
 on:
   workflow_dispatch:
@@ -78,11 +68,11 @@ jobs:
 
       - name: ZAP baseline scan
         run: |
-          status=0
+          rc=0
           docker run --rm -v "$WORK:/zap/wrk:rw" "$ZAP_IMAGE" \
-            zap-baseline.py -t "$TARGET" -J baseline.json -r baseline.html -I || status=$?
+            zap-baseline.py -t "$TARGET" -J baseline.json -r baseline.html -I || rc=$?
           # 0 passed, 2 warnings (judged below by the findings table); 1 or 3 is ZAP's own failure.
-          [ "$status" -eq 0 ] || [ "$status" -eq 2 ] || { echo "ZAP baseline stopped ($status)"; exit 1; }
+          [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ] || { echo "ZAP baseline stopped ($rc)"; exit 1; }
 
       - name: ZAP API scan, signed in as the scan login
         run: |
@@ -90,24 +80,23 @@ jobs:
           # ZAP matches the site by host name alone: with a port in it, no request carries the token.
           ZAP_AUTH_HEADER_SITE="$(node -e 'console.log(new URL(process.env.TARGET).hostname)')"
           export ZAP_AUTH_HEADER_VALUE ZAP_AUTH_HEADER_SITE
-          status=0
+          rc=0
           docker run --rm -v "$WORK:/zap/wrk:rw" -e ZAP_AUTH_HEADER_VALUE -e ZAP_AUTH_HEADER_SITE \
             -e ZAP_AUTH_HEADER=Authorization "$ZAP_IMAGE" \
             zap-api-scan.py -t /zap/wrk/api-definition.json -f openapi -J api.json -I \
-            -z "-config scanner.maxScanDurationInMins=45" || status=$?
-          [ "$status" -eq 0 ] || [ "$status" -eq 2 ] || { echo "ZAP API scan stopped ($status)"; exit 1; }
+            -z "-config scanner.maxScanDurationInMins=45" || rc=$?
+          [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ] || { echo "ZAP API scan stopped ($rc)"; exit 1; }
 
-      - name: The findings table
-        id: findings
+      - name: The findings table (blockers and majors fail the run)
         if: ${{ !cancelled() }}
         run: |
           SCAN_BEARER="$(cat "$SCAN_TOKEN_FILE" 2>/dev/null || true)"
           export SCAN_BEARER
-          status=0
+          rc=0
           node scripts/security/findings.mjs --report baseline="$WORK/baseline.json" \
-            --report api="$WORK/api.json" --out "$WORK/findings" --redact-env SCAN_BEARER || status=$?
+            --report api="$WORK/api.json" --out "$WORK/findings" --redact-env SCAN_BEARER || rc=$?
           [ -f "$WORK/findings/findings.md" ] && cat "$WORK/findings/findings.md" >> "$GITHUB_STEP_SUMMARY"
-          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit "$rc"
 
       - name: Remove the scan login
         if: ${{ always() }}
@@ -121,8 +110,7 @@ jobs:
           SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
         run: node scripts/security/scan-login.mjs remove
 
-      # The redacted table and the baseline's own reports. The API scan's raw
-      # reports stay on the runner: they were made with the scan login's token.
+      # The API scan's raw reports stay on the runner: they were made with the token.
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: ${{ always() }}
         with:
@@ -133,10 +121,3 @@ jobs:
             ${{ runner.temp }}/zap/baseline.html
           if-no-files-found: warn
           retention-days: 90
-
-      - name: Blockers and majors fail the run
-        if: ${{ always() }}
-        env:
-          STATUS: ${{ steps.findings.outputs.status }}
-        run: |
-          [ "$STATUS" = "0" ] || { echo "the findings table holds a blocker or a major, or a report was missing"; exit 1; }

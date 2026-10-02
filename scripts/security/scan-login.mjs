@@ -6,22 +6,11 @@
 //   node scripts/security/scan-login.mjs make
 //   node scripts/security/scan-login.mjs remove
 //
-// Settings: SCAN_LOGIN_PLACE (staging, or local for the dry run),
-// SCAN_LOGIN_FILE and SCAN_TOKEN_FILE (absolute paths, written owner-only),
-// DATABASE_URL (the runtime login), DATABASE_LOOKUP_URL (the lookup login, to
-// read the business's id as the API does), GOTRUE_URL, SUPABASE_SERVICE_KEY
-// (the provider's admin API), and on staging STAGING_PROJECT_REF,
-// PRODUCTION_PROJECT_REF and SUPABASE_PUBLISHABLE_KEY.
-//
-// `make` makes a confirmed sign-in at a made-up `.local` address through the
-// admin API, maps it to a new made-up member of `alpha` with a member's grants,
-// signs it in, and writes the access token to SCAN_TOKEN_FILE. It writes
-// SCAN_LOGIN_FILE as it goes, so `remove` finds whatever was made even when
-// `make` stopped part way. `remove` checks the sign-in and the person are the
-// scan login's own, ends the person's grants, membership and acting identity,
-// deletes the sign-in, and deletes both files. Exit 0 when done, 1 when
-// refused or stopped. Nothing printed carries an address, a key, a password or
-// the token.
+// Settings: deploy/staging/SECURITY-SCAN.md, plus SCAN_LOGIN_PLACE (staging
+// or local) and SCAN_LOGIN_FILE and SCAN_TOKEN_FILE (written owner-only).
+// `make` writes SCAN_LOGIN_FILE as it goes, so `remove` finds whatever was made
+// even when `make` stopped part way. Exit 0 when done, 1 when refused or
+// stopped. Nothing printed carries an address, a key, a password or the token.
 
 import { randomBytes, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';

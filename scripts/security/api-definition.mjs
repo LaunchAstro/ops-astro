@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The API scan's OpenAPI document, the command (ticket S0-5 item 7). The
-// decisions are in `api-definition.ts`; this file writes them.
+// The API scan's OpenAPI document, the command (S0-5 item 7; decisions in
+// api-definition.ts). With --only, a target at any other origin is refused.
 //
-//   node scripts/security/api-definition.mjs --target <origin> --business <key> --out <file>
-//        [--only <origin>]
-//
-// With --only, a target at any other origin is refused (the job passes staging's own).
+//   node scripts/security/api-definition.mjs --target <origin> --business <key>
+//        --out <file> [--only <origin>]
 //
 // Exit 0 when written, 1 when refused, 2 on a usage mistake.
 

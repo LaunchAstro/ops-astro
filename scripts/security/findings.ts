@@ -1,14 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The security pass's findings table and severity gate (ticket S0-5 item 7,
-// `docs/build-safeguards.md` gate item 7). It reads the JSON reports ZAP writes
-// (`-J`, ZAP 2.17) and judges every alert by the closing rule's mapping: a high
-// is a blocker, a medium a major, a low a minor. Blockers and majors fail the
-// run; minors are listed for the owner, who closes each in one line or has it
-// fixed (the S0-5 gate's own closing rule). Informational alerts are listed
-// apart and never fail the run (ORCH65, 2 Oct 2026). A blank or unknown risk
-// code is a blocker, so a report this file cannot read never passes quietly.
-// The decisions are here; `findings.mjs` runs them.
+// The security pass's findings table and severity gate (S0-5 item 7), from
+// ZAP's JSON reports (`-J`, ZAP 2.17), by the closing rule's mapping: high is a
+// blocker, medium a major, low a minor. Blockers and majors fail the run; minors
+// are listed for the owner; informational alerts are listed apart and never
+// fail (ORCH65, 2 Oct 2026); a blank or unknown risk code is a blocker.
 
 export type Severity = 'blocker' | 'major' | 'minor';
 
