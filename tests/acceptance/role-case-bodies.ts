@@ -88,6 +88,8 @@ export interface BodyContext {
   freshMember?(): Promise<string>;
   /** S0-5: a gate item's record removed by the owner, so the next record of it applies. */
   clearGateItem?(item: string): Promise<void>;
+  /** C81: the links to the published legal versions gate items 3 to 6 take (`legalEvidence`). */
+  legalEvidence?(): Promise<Readonly<Record<string, string>>>;
 }
 
 export const batchOf = (answer: Answer): string =>
