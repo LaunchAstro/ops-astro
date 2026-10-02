@@ -246,6 +246,13 @@ code on this head, and where that is shown.
 | `PRESET_FIELD_UNPLACEABLE`                                                   | 409    | yes                                                                                                                                                                                                                                                                                                     |
 | `PRESET_FIELD_DUPLICATE`                                                     | 422    | yes                                                                                                                                                                                                                                                                                                     |
 
+**`STEP_UP_REQUIRED`** for a client (no membership) names `sign_in`, fix "Sign
+in again with your password, then retry.", since a client may hold no second
+factor and any sign-in in the last 60 minutes will do; a team member's names
+nothing and asks for the authenticator code (C59, Q1). To replace the
+authenticator app, `/account/factor/remove` takes a code from the old one, and
+`/account/factor/enrol` is refused `FACTOR_ALREADY_ENROLLED` until it has.
+
 `DELEGATION_WIDENS` is off `UNPRODUCED_CODES` (`core-records/src/register.ts`). The
 mint reads the approving person's live grants when the agent picks the work
 up, not when the person approved it (`mintDelegation`,
