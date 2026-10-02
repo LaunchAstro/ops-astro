@@ -37,9 +37,10 @@
 // backup past the store's window, then asks the store whether a restore drill
 // passed inside its window: yes pings the restore heartbeat, no stays silent,
 // and the watcher mails the owner and the second operator (heartbeat.mjs).
-// It also deletes second-factor codes past their horizon on staging's
-// database, as the upkeep identity; that step's outcome goes in the record
-// as `secondFactorCodes`, and its failure never stops the backup expiry.
+// Then, last and bounded in time, it deletes second-factor codes past their
+// horizon on staging's database, as the upkeep identity; that step's outcome
+// goes in the record as `secondFactorCodes`, and neither its failure nor a
+// stall holds up the backup expiry or the heartbeat.
 // What each may do is held by the server
 // (deploy/staging/backup-store.sql), which writes receipts. Both reach the
 // store only through psql on staging's network (backup-store-reach.mjs): it
@@ -53,7 +54,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync, realpathSync } from 'node:fs';
 import { sealer } from './archive-seal.mjs';
 import { pgDump } from './backup-dump.mjs';
-import { bound, stagingReach, value } from './backup-store-reach.mjs';
+import { bound, stagingReach, stagingReachWithin, value } from './backup-store-reach.mjs';
 import { offEgress, ping } from './heartbeat.mjs';
 
 export { pgDump } from './backup-dump.mjs';
@@ -61,6 +62,11 @@ export { pgDump } from './backup-dump.mjs';
 const BACKUP_ROLE = 'ops_astro_backup';
 const RETENTION_ROLE = 'ops_astro_backup_retention';
 const UPKEEP_ROLE = 'ops_astro_upkeep';
+// The purge's bounds (security review M1): a lock waited on, the statement,
+// the connection, and its psql as a whole, so a stalled pooler or relay costs
+// the purge alone and the job still ends and writes its record.
+const PURGE_LIMITS = "set lock_timeout = '30s';\nset statement_timeout = '2min';\n";
+const PURGE_REACH = { connectSeconds: 15, timeoutMs: 180_000 };
 // The store's part size (deploy/staging/backup-store.sql, backups.archive_parts).
 const PART = 4 * 1024 * 1024;
 
@@ -177,7 +183,7 @@ async function expireCodes(url, refused, reach) {
   try {
     const printed = await reach(
       url,
-      `set role ${UPKEEP_ROLE};\nselect ops.expire_second_factor_codes();\n`,
+      `${PURGE_LIMITS}set role ${UPKEEP_ROLE};\nselect ops.expire_second_factor_codes();\n`,
     );
     const count = Number(printed);
     if (printed === '' || !Number.isSafeInteger(count)) return { outcome: 'failed' };
@@ -190,7 +196,8 @@ async function expireCodes(url, refused, reach) {
 /**
  * Deletes every backup past the window. The store's policy is what holds the
  * window; the job asks for everything and the server deletes only what it may.
- * The second-factor purge runs first, on its own: either failing leaves the other.
+ * The second-factor purge runs last, over `upkeepReach`, once the expiry and
+ * the heartbeat are done, so neither waits on it; its outcome joins the record.
  */
 export async function expireBackups({
   storeUrl,
@@ -199,9 +206,10 @@ export async function expireBackups({
   restoreHeartbeat,
   send = ping,
   reach = stagingReach,
+  upkeepReach = reach,
 }) {
   const at = new Date().toISOString();
-  const secondFactorCodes = await expireCodes(upkeepUrl, upkeepRefused, reach);
+  const purge = async () => await expireCodes(upkeepUrl, upkeepRefused, upkeepReach);
   let upkeep;
   try {
     upkeep = JSON.parse(
@@ -214,11 +222,12 @@ select json_build_object('count', (select count(*) from gone), 'fresh', backups.
       ),
     );
   } catch {
-    return { ...failed('backup expired', 'store'), secondFactorCodes };
+    return { ...failed('backup expired', 'store'), secondFactorCodes: await purge() };
   }
   const record = { event: 'backup expired', outcome: 'recorded', at, count: upkeep.count };
   // A stale restore is told by silence: the watcher mails when the ping is late.
   const beat = upkeep.fresh ? await send(restoreHeartbeat) : 'withheld';
+  const secondFactorCodes = await purge();
   return { ...record, restoreFresh: upkeep.fresh, restoreHeartbeat: beat, secondFactorCodes };
 }
 
@@ -266,6 +275,7 @@ async function main(command) {
       storeUrl,
       upkeepUrl: env('DATABASE_UPKEEP_URL'),
       upkeepRefused: upkeepRefused !== undefined,
+      upkeepReach: stagingReachWithin(PURGE_REACH),
       restoreHeartbeat: env('OPS_RESTORE_HEARTBEAT_URL'),
     });
   }

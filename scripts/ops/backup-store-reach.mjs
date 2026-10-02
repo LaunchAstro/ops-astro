@@ -32,9 +32,13 @@ const staging = JSON.parse(
 const LOGIN = ['PGHOST', 'PGPORT', 'PGUSER', 'PGPASSWORD', 'PGDATABASE', 'PGSSLMODE'];
 const TYPES = new Set(['text', 'uuid', 'timestamptz', 'integer', 'jsonb', 'bytea']);
 
-/** The psql environment for a login URL: the parts named, the password decoded, TLS required. */
-export function reachEnv(url) {
+/**
+ * The psql environment for a login URL: the parts named, the password decoded,
+ * TLS required, and a connect bound in seconds only when one is given.
+ */
+export function reachEnv(url, connectSeconds) {
   const parsed = new URL(url);
+  const limit = connectSeconds === undefined ? {} : { PGCONNECT_TIMEOUT: String(connectSeconds) };
   return {
     PGHOST: parsed.hostname,
     PGPORT: parsed.port || '5432',
@@ -42,11 +46,12 @@ export function reachEnv(url) {
     PGPASSWORD: decodeURIComponent(parsed.password),
     PGDATABASE: decodeURIComponent(parsed.pathname.slice(1)),
     PGSSLMODE: 'require',
+    ...limit,
   };
 }
 
 /** `docker` arguments for one psql script on `network`: no port, the login by name only. */
-export function reachArgs(network) {
+export function reachArgs(network, names = LOGIN) {
   return [
     'run',
     '--rm',
@@ -55,7 +60,7 @@ export function reachArgs(network) {
     '--log-driver=none',
     `--name=${staging['x-ops-astro'].ownPrefix}-store-${randomBytes(4).toString('hex')}`,
     `--network=${network}`,
-    ...LOGIN.map((name) => `--env=${name}`),
+    ...names.map((name) => `--env=${name}`),
     staging.services.backups.image,
     'psql',
     '-X',
@@ -68,12 +73,18 @@ export function reachArgs(network) {
   ];
 }
 
-/** A reach through psql on `network`: `script` is text or pieces of text. */
-export function psqlOn(network) {
+/**
+ * A reach through psql on `network`: `script` is text or pieces of text. With
+ * `bounds`, psql gives up connecting after `connectSeconds` and is stopped
+ * after `timeoutMs` whatever it is waiting on; the store's reach has neither.
+ */
+export function psqlOn(network, { connectSeconds, timeoutMs } = {}) {
   return async (url, script, onLine) => {
-    const child = spawn('docker', reachArgs(network), {
-      env: { ...process.env, ...reachEnv(url) },
+    const login = reachEnv(url, connectSeconds);
+    const child = spawn('docker', reachArgs(network, Object.keys(login)), {
+      env: { ...process.env, ...login },
       stdio: ['pipe', 'pipe', 'ignore'],
+      ...(timeoutMs === undefined ? {} : { timeout: timeoutMs }),
     });
     const exited = new Promise((resolve) => {
       child.on('error', () => resolve(-1));
@@ -116,6 +127,9 @@ async function readOut(child, onLine) {
 
 /** The route the job and the drill take on staging. */
 export const stagingReach = psqlOn(staging.networks.staging.name);
+
+/** The same route, bounded (`psqlOn`), for a hop that must not hold up its job. */
+export const stagingReachWithin = (bounds) => psqlOn(staging.networks.staging.name, bounds);
 
 // The most bytes one `decode` holds: its hex is twice that, far inside a string.
 const PIECE = 4 * 1024 * 1024;
