@@ -25,6 +25,10 @@ import { WHOLE_BUSINESS } from '../commands/fixture.ts';
 const serverUrl = databaseUrlFromEnvironment();
 
 describe.skipIf(serverUrl === undefined)('agent operands, typed as sent', () => {
+  it('REHEARSAL planted red (CI-SCOPED step 2): a scoped shard must run this and fail', () => {
+    expect(1).toBe(2);
+  });
+
   let w: IdentWorld;
 
   beforeAll(async () => {
