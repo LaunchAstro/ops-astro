@@ -28,6 +28,7 @@ import { LegalScreen } from './screens/Legal.tsx';
 import { OperationsScreen } from './screens/Operations.tsx';
 import { Projects } from './screens/Projects.tsx';
 import { SettingsGeneralScreen } from './screens/SettingsGeneral.tsx';
+import { AuthenticatorSetup } from './screens/settings/authenticator.tsx';
 import { OwnSessions } from './screens/settings/sessions.tsx';
 import { TaskDetailScreen } from './screens/TaskDetail.tsx';
 import { TaskUnnamed } from './screens/task/Absent.tsx';
@@ -91,8 +92,8 @@ export const SCREENS: {
     />
   ),
   'agency:gallery': () => <Gallery />,
-  // Settings ▸ General, then the person's own sessions (C58), which post to
-  // their own account routes rather than to the settings commands.
+  // Settings ▸ General, then the person's own sessions (C58) and authenticator app (C59),
+  // which post to their own account routes rather than to the settings commands.
   'agency:settings': (context) => (
     <>
       <SettingsGeneralScreen
@@ -101,6 +102,7 @@ export const SCREENS: {
         storage={context.storage}
       />
       <OwnSessions client={context.client} grantKey={context.grantKey} />
+      <AuthenticatorSetup client={context.client} />
     </>
   ),
   'agency:inbox': (context) => (
