@@ -94,6 +94,21 @@ export type BuiltPage = { id: string; name: string; width: number; theme: Theme;
 /** The two sides of one width and theme: signed out and signed in. */
 export type Sides = { signedOut: Side; signedIn: Side };
 
+/** Loads one built page; a page that draws nothing is named, so a timed-out run says which. */
+async function loadNamed(
+  side: Side,
+  packet: Packet,
+  app: URL,
+  id: string,
+  address: string,
+): ReturnType<typeof load> {
+  try {
+    return await load(side, packet, new URL(address, app).href);
+  } catch (error) {
+    throw new Error(`built page ${id} (${address}) drew nothing into #app`, { cause: error });
+  }
+}
+
 /**
  * Every built page (or only `pages`) at each width in each theme, each on the
  * side its route asks for (a public page signed out, a working page signed
@@ -124,15 +139,7 @@ export async function eachBuiltPage<T>(
         for (const id of options.pages ?? builtPages()) {
           const side = needsSession(id) ? signedIn : signedOut;
           const address = addressOf(id, MADE_UP_PARAMS) ?? '/';
-          // A page that draws nothing is named, so a timed-out run says which one.
-          let page: Awaited<ReturnType<typeof load>>;
-          try {
-            page = await load(side, packet, new URL(address, app).href);
-          } catch (error) {
-            throw new Error(`built page ${id} (${address}) drew nothing into #app`, {
-              cause: error,
-            });
-          }
+          const page = await loadNamed(side, packet, app, id, address);
           out.push(
             await visit({ id, name: `${id}@${String(width)}-${theme}`, width, theme, page }),
           );
