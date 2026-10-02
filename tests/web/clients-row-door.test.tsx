@@ -22,6 +22,8 @@ const ZENITH_BOARD = `/projects/?${new URLSearchParams({ f: facetId('client', ZE
 const SUMMIT = { clientId: 'c-summit', name: 'Summit Allied' };
 /** A client the reader reaches with no task on the board they may see. */
 const QUIET = { clientId: 'c-quiet', name: 'Quiet Clinic' };
+/** A name carrying every character an address or a facet id treats specially. */
+const PUNCT = { clientId: 'c-punct', name: 'A "B" & C, 50% #1 + é?' };
 
 const task = (n: number, client: { clientId: string; name: string } | null, clientSet = true) => ({
   id: `00000000-0000-4000-8000-00000000000${String(n)}`,
@@ -52,6 +54,7 @@ const TASKS = [
   task(3, ZENITH),
   task(4, null),
   task(5, null, false),
+  task(6, PUNCT),
 ];
 
 /** Alpha's server: the board, its clients and people; anything else is held open. */
@@ -60,7 +63,7 @@ const alpha: typeof globalThis.fetch = (url) => {
   if (path.endsWith('/api/b/alpha/task/board'))
     return Promise.resolve(json({ ok: true, tasks: TASKS, changedAt: null, viewer: null }));
   if (path.endsWith('/api/b/alpha/client/list'))
-    return Promise.resolve(json({ ok: true, clients: [QUIET, SUMMIT, ZENITH] }));
+    return Promise.resolve(json({ ok: true, clients: [PUNCT, QUIET, SUMMIT, ZENITH] }));
   if (path.endsWith('/api/b/alpha/person/list'))
     return Promise.resolve(json({ ok: true, persons: [] }));
   return new Promise<Response>(() => {});
@@ -140,6 +143,19 @@ describe('Clients row door: review proofs', () => {
     expect(panel?.querySelectorAll('tbody tr[data-row]').length).toBe(0);
     expect(panel?.textContent).toContain('No task matches that.');
     expect(panel?.textContent).not.toContain('Task 1');
+  });
+
+  it('the door round-trips a punctuated client name onto that client’s rows only', async () => {
+    const page = await at('/clients/?client=c-punct');
+    const link = door(page);
+    const board = `/projects/?${new URLSearchParams({ f: facetId('client', PUNCT.name) }).toString()}`;
+    expect(link?.getAttribute('href')).toBe(board);
+    await press(link);
+    const rows = page.find('[data-panel-id="todos"]')?.querySelectorAll('tbody tr[data-row]') ?? [];
+    expect([...rows].map((row) => row.textContent)).toEqual([expect.stringContaining('Task 6')]);
+    const direct = await at(board);
+    expect(direct.find('.content')?.querySelectorAll('tbody tr[data-row]').length).toBe(1);
+    expect(direct.find('.content')?.textContent).not.toContain('Task 1');
   });
 
   it('a filter change in the Projects panel leaves the page address alone', async () => {

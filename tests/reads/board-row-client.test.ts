@@ -60,6 +60,8 @@ interface World {
   readonly taskHolder: Member;
   /** Held A's task and client A; the grant on client A is revoked. */
   readonly revokedReader: Member;
+  /** Holds A's task; the grant on client A has expired. */
+  readonly expiredReader: Member;
   readonly ids: Record<string, string>;
 }
 
@@ -120,6 +122,7 @@ async function open(): Promise<World> {
     clientReader: await enrol(db.app, alpha, 'client-reader'),
     taskHolder: await enrol(db.app, alpha, 'task-holder'),
     revokedReader: await enrol(db.app, alpha, 'revoked-reader'),
+    expiredReader: await enrol(db.app, alpha, 'expired-reader'),
     ids: {},
   };
   await db.app.withBusiness(alpha, async (tx) => {
@@ -138,7 +141,16 @@ async function open(): Promise<World> {
 }
 
 async function plant(): Promise<void> {
-  const { alpha, bravo, owner, bravoOwner, clientReader, taskHolder, revokedReader } = w;
+  const {
+    alpha,
+    bravo,
+    owner,
+    bravoOwner,
+    clientReader,
+    taskHolder,
+    revokedReader,
+    expiredReader,
+  } = w;
   await make(alpha, owner, 'a-work', CLIENT_A);
   await make(alpha, owner, 'b-work', CLIENT_B);
   await make(alpha, owner, 'no-client');
@@ -156,6 +168,14 @@ async function plant(): Promise<void> {
     return await grantTo(tx, revokedReader, 'read', { kind: 'party', id: CLIENT_A });
   });
   await w.db.admin.execute(`update public.grants set revoked_at = now() where id = $1`, [revoked]);
+  const expired = await w.db.app.withBusiness(alpha, async (tx) => {
+    await grantTo(tx, expiredReader, 'read', { kind: 'record', id: idOf('a-work') });
+    return await grantTo(tx, expiredReader, 'read', { kind: 'party', id: CLIENT_A });
+  });
+  await w.db.admin.execute(
+    `update public.grants set expires_at = now() - interval '1 second' where id = $1`,
+    [expired],
+  );
   await w.db.app.withBusiness(alpha, async (tx) => {
     await grantTo(tx, clientReader, 'read', { kind: 'party', id: CLIENT_A });
     await grantTo(tx, clientReader, 'read', { kind: 'record', id: idOf('a-work') });
@@ -199,6 +219,17 @@ describe.skipIf(serverUrl === undefined)('Clients row door isolation', () => {
 
   it('a revoked grant on the client reaches nothing: its task reads null beside clientSet', async () => {
     const { rows, text } = await rowsOf(w.alpha, w.revokedReader);
+    expect(rows.map((row) => [row.id, row.clientSet, row.client])).toEqual([
+      [idOf('a-work'), true, null],
+    ]);
+    for (const withheld of ['Harbour Physio', CLIENT_A, CANARY])
+      expect(text).not.toContain(withheld);
+  });
+});
+
+describe.skipIf(serverUrl === undefined)('Clients row door isolation: expiry', () => {
+  it('an expired grant on the client reaches nothing: its task reads null beside clientSet', async () => {
+    const { rows, text } = await rowsOf(w.alpha, w.expiredReader);
     expect(rows.map((row) => [row.id, row.clientSet, row.client])).toEqual([
       [idOf('a-work'), true, null],
     ]);
