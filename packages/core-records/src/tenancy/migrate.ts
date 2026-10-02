@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The migration runner. Numbered SQL files are the only schema truth, so this
+// The migration runner. The SQL files in migrations/ are the only schema truth, so this
 // is the only thing in the tree that changes a schema.
 //
 // The properties it holds, each because its absence has a known failure.
@@ -32,7 +32,7 @@
 //   service logins, named one by one, are not counted: they never stop.
 
 import { createHash } from 'node:crypto';
-import { readdirSync, readFileSync } from 'node:fs';
+import { lstatSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AdminConnection } from './database.ts';
 import { migrationIdProblems } from './migration-ids.ts';
@@ -53,7 +53,13 @@ export function readMigrations(directory: string): readonly Migration[] {
   const names = readdirSync(directory)
     .filter((name) => name.endsWith('.sql'))
     .toSorted();
-  const problems = migrationIdProblems(names.map((name) => name.slice(0, -'.sql'.length)));
+  // A symlink's target could change with no change to the file git tracks here.
+  const problems = [
+    ...names
+      .filter((name) => !lstatSync(join(directory, name)).isFile())
+      .map((name) => `${name.slice(0, -'.sql'.length)}, which is not a regular file`),
+    ...migrationIdProblems(names.map((name) => name.slice(0, -'.sql'.length))),
+  ];
   if (problems.length > 0) {
     throw new Error(`migrate: ${directory} holds ${problems.join('; ')}. Nothing was applied.`);
   }

@@ -18,7 +18,8 @@
 // the base branch or a clock: a new migration sorts after the base's newest,
 // the four-digit range has no gap, and no timestamp is ahead of the clock.
 
-const VERSION = /^(?<id>\d{4}|\d{14})_[a-z0-9]+(?:_[a-z0-9]+)*$/u;
+// A timestamp starts 20: a year before 2000 would sort before a four-digit ID.
+const VERSION = /^(?<id>\d{4}|20\d{12})_[a-z0-9]+(?:_[a-z0-9]+)*$/u;
 
 /** A timestamp more than this far ahead of the clock is refused: UTC, not local time. */
 const CLOCK_SKEW_MS = 3_600_000;
@@ -48,7 +49,7 @@ export function migrationIdProblems(versions: readonly string[]): readonly strin
     if (id === undefined || (id.length === 14 && instantOf(id) === undefined)) {
       problems.push(
         `${version} is not a migration name: <id>_<name>.sql, the ID four digits or a UTC ` +
-          `timestamp YYYYMMDDHHMMSS, the name lower case, digits and underscores`,
+          `timestamp YYYYMMDDHHMMSS from 2000 on, the name lower case, digits and underscores`,
       );
       continue;
     }
