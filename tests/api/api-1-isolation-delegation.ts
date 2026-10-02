@@ -45,6 +45,29 @@ const written = (record: string, fields: Record<string, unknown>): Record<string
 });
 
 /**
+ * An agent writes its own task's fields under a delegation (MP-4-7, MP-4-8): never
+ * another person's task, another client's or another business's.
+ */
+const FIELD_WRITES: Record<string, (record: string) => Record<string, unknown>> = {
+  'task.update': (record) => written(record, { title: 'made-up' }),
+  'task.assign': (record) => written(record, { assignee: randomUUID() }),
+  'task.set_adhoc': (record) => written(record, { ad_hoc: true }),
+  'task.set_category': (record) => written(record, { category: 'seo' }),
+  'task.set_scores': (record) => written(record, { impact: 7, confidence: 9, ease: 8 }),
+  'task.edit_comment': (record) => ({
+    recordId: record,
+    expectedRevision: 1,
+    commentId: randomUUID(),
+    body: 'made-up',
+  }),
+  'task.delete_comment': (record) => ({
+    recordId: record,
+    expectedRevision: 1,
+    commentId: randomUUID(),
+  }),
+};
+
+/**
  * Each command's own target: a record, a lease, a reservation, or none. A lease
  * call names its task through its lease and ignores a record id beside it, so its
  * crossing is another Alpha person's live lease at its own fence (a second agent
@@ -71,24 +94,7 @@ const bodies = (
   'task.dispatch': () => ({ ...claim.lease }),
   'task.observe': () => ({ ...claim.lease, attemptId: randomUUID(), outcome: 'completed' }),
   'task.queue': () => null,
-  // An agent writes its own task's fields under a delegation (MP-4-7, MP-4-8): never
-  // another person's task, another client's or another business's.
-  'task.update': (record) => written(record, { title: 'made-up' }),
-  'task.assign': (record) => written(record, { assignee: randomUUID() }),
-  'task.set_adhoc': (record) => written(record, { ad_hoc: true }),
-  'task.set_category': (record) => written(record, { category: 'seo' }),
-  'task.set_scores': (record) => written(record, { impact: 7, confidence: 9, ease: 8 }),
-  'task.edit_comment': (record) => ({
-    recordId: record,
-    expectedRevision: 1,
-    commentId: randomUUID(),
-    body: 'made-up',
-  }),
-  'task.delete_comment': (record) => ({
-    recordId: record,
-    expectedRevision: 1,
-    commentId: randomUUID(),
-  }),
+  ...FIELD_WRITES,
   'session.capabilities': () => null,
   'task.check': () => ({ ...claim.lease, name: 'made-up check', outcome: 'passed' }),
   'model.call': () => ({

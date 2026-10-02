@@ -63,35 +63,40 @@ export function validateFacts(facts: unknown): readonly RunFacts[] {
       )
         throw new Error(`${where}: ${key} is neither null nor a whole non-negative number`);
     }
-    const { lease, attempt } = fact;
-    if (
-      lease !== null &&
-      !(
-        isRecord(lease) &&
-        typeof lease['state'] === 'string' &&
-        typeof lease['expiresAt'] === 'string' &&
-        typeof lease['lapsed'] === 'boolean' &&
-        typeof lease['holderActorId'] === 'string' &&
-        typeof lease['agent'] === 'boolean'
-      )
-    )
-      throw new Error(`${where}: the lease is malformed`);
-    if (
-      attempt !== null &&
-      !(
-        isRecord(attempt) &&
-        typeof attempt['id'] === 'string' &&
-        typeof attempt['state'] === 'string' &&
-        (attempt['outcome'] === null || typeof attempt['outcome'] === 'string')
-      )
-    )
-      throw new Error(`${where}: the attempt is malformed`);
+    checkLeaseAndAttempt(fact, where);
     return {
       ...(fact as unknown as RunFacts),
       helpers: helpersOf(fact['helpers'], where),
       definition: definitionOf(fact['definition'], where),
     };
   });
+}
+
+/** The lease and the attempt, each null or of its shape. */
+function checkLeaseAndAttempt(fact: Readonly<Record<string, unknown>>, where: string): void {
+  const { lease, attempt } = fact;
+  if (
+    lease !== null &&
+    !(
+      isRecord(lease) &&
+      typeof lease['state'] === 'string' &&
+      typeof lease['expiresAt'] === 'string' &&
+      typeof lease['lapsed'] === 'boolean' &&
+      typeof lease['holderActorId'] === 'string' &&
+      typeof lease['agent'] === 'boolean'
+    )
+  )
+    throw new Error(`${where}: the lease is malformed`);
+  if (
+    attempt !== null &&
+    !(
+      isRecord(attempt) &&
+      typeof attempt['id'] === 'string' &&
+      typeof attempt['state'] === 'string' &&
+      (attempt['outcome'] === null || typeof attempt['outcome'] === 'string')
+    )
+  )
+    throw new Error(`${where}: the attempt is malformed`);
 }
 
 function isRecord(value: unknown): value is Readonly<Record<string, unknown>> {

@@ -15,7 +15,6 @@ import {
   batchOf,
   approvableGate,
   approvedReservationId,
-  moneyBody,
   ownLease,
 } from './role-case-bodies.ts';
 import { answerAtTheStop } from './stopped-run.ts';
@@ -29,6 +28,8 @@ import { accessBody, madeClient } from './role-case-access-bodies.ts';
 import { createGateBody } from './role-case-gate-bodies.ts';
 import { conversationBody, leaseBody } from './role-case-run-bodies.ts';
 import { FIXED_BODIES } from './role-case-fixed-bodies.ts';
+import { moneyBody } from './role-case-money-bodies.ts';
+import { lineageBody } from './role-case-lineage-bodies.ts';
 
 export function createPositiveBody(
   context: BodyContext,
@@ -220,25 +221,9 @@ export function createPositiveBody(
       case 'budget.write_off':
       case 'budget.set_planning_cap':
         return { body: await moneyBody(context, declaration.name) };
-      case 'task.cancel': {
-        // A lineage to cancel is a proposal's, so one is proposed first.
-        const task = await context.freshTask('a task whose lineage is cancelled');
-        const lineageId = await lineageOn(context, task);
-        return { body: { recordId: task.id, lineageId, reason: 'the admin cancels it' } };
-      }
-      case 'task.restart': {
-        // Only a rejected or cancelled lineage is restarted, so this one is
-        // proposed and cancelled through the routes before the restart.
-        const task = await context.freshTask('a task whose lineage is restarted');
-        const lineageId = await lineageOn(context, task);
-        const cancelled = await context.asPerson('task.cancel', {
-          recordId: task.id,
-          lineageId,
-          reason: 'cancelled so it can be restarted',
-        });
-        if (cancelled.code !== 'ok') throw new Error(`matrix: cancel refused ${cancelled.code}`);
-        return { body: { recordId: task.id, lineageId } };
-      }
+      case 'task.cancel':
+      case 'task.restart':
+        return await lineageBody(declaration.name, context);
       case 'grant.revoke':
         // Its positive control is case (f): the admin revokes a member's read
         // through this route, and the member's next read is refused. A body

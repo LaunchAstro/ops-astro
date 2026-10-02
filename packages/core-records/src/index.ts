@@ -9,33 +9,7 @@
 // things: `Refusal` is the authority check's, and the identity layer's is
 // `IdentityRefusal`.
 
-export {
-  configuredCredentialKeys,
-  DERIVED_SCHEME,
-  KEY_FILE_VARIABLE,
-  LEGACY_SCHEME,
-  withCredentialKeys,
-  type CredentialKeysDecision,
-  type DelegationCredentialKeys,
-} from './authority/credential-keys.ts';
-export {
-  CREDENTIAL_EXCLUDED_ACTIONS,
-  CREDENTIAL_MAX_DAYS,
-  deriveAgentCredential,
-  issueAgentCredential,
-  lockAgentCredential,
-  revokeAgentCredential,
-  type AgentCredential,
-  type CredentialKey,
-} from './authority/agent-credentials.ts';
-export {
-  credentialSubject,
-  isAgentCredentialForm,
-  isAgentCredentialLive,
-  recordCredentialRefusal,
-  resolveAgentCredential,
-  type CredentialStanding,
-} from './authority/agent-credential-standing.ts';
+export * from './authority/agent-credential-surface.ts';
 export { readEnvFile } from './env-file.ts';
 export {
   checkDelegatedAuthority,
