@@ -2469,7 +2469,14 @@ operates it, is refused `SCOPE_NOT_GRANTED` 403 and writes nothing:
 - `operations.record_gate_item` takes `{ operationId, item, evidence,
 statement? }`: one of the eight items, three closing lines or the procedure
   line, one `https` link of at most 2000 characters with no spaces, and the
-  owner's line on a closing line only, each refused `FIELD_VALUE_INVALID` 422 naming the field. An item is
+  owner's line on a closing line only, each refused `FIELD_VALUE_INVALID` 422 naming the field.
+  Items 3 to 6 take only the link to their document's version published in the
+  operator's business, pinned to its version and digest (C81): `legal-basics`
+  and `overseas-register` the privacy policy's, `privacy-act-statement` the
+  data-handling statement's, each `https://<host>/legal/<businessKey>/<document>/?version=<v>&digest=<sha256>`,
+  and `breach-runbook` the runbook's, `https://<host>/settings/operations/?runbook=<v>&digest=<sha256>`,
+  where the runbook fits on one page (1,000 words). Any other link, or none
+  published, is refused `FIELD_VALUE_INVALID` 422 naming `evidence`. An item is
   recorded once; a second record is refused `GATE_ITEM_ALREADY_RECORDED` 409
   and the first evidence stays.
 - `operations.change_installation_mode` takes `{ operationId, mode: 'real' }`.

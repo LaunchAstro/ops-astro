@@ -38,6 +38,7 @@ import {
 import { enrol } from '../commands/fixture.ts';
 import { PROPOSAL, type Task } from './role-case-bodies.ts';
 import { createPositiveBody } from './role-case-positive-body.ts';
+import { legalEvidence } from './role-case-gate-bodies.ts';
 import { probeOperands } from './role-case-fixed-bodies.ts';
 import { ownTaskRecipes } from './role-case-own-tasks.ts';
 import { plainRows, seedFixtureClients } from './role-case-clients.ts';
@@ -286,6 +287,7 @@ export async function createHarness(part: string): Promise<Harness> {
       clearGateItem: async (item) => {
         await world.db.admin.execute('delete from ops.gate_items where item = $1', [item]);
       },
+      legalEvidence: async () => await legalEvidence(world.db.admin, world.alpha),
     }),
     approvedReservation,
     reserve,

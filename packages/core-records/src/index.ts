@@ -163,11 +163,14 @@ export {
 } from './operations/breach-notices.ts';
 export {
   LEGAL_DOCUMENTS,
+  ONE_PAGE_WORDS,
   PUBLIC_LEGAL_DOCUMENTS,
   approveLegalVersion,
   draftLegalVersion,
+  legalVersionPath,
   publishLegalVersion,
   readPublishedLegal,
+  wordsIn,
   type DraftedVersion,
   type LegalDocument,
   type PublishedVersion,

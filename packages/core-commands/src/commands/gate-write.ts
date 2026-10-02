@@ -8,13 +8,23 @@
 // installation from made-up to real data while every item is done
 // (`installation mode changed`).
 //
+// Items 3 to 6 take one evidence link only: the link to their document's
+// published version in the operator's business (C81), read under the same
+// lock, with the breach runbook held to one page.
+//
 // Both take the installation's row lock first and check the operator under
 // it, so a refusal writes nothing. Every field is checked here, before the
 // table's own constraint could refuse it as a driver error carrying the
 // statement's parameters. The one-way trigger still refuses whatever reaches
 // it out of turn.
 
-import type { TenantQuery } from '../../../core-records/src/index.ts';
+import {
+  legalVersionPath,
+  ONE_PAGE_WORDS,
+  readPublishedLegal,
+  wordsIn,
+} from '../../../core-records/src/index.ts';
+import type { LegalDocument, TenantQuery } from '../../../core-records/src/index.ts';
 import type { CommandContext } from './context.ts';
 import { GATE_ITEMS } from './first-client-gate.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
@@ -30,6 +40,17 @@ const EVIDENCE = /^https:\/\/[^\s]+$/u;
 /** The OAIC's public Privacy Opt-In Register lists its entries on this one page (0060). */
 const OPT_IN_REGISTER =
   /^https:\/\/www\.oaic\.gov\.au\/privacy\/privacy-registers\/privacy-opt-in-register\/?([?#]\S*)?$/u;
+/**
+ * Items 3 to 6 and the document whose published version is their evidence:
+ * the privacy policy with its collection notices, and as it reads the
+ * overseas-services register; the data-handling statement; the breach runbook.
+ */
+const GATE_EVIDENCE_DOCUMENTS: Readonly<Partial<Record<string, LegalDocument>>> = {
+  'legal-basics': 'privacy-policy',
+  'privacy-act-statement': 'data-handling',
+  'overseas-register': 'privacy-policy',
+  'breach-runbook': 'breach-runbook',
+};
 /** The owner's one line on a closing line, as 0060's `gate_items_statement` reads it. */
 const LINE = /^[^\p{Cc}]{1,500}$/u;
 const CLOSING_LINES: ReadonlySet<string> = new Set([
@@ -51,6 +72,7 @@ const FIXES: Readonly<Record<string, readonly string[]>> = {
   evidence: [
     'Send the evidence as one https link of at most 2000 characters, with no spaces.',
     "For the privacy opt-in, a lodged form or a receipt keeps it shut: link the OAIC's public Privacy Opt-In Register.",
+    `For items 3 to 6, link the published version of the item's document, approved by the owner; the breach runbook fits on one page (${String(ONE_PAGE_WORDS)} words).`,
   ],
   statement: [
     "Send the owner's one line (at most 500 characters) on a closing line only; the training line's is dated YYYY-MM-DD.",
@@ -86,6 +108,32 @@ async function lockedForOperator(
   return installation;
 }
 
+/**
+ * Whether `evidence` links the published version of `document` in the
+ * caller's business, where the breach runbook also fits on one page. The host
+ * is the installation's own and is not checked; the path, version and digest
+ * are.
+ */
+async function linksPublished(
+  tx: TenantQuery,
+  document: LegalDocument,
+  evidence: string,
+): Promise<boolean> {
+  const published = await readPublishedLegal(tx, document);
+  if (published === undefined) return false;
+  if (document === 'breach-runbook' && wordsIn(published.body) > ONE_PAGE_WORDS) return false;
+  const [business] = await tx.query<{ readonly key: string }>(
+    'select key from public.businesses where business_id = $1 and id = $1',
+    [tx.businessId],
+  );
+  const url = URL.canParse(evidence) ? new URL(evidence) : undefined;
+  return (
+    business !== undefined &&
+    url !== undefined &&
+    `${url.pathname}${url.search}` === legalVersionPath(business.key, published)
+  );
+}
+
 const isOutcome = (value: Installation | HandlerOutcome): value is HandlerOutcome =>
   !('operator_business_id' in value);
 
@@ -107,6 +155,10 @@ export async function recordGateItem(
   if (item === 'training-line' && !dated(statement as string)) return invalid('statement');
   const installation = await lockedForOperator(tx, context);
   if (isOutcome(installation)) return installation;
+  const document = GATE_EVIDENCE_DOCUMENTS[item];
+  if (document !== undefined && !(await linksPublished(tx, document, evidence))) {
+    return invalid('evidence');
+  }
   const inserted = await tx.query<{ readonly item: string }>(
     `insert into ops.gate_items (item, evidence, statement) values ($1, $2, $3)
        on conflict (item) do nothing returning item`,

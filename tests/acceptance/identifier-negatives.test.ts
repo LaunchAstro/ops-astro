@@ -22,7 +22,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { READS } from '../../packages/core-wire/src/surface.ts';
 import { GATE_ITEMS } from '../../packages/core-commands/src/index.ts';
-import { gateRecordBody } from './role-case-gate-bodies.ts';
+import { gateRecordBody, legalEvidence } from './role-case-gate-bodies.ts';
 import { PROPOSAL } from './role-case-bodies.ts';
 import { CASE, TARGET_FREE } from './cd-alternatives.ts';
 import { serverUrl, type AgentIdentity, type Caller } from './world.ts';
@@ -66,9 +66,11 @@ const pair = (
 
 /** Every gate item recorded in alpha, the operator, so the mode may move to real (S0-5). */
 async function gateReady(w: IdentWorld, caller: Caller): Promise<void> {
+  const links = await legalEvidence(w.h.world.db.admin, w.h.world.alpha);
   for (const item of GATE_ITEMS) {
+    const body = gateRecordBody(item, links);
     // eslint-disable-next-line no-await-in-loop
-    const answer = await w.person(caller, 'operations.record_gate_item', gateRecordBody(item));
+    const answer = await w.person(caller, 'operations.record_gate_item', body);
     expect(['ok', 'GATE_ITEM_ALREADY_RECORDED'], item).toContain(answer.code);
   }
 }
