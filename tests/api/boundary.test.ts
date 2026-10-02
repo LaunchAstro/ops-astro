@@ -56,6 +56,8 @@ function stubDatabase(seen: Seen[], admissions: unknown[][] = []): Database {
       seen.push({ businessId, presented: { provider: 'recorded', subject: businessId } });
       return await run({
         businessId,
+        savepoint: async () =>
+          await Promise.reject(new Error('the stub database has no savepoint')),
         query: <Row>(text: string, parameters: readonly unknown[] = []) => {
           if (!text.trimStart().startsWith(ADMISSION)) {
             return Promise.reject(new Error('the stub database has no rows'));

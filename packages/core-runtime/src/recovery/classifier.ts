@@ -220,10 +220,11 @@ export async function classifyUnderLocks(
       reason: 'another transaction classified this reservation first; the hold was released once',
     };
   }
+  // A hand-back that spent finished its work: its attempt stays `handed_back`.
   await tx.query(
     `update public.attempts set state = 'abandoned', outcome = coalesce(outcome, 'abandoned')
-      where business_id = $1 and id = $2`,
-    [tx.businessId, row.attempt_id],
+      where business_id = $1 and id = $2 and not ($3 and state = 'handed_back')`,
+    [tx.businessId, row.attempt_id, calls.spentMinor > 0n],
   );
   return {
     reservationId: request.reservationId,

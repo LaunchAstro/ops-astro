@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+//
 // Where a caller's grants reach, for a list read that filters inside its own
 // statement (MP-6-4). Beside `grants.ts`, which owns the expression it reads.
 

@@ -131,6 +131,42 @@ export const call = async (
   return await callModel(s.db.app, s.business, caller(work), requestFor(work, overrides), with_);
 };
 
+/** `base`, with custody waiting for `open` before it dispatches for real. */
+export const gated = (
+  base: Broker = broker,
+): { readonly broker: Broker; readonly open: () => void } => {
+  let release: (() => void) | undefined;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const dispatch: Broker['custody']['dispatch'] = async (credentialRef, request) => {
+    await gate;
+    return await base.custody.dispatch(credentialRef, request);
+  };
+  return {
+    broker: { ...base, custody: { ...base.custody, dispatch } },
+    open: () => release?.(),
+  };
+};
+
+/**
+ * The world's broker, with custody moving `work`'s lease fence on before it dispatches, so
+ * the lease leaves the caller while custody has the request. Moved whole from
+ * aw-01-broker-limits.test.ts to keep that file under the line limit.
+ */
+export const fenceMoving = (work: Work): Broker => ({
+  ...broker,
+  custody: {
+    ...world.custody,
+    dispatch: async (credentialRef, request) => {
+      await s.db.admin.execute(`update public.leases set fence = fence + 1 where id = $1`, [
+        work.picked['leaseId'],
+      ]);
+      return await world.custody.dispatch(credentialRef, request);
+    },
+  },
+});
+
 export const rowsOf = async (callId: string | null): Promise<readonly Record<string, unknown>[]> =>
   callId === null
     ? []

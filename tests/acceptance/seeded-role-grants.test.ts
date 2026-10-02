@@ -43,12 +43,18 @@ const held = (role: string): readonly string[] =>
  * what the caller holds. `conversation.read` asks its own rule (the owner, or
  * the read-any grant `conversation:read`, which no role holds on install), so
  * its declared pair is deliberately seeded to nobody; `conversation.list`
- * asks its own rule too (`conversation:write`, the caller's own only);
+ * asks its own rule too (`conversation:write`, the caller's own only), and so
+ * does `conversation.allowance` (AW-04), the team's only;
  * nor does `client.list` (C32), which answers the clients the caller's grants reach.
  */
+const NOT_SEEDED = new Set([
+  'session.capabilities',
+  'conversation.read',
+  'conversation.list',
+  'conversation.allowance',
+]);
 const ASKS_NOTHING: ReadonlySet<string> = new Set(['session.capabilities', 'client.list']);
 // A `self` row (the inbox) asks no grant either: it answers about the caller's own rows.
-const NOT_SEEDED = new Set(['session.capabilities', 'conversation.read', 'conversation.list']);
 const asked = COMMAND_SURFACE.filter(
   // The `self` operations ask about nothing either: the caller's own account
   // (C23) or own rows (the inbox), which every signed-in person holds.

@@ -119,6 +119,7 @@ plain-text 500 when an operand was missing. Each now answers
 | `task.propose`                               | `lineageId`                                           | a string or `null`, or absent to open a new lineage                                                                                                                                              | `parseRequest`, from `prepareCommand` (`commands/prepare.ts`)                                      |
 | `task.create`                                | `parentId`, `board`, `boardSection`, `conversationId` | each a string or `null`, or absent                                                                                                                                                               | `parseRequest`, from `prepareCommand` (`commands/prepare.ts`)                                      |
 | `task.decide`                                | `gateId`, `versionId`, `recipientPersonId`            | each a string; absent is refused, except `recipientPersonId`, which may be absent or `null`                                                                                                      | `parseRequest`, from `prepareCommand` (`commands/prepare.ts`)                                      |
+| `task.accept_plan`                           | `gateId`, `versionId`, `conversationId`               | each a string; absent is refused, except `conversationId`, which may be absent or `null`                                                                                                         | `parseRequest`, from `prepareCommand` (`commands/prepare.ts`)                                      |
 
 `parseRequest` and the two `refuse…Operands` functions are in
 `commands/operands.ts`, beside `isFieldMap` and `invalid`, which the read
@@ -129,7 +130,7 @@ row's `subject`, `authority` and `serve` see only those operands. `ReadRequest`
 is the unchecked body.
 
 The `parseRequest` rows are their operations' `WRITE_OPERANDS`
-(`core-wire/src/surface.ts`), checked once the caller is authorised, an
+(`core-wire/src/write-operands.ts`), checked once the caller is authorised, an
 identifier before the target is read and any other operand after it. So a `lineageId`
 on `task.propose` that is neither a string nor `null` is `FIELD_VALUE_INVALID`
 naming `lineageId`, and the `COMMAND_BODY_INVALID` branch in `proposeOnTask`
@@ -408,8 +409,9 @@ are staged. Unset or `off`, none of the three is read and the log says
 `api: trace export off`. `on` with any of them missing or malformed, or any
 other value, stops the server before it listens with a problem naming the
 setting, never its value. The exporter's custody starts before the port is
-bound; the export then runs on its interval over the businesses the sweep
-covers (`RECOVERY_BUSINESS_KEYS`), beside the sweep, and nothing on the wire reaches it
+bound; the export then runs every 30 seconds and trace retention every hour
+over the recovered businesses (`RECOVERY_BUSINESS_KEYS`), beside the sweep, and
+nothing on the wire reaches either
 ([RUNTIME.md](RUNTIME.md#the-diagnostic-trace-export)).
 
 ## Task, board and people operations
@@ -751,8 +753,8 @@ comment record type.
 | Operation       | Route            | Body                                                                                                                                                                                                                                                                                                                   | Refusals it can answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | --------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `task.propose`  | `/task/propose`  | `operationId`, `recordId`, `expectedRevision`, `purpose`, `maximumMinor`, `currency`, `payload`, `step`, `expiresInSeconds?`, `lineageId?`                                                                                                                                                                             | `SCOPE_NOT_GRANTED` 403, `PROPOSAL_SCOPE_EXCEEDED` 422 (also a `currency` other than the task's cap's, which is its envelope's cap or else the business cap, or a ceiling past the cap's remaining room, or past the task's open envelope's remaining room, each less the hold the superseded version releases), `GATE_NOT_FOUND` 404, `LINEAGE_TERMINAL` 409, `LINEAGE_NOT_ON_TASK` 409, `CHANGE_ROUNDS_EXHAUSTED` 409, `VERSION_STALE` 409, `NOT_FOUND` 404 (also a trashed task, in the same bytes as a missing one, before the handler's operand checks and the revision), `FIELD_VALUE_INVALID` 422 (naming `purpose` when absent, not a string or out of shape; `currency` when absent, not a string or empty; `payload` when not a JSON object; `step`; `expiresInSeconds`; `lineageId` when neither a string nor `null`) |
-| `task.decide`   | `/task/decide`   | `operationId`, `gateId`, `versionId`, `decision` (`approve`, `reject`, `request_changes`, or `escalate` at the revision bound), `note`, `recipientPersonId` (escalate's only: a holder of `decide` at business scope, not the assignee; the gate stays open and from then on only a business-scope decider decides it) | `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` 409 (escalate before the bound), `SCOPE_NOT_GRANTED` 403 naming `recipientPersonId` (a recipient outside the escalation role), `GATE_ALREADY_DECIDED` 409, `GATE_EXPIRED` 410, `PROPOSAL_SUPERSEDED` 409, `EVIDENCE_MISMATCH` 409, `LINEAGE_TERMINAL` 409, `BUDGET_UNAVAILABLE` 409, `BUDGET_EXHAUSTED` 402, `CAP_BINDING_MISMATCH` 409, `SCOPE_NOT_GRANTED` 403, `FIELD_VALUE_INVALID` 422 naming `gateId` or `versionId` when it is absent or not a string, `recipientPersonId` when escalate lacks one or another decision carries one, or `note` when the note is not a string or carries a NUL or an unpaired surrogate                                                                                                                                                         |
-| `task.pickup`   | `/task/pickup`   | `operationId`, `reservationId`, `leaseSeconds?`                                                                                                                                                                                                                                                                        | `RESERVATION_NOT_CLAIMABLE` 409, `LEASE_HELD` 409, `SCOPE_NOT_GRANTED` 403 (person), `DELEGATION_ALREADY_LIVE` 409 (agent), `DELEGATION_WIDENS` 403, `DEPENDENCY_NOT_LANDED` 501 (agent, no delegation key), `FIELD_VALUE_INVALID` 422, `COMMAND_BODY_INVALID` 400 (person)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `task.decide`   | `/task/decide`   | `operationId`, `gateId`, `versionId`, `decision` (`approve`, `reject`, `request_changes`, or `escalate` at the revision bound), `note`, `recipientPersonId` (escalate's only: a holder of `decide` at business scope, not the assignee; the gate stays open and from then on only a business-scope decider decides it) | `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` 409 (escalate before the bound), `SCOPE_NOT_GRANTED` 403 naming `recipientPersonId` (a recipient outside the escalation role), `GATE_ALREADY_DECIDED` 409, `GATE_EXPIRED` 410, `PROPOSAL_SUPERSEDED` 409, `EVIDENCE_MISMATCH` 409, `LINEAGE_TERMINAL` 409, `BUDGET_UNAVAILABLE` 409, `BUDGET_EXHAUSTED` 402, `CAP_BINDING_MISMATCH` 409, `CLIENT_SIGNOFF_REQUIRED` 409 (approving a reviewed output while the business requires the client's sign-off, AW-08; nothing written), `SCOPE_NOT_GRANTED` 403, `FIELD_VALUE_INVALID` 422 naming `gateId` or `versionId` when it is absent or not a string, `recipientPersonId` when escalate lacks one or another decision carries one, or `note` when the note is not a string or carries a NUL or an unpaired surrogate                  |
+| `task.pickup`   | `/task/pickup`   | `operationId`, `reservationId`, `leaseSeconds?`                                                                                                                                                                                                                                                                        | `RESERVATION_NOT_CLAIMABLE` 409, `LEASE_HELD` 409, `BUDGET_UNAVAILABLE` 409 (a hold its spend used whole: the run stops at its budget and asks the person), `SCOPE_NOT_GRANTED` 403 (person), `DELEGATION_ALREADY_LIVE` 409 (agent), `DELEGATION_WIDENS` 403, `DEPENDENCY_NOT_LANDED` 501 (agent, no delegation key), `FIELD_VALUE_INVALID` 422, `COMMAND_BODY_INVALID` 400 (person)                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | `task.handback` | `/task/handback` | `operationId`, `leaseId`, `fence`, `outcome`, `report?`, `actualMinor?`, `successor?`                                                                                                                                                                                                                                  | `LEASE_NOT_OWNED` 403, `LEASE_EXPIRED` 410, `SUCCESSOR_OUT_OF_BOUNDS` 409, `ACTUAL_EXPENDITURE_UNSUPPORTED` 422, `FIELD_VALUE_INVALID` 422 (also naming `report` or `successor.<key>` when it holds a NUL or an unpaired surrogate, on both prefixes)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | `task.queue`    | `/task/queue`    | nothing; it is a read                                                                                                                                                                                                                                                                                                  | `SCOPE_NOT_GRANTED` 403                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 
@@ -762,6 +764,17 @@ does: `RESERVATION_NOT_CLAIMABLE` 409 with the same two fixed sentences, and no
 lease is written (`queue` and `pickup`, `core-runtime/src/pickup.ts`).
 Restoring the task brings the work back.
 `tests/runtime/trashed-task-work-and-notes.test.ts` holds it.
+
+**The agent's output takes its own review round (AW-09).** A handback's
+successor is a version like any other: `task.decide` on its gate, two rounds
+of `request_changes`, the third `CHANGE_ROUNDS_EXHAUSTED` 409 with approve,
+reject or escalate on offer, and the gate left open. A person decides it,
+never the agent: on the agent prefix `task.decide` is
+`DELEGATION_EXCLUDES_DECISION` 403, the agent's own login on the person
+prefix resolves to no person, and the runtime refuses any deciding actor that
+is not the person's own (`DELEGATION_EXCLUDES_DECISION`, RUNTIME.md). The
+review page itself is visual: the command line hands off to it with
+`review.view` (CLI.md, "Visual operations").
 
 **Alerts (T2h).** A run's transition into settled, failed or cancelled, or
 into a wait only a person can end, raises one alert on its task in the same
@@ -776,11 +789,20 @@ only; an agent's queue carries none. Nothing delivers them. Each is
 kind (`migrations/0036_alerts.sql`). `tests/runtime/t2h-alerts.test.ts` holds it.
 
 **The execution graph (AW-06).** `task.execution` carries `graph` beside its
-runs and page of events: `{ plan, sourceRevision, complete, nodes }`, one node
-per run, `{ nodeId, condition, planned, observed }`. The planned layer is the
-structured plan record the plan decision bound (AW-04), which this code does
-not read yet, so `plan` is `unbound`, every `planned` is null, and no node is
-called unplanned. The observed layer is the run's own record, read in the same
+runs and page of events: `{ plan, planRecordId, planRunId, steps,
+sourceRevision, complete, nodes }`, one node per run, `{ nodeId, condition,
+planned, observed }`. The planned layer is the structured plan record the plan
+decision bound (AW-04), and only that one (`core-runtime/src/plan-binding.ts`):
+its decision approves its own gate, its gate is its run's, it was written in
+the decision's transaction, and the digests of its words and record recompute
+to the row's. A record failing any of these is never projected, however new or
+well formed; the newest that holds is the plan, and with none `plan` is
+`unbound`, `steps` empty and every `planned` null. With one, `plan` is `bound`,
+`steps` lists the plan's `{ key, title, after, runIds }`, and a run proposed
+under a step (`step.planStep`, below) has `planned: { key, title }`. A run
+naming no step, or a key the bound plan lacks, has the condition `unplanned`
+(its observed layer unchanged); the plan's own run and its lineage are the
+plan, not work outside it. The observed layer is the run's own record, read in the same
 statement as the events and never from the page, so a cursor never changes a
 condition: `not_started`; `in_progress` with `attemptId` and `whoseMove`
 (`{ kind: 'agent' | 'person', actorId }`, the lease's holder, or null actor
@@ -800,17 +822,53 @@ every reader who may see the task gets the same bytes, and the graph is frozen
 read answers unavailable, never an empty graph.
 `tests/runtime/aw-06-observed-layer.test.ts` and
 `tests/runtime/aw-06-isolation.test.ts` hold it.
+Each node also carries `helpers` (AW-11, `reads/execution-helpers.ts`): the
+helper agents the run's work was handed to, under any of its leases, so a
+replacement parent's new helper sits beside the old one. Each is
+`{ childDelegationId, helperActorId, state, outcome, refusal, fault, spentMinor, steps }`:
+`working`, `handed_back` with its outcome and named refusal, or `dropped` with
+the fault (`DELEGATION_EXPIRED` first, then `DELEGATION_REVOKED` or
+`DELEGATION_NARROWED`), by the rule the parent's merged result uses. `steps` are
+the helper's own model calls on the parent's lease,
+`{ callId, operation, state, reservedMinor, spentMinor, planned, unplanned }`,
+found by the caller's delegation the broker records (`0104`); they spend the
+parent's one reservation, so the node's `heldMinor` and `spentMinor` already
+carry them. A call carries no plan key, so each step takes its run's
+placement: `planned` is the node's, and `unplanned` is true exactly when the
+node reads `unplanned` (`tests/reads/aw-11-child-placement.test.ts`).
+`tests/broker/aw-11-child-graph.test.ts` and its isolation suite hold it.
+Each node also carries `definition` (AW-04, `reads/execution-definition.ts`):
+the instruction file the run was pinned to and every file it read, or `null`
+for a run with no pin. It is
+`{ kind, path, versionId, digest, size, manifestDigest, reads, readSet }`:
+`kind` is `bootstrap_file` (with its `path`) or `definition_version` (with its
+`versionId`), `digest` and `size` are the file's identity, and
+`manifestDigest` is the accept-time manifest's. `reads` is the read ledger in
+read order, `{ sequence, entry, path, digest, size }`, each row written by the
+read itself; `readSet` is the path-sorted set digest over them and their
+distinct count (`setDigest`). The command line prints the same answer
+(`tests/cli/aw-04-pin-ledger-cli.test.ts`).
 A drop raises no alert (T3e2): `task.queue` carries the team's `outages`
 beside the alerts, newest first, each
-`{ id, cause, fault, openedAt, lastDropAt, closedAt, runs: [{ taskId, runId, attemptId, reactivated }] }`,
+`{ id, cause, fault, openedAt, lastDropAt, closedAt, contentDigest, runs: [{ taskId, runId, attemptId, reactivated }] }`,
 one report per outage per business; a reader outside the team gets none, and
 the task page draws the report naming its task (`tests/runtime/t3e2-outage.test.ts`).
+One cause is not a drop (AW-04): `audit_copy_missing`, fault `ours`, is a
+pinned read's audit copy the store could not keep. The read went through; the
+row is one per business and `contentDigest` (null on a drop's report), lists no
+runs and stays open, a later miss moving `lastDropAt`
+(`tests/runtime/aw-04-missing-audit-copy.test.ts`).
 
 `task.propose` answers `FIELD_VALUE_INVALID` 422 for the two shapes its columns
 constrain, before the write rather than at it: a `purpose` outside
 `^[a-z][a-z0-9_]{0,62}$` names `purpose`, and a `step` that is not
 `{ kind, payload }` with a non-empty `kind` and an object `payload` names
-`step`. Both used to reach the database and arrive as `SERVICE_UNAVAILABLE`
+`step`. `step.planStep` is optional (AW-06, ORCH41 decision (a)): a step key of
+the task's bound plan record, checked under the task lock; a key the plan
+lacks, a key on a task with no bound plan, or a `planStep` that is not a
+string is `FIELD_VALUE_INVALID` naming `step`, and nothing is written. The key
+is stored on the run's step (`0105`) and shown in the evidence pack the
+approver signs. Both used to reach the database and arrive as `SERVICE_UNAVAILABLE`
 503, which tells a caller their server is broken when their request was.
 
 `task.propose` writes a proposal beside the task and leaves the task's own
@@ -1138,8 +1196,19 @@ MP-7-11 adds the assistant panel's tab row, under the same rule
 | Operation                | Route                     | Body                                                                                     | Authority                                                                                                             | Refusals                                                                                                                       |
 | ------------------------ | ------------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | `conversation.list`      | `/conversation/list`      | nothing                                                                                  | `conversation:write`; the caller's own conversations only, newest activity first, at most 50, whatever else they hold | `SCOPE_NOT_GRANTED` 403 (no `conversation:write`, or no membership)                                                            |
+| `conversation.allowance` | `/conversation/allowance` | `conversationId?` (absent or `null`: the empty drawer)                                   | the team (owner, administrator, member) holding `conversation:write`; a named conversation is the caller's own        | `SCOPE_NOT_GRANTED` 403 (not the team, or no `conversation:write`), `NOT_FOUND` 404 (not theirs), `FIELD_VALUE_INVALID` 422    |
 | `conversation.rename`    | `/conversation/rename`    | `operationId`, `conversationId`, `title`                                                 | `conversation:write`, and the caller is the owner                                                                     | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` (body purged), `FIELD_VALUE_INVALID` 422 (title 1 to 120) |
 | `conversation.set_scope` | `/conversation/set_scope` | `operationId`, `conversationId`, `page` (`{"address":<path>,"shows":<label>}` or `null`) | `conversation:write`, and the caller is the owner                                                                     | `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404, `TRANSITION_NOT_PERMITTED` (body purged), `FIELD_VALUE_INVALID` 422 (page)           |
+
+`conversation.allowance` (AW-04, U10) is the drawer's allowance line:
+`{ ok: true, allowance: { set, currency, limitMinor, leftMinor, conversation: { spentMinor, heldMinor } } }`,
+the planning cap (`set` false is the default, AUD 50), what is left of it
+across the business, and the named conversation's settled spend and held
+amount (nothing, with none named). The cap and what is left are the
+business's, so it is the team's only: owner, administrator and member alike
+while they hold `conversation:write` across the business, a member seeing the
+same cap `settings.read` shows (owner ruling, 1 October 2026). A member
+without it is refused before any figure.
 
 `conversation.set_scope` is "Add page to context" (CS-7.31): one slot, so a
 second page replaces the first, and `null` clears it. The address is a page of
@@ -1256,7 +1325,13 @@ effect applies.
 
 The answer is the call as its ledger row stands: `callId`, `state`,
 `reservedMinor`, `actualMinor`, `observedMinor`, `drop`, and `text`, the
-model's words, only on the request that made them. The words are never stored,
+model's words, only on the request that made them. A call held as unknown
+liability also answers `dropCause` (`provider_unavailable`, `connection_lost`,
+`worker_lost`, or null for a failure that is no drop), `fault` (`provider`,
+`network`, `ours` or `undetermined`) and `providerCode` (the provider's
+refusal code, such as `http_503`, or null when none arrived); the worker hands
+the run back `dropped` with that cause (AW-10, [RUNTIME.md](RUNTIME.md), "The
+model call's ledger"). The words are never stored,
 so a replay answers the ledger's state without them. A reserve refusal is the
 register's code (`LEASE_NOT_OWNED`, `LEASE_EXPIRED`, `AUTHORITY_LOST`,
 `DECISION_STALE`, `OPERATION_NOT_CATALOGUED`, `EFFECT_NOT_RECONCILABLE`,
@@ -1318,6 +1393,76 @@ writes the task record, so neither takes an `expectedRevision`.
 | `run.top_up`             | `/api/b/:key/run/top_up`             | `operationId`, `recordId`, `runId`, `askId`, `amountMinor`, `currency` | `decide` on `billing`, asked of the task named in `recordId`; the runtime asks it again of the run's task under the run's locks |
 | `run.end_at_budget_stop` | `/api/b/:key/run/end_at_budget_stop` | `operationId`, `recordId`, `runId`, `askId`                            | `decide` on `gate`, asked the same way                                                                                          |
 
+## The hand-over and the handback
+
+AW-11. The holder of a lease hands part of its work to a helper agent that can
+do strictly less (`run.delegate_child`), and the helper hands its result back
+(`run.child_handback`). Both are served on the agent prefix only
+(`commands/agent-child.ts`); the person prefix refuses both
+`SCOPE_NOT_GRANTED`.
+
+| Route                                      | Body                                                                                                                                 | Authority                                                                                                                  |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------- |
+| `/api/a/b/:key/run/delegate_child` (agent) | `operationId`, `leaseId`, `fence`, `helperActorId`, `purpose`, `collections`, `actions`, `expiresInSeconds` (1 to the lease maximum) | the caller's own delegation, on the lease's task (`run:write`); the runtime binds it to the lease at its fence under locks |
+| `/api/a/b/:key/run/child_handback` (agent) | `operationId`, `outcome` (`completed`, or `partial` with `refusal`, a registered code)                                               | the helper's own child credential, bound to its login; no grant, so a revoked or run-out child still hands back            |
+
+The body is read by its JSON types before any authority, each fault
+`FIELD_VALUE_INVALID` by name (a purpose and each collection is a short key;
+actions are the grant model's; `decide` is refused by the mint,
+`DELEGATION_EXCLUDES_DECISION`), and a field the row does not describe is
+`COMMAND_BODY_INVALID`. A helper that is not an agent of this business is
+`FIELD_VALUE_INVALID` on `helperActorId`, one answer for a person's id and a
+made-up one. A set that is not strictly narrower is `DELEGATION_WIDENS`.
+
+The hand-over answers the helper's one-call pickup (AUTHORITY.md,
+"Sub-delegation"), its `credential` in the clear on this answer only. The
+register keeps the answer without it; a repeat of the operation id
+re-authorises the parent, finds the child still live and its own, and derives
+the credential again under its pinned key. A child handed back, withdrawn or
+run out releases nothing (`DELEGATION_NOT_LIVE`). The handback answers
+`childDelegationId` and `outcome`; its replay is released only to the same
+helper presenting the same credential. A second handback is
+`DELEGATION_NOT_LIVE`.
+
+## The plan accept
+
+A person's one click on a plan (AW-04, [RUNTIME.md](RUNTIME.md#instruction-files-pinned-by-digest))
+is `task.accept_plan`: the approval of the plan's gate, as `task.decide`
+approves one, with the plan bound to the decision and the run's instruction
+file pinned in the same transaction. The command line and the app's client
+post it to the same route. No agent reaches it: an agent may propose a plan,
+never activate one.
+
+| Operation          | Route                          | Body                                                                                                                | Authority                                                                                          |
+| ------------------ | ------------------------------ | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `task.accept_plan` | `/api/b/:key/task/accept_plan` | `operationId`, `gateId`, `versionId`, `note`, `planText`, `plan`, `entryPath`, `paths`, `conversationId` (optional) | `decide`, asked of the gate's own task as `task.decide` is; `decide` asks it again under its locks |
+
+`versionId` is the plan version shown beside the button; a newer reply makes
+it stale and the accept is `PROPOSAL_SUPERSEDED` 409. `planText` is the exact
+words the person read (1 to 20,000 characters). `plan` is the structured
+record `{ steps: [{ key, title, after }] }`: a lower-case slug per key, each
+`after` naming earlier keys of this plan, no other fields, no duplicate keys or
+references, no cycle; anything else is `FIELD_VALUE_INVALID` 422 naming `plan`
+(or `planText`), before any write. `entryPath` and `paths` (up to 50) name
+files in the server's instruction root (`OPS_ASTRO_INSTRUCTION_ROOT`); an odd
+path, a symlink, a name outside the root, a directory or a missing file is
+`DEFINITION_UNAVAILABLE`. With no root configured the accept is
+`DEPENDENCY_NOT_LANDED`. `conversationId` is the caller's own conversation
+or `NOT_FOUND` 404, and becomes the audit event's origin. Every other refusal
+is `task.decide`'s. It answers the approval's detail with `runId`, `pin`,
+`manifestDigest`, `planRecordId`, `textDigest` and `recordDigest`. A repeat of
+the operation id replays it; a changed body is `OPERATION_ID_REUSED`.
+
+**The plan accept fires nothing (AW-08).** It lets the agent work under its
+lease; it never releases an effect. The agent hands its output back with a
+successor (`task.handback`'s `successor`), and that version is the reviewed
+output. Its accept, by `task.decide` or `task.accept_plan`, is the launch, and
+only a lease on a reviewed output may `task.dispatch`. Any other approved
+version is `LAUNCH_NOT_DECIDED` 409 before any mark, and nothing is written.
+The worker (`apps/worker`) answers that refusal by handing the work back as
+its successor (outcome `handedBack`, with the successor's gate and version);
+the next pass after a person's accept picks up the launch and applies it.
+
 A run's state revised (MP-6-2) is the agent page's one write. It names the
 task and the run on it too, and carries the version it read (0 before the
 first) instead of an `expectedRevision`. It is also on the agent prefix, under
@@ -1363,6 +1508,30 @@ releasedMinor, spentMinor }`. The task stays open for a person. It reaches a
   the plan was approved (AW-04), and the recent sign-in a money answer asks
   for (C59).
 
+## The launch and its receipt
+
+AW-08 part (b) ([RUNTIME.md](RUNTIME.md#the-launch-is-the-effect-gate)). The
+launch is the accept of the reviewed output's exact version; accepting the
+plan never releases an effect.
+
+- **`task.dispatch`** (the lease's holder, agent prefix) rechecks the facts
+  under its locks and refuses, writing and marking nothing: `AUTHORITY_LOST`
+  409, `PROPOSAL_SUPERSEDED` 409, `LINEAGE_TERMINAL` 409, `DECISION_STALE` 409
+  (a reset approval), `LAUNCH_NOT_DECIDED` 409 (work approved by the plan
+  accept rather than a launch), `CLIENT_SIGNOFF_REQUIRED` 409 (the business
+  requires the client's sign-off, which the portal records in phase 8; until
+  then the work stays held), then the lease's and the budget's codes as
+  before.
+- **`task.observe`** takes an optional `receiptLink`: the link the provider
+  answered with, as the worker passed it on. It is kept only when it is
+  `https:` on the step's declared host, with no user, port, query or
+  fragment, at most 512 characters and already in its parsed form; any other
+  value, a non-string included, is stored as absent and the observation goes
+  on. It is written with the first observation and never after.
+- **`task.receipt`** adds `link`: the kept link, or `null` when none was kept,
+  which a reader shows as text and never as a link. Nothing on the receipt
+  undoes the effect.
+
 ## Source-to-route manifest
 
 Every route is generated from `COMMAND_SURFACE`
@@ -1406,6 +1575,7 @@ The five support controls, with their owning functions:
 | `conversation.message`   | `/api/b/:key/conversation/message`      | refused `DELEGATION_EXCLUDES_OPERATION` | `messageConversation` (`commands/conversations.ts`)                                                                                                                                   | `conversation_messages`                                                                                     |
 | `conversation.read`      | `/api/b/:key/conversation/read`         | refused `DELEGATION_EXCLUDES_OPERATION` | `readConversation` (`reads/conversation.ts`)                                                                                                                                          | `conversations`, `conversation_messages`, `conversation_wrap_ups`                                           |
 | `conversation.list`      | `/api/b/:key/conversation/list`         | refused `DELEGATION_EXCLUDES_OPERATION` | `listConversations` (`reads/conversation.ts`)                                                                                                                                         |
+| `conversation.allowance` | `/api/b/:key/conversation/allowance`    | refused `DELEGATION_EXCLUDES_OPERATION` | `readAllowance` (`reads/allowance.ts`) → `readPlanningAllowance` (`core-custody/src/broker-planning.ts`)                                                                              |
 | `conversation.rename`    | `/api/b/:key/conversation/rename`       | refused `DELEGATION_EXCLUDES_OPERATION` | `renameConversation` (`commands/conversation-tabs.ts`)                                                                                                                                |
 | `conversation.set_scope` | `/api/b/:key/conversation/set_scope`    | refused `DELEGATION_EXCLUDES_OPERATION` | `setConversationScope` (`commands/conversation-tabs.ts`)                                                                                                                              |
 
@@ -1427,13 +1597,14 @@ says what an agent reaches and `AGENT_OPERATIONS` says how each is served.
 | `task.edit_comment`, `task.delete_comment` | `editTaskComment`, `deleteTaskComment` (`commands/tasks-comment-edit.ts`)                 | served under a live delegation, on its own task, on its own actor's comments only (`serveCommentChange`)                                                                               |
 | `task.propose`                             | `proposeOnTask` (`commands/tasks-propose.ts`)                                             | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `task.decide`                              | `decideOnGate` (`commands/tasks-decide.ts`)                                               | refused `DELEGATION_EXCLUDES_DECISION` (`authorise`, `decideAsAgent`)                                                                                                                  |
+| `task.accept_plan`                         | `acceptPlanOnGate` (`commands/plan-accept.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `task.pickup`                              | `pickupAsPerson` (`commands/tasks-pickup.ts`)                                             | served before a pickup (`BEFORE_PICKUP`, `serve`)                                                                                                                                      |
 | `task.handback`                            | `handbackOwnLease` (`commands/tasks-handback.ts`)                                         | served under a live delegation (`serve`)                                                                                                                                               |
 | `task.start`                               | `setState` (`commands/tasks-state.ts`)                                                    | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `task.set_state`                           | `setStateById` (`commands/tasks-state.ts`)                                                | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `task.duplicate`                           | `duplicateTask` (`commands/tasks-duplicate.ts`)                                           | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `task.assign`                              | `writeOwnedFields` (`commands/tasks-state.ts`)                                            | served under a live delegation holding `assign`, on its own task, `assignee` only (MP-4-8; `assignTaskAsAgent`)                                                                        |
-| `task.triage`                              | `writeOwnedFields` (`commands/tasks-state.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
+| `task.triage`                              | `writeOwnedFields` (`commands/tasks-state.ts`)                                            | refused `DELEGATION_EXCLUDES_INTAKE` (`runAgentCommand`)                                                                                                                               |
 | `task.set_stage`                           | `writeOwnedFields` (`commands/tasks-state.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `task.set_party`                           | `setParty` (`commands/tasks-party.ts`), then `writeOwnedFields`                           | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
 | `task.set_audience`                        | `writeOwnedFields` (`commands/tasks-state.ts`)                                            | refused `DELEGATION_EXCLUDES_OPERATION`                                                                                                                                                |
@@ -1722,6 +1893,51 @@ sees only its own records' gates, and a caller holding no `decide` anywhere is
 refused `SCOPE_NOT_GRANTED` 403 rather than answered with an empty list
 (`reads/awaiting-review.ts`; `tests/api/mp-6-1-isolation.test.ts`).
 
+`definition.attribution` (AW-04) is attribution across runs, by an
+instruction file's digest (`{ digest }`, 64 lowercase hex, else
+`FIELD_VALUE_INVALID` naming `digest`): the runs whose read ledger holds the
+file, entry and non-entry reads alike, each with its task, the paths it read
+the file at, whether it was the entry, and the operations its model calls
+reached (a refused call reached nothing), and the union of those operations.
+It is pre-review: the answer and every run in it carry `label: 'pre-review'`;
+it may floor a declaration of reach and nothing else, and no evaluation set,
+promotion input or conformance claim takes it (the deps cruise rule
+`pre-review-attribution-stays-in-its-read` holds the module to its catalogue
+row). It is the team's: a reader outside the team, or one holding no `read` on
+tasks, is refused `SCOPE_NOT_GRANTED` 403; each run is filtered by the
+caller's task `read` inside the statement, as `gate.pending` filters by
+`decide`, and a trashed task's runs are not listed. No agent route
+(`reads/attribution.ts`; `tests/runtime/aw-04-attribution.test.ts`).
+
+`trace.read` (AW-13 readers) is a task's runs' diagnostic trace (`{ recordId }`):
+each run event as the export sends it, less the two ids only the exporter's
+key derives (stage, sequence, start and duration in whole milliseconds, a
+bounded error code, the transform version), with its run and whether it is
+behind the export's cursor; at most 1,000, `complete` saying whether that
+reached the end. It asks `operations:read` (the owner and administrators by
+install default, never a member, never an agent) at the task's record scope;
+a holder without `read` on the task, a task of another business and a trashed
+one are `NOT_FOUND`, and a member without the key `SCOPE_NOT_GRANTED`. No agent
+route (`tests/runtime/aw-13-readers.test.ts`; [RUNTIME.md](RUNTIME.md#the-diagnostic-trace-export)).
+
+`harness.read` (AW-12) is the harness adoption test's result on one run
+(`{ runId }`, a string, else `FIELD_VALUE_INVALID` naming `runId`), as
+`{ ok: true, harness }`. `harness` is the trigger's reading: `result: 'not_yet'`
+with the `missing` limbs and the two `figures` (the reading against the window,
+the delegation depth against the depth built), or `result: 'fired'` with the
+same two figures and no verdict. The per-candidate runs, with a verdict and a
+recommendation per framework, are AW-12's follow-up, built when the trigger
+first fires; this read does not carry them yet. It is computed from the run's
+frozen accept-time manifest on every read and stores nothing. It is the
+team's: a reader outside the team, or one holding no `read` on tasks, is
+refused `SCOPE_NOT_GRANTED` 403; the run is
+filtered by the caller's task `read` inside the statement, so another client's
+run, another business's and a made-up one are one `NOT_FOUND` 404. A manifest
+it cannot count is `DEFINITION_UNAVAILABLE`. No agent route; the command line
+is `pnpm cli harness.read --json '{"runId":"..."}'`
+(`reads/harness-trigger.ts`; `tests/harness/aw-12-harness-read.test.ts`;
+[RUNTIME.md](RUNTIME.md#the-harness-adoption-tests-trigger)).
+
 A `task.read` answer's gate states, decisions and reservations come from one
 database snapshot. `readTaskProposals` (`reads/proposals.ts`) takes the
 versions, gates and reservations in the same statement that reads the decision
@@ -1916,8 +2132,10 @@ An agent login confers nothing on its own. With no `X-Agent-Delegation` header
 it may read `task.queue` and call `task.pickup` (`BEFORE_PICKUP`,
 `commands/agent-envelope.ts`, read off the surface rows whose `agent` is
 `before-pickup`) and nothing else. `task.decide` answers
-`DELEGATION_EXCLUDES_DECISION` 403, and every other operation,
-`session.capabilities` included, answers `DELEGATION_EXCLUDES_OPERATION` 403
+`DELEGATION_EXCLUDES_DECISION` 403, `task.triage`, the intake operation,
+`DELEGATION_EXCLUDES_INTAKE` 403 (minimum contract 6.1: intake is reached only
+inside a decision), and every other operation, `session.capabilities`
+included, answers `DELEGATION_EXCLUDES_OPERATION` 403
 (`authorise`; minimum contract 8.2 case 9). A credential that is presented and
 answers to no live delegation is `DELEGATION_NOT_LIVE` 401. It is deliberately
 one answer for unknown, expired, revoked and settled. Telling them apart tells a
@@ -1925,21 +2143,23 @@ caller holding a stolen credential which of those it is
 (`resolveDelegation`, `authority/delegations.ts`). The one exception is a
 delegation revoked because its person lost the authority it draws on, which
 answers `DELEGATION_NARROWED` (R-B). A name outside `AGENT_SURFACE` is refused
-`DELEGATION_EXCLUDES_OPERATION` before any of this, credential or not
-(`runAgentCommand`). After a pickup every call is intersected with the
+`DELEGATION_EXCLUDES_OPERATION` before any of this, credential or not, and
+`task.triage` `DELEGATION_EXCLUDES_INTAKE` (`runAgentCommand`). After a pickup
+every call is intersected with the
 delegation on the spot: the collection, the action, and a `scope` that must be
 exactly the one task it was minted for.
 
-| Answer                          | Status | When                                                                                                                                                                                                                                                                                                                                                         |
-| ------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `AUTH_NO_AGENT_IDENTITY`        | 401    | the login is not an agent login in this business                                                                                                                                                                                                                                                                                                             |
-| `AUTH_SESSION_EXPIRED`          | 401    | the bearer's signature verifies and its `exp` has passed, or its session is past the 12-hour limit or was ended (C58)                                                                                                                                                                                                                                        |
-| `DELEGATION_NOT_LIVE`           | 401    | a presented credential that answers to no live delegation                                                                                                                                                                                                                                                                                                    |
-| `DELEGATION_OUT_OF_PURPOSE`     | 403    | a sibling task, a collection or an action the purpose does not carry, or a call over the whole business (`task.create`)                                                                                                                                                                                                                                      |
-| `DELEGATION_NARROWED`           | 403    | the purpose reaches the call and the person's live grants no longer cover it, or the delegation was revoked for `authority_lost`                                                                                                                                                                                                                             |
-| `DELEGATION_EXCLUDES_DECISION`  | 403    | `task.decide`, always: at the envelope with no credential, and from L4's `decideAsAgent` asking L2 under a delegation                                                                                                                                                                                                                                        |
-| `DELEGATION_EXCLUDES_OPERATION` | 403    | any name not in `AGENT_SURFACE`, whose fifteen members are the queue, a pickup, a handback, a heartbeat, a dispatch, an observe, a check, `task.read`, `task.comment`, `task.propose`, `task.create`, `task.decide`, `session.capabilities`, `model.call` and `run.revise_state`; or, with no credential, any name but the queue, a pickup and `task.decide` |
-| `DELEGATION_ALREADY_LIVE`       | 409    | a pickup under a purpose word the agent already holds a live delegation for                                                                                                                                                                                                                                                                                  |
+| Answer                          | Status | When                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `AUTH_NO_AGENT_IDENTITY`        | 401    | the login is not an agent login in this business                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `AUTH_SESSION_EXPIRED`          | 401    | the bearer's signature verifies and its `exp` has passed, or its session is past the 12-hour limit or was ended (C58)                                                                                                                                                                                                                                                                                                                                  |
+| `DELEGATION_NOT_LIVE`           | 401    | a presented credential that answers to no live delegation                                                                                                                                                                                                                                                                                                                                                                                              |
+| `DELEGATION_OUT_OF_PURPOSE`     | 403    | a sibling task, a collection or an action the purpose does not carry, or a call over the whole business (`task.create`)                                                                                                                                                                                                                                                                                                                                |
+| `DELEGATION_NARROWED`           | 403    | the purpose reaches the call and the person's live grants no longer cover it, or the delegation was revoked for `authority_lost`                                                                                                                                                                                                                                                                                                                       |
+| `DELEGATION_EXCLUDES_DECISION`  | 403    | `task.decide`, always: at the envelope with no credential, and from L4's `decideAsAgent` asking L2 under a delegation                                                                                                                                                                                                                                                                                                                                  |
+| `DELEGATION_EXCLUDES_OPERATION` | 403    | any name not in `AGENT_SURFACE` but `task.triage`, whose seventeen members are the queue, a pickup, a handback, a heartbeat, a dispatch, an observe, a check, `task.read`, `task.comment`, `task.propose`, `task.create`, `task.decide`, `session.capabilities`, `model.call`, `run.revise_state` and AW-11's `run.delegate_child` and `run.child_handback`; or, with no credential, any name but the queue, a pickup, `task.decide` and `task.triage` |
+| `DELEGATION_EXCLUDES_INTAKE`    | 403    | `task.triage`, always, with a credential or without one                                                                                                                                                                                                                                                                                                                                                                                                |
+| `DELEGATION_ALREADY_LIVE`       | 409    | a pickup under a purpose word the agent already holds a live delegation for                                                                                                                                                                                                                                                                                                                                                                            |
 
 A handback or heartbeat names a lease, not a task, so the task it is checked
 against is read from the lease (`namedTaskId`). A handback naming a lease on
@@ -2069,6 +2289,12 @@ whole hold and resumes the work on a new hold; it happened spends the whole
 hold; it happened differently spends it and reopens the work. A retry under the
 same `operationId` replays the stored answer.
 
+A planning reply (AW-04) held unknown has no task and no attempt: its form is
+the conversation's id as `recordId` and the call's id as `attemptId`. Only the
+conversation's owner reaches it; anyone else is answered `NOT_FOUND` with
+nothing written. The owner must also hold `decide` on `billing` across the
+business, checked again at the locked instant, else `SCOPE_NOT_GRANTED`.
+
 The task page's Agent pane offers the three outcomes, and the write-off below,
 on the newest attempt of the run it shows when that attempt is held
 `liability_unknown` (C54): it sends the attempt id the read showed and reads
@@ -2092,6 +2318,25 @@ band, the first holder's call answers `awaiting_second_approver` and moves
 nothing; a different live holder naming the same attempt and amount applies
 it, and the first holder again is `FOUR_EYES_REQUIRED`. A retry under the same
 `operationId` replays the stored answer.
+
+### `budget.set_planning_cap` (AW-04, U10)
+
+`POST /api/b/<key>/budget/set_planning_cap` with `limitMinor` (whole minor
+units above zero), `currency` (the price book's, `AUD`) and `fromLimitMinor`
+(the limit the caller last saw: AUD 50, `5000`, while nobody has moved the
+default; `null` never matches). It asks `decide` on
+`billing` for the whole business, so owners and administrators; a grant on one
+task does not reach it, and no agent route serves it
+(`DELEGATION_EXCLUDES_OPERATION`). It writes the business's `budget_caps` row
+keyed `planning` and no other; the body names no key. A `fromLimitMinor` that
+is not the current limit is `VERSION_STALE` 409 naming the limit it is at
+(`limitMinor=<n>`, the default's `5000` while there is no row), as a settings write names its
+revision, and two setters at once from one limit leave one applied. The answer is the cap's id
+and `{ key: 'planning', limitMinor, currency }`. A lower limit is taken even
+below what is committed: the next planning reply that no longer fits is
+refused ([RUNTIME.md](RUNTIME.md#the-planning-budget)). Until a person moves
+it the cap is AUD 50, and `settings.read`'s `planningCap` shows it. Not here
+yet: the recent sign-in a money action asks (C59).
 
 ## Tags
 
@@ -2132,7 +2377,8 @@ delegation.
 `task.read`, `task.board`, `task.queue`, `gate.pending`, `task.ledger`, `task.search`,
 `person.list`, `team.list`, `tag.list`, `task.todos`, `preset.plan`, `settings.read`,
 `session.capabilities`, `access.read`, `inbox.read`, `inbox.count`, `inbox.unattended`,
-`conversation.read` and `conversation.list` are declared in `COMMAND_SURFACE` with
+`conversation.read`, `conversation.list`, `conversation.allowance`, `definition.attribution`,
+`trace.read` and `harness.read` are declared in `COMMAND_SURFACE` with
 `kind: 'read'`. The boundary branches on that and calls the executor the
 composition root supplies:
 

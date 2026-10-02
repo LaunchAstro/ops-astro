@@ -66,6 +66,9 @@ describe.skipIf(serverUrl === undefined)('bundle_names_the_approval', () => {
       `select d.id, d.payload::text as action from public.gate_decisions d
          join public.gates g on g.business_id = d.business_id and g.id = d.gate_id
          join public.proposal_lineages l on l.business_id = g.business_id and l.id = g.lineage_id
+         -- The launch (AW-08): the reviewed output's approval, not the plan's.
+         join public.reviewed_outputs ro
+           on ro.business_id = g.business_id and ro.version_id = g.version_id
         where d.business_id = $1 and l.task_id = $2`,
       [world.alpha, taskId],
     );

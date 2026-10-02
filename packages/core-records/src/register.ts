@@ -26,6 +26,7 @@
 
 import { DEFINITION_ROWS } from './register-definitions.ts';
 import { EFFECT_ROWS } from './register-effects.ts';
+import { LAUNCH_ROWS } from './register-launch.ts';
 
 export type Visibility = 'caller' | 'audit';
 
@@ -773,11 +774,9 @@ const ROWS_HEAD = [
     source: 'L4 RUNTIME.md',
     runtime: true,
   },
-  // This and `CAP_BINDING_MISMATCH` are "something on this task has already been
-  // bound and does not match", not a malformed request: the lineage belongs to
-  // another task and the envelope draws on another cap or another currency. Re-
-  // reading the task and naming what it is actually bound to is the way forward,
-  // which is what a 409 tells a caller and a 422 would not.
+  // This and `CAP_BINDING_MISMATCH` are "something on this task is bound and
+  // does not match" (a lineage of another task, an envelope on another cap or
+  // currency), not a malformed request: re-reading the task is the way forward.
   {
     code: 'LINEAGE_NOT_ON_TASK',
     status: 409,
@@ -821,9 +820,10 @@ const ROWS_HEAD = [
 // effect and broker codes follow them, in `register-effects.ts`.
 
 /** Every registered code. Declared by the rows above and nowhere else. */
-/** Every row, in register order: the head, the definition codes, the effect codes. */
-type Row =
-  (typeof ROWS_HEAD)[number] | (typeof DEFINITION_ROWS)[number] | (typeof EFFECT_ROWS)[number];
+/** Every row, in register order: the head, the definition codes, the effect codes, the launch. */
+type Row = (
+  typeof ROWS_HEAD | typeof DEFINITION_ROWS | typeof EFFECT_ROWS | typeof LAUNCH_ROWS
+)[number];
 
 export type RefusalCode = Row['code'];
 
@@ -852,6 +852,7 @@ export const REFUSAL_REGISTER: readonly RegisterEntry[] = [
   ...ROWS_HEAD,
   ...DEFINITION_ROWS,
   ...EFFECT_ROWS,
+  ...LAUNCH_ROWS,
 ].map((row: Declared & { readonly code: RefusalCode }) => ({
   code: row.code,
   status: row.status,

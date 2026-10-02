@@ -2,12 +2,12 @@
 //
 // I13 and I08 over the whole exported surface, through the real boundary.
 //
-// **I13** (CONTRACT-LEDGER I13). For each of the 107 `COMMAND_SURFACE`
+// **I13** (CONTRACT-LEDGER I13). For each of the 115 `COMMAND_SURFACE`
 // declarations, one call that applies and one that is refused, and what each
 // wrote to `audit_events` in *every* business: one row, in the caller's own,
 // naming actor, command, operation, outcome and code, the request as a digest
 // only. A refused call also leaves both businesses' domain tables alone. The
-// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 107; on
+// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 115; on
 // the two that are his own account (C23) he is refused for naming someone. For
 // the seven lease operations he names real work in his own business: an
 // approved reservation, and a live lease and its fence held by ada. The agent's
@@ -31,7 +31,7 @@ import {
 } from '../../packages/core-wire/src/surface.ts';
 import { subjectDigest } from '../../packages/core-records/src/identity/authentication-attempts.ts';
 import { ADMIN_ACTIONS, ADMIN_COLLECTIONS, enrolAgent, enrolCaller } from './cast.ts';
-import { PROPOSAL } from './role-case-bodies.ts';
+import { PROPOSAL, childProbe } from './role-case-bodies.ts';
 import {
   agentPath,
   bearer,
@@ -158,7 +158,46 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
   }
 
   async function pickUpBy(approver: Caller, agent: AgentIdentity, title: string): Promise<Picked> {
-    const reservationId = await reservationBy(approver, title);
+    return await claimAs(agent, await reservationBy(approver, title));
+  }
+
+  /**
+   * AW-08: the plan's lease fires nothing. Its work goes back for review,
+   * `approver` accepts the reviewed output (the launch) and the agent picks
+   * the launch up: the lease a dispatch releases the effect under, which the
+   * dispatch and observe cells use; the other lease cells work under the plan's.
+   */
+  async function launchedBy(
+    approver: Caller,
+    agent: AgentIdentity,
+    title: string,
+  ): Promise<Picked> {
+    const plan = await pickUpBy(approver, agent, title);
+    const lease = { leaseId: plan.leaseId, fence: plan.fence, outcome: 'completed' };
+    const back = await w.agent(
+      agent,
+      'task.handback',
+      { ...lease, report: { wrote: 'the reviewed output' }, successor: PROPOSAL },
+      plan.credential,
+    );
+    const handed = back.body['detail'] as Record<string, unknown> | undefined;
+    if (back.code !== 'ok' || handed === undefined) {
+      throw new Error(`audit: hand-back refused ${back.code}`);
+    }
+    const launch = await w.person(approver, 'task.decide', {
+      gateId: handed['successorGateId'],
+      versionId: handed['successorVersionId'],
+      decision: 'approve',
+      note: 'launch the reviewed output',
+    });
+    const detail = launch.body['detail'] as Record<string, unknown> | undefined;
+    if (launch.code !== 'ok' || detail === undefined) {
+      throw new Error(`audit: launch refused ${launch.code}`);
+    }
+    return await claimAs(agent, String(detail['reservationId']));
+  }
+
+  async function claimAs(agent: AgentIdentity, reservationId: string): Promise<Picked> {
     const picked = await w.agent(agent, 'task.pickup', { reservationId });
     const detail = picked.body['detail'] as Record<string, unknown> | undefined;
     if (picked.code !== 'ok' || detail === undefined) {
@@ -182,7 +221,7 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
   async function observedCell(): Promise<Cell> {
     const ada = w.h.world.ada;
     const agent = await freshAgent();
-    const p = await pickUpBy(ada, agent, 'work whose effect is observed');
+    const p = await launchedBy(ada, agent, 'work whose effect is observed');
     const lease = { leaseId: p.leaseId, fence: p.fence };
     const marked = await w.agent(agent, 'task.dispatch', lease, p.credential);
     const effect = await w.agent(
@@ -225,7 +264,7 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
       case 'model.call':
       case 'task.handback': {
         const agent = await freshAgent();
-        const p = await pickUpBy(ada, agent, `work for ${name}`);
+        const p = await (name === 'task.dispatch' ? launchedBy : pickUpBy)(ada, agent, name);
         const lease = { leaseId: p.leaseId, fence: p.fence };
         const settle = { outcome: 'completed', report: { wrote: 'a draft for the audit' } };
         const body =
@@ -258,6 +297,29 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
       }
     }
   }
+
+  /**
+   * AW-11 on a fresh agent's own lease: the hand-over, or the handback on the
+   * child credential a hand-over just gave it (its own helper).
+   */
+  async function childCell(name: 'run.delegate_child' | 'run.child_handback'): Promise<Cell> {
+    const agent = await freshAgent();
+    const p = await pickUpBy(w.h.world.ada, agent, `work for ${name}`);
+    const handOver = { leaseId: p.leaseId, fence: p.fence, ...childProbe(agent.actorId) };
+    if (name === 'run.delegate_child') return agentCell(agent, name, handOver, p.credential, null);
+    const handed = await w.agent(agent, 'run.delegate_child', handOver, p.credential);
+    const detail = handed.body['detail'] as Record<string, unknown> | undefined;
+    if (handed.code !== 'ok' || detail === undefined) {
+      throw new Error(`audit: hand-over refused ${handed.code}`);
+    }
+    return agentCell(agent, name, { outcome: 'completed' }, String(detail['credential']), null);
+  }
+
+  /** AW-11's two on an agent's own lease; every other operation as `applied` builds it. */
+  const appliedAny = async (declaration: CommandDeclaration): Promise<Cell> =>
+    declaration.name === 'run.delegate_child' || declaration.name === 'run.child_handback'
+      ? await childCell(declaration.name)
+      : await applied(declaration);
 
   /** A live lease ada holds as herself (EX-01), on work she proposed and approved. */
   async function adaLease(
@@ -440,7 +502,7 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
   }
 
   for (const [way, cellOf, title] of [
-    ['applied', applied, 'audits one applied call of every operation, own tenant, digest only'],
+    ['applied', appliedAny, 'audits one applied call of every operation, own tenant, digest only'],
     ['refused', refused, 'audits one refused call of every operation with no domain effect'],
   ] as const) {
     it(
@@ -463,12 +525,12 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
     );
   }
 
-  it('covered all 107 exported operations both ways', () => {
+  it('covered all 115 exported operations both ways', () => {
     const names = COMMAND_SURFACE.map((declaration) => declaration.name).toSorted();
-    expect(names).toHaveLength(107);
+    expect(names).toHaveLength(115);
     expect([...covered.applied].toSorted()).toStrictEqual(names);
     expect([...covered.refused].toSorted()).toStrictEqual(names);
-    // R2 (`noah`, no grant) is the refused caller on every one of the 107.
+    // R2 (`noah`, no grant) is the refused caller on every one of the 115.
     expect([...r2].toSorted()).toStrictEqual(names);
   });
 

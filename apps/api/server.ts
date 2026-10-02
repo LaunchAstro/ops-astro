@@ -517,7 +517,13 @@ async function main(): Promise<void> {
   const sweeper = startSweeper(
     async () =>
       await withRuntimeKeys(keys, async () => {
-        return await passDeployment(database, resolveBusiness, scope.keys, registerEffectLookup);
+        return await passDeployment(
+          database,
+          resolveBusiness,
+          scope.keys,
+          registerEffectLookup,
+          broker?.reconcile,
+        );
       }),
   );
 

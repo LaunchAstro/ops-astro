@@ -154,8 +154,8 @@ function upgradeDrillCases2() {
   }, 180_000);
 
   it('a migration that erases existing decisions fails the drill', () => {
-    // Cascade: budget_asks (budget wait) holds a foreign key to the decisions, and a bare
-    // truncate of a referenced table is refused (0A000) before it erases anything.
+    // cascade: later tables hold foreign keys to gate_decisions (0193 budget waits,
+    // 0102 plan records), and a bare truncate of a referenced table is refused (0A000).
     const planted = withPlanted(
       '9999_planted_decision_loss.sql',
       'truncate public.gate_decisions cascade',

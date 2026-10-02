@@ -42,6 +42,7 @@ import { checkAuthorityAt, classifyUnderLocks, endLease, holdCoveringGrants } fr
 import { lockRediscovered } from './rediscovery.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 import { appendRunEvent, type RunEvent } from './run-events.ts';
+import { remainingOf, stopAtSpentHold } from './budget-stop.ts';
 
 export interface QueueEntry {
   readonly reservationId: string;
@@ -255,7 +256,12 @@ export async function pickup(
   const { state, plan } = rechecked.value;
 
   const claimed = await claimHold(tx, request.reservationId, found, state, plan, locks);
-  if (!claimed.ok) return claimed;
+  if (!claimed.ok) {
+    // A stop at a spent hold keeps its ask, so only a claimant with the authority makes it.
+    if (claimed.retains !== true) return claimed;
+    const may = await claimantMayWork(tx, request, found, lockedAt);
+    return may.ok ? claimed : may;
+  }
   const fenced = await fenceLiveLease(tx, found.task_id, taskLeases, locks, lockedAt);
   if (fenced !== null) return fenced;
 
@@ -408,7 +414,8 @@ async function recheckClaim(
  * expired-lease lifecycle. It fences the old lease and classifies the old hold
  * under the locks it already holds. The abandoned reservation is never
  * revived; a replacement is a new row with a new attempt, on the
- * still-approved version.
+ * still-approved version, holding what the old hold had left; nothing left
+ * stops the run at its budget (`stopSpentWhole`).
  */
 async function claimHold(
   tx: TenantQuery,
@@ -445,13 +452,7 @@ async function claimHold(
     [tx.businessId, reservationId],
   );
   const heldMinor = BigInt(state.held_minor) - BigInt(old?.spent ?? '0');
-  if (heldMinor <= 0n) {
-    return refuse(
-      'RESERVATION_NOT_CLAIMABLE',
-      'the model calls on this reservation spent its whole approved hold',
-      'Nothing is left to hold: a new proposal asks for more.',
-    );
-  }
+  if (heldMinor <= 0n) return await stopSpentWhole(tx, reservationId, found);
   return await reserve(tx, {
     envelopeId: found.envelope_id,
     versionId: found.version_id,
@@ -459,6 +460,31 @@ async function claimHold(
     stepId: found.step_id,
     heldMinor,
   });
+}
+
+const SPENT_WHOLE_HOLD =
+  "this step's calls spent its whole hold, so nothing is left to hold for it";
+
+/**
+ * AW-05: a step whose calls spent its whole hold has nothing left to hold, so
+ * the run stops at its budget and asks a person, a refusal that keeps the ask;
+ * after the run's last ask it ends the run and tells a person
+ * (`stopAtSpentHold`). Never a refusal nothing answers.
+ */
+async function stopSpentWhole(
+  tx: TenantQuery,
+  reservationId: string,
+  found: Found,
+): Promise<RuntimeResult<never>> {
+  const words = await stopAtSpentHold(tx, {
+    runId: found.run_id,
+    reservationId,
+    versionId: found.version_id,
+    delegationId: null,
+    remaining: await remainingOf(tx, reservationId),
+  });
+  const refusal = refuseCommand('BUDGET_UNAVAILABLE', [], [SPENT_WHOLE_HOLD, words]);
+  return { ok: false, refusal, retains: true };
 }
 
 /**
@@ -526,6 +552,35 @@ async function authoriseClaimant(
   expiresAt: Date,
   lockedAt: string,
 ): Promise<RuntimeResult<MintedDelegation | undefined>> {
+  const may = await claimantMayWork(tx, request, found, lockedAt);
+  if (!may.ok || request.claimant === 'person') return may;
+  const actions = ['read', 'comment', 'write'] as const;
+  const minted = await mintDelegation(tx, {
+    agentActorId: request.agentActorId,
+    delegatePersonId: request.authorisedByPersonId,
+    mintedByActorId: request.mintedByActorId,
+    purpose: found.purpose,
+    collections: await delegatedCollections(tx, request, lockedAt),
+    actions: [...actions],
+    expiresAt,
+    purposeScope: { kind: 'record', id: found.task_id },
+  });
+  if (!minted.ok) return { ok: false, refusal: minted.refusal };
+  return { ok: true, value: minted.value };
+}
+
+/**
+ * The claimant's authority at the locked instant, read and never written: a
+ * person's live write on the task, or the delegating person's live grants for
+ * every action the agent's delegation would carry. Asked before a stop at a
+ * spent hold commits its ask (`claimHold`), so a caller without it moves nothing.
+ */
+async function claimantMayWork(
+  tx: TenantQuery,
+  request: PickupRequest,
+  found: Found,
+  lockedAt: string,
+): Promise<RuntimeResult<undefined>> {
   if (request.claimant === 'person') {
     const person = { subjects: authoritySubjects(request), collection: request.collection };
     if (!(await personWriteLive(tx, person, found.task_id, lockedAt))) {
@@ -562,18 +617,7 @@ async function authoriseClaimant(
       };
     }
   }
-  const minted = await mintDelegation(tx, {
-    agentActorId: request.agentActorId,
-    delegatePersonId: request.authorisedByPersonId,
-    mintedByActorId: request.mintedByActorId,
-    purpose: found.purpose,
-    collections: await delegatedCollections(tx, request, lockedAt),
-    actions: [...actions],
-    expiresAt,
-    purposeScope: { kind: 'record', id: found.task_id },
-  });
-  if (!minted.ok) return { ok: false, refusal: minted.refusal };
-  return { ok: true, value: minted.value };
+  return { ok: true, value: undefined };
 }
 
 /**
@@ -854,14 +898,22 @@ function approvalNotCurrent(): RuntimeResult<never> {
 
 /** An abandoned hold whose work was never settled and whose run is still open. */
 function replaceable(state: {
+  readonly state: string;
+  readonly attempt_state: string;
   readonly run_state: string;
   readonly settled: boolean;
   readonly marked: boolean;
   readonly active_elsewhere: boolean;
 }): boolean {
+  // A hold the classifier settled at its calls' spend ended as one it abandoned:
+  // its attempt is `abandoned`, where an observed or written-off cost settled it.
+  const ended =
+    state.state === 'abandoned' ||
+    (state.state === 'actual' && state.attempt_state === 'abandoned');
   // One active hold per version (0019): a version already holding elsewhere is
   // claimed through that hold, from the queue, and not through this one.
   return (
+    ended &&
     !state.settled &&
     !state.marked &&
     !state.active_elsewhere &&

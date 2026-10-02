@@ -41,6 +41,7 @@ import {
   type Schedules,
 } from './schedules-harness.ts';
 import { cq8World, type Party } from './cq-8-world.ts';
+import { seedLaunch } from './launch-seed.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -71,6 +72,7 @@ describe.skipIf(serverUrl === undefined)('T2c2 the effect, its observation and r
     const proposal = appliedDetail(await asPerson(s, body), 'task.propose');
     const decision = await approve(s, proposal);
     const picked = await pickup(s, decision['reservationId']);
+    await seedLaunch(s, picked);
     return {
       taskId,
       proposal,
@@ -180,6 +182,7 @@ describe.skipIf(serverUrl === undefined)('T2c2 the effect, its observation and r
         decidedAt: expect.any(String),
       },
       version: { id: w.proposal['versionId'], number: w.proposal['version'] },
+      link: null,
       effect: {
         kind: 'synthetic_comment',
         operationId: effectOperationId(w.attemptId),
@@ -239,6 +242,7 @@ describe.skipIf(serverUrl === undefined)('T2c2 the effect, its observation and r
       }),
       'task.pickup',
     );
+    await seedLaunch(s, picked);
     appliedDetail(
       await asPerson(s, {
         command: 'task.dispatch',

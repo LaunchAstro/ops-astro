@@ -13,7 +13,13 @@ import type { PickedUp, PickedUpByPerson } from '../../../core-runtime/src/index
 import type { CommandContext } from './context.ts';
 import { isIdentifier } from './operands.ts';
 import { refuseCommand } from './refusal.ts';
-import { applied, refused, type HandlerOutcome, type Refused } from './outcome.ts';
+import {
+  applied,
+  refused,
+  refusedRetaining,
+  type HandlerOutcome,
+  type Refused,
+} from './outcome.ts';
 import { handbackShapeFor } from './pickup-handback-shape.ts';
 import { readLeaseSeconds } from './tasks-lease.ts';
 import { agentClaimant, personClaimant, type Claimant } from './tasks-claimant.ts';
@@ -152,7 +158,10 @@ async function claim(
           agentActorId: claimant.actorId,
           mintedByActorId: approver.actorId,
         });
-  if (!result.ok) return refused(result.refusal);
+  // A pickup that stopped the run at its budget keeps the stop and its ask (AW-05).
+  if (!result.ok) {
+    return result.retains === true ? refusedRetaining(result.refusal) : refused(result.refusal);
+  }
   return applied(result.value.taskId, null, pickupDetail(result.value));
 }
 

@@ -7,6 +7,7 @@
 
 import { type CommandDeclaration } from '../../packages/core-wire/src/surface.ts';
 import {
+  ACCEPTED_PLAN,
   PROPOSAL,
   lineageOn,
   type Prepared,
@@ -25,8 +26,10 @@ import { privacyBody } from './role-case-privacy-bodies.ts';
 import { credentialBody } from './role-case-credential-bodies.ts';
 import { accessBody, madeClient } from './role-case-access-bodies.ts';
 import { createGateBody } from './role-case-gate-bodies.ts';
-import { budgetBody, conversationBody, leaseBody } from './role-case-run-bodies.ts';
+import { conversationBody, leaseBody } from './role-case-run-bodies.ts';
 import { FIXED_BODIES } from './role-case-fixed-bodies.ts';
+import { moneyBody } from './role-case-money-bodies.ts';
+import { lineageBody } from './role-case-lineage-bodies.ts';
 
 export function createPositiveBody(
   context: BodyContext,
@@ -163,6 +166,10 @@ export function createPositiveBody(
         const gate = await approvableGate(context);
         return { body: { ...gate, decision: 'approve', note: 'the admin approves' } };
       }
+      case 'task.accept_plan': {
+        const gate = await approvableGate(context);
+        return { body: { ...gate, ...ACCEPTED_PLAN, note: 'the admin accepts the plan' } };
+      }
       case 'task.pickup':
         // Person pickup (EX-01, transaction contract T3 line 66, minimum
         // contract line 331, ledger line 30): the admin claims approved work
@@ -172,8 +179,11 @@ export function createPositiveBody(
         // The person's own lease, handed back by that person. The agent's
         // own-lease handback is case (h), `k-handback` rows.
         return { body: { ...(await ownLease(context)), outcome: 'completed' } };
+      // `trace.read` (AW-13 readers) asks `operations:read`, which the seed
+      // grants the admin (C55).
       case 'task.read':
       case 'task.execution':
+      case 'trace.read':
         return { body: { recordId: context.alphaTaskId } };
       case 'client.create':
       case 'access.grant':
@@ -209,27 +219,11 @@ export function createPositiveBody(
       case 'budget.top_up':
       case 'budget.record_outcome':
       case 'budget.write_off':
-        // The admin holds billing (T2e, O8, T3d1, T3c): `role-case-run-bodies.ts`.
-        return await budgetBody(declaration.name, context);
-      case 'task.cancel': {
-        // A lineage to cancel is a proposal's, so one is proposed first.
-        const task = await context.freshTask('a task whose lineage is cancelled');
-        const lineageId = await lineageOn(context, task);
-        return { body: { recordId: task.id, lineageId, reason: 'the admin cancels it' } };
-      }
-      case 'task.restart': {
-        // Only a rejected or cancelled lineage is restarted, so this one is
-        // proposed and cancelled through the routes before the restart.
-        const task = await context.freshTask('a task whose lineage is restarted');
-        const lineageId = await lineageOn(context, task);
-        const cancelled = await context.asPerson('task.cancel', {
-          recordId: task.id,
-          lineageId,
-          reason: 'cancelled so it can be restarted',
-        });
-        if (cancelled.code !== 'ok') throw new Error(`matrix: cancel refused ${cancelled.code}`);
-        return { body: { recordId: task.id, lineageId } };
-      }
+      case 'budget.set_planning_cap':
+        return { body: await moneyBody(context, declaration.name) };
+      case 'task.cancel':
+      case 'task.restart':
+        return await lineageBody(declaration.name, context);
       case 'grant.revoke':
         // Its positive control is case (f): the admin revokes a member's read
         // through this route, and the member's next read is refused. A body
@@ -248,9 +242,11 @@ export function createPositiveBody(
             'case (h), k-revoke rows',
         };
       case 'model.call':
-        // The run's worker's, never a person's: the person prefix refuses it
-        // SCOPE_NOT_GRANTED (AW-01, "n/a (system)"). The agent makes the call
-        // under its delegation in the agent journey, case (h).
+      case 'run.delegate_child':
+      case 'run.child_handback':
+        // The run's worker's, never a person's: the person prefix refuses each
+        // SCOPE_NOT_GRANTED (AW-01, AW-11, "n/a (system)"). The agent makes the
+        // call under its delegation in the agent journey, case (h).
         return {
           exception:
             'executed alternative: the person prefix refuses it by design; the agent calls it ' +
@@ -263,6 +259,11 @@ export function createPositiveBody(
       case 'run.revise_state':
         // MP-6-2: a proposal's planned run, its state revised under run:write.
         return await revisedRunBody(context, PROPOSAL);
+      case 'harness.read': {
+        // AW-12: the harness result on a proposal's planned run, under the admin's task read.
+        const run = await revisedRunBody(context, PROPOSAL);
+        return 'body' in run ? { body: { runId: run.body['runId'] } } : run;
+      }
       case 'time.start':
       case 'time.stop':
       case 'time.log':
@@ -285,6 +286,7 @@ export function createPositiveBody(
       case 'conversation.message':
       case 'conversation.read':
       case 'conversation.list':
+      case 'conversation.allowance':
       case 'conversation.rename':
       case 'conversation.set_scope':
         // AW-03 and MP-7-11, the admin's own conversation: `role-case-run-bodies.ts`.

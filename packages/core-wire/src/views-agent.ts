@@ -2,9 +2,10 @@
 //
 // The run ledger a task read carries (T2e, AW-05, MP-6-2) and a person's
 // conversation with the agent (AW-03, MP-7-11) and the gates waiting on a
-// person (MP-6-1), as the wire carries them.
-// Split from `views.ts`, which re-exports every one, to keep that file under
-// the 1,000-line cap. Types only, like `views.ts`.
+// person (MP-6-1), as the wire carries them, with AW-04's attribution and
+// planning allowance. Split from `views.ts` to keep that file under the
+// 1,000-line cap; it re-exports the first group, the index exports AW-04's.
+// Types only, like `views.ts`.
 
 export interface TaskLedgerView {
   /** Open one first, then the closed ones, newest first. Empty before any approval. */
@@ -153,4 +154,54 @@ export interface AwaitingReviewView {
 export interface AwaitingReviewResult {
   readonly ok: true;
   readonly awaiting: readonly AwaitingReviewView[];
+}
+
+/**
+ * AW-04's attribution by digest: the runs whose read ledger holds the file,
+ * entry and non-entry alike, and the operations those runs reached. It is
+ * pre-review, every row labelled so: it may floor a declaration of reach and
+ * nothing else, and no evaluation, promotion or conformance input takes it.
+ */
+export interface PreReviewAttribution {
+  readonly label: 'pre-review';
+  readonly digest: string;
+  readonly runs: readonly PreReviewRun[];
+  /** Every operation any run below reached (a refused call reached nothing). */
+  readonly operations: readonly string[];
+}
+
+export interface PreReviewRun {
+  readonly label: 'pre-review';
+  readonly taskId: string;
+  readonly runId: string;
+  /** The paths the run read the file at. */
+  readonly paths: readonly string[];
+  /** Whether the file was the run's entry file. */
+  readonly entry: boolean;
+  readonly operations: readonly string[];
+}
+
+/** `definition.attribution`'s answer. */
+export interface AttributionResult {
+  readonly ok: true;
+  readonly attribution: PreReviewAttribution;
+}
+
+/**
+ * The drawer's planning allowance (AW-04, U10): the business's planning cap,
+ * what is left of it across the business, and the caller's own conversation's
+ * settled spend and held amount. `set` false is the default cap, AUD 50.
+ */
+export interface PlanningAllowanceView {
+  readonly set: boolean;
+  readonly currency: string;
+  readonly limitMinor: number;
+  readonly leftMinor: number;
+  readonly conversation: { readonly spentMinor: number; readonly heldMinor: number };
+}
+
+/** `conversation.allowance`'s answer: the team's, and the caller's own spend only. */
+export interface AllowanceResult {
+  readonly ok: true;
+  readonly allowance: PlanningAllowanceView;
 }

@@ -27,9 +27,12 @@ const OUTSIDER_NOT_FOUND = rows.filter(([, row]) => row.outsiderNotFound).map(([
 const PINNED_SHAPE = {
   'access.read': { spine: false, subject: false, authority: 'declared' },
   'client.list': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'conversation.allowance': { spine: false, subject: false, authority: 'holds-any-grant' },
   'conversation.list': { spine: false, subject: false, authority: 'holds-any-grant' },
   'conversation.read': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'definition.attribution': { spine: true, subject: false, authority: 'holds-any-grant' },
   'gate.pending': { spine: true, subject: false, authority: 'holds-any-grant' },
+  'harness.read': { spine: false, subject: false, authority: 'holds-any-grant' },
   'inbox.count': { spine: false, subject: false, authority: 'self' },
   'inbox.read': { spine: false, subject: false, authority: 'self' },
   'inbox.unattended': { spine: false, subject: false, authority: 'declared' },
@@ -51,14 +54,18 @@ const PINNED_SHAPE = {
   'task.search': { spine: true, subject: false, authority: 'holds-any-grant' },
   'task.ledger': { spine: true, subject: false, authority: 'declared' },
   'team.list': { spine: false, subject: false, authority: 'declared' },
+  'trace.read': { spine: true, subject: true, authority: 'declared' },
 };
 
 const PINNED_IDENTIFIERS = {
   'access.read': [],
   'client.list': [],
+  'conversation.allowance': ['conversationId'],
   'conversation.list': [],
   'conversation.read': ['conversationId'],
+  'definition.attribution': [],
   'gate.pending': [],
+  'harness.read': [],
   'inbox.count': [],
   'inbox.read': [],
   'inbox.unattended': [],
@@ -81,6 +88,7 @@ const PINNED_IDENTIFIERS = {
   // A teammate or a client (MP-7-2), one at a time.
   'task.todos': ['person', 'client'],
   'team.list': [],
+  'trace.read': ['recordId'],
 };
 
 // MP-7-10: `team.list` is staff only; a client is told NOT_FOUND.
@@ -91,6 +99,7 @@ const PINNED_OUTSIDER_NOT_FOUND = [
   'task.read',
   'task.receipt',
   'team.list',
+  'trace.read',
 ];
 
 const BODIES: readonly (readonly [string, Readonly<Record<string, unknown>>])[] = [
@@ -163,6 +172,8 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'task.board': [BOARD, BOARD, BOARD, null, null, BOARD, BOARD, BOARD, BOARD, BOARD, BOARD],
   // T2a: `task.read`'s recordId check; an absent cursor is the start.
   'task.execution': BODIES.map(([name]) => (name === 'recordId string' ? null : RECORD_ID)),
+  // AW-13 readers: the task, as `task.execution` takes it.
+  'trace.read': BODIES.map(([name]) => (name === 'recordId string' ? null : RECORD_ID)),
   // T2c2: the receipt is named by its attempt, which none of these bodies carries.
   'task.receipt': BODIES.map(() => ({
     code: 'FIELD_VALUE_INVALID',
@@ -193,6 +204,14 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'session.capabilities': BODIES.map(() => null),
   'conversation.read': BODIES.map(() => null),
   'conversation.list': BODIES.map(() => null),
+  // AW-04: an absent conversation is the empty drawer; the id is checked after the door.
+  'conversation.allowance': BODIES.map(() => null),
+  // AW-04: the file's digest, which none of these bodies carries.
+  'definition.attribution': BODIES.map(() => ({
+    code: 'FIELD_VALUE_INVALID',
+    names: ['digest'],
+    fixes: ['Send digest as the file’s sha-256, 64 lowercase hex characters.'],
+  })),
   'session.person': BODIES.map(() => null),
   'preference.read': BODIES.map(() => null),
   'task.search': BODIES.map(() => QUERY),
@@ -203,6 +222,12 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'inbox.read': BODIES.map(() => null),
   'inbox.count': BODIES.map(() => null),
   'inbox.unattended': BODIES.map(() => null),
+  // AW-12: the run, which none of these bodies carries.
+  'harness.read': BODIES.map(() => ({
+    code: 'FIELD_VALUE_INVALID',
+    names: ['runId'],
+    fixes: ['Send runId as the run’s identifier.'],
+  })),
 };
 
 /** The refusal without its `refused` flag, or null. */
@@ -214,7 +239,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same twenty-four reads', () => {
+  it('names the same twenty-eight reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 

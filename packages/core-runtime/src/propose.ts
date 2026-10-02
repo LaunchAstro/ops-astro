@@ -34,6 +34,7 @@ import {
 import { writeProposal } from './proposal-writer.ts';
 import { lockRediscovered } from './rediscovery.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
+import { markRevision } from './reviewed-output.ts';
 
 // The version, run, step, evidence pack and gate inserts moved to
 // `proposal-writer.ts` so `handback` can make a successor through the same
@@ -52,7 +53,15 @@ export interface ProposeRequest {
   readonly maximumMinor: number;
   readonly currency: string;
   readonly payload: Record<string, unknown>;
-  readonly step: { readonly kind: string; readonly payload: Record<string, unknown> };
+  /**
+   * The run's one step. `planStep`, when present, is a step key of the task's
+   * bound plan, checked by the command under the task lock (AW-06, 0105).
+   */
+  readonly step: {
+    readonly kind: string;
+    readonly payload: Record<string, unknown>;
+    readonly planStep?: string;
+  };
   readonly expiresAt: Date;
   /** Present to add a version to a live lineage; absent to open one. */
   readonly lineageId?: string;
@@ -344,6 +353,8 @@ export async function proposeUnderLocks(
   // wide sweep from cancellation look necessary. The proposer ended that
   // work, so the clear of its agent from the task is audited as theirs.
   if (written.value.supersededVersionId !== null) {
+    // AW-09: the agent's revision of its reviewed output is its output too.
+    await markRevision(tx, written.value.versionId, written.value.supersededVersionId);
     await retireWork(tx, liveWork, locks, request.proposedByActorId);
     await classifyVersions(
       tx,

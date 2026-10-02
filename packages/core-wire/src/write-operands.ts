@@ -75,6 +75,16 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
     note: 'any',
     recipientPersonId: 'id?|null',
   },
+  'task.accept_plan': {
+    gateId: 'id',
+    versionId: 'id',
+    note: 'any',
+    planText: 'any',
+    plan: 'any',
+    entryPath: 'any',
+    paths: 'any',
+    conversationId: 'id?|null',
+  },
   'task.pickup': { reservationId: 'any', leaseSeconds: 'any' },
   // A lease call names its task through its lease; a `recordId` beside the
   // lease is taken and plays no part in the check (API.md, id operands).
@@ -161,6 +171,12 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
   'budget.record_outcome': { recordId: 'any', attemptId: 'any', outcome: 'any' },
   // The task, the attempt held unknown, the minor units charged and why (T3c).
   'budget.write_off': { recordId: 'any', attemptId: 'any', amountMinor: 'count', reason: 'text' },
+  // Minor units in the price book's currency, against the limit last seen (null: unset).
+  'budget.set_planning_cap': {
+    limitMinor: 'count',
+    currency: 'text',
+    fromLimitMinor: 'count|null',
+  },
   'task.observe': {
     leaseId: 'any',
     recordId: 'any',
@@ -168,6 +184,7 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
     attemptId: 'any',
     usage: 'any',
     outcome: 'any',
+    receiptLink: 'any',
   },
   'task.check': {
     leaseId: 'any',
@@ -199,6 +216,19 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
     knowledge: 'any',
     unknowns: 'any',
   },
+  // The parent's own lease and fence, then the helper and its narrower set.
+  'run.delegate_child': {
+    leaseId: 'any',
+    recordId: 'any',
+    fence: 'any',
+    helperActorId: 'any',
+    purpose: 'any',
+    collections: 'any',
+    actions: 'any',
+    expiresInSeconds: 'any',
+  },
+  // The helper's credential says whose work it is; the body only how it went.
+  'run.child_handback': { outcome: 'any', refusal: 'any' },
   // A duration is text the handler parses and answers in its own words.
   'time.start': { taskId: 'id' },
   'time.stop': { taskId: 'id' },

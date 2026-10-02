@@ -54,7 +54,11 @@ describe('T3 no machine path: one caller of the write-off', () => {
     const causes = [...sources('packages'), ...sources('apps')]
       .filter((file) => readFileSync(join(ROOT, file), 'utf8').includes("'written_off'"))
       .toSorted();
-    expect(causes).toStrictEqual(['packages/core-runtime/src/recovery/write-off.ts']);
+    expect(causes).toStrictEqual([
+      // AW-10: records the write-off on the step's held broker calls, called only by the write-off.
+      'packages/core-runtime/src/recovery/broker-effect.ts',
+      'packages/core-runtime/src/recovery/write-off.ts',
+    ]);
   });
 });
 

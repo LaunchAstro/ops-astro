@@ -29,6 +29,7 @@
 // `InstructionSource` the process that holds the files supplies.
 
 import { createHash } from 'node:crypto';
+import { refuseCommand } from '../../core-records/src/index.ts';
 import type { TenantQuery } from '../../core-records/src/index.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
@@ -69,6 +70,12 @@ export interface CapturedManifest {
 /** Where instruction bytes come from. `undefined` is an unreadable file. */
 export interface InstructionSource {
   read(path: string): Promise<Uint8Array | undefined>;
+  /**
+   * Whether the store itself can be read now (AW-04 pin recovery). A store
+   * that is down makes every file unreadable, and that is our fault, not the
+   * plan's; a source without this answers per file only.
+   */
+  available?(): Promise<boolean>;
 }
 
 const PATH = /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/u;
@@ -144,6 +151,7 @@ export async function captureManifest(
   source: InstructionSource,
   paths: readonly string[],
 ): Promise<RuntimeResult<CapturedManifest>> {
+  if (source.available !== undefined && !(await source.available())) return storeUnavailable();
   const entries: FileIdentity[] = [];
   for (const path of new Set(paths)) {
     if (!isInstructionPath(path)) return unavailable();
@@ -193,6 +201,24 @@ export function unavailable(): RuntimeResult<never> {
     'the pinned instruction file cannot be read at its exact identity',
     'Nothing is resolved by name or path; restore the file the run pinned, or start a new run.',
   );
+}
+
+/**
+ * The store the files are read from is down at the accept: our fault, named
+ * as such, and the person told that nothing was approved and no run started.
+ */
+export function storeUnavailable(): RuntimeResult<never> {
+  return {
+    ok: false,
+    refusal: refuseCommand(
+      'DEFINITION_UNAVAILABLE',
+      ['fault: ours'],
+      [
+        "The instruction store could not be read, so nothing was approved and no run started. The fault is ours, not your plan's.",
+        'Your plan is kept as it was; accept it again once the store is back.',
+      ],
+    ),
+  };
 }
 
 export function mismatch(): RuntimeResult<never> {

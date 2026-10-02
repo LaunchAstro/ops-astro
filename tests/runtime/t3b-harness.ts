@@ -18,6 +18,7 @@ import { pathOf } from '../../packages/core-wire/src/surface.ts';
 import type { Transport } from '../../apps/cli/client.ts';
 import { createWorker, type WorkerOptions } from '../../apps/worker/worker.ts';
 import type { UsageReporter } from '../../apps/worker/usage.ts';
+import { launchThrough } from '../support/launch-worker.ts';
 import { authorised, BUSINESS_KEY, post, tokenFor, type ApiFixture } from '../api/fixture.ts';
 import { insertBusiness, insertLogin } from '../identity/fixture.ts';
 import { enrol, grantTo, installSpine } from '../commands/fixture.ts';
@@ -201,7 +202,7 @@ export function workerWorld(fixture: ApiFixture, api: Hono): WorkerWorld {
       body,
     });
 
-  /** The worker proposes, the person approves, the worker applies once: the task's id. */
+  /** The worker proposes, the person approves and launches (AW-08), the worker applies once: the task's id. */
   const applies = async (options: Pick<WorkerOptions, 'reporter'>): Promise<string> => {
     const person = authorised(await tokenFor(fixture.member.presented.subject));
     const asPerson = async (name: Parameters<typeof pathOf>[0], body: object) =>
@@ -211,25 +212,11 @@ export function workerWorld(fixture: ApiFixture, api: Hono): WorkerWorld {
       fields: { title: `t3b worker ${randomUUID()}` },
     });
     const taskId = String(created.body['recordId']);
-    const delegation = await fixture.db.app.withBusiness(fixture.business, async (tx) => {
-      const minted = await mintDelegation(tx, {
-        agentActorId: fixture.agentActorId,
-        delegatePersonId: fixture.member.personId,
-        mintedByActorId: fixture.member.actorId,
-        purpose: `t3b_${randomUUID().slice(0, 8)}`,
-        collections: ['task'],
-        actions: ['read', 'comment', 'write'],
-        purposeScope: { kind: 'record', id: taskId },
-        expiresAt: new Date(Date.now() + 3_600_000),
-      });
-      if (!minted.ok) throw new Error(`mint refused ${minted.refusal.code}`);
-      return minted.value.credential;
-    });
     const worker = createWorker({
       transport,
       businessKey: BUSINESS_KEY,
       credential: await tokenFor(fixture.agent.subject),
-      delegation,
+      delegation: await delegationOn(fixture, taskId),
       ...options,
     });
     const proposed = await worker.proposeOnce();
@@ -248,6 +235,11 @@ export function workerWorld(fixture: ApiFixture, api: Hono): WorkerWorld {
       note: 'approve this version',
     });
     if (decided.status !== 200) throw new Error(`decide: ${JSON.stringify(decided.body)}`);
+    // AW-08: the plan's lease goes back for review; the person's accept of it is the launch.
+    await launchThrough(worker, taskId, async (body) => {
+      const launched = await asPerson('task.decide', body);
+      if (launched.status !== 200) throw new Error(`launch: ${JSON.stringify(launched.body)}`);
+    });
     const applied = await worker.applyOnce(taskId);
     if (!('applied' in applied)) throw new Error(`apply: ${JSON.stringify(applied)}`);
     return taskId;
@@ -264,6 +256,9 @@ export function workerWorld(fixture: ApiFixture, api: Hono): WorkerWorld {
            join public.attempts att on att.business_id = res.business_id and att.reservation_id = res.id
            join public.task_envelopes env on env.business_id = res.business_id and env.id = res.envelope_id
            join public.leases l on l.business_id = res.business_id and l.id = res.lease_id
+           -- The launch's hold (AW-08): the plan's own was handed back for review.
+           join public.reviewed_outputs ro
+             on ro.business_id = res.business_id and ro.version_id = res.version_id
           where res.business_id = $1 and env.task_id = $2`,
         [taskId],
       )
@@ -295,6 +290,24 @@ export function workerWorld(fixture: ApiFixture, api: Hono): WorkerWorld {
       async (tx) => await replayRecordedTransitions(tx),
     );
   return { applies, money, pastEveryWindow, sweep, replay };
+}
+
+/** The worker's delegation from the member, scoped to `taskId`. */
+async function delegationOn(fixture: ApiFixture, taskId: string): Promise<string> {
+  return await fixture.db.app.withBusiness(fixture.business, async (tx) => {
+    const minted = await mintDelegation(tx, {
+      agentActorId: fixture.agentActorId,
+      delegatePersonId: fixture.member.personId,
+      mintedByActorId: fixture.member.actorId,
+      purpose: `t3b_${randomUUID().slice(0, 8)}`,
+      collections: ['task'],
+      actions: ['read', 'comment', 'write'],
+      purposeScope: { kind: 'record', id: taskId },
+      expiresAt: new Date(Date.now() + 3_600_000),
+    });
+    if (!minted.ok) throw new Error(`mint refused ${minted.refusal.code}`);
+    return minted.value.credential;
+  });
 }
 
 /**

@@ -3,11 +3,10 @@
 // What the reads answer, as it crosses the wire: the one declaration of each
 // read result, for the server and for every client.
 //
-// This module holds types only and imports types only, so the web and the
-// command line take it through the wire package's index with no database code
-// anywhere behind it. A client that kept its own copy of
-// these could drift from what the server sends without a typecheck noticing,
-// which is how the web came to believe every task has a title.
+// This module holds types only and imports types only, so the web and the command line take
+// it through the wire package's index with no database code anywhere behind it. A client
+// that kept its own copy of these could drift from what the server sends without a typecheck
+// noticing, which is how the web came to believe every task has a title.
 //
 // Each time here is an ISO string, because that is what arrives: the reads
 // convert their own `Date`s so the type the server builds is the type a
@@ -809,6 +808,8 @@ export interface OutageView {
   readonly lastDropAt: string;
   /** Null while drops of its cause may still join it. */
   readonly closedAt: string | null;
+  /** The file an `audit_copy_missing` report is about (AW-04); null for a drop's. */
+  readonly contentDigest: string | null;
   readonly runs: readonly {
     readonly taskId: string;
     readonly runId: string;
@@ -841,6 +842,15 @@ export interface TaskSearchResult {
 export interface SettingsReadResult {
   readonly ok: true;
   readonly settings: readonly SettingView[];
+  /**
+   * The AI planning chat's budget (AW-04): the business's planning cap, AUD 50
+   * until a person moves it. `set` is false while it is that default.
+   */
+  readonly planningCap: {
+    readonly limitMinor: number;
+    readonly currency: string;
+    readonly set: boolean;
+  };
 }
 
 /**

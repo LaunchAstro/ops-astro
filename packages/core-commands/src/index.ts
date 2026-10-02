@@ -26,6 +26,7 @@ export {
 export { describeFault, executeCommand } from './commands/envelope.ts';
 export { setOwnAvailability } from './commands/availability.ts';
 export {
+  callerAudit,
   modelCallExecutor,
   type ModelBroker,
   type ModelCallExecutor,
@@ -62,6 +63,7 @@ export {
 } from './reads/execute.ts';
 export { boardReach, joinLiveBoard, shownInbox } from './reads/live-join.ts';
 export { isReadName } from './reads/catalogue.ts';
+export { readHarnessTrigger } from './reads/harness-trigger.ts';
 export {
   HEALTH_STALE_SECONDS,
   readServiceHealth,

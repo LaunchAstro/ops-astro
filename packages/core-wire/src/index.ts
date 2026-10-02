@@ -156,7 +156,17 @@ export type {
   TaskTimeView,
   TimeEntryView,
 } from './views.ts';
+// AW-04's attribution and allowance answers, beside the other agent views.
+export type {
+  AllowanceResult,
+  AttributionResult,
+  PlanningAllowanceView,
+  PreReviewAttribution,
+  PreReviewRun,
+} from './views-agent.ts';
 // the command catalogue and its parity check (API-1)
 export * from './catalogue.ts';
 // each command's data effects and its class, read by the first-client gate (S0-5)
 export * from './data-effects.ts';
+// the operations whose value is visual, and the command line's hand-off to them (AW-09)
+export { handoffAddress, handoffOf, VISUAL_HANDOFFS, type VisualHandoff } from './handoff.ts';

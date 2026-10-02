@@ -147,6 +147,40 @@ export function auditAs(actorId: string): Broker['audit'] {
   };
 }
 
+/**
+ * AW-10: the reconciliation pass's broker events, as the agent whose
+ * delegation made the call. The pass is system work and has no caller of
+ * its own, so a call its provider proved never began is released in the
+ * name of the agent that held it. A planning reply (AW-04) has no
+ * delegation: it is released in the name of its planning envelope's owner,
+ * the person who asked for it, as their acting identity. That identity is
+ * theirs whether or not it is still active: an owner whose access has ended
+ * (C58) is still the one the call was made for, so their active identity is
+ * taken first, then their newest.
+ */
+export const callerAudit: Broker['audit'] = async (tx, note) => {
+  const [call] = await tx.query<{ readonly actor_id: string | null }>(
+    `select coalesce(d.agent_actor_id, pa.id) as actor_id
+       from public.model_calls c
+       left join public.delegations d
+         on d.business_id = c.business_id and d.id = coalesce(c.caller_delegation_id, c.delegation_id)
+       left join public.planning_envelopes e
+         on e.business_id = c.business_id and e.id = c.planning_envelope_id
+       left join lateral (
+         select a.id from public.actors a
+          where a.business_id = e.business_id and a.person_id = e.owner_person_id
+            and a.kind = 'person'
+          order by a.active desc, a.created_at desc
+          limit 1
+       ) pa on true
+      where c.business_id = $1 and c.id = $2`,
+    [tx.businessId, note.detail['callId']],
+  );
+  const actorId = call?.actor_id ?? null;
+  if (actorId === null) throw new Error('the call has no actor to write its event as');
+  await auditAs(actorId)(tx, note);
+};
+
 /** A reserve refusal, made in the register's shape by the broker. One that recorded its step keeps it. */
 function refusalOf(reservation: Extract<Reservation, { ok: false }>): Refused {
   return reservation.callId === null
@@ -160,6 +194,9 @@ interface LedgerRow {
   readonly actual_minor: string | null;
   readonly observed_minor: string | null;
   readonly drop_state: string | null;
+  readonly drop_cause: string | null;
+  readonly fault: string | null;
+  readonly provider_code: string | null;
 }
 
 const minor = (value: string | null | undefined): number | null =>
@@ -178,7 +215,8 @@ async function answerFrom(
     async (tx) =>
       await tx.query<LedgerRow>(
         `select state, reserved_minor::text as reserved_minor, actual_minor::text as actual_minor,
-                observed_minor::text as observed_minor, drop_state
+                observed_minor::text as observed_minor, drop_state, drop_cause, fault,
+                provider_code
            from public.model_calls where business_id = $1 and id = $2`,
         [tx.businessId, callId],
       ),
@@ -193,6 +231,10 @@ async function answerFrom(
       actualMinor: minor(call?.actual_minor),
       observedMinor: minor(call?.observed_minor),
       drop: call?.drop_state ?? null,
+      // AW-10: which drop, whose fault and the provider's code, for the worker's hand-back.
+      dropCause: call?.drop_cause ?? null,
+      fault: call?.fault ?? null,
+      providerCode: call?.provider_code ?? null,
       ...words,
     },
   };

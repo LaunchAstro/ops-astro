@@ -14,17 +14,18 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { afterAll, beforeAll } from 'vitest';
-import { deliverThrough } from '../../apps/api/trace-exporter.ts';
+import { deliverThrough, expiryThrough, traceDestination } from '../../apps/api/trace-exporter.ts';
 import { startCustody, type Custody } from '../../packages/core-custody/src/index.ts';
 import {
   exportOnce,
   type Deliver,
+  type ExpiryPorts,
   type ExportOutcome,
 } from '../../packages/core-runtime/src/index.ts';
 import { openSchedules, rows, seedSchedules, type Schedules } from './schedules-harness.ts';
 
 export type TargetMode =
-  'ok' | 'redirect' | 'slow' | 'oversized' | 'malformed' | 'refusing' | 'down';
+  'ok' | 'redirect' | 'slow' | 'oversized' | 'malformed' | 'refusing' | 'down' | 'skipping';
 
 export interface TraceTarget {
   mode: TargetMode;
@@ -32,16 +33,47 @@ export interface TraceTarget {
   readonly received: string[];
   readonly paths: string[];
   readonly authorizations: (string | undefined)[];
+  /** Each request's method and fixed ingestion header, in order. */
+  readonly methods: string[];
+  readonly ingestion: (string | undefined)[];
+  /** Trace ids the target holds: stored by an export, gone by a delete it did not skip. */
+  readonly stored: Set<string>;
   readonly origin: string;
   readonly custody: Custody;
   readonly canary: string;
   readonly deliver: Deliver;
+  readonly expiry: ExpiryPorts;
   close(): Promise<void>;
 }
 
 export const TRACE_KEY: Buffer = Buffer.from('aw13-test-trace-key-not-a-secret');
 
-function answer(target: TraceTarget, response: import('node:http').ServerResponse): void {
+/**
+ * The trace store's side: an export stores its trace ids; a delete removes
+ * them unless the target is `skipping` (a success reply for work its guard
+ * skipped); a read of one trace answers 404 once it is gone.
+ */
+function store(target: TraceTarget, method: string, url: string, body: string): number {
+  if (method === 'POST') {
+    for (const [, id] of body.matchAll(/"traceId":"([0-9a-f]{32})"/gu)) target.stored.add(id ?? '');
+  } else if (method === 'DELETE' && target.mode !== 'skipping') {
+    for (const id of (JSON.parse(body) as { traceIds: string[] }).traceIds)
+      target.stored.delete(id);
+  } else if (method === 'GET') {
+    return target.stored.has(url.split('/').at(-1) ?? '') ? 200 : 404;
+  }
+  return 200;
+}
+
+function answer(
+  target: TraceTarget,
+  response: import('node:http').ServerResponse,
+  status: number,
+): void {
+  if (status === 404) {
+    response.writeHead(404, { 'content-type': 'application/json' }).end('{}');
+    return;
+  }
   switch (target.mode) {
     case 'redirect':
       response.writeHead(307, { location: 'http://127.0.0.1:1/elsewhere' }).end();
@@ -71,18 +103,25 @@ async function listen(
     const parts: Buffer[] = [];
     request.on('data', (chunk: Buffer) => parts.push(chunk));
     request.on('end', () => {
-      received.push(Buffer.concat(parts).toString('utf8'));
+      const body = Buffer.concat(parts).toString('utf8');
+      received.push(body);
       target.paths.push(request.url ?? '');
       target.authorizations.push(request.headers.authorization);
+      target.methods.push(request.method ?? '');
+      target.ingestion.push(request.headers['x-langfuse-ingestion-version'] as string | undefined);
+      const status =
+        target.mode === 'ok' || target.mode === 'skipping'
+          ? store(target, request.method ?? '', request.url ?? '', body)
+          : 200;
       if (target.mode === 'slow') {
-        void sleep(2_000).then(() => answer(target, response));
+        void sleep(2_000).then(() => answer(target, response, status));
         return;
       }
       if (target.mode === 'down') {
         request.socket.destroy();
         return;
       }
-      answer(target, response);
+      answer(target, response, status);
     });
   });
   await new Promise<void>((resolve) => {
@@ -110,7 +149,7 @@ async function custodyFor(folder: string, port: number, canary: string): Promise
   );
   return await startCustody({
     credentialsFile,
-    destinations: [{ key: 'trace_target', origin: `http://127.0.0.1:${String(port)}` }],
+    destinations: [traceDestination(`http://127.0.0.1:${String(port)}`)],
   });
 }
 
@@ -120,7 +159,15 @@ export async function openTraceTarget(): Promise<TraceTarget> {
   const received: string[] = [];
   const paths: string[] = [];
   const authorizations: (string | undefined)[] = [];
-  const target = { mode: 'ok', received, paths, authorizations } as TraceTarget;
+  const target = {
+    mode: 'ok',
+    received,
+    paths,
+    authorizations,
+    methods: [],
+    ingestion: [],
+    stored: new Set<string>(),
+  } as unknown as TraceTarget;
   const { server, port } = await listen(target, received);
   const custody = await custodyFor(folder, port, canary);
   return Object.assign(target, {
@@ -129,6 +176,7 @@ export async function openTraceTarget(): Promise<TraceTarget> {
     canary,
     // The composition root's delivery; 500 ms so the slow case is quick.
     deliver: deliverThrough(custody, 500),
+    expiry: expiryThrough(custody, 500),
     close: async () => {
       await custody.stop();
       await new Promise<void>((resolve) => {

@@ -65,9 +65,13 @@ describe('CQ-8 runtime structure', () => {
     const parts = sourceFiles(join(RUNTIME, 'recovery'));
     expect(parts.map((file) => relative(RUNTIME, file)).toSorted()).toEqual([
       'recovery/authority-loss.ts',
+      // AW-10: a broker call as its step's effect: the sweep's, the pass's and a person's half.
+      'recovery/broker-effect.ts',
       'recovery/classifier.ts',
       // T3e1: a drop, and the work coming back from it.
       'recovery/drop.ts',
+      // The effect register's lookup type, a leaf so broker-effect and reconcile import no cycle.
+      'recovery/effect-lookup.ts',
       'recovery/lease-retirement.ts',
       // T3d1: a person's recorded outcome, and the pass's reconciliation phase.
       // T3e2: one report per outage.

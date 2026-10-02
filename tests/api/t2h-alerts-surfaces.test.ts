@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // T2h through the served API and the command line: the worker proposes, a
-// person approves, the worker applies it once and its observed cost settles.
-// That settlement's one alert reads the same through `task.read` over HTTP and
-// `task.queue` through the command line's client. A real second business,
+// person approves, the worker hands the plan's work back and the person
+// launches it (AW-08), and the worker applies it once and its observed cost
+// settles. The task's alerts, that settlement's one among them, read the same
+// through `task.read` over HTTP and `task.queue` through the command line's client. A real second business,
 // read by its own member's token, answers its queue (200) with none of it.
 
 import { randomUUID } from 'node:crypto';
@@ -17,6 +18,7 @@ import { readIdentity } from '../../apps/api/identity.ts';
 import { createCli, type Transport } from '../../apps/cli/client.ts';
 import { createWorker } from '../../apps/worker/worker.ts';
 import { SYNTHETIC_USAGE } from '../../apps/worker/usage.ts';
+import { launchThrough } from '../support/launch-worker.ts';
 import { enrol, grantTo, installSpine } from '../commands/fixture.ts';
 import { insertBusiness } from '../identity/fixture.ts';
 import {
@@ -124,18 +126,22 @@ describe.skipIf(serverUrl === undefined)('T2h: the alert on every surface', () =
       note: 'approve this version',
     });
     expect(decided.status, JSON.stringify(decided.body)).toBe(200);
+    // AW-08: the worker hands the plan's work back; the person's accept is the launch.
+    await launchThrough(worker, taskId, async (body) => {
+      const launch = await asPerson('task.decide', body);
+      expect(launch.status, JSON.stringify(launch.body)).toBe(200);
+    });
     const applied = await worker.applyOnce(taskId);
     if (!('applied' in applied)) throw new Error(`apply: ${JSON.stringify(applied)}`);
 
     const read = await asPerson('task.read', { recordId: taskId });
     const onPage = (read.body['task'] as { alerts: Record<string, unknown>[] }).alerts;
-    expect(onPage).toHaveLength(1);
-    expect(onPage[0]).toMatchObject({
-      taskId,
-      kind: 'settled',
-      waitingReason: null,
-      causeId: applied.applied.attemptId,
-    });
+    // Two transitions (AW-08): the plan's work handed back for review, and the
+    // launch settled; the launch's alert names the attempt the worker applied.
+    expect(onPage).toHaveLength(2);
+    expect(onPage.filter((alert) => alert['causeId'] === applied.applied.attemptId)).toEqual([
+      expect.objectContaining({ taskId, kind: 'settled', waitingReason: null }),
+    ]);
 
     const cli = createCli({ transport, businessKey: BUSINESS_KEY, credential: personToken });
     const queue = await cli.run('task.queue', {});

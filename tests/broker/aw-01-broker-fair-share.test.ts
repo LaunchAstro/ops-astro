@@ -7,6 +7,15 @@
 // answers one number (no id, no business), and the application reaches it
 // only by taking that role. Two businesses of one installation share one
 // database here, as they do in production.
+//
+// The ticket's `AW-01 fair share and durable ceilings` is these cases, under
+// the names the SL11 handback pins: a business's calls never take another's
+// share (`with another business in flight, ...` and `two businesses at once
+// for the last room ...`); the wait is visible, RATE_LIMITED with its retry
+// (`a route's ceiling holds across businesses, ...`); and the ceiling survives
+// a restart, a fresh backend reading the same count, in
+// tests/runtime/aw-01-durable-limit.test.ts (`two transactions of one business
+// at the limit admit exactly one, ...`).
 
 import { beforeAll, expect, it as vitestIt } from 'vitest';
 import {

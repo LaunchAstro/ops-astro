@@ -20,6 +20,7 @@ import type {
   AssistantOffer,
   AssistantPanelProps,
 } from './assistant/types.ts';
+import { Icon } from '../primitives/Icon.tsx';
 import { Asker } from './assistant/asker.tsx';
 import { TabRow } from './assistant/tab-row.tsx';
 import { Transcript } from './assistant/transcript.tsx';
@@ -71,7 +72,7 @@ function Close(props: { readonly onClose: () => void }): ReactElement {
     <>
       <span className="aip__actdiv" aria-hidden="true" />
       <button
-        className="aip__act"
+        className="aip__act aip__x"
         type="button"
         data-assistant="close"
         title="Close the panel"
@@ -80,7 +81,7 @@ function Close(props: { readonly onClose: () => void }): ReactElement {
           props.onClose();
         }}
       >
-        <span aria-hidden="true">×</span>
+        <Icon name="cross-small" />
       </button>
     </>
   );
@@ -100,7 +101,12 @@ function Head(props: {
   return (
     <Row className="aip__head">
       <div className="aip__id">
-        {onClose === undefined ? null : <span className="aip__title">Agent</span>}
+        {onClose === undefined ? null : (
+          <>
+            <Icon name="sparkles" />
+            <span className="aip__title">Agent</span>
+          </>
+        )}
         <ModelPicker chat={props.chat} offer={props.offer} onModel={props.onModel} />
       </div>
       <div className="aip__acts">
@@ -114,7 +120,7 @@ function Head(props: {
             if (props.chat !== undefined) props.onAddPage(props.chat.key);
           }}
         >
-          <span aria-hidden="true">Page</span>
+          <Icon name="eye" size="sm" />
         </button>
         {onClose === undefined ? null : <Close onClose={onClose} />}
       </div>
@@ -169,6 +175,7 @@ export function AssistantPanel(props: AssistantPanelProps): ReactElement {
         </p>
       )}
       <Provenance address={props.address ?? null} citation={props.citation} />
+      {props.allowance}
       <Transcript messages={chat?.messages ?? NO_MESSAGES} />
       <Asker
         // A new draft, or another tab, starts the field again.

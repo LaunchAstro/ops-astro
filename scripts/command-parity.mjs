@@ -20,6 +20,9 @@ import { runRead } from '../packages/core-commands/src/reads/dispatch.ts';
 import { createApi } from '../apps/api/app.ts';
 import { createCli } from '../apps/cli/client.ts';
 import { OperationsClient, READ_NAMES } from '../apps/web/src/operations/client.ts';
+import { handoffFailures } from './command-handoffs.mjs';
+
+export { handoffFailures } from './command-handoffs.mjs';
 
 const WEB = resolve(import.meta.dirname, '..', 'apps', 'web', 'src');
 // transport, addresses
@@ -170,6 +173,9 @@ const OPERANDS = {
   'task.receipt': { attemptId: 'a' },
   'preset.plan': { recordTypeKey: 'preset', presetKey: 'p', fields: [] },
   'task.ledger': { before: null, timeZone: 'Australia/Brisbane', query: null },
+  'definition.attribution': { digest: 'a'.repeat(64) },
+  'trace.read': { recordId: 'r' },
+  'harness.read': { runId: 'r' },
   'privacy.draft_breach_notices': {
     incidentId: '00000000-0000-4000-8000-000000000000',
     oaic: { name: 'o', address: 'a' },
@@ -276,7 +282,8 @@ export function run(
   const unparsed = [];
   const uses = scanUses(files, namespaces, unparsed);
   const rows = buildCatalogue(uses);
-  return { rows, failures: [...unparsed, ...checkParity(rows, realSurfaces(uses))] };
+  const failures = [...unparsed, ...checkParity(rows, realSurfaces(uses)), ...handoffFailures()];
+  return { rows, failures };
 }
 
 if (process.argv[1] === import.meta.filename) {

@@ -41,6 +41,58 @@ export {
   type InstructionSource,
 } from './definitions.ts';
 export {
+  acceptPlan,
+  type PlanAccepted,
+  type PlanAcceptRequest,
+  type PlanAcceptResult,
+} from './plan-accept.ts';
+export {
+  delegateChild,
+  type ChildPickup,
+  type ChildWorkResult,
+  type DelegateChildRequest,
+} from './child-work.ts';
+export {
+  childResults,
+  childStateOf,
+  handBackChild,
+  PARENT_FAULT,
+  type ChildHandback,
+  type ChildResult,
+  type ChildStanding,
+} from './child-handback.ts';
+export {
+  DELEGATION_DEPTH_BUILT,
+  enterCandidates,
+  HARNESS_PINNED_WINDOW,
+  readTrigger,
+  type CandidateEntry,
+  type TriggerFigures,
+  type TriggerLimb,
+  type TriggerReading,
+  type WorkShape,
+} from './harness-trigger.ts';
+export {
+  boundPlanOf,
+  planRecordOf,
+  PLAN_TEXT_LIMIT,
+  type BoundPlan,
+  type PlanRecord,
+  type PlanRefusal,
+  type PlanStep,
+} from './plan-record.ts';
+export {
+  PLAN_CANDIDATES,
+  projectedPlan,
+  readProjectedPlan,
+  type ProjectedPlan,
+} from './plan-binding.ts';
+export {
+  configuredInstructionSource,
+  directorySource,
+  INSTRUCTION_ROOT_VARIABLE,
+} from './instruction-root.ts';
+export {
   readPinned,
   type PinnedRead,
   type ReadAuditNote,
@@ -55,10 +107,11 @@ export {
 } from './heartbeat.ts';
 export { leaseReason, NOT_OWNED_FIX } from './lease-ownership.ts';
 export { dispatch, EFFECT_OPERATIONS, type Dispatched, type DispatchRequest } from './dispatch.ts';
+export { isReviewedOutput, launchNotDecided } from './reviewed-output.ts';
 export { observe, type AppliedEffect, type Observed, type ObserveRequest } from './observe.ts';
 export { readReceipt, receiptTask, type Receipt } from './receipt.ts';
 export { readAlerts, type Alert } from './alerts.ts';
-export { priceUsage, SYNTHETIC_PRICES, type Usage } from './price-book.ts';
+export { PRICE_BOOK_CURRENCY, priceUsage, SYNTHETIC_PRICES, type Usage } from './price-book.ts';
 export { openEnvelopeOf, topUp, type Settlement, type TopUp, type TopUpRequest } from './budget.ts';
 export { CRASH_POINT_VARIABLE, crashPointAfterCommit, crashSeamProblem } from './crash-point.ts';
 export {
@@ -123,6 +176,12 @@ export {
 } from './recovery/outcome.ts';
 export { writeOff, type WriteOffRequest, type WrittenOff } from './recovery/write-off.ts';
 export {
+  readCallDrops,
+  recordPlanningOutcome,
+  withProviderCalls,
+  type CallDrop,
+} from './recovery/broker-effect.ts';
+export {
   cancelAndClassify,
   classifyUnderLocks,
   replayRecordedTransitions,
@@ -161,6 +220,7 @@ export {
   type BudgetStopTopUpRequest,
   type TopUpOutcome,
 } from './budget-answer.ts';
+export { spentNowOf } from './budget-stop.ts';
 export type {
   BudgetAnswerCode,
   BudgetAnswerRequest,
@@ -189,17 +249,30 @@ export {
   TraceRefused,
   derivedId,
   otlp,
+  traceCells,
   traceSpan,
+  type TraceCells,
   type TraceError,
   type TraceSpan,
   type TraceStage,
 } from './trace-span.ts';
 export {
   TRACE_BATCH,
+  TRACE_READ_LIMIT,
   exportOnce,
+  readTaskTrace,
+  type ReadSpan,
   type Deliver,
   type Delivered,
   type ExportOutcome,
   type GapCode,
   type TraceDatabase,
 } from './trace-export.ts';
+export {
+  EXPIRY_PAGE,
+  expireOnce,
+  TRACE_WINDOW_DAYS,
+  type ExpiryCode,
+  type ExpiryPorts,
+  type RetentionBatch,
+} from './trace-retention.ts';

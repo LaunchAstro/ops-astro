@@ -148,6 +148,20 @@ services:
     ports: !reset []
     environment:
       MINIO_ROOT_PASSWORD: ${TRACE_TARGET_MINIO_PASSWORD:?}
+      # The store's own client, signed in with the same required secret, for the rule below.
+      MC_HOST_local: http://${MINIO_ROOT_USER:-minio}:${TRACE_TARGET_MINIO_PASSWORD:?}@localhost:9000
+    # The raw event bucket's lifecycle rule (contract 7.2.1 and 7.5): on the
+    # OpenTelemetry path nothing else ever deletes a raw event, so the rule is
+    # that copy's whole deletion path: 14 days on the prefix the worker writes.
+    # It is set as the store starts; if it cannot be set, the container stops.
+    command: !override
+      - -c
+      - >-
+        mkdir -p /data/langfuse
+        && { minio server --address ":9000" --console-address ":9001" /data & }
+        && until mc ready local; do sleep 1; done
+        && mc ilm rule add --expire-days 14 --prefix events/ local/langfuse
+        && wait
 
   redis:
     image: docker.io/valkey/valkey:8@sha256:3fbd2e3e4b6e85e046c1e7c215e8f79087bc0357789184305806664e320996f3

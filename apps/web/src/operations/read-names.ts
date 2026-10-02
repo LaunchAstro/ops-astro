@@ -47,6 +47,10 @@ export const READ_NAMES = [
   'conversation.read',
   // The caller's own conversations, for the tab row (MP-7-11).
   'conversation.list',
+  // The drawer's planning allowance line (AW-04, U10).
+  'conversation.allowance',
+  // Which runs read an instruction file, by digest: pre-review (AW-04).
+  'definition.attribution',
   // The business's tag vocabulary, which the tag field suggests from (MP-4-11).
   'tag.list',
   // The reader's own to-dos, the Projects dock panel's list (MP-7-1).
@@ -73,6 +77,10 @@ export const READ_NAMES = [
   // Items no path reaches (INB-1e), for `operations:read`; the operations view
   // (C55) draws them.
   'inbox.unattended',
+  // A task's runs' trace (AW-13 readers), for `operations:read`.
+  'trace.read',
+  // The harness test's result on one run (AW-12); no screen draws it yet.
+  'harness.read',
 ] as const;
 
 /**
