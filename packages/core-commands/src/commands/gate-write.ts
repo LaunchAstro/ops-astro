@@ -110,9 +110,10 @@ async function lockedForOperator(
 
 /**
  * Whether `evidence` links the published version of `document` in the
- * caller's business, where the breach runbook also fits on one page. The host
- * is the installation's own and is not checked; the path, version and digest
- * are.
+ * caller's business, where the breach runbook also fits on one page. A link
+ * with a user name, a password, a port other than 443 or a fragment is not
+ * one. The host is not checked: commands are not told the host the
+ * installation serves (`SERVED_HOST` stays at the function's entry).
  */
 async function linksPublished(
   tx: TenantQuery,
@@ -127,9 +128,16 @@ async function linksPublished(
     [tx.businessId],
   );
   const url = URL.canParse(evidence) ? new URL(evidence) : undefined;
+  // The URL parser drops a bare `#` and the default port, so the text is read for the first.
+  const plain =
+    url !== undefined &&
+    !evidence.includes('#') &&
+    url.username === '' &&
+    url.password === '' &&
+    url.port === '';
   return (
     business !== undefined &&
-    url !== undefined &&
+    plain &&
     `${url.pathname}${url.search}` === legalVersionPath(business.key, published)
   );
 }

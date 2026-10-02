@@ -2475,7 +2475,9 @@ statement? }`: one of the eight items, three closing lines or the procedure
   and `overseas-register` the privacy policy's, `privacy-act-statement` the
   data-handling statement's, each `https://<host>/legal/<businessKey>/<document>/?version=<v>&digest=<sha256>`,
   and `breach-runbook` the runbook's, `https://<host>/settings/operations/?runbook=<v>&digest=<sha256>`,
-  where the runbook fits on one page (1,000 words). Any other link, or none
+  where the runbook fits on one page (1,000 words). A link with a user name,
+  password, port other than 443 or fragment is refused; the host is not
+  checked, since commands are not told the served host. Any other link, or none
   published, is refused `FIELD_VALUE_INVALID` 422 naming `evidence`. An item is
   recorded once; a second record is refused `GATE_ITEM_ALREADY_RECORDED` 409
   and the first evidence stays.
