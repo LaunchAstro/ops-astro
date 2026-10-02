@@ -47,7 +47,9 @@ const DEFAULT_MAX_BYTES = 16 * 1024;
 const BAN_DURATION = '876000h';
 const YEAR_MS = 365 * 24 * 60 * 60 * 1000;
 
-type Sent = { readonly status: number; readonly text: string } | { readonly fault: ProviderFault };
+type Sent =
+  | { readonly status: number; readonly text: string }
+  | { readonly fault: ProviderFault; readonly factorGone?: true };
 
 interface Destination {
   readonly base: URL;
@@ -77,7 +79,12 @@ export function createGoTrueLogins(options: GoTrueLoginOptions): LoginProvider {
     if (!isUserId(subject) || !isUserId(factorId)) return { ok: false, fault: 'refused' };
     const path = `/admin/users/${subject}/factors/${factorId}`;
     const sent = await call(to, 'DELETE', path, await options.adminKey());
-    if ('fault' in sent) return { ok: false, fault: sent.fault };
+    // A 404 naming the factor gone is a removal already done (an answer lost before).
+    if ('fault' in sent) {
+      return sent.factorGone === true
+        ? { ok: true, value: undefined }
+        : { ok: false, fault: sent.fault };
+    }
     return namedBack(sent.text, factorId);
   };
   return { endSessions: ban, deactivate: ban, deleteFactor };
@@ -124,6 +131,9 @@ async function call(
   }
   const read = await readBounded(response, to.maxBytes, to.timeoutMs);
   if ('fault' in read) return { fault: read.fault };
+  if (response.status === 404 && factorNotFound(read.text)) {
+    return { fault: 'refused', factorGone: true };
+  }
   if (response.status >= 400 && response.status < 500) return { fault: 'refused' };
   if (!response.ok) return { fault: 'unreachable' };
   return { status: response.status, text: read.text };
@@ -160,6 +170,20 @@ function namedBack(text: string, factorId: string): ProviderAnswer<void> {
       ? (parsed as Readonly<Record<string, unknown>>)['id']
       : undefined;
   return named === factorId ? { ok: true, value: undefined } : { ok: false, fault: 'malformed' };
+}
+
+/** GoTrue's answer that the user holds no such factor, and nothing looser. */
+function factorNotFound(text: string): boolean {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    return (
+      typeof parsed === 'object' &&
+      parsed !== null &&
+      (parsed as Readonly<Record<string, unknown>>)['error_code'] === 'mfa_factor_not_found'
+    );
+  } catch {
+    return false;
+  }
 }
 
 /** GoTrue's user and factor ids: a UUID, and nothing else is sent as one. */

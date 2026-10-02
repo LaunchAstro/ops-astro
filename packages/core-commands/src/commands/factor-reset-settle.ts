@@ -5,8 +5,9 @@
 // database transaction. Tried by the local server as soon as the reset
 // commits, and retried by the endings loop until it is done, as C58's endings
 // are (`access-end.ts`, `settleAccessEndings`). Done is stamped once and never
-// asked again. An answer the adapter does not accept, a throw or a timeout is
-// a fault by its kind alone, and the step stays owed.
+// asked again, and nothing is stamped on a step once it is done. An answer the
+// adapter does not accept, a throw or a timeout is a fault by its kind alone,
+// and the step stays owed.
 
 import type { BusinessId, Database } from '../../../core-records/src/index.ts';
 import type { LoginProvider, SettleReport } from './access-end.ts';
@@ -22,12 +23,13 @@ interface Owed {
 }
 
 /**
- * One pass over this business's resets with the step owed. The claim is one
- * statement: a row it returns is one no other settle has claimed inside
- * `claimSeconds`, and a second settle waiting on the row lock re-reads the
- * claim and passes over it. The provider is called outside any transaction,
- * and what it answered is stamped in a second one; `coalesce` keeps the first
- * stamp, so a step done is never re-dated.
+ * One pass over this business's resets with the step owed, claimed one row
+ * at a time (SEC-B1 M4): a row is claimed just before its call, so a pass of
+ * slow calls never lets a claim lapse on a row still waiting its turn. A claim
+ * takes a row no other settle has claimed inside `claimSeconds`, and skips one
+ * another settle holds locked. The provider is called outside any
+ * transaction, and its answer stamped in a second one only while the row is
+ * still owed, so a late answer never re-dates a step done or puts a fault on it.
  */
 export async function settleFactorResets(
   database: Database,
@@ -40,39 +42,60 @@ export async function settleFactorResets(
   } = {},
 ): Promise<SettleReport> {
   const claimSeconds = options.claimSeconds ?? FACTOR_RESET_CLAIM_SECONDS;
-  const claimed = await database.withBusiness(
+  const tried: string[] = [];
+  let settled = 0;
+  for (;;) {
+    // eslint-disable-next-line no-await-in-loop -- one reset at a time, each claimed before its call
+    const row = await claimNext(database, businessId, claimSeconds, options.only ?? null, tried);
+    if (row === undefined) break;
+    tried.push(row.id);
+    // eslint-disable-next-line no-await-in-loop -- one reset at a time, each its own call
+    const answer = await removed(provider, row);
+    // eslint-disable-next-line no-await-in-loop -- its stamp, before the next is claimed
+    await database.withBusiness(businessId, async (tx) => {
+      await tx.query(
+        `update public.factor_resets
+            set done_at = case when $3 then now() end, last_fault = $4
+          where business_id = $1 and id = $2 and done_at is null`,
+        [businessId, row.id, answer.ok, answer.ok ? null : answer.fault],
+      );
+    });
+    if (answer.ok) settled += 1;
+  }
+  return { attempted: tried.length, settled, owed: tried.length - settled };
+}
+
+/** The next owed reset no other settle holds, claimed; none when nothing is left. */
+async function claimNext(
+  database: Database,
+  businessId: BusinessId,
+  claimSeconds: number,
+  only: readonly string[] | null,
+  tried: readonly string[],
+): Promise<Owed | undefined> {
+  const [row] = await database.withBusiness(
     businessId,
     async (tx) =>
       await tx.query<Owed>(
         `update public.factor_resets r
             set attempts = r.attempts + 1, attempt_started_at = now()
            from public.logins l
-          where r.business_id = $1 and l.business_id = r.business_id and l.id = r.login_id
-            and r.done_at is null
-            and (r.attempt_started_at is null
-                 or r.attempt_started_at <= now() - make_interval(secs => $2))
-            and ($3::uuid[] is null or r.id = any($3::uuid[]))
+          where r.id = (
+                  select o.id from public.factor_resets o
+                   where o.business_id = $1 and o.done_at is null
+                     and (o.attempt_started_at is null
+                          or o.attempt_started_at <= now() - make_interval(secs => $2))
+                     and ($3::uuid[] is null or o.id = any($3::uuid[]))
+                     and o.id <> all($4::uuid[])
+                   order by o.reset_at, o.id
+                   limit 1
+                   for update skip locked)
+            and r.business_id = $1 and l.business_id = r.business_id and l.id = r.login_id
           returning r.id, l.subject, r.provider_factor_id`,
-        [businessId, claimSeconds, options.only ?? null],
+        [businessId, claimSeconds, only, tried],
       ),
   );
-  let settled = 0;
-  for (const row of claimed) {
-    // eslint-disable-next-line no-await-in-loop -- one reset at a time, each its own call
-    const answer = await removed(provider, row);
-    // eslint-disable-next-line no-await-in-loop -- its stamp, before the next is asked
-    await database.withBusiness(businessId, async (tx) => {
-      await tx.query(
-        `update public.factor_resets
-            set done_at = case when $3 then coalesce(done_at, now()) else done_at end,
-                last_fault = $4
-          where business_id = $1 and id = $2`,
-        [businessId, row.id, answer.ok, answer.ok ? null : answer.fault],
-      );
-    });
-    if (answer.ok) settled += 1;
-  }
-  return { attempted: claimed.length, settled, owed: claimed.length - settled };
+  return row;
 }
 
 /** The removal. An adapter without one, or a throw, is a fault by its kind, never its words. */
