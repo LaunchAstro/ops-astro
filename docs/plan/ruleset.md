@@ -66,7 +66,10 @@ proof. Check that each expected result exists for the final revision.
 `.github/required-checks.json` records the 13 required checks, the code
 scanning rule and the queue settings as the live ruleset holds them; a change
 that drops a check from it fails `CQ-13 no check dropped`. `command parity`
-and `visual drift` run on every pull request but are not required.
+and `visual drift` run on every pull request but are not required: they
+joined this file's list without ever reaching the live ruleset. Making them
+required changes what blocks every open pull request, so it waits until the
+batches in flight have landed.
 
 Do not require a Copilot check by name. Copilot's review runs from the
 separate review ruleset. The check run it produces does not count towards a
