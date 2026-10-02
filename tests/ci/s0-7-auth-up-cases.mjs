@@ -192,3 +192,14 @@ test("the contract's own stopped Postgres is the same cluster: started, and GoTr
   assert.match(calls, /^start ops-astro-local-pg$/mu);
   assert.doesNotMatch(calls, AUTH_REPLACED);
 });
+
+// GoTrue's own MFA endpoints take the app's bearer directly, so the provider
+// holds the same line the app does: one verified factor per login, and a
+// tighter verify rate. The enrolled-factor limit stays GoTrue's own until #300.
+test('auth-up starts GoTrue with one verified factor and the MFA verify rate limit', () => {
+  const calls = runToEnd(null);
+  const started = calls.split('\n').find((line) => AUTH_STARTED.test(line)) ?? '';
+  assert.match(started, / -e GOTRUE_MFA_MAX_VERIFIED_FACTORS=1 /u);
+  assert.match(started, / -e GOTRUE_MFA_RATE_LIMIT_CHALLENGE_AND_VERIFY=5 /u);
+  assert.doesNotMatch(calls, /MAX_ENROLLED_FACTORS/u);
+});

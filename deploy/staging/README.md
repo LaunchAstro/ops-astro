@@ -213,6 +213,19 @@ the built output's own declaration, which `buildOutputProblems` holds every
 function to before the deploy. It is not a region Vercel reports. The folder,
 `.vercel` included, is removed either way.
 
+The sign-in server's own MFA endpoints take the app's bearer directly, so
+hosted staging, and production later, take the two settings
+`scripts/local/auth-up.sh` gives the local one. This change applies neither
+there; both are an owner sitting item. `GOTRUE_MFA_RATE_LIMIT_CHALLENGE_AND_VERIFY=5`
+needs a forwarded-address setting (`GOTRUE_RATE_LIMIT_HEADER`) beside it, or
+it counts nothing, and even then its fixed burst of 30 a minute per address
+cannot match the app's five wrong codes in fifteen minutes, which stays the
+real guard. `GOTRUE_MFA_MAX_VERIFIED_FACTORS=1` waits for #300 (reconciling
+factors the provider holds and the record does not), as ruled on 1 October:
+until then a code the provider accepts and the record refuses leaves a
+verified factor there, and the limit would block that person's next
+enrolment. The enrolled-factor limit stays GoTrue's default until #300 too.
+
 `scripts/ops/web-deploy.mjs --maintenance`, behind the same gate, puts the
 maintenance page on the main address the same way (`maintenance recorded`)
 without asking the database: one static page for every path, nothing that
