@@ -3068,6 +3068,48 @@ failed, so a scheduler sees the backlog. It refuses to start without `DATABASE_U
 calling the provider at once, and a step done is stamped once and never asked
 again (`settleAccessEndings`, `commands/access-end.ts`).
 
+### Resetting a member's authenticator (C59)
+
+`access.reset_factor` takes `{ operationId, holderId }` under `settings:manage`,
+never an agent's: the tracked action `second factor reset (person, by)`,
+audited against the caller with the member as its subject. It asks the
+caller's own step-up, a sign-in with the second factor inside the last 60
+minutes, whatever `money_step_up_required` holds (`STEP_UP_REQUIRED` 403). A
+malformed id is `FIELD_VALUE_INVALID` 422; a holder with no active membership
+in this business, another business's included, is `NOT_FOUND` 404 naming
+`holderId`; a member with no verified factor here is `FACTOR_NOT_ENROLLED` 409.
+The caller's own person, a member holding a business-wide grant the caller
+does not hold (no reset upward: an owner may reset another owner, a peer an
+equal-grant peer, never a lesser `settings:manage` holder the owner,
+ORCH66-FACTORM2), a member whose sign-in login is not exactly one, and a login
+still live in another business (mapped there, its access not ended) are
+`FACTOR_RESET_REFUSED` 409, in one set of words for every reason, which never
+say where else the login is; nothing is written or sent.
+
+In one transaction, under the access lock, the member's live factor is
+recorded removed (here and by subject, 0064), every session of theirs is ended
+(0057, 0063), and one reset row owes the provider GoTrue's admin removal of
+that factor (`DELETE /admin/users/<subject>/factors/<factor id>`, 0100). It
+answers `{ resetId, providerStep }`: `owed` from the act, `done` when the local
+server, holding the admin key, sent the removal as soon as the act committed.
+Hosted, the endings loop sends it each `ACCESS_ENDING_RETRY_SECONDS`
+(`retryOwedSteps`, beside the access endings). Each owed row is claimed for 30
+seconds just before its own call, so two settles never call at once for one
+reset and a slow pass never lets a later row's claim lapse; done is stamped
+once and never asked again, and an answer that comes back after the row is
+done stamps nothing. Done is the factor named back by its id, or GoTrue's 404
+with `error_code` `mfa_factor_not_found` (the factor already gone, an earlier
+answer lost); anything else, any other 404 included, is a fault by its kind
+alone, with the step left owed (`settleFactorResets`,
+`commands/factor-reset-settle.ts`). The live-elsewhere check runs inside the
+command's transaction through `public.factor_login_live_elsewhere(login)`, a
+security definer that takes a login id of the transaction's own business,
+never a subject, reads the subject itself and answers one boolean: true with
+no business set or an id that is not a login here. PUBLIC may not execute it;
+the application role may. Any path that ever maps a login into a business must
+first take the `second-factor-subject` lock the reset holds, so the check
+holds to the commit.
+
 ### The overseas-services register (C81, SP-25)
 
 `privacy.set_overseas_service` takes `{ operationId, service, receives, where,
