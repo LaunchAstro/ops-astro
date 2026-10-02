@@ -33,7 +33,7 @@ it('MP-1-1 required app drift proves the signed-in gallery in dark at every widt
 
   const workflow = read('.github/workflows/ci.yml');
   const job = workflow.split(/^  visual-drift:\s*$/mu)[1]?.split(/^  [\w-]+:\s*$/mu)[0] ?? '';
-  expect(job, 'the required visual drift job is missing').toMatch(/name: visual drift/u);
+  expect(job, 'the visual drift job is missing').toMatch(/name: visual drift/u);
   expect(job).toMatch(/node tests\/visual\/app-drift-cases\.ts/u);
   const command =
     job

@@ -19,7 +19,7 @@ const BINDS = 'The review must cover the head being merged';
 const CODEQL = read('.github/workflows/codeql.yml');
 const list = JSON.parse(read('.github/required-checks.json')) as {
   required_status_checks: { context: string; integration_id: number }[];
-  code_scanning: { tool: string }[];
+  code_scanning: { tool: string; alerts_threshold: string; security_alerts_threshold: string }[];
 };
 const required = list.required_status_checks;
 const scanning = list.code_scanning;
@@ -223,7 +223,11 @@ describe('merge group: CodeQL reports on a group', () => {
   it('reports no Actions check named CodeQL, and CodeQL gates as a code scanning rule, not a required check', () => {
     expect(CODEQL).not.toMatch(/^ {4}name: CodeQL$/mu);
     expect(required.find((c) => c.context === 'CodeQL')).toBeUndefined();
-    expect(scanning.map((t) => t.tool)).toContain('CodeQL');
+    expect(scanning).toContainEqual({
+      tool: 'CodeQL',
+      alerts_threshold: 'errors',
+      security_alerts_threshold: 'high_or_higher',
+    });
   });
 
   it('only the analysis may write, and only its results', () => {

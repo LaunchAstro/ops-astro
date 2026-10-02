@@ -1,8 +1,9 @@
 # Configure and prove the merge policy
 
-This is the intended hosted configuration. This document claims no effective
-repository settings or enforcement results. Configure and test them
-only during an authorised hosted preparation step.
+This is the intended hosted configuration. Only the merge queue section and
+`.github/required-checks.json` record live settings, as read from the ruleset
+on 2 October 2026. Nothing here claims enforcement results. Configure and test
+the rest only during an authorised hosted preparation step.
 
 ## Configure two rulesets
 
@@ -38,11 +39,11 @@ required check is green; automatic merging would remove the actor entirely.
 ## Merge through the queue
 
 Since 2 October 2026 (AEST) every pull request reaches `main` through GitHub's
-merge queue. The queue tests each pull request on top of `main` and the entries ahead
-of it, merges by merge commit, and drops an entry whose checks fail. Its
-settings: build at most 2 groups at once, merge 1 to 3 entries per group, wait
-up to 5 minutes for a group to fill, and fail an entry whose checks have not
-reported within 90 minutes. A pull request joins the queue only when an agent
+merge queue. The queue tests each pull request on top of `main` and the entries
+ahead of it, merges by merge commit, and drops an entry whose checks fail. Its
+settings: build at most 2 pull requests at once, merge 1 to 3 per group, and
+fail an entry whose checks have not reported within 90 minutes. A group needs
+only one entry, so the 5-minute wait for more never holds a merge. A pull request joins the queue only when an agent
 enqueues it, so the merge stays an invoked act.
 
 "Require branches to be up to date" is off
