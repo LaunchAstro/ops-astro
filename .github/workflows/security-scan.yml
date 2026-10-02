@@ -51,7 +51,6 @@ jobs:
             "$RUNNER_TEMP/scan-login.json" "$RUNNER_TEMP/scan-token" >> "$GITHUB_ENV"
           node scripts/security/api-definition.mjs --target "$TARGET" --only "$STAGING_WEB_URL" \
             --business alpha --out "$WORK/api-definition.json"
-          # Every later step scans the origin that was checked, not the raw input.
           echo "SCAN_TARGET=$(node -e 'console.log(new URL(process.env.TARGET).origin)')" >> "$GITHUB_ENV"
 
       - name: ZAP baseline scan

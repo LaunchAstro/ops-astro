@@ -42,7 +42,6 @@ export interface ApiDefinition {
   readonly components: { readonly securitySchemes: Readonly<Record<string, unknown>> };
 }
 
-/** This machine, and Docker's name for it from inside the ZAP container. */
 const LOCAL_HOSTS: ReadonlySet<string> = new Set(['127.0.0.1', 'host.docker.internal']);
 const BUSINESS_KEY = /^[a-z0-9][a-z0-9-]{0,62}$/u;
 

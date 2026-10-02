@@ -161,7 +161,6 @@ async function endRows(record, providerEmail) {
           where l.provider = 'supabase' and l.subject = $1`,
         [record.userId],
       );
-      // The sign-in is checked even when nothing is mapped to it; each person too.
       const why = [undefined, ...mapped.map((row) => row.display_name)]
         .map((displayName) => removalRefusal({ email: record.email, providerEmail, displayName }))
         .find((each) => each !== undefined);
