@@ -168,7 +168,9 @@ if exists "${AUTH_CONTAINER}" && ! serves_this_postgres "${AUTH_CONTAINER}"; the
   echo "auth-up: ${AUTH_CONTAINER} was started against another ${PG_CONTAINER}; replacing it so it migrates this one"
   docker rm -f "${AUTH_CONTAINER}" >/dev/null
 fi
-if running "${AUTH_CONTAINER}" && { ! docker inspect "${AUTH_CONTAINER}" | grep -qF "GOTRUE_JWT_ISSUER=${GOTRUE_URL}\"" || ! signs_with_key "${AUTH_CONTAINER}"; }; then
+# One started before the one-verified-factor limit (below) is replaced too.
+if running "${AUTH_CONTAINER}" && { ! docker inspect "${AUTH_CONTAINER}" | grep -qF "GOTRUE_JWT_ISSUER=${GOTRUE_URL}\"" ||
+  ! docker inspect "${AUTH_CONTAINER}" | grep -qF 'GOTRUE_MFA_MAX_VERIFIED_FACTORS=1"' || ! signs_with_key "${AUTH_CONTAINER}"; }; then
   docker rm -f "${AUTH_CONTAINER}" >/dev/null
 fi
 if running "${AUTH_CONTAINER}"; then
@@ -181,6 +183,19 @@ else
   fi
   # GoTrue will not start without a JWT secret. It signs with the key above, so
   # this one is made for the container and kept nowhere.
+  #
+  # GoTrue's own MFA endpoints take the app's bearer directly, so GoTrue
+  # refuses a new enrolment once a login has a verified factor. It checks
+  # only at enrolment: factors enrolled before any is verified can each be
+  # verified, and an orphan the record refused blocks a fresh enrolment until
+  # #300 reconciles it. The enrolled-factor limit stays GoTrue's default until
+  # #300: one could refuse a retried enrolment.
+  # The MFA rate is per minute, tighter than GoTrue's 15, as defence in depth
+  # only. GoTrue counts it per address with a fixed burst of 30, so it cannot
+  # match the app's five wrong codes in fifteen minutes, which stays the real
+  # guard. Without a forwarded-address setting (GOTRUE_RATE_LIMIT_HEADER) it
+  # counts nothing at all, as here: the API sends GoTrue no forwarded address,
+  # so the header would only add a warning to every request.
   docker run -d \
     --name "${AUTH_CONTAINER}" \
     --network "${NETWORK}" \
@@ -206,6 +221,8 @@ else
     -e GOTRUE_MAILER_AUTOCONFIRM=true \
     -e GOTRUE_MAILER_AUTOCONFIRM_ENABLED=true \
     -e GOTRUE_SMTP_HOST= \
+    -e GOTRUE_MFA_MAX_VERIFIED_FACTORS=1 \
+    -e GOTRUE_MFA_RATE_LIMIT_CHALLENGE_AND_VERIFY=5 \
     -e GOTRUE_LOG_LEVEL=info \
     "${AUTH_IMAGE}" >/dev/null
   echo "auth-up: started ${AUTH_CONTAINER}"

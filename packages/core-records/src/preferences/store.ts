@@ -31,16 +31,22 @@ const isColumnWidths = (value: unknown): boolean =>
 export type PreferenceKey =
   | 'appearance'
   | 'rail.width'
+  | 'rail.collapsed'
   | 'dock.width'
   | 'dock.sheetHeight'
   | 'columns.widths'
   | 'tips.enabled'
-  | 'tips.dismissed';
+  | 'tips.dismissed'
+  | 'subtasks.showFinished'
+  | 'history.showTrail'
+  | 'agent.jobList';
 
 export const PREFERENCE_KEYS: { readonly [K in PreferenceKey]: (value: unknown) => boolean } = {
   /** Light, Dark or System; the default, System, is the absence of a row. */
   appearance: (value) => value === 'light' || value === 'dark' || value === 'system',
   'rail.width': isLength,
+  /** The rail folded to its icon strip (MP-2-3); open, the default, is false or no row. */
+  'rail.collapsed': (value) => typeof value === 'boolean',
   'dock.width': isLength,
   'dock.sheetHeight': isLength,
   /** One width per column id. */
@@ -53,6 +59,12 @@ export const PREFERENCE_KEYS: { readonly [K in PreferenceKey]: (value: unknown) 
     value !== null &&
     !Array.isArray(value) &&
     Object.keys(value).length === 0,
+  /** The Agent pane's job list shown or hidden (MP-6-1, CS-6.2); shown is no row. */
+  'agent.jobList': (value) => typeof value === 'boolean',
+  /** A task's finished subtasks shown (MP-4-4, CS-4.27); hidden, the default, is no row. */
+  'subtasks.showFinished': (value) => typeof value === 'boolean',
+  /** The dock task panel's trail shown (MP-4-8, MP-4-16); folded, the default, is no row. */
+  'history.showTrail': (value) => typeof value === 'boolean',
 };
 
 export function isPreferenceKey(key: string): key is PreferenceKey {

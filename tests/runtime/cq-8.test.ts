@@ -110,7 +110,10 @@ describe('CQ-8 runtime structure', () => {
       // C59: a login's one wrong-code lock, keyed by its subject's digest in
       // every business, taken first in a factor route's check transaction.
       'packages/core-commands/src/commands/account-factor-checks.ts',
+      'packages/core-commands/src/commands/conversation-lifecycle.ts',
+      'packages/core-commands/src/commands/occurrence-run.ts',
       'packages/core-commands/src/commands/prepare.ts',
+      'packages/core-custody/src/broker-reserve.ts',
       // C32: the business's one access lock, taken first by every change to
       // who may do what (a grant given, a grant revoked, access ended),
       // inside the handler's transaction.
@@ -125,6 +128,7 @@ describe('CQ-8 runtime structure', () => {
       'packages/core-records/src/operations/overseas-services.ts',
       'packages/core-records/src/tasks/placement.ts',
       'packages/core-records/src/tenancy/database.ts',
+      'packages/core-records/src/tenancy/limit.ts',
       'packages/core-runtime/src/locks.ts',
     ]);
   });

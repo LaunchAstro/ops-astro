@@ -11,9 +11,18 @@
 
 import type { ReactElement, ReactNode } from 'react';
 import { Gallery } from '@launchastro/ui';
-import type { AuthenticatedRouteId, OpenRouteId, ParamsOf, RouteMatch } from './routes.ts';
+import { clientNamedIn } from './client-address.ts';
+import {
+  type AuthenticatedRouteId,
+  type OpenRouteId,
+  type ParamsOf,
+  type RouteMatch,
+} from './routes.ts';
+import type { PanelId } from './panels.ts';
 import type { OperationsClient } from './operations/client.ts';
+import { ConversationScreen } from './screens/Conversation.tsx';
 import { AccessScreen } from './screens/Access.tsx';
+import { ClientsScreen } from './screens/Clients.tsx';
 import { InboxScreen } from './screens/Inbox.tsx';
 import { LegalScreen } from './screens/Legal.tsx';
 import { OperationsScreen } from './screens/Operations.tsx';
@@ -47,6 +56,13 @@ export interface ScreenContext<Id extends AuthenticatedRouteId = AuthenticatedRo
   readonly taskPanel?: TaskPanelHost;
   /** Goes to an address inside the application. */
   readonly navigate: (path: string) => void;
+  /** The whole address the screen is drawn at, query included: the page's, or a panel's place. */
+  readonly address?: string;
+  /**
+   * Opens a dock panel at a place by the gesture law (MP-3-4): false where
+   * that panel has no tab, and absent where there is no dock.
+   */
+  readonly openPanel?: (id: PanelId, beside: boolean, place: string) => boolean;
 }
 
 export const SCREENS: {
@@ -67,6 +83,13 @@ export const SCREENS: {
       />
     </>
   ),
+  'agency:agent-conversation': (context) => (
+    <ConversationScreen
+      client={context.client}
+      grantKey={context.grantKey}
+      conversationId={context.params.conversation}
+    />
+  ),
   'agency:gallery': () => <Gallery />,
   // Settings ▸ General, then the person's own sessions (C58), which post to
   // their own account routes rather than to the settings commands.
@@ -81,7 +104,19 @@ export const SCREENS: {
     </>
   ),
   'agency:inbox': (context) => (
-    <InboxScreen client={context.client} grantKey={context.grantKey} navigate={context.navigate} />
+    <InboxScreen
+      client={context.client}
+      grantKey={context.grantKey}
+      navigate={context.navigate}
+      {...(context.openPanel === undefined ? {} : { openPanel: context.openPanel })}
+    />
+  ),
+  'agency:clients': (context) => (
+    <ClientsScreen
+      client={context.client}
+      grantKey={context.grantKey}
+      at={clientNamedIn(context.address)}
+    />
   ),
   'agency:team': (context) => <TeamScreen client={context.client} grantKey={context.grantKey} />,
   'agency:access': (context) => (

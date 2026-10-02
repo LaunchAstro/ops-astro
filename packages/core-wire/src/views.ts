@@ -24,6 +24,44 @@ import type {
   PresetPlan,
   SettingValueType,
 } from '../../core-records/src/index.ts';
+import type { TaskLedgerView } from './views-agent.ts';
+import type { CheckView, RunPinView, RunReadView, RunScopeView } from './views-run.ts';
+
+// A run's pins, reads, checks and scope, and the task's execution and receipt
+// reads, live in their own module, re-exported here, so this one stays under
+// the 1,000-line cap.
+export type {
+  RunPinView,
+  RunReadView,
+  CheckView,
+  CoveringGrantView,
+  RunScopeView,
+  ExecutionRun,
+  ExecutionEvent,
+  TaskExecutionResult,
+  TaskExecution,
+  ExecutionGraph,
+  ExecutionNode,
+  ReceiptResult,
+} from './views-run.ts';
+
+// The run ledger, conversation and awaiting-review views live in their own
+// module, re-exported here, so this one stays under the 1,000-line cap.
+export type {
+  TaskLedgerView,
+  RunStateView,
+  BudgetStopView,
+  EnvelopeView,
+  ConversationPointerView,
+  WrapUpItemView,
+  WrapUpView,
+  ConversationMessageView,
+  ConversationTabView,
+  ConversationListResult,
+  ConversationReadResult,
+  AwaitingReviewView,
+  AwaitingReviewResult,
+} from './views-agent.ts';
 
 export type {
   PrivacyIncidentView,
@@ -72,6 +110,11 @@ export interface HistoryEntry {
    */
   readonly personId: string | null;
   readonly operation: string;
+  /**
+   * On a `task.duplicate` entry only (MP-4-8): the task it was duplicated
+   * from, for a reader who holds read on that task now; null for anyone else.
+   */
+  readonly duplicatedFrom?: string | null;
 }
 
 /** A task in a list. Everything the detail has except the long text and the history. */
@@ -108,6 +151,8 @@ export interface TaskDetail extends TaskSummary {
   readonly pageLink: string | null;
   /** The time the burn bar measures against, whole minutes (MP-4-8); null when not set. */
   readonly estimateMinutes: number | null;
+  /** The work label's id as `task.set_category` stored it (MP-4-8, CS-4.16); null for none. */
+  readonly category: string | null;
   readonly history: readonly HistoryEntry[];
   /** Oldest first. Empty is a real answer; a denied read never reaches here. */
   readonly comments: readonly CommentView[];
@@ -137,6 +182,15 @@ export interface TaskDetail extends TaskSummary {
   readonly envelope: TaskEnvelope | null;
   /** The task's alerts, newest first (T2h). The detail is the team's, and so are they. */
   readonly alerts: readonly TaskAlert[];
+  /**
+   * The task's token ledger (MP-6-5): each envelope's allowance, what it was
+   * built from, and what is held and spent against it. The per-run rows are the
+   * proposals' reservations, each naming its envelope. Read inside the task
+   * read, so a reader who may not read the task is told nothing of it. Null
+   * for an agent: it names the business's cap, which a delegate on one task is
+   * not shown (I09).
+   */
+  readonly ledger: TaskLedgerView | null;
   /** The derived rank and its calc line (R70, MP-4-9). Worked out at read, never stored. */
   readonly rank: RankView;
   /** The Ad hoc mark (MP-4-10, CS-4.9): billing reads it, and new time entries default to it. */
@@ -232,7 +286,9 @@ export interface TimeEntryView {
 /**
  * One subtask as its parent's page lists it (MP-4-4). `done` is the completed
  * category; `archived` says when and why a step left the count without being
- * done (MP-4-15), and is null for a live one.
+ * done (MP-4-15), and is null for a live one. `awaitingApproval` is true while
+ * a gate on the step's live proposal waits for a decision (MP-5-11's
+ * question): the page draws that step with a note and no tick.
  */
 export interface StepView {
   readonly id: string;
@@ -241,6 +297,7 @@ export interface StepView {
   readonly state: TaskStateView | null;
   readonly done: boolean;
   readonly archived: { readonly at: string; readonly why: string } | null;
+  readonly awaitingApproval: boolean;
   readonly assignee: PersonView | null;
   readonly revision: number;
 }
@@ -265,9 +322,10 @@ export interface TaskEnvelope {
   readonly actualMinor: number;
 }
 
-/** A task's board as the crumb draws it: its title, or that it is withheld. */
+/** A task's board as the crumb draws it: its id and title, or that it is withheld. */
 export type BoardCrumb =
-  { readonly readable: true; readonly title: string | null } | { readonly readable: false };
+  | { readonly readable: true; readonly id: string; readonly title: string | null }
+  | { readonly readable: false };
 
 /**
  * A task's derived rank as its reader is shown it (R70, MP-4-9).
@@ -380,6 +438,10 @@ export interface DecisionLink {
 
 export interface ReservationView {
   readonly id: string;
+  /** The task envelope it holds against (MP-6-5): the per-run rows add up to it. */
+  readonly envelopeId: string;
+  /** The run it holds for: one per-run row of the token panel (MP-6-5). */
+  readonly runId: string;
   readonly state: string;
   readonly heldMinor: number;
   readonly actualMinor: number | null;
@@ -435,8 +497,20 @@ export interface ProposalVersionView {
   readonly payload: unknown;
   readonly supersededAt: string | null;
   readonly runId: string | null;
+  /** The run's first claim, or null before one (MP-6-2's hero time). */
+  readonly startedAt: string | null;
+  /** A hand-back with no claim after it, or null while the run is out or never ran. */
+  readonly endedAt: string | null;
+  /** The token units the run's model calls recorded, or null for none (MP-6-2's hero tokens). */
+  readonly tokenUnits: number | null;
+  /** What the run was given at its start (AW-02's pin slot, 0086); empty with no pin (MP-6-2). */
+  readonly pins: readonly RunPinView[];
+  /** Each instruction file the run read, in its order (the read ledger, 0086). */
+  readonly reads: readonly RunReadView[];
   readonly evidence: EvidenceView | null;
   readonly gate: GateView | null;
+  /** The checks the run performed on this version, oldest first (MP-6-1, CS-16.3). */
+  readonly checks: readonly CheckView[];
 }
 
 export interface ProposalView {
@@ -446,6 +520,8 @@ export interface ProposalView {
   readonly versions: readonly ProposalVersionView[];
   readonly decisions: readonly DecisionLink[];
   readonly reservations: readonly ReservationView[];
+  /** The scope of each lease the lineage's runs took, oldest first (MP-6-4). */
+  readonly scopes: readonly RunScopeView[];
 }
 
 export interface QueuedWork {
@@ -518,6 +594,14 @@ export interface SessionCapabilities {
  */
 export interface InternalTaskDetail extends TaskDetail {
   readonly comments: readonly InternalCommentView[];
+  /**
+   * The client the task is under, by id (C32), or null for none (MP-4-8). Its
+   * name is `client.list`'s. A client the reader's grants do not reach is sent
+   * as null too, beside `clientSet: true` (CS-4.12): no id `client.list` withholds.
+   */
+  readonly client: string | null;
+  /** True once the task has content, so its client is locked (S0-5, `CLIENT_LOCKED`). */
+  readonly hasContent: boolean;
 }
 
 /** `task.read` on the person prefix: the whole detail, for a reader inside the business. */
@@ -562,6 +646,8 @@ export interface BoardTask extends TaskSummary {
   readonly actualMinutes: number;
   /** The task's estimate in whole minutes (MP-4-8), as `task.read` answers it; null when not set. */
   readonly estimateMinutes: number | null;
+  /** The work label's id (CS-4.16), as `task.read` answers it; null for none. */
+  readonly category: string | null;
   /** The in-product address the task is about (MP-4-12), as `task.read` answers it; null when unlinked. */
   readonly pageLink: string | null;
   /**
@@ -765,60 +851,6 @@ export interface SettingsReadResult {
  */
 export interface CapabilitiesResult extends SessionCapabilities {
   readonly ok: true;
-}
-
-/** One run naming the task, as `task.execution` reports it (T2a); never merged. */
-export interface ExecutionRun {
-  readonly runId: string;
-  readonly lineageId: string;
-  readonly versionId: string;
-  readonly state: string;
-  readonly taskRevisionAtRequest: number | null;
-  readonly createdAt: string;
-}
-
-/** One durable progress event, in the task-wide order. */
-export interface ExecutionEvent {
-  readonly eventId: string;
-  readonly runId: string;
-  readonly position: number;
-  readonly kind: string;
-  /** The attempt the event is about; its receipt is read by this. */
-  readonly attemptId: string;
-  readonly at: string;
-}
-
-/** `task.execution`'s answer, under `execution`; `denied`, `unavailable` and `loading` are the read's own. */
-export interface TaskExecutionResult {
-  readonly execution: TaskExecution;
-}
-
-export interface TaskExecution {
-  readonly outcome: 'ready' | 'no-run' | 'stale';
-  readonly runs: readonly ExecutionRun[];
-  readonly events: readonly ExecutionEvent[];
-  /** Whether `events` reaches the task's last recorded event. */
-  readonly complete: boolean;
-  /** The cursor for the rest, or null when nothing was left out. */
-  readonly next: number | null;
-}
-
-/** `task.receipt`: what an observed effect came from, and what it cost (T2c2, T2d). */
-export interface ReceiptResult {
-  readonly receipt: {
-    readonly attemptId: string;
-    readonly decision: { readonly id: string };
-    readonly version: { readonly id: string; readonly number: number };
-    readonly effect: { readonly kind: string; readonly audience: string };
-    readonly settlement:
-      | {
-          readonly state: 'settled';
-          readonly heldMinor: number;
-          readonly spentMinor: number;
-          readonly releasedMinor: number;
-        }
-      | { readonly state: string; readonly heldMinor: number };
-  };
 }
 
 /**

@@ -13,6 +13,10 @@
 // filtered by this business, so a slot that names another business's record
 // reads as no board, whoever asks.
 //
+// **The id goes where the title goes.** A reader told the title may open the
+// board by the same check, so its id says nothing more; the dock panel's
+// Project select marks the task's board by it (MP-4-8).
+//
 // **Read at read, never copied.** The title comes from the board's own row on
 // every read, so a renamed board is the next read's crumb.
 
@@ -47,5 +51,5 @@ export async function readBoardCrumb(
     [tx.businessId, taskTypeId, boardId],
   );
   const board = rows[0];
-  return board === undefined ? null : { readable: true, title: board.title };
+  return board === undefined ? null : { readable: true, id: boardId, title: board.title };
 }

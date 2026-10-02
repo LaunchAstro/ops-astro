@@ -49,8 +49,6 @@ export interface ProjectsBoardProps {
   readonly owed?: number;
   /** Whether the viewer preset is on at load: agency-wide yes, a client's board no. */
   readonly viewerOn?: boolean;
-  /** The categories are made up (no catalogue yet): their chips carry the mock label. */
-  readonly mockCategories?: boolean;
   /** What a row can do (MP-5-9); the page owns the commands. */
   readonly actions?: RowActions;
 }
@@ -74,11 +72,11 @@ function useChips(
   rows: readonly ProjectRow[],
   viewer: string | null,
   now: Date,
-  board: Pick<ProjectsBoardProps, 'owed' | 'mockCategories'>,
+  board: Pick<ProjectsBoardProps, 'owed'>,
 ) {
-  const { owed, mockCategories: mock = false } = board;
-  const facets = useMemo(() => projectFacets(rows, now, viewer, mock), [rows, now, viewer, mock]);
-  const presets = useMemo(() => projectPresets(rows, viewer, mock), [rows, viewer, mock]);
+  const { owed } = board;
+  const facets = useMemo(() => projectFacets(rows, now, viewer), [rows, now, viewer]);
+  const presets = useMemo(() => projectPresets(rows, viewer), [rows, viewer]);
   const modes = useMemo(
     () => [{ ...REVIEW_MODE, badge: reviewBadge(rows, owed), empty: REVIEW_EMPTY }],
     [rows, owed],

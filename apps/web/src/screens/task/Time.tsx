@@ -12,6 +12,7 @@
 import { useState, type KeyboardEvent, type ReactElement } from 'react';
 import { Icon } from '@launchastro/ui';
 import type { TaskTimeView, TimeEntryView } from '../../../../../packages/core-wire/src/index.ts';
+import { useSignedInName } from '../../app-state.ts';
 import type { OperationsClient } from '../../operations/client.ts';
 import { useCommand } from '../../records/use-command.ts';
 
@@ -120,6 +121,7 @@ function EntryRow(props: {
   readonly onChanged: () => void;
 }): ReactElement {
   const { entry } = props;
+  const who = useSignedInName();
   const remove = (): void => {
     props.run(
       () => props.client.mutate('time.delete', { entryId: entry.id }),
@@ -132,7 +134,7 @@ function EntryRow(props: {
     <li className="sb__step" data-time-entry={entry.id}>
       <span className="sb__step-title">
         {entry.minutes === null ? 'Running' : minutesText(entry.minutes)} ·{' '}
-        {loggedOn(entry.startedAt)}
+        {loggedOn(entry.startedAt) + (who === null ? '' : ` · ${who}`)}
       </span>
       <EntryNote {...props} />
       {entry.minutes === null ? null : (

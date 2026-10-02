@@ -18,14 +18,13 @@ import { APPLICATION_ROLE, type EmptyDatabase } from '../support/fresh-database.
 import {
   WORKER_ROLE,
   applicationGrantsAt,
-  type CatalogueTable,
-  type CatalogueFunction,
   type Outcome,
   classify,
   describeOutcome,
   Rollback,
   asRole,
 } from './restricted-calls-cases.ts';
+import { type CatalogueTable, type CatalogueFunction } from './restricted-calls-catalogue.ts';
 
 /**
  * The callers. Every refusal position commits, so a write that should have
