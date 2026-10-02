@@ -17,10 +17,8 @@
 // stored records, and the hover door goes to the task's page link (MP-4-12).
 // What the product does not store yet draws a dash or nothing and is recorded
 // as such: starring (P-20). The actual is the time logged (MP-4-6). The client
-// is the read's, by name, where the reader reaches it, so a Clients row door
-// (`?f=client:"<name>"`, the Client facet) opens the board on that client's work;
-// the board takes its view from the address it is drawn at, a panel's place
-// included, so the door filters the board in the dock as on the page.
+// is the read's, by name, where the reader reaches it; a Clients row door (`?f=client:"<name>"`)
+// filters the board to it, in the dock as on the page (the view is the address's).
 
 import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
 import { Empty, ProjectsBoard, TabPanel, clientFiltersIn, type ProjectRow } from '@launchastro/ui';
@@ -151,10 +149,9 @@ function ProjectBoard(props: Omit<ProjectsProps, 'navigate'>): ReactElement {
     deps: [],
   });
   const persons = people.state.outcome === 'ready' ? people.state.value.persons : null;
-  // Opened at a client filter (a Clients row door), the clients the reader
-  // reaches (C32) are each a Client filter even with no row of theirs, and the
-  // board waits for them, so a door to a quiet client keeps its filter rather
-  // than dropping it. Opened at none, nothing more is read.
+  // At a client filter (a Clients row door) every client the reader reaches (C32)
+  // is a Client filter even with no row, and the board waits for them, so a door
+  // to a quiet client keeps its filter. At none, nothing more is read.
   const query = queryOf(props.address);
   const named = clientFiltersIn(query) > 0;
   const reached = useRead<ClientListResult>({
