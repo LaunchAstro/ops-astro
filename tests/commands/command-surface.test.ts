@@ -39,6 +39,10 @@ if (serverUrl === undefined) {
   console.warn('command surface: DATABASE_URL is unset, so nothing below ran, nothing is proved.');
 }
 
+/** Every path is a collection and an operation; the collections are named in the case below. */
+const PATH_SHAPE =
+  /^\/(?:task|team|person|preset|settings|session|grant|delegation|budget|time|tag|gate|conversation|model|run|preference|access|operations|privacy|legal|credential|client|inbox|notifications)\/[a-z_]+$/u;
+
 describe('the surface as a table', () => {
   it('carries the contract’s nine, named', () => {
     expect([...CONTRACT_NINE].toSorted()).toStrictEqual([
@@ -74,18 +78,18 @@ describe('the surface as a table', () => {
     // the only collection nothing is stored in, because the read under it is
     // about the caller rather than about the business's records. `grant` and
     // `delegation` are the revocation controls': the path names the row a
-    // revocation writes, and the authority it asks is still on tasks. `operations`
+    // revocation writes, and the authority it asks is still on tasks. `gate`
+    // is the awaiting-review read's (MP-6-1): the gates waiting on a decision,
+    // asked with `decide` on tasks. `conversation` is a person's conversation
+    // with the agent (AW-03), its writes and its read at its address. `model`
+    // is AW-01's call through the broker, asked of the lease's task. `run` is
+    // AW-05's two answers at the budget stop, asked of the run's task.
+    // `operations`
     // and `privacy` are C55's view and its incident record, and `legal` is C81's
     // documents, asked of `privacy`. `credential` is API-2's agent credential.
     // `time` is MP-4-6's: a person's time entries, which are rows beside a task.
     // `tag` is MP-4-11's: the business's tag vocabulary.
-    expect(
-      paths.every((path) =>
-        /^\/(?:task|team|person|preset|settings|session|grant|delegation|budget|time|tag|preference|access|operations|privacy|legal|credential|client|inbox|notifications)\/[a-z_]+$/u.test(
-          path,
-        ),
-      ),
-    ).toBe(true);
+    expect(paths.every((path) => PATH_SHAPE.test(path))).toBe(true);
   });
 });
 
@@ -93,6 +97,9 @@ describe('the surface as a table', () => {
 const DECLARED_READS = [
   'access.read',
   'client.list',
+  'conversation.list',
+  'conversation.read',
+  'gate.pending',
   'inbox.count',
   'inbox.read',
   'inbox.unattended',
@@ -117,7 +124,7 @@ const DECLARED_READS = [
 ];
 
 describe('the surface as a table', () => {
-  it('declares the twenty-three reads as reads, and everything else as a write', () => {
+  it('declares the twenty-six reads as reads, and everything else as a write', () => {
     expect([...READS].toSorted()).toStrictEqual(DECLARED_READS);
     for (const command of COMMAND_SURFACE) {
       expect(command.kind === 'read', command.name).toBe(READS.includes(command.name));
@@ -158,6 +165,30 @@ describe('the surface as a table', () => {
     for (const command of COMMAND_SURFACE) {
       expect(command.collection, command.name).toMatch(/^[a-z][a-z_]*$/u);
     }
+  });
+});
+
+describe("AW-05's answers at the budget stop", () => {
+  it('asks decide on billing for a top-up and on gate for the end', () => {
+    // A top-up is money, the end is a gate, and both decide.
+    expect(declarationOf('run.top_up').collection).toBe('billing');
+    expect(declarationOf('run.end_at_budget_stop').collection).toBe('gate');
+    expect(declarationOf('run.top_up').action).toBe('decide');
+    expect(declarationOf('run.end_at_budget_stop').action).toBe('decide');
+  });
+});
+
+describe("MP-6-2's state revised", () => {
+  it('asks write on run of the named task, and an agent reaches it only under its delegation', () => {
+    // run:write alone (ORCH33): no read, decide, share or manage on run.
+    const row = declarationOf('run.revise_state');
+    expect([row.collection, row.action, row.authorisedOn, row.agent]).toStrictEqual([
+      'run',
+      'write',
+      'record',
+      'delegated',
+    ]);
+    expect(row.targetsExistingRecord).toBe(false);
   });
 });
 
@@ -216,7 +247,7 @@ describe.skipIf(serverUrl === undefined)('the surface against the installed mode
     expect(missing).toStrictEqual([]);
   });
 
-  it('finds thirteen of them, which is what makes nine commands too few', () => {
+  it('finds fourteen of them, which is what makes nine commands too few', () => {
     expect(named).toStrictEqual([
       'task.assign',
       'task.complete',
@@ -225,6 +256,7 @@ describe.skipIf(serverUrl === undefined)('the surface against the installed mode
       'task.reparent',
       'task.set_adhoc',
       'task.set_audience',
+      'task.set_category',
       'task.set_party',
       'task.set_scores',
       'task.set_stage',
@@ -232,9 +264,9 @@ describe.skipIf(serverUrl === undefined)('the surface against the installed mode
       'task.start',
       'task.triage',
     ]);
-    // Thirteen names, and only two of them — complete and reopen — are among
-    // the contract's nine commands. The other eleven are why this part declares
-    // more than nine, and `task.rank` is a fourteenth operation the mechanics
+    // Fourteen names, and only two of them — complete and reopen — are among
+    // the contract's nine commands. The other twelve are why this part declares
+    // more than nine, and `task.rank` is a fifteenth operation the mechanics
     // need that neither list carries.
     expect(named.filter((name) => CONTRACT_NINE.includes(name as CommandName))).toStrictEqual([
       'task.complete',

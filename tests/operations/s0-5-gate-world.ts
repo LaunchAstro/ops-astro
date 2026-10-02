@@ -6,7 +6,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { expect } from 'vitest';
-import { gateRecordBody } from '../acceptance/role-case-gate-bodies.ts';
+import { gateRecordBody, legalEvidence } from '../acceptance/role-case-gate-bodies.ts';
 import { createHarness, type Harness } from '../acceptance/role-case-harness.ts';
 import { bearer, call, personPath, type Answer } from '../acceptance/world.ts';
 import { grantTo, WHOLE_BUSINESS, type Member } from '../commands/fixture.ts';
@@ -207,9 +207,10 @@ export async function modeRefusedWhileOpen(w: GateWorld): Promise<string[]> {
 
 /** Every open item recorded, the mode moves to real with its time stamped, and never back. */
 export async function modeToReal(w: GateWorld): Promise<string[]> {
+  const links = await legalEvidence(w.harness.world.db.admin, w.harness.world.alpha);
   for (const item of (await readiness(w)).open_items) {
     // oxlint-disable-next-line no-await-in-loop
-    const answer = await send(w, RECORD, gateRecordBody(item));
+    const answer = await send(w, RECORD, gateRecordBody(item, links));
     expect(outcome(answer), item).toStrictEqual({ status: 200, code: 'ok' });
   }
   const changedAt = async () =>

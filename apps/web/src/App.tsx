@@ -10,43 +10,27 @@
 // — the words and tones a state may print — and not as a source of rows.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
-import { Shell, type StripSteps } from '@launchastro/ui';
+import { Shell } from '@launchastro/ui';
 import { FaceProvider } from './face.tsx';
 import { SearchPalette, useSearch, useSearchKey } from './search.tsx';
 import { pathTo } from './routes.ts';
-import { NO_CLIENT_GRANTS, type ClientAccess } from './manifest.ts';
+import { NO_CLIENT_GRANTS } from './manifest.ts';
 import { frameAt } from './route-views.tsx';
 import { drawContent } from './app-content.tsx';
 import { buildStamp, useCanonicalAddress, useOfflineSince, usePersonName } from './app-state.ts';
+import { SignedInName } from './app-state.ts';
 import { FrameStrip } from './strip.tsx';
 import { HeldAddressNotice, heldAddressOffer, type HeldOffer } from './held-address.tsx';
-import { useDock } from './dock.ts';
+import { shellDock, useDockShell } from './dock/dock-props.tsx';
 import { useDockPanel } from './screens/task/DockPanel.tsx';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
-import { grantKeyOf, type Interruption, type Session, type SessionStore } from './session/token.ts';
+import { grantKeyOf, type Interruption, type Session } from './session/token.ts';
 import { SignIn } from './screens/SignIn.tsx';
 import { endThenSignOut } from './sign-out.ts';
 import { PagePresenceProvider, StripPresence } from './views/presence.tsx';
 import { PageFreshnessProvider, StripFreshness } from './views/freshness.tsx';
-
-export interface AppProps {
-  /** The address the application is drawing. Owned here, not read from a global. */
-  readonly path: string;
-  /** `replace` corrects the address of the page already open, adding no history entry. */
-  readonly navigate: (path: string, options?: { readonly replace?: boolean }) => void;
-  /** The tab's Back and Forward, when the entry owns a history (MP-2-5). */
-  readonly steps?: StripSteps;
-  readonly sessions: SessionStore;
-  /** Where the identity provider is. Injected so a test never needs a network. */
-  readonly gotrueUrl: string;
-  /** The API's origin: empty behind the dev proxy, which serves `/api` on the page's own. */
-  readonly apiOrigin: string;
-  readonly fetch: typeof globalThis.fetch;
-  /** This tab's storage, read once by the entry, or null where it is blocked. */
-  readonly storage: Storage | null;
-  /** Which clients the session may open. None until MP-10-1 supplies client records. */
-  readonly clientAccess?: ClientAccess;
-}
+import { AssistantView } from './views/assistant.tsx';
+import type { AppProps } from './app-props.ts';
 
 export function App(props: AppProps): ReactElement {
   const [session, setSession] = useState<Session | null>(props.sessions.session);
@@ -161,6 +145,16 @@ export function App(props: AppProps): ReactElement {
       }),
     [props.apiOrigin, props.fetch, session],
   );
+  const grantKey = grantKeyOf(session);
+  const bare = here.split(/[?#]/u)[0] ?? here;
+  const { match, at, refused, rail, tabs, identity, face } = frameAt(
+    bare,
+    session?.businessKey ?? null,
+    props.clientAccess ?? NO_CLIENT_GRANTS,
+  );
+  const taskDock = useDockPanel({ client, grantKey, session, storage: props.storage });
+  const agency = face === 'agency';
+  const docked = useDockShell(client, session, props.storage, props, taskDock.panel, agency);
 
   // Sign-out (C23). The tab forgets the session first, so a server that never
   // answers cannot keep it. Then, with the ended session's own client:
@@ -187,17 +181,10 @@ export function App(props: AppProps): ReactElement {
     props.navigate(address);
   };
 
-  const bare = here.split(/[?#]/u)[0] ?? here;
-  const grantKey = grantKeyOf(session);
-  const taskDock = useDockPanel({ client, grantKey, session, storage: props.storage });
-  const { match, at, refused, rail, tabs, identity, face } = frameAt(
-    bare,
-    session?.businessKey ?? null,
-    props.clientAccess ?? NO_CLIENT_GRANTS,
-  );
-  const searchable = session !== null && face === 'agency';
+  const [taskPanel, openPanel] = [taskDock.host, docked.dock.open];
+  const screen = { client, grantKey, storage: props.storage, navigate, taskPanel, openPanel };
+  const searchable = session !== null && agency;
   useSearchKey(searchable, search.open);
-  const dock = useDock({ client, session, agency: face === 'agency', here, navigate });
 
   const signIn = (
     <SignIn
@@ -217,12 +204,10 @@ export function App(props: AppProps): ReactElement {
     signedIn: session !== null,
     refused,
     signIn,
-    onGo: () => {
-      props.navigate(pathTo('agency:projects-board'));
-    },
+    onGo: () => props.navigate(pathTo('agency:projects-board')),
     screen: {
-      client,
-      grantKey,
+      ...screen,
+      address: here,
       notice:
         notice === null || session === null ? null : (
           <HeldAddressNotice
@@ -231,69 +216,75 @@ export function App(props: AppProps): ReactElement {
             onSwitch={onSwitch}
           />
         ),
-      storage: props.storage,
-      navigate: props.navigate,
-      taskPanel: taskDock.host,
     },
     open: props,
   });
 
   // Signed out, the page is the form alone: no rail entry opens without a session (B6).
   if (content === signIn) return signIn;
+  const title = refused ? 'Not available' : (match?.route.title ?? at?.page.label ?? 'Not found');
+  // The client face has no dock (R17), and nobody signed out has one.
+  const dockScreen = session === null || face === 'client' ? null : { ...screen, notice: null };
+  // The Agent drawer (MP-7-11): a dock panel with no address, carrying this
+  // page's standing scope only. Keyed on grantKey, so a change of business,
+  // person or session drops every tab and a late reply has nowhere to land.
+  const agent =
+    dockScreen === null || match === null ? null : (
+      <AssistantView key={grantKey} client={client} route={match.id} here={here} entry={null} />
+    );
   return (
-    <PageFreshnessProvider>
-      <PagePresenceProvider>
-        <Shell
-          face={face}
-          build={buildStamp()}
-          rail={rail}
-          here={bare}
-          strip={
-            <FrameStrip
-              face={face}
-              identity={identity}
-              clientSlug={at?.client ?? null}
-              steps={props.steps}
-              onSearch={searchable ? search.open : null}
-              searchRef={search.box}
-              session={session}
-              personName={personName}
-              navigate={navigate}
-              onSignOut={onSignOut}
-            />
-          }
-          tabs={tabs}
-          nav={{ open: navOpen, onToggle: setNavOpen }}
-          onNavigate={navigate}
-          meta={
-            <>
-              <StripFreshness
-                fallback={
-                  offlineSince === null ? null : { state: 'offline', lastRead: offlineSince }
-                }
+    <SignedInName value={personName}>
+      <PageFreshnessProvider>
+        <PagePresenceProvider>
+          <Shell
+            face={face}
+            build={buildStamp()}
+            rail={rail}
+            here={bare}
+            strip={
+              <FrameStrip
+                face={face}
+                identity={identity}
+                clientSlug={at?.client ?? null}
+                steps={props.steps}
+                onSearch={searchable ? search.open : null}
+                searchRef={search.box}
+                session={session}
+                personName={personName}
+                navigate={navigate}
+                onSignOut={onSignOut}
               />
-              {session === null ? null : <StripPresence />}
-            </>
-          }
-          title={refused ? 'Not available' : (match?.route.title ?? at?.page.label ?? 'Not found')}
-          dock={dock.tabs}
-          onDockTab={dock.press}
-          seated={false}
-          panel={taskDock.panel}
-        >
-          <FaceProvider face={face}>{content}</FaceProvider>
-        </Shell>
-        {search.showing && searchable ? (
-          <SearchPalette
-            client={client}
-            onOpen={(address) => {
-              search.dismiss();
-              navigate(address);
-            }}
-            onClose={search.close}
-          />
-        ) : null}
-      </PagePresenceProvider>
-    </PageFreshnessProvider>
+            }
+            tabs={tabs}
+            nav={{ open: navOpen, onToggle: setNavOpen }}
+            onNavigate={navigate}
+            meta={
+              <>
+                <StripFreshness
+                  fallback={
+                    offlineSince === null ? null : { state: 'offline', lastRead: offlineSince }
+                  }
+                />
+                {session === null ? null : <StripPresence />}
+              </>
+            }
+            title={title}
+            {...shellDock(docked, dockScreen, agent)}
+          >
+            <FaceProvider face={face}>{content}</FaceProvider>
+          </Shell>
+          {search.showing && searchable ? (
+            <SearchPalette
+              client={client}
+              onOpen={(address) => {
+                search.dismiss();
+                navigate(address);
+              }}
+              onClose={search.close}
+            />
+          ) : null}
+        </PagePresenceProvider>
+      </PageFreshnessProvider>
+    </SignedInName>
   );
 }

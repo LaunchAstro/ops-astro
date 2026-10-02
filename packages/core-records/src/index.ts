@@ -69,6 +69,7 @@ export {
   type ScopeRequest,
   type Subject,
 } from './authority/grants.ts';
+export { coveredScopes } from './authority/covered-scopes.ts';
 export { heldScopes } from './authority/held-scopes.ts';
 export { heldPermissions, type HeldPermission } from './authority/held-permissions.ts';
 export {
@@ -163,11 +164,14 @@ export {
 } from './operations/breach-notices.ts';
 export {
   LEGAL_DOCUMENTS,
+  ONE_PAGE_WORDS,
   PUBLIC_LEGAL_DOCUMENTS,
   approveLegalVersion,
   draftLegalVersion,
+  legalVersionPath,
   publishLegalVersion,
   readPublishedLegal,
+  wordsIn,
   type DraftedVersion,
   type LegalDocument,
   type PublishedVersion,
@@ -240,11 +244,7 @@ export { isLive, refuseGenericWrite, type FieldDefinition } from './records/fiel
 export { planPresetSync, type PresetField, type PresetPlan } from './records/preset-plan.ts';
 export { isRecordsRefusal, type RecordsRefusal } from './records/refusals.ts';
 export {
-  audienceNotPermitted,
   CALLER_VISIBLE,
-  fourEyesRequired,
-  gateAlreadyDecided,
-  gatePending,
   isCommandRefusal,
   REFUSAL_REGISTER,
   refuseCommand,
@@ -254,6 +254,12 @@ export {
   type RefusalCode,
   type RuntimeRefusalCode,
 } from './register.ts';
+export {
+  audienceNotPermitted,
+  fourEyesRequired,
+  gateAlreadyDecided,
+  gatePending,
+} from './register-gate.ts';
 export { UNPRODUCED_CODES } from './register-unproduced.ts';
 export * from './tasks/content.ts';
 export {
@@ -288,5 +294,6 @@ export {
   type TenantQuery,
 } from './tenancy/database.ts';
 export { isUuid } from './tenancy/ids.ts';
+export { hasRoom, type DurableLimit } from './tenancy/limit.ts';
 export { connectOutbox, type ApiEvent, type Outbox } from './tenancy/outbox.ts';
 export { loginLiveElsewhere } from './identity/shared-login.ts';

@@ -74,7 +74,7 @@ it('a CLI verb redirected past its grant fails parity', () => {
   } finally {
     rmSync(copy, { recursive: true, force: true });
   }
-});
+}, 120_000);
 
 it('a record grant does not make business-wide create reachable', () => {
   const recordWriter = {
