@@ -34,7 +34,7 @@ const WRITE = '/budget/set_planning_cap';
 const PROMPT = '[data-step-up="prompt"]';
 const SIGN_IN = [
   'Sign in again with your password, then retry.',
-  'A money action needs a sign-in with the second factor in the last 60 minutes.',
+  'A money action needs a sign-in in the last 60 minutes.',
 ];
 const CODE = [
   'Sign in again with the code from your authenticator app, then retry.',

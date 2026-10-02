@@ -84,10 +84,9 @@ function latest(a: number | null, b: number | null): number | null {
   return Math.max(a, b);
 }
 
-const WINDOW_FIX = 'A money action needs a sign-in with the second factor in the last 60 minutes.';
 const STEP_UP_FIXES: readonly string[] = [
   'Sign in again with the code from your authenticator app, then retry.',
-  WINDOW_FIX,
+  'A money action needs a sign-in with the second factor in the last 60 minutes.',
 ];
 
 /**
@@ -96,7 +95,7 @@ const STEP_UP_FIXES: readonly string[] = [
  */
 const SIGN_IN_FIXES: readonly string[] = [
   'Sign in again with your password, then retry.',
-  WINDOW_FIX,
+  'A money action needs a sign-in in the last 60 minutes.',
 ];
 
 /**
