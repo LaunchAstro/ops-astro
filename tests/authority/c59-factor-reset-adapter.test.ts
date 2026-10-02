@@ -75,6 +75,45 @@ async function hostileNeverDone(): Promise<void> {
   expect(await never.deleteFactor?.(subject, `${factorId}/..`)).toEqual(refused);
 }
 
+/** The adapter answering every call with `body` at `status`. */
+const answering = (body: string, status: number) =>
+  createGoTrueLogins({
+    baseUrl: base,
+    adminKey: () => Promise.resolve('admin-key'),
+    fetch: () =>
+      Promise.resolve(
+        new Response(body, { status, headers: { 'content-type': 'application/json' } }),
+      ),
+  });
+
+const GONE = JSON.stringify({ code: 404, error_code: 'mfa_factor_not_found', msg: 'gone' });
+
+async function factorGoneIsDone(): Promise<void> {
+  expect(await answering(GONE, 404).deleteFactor?.(subject, factorId)).toEqual({
+    ok: true,
+    value: undefined,
+  });
+}
+
+async function otherNotFoundRefused(): Promise<void> {
+  const others: readonly (readonly [string, number])[] = [
+    [JSON.stringify({ code: 404, error_code: 'user_not_found', msg: CANARY }), 404],
+    [JSON.stringify({ code: 404, msg: 'Not Found' }), 404],
+    [JSON.stringify({ error_code: ['mfa_factor_not_found'] }), 404],
+    ['mfa_factor_not_found', 404],
+    [GONE, 400],
+    [GONE, 403],
+    [GONE, 422],
+  ];
+  for (const [body, status] of others) {
+    // oxlint-disable-next-line no-await-in-loop
+    expect(await answering(body, status).deleteFactor?.(subject, factorId), body).toEqual({
+      ok: false,
+      fault: 'refused',
+    });
+  }
+}
+
 describe('C59 the admin removal at GoTrue', () => {
   it(
     'C59 adapter: one DELETE of the factor under the admin key, no body, no redirect, done when named back',
@@ -83,5 +122,10 @@ describe('C59 the admin removal at GoTrue', () => {
   it(
     'C59 adapter: a hostile answer never counts as done, and an id out of shape is never sent',
     hostileNeverDone,
+  );
+  it("C59 adapter: GoTrue's 404 mfa_factor_not_found counts the removal done", factorGoneIsDone);
+  it(
+    "C59 adapter: any other 404, or that code at another status, stays 'refused'",
+    otherNotFoundRefused,
   );
 });
