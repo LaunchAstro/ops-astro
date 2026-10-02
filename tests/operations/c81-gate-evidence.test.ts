@@ -11,8 +11,7 @@
 // The documents here are made up in the owner's shape. The owner's own
 // Version 1.0 words never enter this repository: they are drafted on the
 // installation through `legal.draft_version`, approved as that exact version
-// by the owner and published, like every version. The statement's clause 1 is
-// quoted as approved, since it is the line item 4 names.
+// by the owner and published, like every version.
 //
 // The world is `c81-legal-documents-world.ts`; Ada is alpha's owner, and alpha
 // operates the installation.
@@ -51,9 +50,8 @@ afterAll(async () => {
 const ONE_PAGE_WORDS = 1000;
 const wordsIn = (text: string): number => text.split(/\s+/u).filter(Boolean).length;
 
-/** Schedule 3 clause 1 of the client agreement, Version 1.0, as the owner approved it. */
-const CLAUSE_1 =
-  'As a small business, Agency Astro is not currently covered by the Privacy Act 1988 by law, but we follow the Act and the Australian Privacy Principles anyway for the personal information we hold for you, including telling people if a data breach puts them at risk, whether or not the Act applies to you.';
+/** What item 4 needs the statement to say (owner answer 24). */
+const COVERED = 'treated as covered by the Privacy Act';
 
 const statementWords = (marker: string): string =>
   [
@@ -61,7 +59,7 @@ const statementWords = (marker: string): string =>
     '',
     '## 1. We follow the Privacy Act',
     '',
-    CLAUSE_1,
+    `Made-up text: every client's personal information we hold is ${COVERED}.`,
     '',
     `Made-up text ${marker}.`,
     '',
@@ -132,7 +130,7 @@ async function c81DataHandlingStatement(): Promise<void> {
   expect(shown.status).toBe(200);
   const served = JSON.parse(shown.text) as Record<string, unknown>;
   expect(served['body']).toBe(words);
-  expect(String(served['body'])).toContain(CLAUSE_1);
+  expect(String(served['body'])).toContain(COVERED);
   expect(served['version']).toBe(sent.version);
 
   const unapproved = versionLink('alpha', 'data-handling', '9.0', digestOf(later));
@@ -191,6 +189,18 @@ async function policies(): Promise<{ first: string; policy: string; bravo: strin
   return { first, policy, bravo };
 }
 
+/**
+ * The right path, version and digest behind a user name, a password, a port
+ * other than 443 or a fragment: each a link the gate refuses.
+ */
+const linkParts = (link: string): string[] => [
+  link.replace('https://', 'https://ada@'),
+  link.replace('https://', 'https://ada:secret@'),
+  link.replace('evidence.example', 'evidence.example:8443'),
+  `${link}#elsewhere`,
+  `${link}#`,
+];
+
 async function c81GateEvidenceLinks(): Promise<void> {
   await reopen();
   const statement = await publishLink('data-handling', statementWords(randomUUID()));
@@ -211,6 +221,7 @@ async function c81GateEvidenceLinks(): Promise<void> {
     ['privacy-act-statement', policy],
     ['breach-runbook', statement],
     ['legal-basics', bravo],
+    ...linkParts(policy).map((link): readonly [string, string] => ['legal-basics', link]),
   ]);
   expect(wrongLinks).toStrictEqual([]);
 
@@ -238,7 +249,7 @@ describe.skipIf(serverUrl === undefined)('C81 the gate evidence', () => {
     await c81BreachRunbookOnePage();
   });
 
-  it("C81 gate evidence links: items 3 to 6 each link their document's published version; a link to no published version, another document's, a superseded one or another business's is refused and writes nothing", async () => {
+  it("C81 gate evidence links: items 3 to 6 each link their document's published version; a link to no published version, another document's, a superseded one, another business's, or the right one behind a user name, password, port or fragment is refused and writes nothing", async () => {
     await c81GateEvidenceLinks();
   });
 });
