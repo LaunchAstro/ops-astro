@@ -108,6 +108,19 @@ it('AW-11 child drops: the parent waits with the helper’s fault shown, and not
   expect(node?.observed).toMatchObject({ condition: 'in_progress', fault: null });
 });
 
+it('AW-11 parent narrowed: the helper shows dropped with the fault its next call is refused with', async () => {
+  const x = await handedWork(w.s, w.helper);
+  expect(
+    await updateRaw(w.s, x.parent.id, `revoked_at = now(), revocation_cause = 'authority_lost'`),
+  ).toBe('updated');
+  expect(callCode(await readAsHelper(w.s, w.helper, x.childCredential, x.work.taskId))).toBe(
+    'DELEGATION_NARROWED',
+  );
+  expect((await nodeOf(w.s, x.work))?.helpers).toMatchObject([
+    { childDelegationId: x.childId, state: 'dropped', fault: 'DELEGATION_NARROWED', outcome: null },
+  ]);
+});
+
 it('AW-11 replacement parent delegates a new child: the old helper is never resumed', async () => {
   const taskId = await createTask(w.s, `aw-11 replacement ${randomUUID()}`);
   const proposal = await propose(w.s, taskId, { maximumMinor: 2_000, purpose: freshPurpose() });

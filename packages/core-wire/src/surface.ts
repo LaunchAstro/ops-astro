@@ -457,7 +457,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // AW-04 (U10): the drawer's allowance line, under the list's rule and the
   // team's only, since the cap and what is left are the business's; the spend
   // is the caller's own conversation's (`reads/allowance.ts`). No agent entry.
-  read('conversation.allowance', CONVERSATION_COLLECTION),
+  // Its rule asks `conversation:write`, as the list's does, so the catalogue
+  // names that one (API-1).
+  read('conversation.allowance', CONVERSATION_COLLECTION, { authority: ['conversation:write'] }),
   declare('conversation.rename', 'write', {
     collection: CONVERSATION_COLLECTION,
     targetsExistingRecord: false,

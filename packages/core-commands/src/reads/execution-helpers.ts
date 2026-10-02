@@ -7,8 +7,8 @@
 // the parent that handed the work over and a replacement parent that picked
 // the work up again each show their own helpers on the one node. Each entry
 // carries the helper, its standing by the rule the parent's merged result
-// uses (`childStateOf`: handed back, else dropped with its fault, else
-// working), and its steps: the model calls it made on the parent's lease,
+// uses (`childStateOf`: handed back, else dropped with its own fault or its
+// parent's, else working), and its steps: the model calls it made on the parent's lease,
 // which spend the parent's one reservation (d71424f), so the node's money is
 // already the whole of it. A step is the call's own row, found by the
 // caller's delegation the broker records (0104), never by time or actor.
@@ -16,7 +16,7 @@
 // Read in `execution.ts`'s one statement, so a helper's handback counts only
 // at or before the event head the page stops at.
 
-import { childStateOf, type ChildResult } from '../../../core-runtime/src/index.ts';
+import { childStateOf, PARENT_FAULT, type ChildResult } from '../../../core-runtime/src/index.ts';
 
 export interface HelperStep {
   readonly callId: string;
@@ -50,10 +50,10 @@ export interface HelperEntry<S extends HelperStep = HelperStep> extends Pick<
  * Each helper of the run `run` as JSON, for `execution.ts`'s run facts. `$1`
  * is the business; `head` is the statement's own event head.
  */
-export const HELPER_FACTS = `coalesce((select json_agg(json_build_object(
+export const HELPER_FACTS: string = `coalesce((select json_agg(json_build_object(
     'childDelegationId', d.id, 'helperActorId', d.agent_actor_id,
     'expired', d.expires_at <= now(), 'revoked', d.revoked_at is not null,
-    'cause', d.revocation_cause,
+    'cause', d.revocation_cause, 'parentFault', ${PARENT_FAULT},
     'outcome', back.detail ->> 'outcome', 'refusal', back.detail ->> 'refusal',
     'steps', coalesce((select json_agg(json_build_object(
         'callId', c.id, 'operation', c.operation_key, 'state', c.state,
@@ -63,6 +63,7 @@ export const HELPER_FACTS = `coalesce((select json_agg(json_build_object(
       where c.business_id = $1 and c.run_id = run.id and c.caller_delegation_id = d.id), '[]'))
     order by d.granted_at, d.id)
   from public.delegations d
+  join public.delegations p on p.business_id = d.business_id and p.id = d.parent_delegation_id
   join public.leases pl
     on pl.business_id = d.business_id and pl.delegation_id = d.parent_delegation_id
   left join lateral (select ev.detail from public.run_events ev
@@ -73,6 +74,12 @@ export const HELPER_FACTS = `coalesce((select json_agg(json_build_object(
  where d.business_id = $1 and pl.run_id = run.id), '[]')`;
 
 const OUTCOMES: ReadonlySet<unknown> = new Set([null, 'completed', 'partial']);
+const FAULTS: ReadonlySet<unknown> = new Set([
+  null,
+  'DELEGATION_EXPIRED',
+  'DELEGATION_REVOKED',
+  'DELEGATION_NARROWED',
+]);
 
 /** The run facts' `helpers`, checked and read into entries; a malformed one throws. */
 export function helpersOf(value: unknown, where: string): readonly HelperEntry[] {
@@ -86,6 +93,7 @@ export function helpersOf(value: unknown, where: string): readonly HelperEntry[]
       typeof helper['expired'] !== 'boolean' ||
       typeof helper['revoked'] !== 'boolean' ||
       !nullOrString(helper['cause']) ||
+      !FAULTS.has(helper['parentFault']) ||
       !OUTCOMES.has(helper['outcome']) ||
       !nullOrString(helper['refusal'])
     )
@@ -99,6 +107,7 @@ export function helpersOf(value: unknown, where: string): readonly HelperEntry[]
         expired: helper['expired'],
         revoked: helper['revoked'],
         cause: helper['cause'] as string | null,
+        parentFault: helper['parentFault'] as ChildResult['fault'],
         outcome: helper['outcome'] as 'completed' | 'partial' | null,
         refusal: helper['refusal'] as string | null,
       }),

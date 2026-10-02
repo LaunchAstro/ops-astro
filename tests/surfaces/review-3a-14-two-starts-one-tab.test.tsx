@@ -36,6 +36,8 @@ function recorder(held: Promise<void>): {
   const sent: Sent[] = [];
   let starts = 0;
   const client = {
+    // The drawer's allowance line (AW-04) reads; this proof is about the sends.
+    read: async () => await Promise.resolve({ unavailable: true, because: 'not asked here' }),
     mutate: async (name: string, body: Readonly<Record<string, unknown>>) => {
       sent.push({ name, body });
       const first = name === 'conversation.start' && starts === 0;

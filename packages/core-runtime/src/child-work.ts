@@ -20,7 +20,7 @@
 // hand-over binds it to the lease it names, so a delegation that does not hold
 // that lease hands nothing over.
 
-import { mintChildDelegation } from '../../core-records/src/index.ts';
+import { isUuid, mintChildDelegation } from '../../core-records/src/index.ts';
 import type {
   ChildMintRequest,
   CommandRefusal,
@@ -141,13 +141,15 @@ export async function delegateChild(
 /**
  * The task, lease and parent delegation locked, then the heartbeat's own
  * check: the parent holds this lease at this fence, and both are live. A
- * lease this business does not hold is one the caller does not own.
+ * lease this business does not hold, or an id that names no lease at all, is
+ * one the caller does not own.
  */
 async function lockHeldLease(
   tx: TenantQuery,
   parent: Delegation,
   request: DelegateChildRequest,
 ): Promise<ChildWorkResult<{ readonly taskId: string; readonly locks: LockSet }>> {
+  if (!isUuid(request.leaseId)) return refuseLease('not_owned', HAND_OVER_FIXES.notOwned);
   const found = await tx.query<{ readonly task_id: string }>(
     'select task_id from public.leases where business_id = $1 and id = $2',
     [tx.businessId, request.leaseId],

@@ -38,7 +38,7 @@ import {
 } from './budget-answer-facts.ts';
 import { capCommitted, capVerdict } from './budget.ts';
 import { reserve } from './decide.ts';
-import { spentOn } from './recovery/classifier.ts';
+import { spentOn } from './budget-stop.ts';
 import { fourEyes } from './budget-answer-eyes.ts';
 import { refuse } from './refusals.ts';
 

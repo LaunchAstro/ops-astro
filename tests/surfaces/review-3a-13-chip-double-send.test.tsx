@@ -32,6 +32,8 @@ function recorder(held: Promise<void>): {
 } {
   const sent: Sent[] = [];
   const client = {
+    // The drawer's allowance line (AW-04) reads; this proof is about the sends.
+    read: async () => await Promise.resolve({ unavailable: true, because: 'not asked here' }),
     mutate: async (name: string, body: Readonly<Record<string, unknown>>) => {
       sent.push({ name, body });
       await held;
