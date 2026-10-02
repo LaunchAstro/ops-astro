@@ -3,7 +3,7 @@
 //
 // The Clients row door (DOCK.md section 2): the client the Clients panel is
 // opened at (CS-7.29) carries a Projects door to the board filtered to that
-// client, `/projects/?f=client:<slug>`, the board's own Client facet. A press
+// client, `/projects/?f=client:"<name>"`, the board's own Client facet. A press
 // follows the dock's gesture law and the board in the panel opens on that
 // client's work; the same address on the page draws the same view. The board
 // names a row's client only where the read sends it (the reader's grants reach
@@ -12,10 +12,13 @@
 
 import { act } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
+import { facetId } from '../../packages/ui/src/board/project-facets.ts';
 import { settle, type Mounted } from '../surfaces/mount.tsx';
 import { json, open } from './mp-2-1-support.tsx';
 
 const ZENITH = { clientId: 'c-zenith', name: 'Zenith Physio' };
+/** The board filtered to Zenith: the facet id the board itself gives the client. */
+const ZENITH_BOARD = `/projects/?${new URLSearchParams({ f: facetId('client', ZENITH.name) }).toString()}`;
 const SUMMIT = { clientId: 'c-summit', name: 'Summit Allied' };
 /** A client the reader reaches with no task on the board they may see. */
 const QUIET = { clientId: 'c-quiet', name: 'Quiet Clinic' };
@@ -96,11 +99,11 @@ const door = (page: Mounted): HTMLElement | null =>
   page.find('.content [aria-current="true"] .clbook__door') as HTMLElement | null;
 
 describe('Clients row door', () => {
-  it('the opened client row carries a Projects door to the board filtered to that client', async () => {
+  it('the opened client row carries a Projects door to the board’s own Client filter', async () => {
     const page = await at('/clients/?client=c-zenith');
     const link = door(page);
-    expect(link?.getAttribute('href')).toBe('/projects/?f=client%3Azenith-physio');
-    expect(link?.dataset['dockPlace']).toBe('/projects/?f=client%3Azenith-physio');
+    expect(link?.getAttribute('href')).toBe(ZENITH_BOARD);
+    expect(link?.dataset['dockPlace']).toBe(ZENITH_BOARD);
     expect(link?.dataset['dockOpen']).toBe('todos');
     expect(link?.getAttribute('aria-label')).toBe("Open Projects, Zenith Physio's work");
     expect(link?.closest('.is-mock')).toBeNull();
@@ -119,7 +122,7 @@ describe('Clients row door', () => {
   });
 
   it('the address on the page draws the same view, the Client column by name', async () => {
-    const page = await at('/projects/?f=client%3Azenith-physio');
+    const page = await at(ZENITH_BOARD);
     const board = page.find('.content');
     expect(board?.querySelectorAll('tbody tr[data-row]').length).toBe(2);
     expect(board?.textContent).not.toContain('Task 2');
@@ -152,7 +155,7 @@ describe('Clients row door: review proofs', () => {
 
 describe('Clients row door data separation', () => {
   it('a row whose client the read withholds is never under a client filter', async () => {
-    const page = await at('/projects/?f=client%3Azenith-physio');
+    const page = await at(ZENITH_BOARD);
     expect(page.find('.content')?.textContent).not.toContain('Task 4');
     const whole = await at('/projects/');
     expect(whole.find('.content')?.textContent).toContain('Task 4');
