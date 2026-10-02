@@ -11,8 +11,11 @@
 // hook made for the preview branch, the Viewer's project-scoped token
 // refused everywhere else) waits for staging's sitting.
 
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { PREVIEW_BRANCH, pushArgs, requestPreview } from '../../scripts/ops/preview.ts';
+import { gitPush, PREVIEW_BRANCH, pushArgs, requestPreview } from '../../scripts/ops/preview.ts';
 
 const PREVIEWS = 'prj_previews01';
 const STAGING = 'prj_staging01';
@@ -49,6 +52,7 @@ describe('S0-8 creator cannot reach production', () => {
   refusedAddresses();
   refusedSettings();
   requestedCases();
+  pushEnvironmentCase();
 });
 
 function refusedAddresses() {
@@ -140,7 +144,13 @@ function requestedCases() {
       redirect: 'error',
       signal: expect.any(AbortSignal),
     });
-    expect(pushArgs(VERSION)).toEqual(['push', 'origin', `+${VERSION}:refs/heads/preview-request`]);
+    expect(pushArgs(VERSION)).toEqual([
+      'push',
+      '--no-follow-tags',
+      '--no-recurse-submodules',
+      'origin',
+      `+${VERSION}:refs/heads/preview-request`,
+    ]);
   });
 
   it('posts nothing when the push fails, and records nothing when the hook answers no job', async () => {
@@ -159,5 +169,28 @@ function requestedCases() {
       await creator(settings(), () => new Response(SECRET, { status: 500 })).run(VERSION),
     ];
     expect(JSON.stringify(outcomes)).not.toContain(SECRET);
+  });
+}
+
+function pushEnvironmentCase() {
+  it('hands git no hook, database or bearer value', () => {
+    const bin = mkdtempSync(join(tmpdir(), 's0-8-git-'));
+    try {
+      const seen = join(bin, 'seen');
+      writeFileSync(join(bin, 'git'), `#!/bin/sh\necho "$*" > '${seen}'\nenv >> '${seen}'\n`);
+      chmodSync(join(bin, 'git'), 0o700);
+      const env = {
+        ...settings(),
+        PATH: `${bin}:/usr/bin:/bin`,
+        DATABASE_ADMIN_URL: 'postgres://canary-admin',
+        OPS_ASTRO_TOKEN: 'canary-bearer',
+      };
+      expect(gitPush(VERSION, env)).toBe(true);
+      const log = readFileSync(seen, 'utf8');
+      expect(log.split('\n')[0]).toBe(pushArgs(VERSION).join(' '));
+      expect(log).not.toMatch(/canary|PREVIEW_DEPLOY_HOOK|DATABASE_|OPS_ASTRO_/u);
+    } finally {
+      rmSync(bin, { recursive: true, force: true });
+    }
   });
 }

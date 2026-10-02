@@ -9,12 +9,15 @@
 // commit on the preview branch under the person's own git sign-in, then posts
 // once, with no body and no credential, to the previews project's deploy
 // hook, a secret address that can only build the branch it was made for. It
-// refuses any other Vercel address, a hook naming any project but the
-// previews one, and a run with a Vercel token in its environment, so it can
-// never deploy, promote, alias or publish, nor change a domain, an
-// environment variable or a project setting (`S0-8 creator cannot reach
-// production`). The hook's address is a bearer secret: no record or refusal
-// names it.
+// refuses any other Vercel address, a hook naming any project but the one in
+// PREVIEWS_VERCEL_PROJECT_ID, and a run with a Vercel token in its
+// environment, so it can never deploy, promote, alias or publish, nor change
+// a domain, an environment variable or a project setting (`S0-8 creator
+// cannot reach production`). That the previews project is not staging's or
+// production's is checked only against VERCEL_PROJECT_ID when it is set: the
+// guard against a hook on the wrong project is Vercel's, proved at staging's
+// sitting. The hook's address is a bearer secret: no record or refusal, and
+// not git's environment, holds it.
 //
 // Not here yet, waiting for staging: the hook made for the preview branch on
 // Vercel's side, and the Viewer token's read-back of the built preview (its
@@ -49,17 +52,24 @@ export interface PreviewDeps {
   readonly post: (url: string, init: RequestInit) => Promise<Response>;
 }
 
-/** `git push` of one commit to the preview branch, as the person signed in to git. */
+/** `git push` of one commit to the preview branch alone, as the person signed in to git. */
 export const pushArgs = (version: string): string[] => [
   'push',
+  '--no-follow-tags',
+  '--no-recurse-submodules',
   'origin',
   `+${version}:refs/heads/${PREVIEW_BRANCH}`,
 ];
 
-/** The push the command uses: the person's git, with no hook address in its environment. */
+/** What git needs to find itself and the person's sign-in; no hook, database or bearer value. */
+const GIT_KEPT = ['PATH', 'HOME', 'TMPDIR', 'SSH_AUTH_SOCK', 'GIT_SSH_COMMAND'];
+
+/** The push the command uses: the person's git, its environment held to `GIT_KEPT`. */
 export function gitPush(version: string, env: Environment): boolean {
-  const { PREVIEW_DEPLOY_HOOK: _hook, ...rest } = env;
-  const result = spawnSync('git', pushArgs(version), { env: rest, stdio: 'inherit' });
+  const kept = Object.fromEntries(
+    GIT_KEPT.flatMap((name) => (env[name] ? [[name, env[name]]] : [])),
+  );
+  const result = spawnSync('git', pushArgs(version), { env: kept, stdio: 'inherit' });
   return result.status === 0;
 }
 

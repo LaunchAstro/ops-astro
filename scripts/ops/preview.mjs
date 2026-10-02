@@ -8,16 +8,18 @@
 // themself):
 //   node scripts/ops/preview.mjs --version <full commit id>
 //
-// The operator gate (`operator.ts`) answers before any argument is read; a
-// refusal pushes and builds nothing. The record is written only once the hook
-// answers a job. Exit 0 when requested, 1 when refused or failed, 2 when the
-// arguments are unusable.
+// The installation's operator gate (`requireOperatingOperator`, `operator.ts`):
+// a preview builds the whole product, so only a person holding
+// `operations:manage` over the operating business may ask for one. It answers
+// before any argument is read; a refusal pushes and builds nothing. The
+// record is written only once the hook answers a job. Exit 0 when requested,
+// 1 when refused or failed, 2 when the arguments are unusable.
 
 import { parseArgs } from 'node:util';
-import { recordDeployment, requireOperator } from './operator.ts';
+import { recordDeployment, requireOperatingOperator } from './operator.ts';
 import { gitPush, requestPreview } from './preview.ts';
 
-const gate = await requireOperator();
+const gate = await requireOperatingOperator();
 if (!gate.ok) {
   console.error(`preview: REFUSED: ${gate.reason}`);
   process.exit(1);
