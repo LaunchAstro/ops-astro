@@ -230,6 +230,45 @@ describe.skipIf(serverUrl === undefined)('the runner refuses while connected', (
     expect(await state(built)).toBe(before);
   }, 120_000);
 
+  // MIG-TIMESTAMP: a fresh install applies in ID order, so an upgrade that
+  // applied a migration below the newest one in its ledger would build a
+  // schema no fresh install builds.
+  it('refuses a pending migration that sorts before the newest one applied, and changes nothing', async () => {
+    const on = await at0023('mtorder');
+    const stamped = syntheticMigration(
+      '20261002013000_mt_stamped',
+      'create table ops.mt_stamped (id int)',
+    );
+    await applyMigrations(on.admin, [...THROUGH_0023, stamped]);
+    const before = await state(on);
+
+    await expect(migrate(on.admin, 'migrations')).rejects.toThrow(
+      new RegExp(
+        `^migrate: ${String(PENDING_AFTER_0023[0])}, .* sort before 20261002013000_mt_stamped, ` +
+          `the newest migration this database has applied\\.`,
+        'u',
+      ),
+    );
+    expect(await state(on)).toBe(before);
+    expect(await lastApplied(on)).toBe('20261002013000_mt_stamped');
+  }, 120_000);
+
+  it("upgrades a database at main's newest migration to timestamp IDs, in ID order", async () => {
+    const built = await createEmptyDatabase({ part: 'mtupgrade' });
+    db = built;
+    await migrate(built.admin, 'migrations');
+    const first = syntheticMigration('20261002013000_mt_first', 'create table ops.mt_a (id int)');
+    const second = syntheticMigration('20261002020000_mt_second', 'create table ops.mt_b (id int)');
+
+    expect((await applyMigrations(built.admin, [...onDisk, first])).applied).toStrictEqual([
+      '20261002013000_mt_first',
+    ]);
+    expect((await applyMigrations(built.admin, [...onDisk, first, second])).applied).toStrictEqual([
+      '20261002020000_mt_second',
+    ]);
+    expect(await lastApplied(built)).toBe('20261002020000_mt_second');
+  }, 120_000);
+
   it('catches a session that connects after the first check, inside the migration, before its commit', async () => {
     const built = await createEmptyDatabase({ part: 'fr6late' });
     db = built;
