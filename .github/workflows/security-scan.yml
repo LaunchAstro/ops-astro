@@ -87,7 +87,8 @@ jobs:
       - name: ZAP API scan, signed in as the scan login
         run: |
           ZAP_AUTH_HEADER_VALUE="Bearer $(cat "$SCAN_TOKEN_FILE")"
-          ZAP_AUTH_HEADER_SITE="$(node -e 'console.log(new URL(process.env.TARGET).host)')"
+          # ZAP matches the site by host name alone: with a port in it, no request carries the token.
+          ZAP_AUTH_HEADER_SITE="$(node -e 'console.log(new URL(process.env.TARGET).hostname)')"
           export ZAP_AUTH_HEADER_VALUE ZAP_AUTH_HEADER_SITE
           status=0
           docker run --rm -v "$WORK:/zap/wrk:rw" -e ZAP_AUTH_HEADER_VALUE -e ZAP_AUTH_HEADER_SITE \

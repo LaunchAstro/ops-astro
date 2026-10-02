@@ -102,7 +102,7 @@ node scripts/security/api-definition.mjs --target http://host.docker.internal:<a
 node scripts/security/scan-login.mjs make
 docker run --rm -v "$WORK:/zap/wrk:rw" <ZAP image> zap-baseline.py -t http://host.docker.internal:<api> -J baseline.json -I
 ZAP_AUTH_HEADER_VALUE="Bearer $(cat "$SCAN_TOKEN_FILE")" docker run --rm -v "$WORK:/zap/wrk:rw" \
-  -e ZAP_AUTH_HEADER_VALUE -e ZAP_AUTH_HEADER=Authorization -e ZAP_AUTH_HEADER_SITE=host.docker.internal:<api> \
+  -e ZAP_AUTH_HEADER_VALUE -e ZAP_AUTH_HEADER=Authorization -e ZAP_AUTH_HEADER_SITE=host.docker.internal \
   <ZAP image> zap-api-scan.py -t /zap/wrk/api-definition.json -f openapi -J api.json -I
 SCAN_BEARER="$(cat "$SCAN_TOKEN_FILE")" node scripts/security/findings.mjs --report baseline="$WORK/baseline.json" \
   --report api="$WORK/api.json" --out "$WORK/findings" --redact-env SCAN_BEARER
