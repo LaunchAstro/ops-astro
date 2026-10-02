@@ -52,7 +52,14 @@ import {
 } from '../../../../packages/core-wire/src/index.ts';
 import type { CommandName } from '../../../../packages/core-wire/src/index.ts';
 import type { AccountRoute, NotARead, ReadName } from './read-names.ts';
-import type { CallResult, CommandOutcome, WireRefusal } from './results.ts';
+import type {
+  CallResult,
+  CommandOutcome,
+  FactorRemoved,
+  FactorVerified,
+  IssuedFactor,
+  WireRefusal,
+} from './results.ts';
 
 export { READ_NAMES } from './read-names.ts';
 export type { AccountRoute, NotARead, ReadName } from './read-names.ts';
@@ -61,30 +68,12 @@ export type {
   CallResult,
   CommandOutcome,
   ConversationReply,
+  FactorRemoved,
+  FactorVerified,
+  IssuedFactor,
   Unavailable,
   WireRefusal,
 } from './results.ts';
-
-/** What `account/factor/verify` answers: only the access token is read, once, to trade it. */
-export interface FactorVerified {
-  readonly accessToken?: unknown;
-}
-
-/**
- * What `account/factor/enrol` answers (`IssuedFactor`): the secret goes to the person once. It
- * is drawn and dropped, and never stored, logged or put in an error.
- */
-export interface IssuedFactor {
-  readonly factorId: string;
-  readonly qrCode: string;
-  readonly secret: string;
-  readonly uri: string;
-}
-
-/** What `account/factor/remove` answers. */
-export interface FactorRemoved {
-  readonly removed: true;
-}
 
 export interface ClientOptions {
   /**
@@ -186,10 +175,7 @@ export class OperationsClient {
     return await this.#post<IssuedFactor>('/account/factor/enrol', {});
   }
 
-  /**
-   * The person's authenticator app removed (C59), with the current code from it, entered for this
-   * change. The server ends the person's other sessions.
-   */
+  /** The authenticator app removed (C59) with its current code; the person's other sessions end. */
   async removeFactor(code: string): Promise<CallResult<FactorRemoved>> {
     return await this.#post<FactorRemoved>('/account/factor/remove', { code });
   }
