@@ -559,7 +559,7 @@ beside `clientSet: true`, never the id or name `client.list` withholds; a task
 under none reads `null`. Asked only of the rows served
 (`commands/task-content.ts` `withBoardClients`). The Projects board names its
 Client column and facet from it, and a Clients row door opens
-`/projects/?f=client:<slug>`. `tests/reads/board-row-client.test.ts` reads it
+`/projects/?f=client:"<name>"`. `tests/reads/board-row-client.test.ts` reads it
 back against `task.read` and `client.list` and holds the crossings: another
 business, another client, a task holder without the client, and the agent.
 

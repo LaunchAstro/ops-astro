@@ -29,7 +29,7 @@
 // a sentence that names nothing of it.
 //
 // The marked client's row carries the Clients row door: Projects filtered to
-// that client (`/projects/?f=client:<slug>`, the board's Client facet), by the
+// that client (`/projects/?f=client:"<name>"`, the board's Client facet), by the
 // same gesture law. The board names a row's client only where the reader's
 // grants reach it, as `client.list` does, so the door shows that client's work
 // the reader may see and nothing of a client they do not reach.

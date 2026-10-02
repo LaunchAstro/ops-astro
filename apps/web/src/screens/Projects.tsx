@@ -18,7 +18,7 @@
 // What the product does not store yet draws a dash or nothing and is recorded
 // as such: starring (P-20). The actual is the time logged (MP-4-6). The client
 // is the read's, by name, where the reader reaches it, so a Clients row door
-// (`?f=client:<slug>`, the Client facet) opens the board on that client's work;
+// (`?f=client:"<name>"`, the Client facet) opens the board on that client's work;
 // the board takes its view from the address it is drawn at, a panel's place
 // included, so the door filters the board in the dock as on the page.
 
