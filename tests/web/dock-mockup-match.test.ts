@@ -63,6 +63,16 @@ async function openPanels(page: Page, ids: readonly string[]): Promise<void> {
   }
   await page.locator('.dpanel').first().waitFor();
   await page.mouse.move(0, 0);
+  // Measured at rest: a panel narrowed by the second's opening transitions to
+  // its width (in 0.01ms under reduced motion, still a frame), as look.ts waits.
+  await page.evaluate(() =>
+    Promise.all(
+      document
+        .getAnimations()
+        .filter((each) => each instanceof CSSTransition)
+        .map((each) => each.finished.catch(() => each)),
+    ),
+  );
 }
 
 /** One line per width and theme, from a page of the board on each signed-in side. */

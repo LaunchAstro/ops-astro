@@ -3,8 +3,8 @@
    (app.css:6462-6627, 9387-9406, 11583-11592) under `clbook__`. The field is the
    kit's `tf`, the waiting count its corner `cbadge`, the sample mark its
    `MockRegion`, all placed, never restyled. Radius is 0 and status has no fill.
-   R37 (D-10): below 900 there is no hover to reveal a row's door, so it shows at
-   rest there. */
+   R37 (D-10): a row's door shows at rest below 900 and on any device that
+   cannot hover; above 900 with a hovering pointer it shows on hover or focus. */
 
 .clbook__note {
   margin: 0 0 var(--s-3);
@@ -81,18 +81,19 @@
   letter-spacing: var(--type-caption-tracking);
   text-transform: var(--type-caption-case);
 }
-/* The door keeps its track while hidden, so rows never shift under the pointer. */
+/* The door keeps its track while hidden, so rows never shift under the pointer.
+   It hides by opacity, and only for a hovering pointer above 900, so Tab,
+   screen readers and touch always reach it. */
 .clbook__go {
   display: inline-flex;
-  visibility: hidden;
 }
-.clbook__item:hover .clbook__go,
-.clbook__item:focus-within .clbook__go {
-  visibility: visible;
-}
-@media (max-width: 900px) {
+@media (hover: hover) and (width > 900px) {
   .clbook__go {
-    visibility: visible;
+    opacity: 0;
+  }
+  .clbook__item:hover .clbook__go,
+  .clbook__item:focus-within .clbook__go {
+    opacity: 1;
   }
 }
 .clbook__door {

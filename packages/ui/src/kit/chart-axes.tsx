@@ -44,8 +44,12 @@ export function axisFor(
 ): Axis | null {
   const first = series[0];
   if (first === undefined) return null;
+  // Stacked: each index's positives summed up and its negatives summed down, over every series.
+  const length = Math.max(...series.map((s) => s.values.length));
+  const sum = (i: number, keep: (v: number) => boolean): number =>
+    series.reduce((total, s) => total + (keep(s.values[i] ?? 0) ? (s.values[i] ?? 0) : 0), 0);
   const values = stacked
-    ? first.values.map((_, i) => series.reduce((sum, s) => sum + Math.max(0, s.values[i] ?? 0), 0))
+    ? Array.from({ length }, (_, i) => [sum(i, (v) => v > 0), sum(i, (v) => v < 0)]).flat()
     : series.flatMap((s) => s.values);
   const unit = first.unit ?? 'number';
   const ticks = axisTicks(Math.min(0, ...values), Math.max(0, ...values), {

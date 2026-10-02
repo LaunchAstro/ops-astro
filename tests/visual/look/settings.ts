@@ -106,6 +106,36 @@ export const SETTINGS: LookScreen = {
     // General: the page the groups stand on, sections a content gap apart.
     probe('general.page', '.content', '[data-screen="settings-general"]', ['row-gap']),
 
+    // The first card on the page, its rows and controls, as the one drawn
+    // settings page was held before General grouped them (UI-POLISH B5).
+    probe('card', '.set__card', '.set__card', CARD),
+    // The card is capped at a readable measure (46rem), not run to the grid.
+    probe('card-measure', '.set__card', '.set__card', ['box.width'], { widths: [1480] }),
+    probe('title', '.set__card > .card__title', '.set__card .card__title', TYPE, TITLE_RULED),
+    probe('intro', '.set__card > .card__sub', '.set__card .card__sub', TYPE),
+    probe('row', '.setrow + .setrow', '.setrow + .setrow', ROW),
+    probe('row-label', '.setrow__k', '.setrow__k', TYPE),
+    probe('row-note', '.setrow__note', '.setrow__note', [...TYPE, 'margin-top']),
+    probe('row-state', '[data-set="tips"] .setrow__state', '.setrow__state', STATE),
+    probe('row-controls', '[data-set="tips"] .setrow__ctl', '.setrow__ctl', [
+      'align-items',
+      'row-gap',
+    ]),
+    probe(
+      'segmented-on',
+      '[data-set="theme"] .segmented button[aria-pressed="true"]',
+      '.setrow .segmented__opt[aria-pressed="true"]',
+      SEGMENT,
+    ),
+    probe(
+      'segmented-off',
+      '[data-set="theme"] .segmented button[aria-pressed="false"]',
+      '.setrow .segmented__opt[aria-pressed="false"]',
+      ['color', 'background-color'],
+    ),
+    // The row's own button: the mockup's Reset, the app's Save (both `.btn--sm`).
+    probe('row-button', '[data-set="tips"] .btn--sm', '.setrow .btn--sm', BUTTON),
+
     // You: Appearance and Guided tips are the mockup's own two rows (AG-X22, AG-X23).
     ...group('you', YOU),
     probe(

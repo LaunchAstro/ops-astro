@@ -59,14 +59,25 @@ export interface LedgerSearch {
 const wordsIn = (typed: string): readonly string[] =>
   (typed.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).slice(0, 8);
 
-/** `typed`, placed word by word against the people who acted in `days`. */
-export function readSearch(typed: string, days: readonly LedgerDayView[]): LedgerSearch {
+/**
+ * `typed`, placed word by word against the people who acted in `days`. A word
+ * `searched` (the query `days` were read for) stays a free word: the days are
+ * its answer, so it is never read as one of the people they found.
+ */
+export function readSearch(
+  typed: string,
+  days: readonly LedgerDayView[],
+  searched: string | null = null,
+): LedgerSearch {
   const names = [...new Set(days.flatMap((day) => day.events.map((event) => event.actorName)))];
+  const asked = wordsIn(searched ?? '');
   const people: string[] = [];
   const kinds: Kind[] = [];
   const words: string[] = [];
   for (const word of wordsIn(typed)) {
-    const person = names.find((name) => wordsIn(name).includes(word));
+    const person = asked.includes(word)
+      ? undefined
+      : names.find((name) => wordsIn(name).includes(word));
     const kind = KINDS.find((each) => each.words.includes(word));
     if (person !== undefined) {
       if (!people.includes(person)) people.push(person);

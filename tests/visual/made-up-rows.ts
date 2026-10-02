@@ -16,6 +16,7 @@ import type {
   TodoView,
 } from '../../packages/core-wire/src/index.ts';
 import { MIA, NATHAN } from './made-up-access.ts';
+import { PROPOSAL } from './made-up-data.ts';
 
 export const STATE: Readonly<Record<'active' | 'waiting' | 'hold', TaskStateView>> = {
   active: { id: 's-active', key: 'active', label: 'Active', machineCategory: 'started' },
@@ -137,6 +138,7 @@ export const DETAIL: InternalTaskDetail = {
       actorId: NATHAN.personId,
       actorKind: 'person',
       actorName: NATHAN.name,
+      personId: NATHAN.personId,
       operation: 'task.create',
     },
     {
@@ -144,6 +146,7 @@ export const DETAIL: InternalTaskDetail = {
       actorId: NATHAN.personId,
       actorKind: 'person',
       actorName: NATHAN.name,
+      personId: NATHAN.personId,
       operation: 'task.update',
     },
   ],
@@ -165,7 +168,7 @@ export const DETAIL: InternalTaskDetail = {
   // Harbour Physio (made-up-access.ts), and the task has content: its client is locked.
   client: 'c-harbour',
   hasContent: true,
-  proposals: [],
+  proposals: [PROPOSAL],
   capCurrency: 'AUD',
   envelope: null,
   alerts: [],

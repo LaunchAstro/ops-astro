@@ -7,9 +7,11 @@
 // offering the task panel's choices) and `task.set_stage`; the
 // assignee editor offers the people `person.list` answers, and none while
 // that read has not answered, then the reader's own agents for the row
-// (Assign to AI, `task.assign` with `agent`). Each is sent at the revision the
-// board last read for that task, so a change made elsewhere since is refused
-// as stale rather than overwritten, and every outcome re-reads the board. A
+// (Assign to AI, `task.assign` with `agent`). Each is sent at the revision of
+// the row it was made on (a rename, the row it opened on), so a change made
+// elsewhere since is refused as stale rather than overwritten, and every outcome re-reads the board. A
+// refusal or an unknown outcome is said in the server's words above the board
+// (`onSettled`), so a change that did not land is never dropped in silence. A
 // plain click opens the task beside the board in the dock task panel
 // (MP-4-8), or its page where the screen has no panel.
 // The hover box's timer starts the reader's own clock with `time.start`
@@ -18,7 +20,8 @@
 
 import type { BoardRow, ProjectRow, RowActions } from '@launchastro/ui';
 import type { BoardTask, PersonView } from '../../../../packages/core-wire/src/index.ts';
-import type { OperationsClient } from '../operations/client.ts';
+import type { CallResult, OperationsClient } from '../operations/client.ts';
+import { settle, type Settlement } from '../records/use-command.ts';
 import { ESTIMATE_CHOICES } from './task/estimates.ts';
 import { TASK_STAGES } from '../../../../packages/core-wire/src/index.ts';
 
@@ -46,13 +49,18 @@ export function assigneeOf(task: BoardTask, agent: BoardTask['agent']): ProjectR
     : { id: task.assignee.personId, name: task.assignee.name, agent: false };
 }
 
+/** The revision the row was read at, which an edit made on it is sent against. */
+const at = (row: ProjectRow): { readonly expectedRevision?: number } =>
+  row.revision === undefined ? {} : { expectedRevision: row.revision };
+
 export function rowActions(options: {
   readonly client: OperationsClient;
-  readonly tasks: readonly BoardTask[];
   /** The people the assignee editor offers; null while unknown, and then no assignee editor. */
   readonly people: readonly PersonView[] | null;
   readonly href: (key: string) => string;
   readonly reload: () => void;
+  /** Each write's outcome: what the board says about it, or null once one lands. */
+  readonly onSettled: (refused: string | null) => void;
   /** The dock task panel, which rows open beside the board (MP-5-8, CS-5.14). */
   readonly panel?: {
     readonly host: BoardPanelHost;
@@ -60,36 +68,47 @@ export function rowActions(options: {
     readonly setOpened: (opened: RowOpened) => void;
   };
 }): RowActions {
-  const { client, reload } = options;
-  const at = (id: string): { readonly expectedRevision?: number } => {
-    const revision = options.tasks.find((task) => task.id === id)?.revision;
-    return revision === undefined ? {} : { expectedRevision: revision };
-  };
-  // Settled or not, the board re-reads: a refusal redraws the stored truth.
-  const send = (sent: Promise<unknown>): void => {
-    void sent.then(reload, reload);
-  };
+  const { client } = options;
+  const send = sender(options.onSettled, options.reload);
   return {
     onTick: (row, done) => {
       send(
         done
-          ? client.mutate('task.complete', { recordId: row.id }, at(row.id))
+          ? client.mutate('task.complete', { recordId: row.id }, at(row))
           : client.mutate(
               'task.reopen',
               { recordId: row.id, reason: 'Reopened from the Projects board' },
-              at(row.id),
+              at(row),
             ),
       );
     },
     onRename: (row, title) => {
-      send(client.mutate('task.update', { recordId: row.id, fields: { title } }, at(row.id)));
+      send(client.mutate('task.update', { recordId: row.id, fields: { title } }, at(row)));
     },
     ...openers(options),
     // No revision: a time entry is its own record, not a change to the task.
     onStartTimer: (row) => {
       send(client.mutate('time.start', { taskId: row.id }));
     },
-    ...cellActions(client, options.people, at, send),
+    ...cellActions(client, options.people, send),
+  };
+}
+
+/** Settled or not, the board re-reads: a refusal redraws the stored truth, and is said as well. */
+function sender(
+  onSettled: (refused: string | null) => void,
+  reload: () => void,
+): (sent: Promise<CallResult<unknown>>) => void {
+  const settleOne = async (sent: Promise<CallResult<unknown>>): Promise<void> => {
+    try {
+      onSettled(refusalOf(settle(await sent)));
+    } catch {
+      onSettled(refusalOf({ kind: 'unknown', because: 'No answer came back.' }));
+    }
+    reload();
+  };
+  return (sent) => {
+    void settleOne(sent);
   };
 }
 
@@ -97,8 +116,7 @@ export function rowActions(options: {
 function cellActions(
   client: OperationsClient,
   people: readonly PersonView[] | null,
-  at: (id: string) => { readonly expectedRevision?: number },
-  send: (sent: Promise<unknown>) => void,
+  send: (sent: Promise<CallResult<unknown>>) => void,
 ): RowActions {
   return {
     ...(people === null
@@ -106,17 +124,15 @@ function cellActions(
       : {
           people: people.map((person) => ({ id: person.personId, name: person.name })),
           onAssign: (row, assignee) => {
-            send(
-              client.mutate('task.assign', { recordId: row.id, fields: { assignee } }, at(row.id)),
-            );
+            send(client.mutate('task.assign', { recordId: row.id, fields: { assignee } }, at(row)));
           },
           // Assign to AI: one of the reader's own agents the row offers.
           onAssignAgent: (row, agent) => {
-            send(client.mutate('task.assign', { recordId: row.id, fields: { agent } }, at(row.id)));
+            send(client.mutate('task.assign', { recordId: row.id, fields: { agent } }, at(row)));
           },
         }),
     onDue: (row, due) => {
-      send(client.mutate('task.update', { recordId: row.id, fields: { due } }, at(row.id)));
+      send(client.mutate('task.update', { recordId: row.id, fields: { due } }, at(row)));
     },
     onStage: (row, stage) => {
       // The board draws labels; the task stores the stage's id.
@@ -124,7 +140,7 @@ function cellActions(
         client.mutate(
           'task.set_stage',
           { recordId: row.id, fields: { stage: TASK_STAGES.idOf(stage) } },
-          at(row.id),
+          at(row),
         ),
       );
     },
@@ -134,7 +150,7 @@ function cellActions(
         client.mutate(
           'task.update',
           { recordId: row.id, fields: { estimated_minutes: minutes } },
-          at(row.id),
+          at(row),
         ),
       );
     },
@@ -174,6 +190,15 @@ function openers(options: {
     },
     ...(panel.opened === null ? {} : { opened: panel.opened }),
   };
+}
+
+/** What the board says about a write: nothing when it landed, else the server's words. */
+function refusalOf(settled: Settlement): string | null {
+  if (settled.kind === 'ok') return null;
+  if (settled.kind === 'unknown') {
+    return `The change may not have been stored: ${settled.because} Check the row before trying again.`;
+  }
+  return `The change was not made: ${settled.because}`;
 }
 
 const pad = (n: number): string => String(n).padStart(2, '0');

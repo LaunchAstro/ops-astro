@@ -58,7 +58,7 @@
 // names the stage and nothing else: Docker's, pg_restore's and the server's
 // messages can carry record data, so they are never kept.
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { drillAsOperator as actAsOperator, exportArchive, recordCarried } from './drill-acts.mjs';
 import { restoreDrill } from './drill-restore.mjs';
 import { requireOperatingOperator } from './operator.ts';
@@ -146,7 +146,9 @@ export async function runDrillCommand(args, { environment = process.env, reach }
   return { mode: run.mode, receipt };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// The entry point by real path, so a checkout under a space or reached through a link still runs.
+const entry = process.argv[1];
+if (entry !== undefined && realpathSync(entry) === realpathSync(import.meta.filename)) {
   try {
     const { refused, mode, receipt } = await runDrillCommand(process.argv.slice(2));
     if (refused !== undefined) {

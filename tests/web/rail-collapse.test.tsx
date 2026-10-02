@@ -84,17 +84,20 @@ describe("MP-2-3 56px strip: each agency section's own MP-2-2 glyph", () => {
   });
 });
 
+/** A client's rail: the real way back (`kind: 'back'`) and two sections with no glyph. */
+const CLIENT_RAIL = [
+  { id: 'clients:back', label: 'Back to Clients', href: '/clients/', kind: 'back' },
+  { id: 'clients:overview', label: 'Overview', href: '/clients/a/' },
+  { id: 'clients:tasks', label: 'Tasks', href: '/clients/a/tasks/' },
+] as const;
+
 describe('MP-2-3 56px strip: an initial only where a section has no glyph', () => {
-  it('draws an initial and the name on hover only where a section has no glyph, the way back included', async () => {
+  it('draws an initial and the name on hover where a section has no glyph, and the way back keeps its chevron and name on hover', async () => {
     const page = await drawn(
       <Shell
         face="client"
         build={null}
-        rail={[
-          { id: 'clients:back', label: 'Back to Clients', href: '/clients/' },
-          { id: 'clients:overview', label: 'Overview', href: '/clients/a/' },
-          { id: 'clients:tasks', label: 'Tasks', href: '/clients/a/tasks/' },
-        ]}
+        rail={CLIENT_RAIL}
         here="/clients/a/"
         title="Overview"
         dock={null}
@@ -104,8 +107,10 @@ describe('MP-2-3 56px strip: an initial only where a section has no glyph', () =
         {null}
       </Shell>,
     );
-    const items = page.all('.rail__item');
-    expect(items).toHaveLength(3);
+    expect(shell(page).dataset['rail']).toBe('collapsed');
+    // The way back is its own button, not one of the sections.
+    const items = page.all('.rail__group .rail__item');
+    expect(items).toHaveLength(2);
     for (const item of items) {
       const label = item.querySelector('.rail__label')?.textContent ?? '';
       expect(label).not.toBe('');
@@ -117,10 +122,18 @@ describe('MP-2-3 56px strip: an initial only where a section has no glyph', () =
       expect(glyph?.textContent).toBe(label.slice(0, 1));
       expect(accessibleText(item)).toBe(label);
     }
-    // The label is hidden visually in the strip, not removed.
+    // The way back keeps its chevron for a glyph and its name on hover.
+    const back = page.find('.rail__back');
+    expect(back?.getAttribute('href')).toBe('/clients/');
+    expect(back?.getAttribute('title')).toBe('Back to Clients');
+    expect(back?.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+    expect(back?.querySelector('.rail__label')?.textContent).toBe('Back to Clients');
+    // The label is hidden visually in the strip, not removed, and nothing
+    // scoped to the way back undoes the clip.
     expect(SHEET).toMatch(
       /\.shell\[data-rail='collapsed'\] \.rail__label\s*\{[^}]*clip-path: inset\(50%\)/u,
     );
+    expect(SHEET).not.toMatch(/\.rail__back[^{]*\.rail__label\s*\{[^}]*clip-path:\s*none/u);
   });
 
   it('carries no hover title while the names are showing', async () => {

@@ -90,6 +90,7 @@ import type { LiveSignal, LiveTopics } from './live.ts';
 import { markOf, presenceAskOf, type LivePresence, type SeatAsk } from './live-presence.ts';
 import {
   BOARD,
+  endsWithRequest,
   follow as followTopics,
   RECHECK_MS,
   sharesOf,
@@ -113,6 +114,7 @@ import {
   MISMATCH_FIXES,
   namedSession,
   sessionIdOf,
+  staleSessions,
   unnamedSession,
   SESSION_COOKIE_OPTIONS,
 } from './auth/session.ts';
@@ -293,7 +295,12 @@ async function admit(
   // A session cookie from another site's page stops here, before the
   // verifier reads it (`auth/session.ts`).
   if (crossSiteSession(context.req)) return refuse(context, CROSS_SITE());
+  // Lapsed and surplus other-tab cookies go with any answer (`staleSessions`).
+  for (const name of staleSessions(context.req, Math.floor(Date.now() / 1000))) {
+    deleteCookie(context, name, SESSION_COOKIE_OPTIONS);
+  }
   const { presented, credential } = await presentedBy(options.verify, context.req, entry === AGENT);
+  if (presented === 'unavailable') return unavailable(context);
   if (typeof presented === 'object') context.set(PRESENTED, presented);
   else clearNamedCookie(context);
   if (presented === undefined || presented === 'absent') {
@@ -357,6 +364,7 @@ export function createApi(options: ApiOptions): Hono {
     if (!fromOwnPages(context.req)) return refuse(context, CROSS_SITE());
     const token = bearerOf(context.req);
     const presented = token === undefined ? undefined : await options.verify(context.req);
+    if (presented === 'unavailable') return unavailable(context);
     if (presented === 'expired') {
       return refuse(context, refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED_FIXES));
     }
@@ -511,6 +519,7 @@ export function createApi(options: ApiOptions): Hono {
       if (typeof taskId !== 'string') return refuse(context, taskId);
       // Batch 1's dedicated task stream: its frames carry no identifier (REVB1ENDFIXAPID).
       return streamSSE(context, async (stream) => {
+        endsWithRequest(stream, context.req.raw.signal);
         await follow(
           stream,
           live,
@@ -549,6 +558,7 @@ export function createApi(options: ApiOptions): Hono {
       if (none && refused !== undefined && isCommandRefusal(refused))
         return refuse(context, refused);
       return streamSSE(context, async (stream) => {
+        endsWithRequest(stream, context.req.raw.signal);
         for (const watch of tasks.filter((each) => !watched.includes(each))) {
           // eslint-disable-next-line no-await-in-loop -- written in the order named.
           await stream.writeSSE({ event: 'closed', data: watch.label });
@@ -738,6 +748,7 @@ async function boardStream(
   const joined = await mayJoinBoard(options, context, businessId);
   if (isCommandRefusal(joined)) return refuse(context, joined);
   return streamSSE(context, async (stream) => {
+    endsWithRequest(stream, context.req.raw.signal);
     await followBoardOn(stream, options, live, context, businessId, joined);
   });
 }
@@ -804,13 +815,6 @@ async function mayShowInbox(
   return await shownInbox(options.database, businessId, presented, personId);
 }
 
-/**
- * The person's own second factor (C59): `account/factor/enrol`, `verify` and
- * `remove`; and their own sessions (C58): `account/sessions/list`,
- * `end-others` and `sign-out`. Each goes through the same door as every
- * person route. The bearer goes to the provider as the person's own; the body
- * is the code, or nothing.
- */
 const noop = (): void => {};
 const RANK = { check: 0, invalidate: 1, resync: 2 } as const;
 
@@ -819,7 +823,8 @@ const RANK = { check: 0, invalidate: 1, resync: 2 } as const;
  * is asked again, and `closed` the first time the answer is no. Signals that
  * arrive while one is pending merge into it, the strongest kept. Stopping it
  * (the tab leaving, or the topics closing) lets go only once no question it
- * asked is in flight.
+ * asked is in flight. A stream that ended before this ran (the tab left at the
+ * door) is taken as ended: no abort listener added now is ever called.
  */
 export async function follow(
   stream: SSEStreamingApi,
@@ -829,7 +834,8 @@ export async function follow(
   may: () => Promise<string | CommandRefusal>,
 ): Promise<void> {
   const ended = new Promise<void>((resolve) => {
-    stream.onAbort(resolve);
+    if (stream.aborted) resolve();
+    else stream.onAbort(resolve);
   });
   let pending: LiveSignal | 'check' | null = null;
   let chain = Promise.resolve();
@@ -891,6 +897,17 @@ function refuse(context: Context, refusal: CommandRefusal): Response {
   );
 }
 
+/**
+ * The provider's key set could not be reached, so no credential was checked.
+ * Not a refusal: no `refused` flag, the page keeps its session, nothing counted.
+ */
+function unavailable(context: Context): Response {
+  context.set(REFUSAL, 'SERVICE_UNAVAILABLE');
+  return context.json({ code: 'SERVICE_UNAVAILABLE', names: [], fixes: [RETRY] }, 503);
+}
+
+const RETRY =
+  'The service could not complete the request. Retry; if it persists, check /api/health.';
 const PRESENTED = 'presented';
 const REFUSAL = 'refusal';
 const HANDED_OUT = 'handed-out';

@@ -3,6 +3,8 @@
 // What a look probe is (UI-POLISH). Its own module, so the screen files and
 // the list in index.ts each import it and never each other.
 
+import type { MadeUpVariant } from '../made-up-api.ts';
+
 /**
  * Before measuring: `store` puts values in the page's localStorage before it
  * loads (a state the mockup replays before paint, such as its dragged rail
@@ -21,7 +23,17 @@ export interface LookProbe {
   /** The mockup page path and the element there; `open` clicks, in turn, before measuring. */
   readonly mockup: LookPrep & { readonly path: string; readonly selector: string };
   /** The app page (drawn from the made-up reads) and the element there. */
-  readonly app: LookPrep & { readonly page: string; readonly selector: string };
+  readonly app: LookPrep & {
+    readonly page: string;
+    readonly selector: string;
+    /**
+     * An address to draw instead of the page's, signed in: a held address, an
+     * unknown one, or sign-in with a session already held.
+     */
+    readonly path?: string;
+    /** The made-up reads in another state (`made-up-api.ts`): a read's other renderings. */
+    readonly reads?: MadeUpVariant;
+  };
   /** Computed style properties (colours compared as painted), or `box.width|height|x|y`. */
   readonly props: readonly string[];
   /**

@@ -36,7 +36,7 @@ import { openEnvelopeOf } from '../../../core-runtime/src/index.ts';
 import { readAlerts } from '../../../core-runtime/src/index.ts';
 import { readTaskProposals } from './proposals.ts';
 import { taskCapCurrency } from './task-cap.ts';
-import { awaitingApproval } from './awaiting.ts';
+import { awaitingApproval, awaitingTheReader, type DecideReach } from './awaiting.ts';
 import { readRanks } from './board-rank.ts';
 import { readActualMinutes } from './board-time.ts';
 import { readTaskRank, type RankPool } from './rank.ts';
@@ -380,8 +380,8 @@ export async function readBoard(
  * the caller cannot read never moves it; null when no task is served. The
  * ranks are read over the same `readable` scope. A row whose task has an open
  * gate waits for approval, whoever may decide it (MP-5-11). `decidable` is the
- * caller's decide reach (null for business-wide); such a row waits on the
- * caller when the gate is inside it (MP-5-12). None when not given.
+ * caller's decide reach; such a row waits on the caller when their
+ * `task.decide` of its gate would be admitted (MP-5-12). None when not given.
  * `reader` is the caller's own person, whose agents alone a row carries
  * (Assign to AI), and whose waiting client signals and mentions alone it
  * counts (MP-5-8); null for none.
@@ -391,7 +391,7 @@ export async function readBoardStamped(
   taskTypeId: string,
   board: string | null,
   readable: readonly string[] | null,
-  decidable: readonly string[] | null = [],
+  decidable: DecideReach | null = null,
   reader: string | null = null,
 ): Promise<{ readonly tasks: readonly BoardTask[]; readonly changedAt: string | null }> {
   const rows = await tx.query<TaskRowRead>(
@@ -415,7 +415,7 @@ export async function readBoardStamped(
   const actuals = await readActualMinutes(tx, served);
   const agents = await readBoardAgents(tx, served, reader);
   const comments = await readBoardComments(tx, served, reader);
-  const decides = decidable === null ? null : new Set(decidable);
+  const decides = await awaitingTheReader(tx, gated, decidable);
   const tasks = rows.map((row): BoardTask =>
     Object.assign(summaryOf(row), {
       rank: ranks.get(row.id) ?? UNRANKED,
@@ -425,7 +425,7 @@ export async function readBoardStamped(
       ...unslottedOf(row),
       statePosition: row.state_position === null ? null : Number(row.state_position),
       waitReason: gated.has(row.id) ? ('needs_approval' as const) : null,
-      awaitingDecision: gated.has(row.id) && (decides === null || decides.has(row.id)),
+      awaitingDecision: decides.has(row.id),
       ...(agents.get(row.id) ?? NO_AGENTS),
       comments: comments.get(row.id) ?? NO_COMMENTS,
     }),

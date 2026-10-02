@@ -57,6 +57,7 @@ export {
   EFFECTIVE as EFFECTIVE_GRANTS,
   effectiveGrants,
   grantFingerprint,
+  grantRowsFingerprint,
   OPERATIONS_MANAGE,
   revokeGrant,
   subjectsOf,
@@ -140,6 +141,7 @@ export {
   isMoneyKey,
   judgeStepUp,
   MONEY_STEP_UP_SETTING,
+  MONEY_STEP_UP_SWITCH,
   refuseStaleMoneyStep,
   STEP_UP_WINDOW_SECONDS,
 } from './authority/step-up.ts';

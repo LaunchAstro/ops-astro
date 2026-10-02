@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // MP-4-8 "Duplicate without contents": who may duplicate and what they learn.
-// It needs task:write for the chosen client and current read on the old task,
-// both asked inside the command; the carried text warning on the old client's
+// It needs task:write for the chosen client (and task:share there when it is
+// another client) and current read on the old task, asked inside the command; the carried text warning on the old client's
 // name comes from the server on every path; and the new task's "duplicated
 // from" event names the old task only to a reader who holds read on it.
 
@@ -206,9 +206,11 @@ describe.skipIf(serverUrl === undefined)('MP-4-8 refusal task:write for the chos
       expect(outcomeOf(answer)).toMatchObject({ code: 'SCOPE_NOT_GRANTED' });
     }
     expect(await footprint()).toStrictEqual(before);
-    // With write on client B, the same person makes it there.
+    // With write and share on client B (it crosses from client A), the same
+    // person makes it there.
     await db.app.withBusiness(alpha, async (tx) => {
       await grantTo(tx, writerA, 'write', { kind: 'party', id: clientB });
+      await grantTo(tx, writerA, 'share', { kind: 'party', id: clientB });
     });
     const made = await duplicate(writerA, { recordId: old, client: clientB, title: 'x' });
     expect(outcomeOf(made)).toStrictEqual({ applied: true });

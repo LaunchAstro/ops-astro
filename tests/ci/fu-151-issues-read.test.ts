@@ -18,6 +18,7 @@ import { script, step, top } from './workflow-text.ts';
 
 const ROOT = join(import.meta.dirname, '../..');
 const REVIEW = readFileSync(join(ROOT, '.github/workflows/review-evidence.yml'), 'utf8');
+const LIST = 'The pull requests being judged';
 const FETCH = 'Read the description as it stands now';
 const BINDS = 'The review must cover the head being merged';
 
@@ -45,14 +46,21 @@ const may = (scope) => (process.env.STUB_GRANTED ?? '').split(',').includes(scop
 const fail = (why) => { process.stderr.write('gh: ' + why + '\n'); process.exit(1); };
 if (args[0] !== 'api') fail('only api is stood in');
 if (process.env.GH_TOKEN !== process.env.STUB_TOKEN) fail('HTTP 401: Bad credentials');
-const jq = args[args.indexOf('--jq') + 1];
+const jq = args.includes('--jq') ? args[args.indexOf('--jq') + 1] : '.';
 const path = args.find((a, i) => i > 0 && !a.startsWith('--') && args[i - 1] !== '--jq');
 const url = new URL(path, 'https://api.github.invalid/');
 let answer;
 if (url.pathname === '/repos/o/r/pulls/9') {
   if (!may('pull-requests')) fail('HTTP 403: Resource not accessible by integration');
   const labels = (process.env.STUB_LABELS ?? '').split(',').filter(Boolean);
-  answer = { body: process.env.STUB_BODY, labels: labels.map((name) => ({ name })) };
+  answer = {
+    number: 9,
+    state: 'open',
+    head: { sha: process.env.STUB_HEAD },
+    base: { ref: 'main' },
+    body: process.env.STUB_BODY,
+    labels: labels.map((name) => ({ name })),
+  };
 } else if (url.pathname === '/repos/o/r/issues') {
   const state = url.searchParams.get('state') ?? 'open';
   const rows = [
@@ -64,7 +72,7 @@ if (url.pathname === '/repos/o/r/pulls/9') {
     .filter((r) => state === 'all' || r.state === state)
     .filter((r) => (r.pull_request === undefined ? may('issues') : may('pull-requests')));
 } else fail('HTTP 404: Not Found');
-const out = spawnSync('jq', ['-r', jq], { input: JSON.stringify(answer), encoding: 'utf8' });
+const out = spawnSync('jq', jq === '.' ? [jq] : ['-r', jq], { input: JSON.stringify(answer), encoding: 'utf8' });
 if (out.status !== 0) fail('jq: ' + out.stderr);
 process.stdout.write(out.stdout);
 `;
@@ -85,7 +93,7 @@ afterAll(() => {
   for (const dir of made) rmSync(dir, { recursive: true, force: true });
 });
 
-/** The job's fetch step, then its check step, for a body naming `issue` as the follow-up. */
+/** The job's list, fetch and check steps, for a body naming `issue` as the follow-up. */
 function runJob(issue: number, labels = '', text = body(issue)) {
   const dir = mkdtempSync(join(tmpdir(), 'fu151-'));
   made.push(dir);
@@ -104,6 +112,13 @@ function runJob(issue: number, labels = '', text = body(issue)) {
       env: { ...env, RUNNER_TEMP: dir, ...extra },
       encoding: 'utf8',
     });
+  // CI-QUEUE: the pull_request event the list step reads, as GitHub writes it.
+  const event = join(dir, 'event.json');
+  const pull = { number: 9, head: { sha: HEAD }, base: { sha: '2'.repeat(40), ref: 'main' } };
+  writeFileSync(event, JSON.stringify({ pull_request: pull }));
+  const fired = { GITHUB_EVENT_NAME: 'pull_request', GITHUB_EVENT_PATH: event };
+  const list = bash(LIST, fired);
+  if (list.status !== 0) throw new Error(`list step: ${list.stderr}`);
   const fetched = bash(FETCH, {
     PATH: `${dir}:${process.env['PATH'] ?? ''}`,
     GH_TOKEN: CANARY,
@@ -113,9 +128,10 @@ function runJob(issue: number, labels = '', text = body(issue)) {
     STUB_GRANTED: perms.join(','),
     STUB_BODY: text,
     STUB_LABELS: labels,
+    STUB_HEAD: HEAD,
   });
   const checked = bash(BINDS, {
-    HEAD_SHA: HEAD,
+    ...fired,
     CHANGED_FILES: 'README.md',
     AGENT_MODELS: 'claude-opus-5-5',
   });

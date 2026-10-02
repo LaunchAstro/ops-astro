@@ -87,7 +87,7 @@ export const TASK_PANEL: LookScreen = {
     ),
     probe(
       'task-panel.fact-rank',
-      { mockup: '.mstrip__rank', app: '[data-fact="rank"] .sb__state' },
+      { mockup: '.mstrip__rank', app: '[data-fact="rank"] output' },
       ['font-family', 'font-size', 'color'],
       { ruled: snapped('font-size', '12px') },
     ),

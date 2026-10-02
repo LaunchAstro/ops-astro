@@ -8,7 +8,15 @@ import type { Facet } from './types.ts';
 import type { ProjectRow } from './project-row.ts';
 import { pad } from './project-words.ts';
 
-const slug = (value: string): string => value.toLowerCase().replaceAll(/[^a-z0-9]+/gu, '-');
+/**
+ * A facet's id: its kind, then the exact value in quotes, with `%` and the
+ * address's `,` escaped. Two values are never one id, whatever their script or
+ * punctuation (REVIEW-2C1-4), and no id here has the shape of the earlier
+ * slugged ids (`client:smith-co`), so an address saved with one of those
+ * matches nothing and is dropped on the way in, never read as another client.
+ */
+export const facetId = (kind: string, value: string): string =>
+  `${kind.toLowerCase()}:"${value.replaceAll('%', '%25').replaceAll(',', '%2C')}"`;
 
 const wordsOf = (value: string): readonly string[] =>
   value
@@ -26,7 +34,7 @@ function byField(
     .toSorted();
   return values.map((value) => {
     return {
-      id: `${kind.toLowerCase()}:${slug(value)}`,
+      id: facetId(kind, value),
       kind,
       label: value,
       words: wordsOf(value),
@@ -34,9 +42,6 @@ function byField(
     };
   });
 }
-
-/** A category's facet key: its words, lower-case and hyphenated. */
-export const categorySlug = slug;
 
 /** The assignee filter on one person (the viewer preset's, P-11). */
 export const viewerFacetId = (person: string): string => `assignee:${person}`;
@@ -91,8 +96,11 @@ export function projectFacets(
   ];
 }
 
-/** How many client filters an address has on (the Client column's rule, P-23). */
+/**
+ * How many client filters an address has on (the Client column's rule, P-23).
+ * An earlier slugged id is no filter: the board drops it, so it hides no column.
+ */
 export function clientFiltersIn(address: string): number {
   const ids = new URLSearchParams(address.startsWith('?') ? address.slice(1) : address).get('f');
-  return (ids ?? '').split(',').filter((id) => id.startsWith('client:')).length;
+  return (ids ?? '').split(',').filter((id) => /^client:".*"$/u.test(id)).length;
 }

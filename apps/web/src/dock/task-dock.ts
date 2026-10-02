@@ -8,7 +8,9 @@
 // closing it closes the other: the dock's close, Close all, Escape or a solo
 // press end the task panel through its own close (the timer's stop, the focus
 // back on its door), and the task panel's own close takes `task` out of the
-// dock. Storage and the history never bring the id back: they hold no task to
+// dock. While the draft's Create is out the task panel's close refuses
+// (A11-1), and the dock puts `task` back beside what is open, so no close
+// leaves the draft. Storage and the history never bring the id back: they hold no task to
 // draw, so the dock restores only panels with a registration.
 
 import { useLayoutEffect, useRef, type ReactNode } from 'react';
@@ -24,8 +26,8 @@ export interface TaskDock {
   readonly body: ReactNode;
   /** The open task's own page, or the board for a draft. */
   readonly door: string;
-  /** The task panel's own close. */
-  readonly close: () => void;
+  /** The task panel's own close; false, closing nothing, while the draft's Create is out. */
+  readonly close: () => boolean;
 }
 
 const LABEL = 'Task';
@@ -49,7 +51,10 @@ export function useTaskDock(dock: DockModel, task: TaskDock | null): void {
     } else if (!open && docked) {
       change((state) => close(state, 'task'));
     } else if (open && was.docked && !docked) {
-      closeTask?.();
+      // The task panel's own close; while the draft's Create is out it closes
+      // nothing, and the panel stays, beside what is open.
+      const closed = closeTask?.() ?? true;
+      if (!closed) change((state) => openByGesture(state, 'task', true));
     }
   }, [open, docked, change, closeTask]);
 }
