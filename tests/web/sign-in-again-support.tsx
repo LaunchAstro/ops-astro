@@ -94,6 +94,7 @@ export function api(sessions: SessionStore, route: Route = () => null) {
         : refusal('AUTH_UNKNOWN_LOGIN', [], 401);
     }
     if (url === '/api/session/end') return json({ ok: true });
+    if (url === `${GOTRUE}/logout?scope=local`) return new Response(null, { status: 204 });
     if (url.endsWith('/account/sessions/sign-out')) {
       return json({ ended: 1, signedOutAtProvider: true });
     }
