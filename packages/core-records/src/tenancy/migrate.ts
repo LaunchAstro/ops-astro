@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The migration runner. Numbered SQL files are the only schema truth, so this
+// The migration runner. The SQL files in migrations/ are the only schema truth, so this
 // is the only thing in the tree that changes a schema.
 //
 // The properties it holds, each because its absence has a known failure.
 //
+// - Files apply in version order, and every ID in the directory is well
+//   formed and unique (migration-ids.ts), so a fresh install has one order.
 // - One run is all or nothing. Every pending file is applied in one
 //   transaction, each file's ledger row written after its statements, with one
 //   commit at the end. A file and its ledger row therefore commit together, and
@@ -30,9 +32,10 @@
 //   service logins, named one by one, are not counted: they never stop.
 
 import { createHash } from 'node:crypto';
-import { readdirSync, readFileSync } from 'node:fs';
+import { lstatSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AdminConnection } from './database.ts';
+import { migrationIdProblems } from './migration-ids.ts';
 import { classifyStatement, scanToken, splitStatements } from './statements.ts';
 
 export interface Migration {
@@ -47,17 +50,27 @@ export interface MigrationOutcome {
 }
 
 export function readMigrations(directory: string): readonly Migration[] {
-  return readdirSync(directory)
+  const names = readdirSync(directory)
     .filter((name) => name.endsWith('.sql'))
-    .toSorted()
-    .map((name) => {
-      const bytes = readFileSync(join(directory, name));
-      return {
-        version: name.slice(0, -'.sql'.length),
-        checksum: createHash('sha256').update(bytes).digest('hex'),
-        statements: splitStatements(bytes.toString('utf8')),
-      };
-    });
+    .toSorted();
+  // A symlink's target could change with no change to the file git tracks here.
+  const problems = [
+    ...names
+      .filter((name) => !lstatSync(join(directory, name)).isFile())
+      .map((name) => `${name.slice(0, -'.sql'.length)}, which is not a regular file`),
+    ...migrationIdProblems(names.map((name) => name.slice(0, -'.sql'.length))),
+  ];
+  if (problems.length > 0) {
+    throw new Error(`migrate: ${directory} holds ${problems.join('; ')}. Nothing was applied.`);
+  }
+  return names.map((name) => {
+    const bytes = readFileSync(join(directory, name));
+    return {
+      version: name.slice(0, -'.sql'.length),
+      checksum: createHash('sha256').update(bytes).digest('hex'),
+      statements: splitStatements(bytes.toString('utf8')),
+    };
+  });
 }
 
 /** A session the runner found on its database that is not its own. */

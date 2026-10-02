@@ -230,6 +230,24 @@ describe.skipIf(serverUrl === undefined)('the runner refuses while connected', (
     expect(await state(built)).toBe(before);
   }, 120_000);
 
+  // MIG-TIMESTAMP: an installation at main's newest four-digit migration
+  // upgrades onto timestamp IDs, one run at a time, in ID order.
+  it("upgrades a database at main's newest migration to timestamp IDs, in ID order", async () => {
+    const built = await createEmptyDatabase({ part: 'mtupgrade' });
+    db = built;
+    await migrate(built.admin, 'migrations');
+    const first = syntheticMigration('20261002013000_mt_first', 'create table ops.mt_a (id int)');
+    const second = syntheticMigration('20261002020000_mt_second', 'create table ops.mt_b (id int)');
+
+    expect((await applyMigrations(built.admin, [...onDisk, first])).applied).toStrictEqual([
+      '20261002013000_mt_first',
+    ]);
+    expect((await applyMigrations(built.admin, [...onDisk, first, second])).applied).toStrictEqual([
+      '20261002020000_mt_second',
+    ]);
+    expect(await lastApplied(built)).toBe('20261002020000_mt_second');
+  }, 120_000);
+
   it('catches a session that connects after the first check, inside the migration, before its commit', async () => {
     const built = await createEmptyDatabase({ part: 'fr6late' });
     db = built;
