@@ -11,7 +11,7 @@
 // `run.revise_state` is the only write in the source that touches them.
 
 import { randomUUID } from 'node:crypto';
-import { readdirSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   admitActivation,
@@ -32,6 +32,7 @@ import {
 } from '../acceptance/world.ts';
 import { encode, sourceOf } from '../runtime/aw-02-world.ts';
 import { asAgent, asPerson, signed, type Signed } from './c54-fixture.ts';
+import { sources, writersOf } from './mp-6-2-run-state-writers.ts';
 
 const detailOf = (answer: Answer): Record<string, unknown> =>
   answer.body['detail'] as Record<string, unknown>;
@@ -50,23 +51,6 @@ interface Work {
   readonly fence: number;
   readonly credential: string;
 }
-
-/** Every product source file under `roots`, as `path` and text. */
-const sources = (roots: readonly string[]): { readonly path: string; readonly text: string }[] =>
-  roots.flatMap((root) =>
-    readdirSync(root, { recursive: true, encoding: 'utf8' })
-      .filter((file) => /\.(tsx?|sql)$/u.test(file) && !file.includes('node_modules'))
-      .map((file) => ({ path: `${root}/${file}`, text: readFileSync(`${root}/${file}`, 'utf8') })),
-  );
-
-/** The files whose SQL writes `run_states`: an insert, update or delete naming it. */
-const writersOf = (files: readonly { readonly path: string; readonly text: string }[]): string[] =>
-  files
-    .filter(({ text }) =>
-      /\b(?:insert\s+into|update|delete\s+from)\s+(?:public\.)?"?run_states"?\b/iu.test(text),
-    )
-    .map(({ path }) => path)
-    .toSorted();
 
 // eslint-disable-next-line max-lines-per-function -- one world, the three runs and each proof on them
 describe.skipIf(serverUrl === undefined)('MP-6-2 no memory activates', () => {

@@ -14,6 +14,18 @@ import { createControls, detailOf, PROPOSAL, type Controls } from './controls-fi
 
 const serverUrl = databaseUrlFromEnvironment();
 
+/** What `gate.pending` lists to the person `c` drives. */
+const awaitingOn = async (c: Controls) => {
+  const answer = await c.asPerson('gate.pending', {});
+  expect(answer.status, JSON.stringify(answer.body)).toBe(200);
+  return answer.body['awaiting'] as {
+    gateId: string;
+    versionId: string;
+    taskId: string;
+    version: number;
+  }[];
+};
+
 describe.skipIf(serverUrl === undefined)('REVIEW-3A-18 gate.pending', () => {
   let c: Controls;
 
@@ -23,22 +35,11 @@ describe.skipIf(serverUrl === undefined)('REVIEW-3A-18 gate.pending', () => {
 
   afterAll(async () => await c?.drop());
 
-  const awaiting = async () => {
-    const answer = await c.asPerson('gate.pending', {});
-    expect(answer.status, JSON.stringify(answer.body)).toBe(200);
-    return answer.body['awaiting'] as {
-      gateId: string;
-      versionId: string;
-      taskId: string;
-      version: number;
-    }[];
-  };
-
   it('REVIEW-3A-18: a revised proposal lists only its current version’s gate, never the superseded one', async () => {
     const task = await c.createTask('REVIEW-3A-18 revised');
     const purpose = 'review_3a_18';
     const first = await c.propose(task.id, task.revision, purpose);
-    expect((await awaiting()).map((row) => row.gateId)).toContain(first['gateId']);
+    expect((await awaitingOn(c)).map((row) => row.gateId)).toContain(first['gateId']);
 
     const revision = await c.count(
       `select revision::text as n from public.records where business_id = $1 and id = $2`,
@@ -55,7 +56,7 @@ describe.skipIf(serverUrl === undefined)('REVIEW-3A-18 gate.pending', () => {
     const second = detailOf(revised);
     expect(second['gateId']).not.toBe(first['gateId']);
 
-    const rows = await awaiting();
+    const rows = await awaitingOn(c);
     const gates = rows.map((row) => row.gateId);
     expect(gates, 'the superseded version’s gate is still offered').not.toContain(first['gateId']);
     expect(gates).toContain(second['gateId']);

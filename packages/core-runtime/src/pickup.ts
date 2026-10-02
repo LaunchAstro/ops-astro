@@ -758,25 +758,10 @@ type ClaimPlan =
   | { readonly kind: 'refuse'; readonly refusal: RuntimeResult<never> };
 
 /**
- * R5. The expired-lease lifecycle starts at the first replacement below. A
- * reservation with a non-null `lease_id` is not refused until this branch has
- * asked whether that lease expired; refused first, the old identity would
- * never be fenced and its hold never classified, and the only other expiry
- * branch applies to a *different* unleased reservation on the same task. The
- * replacement is a fresh hold on
- * the still-approved version, which 0019 permits, because one active hold per
- * version is the accepted rule and one hold ever was not. Its approval is
- * checked here, before the caller writes anything.
- *
- * R5, the remainder. A hold that ended without settling -- the authority
- * behind its lease was lost, and replay classified it -- leaves approved work
- * on a live lineage that nothing now holds. It is never revived; the claim
- * gets a fresh hold and a fresh attempt on the still-approved version, under
- * the locks already held, exactly as the expired-lease replacement does.
- * Settled work is not replaceable: a handback that abandoned its hold because
- * nothing was spent still finished the work.
+ * The claims refused before any branch below is asked: an attempt carrying a
+ * marker, or a run waiting on a person at its budget stop. Null when neither.
  */
-function planClaim(state: ClaimState, reservationId: string): ClaimPlan {
+function refusedBeforeAnyWrite(state: ClaimState): ClaimPlan | null {
   if (state.marked) {
     return {
       kind: 'refuse',
@@ -800,6 +785,31 @@ function planClaim(state: ClaimState, reservationId: string): ClaimPlan {
       ),
     };
   }
+  return null;
+}
+
+/**
+ * R5. The expired-lease lifecycle starts at the first replacement below. A
+ * reservation with a non-null `lease_id` is not refused until this branch has
+ * asked whether that lease expired; refused first, the old identity would
+ * never be fenced and its hold never classified, and the only other expiry
+ * branch applies to a *different* unleased reservation on the same task. The
+ * replacement is a fresh hold on
+ * the still-approved version, which 0019 permits, because one active hold per
+ * version is the accepted rule and one hold ever was not. Its approval is
+ * checked here, before the caller writes anything.
+ *
+ * R5, the remainder. A hold that ended without settling -- the authority
+ * behind its lease was lost, and replay classified it -- leaves approved work
+ * on a live lineage that nothing now holds. It is never revived; the claim
+ * gets a fresh hold and a fresh attempt on the still-approved version, under
+ * the locks already held, exactly as the expired-lease replacement does.
+ * Settled work is not replaceable: a handback that abandoned its hold because
+ * nothing was spent still finished the work.
+ */
+function planClaim(state: ClaimState, reservationId: string): ClaimPlan {
+  const quarantined = refusedBeforeAnyWrite(state);
+  if (quarantined !== null) return quarantined;
   if (state.state === 'held' && state.lease_id !== null) {
     if (state.bound_lease_state === 'live' && state.bound_lease_expired !== true) {
       return {

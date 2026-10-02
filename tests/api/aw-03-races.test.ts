@@ -19,7 +19,6 @@ import {
   type PurgeOutcome,
   type WrapUpOutcome,
 } from '../../packages/core-commands/src/index.ts';
-import { writeBusinessSetting } from '../../packages/core-records/src/index.ts';
 import type { TenantQuery } from '../../packages/core-records/src/index.ts';
 import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
@@ -29,6 +28,7 @@ import {
   conversationWorld,
   started,
   type ConversationWorld,
+  setConversationWindow,
 } from './aw-03-fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
@@ -137,7 +137,7 @@ describe.skipIf(serverUrl === undefined)('AW-03 races and recovery', () => {
     w = await conversationWorld('aw_03_races');
     second = connect(w.fixture.db.appUrl, { source: 'runtime' });
     await on(w.fixture.db.app, async (tx) => {
-      await writeBusinessSetting(tx, { key: 'conversation_window_days', value: 7 });
+      await setConversationWindow(tx, 7);
     });
   }, 120_000);
 

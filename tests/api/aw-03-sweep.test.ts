@@ -18,7 +18,6 @@ import {
   sweepPurgeOperationId,
   type SweepReport,
 } from '../../packages/core-commands/src/index.ts';
-import { writeBusinessSetting } from '../../packages/core-records/src/index.ts';
 import type { TenantQuery } from '../../packages/core-records/src/index.ts';
 import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
@@ -27,6 +26,7 @@ import {
   conversationWorld,
   started,
   type ConversationWorld,
+  setConversationWindow,
 } from './aw-03-fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
@@ -57,7 +57,7 @@ describe.skipIf(serverUrl === undefined)('AW-03 idle sweep', () => {
     );
   const window = async (days: number): Promise<void> => {
     await on(w.fixture.db.app, async (tx) => {
-      await writeBusinessSetting(tx, { key: 'conversation_window_days', value: days });
+      await setConversationWindow(tx, days);
     });
   };
 

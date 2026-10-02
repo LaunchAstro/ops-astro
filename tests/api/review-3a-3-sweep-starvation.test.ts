@@ -11,7 +11,7 @@
 // that is trashed (not completed) reads as open work and holds the purge with
 // WORK_OPEN for ever.
 //
-// Red on 3338f1fd6:
+// Red on 8cbd0e422 (batch 3a before its fix squash):
 // - case B: the conversation on the trashed task is held WORK_OPEN on every
 //   pass;
 // - case A: the unscoped conversation, due and wrapped, is not purged after
