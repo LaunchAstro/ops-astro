@@ -31,9 +31,6 @@ jobs:
       ZAP_IMAGE: ghcr.io/zaproxy/zaproxy:2.17.0@sha256:781a2bdaea47324e7bab583e2263f21d257b0aee61ed51521a5be45f5f5081ef
       TARGET: ${{ inputs.target }}
       SCAN_LOGIN_PLACE: staging
-      SCAN_LOGIN_FILE: ${{ runner.temp }}/scan-login.json
-      SCAN_TOKEN_FILE: ${{ runner.temp }}/scan-token
-      WORK: ${{ runner.temp }}/zap
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -49,7 +46,9 @@ jobs:
         env:
           STAGING_WEB_URL: ${{ secrets.STAGING_WEB_URL }}
         run: |
-          mkdir -p "$WORK" && chmod 777 "$WORK"
+          WORK="$RUNNER_TEMP/zap" && mkdir -p "$WORK" && chmod 777 "$WORK"
+          printf 'WORK=%s\nSCAN_LOGIN_FILE=%s\nSCAN_TOKEN_FILE=%s\n' "$WORK" \
+            "$RUNNER_TEMP/scan-login.json" "$RUNNER_TEMP/scan-token" >> "$GITHUB_ENV"
           node scripts/security/api-definition.mjs --target "$TARGET" --only "$STAGING_WEB_URL" \
             --business alpha --out "$WORK/api-definition.json"
 
