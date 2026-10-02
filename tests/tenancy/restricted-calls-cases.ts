@@ -60,9 +60,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'alerts handback_reports operations run_events'],
   // A run's checks, append only as handback_reports is (MP-6-1).
   ['si', 'run_checks'],
-  // 0201 (MP-6-2): a run's state, each revision a version, never rewritten.
+  // 0095 (MP-6-2): a run's state, each revision a version, never rewritten.
   ['si', 'run_states'],
-  // 0198 (AW-03): a conversation, its body (deleted only by the purge, never
+  // 0092 (AW-03): a conversation, its body (deleted only by the purge, never
   // edited) and its wrap-ups (append only, never purged).
   ['siu', 'conversations'],
   ['sid', 'conversation_messages'],
@@ -119,6 +119,12 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['siu', 'person_availability'],
   // 0067: a second save of a key replaces its value; nothing deletes one (MP-2-11a).
   ['siu', 'person_preferences'],
+  // 0078: a time entry is deleted by a mark; the trash purge detaches a
+  // purged task's rows and keeps them (ORCH58).
+  ['siu', 'time_entries'],
+  // 0081: a tag stays in the vocabulary; a task's tag is a row deleted on removal.
+  ['si', 'tags'],
+  ['sid', 'task_tags'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
   // 0028 revokes delete on these two: identity history is kept (0002).
   ['siu', 'person_logins person_merges'],
@@ -140,8 +146,8 @@ export const APPLICATION_GRANTS: Readonly<Record<string, string>> = Object.fromE
 const REVOKED: Readonly<Record<string, { readonly from: string; readonly letters: string }>> = {
   'public.person_logins': { from: '0028', letters: 'd' },
   'public.person_merges': { from: '0028', letters: 'd' },
-  // 0192 takes back update on the whole run and grants it on `state` alone.
-  'public.planned_runs': { from: '0192', letters: 'u' },
+  // 0086 takes back update on the whole run and grants it on `state` alone.
+  'public.planned_runs': { from: '0086', letters: 'u' },
 };
 
 /**

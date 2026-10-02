@@ -507,7 +507,7 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
           continue;
         }
         // eslint-disable-next-line no-await-in-loop
-        const prepared = await harness.positiveBody(declaration);
+        const prepared = await harness.positiveBody(declaration, caller);
         if ('exception' in prepared && declaration.name === 'model.call') {
           // A person's write grant carries no model call: the person prefix
           // refuses it (tests/broker/aw-01-model-call.test.ts), and the agent

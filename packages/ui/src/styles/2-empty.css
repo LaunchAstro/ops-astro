@@ -1,0 +1,55 @@
+/* SPDX-License-Identifier: AGPL-3.0-only
+   Layer 2, the kit's one empty state. Its own sheet because 2-primitives.css
+   is at the product-source line limit; loads straight after it. */
+
+/* The one empty state (DS-PRIM-28): no icon, no fill, in three looks. */
+.empty {
+  display: grid;
+  gap: 6px;
+  color: var(--text-muted);
+}
+.empty > p {
+  margin: 0;
+}
+.empty--block {
+  display: block;
+  padding: 48px 24px;
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+  text-align: center;
+}
+/* As the mockup's house empty state: every line at the block's own size, 1em apart. */
+.empty.empty--block > * {
+  max-width: none;
+  margin: 1em 0;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+}
+.empty--inline {
+  max-width: 60ch;
+  padding-block: 16px;
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+.empty--row {
+  padding: 0;
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
+}
+.empty__title {
+  color: var(--text-muted);
+}
+.empty__desc,
+.empty__hint {
+  max-width: 340px;
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
+}
+.empty__action {
+  margin-top: 8px;
+}

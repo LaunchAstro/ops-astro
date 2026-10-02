@@ -138,6 +138,7 @@ browser.
 | `/sign-in`             | Credentials and the business selector                                                                                                                                                                                                                                                                                             |
 | `/projects/`           | Board tab: `task.board` for the unboarded tasks (`board: null`), and the create form. Work log tab (`#worklog`): `task.ledger` in the reader's zone, read on first opening; its search words live in the address as `?q=` (L-01); its section tip (MP-9-1) reads `preference.read` and dismisses through `preference.dismiss_tip` |
 | `/task/:key`           | `task.read`: state buttons, the assignee select, title and due date, comments, history, revision                                                                                                                                                                                                                                  |
+| `/task/`               | No task named: says so and offers the board (MP-4-1), and reads nothing                                                                                                                                                                                                                                                           |
 | `/settings`            | Settings General: You and Notifications (the person's own preferences) and This business (the two operation-classified settings, from `settings.read` and `session.capabilities`)                                                                                                                                                 |
 | `/inbox/`              | The Notifications list in full-page form (MP-7-3): `inbox.read` and `inbox.count` drawn by the kit's `InboxPage`, one list and one owed count, grouped by the client each entry names; a live re-read keeps the list and its chosen tab drawn                                                                                     |
 | `/agent/:conversation` | `conversation.read` by the id the address carries: the transcript while the body lives, only the wrap-up after it purges (C36); a started drawer tab links here                                                                                                                                                                   |
@@ -145,16 +146,219 @@ browser.
 `/task/:key` is a real address. A hard reload lands on it because the dev server
 falls back to `index.html`, and everything on the page is reread from the API.
 
-The dock's tabs are `PANELS` in `apps/web/src/panels.ts`: Notifications goes to
-`/inbox/`, Settings to `/settings` and Team to `/team`, and Agent opens the
-assistant drawer in place (MP-7-11; its route is null). An open dock tab is announced as "Close Settings"
-(`aria-expanded="true"`, `Shell` in `packages/ui/src/surfaces/Shell.tsx`) and
-leaves its address for the board when pressed (`useDock` in
-`apps/web/src/dock.ts`). The Notifications tab carries INB-1's owed figure
-from the first frame on every agency screen (MP-7-3 bell count at load):
-`inbox.count`, read in the frame's load and again on the `board` topic, with no
-badge at zero and none when the count is refused or fails
-(`apps/web/src/data/owed-count.ts`).
+The dock's tabs are `PANELS` in `apps/web/src/panels.ts`, drawn in the rail's
+declared order: Agent (the assistant drawer, MP-7-11), Notifications (the inbox at `/inbox/`), Team (`/team`),
+Clients (`/clients/`, a made-up client book under the mock mark until client
+records land; at `/clients/?client=<id>`, the door an inbox group head opens by
+the gesture law, it marks that client above the book from `client.list`) and Settings (`/settings`). Each tab opens its own panel: Settings opens the
+Settings panel beside the page rather than navigating (MP-3-1). Agent has no
+address of its own: like the task panel it is drawn by the dock itself
+(`apps/web/src/dock/agent-dock.ts`), carries the page's standing scope only,
+and its door goes to the board. The dock's head names and closes it, over the
+drawer's model picker and Page; the drawer draws no head of its own. A plain press shows one panel, shift adds one, each X
+closes only its own, Close all closes every one, and Escape closes the last
+opened unless a field, menu or editor took the key
+(`apps/web/src/dock/open-set.ts`). An open tab is announced as "Close
+Settings" (`aria-expanded="true"`, `Dock` in `packages/ui/src/surfaces/Dock.tsx`).
+Each panel draws the screen of the view it is on, and its door opens that
+view's own address, or its board's. The open set is kept in the tab's session
+storage per business, names the person it was written for, never holds the
+sign-in, and is removed when the tab leaves the business (a switch or sign-out).
+
+The task page's header (`screens/task/Header.tsx`, MP-4-1) is the crumb
+("Projects →", the board `task.read` names, the task's category by its label
+when it has one, the key, the state), Copy link,
+the title and the run line. Copy link copies this origin plus `/task/<key>`,
+shows its tick for 1.2 s only after the clipboard said yes, and says so in
+words, with the address, when it said no or there is no clipboard. The run
+line counts the attempts on the task's proposals: `Attempt N · running`
+while one is reserved or dispatched, "Every run on this task has finished."
+once all have ended, and "No agent has run this task. It is a person's work
+so far." with none (TP-07). An id `task.read`
+refuses `NOT_FOUND` is said as "No task is filed under" that id, quoted as
+typed, with the refusal and a link to the board (`screens/task/Absent.tsx`);
+any other refusal is the denied state. Neither draws another task. The title
+is set in the display style, the crumb's door in data ink and its key, like
+the subtasks count, as an eyebrow. The look (`tests/visual/look/task-page.ts`)
+holds the header, the Team side's steps, the description on the page and in
+the dock panel, and the conversation's head to the mockup at 1480, 900 and
+390 in both themes.
+
+Below it, the facts block (`screens/task/Facts.tsx`, MP-4-2): the strip
+(whose move, derived: absent once complete, Review at a pending gate, Agent
+under a live lease, Team otherwise; the rank as `#N` or "not ranked"; the Ad
+hoc and Client access marks), the calc line, and the ten-field band
+(Assignee, Client, Due date, Estimate, Project, Category, Stage, Status, Page
+link, Handling) in a frame of 5, 2 and 1 columns. An empty value reads "not
+set" and an empty Page link "nothing yet"; the page link reads as words, the
+estimate as the panel's words, the stage and the category by their labels
+(a value off either list as stored), and Client says "On file" until the
+client model names it. Every mark here is inert: no tab stop, role or handler, and the
+default cursor. The ticks that change them are the dock panel's:
+`HandlingTicks` (`screens/task/Ticks.tsx`, MP-4-10), which the dock task
+panel (MP-4-8) mounts. Each is a checkbox a person can tab to, turned by a
+press, Space or Enter, through `task.set_adhoc` or `task.share_with_client`
+and `task.revoke_client_share` at the task's revision; a success rereads
+the task and a refusal is quoted with the tick left as the server has it.
+
+Below the facts, the Team and Agent perspectives (`screens/task/Perspectives.tsx`,
+MP-4-3): Team holds the lifecycle, assignee, details, subtasks, time, comments
+and history; Agent holds the proposals and their gates. The panes are hidden,
+never unmounted, so a draft survives a switch, and the side showing is held
+above the read so a write's reread keeps it. `perspectiveCounts` is the one
+counting rule for the page and the dock task panel: Team counts unfinished live
+subtasks, Agent counts open gates (the live version's pending gate), else one
+for unshipped staged output; zero draws no badge. Staged output is not on the
+read yet. The subtask list (`screens/task/Subtasks.tsx`, MP-4-4) is the read's
+`steps`: Enter adds one, a tick completes or reopens it, and finished and
+archived steps fold under "Show finished", which is the person's own
+`subtasks.showFinished` preference (`screens/task/show-finished.ts`, CS-4.27),
+read once and saved on each change; a click before the store answers stands
+and is saved then, and the task page holds the fold above its read, so a
+reread keeps it as the person left it. A step whose gate waits
+(`awaitingApproval`) has no tick: an eye and the note "Waiting on a gate",
+which drops to its own line at 640px and below. The doors ("Open
+this task in the panel", "Add the first one in the task panel", "Log time in
+the task panel", "Start the timer in the task panel", and the conversation's
+"Reply in the task panel") call the screen's `onOpenPanel`, the reply door with
+the conversation tab showing; with none given they are drawn disabled.
+The time section (`screens/task/Time.tsx`, MP-4-6) draws a burn bar of the
+logged total against the task's estimate, full at the estimate and danger past
+it; with no estimate it draws none. Its entries are the reader's own, and each
+names the signed-in person: the name `usePersonName` read (C23), provided by
+the application as `SignedInName` (`app-state.ts`), never a fixed name; none
+until the server names the person.
+
+History (`History.tsx`, MP-4-16) is the transitions on the task's own address
+from `task.read`, with comments left out (they are the conversation's). Its head
+reads the latest change as how long ago, who and what; the page shows the whole
+trail open, and with no change says "Nothing has changed on this one yet." Who
+is the actor's identifier until the read carries a name. The dock task panel
+folds the trail behind "Show all N changes" and "Hide the trail", and whether
+it shows is the person's own `history.showTrail` preference (`useShowTrail`,
+kept by `screens/task/saved-flag.ts` as show finished is), read above the
+panel's task read so a reread keeps it.
+
+The Notifications tab carries INB-1's owed figure from the first frame on every
+agency screen (MP-7-3 bell count at load): `inbox.count`, read in the frame's
+load and again on the `board` topic, with no badge at zero and none when the
+count is refused or fails (`apps/web/src/data/owed-count.ts`, handed to the
+tab's count chip by `useDockShell` in `apps/web/src/dock/dock-props.tsx`).
+The dock's Projects tab (`todos` in `PANELS`) opens the reader's own to-dos
+(MP-7-1, `screens/todos/Todos.tsx`) in its panel, whose door is `/todos`. The
+to-dos list reads `task.todos`: each row's name opens the task in the dock's
+Task panel beside its page door, its tick sends
+`task.complete` at the row's revision, and its due reads as Overdue, Today,
+Tomorrow, This week or Later on the business day (`todo-list.ts`, one today,
+overdue included, for the words and the today scope). Typed tokens scope it by
+name, `tag:` and `due:today`, read back on the "Reading this as" line; a
+comment count scopes it to that task; the sort (due, task, priority with P1
+first) lasts the session until the preference store holds it (MP-2-11a). The
+priority cell yields under a 380px list (a container rule in
+`styles/6-slice.css`). A scope switch (MP-7-2, `TodoScopeSwitch.tsx`,
+`todo-scope.ts`) replaces the list with a teammate's (picked from
+`person.list`) or a client's (`task.todos` with `person` or `client`; the
+server filters), a client's waiting comments (that answer's tasks with
+messages owed, counted from the same rows) or a client's route family; each
+choice replaces the last and a new scope mounts a new read, so no row of the
+last is drawn. A door opens the panel already scoped through its `scope` prop.
+The clients are made-up behind `ClientSource` and drawn under the shared mock
+label until family B's client list (C32); a route family does not yet narrow
+the list (tasks carry no route family on this base).
+
+The dock task panel (`screens/task/Panel.tsx`, MP-4-8) is where a task is
+changed beside its page. A page door opens it (`useTaskPanel` in
+`screens/task/panel-host.ts`, held by `App`) and the dock draws it as its
+`task` panel (`apps/web/src/dock/task-dock.ts`): the Task tab shows while a
+task or a draft is open, the dock's head names the panel and its door is the
+task's page, and it takes its place in the rank, the seated track, Escape's
+order and the phone's one panel. The dock's close, Close all and Escape close
+it through its own close (the timer's stop, focus back on its door), run in a
+layout effect so a running timer is logged once before the panel unmounts, and
+its own close takes it out of the dock. A link inside it is followed, never a walk
+of the dock. Storage and the dock's history never reopen it.
+Its place is the dock's geometry (`dock/geometry.ts`, MP-3-2), which is the
+seat line (T-D19): it seats only when every open panel at the width asked for
+fits beside the 836px content floor (`n × per ≤ vw − rail − 40 − 836`, from
+1440, `rail` the nav rail as the person left it), else it floats at that
+width, never under 380; below 1280 it is the sheet and at 900 and under the
+phone strip.
+It reads the task through `task.read` as the page does and draws the same
+facts, rank, calc line and Team and Agent counts; the live Ad hoc and Client
+access ticks; the description on Team and the agent brief on Agent as
+editable fields; the subtasks and time without their doors; the conversation
+on the tab the reply door named; and the folded trail. The Agent tab says it
+is not connected until the assistant is. Its head names the task, links to
+its page and opens a new-task draft (MP-4-13, `screens/task/DraftPanel.tsx`)
+in the same panel: name, due, estimate, tags, subtasks, time spent and a note,
+kept in this browser under the business and the person until Create or Cancel
+(X and Escape keep it). Create sends `task.create`, then the client from the
+page's scope (none from the panel yet: the task's client is not on the wire),
+the note, the tags, the subtasks and the time, each by its own command
+(`screens/task/task-draft.ts`); a part refused after the task exists is named,
+never retried as a second task. Closing the panel, or opening another task or
+a draft, while the reader's timer runs on the task stops it through
+`time.stop`. The name is
+edited in place in the head (Enter saves, Escape leaves it), and the field
+grid (`screens/task/PanelFields.tsx`) sets the assignee (a person from
+`person.list`, or Unassigned) through `task.assign` and the due date through
+`task.update`, each at the revision the panel read. The due date is chosen in
+`screens/task/DatePicker.tsx`: a Monday-first month, months back and forward
+and arrow keys that move without choosing, Enter or a click to choose, and
+Today, In a week and In two weeks counted on the business clock
+(`screens/task/due-dates.ts`, the clock the task screens date by). A write in
+the panel counts a change, and the page and the panel each read the task
+again on the new count, so the page shows it without a reload. Escape closes
+the panel unless it began in a field, select or text box, or in the date
+picker, which closes itself; Close returns focus to the door that opened it.
+Its ids carry a `panel-` prefix, so none repeats the page's. The page link
+(`screens/task/PageLink.tsx`, MP-4-12) reads the task's `pageLink`: Link here
+(Relink once linked) sends the address being read, path and hash, through
+`task.update`; a link inside the product is drawn as a door, with the head's
+go-to beside Open its page, and any other stored value as words with no
+go-to. The grid also sets the estimate (`task.update`, 15m to 2d), the stage
+(`task.set_stage`, from the task stage list `TASK_STAGES` the board reads; a
+stored value off the list stays as itself) and Assign to AI
+(`screens/task/AssignToAI.tsx`, the viewer's own agents that reach the task).
+The Project select (`screens/task/ProjectField.tsx`) offers None and the
+projects `task.board` answers for the Projects board, never the task itself,
+marks the task's board by the crumb's id (a board that is not a
+project stays as itself; one the reader may not open is drawn as that and
+cannot be chosen) and moves the task through `task.move`. The Status select
+(`screens/task/StatusField.tsx`, CS-4.18), on the panel and on the task page,
+offers the states `task.read` sends in the workflow's order (a state off the
+list stays as itself) and sends `task.set_state`; Complete is `task.complete`,
+and leaving Complete is `task.reopen` first, then `task.set_state` at the
+reopen's revision unless the unstarted state was chosen. The pin waits on the
+preference model. The Client select (`screens/task/ClientField.tsx`, CS-4.12,
+DP-19) changes an empty task's
+client through `task.set_party` at the read revision; once the task has content
+it is drawn locked, with the line "This task has content, so its client is
+locked. Duplicate it without contents to start one for another client." and a
+Duplicate without contents action. That opens `screens/task/DuplicateForm.tsx`:
+a client choice (not the task's own) and the shell, the title and the subtasks'
+names, each prefilled, editable and marked "Carried from the old task". Create
+hands `{ recordId, client, title, stepNames, confirmCarried }` to the panel's
+sender; a `CARRIED_TEXT_NAMES_CLIENT` refusal warns on each field it names
+(`title`, `stepNames.<index>`) and Create waits for the person to tick the
+confirmation, then resends with `confirmCarried: true`; editing a warned field
+clears its warning and the next send is checked again. Any other refusal is
+quoted; a landed duplicate's `detail.key` goes to `onDuplicated`, which the
+dock opens. The field's facts are real (`realClientFacts` in
+`screens/task/client-seam.ts`): the choices are `client.list`'s clients (C32),
+and the task's client and content answer (S0-5) are `task.read`'s `client` and
+`hasContent`; a client the list does not name is drawn "A client you cannot
+see", which is also how a task under a client the reader's grants do not
+reach reads (`clientSet` with `client` null, CS-4.12); an answer with no list
+is unavailable. The form sends through the `duplicate` seam (`TaskPanel`'s
+`duplicate` and `onDuplicated`); absent, the panel's own `realDuplicate` posts
+`task.duplicate` with `confirmCarried` passed through. A made-up source is drawn
+under the one Mock corner label (`SourceRegion`); a real one carries no label. The Category select
+(`screens/task/CategoryField.tsx`, CS-4.16) offers Not set and the nine of `TASK_CATEGORIES` (a stored value off
+the list stays as itself) and sends `task.set_category` with the id, or null
+for Not set, at the read revision; it is a work label only and changes no
+agent scope (R76). The Projects board draws a row's stored category by its
+label on the category chips.
 
 The route registry is the router. `SCREENS` in `apps/web/src/screen-registry.tsx`
 looks each screen up by route id and is keyed by `AuthenticatedRouteId`, so an
@@ -242,9 +446,16 @@ internal reader's comment, with every field present. A shared comment is a
 `CommentView`, whose fields are the catalogue's to choose, so the shared view
 draws each one only when it arrived as text.
 
-The form is `form#task-comment`: a required `textarea#comment-body`, a
-`select#comment-audience` (internal or client) and a `select#comment-kind`, with
-`button[data-comment="post"]`. Posting goes through `task.comment` with the
+The conversation is three tabs (`Comments.tsx`, MP-4-5): Internal and Client
+with their counts, and All activity with none, opening on Internal (R41). Each
+reads in time order, and only the chosen tab's thread is drawn. The tab is the
+audience: the form is `form#task-comment`, a required `textarea#comment-body`
+and `button[data-comment="post"]`, and it posts a `note` to `internal` from
+Internal and a `client` message to `client` from Client. On All the box is
+disabled and `p[data-comment="pick"]` says to pick Internal or Client. Enter
+sends; Shift and Enter is a new line. The tab is held above the read with the
+unsent text, so a reread or a post keeps it. The reply door ("Reply in the task
+panel") sits under the form. Posting goes through `task.comment` with the
 revision the page holds. That command writes a record beside the task and
 leaves the task's own revision alone, so nothing else on the page goes stale
 because somebody said something.
@@ -272,10 +483,10 @@ refused `VERSION_STALE` rereads the task, keeps the text, quotes the refusal in
 `[data-comment="stale"]` or `[data-propose="stale"]` and says to send it again;
 the next press carries the new revision.
 
-Keyboard: the textarea, the two selects and the button are ordinary controls in
-document order after the details form, each with a `label` bound by `htmlFor`.
-Tabbing from the box reaches `comment-body -> comment-audience -> comment-kind
--> post` and nothing is reachable only by mouse. Photographed at 1480, 900 and
+Keyboard: the tab strip is one stop whose arrow keys move between the three
+tabs; then the textarea (with its `label` bound by `htmlFor`), the button and
+the reply door, in document order. Nothing is reachable only by mouse. Before
+MP-4-5 the box was photographed at 1480, 900 and
 390 on 2026-09-23 with no horizontal overflow at any of the three. The
 captures are held with the build run's evidence, not in the tree. The
 dark-theme gap recorded below is this page's too: there is no dark build to
@@ -405,6 +616,15 @@ stored appearance; the tab keeps a copy in `sessionStorage` as
 `ops-astro.appearance`, which the before-paint step replays on a reload. Signed
 out, the copy is dropped, so one person's appearance never opens the next
 person's session.
+
+The rail's width and fold (MP-2-3), the dock's one panel width and the sheet's
+height (MP-3-2, MP-3-3) are the `rail.width`, `rail.collapsed`, `dock.width`
+and `dock.sheetHeight` keys of the same store (`shell/layout-store.ts`). A
+grip holds its moving value itself; the key is saved once when it is let go,
+and a fold saves at once. The tab keeps a copy per business as
+`ops-astro.layout.<business>`, naming its person, so a reload draws the layout
+on its first render; another person signed in to the tab never reads it, and a
+switch or sign-out removes it. The read then brings what another device saved.
 
 This business draws the two settings the model classifies `operation`:
 `four_eyes_threshold` and `client_sign_off_required`. Each is written through
@@ -701,20 +921,20 @@ attribute the screen owns ambiguous.
 Recorded rather than closed. The mockup is the visual source; these are the
 places this build does not yet reach it.
 
-- The board draws nine pinned columns; this build stores five of them. Rank,
-  client, stage, estimate and actual draw the ported "not set" dash.
+- The board draws nine pinned columns. The client's name and the comment
+  counts are not stored yet and draw the ported "not set" dash.
 - No facet menu, presets, undo/redo, typeahead or column drag-resize.
 - The task page draws the Agent pane (MP-6-1 to MP-6-5): the run, its gate,
   checks, scope and token panel from `task.read`, and a person's word on an
-  unknown effect (C54: the three outcomes and the write-off). It has no dock
-  tab yet, because the dock is not built; the pane sits in the task page's
-  own column.
-- Subtasks are not built. Comments are, and the task page draws them. The
-  mockup's tabbed Internal / Client / All activity conversation is not built:
-  the comments are one list with each row's audience on it, and history stays
-  its own section below.
-- **`system` is not offered as a comment kind.** The API takes `note`, `client`
-  and `system`; the form offers the first two. A system comment is one the
+  unknown effect (C54: the three outcomes and the write-off). The pane sits in
+  the task page's own column, not in the dock.
+- Comments are built, in the tabbed Internal / Client / All
+  activity conversation; replies, edits, deletes and the Answered, Seen and
+  Not acknowledged signals are not built yet, and history stays its own
+  section below.
+- **`system` is never offered as a comment kind.** The API takes `note`,
+  `client` and `system`; the form offers no kind at all, because the tab
+  decides it. A system comment is one the
   product writes about itself, and a box letting a person post one by hand makes
   every system note on a task unreliable evidence of anything.
 - **The exact-revision path is proved only where the read sends a revision.**

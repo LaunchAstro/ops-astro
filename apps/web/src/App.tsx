@@ -18,9 +18,11 @@ import { NO_CLIENT_GRANTS } from './manifest.ts';
 import { frameAt } from './route-views.tsx';
 import { drawContent } from './app-content.tsx';
 import { buildStamp, useCanonicalAddress, useOfflineSince, usePersonName } from './app-state.ts';
+import { SignedInName } from './app-state.ts';
 import { FrameStrip } from './strip.tsx';
 import { HeldAddressNotice, heldAddressOffer, type HeldOffer } from './held-address.tsx';
-import { useDock } from './dock.ts';
+import { shellDock, useDockShell } from './dock/dock-props.tsx';
+import { useDockPanel } from './screens/task/DockPanel.tsx';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, type Interruption, type Session } from './session/token.ts';
 import { SignIn } from './screens/SignIn.tsx';
@@ -51,9 +53,6 @@ export function App(props: AppProps): ReactElement {
     readonly held: Interruption;
     readonly offer: HeldOffer | null;
   } | null>(null);
-  // The Agent drawer (MP-7-11): open over the page, never an address. Keyed on grantKey, so a
-  // change of business, person or session drops every tab and a late reply has nowhere to land.
-  const [agentOpen, setAgentOpen] = useState(false);
   // The person signed out here, so sign-in says their unsaved edit went with it (C58).
   const [signedOut, setSignedOut] = useState(false);
 
@@ -146,6 +145,16 @@ export function App(props: AppProps): ReactElement {
       }),
     [props.apiOrigin, props.fetch, session],
   );
+  const grantKey = grantKeyOf(session);
+  const bare = here.split(/[?#]/u)[0] ?? here;
+  const { match, at, refused, rail, tabs, identity, face } = frameAt(
+    bare,
+    session?.businessKey ?? null,
+    props.clientAccess ?? NO_CLIENT_GRANTS,
+  );
+  const taskDock = useDockPanel({ client, grantKey, session, storage: props.storage });
+  const agency = face === 'agency';
+  const docked = useDockShell(client, session, props.storage, props, taskDock.panel, agency);
 
   // Sign-out (C23). The tab forgets the session first, so a server that never
   // answers cannot keep it. Then, with the ended session's own client:
@@ -172,23 +181,10 @@ export function App(props: AppProps): ReactElement {
     props.navigate(address);
   };
 
-  const bare = here.split(/[?#]/u)[0] ?? here;
-  const grantKey = grantKeyOf(session);
-  const { match, at, refused, rail, tabs, identity, face } = frameAt(
-    bare,
-    session?.businessKey ?? null,
-    props.clientAccess ?? NO_CLIENT_GRANTS,
-  );
-  const searchable = session !== null && face === 'agency';
+  const [taskPanel, openPanel] = [taskDock.host, docked.dock.open];
+  const screen = { client, grantKey, storage: props.storage, navigate, taskPanel, openPanel };
+  const searchable = session !== null && agency;
   useSearchKey(searchable, search.open);
-  const dock = useDock({
-    client,
-    session,
-    agency: face === 'agency',
-    here,
-    navigate,
-    agent: { open: agentOpen, toggle: () => setAgentOpen((open) => !open) },
-  });
 
   const signIn = (
     <SignIn
@@ -208,12 +204,10 @@ export function App(props: AppProps): ReactElement {
     signedIn: session !== null,
     refused,
     signIn,
-    onGo: () => {
-      props.navigate(pathTo('agency:projects-board'));
-    },
+    onGo: () => props.navigate(pathTo('agency:projects-board')),
     screen: {
-      client,
-      grantKey,
+      ...screen,
+      address: here,
       notice:
         notice === null || session === null ? null : (
           <HeldAddressNotice
@@ -222,79 +216,75 @@ export function App(props: AppProps): ReactElement {
             onSwitch={onSwitch}
           />
         ),
-      storage: props.storage,
-      navigate: props.navigate,
     },
     open: props,
   });
 
   // Signed out, the page is the form alone: no rail entry opens without a session (B6).
   if (content === signIn) return signIn;
+  const title = refused ? 'Not available' : (match?.route.title ?? at?.page.label ?? 'Not found');
+  // The client face has no dock (R17), and nobody signed out has one.
+  const dockScreen = session === null || face === 'client' ? null : { ...screen, notice: null };
+  // The Agent drawer (MP-7-11): a dock panel with no address, carrying this
+  // page's standing scope only. Keyed on grantKey, so a change of business,
+  // person or session drops every tab and a late reply has nowhere to land.
+  const agent =
+    dockScreen === null || match === null ? null : (
+      <AssistantView key={grantKey} client={client} route={match.id} here={here} entry={null} />
+    );
   return (
-    <PageFreshnessProvider>
-      <PagePresenceProvider>
-        <Shell
-          face={face}
-          build={buildStamp()}
-          rail={rail}
-          here={bare}
-          strip={
-            <FrameStrip
-              face={face}
-              identity={identity}
-              clientSlug={at?.client ?? null}
-              steps={props.steps}
-              onSearch={searchable ? search.open : null}
-              searchRef={search.box}
-              session={session}
-              personName={personName}
-              navigate={navigate}
-              onSignOut={onSignOut}
+    <SignedInName value={personName}>
+      <PageFreshnessProvider>
+        <PagePresenceProvider>
+          <Shell
+            face={face}
+            build={buildStamp()}
+            rail={rail}
+            here={bare}
+            strip={
+              <FrameStrip
+                face={face}
+                identity={identity}
+                clientSlug={at?.client ?? null}
+                steps={props.steps}
+                onSearch={searchable ? search.open : null}
+                searchRef={search.box}
+                session={session}
+                personName={personName}
+                navigate={navigate}
+                onSignOut={onSignOut}
+              />
+            }
+            tabs={tabs}
+            nav={{ open: navOpen, onToggle: setNavOpen }}
+            onNavigate={navigate}
+            meta={
+              <>
+                <StripFreshness
+                  fallback={
+                    offlineSince === null ? null : { state: 'offline', lastRead: offlineSince }
+                  }
+                />
+                {session === null ? null : <StripPresence />}
+              </>
+            }
+            title={title}
+            {...shellDock(docked, dockScreen, agent)}
+          >
+            <FaceProvider face={face}>{content}</FaceProvider>
+          </Shell>
+          {search.showing && searchable ? (
+            <SearchPalette
+              client={client}
+              onOpen={(address) => {
+                search.dismiss();
+                navigate(address);
+              }}
+              onClose={search.close}
             />
-          }
-          tabs={tabs}
-          nav={{ open: navOpen, onToggle: setNavOpen }}
-          onNavigate={navigate}
-          meta={
-            <>
-              <StripFreshness
-                fallback={
-                  offlineSince === null ? null : { state: 'offline', lastRead: offlineSince }
-                }
-              />
-              {session === null ? null : <StripPresence />}
-            </>
-          }
-          title={refused ? 'Not available' : (match?.route.title ?? at?.page.label ?? 'Not found')}
-          dock={dock.tabs}
-          onDockTab={dock.press}
-          seated={false}
-          panel={
-            agentOpen && session !== null && match !== null ? (
-              <AssistantView
-                key={grantKey}
-                client={client}
-                route={match.id}
-                here={here}
-                entry={null}
-                onClose={() => setAgentOpen(false)}
-              />
-            ) : undefined
-          }
-        >
-          <FaceProvider face={face}>{content}</FaceProvider>
-        </Shell>
-        {search.showing && searchable ? (
-          <SearchPalette
-            client={client}
-            onOpen={(address) => {
-              search.dismiss();
-              navigate(address);
-            }}
-            onClose={search.close}
-          />
-        ) : null}
-      </PagePresenceProvider>
-    </PageFreshnessProvider>
+          ) : null}
+        </PagePresenceProvider>
+      </PageFreshnessProvider>
+    </SignedInName>
   );
 }

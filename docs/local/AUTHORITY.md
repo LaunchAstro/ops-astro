@@ -216,31 +216,31 @@ of them, with the HTTP status in the register's own column (`statusOf`,
 `core-records/src/register.ts`). The last column says whether a caller can meet the
 code on this head, and where that is shown.
 
-| Code                                                                         | Status | Reachable on this head                                                                                                                              |
-| ---------------------------------------------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `AUTH_NO_AGENT_IDENTITY`                                                     | 401    | yes                                                                                                                                                 |
-| `AUTH_SESSION_EXPIRED`                                                       | 401    | yes, on both prefixes; this is the re-login path                                                                                                    |
-| `AUTH_SECOND_FACTOR_REQUIRED`                                                | 401    | yes, on the person prefix, for a login with a verified second factor, in any business, below `aal2` (C59)                                           |
-| `STEP_UP_REQUIRED`                                                           | 403    | yes, on `budget.top_up`, `budget.record_outcome` and `budget.write_off` (billing:decide) past 60 minutes; an absent setting reads as on (C59, S0-5) |
-| `FRESH_SIGN_IN_REQUIRED`                                                     | 403    | yes, on `/account/factor/enrol` (C59)                                                                                                               |
-| `FACTOR_ALREADY_ENROLLED`                                                    | 409    | yes, on `/account/factor/enrol` (C59)                                                                                                               |
-| `FACTOR_NOT_ENROLLED`                                                        | 409    | yes, on `/account/factor/verify` and `/remove` (C59)                                                                                                |
-| `SECOND_FACTOR_INVALID`                                                      | 422    | yes, on `/account/factor/verify` and `/remove` (C59)                                                                                                |
-| `SECOND_FACTOR_LOCKED`                                                       | 429    | yes, after five wrong codes in fifteen minutes (C59)                                                                                                |
-| `AGENT_QUOTA_EXCEEDED`                                                       | 429    | yes, an agent credential past a limit a minute or at once (API-2)                                                                                   |
-| `PROVIDER_ANSWER_INVALID`                                                    | 502    | yes, on the three factor routes (C59)                                                                                                               |
-| `DELEGATION_EXCLUDES_DECISION`                                               | 403    | yes                                                                                                                                                 |
-| `DELEGATION_EXCLUDES_OPERATION`                                              | 403    | yes; see below                                                                                                                                      |
-| `DELEGATION_OUT_OF_PURPOSE`                                                  | 403    | yes                                                                                                                                                 |
-| ↳ _also_ when `request.scope` is not exactly the delegation's `purposeScope` | 403    | yes                                                                                                                                                 |
-| `DELEGATION_NARROWED`                                                        | 403    | yes: `grant.revoke` on the delegating person's grant, or that grant's expiry, between pickup and the agent's next call                              |
-| `DELEGATION_NOT_LIVE`                                                        | 401    | yes                                                                                                                                                 |
-| `DELEGATION_WIDENS`                                                          | 403    | yes: `grant.revoke` on the approving person's grant, or that grant's expiry, between approval and the agent's pickup                                |
-| `DELEGATION_ALREADY_LIVE`                                                    | 409    | yes, at mint time; see below                                                                                                                        |
-| `PRESET_FIELD_UNCLASSIFIED`                                                  | 422    | yes, with the field keys                                                                                                                            |
-| `PRESET_TYPE_UNKNOWN`                                                        | 404    | yes                                                                                                                                                 |
-| `PRESET_FIELD_UNPLACEABLE`                                                   | 409    | yes                                                                                                                                                 |
-| `PRESET_FIELD_DUPLICATE`                                                     | 422    | yes                                                                                                                                                 |
+| Code                                                                         | Status | Reachable on this head                                                                                                                                                                                                                                         |
+| ---------------------------------------------------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `AUTH_NO_AGENT_IDENTITY`                                                     | 401    | yes                                                                                                                                                                                                                                                            |
+| `AUTH_SESSION_EXPIRED`                                                       | 401    | yes, on both prefixes; this is the re-login path                                                                                                                                                                                                               |
+| `AUTH_SECOND_FACTOR_REQUIRED`                                                | 401    | yes, on the person prefix, for a login with a verified second factor, in any business, below `aal2` (C59)                                                                                                                                                      |
+| `STEP_UP_REQUIRED`                                                           | 403    | yes, on `budget.top_up`, `budget.record_outcome` and `budget.write_off` (billing:decide), `settings.set_four_eyes_threshold` (spend:decide) and `settings.set_money_step_up` when switching it off, past 60 minutes; an absent setting reads as on (C59, S0-5) |
+| `FRESH_SIGN_IN_REQUIRED`                                                     | 403    | yes, on `/account/factor/enrol` (C59)                                                                                                                                                                                                                          |
+| `FACTOR_ALREADY_ENROLLED`                                                    | 409    | yes, on `/account/factor/enrol` (C59)                                                                                                                                                                                                                          |
+| `FACTOR_NOT_ENROLLED`                                                        | 409    | yes, on `/account/factor/verify` and `/remove` (C59)                                                                                                                                                                                                           |
+| `SECOND_FACTOR_INVALID`                                                      | 422    | yes, on `/account/factor/verify` and `/remove` (C59)                                                                                                                                                                                                           |
+| `SECOND_FACTOR_LOCKED`                                                       | 429    | yes, after five wrong codes in fifteen minutes (C59)                                                                                                                                                                                                           |
+| `AGENT_QUOTA_EXCEEDED`                                                       | 429    | yes, an agent credential past a limit a minute or at once (API-2)                                                                                                                                                                                              |
+| `PROVIDER_ANSWER_INVALID`                                                    | 502    | yes, on the three factor routes (C59)                                                                                                                                                                                                                          |
+| `DELEGATION_EXCLUDES_DECISION`                                               | 403    | yes                                                                                                                                                                                                                                                            |
+| `DELEGATION_EXCLUDES_OPERATION`                                              | 403    | yes; see below                                                                                                                                                                                                                                                 |
+| `DELEGATION_OUT_OF_PURPOSE`                                                  | 403    | yes                                                                                                                                                                                                                                                            |
+| ↳ _also_ when `request.scope` is not exactly the delegation's `purposeScope` | 403    | yes                                                                                                                                                                                                                                                            |
+| `DELEGATION_NARROWED`                                                        | 403    | yes: `grant.revoke` on the delegating person's grant, or that grant's expiry, between pickup and the agent's next call                                                                                                                                         |
+| `DELEGATION_NOT_LIVE`                                                        | 401    | yes                                                                                                                                                                                                                                                            |
+| `DELEGATION_WIDENS`                                                          | 403    | yes: `grant.revoke` on the approving person's grant, or that grant's expiry, between approval and the agent's pickup                                                                                                                                           |
+| `DELEGATION_ALREADY_LIVE`                                                    | 409    | yes, at mint time; see below                                                                                                                                                                                                                                   |
+| `PRESET_FIELD_UNCLASSIFIED`                                                  | 422    | yes, with the field keys                                                                                                                                                                                                                                       |
+| `PRESET_TYPE_UNKNOWN`                                                        | 404    | yes                                                                                                                                                                                                                                                            |
+| `PRESET_FIELD_UNPLACEABLE`                                                   | 409    | yes                                                                                                                                                                                                                                                            |
+| `PRESET_FIELD_DUPLICATE`                                                     | 422    | yes                                                                                                                                                                                                                                                            |
 
 `DELEGATION_WIDENS` is off `UNPRODUCED_CODES` (`core-records/src/register.ts`). The
 mint reads the approving person's live grants when the agent picks the work
@@ -346,20 +346,29 @@ fields and client-audience comments only".
   identity. Any live business grant disqualifies. A scoped `comment` or
   `write` row alone is no standing, and the login answers
   `AUTH_NO_MEMBERSHIP`.
-- **The one write is a client comment.** A session with no membership
-  reaches no write except `task.comment` (`EXTERNAL_WRITES` in
-  `commands/prepare.ts`, checked before the authority check), and then only
-  in the `client` audience (`commentOnTask` in `commands/tasks-comment.ts`).
+- **The one write on business records is a client comment.** A session with
+  no membership reaches no write except those in `EXTERNAL_WRITES`
+  (core-wire `surface.ts`, checked in `commands/prepare.ts` before the
+  authority check): `task.comment`, only in the `client` audience
+  (`commentOnTask` in `commands/tasks-comment.ts`); and its own account's
+  writes, `session.end`, `inbox.seen` on its own item, and `preference.save`
+  and `preference.dismiss_tip` on its own preference rows (`preference:write`
+  is every signed-in person's, ORCH50's ruling of 1 Oct 2026;
+  `tests/api/preference-write-client-user.test.ts`).
   Any other write is `SCOPE_NOT_GRANTED` 403, whatever other grant rows exist.
   With a `comment` grant on the task, an internal comment is
   `AUDIENCE_NOT_PERMITTED` 422. Without one, a comment in either audience is
-  `SCOPE_NOT_GRANTED`, so a read share alone writes nothing.
+  `SCOPE_NOT_GRANTED`, so a read share alone writes nothing of the
+  business's. `notifications.set_channel` shares the `preference:write` key
+  but is not a `person_preferences` row, and stays refused to R4
+  (`tests/commands/external-notification-discovery.test.ts`).
   `tests/authority/non-member-grants.test.ts` proves each case.
 - **The client comment is the lead's ruling, not an owner decision.**
   Coordinator 25 ruled on 24 Sep 2026, reading contract 8.1 R4, that an
   external party holding an explicitly provisioned comment grant may write a
-  client-audience comment and nothing else, and that a read share alone writes
-  nothing. Nathan may overturn it with one line, an empty `EXTERNAL_WRITES`.
+  client-audience comment and nothing else of the business's, and that a read
+  share alone writes nothing of the business's. Nathan may overturn it with
+  one line: drop `task.comment` from `EXTERNAL_WRITES`.
 - **The read is an allowlist.** `task.read` answers `sharedTask`, built from
   the catalogue's `shared` fields and the client comments, never `task` with
   parts cut ([API.md, "Reads"](API.md#reads)). R4 sees the task's `title` and
@@ -369,8 +378,8 @@ fields and client-audience comments only".
   and the board are `NOT_FOUND`.
 - **`session.capabilities`** shows the party its shares' pairs, plus
   `task:comment` when it holds a comment grant. A provisioned `write` or
-  `assign` row is not shown, since the R4 gate refuses every write but
-  `task.comment` (`usableOutside`, `reads/capabilities.ts`). Proved over HTTP,
+  `assign` row is not shown, since the R4 gate refuses every write outside
+  `EXTERNAL_WRITES` (`usableOutside`, `reads/capabilities.ts`). Proved over HTTP,
   with `person.list` refused and naming no member, by
   `tests/authority/party-capability-reads.test.ts`.
 - **Proved** over HTTP by `tests/acceptance/external-party.test.ts`: the
@@ -382,11 +391,11 @@ fields and client-audience comments only".
   its content and the next call is `AUTH_NO_MEMBERSHIP`.
 - **The seed enrols one.** `scripts/local-seed.mjs` adds an entry with
   `role: 'external'` to `.local/synthetic-users.json` and creates its GoTrue
-  user (`:681-722`, run at `:856-864`). It gets a login and an acting identity,
-  and no membership and no business grant (`:149-152`, `:302-304`). The seed
+  user (`:690-731`, run at `:865-873`). It gets a login and an acting identity,
+  and no membership and no business grant (`:158-161`, `:311-313`). The seed
   makes no task, so it shares one only when rerun with `LOCAL_SEED_SHARE_TASK`
   naming a task, through `shareRecord` under the admin's own `share` grant
-  (`:724-753`, `:893-903`).
+  (`:733-762`, `:902-912`).
 - **Standing checks raw liveness.** Resolution asks whether a share grant is
   revoked or expired, not the `EFFECTIVE` chain in `grants.ts`. `shareRecord`
   issues root grants only, so the two agree today; a derived share under a
@@ -921,7 +930,7 @@ What is still absent:
 - **No external comment in practice.** `task.comment` already holds a
   non-member to `audience: client`, but only on a `comment` grant for the
   task. A share issues `read` alone and no route issues a `comment` grant, so
-  a shared party writes nothing until someone provisions one through
+  a shared party writes nothing of the business's until someone provisions one through
   `issueGrant` ([The external party](#the-external-party-r4)).
 - **Which task fields are `shared`** is an owner decision. Nathan's I09
   ruling shares the task's `title` and `state` label; every other field is

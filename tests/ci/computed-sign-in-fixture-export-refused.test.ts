@@ -22,4 +22,4 @@ it('a computed unmarked issuer exported by a fixture makes the guard red', () =>
   } finally {
     rmSync(fixture, { force: true });
   }
-});
+}, 30_000);

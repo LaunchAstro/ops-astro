@@ -186,6 +186,17 @@ describe.skipIf(serverUrl === undefined)('C59 on the command path', () => {
 });
 
 describe.skipIf(serverUrl === undefined)('C59 on the command path', () => {
+  it('C59 step-up boundary: a stale sign-in without the grant is refused as no grant, not as a step-up', async () => {
+    const now = await dbNow();
+    // A stale sign-in tells the order apart: were the step-up asked before the
+    // grant, bea would be told STEP_UP_REQUIRED for a right she does not hold.
+    expect(
+      await prepareMoney(bea, { level: 'aal1', signedInAt: now - 7200, factorAt: null }, bravo),
+    ).toBe('SCOPE_NOT_GRANTED');
+  });
+});
+
+describe.skipIf(serverUrl === undefined)('C59 on the command path', () => {
   it('C59 toggle admin only: a person without settings:manage is refused and the setting stays', async () => {
     const before = await stepUpValue(alpha);
     const refused = await setStepUp(milo, !before);

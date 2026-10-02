@@ -15,7 +15,7 @@
 // machine category and one with no state, because the tone map moves too.
 
 import { act } from 'react';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TaskDetailScreen } from '../../apps/web/src/screens/TaskDetail.tsx';
 import { Projects } from '../../apps/web/src/screens/Projects.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
@@ -37,19 +37,6 @@ const tick = async (): Promise<void> => {
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
-/** A keystroke into the comment box, which is a textarea and has its own setter. */
-async function typeComment(page: Mounted, value: string): Promise<void> {
-  const field = page.find('#comment-body') as HTMLTextAreaElement;
-  const setter = Object.getOwnPropertyDescriptor(
-    window.HTMLTextAreaElement.prototype,
-    'value',
-  )?.set;
-  await act(async () => {
-    setter?.call(field, value);
-    field.dispatchEvent(new Event('input', { bubbles: true }));
-  });
-}
-
 const refused = (code: string, status: number): Response =>
   json({ refused: true, code, names: ['task'], fixes: ['Read the task again.'] }, status);
 
@@ -67,7 +54,24 @@ function taskWith(gate: { readonly state: string; readonly expired: boolean }) {
     priority: null,
     completedAt: null,
     revision: 3,
-    history: [{ at: '2026-09-22T01:00:00.000Z', actorId: 'p-1', operation: 'task.create' }],
+    history: [
+      {
+        at: '2026-09-22T01:00:00.000Z',
+        actorId: 'p-1',
+        personId: 'p-1',
+        actorKind: 'person',
+        actorName: 'Ada',
+        operation: 'task.create',
+      },
+    ],
+    board: null,
+    rank: { number: null, score: null, calc: '' },
+    adHoc: false,
+    clientAccess: false,
+    stage: null,
+    clientSet: false,
+    steps: [],
+    time: null,
     comments: [
       {
         id: 'c-1',
@@ -147,6 +151,18 @@ const taskPage = async (client: OperationsClient): Promise<Mounted> => {
   return page;
 };
 
+// The history says how long ago each change was (MP-4-16), so the reader's
+// clock is fixed here: a pin that moved every day would pin nothing. Only
+// Date is faked; the timers the page waits on stay real.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-09-29T12:00:00.000Z'));
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe('the task page, pinned whole', () => {
   theTaskPageCases1();
   theTaskPageCases2();
@@ -171,7 +187,7 @@ function theTaskPageCases1() {
       { '/task/comment': refused('SCOPE_NOT_GRANTED', 403) },
     );
     const page = await taskPage(client);
-    await typeComment(page, 'Hello');
+    await page.type('#comment-body', 'Hello');
     await page.click('[data-comment="post"]');
     await tick();
     expect(page.host.innerHTML).toMatchSnapshot();
@@ -219,37 +235,48 @@ function theTaskPageCases2() {
   });
 }
 
+/** A task in every machine category and one with no state, as task.board answers them. */
+const CATEGORIES = ['unstarted', 'started', 'backlog', 'completed', 'cancelled', 'invented'];
+const BOARD_TASKS = [
+  ...CATEGORIES.map((category, index) => ({
+    id: `t-${String(index)}`,
+    key: `TSK-${String(index)}`,
+    title: `A ${category} task`,
+    state: {
+      id: `s-${category}`,
+      key: category,
+      label: `L-${category}`,
+      machineCategory: category,
+    },
+    assignee: null,
+    due: null,
+    // The wire always carries it; left out, the row would read as completed.
+    completedAt: null,
+    revision: 1,
+    rank: { number: null, score: null, calc: '' },
+    stage: null,
+    clientSet: false,
+  })),
+  {
+    id: 't-none',
+    key: 'TSK-none',
+    title: 'A task with no state',
+    state: null,
+    assignee: { personId: 'p-1', name: 'Ada' },
+    due: '2020-01-01T00:00:00.000Z',
+    completedAt: null,
+    revision: 1,
+    rank: { number: null, score: null, calc: '' },
+    stage: null,
+    clientSet: false,
+  },
+];
+
 describe('the board, pinned whole', () => {
   it('draws a task in every machine category and one with no state', async () => {
-    const categories = ['unstarted', 'started', 'backlog', 'completed', 'cancelled', 'invented'];
-    const tasks = [
-      ...categories.map((category, index) => ({
-        id: `t-${String(index)}`,
-        key: `TSK-${String(index)}`,
-        title: `A ${category} task`,
-        state: {
-          id: `s-${category}`,
-          key: category,
-          label: `L-${category}`,
-          machineCategory: category,
-        },
-        assignee: null,
-        due: null,
-        revision: 1,
-      })),
-      {
-        id: 't-none',
-        key: 'TSK-none',
-        title: 'A task with no state',
-        state: null,
-        assignee: { personId: 'p-1', name: 'Ada' },
-        due: '2020-01-01T00:00:00.000Z',
-        revision: 1,
-      },
-    ];
     const fetch = (async (url: string | URL) => {
       const at = String(url);
-      if (at.endsWith('/task/board')) return json({ ok: true, tasks });
+      if (at.endsWith('/task/board')) return json({ ok: true, tasks: BOARD_TASKS });
       // The inbox the board screen mounts above the board (INB-1g), empty.
       if (at.endsWith('/inbox/read')) return json({ ok: true, inbox: [] });
       if (at.endsWith('/inbox/count')) return json({ ok: true, owed: 0 });

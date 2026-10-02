@@ -207,7 +207,9 @@ async function compareState(
       say(`red ${shot.name}: ${drawn} needs --session (T4b1's fixture)`, true);
     return;
   }
-  const appPage = await load(appSide, packet, new URL(state.appPath, app).href, {});
+  const appPage = await load(appSide, packet, new URL(state.appPath, app).href, {
+    open: state.appOpen,
+  });
   const actual = await shoot(appPage, name, state.appRegions ?? regions, catalogue.mask);
   await appPage.close();
   for (const [i, shot] of actual.entries()) {

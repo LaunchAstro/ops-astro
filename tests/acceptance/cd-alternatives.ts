@@ -2,13 +2,14 @@
 //
 // Root ruling 3 (ROOT-906613f-RULINGS.md, section 3) and ledger I03: every
 // declared operation stays in the matrix. The (c) and (d) cells swap a task
-// `recordId`, which reaches 17 of the 53. For each of the other 36 this file
+// `recordId`, which reaches 17 of the 62. For each of the other 45 this file
 // names where its target comparison is executed instead, or why it has none,
 // once, so the matrix row and the case it points at cannot drift apart:
 // `identifier-negatives.test.ts` titles its cases from `CASE` below.
 //
 // A harness, not a suite: nothing here runs on its own.
 
+import { randomUUID } from 'node:crypto';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 
 type Body = Readonly<Record<string, unknown>>;
@@ -20,6 +21,9 @@ export const CASE = {
   board: 'refuses a board read on a foreign or fabricated board, never an empty success',
   agent: 'refuses the agent alike on foreign, fabricated and in-business operands',
   pickup: 'refuses a pickup alike on a foreign, a fabricated and a claimed reservation',
+  time: 'refuses a foreign and a fabricated task or time entry alike on the time commands',
+  tag: 'refuses a foreign and a fabricated task alike on the tag commands',
+  duplicate: 'refuses a duplicate of a foreign and a fabricated task alike',
   targetFree: 'refuses a target a target-free operation has no use for (SC2 reading)',
   conversation:
     'refuses a foreign and a fabricated conversation alike, NOT_FOUND byte for byte (AW-03)',
@@ -61,6 +65,11 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['session.capabilities', {}],
   ['conversation.start', { body: 'a conversation started while bravo is watched' }],
   ['conversation.list', {}],
+  // A name the vocabulary takes once, so each run makes its own (MP-4-11).
+  ['tag.create', { name: `tag ${randomUUID().slice(0, 8)}` }],
+  ['tag.list', {}],
+  // The reader's own to-dos (MP-7-1).
+  ['task.todos', {}],
   ['task.search', { query: 'brochure' }],
   // The person menu's two (C23): the caller's own account, naming nobody.
   ['session.person', {}],
@@ -133,8 +142,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['notifications.set_channel', { channel: 'in_app', mode: 'on' }],
 ];
 
-/** The identifier-bearing operations outside (c) and (d): operand and executed case. */
-/** The twenty-three identifier-bearing operations outside (c) and (d): operand and executed case. */
+/** The forty identifier-bearing operations outside (c) and (d): operand and executed case. */
 export const IDENTIFIER_BEARING: Readonly<
   Partial<Record<CommandName, readonly [operand: string, kase: keyof typeof CASE]>>
 > = {
@@ -163,12 +171,20 @@ export const IDENTIFIER_BEARING: Readonly<
   'run.top_up': ['runId and recordId', 'control'],
   'run.end_at_budget_stop': ['runId and recordId', 'control'],
   'run.revise_state': ['runId and recordId', 'control'],
+  'time.start': ['taskId', 'time'],
+  'time.stop': ['taskId', 'time'],
+  'time.log': ['taskId', 'time'],
+  'time.set_note': ['entryId', 'time'],
+  'time.delete': ['entryId', 'time'],
+  'task.add_tag': ['recordId', 'tag'],
+  'task.remove_tag': ['recordId', 'tag'],
   'legal.approve_version': ['versionId', 'control'],
   'legal.publish_version': ['versionId', 'control'],
   'credential.revoke': ['credentialId', 'control'],
   'access.grant': ['holderId and clientId', 'control'],
   'access.revoke': ['grantId', 'control'],
   'access.end': ['holderId', 'control'],
+  'task.duplicate': ['recordId', 'duplicate'],
   'inbox.seen': ['itemId', 'control'],
 };
 

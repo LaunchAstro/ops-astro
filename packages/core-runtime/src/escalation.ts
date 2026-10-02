@@ -81,15 +81,21 @@ export async function recheckEscalation(
   return await recheckRecipient(tx, request, taskId, lockedAt);
 }
 
-/** Whether the task is assigned to this person, read under the caller's task lock. */
+/** Whether the task is assigned to this person, or to their agent, read under the caller's task lock. */
 export async function assignedTo(
   tx: TenantQuery,
   taskId: string,
   personId: string,
 ): Promise<boolean> {
   const rows = await tx.query<{ readonly mine: boolean }>(
-    `select exists (select 1 from public.records
-                     where business_id = $1 and id = $2 and uuid_2 = $3) as mine`,
+    // An agent assignee counts as its delegating person (Assign to AI).
+    `select exists (select 1 from public.records r
+                     where r.business_id = $1 and r.id = $2
+                       and (r.uuid_2 = $3
+                            or exists (select 1 from public.delegations d
+                                        where d.business_id = r.business_id
+                                          and d.id::text = r.data ->> 'agent'
+                                          and d.delegate_person_id = $3))) as mine`,
     [tx.businessId, taskId, personId],
   );
   return rows[0]?.mine === true;

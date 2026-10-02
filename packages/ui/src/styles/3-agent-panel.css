@@ -33,6 +33,20 @@
     box-shadow: none;
   }
 }
+/* In the dock (MP-7-11) the drawer is an `ai` panel's body: it takes the
+   body's room and draws no frame of its own, which the dock's panel has. */
+.dpanel .aipanel,
+.shell[data-dock='seated'] .dpanel .aipanel {
+  position: static;
+  z-index: auto;
+  flex: 1;
+  width: auto;
+  height: auto;
+  min-height: 0;
+  margin: calc(-1 * var(--s-4)) calc(-1 * var(--s-5));
+  border-left: 0;
+  box-shadow: none;
+}
 .aip__head {
   display: flex;
   align-items: flex-start;

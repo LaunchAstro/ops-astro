@@ -12,61 +12,11 @@
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import postgres from 'postgres';
-import { composeApi } from '../../apps/api/server.ts';
-import { createAlerts, faultCode, type SinkEvent } from '../../apps/api/alerts/sink.ts';
-import type { AdminConnection, Database } from '../../packages/core-records/src/index.ts';
-import { runtimeKeys } from '../../packages/core-runtime/src/runtime-config.ts';
-import { COMMAND_SURFACE, PREFIX, pathOf } from '../../packages/core-wire/src/index.ts';
-import { signBearer, TEST_ISSUER, testSignIn } from '../support/sign-in.ts';
-
-const ISSUER: string = TEST_ISSUER;
-
-const ALPHA = '11111111-1111-4111-8111-111111111111';
-
-const READ = COMMAND_SURFACE.find((declaration) => declaration.kind === 'read');
-
-if (READ === undefined) throw new Error('the surface declares no read');
-
-const READ_PATH = pathOf(READ.name);
+import { faultCode } from '../../apps/api/alerts/sink.ts';
+import { PREFIX } from '../../packages/core-wire/src/index.ts';
+import { bearer, READ_PATH, served } from './s0-2-canary.fixture.ts';
 
 afterEach(() => vi.restoreAllMocks());
-
-function served(executeRead: () => Promise<never>) {
-  const events: SinkEvent[] = [];
-  const alerts = createAlerts({
-    send: (e) => Promise.resolve(void events.push(e)),
-    where: 'staging',
-    root: process.cwd(),
-  });
-  const execute = (_sql: string, parameters: readonly unknown[] = []) =>
-    Promise.resolve(parameters[0] === 'alpha' ? [{ id: ALPHA }] : []);
-  // The key is read in a transaction of its own, as the lookup identity (0046).
-  const admin = {
-    execute,
-    transaction: (run: (inner: typeof execute) => Promise<unknown>) => run(execute),
-  } as unknown as AdminConnection;
-  const { app } = composeApi({
-    database: {} as Database,
-    admin,
-    signIn: testSignIn(ISSUER),
-    keys: runtimeKeys({}),
-    executeRead: executeRead as never,
-    alerts,
-  });
-  return { app, events, alerts };
-}
-
-async function bearer(subject: string): Promise<string> {
-  const now = Math.floor(Date.now() / 1000);
-  const claims = {
-    sub: subject,
-    aud: 'authenticated',
-    iss: ISSUER,
-    role: 'authenticated',
-    exp: now + 600,
-  };
-  return await signBearer(claims);
-}
 
 /** A driver error the caller made itself: no database answered. */
 const made = (code: string) => new postgres.PostgresError({ code, message: 'm' } as never);
@@ -165,6 +115,37 @@ function canaryCases1() {
   });
 }
 
+/** One fault through the served API: 503, one sink event, the bounded log line, and no plant anywhere. */
+async function check(fault: Error, logs: string): Promise<void> {
+  const logged: string[] = [];
+  vi.spyOn(console, 'error').mockImplementation(
+    (...parts: unknown[]) => void logged.push(parts.join(' ')),
+  );
+  const { app, events, alerts } = served(() => Promise.reject(fault));
+  const response = await app.fetch(
+    new Request(`http://api.test${PREFIX.person}alpha${READ_PATH}`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${await bearer('person-one')}`,
+      },
+      body: '{}',
+    }),
+  );
+  await alerts.settled();
+  vi.restoreAllMocks();
+  expect(response.status).toBe(503);
+  expect(events).toHaveLength(1);
+  expect(logged.join('\n').includes(logs), 'the bounded log line').toBe(true);
+  for (const [where, seen] of [
+    ['log', logged.join('\n')],
+    ['sink', JSON.stringify(events)],
+    ['response', await response.text()],
+  ]) {
+    expect(/QZCAN/u.test(seen ?? ''), `a plant in the ${where}`).toBe(false);
+  }
+}
+
 function canaryCases2() {
   it('a canary in every field of a fault (name, code, message, stack, constraint, detail, cause) reaches no log, sink or response', async () => {
     const PLANT = 'QZCANARYQZ';
@@ -180,35 +161,6 @@ function canaryCases2() {
       code: '22P02',
       message: `${PLANT} value`,
     } as never);
-    const check = async (fault: Error, logs: string): Promise<void> => {
-      const logged: string[] = [];
-      vi.spyOn(console, 'error').mockImplementation(
-        (...parts: unknown[]) => void logged.push(parts.join(' ')),
-      );
-      const { app, events, alerts } = served(() => Promise.reject(fault));
-      const response = await app.fetch(
-        new Request(`http://api.test${PREFIX.person}alpha${READ_PATH}`, {
-          method: 'POST',
-          headers: {
-            'content-type': 'application/json',
-            authorization: `Bearer ${await bearer('person-one')}`,
-          },
-          body: '{}',
-        }),
-      );
-      await alerts.settled();
-      vi.restoreAllMocks();
-      expect(response.status).toBe(503);
-      expect(events).toHaveLength(1);
-      expect(logged.join('\n').includes(logs), 'the bounded log line').toBe(true);
-      for (const [where, seen] of [
-        ['log', logged.join('\n')],
-        ['sink', JSON.stringify(events)],
-        ['response', await response.text()],
-      ]) {
-        expect(/QZCAN/u.test(seen ?? ''), `a plant in the ${where}`).toBe(false);
-      }
-    };
     await check(planted, 'api: unhandled fault unknown (reference');
     await check(genuine, 'api: unhandled fault 22P02 (reference');
   });

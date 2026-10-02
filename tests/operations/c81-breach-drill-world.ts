@@ -174,13 +174,13 @@ export const view = async (
 ): Promise<Answer> =>
   await as(token, 'operations.read', { operationId: `c81d-${randomUUID()}` }, businessKey);
 
-/** Draft, approve and publish a breach runbook; answers its words. */
+/** Draft, approve and publish a breach runbook (`body`, or made-up words); answers its words. */
 export const publishRunbook = async (
   version: string,
   token: string = harness.world.ada.token,
   businessKey: string = 'alpha',
+  body: string = runbookWords(randomUUID()),
 ): Promise<string> => {
-  const body = runbookWords(randomUUID());
   const drafted = await as(
     token,
     'legal.draft_version',

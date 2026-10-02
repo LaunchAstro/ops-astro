@@ -1,0 +1,216 @@
+// SPDX-License-Identifier: AGPL-3.0-only
+//
+// The operand table of each write on the command surface, moved whole from
+// `surface.ts` to keep that file under the 1,000-line limit for product source.
+// `surface.ts` reads it into each declaration and re-exports the operand types.
+
+import type { CommandName } from './command-names.ts';
+
+/**
+ * The JSON kind of one operand: `id` and `text` are strings, `count` a finite
+ * number, `flag` a boolean, `map` an object that is not an array, `any`
+ * whatever the command checks by value itself. `?` admits absent, `|null`
+ * admits null.
+ */
+export type OperandKind = 'id' | 'text' | 'count' | 'flag' | 'map' | 'any';
+export type Operand = `${OperandKind}${'' | '?'}${'' | '|null'}`;
+export type OperandSpec = Readonly<Record<string, Operand>>;
+
+// Each write's operands, as `requests.ts` types them. `recordId` is here on
+// every targeted command, and `operationId` and `expectedRevision` nowhere:
+// the envelope reads those two itself. An operand whose kind its command
+// already answers in its own words (a comment's `comment_type`, a pickup's
+// reservation, a revocation's absent id, a reparent's parent after its task)
+// is `any` here, so the caller keeps that answer and its place.
+const TARGET = { recordId: 'id' } as const;
+const FIELDS = { ...TARGET, fields: 'map' } as const;
+export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
+  'task.create': {
+    fields: 'map',
+    parentId: 'id?|null',
+    board: 'id?|null',
+    boardSection: 'id?|null',
+    stateKey: 'any',
+    // The caller's own conversation the task is created from (AW-03's origin).
+    conversationId: 'id?|null',
+  },
+  'task.update': FIELDS,
+  'task.complete': TARGET,
+  'task.reopen': { ...TARGET, reason: 'any' },
+  'task.start': TARGET,
+  'task.set_state': { ...TARGET, stateId: 'id' },
+  // The old task, the chosen client and the shell the person edited: no
+  // operand for anything else, so nothing else can carry over (MP-4-8).
+  'task.duplicate': {
+    recordId: 'id',
+    client: 'id|null',
+    title: 'text',
+    stepNames: 'any',
+    confirmCarried: 'flag?',
+  },
+  'task.comment': {
+    ...TARGET,
+    body: 'any',
+    audience: 'any',
+    commentType: 'any',
+    parentId: 'any',
+    mentions: 'any',
+  },
+  'task.edit_comment': { ...TARGET, commentId: 'any', body: 'any' },
+  'task.delete_comment': { ...TARGET, commentId: 'any' },
+  'task.propose': {
+    ...TARGET,
+    purpose: 'any',
+    maximumMinor: 'any',
+    currency: 'any',
+    payload: 'map',
+    step: 'any',
+    expiresInSeconds: 'any',
+    lineageId: 'id?|null',
+  },
+  'task.decide': {
+    gateId: 'id',
+    versionId: 'id',
+    decision: 'any',
+    note: 'any',
+    recipientPersonId: 'id?|null',
+  },
+  'task.pickup': { reservationId: 'any', leaseSeconds: 'any' },
+  // A lease call names its task through its lease; a `recordId` beside the
+  // lease is taken and plays no part in the check (API.md, id operands).
+  'task.handback': {
+    leaseId: 'any',
+    recordId: 'any',
+    fence: 'any',
+    outcome: 'any',
+    report: 'any',
+    actualMinor: 'any',
+    successor: 'any',
+  },
+  'task.assign': FIELDS,
+  'task.triage': FIELDS,
+  'task.set_stage': FIELDS,
+  'task.set_party': FIELDS,
+  'task.set_audience': FIELDS,
+  'task.set_scores': FIELDS,
+  'task.set_adhoc': FIELDS,
+  'task.set_category': FIELDS,
+  'task.share_with_client': TARGET,
+  'task.revoke_client_share': TARGET,
+  'task.reparent': { ...TARGET, parentId: 'any' },
+  'task.move': { ...TARGET, board: 'any', boardSection: 'any' },
+  'task.rank': { ...TARGET, afterId: 'id?|null', beforeId: 'id?|null' },
+  'task.trash': TARGET,
+  'task.restore': { batchId: 'id' },
+  'task.purge': { olderThanDays: 'any' },
+  'settings.set_four_eyes_threshold': { value: 'any', expectedRevision: 'any' },
+  'settings.set_client_sign_off': { value: 'any', expectedRevision: 'any' },
+  'settings.set_money_step_up': { value: 'any', expectedRevision: 'any' },
+  'settings.set_conversation_window': { value: 'any', expectedRevision: 'any' },
+  'settings.set_retention_window': { value: 'any', expectedRevision: 'any' },
+  'privacy.record_incident': {
+    whatHappened: 'any',
+    foundAt: 'any',
+    foundBy: 'any',
+    affected: 'any',
+    informationKinds: 'any',
+  },
+  'legal.draft_version': { document: 'any', version: 'any', body: 'any' },
+  'legal.approve_version': { versionId: 'id', digest: 'any' },
+  'legal.publish_version': { versionId: 'id' },
+  'credential.issue': { scope: 'any', expiresAt: 'any', purpose: 'any' },
+  'credential.revoke': { credentialId: 'id' },
+  'privacy.set_overseas_service': {
+    service: 'any',
+    receives: 'any',
+    where: 'any',
+    trainsOnIt: 'any',
+    contract: 'any',
+    toConfirm: 'any',
+    inUse: 'any',
+  },
+  'privacy.set_data_class': {
+    dataClass: 'any',
+    purpose: 'any',
+    disclosures: 'any',
+    retention: 'any',
+    deletion: 'any',
+    inUse: 'any',
+  },
+  'operations.record_gate_item': { item: 'any', evidence: 'any', statement: 'any?' },
+  'operations.change_installation_mode': { mode: 'any' },
+  'client.create': { name: 'any' },
+  'access.grant': { holderId: 'id', collection: 'any', action: 'any', clientId: 'id?|null' },
+  'access.revoke': { grantId: 'id' },
+  'access.end': { holderId: 'id' },
+  'grant.revoke': { grantId: 'any' },
+  'delegation.revoke': { delegationId: 'any' },
+  'task.cancel': { recordId: 'any', lineageId: 'any', reason: 'any' },
+  'task.restart': { recordId: 'any', lineageId: 'any', expiresInSeconds: 'any' },
+  'task.heartbeat': {
+    leaseId: 'any',
+    recordId: 'any',
+    fence: 'any',
+    leaseSeconds: 'any',
+    providerStarting: 'any',
+  },
+  'task.dispatch': { leaseId: 'any', recordId: 'any', fence: 'any' },
+  // Minor units, of the maximum the person saw; no standing ceiling (Q168).
+  'budget.top_up': { recordId: 'any', amountMinor: 'count', fromMaximumMinor: 'count' },
+  // The task, the attempt held unknown, and one of the three outcomes (O7).
+  'budget.record_outcome': { recordId: 'any', attemptId: 'any', outcome: 'any' },
+  // The task, the attempt held unknown, the minor units charged and why (T3c).
+  'budget.write_off': { recordId: 'any', attemptId: 'any', amountMinor: 'count', reason: 'text' },
+  'task.observe': {
+    leaseId: 'any',
+    recordId: 'any',
+    fence: 'any',
+    attemptId: 'any',
+    usage: 'any',
+    outcome: 'any',
+  },
+  'task.check': {
+    leaseId: 'any',
+    recordId: 'any',
+    fence: 'any',
+    name: 'any',
+    outcome: 'any',
+    note: 'any',
+  },
+  'conversation.start': { body: 'any', title: 'any', subject: 'any', scope: 'any' },
+  'conversation.message': { conversationId: 'any', body: 'any' },
+  'conversation.rename': { conversationId: 'any', title: 'any' },
+  'conversation.set_scope': { conversationId: 'any', page: 'any' },
+  'model.call': { leaseId: 'any', fence: 'any', operation: 'any', fields: 'any' },
+  'run.top_up': {
+    recordId: 'any',
+    runId: 'any',
+    askId: 'any',
+    amountMinor: 'any',
+    currency: 'any',
+  },
+  'run.end_at_budget_stop': { recordId: 'any', runId: 'any', askId: 'any' },
+  // The version the caller read (0 before the first); the two lists are
+  // checked item by item by the handler.
+  'run.revise_state': {
+    recordId: 'any',
+    runId: 'any',
+    expectedVersion: 'count',
+    knowledge: 'any',
+    unknowns: 'any',
+  },
+  // A duration is text the handler parses and answers in its own words.
+  'time.start': { taskId: 'id' },
+  'time.stop': { taskId: 'id' },
+  'time.log': { taskId: 'id', duration: 'any', note: 'any' },
+  'time.set_note': { entryId: 'id', note: 'any' },
+  'time.delete': { entryId: 'id' },
+  'tag.create': { name: 'any' },
+  'task.add_tag': { recordId: 'id', tagId: 'id' },
+  'task.remove_tag': { recordId: 'id', tagId: 'id' },
+  'session.end': {},
+  'preference.save': { preference: 'text', value: 'any' },
+  'preference.dismiss_tip': { page: 'text', tip: 'text', version: 'count' },
+  'inbox.seen': { itemId: 'id' },
+  'notifications.set_channel': { channel: 'text', mode: 'text', category: 'text?' },
+};

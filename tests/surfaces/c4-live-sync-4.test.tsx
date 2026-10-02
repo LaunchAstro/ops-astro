@@ -30,6 +30,8 @@ const CREATED = {
   at: '2026-09-29T09:00:00Z',
   actorId: 'a-bo',
   personId: 'p-bo',
+  actorKind: 'person',
+  actorName: 'Bo Reyes',
   operation: 'task.create',
 };
 
@@ -104,12 +106,21 @@ function moveOn(api: ReturnType<typeof server>): void {
   });
   task.history.push(
     // Ana's actor, which the audit records, is not her person: named by the person.
-    { at: '2026-09-30T01:00:00Z', actorId: 'a-ana', personId: 'p-ana', operation: 'task.move' },
+    {
+      at: '2026-09-30T01:00:00Z',
+      actorId: 'a-ana',
+      personId: 'p-ana',
+      actorKind: 'person',
+      actorName: 'Ana Bell',
+      operation: 'task.move',
+    },
     // Someone this reader cannot list: named as nobody in particular.
     {
       at: '2026-09-30T01:00:01Z',
       actorId: 'a-unlisted',
       personId: 'p-unlisted',
+      actorKind: 'person',
+      actorName: 'Cy Unlisted',
       operation: 'task.comment',
     },
   );

@@ -1,30 +1,28 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The refusal register. One table of codes, their statuses, and the
-// visibility rule.
+// The refusal register. One table of codes, their statuses, and the visibility rule.
 //
-// This is T1f's register. It does not replace the modules' own refusal
-// unions, because a module keeps the codes it can produce and that keeps its
-// own types narrow. It is the one place that says a code exists, what it means, which contract row owns it, which
-// HTTP status carries it, and whether a caller may see it at all. A code is
-// declared once, as a row: `RefusalCode` is read off the rows, the runtime's
-// own union is read off the rows marked `runtime`, and the HTTP door reads the
-// status column through `statusOf`.
+// This is T1f's register. It does not replace the modules' own refusal unions, because a
+// module keeps the codes it can produce and that keeps its own types narrow. It is the one
+// place that says a code exists, what it means, which contract row owns it, which HTTP
+// status carries it, and whether a caller may see it at all. A code is declared once, as a
+// row: `RefusalCode` is read off the rows, the runtime's own union is read off the rows
+// marked `runtime`, and the HTTP door reads the status column through `statusOf`.
 //
-// **Why a table rather than a union alone.** A union stops a typo. It cannot
-// say that `WRONG_BUSINESS` is never returned to a caller, and that rule is
-// the whole of case T1-N5: a cross-business read is `NOT_FOUND`, and it must
-// be indistinguishable in status, code, body and timing from a read of an
-// identifier nobody ever issued. A boolean beside the code makes that a fact
-// the envelope enforces once, rather than a rule every command remembers.
+// **Why a table rather than a union alone.** A union stops a typo. It cannot say that
+// `WRONG_BUSINESS` is never returned to a caller, and that rule is the whole of case
+// T1-N5: a cross-business read is `NOT_FOUND`, and it must be indistinguishable in status,
+// code, body and timing from a read of an identifier nobody ever issued. A boolean beside
+// the code makes that a fact the envelope enforces once, rather than a rule every command
+// remembers.
 //
-// **Why codes nothing produces yet are in it.** The contract's register is
-// twenty-four codes (minimum contract 4.4) and its command table names seven
-// more. Several belong to gates, leases and delegations, which land in later
-// parts. Registering them now costs a line each; leaving them out means the
-// part that builds those commands invents its own spelling of a code the
-// contract already named. `UNPRODUCED_CODES` (`register-unproduced.ts`) names them, so a later part
-// closing one shows as a diff to this file rather than as nothing at all.
+// **Why codes nothing produces yet are in it.** The contract's register is twenty-four
+// codes (minimum contract 4.4) and its command table names seven more. Several belong to
+// gates, leases and delegations, which land in later parts. Registering them now costs a
+// line each; leaving them out means the part that builds those commands invents its own
+// spelling of a code the contract already named. `UNPRODUCED_CODES`
+// (`register-unproduced.ts`) names them, so a later part closing one shows as a diff to
+// this file rather than as nothing at all.
 
 import { DEFINITION_ROWS } from './register-definitions.ts';
 import { EFFECT_ROWS } from './register-effects.ts';
@@ -253,6 +251,12 @@ const ROWS_HEAD = [
     meaning: 'The lifecycle does not allow this transition',
     source: 'contract 4.3',
     runtime: true,
+  },
+  {
+    code: 'CARRIED_TEXT_NAMES_CLIENT',
+    status: 409,
+    meaning: 'Text carried from the old task names its client, unconfirmed',
+    source: 'MP-4-8, owner line 76',
   },
   // The operation is declared and what it rests on has not been built. Not a
   // permission problem and not a bad request, and saying so is the honest answer
@@ -911,52 +915,6 @@ export function refuseCommand<C extends RefusalCode>(
     throw new Error(`refuseCommand: ${code} is not in the refusal register. Add it or use one.`);
   }
   return { refused: true, code, names, fixes };
-}
-
-// The gate codes' constructors (T2g, build plan 5): one way to raise each code.
-
-/** Completing a task while a gate on it is open (contract 4.3, `task.complete`). */
-export function gatePending(): CommandRefusal<'GATE_PENDING'> {
-  return refuseCommand(
-    'GATE_PENDING',
-    [],
-    [
-      'An approval gate on this task is still open, so the task is not complete.',
-      'Decide the gate, or let it expire, then complete the task.',
-    ],
-  );
-}
-
-/** A second decision on a gate that carries one (G03). */
-export function gateAlreadyDecided(
-  gateId: string,
-  state: string,
-): CommandRefusal<'GATE_ALREADY_DECIDED'> {
-  return refuseCommand(
-    'GATE_ALREADY_DECIDED',
-    [],
-    [
-      `gate ${gateId} is ${state}`,
-      'Read the decision that was recorded. A second decision on one version is never taken.',
-    ],
-  );
-}
-
-/** A comment in an audience this caller may not write in. */
-export function audienceNotPermitted(fix: string): CommandRefusal<'AUDIENCE_NOT_PERMITTED'> {
-  return refuseCommand('AUDIENCE_NOT_PERMITTED', ['audience'], [fix]);
-}
-
-/** The task's assignee asked to decide its own gate: another person decides. */
-export function fourEyesRequired(): CommandRefusal<'FOUR_EYES_REQUIRED'> {
-  return refuseCommand(
-    'FOUR_EYES_REQUIRED',
-    [],
-    [
-      'The task is assigned to you, so its gate is decided by someone else.',
-      'Ask another person who holds the decision grant on this task.',
-    ],
-  );
 }
 
 /** The discriminant every result is read through. */

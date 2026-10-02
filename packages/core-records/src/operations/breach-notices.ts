@@ -102,13 +102,16 @@ export function draftBreachNotices(
   input: BreachNoticeInput,
 ): readonly BreachNotice[] | undefined {
   const template = templateOf(runbook);
-  if (template === undefined || !fillable(template.lines, input)) return undefined;
+  if (template === undefined || !fillable([template.subject, ...template.lines], input)) {
+    return undefined;
+  }
   const { subject, lines } = template;
   const draft = (to: BreachNotice['to'], recipient: NoticeRecipient): BreachNotice => ({
     to,
     name: recipient.name,
     address: recipient.address,
-    subject,
+    // A value typed with a line break still leaves the subject one line.
+    subject: fill(subject, input, recipient).replaceAll(/\r\n|[\r\n]/gu, ' '),
     body: lines.map((line) => fill(line, input, recipient)).join('\n'),
   });
   return [draft('oaic', input.oaic), ...input.people.map((person) => draft('person', person))];
