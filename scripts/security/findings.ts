@@ -37,10 +37,11 @@ export interface Finding {
   readonly evidence: string;
 }
 
+/** An informational rule, once per alert, with how many URLs it was seen on. */
 export interface Listed {
   readonly scan: string;
-  readonly url: string;
   readonly rule: string;
+  readonly count: number;
 }
 
 export interface ScanFindings {
@@ -93,7 +94,7 @@ export function findingsOf(
   return { scan, findings, info };
 }
 
-/** One alert's rows: a finding per instance, or an info line per instance. */
+/** One alert's rows: a finding per instance, or one info line with its count. */
 function readAlert(
   scan: string,
   alert: Json,
@@ -113,12 +114,12 @@ function readAlert(
   const instances = Array.isArray(alert['instances'])
     ? (alert['instances'] as readonly unknown[]).filter((each) => isObject(each))
     : [];
+  if (mapped === 'info') {
+    info.push({ scan, rule, count: Math.max(instances.length, 1) });
+    return;
+  }
   for (const instance of instances.length > 0 ? instances : [{}]) {
     const url = redact(text(instance['uri'])) || '(no URL given)';
-    if (mapped === 'info') {
-      info.push({ scan, url, rule });
-      continue;
-    }
     const evidence = redact(text(instance['evidence']));
     findings.push({
       severity: mapped ?? 'blocker',
@@ -144,7 +145,7 @@ export function severityGate(scans: readonly ScanFindings[]): GateResult {
     blocker,
     major,
     minor: count('minor'),
-    info: scans.reduce((sum, each) => sum + each.info.length, 0),
+    info: scans.flatMap((each) => each.info).reduce((sum, line) => sum + line.count, 0),
   };
 }
 
@@ -193,7 +194,9 @@ export function findingsTable(scans: readonly ScanFindings[]): string {
   if (info.length > 0) {
     lines.push('', '## Informational (listed only)', '');
     for (const each of info)
-      lines.push(`- ${cell(each.scan)}: ${cell(each.rule)}, ${cell(each.url)}`);
+      lines.push(
+        `- ${cell(each.scan)}: ${cell(each.rule)} (${String(each.count)} URL${each.count === 1 ? '' : 's'})`,
+      );
   }
   return `${lines.join('\n')}\n`;
 }

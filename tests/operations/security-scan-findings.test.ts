@@ -83,6 +83,16 @@ it('informational alerts go to the info list, never the findings', () => {
   expect(found.info.map((each) => each.rule)).toStrictEqual(['10000 Modern Web App']);
 });
 
+it('the info list is one line per rule with its count, however many URLs it saw', () => {
+  const uris = ['a', 'b', 'c'].map((each) => ({ uri: `https://s.test/${each}` }));
+  const found = findingsOf(
+    'api',
+    report([{ riskcode: '0', name: 'Client Error', instances: uris }]),
+  );
+  expect(found.info).toStrictEqual([{ scan: 'api', rule: '10000 Client Error', count: 3 }]);
+  expect(findingsTable([found])).toContain('- api: 10000 Client Error (3 URLs)');
+});
+
 it.each([
   ['blank', ''],
   ['missing', undefined],
