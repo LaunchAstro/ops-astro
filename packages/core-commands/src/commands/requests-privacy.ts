@@ -83,5 +83,7 @@ export type PrivacyRequest<E> =
       readonly clientId?: unknown;
     } & E)
   | ({ readonly command: 'access.revoke'; readonly grantId: string } & E)
+  // C59 (ORCH65-Q3): the owner resets a member's factor (`factor-reset.ts`).
+  | ({ readonly command: 'access.reset_factor'; readonly holderId: unknown } & E)
   // C58: end a person's access in one act (`access-end.ts`).
   | ({ readonly command: 'access.end'; readonly holderId: unknown } & E);

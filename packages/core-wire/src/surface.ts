@@ -584,6 +584,14 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     untargetedIdentifiers: ['holderId'],
   }),
+  // C59 (ORCH65-Q3): the tracked action `second factor reset (person, by)`
+  // under `settings:manage`, never an agent's. It names a member of the
+  // business; the provider's removal of the factor runs after it commits.
+  declare('access.reset_factor', 'manage', {
+    collection: SETTINGS_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['holderId'],
+  }),
 
   // The grant manager's authority, which is `manage` on the task family this
   // head's grants are about, asked of the revoked row's own scope. The
