@@ -231,6 +231,25 @@ test("judges a pull request's merge against main as it now stands, not the event
   }
 });
 
+test('refuses a head that merged main in with no merge on top, judged against main', () => {
+  const repo = repository();
+  try {
+    const before = repo.commit(MAIN_AFTER_3A, 'base');
+    repo.git('checkout', '-q', '-b', 'branch', before);
+    repo.commit(['20261001000000_t1']);
+    repo.git('checkout', '-q', 'main');
+    const main = repo.commit(['20261001120000_t2']);
+    repo.git('checkout', '-q', 'branch');
+    repo.git('merge', '-q', '--no-ff', '-m', 'merge main in', 'main');
+    refuses(
+      repo.run(main, repo.git('rev-parse', 'HEAD')),
+      /20261001000000_t1 sorts before 20261001120000_t2/u,
+    );
+  } finally {
+    repo.done();
+  }
+});
+
 test('refuses a migration that is not a regular file, such as a symlink', () => {
   const repo = repository();
   try {
