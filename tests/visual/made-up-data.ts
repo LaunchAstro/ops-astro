@@ -2,7 +2,7 @@
 //
 // The made-up agent work behind the harness's answers (made-up-api.ts): the
 // task's proposal at an armed gate, its run and the run's receipt. The task
-// rows themselves are in made-up-tasks.ts. Every name is made up. Test side only.
+// rows themselves are in made-up-rows.ts. Every name is made up. Test side only.
 
 import type {
   ProposalView,

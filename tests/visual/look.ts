@@ -19,6 +19,7 @@
 // same colour agree; boxes are compared to the whole pixel.
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import type { Page } from 'playwright';
 import { launchChromium } from '../support/chromium.ts';
 import { load, MOCKUP_ORIGIN, openSide, type Side } from './capture.ts';
 import { madeUpSession, serveApp } from './app-pages.ts';
@@ -73,11 +74,66 @@ const say = (line: string, red = false): void => {
 const placesOf = (probe: LookProbe): { width: number; theme: Theme }[] =>
   widthsOf(probe).flatMap((width) => THEMES.map((theme) => ({ width, theme })));
 
-/** One element's values on one side, at one width and theme; the side is closed after. */
-async function measureOn(side: Side, url: string, probe: LookProbe, on: 'mockup' | 'app') {
+/** Drags an element's centre along x, as a person drags an edge; false when nothing is there to grip. */
+async function dragBy(page: Page, drag: { selector: string; by: number }): Promise<boolean> {
+  const grip = await page.locator(drag.selector).boundingBox();
+  if (grip === null) return false;
+  const y = grip.y + grip.height / 2;
+  await page.mouse.move(grip.x + grip.width / 2, y);
+  await page.mouse.down();
+  await page.mouse.move(grip.x + grip.width / 2 + drag.by, y, { steps: 4 });
+  await page.mouse.up();
+  return true;
+}
+
+/** Each probe's element values, as the page draws them now. */
+const readAll = (page: Page, probes: readonly LookProbe[], on: 'mockup' | 'app') =>
+  Promise.all(
+    probes.map((probe) =>
+      page.evaluate(measure, { selector: probe[on].selector, props: probe.props }),
+    ),
+  );
+
+/**
+ * Each probe's element values on one side, at one width and theme, from one
+ * load: the probes share how the page is drawn and prepared, so each would
+ * load and prepare the same page. Only reads follow the preparation, so no
+ * probe's reading moves another's. The side is closed after.
+ */
+async function measureOn(
+  side: Side,
+  url: string,
+  probes: readonly LookProbe[],
+  on: 'mockup' | 'app',
+): Promise<(Measured | null)[]> {
+  const { open, store, drag } = probes[0]?.[on] ?? {};
   try {
-    const page = await load(side, packet, url, { open: probe[on].open });
-    const read = () => page.evaluate(measure, { selector: probe[on].selector, props: probe.props });
+    if (store !== undefined)
+      await side.context.addInitScript((entries: [string, string][]) => {
+        for (const [name, value] of entries) localStorage.setItem(name, value);
+      }, Object.entries(store));
+    const page = await load(side, packet, url, { open });
+    // An app element drawn from its own read (the panel's Project select asks
+    // task.board) comes after the first paint: wait for it, so a slow answer
+    // is not read as "draws no"; one never drawn is still null after 5s.
+    if (on === 'app') {
+      for (const probe of probes) {
+        await page
+          .waitForSelector(probe.app.selector, { state: 'attached', timeout: 5000 })
+          .catch(() => null);
+      }
+    }
+    if (drag !== undefined && !(await dragBy(page, drag))) return probes.map(() => null);
+    // Measured at rest: every transition the preparation started has landed.
+    await page.evaluate(() =>
+      Promise.all(
+        document
+          .getAnimations()
+          .filter((each) => each instanceof CSSTransition)
+          .map((each) => each.finished.catch(() => each)),
+      ),
+    );
+    const read = () => readAll(page, probes, on);
     // The dev server injects each style sheet as its module loads, so an early read can
     // catch a block before its look applies (13px for 14px, 16px for 48px padding). Read
     // until two reads 100ms apart agree, for at most two seconds.
@@ -101,7 +157,12 @@ async function pinScreen(screen: LookScreen, mockupDir: string, tree: string): P
     const values: Record<string, Measured | null> = {};
     for (const { width, theme } of placesOf(probe)) {
       const side = await openSide(browser, packet, width, { mockupDir, tree, theme });
-      const value = await measureOn(side, `${MOCKUP_ORIGIN}${probe.mockup.path}`, probe, 'mockup');
+      const [value = null] = await measureOn(
+        side,
+        `${MOCKUP_ORIGIN}${probe.mockup.path}`,
+        [probe],
+        'mockup',
+      );
       values[key(width, theme)] = value;
       say(
         `${value === null ? 'red' : 'measured'} ${probe.id}@${key(width, theme)}`,
@@ -118,30 +179,20 @@ async function pinScreen(screen: LookScreen, mockupDir: string, tree: string): P
   writeFileSync(pinnedFile(screen), `${JSON.stringify(pinned, null, 2)}\n`);
 }
 
-/** The app's values for one probe at one place, against the pinned mockup's. */
-async function checkProbe(
-  probe: LookProbe,
-  at: { width: number; theme: Theme; app: URL; session: string },
-  want: Measured | null | undefined,
-): Promise<void> {
-  const { width, theme, app, session } = at;
+/** One probe at one width and theme, with the mockup values pinned for it there. */
+interface Place {
+  readonly probe: LookProbe;
+  readonly width: number;
+  readonly theme: Theme;
+  readonly want: Measured | null;
+}
+
+/** A place's line: `ok`, or `red` with each property that differs. */
+function verdict(place: Place, got: Measured | null): readonly [string, boolean] {
+  const { probe, width, theme, want } = place;
   const name = `${probe.id}@${key(width, theme)}`;
-  if (want === undefined || want === null) {
-    say(`red ${name}: no mockup value pinned (run --measure)`, true);
-    return;
-  }
-  // A public page (sign-in) is measured signed out, as the harness draws it;
-  // an address the probe names is drawn signed in.
-  const target = probe.app;
-  const signedIn = target.path !== undefined || needsSession(target.page) ? { session } : {};
-  const side = await openSide(browser, packet, width, { app, ...signedIn, colorScheme: theme });
-  await answerMadeUp(side.context, target.reads);
-  const address = target.path ?? addressOf(target.page, { key: 'T-1' }) ?? '/';
-  const got = await measureOn(side, new URL(address, app).href, probe, 'app');
-  if (got === null) {
-    say(`red ${name}: the app draws no ${probe.app.selector}`, true);
-    return;
-  }
+  if (want === null) return [`red ${name}: no mockup value pinned (run --measure)`, true];
+  if (got === null) return [`red ${name}: the app draws no ${probe.app.selector}`, true];
   // A ruling that moved the build off the mockup names the value it holds instead.
   const wanted = (prop: string): string | undefined =>
     probe.ruled?.find((r) => r.at === `${prop}@${theme}`)?.want ??
@@ -149,10 +200,31 @@ async function checkProbe(
     want[prop];
   const off = probe.props.filter((prop) => got[prop] !== wanted(prop));
   const why = off.map((p) => `${p} mockup ${String(wanted(p))} app ${String(got[p])}`);
-  say(off.length === 0 ? `ok ${name}` : `red ${name}: ${why.join('; ')}`, off.length > 0);
+  return off.length === 0 ? [`ok ${name}`, false] : [`red ${name}: ${why.join('; ')}`, true];
 }
 
-/** Every probe of one screen in the app. */
+/** The app's values at places drawn alike, from one load, each against its pinned mockup's. */
+async function checkAlike(
+  places: readonly Place[],
+  app: URL,
+  session: string,
+): Promise<(readonly [string, boolean])[]> {
+  const [first] = places;
+  if (first === undefined) return [];
+  const { width, theme } = first;
+  // A public page (sign-in) is measured signed out, as the harness draws it;
+  // an address the probe names is drawn signed in.
+  const target = first.probe.app;
+  const signedIn = target.path !== undefined || needsSession(target.page) ? { session } : {};
+  const side = await openSide(browser, packet, width, { app, ...signedIn, colorScheme: theme });
+  await answerMadeUp(side.context, target.reads);
+  const address = target.path ?? addressOf(target.page, { key: 'T-1' }) ?? '/';
+  const probes = places.map((place) => place.probe);
+  const got = await measureOn(side, new URL(address, app).href, probes, 'app');
+  return places.map((place, at) => verdict(place, got[at] ?? null));
+}
+
+/** Every probe of one screen in the app, one line per probe, width and theme, in order. */
 async function checkScreen(screen: LookScreen, app: URL, session: string): Promise<void> {
   const pinned = JSON.parse(readFileSync(pinnedFile(screen), 'utf8')) as Pinned;
   if (pinned.mockup !== packet.mockup.commit) {
@@ -162,13 +234,36 @@ async function checkScreen(screen: LookScreen, app: URL, session: string): Promi
     );
     return;
   }
-  for (const probe of screen.probes)
-    for (const { width, theme } of placesOf(probe))
-      await checkProbe(
-        probe,
-        { width, theme, app, session },
-        pinned.probes[probe.id]?.[key(width, theme)],
-      );
+  const places: Place[] = screen.probes.flatMap((probe) =>
+    placesOf(probe).map(({ width, theme }) => ({
+      probe,
+      width,
+      theme,
+      want: pinned.probes[probe.id]?.[key(width, theme)] ?? null,
+    })),
+  );
+  // Places that draw the app alike (the same page, address, reads and
+  // preparation, at one width and theme) differ only in the element read, so
+  // they share one load; a place with no pinned value loads nothing.
+  const alike = new Map<string, Place[]>();
+  for (const place of places) {
+    if (place.want === null) continue;
+    const drawn = JSON.stringify([
+      { ...place.probe.app, selector: undefined },
+      place.width,
+      place.theme,
+    ]);
+    alike.set(drawn, [...(alike.get(drawn) ?? []), place]);
+  }
+  const lineOf = new Map<Place, readonly [string, boolean]>();
+  for (const group of alike.values()) {
+    const said = await checkAlike(group, app, session);
+    group.forEach((place, at) => {
+      const line = said[at];
+      if (line !== undefined) lineOf.set(place, line);
+    });
+  }
+  for (const place of places) say(...(lineOf.get(place) ?? verdict(place, null)));
 }
 
 try {

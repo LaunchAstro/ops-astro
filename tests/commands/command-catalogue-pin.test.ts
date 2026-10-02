@@ -28,9 +28,9 @@
 // `task.edit_comment` and `task.delete_comment`, two writes an agent reaches
 // inside its delegation, one row each in the tables that list every write or
 // every agent operation, and `task.comment` handing on its `parentId`.
-// The sixth is MP-4-4's parent scope: `task.set_party` goes to `setParty`,
-// which holds a subtask to its parent's client and carries a client down the
-// subtree before the owned write.
+// The sixth is MP-4-4's parent scope behind S0-5's client lock: `task.set_party`
+// goes to `setPartyWhileEmpty`, which refuses once the task has content and
+// otherwise hands an empty task to `setParty` (parent scope, carry-down).
 // The seventh is MP-4-6's five `time.*` writes: untargeted, an agent never
 // reaches them, one row each in the tables that list every write or every
 // untargeted one.
@@ -41,6 +41,14 @@
 // The ninth is the status select's `task.set_state`: a targeted write an
 // agent never reaches, to `setStateById` with its state id, one row each in
 // the tables that list every write.
+// The tenth is the category's `task.set_category` (MP-4-8, CS-4.16), the
+// same shape as the third: a write an agent reaches inside its delegation, to
+// `setCategory`, one row each in the tables that list every write or every
+// agent operation.
+// The eleventh is MP-4-8's `task.duplicate`: an untargeted write naming the old
+// task in `recordId`, an agent never reaches it, to `duplicateTask` with its
+// request, one row each in the tables that list every write, every untargeted
+// one or every operation with no expected revision.
 //
 // This suite moves the database counter by zero, so it is a unit suite and
 // must not be named in `tests/db/named-suites.json`.
@@ -98,9 +106,17 @@ vi.mock('../../packages/core-commands/src/commands/tasks-adhoc.ts', async (origi
   ...(await original<object>()),
   setAdHoc: recorder('setAdHoc'),
 }));
-vi.mock('../../packages/core-commands/src/commands/tasks-party.ts', async (original) => ({
+vi.mock('../../packages/core-commands/src/commands/tasks-category.ts', async (original) => ({
   ...(await original<object>()),
-  setParty: recorder('setParty'),
+  setCategory: recorder('setCategory'),
+}));
+vi.mock('../../packages/core-commands/src/commands/task-client-lock.ts', async (original) => ({
+  ...(await original<object>()),
+  setPartyWhileEmpty: recorder('setPartyWhileEmpty'),
+}));
+vi.mock('../../packages/core-commands/src/commands/tasks-duplicate.ts', async (original) => ({
+  ...(await original<object>()),
+  duplicateTask: recorder('duplicateTask'),
 }));
 vi.mock('../../packages/core-commands/src/commands/tasks-client-access.ts', async (original) => ({
   ...(await original<object>()),
@@ -285,6 +301,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'task.handback': ['leaseId'],
   'task.heartbeat': ['leaseId'],
   'task.dispatch': ['leaseId'],
+  'task.duplicate': ['recordId'],
   'task.observe': ['leaseId', 'attemptId'],
   'task.pickup': ['reservationId'],
   'task.purge': [],
@@ -351,6 +368,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'task.create',
   'task.decide',
   'task.dispatch',
+  'task.duplicate',
   'task.execution',
   'task.handback',
   'task.heartbeat',
@@ -392,6 +410,7 @@ const PINNED_AGENT_SURFACE = [
   'task.queue',
   'task.read',
   'task.set_adhoc',
+  'task.set_category',
   'task.set_scores',
   'task.update',
 ];
@@ -444,6 +463,14 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'task.handback', operationId: 'op', leaseId: 'l', fence: 2, outcome: 'done' },
   { command: 'task.start', operationId: 'op', recordId: 'r' },
   { command: 'task.set_state', operationId: 'op', recordId: 'r', stateId: 'state' },
+  {
+    command: 'task.duplicate',
+    operationId: 'op',
+    recordId: 'r',
+    client: null,
+    title: 't-duplicate',
+    stepNames: [],
+  },
   { command: 'task.assign', operationId: 'op', recordId: 'r', fields: { assignee: 'f-assign' } },
   { command: 'task.triage', operationId: 'op', recordId: 'r', fields: { intake: 'f-triage' } },
   { command: 'task.set_stage', operationId: 'op', recordId: 'r', fields: { stage: 'f-stage' } },
@@ -456,6 +483,7 @@ const REQUESTS: readonly CommandRequest[] = [
   },
   { command: 'task.set_scores', operationId: 'op', recordId: 'r', fields: { impact: 7 } },
   { command: 'task.set_adhoc', operationId: 'op', recordId: 'r', fields: { ad_hoc: true } },
+  { command: 'task.set_category', operationId: 'op', recordId: 'r', fields: { category: 'seo' } },
   { command: 'task.share_with_client', operationId: 'op', recordId: 'r' },
   { command: 'task.revoke_client_share', operationId: 'op', recordId: 'r' },
   { command: 'task.reparent', operationId: 'op', recordId: 'r', parentId: 'parent' },
@@ -601,13 +629,15 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'task.handback': ['handbackOwnLease', 'request'],
   'task.start': ['setState', 'started'],
   'task.set_state': ['setStateById', 'state'],
+  'task.duplicate': ['duplicateTask', 'request'],
   'task.assign': ['writeOwnedFields', 'task.assign', { assignee: 'f-assign' }],
   'task.triage': ['writeOwnedFields', 'task.triage', { intake: 'f-triage' }],
   'task.set_stage': ['writeOwnedFields', 'task.set_stage', { stage: 'f-stage' }],
-  'task.set_party': ['setParty', { party: 'f-party' }],
+  'task.set_party': ['setPartyWhileEmpty', { party: 'f-party' }],
   'task.set_audience': ['writeOwnedFields', 'task.set_audience', { audience: 'f-audience' }],
   'task.set_scores': ['setScores', { impact: 7 }],
   'task.set_adhoc': ['setAdHoc', { ad_hoc: true }],
+  'task.set_category': ['setCategory', { category: 'seo' }],
   'task.share_with_client': ['shareWithClient'],
   'task.revoke_client_share': ['revokeClientShare'],
   'task.reparent': ['reparentTask', 'parent'],
@@ -722,7 +752,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same sixty-nine from an expected revision', () => {
+  it('exempts the same seventy from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

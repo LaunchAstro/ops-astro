@@ -93,8 +93,9 @@ import type {
   PersonListResult,
   QueueResult,
   TaskReadResult,
+  TaskStateView,
 } from '../../../../packages/core-wire/src/index.ts';
-import { useRead } from '../data/use-read.ts';
+import { useRead, type UseReadResult } from '../data/use-read.ts';
 import type { ReadState } from '../data/authorised-read.ts';
 import { hubOf } from '../data/live.ts';
 import { usePresence } from '../data/presence.ts';
@@ -105,7 +106,7 @@ import { ConflictNotice, MovedNotice, UnsavedBar, changedSince } from './task/No
 import { TaskHeader } from './task/Header.tsx';
 import { TaskFacts } from './task/Facts.tsx';
 import { TaskUnknown } from './task/Absent.tsx';
-import { withPageDefaults } from './task/read-defaults.ts';
+import { statesOf, withPageDefaults } from './task/read-defaults.ts';
 import { AssignToAI } from './task/AssignToAI.tsx';
 import {
   PanelDoorButton,
@@ -131,6 +132,7 @@ import { BriefSection, DescriptionSection } from './task/Writing.tsx';
 import { History } from './task/History.tsx';
 import { Outages } from './task/Outages.tsx';
 import { Assignee, Lifecycle, type LifecycleCommand } from './task/Lifecycle.tsx';
+import { PageStatus } from './task/StatusField.tsx';
 
 export interface TaskDetailProps {
   readonly client: OperationsClient;
@@ -219,8 +221,8 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   const [proposeDraft, setProposeDraft] = useHeld<ProposeDraft>(identity, denied);
   const [topUpNote, setTopUpNote] = useHeld<TopUpNote>(identity, denied);
   const [perspective, setPerspective] = useHeld<Perspective>(identity, denied);
-  const [showFinished, setShowFinished] = useHeld<boolean>(identity, denied);
   const [showAllTime, setShowAllTime] = useHeld<boolean>(identity, denied);
+  const [showFinished, setShowFinished] = useHeld<boolean>(identity, denied);
 
   return (
     <div className="stack">
@@ -241,6 +243,7 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
                 client={client}
                 grantKey={props.grantKey}
                 task={withPageDefaults(value.task)}
+                states={statesOf(value)}
                 draft={held}
                 note={note}
                 onDecided={setNote}
@@ -260,10 +263,10 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
                 onTopUpNote={setTopUpNote}
                 perspective={perspective ?? 'team'}
                 onPerspective={setPerspective}
-                showFinished={showFinished ?? false}
-                onShowFinished={setShowFinished}
                 showAllTime={showAllTime ?? false}
                 onShowAllTime={setShowAllTime}
+                showFinished={showFinished}
+                onShowFinished={setShowFinished}
                 onOpenPanel={props.onOpenPanel}
                 onAttempt={(attempt) => {
                   setDraft((current) =>
@@ -538,6 +541,8 @@ interface LoadedProps {
   readonly client: OperationsClient;
   readonly grantKey: string;
   readonly task: Task;
+  /** The business's task states `task.read` sent, the Status select's choices. */
+  readonly states: readonly TaskStateView[];
   /** The unsaved edit, or nothing. Its presence is what "dirty" means. */
   readonly draft: Draft | null;
   /** What the server said about the last decision, or nothing. */
@@ -567,8 +572,8 @@ interface LoadedProps {
   readonly perspective: Perspective;
   readonly onPerspective: (next: Perspective) => void;
   /** Whether the finished subtasks are unfolded, held above the read (MP-4-4). */
-  readonly showFinished: boolean;
-  readonly onShowFinished: (next: boolean) => void;
+  readonly showFinished: boolean | null;
+  readonly onShowFinished: (next: boolean | null) => void;
   /** Whether every time entry shows, not only the latest three, held above the read (MP-4-6). */
   readonly showAllTime: boolean;
   readonly onShowAllTime: (next: boolean) => void;
@@ -629,11 +634,8 @@ function Loaded(props: LoadedProps): ReactElement {
     );
   };
 
-  const { busy, because, conflict, fields, lifecycle, onAssign, onFields } = useTaskWrites(props, {
-    title,
-    due,
-    base,
-  });
+  const writes = useTaskWrites(props, { title, due, base });
+  const { busy, because, conflict } = writes;
 
   const people = useRead<PersonListResult>({
     grantKey: props.grantKey,
@@ -678,47 +680,12 @@ function Loaded(props: LoadedProps): ReactElement {
         selected={props.perspective}
         onSelect={props.onPerspective}
         team={
-          <>
-            <DescriptionSection description={task.description} />
-
-            <Lifecycle
-              disabled={busy || dirty}
-              completed={task.completedAt !== null}
-              onLifecycle={lifecycle}
-            />
-
-            <Assignee
-              people={people.state}
-              onRetry={people.reload}
-              assignee={task.assignee}
-              disabled={busy || dirty}
-              onAssign={onAssign}
-            />
-
-            <AssignToAI
-              client={client}
-              task={task}
-              scope="page"
-              disabled={busy || dirty}
-              onChanged={props.onChanged}
-            />
-
-            <DetailsForm
-              formRef={fields}
-              busy={busy}
-              title={title}
-              due={due}
-              onEdit={edit}
-              onField={presence.mark}
-              onSubmit={onFields}
-            />
-
-            <TeamSubtasks {...props} />
-
-            <TeamComments {...props} />
-
-            <History history={task.history} />
-          </>
+          <TeamSide
+            props={props}
+            people={people}
+            writes={writes}
+            form={{ title, due, dirty, onEdit: edit, onField: presence.mark }}
+          />
         }
         agent={
           <AgentSide
@@ -729,6 +696,90 @@ function Loaded(props: LoadedProps): ReactElement {
         }
       />
     </div>
+  );
+}
+
+/** What the Team side draws from: the page's props, the people, the writes and the form. */
+interface TeamSideProps {
+  readonly props: LoadedProps;
+  readonly people: UseReadResult<PersonListResult>;
+  readonly writes: TaskWrites;
+  readonly form: {
+    readonly title: string;
+    readonly due: string;
+    readonly dirty: boolean;
+    readonly onEdit: (next: { title?: string; due?: string }) => void;
+    readonly onField: (field: 'title' | 'due' | null) => void;
+  };
+}
+
+/**
+ * The Team side of the task (MP-4-3): the description, its controls, the
+ * subtasks and time, the conversation and the history.
+ */
+function TeamSide(side: TeamSideProps): ReactElement {
+  const { task } = side.props;
+  return (
+    <>
+      <DescriptionSection description={task.description} />
+
+      <TeamControls {...side} />
+
+      <TeamSubtasks {...side.props} />
+
+      <TeamComments {...side.props} />
+
+      <History history={task.history} />
+    </>
+  );
+}
+
+/** The lifecycle, status, assignee, AI hand-off and details form, held while busy or dirty. */
+function TeamControls({ props, people, writes, form }: TeamSideProps): ReactElement {
+  const { client, task } = props;
+  const locked = writes.busy || form.dirty;
+  return (
+    <>
+      <Lifecycle
+        disabled={locked}
+        completed={task.completedAt !== null}
+        onLifecycle={writes.lifecycle}
+      />
+
+      <PageStatus
+        client={client}
+        task={task}
+        states={props.states}
+        onChanged={props.onChanged}
+        disabled={locked}
+      />
+
+      <Assignee
+        people={people.state}
+        onRetry={people.reload}
+        assignee={task.assignee}
+        disabled={locked}
+        onAssign={writes.onAssign}
+      />
+
+      <AssignToAI
+        client={client}
+        task={task}
+        scope="page"
+        disabled={locked}
+        onChanged={props.onChanged}
+      />
+
+      <DetailsForm
+        formRef={writes.fields}
+        busy={writes.busy}
+        title={form.title}
+        due={form.due}
+        onEdit={form.onEdit}
+        onField={form.onField}
+        onSubmit={writes.onFields}
+      />
+    </>
   );
 }
 

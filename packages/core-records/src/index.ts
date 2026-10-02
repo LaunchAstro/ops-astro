@@ -240,11 +240,7 @@ export { isLive, refuseGenericWrite, type FieldDefinition } from './records/fiel
 export { planPresetSync, type PresetField, type PresetPlan } from './records/preset-plan.ts';
 export { isRecordsRefusal, type RecordsRefusal } from './records/refusals.ts';
 export {
-  audienceNotPermitted,
   CALLER_VISIBLE,
-  fourEyesRequired,
-  gateAlreadyDecided,
-  gatePending,
   isCommandRefusal,
   REFUSAL_REGISTER,
   refuseCommand,
@@ -254,6 +250,12 @@ export {
   type RefusalCode,
   type RuntimeRefusalCode,
 } from './register.ts';
+export {
+  audienceNotPermitted,
+  fourEyesRequired,
+  gateAlreadyDecided,
+  gatePending,
+} from './register-gate.ts';
 export { UNPRODUCED_CODES } from './register-unproduced.ts';
 export * from './tasks/content.ts';
 export {
