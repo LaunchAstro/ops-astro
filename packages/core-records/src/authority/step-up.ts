@@ -84,9 +84,19 @@ function latest(a: number | null, b: number | null): number | null {
   return Math.max(a, b);
 }
 
+const WINDOW_FIX = 'A money action needs a sign-in with the second factor in the last 60 minutes.';
 const STEP_UP_FIXES: readonly string[] = [
   'Sign in again with the code from your authenticator app, then retry.',
-  'A money action needs a sign-in with the second factor in the last 60 minutes.',
+  WINDOW_FIX,
+];
+
+/**
+ * A client meets it with a password sign-in, so their refusal names `sign_in`
+ * for the page to ask for the password rather than a code (C59, Q1).
+ */
+const SIGN_IN_FIXES: readonly string[] = [
+  'Sign in again with your password, then retry.',
+  WINDOW_FIX,
 ];
 
 /**
@@ -126,5 +136,7 @@ export async function refuseStaleMoneyStep(
   );
   const now = rows[0]?.now ?? Number.POSITIVE_INFINITY;
   if (judgeStepUp(standing, now) === 'fresh') return undefined;
+  if (standing.roleKey === null)
+    return refuseCommand('STEP_UP_REQUIRED', ['sign_in'], SIGN_IN_FIXES);
   return refuseCommand('STEP_UP_REQUIRED', [], STEP_UP_FIXES);
 }
