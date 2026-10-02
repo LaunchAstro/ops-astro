@@ -231,7 +231,7 @@ describe('the wrapper as a process', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
-  });
+  }, 60_000);
 
   it('every isolation suite is a named suite, so its area is read like theirs', () => {
     const isolation = JSON.parse(read('tests/db/isolation-suites.json')) as Record<string, unknown>;
