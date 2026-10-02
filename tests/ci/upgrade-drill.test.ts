@@ -72,9 +72,10 @@ interface Run {
 }
 
 /** The command itself, as CI runs it, with its one-line JSON result read back. */
-function drill(from: string, migrationsDirectory?: string, json = true): Run {
+function drill(from: string, migrationsDirectory?: string, json = true, base?: string): Run {
   const args = ['scripts/local/upgrade-drill.mjs', '--from', from];
   if (migrationsDirectory !== undefined) args.push('--migrations', migrationsDirectory);
+  if (base !== undefined) args.push('--base', base);
   if (json) args.push('--json');
   const run = spawnSync(process.execPath, args, {
     encoding: 'utf8',
@@ -201,7 +202,10 @@ function upgradeDrillCases3() {
       '20261002013000_planted_stamped.sql',
       `alter table public.records add column planted_stamp boolean not null default false`,
     );
-    const { status, result } = drill(head.slice(0, head.indexOf('_')), planted);
+    // CI names the base (ci.yml: --base "$BASE_SHA"); a newest migration that
+    // reached this line through a merge has no adding commit for the search to find.
+    const base = spawnSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).stdout.trim();
+    const { status, result } = drill(head.slice(0, head.indexOf('_')), planted, true, base);
     expect(result?.from).toBe(head);
     expect(result?.applied).toStrictEqual(['20261002013000_planted_stamped']);
     expect(result?.differences).toStrictEqual([]);
