@@ -28,9 +28,6 @@ import { accessBody, madeClient } from './role-case-access-bodies.ts';
 import { createGateBody } from './role-case-gate-bodies.ts';
 import { FIXED_BODIES } from './role-case-fixed-bodies.ts';
 
-// External-party worlds build their own context and link gate items 3 to 6 too.
-export { legalEvidence } from './role-case-gate-bodies.ts';
-
 export function createPositiveBody(
   context: BodyContext,
 ): (declaration: CommandDeclaration, author?: unknown) => Promise<Prepared> {

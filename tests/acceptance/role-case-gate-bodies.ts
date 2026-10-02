@@ -107,6 +107,17 @@ export async function legalEvidence(
   );
 }
 
+/** The owner's hooks for the gate recipes: clear an item's record, link items 3 to 6. */
+export const gateContext = (
+  owner: Owner,
+  businessId: string,
+): Required<Pick<BodyContext, 'clearGateItem' | 'legalEvidence'>> => ({
+  clearGateItem: async (item) => {
+    await owner.execute('delete from ops.gate_items where item = $1', [item]);
+  },
+  legalEvidence: async () => await legalEvidence(owner, businessId),
+});
+
 /**
  * A record that closes this item or line, with made-up evidence; items 3 to 6
  * take theirs from `links` (`legalEvidence`) where the command checks it.
