@@ -714,7 +714,7 @@ minutes have no `answered` row, counted under a transaction-scoped lock on the
 subject's digest. The application may insert the digest, the attempt and the
 state and read the four columns; it changes and deletes nothing. The daily
 upkeep job deletes rows recorded more than 24 hours ago, far past the window,
-through `ops.expire_second_factor_codes()` (0084): a security definer with its
+through `ops.expire_second_factor_codes()` (0100): a security definer with its
 search path pinned and no argument, run as `ops_astro_upkeep`, a role no one
 logs in as that holds execute on it and nothing else. PUBLIC and the
 application may not run it.

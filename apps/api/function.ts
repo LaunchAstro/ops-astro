@@ -244,7 +244,7 @@ let handler: ((request: Request) => Promise<Response>) | undefined;
 /**
  * The admin login, the sink's key, the provider's admin key (C58's endings
  * loop, `apps/endings`), the backup and restore credentials and the daily
- * upkeep's login (0084): the environment machine's and the operator's.
+ * upkeep's login (0100): the environment machine's and the operator's.
  */
 const HELD_ELSEWHERE = [
   'DATABASE_ADMIN_URL',

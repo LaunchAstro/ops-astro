@@ -117,7 +117,7 @@ view reads it; a failed drill stamps nothing. The daily upkeep job
 within `backups.settings.restore_days` (35 to start). Once none has, the
 watcher mails the owner and the second operator that the restore drill is out
 of date. The same job deletes second-factor codes recorded more than 24 hours
-ago from staging's database (migration 0084,
+ago from staging's database (migration 0100,
 `ops.expire_second_factor_codes()`) as `ops_astro_upkeep`, over
 `DATABASE_UPKEEP_URL` in its env file: the login that
 `staging-logins.mjs after-reset` writes, leaving by the pooler the relay lists
