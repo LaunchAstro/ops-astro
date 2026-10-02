@@ -18,6 +18,7 @@ import {
   databaseUrlFromEnvironment,
   type FreshDatabase,
 } from '../support/fresh-database.ts';
+import { readNamedSuites } from '../../scripts/named-suites.ts';
 
 const ROOT = join(import.meta.dirname, '../..');
 const read = (path: string) => readFileSync(join(ROOT, path), 'utf8');
@@ -180,7 +181,8 @@ describe('CQ-15 security gate', () => {
     expect(block).toMatch(/image: postgres@sha256:[0-9a-f]{64}/u);
     expect(block).toContain('scripts/db-conformance.mjs --manifest tests/db/isolation-suites.json');
     const { invariant } = JSON.parse(read('tests/db/isolation-suites.json')) as { invariant: L };
-    const named = read('tests/db/named-suites.json');
+    const manifest = readNamedSuites(ROOT);
+    const named = new Set([...manifest.invariant, ...manifest.conformance]);
     for (const family of 'external-party restricted-calls pooled-crossover role-case-matrix cq-15'.split(
       ' ',
     ))
@@ -188,7 +190,7 @@ describe('CQ-15 security gate', () => {
         invariant.some((s) => String(s).includes(family)),
         family,
       ).toBe(true);
-    expect(invariant.filter((s) => !named.includes(`"${String(s)}"`))).toEqual([]);
+    expect(invariant.filter((s) => !named.has(String(s)))).toEqual([]);
   });
 
   it('CQ-15 ruleset: the four checks are required beside the existing ones, strict mode kept', () => {

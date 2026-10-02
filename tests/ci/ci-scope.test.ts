@@ -28,7 +28,7 @@ import { dependenciesOf } from '../../scripts/import-closure.ts';
 
 const root = new URL('../..', import.meta.url).pathname;
 const read = (path: string): string => readFileSync(join(root, path), 'utf8');
-const map = readScopeMap(join(root, '.github/ci-scope.json'));
+const map = readScopeMap(join(root, 'scripts/ci-scope.json'));
 const manifest = readNamedSuites(root);
 const named = [...manifest.invariant, ...manifest.conformance];
 const dependents = dependentsOf(root, named);

@@ -7,7 +7,7 @@
 // The areas a change touches come from the code, not from a hand list: for
 // each changed path, every named suite that reaches it through imports or
 // names it in a string (scripts/import-closure.ts) puts its area in scope,
-// and every named suite in those areas runs. .github/ci-scope.json is the
+// and every named suite in those areas runs. scripts/ci-scope.json is the
 // kept part: `scopable` prefixes may be narrowed this way, `runsEverything`
 // prefixes never are, and any path outside `scopable` runs everything.
 // `visualDrift` lists what the visual drift job builds and reads.
@@ -170,7 +170,7 @@ function main(argv: readonly string[]): number {
           encoding: 'utf8',
         }).trim()
       : '';
-  const map = readScopeMap(join(root, '.github/ci-scope.json'));
+  const map = readScopeMap(join(root, 'scripts/ci-scope.json'));
   const changed = event === 'pull_request' ? changedFiles(base, root) : [];
   const manifest = readNamedSuites(root);
   const named = [...manifest.invariant, ...manifest.conformance];

@@ -288,7 +288,7 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # Checks by scope (scripts/ci-scope.ts, .github/ci-scope.json): on a pull
+      # Checks by scope (scripts/ci-scope.ts, scripts/ci-scope.json): on a pull
       # request the wrapped command runs only when the change reaches what it
       # proves, and the step says why when it does not; on a merge group or a
       # push it always runs. No step here carries a condition.
@@ -501,7 +501,7 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # Checks by scope (scripts/ci-scope.ts, .github/ci-scope.json): on a pull
+      # Checks by scope (scripts/ci-scope.ts, scripts/ci-scope.json): on a pull
       # request the wrapped command runs only when the change reaches what it
       # proves, and the step says why when it does not; on a merge group or a
       # push it always runs. No step here carries a condition.
@@ -555,7 +555,7 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # Checks by scope (scripts/ci-scope.ts, .github/ci-scope.json): on a pull
+      # Checks by scope (scripts/ci-scope.ts, scripts/ci-scope.json): on a pull
       # request the wrapped command runs only when the change reaches what it
       # proves, and the step says why when it does not; on a merge group or a
       # push it always runs. No step here carries a condition.
