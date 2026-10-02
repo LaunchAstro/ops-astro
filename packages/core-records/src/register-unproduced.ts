@@ -5,6 +5,7 @@
 // no code.
 
 import type { RefusalCode } from './register.ts';
+import { UNPRODUCED_DEFINITION_CODES } from './register-definitions.ts';
 
 /**
  * Registered, and nothing in the tree can produce one yet.
@@ -89,6 +90,7 @@ export const UNPRODUCED_CODES: ReadonlySet<RefusalCode> = new Set([
   // reservations: the second pickup meets the first one's live lease.
   'EVIDENCE_MISMATCH',
   'LEASE_EXPIRED',
+  ...UNPRODUCED_DEFINITION_CODES,
   // Three codes are deliberately **not** on this list, and each is a command
   // path rather than a module one.
   //

@@ -16,6 +16,9 @@ skills-lock.json
 # so a reader can compare them with the patch. See issue #174.
 tests/runtime/t2d-proof-body-byte-identity.test.ts
 
+# AW-13's pinned trace target: the vendor's files byte-for-byte at the pin, and
+# the model `docker compose config` renders from them, compared as rendered.
+scripts/local/trace-target
 # The public edition of the design system is a checked copy, kept byte for byte as it
 # crossed (ticket C82); docs/design-system/COPY-RECORD.md holds each digest.
 docs/design-system

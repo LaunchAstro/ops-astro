@@ -1,0 +1,167 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+#
+# AW-13's pinned local trace target: the vendor's docker-compose.yml (v4.33.0,
+# byte-identical, beside this file) with this override on top. It is rendered
+# with `docker compose config --no-interpolate` into profile.resolved.json,
+# which is what runs and what `AW-13 pinned profile` checks. A disposable local
+# target: no account, no licence key, no purchase, destroyed after its run.
+#
+# Every image from Docker Hub (never the vendor's own registry, which observes
+# pulls) by the digest pinned in pin.json. Telemetry off, media upload off,
+# batch export and every SSRF allowlist, AI and cloud variable removed. Each
+# secret is required from the run's environment, never a default. Only the
+# web port is published, and on loopback.
+
+services:
+  langfuse-worker:
+    image: docker.io/langfuse/langfuse-worker:4.33.0@sha256:bc245319e36c9c9f27d8725d04c42b92d641f524e0de27af596bf34a66d5a6d5
+    restart: 'no'
+    ports: !reset []
+    environment:
+      TELEMETRY_ENABLED: 'false'
+      CLICKHOUSE_CLUSTER_ENABLED: 'false'
+      LANGFUSE_MEDIA_UPLOAD_ENABLED: 'false'
+      LANGFUSE_S3_BATCH_EXPORT_ENABLED: 'false'
+      DATABASE_URL: postgresql://postgres:${TRACE_TARGET_POSTGRES_PASSWORD:?}@postgres:5432/postgres
+      SALT: ${TRACE_TARGET_SALT:?}
+      ENCRYPTION_KEY: ${TRACE_TARGET_ENCRYPTION_KEY:?}
+      CLICKHOUSE_PASSWORD: ${TRACE_TARGET_CLICKHOUSE_PASSWORD:?}
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${TRACE_TARGET_MINIO_PASSWORD:?}
+      REDIS_AUTH: ${TRACE_TARGET_REDIS_PASSWORD:?}
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: !reset null
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: !reset null
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: !reset null
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: !reset null
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: !reset null
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: !reset null
+      LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: !reset null
+      LANGFUSE_S3_BATCH_EXPORT_BUCKET: !reset null
+      LANGFUSE_S3_BATCH_EXPORT_PREFIX: !reset null
+      LANGFUSE_S3_BATCH_EXPORT_REGION: !reset null
+      LANGFUSE_S3_BATCH_EXPORT_ENDPOINT: !reset null
+      LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT: !reset null
+      LANGFUSE_S3_BATCH_EXPORT_ACCESS_KEY_ID: !reset null
+      LANGFUSE_S3_BATCH_EXPORT_SECRET_ACCESS_KEY: !reset null
+      LANGFUSE_S3_BATCH_EXPORT_FORCE_PATH_STYLE: !reset null
+      LANGFUSE_LLM_CONNECTION_WHITELISTED_HOST: !reset null
+      LANGFUSE_LLM_CONNECTION_WHITELISTED_IPS: !reset null
+      LANGFUSE_LLM_CONNECTION_WHITELISTED_IP_SEGMENTS: !reset null
+      LANGFUSE_MCP_BASE_URL: !reset null
+      LANGFUSE_IN_APP_AGENT_ENABLED: !reset null
+      LANGFUSE_EVALUATOR_MEDIA_TRANSPORT: !reset null
+      LANGFUSE_EVALUATOR_MEDIA_INLINE_MAX_BYTES: !reset null
+      LANGFUSE_AI_PROVIDER: !reset null
+      LANGFUSE_AI_MODEL: !reset null
+      LANGFUSE_AI_SMALL_MODEL: !reset null
+      LANGFUSE_AI_API_KEY: !reset null
+      LANGFUSE_AI_BASE_URL: !reset null
+      LANGFUSE_AI_USE_RESPONSES_API: !reset null
+      LANGFUSE_AI_EXTRA_HEADERS: !reset null
+      LANGFUSE_AI_AWS_BEDROCK_REGION: !reset null
+      AWS_ACCESS_KEY_ID: !reset null
+      AWS_SECRET_ACCESS_KEY: !reset null
+      AWS_SESSION_TOKEN: !reset null
+      AWS_PROFILE: !reset null
+      LANGFUSE_IN_APP_AGENT_RUN_QUEUE_PROCESSING_CONCURRENCY: !reset null
+      LANGFUSE_IN_APP_AGENT_AWS_PROFILE: !reset null
+      LANGFUSE_IN_APP_AGENT_SANDBOX_PROVIDER: !reset null
+      LANGFUSE_IN_APP_AGENT_SANDBOX_AWS_LAMBDA_MICROVM_IMAGE_IDENTIFIER: !reset null
+      LANGFUSE_IN_APP_AGENT_SANDBOX_AWS_LAMBDA_MICROVM_EXECUTION_ROLE_ARN: !reset null
+      LANGFUSE_IN_APP_AGENT_SANDBOX_AWS_LAMBDA_MICROVM_EGRESS_NETWORK_CONNECTOR_ARN: !reset null
+      LANGFUSE_IN_APP_AGENT_SANDBOX_AWS_LAMBDA_MICROVM_REGION: !reset null
+
+  langfuse-web:
+    image: docker.io/langfuse/langfuse:4.33.0@sha256:1e2bb860753bb61978e68270d70f194b204dc15c4278c1bb95ce904bc4e60123
+    restart: 'no'
+    ports: !override
+      - 127.0.0.1:${TRACE_TARGET_PORT:?}:3000
+    environment:
+      NEXTAUTH_SECRET: ${TRACE_TARGET_NEXTAUTH_SECRET:?}
+      AUTH_DISABLE_SIGNUP: 'true'
+      AUTH_SESSION_MAX_AGE: '60'
+      LANGFUSE_S3_MEDIA_UPLOAD_INTERNAL_ENDPOINT: !reset null
+      LANGFUSE_MCP_ALLOWED_HOSTS: !reset null
+      LANGFUSE_IN_APP_AGENT_MAX_ACTIVE_RUNS_PER_USER: !reset null
+      LANGFUSE_IN_APP_AGENT_MAX_ACTIVE_RUNS_PER_ORG: !reset null
+      TELEMETRY_ENABLED: 'false'
+      CLICKHOUSE_CLUSTER_ENABLED: 'false'
+      LANGFUSE_MEDIA_UPLOAD_ENABLED: 'false'
+      LANGFUSE_S3_BATCH_EXPORT_ENABLED: 'false'
+      DATABASE_URL: postgresql://postgres:${TRACE_TARGET_POSTGRES_PASSWORD:?}@postgres:5432/postgres
+      SALT: ${TRACE_TARGET_SALT:?}
+      ENCRYPTION_KEY: ${TRACE_TARGET_ENCRYPTION_KEY:?}
+      CLICKHOUSE_PASSWORD: ${TRACE_TARGET_CLICKHOUSE_PASSWORD:?}
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: ${TRACE_TARGET_MINIO_PASSWORD:?}
+      REDIS_AUTH: ${TRACE_TARGET_REDIS_PASSWORD:?}
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: !reset null
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: !reset null
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: !reset null
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: !reset null
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: !reset null
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: !reset null
+      LANGFUSE_S3_MEDIA_UPLOAD_PREFIX: !reset null
+      LANGFUSE_S3_BATCH_EXPORT_BUCKET: !reset null
+      LANGFUSE_S3_BATCH_EXPORT_PREFIX: !reset null
+      LANGFUSE_S3_BATCH_EXPORT_REGION: !reset null
+      LANGFUSE_S3_BATCH_EXPORT_ENDPOINT: !reset null
+      LANGFUSE_S3_BATCH_EXPORT_EXTERNAL_ENDPOINT: !reset null
+      LANGFUSE_S3_BATCH_EXPORT_ACCESS_KEY_ID: !reset null
+      LANGFUSE_S3_BATCH_EXPORT_SECRET_ACCESS_KEY: !reset null
+      LANGFUSE_S3_BATCH_EXPORT_FORCE_PATH_STYLE: !reset null
+      LANGFUSE_LLM_CONNECTION_WHITELISTED_HOST: !reset null
+      LANGFUSE_LLM_CONNECTION_WHITELISTED_IPS: !reset null
+      LANGFUSE_LLM_CONNECTION_WHITELISTED_IP_SEGMENTS: !reset null
+      LANGFUSE_MCP_BASE_URL: !reset null
+      LANGFUSE_IN_APP_AGENT_ENABLED: !reset null
+      LANGFUSE_EVALUATOR_MEDIA_TRANSPORT: !reset null
+      LANGFUSE_EVALUATOR_MEDIA_INLINE_MAX_BYTES: !reset null
+      LANGFUSE_AI_PROVIDER: !reset null
+      LANGFUSE_AI_MODEL: !reset null
+      LANGFUSE_AI_SMALL_MODEL: !reset null
+      LANGFUSE_AI_API_KEY: !reset null
+      LANGFUSE_AI_BASE_URL: !reset null
+      LANGFUSE_AI_USE_RESPONSES_API: !reset null
+      LANGFUSE_AI_EXTRA_HEADERS: !reset null
+      LANGFUSE_AI_AWS_BEDROCK_REGION: !reset null
+      AWS_ACCESS_KEY_ID: !reset null
+      AWS_SECRET_ACCESS_KEY: !reset null
+      AWS_SESSION_TOKEN: !reset null
+      AWS_PROFILE: !reset null
+      LANGFUSE_IN_APP_AGENT_RUN_QUEUE_PROCESSING_CONCURRENCY: !reset null
+      LANGFUSE_IN_APP_AGENT_AWS_PROFILE: !reset null
+      LANGFUSE_IN_APP_AGENT_SANDBOX_PROVIDER: !reset null
+      LANGFUSE_IN_APP_AGENT_SANDBOX_AWS_LAMBDA_MICROVM_IMAGE_IDENTIFIER: !reset null
+      LANGFUSE_IN_APP_AGENT_SANDBOX_AWS_LAMBDA_MICROVM_EXECUTION_ROLE_ARN: !reset null
+      LANGFUSE_IN_APP_AGENT_SANDBOX_AWS_LAMBDA_MICROVM_EGRESS_NETWORK_CONNECTOR_ARN: !reset null
+      LANGFUSE_IN_APP_AGENT_SANDBOX_AWS_LAMBDA_MICROVM_REGION: !reset null
+
+  clickhouse:
+    image: docker.io/clickhouse/clickhouse-server:26.4@sha256:c7796a1335d14385c052f10061cf719f4a368a908432ec25980860b1333e9ccd
+    restart: 'no'
+    ports: !reset []
+    environment:
+      CLICKHOUSE_PASSWORD: ${TRACE_TARGET_CLICKHOUSE_PASSWORD:?}
+
+  minio:
+    image: cgr.dev/chainguard/minio@sha256:0322beaafcef0ee0d272195174279a3612f9a9b2a713fb4b3c399ab891ba0119
+    restart: 'no'
+    ports: !reset []
+    environment:
+      MINIO_ROOT_PASSWORD: ${TRACE_TARGET_MINIO_PASSWORD:?}
+
+  redis:
+    image: docker.io/valkey/valkey:8@sha256:3fbd2e3e4b6e85e046c1e7c215e8f79087bc0357789184305806664e320996f3
+    restart: 'no'
+    command: !override
+      - --requirepass
+      - ${TRACE_TARGET_REDIS_PASSWORD:?}
+      - --maxmemory-policy
+      - noeviction
+    ports: !reset []
+
+  postgres:
+    image: docker.io/postgres:17@sha256:67f41722b7a8cbdb868a44a4995c846eddfdc2973bccb291ce937dce88ad5675
+    restart: 'no'
+    ports: !reset []
+    environment:
+      POSTGRES_PASSWORD: ${TRACE_TARGET_POSTGRES_PASSWORD:?}

@@ -27,6 +27,9 @@ const OUTSIDER_NOT_FOUND = rows.filter(([, row]) => row.outsiderNotFound).map(([
 const PINNED_SHAPE = {
   'access.read': { spine: false, subject: false, authority: 'declared' },
   'client.list': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'conversation.list': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'conversation.read': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'gate.pending': { spine: true, subject: false, authority: 'holds-any-grant' },
   'inbox.count': { spine: false, subject: false, authority: 'self' },
   'inbox.read': { spine: false, subject: false, authority: 'self' },
   'inbox.unattended': { spine: false, subject: false, authority: 'declared' },
@@ -53,6 +56,9 @@ const PINNED_SHAPE = {
 const PINNED_IDENTIFIERS = {
   'access.read': [],
   'client.list': [],
+  'conversation.list': [],
+  'conversation.read': ['conversationId'],
+  'gate.pending': [],
   'inbox.count': [],
   'inbox.read': [],
   'inbox.unattended': [],
@@ -179,11 +185,14 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
     PLAN_FIELDS,
   ],
   'task.queue': BODIES.map(() => null),
+  'gate.pending': BODIES.map(() => null),
   'person.list': BODIES.map(() => null),
   'tag.list': BODIES.map(() => null),
   'task.todos': BODIES.map(() => null),
   'settings.read': BODIES.map(() => null),
   'session.capabilities': BODIES.map(() => null),
+  'conversation.read': BODIES.map(() => null),
+  'conversation.list': BODIES.map(() => null),
   'session.person': BODIES.map(() => null),
   'preference.read': BODIES.map(() => null),
   'task.search': BODIES.map(() => QUERY),
@@ -205,7 +214,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same twenty-one reads', () => {
+  it('names the same twenty-four reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 

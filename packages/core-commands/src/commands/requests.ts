@@ -24,6 +24,10 @@
 
 import type { CommandName } from '../../../core-wire/src/index.ts';
 import { OPERATION_ID } from './register-store.ts';
+import type { CheckRequest } from './requests-check.ts';
+import type { ConversationRequest } from './requests-conversation.ts';
+import type { RunRequest } from './requests-run.ts';
+import type { Envelope } from './request-envelope.ts';
 import type { CommentRequest } from './requests-comments.ts';
 import type { DuplicateRequest } from './requests-duplicate.ts';
 import type { TagRequest } from './requests-tags.ts';
@@ -60,11 +64,6 @@ export function hasIdentity(request: UncheckedRequest): request is IdentifiedReq
 
 // Type aliases rather than interfaces, so each member of the union is also an
 // `UncheckedRequest`: a parsed request is still the body it was parsed from.
-type Envelope = {
-  /** The repeat-request identity. Required on every command in the surface. */
-  readonly operationId: string;
-};
-
 type Targeted = Envelope & {
   readonly recordId: string;
   readonly expectedRevision?: number;
@@ -78,6 +77,7 @@ export type CommandRequest =
       readonly board?: string | null;
       readonly boardSection?: string | null;
       readonly stateKey?: string;
+      readonly conversationId?: string | null;
     } & Envelope)
   | ({ readonly command: 'task.update'; readonly fields: FieldValues } & Targeted)
   | ({ readonly command: 'task.complete' } & Targeted)
@@ -288,6 +288,11 @@ export type CommandRequest =
       readonly amountMinor: unknown;
       readonly reason: unknown;
     } & Envelope)
+  | CheckRequest
+  | ConversationRequest
+  // Read by its own parser (`model-call.ts`), never by a person handler.
+  | ({ readonly command: 'model.call' } & Envelope)
+  | RunRequest
   | SelfRequest<Envelope>
   // Time tracking (MP-4-6), in `requests-time.ts`.
   | TimeRequest<Envelope>

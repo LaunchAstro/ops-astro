@@ -41,6 +41,9 @@ import type {
   TeamListResult,
   PresetPlanResult,
   QueueResult,
+  AwaitingReviewResult,
+  ConversationListResult,
+  ConversationReadResult,
   SettingsReadResult,
   SharedTaskRead,
   TaskBoardResult,
@@ -100,6 +103,8 @@ export interface ReadOperands {
   readonly 'team.list': NoOperands;
   /** Approved, held and unpicked. A projection; reading it claims nothing. */
   readonly 'task.queue': NoOperands;
+  /** The pending gates the caller may decide, filtered by their `decide` in the query. */
+  readonly 'gate.pending': NoOperands;
   /**
    * The task's runs and their progress events after `cursor`, a position the
    * caller already holds (0 for the start). See `reads/execution.ts`.
@@ -139,6 +144,13 @@ export interface ReadOperands {
   readonly 'session.capabilities': NoOperands;
   /** What an observed effect came from, asked on its attempt (T2c2). */
   readonly 'task.receipt': { readonly attemptId: string };
+  /**
+   * A conversation at its address (AW-03): the owner's, or a holder of the
+   * read-any grant's. After the body purges it answers the wrap-up.
+   */
+  readonly 'conversation.read': { readonly conversationId: unknown };
+  /** The caller's own conversations, for the assistant panel's tab row (MP-7-11). */
+  readonly 'conversation.list': NoOperands;
   /** Who is signed in: the caller's own name (C23). It takes no grant either. */
   readonly 'session.person': NoOperands;
   /** The caller's own saved preferences (MP-2-11a). */
@@ -185,11 +197,14 @@ export type ReadResult =
   | TaskTodosResult
   | TeamListResult
   | QueueResult
+  | AwaitingReviewResult
   | PresetPlanResult
   | SettingsReadResult
   | { readonly ok: true; readonly execution: TaskExecution }
   | { readonly ok: true; readonly receipt: Receipt }
   | CapabilitiesResult
+  | ConversationReadResult
+  | ConversationListResult
   | SessionPersonResult
   | { readonly ok: true; readonly preferences: Readonly<Record<string, unknown>> }
   | AccessReadResult

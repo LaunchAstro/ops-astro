@@ -99,6 +99,21 @@ export function delegationCrossing(): void {
         commentId: randomUUID(),
       }),
       'session.capabilities': () => null,
+      // SL12's three agent rows (batch 3a join): lease-bound, so another
+      // person's lease answers for the crossing; the run is on that person's task.
+      'task.check': () => ({ ...notOwnLease, name: 'made-up check', outcome: 'passed' }),
+      'model.call': () => ({
+        ...notOwnLease,
+        operation: 'compose',
+        fields: [{ name: 'note', source: 'business_internal', value: 'made-up' }],
+      }),
+      'run.revise_state': (record) => ({
+        recordId: record,
+        runId: randomUUID(),
+        expectedVersion: 0,
+        knowledge: ['made-up'],
+        unknowns: [],
+      }),
       // A credential's create (API-2): a pickup's one-task delegation never reaches it.
       'task.create': () => ({ fields: { title: 'made-up' } }),
     };

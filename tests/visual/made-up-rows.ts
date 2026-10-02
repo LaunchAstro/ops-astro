@@ -16,7 +16,7 @@ import type {
   TodoView,
 } from '../../packages/core-wire/src/index.ts';
 import { MIA, NATHAN } from './made-up-access.ts';
-import { PROPOSAL } from './made-up-data.ts';
+import { AGENT_LEDGER, AGENT_PROPOSALS } from './made-up-agent.ts';
 
 export const STATE: Readonly<Record<'active' | 'waiting' | 'hold', TaskStateView>> = {
   active: { id: 's-active', key: 'active', label: 'Active', machineCategory: 'started' },
@@ -168,10 +168,14 @@ export const DETAIL: InternalTaskDetail = {
   // Harbour Physio (made-up-access.ts), and the task has content: its client is locked.
   client: 'c-harbour',
   hasContent: true,
-  proposals: [PROPOSAL],
+  // The run on T-1 (made-up-agent.ts): its newest version waits at an armed
+  // gate, so the task page draws the mockup's gate box (states.json `gate`).
+  // The gate's deadline sits after the harness clock, so it reads pending.
+  proposals: AGENT_PROPOSALS,
   capCurrency: 'AUD',
   envelope: null,
   alerts: [],
+  ledger: AGENT_LEDGER,
   adHoc: false,
   clientAccess: false,
   board: null,

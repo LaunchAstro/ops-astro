@@ -437,12 +437,27 @@ async function claimHold(
   if (plan.kind === 'fresh') {
     return { ok: true, value: { reservationId, attemptId: state.attempt_id } };
   }
+  // AW-01: a hold closed at what its model calls cost is held again only for
+  // what it had left, so the run never spends its approved ceiling twice.
+  const [old] = await tx.query<{ readonly spent: string }>(
+    `select coalesce(actual_minor, 0)::text as spent from public.reservations
+      where business_id = $1 and id = $2`,
+    [tx.businessId, reservationId],
+  );
+  const heldMinor = BigInt(state.held_minor) - BigInt(old?.spent ?? '0');
+  if (heldMinor <= 0n) {
+    return refuse(
+      'RESERVATION_NOT_CLAIMABLE',
+      'the model calls on this reservation spent its whole approved hold',
+      'Nothing is left to hold: a new proposal asks for more.',
+    );
+  }
   return await reserve(tx, {
     envelopeId: found.envelope_id,
     versionId: found.version_id,
     runId: found.run_id,
     stepId: found.step_id,
-    heldMinor: Number(state.held_minor),
+    heldMinor,
   });
 }
 
@@ -552,13 +567,33 @@ async function authoriseClaimant(
     delegatePersonId: request.authorisedByPersonId,
     mintedByActorId: request.mintedByActorId,
     purpose: found.purpose,
-    collections: [request.collection],
+    collections: await delegatedCollections(tx, request, lockedAt),
     actions: [...actions],
     expiresAt,
     purposeScope: { kind: 'record', id: found.task_id },
   });
   if (!minted.ok) return { ok: false, refusal: minted.refusal };
   return { ok: true, value: minted.value };
+}
+
+/**
+ * The collections the agent's delegation reaches: the work's own, and `run`
+ * where the delegating person holds `run:write` at the locked instant, so the
+ * agent may revise its run's state (MP-6-2). The mint holds `run` to `write`;
+ * a person without it mints the task delegation it always was.
+ */
+async function delegatedCollections(
+  tx: TenantQuery,
+  request: PickupRequest,
+  lockedAt: string,
+): Promise<readonly string[]> {
+  const runWrite = await checkAuthorityAt(
+    tx,
+    [{ kind: 'person', id: request.authorisedByPersonId }],
+    { collection: 'run', action: 'write', scope: { kind: 'business', id: null } },
+    lockedAt,
+  );
+  return runWrite.ok ? [request.collection, 'run'] : [request.collection];
 }
 
 interface NewLease {
@@ -723,6 +758,37 @@ type ClaimPlan =
   | { readonly kind: 'refuse'; readonly refusal: RuntimeResult<never> };
 
 /**
+ * The claims refused before any branch below is asked: an attempt carrying a
+ * marker, or a run waiting on a person at its budget stop. Null when neither.
+ */
+function refusedBeforeAnyWrite(state: ClaimState): ClaimPlan | null {
+  if (state.marked) {
+    return {
+      kind: 'refuse',
+      refusal: refuse(
+        'RESERVATION_NOT_CLAIMABLE',
+        `attempt ${state.attempt_id} carries a dispatch marker or an observation and is quarantined`,
+        'A marked attempt keeps its hold and goes to the recorded reconciliation owner, not to a worker.',
+      ),
+    };
+  }
+  // AW-05: a run waiting for budget is claimed again only after a person's
+  // top-up sends it back to `planned`. Refused here, before any write, rather
+  // than by 0035's trigger after the old hold was classified.
+  if (state.run_state === 'waiting_budget') {
+    return {
+      kind: 'refuse',
+      refusal: refuse(
+        'RESERVATION_NOT_CLAIMABLE',
+        'this run waits for a person to top it up or end it',
+        'Nothing is picked up until a person answers the budget stop.',
+      ),
+    };
+  }
+  return null;
+}
+
+/**
  * R5. The expired-lease lifecycle starts at the first replacement below. A
  * reservation with a non-null `lease_id` is not refused until this branch has
  * asked whether that lease expired; refused first, the old identity would
@@ -742,16 +808,8 @@ type ClaimPlan =
  * nothing was spent still finished the work.
  */
 function planClaim(state: ClaimState, reservationId: string): ClaimPlan {
-  if (state.marked) {
-    return {
-      kind: 'refuse',
-      refusal: refuse(
-        'RESERVATION_NOT_CLAIMABLE',
-        `attempt ${state.attempt_id} carries a dispatch marker or an observation and is quarantined`,
-        'A marked attempt keeps its hold and goes to the recorded reconciliation owner, not to a worker.',
-      ),
-    };
-  }
+  const quarantined = refusedBeforeAnyWrite(state);
+  if (quarantined !== null) return quarantined;
   if (state.state === 'held' && state.lease_id !== null) {
     if (state.bound_lease_state === 'live' && state.bound_lease_expired !== true) {
       return {
@@ -764,7 +822,9 @@ function planClaim(state: ClaimState, reservationId: string): ClaimPlan {
     if (!approvalCurrent(state)) return { kind: 'refuse', refusal: approvalNotCurrent() };
     return { kind: 'replace', fence: state.lease_id };
   }
-  const replacing = state.state === 'abandoned' && replaceable(state);
+  // A hold closed `actual` at its model calls' cost, its step not handed
+  // back, is replaced like an abandoned one, on what it has left (AW-01).
+  const replacing = ['abandoned', 'actual'].includes(state.state) && replaceable(state);
   if (state.state !== 'held' && !replacing) {
     return {
       kind: 'refuse',

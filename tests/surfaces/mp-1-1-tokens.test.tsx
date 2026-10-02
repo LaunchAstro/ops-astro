@@ -27,7 +27,6 @@ const script = `${root}scripts/token-diff.mjs`;
 const styles = `${root}packages/ui/src/styles/`;
 const tokensCss = `${styles}1-tokens.css`;
 const read = (path: string): string => readFileSync(path, 'utf8');
-
 interface Expected {
   readonly groups: Readonly<Record<string, readonly string[]>>;
   readonly light: Readonly<Record<string, string>>;
@@ -99,7 +98,9 @@ const COLOUR_PROPERTY =
   /^(color|background(-color|-image)?|border(-(top|right|bottom|left|block|inline)(-start|-end)?)?(-color)?|outline(-color)?|box-shadow|fill|stroke|caret-color|accent-color|text-decoration(-color)?|column-rule(-color)?)$/u;
 const KIT_SHEETS = ['2-controls-and-marks', '2-primitives', '2-empty', '2-forms', '3-shell'];
 const SHEETS = [
-  ...[...KIT_SHEETS, '3-dock', '4-board', '5-task'].map((sheet) => `${styles}${sheet}.css`),
+  ...[...KIT_SHEETS, '3-agent-panel', '3-dock', '4-board', '5-task'].map(
+    (sheet) => `${styles}${sheet}.css`,
+  ),
   `${root}apps/web/src/styles/6-slice.css`,
 ];
 const lightOnly = (sets: Sets, name: string, css: string): string[] => {

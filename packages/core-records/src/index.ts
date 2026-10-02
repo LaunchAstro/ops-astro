@@ -69,6 +69,7 @@ export {
   type ScopeRequest,
   type Subject,
 } from './authority/grants.ts';
+export { coveredScopes } from './authority/covered-scopes.ts';
 export { heldScopes } from './authority/held-scopes.ts';
 export { heldPermissions, type HeldPermission } from './authority/held-permissions.ts';
 export {
@@ -293,5 +294,6 @@ export {
   type TenantQuery,
 } from './tenancy/database.ts';
 export { isUuid } from './tenancy/ids.ts';
+export { hasRoom, type DurableLimit } from './tenancy/limit.ts';
 export { connectOutbox, type ApiEvent, type Outbox } from './tenancy/outbox.ts';
 export { loginLiveElsewhere } from './identity/shared-login.ts';

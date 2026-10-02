@@ -39,7 +39,8 @@ it('a derived count paints when its dock tab registers', async () => {
     />,
   );
   try {
-    expect(page.find('.dock__tab')?.textContent).toContain('120');
+    // The Notifications tab: the Agent drawer's (MP-7-11) is first in the rank.
+    expect(page.find('.dock__tab[data-panel="notifs"]')?.textContent).toContain('120');
   } finally {
     await page.unmount();
   }

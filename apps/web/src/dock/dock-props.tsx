@@ -5,7 +5,7 @@
 // view's own address, or its board's when the view has none (CS-3.3). A link
 // followed inside a panel walks the panel, not the page.
 
-import type { MouseEvent } from 'react';
+import type { MouseEvent, ReactNode } from 'react';
 import type { DockPanel, DockProps, ShellProps } from '@launchastro/ui';
 import { gateOf, type Gate } from '../route-gate.ts';
 import { matchRoute, pathTo } from '../routes.ts';
@@ -20,6 +20,7 @@ import { railFrom, useRail, type RailModel } from '../shell/use-rail.ts';
 import { useDock, type DockModel } from './use-dock.ts';
 import { useDockLayout, type DockLayoutModel } from './use-layout.ts';
 import { taskPanelOf, useTaskDock, withTaskTab, type TaskDock } from './task-dock.ts';
+import { agentPanelOf, withAgentTab } from './agent-dock.ts';
 
 /** The person's dock, rail and the layout they make together, for one signed-in tab. */
 interface DockShell {
@@ -86,9 +87,10 @@ type ShellDock = Pick<
 export const shellDock = (
   { registry, dock, nav, layout, task, counts }: DockShell,
   screen: DockInput['screen'] | null,
+  agent: ReactNode | null = null,
 ): ShellDock => ({
   onClick: dock.onDoor,
-  dock: screen === null ? null : dockProps({ registry, dock, layout, screen, task, counts }),
+  dock: screen === null ? null : dockProps({ registry, dock, layout, screen, task, counts, agent }),
   railCollapsed: nav.collapsed,
   railWidth: nav.width,
   onRailFold: nav.fold,
@@ -105,20 +107,26 @@ interface DockInput {
   readonly screen: Omit<ScreenContext, 'params'>;
   readonly task: TaskDock | null;
   readonly counts?: PanelCounts;
+  /** The Agent drawer (MP-7-11), drawn as the dock's `ai` panel; null where there is none. */
+  readonly agent?: ReactNode | null;
 }
 
 export function dockProps(input: DockInput): DockProps {
   const { registry, dock, layout } = input;
-  const tabs = withTaskTab(
-    dockTabs(input.counts, registry).map((tab) => ({
-      id: tab.id,
-      label: tab.label,
-      icon: tab.icon,
-      count: tab.count,
-      open: dock.state.open.includes(tab.id),
-    })),
-    input.task,
-    dock.state.open.includes('task'),
+  const tabs = withAgentTab(
+    withTaskTab(
+      dockTabs(input.counts, registry).map((tab) => ({
+        id: tab.id,
+        label: tab.label,
+        icon: tab.icon,
+        count: tab.count,
+        open: dock.state.open.includes(tab.id),
+      })),
+      input.task,
+      dock.state.open.includes('task'),
+    ),
+    input.agent ?? null,
+    dock.state.open.includes('ai'),
   );
   // An id from a press is one of the tabs drawn, or nothing.
   const byId = (id: string): PanelId | null =>
@@ -143,6 +151,7 @@ export function dockProps(input: DockInput): DockProps {
 
 function dockPanels(input: DockInput): readonly DockPanel[] {
   const { registry, dock, layout } = input;
+  const agent = input.agent ?? null;
   // On a phone one panel draws: the one opened last.
   const last = dock.state.open.at(-1);
   const drawn = new Set(
@@ -158,6 +167,7 @@ function dockPanels(input: DockInput): readonly DockPanel[] {
       scrollTop: dock.history.restored.scroll[id],
     };
     if (id === 'task') return input.task === null ? [] : [taskPanelOf(input.task, walked)];
+    if (id === 'ai') return agent === null ? [] : [agentPanelOf(agent, walked)];
     if (panel === undefined) return [];
     const place = dock.state.places[id];
     const door = screenAt(place) === null ? pathTo(panel.route) : (place ?? pathTo(panel.route));
@@ -202,8 +212,10 @@ function dockPresses(input: DockInput, byId: (id: string) => PanelId | null): Pr
     onDoor: input.screen.navigate,
     onBodyClick: (id, event) => {
       const panel = byId(id);
-      // The task panel's links are its own: its page, its page link, its doors.
-      const href = panel === null || panel === 'task' ? null : walkedLink(event);
+      // The task panel's and the Agent drawer's links are their own: a page,
+      // a page link, a door, a conversation's own address.
+      const own = panel === 'task' || panel === 'ai';
+      const href = panel === null || own ? null : walkedLink(event);
       if (panel === null || href === null) return;
       event.preventDefault();
       dock.change((state) => visit(state, panel, href));

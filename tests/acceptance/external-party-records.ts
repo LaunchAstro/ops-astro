@@ -62,3 +62,22 @@ export async function seedRecords(
   });
   return { shared, sibling: String(other.body['recordId']) };
 }
+
+/**
+ * The bodies item 3 sends for the writes the matrix gives no body, each naming a row of its
+ * own kind. Moved from `external-party.test.ts` to keep that file under the line limit.
+ */
+export function revocationBodies(): Readonly<Record<string, Readonly<Record<string, unknown>>>> {
+  return {
+    'grant.revoke': { grantId: randomUUID() },
+    'delegation.revoke': { delegationId: randomUUID() },
+    // No person body either: it is the agent's (AW-01). Sent well formed,
+    // naming a lease, so the answer is authority's.
+    'model.call': {
+      leaseId: randomUUID(),
+      fence: 1,
+      operation: 'model.replay_compose',
+      fields: [],
+    },
+  };
+}
