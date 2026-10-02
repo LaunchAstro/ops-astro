@@ -174,6 +174,10 @@ export const DECLARED: Readonly<
   'run.top_up': { carry: 'not carried', plant: 'needs a run at its budget stop' },
   'run.end_at_budget_stop': { carry: 'not carried', plant: 'needs a run at its budget stop' },
   'run.revise_state': { carry: 'not carried', plant: 'needs a run' },
+  'task.accept_plan': { carry: 'not carried', plant: 'needs a planning run’s plan gate' },
+  'budget.set_planning_cap': { carry: 'not carried', plant: 'a business setting' },
+  'run.delegate_child': { carry: 'not carried', plant: 'needs a lease' },
+  'run.child_handback': { carry: 'not carried', plant: 'needs a child run' },
 };
 
 /** The carried name fields: each gets its canary and its old-client-name case. */
