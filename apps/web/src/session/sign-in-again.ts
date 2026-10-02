@@ -15,7 +15,7 @@
 // else: not into state, storage, a log or an error string. The token is read
 // from the answer, traded and dropped, as step-up's is.
 
-import { endCookie, signIn, signOutOf, tradeForCookie, type ApiRoute } from './sign-in.ts';
+import { signIn, signOutOf, tradeForCookie, type ApiRoute } from './sign-in.ts';
 import type { StepUpResult } from './step-up.ts';
 
 export interface SignInAgainRequest {
@@ -50,8 +50,9 @@ export async function signInAgainSession(request: SignInAgainRequest): Promise<S
   if (!traded.ok) return traded;
   const { sessionId } = traded;
   if (sessionId === undefined) return { ok: false, because: 'The API named no new sign-in.' };
+  // A new provider session nobody will use: ended where it lives, as the old one is below.
   if (!request.current()) {
-    await endCookie(route, sessionId);
+    await signOutOf(route, { sessionId, businessKey: request.businessKey });
     return { ok: false, because: ENDED };
   }
   // Moved first, so no call the tab makes from here names the sign-in being ended.
