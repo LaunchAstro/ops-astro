@@ -22,7 +22,7 @@ import {
   TEAM_NOTE,
   TITLE,
 } from './external-party-records.ts';
-import { createPositiveBody } from './role-case-positive-body.ts';
+import { createPositiveBody, legalEvidence } from './role-case-positive-body.ts';
 import {
   bearer,
   call,
@@ -222,6 +222,7 @@ describe.skipIf(serverUrl === undefined)('R4: the external party over HTTP', () 
       },
       freshMember: async () =>
         (await enrol(world.db.app, world.alpha, `ended-${randomUUID().slice(0, 8)}`)).personId,
+      legalEvidence: async () => await legalEvidence(world.db.admin, world.alpha),
     });
     const revision = await revisionOf(shared);
     // Every write but the party's own sign-out (C23), which is their own
