@@ -227,7 +227,8 @@
     "FIX-B1 (REVIEW-MAIN-B1 p02-1) adds forwarder-export-ageout-false-signals-dropped-review (an export signal under its threshold ages out of the forwarder's table without a false signals-dropped alert: the sweep window outlasts every rule's).",
     "STAGING-FIX-2 adds staging-hosted-roles (a hosted Supabase reset: the migration runner applies with only the platform's own service logins connected, authenticator, pgbouncer, supabase_admin, supabase_auth_admin and supabase_storage_admin, and still refuses a look-alike, differently cased or unnamed Supabase login, naming only it; made-up-only accepts a definer function owned by supabase_admin and still refuses one owned by a look-alike superuser or supabase_etl_admin).",
     "FIX-2A (review RP-1) adds c81-privacy-find-copies-links (the runbook's finder lists every row naming the person through an id of their own: found by name, their sign-in's logins row and a grant held by their acting identity; found by the email they wrote from, their membership), named as an isolation suite too.",
-    "FIX-2A (review RP-2) names c81-breach-drill-subject beside c81-breach-drill and c81-breach-drill-clock (the template's subject line filled per recipient through privacy.draft_breach_notices, a placeholder the drill cannot fill in it BREACH_TEMPLATE_UNFILLED 409 with nothing drafted), named as an isolation suite too."
+    "FIX-2A (review RP-2) names c81-breach-drill-subject beside c81-breach-drill and c81-breach-drill-clock (the template's subject line filled per recipient through privacy.draft_breach_notices, a placeholder the drill cannot fill in it BREACH_TEMPLATE_UNFILLED 409 with nothing drafted), named as an isolation suite too.",
+    "SL09-18 (security review) adds second-factor-codes-retention (0084: the daily upkeep deletes ops.second_factor_codes rows older than 24 hours through ops.expire_second_factor_codes() as ops_astro_upkeep and keeps younger ones; the application group cannot delete them or run the expiry, PUBLIC cannot execute it, and the upkeep identity holds the expiry alone)."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -638,7 +639,8 @@
     "tests/ci/staging-no-production-data.test.ts",
     "tests/ci/staging-no-production-data-guard.test.ts",
     "tests/commands/review-p03-unattended-escalated-decider.test.ts",
-    "tests/commands/inbox-unattended-escalated.test.ts"
+    "tests/commands/inbox-unattended-escalated.test.ts",
+    "tests/db/second-factor-codes-retention.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

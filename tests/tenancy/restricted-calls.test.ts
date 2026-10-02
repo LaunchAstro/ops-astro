@@ -243,6 +243,7 @@ async function roleClasses(
                  when r.rolname = 'ops_astro_lookup' then 'lookup'
                  when r.rolname = 'ops_astro_forwarder' then 'forwarder'
                  when r.rolname = 'ops_astro_restore_drill' then 'restore drill'
+                 when r.rolname = 'ops_astro_upkeep' then 'upkeep'
                  when r.rolcanlogin and not r.rolbypassrls and not r.rolcreaterole
                       and not r.rolcreatedb then 'outsider'
                  else 'unclassified' end as class
@@ -326,6 +327,9 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     // C55: the restore drill stamps the date of the last tested restore through
     // ops.record_tested_restore() (0070), proved in tests/operations/c55-last-tested-restore.test.ts.
     expect(classes['restore drill']).toStrictEqual(['ops_astro_restore_drill']);
+    // 0084: the daily upkeep deletes second-factor codes past their horizon through
+    // ops.expire_second_factor_codes(), proved in tests/db/second-factor-codes-retention.test.ts.
+    expect(classes['upkeep']).toStrictEqual(['ops_astro_upkeep']);
     expect(classes['application login']).toContain(world.db.loginRole);
     expect(classes['outsider']).toContain(world.db.restrictedRole);
   });
@@ -484,12 +488,13 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
   describe('the security definer function', () => {
     const definers = (): readonly CatalogueFunction[] => functions.filter((fn) => fn.definer);
 
-    it('is exactly two, a trigger on handback_reports and the drill stamp, each path pinned', () => {
+    it('is exactly three, a trigger on handback_reports, the drill stamp and the codes expiry, each path pinned', () => {
       expect(definers().map((fn) => fn.signature)).toStrictEqual([
         'handback_reports_append_only()',
+        'ops.expire_second_factor_codes()',
         'ops.record_tested_restore()',
       ]);
-      const [fn, stamp] = definers();
+      const [fn, expiry, stamp] = definers();
       expect(fn?.trigger).toBe(true);
       expect(fn?.config).toStrictEqual(['search_path=pg_catalog, public']);
       expect(fn?.firedBy).toStrictEqual([
@@ -500,6 +505,11 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
       expect(stamp?.trigger).toBe(false);
       expect(stamp?.argumentTypes).toStrictEqual([]);
       expect(stamp?.config).toStrictEqual(['search_path=pg_catalog']);
+      // 0084: no argument, so it deletes only rows past its fixed horizon; only the
+      // upkeep identity executes it (second-factor-codes-retention).
+      expect(expiry?.trigger).toBe(false);
+      expect(expiry?.argumentTypes).toStrictEqual([]);
+      expect(expiry?.config).toStrictEqual(['search_path=pg_catalog']);
     });
   });
 

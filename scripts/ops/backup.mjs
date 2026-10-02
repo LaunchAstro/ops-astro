@@ -20,6 +20,10 @@
 //                        backup store
 //     OPS_RESTORE_HEARTBEAT_URL  the watcher's restore heartbeat, pinged only
 //                        while a restore drill passed inside the store's window
+//     DATABASE_UPKEEP_URL  a login holding ops_astro_upkeep (migration 0084) on
+//                        staging's database, by the pooler the relay lists
+//                        (OPS_EGRESS_POOLER_HOST, OPS_EGRESS_POOLER_PORT);
+//                        unset, the second-factor purge is skipped and says so
 //
 // `run` takes one pg_dump of the product's schemas and `auth`, in a throwaway
 // container of staging's own pinned Postgres image, seals it (archive-seal.mjs)
@@ -33,6 +37,9 @@
 // backup past the store's window, then asks the store whether a restore drill
 // passed inside its window: yes pings the restore heartbeat, no stays silent,
 // and the watcher mails the owner and the second operator (heartbeat.mjs).
+// It also deletes second-factor codes past their horizon on staging's
+// database, as the upkeep identity; that step's outcome goes in the record
+// as `secondFactorCodes`, and its failure never stops the backup expiry.
 // What each may do is held by the server
 // (deploy/staging/backup-store.sql), which writes receipts. Both reach the
 // store only through psql on staging's network (backup-store-reach.mjs): it
@@ -53,6 +60,7 @@ export { pgDump } from './backup-dump.mjs';
 
 const BACKUP_ROLE = 'ops_astro_backup';
 const RETENTION_ROLE = 'ops_astro_backup_retention';
+const UPKEEP_ROLE = 'ops_astro_upkeep';
 // The store's part size (deploy/staging/backup-store.sql, backups.archive_parts).
 const PART = 4 * 1024 * 1024;
 
@@ -159,16 +167,41 @@ export async function runBackup({
 }
 
 /**
+ * Deletes second-factor codes past their horizon (migration 0084) and answers
+ * the step's outcome: the count, `failed` (with `config` when its login would
+ * leave by another pooler) or `not set`. Never throws, and keeps no error text.
+ */
+async function expireCodes(url, refused, reach) {
+  if (url === undefined) return { outcome: 'not set' };
+  if (refused) return { outcome: 'failed', stage: 'config' };
+  try {
+    const printed = await reach(
+      url,
+      `set role ${UPKEEP_ROLE};\nselect ops.expire_second_factor_codes();\n`,
+    );
+    const count = Number(printed);
+    if (printed === '' || !Number.isSafeInteger(count)) return { outcome: 'failed' };
+    return { outcome: 'recorded', count };
+  } catch {
+    return { outcome: 'failed' };
+  }
+}
+
+/**
  * Deletes every backup past the window. The store's policy is what holds the
  * window; the job asks for everything and the server deletes only what it may.
+ * The second-factor purge runs first, on its own: either failing leaves the other.
  */
 export async function expireBackups({
   storeUrl,
+  upkeepUrl,
+  upkeepRefused = false,
   restoreHeartbeat,
   send = ping,
   reach = stagingReach,
 }) {
   const at = new Date().toISOString();
+  const secondFactorCodes = await expireCodes(upkeepUrl, upkeepRefused, reach);
   let upkeep;
   try {
     upkeep = JSON.parse(
@@ -181,12 +214,12 @@ select json_build_object('count', (select count(*) from gone), 'fresh', backups.
       ),
     );
   } catch {
-    return failed('backup expired', 'store');
+    return { ...failed('backup expired', 'store'), secondFactorCodes };
   }
   const record = { event: 'backup expired', outcome: 'recorded', at, count: upkeep.count };
   // A stale restore is told by silence: the watcher mails when the ping is late.
   const beat = upkeep.fresh ? await send(restoreHeartbeat) : 'withheld';
-  return { ...record, restoreFresh: upkeep.fresh, restoreHeartbeat: beat };
+  return { ...record, restoreFresh: upkeep.fresh, restoreHeartbeat: beat, secondFactorCodes };
 }
 
 /** An unset or empty variable reads as unset. */
@@ -225,7 +258,16 @@ async function main(command) {
   if (command === 'expire') {
     const storeUrl = env('BACKUP_RETENTION_URL');
     if (storeUrl === undefined) return failed('backup expired', 'config');
-    return await expireBackups({ storeUrl, restoreHeartbeat: env('OPS_RESTORE_HEARTBEAT_URL') });
+    // The purge reaches staging's database by the pooler the relay lists, or not at all.
+    const upkeepRefused = offEgress(process.env, [
+      ['DATABASE_UPKEEP_URL', 'OPS_EGRESS_POOLER_HOST', 'OPS_EGRESS_POOLER_PORT'],
+    ]);
+    return await expireBackups({
+      storeUrl,
+      upkeepUrl: env('DATABASE_UPKEEP_URL'),
+      upkeepRefused: upkeepRefused !== undefined,
+      restoreHeartbeat: env('OPS_RESTORE_HEARTBEAT_URL'),
+    });
   }
   return undefined;
 }

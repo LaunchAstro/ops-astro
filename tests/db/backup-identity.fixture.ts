@@ -39,6 +39,7 @@ export const job = async (): Promise<{
   }) => Promise<Record<string, unknown>>;
   expireBackups: (options: {
     storeUrl: string;
+    upkeepUrl?: string;
     reach?: Reach;
     restoreHeartbeat?: string;
     send?: (address: string | undefined) => Promise<string>;

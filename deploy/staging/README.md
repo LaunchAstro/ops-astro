@@ -116,7 +116,14 @@ view reads it; a failed drill stamps nothing. The daily upkeep job
 (`backup.mjs expire`) pings the restore heartbeat only while a drill passed
 within `backups.settings.restore_days` (35 to start). Once none has, the
 watcher mails the owner and the second operator that the restore drill is out
-of date.
+of date. The same job deletes second-factor codes recorded more than 24 hours
+ago from staging's database (migration 0084,
+`ops.expire_second_factor_codes()`) as `ops_astro_upkeep`, over
+`DATABASE_UPKEEP_URL` in its env file: the login that
+`staging-logins.mjs after-reset` writes, leaving by the pooler the relay lists
+(`OPS_EGRESS_POOLER_HOST`, `OPS_EGRESS_POOLER_PORT`). The job's record
+says how many went as `secondFactorCodes`; unset, it says `not set`, and a
+failed purge is recorded there without stopping the backup expiry or the ping.
 
 A drill can also run on a host with no route to the store (the runbook's
 clean-host leg), under the same gate. Every drill mode acts for the
@@ -268,6 +275,7 @@ environment at run time:
 | `OPS_SINK_HEARTBEAT_URL`                                   | `forwarder.mjs`                              | the watcher's error sink heartbeat, pinged while the sink's health page answers                                                                                                                                                                              |
 | `OPS_BACKUP_HEARTBEAT_URL`                                 | `backup.mjs run`                             | the watcher's backup heartbeat, pinged once a backup is recorded                                                                                                                                                                                             |
 | `OPS_RESTORE_HEARTBEAT_URL`                                | `backup.mjs expire`                          | the watcher's restore heartbeat, pinged only while a drill is fresh                                                                                                                                                                                          |
+| `DATABASE_UPKEEP_URL`                                      | `backup.mjs expire`                          | a login that is a member of `ops_astro_upkeep` alone, on the pooler the relay lists; never the Vercel function's (it refuses to start beside it)                                                                                                             |
 | `OPS_HEARTBEAT_EVERY_MS`                                   | the worker, `forwarder.mjs`                  | the least milliseconds between two pings to one heartbeat, so a free watcher's budget holds; a few minutes under the watcher's window (a ping lands up to one pass late), at most a day; staging's compose requires it, and unset elsewhere every pass pings |
 
 `RECOVERY_BUSINESS_KEYS` makes the Vercel function recovery's one owner (the

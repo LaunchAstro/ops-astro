@@ -45,7 +45,8 @@ by kind. A copy not on the list is a copy the reply missed.
   the SHA-256 of the login's subject, with no name or email:
   `ops.second_factor_codes` (one row per code sent, and one per code answered
   other than wrong; its `attempt` is the operation id of the act's audit
-  event in its business), `ops.second_factor_subjects` (factors verified or
+  event in its business; the daily upkeep deletes each a day after it was
+  recorded), `ops.second_factor_subjects` (factors verified or
   removed) and `ops.ended_subject_sessions` (sessions ended). The application
   never changes or removes a row (DATA.md). The finder scans `public` only, so
   name them in the reply as held, by the login's digest, and kept as a

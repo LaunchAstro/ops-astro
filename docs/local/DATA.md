@@ -676,7 +676,12 @@ when. Installation-wide, no business, person or reason. The factor routes
 refuse `SECOND_FACTOR_LOCKED` while five codes sent in the last fifteen
 minutes have no `answered` row, counted under a transaction-scoped lock on the
 subject's digest. The application may insert the digest, the attempt and the
-state and read the four columns; nothing changes or deletes a row.
+state and read the four columns; it changes and deletes nothing. The daily
+upkeep job deletes rows recorded more than 24 hours ago, far past the window,
+through `ops.expire_second_factor_codes()` (0084): a security definer with its
+search path pinned and no argument, run as `ops_astro_upkeep`, a role no one
+logs in as that holds execute on it and nothing else. PUBLIC and the
+application may not run it.
 
 ## Overseas-services register (0052, C81)
 
