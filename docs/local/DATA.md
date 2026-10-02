@@ -191,15 +191,16 @@ leaves no gap; after it, a four-digit ID sorts before `main`'s newest and is
 refused.
 
 Two places hold the rule (`packages/core-records/src/tenancy/migration-ids.ts`).
-The runner refuses a directory holding a malformed name, a file that is not a
-regular file, or one ID twice. The `commit messages and provenance` check
+The runner refuses a directory holding a malformed `.sql` name, one that is not
+a regular file, or one ID twice. The `commit messages and provenance` check
 (`scripts/migration-ids.mjs`) runs on a pull request and again in the merge
 queue. It judges every commit on the first-parent line from the base to the
-head against that commit's own first parent: a pull request's merge with
-`main` as `main` now stands, and in the queue each entry against `main` and the
+head against that commit's own first parent, and the head against the base as
+a whole: a pull request's merge with `main` as it stood when GitHub built the
+merge, and in the queue, the run that holds, each entry against `main` and the
 entries queued ahead of it. It refuses a duplicate ID, a migration that sorts
 before the newest one already there, a gap in the four-digit range, a file that
-is not a regular file, and a timestamp more than an hour ahead of the clock
+is not a regular, non-executable file, and a timestamp more than an hour ahead of the clock
 (local time written as UTC). A migration not yet on `main` that fails it takes
 a new timestamp; one on `main` is never renamed. The runner itself still
 applies whatever is pending, in ID order, even below its ledger's newest, and

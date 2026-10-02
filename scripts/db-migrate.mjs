@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Apply the numbered migrations to the local database, in order, once each.
+// Apply the migrations to the local database, in ID order, once each.
 //
 // The runner is `packages/core-records/src/tenancy/migrate.ts` and this script
 // does not reimplement it. That matters: the ledger, the checksum check on an

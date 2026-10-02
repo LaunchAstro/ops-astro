@@ -9,8 +9,9 @@
 // commit on the first-parent line from the base to the head against its own
 // first parent: on a pull request that is its merge with main as main now
 // stands; in the queue, each entry against main plus the entries ahead of it,
-// so one queued after another may not add an ID below the other's. Only names
-// and file modes are read, never a file's statements.
+// so one queued after another may not add an ID below the other's. It also
+// judges the head against the base as a whole. Only names and file modes are
+// read, never a file's statements.
 
 import { execFileSync } from 'node:child_process';
 import {
@@ -60,9 +61,12 @@ function judge(parent, commit) {
 const links = git('rev-list', '--reverse', '--first-parent', `${base}..${head}`)
   .split('\n')
   .filter(Boolean);
-const problems = new Set(
-  links.length === 0 ? judge(base, head) : links.flatMap((link) => judge(`${link}^1`, link)),
-);
+// The whole range as well: the links prove the order only when the oldest one
+// sits on the base, which the queue and GitHub's merge ref give but this does not assume.
+const problems = new Set([
+  ...judge(base, head),
+  ...links.flatMap((link) => judge(`${link}^1`, link)),
+]);
 if (problems.size > 0) {
   for (const problem of problems) console.error(`migration-ids: ${problem}`);
   process.exit(1);

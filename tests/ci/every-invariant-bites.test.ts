@@ -255,7 +255,7 @@ describe('every_invariant_bites: mutations that need no database, run for real',
     try {
       const line = classify('T4-N1', deleteOneMigration(scratch));
       expect(line.status, line.detail).toBe('pass');
-      expect(line.detail).toMatch(/migrations\/\d{4}_[a-z_]+\.sql/u);
+      expect(line.detail).toMatch(/migrations\/(?:\d{4}|20\d{12})_[a-z0-9_]+\.sql/u);
     } finally {
       scratch.close();
     }
