@@ -410,6 +410,12 @@ jobs:
         run: node scripts/merge-group.mjs each node scripts/migrations-unchanged.mjs
       - name: The migration check's own cases
         run: node --test tests/ci/migrations-unchanged-cases.mjs
+      # METHOD step 7: on a pull request, its merge with main; in the queue, the
+      # group's head against main as it stands, so the group is judged whole.
+      - name: Migration IDs are unique and sort after the base branch's newest
+        run: BASE_SHA="$(node scripts/merge-group.mjs base)" HEAD_SHA="$(git rev-parse HEAD)" node scripts/migration-ids.mjs
+      - name: The migration ID check's own cases
+        run: node --test tests/ci/migration-ids-cases.mjs
 
   pr-size:
     name: pull request size

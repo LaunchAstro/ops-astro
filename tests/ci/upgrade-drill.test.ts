@@ -191,11 +191,23 @@ function upgradeDrillCases3() {
     expect(status).toBe(0);
   }, 180_000);
 
+  it("upgrades from main's newest migration to a UTC timestamp ID, as CI drills it", () => {
+    const planted = withPlanted(
+      '20261002013000_planted_stamped.sql',
+      `alter table public.records add column planted_stamp boolean not null default false`,
+    );
+    const { status, result } = drill(head.slice(0, head.indexOf('_')), planted);
+    expect(result?.from).toBe(head);
+    expect(result?.applied).toStrictEqual(['20261002013000_planted_stamped']);
+    expect(result?.differences).toStrictEqual([]);
+    expect(status).toBe(0);
+  }, 180_000);
+
   it('refuses a starting point that is unknown or already the head, building nothing', () => {
     const unknown = drill('0999', undefined, false);
     expect(unknown.status).toBe(2);
     expect(unknown.output).toMatch(/no migration/u);
-    const atHead = drill(head.slice(0, 4), undefined, false);
+    const atHead = drill(head.slice(0, head.indexOf('_')), undefined, false);
     expect(atHead.status).toBe(2);
     expect(atHead.output).toMatch(/nothing to upgrade/u);
   }, 60_000);

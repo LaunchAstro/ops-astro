@@ -231,12 +231,14 @@ describe.skipIf(serverUrl === undefined)('M02: a permissive intermediate prefix'
   let db: EmptyDatabase;
   let proofs: readonly PrefixProof[];
 
+  // Each name sorts where it is spliced: the runner applies nothing that sorts
+  // before the newest migration a database holds.
   const opened = syntheticMigration(
-    '0002_5_permissive',
+    '0002_z_permissive',
     `grant select on public.businesses to public;\n`,
   );
   const repaired = syntheticMigration(
-    '0007_5_repair',
+    '9001_repair',
     `revoke select on public.businesses from public;\n`,
   );
 
@@ -256,7 +258,7 @@ describe.skipIf(serverUrl === undefined)('M02: a permissive intermediate prefix'
 
   it('fails at the prefix that opened it', () => {
     const failing = firstFailing(proofs);
-    expect(failing?.version).toBe('0002_5_permissive');
+    expect(failing?.version).toBe('0002_z_permissive');
     expect(failing?.findings.map((finding) => finding.rule)).toContain(
       'no privilege is granted to PUBLIC, which is every role there will ever be',
     );
@@ -264,8 +266,8 @@ describe.skipIf(serverUrl === undefined)('M02: a permissive intermediate prefix'
   });
 
   it('keeps failing at every prefix after it, until the repair', () => {
-    const opensAt = proofs.findIndex((proof) => proof.version === '0002_5_permissive');
-    const repairsAt = proofs.findIndex((proof) => proof.version === '0007_5_repair');
+    const opensAt = proofs.findIndex((proof) => proof.version === '0002_z_permissive');
+    const repairsAt = proofs.findIndex((proof) => proof.version === '9001_repair');
     expect(opensAt).toBeGreaterThan(0);
     expect(repairsAt).toBe(proofs.length - 1);
     for (const proof of proofs.slice(opensAt, repairsAt)) {

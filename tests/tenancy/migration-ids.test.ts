@@ -65,8 +65,10 @@ describe('the migration ID rule, in the runner', () => {
       );
     }
   });
+});
 
-  it('reads the ID as the digits before the first underscore', () => {
+describe('a migration ID', () => {
+  it('is the digits before the first underscore', () => {
     expect(migrationId('0084_task_category')).toBe('0084');
     expect(migrationId('20261002013000_first_stamped')).toBe('20261002013000');
     expect(migrationId('loose')).toBeUndefined();

@@ -63,12 +63,12 @@ function check(base, added) {
     git('init', '-q', '-b', 'main');
     git('config', 'commit.gpgsign', 'false');
     mkdirSync(join(dir, 'migrations'));
-    base.forEach(write);
+    for (const version of base) write(version);
     writeFileSync(join(dir, 'migrations', '0001_m.changes.json'), '[]\n');
     git('add', '.');
     git('commit', '-q', '-m', 'base');
     const baseSha = git('rev-parse', 'HEAD');
-    added.forEach(write);
+    for (const version of added) write(version);
     git('add', '-A');
     git('commit', '-q', '--allow-empty', '-m', 'change');
     const headSha = git('rev-parse', 'HEAD');
@@ -168,7 +168,10 @@ test('needs both commits, as migrations-unchanged does', () => {
 
 test('runs in the required commits job on the head CI checked out, before approval and in the queue', () => {
   const workflow = readFileSync(join(repoRoot, '.github/workflows/ci.yml'), 'utf8');
-  const job = workflow.slice(workflow.indexOf('\n  commits:\n'), workflow.indexOf('\n  pr-size:\n'));
+  const job = workflow.slice(
+    workflow.indexOf('\n  commits:\n'),
+    workflow.indexOf('\n  pr-size:\n'),
+  );
   assert.match(job, /if: github\.event_name != 'push'/u);
   assert.ok(
     job.includes(

@@ -178,6 +178,26 @@ the last one, because the next migration would make it wrong.
 `tests/tenancy/restricted-calls.test.ts` all read the list from `migrations/`,
 so a new migration edits none of them.
 
+A migration is `migrations/<id>_<name>.sql`, the name lower case, digits and
+underscores. Every new migration's ID is the UTC time it was written, to the
+second, as fourteen digits: `20261002013000_task_labels.sql` for 01:30:00 UTC
+on 2 October 2026. Lanes writing migrations at once then pick different IDs
+without asking each other. The migrations written before that, `0001` up to
+the last four-digit one, keep their numbers: an applied migration is never
+renamed. Every four-digit ID sorts before every timestamp, and the four-digit
+range has no gap.
+
+Three places hold the rule (`packages/core-records/src/tenancy/migration-ids.ts`).
+The runner refuses a directory holding a malformed name or one ID twice, and
+refuses a pending migration that sorts before the newest one its database has
+applied, since a fresh install would apply the two in the other order. The
+`commit messages and provenance` check (`scripts/migration-ids.mjs`) refuses,
+on a pull request and again in the merge queue against `main` as it stands, a
+duplicate ID, a migration that sorts before the base's newest, a gap in the
+four-digit range, and a timestamp more than an hour ahead of the clock (local
+time written as UTC). A migration not yet on `main` that fails it takes a new
+timestamp; one on `main` is never renamed.
+
 The upgrade drill (`pnpm verify:upgrade-drill`) fails a migration that changes a
 row an installation already holds. A migration that does so on purpose, such as
 a slot reservation or a field's owners, says so in
@@ -375,8 +395,8 @@ names the schemas it found, so
 and no `storage` schema, which is an absence, not a denial.
 
 A new migration extends the proof by itself. The harness reads the prefixes
-from `migrations/`, with no list here, in the suite or in a manifest. Add the
-next `migrations/NNNN_*.sql` and it is covered.
+from `migrations/`, with no list here, in the suite or in a manifest. Add a
+`migrations/<UTC timestamp>_*.sql` (see "What the schema is") and it is covered.
 
 ## What a write is checked against
 

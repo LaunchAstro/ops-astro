@@ -5,6 +5,10 @@
 //
 // The properties it holds, each because its absence has a known failure.
 //
+// - Files apply in version order, and a version's ID is unique
+//   (migration-ids.ts). A database never applies a migration that sorts before
+//   one it already holds: a fresh install would apply the two in the other
+//   order, and the two schemas could differ.
 // - One run is all or nothing. Every pending file is applied in one
 //   transaction, each file's ledger row written after its statements, with one
 //   commit at the end. A file and its ledger row therefore commit together, and
@@ -33,6 +37,7 @@ import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AdminConnection } from './database.ts';
+import { migrationIdProblems } from './migration-ids.ts';
 import { classifyStatement, scanToken, splitStatements } from './statements.ts';
 
 export interface Migration {
@@ -47,17 +52,21 @@ export interface MigrationOutcome {
 }
 
 export function readMigrations(directory: string): readonly Migration[] {
-  return readdirSync(directory)
+  const names = readdirSync(directory)
     .filter((name) => name.endsWith('.sql'))
-    .toSorted()
-    .map((name) => {
-      const bytes = readFileSync(join(directory, name));
-      return {
-        version: name.slice(0, -'.sql'.length),
-        checksum: createHash('sha256').update(bytes).digest('hex'),
-        statements: splitStatements(bytes.toString('utf8')),
-      };
-    });
+    .toSorted();
+  const problems = migrationIdProblems(names.map((name) => name.slice(0, -'.sql'.length)));
+  if (problems.length > 0) {
+    throw new Error(`migrate: ${directory} holds ${problems.join('; ')}. Nothing was applied.`);
+  }
+  return names.map((name) => {
+    const bytes = readFileSync(join(directory, name));
+    return {
+      version: name.slice(0, -'.sql'.length),
+      checksum: createHash('sha256').update(bytes).digest('hex'),
+      statements: splitStatements(bytes.toString('utf8')),
+    };
+  });
 }
 
 /** A session the runner found on its database that is not its own. */
@@ -340,6 +349,15 @@ export async function applyMigrations(
   // is the ledger's last version, whatever list the caller passed.
   const last = [...(ledger?.keys() ?? [])].toSorted().at(-1);
   const startedAt = last === undefined ? 'without any migration' : `at ${last}`;
+  const early = names.filter((version) => last !== undefined && version < last);
+  if (early.length > 0) {
+    throw new Error(
+      `migrate: ${early.join(', ')} ${early.length === 1 ? 'sorts' : 'sort'} before ${String(last)}, the newest migration this ` +
+        `database has applied. A fresh install applies them first, so this database would end ` +
+        `with a schema no fresh install builds. Nothing was applied; give each a new UTC ` +
+        `timestamp ID that sorts after ${String(last)}.`,
+    );
+  }
 
   // The check runs before the transaction, inside it before each file, and
   // once more before the commit, so a session that connects after the first
