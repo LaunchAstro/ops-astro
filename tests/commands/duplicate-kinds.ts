@@ -165,6 +165,15 @@ export const DECLARED: Readonly<
   'operations.record_gate_item': { carry: 'not carried', plant: 'the installation, not a task' },
   'operations.change_installation_mode': { carry: 'not carried', plant: 'the installation' },
   'delegation.revoke': { carry: 'not carried', plant: 'authority, not task content' },
+  'conversation.start': { carry: 'not carried', plant: 'a person’s own conversation' },
+  'conversation.message': { carry: 'not carried', plant: 'needs a conversation' },
+  'conversation.rename': { carry: 'not carried', plant: 'needs a conversation' },
+  'conversation.set_scope': { carry: 'not carried', plant: 'needs a conversation' },
+  'task.check': { carry: 'not carried', plant: 'needs a lease' },
+  'model.call': { carry: 'not carried', plant: 'needs a lease' },
+  'run.top_up': { carry: 'not carried', plant: 'needs a run at its budget stop' },
+  'run.end_at_budget_stop': { carry: 'not carried', plant: 'needs a run at its budget stop' },
+  'run.revise_state': { carry: 'not carried', plant: 'needs a run' },
 };
 
 /** The carried name fields: each gets its canary and its old-client-name case. */
