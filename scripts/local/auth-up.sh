@@ -168,7 +168,9 @@ if exists "${AUTH_CONTAINER}" && ! serves_this_postgres "${AUTH_CONTAINER}"; the
   echo "auth-up: ${AUTH_CONTAINER} was started against another ${PG_CONTAINER}; replacing it so it migrates this one"
   docker rm -f "${AUTH_CONTAINER}" >/dev/null
 fi
-if running "${AUTH_CONTAINER}" && { ! docker inspect "${AUTH_CONTAINER}" | grep -qF "GOTRUE_JWT_ISSUER=${GOTRUE_URL}\"" || ! signs_with_key "${AUTH_CONTAINER}"; }; then
+# One started before the one-verified-factor limit (below) is replaced too.
+if running "${AUTH_CONTAINER}" && { ! docker inspect "${AUTH_CONTAINER}" | grep -qF "GOTRUE_JWT_ISSUER=${GOTRUE_URL}\"" ||
+  ! docker inspect "${AUTH_CONTAINER}" | grep -qF 'GOTRUE_MFA_MAX_VERIFIED_FACTORS=1"' || ! signs_with_key "${AUTH_CONTAINER}"; }; then
   docker rm -f "${AUTH_CONTAINER}" >/dev/null
 fi
 if running "${AUTH_CONTAINER}"; then

@@ -107,9 +107,14 @@ test('no container: 17 starts on the 17 volume', () => {
 // GoTrue migrates schema `auth` when it starts, so a new cluster needs a new
 // GoTrue, and the same cluster keeps the one it has. This harness runs the
 // script to its end: GoTrue's issuer and key are always right here, so only
-// the database decides whether it is replaced.
+// the database, and the settings the running GoTrue was started with, decide
+// whether it is replaced.
+const CURRENT_AUTH = [
+  '"GOTRUE_JWT_ISSUER=http://127.0.0.1:54391"',
+  '"GOTRUE_MFA_MAX_VERIFIED_FACTORS=1"',
+];
 // eslint-disable-next-line max-lines-per-function -- one run, read top to bottom
-function runToEnd(pg) {
+function runToEnd(pg, authEnv = CURRENT_AUTH) {
   const scratch = mkdtempSync(join(tmpdir(), 's0-7-auth-up-gotrue-'));
   try {
     const scriptDir = join(scratch, 'scripts/local');
@@ -148,7 +153,7 @@ case "$*" in
   *State.Running*ops-astro-local-auth*) if [ -f '${removed}' ]; then exit 1; else printf '%s\\n' true; fi ;;
   'inspect ops-astro-local-auth')
     if [ -f '${removed}' ]; then exit 1; fi
-    printf '%s\\n' '"GOTRUE_JWT_ISSUER=http://127.0.0.1:54391"' ;;
+    printf '%s\\n' ${authEnv.map((line) => `'${line}'`).join(' ')} ;;
   'rm -f ops-astro-local-auth') : > '${removed}' ;;
 esac
 exit 0
@@ -202,4 +207,12 @@ test('auth-up starts GoTrue with one verified factor and the MFA verify rate lim
   assert.match(started, / -e GOTRUE_MFA_MAX_VERIFIED_FACTORS=1 /u);
   assert.match(started, / -e GOTRUE_MFA_RATE_LIMIT_CHALLENGE_AND_VERIFY=5 /u);
   assert.doesNotMatch(calls, /MAX_ENROLLED_FACTORS/u);
+});
+
+// A GoTrue started before the limit was set is replaced, not reused with the
+// old settings (security review on baf184c, minor 3).
+test('a running GoTrue started without the one-verified-factor limit is replaced', () => {
+  const calls = runToEnd({ running: true }, [CURRENT_AUTH[0]]);
+  assert.match(calls, AUTH_REPLACED);
+  assert.match(calls, AUTH_STARTED);
 });
