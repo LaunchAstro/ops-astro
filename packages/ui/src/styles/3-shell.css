@@ -195,12 +195,11 @@
     display: inline-flex;
   }
 }
-.rail__brand {
-  flex-direction: row;
-  align-items: center;
-  justify-content: space-between;
-}
+/* In the drawer's top corner, so the brand keeps its stack (DS-SIDE-12). */
 .navclose {
+  position: absolute;
+  top: var(--s-5);
+  right: var(--s-3);
   align-items: center;
   justify-content: center;
   width: 32px;
@@ -254,6 +253,116 @@
 @media (width <= 900px) {
   .navtoggle {
     display: inline-flex;
+  }
+}
+
+/* -- The rail folds (MP-2-3). Above 900 it folds to a 56px strip of glyphs,
+      each with its name on hover, and its right edge drags it from 170 to
+      400. At 900 and below the rail is the drawer: no fold, no grip, and the
+      strip's rules do not reach it. The shell writes --rail-w; the grid's
+      transition runs once the shell is ready and never during a drag
+      (the mockup's drag trailed the cursor, DS-SIDE-D4). */
+/* On the label's line, 2px under the wordmark's foot: the mockup's touched
+   it and overlapped the end of the word (DR-61). */
+.railfold {
+  position: absolute;
+  top: calc(var(--s-5) + 20px);
+  right: var(--s-3);
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    color var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease);
+}
+.railfold:hover,
+.railfold:focus-visible {
+  color: var(--text);
+  background: var(--surface);
+}
+.rail__glyph {
+  display: none;
+}
+/* Right: 0 rather than straddling the border, because the rail scrolls and
+   would clip or scroll sideways to show anything past its edge. */
+.railgrip {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  width: 6px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.railgrip:hover,
+.railgrip:focus-visible,
+.shell[data-rail-dragging] .railgrip {
+  background: var(--accent-ring);
+  outline: none;
+}
+.shell[data-rail-dragging],
+.shell[data-rail-dragging] * {
+  transition: none !important;
+  cursor: col-resize;
+  user-select: none;
+}
+@media not all and (max-width: 900px) {
+  .shell[data-rail='collapsed'] .rail {
+    padding-top: calc(var(--s-5) + 30px);
+  }
+  .shell[data-rail='collapsed'] .railfold {
+    top: var(--s-5);
+    right: 16px;
+  }
+  /* The strip keeps the brand as the planet mark, centred (DS-SIDE-12). */
+  .shell[data-rail='collapsed'] .rail__brand {
+    align-items: center;
+    padding: 0;
+  }
+  .shell[data-rail='collapsed'] .rail__brand .brand--wordmark {
+    width: 24px;
+    aspect-ratio: 566.93 / 463.61;
+    mask-image: url('../brand/planet.svg');
+    mask-position: center;
+  }
+  .shell[data-rail='collapsed'] .rail__item {
+    justify-content: center;
+    padding-inline: 0;
+  }
+  .shell[data-rail='collapsed'] .rail__icon,
+  .shell[data-rail='collapsed'] .rail__glyph {
+    display: grid;
+    place-items: center;
+    width: 16px;
+    height: 16px;
+    font: var(--type-small-strong);
+    letter-spacing: var(--type-small-strong-tracking);
+    text-transform: var(--type-small-strong-case);
+  }
+  /* Hidden from sight only: each label stays its item's accessible name. */
+  .shell[data-rail='collapsed'] .rail__hub,
+  .shell[data-rail='collapsed'] .rail__build,
+  .shell[data-rail='collapsed'] .rail__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+@media (width <= 900px) {
+  .railfold,
+  .railgrip {
+    display: none;
   }
 }
 
@@ -667,117 +776,6 @@
   }
   .content {
     padding: var(--s-4);
-  }
-}
-
-/* -- The dock rail. It does not disappear below 900: it ROTATES onto the
-      bottom edge, and one panel draws, because a phone holds one thing.
-      (The contract describes an icon-only topbar fallback at this width. At
-      the pinned revision that control is `display: none !important` at EVERY
-      width and the rail is the way in; see DECISIONS.tsv.) ---------------- */
-.dock__rail {
-  display: flex;
-  flex: none;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.15rem;
-  width: 40px;
-  padding: var(--s-3) 0;
-  border-left: 1px solid var(--border);
-  background: var(--rail-bg);
-}
-.dock__tab {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--ink-faint);
-  font: var(--type-badge);
-  letter-spacing: var(--type-badge-tracking);
-  text-transform: var(--type-badge-case);
-  cursor: pointer;
-}
-/* The panel's count rides the tab's corner: the kit's `cbadge`, placed. */
-.dock__count {
-  position: absolute;
-  top: -3px;
-  right: -3px;
-}
-.dock__tab:hover {
-  color: var(--text);
-  background: var(--surface);
-}
-/* Open is an OUTLINE and a rule, never a fill. */
-.dock__tab[aria-expanded='true'] {
-  color: var(--accent);
-}
-.dock__tab[aria-expanded='true']::before {
-  content: '';
-  position: absolute;
-  left: -1px;
-  top: 4px;
-  bottom: 4px;
-  width: 2px;
-  background: var(--accent);
-}
-/* The callout: a dark chip to the tab's left, the side the panels open on.
-   Display-gated, so it never widens the page or takes a click. In dark its
-   ground is the page's own, so the edge is what shows where it ends; in light
-   the edge sits on the dark chip and cannot be seen. The padding gives back
-   the edge's pixel so the chip keeps its size. */
-.dock__tablabel {
-  display: none;
-  position: absolute;
-  top: 50%;
-  right: calc(100% + 7px);
-  z-index: 80;
-  max-width: 14rem;
-  padding: calc(0.35rem - 1px) calc(0.6rem - 1px);
-  border: 1px solid var(--border-strong);
-  background: var(--void);
-  color: var(--on-dark);
-  font: var(--type-caption);
-  letter-spacing: var(--type-caption-tracking);
-  text-transform: var(--type-caption-case);
-  white-space: nowrap;
-  transform: translateY(-50%);
-  pointer-events: none;
-}
-.dock__tab:hover .dock__tablabel,
-.dock__tab:focus-visible .dock__tablabel {
-  display: block;
-}
-@media (width <= 900px) {
-  .dock__tablabel {
-    top: auto;
-    right: auto;
-    bottom: calc(100% + 7px);
-    left: 50%;
-    transform: translateX(-50%);
-  }
-  .dock__rail {
-    order: 2;
-    flex-direction: row;
-    justify-content: center;
-    gap: var(--s-4);
-    width: auto;
-    height: 40px;
-    padding: 0;
-    border-left: 0;
-    border-top: 1px solid var(--border);
-  }
-  .dock__tab[aria-expanded='true']::before {
-    left: 4px;
-    right: 4px;
-    top: -1px;
-    bottom: auto;
-    width: auto;
-    height: 2px;
   }
 }
 

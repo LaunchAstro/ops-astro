@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 // From the take's interim review (5930cc2): SL11/SL12's column-grant contract
 // (restricted-calls-cases.ts) auto-merged beside batch 1's migrations 0046 and
 // 0047, which make column grants of their own (the lookup identity's

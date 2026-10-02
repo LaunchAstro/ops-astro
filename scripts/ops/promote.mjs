@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The promotion step's command (ticket S0-1). The decisions are in
-// `promotion.ts`; this file wires them to the machine: the service manager is
-// read through S0-1a's service report, the migration is `scripts/db-migrate.mjs`
-// (which reads DATABASE_ADMIN_URL from the environment the runbook sets), and
-// production is pointed at the artefact by swapping one link.
+// `promotion.ts`; this file wires them to the machine. It reads the service
+// manager through S0-1a's service report (imported), migrates with
+// `scripts/db-migrate.mjs` (which reads DATABASE_ADMIN_URL from the environment
+// the runbook sets), and points production at the artefact by swapping one link.
 //
 // Usage:
 //   node scripts/ops/promote.mjs --dry-run --version <id> --artefacts <store> --line "<text>"
@@ -21,15 +21,15 @@
 // A real run is a person's act under `operations:manage` (S0-1e): the operator
 // gate (`operator.ts`) answers before any argument is read and before the
 // service manager is asked, and the deployment record is written only once
-// production serves the artefact. A dry run reads only the store and changes
-// nothing, so CI runs it with no sign-in and it writes no record.
+// production serves the artefact. CI runs the dry run with no sign-in, and a dry
+// run writes no record.
 
 import { execFileSync, spawnSync } from 'node:child_process';
 import { renameSync, rmSync, symlinkSync } from 'node:fs';
 import { recordDeployment, requireOperator } from './operator.ts';
 import { parseService, promote } from './promotion.ts';
+import { snapshot } from './service-report.mjs';
 
-const REPORT = new URL('./service-report.mjs', import.meta.url).pathname;
 const MIGRATE = new URL('../db-migrate.mjs', import.meta.url).pathname;
 
 function usage(message) {
@@ -89,8 +89,7 @@ if (given.has('--current')) request.current = given.get('--current');
 
 const effects = {
   services() {
-    const out = execFileSync(process.execPath, [REPORT, 'snapshot'], { encoding: 'utf8' });
-    return JSON.parse(out).services;
+    return JSON.parse(snapshot()).services;
   },
   migrate() {
     return spawnSync(process.execPath, [MIGRATE], { stdio: 'inherit' }).status === 0;

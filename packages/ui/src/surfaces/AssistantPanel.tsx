@@ -65,17 +65,42 @@ function ModelPicker(props: {
   );
 }
 
+/** The drawer's own close, after a divider, when it stands alone. */
+function Close(props: { readonly onClose: () => void }): ReactElement {
+  return (
+    <>
+      <span className="aip__actdiv" aria-hidden="true" />
+      <button
+        className="aip__act"
+        type="button"
+        data-assistant="close"
+        title="Close the panel"
+        aria-label="Close the panel"
+        onClick={() => {
+          props.onClose();
+        }}
+      >
+        <span aria-hidden="true">×</span>
+      </button>
+    </>
+  );
+}
+
 function Head(props: {
   readonly chat: AssistantChat | undefined;
   readonly offer: AssistantOffer;
   readonly onModel: (key: string, model: string) => void;
   readonly onAddPage: (key: string) => void;
-  readonly onClose: () => void;
+  readonly onClose: (() => void) | undefined;
 }): ReactElement {
+  const { onClose } = props;
+  // In a host's frame (the dock's `ai` panel) the host's head names the drawer
+  // and closes it, so this row keeps only the model picker and Page.
+  const Row = onClose === undefined ? 'div' : 'header';
   return (
-    <header className="aip__head">
+    <Row className="aip__head">
       <div className="aip__id">
-        <span className="aip__title">Agent</span>
+        {onClose === undefined ? null : <span className="aip__title">Agent</span>}
         <ModelPicker chat={props.chat} offer={props.offer} onModel={props.onModel} />
       </div>
       <div className="aip__acts">
@@ -91,21 +116,9 @@ function Head(props: {
         >
           <span aria-hidden="true">Page</span>
         </button>
-        <span className="aip__actdiv" aria-hidden="true" />
-        <button
-          className="aip__act"
-          type="button"
-          data-assistant="close"
-          title="Close the panel"
-          aria-label="Close the panel"
-          onClick={() => {
-            props.onClose();
-          }}
-        >
-          <span aria-hidden="true">×</span>
-        </button>
+        {onClose === undefined ? null : <Close onClose={onClose} />}
       </div>
-    </header>
+    </Row>
   );
 }
 

@@ -28,6 +28,10 @@ import type { CheckRequest } from './requests-check.ts';
 import type { ConversationRequest } from './requests-conversation.ts';
 import type { RunRequest } from './requests-run.ts';
 import type { Envelope } from './request-envelope.ts';
+import type { CommentRequest } from './requests-comments.ts';
+import type { DuplicateRequest } from './requests-duplicate.ts';
+import type { TagRequest } from './requests-tags.ts';
+import type { TimeRequest } from './requests-time.ts';
 import type { PrivacyRequest } from './requests-privacy.ts';
 import type { SelfRequest } from './requests-self.ts';
 
@@ -79,17 +83,11 @@ export type CommandRequest =
   | ({ readonly command: 'task.complete' } & Targeted)
   | ({ readonly command: 'task.reopen'; readonly reason: string } & Targeted)
   | ({ readonly command: 'task.start' } & Targeted)
-  | ({
-      readonly command: 'task.comment';
-      readonly body: string;
-      /** `internal` or `client`. Two fields, because who sees it and what it is
-       * are two questions (`core-records/src/tasks/comments.ts`). */
-      readonly audience: string;
-      /** `note`, `client` or `system`. A person writing a comment writes a note. */
-      readonly commentType?: string;
-      /** The people the comment names, by person id. */
-      readonly mentions?: unknown;
-    } & Targeted)
+  | ({ readonly command: 'task.set_state'; readonly stateId: string } & Targeted)
+  // Duplicate without contents (MP-4-8), in `requests-duplicate.ts`.
+  | DuplicateRequest<Envelope>
+  // A comment, its edit and its deletion (MP-4-5), in `requests-comments.ts`.
+  | CommentRequest<Targeted>
   // A proposal is a record beside the task and targets it, so it names the
   // revision it was written against like every other targeted command. What it
   // does *not* carry is who is proposing, what they may spend it against or
@@ -172,7 +170,14 @@ export type CommandRequest =
   // definition, so the payload is the values and nothing else.
   | ({
       readonly command:
-        'task.assign' | 'task.triage' | 'task.set_stage' | 'task.set_party' | 'task.set_audience';
+        | 'task.assign'
+        | 'task.triage'
+        | 'task.set_stage'
+        | 'task.set_party'
+        | 'task.set_audience'
+        | 'task.set_scores'
+        | 'task.set_adhoc'
+        | 'task.set_category';
       readonly fields: FieldValues;
     } & Targeted)
   | ({ readonly command: 'task.reparent'; readonly parentId: string | null } & Targeted)
@@ -187,6 +192,7 @@ export type CommandRequest =
       readonly afterId?: string | null;
       readonly beforeId?: string | null;
     } & Targeted)
+  | ({ readonly command: 'task.share_with_client' | 'task.revoke_client_share' } & Targeted)
   | ({ readonly command: 'task.trash' } & Targeted)
   | ({ readonly command: 'task.restore'; readonly batchId: string } & Envelope)
   // The purge's window is the business's setting, not an operand. The field is
@@ -287,4 +293,8 @@ export type CommandRequest =
   // Read by its own parser (`model-call.ts`), never by a person handler.
   | ({ readonly command: 'model.call' } & Envelope)
   | RunRequest
-  | SelfRequest<Envelope>;
+  | SelfRequest<Envelope>
+  // Time tracking (MP-4-6), in `requests-time.ts`.
+  | TimeRequest<Envelope>
+  // Tags (MP-4-11), in `requests-tags.ts`.
+  | TagRequest<Envelope>;

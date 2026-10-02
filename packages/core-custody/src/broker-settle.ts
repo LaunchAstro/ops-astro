@@ -116,7 +116,7 @@ export async function hold(
 /**
  * Positive proof that nothing happened: the whole hold is released. Here and
  * in a priced settle, a drop the sweep recorded before the answer came is
- * cleared: the answer is what happened (0191, `model_calls_drop_is_held`).
+ * cleared: the answer is what happened (0085, `model_calls_drop_is_held`).
  */
 export async function release(
   tx: TenantQuery,

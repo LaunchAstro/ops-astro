@@ -14,7 +14,7 @@
 //    route only, nothing held. A cloud route is refused there before anything
 //    is written or sent (AW-03 egress off).
 // 3. The answer is kept as the agent's message answering that one message
-//    (0221), in a second transaction that resolves the caller again and takes
+//    (0099), in a second transaction that resolves the caller again and takes
 //    the conversation's row lock, as a message and the purge do, so a reply
 //    never lands in a body being purged.
 //
@@ -60,7 +60,7 @@ export type ConversationExchange = (
   asked: Asked,
 ) => Promise<ConversationReply | null>;
 
-/** A reply's body is a message's (0198). */
+/** A reply's body is a message's (0092). */
 const REPLY_LIMIT = 20_000;
 
 const OFF =

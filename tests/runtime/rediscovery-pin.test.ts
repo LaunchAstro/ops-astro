@@ -210,8 +210,9 @@ const HELD_BY_DELEGATION = 'select res.id as reservation_id, res.envelope_id #22
 // another: a run waiting for budget is not classified on its ended lease or
 // retired delegation (classifier.ts, `discoverEligible`;
 // tests/broker/aw-05-budget-wait.test.ts). Still one read, taken twice; no
-// lock moved.
-const ELIGIBLE = 'select res.id as reservation_id, res.envelope_id #fcec6a1d';
+// lock moved. Batch 3a's numbering after batch 2 then changed only the AW-05
+// comment's migration number (0193 to 0087).
+const ELIGIBLE = 'select res.id as reservation_id, res.envelope_id #c18d3969';
 const DEPENDENTS = 'with recursive revoked as ( select g.id, g.subje #c53e3eae';
 
 /**

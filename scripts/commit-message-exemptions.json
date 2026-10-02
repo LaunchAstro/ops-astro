@@ -43,6 +43,14 @@
     {
       "sha": "e167c9ed4541b4dab7ea5c03fe45dead6752b452",
       "reason": "SL10's 30 Sep rebase note: a 377-character Rebase-note footer commitlint refuses; kept in history because b0/SL05 and batch 2 hold it (ORCH48, 1 Oct 2026)"
+    },
+    {
+      "sha": "f58f43880e3f088aa6304b5b0e97d09fe459097f",
+      "reason": "SL07-14's SL05-join snapshot: a 'wip' type commitlint refuses, pushed at the seat stop and finished by the joins after it; kept in history because b0/SL07, batch 2c1 and 2d hold it (SL07-19, 1 Oct 2026)"
+    },
+    {
+      "sha": "48da6f9c5419a592d63f0be7d509ca2107a833a7",
+      "reason": "SL06-5's paused fork B: a 'wip' type commitlint refuses, pushed at the seat stop (ORCH47 00:32Z) and joined into slice/SL06 by bc2c180; kept in history because b0/SL08 and batch 2d hold it (SL06-7, 1 Oct 2026)"
     }
   ]
 }

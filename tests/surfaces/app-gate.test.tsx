@@ -86,3 +86,42 @@ describe('the sign-in gate', () => {
     },
   );
 });
+
+// UI-STATES: a screen with nothing to draw is drawn as the one empty state
+// (DS-PRIM-28 `--block`), and a held address keeps the page head of the
+// mockup's reserved-route placeholder: the route's label and an outline chip
+// saying the page is not built (PAGE-MAP SHELL SH-40).
+describe('the screens with nothing to draw', () => {
+  it('draws an unregistered address as the one empty state, with the way on', async () => {
+    const view = await open('/nowhere/', true);
+    const empty = view.find('[data-outcome="not-found"] > .empty.empty--block');
+    expect(empty?.matches('[data-voice="no-rows"]')).toBe(true);
+    expect(empty?.querySelector('.empty__title')?.textContent).toBe(
+      'No screen is registered at /nowhere/.',
+    );
+    const way = empty?.querySelector('.empty__action a.sb__addr');
+    expect(way?.getAttribute('href')).toBe('/projects/');
+    expect(way?.textContent).toBe('Go to Projects');
+    await view.unmount();
+  });
+
+  // A held address is SL10's reserved address (U06, MP-2-10): the page head and
+  // the one shared not-built state, no chip and no ticket in its words (R2).
+  it('draws a held address as its page head and the one not-built state', async () => {
+    const view = await open('/dashboard/', true);
+    expect(view.find('.topbar__title')?.textContent).toBe('Portfolio');
+    expect(view.find('.topbar__meta .chip')).toBeNull();
+    // Drawn in the one empty state's block look (DS-PRIM-28), as the mockup's.
+    const empty = view.find('[data-outcome="placeholder"] > .empty.empty--block');
+    expect(empty?.matches('[data-voice="not-built"]')).toBe(true);
+    expect(empty?.querySelector('.empty__title')?.textContent).toBe('Not here yet');
+    expect(empty?.querySelector('.empty__desc')?.textContent).toBe("This page isn't built yet.");
+    await view.unmount();
+  });
+
+  it('gives a built page no not-built chip', async () => {
+    const view = await open('/projects/', true);
+    expect(view.find('.topbar__meta .chip')).toBeNull();
+    await view.unmount();
+  });
+});

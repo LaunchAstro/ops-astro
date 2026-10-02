@@ -130,6 +130,42 @@ async function parentWithSubtaskMoves(): Promise<[number, string]> {
   return [moved.status, moved.code];
 }
 
+/**
+ * An empty subtask, made under a parent on one client, asked onto another: the
+ * answer, and whether the subtask still carries its parent's client.
+ */
+async function emptySubtaskMoves(): Promise<[string, boolean]> {
+  const [clientA, clientB] = [await newClient(), await newClient()];
+  const parent = await taskOn(clientA, 's0-5 a parent on its client');
+  const made = await harness.asPerson('task.create', {
+    fields: { title: 's0-5 an empty subtask' },
+    parentId: parent,
+  });
+  expect(made.code).toBe('ok');
+  const child = String(made.body['recordId']);
+  const moved = await harness.asPerson('task.set_party', await setPartyBody(child, clientB));
+  return [moved.code, (await clientOf(child)) === clientA];
+}
+
+/** Content then a client change, and a client change then content, on two tasks. */
+async function contentAndChangeInterleaved(): Promise<void> {
+  const [clientA, clientB] = [await newClient(), await newClient()];
+  // Content first (Mia comments, then Ada changes the client): refused.
+  const first = await taskOn(clientA, 's0-5 content first');
+  expect((await miaComments(first)).code).toBe('ok');
+  const refused = await harness.asPerson('task.set_party', await setPartyBody(first, clientB));
+  expect([refused.status, refused.code]).toStrictEqual([409, 'CLIENT_LOCKED']);
+  // The change first: the comment waits on the row lock, is refused stale
+  // against the change's revision and writes nothing; its retry lands on the
+  // task as it now stands, and from then on the client is locked.
+  const second = await taskOn(clientA, 's0-5 change first');
+  expect(await changeLandsFirst(second, clientB)).toStrictEqual([true, 'VERSION_STALE']);
+  expect(await clientOf(second)).toBe(clientB);
+  expect((await miaComments(second)).code).toBe('ok');
+  const after = await harness.asPerson('task.set_party', await setPartyBody(second, clientA));
+  expect([after.status, after.code]).toStrictEqual([409, 'CLIENT_LOCKED']);
+}
+
 describe.skipIf(serverUrl === undefined)('S0-5 the task client lock', () => {
   beforeAll(async () => {
     harness = await createHarness('s05_lock');
@@ -161,21 +197,11 @@ describe.skipIf(serverUrl === undefined)('S0-5 the task client lock', () => {
     expect(await parentWithSubtaskMoves()).toStrictEqual([409, 'CLIENT_LOCKED']);
   });
 
+  it('S0-5 client change on an empty subtask: the lock passes it to MP-4-4, which holds it to its parent client', async () => {
+    expect(await emptySubtaskMoves()).toStrictEqual(['PLACEMENT_IS_DERIVED', true]);
+  });
+
   it('S0-5 client change refused once the task has content: a content write and a client change interleaved, in both orders', async () => {
-    const [clientA, clientB] = [await newClient(), await newClient()];
-    // Content first (Mia comments, then Ada changes the client): refused.
-    const first = await taskOn(clientA, 's0-5 content first');
-    expect((await miaComments(first)).code).toBe('ok');
-    const refused = await harness.asPerson('task.set_party', await setPartyBody(first, clientB));
-    expect([refused.status, refused.code]).toStrictEqual([409, 'CLIENT_LOCKED']);
-    // The change first: the comment waits on the row lock, is refused stale
-    // against the change's revision and writes nothing; its retry lands on the
-    // task as it now stands, and from then on the client is locked.
-    const second = await taskOn(clientA, 's0-5 change first');
-    expect(await changeLandsFirst(second, clientB)).toStrictEqual([true, 'VERSION_STALE']);
-    expect(await clientOf(second)).toBe(clientB);
-    expect((await miaComments(second)).code).toBe('ok');
-    const after = await harness.asPerson('task.set_party', await setPartyBody(second, clientA));
-    expect([after.status, after.code]).toStrictEqual([409, 'CLIENT_LOCKED']);
+    await contentAndChangeInterleaved();
   }, 180_000);
 });

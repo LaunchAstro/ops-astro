@@ -81,6 +81,21 @@ describe('C32 Settings ▸ Access', () => {
   });
 });
 
+describe('C32 give access holders on Settings ▸ Access', () => {
+  it('C32 give access: a client holds no membership to grant on, so is never a holder choice', async () => {
+    // access.grant refuses anyone without an active membership (NOT_FOUND), and
+    // a client stands on shares only, so choosing one could only ever be refused.
+    const api = server([json(access([ADA, MIA]))]);
+    const view = await open(api.fetch);
+    await view.click('[data-field="holder"] button.sel__btn');
+    const holders = view
+      .all('[data-field="holder"] [role="option"]')
+      .map((each) => each.textContent);
+    expect(holders).toContain(MIA.name);
+    expect(holders).not.toContain(CLEO.name);
+  });
+});
+
 describe('Settings ▸ Access money step-up', () => {
   it('says a money permission is usable only after a second factor in the last 60 minutes', async () => {
     const whole = { kind: 'business', id: null };

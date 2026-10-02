@@ -114,6 +114,18 @@ async function bodyFor(declaration: CommandDeclaration): Promise<Prepared> {
       body: { delegationId: (picked.body['detail'] as Record<string, unknown>)['delegationId'] },
     };
   }
+  if (declaration.name === 'task.revoke_client_share') {
+    // The recipe revokes on a task never shared, which changes nothing: share one first.
+    const share = COMMAND_SURFACE.find((one) => one.name === 'task.share_with_client');
+    if (share === undefined) throw new Error('task.share_with_client is not in the surface');
+    const shared = await harness.positiveBody(share);
+    if ('exception' in shared) return shared;
+    const answer = await harness.asPerson('task.share_with_client', shared.body);
+    if (answer.code !== 'ok') throw new Error(`share before revoke refused ${answer.code}`);
+    return {
+      body: { recordId: shared.body['recordId'], expectedRevision: answer.body['revision'] },
+    };
+  }
   return await harness.positiveBody(declaration);
 }
 

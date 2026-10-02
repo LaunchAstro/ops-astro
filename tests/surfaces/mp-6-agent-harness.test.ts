@@ -97,7 +97,10 @@ describe('SL12 visual matches against the pinned mockup (MP-1-7)', () => {
 
 // T-1's read with its newest attempt held and its effect unknown (C54), the
 // state a person answers with one of the three outcomes or a write-off.
-const T1 = madeUpAnswer(`${PREFIX.person}alpha${pathOf('task.read')}`)?.json as InternalTaskRead;
+const T1_ANSWER = madeUpAnswer(`${PREFIX.person}alpha${pathOf('task.read')}`);
+const T1 = (
+  T1_ANSWER !== undefined && 'json' in T1_ANSWER ? T1_ANSWER.json : undefined
+) as InternalTaskRead;
 function unknownT1(): InternalTaskRead {
   const [lineage, ...rest] = T1.task.proposals;
   if (lineage === undefined) throw new Error('the made-up T-1 has no run');
@@ -155,6 +158,8 @@ async function captureOne(
     await prepare?.(side.context);
     const address = addressOf('agency:task-detail', MADE_UP_PARAMS) ?? '/';
     const page = await load(side, packet, new URL(address, at.app).href);
+    // The agent section sits on the task's Agent perspective, so the capture opens it.
+    await page.locator('[role=tab]:has-text("Agent")').click();
     await page.locator('[data-agent="pane"]').waitFor();
     const drawn: Record<string, boolean> = {};
     for (const [mark, selector] of Object.entries(marks))

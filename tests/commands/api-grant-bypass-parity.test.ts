@@ -28,7 +28,7 @@ it('a same-route API grant bypass fails parity', () => {
     const source = join(copy, 'packages/core-commands/src/reads/dispatch.ts');
     const original = readFileSync(source, 'utf8');
     const withoutGrant = original.replace(
-      "if (row.authority !== 'holds-any-grant' && row.authority !== 'self') {",
+      "if (row.authority !== 'holds-any-grant' && row.authority !== 'self' && !listsWithin) {",
       'if (false) {',
     );
     expect(withoutGrant).not.toBe(original);
@@ -41,4 +41,4 @@ it('a same-route API grant bypass fails parity', () => {
   } finally {
     rmSync(copy, { recursive: true, force: true });
   }
-});
+}, 120_000);

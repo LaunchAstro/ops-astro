@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-only
 // From the take's interim review (5930cc2): 779641f turned the agent pane's
 // "No checks recorded yet." from PaneEmpty into the inline Empty, but the
 // web render pins still hold PaneEmpty's markup, so web-render-pins is red.

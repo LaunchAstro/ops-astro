@@ -15,7 +15,7 @@ import { OCCURRENCE_ROLE } from './restricted-calls-cases.ts';
 const COLUMN_UPDATES: Readonly<
   Record<string, { readonly from: string; readonly columns: readonly string[] }>
 > = {
-  'public.planned_runs': { from: '0192', columns: ['state'] },
+  'public.planned_runs': { from: '0086', columns: ['state'] },
 };
 
 /** The `table.column` pairs the application group may update after `at`, or at the full schema. */
@@ -29,15 +29,15 @@ export function columnUpdatesAt(at?: string): readonly string[] {
 /**
  * Every other column grant, from the migration that made it: the occurrence role reads a
  * task's revision for 0032's trigger and stamps the live change record for 0035's
- * (AW-01 J, 0203), the application writes the outbox's
+ * (AW-01 J, 0097), the application writes the outbox's
  * four columns alone (S0-2, 0047), and the lookup reads a business's id and key (G2, 0046).
  */
 const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: string }[] = [
   ...['business_id', 'id', 'revision'].map((column) => ({
-    from: '0203',
+    from: '0097',
     line: `${OCCURRENCE_ROLE} SELECT public.records.${column}`,
   })),
-  // 0203: 0035's trigger on the occurrence's run upserts the task's stamp in
+  // 0097: 0035's trigger on the occurrence's run upserts the task's stamp in
   // 0065's live change record, as the inserting role.
   ...[
     ['INSERT', 'business_id'],
@@ -50,7 +50,7 @@ const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: strin
     ['UPDATE', 'changed_at'],
     ['UPDATE', 'changed_xid'],
   ].map(([act, column]) => ({
-    from: '0203',
+    from: '0097',
     line: `${OCCURRENCE_ROLE} ${act} public.live_changes.${column}`,
   })),
   ...['event', 'kind', 'scope', 'weight'].map((column) => ({

@@ -7,6 +7,11 @@
 // rotates onto the bottom edge. The third track's width is a variable the shell
 // writes and nothing else does.
 //
+// The rail folds to a 56px strip of glyphs, each with its section's name on
+// hover, and its right edge drags it from 170 to 400 (MP-2-3). The person's
+// choice is the application's to hold and to keep; what the shell draws on
+// its first render is what it is handed, so nothing jumps before paint.
+//
 // The content column opens with the chrome: the app strip, the section's tab
 // row and the page header, one block that is sticky above 900 and scrolls away
 // at 900 and below (MP-2-7).
@@ -21,43 +26,30 @@ import {
   useCallback,
   useId,
   useRef,
+  useState,
   type CSSProperties,
   type MouseEvent,
   type ReactElement,
   type ReactNode,
 } from 'react';
 import { BrandMark } from '../primitives/BrandMark.tsx';
-import { Icon, type GlyphName } from '../primitives/Icon.tsx';
+import { Dock, useReadyAfterFirstLayout, type DockProps } from './Dock.tsx';
 import { useDrawerFocus } from './drawer.ts';
 import { inAppAddress } from './gesture.ts';
 import { useMark } from './mark.ts';
 import { FreshnessMarker, type Freshness } from '../kit/treatments.tsx';
 import { Chevron, TabRow, type TabEntry } from './TabRow.tsx';
 
-export interface RailEntry {
-  /** Namespace-qualified. Sixteen bare identifiers collide in the corpus. */
-  readonly id: string;
-  readonly label: string;
-  readonly href: string;
-  /** The section the page being drawn sits in (MP-2-2). */
-  readonly lit?: boolean;
-  /** The lit section's own address is the page being drawn. */
-  readonly exact?: boolean;
-  /** "Back to Clients": a link in the small primary dress above the sections (MP-2-9). */
-  readonly kind?: 'section' | 'back';
-  /** The section's own glyph, drawn only once the rail folds (MP-2-2, T-R4). */
-  readonly icon?: GlyphName | undefined;
-}
+import {
+  RAIL_DEFAULT,
+  RAIL_STRIP,
+  RailFold,
+  RailGrip,
+  RailItem,
+  type RailEntry,
+} from './RailParts.tsx';
 
-export interface DockTab {
-  readonly id: string;
-  readonly label: string;
-  readonly open: boolean;
-  /** The panel's glyph, as the mockup registers each panel with one; the grid glyph when none is named. */
-  readonly icon?: GlyphName;
-  /** What is waiting in the panel, painted with the first frame; none at zero. */
-  readonly count?: number;
-}
+export { RAIL_DEFAULT, RAIL_MAX, RAIL_MIN, RAIL_STRIP, type RailEntry } from './RailParts.tsx';
 
 export interface ShellProps {
   readonly face: 'agency' | 'client';
@@ -66,6 +58,22 @@ export interface ShellProps {
   readonly here: string;
   readonly title: string;
   readonly meta?: ReactNode;
+  /** The dock, or null where there is none: signed out, and on the client face (R17). */
+  readonly dock: DockProps | null;
+  /** The dock's grid track: the seated group's width, or 0 while it floats. */
+  readonly dockWidth?: number;
+  /** The one sheet height below the side tier, so the page can be padded under it. */
+  readonly dockSheetHeight?: number;
+  /** The person's rail: folded to the 56px strip, and its width while open. */
+  readonly railCollapsed?: boolean;
+  readonly railWidth?: number;
+  readonly onRailFold?: () => void;
+  /** The rail's width while its grip moves. */
+  readonly onRailResize?: (width: number) => void;
+  /** The width the grip was let go at, to keep. */
+  readonly onRailResizeEnd?: (width: number) => void;
+  /** Every click inside the shell, heard after its target's own handlers. */
+  readonly onClick?: (event: MouseEvent<HTMLDivElement>) => void;
   /** The app strip (MP-2-5), placed first in the chrome. */
   readonly strip?: ReactNode;
   /** The current section's tab row, or null where the section has one page. */
@@ -84,11 +92,6 @@ export interface ShellProps {
    * another origin.
    */
   readonly onNavigate?: (href: string) => void;
-  readonly dock: readonly DockTab[];
-  readonly onDockTab: (id: string) => void;
-  /** Whether the open panel is seated as a grid track or floating over. */
-  readonly seated: boolean;
-  readonly panel?: ReactNode;
   /**
    * The build identifier, drawn at the foot of the rail (S0-1, line C2). Null
    * is a build that carries none, and the rail says so rather than going blank.
@@ -98,6 +101,10 @@ export interface ShellProps {
 }
 
 export function Shell(props: ShellProps): ReactElement {
+  const ready = useReadyAfterFirstLayout();
+  const [railDragging, setRailDragging] = useState(false);
+  const collapsed = props.railCollapsed ?? false;
+  const railWidth = props.railWidth ?? RAIL_DEFAULT;
   const railId = useId();
   const open = props.nav?.open ?? false;
   const onToggle = props.nav?.onToggle;
@@ -117,7 +124,10 @@ export function Shell(props: ShellProps): ReactElement {
 
   const trap = useDrawerFocus(open, onToggle, railRef, toggleRef);
 
+  // The dock's doors hear the click first; a link nobody took is then
+  // followed in the app rather than reloading the page.
   const onClick = (event: MouseEvent<HTMLDivElement>): void => {
+    props.onClick?.(event);
     if (props.onNavigate === undefined) return;
     const href = inAppAddress(event);
     if (href === null) return;
@@ -125,18 +135,30 @@ export function Shell(props: ShellProps): ReactElement {
     props.onNavigate(href);
   };
 
+  const style = {
+    '--rail-w': `${String(collapsed ? RAIL_STRIP : railWidth)}px`,
+    ...(props.dockWidth === undefined ? {} : { '--dock-w': `${String(props.dockWidth)}px` }),
+    ...(props.dockSheetHeight === undefined
+      ? {}
+      : { '--dock-sheet-h': `${String(props.dockSheetHeight)}px` }),
+  } as CSSProperties;
   const markStyle = {
     '--railmark-y': `${mark.box?.y ?? 0}px`,
     '--railmark-h': `${mark.box?.h ?? 0}px`,
   } as CSSProperties;
 
   return (
+    // oxlint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- heard, not handled: each door is a button or a link
     <div
       className="shell"
       data-face={props.face}
-      data-dock={props.seated ? 'seated' : 'floating'}
-      {...(open ? { 'data-nav': 'open' } : {})}
+      data-rail={collapsed ? 'collapsed' : 'expanded'}
+      data-dock={(props.dockWidth ?? 0) > 0 ? 'seated' : 'floating'}
+      style={style}
       onClick={onClick}
+      {...(open ? { 'data-nav': 'open' } : {})}
+      {...(ready ? { 'data-dock-ready': '' } : {})}
+      {...(railDragging ? { 'data-rail-dragging': '' } : {})}
     >
       <nav
         className="rail"
@@ -146,6 +168,11 @@ export function Shell(props: ShellProps): ReactElement {
         onKeyDown={trap}
         {...(open ? { 'aria-modal': true, role: 'dialog' } : {})}
       >
+        {/* The fold and the grip are the wide rail's: the narrow drawer has
+            neither, so its focus trap holds only what it draws. */}
+        {props.onRailFold === undefined || open ? null : (
+          <RailFold collapsed={collapsed} onFold={props.onRailFold} />
+        )}
         <div className="rail__brand">
           <BrandMark variant="wordmark" />
           <span className="rail__hub">Ops Astro</span>
@@ -174,28 +201,13 @@ export function Shell(props: ShellProps): ReactElement {
         )}
         <div className="rail__group" ref={mark.holder}>
           {sections.map((entry) => (
-            <a
+            <RailItem
               key={entry.id}
-              className="rail__item"
-              href={entry.href}
-              // The current section is lit on every address, a task or a
-              // booking page included: `page` where the section's own address
-              // is open, `location` where one of its pages is.
-              {...(entry.lit === true
-                ? {
-                    'data-lit': '',
-                    'aria-current':
-                      entry.exact === true ? ('page' as const) : ('location' as const),
-                  }
-                : {})}
-            >
-              {entry.icon === undefined ? null : (
-                <span className="rail__icon" data-glyph={entry.icon} aria-hidden="true">
-                  <Icon name={entry.icon} size="sm" />
-                </span>
-              )}
-              <span>{entry.label}</span>
-            </a>
+              entry={entry}
+              collapsed={collapsed}
+              // A press shuts the drawer, on the page already open too (T-R9).
+              onPress={() => onToggle?.(false)}
+            />
           ))}
           <span
             className="railmark"
@@ -210,6 +222,14 @@ export function Shell(props: ShellProps): ReactElement {
         <p className="rail__build" data-build={props.build ?? ''}>
           {props.build === null ? 'Build not stamped' : `Build ${props.build}`}
         </p>
+        {collapsed || open || props.onRailResize === undefined ? null : (
+          <RailGrip
+            width={railWidth}
+            onDragging={setRailDragging}
+            onResize={props.onRailResize}
+            onResizeEnd={props.onRailResizeEnd}
+          />
+        )}
       </nav>
       {open && onToggle !== undefined ? (
         <div
@@ -260,38 +280,7 @@ export function Shell(props: ShellProps): ReactElement {
       {/* The dock is the way in to a panel at every width. The rail rotates
           below 900; it does not disappear, and there is no topbar fallback —
           at the pinned revision that control is display:none at every width. */}
-      <div className="dock__rail" role="group" aria-label="Side panels" inert={open}>
-        {props.dock.map((tab) => (
-          <button
-            key={tab.id}
-            className="dock__tab"
-            type="button"
-            aria-expanded={tab.open}
-            aria-label={`${tab.open ? 'Close' : 'Open'} ${tab.label}${
-              (tab.count ?? 0) > 0 ? `, ${String(tab.count)} unread` : ''
-            }`}
-            onClick={() => {
-              props.onDockTab(tab.id);
-            }}
-          >
-            {/* The icon slot: the panel's glyph from the licensed set (MP-1-2),
-                never an initial or an emoji. Decoration: the button's label
-                names the panel. */}
-            <Icon name={tab.icon ?? 'apps'} />
-            {/* The callout names the tab on hover and focus. The button's
-                label already says it, so the callout is hidden from it. */}
-            <span className="dock__tablabel" aria-hidden="true">
-              {tab.label}
-            </span>
-            {(tab.count ?? 0) > 0 ? (
-              <span className="cbadge dock__count" aria-hidden="true">
-                {tab.count}
-              </span>
-            ) : null}
-          </button>
-        ))}
-        {props.panel}
-      </div>
+      {props.dock === null ? null : <Dock {...props.dock} inert={open} />}
     </div>
   );
 }

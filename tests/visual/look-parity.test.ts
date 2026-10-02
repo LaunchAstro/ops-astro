@@ -5,25 +5,35 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, it } from 'vitest';
+import { LOOK_SCREENS } from './look/index.ts';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 
 // The look probes of every screen (tests/visual/look/*.ts), held to the values
 // pinned from the mockup. look.ts serves the app from source, draws it from the
 // made-up reads and prints one line per probe, width and theme; a red line
-// names the property and both values.
-it('every screen matches the pinned mockup on its look probes', () => {
-  const out = mkdtempSync(join(tmpdir(), 'look-'));
-  try {
-    const run = spawnSync(process.execPath, ['tests/visual/look.ts', '--out', out], {
-      cwd: root,
-      encoding: 'utf8',
-      timeout: 540_000,
-    });
-    const red = run.stdout.split('\n').filter((line) => line.startsWith('red '));
-    expect(red, run.stderr).toEqual([]);
-    expect(run.status, run.stdout.slice(-2000) + run.stderr).toBe(0);
-  } finally {
-    rmSync(out, { recursive: true, force: true });
-  }
-}, 600_000);
+// names the property and both values. One run per screen, so each fits its own
+// time limit beside the rest of the suite and a slow screen names itself.
+it.each(LOOK_SCREENS.map((screen) => screen.id))(
+  'the %s screen matches the pinned mockup on its look probes',
+  (id) => {
+    const out = mkdtempSync(join(tmpdir(), `look-${id}-`));
+    try {
+      const run = spawnSync(
+        process.execPath,
+        ['tests/visual/look.ts', '--screen', id, '--out', out],
+        {
+          cwd: root,
+          encoding: 'utf8',
+          timeout: 300_000,
+        },
+      );
+      const red = run.stdout.split('\n').filter((line) => line.startsWith('red '));
+      expect(red, run.stderr).toEqual([]);
+      expect(run.status, run.stdout.slice(-2000) + run.stderr).toBe(0);
+    } finally {
+      rmSync(out, { recursive: true, force: true });
+    }
+  },
+  330_000,
+);
