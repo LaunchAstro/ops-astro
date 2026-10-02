@@ -16,7 +16,6 @@ import {
 } from './schedules-harness.ts';
 import { grantTo } from '../commands/fixture.ts';
 import { broker, call, s } from '../broker/broker-world.ts';
-import type { Broker } from '../../packages/core-custody/src/index.ts';
 
 interface Hold {
   readonly id: string;
@@ -50,11 +49,11 @@ export const revoke = async (work: Work): Promise<void> => {
 export const openAtWhole = async (label: string): Promise<Work> =>
   await holdOpenAtWhole(await liveWork(s, `resize ${label} ${randomUUID()}`, 500));
 
-/** `work`, held at 500, with its one call through `base` left open at that whole hold. */
-export const holdOpenAtWhole = async (work: Work, base: Broker = broker): Promise<Work> => {
+/** `work`, held at 500, with its one call left open at that whole hold. */
+export const holdOpenAtWhole = async (work: Work): Promise<Work> => {
   const silent = {
-    ...base,
-    custody: { ...base.custody, dispatch: async () => await new Promise<never>(() => {}) },
+    ...broker,
+    custody: { ...broker.custody, dispatch: async () => await new Promise<never>(() => {}) },
   };
   void call(work, {}, silent);
   const openCall = async () =>
@@ -72,8 +71,11 @@ export const holdOpenAtWhole = async (work: Work, base: Broker = broker): Promis
  * the whole of it. The replay provider never answers that high, so the open
  * call's row is moved as the broker's settle moves it.
  */
-export const settledAtWhole = async (label: string): Promise<Work> => {
-  const work = await openAtWhole(label);
+export const settledAtWhole = async (label: string): Promise<Work> =>
+  await settleAtWhole(await openAtWhole(label));
+
+/** `work`'s open call settled at its maximum, as `settledAtWhole` settles it. */
+export const settleAtWhole = async (work: Work): Promise<Work> => {
   await s.db.admin.execute(
     `update public.model_calls
         set state = 'settled', observed_minor = reserved_minor, actual_minor = reserved_minor,

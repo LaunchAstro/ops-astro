@@ -27,14 +27,14 @@ import {
   type Detail,
   type Work,
 } from '../runtime/schedules-harness.ts';
-import { broker, noDatabase, s, useBrokerWorld } from '../broker/broker-world.ts';
-import { catalogue, REPLAY_COMPOSE } from '../../packages/core-connectors/src/index.ts';
+import { noDatabase, s, useBrokerWorld } from '../broker/broker-world.ts';
 import {
   asksOn,
   holdOpenAtWhole,
   holdsOn,
   pickupOf,
   revoke,
+  settleAtWhole,
 } from '../runtime/resume-sizing-world.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
@@ -50,9 +50,10 @@ interface Beside {
 
 /**
  * One task with two approved lineages. A first piece of work opens the task's
- * envelope and hands back, leaving room; the spent lineage's call is then left
- * open at its whole hold and its delegation revoked, so its hold settles at
- * that spend and its run waits to be claimed again.
+ * envelope and hands back, leaving room; the spent lineage's call then settles
+ * at its whole hold and its delegation is revoked, so its hold settles at that
+ * spend and its run waits to be claimed again. (A call still open at the revoke
+ * would keep the whole hold for a person, never claimed again.)
  */
 const spentBeside = async (label: string): Promise<Beside> => {
   const taskId = await createTask(s, `stop fence ${label} ${randomUUID()}`);
@@ -70,10 +71,7 @@ const spentBeside = async (label: string): Promise<Beside> => {
   const first = await lineage();
   const second = await lineage();
   const picked = await pickup(s, first.decision['reservationId']);
-  // Each case leaves its spent call open for good, and the operation's limit
-  // of four calls in flight would refuse the fifth case's.
-  const roomy = { ...broker, operations: catalogue([{ ...REPLAY_COMPOSE, concurrency: 8 }]) };
-  const spent = await holdOpenAtWhole({ taskId, ...first, picked }, roomy);
+  const spent = await settleAtWhole(await holdOpenAtWhole({ taskId, ...first, picked }));
   await revoke(spent);
   return { spent, other: String(second.decision['reservationId']) };
 };
