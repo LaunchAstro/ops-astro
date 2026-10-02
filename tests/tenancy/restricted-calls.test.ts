@@ -548,7 +548,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     // C55: the restore drill stamps the date of the last tested restore through
     // ops.record_tested_restore() (0070), proved in tests/operations/c55-last-tested-restore.test.ts.
     expect(classes['restore drill']).toStrictEqual(['ops_astro_restore_drill']);
-    // 0100: the daily upkeep deletes second-factor codes past their horizon through
+    // 20261002105957: the daily upkeep deletes second-factor codes past their horizon through
     // ops.expire_second_factor_codes(), proved in tests/db/second-factor-codes-retention.test.ts.
     expect(classes['upkeep']).toStrictEqual(['ops_astro_upkeep']);
     expect(classes['application login']).toContain(world.db.loginRole);
@@ -718,7 +718,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
   // security. It answers one number and no id, and only the broker's role
   // may execute it (tests/broker/aw-01-broker-fair-share.test.ts). The drill
   // stamp (C55) writes only now(), and only the drill's identity runs it. The
-  // codes expiry (0100) deletes only rows past its fixed horizon, and only the
+  // codes expiry (20261002105957) deletes only rows past its fixed horizon, and only the
   // upkeep identity runs it.
   describe('the security definer functions', () => {
     const definers = (): readonly CatalogueFunction[] => functions.filter((fn) => fn.definer);
@@ -751,7 +751,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     });
 
     it('the third is the codes expiry, taking no argument', () => {
-      // 0100: no argument, so it deletes only rows past its fixed horizon; only the
+      // 20261002105957: no argument, so it deletes only rows past its fixed horizon; only the
       // upkeep identity executes it (second-factor-codes-retention).
       const expiry = definer('ops.expire_second_factor_codes()');
       expect(expiry?.trigger).toBe(false);

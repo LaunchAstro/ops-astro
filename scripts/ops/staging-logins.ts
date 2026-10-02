@@ -66,7 +66,7 @@ export const LOGINS: readonly Login[] = [
     port: 5432,
   },
   {
-    // 0100: the daily upkeep job's second-factor purge (backup.mjs expire).
+    // 20261002105957: the daily upkeep job's second-factor purge (backup.mjs expire).
     step: 'after-reset',
     setting: 'DATABASE_UPKEEP_URL',
     role: 'ops_astro_upkeep_login',

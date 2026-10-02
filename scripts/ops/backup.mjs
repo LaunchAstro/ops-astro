@@ -20,7 +20,7 @@
 //                        backup store
 //     OPS_RESTORE_HEARTBEAT_URL  the watcher's restore heartbeat, pinged only
 //                        while a restore drill passed inside the store's window
-//     DATABASE_UPKEEP_URL  a login holding ops_astro_upkeep (migration 0100) on
+//     DATABASE_UPKEEP_URL  a login holding ops_astro_upkeep (migration 20261002105957) on
 //                        staging's database, by the pooler the relay lists
 //                        (OPS_EGRESS_POOLER_HOST, OPS_EGRESS_POOLER_PORT);
 //                        unset, the second-factor purge is skipped and says so
@@ -173,7 +173,7 @@ export async function runBackup({
 }
 
 /**
- * Deletes second-factor codes past their horizon (migration 0100) and answers
+ * Deletes second-factor codes past their horizon (migration 20261002105957) and answers
  * the step's outcome: the count, `failed` (with `config` when its login would
  * leave by another pooler) or `not set`. Never throws, and keeps no error text.
  */

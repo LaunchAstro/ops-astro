@@ -1,9 +1,8 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
--- 0100 is the next free number on main (0001-0099; the no-gap suites refuse a
--- gap). A placeholder: whichever of this and batch 3b lands second moves up,
--- until migrations take timestamp IDs (KEEP-MOVING ADD1).
+-- A UTC timestamp ID (docs/local/DATA.md, "What the schema is"): written after
+-- batch 3b took 0100-0111 and migrations moved to timestamps.
 --
--- 0100 second-factor codes kept only as long as they count (security review).
+-- 20261002105957 second-factor codes kept only as long as they count (security review).
 -- 0072's rows matter only inside the wrong-code lockout window, five codes in
 -- fifteen minutes (`FAILED_CODE_WINDOW_MINUTES`,
 -- packages/core-commands/src/commands/account-factor-checks.ts), and nothing

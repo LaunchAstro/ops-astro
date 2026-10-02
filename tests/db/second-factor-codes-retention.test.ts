@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Second-factor codes are kept only as long as they count (migration 0100,
+// Second-factor codes are kept only as long as they count (migration 20261002105957,
 // security review): the daily upkeep job (`backup.mjs expire`) deletes every
 // `ops.second_factor_codes` row older than 24 hours through
 // `ops.expire_second_factor_codes()`, as `ops_astro_upkeep`, over a login that

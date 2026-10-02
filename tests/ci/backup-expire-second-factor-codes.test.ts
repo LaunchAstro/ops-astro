@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The daily upkeep job (`backup.mjs expire`) also deletes second-factor codes
-// past their horizon on the application database (migration 0100), as the
+// past their horizon on the application database (migration 20261002105957), as the
 // upkeep identity. Its count lands in the job's record; a failure there is
 // recorded and never stops the backup expiry or the restore heartbeat; unset,
 // the step is skipped and the record says so. It runs after the backup expiry
