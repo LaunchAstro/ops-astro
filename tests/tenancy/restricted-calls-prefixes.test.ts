@@ -319,6 +319,13 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     login_id: randomUUID(),
     ended_by_actor_id: randomUUID(),
   },
+  // 0100 (C59): no journey resets a factor.
+  'public.factor_resets': {
+    person_id: randomUUID(),
+    login_id: randomUUID(),
+    reset_by_actor_id: randomUUID(),
+    provider_factor_id: 'restricted-calls-seed',
+  },
   // 0057 (C58): no journey here signs out.
   'public.ended_sessions': {
     person_id: randomUUID(),
