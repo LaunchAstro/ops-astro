@@ -4,9 +4,10 @@
 // staging-deploy-record.test.ts): the pinned compose file, fake effects and
 // the operator the gate admits.
 
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { stampOutput } from '../../scripts/ops/build-output.ts';
 import { type DeployEffects, type StagingDefinition } from '../../scripts/ops/deploy.ts';
 import { afterAll } from 'vitest';
 
@@ -23,8 +24,6 @@ export const STAGED = '0123456789ab';
 /** The made-up-only preflight, answering clean: the deploy's own decisions are tested here. */
 export const clean = (): Promise<string[]> => Promise.resolve([]);
 
-export const BUILT: string = `sha256:${'a'.repeat(64)}`;
-
 export const CANARY = 'canary-3be1d0-deploy-secret';
 
 export const PG =
@@ -33,10 +32,21 @@ export const PG =
 export const scratch: string = mkdtempSync(join(tmpdir(), 's0-6d-'));
 afterAll(() => rmSync(scratch, { recursive: true, force: true }));
 
-/** A definition with one pinned database and one app service, for the hostile cases. */
+let stores = 0;
+
+/** An artefact store holding one stamped build. */
+export const store = (version: string = STAGED, stamp: string = version): string => {
+  stores += 1;
+  const root = join(scratch, `store-${stores}`);
+  const build = join(root, definition['x-ops-astro'].artefact.replace('{version}', version));
+  mkdirSync(build, { recursive: true });
+  stampOutput(build, stamp);
+  return root;
+};
+
+/** A definition with the services given, for the hostile cases. */
 export const withImages = (images: Record<string, unknown>): StagingDefinition => ({
   ...definition,
-  'x-ops-astro': { ...definition['x-ops-astro'], appServices: ['api'] },
   services: Object.fromEntries(
     Object.entries(images).map(([name, image]) => [
       name,
@@ -59,13 +69,10 @@ export const live: Readonly<Record<string, unknown>> = {
   config: 'c',
 };
 
-/** Each staging container and the image it should run: the built one for an app service. */
+/** Each staging container and the image it should run. */
 export const expected = (): Record<string, string> =>
   Object.fromEntries(
-    Object.entries(definition.services).map(([name, s]) => [
-      s.container_name,
-      (definition['x-ops-astro'].appServices ?? []).includes(name) ? BUILT : String(s.image),
-    ]),
+    Object.values(definition.services).map((s) => [s.container_name, String(s.image)]),
   );
 
 export interface Watched extends DeployEffects {
@@ -78,7 +85,6 @@ export function effects(over: Partial<DeployEffects> = {}): Watched {
   const base: DeployEffects = {
     snapshot: () => snapshot([live]),
     compare: (before, after) => ({ unchanged: before === after, report: 'compared' }),
-    buildImage: () => BUILT,
     up: () => {},
     imageId: (ref) => ref,
     runningImages: () => expected(),

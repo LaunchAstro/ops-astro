@@ -89,7 +89,7 @@ vitestIt(
     expect(receiptLinkOf(kept, 'synthetic_comment')).toBe(kept);
     // The pattern is the column's, character for character.
     const column = RECEIPT_LINK_SHAPE.source.replaceAll('\\/', '/').replaceAll("'", "''");
-    const migration = new URL('../../migrations/0214_attempt_receipt_link.sql', import.meta.url);
+    const migration = new URL('../../migrations/0109_attempt_receipt_link.sql', import.meta.url);
     expect(readFileSync(migration, 'utf8')).toContain(`receipt_link ~ '${column}')`);
   },
 );

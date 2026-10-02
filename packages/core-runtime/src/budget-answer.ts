@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// AW-05's answers at the budget stop. A run waiting for budget (0193) leaves
-// the wait only by a person's answer to its latest ask (0194):
+// AW-05's answers at the budget stop. A run waiting for budget (0087) leaves
+// the wait only by a person's answer to its latest ask (0088):
 //
 // - **The top-up** (`billing:decide`, a person). It raises the approved
 //   ceiling within the business cap, and the run goes back to `planned` for a

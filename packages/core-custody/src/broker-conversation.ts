@@ -89,7 +89,7 @@ export function localRoute(
   );
   const choice = eligibleRoutes(operation.fields, fields, local);
   const route = choice.ok
-    ? local.find((candidate) => choice.routes.some((eligible) => eligible.key === candidate.key))
+    ? local.find((candidate) => choice.routes.includes(candidate))
     : undefined;
   if (route === undefined) return { ok: false, code: 'LOCAL_MODEL_REQUIRED' };
   const carry = mayCarry(route.credentialKind, {

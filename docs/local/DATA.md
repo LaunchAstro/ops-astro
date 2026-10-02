@@ -74,9 +74,14 @@ every client backend on its own database except its own
 which names each one by pid, login, application name, client address and
 start time. It has applied nothing and written no ledger row. The CLI prints
 the same and exits 2. It counts any client session: the application login, GoTrue
-(which connects as `postgres`), a `psql` you left open, another tool. None of
+(which connects as `postgres` on the local install), a `psql` you left open, another tool. None of
 them can be told apart from an application safely, and there is no flag or
-environment variable that skips the check. With nothing pending it does not
+environment variable that skips the check. The one exception is hosted
+Supabase's own services, which never stop: sessions whose login is exactly
+`authenticator`, `pgbouncer`, `supabase_admin`, `supabase_auth_admin` or
+`supabase_storage_admin` are left out of the count, so on hosted Supabase it
+does not see Data API, Auth, Storage or Realtime traffic, and none of those roles exists on
+the local install. With nothing pending it does not
 look at all, so an up-to-date install with the application running passes.
 The runner's role must be able to read every session in `pg_stat_activity`:
 a superuser, as `DATABASE_ADMIN_URL` is on the local install, or a member of
@@ -173,15 +178,25 @@ the last one, because the next migration would make it wrong.
 `tests/tenancy/restricted-calls.test.ts` all read the list from `migrations/`,
 so a new migration edits none of them.
 
+The upgrade drill (`pnpm verify:upgrade-drill`) fails a migration that changes a
+row an installation already holds. A migration that does so on purpose, such as
+a slot reservation or a field's owners, says so in
+`migrations/<version>.changes.json`, beside the file: a list of
+`{ "table", "columns", "where" }`. The drill excuses a changed row only where
+that predicate picked it before the upgrade and the row differs in those columns
+alone, and it fails a declaration whose change never happened
+(`scripts/local/upgrade-drill-changes.mjs`). Every other reader of `migrations/`
+reads `.sql` files only.
+
 The first seven, `0001_tenancy` to `0007_command_envelope`, are the tenancy,
 identity, grant, record and command-envelope spine ported from
 `ops-astro-t1-draft@60f2009`. Two companion files describe the later ones.
 [AUTHORITY.md](AUTHORITY.md) covers the agent-authority, settings and
 delegation migrations, and [RUNTIME.md](RUNTIME.md) covers the proposal, gate,
 decision, budget, lease and attempt migrations, and the model-call ledger and
-copy register (`0191_model_calls`), and the pinned instruction files
-(`0192_bootstrap_pins`), the budget wait (`0193_budget_wait`), its answers
-(`0194_budget_answers`) and the diagnostic trace export (`0195_trace_export`, and `0196_trace_export_horizon`,
+copy register (`0085_model_calls`), and the pinned instruction files
+(`0086_bootstrap_pins`), the budget wait (`0087_budget_wait`), its answers
+(`0088_budget_answers`) and the diagnostic trace export (`0089_trace_export`, and `0090_trace_export_horizon`,
 which stamps each run event with its writing transaction's id).
 Read `ls migrations/` for the current set.
 
@@ -189,20 +204,43 @@ There is no `tasks` table. A task is a record of the built-in `task` record
 type in fixed typed slots, and the slots are the acceptance checklist's field
 table exactly:
 
-| Field           | Slot                 | Written by                                   |
-| --------------- | -------------------- | -------------------------------------------- |
-| `state`         | `uuid_1`             | `task.start`, `task.complete`, `task.reopen` |
-| `assignee`      | `uuid_2`             | `task.assign`                                |
-| `title`         | `txt_4`              | `task.update`                                |
-| `description`   | unslotted, in `data` | `task.update`                                |
-| `due`           | `ts_1`               | `task.update`                                |
-| `priority`      | `num_1`              | `task.update`                                |
-| `completed_at`  | `ts_2`               | derived on complete, cleared on reopen       |
-| `stage`         | `txt_5`              | `task.set_stage`                             |
-| `key`, `source` | `txt_1`, `txt_2`     | system                                       |
+| Field               | Slot                 | Written by                                                     |
+| ------------------- | -------------------- | -------------------------------------------------------------- |
+| `state`             | `uuid_1`             | `task.start`, `task.complete`, `task.reopen`, `task.set_state` |
+| `assignee`          | `uuid_2`             | `task.assign`                                                  |
+| `title`             | `txt_4`              | `task.update`                                                  |
+| `description`       | unslotted, in `data` | `task.update`                                                  |
+| `agent_brief`       | unslotted, in `data` | `task.update` (0076, MP-4-7)                                   |
+| `page_link`         | unslotted, in `data` | `task.update` (0079, MP-4-12)                                  |
+| `estimated_minutes` | unslotted, in `data` | `task.update` (0080, MP-4-8)                                   |
+| `category`          | unslotted, in `data` | `task.set_category` (0084, MP-4-8)                             |
+| `agent`             | unslotted, in `data` | `task.assign` (0082, Assign to AI)                             |
+| `due`               | `ts_1`               | `task.update`                                                  |
+| `priority`          | `num_1`              | `task.update`                                                  |
+| `completed_at`      | `ts_2`               | derived on complete, cleared on reopen                         |
+| `stage`             | `txt_5`              | `task.set_stage`                                               |
+| `impact`            | `num_3`              | `task.set_scores`                                              |
+| `confidence`        | `num_4`              | `task.set_scores`                                              |
+| `ease`              | `num_5`              | `task.set_scores`                                              |
+| `ad_hoc`            | `bool_2`             | `task.set_adhoc`                                               |
+| `archived_at`       | unslotted, in `data` | derived on complete, cleared on reopen                         |
+| `archived_why`      | unslotted, in `data` | derived on complete, cleared on reopen                         |
+| `key`, `source`     | `txt_1`, `txt_2`     | system                                                         |
 
 There is no `status` column and no second coarse field. Whether a task is done
 is the machine category of the state record the task points at.
+
+A task made by `task.duplicate` (MP-4-8) records where it came from as a row of
+`record_links` with `link_type` `duplicated_from`, from the new task to the old
+one. No field of the old task is copied beyond its type: the new task holds
+only the title, client and step names the person sent. `task.read` shows the
+link's target only to a reader who holds read on the old task.
+
+A task's tags are not a field. The business's vocabulary is `tags` (one name
+per business whatever its case, a unique index on the lower-cased name) and
+the tags a task carries are rows of `task_tags`, keyed by the task and the
+tag (0081, MP-4-11): written by `tag.create`, `task.add_tag` and
+`task.remove_tag`, read on `task.read` and by `tag.list`.
 
 A new task ranks after the last of its siblings: the tasks under its parent,
 or for a top-level task the tasks on its board with no parent. Trashed siblings
@@ -268,7 +306,7 @@ foreign insert into `delegations` is refused with `check_violation`
 (migration 0018), but no application role reaches it: the group holds only
 `select` and `insert` on `handback_reports`, so the privilege check refuses
 `update` and `delete` before the trigger runs. Its only live caller is the owner,
-whom it refuses. `model_route_room` (migration 0191, AW-01's fair share) is
+whom it refuses. `model_route_room` (migration 0085, AW-01's fair share) is
 the second, and the one read across businesses: a route's ceiling is the
 installation's, which a tenant transaction cannot count under row security.
 It answers one whole number, 1 when the transaction's own business may hold
@@ -283,14 +321,16 @@ not inherit it, so the broker takes it for the one statement with
 into a class of its own (`broker`). `tests/broker/aw-01-broker-fair-share.test.ts`
 proves the separation and the grants.
 
-`ops_astro_occurrence` (migration 0203, AW-01 J) follows the same pattern
+`ops_astro_occurrence` (migration 0097, AW-01 J) follows the same pattern
 without a function: it holds `insert` on `planned_runs`, `select` on a task's
-`business_id`, `id` and `revision` (for 0032's trigger) and execute on
+`business_id`, `id` and `revision` (for 0032's trigger), the columns of
+`live_changes` that 0035's trigger upserts as the inserting role (insert of the
+task's key, update of the stamp, a read of both; no delete) and execute on
 `app_business_id()`, and nothing else. The worker's occurrence path takes it
 for the one insert of an occurrence's run; the trigger
 `planned_runs_occurrence_origin` refuses an origin written by any other role
 and any later change to one. The suites sort it into a class of its own
-(`occurrence`), and the column-grant contract names its three reads.
+(`occurrence`), and the column-grant contract names each of its column grants.
 
 At every migration prefix, every tenant table holds an owner-written row per
 business before the calls, so cross-tenant reads are asked of rows that exist
@@ -437,17 +477,29 @@ has the interface and the tests.
 
 ## The reads
 
-Seven reads are declared in `COMMAND_SURFACE` with `kind: 'read'` and served by
-`packages/core-commands/src/reads/`. Three of them are this file's:
+Nine reads are declared in `COMMAND_SURFACE` with `kind: 'read'` and served by
+`packages/core-commands/src/reads/`. Four of them are this file's:
 
 - `task.read { recordId }` → the task, its state, its assignee and its history
-- `task.board { board }` → the tasks on a board; `null` is the unboarded ones,
-  which is where a task created without a board lives
+- `task.board { board }` → the tasks on a board that the caller's grants
+  reach, and, for a collection-wide reader only, `withheld`, how many others
+  there are; `null` is the unboarded
+  ones, which is where a task created without a board lives
 - `person.list {}` → the people with an active membership, which is the set
   `task.assign` will accept
+- `tag.list {}` → the business's tag vocabulary, by name (MP-4-11), for a
+  reader of the business's tasks
+- `task.todos {}` → the reader's own open tasks on any board, with their tags
+  and the client messages owed a reply (MP-7-1), for a reader of the
+  business's tasks; `{ person }` a teammate's, `{ client }`
+  every one under that client (MP-7-2), under the same key
+- `team.list {}` → the staff with an active membership and each one's
+  availability (`person_availability`, 0066, set only by that person), for the
+  Team panel; a client of the business is answered `NOT_FOUND`
 
-The other four, `task.queue`, `preset.plan`, `settings.read` and
-`session.capabilities`, are listed with their answers under "Reads" in
+The other six, `task.queue`, `task.ledger`, `preset.plan`, `settings.read`,
+`session.capabilities` and `access.read` (Settings ▸ Access, C32, under
+`access:manage`), are listed with their answers under "Reads" in
 [API.md](API.md#reads).
 
 On the person prefix a read carries no `operation_id` and no
@@ -513,3 +565,194 @@ Identity comes from `.local/synthetic-users.json`, which `auth:seed`
 (`scripts/local/auth-seed.mjs`) writes because the GoTrue subjects are its to
 mint. Until that file exists the seed writes a placeholder with random subjects
 and says on every run that those identities cannot sign in.
+
+## Second factors (0049, C59)
+
+`second_factors` records that a person has a second factor at the sign-in
+provider, which one (the provider's factor id, a bounded identifier, never a
+secret) and where it stands: `unverified` from enrolment until the first code
+completes it, `verified`, then `removed` when it is replaced or taken away.
+One live factor per person (`second_factors_one_live`). The application may
+select, insert and update; nothing deletes a row, so a person's factor history
+stays readable. The authenticator secret and the codes a person types are
+never written here. Whether a person has a verified factor is mirrored onto
+`people.second_factor_verified` by the same writers in the same transaction
+(`identity/second-factor.ts`), so login resolution reads it inside the one
+query it already makes and refuses a sign-in without the second factor. It
+reads the column through the row's json, so on a database from before 0049,
+which has no such column, the answer is no factor. The same writers record
+the verification and the removal by subject for every business (0064, below).
+
+## Privacy incidents (0050, C55)
+
+`privacy_incidents` holds the breach runbook's day-0 record: what happened,
+when it was found (`found_at`, day 0), who found it, which clients and people
+(`affected`), and the kinds of information from a closed list of seven. The
+assessment limit is derived from `found_at` where the row is read, so no stored
+date can drift from it. Status is `open` or `closed`. The application may
+select, insert and update; nothing deletes a row. The table is tenancy-keyed
+with the restrictive policy like every business table, and it is not a
+`records` row, so no share, search or export reaches it. The audit chain and
+the operation register hold a digest and the new row's id, never the words.
+
+## Security alert log (0069, C55)
+
+`ops.security_alert_log` holds each alert S0-2's forwarder raised, by its kind
+and the database's time alone: no sink id, scope, business, client, person,
+secret or record content. The forwarder writes it in the statement that keeps
+the alert in `ops.api_alerts` (0048), so a pass that fails writes neither and
+an alert kept already is not written twice; the send that deletes the
+`ops.api_alerts` row leaves the log alone. The forwarder may insert the kind
+column only. The application group may select `kind` and `at` only, and
+changes nothing; it still holds nothing on `ops.api_alerts`. The table belongs
+to no business, so the operations view reads it only for the business that
+operates the installation (`ops.installation.operator_business_id`), newest
+first, at most 50 (`operations/security-alerts.ts`).
+
+## The last tested restore (0070, C55)
+
+`ops.last_tested_restore` holds one row, the date of the last successful
+tested restore, and nothing else: no business, person, archive, path or key.
+It is installation state, like `ops.operating_business` (0045). The restore
+drill writes it on a pass the backup store took, and only then
+(`scripts/ops/drill-acts.mjs`), as `ops_astro_restore_drill`: a role no one
+logs in as, which runs `ops.record_tested_restore()` and holds nothing else.
+That function is a security definer with its search path pinned, takes no
+argument and stamps the database's own time, never moving it back, so the
+drill cannot name a date. The drill takes the role by name on the owner's
+connection (`scripts/ops/tested-restore.ts`), as the business lookup takes
+0046's. The application may select the row and nothing more; PUBLIC holds
+nothing on the table or the function. `operations.read` serves it as
+`lastTestedRestore` ([API.md](API.md)).
+
+## Legal documents (0051, C81)
+
+`legal_document_versions` holds every version of a business's legal documents:
+the document, its `major.minor` label (one per document), the words, and
+`body_digest`, the SHA-256 of the words, set by the database on insert. The
+approval (`approved_at`, by whom, and the digest approved, which must equal
+`body_digest`) and the publication are each set once. A guard refuses any
+change to the drafted columns, and any change or clearing of an approval or a
+publication once set, so a published version's bytes never change in place.
+The application may select, insert and update; nothing deletes a row. The
+table is tenancy-keyed with the restrictive policy. The audit chain and the
+operation register hold a digest and the version's id, never the words.
+
+## Clients (0055, C32)
+
+`clients` holds one row per client of the business: its `name` (1 to 200
+characters, trimmed, one per business in any letter case, `clients_one_name`)
+and who made it and when. It is the party a party-scoped grant names in
+`grants.scope_id` and a task names in its `client` link (`records.uuid_7`).
+Neither carries a foreign key to it, so `access.grant` and `task.set_party`
+check a client is of this business before writing its id. The application may
+select and insert; nothing updates or deletes a row. Tenancy-keyed with the
+restrictive policy.
+
+## Access endings (0056, C58)
+
+`access_endings` holds one row per login of a person whose access was ended
+(`access.end`): who ended it and when, and the two provider steps it owed,
+each stamped once when done (`sessions_ended_at`, `login_deactivated_at`).
+`attempts`, `attempt_started_at` (a retry's 30-second claim) and `last_fault`
+(the kind of the last failure, one of five words, never the provider's text)
+record the retries. The application may select, insert and update; nothing
+deletes a row. Tenancy-keyed with the restrictive policy. The partial index
+`access_endings_owed` is what the server's retry looks for. `provider_steps_skipped` (0062) is `shared` where both steps were stamped done without a call because the subject was still live in another business.
+
+## Ended sessions (0057, C58)
+
+`authentication_attempts.session_id` is the provider session a resolved
+attempt came in on (null on a refusal, and for a token that names none); a
+person's session list reads it through `authentication_attempts_person_sessions`.
+`ended_sessions` holds one row per session a person ended: signed out
+(`sign_out`), ended from another session (`end_others`) or by a second-factor
+change (`factor_change`). Unique on business, person and session. The
+application may select and insert; nothing changes or deletes a row.
+Tenancy-keyed with the restrictive policy.
+
+## Ended provider sessions (0061, C58)
+
+`ops.ended_provider_sessions` holds the id of every provider session ended
+anywhere: each `ended_sessions` row, and the browser's sign-out at
+`/api/session/end`, which names no business. Installation-wide, no business,
+person or reason: the id alone. Login resolution refuses a token whose session
+is here in every business, and a person's session list leaves it out. The
+application may insert and read the id column; nothing changes or deletes a
+row.
+
+## Other sessions ended by subject (0063, C58)
+
+`ops.ended_subject_sessions` holds one row per "end my other sessions" or
+factor change: a SHA-256 digest of the login's subject, the session kept
+(null keeps none) and when. Installation-wide, no business, person or
+reason. Login resolution refuses a token of that subject whose session is not
+the kept one and whose first sign-in is at or before the ending. The
+application may insert the digest and the kept session and read the three
+columns; nothing changes or deletes a row.
+
+## Second factors by subject (0064, C59)
+
+`ops.second_factor_subjects` holds one row per second factor verified or
+removed through any business: a SHA-256 digest of the login's subject, one of
+the provider's factor id, and `verified` or `removed`. Installation-wide, no
+business, person or reason. Login resolution refuses a sign-in below `aal2`
+in every business the login reaches while one of its factors is verified and
+not removed; a removed factor is never verified again, so the rows need no
+order. Before 0064 the person's mirror alone answers. The application may
+insert and read the three columns; nothing changes or deletes a row.
+
+## Second-factor codes by subject (0072, C59)
+
+`ops.second_factor_codes` holds one row when a second-factor code is sent to
+the provider through any business, and one when it is answered other than
+wrong: a SHA-256 digest of the login's subject, the attempt's random id (the
+act's audit event carries it as its `operation_id`), `sent` or `answered`, and
+when. Installation-wide, no business, person or reason. The factor routes
+refuse `SECOND_FACTOR_LOCKED` while five codes sent in the last fifteen
+minutes have no `answered` row, counted under a transaction-scoped lock on the
+subject's digest. The application may insert the digest, the attempt and the
+state and read the four columns; nothing changes or deletes a row.
+
+## Overseas-services register (0052, C81)
+
+`overseas_services` holds one row per outside service that receives personal
+information (SP-25): the service, what it receives, where it is stored
+(`stored_where`), whether it trains on it, the contract, `to_confirm` and
+`in_use`, with who changed it last and when. One row per service in any letter
+case (`overseas_services_one_service`). The application may select, insert and
+update; nothing deletes a row. Tenancy-keyed with the restrictive policy.
+
+0052 also gives `legal_document_versions` two columns, `register` (the rows in
+use as a JSON array) and `register_digest` (SHA-256 over those rows and their
+`to_confirm` marks, in order). A privacy-policy version has both, and no other
+document has either (`legal_document_versions_register_policy_only`). The
+written-once guard now covers them with the rest of the draft.
+
+## Data-class register (0053, C81)
+
+`data_classes` holds one row per class of personal information: the class
+(`data_class`), its purpose, its normal disclosures, its retention and its
+deletion, each required by a check, with `in_use` and who changed it last and
+when. One row per class in any letter case (`data_classes_one_class`). The
+application may select, insert and update; nothing deletes a row.
+Tenancy-keyed with the restrictive policy.
+
+0053 also gives `legal_document_versions` `data_classes` (the classes in use
+as a JSON array) and `data_classes_digest` (SHA-256 over their words, in
+order). A privacy-policy version has both, and no other document has either
+(`legal_document_versions_data_classes_policy_only`). The written-once guard
+covers them with the rest of the draft.
+
+## Agent credentials (0054, API-2)
+
+`agent_credentials` holds one row per agent credential: the fresh agent actor
+it is for (`agent_actor_id`, one credential per agent actor), the person and
+actor who issued it, its purpose, its scope as `collection:action` keys (1 to
+32, never decide, share or manage, by `agent_credentials_scope_shape`), the
+SHA-256 of its secret (`credential_hash`), the scheme (`hmac-sha256-v1`) and
+the key id, when it was issued and when it expires (after issue), and the
+revocation (`revoked_at` with `revoked_by_actor_id`, both or neither). The
+secret itself is stored nowhere. A guard keeps every issued column as written
+and lets the revocation be set once. The application may select, insert and
+update; nothing deletes a row. Tenancy-keyed with the restrictive policy.

@@ -72,6 +72,13 @@
 // server's `VERSION_STALE` and the task is read again, and the quote is held
 // here because that reread unmounts the page below the read.
 //
+// **The page shows one side of the task at a time** (MP-4-3,
+// `task/Perspectives.tsx`): Team holds the person's work (the lifecycle, the
+// assignee, the details, subtasks, time, comments and history) and Agent the
+// proposals and their gates. Both panes stay mounted, so a draft typed on one
+// survives a switch, and the side showing is held above the read like the
+// refusals below, so a write's reread does not jump back to Team.
+//
 // **A reader outside the business gets the shared view, not this page with
 // holes in it.** Its `task.read` answers `sharedTask` instead of `task`, and
 // that key alone picks `SharedTaskDetail`: the screen never guesses from a
@@ -86,11 +93,31 @@ import type {
   PersonListResult,
   QueueResult,
   TaskReadResult,
+  TaskStateView,
 } from '../../../../packages/core-wire/src/index.ts';
-import { useRead } from '../data/use-read.ts';
+import { useRead, type UseReadResult } from '../data/use-read.ts';
 import { AgentSection } from '../views/agent-pane.tsx';
+import type { ReadState } from '../data/authorised-read.ts';
+import { hubOf } from '../data/live.ts';
+import { usePresence } from '../data/presence.ts';
+import { TaskPresence, useShowOnPage } from '../views/presence.tsx';
+import { useFreshOnPage } from '../views/freshness.tsx';
 import { Proposals, type DecisionNote } from '../views/proposals.tsx';
-import { ConflictNotice, MovedNotice, TaskHeader, UnsavedBar } from './task/Notices.tsx';
+import { ConflictNotice, MovedNotice, UnsavedBar, changedSince } from './task/Notices.tsx';
+import { TaskHeader } from './task/Header.tsx';
+import { TaskFacts } from './task/Facts.tsx';
+import { TaskUnknown } from './task/Absent.tsx';
+import { statesOf, withPageDefaults } from './task/read-defaults.ts';
+import { AssignToAI } from './task/AssignToAI.tsx';
+import {
+  PanelDoorButton,
+  perspectiveCounts,
+  Perspectives,
+  stepMarks,
+  type PanelOpener,
+  type Perspective,
+} from './task/Perspectives.tsx';
+import { TeamSubtasks } from './task/Subtasks.tsx';
 
 import type { ProposeDraft, TopUpNote } from '../views/propose-form.tsx';
 import { RunProgress } from '../views/run-progress.tsx';
@@ -100,15 +127,22 @@ import { useCommand } from '../records/use-command.ts';
 import { SharedTaskDetail } from './SharedTaskDetail.tsx';
 import { Alerts } from './task/Alerts.tsx';
 import { Comments, type CommentDraft } from './task/Comments.tsx';
+import type { RowEdit } from './task/Thread.tsx';
 import { DetailsForm } from './task/DetailsForm.tsx';
+import { BriefSection, DescriptionSection } from './task/Writing.tsx';
 import { History } from './task/History.tsx';
 import { Outages } from './task/Outages.tsx';
 import { Assignee, Lifecycle, type LifecycleCommand } from './task/Lifecycle.tsx';
+import { PageStatus } from './task/StatusField.tsx';
 
 export interface TaskDetailProps {
   readonly client: OperationsClient;
   readonly grantKey: string;
   readonly taskKey: string;
+  /** The dock task panel's opener, where edits happen (MP-4-8). Absent, a door cannot be pressed. */
+  readonly onOpenPanel?: PanelOpener;
+  /** The host's count of changes made in the panel: a new count reads the task again (MP-4-8). */
+  readonly changes?: number;
 }
 
 /** Where an unsaved edit began: the revision, and the values as they stood. */
@@ -116,6 +150,8 @@ interface DraftBase {
   readonly revision: number;
   readonly title: string;
   readonly due: string;
+  /** The task as the edit began: what changed since is told against it. */
+  readonly task: Task;
 }
 
 /** An unsaved title and due date, and everything needed to settle it safely. */
@@ -141,17 +177,23 @@ interface SaveAttempt {
 
 export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   const client = props.client;
+  const hub = hubOf(client);
   const [draft, setDraft] = useState<Draft | null>(null);
   const { state, reload } = useRead<TaskReadResult>({
     grantKey: props.grantKey,
     run: () => client.read<TaskReadResult>('task.read', { recordId: props.taskKey }),
-    deps: [props.taskKey],
-    live: (signal) => client.openLive(props.taskKey, signal),
-    paused: draft !== null,
+    deps: [props.taskKey, props.changes ?? 0],
+    live: {
+      hub,
+      topic: (read) => ('task' in read ? `task:${read.task.id}` : undefined),
+    },
   });
+  useFreshOnPage(state, hub);
 
-  // **The draft lives above the read.** `RecordState` unmounts `Loaded` while a
-  // read is in flight, and the draft has to outlive that to be settled at all.
+  // **The draft lives above the read.** A re-read under a draft keeps `Loaded`
+  // mounted (C4 live-sync 4: the rest of the page stays live and the edit is
+  // never read over), and any other re-read unmounts it, so the draft has to
+  // outlive that to be settled at all.
   // It is still dropped exactly where it always was: a different task, a
   // different grant, or a read the server denied. A draft that outlived its
   // authority would be stale authorised data left on the screen, which is the
@@ -176,88 +218,110 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   const [proposeRefusal, setProposeRefusal] = useHeld<string>(identity, denied);
   const [moved, setMoved] = useHeld<string>(identity, denied);
   const [commentDraft, setCommentDraft] = useHeld<CommentDraft>(identity, denied);
+  const [commentEdit, setCommentEdit] = useHeld<RowEdit>(identity, denied);
   const [proposeDraft, setProposeDraft] = useHeld<ProposeDraft>(identity, denied);
   const [topUpNote, setTopUpNote] = useHeld<TopUpNote>(identity, denied);
+  const [perspective, setPerspective] = useHeld<Perspective>(identity, denied);
+  const [showAllTime, setShowAllTime] = useHeld<boolean>(identity, denied);
+  const [showFinished, setShowFinished] = useHeld<boolean>(identity, denied);
 
   return (
     <div className="stack">
-      <RefreshRow held={held !== null} onRefresh={reload} />
-      <RecordState state={state} subject="task" onRetry={reload}>
-        {(value) =>
-          'sharedTask' in value ? (
-            <SharedTaskDetail task={value.sharedTask} />
-          ) : (
-            <Loaded
-              client={client}
-              grantKey={props.grantKey}
-              task={value.task}
-              draft={held}
-              note={note}
-              onDecided={setNote}
-              commentRefusal={commentRefusal}
-              onCommentRefused={setCommentRefusal}
-              proposeRefusal={proposeRefusal}
-              onProposeRefused={setProposeRefusal}
-              moved={moved}
-              onMoved={setMoved}
-              commentDraft={commentDraft}
-              onCommentDraft={setCommentDraft}
-              proposeDraft={proposeDraft}
-              onProposeDraft={setProposeDraft}
-              topUpNote={topUpNote}
-              onTopUpNote={setTopUpNote}
-              onAttempt={(attempt) => {
-                setDraft((current) =>
-                  current !== null && current.identity === identity
-                    ? { ...current, attempt }
-                    : current,
-                );
-              }}
-              onDraft={(next, base) => {
-                if (next === null) {
+      <RefreshRow held={held !== null} outcome={state.outcome} onRefresh={reload} />
+      {/*
+        An id nothing is filed under is said as that, quoting the id as typed
+        (MP-4-1). Every other refusal is the denied state, quoting its code.
+      */}
+      {state.outcome === 'denied' && state.refusal.code === 'NOT_FOUND' ? (
+        <TaskUnknown typed={props.taskKey} refusal={state.refusal} />
+      ) : (
+        <RecordState state={state} subject="task" onRetry={reload} keep={held !== null}>
+          {(value) =>
+            'sharedTask' in value ? (
+              <SharedTaskDetail task={value.sharedTask} />
+            ) : (
+              <Loaded
+                client={client}
+                grantKey={props.grantKey}
+                task={withPageDefaults(value.task)}
+                states={statesOf(value)}
+                draft={held}
+                note={note}
+                onDecided={setNote}
+                commentRefusal={commentRefusal}
+                onCommentRefused={setCommentRefusal}
+                proposeRefusal={proposeRefusal}
+                onProposeRefused={setProposeRefusal}
+                moved={moved}
+                onMoved={setMoved}
+                commentDraft={commentDraft}
+                onCommentDraft={setCommentDraft}
+                commentEdit={commentEdit}
+                onCommentEdit={setCommentEdit}
+                proposeDraft={proposeDraft}
+                onProposeDraft={setProposeDraft}
+                topUpNote={topUpNote}
+                onTopUpNote={setTopUpNote}
+                perspective={perspective ?? 'team'}
+                onPerspective={setPerspective}
+                showAllTime={showAllTime ?? false}
+                onShowAllTime={setShowAllTime}
+                showFinished={showFinished}
+                onShowFinished={setShowFinished}
+                onOpenPanel={props.onOpenPanel}
+                onAttempt={(attempt) => {
+                  setDraft((current) =>
+                    current !== null && current.identity === identity
+                      ? { ...current, attempt }
+                      : current,
+                  );
+                }}
+                onDraft={(next, base) => {
+                  if (next === null) {
+                    setDraft(null);
+                    return;
+                  }
+                  setDraft((current) =>
+                    current !== null && current.identity === identity
+                      ? {
+                          ...current,
+                          title: next.title,
+                          due: next.due,
+                          generation: current.generation + 1,
+                        }
+                      : {
+                          identity,
+                          generation: 1,
+                          base,
+                          title: next.title,
+                          due: next.due,
+                          attempt: null,
+                        },
+                  );
+                }}
+                onSaved={(generation) => {
+                  // Only the generation that was submitted. A save that settles
+                  // after further typing has answered a question nobody is asking
+                  // any more, and clearing the newer draft here would make the
+                  // person's newer text disappear.
+                  setDraft((current) =>
+                    current !== null &&
+                    current.identity === identity &&
+                    current.generation === generation
+                      ? null
+                      : current,
+                  );
+                }}
+                onDiscard={() => {
                   setDraft(null);
-                  return;
-                }
-                setDraft((current) =>
-                  current !== null && current.identity === identity
-                    ? {
-                        ...current,
-                        title: next.title,
-                        due: next.due,
-                        generation: current.generation + 1,
-                      }
-                    : {
-                        identity,
-                        generation: 1,
-                        base,
-                        title: next.title,
-                        due: next.due,
-                        attempt: null,
-                      },
-                );
-              }}
-              onSaved={(generation) => {
-                // Only the generation that was submitted. A save that settles
-                // after further typing has answered a question nobody is asking
-                // any more, and clearing the newer draft here would make the
-                // person's newer text disappear.
-                setDraft((current) =>
-                  current !== null &&
-                  current.identity === identity &&
-                  current.generation === generation
-                    ? null
-                    : current,
-                );
-              }}
-              onDiscard={() => {
-                setDraft(null);
-                reload();
-              }}
-              onChanged={reload}
-            />
-          )
-        }
-      </RecordState>
+                  reload();
+                }}
+                onChanged={reload}
+              />
+            )
+          }
+        </RecordState>
+      )}
     </div>
   );
 }
@@ -272,8 +336,13 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
 /** The task page's Refresh, and why it waits while an edit is unsaved. */
 function RefreshRow(props: {
   readonly held: boolean;
+  /** The read's outcome: a failed read draws its own Try again. */
+  readonly outcome: ReadState<TaskReadResult>['outcome'];
   readonly onRefresh: () => void;
-}): ReactElement {
+}): ReactElement | null {
+  // The failed read draws its own Try again; a second button above it is the
+  // stray one the mockup never draws (UI-TRACK B4).
+  if (props.outcome === 'unavailable') return null;
   return (
     <>
       {/*
@@ -290,9 +359,9 @@ function RefreshRow(props: {
       does not reconcile them — the person does, with the Save or Discard
       choice the form is showing them.
     */}
-      <div className="btnrow">
+      <div className="btnrow tpr__refresh">
         <button
-          className="btn"
+          className="btn btn--sm btn--secondary"
           type="button"
           data-refresh="task"
           disabled={props.held}
@@ -473,6 +542,8 @@ interface LoadedProps {
   readonly client: OperationsClient;
   readonly grantKey: string;
   readonly task: Task;
+  /** The business's task states `task.read` sent, the Status select's choices. */
+  readonly states: readonly TaskStateView[];
   /** The unsaved edit, or nothing. Its presence is what "dirty" means. */
   readonly draft: Draft | null;
   /** What the server said about the last decision, or nothing. */
@@ -490,11 +561,24 @@ interface LoadedProps {
   /** The unsent comment and proposal, held so a reread keeps what was typed. */
   readonly commentDraft: CommentDraft | null;
   readonly onCommentDraft: (next: CommentDraft | null) => void;
+  /** The edit open on one of the reader's comments, held so a stale reread keeps it. */
+  readonly commentEdit: RowEdit | null;
+  readonly onCommentEdit: (next: RowEdit | null) => void;
   readonly proposeDraft: ProposeDraft | null;
   readonly onProposeDraft: (next: ProposeDraft | null) => void;
   /** The last top-up's answer, held so a reread keeps it (T2e). */
   readonly topUpNote: TopUpNote | null;
   readonly onTopUpNote: (note: TopUpNote | null) => void;
+  /** Which side of the task this reading shows, held above the read (MP-4-3). */
+  readonly perspective: Perspective;
+  readonly onPerspective: (next: Perspective) => void;
+  /** Whether the finished subtasks are unfolded, held above the read (MP-4-4). */
+  readonly showFinished: boolean | null;
+  readonly onShowFinished: (next: boolean | null) => void;
+  /** Whether every time entry shows, not only the latest three, held above the read (MP-4-6). */
+  readonly showAllTime: boolean;
+  readonly onShowAllTime: (next: boolean) => void;
+  readonly onOpenPanel: PanelOpener | undefined;
   /** Record, or forget, the draft save whose outcome is unknown. */
   readonly onAttempt: (attempt: SaveAttempt | null) => void;
   readonly onDraft: (next: { title: string; due: string } | null, base: DraftBase) => void;
@@ -503,11 +587,38 @@ interface LoadedProps {
   readonly onChanged: () => void;
 }
 
+/** The names this reader may list, by person. */
+function namesOf(people: { readonly state: ReadState<PersonListResult> }): Map<string, string> {
+  const { state } = people;
+  const persons = state.outcome === 'ready' ? state.value.persons : [];
+  return new Map(persons.map((person) => [person.personId, person.name]));
+}
+
+/** Every keystroke lands in both places: the form, and the draft above it. */
+function editorOf(
+  onDraft: LoadedProps['onDraft'],
+  base: DraftBase,
+  now: { readonly title: string; readonly due: string },
+): (next: { title?: string; due?: string }) => void {
+  return (next) => {
+    const nextTitle = next.title ?? now.title;
+    const nextDue = next.due ?? now.due;
+    // Typed back to where it started is not an unsaved edit. Holding a draft
+    // there would lock the other controls for no reason a person could see.
+    onDraft(
+      nextTitle === base.title && nextDue === base.due ? null : { title: nextTitle, due: nextDue },
+      base,
+    );
+  };
+}
+
 function Loaded(props: LoadedProps): ReactElement {
   const { client, task } = props;
   const saved = { title: task.title ?? '', due: task.due === null ? '' : task.due.slice(0, 10) };
-  const [title, setTitle] = useState(props.draft?.title ?? saved.title);
-  const [due, setDue] = useState(props.draft?.due ?? saved.due);
+  // The form shows the draft, else the task as last read: with no draft, a
+  // live re-read that keeps this mounted still shows the newest value.
+  const title = props.draft?.title ?? saved.title;
+  const due = props.draft?.due ?? saved.due;
   // T3e2: the outage reports are the team's, read once from the queue.
   const outages = useRead<QueueResult>({
     grantKey: props.grantKey,
@@ -522,28 +633,18 @@ function Loaded(props: LoadedProps): ReactElement {
     revision: task.revision,
     title: saved.title,
     due: saved.due,
+    task,
   };
   const dirty = props.draft !== null;
 
-  /** Every keystroke lands in both places: this form, and the draft above it. */
-  const edit = (next: { title?: string; due?: string }): void => {
-    const nextTitle = next.title ?? title;
-    const nextDue = next.due ?? due;
-    setTitle(nextTitle);
-    setDue(nextDue);
-    // Typed back to where it started is not an unsaved edit. Holding a draft
-    // there would lock the other controls for no reason a person could see.
-    props.onDraft(
-      nextTitle === base.title && nextDue === base.due ? null : { title: nextTitle, due: nextDue },
-      base,
-    );
-  };
+  // C2: who else is here, for this task and for the app strip.
+  const presence = usePresence(client, `task:${task.id}`);
+  useShowOnPage(presence.seen);
 
-  const { busy, because, conflict, fields, lifecycle, onAssign, onFields } = useTaskWrites(props, {
-    title,
-    due,
-    base,
-  });
+  const edit = editorOf(props.onDraft, base, { title, due });
+
+  const writes = useTaskWrites(props, { title, due, base });
+  const { busy, because, conflict } = writes;
 
   const people = useRead<PersonListResult>({
     grantKey: props.grantKey,
@@ -552,97 +653,277 @@ function Loaded(props: LoadedProps): ReactElement {
     deps: [],
   });
 
+  // The subtasks the read carries (MP-4-4); no staged output until the
+  // agent's output lands, when it follows the same rule.
+  const counts = perspectiveCounts({
+    steps: stepMarks(task.steps),
+    proposals: task.proposals ?? [],
+    stagedOutput: false,
+  });
+
   return (
     <div className="stack" data-task={task.id} data-revision={task.revision}>
       <TaskHeader task={task} />
+      <TaskFacts task={task} />
+      <TaskPresence seen={presence.seen} />
 
-      {because === null ? null : (
-        <p className="field__error" role="alert" data-voice="input-wrong">
-          {because}
-        </p>
-      )}
-
-      <MovedNotice because={props.moved} />
-
-      <ConflictNotice
+      <EditNotices
+        because={because}
+        moved={props.moved}
         conflict={conflict}
         base={base.revision}
         title={title}
         due={due}
+        dirty={dirty}
+        busy={busy}
+        changed={
+          props.draft === null ? null : changedSince(props.draft.base.task, task, namesOf(people))
+        }
         onDiscard={props.onDiscard}
       />
 
-      <UnsavedBar dirty={dirty} busy={busy} onDiscard={props.onDiscard} />
+      <PanelDoorButton door="open" onOpenPanel={props.onOpenPanel} />
 
+      <Perspectives
+        counts={counts}
+        selected={props.perspective}
+        onSelect={props.onPerspective}
+        team={
+          <TeamSide
+            props={props}
+            people={people}
+            writes={writes}
+            form={{ title, due, dirty, onEdit: edit, onField: presence.mark }}
+          />
+        }
+        agent={
+          <AgentSide
+            props={props}
+            persons={people.state.outcome === 'ready' ? people.state.value.persons : []}
+            outages={<Outages state={outages.state} taskId={task.id} />}
+          />
+        }
+      />
+    </div>
+  );
+}
+
+/** What the Team side draws from: the page's props, the people, the writes and the form. */
+interface TeamSideProps {
+  readonly props: LoadedProps;
+  readonly people: UseReadResult<PersonListResult>;
+  readonly writes: TaskWrites;
+  readonly form: {
+    readonly title: string;
+    readonly due: string;
+    readonly dirty: boolean;
+    readonly onEdit: (next: { title?: string; due?: string }) => void;
+    readonly onField: (field: 'title' | 'due' | null) => void;
+  };
+}
+
+/**
+ * The Team side of the task (MP-4-3): the description, its controls, the
+ * subtasks and time, the conversation and the history.
+ */
+function TeamSide(side: TeamSideProps): ReactElement {
+  const { task } = side.props;
+  return (
+    <>
+      <DescriptionSection description={task.description} />
+
+      <TeamControls {...side} />
+
+      <TeamSubtasks {...side.props} />
+
+      <TeamComments {...side.props} />
+
+      <History history={task.history} />
+    </>
+  );
+}
+
+/** The lifecycle, status, assignee, AI hand-off and details form, held while busy or dirty. */
+function TeamControls({ props, people, writes, form }: TeamSideProps): ReactElement {
+  const { client, task } = props;
+  const locked = writes.busy || form.dirty;
+  return (
+    <>
       <Lifecycle
-        disabled={busy || dirty}
+        disabled={locked}
         completed={task.completedAt !== null}
-        onLifecycle={lifecycle}
+        onLifecycle={writes.lifecycle}
+      />
+
+      <PageStatus
+        client={client}
+        task={task}
+        states={props.states}
+        onChanged={props.onChanged}
+        disabled={locked}
       />
 
       <Assignee
         people={people.state}
         onRetry={people.reload}
         assignee={task.assignee}
-        disabled={busy || dirty}
-        onAssign={onAssign}
+        disabled={locked}
+        onAssign={writes.onAssign}
+      />
+
+      <AssignToAI
+        client={client}
+        task={task}
+        scope="page"
+        disabled={locked}
+        onChanged={props.onChanged}
       />
 
       <DetailsForm
-        formRef={fields}
-        busy={busy}
-        title={title}
-        due={due}
-        onEdit={edit}
-        onSubmit={onFields}
+        formRef={writes.fields}
+        busy={writes.busy}
+        title={form.title}
+        due={form.due}
+        onEdit={form.onEdit}
+        onField={form.onField}
+        onSubmit={writes.onFields}
+      />
+    </>
+  );
+}
+
+/** The team side's conversation, with its draft, open edit and refusal held above the read. */
+function TeamComments(props: LoadedProps): ReactElement {
+  const { client, task } = props;
+  return (
+    <Comments
+      client={client}
+      comments={task.comments}
+      recordId={task.id}
+      revision={task.revision}
+      refusal={props.commentRefusal}
+      onRefused={props.onCommentRefused}
+      onPosted={props.onChanged}
+      onOpenPanel={props.onOpenPanel}
+      draft={props.commentDraft}
+      onDraft={props.onCommentDraft}
+      editing={props.commentEdit}
+      onEditing={props.onCommentEdit}
+    />
+  );
+}
+
+/** Above both sides: the write's refusal, a stale press, a conflict and the unsaved edit. */
+function EditNotices(props: {
+  readonly because: string | null;
+  readonly moved: string | null;
+  readonly conflict: Parameters<typeof ConflictNotice>[0]['conflict'];
+  readonly base: number;
+  readonly title: string;
+  readonly due: string;
+  readonly dirty: boolean;
+  readonly busy: boolean;
+  readonly changed: Parameters<typeof UnsavedBar>[0]['changed'];
+  readonly onDiscard: () => void;
+}): ReactElement {
+  return (
+    <>
+      {props.because === null ? null : (
+        <p className="field__error" role="alert" data-voice="input-wrong">
+          {props.because}
+        </p>
+      )}
+
+      <MovedNotice because={props.moved} />
+
+      <ConflictNotice
+        conflict={props.conflict}
+        base={props.base}
+        title={props.title}
+        due={props.due}
+        onDiscard={props.onDiscard}
       />
 
-      <Comments
-        client={client}
-        comments={task.comments}
-        recordId={task.id}
-        revision={task.revision}
-        refusal={props.commentRefusal}
-        onRefused={props.onCommentRefused}
-        onPosted={props.onChanged}
-        draft={props.commentDraft}
-        onDraft={props.onCommentDraft}
+      <UnsavedBar
+        dirty={props.dirty}
+        changed={props.changed}
+        busy={props.busy}
+        onDiscard={props.onDiscard}
       />
+    </>
+  );
+}
 
-      <AgentSection
-        client={client}
-        recordId={task.id}
-        proposals={task.proposals}
-        people={people.state.outcome === 'ready' ? people.state.value.persons : []}
-        ledger={task.ledger}
-        onChanged={props.onChanged}
-      />
+/** The agent section (MP-6-1): the run's pane, full width above the Agent side's columns. */
+function AgentHead({
+  props,
+  persons,
+}: {
+  readonly props: LoadedProps;
+  readonly persons: PersonListResult['persons'];
+}): ReactElement {
+  const { client, task } = props;
+  return (
+    <AgentSection
+      client={client}
+      recordId={task.id}
+      proposals={task.proposals}
+      people={persons}
+      ledger={task.ledger}
+      onChanged={props.onChanged}
+    />
+  );
+}
 
-      <Proposals
-        capCurrency={task.capCurrency}
-        client={client}
-        note={props.note}
-        onChanged={props.onChanged}
-        onDecided={props.onDecided}
-        onProposeRefused={props.onProposeRefused}
-        proposeRefusal={props.proposeRefusal}
-        proposeDraft={props.proposeDraft}
-        onProposeDraft={props.onProposeDraft}
-        persons={people.state.outcome === 'ready' ? people.state.value.persons : []}
-        proposals={task.proposals}
-        envelope={task.envelope ?? null}
-        topUpNote={props.topUpNote}
-        onTopUpNote={props.onTopUpNote}
-        recordId={task.id}
-        revision={task.revision}
-      />
-
-      <RunProgress client={client} grantKey={props.grantKey} readOf={task} taskKey={task.key} />
-      <Alerts alerts={task.alerts} />
-
-      <Outages state={outages.state} taskId={task.id} />
-
-      <History history={task.history} />
+/**
+ * The Agent side of the task (MP-4-3): the brief (MP-4-7), the proposals and
+ * their gates with the top-up (T2e), and the run as it goes (T2a progress,
+ * T2h alerts, T3e2 outages). DS-TASK-15 lays it out: the brief, the run and
+ * its gate in the main column, the standing facts about the task's run (its
+ * alerts, the team's outages) beside. The agent section (MP-6-1) sits above
+ * them, full width, as batch 3a drew it.
+ */
+function AgentSide({
+  props,
+  persons,
+  outages,
+}: {
+  readonly props: LoadedProps;
+  readonly persons: PersonListResult['persons'];
+  readonly outages: ReactElement;
+}): ReactElement {
+  const { client, task } = props;
+  return (
+    <div className="stack">
+      <AgentHead props={props} persons={persons} />
+      <div className="tpg">
+        <div className="tpg__main">
+          <BriefSection brief={task.agentBrief} />
+          <RunProgress client={client} grantKey={props.grantKey} readOf={task} taskKey={task.key} />
+          <Proposals
+            capCurrency={task.capCurrency}
+            client={client}
+            note={props.note}
+            onChanged={props.onChanged}
+            onDecided={props.onDecided}
+            onProposeRefused={props.onProposeRefused}
+            proposeRefusal={props.proposeRefusal}
+            proposeDraft={props.proposeDraft}
+            onProposeDraft={props.onProposeDraft}
+            persons={persons}
+            proposals={task.proposals}
+            envelope={task.envelope ?? null}
+            topUpNote={props.topUpNote}
+            onTopUpNote={props.onTopUpNote}
+            recordId={task.id}
+            revision={task.revision}
+          />
+        </div>
+        <aside className="tpg__side">
+          <Alerts alerts={task.alerts} />
+          {outages}
+        </aside>
+      </div>
     </div>
   );
 }

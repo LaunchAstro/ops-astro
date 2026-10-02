@@ -77,7 +77,7 @@ const GRANTS_BY_ROLE = {
     ['task', 'share'],
     ['task', 'manage'],
     ['person', 'read'],
-    // The two settings commands take `manage` on the `settings` collection
+    // The settings commands took `manage` on the `settings` collection
     // (`core-wire/src/surface.ts`), and the admin had six task actions and
     // `person:read`, so as seeded nobody could write either setting: WEB-COMMENTS
     // observed `POST /settings/set_four_eyes_threshold` as the admin answering
@@ -115,10 +115,33 @@ const GRANTS_BY_ROLE = {
     // MP-6-2's `state revised` (ORCH33, ORCH38): `run:write`, a person's own
     // and an agent's inside its delegation; the owner and administrators hold it.
     ['run', 'write'],
-    // The operations view's key (C55): owner and administrators by install
-    // default, never a member, never an agent. `inbox.unattended` asks it
-    // (INB-1e), and it names other people's items.
+    // Client access (MP-4-10) shares a task with its client's people under
+    // `access:share`, which the key catalogue gives the owner and
+    // administrators and never an agent.
+    ['access', 'share'],
+    // Time tracking (MP-4-6) asks `time:write`: the owner's and
+    // administrators', and a member's only where granted.
+    ['time', 'write'],
+    // Tags (MP-4-11) ask `tag:write` for a new name in the vocabulary.
+    ['tag', 'write'],
+    // Settings ▸ Access (C32): the owner and administrators hold
+    // `access:manage` on install (the key catalogue's default holders).
+    ['access', 'manage'],
+    // The operations view and the privacy incident record (C55): the owner
+    // and administrators hold both on install, and no agent ever does.
+    // `inbox.unattended` asks `operations:read` too (INB-1e), and it names
+    // other people's items.
     ['operations', 'read'],
+    ['privacy', 'manage'],
+    // An agent credential of their own (API-2): the owner and administrators
+    // hold `credential:write` on install.
+    ['credential', 'write'],
+    // The client record (C32): the owner and administrators make clients.
+    ['record', 'write'],
+    // The four-eyes threshold is a money action (MP-2-11, owner line 71):
+    // `spend:decide`, so C59's step-up judges it. Client sign-off and the
+    // step-up switch stay `settings:manage` above.
+    ['spend', 'decide'],
   ],
   member: [
     ['task', 'read'],
@@ -746,6 +769,11 @@ try {
     businessIds[tag] = await businessIdFor(admin, key);
     console.log(`local-seed: business ${key} ${businessIds[tag]}`);
   }
+  // S0-5 (0059): business A operates this installation, as provisioning sets it.
+  await admin.execute(
+    'update ops.installation set operator_business_id = $1 where operator_business_id is null',
+    [businessIds.A],
+  );
 
   for (const tag of Object.keys(BUSINESS_KEYS)) {
     // oxlint-disable-next-line no-await-in-loop

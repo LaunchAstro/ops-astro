@@ -55,7 +55,7 @@ export interface ProposeRequest {
   readonly payload: Record<string, unknown>;
   /**
    * The run's one step. `planStep`, when present, is a step key of the task's
-   * bound plan, checked by the command under the task lock (AW-06, 0210).
+   * bound plan, checked by the command under the task lock (AW-06, 0105).
    */
   readonly step: {
     readonly kind: string;
@@ -350,11 +350,12 @@ export async function proposeUnderLocks(
   // R8. The hold the superseded version owns is released here, in the
   // transaction that made it nonclaimable, under the locks discovered for it
   // above. Leaving it for a later unrelated replay is what made the business-
-  // wide sweep from cancellation look necessary.
+  // wide sweep from cancellation look necessary. The proposer ended that
+  // work, so the clear of its agent from the task is audited as theirs.
   if (written.value.supersededVersionId !== null) {
     // AW-09: the agent's revision of its reviewed output is its output too.
     await markRevision(tx, written.value.versionId, written.value.supersededVersionId);
-    await retireWork(tx, liveWork, locks);
+    await retireWork(tx, liveWork, locks, request.proposedByActorId);
     await classifyVersions(
       tx,
       [written.value.supersededVersionId],

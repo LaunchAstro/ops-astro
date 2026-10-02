@@ -66,18 +66,47 @@ function ModelPicker(props: {
   );
 }
 
+/** The drawer's own close, after a divider, when it stands alone. */
+function Close(props: { readonly onClose: () => void }): ReactElement {
+  return (
+    <>
+      <span className="aip__actdiv" aria-hidden="true" />
+      <button
+        className="aip__act aip__x"
+        type="button"
+        data-assistant="close"
+        title="Close the panel"
+        aria-label="Close the panel"
+        onClick={() => {
+          props.onClose();
+        }}
+      >
+        <Icon name="cross-small" />
+      </button>
+    </>
+  );
+}
+
 function Head(props: {
   readonly chat: AssistantChat | undefined;
   readonly offer: AssistantOffer;
   readonly onModel: (key: string, model: string) => void;
   readonly onAddPage: (key: string) => void;
-  readonly onClose: () => void;
+  readonly onClose: (() => void) | undefined;
 }): ReactElement {
+  const { onClose } = props;
+  // In a host's frame (the dock's `ai` panel) the host's head names the drawer
+  // and closes it, so this row keeps only the model picker and Page.
+  const Row = onClose === undefined ? 'div' : 'header';
   return (
-    <header className="aip__head">
+    <Row className="aip__head">
       <div className="aip__id">
-        <Icon name="sparkles" />
-        <span className="aip__title">Agent</span>
+        {onClose === undefined ? null : (
+          <>
+            <Icon name="sparkles" />
+            <span className="aip__title">Agent</span>
+          </>
+        )}
         <ModelPicker chat={props.chat} offer={props.offer} onModel={props.onModel} />
       </div>
       <div className="aip__acts">
@@ -93,21 +122,9 @@ function Head(props: {
         >
           <Icon name="eye" size="sm" />
         </button>
-        <span className="aip__actdiv" aria-hidden="true" />
-        <button
-          className="aip__act aip__x"
-          type="button"
-          data-assistant="close"
-          title="Close the panel"
-          aria-label="Close the panel"
-          onClick={() => {
-            props.onClose();
-          }}
-        >
-          <Icon name="cross-small" />
-        </button>
+        {onClose === undefined ? null : <Close onClose={onClose} />}
       </div>
-    </header>
+    </Row>
   );
 }
 
@@ -168,9 +185,7 @@ export function AssistantPanel(props: AssistantPanelProps): ReactElement {
         chips={props.subject.chips}
         draft={props.draft}
         sendable={sendable}
-        onSend={(text) => {
-          if (chat !== undefined) props.onSend(chat.key, text);
-        }}
+        onSend={(text) => (chat === undefined ? undefined : props.onSend(chat.key, text))}
       />
     </section>
   );

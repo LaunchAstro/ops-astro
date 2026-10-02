@@ -23,6 +23,7 @@ import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { pathOf } from '../../packages/core-wire/src/surface.ts';
 import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
 import { ADMIN_ACTIONS, ADMIN_COLLECTIONS, enrolAgent, enrolCaller } from './cast.ts';
+import { bravoRecords } from './ident-audit-bravo-rows.ts';
 import { createHarness, type Harness } from './role-case-harness.ts';
 import { PROPOSAL, type Task } from './role-case-bodies.ts';
 import {
@@ -33,6 +34,7 @@ import {
   type Answer,
   type Caller,
 } from './world.ts';
+import { logTime } from '../../packages/core-records/src/tasks/time.ts';
 
 export type Body = Readonly<Record<string, unknown>>;
 
@@ -77,6 +79,11 @@ export interface IdentWorld {
     picked: Picked;
     batchId: string;
     grantId: string;
+    /** A time entry of bravo's admin on bravo's task (MP-4-6). */
+    entryId: string;
+    legalVersionId: string;
+    credentialId: string;
+    clientId: string;
   }>;
   /** The second alpha agent's live pickup. */
   readonly otherPicked: Picked;
@@ -220,6 +227,18 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
   const trashable = await taskOf(bravoAdmin, 'a bravo task in the trash', 'bravo');
   const trashBody = { recordId: trashable.id, expectedRevision: trashable.revision };
   const trashed = need(await person(bravoAdmin, 'task.trash', trashBody, 'bravo'), 'task.trash');
+  const bravoEntry = await world.db.app.withBusiness(
+    world.bravo,
+    async (tx) =>
+      await logTime(tx, {
+        taskId: bravoTask.id,
+        personId: bravoAdmin.personId as string,
+        actorId: bravoAdmin.actorId as string,
+        minutes: 5,
+        note: 'a bravo entry alpha is handed',
+      }),
+  );
+  if (bravoEntry.kind !== 'logged') throw new Error('ident-audit: bravo’s entry was not logged');
   const bravoGrants = await world.db.admin.execute<{ readonly id: string }>(
     `select id from public.grants
       where business_id = $1 and subject_kind = 'person' and subject_id = $2
@@ -227,6 +246,9 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
       order by id limit 1`,
     [world.bravo, world.bea.personId],
   );
+
+  // bravo's own legal version, agent credential and client (C81, API-2, C32).
+  const bravoRows = await bravoRecords(world);
 
   // alpha's second agent, with a live lease of its own.
   const secondAgent = await enrolAgent(world.db, world.alpha, world.ada.actorId as string);
@@ -256,6 +278,8 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
       picked: bravoPicked,
       batchId: String(trashed['batchId']),
       grantId: String(bravoGrants[0]?.id),
+      entryId: bravoEntry.entryId,
+      ...bravoRows,
     },
     otherPicked,
     rhea,
@@ -269,12 +293,3 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
     },
   };
 }
-
-// Durable state and the audit chain, read on the administrative connection.
-
-/** Evidence of attempts, which a committed refusal writes by contract (T1). */
-export const EVIDENCE_TABLES: ReadonlySet<string> = new Set([
-  'audit_events',
-  'operations',
-  'authentication_attempts',
-]);

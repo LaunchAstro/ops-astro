@@ -8,7 +8,7 @@
 // itself (marks, replay, reconcile, sweeps, alerts, drops) start from an
 // approved lease, so they seed the mark the handback would have written on the
 // version that lease works under, and keep their own money figures. The owner
-// writes the row with triggers off: 0213's trigger admits only a version newer
+// writes the row with triggers off: 0108's trigger admits only a version newer
 // than its lease's work (the successor a handback writes), and here the lease
 // works under the very version it dispatches.
 

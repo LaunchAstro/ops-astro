@@ -35,14 +35,18 @@ interface TaskRow {
   readonly category: string | null;
   readonly completed_at: Date | null;
   readonly updated_at: Date;
+  readonly deleted_at: Date | null;
 }
 
-/** The task the conversation was opened on, with its state; a completed task ended at its stamp. */
+/**
+ * The task the conversation was opened on, with its state; a completed task
+ * ended at its stamp, and a task trashed before it ended, at its trash.
+ */
 async function taskWork(tx: TenantQuery, scopeRecordId: string | null): Promise<readonly Work[]> {
   if (scopeRecordId === null) return [];
   const tasks = await tx.query<TaskRow>(
     `select r.id, s.data ->> 'machine_category' as category, r.ts_2 as completed_at,
-            r.updated_at
+            r.updated_at, r.deleted_at
        from records r
        left join records s
          on s.business_id = r.business_id and s.id = r.uuid_1 and s.deleted_at is null
@@ -50,7 +54,8 @@ async function taskWork(tx: TenantQuery, scopeRecordId: string | null): Promise<
     [tx.businessId, scopeRecordId],
   );
   return tasks.map((task) => {
-    const terminal = task.category === 'completed' || task.category === 'cancelled';
+    const ended = task.category === 'completed' || task.category === 'cancelled';
+    const terminal = ended || task.deleted_at !== null;
     return {
       pointer: {
         kind: 'task',
@@ -59,7 +64,7 @@ async function taskWork(tx: TenantQuery, scopeRecordId: string | null): Promise<
         state: task.category ?? 'unknown',
       },
       terminal,
-      endedAt: terminal ? (task.completed_at ?? task.updated_at) : null,
+      endedAt: ended ? (task.completed_at ?? task.updated_at) : task.deleted_at,
     };
   });
 }

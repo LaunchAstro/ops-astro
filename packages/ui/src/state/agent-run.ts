@@ -15,7 +15,7 @@
 // passed on the server's clock, which the read already derived), never a
 // timer in the browser. What the run staged is read in `agent-staged.ts`.
 
-import { headHold, unknownOf, type UnknownAttempt } from './run-projection.ts';
+import { headReservation, heldMinorOf, unknownOf, type UnknownAttempt } from './run-projection.ts';
 import type { RunCheck, RunLineage, RunVersion } from './run-projection.ts';
 
 export type RunTone = 'gate' | 'run' | 'done' | 'bad';
@@ -79,7 +79,7 @@ export interface RunStory {
   readonly gate: GateBox;
   readonly jobs: readonly Job[];
   readonly checks: readonly RunCheck[];
-  /** Whether a permitted person may cancel it now: a live lineage. */
+  /** Whether a permitted person may cancel it now: a live lineage not yet done. */
   readonly cancellable: boolean;
   readonly heldMinor: number;
   readonly actualMinor: number | null;
@@ -106,17 +106,20 @@ const WORDS: Readonly<Record<RunState, { word: string; tone: RunTone }>> = {
 function stateOf(lineage: RunLineage, head: RunVersion): RunState {
   if (lineage.state === 'rejected') return 'rejected';
   if (lineage.state === 'cancelled') return 'cancelled';
-  const reservation = headHold(lineage, head);
+  const reservation = headReservation(lineage, head);
   if (reservation?.state === 'quarantined') return 'unknown-outcome';
   // T3b's unknown effect: held until a person records what happened (C54).
   if (reservation?.attempt?.state === 'liability_unknown') return 'unknown-outcome';
+  // A hand-back's classifier abandons the hold under `handback_completed` and
+  // leaves the lineage live; a dropped hand-back also marks its attempt dropped.
+  if (reservation?.state === 'abandoned') {
+    const handedBack = reservation.classifiedCause === 'handback_completed';
+    return handedBack && reservation.attempt?.state !== 'dropped' ? 'done' : 'dropped';
+  }
   // A hold the classifier settled at its calls' spend stopped as an abandoned one did.
   const stopped = ['abandoned', 'dropped'].includes(reservation?.attempt?.state ?? '');
-  if (reservation?.state === 'abandoned' || (reservation?.state === 'actual' && stopped)) {
-    return 'dropped';
-  }
+  if (reservation?.state === 'actual' && stopped) return 'dropped';
   if (lineage.state === 'completed' || reservation?.state === 'actual') return 'done';
-  if (reservation?.attempt?.state === 'handed_back') return 'done';
   if (reservation?.lease?.state === 'live') return 'running';
   const gate = head.gate;
   if (gate === null) return reservation === undefined ? 'gate-stale' : 'approved';
@@ -258,7 +261,7 @@ export function runStories(proposals: readonly RunLineage[] | undefined): readon
     const box = gateBox(lineage, head, state);
     const jobs = jobsOf(head, state, box);
     const passed = head.checks.filter((check) => check.outcome === 'passed').length;
-    const reservation = headHold(lineage, head);
+    const reservation = headReservation(lineage, head);
     const { word, tone } = WORDS[state];
     return [
       {
@@ -286,8 +289,8 @@ export function runStories(proposals: readonly RunLineage[] | undefined): readon
         gate: box,
         jobs,
         checks: head.checks,
-        cancellable: lineage.state === 'live',
-        heldMinor: reservation?.heldMinor ?? 0,
+        cancellable: lineage.state === 'live' && state !== 'done',
+        heldMinor: heldMinorOf(lineage, head),
         actualMinor: reservation?.actualMinor ?? null,
         unknownAttempt: unknownOf(reservation),
       },

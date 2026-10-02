@@ -26,7 +26,7 @@
 // case exists to catch.
 
 import type { ReactElement, ReactNode } from 'react';
-import { Empty } from '@launchastro/ui';
+import { Banner, Empty } from '@launchastro/ui';
 import type { ReadState } from '../data/authorised-read.ts';
 import { describeRefusal } from '../records/submit.ts';
 
@@ -46,16 +46,34 @@ export interface RecordStateProps<T> {
   readonly placeholder?: ReactNode;
   /** Offered on the failures a person can do something about. */
   readonly onRetry?: () => void;
+  /**
+   * Keep the last answer drawn while its re-read is in flight, so a page
+   * holding an unsaved edit stays mounted under a live change (C4 live-sync
+   * 4). That answer did succeed, under this grant: a new grant starts a new
+   * read with none, and a denial or an outage has already dropped it.
+   */
+  readonly keep?: boolean;
 }
 
 export function RecordState<T>(props: RecordStateProps<T>): ReactElement {
   const state = props.state;
 
+  if (state.outcome === 'loading' && props.keep === true && state.previous !== null) {
+    // The same element as the ready rendering below, so React keeps what is
+    // under it, focus and caret included.
+    return (
+      <div className="readstate" data-outcome="loading" aria-busy="true">
+        {props.children(state.previous)}
+      </div>
+    );
+  }
+
   if (state.outcome === 'loading') {
     return (
       <div className="readstate" data-outcome="loading" role="status" aria-live="polite">
+        {/* DS-PRIM-29's panel line (DR-37): the one empty state, inline. */}
         {props.placeholder === undefined ? (
-          <p className="empty__title">Loading the {props.subject}…</p>
+          <Empty look="inline" title={`Loading the ${props.subject}…`} />
         ) : (
           <>
             <span className="visually-hidden">Loading the {props.subject}…</span>
@@ -82,12 +100,14 @@ export function RecordState<T>(props: RecordStateProps<T>): ReactElement {
   }
 
   if (state.outcome === 'unavailable') {
+    // A read that could not be read is an error, said as one: DS-PRIM-30's
+    // section error, the bad banner. Only a read that answered with no rows
+    // is the empty state.
     return (
-      <div className="readstate" data-outcome="unavailable" role="alert">
-        <Empty
-          title={`The ${props.subject} could not be read.`}
-          description={state.because}
-          hint="Nothing has been decided about your access. Try again."
+      <div className="readstate" data-outcome="unavailable">
+        <Banner
+          tone="bad"
+          lead={`The ${props.subject} could not be read.`}
           action={
             props.onRetry === undefined ? undefined : (
               <button className="btn" type="button" onClick={props.onRetry}>
@@ -95,7 +115,9 @@ export function RecordState<T>(props: RecordStateProps<T>): ReactElement {
               </button>
             )
           }
-        />
+        >
+          {state.because} Nothing has been decided about your access. Try again.
+        </Banner>
       </div>
     );
   }

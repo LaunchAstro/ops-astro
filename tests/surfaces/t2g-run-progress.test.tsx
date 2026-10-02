@@ -110,7 +110,7 @@ function open(execution: Execution) {
   return mount(<TaskDetailScreen client={client} grantKey="alpha:ada" taskKey="TSK-31" />);
 }
 
-const answer = (outcome: string, runs: unknown[] = [], events: unknown[] = []) =>
+const answer = (outcome: string, runs: unknown[] = [], events: unknown[] = [], graph?: unknown) =>
   json({
     ok: true,
     execution: {
@@ -121,6 +121,7 @@ const answer = (outcome: string, runs: unknown[] = [], events: unknown[] = []) =
       next: null,
       runs,
       events,
+      ...(graph === undefined ? {} : { graph }),
     },
   });
 
@@ -189,7 +190,29 @@ describe('T2g the run on the task page', () => {
   });
 
   it('draws the receipt: the approval it came from, the effect, and held, spent and released', async () => {
-    const page = await open(answer('ready', [run('r-1', 'running')], [event(1, 'r-1', 'claimed')]));
+    // The run's node names its currency, which counts the receipt's money.
+    const node = {
+      nodeId: 'r-1',
+      condition: 'in_progress',
+      planned: null,
+      observed: {
+        condition: 'in_progress',
+        runState: 'running',
+        attemptId: 'a-1',
+        whoseMove: null,
+        outcome: null,
+        fault: null,
+        lease: null,
+        effectObserved: true,
+        heldMinor: 2000,
+        spentMinor: 1500,
+        currency: 'AUD',
+      },
+    };
+    const graph = { plan: 'unbound', sourceRevision: 1, complete: true, nodes: [node] };
+    const page = await open(
+      answer('ready', [run('r-1', 'running')], [event(1, 'r-1', 'claimed')], graph),
+    );
     await tick();
     const receipt = page.find('[data-run-id="r-1"] [data-receipt-attempt="a-1"]');
     expect(receipt?.getAttribute('data-receipt-decision')).toBe('d-1');

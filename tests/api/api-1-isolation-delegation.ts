@@ -37,6 +37,13 @@ interface Claim {
   readonly runId: string;
 }
 
+/** A field write on `record`, at a revision the crossing never reaches. */
+const written = (record: string, fields: Record<string, unknown>): Record<string, unknown> => ({
+  recordId: record,
+  expectedRevision: 1,
+  fields,
+});
+
 /**
  * Each command's own target: a record, a lease, a reservation, or none. A lease
  * call names its task through its lease and ignores a record id beside it, so its
@@ -64,6 +71,24 @@ const bodies = (
   'task.dispatch': () => ({ ...claim.lease }),
   'task.observe': () => ({ ...claim.lease, attemptId: randomUUID(), outcome: 'completed' }),
   'task.queue': () => null,
+  // An agent writes its own task's fields under a delegation (MP-4-7, MP-4-8): never
+  // another person's task, another client's or another business's.
+  'task.update': (record) => written(record, { title: 'made-up' }),
+  'task.assign': (record) => written(record, { assignee: randomUUID() }),
+  'task.set_adhoc': (record) => written(record, { ad_hoc: true }),
+  'task.set_category': (record) => written(record, { category: 'seo' }),
+  'task.set_scores': (record) => written(record, { impact: 7, confidence: 9, ease: 8 }),
+  'task.edit_comment': (record) => ({
+    recordId: record,
+    expectedRevision: 1,
+    commentId: randomUUID(),
+    body: 'made-up',
+  }),
+  'task.delete_comment': (record) => ({
+    recordId: record,
+    expectedRevision: 1,
+    commentId: randomUUID(),
+  }),
   'session.capabilities': () => null,
   'task.check': () => ({ ...claim.lease, name: 'made-up check', outcome: 'passed' }),
   'model.call': () => ({
@@ -90,6 +115,8 @@ const bodies = (
   }),
   // No crossing target: the helper's handback answers to its own child credential.
   'run.child_handback': () => ({ outcome: 'completed' }),
+  // A credential's create (API-2): a pickup's one-task delegation never reaches it.
+  'task.create': () => ({ fields: { title: 'made-up' } }),
 });
 
 /** The lease and run operations the delegation reaches only on its own task. */
@@ -139,6 +166,7 @@ export function delegationCrossing(): void {
       'task.observe': 'DELEGATION_OUT_OF_PURPOSE',
       ...Object.fromEntries(RUN_AND_LEASE.map((command) => [command, 'DELEGATION_OUT_OF_PURPOSE'])),
       'task.pickup': 'DELEGATION_ALREADY_LIVE',
+      'task.create': 'DELEGATION_OUT_OF_PURPOSE',
     };
     for (const row of agentRows) {
       for (const [businessKey, other] of [

@@ -71,6 +71,8 @@ export interface AssistantPanelProps {
   readonly onNew: () => void;
   readonly onModel: (key: string, model: string) => void;
   readonly onAddPage: (key: string) => void;
-  readonly onSend: (key: string, text: string) => void;
-  readonly onClose: () => void;
+  /** The question for the tab; a promise returned is the send being out. */
+  readonly onSend: (key: string, text: string) => void | Promise<void>;
+  /** The drawer's own close, with its title: absent when a host's head (the dock's) frames it. */
+  readonly onClose?: (() => void) | undefined;
 }

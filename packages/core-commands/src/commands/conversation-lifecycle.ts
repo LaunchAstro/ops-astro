@@ -120,12 +120,42 @@ export async function writeWrapUp(tx: TenantQuery, request: WrapUpRequest): Prom
  * window stops the purge for the business; the default applies only through
  * the row that says it.
  */
-async function windowDays(tx: TenantQuery): Promise<number | undefined> {
+export async function windowDays(tx: TenantQuery): Promise<number | undefined> {
   const window = (await readBusinessSetting(tx, WINDOW_KEY))?.value;
   const work = (await readBusinessSetting(tx, WORK_WINDOW_KEY))?.value;
   if (typeof window !== 'number' || !Number.isSafeInteger(window)) return undefined;
   if (typeof work !== 'number' || !Number.isSafeInteger(work)) return undefined;
   return window >= WINDOW_FLOOR_DAYS && window <= work ? window : undefined;
+}
+
+/** A wrapped conversation as the purge weighs it. */
+export interface Wrapped {
+  readonly id: string;
+  readonly scope_record_id: string | null;
+  readonly last_activity_at: Date;
+}
+
+/**
+ * Why a wrapped conversation's body is kept for now: work it cited or started
+ * is open (`WORK_OPEN`), or the window has not passed since the later of its
+ * last activity and its work's end (`NOT_DUE`). Undefined when it is due.
+ */
+export async function purgeHold(
+  tx: TenantQuery,
+  conversation: Wrapped,
+  window: number,
+): Promise<'WORK_OPEN' | 'NOT_DUE' | undefined> {
+  const work = await workOf(tx, conversation.id, conversation.scope_record_id);
+  if (work.some((item) => !item.terminal)) return 'WORK_OPEN';
+  const since = work.reduce(
+    (latest, item) => (item.endedAt !== null && item.endedAt > latest ? item.endedAt : latest),
+    conversation.last_activity_at,
+  );
+  const due = await tx.query<{ due: boolean }>(
+    `select $1::timestamptz <= now() - make_interval(days => $2::int) as due`,
+    [since, window],
+  );
+  return due[0]?.due === true ? undefined : 'NOT_DUE';
 }
 
 /** The business's worker actor, minted once under a lock so two passes share it. */
@@ -174,17 +204,8 @@ export async function purgeConversation(
     [tx.businessId, request.conversationId],
   );
   if (covering[0]?.n === '0') return { ok: false, code: 'WRAP_UP_ABSENT' };
-  const work = await workOf(tx, request.conversationId, locked.scope_record_id);
-  if (work.some((item) => !item.terminal)) return { ok: false, code: 'WORK_OPEN' };
-  const since = work.reduce(
-    (latest, item) => (item.endedAt !== null && item.endedAt > latest ? item.endedAt : latest),
-    locked.last_activity_at,
-  );
-  const due = await tx.query<{ due: boolean }>(
-    `select $1::timestamptz <= now() - make_interval(days => $2::int) as due`,
-    [since, window],
-  );
-  if (due[0]?.due !== true) return { ok: false, code: 'NOT_DUE' };
+  const hold = await purgeHold(tx, { ...locked, id: request.conversationId }, window);
+  if (hold !== undefined) return { ok: false, code: hold };
   const purged = await tx.query<{ id: string }>(
     `delete from conversation_messages
       where business_id = $1 and conversation_id = $2 returning id`,

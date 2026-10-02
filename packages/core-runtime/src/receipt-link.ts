@@ -8,7 +8,7 @@
 // Kept: `https:`, the declared host exactly, no user, password or port, no
 // query or fragment (where tokens ride), at most `RECEIPT_LINK_MAX` characters,
 // the parsed form byte for byte the bytes sent, and the column's own shape
-// (`RECEIPT_LINK_SHAPE`, migration 0214). The byte rule refuses what the URL
+// (`RECEIPT_LINK_SHAPE`, migration 0109). The byte rule refuses what the URL
 // parser would quietly repair: tabs and newlines it strips, backslashes it
 // turns, case it folds, and dot segments it resolves. The shape rule refuses
 // what the parser keeps but the column would not ('|', '[', ']'), so such a
@@ -21,7 +21,7 @@ export const EFFECT_RECEIPT_HOSTS: Readonly<Record<string, string>> = {
 
 export const RECEIPT_LINK_MAX = 512;
 
-/** The shape `attempts_receipt_link_shape` (migration 0214) stores: exactly its pattern. */
+/** The shape `attempts_receipt_link_shape` (migration 0109) stores: exactly its pattern. */
 export const RECEIPT_LINK_SHAPE: RegExp =
   /^https:\/\/[a-z0-9.-]+\/[A-Za-z0-9._~%!$&'()*+,;=:@/-]*$/u;
 

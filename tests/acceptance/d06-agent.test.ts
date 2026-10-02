@@ -41,6 +41,7 @@ import {
 import { createHarness, type Harness } from './role-case-harness.ts';
 import { agentHold } from './d06-agent-fixture.ts';
 import { revisedState } from './d06-run-state.ts';
+import { ownWriteBody, proposalBody } from './d06-agent-own-writes.ts';
 import type { Answer } from './world.ts';
 import { serverUrl } from './world.ts';
 
@@ -56,6 +57,20 @@ const AGENT_OPERATIONS: readonly CommandName[] = [
   'task.comment',
   'task.propose',
   'run.revise_state',
+  // An author's edit and delete (MP-4-5), each on a comment the agent wrote.
+  'task.edit_comment',
+  'task.delete_comment',
+  // The three marks (MP-4-9), the Ad hoc mark (MP-4-10) and the category
+  // (MP-4-8), which an agent sets on its own task inside its delegation.
+  'task.set_scores',
+  'task.set_adhoc',
+  'task.set_category',
+  // The description and the brief (MP-4-7), the name, the due date and the
+  // page link (MP-4-8, MP-4-12): the fields an agent writes through
+  // `task.update` on its own task.
+  'task.update',
+  // The assignee (MP-4-8), under a delegation that also holds assign.
+  'task.assign',
   'task.heartbeat',
   'task.dispatch',
   'task.observe',
@@ -72,8 +87,12 @@ const AGENT_OPERATIONS: readonly CommandName[] = [
 const toneOn = (taskId: string) =>
   ({ name: 'tone', from: { recordId: taskId, key: 'title' } }) as const;
 
-/** In `AGENT_SURFACE` and still not the agent's: a person decides (case (j) of the matrix). */
-const AGENT_EXCLUDED_BY_DESIGN: ReadonlySet<CommandName> = new Set(['task.decide']);
+/**
+ * In `AGENT_SURFACE` and still not the pickup agent's: a person decides (case (j)
+ * of the matrix), and a create is outside a one-task purpose (an agent
+ * credential's to make, API-2).
+ */
+const AGENT_EXCLUDED_BY_DESIGN: ReadonlySet<CommandName> = new Set(['task.decide', 'task.create']);
 
 const cells = AGENT_OPERATIONS.flatMap((operation) =>
   TOP_LEVEL_FIELDS.map((key) => ({ operation, key })),
@@ -122,31 +141,11 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
       const body = { recordId: held.taskId, body: 'the agent notes it', audience: 'internal' };
       return { body: { operationId, ...body }, credential };
     }
+    const own = await ownWriteBody(harness, name, held);
+    if (own !== undefined)
+      return { body: { operationId, ...own.body }, credential: own.credential };
     if (name === 'task.propose') {
-      // The picked-up task's envelope holds its approved work to the minor
-      // unit; room is widened here as `roomToApprove` widens the cap, so the
-      // positive control is a proposal and the cell tests the field.
-      await harness.world.db.admin.execute(
-        `update public.task_envelopes set maximum_minor = maximum_minor + 1000000
-          where business_id = $1 and state = 'open'`,
-        [harness.world.alpha],
-      );
-      const read = await harness.asAgent(
-        'task.read',
-        { operationId: randomUUID(), recordId: held.taskId },
-        credential,
-      );
-      const task = (read.body['detail'] as { task: { revision: number } }).task;
-      const body = {
-        recordId: held.taskId,
-        expectedRevision: task.revision,
-        purpose: 'synthetic_comment',
-        maximumMinor: 100,
-        currency: 'AUD',
-        payload: { change: 'a synthetic change' },
-        step: { kind: 'synthetic_comment', payload: {} },
-      };
-      return { body: { operationId, ...body }, credential };
+      return { body: { operationId, ...(await proposalBody(harness, held)) }, credential };
     }
     const state = name === 'run.revise_state' ? await revisedState(harness.world, held) : null;
     if (state !== null) return { body: { operationId, ...state }, credential };
@@ -191,13 +190,13 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
         credential: String(detail['credential']),
       };
     }
-    const own =
+    const leased =
       name === 'task.check'
         ? { name: 'the agent checks', outcome: 'passed' }
         : name === 'model.call'
           ? { operation: 'model.replay_compose', fields: [toneOn(held.taskId)] }
           : { outcome: 'completed', report: { wrote: 'a draft' } };
-    const body = { operationId, leaseId: held.leaseId, fence: held.fence, ...own };
+    const body = { operationId, leaseId: held.leaseId, fence: held.fence, ...leased };
     return { body, credential };
   }
 
@@ -260,7 +259,7 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
       const answer = await harness.asAgent(cell.operation, body, held.credential);
       const after = await durable();
       const reason = AGENT_EXCLUDED_BY_DESIGN.has(cell.operation)
-        ? `a person decides; answered ${String(answer.body['code'])}`
+        ? `${cell.operation === 'task.decide' ? 'a person decides' : 'outside the purpose'}; answered ${String(answer.body['code'])}`
         : `not in AGENT_SURFACE; answered ${String(answer.body['code'])}`;
       tally.count(cell.operation, 'agent', answer.body['refused'] === true, reason);
       expect(answer.body['refused']).toBe(true);

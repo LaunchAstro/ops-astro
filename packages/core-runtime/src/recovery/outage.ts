@@ -15,7 +15,7 @@
 //
 // AW-04 adds one cause that is not a drop: a pinned read's audit copy the
 // store could not keep (`raiseMissingCopy`). Its row is one per business and
-// digest (0211), names the digest and lists no runs.
+// digest (0106), names the digest and lists no runs.
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../../../core-records/src/index.ts';

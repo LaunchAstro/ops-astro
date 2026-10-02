@@ -1,0 +1,56 @@
+{
+  "commits": [
+    {
+      "sha": "eb39c3fc5d97ae4f8ba9f0ad4fd84e495ca080f8",
+      "reason": "SL04's 29 Sep rebase note: a 114-character Rebase-note footer commitlint refuses; kept in history because every slice holds batch/1 (ORCH47, 1 Oct 2026)"
+    },
+    {
+      "sha": "0b096723fe68f3d3e1c6d893e9436da058ad461c",
+      "reason": "SL04's 29 Sep rebase note: a 114-character Rebase-note footer commitlint refuses; kept in history because every slice holds batch/1 (ORCH47, 1 Oct 2026)"
+    },
+    {
+      "sha": "17811a926b3ec5fcc168d35cbda2c8349348e3f1",
+      "reason": "SL10's 30 Sep rebase note: a 247-character Rebase-note footer commitlint refuses; kept in history because b0/SL05 and batch 2 hold it (ORCH48, 1 Oct 2026)"
+    },
+    {
+      "sha": "380f0a42073a4f7597bf806e04795f00d5af99fc",
+      "reason": "SL10's 30 Sep rebase note: a 137-character Rebase-note footer commitlint refuses; kept in history because b0/SL05 and batch 2 hold it (ORCH48, 1 Oct 2026)"
+    },
+    {
+      "sha": "4773f0f2930c985a8349f2889408d99c7169ffb7",
+      "reason": "SL10's 30 Sep rebase note: a 130-character Rebase-note footer commitlint refuses; kept in history because b0/SL05 and batch 2 hold it (ORCH48, 1 Oct 2026)"
+    },
+    {
+      "sha": "6432eb8e4f5e004260cfad414ed4a33249c3a2a7",
+      "reason": "SL10's 30 Sep rebase note: a 394-character Rebase-note footer commitlint refuses; kept in history because b0/SL05 and batch 2 hold it (ORCH48, 1 Oct 2026)"
+    },
+    {
+      "sha": "6e74a5f35dd14484380be5bfb6c945ad20334ef6",
+      "reason": "SL10's 30 Sep rebase note: a 147-character Rebase-note footer commitlint refuses; kept in history because b0/SL05 and batch 2 hold it (ORCH48, 1 Oct 2026)"
+    },
+    {
+      "sha": "bccb753d4550ec05e0dfda720bdba264a40ed779",
+      "reason": "SL10's 30 Sep rebase note: a 271-character Rebase-note footer commitlint refuses; kept in history because b0/SL05 and batch 2 hold it (ORCH48, 1 Oct 2026)"
+    },
+    {
+      "sha": "c259b971bc8864f05cf49c3c8c9673001f5440cf",
+      "reason": "SL10's 30 Sep rebase note: a 264-character Rebase-note footer commitlint refuses; kept in history because b0/SL05 and batch 2 hold it (ORCH48, 1 Oct 2026)"
+    },
+    {
+      "sha": "d3cca1760395c0039d538ee796249aca60aa2e46",
+      "reason": "SL10's 30 Sep rebase note: a 161-character Rebase-note footer commitlint refuses; kept in history because b0/SL05 and batch 2 hold it (ORCH48, 1 Oct 2026)"
+    },
+    {
+      "sha": "e167c9ed4541b4dab7ea5c03fe45dead6752b452",
+      "reason": "SL10's 30 Sep rebase note: a 377-character Rebase-note footer commitlint refuses; kept in history because b0/SL05 and batch 2 hold it (ORCH48, 1 Oct 2026)"
+    },
+    {
+      "sha": "f58f43880e3f088aa6304b5b0e97d09fe459097f",
+      "reason": "SL07-14's SL05-join snapshot: a 'wip' type commitlint refuses, pushed at the seat stop and finished by the joins after it; kept in history because b0/SL07, batch 2c1 and 2d hold it (SL07-19, 1 Oct 2026)"
+    },
+    {
+      "sha": "48da6f9c5419a592d63f0be7d509ca2107a833a7",
+      "reason": "SL06-5's paused fork B: a 'wip' type commitlint refuses, pushed at the seat stop (ORCH47 00:32Z) and joined into slice/SL06 by bc2c180; kept in history because b0/SL08 and batch 2d hold it (SL06-7, 1 Oct 2026)"
+    }
+  ]
+}

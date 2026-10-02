@@ -10,8 +10,10 @@
 // waited on for `lockTimeoutMs` and then reported, never waited on for ever.
 // Purge candidates are chosen before this pass writes any wrap-up, so a
 // wrap-up is always written at quiet by one pass and a body purged by a later
-// one, never both at once. An unreadable window stops the purge for the whole
-// business and the report says so.
+// one, never both at once. They are the oldest wrapped bodies the purge would
+// take now: a held one is reported and passed over before the pass's limit, so
+// however many are held the pass reaches the ones that are due. An unreadable
+// window stops the purge for the whole business and the report says so.
 //
 // Nothing here schedules the pass or owns its retries: a failure is reported
 // to the caller, and raising it as an inbox item is INB-1's.
@@ -23,8 +25,11 @@ import {
   QUIET_HOURS,
   WINDOW_FLOOR_DAYS,
   purgeConversation,
+  purgeHold,
+  windowDays,
   writeWrapUp,
   type PurgeRefusalCode,
+  type Wrapped,
 } from './conversation-lifecycle.ts';
 
 /** At most this many conversations of each kind in one pass. */
@@ -66,9 +71,12 @@ export function sweepPurgeOperationId(conversationId: string, lastActivityAt: Da
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
+type Held = { readonly conversationId: string; readonly code: PurgeRefusalCode };
+
 async function candidates(tx: TenantQuery): Promise<{
   readonly quiet: readonly Candidate[];
   readonly purgeable: readonly Candidate[];
+  readonly held: readonly Held[];
 }> {
   const quiet = await tx.query<Candidate>(
     `select c.id, c.last_activity_at from conversations c
@@ -81,18 +89,33 @@ async function candidates(tx: TenantQuery): Promise<{
       order by c.last_activity_at, c.id limit $3`,
     [tx.businessId, QUIET_HOURS, PASS_LIMIT],
   );
-  const purgeable = await tx.query<Candidate>(
-    `select c.id, c.last_activity_at from conversations c
-      where c.business_id = $1 and c.body_purged_at is null
-        and c.last_activity_at <= now() - make_interval(days => $2::int)
-        and exists (
-          select 1 from conversation_wrap_ups w
-           where w.business_id = c.business_id and w.conversation_id = c.id
-             and w.activity_through = c.last_activity_at)
-      order by c.last_activity_at, c.id limit $3`,
-    [tx.businessId, WINDOW_FLOOR_DAYS, PASS_LIMIT],
-  );
-  return { quiet, purgeable };
+  // Without a window every candidate goes to the purge, which reports the gap.
+  const window = await windowDays(tx);
+  const purgeable: Candidate[] = [];
+  const held: Held[] = [];
+  for (let offset = 0; purgeable.length < PASS_LIMIT; offset += PASS_LIMIT) {
+    // eslint-disable-next-line no-await-in-loop -- one page, then the next
+    const page = await tx.query<Wrapped>(
+      `select c.id, c.scope_record_id, c.last_activity_at from conversations c
+        where c.business_id = $1 and c.body_purged_at is null
+          and c.last_activity_at <= now() - make_interval(days => $2::int)
+          and exists (
+            select 1 from conversation_wrap_ups w
+             where w.business_id = c.business_id and w.conversation_id = c.id
+               and w.activity_through = c.last_activity_at)
+        order by c.last_activity_at, c.id limit $3 offset $4`,
+      [tx.businessId, WINDOW_FLOOR_DAYS, PASS_LIMIT, offset],
+    );
+    for (const wrapped of page) {
+      if (purgeable.length === PASS_LIMIT) break;
+      // eslint-disable-next-line no-await-in-loop -- one conversation, in turn
+      const code = window === undefined ? undefined : await purgeHold(tx, wrapped, window);
+      if (code === undefined) purgeable.push(wrapped);
+      else held.push({ conversationId: wrapped.id, code });
+    }
+    if (page.length < PASS_LIMIT) break;
+  }
+  return { quiet, purgeable, held };
 }
 
 async function boundedWait(tx: TenantQuery, lockTimeoutMs: number): Promise<void> {
@@ -111,7 +134,7 @@ export async function sweepConversations(
   const found = await database.withBusiness(businessId, candidates);
   const wrapped: string[] = [];
   const purged: string[] = [];
-  const held: { conversationId: string; code: PurgeRefusalCode }[] = [];
+  const held: Held[] = [...found.held];
   const failed: { conversationId: string; stage: 'wrap_up' | 'purge' }[] = [];
   for (const { id } of found.quiet) {
     try {

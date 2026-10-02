@@ -110,3 +110,16 @@ it("a route declares its installation's ceiling, a whole number of at least one"
     );
   }
 });
+
+it('REVIEW-3A-m1: a plain http destination off this machine is refused; https or loopback is not', () => {
+  const at = (origin: string) => ({
+    ...COMPLETE,
+    MODEL_BROKER_DESTINATIONS: JSON.stringify([{ key: 'replay', origin }]),
+  });
+  const problem = problemOf(at(`http://${CANARY}.example`));
+  expect(problem).toContain('MODEL_BROKER_DESTINATIONS');
+  expect(problem).not.toContain(CANARY);
+  for (const origin of ['https://api.vendor.example', 'http://[::1]:9', 'http://127.0.0.2:9']) {
+    expect(brokerSettings(at(origin)).kind, origin).toBe('configured');
+  }
+});

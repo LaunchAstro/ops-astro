@@ -5,7 +5,7 @@
 // Accepting the plan lets the agent work; it fires nothing. The agent hands
 // its output back with a successor version (T4's handback), and that version
 // is the reviewed output. Its accept is the launch, and dispatch releases an
-// effect only for a version marked here (`0213_reviewed_outputs`).
+// effect only for a version marked here (`0108_reviewed_outputs`).
 //
 // The mark is written by the handback, in the transaction that writes the
 // successor, under the handback's locks, naming the lease whose work produced
@@ -15,7 +15,7 @@
 // from the moment it exists or never. The calls run in the caller's tenant
 // transaction; row security keeps them to that business, and the trigger checks
 // the version and the lease's work are on the lineage the mark names, and the
-// lease's holder proposed the version (0218). The two
+// lease's holder proposed the version (0111). The two
 // callers mark only the lease's own work: the handback the successor it has
 // just written, `propose` a revision its lease holder proposed. A person's
 // newer version on the agent's lineage is never the agent's output; the

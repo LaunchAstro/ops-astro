@@ -97,7 +97,12 @@ function localKeysCases1() {
     try {
       const verify = createSupabaseVerifier(testSignIn(ISSUER));
       const verified = await verify(requestWith(await signBearer(claims())));
-      expect(verified).toStrictEqual({ provider: 'supabase', subject: 'mia' });
+      // Beside `sub`, only the sign-in's assurance (C59, LF-4).
+      expect(verified).toStrictEqual({
+        provider: 'supabase',
+        subject: 'mia',
+        assurance: { level: 'aal1', signedInAt: expect.any(Number), factorAt: null },
+      });
     } finally {
       vi.unstubAllGlobals();
     }

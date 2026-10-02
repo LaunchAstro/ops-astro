@@ -15,7 +15,8 @@ import type { ConversationReadResult } from '../../packages/core-wire/src/index.
 import { AssistantView } from '../../apps/web/src/views/assistant.tsx';
 import { drawScreen } from '../../apps/web/src/screen-registry.tsx';
 import { pageAt } from '../../apps/web/src/manifest.ts';
-import { gateOf, matchRoute, pathTo } from '../../apps/web/src/routes.ts';
+import { gateOf } from '../../apps/web/src/route-gate.ts';
+import { matchRoute, pathTo } from '../../apps/web/src/routes.ts';
 import type { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { mount, settle } from './mount.tsx';
 import { press, track, unmountAll } from './mp-7-11-drawer-fixtures.tsx';
@@ -120,7 +121,15 @@ async function address(path: string, answer: unknown) {
   }
   const { client, asked } = reader(answer);
   const page = track(
-    await mount(drawScreen(match, { client, grantKey: 'g', notice: null, storage: null })),
+    await mount(
+      drawScreen(match, {
+        client,
+        grantKey: 'g',
+        notice: null,
+        storage: null,
+        navigate: () => {},
+      }),
+    ),
   );
   await settle();
   return { page, asked };

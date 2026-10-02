@@ -19,7 +19,7 @@ export const BROKER_ROLE = 'ops_astro_broker';
 export const OCCURRENCE_ROLE = 'ops_astro_occurrence';
 
 /**
- * The contract: what 0001-0048 grant the application group, table by table,
+ * The contract: what the migrations grant the application group, table by table,
  * as `s` select, `i` insert, `u` update, `d` delete. Read from the `grant`
  * lines of the migrations, not from the catalogue this suite then checks.
  */
@@ -27,18 +27,42 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['', 'ops.schema_migrations'],
   // 0045: the installation's operating business; the application reads it only.
   ['s', 'ops.operating_business'],
+  // 0070 (C55): the date of the last tested restore; the application reads it
+  // only, and the drill writes it through ops.record_tested_restore().
+  ['s', 'ops.last_tested_restore'],
   // 0047: the API's outbox; the application inserts its four columns, and reads nothing.
   ['i', 'ops.api_events'],
   // 0048: the forwarder's kept alerts; the application holds nothing on them.
   ['', 'ops.api_alerts'],
+  // 0069 (C55): the forwarder's alert log; the application selects its kind
+  // and time columns alone, and changes nothing. A column grant: this suite's
+  // `select 1` needs one column, and c55-security-alerts proves which.
+  ['s', 'ops.security_alert_log'],
   ['s', 'ops.slots'],
+  // 0058 (S0-5): the installation's mode and the gate items are read by the
+  // application through first_client_readiness().
+  // 0059 (S0-5, ORCH38): the gate's own commands write through the app, so it
+  // may insert a gate item, and update `mode` alone on the installation. A
+  // column grant is not a table letter: this suite's update sets the first
+  // column, which stays refused; s0-5-gate-commands proves the column.
+  ['s', 'ops.installation'],
+  ['si', 'ops.gate_items'],
+  // 0061 (C58): an ended provider session, installation-wide; the application
+  // inserts and reads its id column alone, and changes or removes nothing.
+  ['si', 'ops.ended_provider_sessions'],
+  // 0063 (C58): other sessions ended in every business, by subject digest.
+  ['si', 'ops.ended_subject_sessions'],
+  // 0064 (C59): a second factor verified or removed, by subject digest, for every business.
+  ['si', 'ops.second_factor_subjects'],
+  // 0072 (C59): a second-factor code sent or answered, by subject digest, for every business.
+  ['si', 'ops.second_factor_codes'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],
   ['si', 'alerts handback_reports operations run_events'],
   // A run's checks, append only as handback_reports is (MP-6-1).
   ['si', 'run_checks'],
-  // 0201 (MP-6-2): a run's state, each revision a version, never rewritten.
+  // 0095 (MP-6-2): a run's state, each revision a version, never rewritten.
   ['si', 'run_states'],
-  // 0198 (AW-03): a conversation, its body (deleted only by the purge, never
+  // 0092 (AW-03): a conversation, its body (deleted only by the purge, never
   // edited) and its wrap-ups (append only, never purged).
   ['siu', 'conversations'],
   ['sid', 'conversation_messages'],
@@ -74,6 +98,41 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // state alone, by the column grant in COLUMN_UPDATES.
   ['si', 'planned_runs'],
   ['siu', 'outage_reports outage_runs reservations task_envelopes'],
+  // 0049 (C59): a factor is written and moved on, never deleted.
+  ['siu', 'second_factors'],
+  // 0050 (C55): a privacy incident is recorded and moved on, never deleted.
+  ['siu', 'privacy_incidents'],
+  // 0051 (C81): a legal document version is drafted, then approved and
+  // published by update; never deleted.
+  ['siu', 'legal_document_versions'],
+  // 0052 (C81): a row of the overseas-services register is set by insert or
+  // update; never deleted.
+  ['siu', 'overseas_services'],
+  // 0053 (C81): a data class is set by insert or update; never deleted.
+  ['siu', 'data_classes'],
+  // 0054 (API-2): an agent credential is issued by insert and revoked by
+  // update; never deleted.
+  ['siu', 'agent_credentials'],
+  // 0055 (C32): a client is written once; never updated or deleted.
+  ['si', 'clients'],
+  // 0056 (C58): an access ending is written, then its provider steps are
+  // stamped by update; never deleted.
+  ['siu', 'access_endings'],
+  // 0057 (C58): an ended session is written once; never changed or deleted.
+  ['si', 'ended_sessions'],
+  // 0065: the live change record, stamped by the writes' own triggers (C4);
+  // the trash purge deletes a purged task's row.
+  ['siud', 'live_changes'],
+  // 0066: a person's own availability, set by them alone (MP-7-10).
+  ['siu', 'person_availability'],
+  // 0067: a second save of a key replaces its value; nothing deletes one (MP-2-11a).
+  ['siu', 'person_preferences'],
+  // 0078: a time entry is deleted by a mark; the trash purge detaches a
+  // purged task's rows and keeps them (ORCH58).
+  ['siu', 'time_entries'],
+  // 0081: a tag stays in the vocabulary; a task's tag is a row deleted on removal.
+  ['si', 'tags'],
+  ['sid', 'task_tags'],
   ['siud', 'actors businesses field_defs logins memberships people person_identifiers'],
   // 0028 revokes delete on these two: identity history is kept (0002).
   ['siu', 'person_logins person_merges'],
@@ -95,58 +154,17 @@ export const APPLICATION_GRANTS: Readonly<Record<string, string>> = Object.fromE
 const REVOKED: Readonly<Record<string, { readonly from: string; readonly letters: string }>> = {
   'public.person_logins': { from: '0028', letters: 'd' },
   'public.person_merges': { from: '0028', letters: 'd' },
-  // 0192 takes back update on the whole run and grants it on `state` alone.
-  'public.planned_runs': { from: '0192', letters: 'u' },
+  // 0086 takes back update on the whole run and grants it on `state` alone.
+  'public.planned_runs': { from: '0086', letters: 'u' },
 };
-
-/** Update granted by column: table, columns, first migration. Any other column grant is outside. */
-const COLUMN_UPDATES: Readonly<
-  Record<string, { readonly from: string; readonly columns: readonly string[] }>
-> = {
-  'public.planned_runs': { from: '0192', columns: ['state'] },
-};
-
-/** The `table.column` pairs the application group may update after `at`, or at the full schema. */
-export function columnUpdatesAt(at?: string): readonly string[] {
-  return Object.entries(COLUMN_UPDATES)
-    .filter(([, grant]) => at === undefined || at.slice(0, 4) >= grant.from)
-    .flatMap(([table, grant]) => grant.columns.map((column) => `${table}.${column}`))
-    .toSorted();
-}
 
 /**
- * Every other column grant, from the migration that made it: the occurrence role
- * reads a task's revision for 0032's trigger (AW-01 J, 0203); batch 1's lookup
- * reads a business's id and key (0046); the application inserts the outbox (0047).
+ * Grants a later migration added, so a prefix before it does not hold them yet.
+ * 0059 grants the gate's own insert (S0-5, ORCH38).
  */
-const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: string }[] = (
-  [
-    ['0203', `${OCCURRENCE_ROLE} SELECT public.records`, ['business_id', 'id', 'revision']],
-    ['0046', 'ops_astro_lookup SELECT public.businesses', ['id', 'key']],
-    ['0047', 'ops_astro_app INSERT ops.api_events', ['event', 'kind', 'scope', 'weight']],
-  ] as const
-).flatMap(([from, grant, columns]) => columns.map((c) => ({ from, line: `${grant}.${c}` })));
-
-export function roleColumnGrantsAt(at?: string): readonly string[] {
-  return ROLE_COLUMN_GRANTS.filter((grant) => at === undefined || at.slice(0, 4) >= grant.from)
-    .map((grant) => grant.line)
-    .toSorted();
-}
-
-/** Every column-level privilege on the cluster's schema, as `grantee PRIVILEGE table.column`. */
-export async function catalogueColumnGrants(admin: AdminConnection): Promise<readonly string[]> {
-  const rows = await admin.execute<{ line: string }>(
-    `select pg_get_userbyid(acl.grantee) || ' ' || acl.privilege_type || ' ' ||
-            n.nspname || '.' || c.relname || '.' || a.attname as line
-       from pg_attribute a
-       join pg_class c on c.oid = a.attrelid
-       join pg_namespace n on n.oid = c.relnamespace
-       cross join lateral aclexplode(a.attacl) acl
-      where a.attacl is not null and n.nspname in ('public', 'ops')
-      order by 1`,
-  );
-  return rows.map((row) => row.line);
-}
+const ADDED: Readonly<Record<string, { readonly from: string; readonly letters: string }>> = {
+  'ops.gate_items': { from: '0059', letters: 'i' },
+};
 
 /**
  * What the application group holds on a table after the migration `at` (its
@@ -154,104 +172,22 @@ export async function catalogueColumnGrants(admin: AdminConnection): Promise<rea
  */
 export function applicationGrantsAt(qualified: string, at?: string): string | undefined {
   const granted = APPLICATION_GRANTS[qualified];
+  if (granted === undefined || at === undefined) return granted;
+  const version = at.slice(0, 4);
   const revoked = REVOKED[qualified];
-  if (granted === undefined || revoked === undefined || at === undefined) return granted;
-  return at.slice(0, 4) < revoked.from ? granted + revoked.letters : granted;
+  const added = ADDED[qualified];
+  if (revoked !== undefined && version < revoked.from) return granted + revoked.letters;
+  if (added !== undefined && version < added.from) return granted.replace(added.letters, '');
+  return granted;
 }
 
 /** The functions the application group may execute. Every other one is refused to it. */
 export const APPLICATION_EXECUTES: readonly string[] = [
   'public.app_business_id',
   'public.audit_event_hash',
+  // 0058 (S0-5): security invoker, so it reads no more than the caller may.
+  'public.first_client_readiness',
 ];
-
-export interface CatalogueTable {
-  readonly qualified: string;
-  readonly kind: string;
-  /** Carries `business_id`, so the tenancy policy is what filters it. */
-  readonly tenant: boolean;
-  readonly forced: boolean;
-  readonly firstColumn: string;
-}
-
-export interface CatalogueFunction {
-  readonly qualified: string;
-  readonly signature: string;
-  readonly argumentTypes: readonly string[];
-  readonly definer: boolean;
-  readonly trigger: boolean;
-  readonly config: readonly string[];
-  /** For a trigger function: the tables whose triggers fire it, with the events. */
-  readonly firedBy: readonly { readonly table: string; readonly events: string }[];
-}
-
-export async function catalogueTables(admin: AdminConnection): Promise<readonly CatalogueTable[]> {
-  const rows = await admin.execute<{
-    qualified: string;
-    kind: string;
-    tenant: boolean;
-    forced: boolean;
-    first_column: string;
-  }>(
-    `select n.nspname || '.' || c.relname as qualified, c.relkind::text as kind,
-            exists (select 1 from pg_attribute a where a.attrelid = c.oid
-                     and a.attname = 'business_id' and not a.attisdropped) as tenant,
-            c.relforcerowsecurity as forced,
-            (select a.attname from pg_attribute a where a.attrelid = c.oid and a.attnum > 0
-                and not a.attisdropped order by a.attnum limit 1) as first_column
-       from pg_class c join pg_namespace n on n.oid = c.relnamespace
-      where n.nspname in ('public', 'ops') and c.relkind in ('r', 'v', 'm', 'p')
-      order by 1`,
-  );
-  return rows.map((row) => ({
-    qualified: row.qualified,
-    kind: row.kind,
-    tenant: row.tenant,
-    forced: row.forced,
-    firstColumn: row.first_column,
-  }));
-}
-
-export async function catalogueFunctions(
-  admin: AdminConnection,
-): Promise<readonly CatalogueFunction[]> {
-  const rows = await admin.execute<{
-    qualified: string;
-    signature: string;
-    argument_types: string[];
-    definer: boolean;
-    trigger: boolean;
-    config: string[] | null;
-    fired_by: { table: string; events: string }[] | null;
-  }>(
-    `select n.nspname || '.' || p.proname as qualified, p.oid::regprocedure::text as signature,
-            coalesce((select array_agg(format_type(t, null) order by i)
-                        from unnest(p.proargtypes) with ordinality as a(t, i)), '{}') as argument_types,
-            p.prosecdef as definer, p.prorettype = 'trigger'::regtype as trigger, p.proconfig as config,
-            (select json_agg(json_build_object(
-                      'table', tn.nspname || '.' || tc.relname,
-                      'events', concat_ws(' ',
-                        case when t.tgtype & 4 <> 0 then 'insert' end,
-                        case when t.tgtype & 8 <> 0 then 'delete' end,
-                        case when t.tgtype & 16 <> 0 then 'update' end)))
-               from pg_trigger t join pg_class tc on tc.oid = t.tgrelid
-               join pg_namespace tn on tn.oid = tc.relnamespace
-              where t.tgfoid = p.oid and not t.tgisinternal) as fired_by
-       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-      where n.nspname in ('public', 'ops') and p.prokind = 'f'
-        and not exists (select 1 from pg_depend d where d.objid = p.oid and d.deptype = 'e')
-      order by 2`,
-  );
-  return rows.map((row) => ({
-    qualified: row.qualified,
-    signature: row.signature,
-    argumentTypes: row.argument_types,
-    definer: row.definer,
-    trigger: row.trigger,
-    config: row.config ?? [],
-    firedBy: row.fired_by ?? [],
-  }));
-}
 
 /** What the server said, reduced to what a contract can name. */
 export type Outcome =

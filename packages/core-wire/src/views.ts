@@ -3,11 +3,10 @@
 // What the reads answer, as it crosses the wire: the one declaration of each
 // read result, for the server and for every client.
 //
-// This module holds types only and imports types only, so the web and the
-// command line take it through the wire package's index with no database code
-// anywhere behind it. A client that kept its own copy of
-// these could drift from what the server sends without a typecheck noticing,
-// which is how the web came to believe every task has a title.
+// This module holds types only and imports types only, so the web and the command line take
+// it through the wire package's index with no database code anywhere behind it. A client
+// that kept its own copy of these could drift from what the server sends without a typecheck
+// noticing, which is how the web came to believe every task has a title.
 //
 // Each time here is an ISO string, because that is what arrives: the reads
 // convert their own `Date`s so the type the server builds is the type a
@@ -24,6 +23,62 @@ import type {
   PresetPlan,
   SettingValueType,
 } from '../../core-records/src/index.ts';
+import type { TaskLedgerView } from './views-agent.ts';
+import type { CheckView, RunPinView, RunReadView, RunScopeView } from './views-run.ts';
+
+// A run's pins, reads, checks and scope, and the task's execution and receipt
+// reads, live in their own module, re-exported here, so this one stays under
+// the 1,000-line cap.
+export type {
+  RunPinView,
+  RunReadView,
+  CheckView,
+  CoveringGrantView,
+  RunScopeView,
+  ExecutionRun,
+  ExecutionEvent,
+  TaskExecutionResult,
+  TaskExecution,
+  ExecutionGraph,
+  ExecutionNode,
+  ReceiptResult,
+} from './views-run.ts';
+
+// The run ledger, conversation and awaiting-review views live in their own
+// module, re-exported here, so this one stays under the 1,000-line cap.
+export type {
+  TaskLedgerView,
+  RunStateView,
+  BudgetStopView,
+  EnvelopeView,
+  ConversationPointerView,
+  WrapUpItemView,
+  WrapUpView,
+  ConversationMessageView,
+  ConversationTabView,
+  ConversationListResult,
+  ConversationReadResult,
+  AwaitingReviewView,
+  AwaitingReviewResult,
+} from './views-agent.ts';
+
+export type {
+  PrivacyIncidentView,
+  BreachRunbookLink,
+  HealthSourceName,
+  HealthSourceState,
+  HealthFault,
+  ServiceHealthState,
+  HealthSourceView,
+  ServiceHealthView,
+  ServiceHealthSection,
+  OperationsReadResult,
+  BreachNoticeDraft,
+  BreachNoticesResult,
+  SecurityAlertView,
+  LastTestedRestoreView,
+  UnattendedView,
+} from './views-operations.ts';
 
 /** The task state a task points at. The machine category is what a board groups on. */
 export interface TaskStateView {
@@ -41,7 +96,24 @@ export interface PersonView {
 export interface HistoryEntry {
   readonly at: string;
   readonly actorId: string;
+  /** `person`, `agent` or `worker` (MP-4-16); null for an actor this business does not hold. */
+  readonly actorKind: string | null;
+  /**
+   * The person's display name for a person's actor; null for any other, and for a
+   * reader not shown people (the agent prefix).
+   */
+  readonly actorName: string | null;
+  /**
+   * The person the actor is; null for an agent or a worker, and for a reader
+   * not shown people (the agent prefix).
+   */
+  readonly personId: string | null;
   readonly operation: string;
+  /**
+   * On a `task.duplicate` entry only (MP-4-8): the task it was duplicated
+   * from, for a reader who holds read on that task now; null for anyone else.
+   */
+  readonly duplicatedFrom?: string | null;
 }
 
 /** A task in a list. Everything the detail has except the long text and the history. */
@@ -72,6 +144,14 @@ export type CommentView = Readonly<Record<string, unknown>>;
 
 export interface TaskDetail extends TaskSummary {
   readonly description: string | null;
+  /** The pre-prompt an agent boots on for this task (MP-4-7); null when none is written. */
+  readonly agentBrief: string | null;
+  /** The in-product address this task is about, path and hash (MP-4-12); null when unlinked. */
+  readonly pageLink: string | null;
+  /** The time the burn bar measures against, whole minutes (MP-4-8); null when not set. */
+  readonly estimateMinutes: number | null;
+  /** The work label's id as `task.set_category` stored it (MP-4-8, CS-4.16); null for none. */
+  readonly category: string | null;
   readonly history: readonly HistoryEntry[];
   /** Oldest first. Empty is a real answer; a denied read never reaches here. */
   readonly comments: readonly CommentView[];
@@ -110,6 +190,115 @@ export interface TaskDetail extends TaskSummary {
    * not shown (I09).
    */
   readonly ledger: TaskLedgerView | null;
+  /** The derived rank and its calc line (R70, MP-4-9). Worked out at read, never stored. */
+  readonly rank: RankView;
+  /** The Ad hoc mark (MP-4-10, CS-4.9): billing reads it, and new time entries default to it. */
+  readonly adHoc: boolean;
+  /**
+   * Client access (MP-4-10, CS-4.10, R45): true exactly when the task is
+   * shared with at least one of its client's people. The tick draws this and
+   * nothing stored beside it.
+   */
+  readonly clientAccess: boolean;
+  /**
+   * The board the task sits on, as its page's crumb reads it (MP-4-1): null
+   * when it sits on none. A board is a task, so its title is sent only to a
+   * reader who may read that board; anyone else is told there is one.
+   */
+  readonly board: BoardCrumb | null;
+  /** The task's stage as stored (`task.set_stage`), or null when it has none. */
+  readonly stage: string | null;
+  /**
+   * Whether the task is put under a client (`task.set_party`). The facts band
+   * says so; the client's name waits on the client model.
+   */
+  readonly clientSet: boolean;
+  /**
+   * The task's subtasks (MP-4-4, CS-15.19), in their order: each a full task
+   * whose `parent` is this one, and only those the reader may read.
+   */
+  readonly steps: readonly StepView[];
+  /**
+   * Time on this task (MP-4-6): the reader's own entries and running timer,
+   * and the task's total. Null for an agent, which is sent no one's time.
+   */
+  readonly time: TaskTimeView | null;
+  /** The tags this task carries (MP-4-11), by name. */
+  readonly tags: readonly TagView[];
+  /**
+   * The agent assignee (Assign to AI): the delegation holding the task and
+   * the person accountable for it, or null. `live` is false once it expired
+   * or settled; a revoke clears it. Sent only to its delegating person: null
+   * to every other reader, an agent included.
+   */
+  readonly agent: AgentAssigneeView | null;
+  /**
+   * The reader's own live delegations that reach this task, for the Assign
+   * to AI control. Never anyone else's; empty for an agent.
+   */
+  readonly myAgents: readonly AgentOfferView[];
+}
+
+/** The agent holding a task, and who answers for it. */
+export interface AgentAssigneeView {
+  readonly delegationId: string;
+  readonly purpose: string;
+  readonly accountable: PersonView;
+  readonly live: boolean;
+}
+
+/** One of the reader's own agents the Assign to AI control offers. */
+export interface AgentOfferView {
+  readonly delegationId: string;
+  readonly purpose: string;
+}
+
+/** One name in the business's tag vocabulary (MP-4-11). */
+export interface TagView {
+  readonly id: string;
+  readonly name: string;
+}
+
+/**
+ * A task's time as one person reads it (MP-4-6, RS-VAULT-9: a person sees
+ * their own time, never a leaderboard). `entries` are the reader's own, newest
+ * first; `totalMinutes` is every person's finished minutes on the task, one
+ * number with no names, which the burn bar reads against the estimate.
+ */
+export interface TaskTimeView {
+  readonly entries: readonly TimeEntryView[];
+  readonly running: { readonly entryId: string; readonly startedAt: string } | null;
+  readonly totalMinutes: number;
+}
+
+/** One of the reader's own time entries. `minutes` is null while it runs. */
+export interface TimeEntryView {
+  readonly id: string;
+  readonly startedAt: string;
+  readonly endedAt: string | null;
+  readonly minutes: number | null;
+  readonly note: string;
+  readonly adHoc: boolean;
+  readonly source: 'timer' | 'log';
+}
+
+/**
+ * One subtask as its parent's page lists it (MP-4-4). `done` is the completed
+ * category; `archived` says when and why a step left the count without being
+ * done (MP-4-15), and is null for a live one. `awaitingApproval` is true while
+ * a gate on the step's live proposal waits for a decision (MP-5-11's
+ * question): the page draws that step with a note and no tick.
+ */
+export interface StepView {
+  readonly id: string;
+  readonly key: string;
+  readonly title: string | null;
+  readonly state: TaskStateView | null;
+  readonly done: boolean;
+  readonly archived: { readonly at: string; readonly why: string } | null;
+  readonly awaitingApproval: boolean;
+  readonly assignee: PersonView | null;
+  readonly revision: number;
 }
 
 /** One alert as `task.read` and `task.queue` carry it (`core-runtime/src/alerts.ts`). */
@@ -132,60 +321,23 @@ export interface TaskEnvelope {
   readonly actualMinor: number;
 }
 
-export interface TaskLedgerView {
-  /** Open one first, then the closed ones, newest first. Empty before any approval. */
-  readonly envelopes: readonly EnvelopeView[];
-  /** AW-05's stops on the task's runs, by run, oldest ask first. Empty before any stop. */
-  readonly stops: readonly BudgetStopView[];
-  /** MP-6-2's state revision lists: each kept version of the task's runs, newest first. */
-  readonly states: readonly RunStateView[];
-}
+/** A task's board as the crumb draws it: its id and title, or that it is withheld. */
+export type BoardCrumb =
+  | { readonly readable: true; readonly id: string; readonly title: string | null }
+  | { readonly readable: false };
 
-/** One kept version of a run's state (MP-6-2, CS-16.4): the writer's text, shown as text. */
-export interface RunStateView {
-  readonly runId: string;
-  readonly version: number;
-  readonly knowledge: readonly string[];
-  readonly unknowns: readonly string[];
-  /** The person, or the agent inside its delegation, who revised it. */
-  readonly revisedBy: { readonly actorId: string };
-  readonly revisedAt: string;
-}
-
-/** One stop at a run's approved ceiling: the ask a person answers (AW-05, MP-6-5, C54). */
-export interface BudgetStopView {
-  readonly askId: string;
-  readonly runId: string;
-  /** 1 to 3; a run asks three times at most. */
-  readonly number: number;
-  /** The third is the one consolidated decision. */
-  readonly kind: 'stop' | 'consolidated';
-  readonly ceilingMinor: number;
-  /** The spend to date when it stopped. */
-  readonly spentMinor: number;
-  readonly currency: string;
-  readonly raisedAt: string;
-  /** A person's answer, or null while the ask waits. */
-  readonly answer: 'top_up' | 'end' | null;
-  /** A first top-up above the four-eyes band, waiting for a second person, or null. */
-  readonly awaitingSecond: { readonly amountMinor: number } | null;
-}
-
-export interface EnvelopeView {
-  readonly id: string;
-  readonly state: 'open' | 'closed';
-  /** The allowance. */
-  readonly maximumMinor: number;
-  readonly heldMinor: number;
-  /** Spent. */
-  readonly actualMinor: number;
-  readonly currency: string;
-  readonly openedAt: string;
-  readonly closedAt: string | null;
-  /** The approval whose reservation opened it: its first reservation's version. */
-  readonly openedBy: { readonly versionId: string } | null;
-  /** The cap it draws on. */
-  readonly cap: { readonly key: string; readonly limitMinor: number; readonly currency: string };
+/**
+ * A task's derived rank as its reader is shown it (R70, MP-4-9).
+ *
+ * `number` is the task's place among the open tasks this reader may read, or
+ * null when the task is not ranked; `score` is null exactly then. `calc` is the
+ * line drawn under the rank, worked out on the server so every surface shows the
+ * same words, and it names nothing but this task's own marks and modifiers.
+ */
+export interface RankView {
+  readonly number: number | null;
+  readonly score: number | null;
+  readonly calc: string;
 }
 
 /**
@@ -230,6 +382,20 @@ export type InternalCommentView = {
   readonly posted_at: string;
   readonly edited_at: string | null;
   readonly source: string;
+  /** The top-level message this replies to, or null for a message (R42). */
+  readonly parent: string | null;
+  /**
+   * Where a top-level client message stands (DT-19): `owed` (the client's,
+   * awaiting the team), `not_acknowledged` (the team's, awaiting the client)
+   * or `answered`; null on an internal note and on a reply.
+   */
+  readonly signal: 'answered' | 'owed' | 'not_acknowledged' | null;
+  /**
+   * Whether the reader's own actor wrote it, so a screen draws the edit and
+   * delete controls on those rows only (CS-4.34). The commands check the
+   * author again; this only saves offering a control that would be refused.
+   */
+  readonly own: boolean;
 };
 
 export interface EvidenceView {
@@ -330,57 +496,20 @@ export interface ProposalVersionView {
   readonly payload: unknown;
   readonly supersededAt: string | null;
   readonly runId: string | null;
+  /** The run's first claim, or null before one (MP-6-2's hero time). */
+  readonly startedAt: string | null;
+  /** A hand-back with no claim after it, or null while the run is out or never ran. */
+  readonly endedAt: string | null;
+  /** The token units the run's model calls recorded, or null for none (MP-6-2's hero tokens). */
+  readonly tokenUnits: number | null;
+  /** What the run was given at its start (AW-02's pin slot, 0086); empty with no pin (MP-6-2). */
+  readonly pins: readonly RunPinView[];
+  /** Each instruction file the run read, in its order (the read ledger, 0086). */
+  readonly reads: readonly RunReadView[];
   readonly evidence: EvidenceView | null;
   readonly gate: GateView | null;
   /** The checks the run performed on this version, oldest first (MP-6-1, CS-16.3). */
   readonly checks: readonly CheckView[];
-}
-
-/** One check a run recorded under its worker lease, against the version it ran on. */
-export interface CheckView {
-  readonly id: string;
-  readonly name: string;
-  readonly outcome: string;
-  readonly note: string | null;
-  /** The lease holder that performed it: the provenance is the lease, not a claim. */
-  readonly performedByActorId: string;
-  readonly recordedAt: string;
-}
-
-/** One grant a delegation draws on, for the link to it in the access ledger (R71). */
-export interface CoveringGrantView {
-  readonly id: string;
-  readonly collection: string;
-  readonly action: string;
-  /** `business`, or `record` for a grant on this task alone. */
-  readonly scopeKind: string;
-}
-
-/**
- * What a run was allowed to touch (MP-6-4, CS-6.1), set by the broker when the
- * lease was taken and read-only here: the lease's own delegation, never the
- * task's fields. A lease a person holds carries no delegation.
- */
-export interface RunScopeView {
-  readonly leaseId: string;
-  /** When the lease was taken: the moment the run's context was pinned. */
-  readonly acquiredAt: string;
-  readonly delegation: {
-    readonly id: string;
-    readonly purpose: string;
-    /** The one resource the delegation was minted for (the one-task ceiling). */
-    readonly scope: { readonly kind: string; readonly id: string };
-    readonly collections: readonly string[];
-    readonly actions: readonly string[];
-    readonly grantedAt: string;
-    readonly expiresAt: string;
-    /** `live`, or why it no longer is: `expired`, `revoked` or `settled`. */
-    readonly state: string;
-    /** The person whose live grants are its ceiling. */
-    readonly delegatePersonId: string;
-    /** That person's live grants it draws on now; empty when they hold none. */
-    readonly grants: readonly CoveringGrantView[];
-  } | null;
 }
 
 export interface ProposalView {
@@ -443,7 +572,13 @@ export interface Capability {
  * client reach through one more level for three fields.
  */
 export interface SessionCapabilities {
+  /** The signed-in person, or under an agent credential the person it acts for. */
   readonly personId: string;
+  /**
+   * Under an agent credential (API-2) only: the acting identity, its agent
+   * actor, and then `grants` are the ticked keys the person still holds.
+   */
+  readonly agentActorId?: string;
   /** The business's key, which is what a path and a screen both name it by. */
   readonly businessKey: string;
   /** Distinct pairs, sorted. A pair held at two scopes appears once. */
@@ -458,12 +593,25 @@ export interface SessionCapabilities {
  */
 export interface InternalTaskDetail extends TaskDetail {
   readonly comments: readonly InternalCommentView[];
+  /**
+   * The client the task is under, by id (C32), or null for none (MP-4-8). Its
+   * name is `client.list`'s. A client the reader's grants do not reach is sent
+   * as null too, beside `clientSet: true` (CS-4.12): no id `client.list` withholds.
+   */
+  readonly client: string | null;
+  /** True once the task has content, so its client is locked (S0-5, `CLIENT_LOCKED`). */
+  readonly hasContent: boolean;
 }
 
 /** `task.read` on the person prefix: the whole detail, for a reader inside the business. */
 export interface InternalTaskRead {
   readonly ok: true;
   readonly task: InternalTaskDetail;
+  /**
+   * The business's task states in the workflow's order: the status select's
+   * choices, each with the id `task.set_state` takes (Stage 1 adds).
+   */
+  readonly states: readonly TaskStateView[];
 }
 
 /**
@@ -479,9 +627,152 @@ export interface SharedTaskRead {
 /** Which of the two arrived is decided by the key, never by the reader's role. */
 export type TaskReadResult = InternalTaskRead | SharedTaskRead;
 
+/**
+ * One row of a board (MP-5-8): the summary and what the Projects board's
+ * cells draw from stored records, each the value `task.read` answers for the
+ * same task. The rank is worked out at read in the reader's own pool.
+ */
+export interface BoardTask extends TaskSummary {
+  readonly rank: RankView;
+  /** The stage as `task.set_stage` stored it; null for none. */
+  readonly stage: string | null;
+  /** True when the task is put under a client (`task.set_party`). */
+  readonly clientSet: boolean;
+  /**
+   * Every finished minute logged on the task (MP-4-6), the total `task.read`'s
+   * time answers: one number, no names. Derived at read; 0 for none.
+   */
+  readonly actualMinutes: number;
+  /** The task's estimate in whole minutes (MP-4-8), as `task.read` answers it; null when not set. */
+  readonly estimateMinutes: number | null;
+  /** The work label's id (CS-4.16), as `task.read` answers it; null for none. */
+  readonly category: string | null;
+  /** The in-product address the task is about (MP-4-12), as `task.read` answers it; null when unlinked. */
+  readonly pageLink: string | null;
+  /**
+   * Where the task's state stands in the workflow (MP-5-11): the state
+   * record's `position`, read with the state, so the board groups in the
+   * workflow's order. Null when the task has no state.
+   */
+  readonly statePosition: number | null;
+  /**
+   * Why the task waits (MP-5-11), from the run lifecycle: `needs_approval`
+   * while a gate on its live version is pending and not expired, whoever may
+   * decide it. Null when nothing the board reads holds it.
+   */
+  readonly waitReason: 'needs_approval' | null;
+  /**
+   * True when the task waits at an open gate for the caller's decision
+   * (MP-5-12): a pending gate, not expired, on its live version, inside the
+   * caller's decide grant. The Review mode's rows and its live count.
+   */
+  readonly awaitingDecision: boolean;
+  /** The agent holding the task, only when it is the reader's own (Assign to AI), as `task.read` sends it. */
+  readonly agent: AgentAssigneeView | null;
+  /** The reader's own live agents that reach the task, as `task.read` sends them; never anyone else's. */
+  readonly myAgents: readonly AgentOfferView[];
+  /** The reader's own waiting client signals and mentions on the task (MP-5-8); never anyone else's. */
+  readonly comments: BoardComments;
+}
+
+/**
+ * A board row's comment badge (MP-5-8, P-22): of the reader's own open inbox
+ * items (INB-1) about the task, how many are `client_comment` and how many
+ * `mention`, and when the newest of them was raised; null when there are none.
+ */
+export interface BoardComments {
+  readonly client: number;
+  readonly mentions: number;
+  readonly latest: string | null;
+}
+
+/**
+ * One of the reader's own to-dos (MP-7-1, CS-7.23): an open task assigned to
+ * the reader, in their business, with its tags and the count of top-level
+ * client messages owed by the team (DT-19 `owed`), which filters the list.
+ */
+export interface TodoView extends TaskSummary {
+  readonly tags: readonly TagView[];
+  readonly waitingComments: number;
+}
+
+/** `task.todos`: the reader's own open tasks, whatever board they sit on. */
+export interface TaskTodosResult {
+  readonly ok: true;
+  readonly todos: readonly TodoView[];
+}
+
 export interface TaskBoardResult {
   readonly ok: true;
-  readonly tasks: readonly TaskSummary[];
+  /** The board's tasks the caller's grants reach. */
+  readonly tasks: readonly BoardTask[];
+  /**
+   * How many of this board's tasks in the caller's business their grants do
+   * not reach: a count, never which (B-22). Only for a member holding
+   * task:read on the whole collection; absent for a member reading through
+   * record grants, a client login under owner answer 22.
+   */
+  readonly withheld?: number;
+  /** When the newest task served last changed (MP-5-7); null when none is served. */
+  readonly changedAt: string | null;
+  /** The caller's own person id, which the viewer preset narrows to (MP-5-12). */
+  readonly viewer: string;
+  /** The caller's owed count, INB-1's one count, as `inbox.count` gives it: Review's count (MP-5-12). */
+  readonly owed: number;
+}
+
+/**
+ * One applied write to a task, as the activity ledger lists it (MP-8-4). The
+ * actor is named, never identified: the ledger is read by people, and an
+ * actor's identifier tells them nothing a name does not.
+ */
+export interface LedgerEventView {
+  readonly id: string;
+  readonly at: string;
+  /** The person who acted, or what kind of actor it was when no person did. */
+  readonly actorName: string;
+  /** The command that was applied, by its surface name. */
+  readonly operation: string;
+  readonly task: { readonly key: string; readonly title: string | null };
+}
+
+/** One day in the reader's zone and every event on it, newest first. */
+export interface LedgerDayView {
+  /** `YYYY-MM-DD` in the zone the reader asked for. */
+  readonly day: string;
+  readonly events: readonly LedgerEventView[];
+}
+
+/**
+ * `task.ledger`'s answer: whole days, newest first, never split across pages.
+ * `earlier` says whether a day before the last one here has events.
+ */
+export interface TaskLedgerResult {
+  readonly ok: true;
+  readonly days: readonly LedgerDayView[];
+  readonly earlier: boolean;
+  /**
+   * Only with `query`: the reader's own matching tasks go past the most the
+   * ledger's search reads (C1's bound, 500), so some are not listed.
+   */
+  readonly more?: boolean;
+}
+
+/** A teammate on the Team panel's people strip (MP-7-10): no row is available. */
+export interface TeamMemberView {
+  readonly personId: string;
+  readonly name: string;
+  readonly availability: {
+    readonly state: 'available' | 'away';
+    readonly reason: string | null;
+  } | null;
+}
+
+export interface TeamListResult {
+  readonly ok: true;
+  /** The reader's own person, so the panel knows which entry is theirs. */
+  readonly you: string;
+  readonly people: readonly TeamMemberView[];
 }
 
 export interface PersonListResult {
@@ -489,24 +780,10 @@ export interface PersonListResult {
   readonly persons: readonly PersonView[];
 }
 
-/** One gate waiting on a person: `gate.pending`'s row (MP-6-1). */
-export interface AwaitingReviewView {
-  readonly gateId: string;
-  readonly versionId: string;
-  readonly version: number;
-  readonly lineageId: string;
-  readonly taskId: string;
-  readonly taskTitle: string;
-  readonly purpose: string;
-  readonly maximumMinor: number;
-  readonly currency: string;
-  readonly round: number;
-  readonly expiresAt: string;
-}
-
-export interface AwaitingReviewResult {
+/** `tag.list`'s answer: the business's tag vocabulary, by name (MP-4-11). */
+export interface TagListResult {
   readonly ok: true;
-  readonly awaiting: readonly AwaitingReviewView[];
+  readonly tags: readonly TagView[];
 }
 
 /**
@@ -541,41 +818,25 @@ export interface OutageView {
   }[];
 }
 
-/**
- * AW-04's attribution by digest: the runs whose read ledger holds the file,
- * entry and non-entry alike, and the operations those runs reached. It is
- * pre-review, every row labelled so: it may floor a declaration of reach and
- * nothing else, and no evaluation, promotion or conformance input takes it.
- */
-export interface PreReviewAttribution {
-  readonly label: 'pre-review';
-  readonly digest: string;
-  readonly runs: readonly PreReviewRun[];
-  /** Every operation any run below reached (a refused call reached nothing). */
-  readonly operations: readonly string[];
-}
-
-export interface PreReviewRun {
-  readonly label: 'pre-review';
-  readonly taskId: string;
-  readonly runId: string;
-  /** The paths the run read the file at. */
-  readonly paths: readonly string[];
-  /** Whether the file was the run's entry file. */
-  readonly entry: boolean;
-  readonly operations: readonly string[];
-}
-
-/** `definition.attribution`'s answer. */
-export interface AttributionResult {
-  readonly ok: true;
-  readonly attribution: PreReviewAttribution;
-}
-
 /** `preset.plan`'s answer: a dry-run plan that installs and approves nothing. */
 export interface PresetPlanResult {
   readonly ok: true;
   readonly plan: PresetPlan;
+}
+
+/** One task a search found: enough to list it and to open it. */
+export interface SearchHit {
+  readonly id: string;
+  readonly key: string;
+  readonly title: string | null;
+}
+
+/** `task.search`'s answer. No match in scope is `[]`, and there is no count. */
+export interface TaskSearchResult {
+  readonly ok: true;
+  readonly hits: readonly SearchHit[];
+  /** Only for a server caller that passed a limit: its own matches go past it. */
+  readonly more?: boolean;
 }
 
 export interface SettingsReadResult {
@@ -602,187 +863,82 @@ export interface CapabilitiesResult extends SessionCapabilities {
   readonly ok: true;
 }
 
-/** One run naming the task, as `task.execution` reports it (T2a); never merged. */
-export interface ExecutionRun {
-  readonly runId: string;
-  readonly lineageId: string;
-  readonly versionId: string;
-  readonly state: string;
-  readonly taskRevisionAtRequest: number | null;
-  readonly createdAt: string;
+/**
+ * Who is signed in (C23): the caller's own name, for the person menu, and
+ * nothing else about anybody. No identifier: the menu needs none, and an answer
+ * that carries only a name cannot carry someone else's.
+ */
+export interface SessionPersonResult {
+  readonly ok: true;
+  readonly person: { readonly name: string };
 }
 
-/** One durable progress event, in the task-wide order. */
-export interface ExecutionEvent {
-  readonly eventId: string;
-  readonly runId: string;
-  readonly position: number;
-  readonly kind: string;
-  /** The attempt the event is about; its receipt is read by this. */
-  readonly attemptId: string;
-  readonly at: string;
+/** One permission in effect: an action on a collection, over the scope it reaches. */
+export interface AccessPermission {
+  readonly collection: string;
+  readonly action: Action;
+  /** `id` is null exactly at business scope; a client is a `party`. */
+  readonly scope: { readonly kind: 'business' | 'party' | 'record'; readonly id: string | null };
 }
 
-/** `task.execution`'s answer, under `execution`; `denied`, `unavailable` and `loading` are the read's own. */
-export interface TaskExecutionResult {
-  readonly execution: TaskExecution;
-}
-
-export interface TaskExecution {
-  readonly outcome: 'ready' | 'no-run' | 'stale';
-  readonly runs: readonly ExecutionRun[];
-  readonly events: readonly ExecutionEvent[];
-  /** Whether `events` reaches the task's last recorded event. */
-  readonly complete: boolean;
-  /** The cursor for the rest, or null when nothing was left out. */
-  readonly next: number | null;
-  /** Planned and observed per run (AW-06); every reader who may see the task gets the same one. */
-  readonly graph: ExecutionGraph;
+/** One live grant row naming a person or their acting identity: what `access.revoke` takes. */
+export interface AccessGrant extends AccessPermission {
+  readonly grantId: string;
 }
 
 /**
- * One run's node (AW-06). `planned` stays null until AW-04's bound plan record
- * is read, and `plan` says `unbound` meanwhile, so no node is called unplanned
- * against a plan nobody read. The observed layer is the run's own record.
+ * A permission a person may use now, and whether the command path first asks
+ * the money step-up (C59) for it: a recent second factor, or for a client a
+ * recent sign-in. True exactly when `asksMoneyStepUp` is.
  */
-export interface ExecutionGraph {
-  readonly plan: 'unbound';
-  readonly sourceRevision: number;
-  readonly complete: boolean;
-  readonly nodes: readonly ExecutionNode[];
-}
-
-export interface ExecutionNode {
-  readonly nodeId: string;
-  readonly condition: 'not_started' | 'in_progress' | 'settled' | 'superseded' | 'unrecognised';
-  readonly planned: null;
-  readonly observed: {
-    readonly condition: ExecutionNode['condition'];
-    readonly runState: string;
-    readonly attemptId: string | null;
-    readonly whoseMove: {
-      readonly kind: 'agent' | 'person';
-      readonly actorId: string | null;
-    } | null;
-    readonly outcome: string | null;
-    readonly fault: string | null;
-    readonly lease: { readonly state: string; readonly expiresAt: string } | null;
-    readonly effectObserved: boolean;
-    /** Null when nothing is held or spent: absent money is never 0. */
-    readonly heldMinor: number | null;
-    readonly spentMinor: number | null;
-    readonly currency: string;
-  };
-}
-
-/** `task.receipt`: what an observed effect came from, and what it cost (T2c2, T2d). */
-export interface ReceiptResult {
-  readonly receipt: {
-    readonly attemptId: string;
-    readonly decision: { readonly id: string };
-    readonly version: { readonly id: string; readonly number: number };
-    readonly effect: { readonly kind: string; readonly audience: string };
-    readonly settlement:
-      | {
-          readonly state: 'settled';
-          readonly heldMinor: number;
-          readonly spentMinor: number;
-          readonly releasedMinor: number;
-        }
-      | { readonly state: string; readonly heldMinor: number };
-  };
-}
-
-/** A pointer a wrap-up holds: what it names and the address that opens it (AW-03). */
-export interface ConversationPointerView {
-  readonly kind: 'task' | 'run' | 'gate' | 'conversation';
-  readonly id: string;
-  readonly address: string;
-  /** The item's state when the wrap-up was written, where it has one. */
-  readonly state?: string;
-}
-
-/** One of a wrap-up's seven pointer-and-fact contents. */
-export interface WrapUpItemView {
-  readonly key: string;
-  readonly fact: string;
-  readonly pointers: readonly ConversationPointerView[];
-}
-
-export interface WrapUpView {
-  readonly version: number;
-  readonly writtenAt: string;
-  readonly writtenBy: { readonly operation: string; readonly codeRevision: string };
-  readonly definitionVersion: string | null;
-  /** The request, as a marked quotation: the first message, never a transcript. */
-  readonly request: { readonly quotation: string };
-  readonly items: readonly WrapUpItemView[];
-  /** Item 8, what was left open. Empty is "nothing left open". */
-  readonly leftOpen: readonly ConversationPointerView[];
-  readonly leftOpenText: string;
-}
-
-export interface ConversationMessageView {
-  readonly id: string;
-  readonly role: 'person' | 'agent';
-  readonly body: string;
-  readonly createdAt: string;
-}
-
-/** One of the caller's own conversations, as the assistant panel's tab row draws it (MP-7-11). */
-export interface ConversationTabView {
-  readonly id: string;
-  readonly address: string;
-  readonly title: string;
-  readonly lastActivityAt: string;
-  readonly bodyPurged: boolean;
-}
-
-/** The caller's own conversations, newest activity first; nobody else's. */
-export interface ConversationListResult {
-  readonly ok: true;
-  readonly conversations: readonly ConversationTabView[];
+export interface AccessPreview extends AccessPermission {
+  readonly stepUp: boolean;
 }
 
 /**
- * The drawer's planning allowance (AW-04, U10): the business's planning cap,
- * what is left of it across the business, and the caller's own conversation's
- * settled spend and held amount. `set` false is the default cap, AUD 50.
+ * A person on Team or Clients, with the preview of what they may do now and
+ * the live grants behind it, each by id, so one can be revoked.
  */
-export interface PlanningAllowanceView {
-  readonly set: boolean;
-  readonly currency: string;
-  readonly limitMinor: number;
-  readonly leftMinor: number;
-  readonly conversation: { readonly spentMinor: number; readonly heldMinor: number };
+export interface AccessPerson extends PersonView {
+  readonly permissions: readonly AccessPreview[];
+  readonly grants: readonly AccessGrant[];
 }
 
-/** `conversation.allowance`'s answer: the team's, and the caller's own spend only. */
-export interface AllowanceResult {
-  readonly ok: true;
-  readonly allowance: PlanningAllowanceView;
+/** An agent on a live delegation, under the person record it draws on. */
+export interface AccessAgent {
+  readonly agentActorId: string;
+  readonly delegationId: string;
+  readonly purpose: string;
+  readonly person: PersonView;
+  readonly expiresAt: string;
+  /** Its delegation's narrowing of its person's grants, on the one record it is for. */
+  readonly permissions: readonly AccessPermission[];
 }
 
-export interface ConversationReadResult {
+/**
+ * `access.read`'s answer (C32). The three lists are one set of `people` rows:
+ * Team is the assignee list, Clients the people without a membership who
+ * stand on a live grant, and each agent names its person rather than copying it.
+ */
+export interface AccessReadResult {
   readonly ok: true;
-  readonly conversation: {
-    readonly id: string;
-    readonly address: string;
-    readonly title: string;
-    readonly subject: string | null;
-    readonly scope: { readonly kind: 'task'; readonly id: string } | null;
-    /** The page added to its context (MP-7-11): one slot, a second replaces it. */
-    readonly page: { readonly address: string; readonly shows: string } | null;
-    readonly createdAt: string;
-    readonly lastActivityAt: string;
-    readonly bodyPurgedAt: string | null;
-  };
-  /** The body, or null once it has purged: the address then answers the wrap-up. */
-  readonly messages: readonly ConversationMessageView[] | null;
-  /** The current wrap-up version, or null before the first quiet. */
-  readonly wrapUp: WrapUpView | null;
-  /** Every version, newest first. */
-  readonly wrapUpHistory: readonly { readonly version: number; readonly writtenAt: string }[];
+  readonly team: readonly AccessPerson[];
+  readonly clients: readonly AccessPerson[];
+  readonly agents: readonly AccessAgent[];
+  /** The business's client records, which a `party` scope in a preview names. */
+  readonly clientRecords: readonly ClientView[];
+}
+
+/** One client record (C32): an organisation the business works for. */
+export interface ClientView {
+  readonly clientId: string;
+  readonly name: string;
+}
+
+/** `client.list`'s answer: the clients the caller's live grants reach. */
+export interface ClientListResult {
+  readonly ok: true;
+  readonly clients: readonly ClientView[];
 }
 
 /**
@@ -813,6 +969,11 @@ export interface InboxEntry {
   readonly task?: { readonly key: string; readonly title: string | null };
   /** Who closed it, by name: a cleared decision names who decided. */
   readonly closedBy?: PersonView | null;
+  /**
+   * The task's client (MP-7-3's group), only where the caller reaches that
+   * client as `client.list` does; a caller holding the task alone is not told.
+   */
+  readonly client?: { readonly clientId: string; readonly name: string };
   /**
    * T2h's alert on the run a readable item points at: the same record the task
    * page and the queue read show (INB-1, the alert's third and last place).

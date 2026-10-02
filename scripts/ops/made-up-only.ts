@@ -73,13 +73,13 @@ const SPECIAL: Readonly<Record<string, string>> = {
       join pg_depend d on d.classid = 'pg_rewrite'::regclass and d.objid = w.oid
      where d.refobjid in (${GUARDED}) and v.relowner is distinct from
        (select oid from pg_roles where rolname = 'ops_astro_app'))`,
-  // The database owner's own definer functions are the guard's to judge: their
-  // writes run as the owner and are noted.
+  // The owner's definer functions are the guard's to judge: their writes are noted. So are
+  // hosted Supabase's own: superuser supabase_admin, exact name (supabase/postgres@9b0996e).
   'a definer function runs as a role past row security': `exists (select from pg_proc p
       join pg_namespace n on n.oid = p.pronamespace join pg_roles r on r.oid = p.proowner
      where p.prosecdef and n.nspname not in ('pg_catalog', 'information_schema')
        and not (n.nspname = 'ops_astro_made_up' and p.proname in ('note', 'protect', 'watch'))
-       and r.oid <> ${OWNER}
+       and r.oid <> ${OWNER} and not (r.rolname = 'supabase_admin' and r.rolsuper)
        and (r.rolbypassrls or r.rolsuper or pg_has_role(r.oid, ${OWNER}, 'member')))`,
   // The name is split in this text, so another preflight's last query is not a match.
   'the seed tag is readable in another session': `exists (select from pg_stat_activity
@@ -128,12 +128,20 @@ export async function productionSigns(
   return [...signs, ...(await specialSigns(admin))];
 }
 
+/** What a marked database's guard says about its sign-ins, which no reset empties. */
+const SIGN_IN_SIGNS = new Set([SIGNS['auth.users'], SIGNS['guard'], UNGUARDED]);
+
 /**
- * Whether the staging reset may empty this database: the seed marked it, or no
- * tenant table has ever held a row. Judged from the mark and storage sizes alone.
+ * Whether the staging reset may empty this database: no tenant or sign-in
+ * table has ever held a row, or it is marked and its guard vouches for every
+ * sign-in. The reset keeps the provider's sign-ins, their guard and the ledger's
+ * notes on them (`markEmptied`), so the guard judges every sign-in it carries
+ * over or makes. Judged from the mark, the guard and storage sizes alone.
  */
 export async function resettable(admin: OwnerQuery): Promise<boolean> {
-  return (await marked(admin)) || (await yes(admin, NEVER_HELD_A_ROW));
+  if (await marked(admin))
+    return !(await guardSigns(admin)).some((sign) => SIGN_IN_SIGNS.has(sign));
+  return yes(admin, NEVER_HELD_A_ROW);
 }
 
 /** A marked database: what its guard's ledger names, and any table left unguarded. */
@@ -230,6 +238,23 @@ export async function guardMadeUp(admin: OwnerQuery): Promise<void> {
     // One table's guard at a time: each is DDL on its own table.
     // oxlint-disable-next-line no-await-in-loop
     await admin.execute('select ops_astro_made_up.protect($1)', [oid]);
+}
+
+/**
+ * After the staging reset empties the product's schemas: the ledger forgets the
+ * emptied tables, keeps its notes on sign-ins and guards (no reset empties
+ * those), then guard and mark. A new database had no guard on `auth.users`, so
+ * it is judged again under the guard, as the seed's admission is: a sign-in
+ * made since the reset's check stops the reset, and the next run refuses it.
+ */
+export async function markEmptied(admin: OwnerQuery): Promise<void> {
+  if (await yes(admin, `to_regclass('${LEDGER}') is not null`))
+    await admin.execute(`delete from ${LEDGER} where relation not in ('auth.users', 'guard')`);
+  const wasMarked = await marked(admin);
+  await guardMadeUp(admin);
+  if (!wasMarked && !(await yes(admin, NEVER_HELD_A_ROW)))
+    throw new Error('made-up-only: a sign-in was made before the guard stood');
+  await markMadeUp(admin, []);
 }
 
 /** Guard the database, then mark it with the businesses and people the seed made. */

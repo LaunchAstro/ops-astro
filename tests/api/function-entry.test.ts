@@ -58,6 +58,7 @@ describe('S0-6 the function entry answers only its own host', () => {
   hostCase();
   settingsCase();
   alertSettingsCase();
+  recoveryScopeCase();
   adminCase();
 });
 
@@ -140,7 +141,7 @@ function settingsCase() {
 function alertSettingsCase() {
   it('appends alerts only under a well-formed ALERT_SCOPE_KEY and OPS_ENVIRONMENT, naming the setting', () => {
     const key = randomBytes(32).toString('hex');
-    const staging = { ...unreachable, OPS_ENVIRONMENT: 'staging' };
+    const staging = { ...unreachable, OPS_ENVIRONMENT: 'staging', RECOVERY_BUSINESS_KEYS: 'none' };
     expect(() => createFunctionHandler({ ...staging, ALERT_SCOPE_KEY: key })).not.toThrow();
     const refused: readonly [Settings, string][] = [
       [staging, 'ALERT_SCOPE_KEY'],
@@ -158,10 +159,25 @@ function alertSettingsCase() {
   });
 }
 
+// #287 A8: a named environment's function is its recovery's one owner, so it
+// names its businesses or `none`; only the local world may leave it out.
+function recoveryScopeCase() {
+  it('a hosted function in a named environment refuses to start without RECOVERY_BUSINESS_KEYS', () => {
+    const named = { ...unreachable, OPS_ENVIRONMENT: 'staging', ALERT_SCOPE_KEY: 'ab'.repeat(32) };
+    for (const value of [undefined, '']) {
+      const start = () => createFunctionHandler({ ...named, RECOVERY_BUSINESS_KEYS: value });
+      expect(start, String(value)).toThrow('RECOVERY_BUSINESS_KEYS');
+    }
+    expect(() => createFunctionHandler({ ...named, RECOVERY_BUSINESS_KEYS: 'none' })).not.toThrow();
+    expect(() => createFunctionHandler(unreachable)).not.toThrow();
+  });
+}
+
 function adminCase() {
-  it('refuses to start with an admin login or the sink key in its environment, naming it and never a value', async () => {
+  it("refuses to start with an admin login, the sink key or the provider's admin key in its environment, naming it and never a value", async () => {
     const saved = { ...process.env };
-    for (const name of ['DATABASE_ADMIN_URL', 'OPS_ERROR_SINK_DSN']) {
+    // SUPABASE_SERVICE_KEY: C58's provider steps run from the endings loop (ORCH47).
+    for (const name of ['DATABASE_ADMIN_URL', 'OPS_ERROR_SINK_DSN', 'SUPABASE_SERVICE_KEY']) {
       delete process.env['DATABASE_ADMIN_URL'];
       Object.assign(process.env, unreachable, { [name]: NOWHERE });
       try {

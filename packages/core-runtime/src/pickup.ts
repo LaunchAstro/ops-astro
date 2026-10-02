@@ -41,7 +41,6 @@ import { reserve } from './decide.ts';
 import { checkAuthorityAt, classifyUnderLocks, endLease, holdCoveringGrants } from './recovery.ts';
 import { lockRediscovered } from './rediscovery.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
-import { remainingOf, stopAtSpentHold } from './budget-stop.ts';
 import { appendRunEvent, type RunEvent } from './run-events.ts';
 
 export interface QueueEntry {
@@ -414,10 +413,7 @@ async function recheckClaim(
  * expired-lease lifecycle. It fences the old lease and classifies the old hold
  * under the locks it already holds. The abandoned reservation is never
  * revived; a replacement is a new row with a new attempt, on the
- * still-approved version. It holds the old hold less its calls' spend as
- * it stands now; a spend that used the whole hold stops the run at its budget
- * and asks a person (AW-05), a refusal that keeps the ask; after the
- * run's last ask it ends the run and tells a person (`stopAtSpentHold`).
+ * still-approved version.
  */
 async function claimHold(
   tx: TenantQuery,
@@ -446,30 +442,29 @@ async function claimHold(
   if (plan.kind === 'fresh') {
     return { ok: true, value: { reservationId, attemptId: state.attempt_id } };
   }
-  // FIXMONEY: the old hold less its calls' spend as it stands (`budget-stop.ts`).
-  const remaining = await remainingOf(tx, reservationId);
-  if (remaining.leftMinor <= 0) {
-    const words = await stopAtSpentHold(tx, {
-      runId: found.run_id,
-      reservationId,
-      versionId: found.version_id,
-      delegationId: null,
-      remaining,
-    });
-    const refusal = refuseCommand('BUDGET_UNAVAILABLE', [], [SPENT_WHOLE_HOLD, words]);
-    return { ok: false, refusal, retains: true };
+  // AW-01: a hold closed at what its model calls cost is held again only for
+  // what it had left, so the run never spends its approved ceiling twice.
+  const [old] = await tx.query<{ readonly spent: string }>(
+    `select coalesce(actual_minor, 0)::text as spent from public.reservations
+      where business_id = $1 and id = $2`,
+    [tx.businessId, reservationId],
+  );
+  const heldMinor = BigInt(state.held_minor) - BigInt(old?.spent ?? '0');
+  if (heldMinor <= 0n) {
+    return refuse(
+      'RESERVATION_NOT_CLAIMABLE',
+      'the model calls on this reservation spent its whole approved hold',
+      'Nothing is left to hold: a new proposal asks for more.',
+    );
   }
   return await reserve(tx, {
     envelopeId: found.envelope_id,
     versionId: found.version_id,
     runId: found.run_id,
     stepId: found.step_id,
-    heldMinor: remaining.leftMinor,
+    heldMinor,
   });
 }
-
-const SPENT_WHOLE_HOLD =
-  "this step's calls spent its whole hold, so nothing is left to hold for it";
 
 /**
  * Never steal a live lease. An expired one is fenced out by the new fence
@@ -786,25 +781,10 @@ type ClaimPlan =
   | { readonly kind: 'refuse'; readonly refusal: RuntimeResult<never> };
 
 /**
- * R5. The expired-lease lifecycle starts at the first replacement below. A
- * reservation with a non-null `lease_id` is not refused until this branch has
- * asked whether that lease expired; refused first, the old identity would
- * never be fenced and its hold never classified, and the only other expiry
- * branch applies to a *different* unleased reservation on the same task. The
- * replacement is a fresh hold on
- * the still-approved version, which 0019 permits, because one active hold per
- * version is the accepted rule and one hold ever was not. Its approval is
- * checked here, before the caller writes anything.
- *
- * R5, the remainder. A hold that ended without settling -- the authority
- * behind its lease was lost, and replay classified it -- leaves approved work
- * on a live lineage that nothing now holds. It is never revived; the claim
- * gets a fresh hold and a fresh attempt on the still-approved version, under
- * the locks already held, exactly as the expired-lease replacement does.
- * Settled work is not replaceable: a handback that abandoned its hold because
- * nothing was spent still finished the work.
+ * The claims refused before any branch below is asked: an attempt carrying a
+ * marker, or a run waiting on a person at its budget stop. Null when neither.
  */
-function planClaim(state: ClaimState, reservationId: string): ClaimPlan {
+function refusedBeforeAnyWrite(state: ClaimState): ClaimPlan | null {
   if (state.marked) {
     return {
       kind: 'refuse',
@@ -828,6 +808,31 @@ function planClaim(state: ClaimState, reservationId: string): ClaimPlan {
       ),
     };
   }
+  return null;
+}
+
+/**
+ * R5. The expired-lease lifecycle starts at the first replacement below. A
+ * reservation with a non-null `lease_id` is not refused until this branch has
+ * asked whether that lease expired; refused first, the old identity would
+ * never be fenced and its hold never classified, and the only other expiry
+ * branch applies to a *different* unleased reservation on the same task. The
+ * replacement is a fresh hold on
+ * the still-approved version, which 0019 permits, because one active hold per
+ * version is the accepted rule and one hold ever was not. Its approval is
+ * checked here, before the caller writes anything.
+ *
+ * R5, the remainder. A hold that ended without settling -- the authority
+ * behind its lease was lost, and replay classified it -- leaves approved work
+ * on a live lineage that nothing now holds. It is never revived; the claim
+ * gets a fresh hold and a fresh attempt on the still-approved version, under
+ * the locks already held, exactly as the expired-lease replacement does.
+ * Settled work is not replaceable: a handback that abandoned its hold because
+ * nothing was spent still finished the work.
+ */
+function planClaim(state: ClaimState, reservationId: string): ClaimPlan {
+  const quarantined = refusedBeforeAnyWrite(state);
+  if (quarantined !== null) return quarantined;
   if (state.state === 'held' && state.lease_id !== null) {
     if (state.bound_lease_state === 'live' && state.bound_lease_expired !== true) {
       return {
@@ -840,7 +845,9 @@ function planClaim(state: ClaimState, reservationId: string): ClaimPlan {
     if (!approvalCurrent(state)) return { kind: 'refuse', refusal: approvalNotCurrent() };
     return { kind: 'replace', fence: state.lease_id };
   }
-  const replacing = replaceable(state);
+  // A hold closed `actual` at its model calls' cost, its step not handed
+  // back, is replaced like an abandoned one, on what it has left (AW-01).
+  const replacing = ['abandoned', 'actual'].includes(state.state) && replaceable(state);
   if (state.state !== 'held' && !replacing) {
     return {
       kind: 'refuse',

@@ -17,6 +17,8 @@ import { Attempts } from './agent/attempts.tsx';
 import { Gate, type GateDecision, type GateRef } from './agent/gate.tsx';
 import { RunKnowledge } from './agent/knowledge.tsx';
 import { ProposalHeader, Summary, Workflow } from './agent/header.tsx';
+import { Evidence } from './agent/evidence.tsx';
+import { Given } from './agent/given.tsx';
 import { Scope } from './agent/scope.tsx';
 import { StagedOutput } from './agent/staged.tsx';
 import { scopeStamp } from '../state/agent-scope.ts';
@@ -58,8 +60,13 @@ export interface AgentPaneProps {
   /** The server's word that a write-off waits on a second person, or null. */
   readonly writeOffAwaiting?: string | null;
   /** C54's answers at a budget stop (AW-05), where the host offers both. */
-  readonly onTopUpAtStop?: (runId: string, amountMinor: number, currency: string) => void;
-  readonly onEndAtStop?: (runId: string) => void;
+  readonly onTopUpAtStop?: (
+    runId: string,
+    askId: string,
+    amountMinor: number,
+    currency: string,
+  ) => void;
+  readonly onEndAtStop?: (runId: string, askId: string) => void;
   /** The server's word that the last top-up at a stop waits on a second person, or null. */
   readonly stopAwaiting?: string | null;
 }
@@ -90,47 +97,62 @@ export function AgentPane(props: AgentPaneProps): ReactElement {
 function RunView(props: AgentPaneProps & { readonly shown: RunStory }): ReactElement {
   const { shown } = props;
   const lineage = (props.lineages ?? []).find((each) => each.lineageId === shown.lineageId);
+  // The mockup's S6 layout: the run in main, what it was given in a side column after it.
   return (
-    <>
-      <ProposalHeader
-        story={shown}
-        busy={props.busy}
-        onReject={props.onReject}
-        onCancel={props.onCancel}
-      />
-      {props.refusal === null ? null : (
-        <p className="field__error" role="alert" data-agent="refusal">
-          {props.refusal}
-        </p>
-      )}
-      <div className="sb__sh">
-        <span className="sb__k">Current run</span>
-        <span className="sbact__meta u-mono" data-agent="run-id">
-          {shown.head.runId ?? 'not planned'}
-        </span>
+    <div className="tpg">
+      <div className="tpg__main" data-agent="main">
+        <ProposalHeader
+          story={shown}
+          busy={props.busy}
+          onReject={props.onReject}
+          onCancel={props.onCancel}
+        />
+        {props.refusal === null ? null : (
+          <p className="field__error" role="alert" data-agent="refusal">
+            {props.refusal}
+          </p>
+        )}
+        <div className="sb__sh">
+          <span className="sb__k">Current run</span>
+          <span className="sbact__meta u-mono" data-agent="run-id">
+            {shown.head.runId ?? 'not planned'}
+          </span>
+        </div>
+        <Summary story={shown} />
+        <RunKnowledge runId={shown.head.runId} states={props.ledger?.states} />
+        <Unknown {...props} shown={shown} />
+        <StopAnswers {...props} />
+        <Workflow jobs={shown.jobs} open={props.jobListOpen} onToggle={props.onJobList} />
+        <StagedOutput story={shown} />
+        <Gate
+          story={shown}
+          effect={props.effect}
+          busy={props.busy}
+          nameOf={props.nameOf}
+          decisions={lineage?.decisions ?? []}
+          onDecide={props.onDecide}
+        />
+        <Evidence story={shown} versions={lineage?.versions ?? [shown.head]} />
       </div>
+      <RunSide {...props} shown={shown} />
+    </div>
+  );
+}
+
+/** The side column: the scope the run was granted, what it was given and the task's allowance. */
+function RunSide(props: AgentPaneProps & { readonly shown: RunStory }): ReactElement {
+  const lineage = (props.lineages ?? []).find((each) => each.lineageId === props.shown.lineageId);
+  return (
+    <aside className="tpg__side" data-agent="side" aria-label="Scope and allowance">
       <Scope
         stamp={scopeStamp(lineage)}
-        head={shown.head}
+        head={props.shown.head}
         nameOf={props.nameOf}
         ledgerHref={props.ledgerHref}
       />
-      <Summary story={shown} />
-      <RunKnowledge runId={shown.head.runId} states={props.ledger?.states} />
-      <Unknown {...props} shown={shown} />
-      <StopAnswers {...props} />
-      <Workflow jobs={shown.jobs} open={props.jobListOpen} onToggle={props.onJobList} />
-      <StagedOutput story={shown} />
-      <Gate
-        story={shown}
-        effect={props.effect}
-        busy={props.busy}
-        nameOf={props.nameOf}
-        decisions={lineage?.decisions ?? []}
-        onDecide={props.onDecide}
-      />
+      <Given head={props.shown.head} />
       <TokenTracked ledger={props.ledger} lineages={props.lineages ?? []} />
-    </>
+    </aside>
   );
 }
 

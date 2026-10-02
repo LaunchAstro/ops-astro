@@ -19,10 +19,8 @@
 // report sixteen duplicates that are not duplicates or silently collapse the
 // agency and portal pairs into one entry.
 //
-// The working slice registers the four addresses it serves. `/agent/` is not
-// one: that surface draws records no part of this build stores, and a route
-// that resolves to nothing is a worse answer than an address that does not
-// resolve.
+// Every address the working slice serves is registered here, a conversation's
+// `/agent/:conversation` (C36) included.
 
 /** `agency` is the Hub; `clients` and `portal` are one client's two faces. */
 export type Namespace = 'agency' | 'clients' | 'portal';
@@ -52,6 +50,18 @@ export const ROUTES = {
     surface: 'none',
     authenticated: false,
   },
+  // A business's published legal documents (C81, CS-16.20): the client terms,
+  // the privacy policy and the data-handling statement, each at an address
+  // that needs no sign-in and is linked from sign-in. It draws the public read
+  // alone, signed in or not; the breach runbook is the operators' own and has
+  // no public address.
+  'agency:legal': {
+    namespace: 'agency',
+    path: '/legal/:business/:document/',
+    title: 'Legal',
+    surface: 'none',
+    authenticated: false,
+  },
   'agency:projects-board': {
     namespace: 'agency',
     path: '/projects/',
@@ -76,6 +86,16 @@ export const ROUTES = {
     surface: 'S2',
     authenticated: true,
   },
+  // `/task/` with no key (MP-4-1, TKM-01 to TKM-04): its own page, saying no
+  // task was named and offering the board, rather than the not-found page,
+  // which would read as an address typed wrong.
+  'agency:task-unnamed': {
+    namespace: 'agency',
+    path: '/task/',
+    title: 'Task',
+    surface: 'none',
+    authenticated: true,
+  },
   // The business's own two operation-classified settings. It draws no pinned
   // surface — the mockup has no settings screen — so `surface` is `none`
   // rather than a letter it would be borrowing. The manifest places it in the
@@ -84,6 +104,42 @@ export const ROUTES = {
     namespace: 'agency',
     path: '/settings',
     title: 'Settings',
+    surface: 'none',
+    authenticated: true,
+  },
+  // Settings ▸ Access (C32, C58), Settings ▸ Telemetry (C34) and Settings ▸
+  // Operations (C55): pages of the manifest's Settings section, drawing no
+  // pinned surface. Access is who may do what, a grant and ending a person's
+  // access; Operations is the operations view behind `operations:read`
+  // (CS-14.31); Telemetry is its service-health section (CS-2.16).
+  'agency:access': {
+    namespace: 'agency',
+    path: '/settings/access/',
+    title: 'Access',
+    surface: 'none',
+    authenticated: true,
+  },
+  'agency:telemetry': {
+    namespace: 'agency',
+    path: '/settings/telemetry/',
+    title: 'Telemetry',
+    surface: 'none',
+    authenticated: true,
+  },
+  'agency:operations': {
+    namespace: 'agency',
+    path: '/settings/operations/',
+    title: 'Operations',
+    surface: 'none',
+    authenticated: true,
+  },
+  // The inbox (MP-7-3, CS-7.39): the Notifications panel's list in full-page
+  // form, drawn from INB-1's `inbox.read` and `inbox.count`. The dock's
+  // Notifications tab reaches it until the dock's drawers (MP-3-1) exist.
+  'agency:inbox': {
+    namespace: 'agency',
+    path: '/inbox/',
+    title: 'Inbox',
     surface: 'none',
     authenticated: true,
   },
@@ -99,12 +155,43 @@ export const ROUTES = {
     surface: 'none',
     authenticated: true,
   },
+  // The reader's own to-dos (MP-7-1): the Projects dock panel's address.
+  'agency:todos': {
+    namespace: 'agency',
+    path: '/todos',
+    title: 'My to-dos',
+    surface: 'none',
+    authenticated: true,
+  },
+  // The Team panel (MP-7-10): reached from its dock tab, drawn at an address
+  // of its own until the dock's drawers (MP-3-1) draw it in place. The route
+  // manifest has no page for it, so it has no rail entry.
+  'agency:team': {
+    namespace: 'agency',
+    path: '/team',
+    title: 'Team',
+    surface: 'none',
+    authenticated: true,
+  },
   // C36: a conversation's own address (CS-7.38), reached from the drawer's
-  // tab rather than the rail; after its body purges it draws the wrap-up.
+  // tab; the manifest has no page for it, so no rail entry. After its body
+  // purges it draws the wrap-up.
   'agency:agent-conversation': {
     namespace: 'agency',
     path: '/agent/:conversation',
     title: 'Agent conversation',
+    surface: 'none',
+    authenticated: true,
+  },
+  // The Clients panel (SL06; the target of MP-7-3's client group head, CS-7.29):
+  // the client book as a list, drawn at the manifest's own Clients address in
+  // full-page form until MP-8-5's CRM board takes the address, as `/inbox/` is
+  // the Notifications panel's list (CS-7.39). The book is made up until
+  // MP-10-1 builds client records, and says so.
+  'agency:clients': {
+    namespace: 'agency',
+    path: '/clients/',
+    title: 'Clients',
     surface: 'none',
     authenticated: true,
   },
@@ -118,6 +205,9 @@ type Route<Id extends RouteId> = (typeof ROUTES)[Id];
 export type PublicRouteId = {
   [Id in RouteId]: Route<Id>['authenticated'] extends false ? Id : never;
 }[RouteId];
+
+/** A public route other than sign-in: drawn the same with a session or without. */
+export type OpenRouteId = Exclude<PublicRouteId, 'agency:sign-in'>;
 
 /** A route that needs a session. Each one has a screen in `SCREENS`. */
 export type AuthenticatedRouteId = Exclude<RouteId, PublicRouteId>;
@@ -201,29 +291,6 @@ export function pathTo<Id extends RouteId>(
     path = path.replace(`:${name}`, encodeURIComponent(value));
   }
   return path;
-}
-
-/** Which screen an address draws, given whether there is a session. */
-export type Gate =
-  | { readonly kind: 'not-found' }
-  | { readonly kind: 'sign-in' }
-  | { readonly kind: 'signed-in-already' }
-  | { readonly kind: 'screen'; readonly match: RouteMatch<AuthenticatedRouteId> };
-
-/**
- * The sign-in gate. An address that needs a session and has none is the
- * sign-in screen, and the sign-in screen is where a signed-out person lands.
- * Neither is an error.
- */
-export function gateOf(match: RouteMatch | null, signedIn: boolean): Gate {
-  if (match === null) return { kind: 'not-found' };
-  if (!signedIn) return { kind: 'sign-in' };
-  if (!needsSession(match)) return { kind: 'signed-in-already' };
-  return { kind: 'screen', match };
-}
-
-function needsSession(match: RouteMatch): match is RouteMatch<AuthenticatedRouteId> {
-  return match.route.authenticated;
 }
 
 const segments = (path: string): readonly string[] => path.split('/').filter((part) => part !== '');

@@ -76,6 +76,8 @@ describe.skipIf(serverUrl === undefined)('the settings commands write against a 
       await grantTo(tx, mia, 'read');
       await grantTo(tx, mia, 'read', { kind: 'business', id: null }, false, 'settings');
       await grantTo(tx, mia, 'manage', { kind: 'business', id: null }, false, 'settings');
+      // MP-2-11: the four-eyes threshold is a money action, `spend:decide`.
+      await grantTo(tx, mia, 'decide', { kind: 'business', id: null }, false, 'spend');
     });
   }, 60_000);
 

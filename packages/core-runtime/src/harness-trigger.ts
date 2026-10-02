@@ -32,7 +32,7 @@ import { REPLAY_MODEL_WINDOW } from '../../core-connectors/src/index.ts';
 export const HARNESS_PINNED_WINDOW: { readonly model: string; readonly contextUnits: number } =
   REPLAY_MODEL_WINDOW;
 
-/** The deepest sub-delegation the product builds: AW-11's one child (0205 refuses a grandchild). */
+/** The deepest sub-delegation the product builds: AW-11's one child (0100 refuses a grandchild). */
 export const DELEGATION_DEPTH_BUILT = 1;
 
 export type TriggerLimb = 'reading' | 'delegation';

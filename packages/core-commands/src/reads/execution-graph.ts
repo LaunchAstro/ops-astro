@@ -156,6 +156,7 @@ export function projectGraph(
   });
 }
 
+/** `expired` is derived on read (`execution.ts`), never stored on the gate. */
 const SETTLED_BY_GATE: Readonly<Record<string, string>> = {
   rejected: 'refused',
   expired: 'expired',

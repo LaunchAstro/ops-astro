@@ -118,12 +118,13 @@ OPS_ASTRO_DELEGATION="$(cat <delegation file>.child-<childDelegationId>)" pnpm c
 ```
 
 A person answers a run waiting at its approved ceiling on the person prefix
-(AW-05). The top-up is in the currency's minor units; above the business's
-four-eyes threshold a second person sends the same body to complete it.
+(AW-05), naming the stop they answer (`askId`, from `task.read`'s ledger). The
+top-up is in the currency's minor units; above the business's four-eyes
+threshold a second person sends the same body to complete it.
 
 ```sh
-pnpm cli run.top_up --json '{"recordId":"<taskId>","runId":"<runId>","amountMinor":1000,"currency":"AUD"}'
-pnpm cli run.end_at_budget_stop --json '{"recordId":"<taskId>","runId":"<runId>"}'
+pnpm cli run.top_up --json '{"recordId":"<taskId>","runId":"<runId>","askId":"<askId>","amountMinor":1000,"currency":"AUD"}'
+pnpm cli run.end_at_budget_stop --json '{"recordId":"<taskId>","runId":"<runId>","askId":"<askId>"}'
 pnpm cli run.revise_state --json '{"recordId":"<taskId>","runId":"<runId>","expectedVersion":0,"knowledge":["the brief is agreed"],"unknowns":["the launch date"]}'
 ```
 

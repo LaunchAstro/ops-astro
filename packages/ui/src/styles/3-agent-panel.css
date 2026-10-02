@@ -1,0 +1,258 @@
+/* SPDX-License-Identifier: AGPL-3.0-only
+   ============================================================================
+   Layer 3 of 4, continued: the Agent panel (S5), moved whole from the end of
+   `3-shell.css` to keep that sheet under the line limit. `packages/ui/src/index.ts`
+   loads it straight after `3-shell.css`, so the cascade order is unchanged.
+   ============================================================================ */
+
+/* -- The Agent panel (S5) ------------------------------------------------
+   Docked, it is a grid TRACK beside the rail and the content; below 1280 it is
+   fixed and out of flow. Same parent in both forms, which is why it is a child
+   of the shell rather than of the document body. */
+.aipanel {
+  position: fixed;
+  inset: 0 0 0 auto;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  width: min(400px, 92vw);
+  height: 100dvh;
+  border-left: 1px solid var(--border);
+  background: var(--rail-bg);
+  box-shadow: var(--shadow-overlay);
+}
+.aipanel[hidden] {
+  display: none;
+}
+@media not all and (max-width: 1439px) {
+  .shell[data-dock='seated'] .aipanel {
+    position: sticky;
+    inset: 0 auto auto auto;
+    width: var(--aip-dock);
+    height: 100vh;
+    box-shadow: none;
+  }
+}
+/* In the dock (MP-7-11) the drawer is an `ai` panel's body: it takes the
+   body's room and draws no frame of its own, which the dock's panel has. */
+.dpanel .aipanel,
+.shell[data-dock='seated'] .dpanel .aipanel {
+  position: static;
+  z-index: auto;
+  flex: 1;
+  width: auto;
+  height: auto;
+  min-height: 0;
+  margin: calc(-1 * var(--s-4)) calc(-1 * var(--s-5));
+  border-left: 0;
+  box-shadow: none;
+}
+.aip__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  padding: var(--s-4) var(--s-5);
+  border-bottom: 1px solid var(--border);
+}
+.aip__id {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.aip__title {
+  font: var(--type-subheading);
+  letter-spacing: var(--type-subheading-tracking);
+  text-transform: var(--type-subheading-case);
+}
+.aip__hmodel {
+  margin-left: auto;
+  min-width: 0;
+}
+/* The model picker is the head's quiet control (AI-02): the house select with
+   no ground and no edge until it is hovered or focused. */
+select.aip__hmodel {
+  padding: 0.2rem 0.4rem;
+  border: 1px solid transparent;
+  background: none;
+  color: var(--text-muted);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
+}
+select.aip__hmodel:hover:not(:disabled) {
+  border-color: var(--border-strong);
+}
+.aip__acts {
+  display: flex;
+  align-items: center;
+  align-self: center;
+  gap: 0.15rem;
+}
+.aip__actdiv {
+  flex: none;
+  width: 1px;
+  align-self: stretch;
+  margin: 0.15rem 0.25rem;
+  background: var(--border);
+}
+.aip__scroll {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-3);
+  padding: var(--s-4) var(--s-5);
+}
+.aip__msg {
+  max-width: 92%;
+  padding: 0.6rem 0.8rem;
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+}
+.aip__msg--ai {
+  align-self: flex-start;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.aip__msg--user {
+  align-self: flex-end;
+  background: var(--ink);
+  color: var(--paper);
+}
+.aip__msg--note {
+  background: transparent;
+  border: 1px dashed var(--border);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
+  color: var(--text-muted);
+}
+.aip__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0 var(--s-5) var(--s-3);
+}
+.aip__chip {
+  padding: 0.3rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text-2);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
+  cursor: pointer;
+}
+.aip__inputrow {
+  display: flex;
+  align-items: stretch;
+  gap: var(--s-2);
+  padding: var(--s-3) var(--s-5) var(--s-4);
+  border-top: 1px solid var(--border);
+}
+.aip__input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  background: var(--paper);
+  color: var(--text);
+  font: var(--type-body);
+  letter-spacing: var(--type-body-tracking);
+  text-transform: var(--type-body-case);
+}
+/* Send stands as tall as the field beside it (AI-12), as the mockup's row does. */
+.aip__inputrow .btn {
+  height: auto;
+}
+.aip__input:focus {
+  border-color: var(--accent);
+}
+.aip__chip:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+.aip__tabs {
+  padding: var(--s-3) var(--s-5) 0;
+  border-bottom: 1px solid var(--border);
+}
+/* The conversation tab row's parts (AI-06 to AI-08). Each tab carries its own
+   close, shown on the selected tab and on hover or focus, and always at phone
+   width where there is no hover (DOCK D-10). */
+.aip__tab {
+  display: inline-flex;
+  align-items: center;
+}
+.aip__tabx,
+.aip__new,
+.aip__act {
+  display: inline-flex;
+  align-items: center;
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  cursor: pointer;
+}
+/* The head's eye and close (AI-03, AI-05): muted, the close a 1.6rem square. */
+.aip__act {
+  padding: 0.25rem 0.35rem;
+  color: var(--text-muted);
+}
+.aip__x {
+  justify-content: center;
+  width: 1.6rem;
+  height: 1.6rem;
+  padding: 0;
+}
+.aip__tabx {
+  opacity: 0;
+  padding: 0 0.2rem;
+}
+.aip__tab:hover .aip__tabx,
+.aip__tab:focus-within .aip__tabx,
+.aip__tab:has([aria-selected='true']) .aip__tabx {
+  opacity: 1;
+}
+@media (max-width: 640px) {
+  .aip__tabx {
+    opacity: 1;
+  }
+}
+.aip__new {
+  margin-left: auto;
+}
+.aip__tabx:hover,
+.aip__new:hover,
+.aip__act:hover {
+  color: var(--accent);
+}
+.cmtab--rename {
+  max-width: 18ch;
+  border: 1px solid var(--accent);
+  background: var(--paper);
+  color: var(--text);
+}
+/* Where the ask came from, and what each answer read (AI-11, AI-12). */
+.aip__cited {
+  margin: 0;
+  padding: var(--s-2) var(--s-5) 0;
+  color: var(--text-muted);
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
+}
+.aip__cites {
+  margin: 0.4rem 0 0;
+  padding-left: 1rem;
+  font: var(--type-caption);
+  letter-spacing: var(--type-caption-tracking);
+  text-transform: var(--type-caption-case);
+}
+.aip__msg--failed {
+  border-color: var(--danger);
+}

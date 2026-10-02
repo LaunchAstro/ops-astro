@@ -22,6 +22,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { READS } from '../../packages/core-wire/src/surface.ts';
 import { grantTo, type Member } from '../commands/fixture.ts';
+import { GATE_ITEMS } from '../../packages/core-commands/src/index.ts';
+import { gateRecordBody } from './role-case-gate-bodies.ts';
 import { ACCEPTED_PLAN, PROPOSAL, childProbe } from './role-case-bodies.ts';
 import { CASE, TARGET_FREE } from './cd-alternatives.ts';
 import { foreignConversation } from './foreign-conversation.ts';
@@ -47,14 +49,20 @@ interface Cell {
 }
 
 const NOBODY = 'text nobody should find in an audit row';
+/** A tag no business has: the task is what these cells compare. */
+const TAG = randomUUID();
 
-/** An AW-05 answer's body: the task and the run on it, and a top-up's amount. */
+/** A time command's body on a task, or on an entry (MP-4-6). */
+const onTask = (extra: Body) => (taskId: string) => ({ taskId, ...extra });
+const onEntry = (extra: Body) => (entryId: string) => ({ entryId, ...extra });
+
+/** An AW-05 answer's body: the task, the run on it and an ask, and a top-up's amount. */
 const runOf = (recordId: string, runId: string, op: CommandName): Body =>
   op === 'run.top_up'
-    ? { recordId, runId, amountMinor: 100, currency: 'AUD' }
+    ? { recordId, runId, askId: randomUUID(), amountMinor: 100, currency: 'AUD' }
     : op === 'run.revise_state'
       ? { recordId, runId, expectedVersion: 0, knowledge: [NOBODY], unknowns: [] }
-      : { recordId, runId };
+      : { recordId, runId, askId: randomUUID() };
 
 /** An operand in its foreign and fabricated forms. */
 const pair = (
@@ -65,6 +73,55 @@ const pair = (
   operand,
   forms: { foreign: body(foreignId), fabricated: body(randomUUID()) },
 });
+
+/** Every gate item recorded in alpha, the operator, so the mode may move to real (S0-5). */
+async function gateReady(w: IdentWorld, caller: Caller): Promise<void> {
+  for (const item of GATE_ITEMS) {
+    // eslint-disable-next-line no-await-in-loop
+    const answer = await w.person(caller, 'operations.record_gate_item', gateRecordBody(item));
+    expect(['ok', 'GATE_ITEM_ALREADY_RECORDED'], item).toContain(answer.code);
+  }
+}
+
+/**
+ * The breach drill's body made real in alpha (C81): a runbook the drill can
+ * fill, published, and an incident to draft for; the recipients are the listed body's.
+ */
+async function drillReady(w: IdentWorld, caller: Caller, listed: Body): Promise<Body> {
+  const runbook = [
+    '## Template: notice to affected people',
+    '> Subject: A made-up notice',
+    '> Dear `<name>`, on `<date>`: `<plain description>`; `<kinds>`; `<containment>`; `<steps>`.',
+  ].join('\n');
+  const drafted = await w.person(caller, 'legal.draft_version', {
+    operationId: randomUUID(),
+    document: 'breach-runbook',
+    version: '77.1',
+    body: runbook,
+  });
+  const detail = drafted.body['detail'] as Record<string, unknown>;
+  for (const [name, body] of [
+    ['legal.approve_version', { versionId: detail['versionId'], digest: detail['digest'] }],
+    ['legal.publish_version', { versionId: detail['versionId'] }],
+  ] as const) {
+    // oxlint-disable-next-line no-await-in-loop
+    const done = await w.person(caller, name, { operationId: randomUUID(), ...body });
+    expect(done.code, name).toBe('ok');
+  }
+  const recorded = await w.person(caller, 'privacy.record_incident', {
+    operationId: randomUUID(),
+    whatHappened: 'A made-up incident to drill.',
+    foundAt: new Date(Date.now() - 60_000).toISOString(),
+    foundBy: 'The probe',
+    affected: 'Nobody; it is made up.',
+    informationKinds: ['other'],
+  });
+  expect(recorded.code, 'the drill incident').toBe('ok');
+  return {
+    ...listed,
+    incidentId: (recorded.body['detail'] as Record<string, unknown>)['incidentId'],
+  };
+}
 
 const actorOf = (by: Presenter): string =>
   by.kind === 'person' ? (by.caller.actorId as string) : by.identity.actorId;
@@ -250,6 +307,24 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
     }
   }, 300_000);
 
+  /** C32: a person and a client of bravo's, each named in an alpha grant. */
+  const accessGrantCells = (
+    person: string,
+    client: string,
+  ): [CommandName, ReturnType<typeof pair>][] => {
+    const key = { collection: 'task', action: 'read' };
+    const own = w.h.world.ada.personId;
+    return [
+      ['access.grant', pair('holderId', person, (holderId) => ({ holderId, ...key }))],
+      [
+        'access.grant',
+        pair('clientId', client, (clientId) => ({ holderId: own, clientId, ...key })),
+      ],
+      // C58: bravo's person named in an alpha ending.
+      ['access.end', pair('holderId', person, (holderId) => ({ holderId }))],
+    ];
+  };
+
   it(
     CASE.control,
     async () => {
@@ -297,6 +372,23 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
             reason: 'identifier negatives',
           })),
         ],
+        [
+          'legal.approve_version',
+          pair('versionId', f.legalVersionId, (versionId) => ({
+            versionId,
+            digest: '0'.repeat(64),
+          })),
+        ],
+        [
+          'legal.publish_version',
+          pair('versionId', f.legalVersionId, (versionId) => ({ versionId })),
+        ],
+        [
+          'credential.revoke',
+          pair('credentialId', f.credentialId, (credentialId) => ({ credentialId })),
+        ],
+        ['access.revoke', pair('grantId', f.grantId, (grantId) => ({ grantId }))],
+        ...accessGrantCells(f.admin.personId as string, f.clientId),
       );
       // AW-05's answers name the task and the run on it. Bravo's run is the
       // one its pickup claimed; alpha's task is named beside it, and then
@@ -341,6 +433,59 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
           fabricated: { conversationId: randomUUID(), ...extra },
         });
       }
+    },
+    120_000,
+  );
+
+  it(
+    CASE.time,
+    async () => {
+      // MP-4-6: a task names what is timed and an entry what is noted or
+      // deleted. Bravo's are foreign; each answers as a fabricated one does.
+      const f = w.foreign;
+      const cells: [CommandName, ReturnType<typeof pair>][] = [
+        ['time.start', pair('taskId', f.task.id, onTask({}))],
+        ['time.stop', pair('taskId', f.task.id, onTask({}))],
+        ['time.log', pair('taskId', f.task.id, onTask({ duration: '5', note: NOBODY }))],
+        ['time.set_note', pair('entryId', f.entryId, onEntry({ note: NOBODY }))],
+        ['time.delete', pair('entryId', f.entryId, onEntry({}))],
+      ];
+      for (const [op, { operand, forms }] of cells) {
+        // eslint-disable-next-line no-await-in-loop
+        await refuses(op, operand, ada, 'NOT_FOUND', forms);
+      }
+    },
+    120_000,
+  );
+
+  it(
+    CASE.tag,
+    async () => {
+      // MP-4-11: the task names what is tagged. Bravo's is foreign; each
+      // answers as a fabricated one does, whatever the tag.
+      const onTag = (recordId: string) => ({ recordId, tagId: TAG });
+      for (const op of ['task.add_tag', 'task.remove_tag'] as const) {
+        const { operand, forms } = pair('recordId', w.foreign.task.id, onTag);
+        // eslint-disable-next-line no-await-in-loop
+        await refuses(op, operand, ada, 'NOT_FOUND', forms);
+      }
+    },
+    120_000,
+  );
+
+  it(
+    CASE.duplicate,
+    async () => {
+      // MP-4-8: the old task names what is duplicated. Bravo's is foreign and
+      // answers as a fabricated one does; the copy goes to no client.
+      const onOld = (recordId: string) => ({
+        recordId,
+        client: null,
+        title: NOBODY,
+        stepNames: [],
+      });
+      const { operand, forms } = pair('recordId', w.foreign.task.id, onOld);
+      await refuses('task.duplicate', operand, ada, 'NOT_FOUND', forms);
     },
     120_000,
   );
@@ -466,8 +611,14 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
       const caller = w.h.world.ada;
       const answered: Record<string, string> = {};
       const audited: string[] = [];
-      for (const [op, body] of TARGET_FREE) {
+      for (const [op, listed] of TARGET_FREE) {
         /* eslint-disable no-await-in-loop -- one operation at a time */
+        // The breach drill's body names an incident, so its positive request
+        // needs one of alpha's, and a published runbook to draft from (C81).
+        // The mode moves to real only once every gate item is done (S0-5).
+        if (op === 'operations.change_installation_mode') await gateReady(w, caller);
+        const body =
+          op === 'privacy.draft_breach_notices' ? await drillReady(w, caller, listed) : listed;
         const before = await domainState(w.h, [bravo]);
         const positive = await w.person(caller, op, body);
         expect(positive.code, `${op}: ${JSON.stringify(positive.body)}`).toBe('ok');
@@ -505,7 +656,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
       // SC2 audit, 9/9: every aimed probe left its one row at home.
       expect(audited).toStrictEqual(TARGET_FREE.map(([op]) => op));
       console.log(
-        `identifier-negatives: SC2 audit ${String(audited.length)}/9 in alpha, 0 in bravo`,
+        `identifier-negatives: SC2 audit ${String(audited.length)}/${String(TARGET_FREE.length)} in alpha, 0 in bravo`,
       );
     },
     300_000,
