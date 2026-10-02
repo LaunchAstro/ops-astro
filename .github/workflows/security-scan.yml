@@ -1,0 +1,124 @@
+name: security scan
+
+# The security pass against staging (S0-5 item 7; deploy/staging/SECURITY-SCAN.md):
+# the ZAP baseline scan, then the ZAP API scan signed in as a made-up scan login
+# the job makes and removes. Started by hand only: never on a pull request, a
+# push or the merge queue, and no required check names it. Actions are pinned
+# by commit and the ZAP image by digest (docs/supply-chain-pins.md).
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Staging's address, an origin only (it must equal the environment's STAGING_WEB_URL)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    name: security scan (by hand, not required)
+    runs-on: ubuntu-24.04
+    environment: staging-scan
+    timeout-minutes: 90
+    env:
+      ZAP_IMAGE: ghcr.io/zaproxy/zaproxy:2.17.0@sha256:781a2bdaea47324e7bab583e2263f21d257b0aee61ed51521a5be45f5f5081ef
+      TARGET: ${{ inputs.target }}
+      SCAN_LOGIN_PLACE: staging
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: The target is staging's address, and the API definition from the command surface
+        env:
+          STAGING_WEB_URL: ${{ secrets.STAGING_WEB_URL }}
+        run: |
+          WORK="$RUNNER_TEMP/zap" && mkdir -p "$WORK" && chmod 777 "$WORK"
+          printf 'WORK=%s\nSCAN_LOGIN_FILE=%s\nSCAN_TOKEN_FILE=%s\n' "$WORK" \
+            "$RUNNER_TEMP/scan-login.json" "$RUNNER_TEMP/scan-token" >> "$GITHUB_ENV"
+          node scripts/security/api-definition.mjs --target "$TARGET" --only "$STAGING_WEB_URL" \
+            --business alpha --out "$WORK/api-definition.json"
+          # Every later step scans the origin that was checked, not the raw input.
+          echo "SCAN_TARGET=$(node -e 'console.log(new URL(process.env.TARGET).origin)')" >> "$GITHUB_ENV"
+
+      - name: ZAP baseline scan
+        run: |
+          rc=0
+          docker run --rm -v "$WORK:/zap/wrk:rw" "$ZAP_IMAGE" \
+            zap-baseline.py -t "$SCAN_TARGET" -J baseline.json -r baseline.html -I || rc=$?
+          # 0 passed, 2 warnings (judged below by the findings table); 1 or 3 is ZAP's own failure.
+          [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ] || { echo "ZAP baseline stopped ($rc)"; exit 1; }
+
+      - name: Make the made-up scan login (just before the API scan, so its token lasts)
+        env:
+          STAGING_PROJECT_REF: ${{ secrets.STAGING_PROJECT_REF }}
+          PRODUCTION_PROJECT_REF: ${{ secrets.PRODUCTION_PROJECT_REF }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_LOOKUP_URL: ${{ secrets.DATABASE_LOOKUP_URL }}
+          GOTRUE_URL: ${{ secrets.GOTRUE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+        run: |
+          node scripts/security/scan-login.mjs make
+          echo "::add-mask::$(cat "$SCAN_TOKEN_FILE")"
+
+      - name: ZAP API scan, signed in as the scan login
+        run: |
+          ZAP_AUTH_HEADER_VALUE="Bearer $(cat "$SCAN_TOKEN_FILE")"
+          # ZAP matches the site by host name alone: with a port in it, no request carries the token.
+          ZAP_AUTH_HEADER_SITE="$(node -e 'console.log(new URL(process.env.SCAN_TARGET).hostname)')"
+          export ZAP_AUTH_HEADER_VALUE ZAP_AUTH_HEADER_SITE
+          rc=0
+          docker run --rm -v "$WORK:/zap/wrk:rw" -e ZAP_AUTH_HEADER_VALUE -e ZAP_AUTH_HEADER_SITE \
+            -e ZAP_AUTH_HEADER=Authorization "$ZAP_IMAGE" \
+            zap-api-scan.py -t /zap/wrk/api-definition.json -f openapi -J api.json -I \
+            -z "-config scanner.maxScanDurationInMins=45" || rc=$?
+          [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ] || { echo "ZAP API scan stopped ($rc)"; exit 1; }
+
+      - name: The findings table (blockers and majors fail the run)
+        if: ${{ !cancelled() }}
+        run: |
+          SCAN_BEARER="$(cat "$SCAN_TOKEN_FILE" 2>/dev/null || true)"
+          export SCAN_BEARER
+          rc=0
+          node scripts/security/findings.mjs --report baseline="$WORK/baseline.json" \
+            --report api="$WORK/api.json" --out "$WORK/findings" --redact-env SCAN_BEARER --signed-in api || rc=$?
+          [ -f "$WORK/findings/findings.md" ] && cat "$WORK/findings/findings.md" >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"
+
+      - name: Remove the scan login
+        if: ${{ always() }}
+        env:
+          STAGING_PROJECT_REF: ${{ secrets.STAGING_PROJECT_REF }}
+          PRODUCTION_PROJECT_REF: ${{ secrets.PRODUCTION_PROJECT_REF }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_LOOKUP_URL: ${{ secrets.DATABASE_LOOKUP_URL }}
+          GOTRUE_URL: ${{ secrets.GOTRUE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+        run: node scripts/security/scan-login.mjs remove
+
+      # The API scan's raw reports stay on the runner: they were made with the token.
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: ${{ always() }}
+        with:
+          name: security-scan-findings
+          path: |
+            ${{ runner.temp }}/zap/findings/
+            ${{ runner.temp }}/zap/baseline.json
+            ${{ runner.temp }}/zap/baseline.html
+          if-no-files-found: warn
+          retention-days: 90
