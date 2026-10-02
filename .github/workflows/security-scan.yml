@@ -54,7 +54,15 @@ jobs:
           # Every later step scans the origin that was checked, not the raw input.
           echo "SCAN_TARGET=$(node -e 'console.log(new URL(process.env.TARGET).origin)')" >> "$GITHUB_ENV"
 
-      - name: Make the made-up scan login
+      - name: ZAP baseline scan
+        run: |
+          rc=0
+          docker run --rm -v "$WORK:/zap/wrk:rw" "$ZAP_IMAGE" \
+            zap-baseline.py -t "$SCAN_TARGET" -J baseline.json -r baseline.html -I || rc=$?
+          # 0 passed, 2 warnings (judged below by the findings table); 1 or 3 is ZAP's own failure.
+          [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ] || { echo "ZAP baseline stopped ($rc)"; exit 1; }
+
+      - name: Make the made-up scan login (just before the API scan, so its token lasts)
         env:
           STAGING_PROJECT_REF: ${{ secrets.STAGING_PROJECT_REF }}
           PRODUCTION_PROJECT_REF: ${{ secrets.PRODUCTION_PROJECT_REF }}
@@ -66,14 +74,6 @@ jobs:
         run: |
           node scripts/security/scan-login.mjs make
           echo "::add-mask::$(cat "$SCAN_TOKEN_FILE")"
-
-      - name: ZAP baseline scan
-        run: |
-          rc=0
-          docker run --rm -v "$WORK:/zap/wrk:rw" "$ZAP_IMAGE" \
-            zap-baseline.py -t "$SCAN_TARGET" -J baseline.json -r baseline.html -I || rc=$?
-          # 0 passed, 2 warnings (judged below by the findings table); 1 or 3 is ZAP's own failure.
-          [ "$rc" -eq 0 ] || [ "$rc" -eq 2 ] || { echo "ZAP baseline stopped ($rc)"; exit 1; }
 
       - name: ZAP API scan, signed in as the scan login
         run: |

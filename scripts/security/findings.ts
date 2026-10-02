@@ -16,7 +16,6 @@ export const SEVERITY_BY_RISK_CODE: Readonly<Record<string, Severity | 'info'>> 
 
 const RANK: Readonly<Record<Severity, number>> = { blocker: 0, major: 1, minor: 2 };
 const EVIDENCE_LIMIT = 200;
-/** A value shorter than this is too common to replace without mangling the table. */
 const SHORTEST_SECRET = 8;
 
 export class ReportRefused extends Error {}

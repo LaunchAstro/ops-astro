@@ -194,8 +194,9 @@ async function endPerson(tx, personId, subject) {
     [tx.businessId, personId],
   );
   await tx.query(
-    `update public.person_logins set active = false, deactivated_at = now() where person_id = $1::uuid
-        and login_id in (select id from public.logins where subject = $2)`,
+    `update public.person_logins set active = false, deactivated_at = now()
+      where person_id = $1::uuid and active and login_id in
+        (select id from public.logins where provider = 'supabase' and subject = $2)`,
     [personId, subject],
   );
 }
