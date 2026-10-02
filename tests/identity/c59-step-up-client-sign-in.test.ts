@@ -131,7 +131,7 @@ describe.skipIf(serverUrl === undefined)('C59 a client meets the step-up with a 
       names: ['sign_in'],
       fixes: [
         'Sign in again with your password, then retry.',
-        'A money action needs a sign-in with the second factor in the last 60 minutes.',
+        'A money action needs a sign-in in the last 60 minutes.',
       ],
     });
   });
