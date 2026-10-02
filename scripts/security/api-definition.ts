@@ -137,3 +137,10 @@ export function apiDefinition(
     components: { securitySchemes: { bearer: { type: 'http', scheme: 'bearer' } } },
   };
 }
+
+/** The job scans only the staging address its environment names (STAGING_WEB_URL). */
+export function onlyTarget(target: string, allowed: string): void {
+  const wanted = URL.parse(allowed)?.origin;
+  if (wanted === undefined || origin(target) !== wanted)
+    throw new DefinitionRefused('the target is not the staging address this job may scan');
+}

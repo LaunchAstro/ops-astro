@@ -19,6 +19,7 @@ import {
 import {
   apiDefinition,
   DefinitionRefused,
+  onlyTarget,
   type ApiDefinition,
 } from '../../scripts/security/api-definition.ts';
 
@@ -40,7 +41,10 @@ it('every command on the surface is one POST route under the business, and nothi
 
 it('every route asks for the bearer, and every write names its operation id', () => {
   const doc = apiDefinition(TARGET, 'alpha');
-  expect(doc.components.securitySchemes.bearer).toStrictEqual({ type: 'http', scheme: 'bearer' });
+  expect(doc.components.securitySchemes['bearer']).toStrictEqual({
+    type: 'http',
+    scheme: 'bearer',
+  });
   for (const each of COMMAND_SURFACE) {
     const op = operation(doc, `${PREFIX.person}alpha${pathOf(each.name)}`);
     expect(op?.security, each.name).toStrictEqual([{ bearer: [] }]);
@@ -114,6 +118,13 @@ it.each([['Alpha'], ['al/pha'], [''], ['alpha?x']])(
   },
 );
 
+it('the job scans only the staging address its environment names', () => {
+  expect(() => onlyTarget(TARGET, 'https://staging.example.test/')).not.toThrow();
+  expect(() => onlyTarget('https://production.example.test', TARGET)).toThrow(DefinitionRefused);
+  expect(() => onlyTarget('https://staging.example.test:8443', TARGET)).toThrow(DefinitionRefused);
+  expect(() => onlyTarget(TARGET, '')).toThrow(DefinitionRefused);
+});
+
 const dir = mkdtempSync(join(tmpdir(), 'sec-scan-api-'));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
@@ -149,4 +160,21 @@ it('the command writes the document, and refuses a bad target with exit 1', () =
     { encoding: 'utf8' },
   );
   expect(refused.status).toBe(1);
+  const elsewhere = spawnSync(
+    process.execPath,
+    [
+      'scripts/security/api-definition.mjs',
+      '--target',
+      'https://production.example.test',
+      '--only',
+      TARGET,
+      '--business',
+      'alpha',
+      '--out',
+      out,
+    ],
+    { encoding: 'utf8' },
+  );
+  expect(elsewhere.status).toBe(1);
+  expect(elsewhere.stderr).toContain('not the staging address');
 });

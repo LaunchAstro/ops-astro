@@ -22,7 +22,7 @@ import {
 const MARKER = 'planted-bearer-9f3c1d7e5b2a4680';
 
 interface PlantedAlert {
-  readonly riskcode?: string;
+  readonly riskcode?: string | undefined;
   readonly name?: string;
   readonly pluginid?: string;
   readonly instances?: readonly Record<string, string>[];

@@ -4,11 +4,14 @@
 // decisions are in `api-definition.ts`; this file writes them.
 //
 //   node scripts/security/api-definition.mjs --target <origin> --business <key> --out <file>
+//        [--only <origin>]
+//
+// With --only, a target at any other origin is refused (the job passes staging's own).
 //
 // Exit 0 when written, 1 when refused, 2 on a usage mistake.
 
 import { writeFileSync } from 'node:fs';
-import { apiDefinition, DefinitionRefused } from './api-definition.ts';
+import { apiDefinition, DefinitionRefused, onlyTarget } from './api-definition.ts';
 
 const args = process.argv.slice(2);
 const flag = (name) => {
@@ -21,6 +24,8 @@ if (target === undefined || business === undefined || out === undefined) {
   process.exit(2);
 }
 try {
+  const only = flag('only');
+  if (only !== undefined) onlyTarget(target, only);
   const doc = apiDefinition(target, business);
   writeFileSync(out, `${JSON.stringify(doc, undefined, 2)}\n`);
   console.log(`api-definition: ${String(Object.keys(doc.paths).length)} routes written`);
