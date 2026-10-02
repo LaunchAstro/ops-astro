@@ -201,6 +201,14 @@ const UNREACHED: Readonly<Record<string, string>> = {
        from public.person_logins pl
        join public.actors a on a.business_id = pl.business_id and a.person_id = pl.person_id
       where pl.business_id = $1 order by pl.login_id limit 1 returning 1`,
+  // C59: no journey resets a factor, so a reset is written here for a person's
+  // own login, as `access.reset_factor` writes one.
+  'public.factor_resets': `insert into public.factor_resets
+       (business_id, person_id, login_id, reset_by_actor_id, provider_factor_id)
+     select pl.business_id, pl.person_id, pl.login_id, a.id, 'restricted-calls-seed'
+       from public.person_logins pl
+       join public.actors a on a.business_id = pl.business_id and a.person_id = pl.person_id
+      where pl.business_id = $1 order by pl.login_id limit 1 returning 1`,
   // C58: an ended session, as signing out writes one for a person's own session.
   'public.ended_sessions': `insert into public.ended_sessions
        (business_id, person_id, session_id, reason)
@@ -655,15 +663,16 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     const definer = (signature: string): CatalogueFunction | undefined =>
       definers().find((fn) => fn.signature === signature);
 
-    // Exactly three, each for a named reason. The append-only trigger refuses
+    // Exactly four, each for a named reason. The append-only trigger refuses
     // the owner itself. The fair share's count (AW-01, ORCH-DECISION SL11
     // AW-01) is the one read across businesses: a provider route's ceiling is
     // the installation's, which a tenant transaction cannot count under row
     // security. It answers one number and no id, and only the broker's role
     // may execute it (tests/broker/aw-01-broker-fair-share.test.ts). The drill
     // stamp (C55) writes only now(), and only the drill's identity runs it.
-    it('are exactly three, each with its search path pinned', () => {
+    it('are exactly four, each with its search path pinned', () => {
       expect(definers().map((fn) => fn.signature)).toStrictEqual([
+        'factor_login_live_elsewhere(uuid)',
         'handback_reports_append_only()',
         'model_route_room(text,integer)',
         'ops.record_tested_restore()',
@@ -693,6 +702,21 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
       expect(stamp?.trigger).toBe(false);
       expect(stamp?.argumentTypes).toStrictEqual([]);
       expect(stamp?.config).toStrictEqual(['search_path=pg_catalog']);
+    });
+  });
+
+  describe('the live-elsewhere definer (0100, C59)', () => {
+    // The fourth definer: one boolean for a login of the caller's own business,
+    // never a subject; the application's group may execute it
+    // (c59-factor-reset-settle).
+    it('takes a login id, fired by nothing and pinned to read every business', () => {
+      const fn = functions.find(
+        (each) => each.definer && each.signature === 'factor_login_live_elsewhere(uuid)',
+      );
+      expect(fn?.trigger).toBe(false);
+      expect(fn?.argumentTypes).toStrictEqual(['uuid']);
+      expect(fn?.config).toStrictEqual(['search_path=pg_catalog, public', 'row_security=off']);
+      expect(fn?.firedBy).toStrictEqual([]);
     });
   });
 
