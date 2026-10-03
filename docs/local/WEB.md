@@ -371,7 +371,14 @@ the note, the tags, the subtasks and the time, each by its own command
 (`screens/task/task-draft.ts`); a part refused after the task exists is named,
 never retried as a second task. Closing the panel, or opening another task or
 a draft, while the reader's timer runs on the task stops it through
-`time.stop`. The name is
+`time.stop`, also when the panel closes before its reread lands or while a
+reread has failed: the panel holds the running timer's stop and its unsent
+comment above its read. The draft's fields are read-only while Create is out;
+a dock close refused then remounts the draft, which waits for that Create's
+answer. On the task page, a subtask add or a time log that answers late
+clears only the words it sent, and the subtask box's words and an open
+comment edit's words are held above the page's read, so a live reread keeps
+them. The name is
 edited in place in the head (Enter saves, Escape leaves it), and the field
 grid (`screens/task/PanelFields.tsx`) sets the assignee (a person from
 `person.list`, or Unassigned) through `task.assign` and the due date through
