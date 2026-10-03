@@ -12,7 +12,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AuthorisedRead, initialState, type ReadState } from './authorised-read.ts';
-import type { LiveHub } from './live.ts';
+import { FLOOR_MS, type LiveHub } from './live.ts';
 import type { RollupFloor } from './rollup-floor.ts';
 import type { CallResult } from '../operations/client.ts';
 
@@ -56,6 +56,25 @@ async function offer<T>(
     const because = 'The API answered with something this screen could not read.';
     projection.accept(generation, { unavailable: true, because }, grantKey);
   }
+}
+
+/**
+ * Re-read a live read that has no topic yet, its first answer unavailable: on
+ * coming online, on being shown, and every 30 s while not hidden (C4). The
+ * hub can only follow a topic, and the topic comes from an answer.
+ */
+function untilAnswered(reload: () => void): () => void {
+  const retry = (): void => {
+    if (document.visibilityState !== 'hidden') reload();
+  };
+  const floor = setInterval(retry, FLOOR_MS);
+  window.addEventListener('online', retry);
+  document.addEventListener('visibilitychange', retry);
+  return () => {
+    clearInterval(floor);
+    window.removeEventListener('online', retry);
+    document.removeEventListener('visibilitychange', retry);
+  };
 }
 
 export function useRead<T>(options: UseReadOptions<T>): UseReadResult<T> {
@@ -106,10 +125,12 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadResult<T> {
   const topic = topicRef.current;
   const hub = options.live?.hub;
 
+  const unanswered = hub !== undefined && topic === null && state.outcome === 'unavailable';
   useEffect(() => {
+    if (unanswered) return untilAnswered(reload);
     if (hub === undefined || topic === null) return;
     return hub.follow(topic, reload);
-  }, [hub, topic, reload]);
+  }, [hub, topic, reload, unanswered]);
 
   const { rollup } = options;
   useEffect(() => rollup?.follow(reload), [rollup, reload]);
