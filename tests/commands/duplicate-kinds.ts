@@ -178,6 +178,8 @@ export const DECLARED: Readonly<
   'budget.set_planning_cap': { carry: 'not carried', plant: 'a business setting' },
   'run.delegate_child': { carry: 'not carried', plant: 'needs a lease' },
   'run.child_handback': { carry: 'not carried', plant: 'needs a child run' },
+  'chat.send_direct': { carry: 'not carried', plant: 'a team conversation’s, never on a task' },
+  'chat.mark_read': { carry: 'not carried', plant: 'the reader’s own marker, not the task' },
 };
 
 /** The carried name fields: each gets its canary and its old-client-name case. */
