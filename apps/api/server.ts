@@ -387,6 +387,23 @@ export function composeApi(config: ApiConfig): ComposedApi {
   return { app: server, logins, resolveBusiness };
 }
 
+/** One part of the server to stop, or none where that part is off. */
+type Stopping = (() => Promise<unknown>) | undefined;
+
+/**
+ * The server's shutdown in two stages: the work that may be mid-pass first
+ * (the live streams, the mail worker's running pass), then the pools and
+ * processes that work uses. The second stage starts only once every part of
+ * the first has settled, so a question or a send ends before its pool does.
+ */
+export async function shutDown(
+  working: readonly Stopping[],
+  pools: readonly Stopping[],
+): Promise<void> {
+  await Promise.allSettled(working.map(async (stop) => await stop?.()));
+  await Promise.allSettled(pools.map(async (stop) => await stop?.()));
+}
+
 async function main(): Promise<void> {
   // T2c1: the crash seam is test-only, so an armed one outside test mode stops the start.
   const seam = crashSeamProblem(process.env);
@@ -580,19 +597,15 @@ async function main(): Promise<void> {
 
   const stop = (): void => {
     sweeper.stop();
-    // The live streams and the mail worker's running pass first: a question
-    // or a send in flight ends before its pool does.
-    void Promise.allSettled([topics.close(), mail?.stop()])
-      .then(
-        async () =>
-          await Promise.allSettled([
-            database.close(),
-            admin.close(),
-            broker?.stop(),
-            tracer?.stop(),
-          ]),
-      )
-      .then(() => process.exit(0));
+    void shutDown(
+      [async () => await topics.close(), mail?.stop],
+      [
+        async () => await database.close(),
+        async () => await admin.close(),
+        broker?.stop,
+        tracer?.stop,
+      ],
+    ).then(() => process.exit(0));
   };
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);
