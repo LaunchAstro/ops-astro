@@ -100,6 +100,30 @@
         "tests/ci/s0-3-unstarted-dump-stops.test.ts"
       ],
       "rules": { "no-inline-comments": "off" }
+    },
+    {
+      "files": [
+        "tests/review/sol-ow059-backup-store.test.ts",
+        "tests/review/ow-063-export-revocation-proof.test.ts"
+      ],
+      "rules": { "max-lines-per-function": "off" }
+    },
+    {
+      "files": ["tests/review/sol-ow062-restore-revocation.test.ts"],
+      "rules": { "require-await": "off" }
+    },
+    {
+      "files": ["tests/review/ow066-export-revocation-proof.test.ts"],
+      "rules": { "unicorn/no-useless-undefined": "off" }
+    },
+    {
+      "files": ["tests/ci/sol-ow064.proof.test.mjs"],
+      "rules": {
+        "no-await-in-loop": "off",
+        "require-await": "off",
+        "no-promise-executor-return": "off",
+        "unicorn/no-array-callback-reference": "off"
+      }
     }
   ]
 }

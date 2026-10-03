@@ -3,13 +3,12 @@
 // The operator gate and the deployment record (ticket S0-1, line A4).
 //
 // Staging preparation, the staging deploy (S0-6), the promotion step and the
-// restore drill (S0-3) are a
-// person's acts under `operations:manage`, never an agent's and never under a
-// delegation. Each command asks `requireOperator` before they read anything else, and write
-// their record through `recordDeployment` only after they acted. A refusal,
-// the gate's or the command's own (a running API), returns before the service
-// manager, the artefact store, the production link, the record folder or the
-// database is written, so a refused run writes nothing.
+// restore drill (S0-3) are a person's acts under `operations:manage`, never an
+// agent's and never under a delegation. Each command asks the gate before it
+// reads anything else, and writes its record through `recordDeployment` only
+// after it acted. A refusal, the gate's or the command's own (a running API),
+// returns before the service manager, the artefact store, the production link,
+// the record folder or the database is written: a refused run writes nothing.
 //
 // The check is the product's own, run without the API: the promotion runs
 // with the API stopped. The bearer is verified the way the API verifies it
@@ -56,6 +55,8 @@ export type Gate =
       readonly recordSignIn: () => Promise<void>;
       /** Dates a pass the store took for the operations view (tested-restore.ts); drills only. */
       readonly recordTestedRestore: () => Promise<string>;
+      /** Asks the gate again, now; rejects unless it admits the same person (store reads). */
+      readonly stillOperator: () => Promise<void>;
     }
   | { readonly ok: false; readonly reason: string };
 
@@ -64,6 +65,7 @@ type Environment = Readonly<Record<string, string | undefined>>;
 const KEY = `${OPERATIONS_MANAGE.collection}:${OPERATIONS_MANAGE.action}`;
 /** What an agent or a delegation carries, as the command line names it. */
 const NOT_A_PERSON = ['OPS_ASTRO_AGENT', 'OPS_ASTRO_DELEGATION', 'OPS_ASTRO_DELEGATION_FILE'];
+/** Addresses, each parsed before use: the driver's error for a malformed one holds it whole. */
 const CHECKED_WITH = ['DATABASE_URL', 'DATABASE_ADMIN_URL', 'GOTRUE_URL'];
 /** The file in the record folder, one JSON line per act. */
 export const RECORD_FILE = 'deployments.jsonl';
@@ -94,6 +96,9 @@ class Answer extends Error {
 const NO_OPERATING_BUSINESS =
   'the installation has no operating business: it is written once, at installation, from the restore runbook';
 const NOT_OPERATING = "this act belongs to the installation's operating business alone";
+const NO_LONGER = `the operator no longer holds ${KEY} with this sign-in: stopped part way`;
+/** The person a gate admitted, and the business it was checked in. */
+type Held = { readonly personId: string; readonly businessId: BusinessId };
 
 /**
  * Inside the check's own transaction, on the database the permission is
@@ -120,11 +125,7 @@ async function personHolding(
   business: string,
   presented: VerifiedSubject,
   operatingOnly: boolean,
-): Promise<
-  | { readonly personId: string; readonly businessId: BusinessId }
-  | { readonly why: string }
-  | undefined
-> {
+): Promise<Held | { readonly why: string } | undefined> {
   const admin = connectAsAdmin(env['DATABASE_ADMIN_URL']!, { source: 'admin' });
   const database = connect(env['DATABASE_URL']!, { source: 'runtime' });
   try {
@@ -182,15 +183,20 @@ const unverified = (presented: unknown): string =>
     ? "the sign-in could not be checked: the provider's key set did not answer, so retry once it does"
     : 'the sign-in did not verify: missing, forged or expired';
 
-/** What an admitted gate records once its act is done: the sign-in, and a passed drill's date. */
+/** What an admitted gate records once its act is done, and how it asks `ask` again meanwhile. */
 function afterTheAct(
   env: Readonly<Record<string, string>>,
-  businessId: BusinessId,
+  held: Held,
   presented: VerifiedSubject,
-): Pick<Extract<Gate, { ok: true }>, 'recordSignIn' | 'recordTestedRestore'> {
+  ask: () => Promise<Gate>,
+): Omit<Extract<Gate, { ok: true }>, 'ok' | 'operator' | 'records'> {
   return {
-    recordSignIn: async () => await recordSignIn(env['DATABASE_URL']!, businessId, presented),
+    recordSignIn: async () => await recordSignIn(env['DATABASE_URL']!, held.businessId, presented),
     recordTestedRestore: async () => await recordTestedRestore(env['DATABASE_ADMIN_URL']!),
+    stillOperator: async () => {
+      const now = await ask();
+      if (!now.ok || now.operator.personId !== held.personId) throw new Error(NO_LONGER);
+    },
   };
 }
 
@@ -207,9 +213,9 @@ async function checkOperator(environment: Environment, operatingOnly: boolean): 
   if (!set(environment, 'OPS_ASTRO_TOKEN') || !set(environment, 'OPS_ASTRO_BUSINESS')) {
     return refused("no person's sign-in: OPS_ASTRO_TOKEN and OPS_ASTRO_BUSINESS are both needed");
   }
-  const unset = CHECKED_WITH.filter((name) => !set(environment, name));
+  const unset = CHECKED_WITH.filter((name) => !URL.canParse(environment[name] ?? ''));
   if (unset.length > 0)
-    return refused(`${unset.join(', ')} not set, so the sign-in cannot be checked`);
+    return refused(`${unset.join(', ')} not set or unreadable, so the sign-in cannot be checked`);
   const env = environment as Readonly<Record<string, string>>;
   // Every refusal that needs no lookup comes first; the lookup commits nothing.
   const records = env['OPS_ASTRO_DEPLOYMENTS'] ?? '';
@@ -245,30 +251,25 @@ async function checkOperator(environment: Environment, operatingOnly: boolean): 
     ok: true,
     operator: { personId: held.personId, business },
     records,
-    ...afterTheAct(env, held.businessId, presented),
+    ...afterTheAct(env, held, presented, () => checkOperator(environment, operatingOnly)),
   };
 }
 
 /**
  * The installation's appointed operator, or why not: a person holding
- * `operations:manage` over the whole of the installation's operating
- * business, for acts over the whole database, such as the restore drill and
- * its carried archive. The operating business is installation state, the one
- * row written at installation, read inside the same transaction, on the same
- * database, as the grant is checked in, so no other database address can
- * supply it. Any other business is refused before its login is resolved,
- * with a reason that names neither business, so its manager learns nothing.
- * The store holds the same appointment and checks it again before it hands
- * out a byte (deploy/staging/backup-store.sql, `backups.read_latest`).
+ * `operations:manage` over the whole of the installation's operating business,
+ * for acts over the whole installation: the restore drill and its carried
+ * archive, the staging deploy, stopping production. The operating business is
+ * installation state, the one row written at installation, read inside the same
+ * transaction, on the same database, as the grant is checked in, so no other
+ * database address can supply it. Any other business is refused before its
+ * login is resolved, with a reason that names neither business, so its manager
+ * learns nothing. The store checks the same appointment before it hands out a
+ * byte (backup-store.sql, `backups.read_latest` and `read_part`).
  */
 export async function requireOperatingOperator(
   environment: Environment = process.env,
 ): Promise<Gate> {
-  if (!set(environment, 'DATABASE_URL') || !set(environment, 'DATABASE_ADMIN_URL')) {
-    return refused(
-      "the installation's operating business is read from the installation's own database, and none is named",
-    );
-  }
   return await checkOperator(environment, true);
 }
 

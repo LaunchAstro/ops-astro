@@ -12,7 +12,15 @@
 // printed carries an address, a key, a password or the token.
 
 import { randomBytes, randomUUID } from 'node:crypto';
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  closeSync,
+  existsSync,
+  fchmodSync,
+  openSync,
+  readFileSync,
+  rmSync,
+  writeSync,
+} from 'node:fs';
 import { endPersonAuthority } from '../../packages/core-commands/src/commands/authority-controls.ts';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { connect, connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
@@ -53,23 +61,35 @@ async function provider(path, method, body, headers = admin) {
   return { status: response.status, body: await response.json().catch(() => ({})) };
 }
 
-const keep = (file, text) => writeFileSync(file, text, { mode: 0o600 });
+/** Owner-only, a file there before included: emptied and narrowed before the text goes in. */
+function keep(file, text) {
+  const fd = openSync(file, 'w', 0o600);
+  try {
+    fchmodSync(fd, 0o600);
+    writeSync(fd, text);
+  } finally {
+    closeSync(fd);
+  }
+}
 
-/** The business's id, read as the lookup identity reads it (`apps/api/server.ts`). */
-async function businessId() {
+/** Every business's id and key, read as the lookup identity reads them (`apps/api/server.ts`). */
+async function businesses() {
   const lookup = connectAsAdmin(env.DATABASE_LOOKUP_URL, { source: 'scan-login' });
   try {
-    const rows = await lookup.transaction(async (execute) => {
+    return await lookup.transaction(async (execute) => {
       await execute('set local role ops_astro_lookup');
-      return await execute('select id from public.businesses where key = $1 limit 2', [
-        SCAN_BUSINESS,
-      ]);
+      return await execute('select id, key from public.businesses');
     });
-    if (rows.length !== 1) stop(`the business ${SCAN_BUSINESS} was not found once`);
-    return rows[0].id;
   } finally {
     await lookup.close();
   }
+}
+
+/** The scan business's id among `all`. */
+function businessId(all) {
+  const rows = all.filter((row) => row.key === SCAN_BUSINESS);
+  if (rows.length !== 1) stop(`the business ${SCAN_BUSINESS} was not found once`);
+  return rows[0].id;
 }
 
 /** The person, acting identity, login mapping, membership and grants, in one transaction. */
@@ -126,7 +146,7 @@ async function make() {
     stop(`the admin API did not make the sign-in (${made.status})`);
   keep(env.SCAN_LOGIN_FILE, JSON.stringify({ email, userId }));
 
-  const business = await businessId();
+  const business = businessId(await businesses());
   const db = connect(env.DATABASE_URL, { source: 'scan-login' });
   try {
     await db.withBusiness(business, (tx) => member(tx, userId));
@@ -150,10 +170,26 @@ async function make() {
 
 // Check first, then end what the sign-in is mapped to, found from its own login
 // row and never from the file: a lost reply is found, a tampered file names no one.
+// A sign-in another business still maps to a person is that person's too, so
+// nothing is ended and the provider keeps it.
 async function endRows(record, providerEmail) {
+  const all = await businesses();
+  const scan = businessId(all);
   const db = connect(env.DATABASE_URL, { source: 'scan-login' });
   try {
-    await db.withBusiness(await businessId(), async (tx) => {
+    for (const { id } of all.filter((row) => row.id !== scan)) {
+      // eslint-disable-next-line no-await-in-loop -- one business at a time, each under its own barrier
+      const elsewhere = await db.withBusiness(id, (tx) =>
+        tx.query(
+          `select from public.logins l join public.person_logins pl on pl.login_id = l.id
+            where l.provider = 'supabase' and l.subject = $1 and pl.active limit 1`,
+          [record.userId],
+        ),
+      );
+      if (elsewhere.length > 0)
+        stop("the sign-in is a person's in another business too; nothing was removed");
+    }
+    await db.withBusiness(scan, async (tx) => {
       const mapped = await tx.query(
         `select pl.person_id, p.display_name from public.logins l
            join public.person_logins pl on pl.login_id = l.id
