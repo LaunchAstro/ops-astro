@@ -112,7 +112,7 @@ describe('REVIEW-MAIN-2B1-6: a live stream aborted before follow starts never en
         { topics, recheckMs: 60_000 },
         [{ label: `task:${task}`, taskId: task }],
         asks,
-        { session, presence },
+        { session, presence, sitter: async () => await Promise.resolve(session) },
       );
 
       expect

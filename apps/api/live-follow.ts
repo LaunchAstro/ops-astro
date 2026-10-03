@@ -4,8 +4,9 @@
 // topics a tab names, and the loop that re-asks before every delivery. Moved
 // out of app.ts unchanged in what it sends, with presence added.
 
+import { randomUUID } from 'node:crypto';
 import type { SSEStreamingApi } from 'hono/streaming';
-import type { CommandRefusal } from '../../packages/core-commands/src/index.ts';
+import type { CommandRefusal, Viewer } from '../../packages/core-commands/src/index.ts';
 import { TOPIC, type LiveSignal, type LiveTopics } from './live.ts';
 import type { LivePresence } from './live-presence.ts';
 import type { PresenceSession } from './presence.ts';
@@ -25,10 +26,28 @@ export interface Watch {
   readonly taskId: string;
 }
 
+/** Who a seat is held for: the person the bearer resolves to, without the seat's id. */
+export type Sitter = Omit<PresenceSession, 'sessionId'>;
+
 /** A stream's seat in the presence book (C2): its id is handed to the tab alone. */
 export interface Seated {
   readonly session: PresenceSession;
   readonly presence: LivePresence;
+  /** Who the bearer resolves to now, asked before each delivery; undefined when no one. */
+  sitter(): Promise<Sitter | undefined>;
+}
+
+/** A stream's seat for whoever `viewer` resolves to now, under a new id; none when no one. */
+export async function seatFor(
+  presence: LivePresence,
+  viewer: () => Promise<Viewer | undefined>,
+): Promise<Seated | undefined> {
+  const sitter = async (): Promise<Sitter | undefined> => {
+    const now = await viewer();
+    return now && { personId: now.personId, name: now.name, side: now.staff ? 'staff' : 'client' };
+  };
+  const now = await sitter();
+  return now && { presence, session: { ...now, sessionId: randomUUID() }, sitter };
 }
 
 const MOST_TOPICS = 32;
@@ -138,8 +157,8 @@ export async function follow(
     stream.abort();
     await done;
   };
-  const follower = new Follower(stream, asks);
-  for (const watch of watches) follower.watch(watch, live.topics, seated, stop);
+  const follower = new Follower(stream, asks, seated);
+  for (const watch of watches) follower.watch(watch, live.topics, stop);
   const timer = setInterval(() => follower.checkAll(), live.recheckMs ?? RECHECK_MS);
   try {
     if (seated !== undefined)
@@ -160,30 +179,35 @@ export async function follow(
 /**
  * The deliveries of one stream, one at a time. Signals that arrive for a task
  * while one is pending merge into it, the strongest kept; a presence change
- * rides with it. Every delivery asks again first, and writes nothing.
+ * rides with it. Every delivery asks again first, and writes nothing. The
+ * seat follows the bearer: asked again before each delivery, it is held for
+ * the person the bearer resolves to now, under the same id, and for no one
+ * when it resolves to no one.
  */
 class Follower {
   readonly #stops = new Map<Watch, () => void>();
+  readonly #leaves = new Map<Watch, () => void>();
   readonly #pending = new Map<Watch, LiveSignal | 'check'>();
   readonly #presence = new Set<Watch>();
   readonly #stream: LiveStream;
   readonly #asks: Watching;
+  readonly #seated: Seated | undefined;
+  #sitter: Sitter | undefined;
   #chain = Promise.resolve();
 
-  constructor(stream: LiveStream, asks: Watching) {
+  constructor(stream: LiveStream, asks: Watching, seated: Seated | undefined) {
     this.#stream = stream;
     this.#asks = asks;
+    this.#seated = seated;
+    if (seated !== undefined) {
+      const { personId, name, side } = seated.session;
+      this.#sitter = { personId, name, side };
+    }
   }
 
-  watch(
-    watch: Watch,
-    topics: LiveTopics,
-    seated: Seated | undefined,
-    stop: () => Promise<void>,
-  ): void {
-    const { businessId } = this.#asks;
+  watch(watch: Watch, topics: LiveTopics, stop: () => Promise<void>): void {
     const unsubscribe = topics.subscribe(
-      businessId,
+      this.#asks.businessId,
       watch.taskId,
       (signal) => {
         this.want(watch, signal);
@@ -191,14 +215,8 @@ class Follower {
       // Each topic's own handle: a topic closed alone must not take the stream's stop with it.
       async () => await stop(),
     );
-    const leave = seated?.presence.seat(businessId, watch.taskId, seated.session, () => {
-      this.#queue(watch);
-      this.#presence.add(watch);
-    });
-    this.#stops.set(watch, () => {
-      unsubscribe();
-      leave?.();
-    });
+    this.#stops.set(watch, unsubscribe);
+    this.#sit(watch);
   }
 
   checkAll(): void {
@@ -211,13 +229,43 @@ class Follower {
   }
 
   stopAll(): void {
-    for (const stop of this.#stops.values()) stop();
+    for (const watch of this.#stops.keys()) this.#end(watch);
   }
 
   want(watch: Watch, signal: LiveSignal | 'check'): void {
     const was = this.#pending.get(watch);
     this.#queue(watch);
     if (was === undefined || RANK[signal] > RANK[was]) this.#pending.set(watch, signal);
+  }
+
+  #sit(watch: Watch): void {
+    if (this.#seated === undefined || this.#sitter === undefined) return;
+    const session = { ...this.#sitter, sessionId: this.#seated.session.sessionId };
+    const leave = this.#seated.presence.seat(this.#asks.businessId, watch.taskId, session, () => {
+      this.#queue(watch);
+      this.#presence.add(watch);
+    });
+    this.#leaves.set(watch, leave);
+  }
+
+  #end(watch: Watch): void {
+    this.#stops.get(watch)?.();
+    this.#leaves.get(watch)?.();
+    this.#stops.delete(watch);
+    this.#leaves.delete(watch);
+  }
+
+  /** The seat held again for whoever the bearer resolves to now, when that changed. */
+  async #reseat(): Promise<void> {
+    if (this.#seated === undefined) return;
+    const now = await this.#seated.sitter();
+    const was = this.#sitter;
+    if (now?.personId === was?.personId && now?.name === was?.name && now?.side === was?.side)
+      return;
+    for (const leave of this.#leaves.values()) leave();
+    this.#leaves.clear();
+    this.#sitter = now;
+    for (const watch of this.#stops.keys()) this.#sit(watch);
   }
 
   #queue(watch: Watch): void {
@@ -237,6 +285,7 @@ class Follower {
       await this.#close(watch);
       return;
     }
+    await this.#reseat();
     if (signal !== undefined && signal !== 'check') {
       await this.#stream.writeSSE({ event: signal, data: watch.label });
     }
@@ -244,8 +293,7 @@ class Follower {
   }
 
   async #close(watch: Watch): Promise<void> {
-    this.#stops.get(watch)?.();
-    this.#stops.delete(watch);
+    this.#end(watch);
     await this.#stream.writeSSE({ event: 'closed', data: watch.label });
     if (this.#stops.size === 0) this.#stream.abort();
   }

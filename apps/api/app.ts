@@ -30,7 +30,6 @@
 // subject and a missing login do: telling them apart tells an outsider which
 // businesses exist.
 
-import { randomUUID } from 'node:crypto';
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import { streamSSE } from 'hono/streaming';
@@ -94,6 +93,7 @@ import {
   endsWithRequest,
   follow as followTopics,
   RECHECK_MS,
+  seatFor,
   sharesOf,
   topicsOf,
   TOPICS,
@@ -677,13 +677,13 @@ async function seatOf(
   asks: Watching,
 ): Promise<Seated | undefined> {
   const { presence } = live;
-  const presented = await options.verify(context.req);
-  if (presence === undefined || typeof presented !== 'object') return undefined;
-  const viewer = await (live.viewer ?? viewerOf)(options.database, asks.businessId, presented);
-  if (isCommandRefusal(viewer)) return undefined;
-  const { personId, name, staff } = viewer;
-  const session = { sessionId: randomUUID(), personId, name, side: staff ? 'staff' : 'client' };
-  return { presence, session: session as Seated['session'] };
+  if (presence === undefined) return undefined;
+  return await seatFor(presence, async () => {
+    const presented = await options.verify(context.req);
+    if (typeof presented !== 'object') return;
+    const viewer = await (live.viewer ?? viewerOf)(options.database, asks.businessId, presented);
+    return isCommandRefusal(viewer) ? undefined : viewer;
+  });
 }
 
 function watching(
