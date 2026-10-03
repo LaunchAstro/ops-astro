@@ -2,7 +2,8 @@
 //
 // AW-07b sender and AW-07b mention. The sending subdomain's setup check is
 // drawn from the fake source (no provider account yet, owner line 68), so
-// every report here is `mock`; the send path refuses until it verified. The
+// its reports are `mock`, and the send path refuses a mock report or one that
+// has not verified. The
 // mention cases run the real comment command: a mention someone cannot read
 // is refused at compose time, and a client a client-visible comment names is
 // told by email through the broker's one send. The client's paid-client
@@ -99,7 +100,7 @@ it('AW-07b sender: mail is refused until the sending subdomain verifies DKIM, SP
   };
   expect((await checkSender(throwing, SUBDOMAIN, ROOT)).verified).toBe(false);
 
-  // All three verified: the report says so, marked mock, and mail goes.
+  // All three verified: the report says so, marked mock, and a mock report sends nothing.
   const report = await checkSender(fakeSenderSource(fresh()), SUBDOMAIN, ROOT);
   expect(report).toEqual({
     subdomain: SUBDOMAIN,
@@ -109,11 +110,18 @@ it('AW-07b sender: mail is refused until the sending subdomain verifies DKIM, SP
     mock: true,
   });
   const item = await itemFor(w.task, 'decision');
-  expect(
-    await sendInboxEmail(w.db.app, w.alpha, item, w.broker, { ...MAIL, sender: report }),
-  ).toMatchObject({
-    ok: true,
+  const mail = { ...MAIL, sender: report };
+  expect(await sendInboxEmail(w.db.app, w.alpha, item, w.broker, mail)).toEqual({
+    ok: false,
+    code: 'SENDER_NOT_VERIFIED',
   });
+  // The same answer from a source that is not the fake verifies, and mail goes.
+  const real = { ...fakeSenderSource(fresh()), mock: false };
+  const sender = await checkSender(real, SUBDOMAIN, ROOT);
+  expect(sender).toMatchObject({ verified: true, mock: false });
+  expect(
+    await sendInboxEmail(w.db.app, w.alpha, item, w.broker, { ...MAIL, sender }),
+  ).toMatchObject({ ok: true });
 });
 
 it('AW-07b sender: the setup check reports the root domain’s DMARC policy', () => {
