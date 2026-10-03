@@ -1,1 +1,2 @@
 CI-SCOPED rehearsal step 3: a new top-level file runs everything. Do not merge.
+step 6: a push after green
