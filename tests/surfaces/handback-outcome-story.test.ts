@@ -51,4 +51,11 @@ describe('OW-108.1 a hand-back story follows the attempt outcome', () => {
       }
     }
   });
+
+  it('an attempt read without its outcome never reads as done', () => {
+    // A narrower read or a cached projection that drops the key must fail closed.
+    const { outcome: _dropped, ...attempt } = { state: 'abandoned', outcome: 'completed' };
+    const story = stateOf({ ...handedBack('completed'), attempt } as unknown as Reservation);
+    expect([story.state, story.tone]).toStrictEqual(['dropped', 'bad']);
+  });
 });
