@@ -30,11 +30,11 @@
 // `aria-describedby`, the pairing `FieldError` documents, and the message sits
 // in an alert region so a screen reader hears it when it appears.
 //
-// **A login with an authenticator app gives its code before the session opens
-// (C59).** A password alone is `aal1`, refused `AUTH_SECOND_FACTOR_REQUIRED`
-// (`openSignIn`). The code goes through the money step-up's `stepUpSession`; a
-// wrong one says so and asks again. Cancel, or leaving the page, signs the half-made
-// sign-in out, and any new one it lands on; Cancel returns to the emptied password.
+// **A login with an authenticator app gives its code before the session opens (C59).** A
+// password alone is `aal1`, refused `AUTH_SECOND_FACTOR_REQUIRED` (`openSignIn`). The code goes
+// through the money step-up's `stepUpSession`; a wrong one says so and asks again. Cancel, or
+// leaving the page (before the code is asked for too), signs the half-made sign-in out, and any
+// new one it lands on; Cancel returns to the emptied password.
 
 import { useEffect, useRef, useState, type FormEvent, type ReactElement } from 'react';
 import { BrandMark, FieldError } from '@launchastro/ui';
@@ -112,7 +112,7 @@ function useCodeStep(route: ApiRoute, open: (sessionId: string) => void) {
     setBecause(null);
     setChecking(false);
   };
-  return { asked, setAsked, code, setCode, because, checking, check, cancel };
+  return { asked, setAsked, attempt, leave, code, setCode, because, checking, check, cancel };
 }
 
 /** The six-digit code, its continue and its cancel back to the password. */
@@ -164,7 +164,7 @@ export function SignIn(props: SignInProps): ReactElement {
     }
     setBecause(null);
     setBusy(true);
-    void (async () => {
+    void (async (sent: number) => {
       const result = await openSignIn({
         gotrueUrl: props.gotrueUrl,
         email,
@@ -176,11 +176,12 @@ export function SignIn(props: SignInProps): ReactElement {
       if (!result.ok) setBecause(result.because);
       else if (result.asked === undefined) opened(result.sessionId);
       else {
-        // The password has been sent; the code step keeps nothing of it.
+        // Sent: the code step keeps no password, and a page left since signs this sign-in out.
         setPassword('');
-        step.setAsked(result.asked);
+        if (step.attempt.current === sent) step.setAsked(result.asked);
+        else step.leave(result.asked.client, result.asked.sessionId);
       }
-    })();
+    })(step.attempt.current);
   };
 
   // Signed out there is no shell: the rail's pages all ask for a session, so
