@@ -219,29 +219,44 @@ function KeyForm(props: { readonly set: (name: string, value: string) => void })
   );
 }
 
+function KeysHead(): ReactElement {
+  return (
+    <div className="card__head">
+      <div>
+        <h3 className="card__title">Keys</h3>
+        <p className="card__sub">
+          Secrets the business&apos;s connections use. A value is sealed when you set it and is
+          never shown again, here or anywhere.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/** The listing while it is not drawn: reading, refused or unavailable. */
+function NotShown(props: { readonly listing: Listing }): ReactElement | null {
+  const { listing } = props;
+  if (listing.state === 'loading') return <p className="card__note">Reading keys…</p>;
+  if (listing.state === 'refused') {
+    return <Empty title="You are not permitted to see the keys." description={listing.because} />;
+  }
+  if (listing.state === 'unavailable') {
+    return (
+      <p className="field__error card__note" role="status">
+        {listing.because}
+      </p>
+    );
+  }
+  return null;
+}
+
 export function KeysPanel(props: { readonly client: OperationsClient }): ReactElement {
   const { client } = props;
   const { listing, because, act } = useKeys(client);
   return (
     <section className="card card--flush" data-settings="keys">
-      <div className="card__head">
-        <div>
-          <h3 className="card__title">Keys</h3>
-          <p className="card__sub">
-            Secrets the business&apos;s connections use. A value is sealed when you set it and is
-            never shown again, here or anywhere.
-          </p>
-        </div>
-      </div>
-      {listing.state === 'loading' ? <p className="card__note">Reading keys…</p> : null}
-      {listing.state === 'refused' ? (
-        <Empty title="You are not permitted to see the keys." description={listing.because} />
-      ) : null}
-      {listing.state === 'unavailable' ? (
-        <p className="field__error card__note" role="status">
-          {listing.because}
-        </p>
-      ) : null}
+      <KeysHead />
+      <NotShown listing={listing} />
       {listing.state === 'shown' ? (
         <KeyRows
           secrets={listing.secrets}

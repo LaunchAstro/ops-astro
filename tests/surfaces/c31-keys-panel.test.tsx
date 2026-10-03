@@ -175,7 +175,9 @@ describe('C31 Keys panel keeps the value', () => {
     expect(field.className).toContain('tf--sealed');
     await page.unmount();
   });
+});
 
+describe('C31 Keys panel field', () => {
   it('C31 a typed value is in no attribute of the page before it is sent', async () => {
     const page = await mount(<KeysPanel client={clientOf(server().fetch)} />);
     await tick();
@@ -197,7 +199,9 @@ describe('C31 Keys panel keeps the value', () => {
     }
     await page.unmount();
   });
+});
 
+describe('C31 Keys panel offers changes only where allowed', () => {
   it('C31 a holder who may not change keys sees them listed, with no Set form and no Clear', async () => {
     const stub = server();
     const page = await mount(<KeysPanel client={clientOf(stub.fetch)} />);

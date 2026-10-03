@@ -23,6 +23,7 @@ import type {
   InternalTaskRead,
   PersonListResult,
   QueueResult,
+  SecretListResult,
   SessionPersonResult,
   SettingsReadResult,
   TagListResult,
@@ -172,6 +173,31 @@ const READS = {
   // The business's clients (C32), as the task's client field and the to-dos'
   // client scope ask them.
   'client.list': { ok: true, clients: [HARBOUR, MERIDIAN] } satisfies ClientListResult,
+  // Custody's keys (C31) for Settings: one set, one not, never a value.
+  'secret.list': {
+    ok: true,
+    canChange: true,
+    secrets: [
+      {
+        id: 'S-1',
+        name: 'xero.client-secret',
+        clientId: null,
+        state: 'set',
+        setAt: '2026-09-30T00:00:00Z',
+        lastUsedAt: null,
+        revision: 1,
+      },
+      {
+        id: 'S-2',
+        name: 'ads.token',
+        clientId: null,
+        state: 'not set',
+        setAt: null,
+        lastUsedAt: null,
+        revision: 2,
+      },
+    ],
+  } satisfies SecretListResult,
 } as const satisfies Partial<Record<ReadName, unknown>>;
 
 /** The reads the harness answers; a read missing here draws its "could not be read" state. */
