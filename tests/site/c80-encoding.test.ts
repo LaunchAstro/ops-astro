@@ -91,6 +91,14 @@ describe('C80 capture, the one charset parameter', () => {
     ['stylesheet', `${CSS}; charset=utf-8; charset=windows-1252`, 1, NONE, false],
     ['stylesheet', `${CSS}; x="a charset=windows-1252"`, 1, NONE, false],
     ['stylesheet', `${CSS}; charset=utf-8`, 1, NONE, true],
+    // The eighth re-bind, finding 1: Firefox opens a quoted string at any `"`, so a stray quote
+    // hides the charset from it; only the type and one charset parameter are read at all.
+    ['document', 'text/html; x=a"; charset=utf-8', 1, NONE, false],
+    ['document', 'text/html; x"=a; charset=utf-8', 1, NONE, false],
+    ['document', 'text/html; "; charset=utf-8', 1, NONE, false],
+    ['document', 'text/html; x="a"b"; charset=utf-8', 1, NONE, false],
+    ['document', 'text/html; q=1; charset=utf-8', 1, NONE, false],
+    ['document', 'text/html;charset=UTF-8', 1, NONE, true],
   ] as const)('reads a %s as %j, %i line(s), with %j, only as UTF-8: %s', async (...row) => {
     expect((await served(row)).ok).toBe(row[4]);
   });
