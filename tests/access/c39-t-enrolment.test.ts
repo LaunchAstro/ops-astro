@@ -78,7 +78,8 @@ describe.skipIf(noDatabase)('C39-T enrolment', () => {
     expect(codeOf(await as(c.admin, 'invitation.resend', { invitationId: id }))).toBe('applied');
     expect(await send(id)).toMatchObject({ ok: true });
     const token = tokenTo(address);
-    expect(await spentOf(id)).toStrictEqual({ state: 'pending', spent: 0, tokens: 2 });
+    // The resend spent the link before it (SEC27 F5); its own is live.
+    expect(await spentOf(id)).toStrictEqual({ state: 'pending', spent: 1, tokens: 2 });
     const people = await peopleIn(w.alpha);
     const password = passwordFor();
     const asked = e.users.received.length;
@@ -169,7 +170,8 @@ describe.skipIf(noDatabase)('C39-T enrolment', () => {
     }
     expect(e.users.received).toHaveLength(asked);
     expect(await identityRows(w.alpha)).toStrictEqual(rows);
-    expect(await spentOf(older.id)).toStrictEqual({ state: 'pending', spent: 0, tokens: 2 });
+    // The older link was spent by the resend (SEC27 F5), and no refusal spent another.
+    expect(await spentOf(older.id)).toStrictEqual({ state: 'pending', spent: 1, tokens: 2 });
     expect((await spentOf(expired.id)).spent).toBe(0);
     // The control: the resend's own link is live.
     expect((await enrolVia(newer)).body).toStrictEqual({ state: 'enrolled' });

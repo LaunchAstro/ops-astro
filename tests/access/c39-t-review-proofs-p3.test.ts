@@ -113,11 +113,11 @@ it('SEC27 F6: one narrow security definer function looks a token up by its hash,
   const [fn] = await w.db.admin.execute<{
     definer: boolean;
     config: readonly string[] | null;
-    result: string;
+    shape: string;
     runners: readonly string[];
   }>(
     `select p.prosecdef as definer, p.proconfig as config,
-            pg_get_function_result(p.oid) as result,
+            pg_get_function_arguments(p.oid) || ' -> ' || pg_get_function_result(p.oid) as shape,
             array(select coalesce(nullif(a.grantee, 0)::regrole::text, 'PUBLIC')
                     from aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
                    where a.privilege_type = 'EXECUTE' and a.grantee <> p.proowner
@@ -128,7 +128,7 @@ it('SEC27 F6: one narrow security definer function looks a token up by its hash,
   expect(fn).toStrictEqual({
     definer: true,
     config: ['search_path=pg_catalog', 'row_security=off'],
-    result: 'TABLE(business_id uuid, invitation_id uuid, token_id uuid)',
+    shape: 'hash text, OUT business_id uuid, OUT invitation_id uuid, OUT token_id uuid -> record',
     runners: ['ops_astro_app'],
   });
 });

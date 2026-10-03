@@ -5,13 +5,15 @@
 // so no person's grant is asked: the token is the authority, and the writes
 // are the system's, as the business's worker, under that token.
 //
-// 1. Find the token. Its SHA-256 is looked for in every one of the
-//    deployment's businesses, each under its own tenancy, whatever the token,
-//    so the work done never depends on which business holds it. It is live
-//    only while it is unspent, inside its lifetime, the newest its invitation
-//    has (a resend's link replaces the one before), and its invitation is
-//    pending and inside its own lifetime. Every other token, an unknown one
-//    among them, is one answer: `ENROLMENT_LINK_INVALID`.
+// 1. Find the token. A hash is unique in its business only, and the accept
+//    arrives with none, so its SHA-256 is looked up once, by one narrow
+//    security definer function that answers the business, the invitation and
+//    the token ids, and only for a hash exactly one business holds (SEC27 F6,
+//    `enrolment_token_find`). The token is then read in its own business: it
+//    is live only while it is unspent (a resend or a revoke spends every token
+//    before it, SEC27 F5), inside its lifetime, the newest its invitation has,
+//    and its invitation is pending and inside its own lifetime. Every other
+//    token, an unknown one among them, is one answer: `ENROLMENT_LINK_INVALID`.
 // 2. Make the login at the login provider, through custody, for the invited
 //    address, with the password the page set and the address confirmed,
 //    under a provider user id that is ours: the same every time for one
@@ -27,8 +29,9 @@
 //    `sign_in`, and nothing is spent, so its holder may accept once signed in
 //    (that binding is a follow-up). A fault spends nothing and binds nothing;
 //    a login it stranded is adopted by the next accept.
-// 3. In one transaction, under the invitation's lock and every check again:
-//    spend every unspent token of the invitation, mark it accepted, give its
+// 3. In one transaction, under the invitation's lock and every check again
+//    (pending, the token unspent and newest, this business, and the address
+//    the login was made for, SEC27 F5): spend every unspent token of the invitation, mark it accepted, give its
 //    one enduring person an acting identity, a membership in the invited
 //    role and the confirmed address, map the new login to that person, and
 //    write both audit events. The link then does nothing, and nothing here
@@ -108,11 +111,13 @@ async function loginBound(database: Database, business: string, subject: string)
   });
 }
 
-/** The token's row and its invitation, when the token is live; locked when `lock`. */
+/** A business-less transaction's business: the lookup below reads no tenant's rows. */
+const NO_BUSINESS = '00000000-0000-0000-0000-000000000000';
+
+/** The token's row and its invitation, when the token is live. */
 async function liveToken(
   tx: TenantQuery,
-  hash: string,
-  lock: boolean,
+  tokenId: string,
 ): Promise<Omit<Found, 'business'> | undefined> {
   const [row] = await tx.query<Omit<Found, 'business'> & { live: boolean }>(
     `select t.id as "tokenId", i.id as "invitationId", i.person_id as "personId",
@@ -125,31 +130,34 @@ async function liveToken(
                                  and n.created_at > t.created_at)) as live
        from enrolment_tokens t
        join invitations i on i.business_id = t.business_id and i.id = t.invitation_id
-      where t.business_id = $1 and t.token_hash = $2
-      ${lock ? 'for update of i' : ''}`,
-    [tx.businessId, hash],
+      where t.business_id = $1 and t.id = $2`,
+    [tx.businessId, tokenId],
   );
   if (row?.live !== true) return undefined;
   const { live: _live, ...found } = row;
   return found;
 }
 
-/** Step 1: the one business whose live token this is, or none. */
+/** Step 1: the one business whose live token this is, among the deployment's, or none. */
 async function find(
   database: Database,
   businesses: readonly string[],
   hash: string,
 ): Promise<Found | undefined> {
-  const found: Found[] = [];
-  for (const business of businesses) {
-    // oxlint-disable-next-line no-await-in-loop -- one business at a time, every one of them
-    const row = await database.withBusiness(
-      business,
-      async (tx) => await liveToken(tx, hash, false),
-    );
-    if (row !== undefined) found.push({ business, ...row });
+  const [at] = await database.withBusiness(
+    NO_BUSINESS,
+    async (tx) =>
+      await tx.query<{ business: string | null; token: string }>(
+        'select business_id as business, token_id as token from public.enrolment_token_find($1)',
+        [hash],
+      ),
+  );
+  if (at?.business === null || at === undefined || !businesses.includes(at.business)) {
+    return undefined;
   }
-  return found.length === 1 ? found[0] : undefined;
+  const { business, token } = at;
+  const row = await database.withBusiness(business, async (tx) => await liveToken(tx, token));
+  return row === undefined ? undefined : { business, ...row };
 }
 
 /** The invitation's person seated: an actor, a membership, the address, and the login mapped. */
@@ -185,10 +193,16 @@ async function seat(
   return login?.id ?? null;
 }
 
-/** Step 3: everything the acceptance changes, in one transaction; false when the token died. */
-async function bind(tx: TenantQuery, hash: string, subject: string): Promise<boolean> {
-  const found = await liveToken(tx, hash, true);
-  if (found === undefined) return false;
+/** Step 3: everything the acceptance changes, in one transaction; false when the link died. */
+async function bind(tx: TenantQuery, asked: Found, subject: string): Promise<boolean> {
+  // The invitation's lock first, held to commit, with the address the login was made for; then
+  // every check again in a statement of its own, so a resend or revoke committed meanwhile shows.
+  const held = await tx.query(
+    `select 1 from invitations where business_id = $1 and id = $2 and address = $3 for update`,
+    [tx.businessId, asked.invitationId, asked.address],
+  );
+  const found = held.length === 1 ? await liveToken(tx, asked.tokenId) : undefined;
+  if (found?.invitationId !== asked.invitationId) return false;
   const { invitationId, personId, tokenId } = found;
   await tx.query(
     `update enrolment_tokens set spent_at = now()
@@ -246,7 +260,7 @@ export async function acceptInvitation(
   }
   const bound = await database.withBusiness(
     found.business,
-    async (tx) => await bind(tx, hash, login.subject),
+    async (tx) => await bind(tx, found, login.subject),
   );
   return bound ? { ok: true, state: 'enrolled' } : { ok: false, code: 'ENROLMENT_LINK_INVALID' };
 }

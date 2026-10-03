@@ -188,6 +188,8 @@ export const APPLICATION_EXECUTES: readonly string[] = [
   'public.audit_event_hash',
   // 0058 (S0-5): security invoker, so it reads no more than the caller may.
   'public.first_client_readiness',
+  // 20261003222410 (C39-T, SEC27 F6): the accept's token lookup, three ids for one hash.
+  'public.enrolment_token_find',
 ];
 
 /** What the server said, reduced to what a contract can name. */

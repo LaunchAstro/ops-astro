@@ -708,7 +708,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(inserting.length).toBeGreaterThan(0);
   }, 120_000);
 
-  it('calls every function as every caller, and only the granted three run', async () => {
+  it('calls every function as every caller, and only the granted four run', async () => {
     const wrong: string[] = [];
     for (const fn of functions) {
       for (const caller of [...TABLE_CALLERS, 'owner'] as const) {
@@ -729,7 +729,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(wrong).toStrictEqual([]);
   });
 
-  // Exactly four, each for a named reason. The append-only trigger refuses
+  // Exactly five, each for a named reason. The append-only trigger refuses
   // the owner itself. The fair share's count (AW-01, ORCH-DECISION SL11
   // AW-01) is the one read across businesses: a provider route's ceiling is
   // the installation's, which a tenant transaction cannot count under row
@@ -737,14 +737,17 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
   // may execute it (tests/broker/aw-01-broker-fair-share.test.ts). The drill
   // stamp (C55) writes only now(), and only the drill's identity runs it. The
   // codes expiry (20261002105957) deletes only rows past its fixed horizon, and only the
-  // upkeep identity runs it.
+  // upkeep identity runs it. The token lookup (20261003222410, SEC27 F6) is the accept's one
+  // read across businesses, made with no business: three ids for a hash exactly one business
+  // holds, nulls otherwise, and only the application group runs it (c39-t-review-proofs-p3).
   describe('the security definer functions', () => {
     const definers = (): readonly CatalogueFunction[] => functions.filter((fn) => fn.definer);
     const definer = (signature: string): CatalogueFunction | undefined =>
       definers().find((fn) => fn.signature === signature);
 
-    it('are exactly four, each with its search path pinned', () => {
+    it('are exactly five, each with its search path pinned', () => {
       expect(definers().map((fn) => fn.signature)).toStrictEqual([
+        'enrolment_token_find(text)',
         'handback_reports_append_only()',
         'model_route_room(text,integer)',
         'ops.expire_second_factor_codes()',
@@ -775,6 +778,14 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
       expect(expiry?.trigger).toBe(false);
       expect(expiry?.argumentTypes).toStrictEqual([]);
       expect(expiry?.config).toStrictEqual(['search_path=pg_catalog']);
+    });
+
+    it('the token lookup takes the hash alone and is pinned to read every business', () => {
+      const lookup = definer('enrolment_token_find(text)');
+      expect(lookup?.trigger).toBe(false);
+      expect(lookup?.argumentTypes).toStrictEqual(['text']);
+      expect(lookup?.config).toStrictEqual(['search_path=pg_catalog', 'row_security=off']);
+      expect(lookup?.firedBy).toStrictEqual([]);
     });
 
     it('the fourth is the drill stamp, taking no argument', () => {

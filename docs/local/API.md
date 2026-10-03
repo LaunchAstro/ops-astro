@@ -2384,9 +2384,13 @@ Auth mail (a reset among it) has no attempt yet and is not sent (C40).
 businesses and a broker cataloguing `auth.create_user` and
 `auth.update_user`, custody routing the one PUT
 `/auth/v1/admin/users/*`). No sign-in and no
-grant: the one-time token is the authority, looked for by its SHA-256 in
-every business. It is live while it is unspent, in its lifetime, its
-invitation's newest and its invitation pending. The login provider makes a
+grant: the one-time token is the authority, its SHA-256 looked up once by
+`enrolment_token_find`, the one security definer function that answers a
+business, an invitation and a token id for a hash exactly one business holds
+(SEC27 F6). It is live while it is unspent (a resend or a revoke spends every
+token before it, SEC27 F5), in its lifetime, its invitation's newest and its
+invitation pending; the bind checks all of it again, and the address, under
+the invitation's lock. The login provider makes a
 login for the invited address, confirmed, through custody (the service key
 stays there), under a user id that is ours, the same for one address in one
 business; when the address holds a login already, the login under our id is

@@ -8,6 +8,8 @@
 //   new enduring person and the invitation, pending for the lifetime below.
 // - `invitation.resend` moves a pending invitation's expiry on by a lifetime.
 // - `invitation.revoke` ends a pending invitation.
+// Either spends every enrolment token minted before it, so no older link
+// accepts (SEC27 F5); a resend's own link is minted by its send.
 //
 // An administrator's invitation, created or resent, also asks `access:manage`
 // on the whole business: an administrator manages access, so only a person
@@ -259,6 +261,12 @@ async function move(
           where business_id = $1 and id = $2 returning revision, state`,
         [tx.businessId, found.id],
       );
+  // SEC27 F5: a resend or a revoke ends every link minted before it, under the row's lock.
+  await tx.query(
+    `update enrolment_tokens set spent_at = now()
+      where business_id = $1 and invitation_id = $2 and spent_at is null`,
+    [tx.businessId, found.id],
+  );
   return applied(found.id, moved?.revision ?? null, {
     invitationId: found.id,
     state: moved?.state,
