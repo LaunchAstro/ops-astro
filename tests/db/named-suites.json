@@ -916,6 +916,7 @@
     "tests/runtime/decide-operands-and-replay-lock.test.ts",
     "tests/runtime/seed-revoke-in-flight.test.ts",
     "tests/ci/cq-15-security-gate.test.ts",
+    "tests/custody/c31-credentials.test.ts",
     "tests/support/fresh-database-leak.test.ts",
     "tests/ci/s0-7-postgres-major.test.ts",
     "tests/records/owning-operation-constraints.test.ts",

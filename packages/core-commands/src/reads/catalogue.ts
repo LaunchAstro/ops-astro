@@ -51,6 +51,7 @@ import { readTaskExecution } from './execution.ts';
 import { readAwaitingReview } from './awaiting-review.ts';
 import { readPlanningCap } from '../../../core-custody/src/index.ts';
 import { readSettings } from './settings.ts';
+import { listCustodySecrets } from './custody.ts';
 import { readCapabilities } from './capabilities.ts';
 import { parseReceipt, receiptSubject, serveReceipt } from './receipts.ts';
 import { listConversations, readConversation } from './conversation.ts';
@@ -682,6 +683,17 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       if (!planned.ok) return planned.refusal;
       return { ok: true, plan: planned.value };
     },
+  },
+  // Asked per row by the scopes the caller holds `custody:manage` at (C31): a
+  // caller holding it nowhere is refused inside the read, never shown an
+  // empty list.
+  'secret.list': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: async (tx, session) => await listCustodySecrets(tx, session),
   },
   // No subject record, for the reason `task.queue` gives: the settings are
   // the business's own configuration rather than one record, and there is no

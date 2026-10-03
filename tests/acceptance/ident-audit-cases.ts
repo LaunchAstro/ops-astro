@@ -84,6 +84,8 @@ export interface IdentWorld {
     legalVersionId: string;
     credentialId: string;
     clientId: string;
+    /** A custody key of bravo's (C31). */
+    secretId: string;
   }>;
   /** The second alpha agent's live pickup. */
   readonly otherPicked: Picked;

@@ -196,6 +196,11 @@ vi.mock('../../packages/core-commands/src/commands/legal-write.ts', async (origi
   approveVersion: recorder('approveVersion'),
   publishVersion: recorder('publishVersion'),
 }));
+vi.mock('../../packages/core-commands/src/commands/custody-secrets.ts', async (original) => ({
+  ...(await original<object>()),
+  setCustodySecret: recorder('setCustodySecret'),
+  clearCustodySecret: recorder('clearCustodySecret'),
+}));
 vi.mock('../../packages/core-commands/src/commands/tasks-propose.ts', async (original) => ({
   ...(await original<object>()),
   proposeOnTask: recorder('proposeOnTask'),
@@ -332,6 +337,8 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'credential.issue': [],
   'credential.revoke': ['credentialId'],
   'grant.revoke': [],
+  'secret.clear': ['secretId'],
+  'secret.set': ['clientId'],
   'preference.save': [],
   'preference.dismiss_tip': [],
   'session.end': [],
@@ -431,6 +438,9 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'run.end_at_budget_stop',
   'run.revise_state',
   'run.top_up',
+  'secret.clear',
+  'secret.list',
+  'secret.set',
   'session.capabilities',
   'session.end',
   'session.person',
@@ -655,6 +665,8 @@ const REQUESTS: readonly CommandRequest[] = [
   },
   { command: 'access.revoke', operationId: 'op', grantId: 'grant' },
   { command: 'access.end', operationId: 'op', holderId: 'person' },
+  { command: 'secret.set', operationId: 'op', name: 'n', value: 'v' },
+  { command: 'secret.clear', operationId: 'op', secretId: 's' },
   { command: 'grant.revoke', operationId: 'op', grantId: 'grant' },
   { command: 'delegation.revoke', operationId: 'op', delegationId: 'delegation' },
   { command: 'task.cancel', operationId: 'op', recordId: 'r', lineageId: 'lin', reason: 'stop' },
@@ -837,6 +849,8 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'access.grant': ['grantOnAccess', 'request'],
   'access.revoke': ['revokeGrantOnAccess', 'grant'],
   'access.end': ['endAccessOnSettings', 'request'],
+  'secret.set': ['setCustodySecret', 'request'],
+  'secret.clear': ['clearCustodySecret', 'request'],
   'grant.revoke': ['revokeGrantAsManager', 'grant'],
   'delegation.revoke': ['revokeDelegationAsManager', 'delegation'],
   'task.cancel': ['cancelOnTask', 'request'],
@@ -911,7 +925,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same ninety-two from an expected revision', () => {
+  it('exempts the same ninety-five from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );
