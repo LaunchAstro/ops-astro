@@ -578,18 +578,28 @@ Two identities carry negative cases:
 The seed enrols one external party (R4). It adds an entry with
 `role: 'external'` to `.local/synthetic-users.json`, creates its GoTrue user,
 and gives it a login and an acting identity with no membership and no business
-grant (`scripts/local-seed.mjs`, `ensureExternalEntry` and `seedExternalUser`).
+grant (`scripts/local-seed.mjs`, `ensureExternalEntry` and `seedAgentUser`).
 It shares a task with it only when rerun with `LOCAL_SEED_SHARE_TASK` naming a
 task by key or id, through `shareRecord` under the admin's own `share` grant
 (`shareWithExternal`). The tests make their own external party with
 `tests/acceptance/world.ts`'s `enrolExternal`.
 
-**Carry the existing external entry before seeding against a shared GoTrue.**
-When `.local/synthetic-users.json` has no `role: 'external'` entry, the seed
-writes a new one with a new password and then sets that password on the GoTrue
-user (`ensureExternalEntry`, `seedExternalUser`). Against a GoTrue that other
-checkouts also use, that resets the external party's password for all of them.
-Copy the existing entry into the file first.
+**Carry the existing external entry and agents file before seeding against a
+shared GoTrue.** The seed sets the password of a GoTrue user it finds already
+there, the agents' and the external party's, to the one its file holds
+(`seedAgentUser`), so the credential it writes signs in. When
+`.local/synthetic-users.json` has no `role: 'external'` entry, or
+`.local/synthetic-agents.json` is absent, it writes new passwords
+(`ensureExternalEntry`, `readAgents`). Against a GoTrue that other checkouts
+also use, that resets those passwords for all of them. Copy the existing entry
+and file in first.
+
+Before it reads or writes anything, the seed refuses a `GOTRUE_URL` that is
+neither https nor this machine, since the admin API's key goes with every call.
+Once the admin connection's database is admitted as made-up, it refuses a
+`DATABASE_URL` that does not reach that same database: the admin connection
+holds a lock under a random key, and the application connection must see it
+in `pg_locks` for its own database.
 
 Identity comes from `.local/synthetic-users.json`, which `auth:seed`
 (`scripts/local/auth-seed.mjs`) writes because the GoTrue subjects are its to
