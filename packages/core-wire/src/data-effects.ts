@@ -272,4 +272,9 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
     ...business('delegations'),
   ]),
   'budget.write_off': writing(client('attempts', 'model_calls', 'reservations', 'task_envelopes')),
+  // Wayfinder (WF-1): a retype writes the task, and a grilling or prototype
+  // ticket newly on its map's frontier raises the owner's decision item.
+  'task.set_type': writing(client('records', 'inbox_items')),
+  // The map and every ticket under it carry the client.
+  'map.scope': TASK,
 };

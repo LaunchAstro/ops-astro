@@ -66,6 +66,7 @@ import { addTagToTask, createTagNamed, removeTagFromTask } from './tasks-tags.ts
 import { endOwnSession } from './session-end.ts';
 import { dismissOwnTip, saveOwnPreference } from './preference-save.ts';
 import { stampOwnSeen } from './inbox-seen.ts';
+import { scopeMap, setTaskType } from './wayfinder.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
@@ -183,6 +184,9 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'budget.record_outcome': recordOutcomeOnTask,
   // T3c. A person closes an unknown hold at an amount; no agent route reaches it.
   'budget.write_off': writeOffOnTask,
+
+  'task.set_type': setTaskType,
+  'map.scope': scopeMap,
   // AW-04 (U10). A person sets the planning cap; no agent route reaches it.
   'budget.set_planning_cap': setPlanningCap,
   // AW-03: the conversation's first message mints it; later ones are its owner's.
