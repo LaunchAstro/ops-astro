@@ -289,7 +289,8 @@
     "REVIEW-BATCH-2 #313 batch 3b adds review-3b-4-parent-end-drops-helper (a parent revoked, or handed back, while its helper never handed back: the merged result shows the helper dropped with its fault, DELEGATION_REVOKED for the revocation, never working) as conformance.",
     "REVIEW-BATCH-2 #313 batch 3b adds review-3b-5-delegate-child-lease-id (run.delegate_child with a leaseId that is not a uuid, a number or missing is refused LEASE_NOT_OWNED or FIELD_VALUE_INVALID with no child written, never a 22P02 fault) as conformance.",
     "REVIEW-BATCH-2 #313 batch 3b adds review-3b-1-planning-hold-released (a failed planning reply held liability_unknown is released by the pass or a person's outcome, and the planning allowance gets its hold back) as conformance; its fix adds planfix-3b-1-planning-outcome (a planning reply whose operation declares a lookup is released by the pass alone; another person of the business and another business's owner naming the owner's conversation and call are refused NOT_FOUND with nothing written; the owner's outcome settles it once).",
-    "SEC3B F1 (batch 3b security review) adds sec3b-1-ended-owner-planning-release (a planning reply held unknown whose owner's access has since ended is released by the provider phase in the owner's name, as their person actor, and the same pass goes on to release the next business's held reply) as conformance."
+    "SEC3B F1 (batch 3b security review) adds sec3b-1-ended-owner-planning-release (a planning reply held unknown whose owner's access has since ended is released by the provider phase in the owner's name, as their person actor, and the same pass goes on to release the next business's held reply) as conformance.",
+    "SOL-FIX OW-001 (Sol's review of 1c51169..4126931) adds sol-ow001-session-proof (end-others refuses a session seen only in another business whose first sign-in is ahead of the database clock within the verifier's minute) beside c58-end-others-every-business, and sol-ow001-quota-proof (reads let in together hand out no more than the export limit; a task search's hits reach the security detector's export count) and api-2-agent-credential-export-race (the read refused at hand-out rolls back its audit row) beside api-2-agent-credential-quota, as invariants."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -671,6 +672,7 @@
     "tests/api/c58-sessions.test.ts",
     "tests/api/c58-sign-out-revoked.test.ts",
     "tests/api/c58-end-others-every-business.test.ts",
+    "tests/api/sol-ow001-session-proof.test.ts",
     "tests/api/c58-sign-out-no-membership.test.ts",
     "tests/authority/c58-shared-login.test.ts",
     "tests/authority/c58-endings-loop.test.ts",
@@ -723,6 +725,8 @@
     "tests/identity/c59-wrong-code-provider-fault.test.ts",
     "tests/api/api-2-agent-credential-use.test.ts",
     "tests/api/api-2-agent-credential-quota.test.ts",
+    "tests/api/sol-ow001-quota-proof.test.ts",
+    "tests/api/api-2-agent-credential-export-race.test.ts",
     "tests/api/api-2-agent-credential-door.test.ts",
     "tests/api/api-2-agent-credential-create.test.ts",
     "tests/api/api-2-agent-credential-capabilities.test.ts",
