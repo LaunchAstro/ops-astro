@@ -23,6 +23,7 @@ import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
 import { raiseFrontierDecisions } from './wayfinder-frontier-raise.ts';
 import type { CommandRequest } from './requests.ts';
+import { setPartyWhileEmpty } from './task-client-lock.ts';
 
 export type RequestOf<K extends CommandRequest['command']> = Extract<
   CommandRequest,
@@ -209,8 +210,11 @@ export async function refuseOwnerTicketMove(
 }
 
 /**
- * `map scoped (client)`: the map and every ticket under it carry the client,
- * so a grant scoped to the client reaches them together. Null clears it.
+ * `map scoped (client)`: a client change on a task of type `map`, held to
+ * `task.set_party`'s rules on every path: asked under `share`, a client of
+ * this business only, refused `CLIENT_LOCKED` once the map has content (a
+ * ticket is content, S0-5), and carried down to everything under it. Null
+ * clears it.
  */
 export async function scopeMap(
   tx: TenantQuery,
@@ -226,18 +230,7 @@ export async function scopeMap(
   if (client !== null && !isUuid(client)) {
     return invalid(['client'], ['Name the client by its identifier, or null to clear it.']);
   }
-  const value = client === null ? null : client.toLowerCase();
-  const change = `case when $3::uuid is null then data - 'client'
-                       else data || jsonb_build_object('client', $3::uuid) end`;
-  await tx.query(
-    `update records set data = ${change}, updated_at = now()
-      where business_id = $1 and uuid_4 = $2 and record_type_id = $4`,
-    [tx.businessId, target.id, value, context.spine.taskTypeId],
-  );
-  const rows = await tx.query<{ readonly revision: string }>(
-    `update records set data = ${change}, updated_at = now()
-      where business_id = $1 and id = $2 returning revision::text as revision`,
-    [tx.businessId, target.id, value],
-  );
-  return applied(target.id, Number(rows[0]?.revision), { client: value });
+  return await setPartyWhileEmpty(tx, context, {
+    client: client === null ? null : client.toLowerCase(),
+  });
 }

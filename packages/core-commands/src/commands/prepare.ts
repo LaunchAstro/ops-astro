@@ -536,7 +536,9 @@ async function coveringMap(
   const id = named.toLowerCase();
   const facts = await wayfinderFacts(tx, id);
   if (facts?.mapId === null || facts?.mapId === undefined) return undefined;
-  return declaration.name === 'task.create' || facts.mapId !== id ? facts.mapId : undefined;
+  // A create is covered only when filed under the map itself, never under a ticket.
+  if (declaration.name === 'task.create') return facts.type === 'map' ? facts.mapId : undefined;
+  return facts.mapId !== id ? facts.mapId : undefined;
 }
 
 /** Everything the handler needs first, or the refusal that stops it. */
