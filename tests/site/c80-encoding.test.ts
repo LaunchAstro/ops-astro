@@ -75,8 +75,15 @@ describe('C80 capture, the document encoding', () => {
     ['document', DOC, 1, { 'transfer-encoding': 'gzip' }, false],
     ['document', 'text/html;charset="UTF-8"', 1, { 'transfer-encoding': 'chunked' }, true],
     ['stylesheet', CSS, 1, NONE, true],
-    // The seventh re-bind, finding 1: Firefox reads the last charset, WebKit scans for the word,
-    // where the WHATWG parser keeps the first well-formed one; any other `charset` text is refused.
+  ] as const)('reads a %s as %j, %i line(s), with %j, only as UTF-8: %s', async (...row) => {
+    expect((await served(row)).ok).toBe(row[4]);
+  });
+});
+
+// The seventh re-bind, finding 1: Firefox reads the last charset, WebKit scans for the word,
+// where the WHATWG parser keeps the first well-formed one; any other `charset` text is refused.
+describe('C80 capture, the one charset parameter', () => {
+  it.each([
     ['document', `${DOC}; charset=windows-1252`, 1, NONE, false],
     ['document', 'text/html; charset =windows-1252; charset=utf-8', 1, NONE, false],
     ['document', 'text/html; x="a charset=windows-1252"; charset=utf-8', 1, NONE, false],
