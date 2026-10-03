@@ -141,3 +141,18 @@ describe('C80 capture picture, no network of its own', () => {
     );
   });
 });
+
+describe('C80 capture picture, repeats', () => {
+  // Security review of P25, third re-bind, finding 4: a meta refresh reloaded the page and every
+  // sheet through the fence, with no limit on repeats.
+  it('fetches the page once and each sheet once, however often the browser asks', async () => {
+    const transport = site();
+    const { browser, answers } = scripted([DOCUMENT, STYLESHEET, DOCUMENT, STYLESHEET]);
+    const picture = await capturePicture(ABOUT, options(transport), browser);
+    expect(transport.seen).toEqual([ABOUT, SHEET]);
+    expect([answers[2], answers[3]]).toEqual([null, answers[1]]);
+    expect(picture.ok && picture.value.refused).toEqual([
+      { code: 'CAPTURE_KIND_REFUSED', hop: 0, origin: 'https://www.example.com' },
+    ]);
+  });
+});
