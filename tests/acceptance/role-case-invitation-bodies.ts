@@ -15,7 +15,7 @@ export const isInvitation = (name: CommandName): name is InvitationCommand =>
   name === 'invitation.create' || name === 'invitation.resend' || name === 'invitation.revoke';
 
 /** A team invitation to an address nobody holds yet. */
-const invitee = (): Record<string, unknown> => ({
+export const invitee = (): Record<string, unknown> => ({
   name: 'Invited Ivy',
   email: `ivy-${randomUUID()}@example.test`,
   role: 'member',
