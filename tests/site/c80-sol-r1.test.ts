@@ -4,7 +4,7 @@
 // revert executable (PR #363), each against doubles of the source control and
 // hosting connectors. The call's own proofs are in c80-hostile-provider.
 
-import { describe, expect, it } from 'vitest';
+import { expect, it } from 'vitest';
 import {
   contentDigest,
   publishCorrection,
@@ -78,65 +78,63 @@ function publishPorts(sent: string[], overrides: Partial<PublishPorts> = {}): Pu
   return ports;
 }
 
-describe('C80 Sol R1 proofs (publish)', () => {
-  it('Sol R1 2: approval for one publish reference cannot authorise another', async () => {
-    const sent: string[] = [];
-    const approved = approvedJob('request-17');
-    const outcome = await publishCorrection(
-      { ...approved, seam: 'request-unapproved' },
-      publishPorts(sent),
-    );
-    expect({ sent, outcome }).toEqual({
-      sent: [],
-      outcome: { state: 'refused', code: 'PROPOSAL_SUPERSEDED' },
-    });
+it('Sol R1 2: approval for one publish reference cannot authorise another', async () => {
+  const sent: string[] = [];
+  const approved = approvedJob('request-17');
+  const outcome = await publishCorrection(
+    { ...approved, seam: 'request-unapproved' },
+    publishPorts(sent),
+  );
+  expect({ sent, outcome }).toEqual({
+    sent: [],
+    outcome: { state: 'refused', code: 'PROPOSAL_SUPERSEDED' },
   });
+});
 
-  it('Sol R1 3: cancellation during the drift read prevents dispatch', async () => {
-    const sent: string[] = [];
-    let cancelled = false;
-    const ports = publishPorts(sent, {
-      readSource: () => {
-        cancelled = true;
-        return Promise.resolve({ kind: 'ok', value: { content: BEFORE, revision: 'abc123' } });
-      },
-      cancellation: () => Promise.resolve(cancelled ? 'requested' : 'none'),
-    });
-    const outcome = await publishCorrection(approvedJob(), ports);
-    expect({ sent, outcome }).toEqual({
-      sent: [],
-      outcome: { state: 'refused', code: 'CANCELLED' },
-    });
+it('Sol R1 3: cancellation during the drift read prevents dispatch', async () => {
+  const sent: string[] = [];
+  let cancelled = false;
+  const ports = publishPorts(sent, {
+    readSource: () => {
+      cancelled = true;
+      return Promise.resolve({ kind: 'ok', value: { content: BEFORE, revision: 'abc123' } });
+    },
+    cancellation: () => Promise.resolve(cancelled ? 'requested' : 'none'),
   });
+  const outcome = await publishCorrection(approvedJob(), ports);
+  expect({ sent, outcome }).toEqual({
+    sent: [],
+    outcome: { state: 'refused', code: 'CANCELLED' },
+  });
+});
 
-  it('Sol R1 4: an unknown publish is not dispatched blind on retry', async () => {
-    const sent: string[] = [];
-    let landed = false;
-    const ports = {
-      ...publishPorts(sent, {
-        publish: (input) => {
-          sent.push(input.seam);
-          return Promise.resolve({ kind: 'unknown', code: 'PROVIDER_TIMEOUT' });
-        },
-      }),
-      // After an uncertain send the seam cannot tell, until the merge shows.
-      readBack: () => {
-        if (landed) return Promise.resolve({ state: 'landed' as const, value: PUBLISHED });
-        return Promise.resolve({
-          state: sent.length === 0 ? ('absent' as const) : ('unknown' as const),
-        });
+it('Sol R1 4: an unknown publish is not dispatched blind on retry', async () => {
+  const sent: string[] = [];
+  let landed = false;
+  const ports = {
+    ...publishPorts(sent, {
+      publish: (input) => {
+        sent.push(input.seam);
+        return Promise.resolve({ kind: 'unknown', code: 'PROVIDER_TIMEOUT' });
       },
-    };
-    expect((await publishCorrection(approvedJob(), ports)).state).toBe('unknown');
-    expect((await publishCorrection(approvedJob(), ports)).state).toBe('unknown');
-    expect(sent).toHaveLength(1);
-    landed = true;
-    expect(await publishCorrection(approvedJob(), ports)).toMatchObject({
-      state: 'accepted',
-      ...PUBLISHED,
-    });
-    expect(sent).toHaveLength(1);
+    }),
+    // After an uncertain send the seam cannot tell, until the merge shows.
+    readBack: () => {
+      if (landed) return Promise.resolve({ state: 'landed' as const, value: PUBLISHED });
+      return Promise.resolve({
+        state: sent.length === 0 ? ('absent' as const) : ('unknown' as const),
+      });
+    },
+  };
+  expect((await publishCorrection(approvedJob(), ports)).state).toBe('unknown');
+  expect((await publishCorrection(approvedJob(), ports)).state).toBe('unknown');
+  expect(sent).toHaveLength(1);
+  landed = true;
+  expect(await publishCorrection(approvedJob(), ports)).toMatchObject({
+    state: 'accepted',
+    ...PUBLISHED,
   });
+  expect(sent).toHaveLength(1);
 });
 
 const T0 = Date.parse('2026-10-04T00:00:00Z');
@@ -172,33 +170,52 @@ function revertPorts(sent: string[], overrides: Partial<RevertPorts> = {}): Reve
   return ports;
 }
 
-describe('C80 Sol R1 proofs (revert)', () => {
-  it('Sol R1 5: an unknown revert is not dispatched blind on retry', async () => {
-    const sent: string[] = [];
-    let landed = false;
-    const ports = {
-      ...revertPorts(sent, {
-        revert: (input) => {
-          sent.push(input.seam);
-          return Promise.resolve({ kind: 'unknown', code: 'PROVIDER_TIMEOUT' });
-        },
-      }),
-      // After an uncertain send the seam cannot tell, until the branch head shows the revert.
-      readBack: () => {
-        if (landed) return Promise.resolve({ state: 'landed' as const, value: REVERTED });
-        return Promise.resolve({
-          state: sent.length === 0 ? ('absent' as const) : ('unknown' as const),
-        });
+it('Sol R1 5: an unknown revert is not dispatched blind on retry', async () => {
+  const sent: string[] = [];
+  let landed = false;
+  const ports = {
+    ...revertPorts(sent, {
+      revert: (input) => {
+        sent.push(input.seam);
+        return Promise.resolve({ kind: 'unknown', code: 'PROVIDER_TIMEOUT' });
       },
-    };
-    expect((await revertCorrection(revertInput, ports)).state).toBe('unknown');
-    expect((await revertCorrection(revertInput, ports)).state).toBe('unknown');
-    expect(sent).toHaveLength(1);
-    landed = true;
-    expect(await revertCorrection(revertInput, ports)).toMatchObject({
-      state: 'reverted',
-      ...REVERTED,
-    });
-    expect(sent).toHaveLength(1);
+    }),
+    // After an uncertain send the seam cannot tell, until the branch head shows the revert.
+    readBack: () => {
+      if (landed) return Promise.resolve({ state: 'landed' as const, value: REVERTED });
+      return Promise.resolve({
+        state: sent.length === 0 ? ('absent' as const) : ('unknown' as const),
+      });
+    },
+  };
+  expect((await revertCorrection(revertInput, ports)).state).toBe('unknown');
+  expect((await revertCorrection(revertInput, ports)).state).toBe('unknown');
+  expect(sent).toHaveLength(1);
+  landed = true;
+  expect(await revertCorrection(revertInput, ports)).toMatchObject({
+    state: 'reverted',
+    ...REVERTED,
+  });
+  expect(sent).toHaveLength(1);
+});
+
+it('Sol R1 8: a pending revert keeps the original decision time until observation', async () => {
+  let now = T0;
+  let served = false;
+  const ports = revertPorts([], {
+    now: () => now,
+    readDeployment: () => Promise.resolve({ kind: 'ok', value: { revision: 'rev789', served } }),
+  });
+  expect(await revertCorrection(revertInput, ports)).toMatchObject({
+    state: 'revert_accepted',
+    decidedAt: new Date(T0).toISOString(),
+  });
+  now = T0 + 181_000;
+  served = true;
+  expect(await revertCorrection(revertInput, ports)).toMatchObject({
+    state: 'reverted',
+    decidedAt: new Date(T0).toISOString(),
+    observedAt: new Date(now).toISOString(),
+    intervalMs: 181_000,
   });
 });
