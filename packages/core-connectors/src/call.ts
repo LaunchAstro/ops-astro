@@ -194,17 +194,38 @@ function readAnswer(registration: OperationRegistration, answer: TransportAnswer
   return { value };
 }
 
+/** `work`'s answer, or undefined once `ms` pass first. */
+async function withinDeadline<T>(work: Promise<T>, ms: number): Promise<T | undefined> {
+  let timer: Parameters<typeof clearTimeout>[0];
+  const late = new Promise<undefined>((done) => {
+    timer = setTimeout(done, ms);
+  });
+  try {
+    return await Promise.race([work, late]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function callConnector(
   registration: OperationRegistration,
   params: Readonly<Record<string, string>>,
   deps: CallDependencies,
 ): Promise<ConnectorResult> {
-  const prepared = await prepare(registration, params, deps);
+  // One deadline for the call: resolving the host spends it as the transport does.
+  const { timeoutMs } = registration.connector;
+  const started = Date.now();
+  const ready = await withinDeadline(prepare(registration, params, deps), timeoutMs);
+  const left = timeoutMs - (Date.now() - started);
+  const prepared = ready === undefined || left <= 0 ? { refused: 'PROVIDER_TIMEOUT' } : ready;
   if ('refused' in prepared) {
     deps.record(prepared.refused);
     return { kind: 'refused', code: prepared.refused };
   }
-  const answered = readAnswer(registration, await deps.transport(prepared.request));
+  const answered = readAnswer(
+    registration,
+    await deps.transport({ ...prepared.request, timeoutMs: left }),
+  );
   const { secret } = prepared;
   // A field holding the borrowed credential is the provider echoing it: unreadable, never returned.
   const echoed =
