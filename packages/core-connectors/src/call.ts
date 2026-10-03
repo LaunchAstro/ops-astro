@@ -105,8 +105,11 @@ function requestFor(
       params[name] === undefined ? [] : [[name, params[name]]],
     ),
   );
+  const url = new URL(`https://${connector.host}${path}`);
+  // A read carries its declared parameters as the query (a source read's pinned ref).
+  if (!write) for (const [name, value] of Object.entries(body)) url.searchParams.set(name, value);
   return {
-    url: new URL(`https://${connector.host}${path}`),
+    url,
     address,
     family: familyOf(address),
     method: connector.method,
