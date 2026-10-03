@@ -43,6 +43,7 @@ import {
 
 const SVG_QR = 'data:image/svg+xml';
 const NO_SECRET = 'The API answered with no set-up to show. Try again.';
+const UNSENT = { unavailable: true, because: 'The set-up did not finish. Try again.' } as const;
 
 /** What the page holds of an issued factor while it is shown. */
 interface Shown {
@@ -79,8 +80,8 @@ function refusedStage(result: CallResult<IssuedFactor>, canSignIn: boolean): Sta
   return { at: 'idle', said };
 }
 
-// The last enrol sent from any panel. A cancelled one still lands and would replace the factor
-// whose key is shown, so the next waits for it, and Start waits while it is this panel's.
+// The last enrol sent from any panel, as its settling and not its answer. A cancelled one still
+// lands and would replace the factor whose key is shown, so the next waits for it, as Start does.
 let landing: Promise<unknown> = Promise.resolve();
 
 /** The enrol and its stage; every answer is dropped once cancelled or left. */
@@ -100,9 +101,8 @@ function useEnrol(client: OperationsClient) {
     const mine = asked.current;
     setStage({ at: 'asking' });
     setSettling(true);
-    const sent = landing.then(async () => await client.enrolFactor());
-    landing = sent;
-    void (async () => {
+    const sent = landing.then(async () => await client.enrolFactor()).catch(() => UNSENT);
+    landing = (async () => {
       const result = await sent;
       setSettling(false);
       if (asked.current !== mine) return;

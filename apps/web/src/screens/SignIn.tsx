@@ -33,8 +33,8 @@
 // **A login with an authenticator app gives its code before the session opens
 // (C59).** A password alone is `aal1`, refused `AUTH_SECOND_FACTOR_REQUIRED`
 // (`openSignIn`). The code goes through the money step-up's `stepUpSession`; a
-// wrong one says so and asks again. Cancel signs the half-made sign-in out and
-// returns to the password step, the password already cleared.
+// wrong one says so and asks again. Cancel, or leaving the page, signs the half-made
+// sign-in out, and any new one it lands on; Cancel returns to the emptied password.
 
 import { useEffect, useRef, useState, type FormEvent, type ReactElement } from 'react';
 import { BrandMark, FieldError } from '@launchastro/ui';
@@ -70,13 +70,20 @@ function useCodeStep(route: ApiRoute, open: (sessionId: string) => void) {
   const [code, setCode] = useState('');
   const [because, setBecause] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
-  // Moved on by every check, cancel and unmount: an answer for an older one is dropped.
+  // Moved on by every check, cancel and unmount: an answer for an older one is dropped. The
+  // half sign-in goes with its code step (Cancel, or the page left) unless a good code opened.
   const attempt = useRef(0);
+  const opened = useRef(false);
+  const leave = (client: AskedForCode['client'], sessionId?: string): void => {
+    if (sessionId !== undefined)
+      void signOutOf(route, { sessionId, businessKey: client.businessKey });
+  };
   useEffect(
     () => () => {
       attempt.current += 1;
+      if (asked !== null && !opened.current) leave(asked.client, asked.sessionId);
     },
-    [],
+    [asked],
   );
   const check = (): void => {
     if (asked === null) return;
@@ -87,18 +94,19 @@ function useCodeStep(route: ApiRoute, open: (sessionId: string) => void) {
       const { client, sessionId: from } = asked;
       const current = () => attempt.current === mine;
       const result = await stepUpSession({ code, client, route, from, current, adopt: () => {} });
+      // A cancel or a leave landing as the new sign-in was finished signs that one out too.
+      if (result.ok && !current()) leave(client, result.sessionId);
       if (!current()) return;
       setChecking(false);
       setCode('');
-      if (result.ok) open(result.sessionId);
-      else setBecause(result.because);
+      if (result.ok) {
+        opened.current = true;
+        open(result.sessionId);
+      } else setBecause(result.because);
     })();
   };
-  const cancel = (businessKey: string): void => {
+  const cancel = (): void => {
     attempt.current += 1;
-    if (asked?.sessionId !== undefined) {
-      void signOutOf(route, { sessionId: asked.sessionId, businessKey });
-    }
     setAsked(null);
     setCode('');
     setBecause(null);
@@ -108,10 +116,7 @@ function useCodeStep(route: ApiRoute, open: (sessionId: string) => void) {
 }
 
 /** The six-digit code, its continue and its cancel back to the password. */
-function CodeStep(props: {
-  readonly step: ReturnType<typeof useCodeStep>;
-  readonly onCancel: () => void;
-}): ReactElement {
+function CodeStep(props: { readonly step: ReturnType<typeof useCodeStep> }): ReactElement {
   const { code, setCode, because, checking } = props.step;
   return (
     <>
@@ -128,7 +133,7 @@ function CodeStep(props: {
         >
           {checking ? 'Checking…' : 'Continue'}
         </button>
-        <button className="btn btn--ghost" type="button" onClick={props.onCancel}>
+        <button className="btn btn--ghost" type="button" onClick={props.step.cancel}>
           Cancel
         </button>
       </div>
@@ -274,12 +279,7 @@ export function SignIn(props: SignInProps): ReactElement {
             </div>
           </>
         ) : (
-          <CodeStep
-            step={step}
-            onCancel={() => {
-              step.cancel(businessKey);
-            }}
-          />
+          <CodeStep step={step} />
         )}
       </form>
       {/* The business's public legal documents (C81), for the business chosen above. */}
