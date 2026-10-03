@@ -86,6 +86,7 @@ import {
 import { startLiveTopics } from './live.ts';
 import { createLivePresence } from './live-presence.ts';
 import { isLoopback, migrationHead, readIdentity, type ServedIdentity } from './identity.ts';
+import { mountAuthEmailHook, type AuthEmailHookOptions } from './auth-email-hook.ts';
 import { mailHookSettings, mountMailHook, type MailHookOptions } from './mail-hook.ts';
 import { brokerSettings, startModelBroker } from './model-broker.ts';
 import { startTraceExporter, traceExportSettings } from './trace-exporter.ts';
@@ -217,6 +218,8 @@ export interface ApiConfig {
   readonly live?: Omit<LiveOptions, 'admit'> & { readonly admit?: ReadAdmitter };
   /** The email provider's delivery hook (AW-07b); absent, the hook route is not mounted. */
   readonly mailHook?: MailHookOptions;
+  /** The login provider's Send Email hook (C39-T); absent, the hook route is not mounted. */
+  readonly authEmailHook?: AuthEmailHookOptions;
   /** `model.call` through the credential broker; absent where none is configured. */
   readonly executeModelCall?: ModelCallExecutor;
   /** AW-03's exchange through the same broker; absent where none is configured. */
@@ -317,6 +320,10 @@ export function composeApi(config: ApiConfig): ComposedApi {
   // AW-07b: the provider's delivery and bounce events, verified by signature,
   // as system work with no sign-in (`mail-hook.ts`).
   if (config.mailHook !== undefined) mountMailHook(server, database, config.mailHook);
+  // C39-T: the login provider's Auth mail, handed to the broker's send (`auth-email-hook.ts`).
+  if (config.authEmailHook !== undefined) {
+    mountAuthEmailHook(server, database, config.authEmailHook);
+  }
 
   server.route(
     '/',
