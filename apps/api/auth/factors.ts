@@ -14,6 +14,7 @@
 import type {
   FactorProvider,
   FactorSession,
+  PasswordProvider,
   IssuedFactor,
   ProviderAnswer,
   ProviderFault,
@@ -37,7 +38,7 @@ type Json = Readonly<Record<string, unknown>>;
 
 /** One request to the provider: its answer unread, or a fault if none came. */
 type Request = (
-  method: 'POST' | 'DELETE',
+  method: 'POST' | 'DELETE' | 'PUT',
   path: string,
   accessToken: string,
   body?: Json,
@@ -45,7 +46,7 @@ type Request = (
 
 /** One call to the provider, its answer shaped to a JSON object or a fault. */
 type Call = (
-  method: 'POST' | 'DELETE',
+  method: 'POST' | 'DELETE' | 'PUT',
   path: string,
   accessToken: string,
   body?: Json,
@@ -57,7 +58,9 @@ interface Limits {
   readonly maxBytes: number;
 }
 
-export function createGoTrueFactors(options: GoTrueFactorOptions): FactorProvider {
+export function createGoTrueFactors(
+  options: GoTrueFactorOptions,
+): FactorProvider & PasswordProvider {
   const limits = {
     timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     maxBytes: options.maxBytes ?? DEFAULT_MAX_BYTES,
@@ -69,6 +72,7 @@ export function createGoTrueFactors(options: GoTrueFactorOptions): FactorProvide
     verify: (accessToken, factorId, code) => verify(call, accessToken, factorId, code),
     remove: (accessToken, factorId) => remove(call, accessToken, factorId),
     signOut: (accessToken, scope) => signOut(request, limits, accessToken, scope),
+    setPassword: (accessToken, password) => setPassword(call, accessToken, password),
   };
 }
 
@@ -183,6 +187,20 @@ async function remove(
   return answer.value['id'] === factorId
     ? { ok: true, value: undefined }
     : { ok: false, fault: 'malformed' };
+}
+
+// C40: the recovery session sets its own login's password (GoTrue `PUT /user`).
+// Done is the user back, as a JSON object whose `id` is a provider id; the
+// caller holds it to the token's subject. Nothing else of the answer is read.
+async function setPassword(
+  call: Call,
+  accessToken: string,
+  password: string,
+): Promise<ProviderAnswer<string>> {
+  const answer = await call('PUT', '/user', accessToken, { password });
+  if (!answer.ok) return answer;
+  const id = answer.value['id'];
+  return isFactorId(id) ? { ok: true, value: id } : { ok: false, fault: 'malformed' };
 }
 
 // GoTrue's sign-out (C58): done is a 204 and nothing else, with nothing in

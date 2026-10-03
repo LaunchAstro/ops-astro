@@ -84,6 +84,7 @@ export {
 export {
   NO_MEMBERSHIP_FIXES,
   standsOnShares,
+  standingOf,
   resolveLogin,
   withSession,
   type SecondFactorRule,

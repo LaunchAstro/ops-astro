@@ -40,4 +40,10 @@ export interface VerifiedSubject {
    * ends every token it has minted and will mint.
    */
   readonly sessionId?: string;
+  /**
+   * The session began at a password reset link (C40: `recovery` in `amr`). It
+   * is good for setting the new password and nothing else: login resolution
+   * serves it only under the `recovering` rule.
+   */
+  readonly recovery?: true;
 }
