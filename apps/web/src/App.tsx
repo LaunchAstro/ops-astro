@@ -22,6 +22,7 @@ import { SignedInName } from './app-state.ts';
 import { FrameStrip } from './strip.tsx';
 import { HeldAddressNotice } from './held-address.tsx';
 import { shellDock, useDockShell } from './dock/dock-props.tsx';
+import { openByGesture } from './dock/open-set.ts';
 import { useDockPanel } from './screens/task/DockPanel.tsx';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, sessionGeneration, type Session } from './session/token.ts';
@@ -33,6 +34,7 @@ import { endThenSignOut } from './sign-out.ts';
 import { PagePresenceProvider, StripPresence } from './views/presence.tsx';
 import { PageFreshnessProvider, StripFreshness } from './views/freshness.tsx';
 import { AssistantView } from './views/assistant.tsx';
+import { useAgentDrawer } from './assistant/asks.ts';
 import type { AppProps } from './app-props.ts';
 
 export function App(props: AppProps): ReactElement {
@@ -116,6 +118,15 @@ export function App(props: AppProps): ReactElement {
   const taskDock = useDockPanel({ client, grantKey, session, storage: props.storage });
   const agency = face === 'agency';
   const docked = useDockShell(client, session, props.storage, props, taskDock.panel, agency);
+  // AW-04: an ask from a page (the Agent pane's new attempt) opens the dock's
+  // Agent panel, which takes the ask as it draws (`assistant/asks.ts`).
+  const [asked, setAsked] = useAgentDrawer();
+  const openAgent = docked.dock.change;
+  useEffect(() => {
+    if (!asked) return;
+    setAsked(false);
+    openAgent((state) => openByGesture(state, 'ai', false));
+  }, [asked, setAsked, openAgent]);
 
   // Sign-out (C23). The tab forgets the session first, so a server that never
   // answers cannot keep it. Then, with the ended session's own client:
@@ -212,7 +223,14 @@ export function App(props: AppProps): ReactElement {
   // person or session drops every tab and a late reply has nowhere to land.
   const agent =
     dockScreen === null || match === null ? null : (
-      <AssistantView key={grantKey} client={client} route={match.id} here={here} entry={null} />
+      <AssistantView
+        key={grantKey}
+        grantKey={grantKey}
+        client={client}
+        route={match.id}
+        here={here}
+        entry={null}
+      />
     );
   return (
     <SignedInName value={personName}>

@@ -19,6 +19,7 @@
 
 import { useState, type ReactElement } from 'react';
 import { AgentPane, type GateDecision, type RecordedOutcome } from '@launchastro/ui';
+import { askDrawer, newAttemptAsk } from '../assistant/asks.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import type {
   PersonView,
@@ -31,7 +32,20 @@ import { StepUpPrompt } from './step-up-prompt.tsx';
 
 export interface AgentSectionProps {
   readonly client: OperationsClient;
+  /** The session the page is read under: the drawer's ask carries it. */
+  readonly grantKey: string;
   readonly recordId: string;
+  /** The task's title as the read gave it, or its key while it has none: the drawer's ask names it. */
+  readonly title: string;
+  /**
+   * The client the task is under, as `task.read` sent it: null on an internal
+   * task, and on one whose client the reader's grants do not reach (CS-4.12).
+   * The drawer's ask carries it, so the egress rule sees whose data a plan
+   * would carry (AW-04).
+   */
+  readonly clientId: string | null;
+  /** The task is under a client the reader cannot see (`clientSet`, no id): its setting reads as off. */
+  readonly clientUnseen: boolean;
   readonly proposals: readonly ProposalView[];
   readonly people: readonly PersonView[];
   /** `task.read`'s token ledger (MP-6-5): null for a reader it is not shown to, absent on an older read. */
@@ -217,6 +231,11 @@ export function AgentSection(props: AgentSectionProps): ReactElement {
         onTopUpAtStop={controls.topUpAtStop}
         onEndAtStop={controls.endAtStop}
         stopAwaiting={controls.stopAwaiting}
+        onStartAttempt={() => {
+          const { recordId: id, title, clientId } = props;
+          const unseen = props.clientUnseen ? { clientUnseen: true as const } : {};
+          askDrawer(newAttemptAsk({ id, title, clientId, ...unseen }), props.grantKey);
+        }}
       />
       {controls.stepUp === null ? null : <StepUpPrompt ask={controls.stepUp} />}
     </section>
