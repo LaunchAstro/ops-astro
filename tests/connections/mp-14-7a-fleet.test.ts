@@ -461,6 +461,35 @@ describe.skipIf(serverUrl === undefined)('MP-14-7a connector fleet', () => {
     expect(JSON.stringify(repairing.body)).not.toContain(onlyB.label);
   });
 
+  it("MP-14-7a isolation: a client-scoped reader never sees another client's secret on a shared connection", async () => {
+    const set = await as(admin, 'secret.set', {
+      name: 'shared.b-token',
+      value: `b-value-${randomUUID()}`,
+      clientId: clientB,
+    });
+    const bSecret = String((set.body['detail'] as Record<string, unknown>)['secretId']);
+    const shared = await seed(alpha, {
+      label: 'Shared source',
+      status: 'active',
+      clients: [clientA, clientB],
+      secret: bSecret,
+    });
+    const theirs = await fleet(clientReader);
+    expect(JSON.stringify(theirs)).not.toContain(bSecret);
+    expect(byId(theirs, shared.id)?.custody).toStrictEqual({ secretId: null, state: 'not set' });
+    expect(byId(await fleet(admin), shared.id)?.custody).toStrictEqual({
+      secretId: bSecret,
+      state: 'set',
+    });
+    await controls.fixture.db.admin.execute(
+      `delete from public.connection_clients where connection_id = $1`,
+      [shared.id],
+    );
+    await controls.fixture.db.admin.execute(`delete from public.connections where id = $1`, [
+      shared.id,
+    ]);
+  });
+
   it('MP-14-7a a repair is only for a broken connection', async () => {
     const before = await repairRows();
     const answer = await repair(admin, ga4.id);
