@@ -12,7 +12,7 @@
 // decision or an incident is never silenced, which the server refuses too
 // (`notifications.set_channel`, inbox-escalation-settings.test.ts).
 
-import { useEffect, useState, type ReactElement, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { NotConnected, Segmented, Switch } from '@launchastro/ui';
 import { dismissedTipCount } from '../../../../../packages/core-wire/src/index.ts';
 import { applyAppearance, isAppearance, type Appearance } from '../../appearance.ts';
@@ -261,6 +261,14 @@ export function YouGroups(props: {
 }): ReactElement {
   const { preferences, because, save } = usePreferences(props.client, props.grantKey);
   const stored = preferences?.['appearance'];
+  // The reader on the page now; none once it has gone, as at sign-out.
+  const reader = useRef<string | null>(props.grantKey);
+  useEffect(() => {
+    reader.current = props.grantKey;
+    return () => {
+      reader.current = null;
+    };
+  }, [props.grantKey]);
   return (
     <>
       <Group
@@ -279,6 +287,7 @@ export function YouGroups(props: {
             applyAppearance(value, props.storage, true);
             // Refused, the page and the tab's copy go back to what is stored.
             save('appearance', value, (back) => {
+              if (reader.current !== props.grantKey) return;
               applyAppearance(isAppearance(back) ? back : 'system', props.storage);
             });
           }}
