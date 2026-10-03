@@ -11,7 +11,7 @@ import { launchChromium } from '../support/chromium.ts';
 
 const root = fileURLToPath(new URL('../..', import.meta.url));
 
-it('Sol proof, criterion 1: an important light token cannot hide dark token drift', async () => {
+it('an important light token cannot hide dark token drift', async () => {
   const original = readFileSync(`${root}packages/ui/src/styles/1-tokens.css`, 'utf8');
   const changed = original.replace('--ink: oklch(0 0 0);', '--ink: oklch(0 0 0) !important;');
   expect(changed).not.toBe(original);
