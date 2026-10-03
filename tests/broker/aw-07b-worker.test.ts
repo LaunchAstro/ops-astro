@@ -249,7 +249,7 @@ it('AW-07b delivery worker: started, both passes run on their intervals until st
   const started = startMailWorker(
     w.db.app,
     async () => await Promise.resolve([{ businessId: w.alpha, workerActorId: worker }]),
-    timing(),
+    async () => await Promise.resolve(timing()),
     { atOnceMs: 50, dailyTickMs: 80 },
   );
   try {

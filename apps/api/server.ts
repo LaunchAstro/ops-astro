@@ -404,6 +404,29 @@ export async function shutDown(
   await Promise.allSettled(pools.map(async (stop) => await stop?.()));
 }
 
+/** What `main` stops, each a part's stop or none where that part is off. */
+export interface ServerParts {
+  readonly topics: Stopping;
+  readonly mail: Stopping;
+  readonly database: Stopping;
+  readonly admin: Stopping;
+  readonly broker: Stopping;
+  readonly tracer: Stopping;
+}
+
+/**
+ * The two stages `main` hands `shutDown`: the live streams and the mail worker's running pass
+ * first, then the pools and processes they use.
+ */
+export function shutdownStages(
+  parts: ServerParts,
+): readonly [readonly Stopping[], readonly Stopping[]] {
+  return [
+    [parts.topics, parts.mail],
+    [parts.database, parts.admin, parts.broker, parts.tracer],
+  ];
+}
+
 async function main(): Promise<void> {
   // T2c1: the crash seam is test-only, so an armed one outside test mode stops the start.
   const seam = crashSeamProblem(process.env);
@@ -597,15 +620,15 @@ async function main(): Promise<void> {
 
   const stop = (): void => {
     sweeper.stop();
-    void shutDown(
-      [async () => await topics.close(), mail?.stop],
-      [
-        async () => await database.close(),
-        async () => await admin.close(),
-        broker?.stop,
-        tracer?.stop,
-      ],
-    ).then(() => process.exit(0));
+    const stages = shutdownStages({
+      topics: async () => await topics.close(),
+      mail: mail?.stop,
+      database: async () => await database.close(),
+      admin: async () => await admin.close(),
+      broker: broker?.stop,
+      tracer: tracer?.stop,
+    });
+    void shutDown(...stages).then(() => process.exit(0));
   };
   process.on('SIGINT', stop);
   process.on('SIGTERM', stop);

@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The server's shutdown (`shutDown` in `apps/api/server.ts`) over the real
-// mail delivery: the database pool closes only once the mail worker's running
-// pass has ended, so a send in flight never loses its pool or its custody to
-// the server's own stop. It goes red if the delivery's stop stops waiting on
-// the worker (`await worker.stop()` without its await) or if the server stops
-// its pools beside the work. No database: a stand-in pool holds the pass.
+// mail delivery, in the stages `main` stops (`shutdownStages`, the one list
+// `main` hands `shutDown`): the database pool closes only once the mail
+// worker's running pass has ended, so a send in flight never loses its pool or
+// its custody to the server's own stop. It goes red if the delivery's stop
+// stops waiting on the worker (`await worker.stop()` without its await), if
+// `shutdownStages` puts the mail worker beside the pools, or if `shutDown`
+// starts the pools beside the work. No database: a stand-in pool holds the pass.
 
 import type { ChildProcess } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -17,7 +19,7 @@ import {
   startMailDelivery,
   type MailDeliverySettings,
 } from '../../apps/api/mail-delivery.ts';
-import { shutDown } from '../../apps/api/server.ts';
+import { shutDown, shutdownStages } from '../../apps/api/server.ts';
 import type { Database } from '../../packages/core-records/src/index.ts';
 
 const { forked } = vi.hoisted(() => ({ forked: [] as ChildProcess[] }));
@@ -99,7 +101,15 @@ it("server shutdown: the database closes only after the mail worker's running pa
 
   let stopped = false;
   const stopping = (async () => {
-    await shutDown([delivery.stop], [async () => await database.close()]);
+    const stages = shutdownStages({
+      topics: undefined,
+      mail: delivery.stop,
+      database: async () => await database.close(),
+      admin: undefined,
+      broker: undefined,
+      tracer: undefined,
+    });
+    await shutDown(...stages);
     stopped = true;
   })();
   await delay(300);

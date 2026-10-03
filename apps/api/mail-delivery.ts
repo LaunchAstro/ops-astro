@@ -15,12 +15,17 @@
 // source, never `mock` pointed elsewhere: mock takes a provider on this machine only,
 // and the send accepts the mock report only over the custody core-custody started
 // for that loopback provider (`startLoopbackMockCustody`, `email-mock-custody.ts`).
+// Mock records each send `accepted` (as `mock:<id>`), so it is refused where
+// `OPS_ENVIRONMENT`, the deployment's own marker, says production: over real
+// people's items it would mark mail sent that no one received (SEC28 F3).
 //
 // **Delivery is custody's egress**, as the trace export's is: a custody
 // process of its own holds the provider key for the one `email` destination,
 // and the worker sends only through the broker's catalogued `email.send`.
 // The settings are read like the trace export's: on with one missing or
-// malformed, the server stops naming the setting and never its value.
+// malformed, the server stops naming the setting and never its value. The
+// sender check is run again at every pass, so a later real sender source that
+// stops verifying stops the next pass's sends (SEC28 F2).
 
 import {
   catalogue,
@@ -32,6 +37,7 @@ import {
   type SenderReport,
 } from '../../packages/core-connectors/src/index.ts';
 import {
+  fromVerifiedSender,
   parseDestinations,
   startLoopbackMockCustody,
   startMailWorker,
@@ -39,12 +45,15 @@ import {
   type Custody,
   type Destination,
   type EmailPreferences,
+  type EmailTiming,
   type MailCadence,
   type MailTarget,
 } from '../../packages/core-custody/src/index.ts';
 import type { BusinessId, Database } from '../../packages/core-records/src/index.ts';
 
 export const MAIL_DELIVERY_SWITCH = 'MAIL_DELIVERY';
+/** The deployment's marker (`deploy/staging/README.md`): `staging` or `production`. */
+const DEPLOYMENT_MARKER = 'OPS_ENVIRONMENT';
 export const MAIL_DELIVERY_SETTINGS = [
   'MAIL_PROVIDER_ORIGIN',
   'MAIL_CREDENTIALS_FILE',
@@ -95,6 +104,15 @@ function onThisMachine(origin: string | undefined): string | undefined {
   return origin !== undefined && LOOPBACK.test(new URL(origin).hostname) ? origin : undefined;
 }
 
+/** The sending subdomain `from` is on, or undefined where the sender gate would refuse `from`. */
+function sendingSubdomain(from: string): string | undefined {
+  const subdomain = ADDRESS.exec(from)?.[1];
+  // The send's own address rule, run once here, so a from it would refuse stops the start.
+  const accepted =
+    subdomain !== undefined && fromVerifiedSender(from, { verified: true, subdomain, mock: false });
+  return accepted ? subdomain : undefined;
+}
+
 export function mailDeliverySettings(
   environment: Readonly<Record<string, string | undefined>>,
 ): MailDeliverySettings {
@@ -102,6 +120,11 @@ export function mailDeliverySettings(
   if (toggle === '' || toggle === 'off') return { kind: 'off' };
   if (toggle !== 'mock') {
     return invalid(`${MAIL_DELIVERY_SWITCH} is neither off nor mock (no provider account yet)`);
+  }
+  if (environment[DEPLOYMENT_MARKER] === 'production') {
+    return invalid(
+      `${MAIL_DELIVERY_SWITCH} is mock where ${DEPLOYMENT_MARKER} is production (mock mail reaches no one)`,
+    );
   }
   const value = (name: (typeof MAIL_DELIVERY_SETTINGS)[number]): string => environment[name] ?? '';
   const missing = MAIL_DELIVERY_SETTINGS.filter((name) => value(name) === '');
@@ -120,10 +143,10 @@ export function mailDeliverySettings(
   if (appOrigin === undefined) {
     return invalid('MAIL_APP_ORIGIN is not a bare https origin (or http on this machine)');
   }
-  const subdomain = ADDRESS.exec(value('MAIL_FROM'))?.[1];
+  const subdomain = sendingSubdomain(value('MAIL_FROM'));
   if (subdomain === undefined) {
     return invalid(
-      'MAIL_FROM is not an address on a sending subdomain (a name at a sending subdomain, such as send.<your domain>)',
+      'MAIL_FROM is not an address the sender gate accepts (a dot-atom name of at most 64 octets, 254 in all, at a sending subdomain such as send.<your domain>)',
     );
   }
   return {
@@ -188,20 +211,28 @@ function mailBroker(custody: Custody): Broker {
   };
 }
 
-/** Custody's own process for the provider, the broker over it, and the worker's two passes. */
+/**
+ * Custody's own process for the provider, the broker over it, and the worker's two passes. The
+ * sender check (`mockSender` unless a test hands in its own) is run at the start of every pass.
+ */
 export async function startMailDelivery(
   settings: Extract<MailDeliverySettings, { kind: 'mock' }>,
   database: Database,
   businesses: () => Promise<readonly BusinessId[]>,
   cadence: MailCadence = {},
+  senderCheck: (subdomain: string) => Promise<SenderReport> = mockSender,
 ): Promise<{ readonly stop: () => Promise<void> }> {
-  const sender = await mockSender(settings.subdomain);
   const custody = await startLoopbackMockCustody(settings.credentialsFile, settings.destination);
-  const timing = {
-    broker: mailBroker(custody),
-    mail: { appOrigin: settings.appOrigin, from: settings.from, sender },
+  const broker = mailBroker(custody);
+  const timing = async (): Promise<EmailTiming> => ({
+    broker,
+    mail: {
+      appOrigin: settings.appOrigin,
+      from: settings.from,
+      sender: await senderCheck(settings.subdomain),
+    },
     preferences: MOCK_PREFERENCES,
-  };
+  });
   const worker = startMailWorker(
     database,
     async () => await targetsOf(database, await businesses()),

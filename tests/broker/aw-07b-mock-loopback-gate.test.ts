@@ -6,6 +6,8 @@
 // report over any other custody, one on a provider that is not on this
 // machine, the world's own unmarked custody, or a copy of the marked one, is
 // refused SENDER_NOT_VERIFIED: nothing reaches a provider and no row is kept.
+// A send over the mock is recorded `mock:<id>`, never `provider:<id>`: no
+// reader can take a mock acceptance for a provider's (SEC28 F3).
 
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -64,7 +66,9 @@ it('AW-07b mock gate: a mock report sends over the loopback mock custody core-cu
   const sent = await sendInboxEmail(w.db.app, w.alpha, item, { ...w.broker, custody }, MOCK);
   expect(sent).toMatchObject({ ok: true, state: 'accepted' });
   expect(w.provider.received.length).toBe(received + 1);
-  expect((await attemptsOf(item)).map((row) => row.state)).toEqual(['asked', 'accepted']);
+  const attempts = await attemptsOf(item);
+  expect(attempts.map((row) => row.state)).toEqual(['asked', 'accepted']);
+  expect(attempts[1]?.evidence).toBe(`mock:${w.provider.outbox.at(-1)?.id ?? ''}`);
 });
 
 it('AW-07b mock gate: a mock report over a provider not on this machine is refused, nothing sent', async () => {

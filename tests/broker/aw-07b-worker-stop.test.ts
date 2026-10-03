@@ -22,6 +22,9 @@ const targets = async (): Promise<{ businessId: string; workerActorId: string }[
     { businessId: 'second', workerActorId: 'worker' },
   ]);
 
+/** No pass here reaches a send, so the timing it reads is empty. */
+const timing = async (): Promise<EmailTiming> => await Promise.resolve({} as EmailTiming);
+
 /** A promise the test resolves by hand. */
 function barrier(): { readonly held: Promise<void>; readonly release: () => void } {
   let release!: () => void;
@@ -41,7 +44,7 @@ it('AW-07b delivery worker: stop waits for the pass already running and starts n
       await pass.held;
     },
   } as unknown as Database;
-  const worker = startMailWorker(database, targets, {} as EmailTiming, {
+  const worker = startMailWorker(database, targets, timing, {
     atOnceMs: 10,
     dailyTickMs: 60_000,
   });

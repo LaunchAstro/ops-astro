@@ -121,7 +121,7 @@ export interface MailTarget {
   readonly workerActorId: string;
 }
 
-/** How often each pass runs; the daily tick defaults to an hour of the batch window. */
+/** How often each pass runs; the daily tick defaults to an hour, a shorter batch window sets its own. */
 export interface MailCadence {
   readonly atOnceMs?: number;
   readonly dailyTickMs?: number;
@@ -131,7 +131,9 @@ export const AT_ONCE_EVERY_MS = 15_000;
 
 /**
  * Run both passes on their intervals over `targets`, one of each kind at a
- * time: a pass still running when its next is due is skipped, not stacked. A business
+ * time: a pass still running when its next is due is skipped, not stacked.
+ * `timing` is read at the start of every pass, so a sending subdomain whose
+ * setup check stops verifying stops the next pass's sends (SEC28 F2). A business
  * whose pass fails is logged by its kind of pass only (never an address, a
  * link or the fault's text) and the next tick tries it again. `stop` starts
  * no pass and no business after it, and resolves once a pass already running
@@ -140,25 +142,26 @@ export const AT_ONCE_EVERY_MS = 15_000;
 export function startMailWorker(
   database: Database,
   targets: () => Promise<readonly MailTarget[]>,
-  timing: EmailTiming,
+  timing: () => Promise<EmailTiming>,
   cadence: MailCadence = {},
 ): { readonly stop: () => Promise<void> } {
   const running: Partial<Record<'at_once' | 'daily', Promise<void>>> = {};
   let stopped = false;
   const pass = async (kind: 'at_once' | 'daily'): Promise<void> => {
     try {
+      const now = await timing();
       for (const target of await targets()) {
         if (stopped) break;
         try {
           // Sequential by design: one business's sends before the next's.
           // oxlint-disable-next-line no-await-in-loop
-          await deliverDue(database, target.businessId, target.workerActorId, timing, kind);
+          await deliverDue(database, target.businessId, target.workerActorId, now, kind);
         } catch {
           console.error(`mail worker: a ${kind} pass failed for one business`);
         }
       }
     } catch {
-      console.error('mail worker: the businesses to serve could not be read');
+      console.error('mail worker: the pass could not read its sender check or its businesses');
     }
   };
   const once = (kind: 'at_once' | 'daily'): void => {
@@ -169,7 +172,7 @@ export function startMailWorker(
   };
   const timers = [
     setInterval(() => once('at_once'), cadence.atOnceMs ?? AT_ONCE_EVERY_MS),
-    setInterval(() => once('daily'), cadence.dailyTickMs ?? (timing.dayMs ?? DAY_MS) / 24),
+    setInterval(() => once('daily'), cadence.dailyTickMs ?? DAY_MS / 24),
   ];
   for (const timer of timers) timer.unref();
   return {

@@ -3,7 +3,9 @@
 // AW-07b's delivery worker at the entry: `MAIL_DELIVERY` is off unless set to
 // `mock`, the one value there is while no provider account exists; mock with
 // a setting missing or malformed stops the server, naming the setting and
-// never its value; the made-up email choices say they are made up.
+// never its value; the made-up email choices say they are made up. Mock is
+// refused where `OPS_ENVIRONMENT` says production (SEC28 F3), and a
+// `MAIL_FROM` the sender gate would refuse stops the start (SEC28 F8).
 
 import { expect, it } from 'vitest';
 import {
@@ -73,6 +75,43 @@ it('AW-07b mail delivery: mock reaches only a provider on this machine, never a 
   for (const origin of ['http://127.0.0.1:9', 'https://127.0.0.1:8443']) {
     expect(mailDeliverySettings({ ...mock, MAIL_PROVIDER_ORIGIN: origin }), origin).toMatchObject({
       kind: 'mock',
+    });
+  }
+});
+
+it('AW-07b mail delivery: mock is refused where OPS_ENVIRONMENT says production', () => {
+  const refused = mailDeliverySettings({ ...mock, OPS_ENVIRONMENT: 'production' });
+  expect(refused).toMatchObject({ kind: 'invalid' });
+  expect(JSON.stringify(refused)).toContain('OPS_ENVIRONMENT');
+  expect(JSON.stringify(refused)).toContain('MAIL_DELIVERY');
+  for (const where of ['staging', '']) {
+    expect(mailDeliverySettings({ ...mock, OPS_ENVIRONMENT: where }), where).toMatchObject({
+      kind: 'mock',
+    });
+  }
+  expect(mailDeliverySettings({ MAIL_DELIVERY: 'off', OPS_ENVIRONMENT: 'production' })).toEqual({
+    kind: 'off',
+  });
+});
+
+it('AW-07b mail delivery: a MAIL_FROM the sender gate refuses stops the start, named not shown', () => {
+  const refusedByGate = [
+    `"secretquoted"@${SENDING}`,
+    `secret..dots@${SENDING}`,
+    `.secretlead@${SENDING}`,
+    `secret${'a'.repeat(59)}@${SENDING}`,
+    `secret${'b'.repeat(58)}@${'c'.repeat(190)}.${SENDING}`,
+  ];
+  for (const from of refusedByGate) {
+    const refused = mailDeliverySettings({ ...mock, MAIL_FROM: from });
+    expect(refused, from.slice(0, 20)).toMatchObject({ kind: 'invalid' });
+    expect(JSON.stringify(refused)).toContain('MAIL_FROM');
+    expect(JSON.stringify(refused)).not.toContain('secret');
+  }
+  for (const from of [`first.last+tag@${SENDING}`, `${'d'.repeat(64)}@${SENDING}`]) {
+    expect(mailDeliverySettings({ ...mock, MAIL_FROM: from }), from).toMatchObject({
+      kind: 'mock',
+      from,
     });
   }
 });

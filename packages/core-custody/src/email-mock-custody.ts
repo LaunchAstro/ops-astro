@@ -8,7 +8,13 @@
 //
 // The mark is this module's own: the custody object it started, held in a
 // WeakSet. No setting, copy or wrapper of a custody carries it, so
-// configuration alone never turns a real provider into the mock one.
+// configuration alone never turns a real provider into the mock one. A
+// loopback origin proves where the provider is, not what listens there: a
+// local proxy to a real provider, or a real key in the credentials file, is
+// outside this guard (SEC28 F4).
+//
+// A send over this custody is recorded `mock:<id>`, never `provider:<id>`
+// (`isLoopbackMock`), so a mock acceptance never reads as a provider's.
 
 import { startCustody, type Custody } from './custody.ts';
 import { fromVerifiedSender } from './email-class.ts';
@@ -42,6 +48,11 @@ export async function startLoopbackMockCustody(
   return custody;
 }
 
+/** True only for a custody `startLoopbackMockCustody` started: its sends reach the mock provider. */
+export function isLoopbackMock(custody: Custody): boolean {
+  return loopbackMock.has(custody);
+}
+
 /**
  * The sender gate as one send sees it: a mock report counts as unmocked only
  * when the send's custody is the loopback mock this module started; over any
@@ -52,6 +63,6 @@ export function senderVerifiedFor(
   sender: Parameters<typeof fromVerifiedSender>[1],
   custody: Custody,
 ): boolean {
-  const mockHere = sender.mock && loopbackMock.has(custody);
+  const mockHere = sender.mock && isLoopbackMock(custody);
   return fromVerifiedSender(from, mockHere ? { ...sender, mock: false } : sender);
 }
