@@ -62,7 +62,8 @@ export type PasswordAnswer =
 /** A password's bounds in UTF-8 bytes (C40). */
 export const PASSWORD_BYTES = { least: 12, most: 72 } as const;
 
-export const PASSWORD_CHANGED = 'account.password_changed';
+/** The audit command a reset link's password set records. */
+export const RESET_COMMAND = 'account.password_changed';
 
 export interface PasswordReset {
   readonly presented: VerifiedSubject;
@@ -183,10 +184,10 @@ async function changedIn(
       await endOtherSeenSessions(tx, personId, undefined, 'end_others', subject);
       await writeAuditEvent(tx, {
         actorId,
-        command: PASSWORD_CHANGED,
+        command: RESET_COMMAND,
         outcome: 'applied',
         refusalCode: null,
-        payloadDigest: payloadDigest({ command: PASSWORD_CHANGED, person: personId }),
+        payloadDigest: payloadDigest({ command: RESET_COMMAND, person: personId }),
       });
     });
   }
