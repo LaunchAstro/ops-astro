@@ -14,7 +14,10 @@
     { "context": "database conformance", "integration_id": 15368 },
     { "context": "dependency audit", "integration_id": 15368 },
     { "context": "static analysis", "integration_id": 15368 },
-    { "context": "isolation tests", "integration_id": 15368 }
+    { "context": "isolation tests", "integration_id": 15368 },
+    { "context": "Analyze (actions)", "integration_id": 15368 },
+    { "context": "Analyze (javascript-typescript)", "integration_id": 15368 },
+    { "context": "Analyze (python)", "integration_id": 15368 }
   ],
   "code_scanning": [
     {

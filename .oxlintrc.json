@@ -124,6 +124,22 @@
         "no-promise-executor-return": "off",
         "unicorn/no-array-callback-reference": "off"
       }
+    },
+    {
+      "files": [
+        "tests/review/staging-logins-duplicate-sslmode-proof.test.ts",
+        "tests/review/staging-logins-direct-privileges-proof.test.ts",
+        "tests/review/staging-logins-group-race-proof.test.ts",
+        "tests/review/seed-boundaries-proof.test.mjs",
+        "tests/ci/queue-codeql-blocking-proof.test.mjs"
+      ],
+      "rules": {
+        "max-depth": "off",
+        "max-lines-per-function": "off",
+        "no-await-in-loop": "off",
+        "no-promise-executor-return": "off",
+        "require-unicode-regexp": "off"
+      }
     }
   ]
 }

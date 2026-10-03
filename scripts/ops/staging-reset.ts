@@ -81,8 +81,9 @@ export function databaseProject(name: string, value: string): string {
   const url = URL.parse(value);
   if (url === null || !['postgres:', 'postgresql:'].includes(url.protocol))
     throw new Refusal(`${name} is not a database address`);
-  // A host named in the query would override the one judged here.
-  if (/[?&](?:host|hostaddr|port|user)=/iu.test(url.search))
+  // A host or login named in the query would override the one judged here. Read
+  // decoded, as the driver reads it: `%75ser` is `user`.
+  if ([...url.searchParams.keys()].some((key) => /^(?:host|hostaddr|port|user)$/iu.test(key)))
     throw new Refusal(`${name} names its host twice`);
   const host = url.hostname.toLowerCase();
   // One named host: the driver falls back to PGHOST for none and tries a list in turn.
@@ -159,3 +160,41 @@ export function refusalBeforeConnecting(
     throw error;
   }
 }
+
+/** The tenant tables, locked against writes while the reset judges and empties them. */
+export const TENANT_TABLES: string = `select c.oid::regclass::text as name from pg_class c
+    join pg_namespace n on n.oid = c.relnamespace
+   where n.nspname = 'public' and c.relkind = 'r' and exists (select from pg_attribute a
+           where a.attrelid = c.oid and a.attname = 'business_id' and not a.attisdropped)`;
+
+/**
+ * The sessions ended installation-wide (0061, 0063) outlive the reset, as the
+ * sign-ins they end do: carried into a schema the reset does not empty, merged
+ * with any a stopped run left there, and put back once migrated.
+ */
+export const CARRY_ENDED_SESSIONS: readonly string[] = [
+  'create schema if not exists ops_astro_reset',
+  'revoke all on schema ops_astro_reset from public',
+  `create table if not exists ops_astro_reset.ended_provider_sessions
+     (session_id uuid primary key, ended_at timestamptz not null)`,
+  `create table if not exists ops_astro_reset.ended_subject_sessions
+     (subject_digest text not null, kept_session uuid, ended_before timestamptz not null)`,
+  `do $$ begin
+     if to_regclass('ops.ended_provider_sessions') is not null then
+       insert into ops_astro_reset.ended_provider_sessions
+         select session_id, ended_at from ops.ended_provider_sessions on conflict do nothing;
+     end if;
+     if to_regclass('ops.ended_subject_sessions') is not null then
+       insert into ops_astro_reset.ended_subject_sessions
+         select subject_digest, kept_session, ended_before from ops.ended_subject_sessions
+         except select * from ops_astro_reset.ended_subject_sessions;
+     end if;
+   end $$`,
+];
+export const RESTORE_ENDED_SESSIONS: readonly string[] = [
+  `insert into ops.ended_provider_sessions (session_id, ended_at)
+     select session_id, ended_at from ops_astro_reset.ended_provider_sessions`,
+  `insert into ops.ended_subject_sessions (subject_digest, kept_session, ended_before)
+     select subject_digest, kept_session, ended_before from ops_astro_reset.ended_subject_sessions`,
+  'drop schema ops_astro_reset cascade',
+];
