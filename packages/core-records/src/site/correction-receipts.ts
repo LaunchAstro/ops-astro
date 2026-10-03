@@ -39,20 +39,29 @@ const FROM: Readonly<Record<ObservedResult['step'], readonly CorrectionState[]>>
 };
 
 /**
- * Whether the result may move a correction in `state`. A cancel the runner saw after its
- * dispatch is an uncertain effect (`core-connectors/src/site/publish.ts`), recorded unknown:
- * the one result a cancelled correction takes.
+ * A decided correction cancelled after its dispatch: the runner saw the cancel during the
+ * publish, or the cancel landed during its read-back. Either way the publish may be out, an
+ * uncertain effect (`core-connectors/src/site/publish.ts`), so the row takes any publish
+ * result, its receipt keeps the observed outcome, and it is recorded unknown. A request
+ * cancelled before any decision was never dispatched and takes none.
  */
-const movesFrom = (result: ObservedResult, state: CorrectionState): boolean =>
-  FROM[result.step].includes(state) ||
-  (state === 'cancelled' && result.step === 'publish' && result.outcome === 'unknown');
+const cancelledAfterDispatch = (result: ObservedResult, correction: LiveCorrection): boolean =>
+  correction.state === 'cancelled' &&
+  correction.decidedByPersonId !== null &&
+  result.step === 'publish';
+
+/** Whether the result may move `correction`: from its step's states, or cancelled after dispatch. */
+const movesFrom = (result: ObservedResult, correction: LiveCorrection): boolean =>
+  FROM[result.step].includes(correction.state) || cancelledAfterDispatch(result, correction);
 
 /**
- * The state a result moves to. A publish takes its outcome; a revert moves only
- * once the original word is observed back, so a revert accepted, unknown or
- * failed leaves the page recorded live, with its receipt saying why.
+ * The state a result moves to. A publish takes its outcome, but a cancelled correction's
+ * is recorded unknown; a revert moves only once the original word is observed back, so a
+ * revert accepted, unknown or failed leaves the page recorded live, with its receipt
+ * saying why.
  */
-function nextState(result: ObservedResult): CorrectionState {
+function nextState(result: ObservedResult, correction: LiveCorrection): CorrectionState {
+  if (cancelledAfterDispatch(result, correction)) return 'unknown';
   if (result.step === 'publish' || result.outcome === 'reverted') return result.outcome;
   return 'live';
 }
@@ -127,7 +136,9 @@ export async function readCorrectionForRun(
 }
 
 /**
- * `receipt written`: the observed result and its receipt, together.
+ * `receipt written`: the observed result and its receipt, together. The receipt
+ * keeps the outcome observed; a decided correction cancelled after its dispatch
+ * still takes it, and moves to unknown.
  *
  * Under a live worker lease the caller holds on the correction's task with the
  * fence it holds, both locked; the correction row locked first. The state moves and the
@@ -142,9 +153,9 @@ export async function recordObservedResult(
 > {
   const held = await holdUnderLease(tx, result);
   if (!held.ok) return held;
-  if (!movesFrom(result, held.correction.state)) return { ok: false, code: 'GATE_NOT_APPROVED' };
+  if (!movesFrom(result, held.correction)) return { ok: false, code: 'GATE_NOT_APPROVED' };
 
-  const state = nextState(result);
+  const state = nextState(result, held.correction);
   await tx.query(
     `update public.live_corrections
         set state = $3, revision = revision + 1, updated_at = now()

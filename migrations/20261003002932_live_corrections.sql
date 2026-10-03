@@ -114,10 +114,11 @@ grant select, insert, update on public.live_corrections to ops_astro_app;
 -- back to requested. Cancel is the runner's stop, which it polls for during a
 -- publish (`core-connectors/src/site/publish.ts`): a request, or an approved
 -- correction before its dispatch, moves to cancelled, the decision kept; a
--- cancel the runner sees after its dispatch is an uncertain effect, recorded
--- unknown, so a decided cancelled correction moves to unknown and on as an
--- unknown one does. Nothing else moves to or from cancelled. Invoker: raising
--- needs no privilege.
+-- cancel the runner sees after its dispatch, or one landing during its
+-- read-back, is an uncertain effect: the record layer appends the observed
+-- result's receipt and moves a decided cancelled correction to unknown, and on
+-- as an unknown one does. Nothing else moves to or from cancelled. Invoker:
+-- raising needs no privilege.
 create or replace function public.live_corrections_pinned()
   returns trigger
   language plpgsql
