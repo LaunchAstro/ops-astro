@@ -1,0 +1,9 @@
+{
+  "invariant": [],
+  "conformance": [
+    "tests/review/column-grants-name-batch-1.test.ts",
+    "tests/review/sl01-rel-g2-health-proof.test.ts",
+    "tests/review/sl12-18-placement-lineage-proof.test.ts",
+    "tests/review/sl12-19-plan-record-restart-proof.test.ts"
+  ]
+}
