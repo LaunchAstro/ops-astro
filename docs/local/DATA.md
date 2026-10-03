@@ -791,3 +791,25 @@ revocation (`revoked_at` with `revoked_by_actor_id`, both or neither). The
 secret itself is stored nowhere. A guard keeps every issued column as written
 and lets the revocation be set once. The application may select, insert and
 update; nothing deletes a row. Tenancy-keyed with the restrictive policy.
+
+## Automations (20261003002216, C33)
+
+`automation_definitions` holds one skill or automation a business keeps (its
+kind and name). `definition_versions` holds each release of one: the bytes
+pinned by SHA-256 digest and size, the inputs and operations it declares, and
+the activation modes it permits, numbered from 1 per definition. A version is
+never changed or removed, the owner's update or delete included
+(`definition_versions_immutable`). `activations` runs one definition in one
+mode (`manual`, `scheduled` every 1 to 10,080 minutes, or `event` on a named
+event kind), always pinned to one of that definition's versions, and refuses
+a mode its pinned version does not permit (`activations_mode_permitted`, an
+after trigger so row security answers another business first; an update that
+keeps the mode and the pin is not asked again). `activation_occurrences` holds
+each due time or event once (`activation_occurrences_due_once`,
+`activation_occurrences_event_once`), with its outcome, and names a run only
+when it started one, at most one occurrence per run. Nothing here starts a run:
+every occurrence is `activation_off` or `no_standing_approval` until C52-A's
+standing approval lands. The application may select and insert all four, and
+update an activation's setting, pin, switch and revision by column grant;
+nothing deletes a row. Tenancy-keyed with the restrictive policy. The records
+are `packages/core-records/src/automations/`.
