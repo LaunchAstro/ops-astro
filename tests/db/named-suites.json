@@ -289,7 +289,8 @@
     "REVIEW-BATCH-2 #313 batch 3b adds review-3b-4-parent-end-drops-helper (a parent revoked, or handed back, while its helper never handed back: the merged result shows the helper dropped with its fault, DELEGATION_REVOKED for the revocation, never working) as conformance.",
     "REVIEW-BATCH-2 #313 batch 3b adds review-3b-5-delegate-child-lease-id (run.delegate_child with a leaseId that is not a uuid, a number or missing is refused LEASE_NOT_OWNED or FIELD_VALUE_INVALID with no child written, never a 22P02 fault) as conformance.",
     "REVIEW-BATCH-2 #313 batch 3b adds review-3b-1-planning-hold-released (a failed planning reply held liability_unknown is released by the pass or a person's outcome, and the planning allowance gets its hold back) as conformance; its fix adds planfix-3b-1-planning-outcome (a planning reply whose operation declares a lookup is released by the pass alone; another person of the business and another business's owner naming the owner's conversation and call are refused NOT_FOUND with nothing written; the owner's outcome settles it once).",
-    "SEC3B F1 (batch 3b security review) adds sec3b-1-ended-owner-planning-release (a planning reply held unknown whose owner's access has since ended is released by the provider phase in the owner's name, as their person actor, and the same pass goes on to release the next business's held reply) as conformance."
+    "SEC3B F1 (batch 3b security review) adds sec3b-1-ended-owner-planning-release (a planning reply held unknown whose owner's access has since ended is released by the provider phase in the owner's name, as their person actor, and the same pass goes on to release the next business's held reply) as conformance.",
+    "C71-D (U87) names c71-d-direct-messages and c71-d-isolation as invariants (20261003000558 team conversations: a direct message is a task_comment record with audience direct anchored to the pair's one team_conversation, sent by chat.send_direct under chat:comment and audited applied or refused with no body; no other table holds the body; the reader's own marker, chat.mark_read, moves forward only and adds no audit event; unread derived from it; a third person, a client and an agent refused; a member reads nothing after leaving; isolation across another business, two clients with one grant each, another person and an agent under a live delegation, canaries in no foreign answer)."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -845,7 +846,11 @@
     "tests/reads/task-client-facts-isolation.test.ts",
     "tests/reads/task-client-facts.test.ts",
     "tests/api/history-trail-preference.test.ts",
-    "tests/operations/c81-gate-evidence.test.ts"
+    "tests/operations/c81-gate-evidence.test.ts",
+    "tests/api/c71-d-direct-messages.test.ts",
+    "tests/api/c71-d-isolation.test.ts",
+    "tests/api/sol-proof-c71a.test.ts",
+    "tests/tasks/sol-proof-c71a-migration.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

@@ -63,6 +63,7 @@ import { readHarnessTrigger } from './harness-trigger.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
 import { readClientFacts } from '../commands/task-content.ts';
 import { isKnownTimeZone, readLedger } from './ledger.ts';
+import { readChatConversations, readChatMessages } from './chat.ts';
 
 export type ReadName = ReadRequest['read'];
 
@@ -851,6 +852,28 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       ok: true,
       unattended: await readUnattendedInbox(tx, session.personId),
     }),
+  },
+  // Team conversations (C71-D): `chat:comment` on the business, and the
+  // reader's own membership inside each query. Staff only.
+  'chat.conversations': {
+    identifiers: [],
+    parse: NONE,
+    spine: false,
+    authority: 'declared',
+    outsiderNotFound: true,
+    serve: async (tx, session) => await readChatConversations(tx, session),
+  },
+  'chat.messages': {
+    identifiers: ['conversationId'],
+    parse: ({ conversationId }) =>
+      isUuid(conversationId)
+        ? parsed({ conversationId })
+        : rejected('conversationId', 'Send conversationId as a conversation’s identifier.'),
+    spine: false,
+    authority: 'declared',
+    outsiderNotFound: true,
+    serve: async (tx, session, { conversationId }) =>
+      await readChatMessages(tx, session, conversationId),
   },
   // AW-13 readers: a task's runs' trace. `operations:read` (C55: the owner and
   // administrators by install default, never a member, never an agent) at the

@@ -261,6 +261,11 @@ vi.mock('../../packages/core-commands/src/commands/tasks-tags.ts', async (origin
   addTagToTask: recorder('addTagToTask'),
   removeTagFromTask: recorder('removeTagFromTask'),
 }));
+vi.mock('../../packages/core-commands/src/commands/chat.ts', async (original) => ({
+  ...(await original<object>()),
+  sendDirect: recorder('sendDirect'),
+  markOwnRead: recorder('markOwnRead'),
+}));
 vi.mock('../../packages/core-commands/src/commands/inbox-seen.ts', async (original) => ({
   ...(await original<object>()),
   stampOwnSeen: recorder('stampOwnSeen'),
@@ -351,6 +356,8 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'run.top_up': ['recordId', 'runId'],
   'inbox.seen': ['itemId'],
   'notifications.set_channel': [],
+  'chat.send_direct': ['teammateId'],
+  'chat.mark_read': ['conversationId'],
   'settings.set_client_sign_off': [],
   'settings.set_four_eyes_threshold': [],
   'settings.set_money_step_up': [],
@@ -389,6 +396,10 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'budget.set_planning_cap',
   'budget.top_up',
   'budget.write_off',
+  'chat.conversations',
+  'chat.mark_read',
+  'chat.messages',
+  'chat.send_direct',
   'client.create',
   'client.list',
   'conversation.allowance',
@@ -749,6 +760,8 @@ const REQUESTS: readonly CommandRequest[] = [
     version: 1,
   },
   { command: 'inbox.seen', operationId: 'op', itemId: 'item' },
+  { command: 'chat.send_direct', operationId: 'op', teammateId: 'mate', body: 'hello' },
+  { command: 'chat.mark_read', operationId: 'op', conversationId: 'talk', upTo: 'then' },
   { command: 'notifications.set_channel', operationId: 'op', channel: 'in_app', mode: 'on' },
 ];
 
@@ -871,6 +884,8 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'preference.save': ['saveOwnPreference', 'appearance', 'dark'],
   'preference.dismiss_tip': ['dismissOwnTip', 'request'],
   'inbox.seen': ['stampOwnSeen', 'item'],
+  'chat.send_direct': ['sendDirect', 'mate', 'hello'],
+  'chat.mark_read': ['markOwnRead', 'talk', 'then'],
   'notifications.set_channel': ['setNotificationChannel', 'request'],
 };
 
@@ -911,7 +926,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same ninety-two from an expected revision', () => {
+  it('exempts the same ninety-six from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

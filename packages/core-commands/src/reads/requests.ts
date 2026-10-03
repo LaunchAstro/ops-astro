@@ -29,6 +29,8 @@ import type { BreachNoticeOperands } from './operations.ts';
 import type {
   AttributionResult,
   AccessReadResult,
+  ChatConversationsResult,
+  ChatMessagesResult,
   BreachNoticesResult,
   ClientListResult,
   CapabilitiesResult,
@@ -177,6 +179,10 @@ export interface ReadOperands {
   readonly 'inbox.count': NoOperands;
   /** The business's items no path reaches, for `operations:read` (INB-1e). */
   readonly 'inbox.unattended': NoOperands;
+  /** The reader's team conversations, each with its unread (C71-D). */
+  readonly 'chat.conversations': NoOperands;
+  /** One conversation's messages, the reader's own member row the filter. */
+  readonly 'chat.messages': { readonly conversationId: string };
   /** The task whose runs' trace is read (AW-13 readers). */
   readonly 'trace.read': { readonly recordId: string };
   /** The run whose harness test result is read (AW-12). */
@@ -226,6 +232,8 @@ export type ReadResult =
   | InboxReadResult
   | InboxCountResult
   | { readonly ok: true; readonly unattended: readonly UnattendedView[] }
+  | ChatConversationsResult
+  | ChatMessagesResult
   | {
       readonly ok: true;
       readonly trace: {

@@ -216,6 +216,7 @@ const SPEND_COLLECTION = 'spend';
 const ACCOUNT_COLLECTION = 'account';
 const PREFERENCE_COLLECTION = 'preference';
 const INBOX_COLLECTION = 'inbox';
+const CHAT_COLLECTION = 'chat';
 
 /**
  * A read. It takes the `read` action on the collection it names, targets no
@@ -865,6 +866,27 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     authorisedOn: 'self',
     untargetedIdentifiers: [],
+  }),
+
+  // Team conversations (C71-D): `chat:comment`, agency members, and within a
+  // conversation its members only (the queries' own filter). Never an
+  // agent's; a client is never a member. A direct message names the
+  // teammate, never the conversation: the pair has one.
+  declare('chat.send_direct', 'comment', {
+    collection: CHAT_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['teammateId'],
+  }),
+  read('chat.conversations', CHAT_COLLECTION, { action: 'comment' }),
+  read('chat.messages', CHAT_COLLECTION, { action: 'comment' }),
+  // The reader's own read marker (CS-7.25): their own member row, no grant
+  // asked, and not audited.
+  declare('chat.mark_read', 'write', {
+    collection: ACCOUNT_COLLECTION,
+    targetsExistingRecord: false,
+    authorisedOn: 'self',
+    untargetedIdentifiers: ['conversationId'],
+    audited: false,
   }),
 ];
 

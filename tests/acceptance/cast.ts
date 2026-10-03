@@ -131,6 +131,8 @@ export const ADMIN_EXTRA_PAIRS: readonly (readonly [string, Action])[] = [
   ['access', 'share'],
   ['time', 'write'],
   ['tag', 'write'],
+  // Team conversations (C71-D): a direct message and the conversation reads.
+  ['chat', 'comment'],
 ];
 
 export async function tokenFor(

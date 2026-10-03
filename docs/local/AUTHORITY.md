@@ -556,6 +556,28 @@ which both entries call, answers a trashed task `NOT_FOUND` in the same bytes
 as a missing one and writes nothing (Nathan's ruling, OWNER-CARD section 6;
 `tests/acceptance/comment-rulings.test.ts`).
 
+### Team conversations (C71-D)
+
+A direct message is a `task_comment` record with the audience `direct`,
+anchored by its `conversation` field to a `team_conversation` record instead of
+a task. No other table holds its body (RA-12). `chat.send_direct` writes it
+through the same comment writer as `task.comment` (`writeComment`) under
+`chat:comment`, the catalogue key the agency's members hold, and a delegated
+agent never: the surface row is `agent: never`. A person with no membership is
+refused at the door, and a teammate who is not staff here (a client's person,
+the sender, another business's person) is `NOT_FOUND`, so a client is never a
+member. The audit event records that a message was sent and never what it says.
+
+Within a conversation, its members only. Every conversation read
+(`chat.conversations`, `chat.messages`) filters by the reader's own member row
+inside the query (`core-records/src/team/conversations.ts`), so the owner and
+administrators read only their own. A member reads nothing written before they
+joined or after they left. The read marker (`chat.mark_read`) is the reader's
+own member row, self-scoped like `inbox.seen`, and not audited (CS-7.25). The
+client projection refuses a `direct` comment, as it refuses an internal note.
+`tests/api/c71-d-direct-messages.test.ts` and `tests/api/c71-d-isolation.test.ts`
+hold it.
+
 ## preset.plan
 
 `records/preset-plan.ts` validates the whole preset before emitting a single

@@ -38,6 +38,8 @@ const EMPTY: readonly CommandName[] = [
   'inbox.unattended',
   // The reader's own to-dos (MP-7-1): no operand.
   'task.todos',
+  // The reader's own team conversations (C71-D): no operand.
+  'chat.conversations',
 ];
 
 export const FIXED_BODIES: Readonly<Partial<Record<CommandName, Body>>> = {
@@ -91,6 +93,7 @@ export function probeOperands(name: CommandName): Body {
     return { leaseId: randomUUID(), fence: 1, ...childProbe(randomUUID()) };
   }
   if (name === 'run.child_handback') return { outcome: 'completed' };
+  if (name === 'chat.messages') return { conversationId: randomUUID() };
   if (name === 'privacy.draft_breach_notices') return breachDrillBody();
   return {};
 }

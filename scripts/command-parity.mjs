@@ -183,6 +183,7 @@ const OPERANDS = {
     containment: 'c',
     steps: 's',
   },
+  'chat.messages': { conversationId: '00000000-0000-4000-8000-000000000000' },
 };
 
 // The grants a read really asks: the real read path on a transaction that holds none.
