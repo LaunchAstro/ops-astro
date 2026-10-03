@@ -869,6 +869,7 @@ function AgentHead({
       recordId={task.id}
       title={task.title === null || task.title === '' ? task.key : task.title}
       clientId={task.client}
+      clientUnseen={task.clientSet && task.client === null}
       proposals={task.proposals}
       people={persons}
       ledger={task.ledger}

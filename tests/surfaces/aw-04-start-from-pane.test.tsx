@@ -18,6 +18,7 @@ import {
   useAsks,
 } from '../../apps/web/src/assistant/asks.ts';
 import type { AskEntry } from '../../apps/web/src/assistant/chats.ts';
+import { LOCAL_MODEL_WAIT, modelOffer, subjectFor } from '../../apps/web/src/assistant/subject.ts';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { TaskDetailScreen } from '../../apps/web/src/screens/TaskDetail.tsx';
 import { AssistantView } from '../../apps/web/src/views/assistant.tsx';
@@ -108,14 +109,18 @@ function Heard(props: { readonly into: AskEntry[] }): null {
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
-/** The task page over a stubbed `task.read` whose task belongs to `clientId`, an ended attempt on it. */
-async function taskPage(clientId: string | null, into: AskEntry[]) {
+/**
+ * The task page over a stubbed `task.read` whose task belongs to `clientId`, an ended attempt on it.
+ * `clientSet` with no id is a client the reader's grants do not reach (CS-4.12).
+ */
+async function taskPage(clientId: string | null, into: AskEntry[], clientSet = clientId !== null) {
   const task = {
     id: TASK.id,
     key: 'T-12',
     title: TASK.title,
     // main's wire name for the task's client (InternalTaskDetail.client, C32)
     client: clientId,
+    clientSet,
     description: null,
     state: null,
     assignee: null,
@@ -174,5 +179,25 @@ describe('SL12-19-F2 the pane asks with the task’s client', () => {
     const page = await taskPage(null, asks);
     await page.click('[data-agent="start"]');
     expect(asks.map((ask) => ask.scope.task)).toStrictEqual([{ ...TASK }]);
+  });
+});
+
+describe('SL12-24-F4 the pane asks with a client the reader cannot see', () => {
+  it('a task under an unreadable client: the drawer’s subject is client material, its setting off', async () => {
+    const asks: AskEntry[] = [];
+    const page = await taskPage(null, asks, true);
+    await page.click('[data-agent="start"]');
+    const scope = asks[0]?.scope ?? { client: null, task: null };
+    const subject = subjectFor({ route: 'agency:task-detail', ...scope });
+    const cloud = [{ id: 'cloud', label: 'A cloud model' }];
+    expect(modelOffer(subject, cloud, null)).toStrictEqual({
+      models: [],
+      waiting: LOCAL_MODEL_WAIT,
+    });
+    // Nothing the drawer could be told about that client turns its setting on.
+    expect(modelOffer(subject, cloud, true)).toStrictEqual({
+      models: [],
+      waiting: LOCAL_MODEL_WAIT,
+    });
   });
 });

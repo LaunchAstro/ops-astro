@@ -42,6 +42,8 @@ export interface AgentSectionProps {
    * would carry (AW-04).
    */
   readonly clientId: string | null;
+  /** The task is under a client the reader cannot see (`clientSet`, no id): its setting reads as off. */
+  readonly clientUnseen: boolean;
   readonly proposals: readonly ProposalView[];
   readonly people: readonly PersonView[];
   /** `task.read`'s token ledger (MP-6-5): null for a reader it is not shown to, absent on an older read. */
@@ -228,9 +230,9 @@ export function AgentSection(props: AgentSectionProps): ReactElement {
         onEndAtStop={controls.endAtStop}
         stopAwaiting={controls.stopAwaiting}
         onStartAttempt={() => {
-          askDrawer(
-            newAttemptAsk({ id: props.recordId, title: props.title, clientId: props.clientId }),
-          );
+          const { recordId: id, title, clientId } = props;
+          const unseen = props.clientUnseen ? { clientUnseen: true as const } : {};
+          askDrawer(newAttemptAsk({ id, title, clientId, ...unseen }));
         }}
       />
       {controls.stepUp === null ? null : <StepUpPrompt ask={controls.stepUp} />}
