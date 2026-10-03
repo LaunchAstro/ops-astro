@@ -156,4 +156,22 @@ describe('authenticator change', () => {
     expect(view.find(`${PANEL} [data-factor="password"]`)).toBeNull();
     expect(typedPasswords(view)).toStrictEqual([]);
   });
+
+  it('authenticator set-up: a wrong password is cleared from the field and the password form stays for another try', async () => {
+    const route: Route = (call) =>
+      enrols(call) ? Promise.resolve(refusal('FRESH_SIGN_IN_REQUIRED', FRESH_FIXES, 403)) : null;
+    const { view, server, sessions } = await panel(route);
+    await view.click(`${PANEL} [data-factor="enrol"] button`);
+    await settle();
+    await view.type(`${PANEL} [data-factor="password"]`, 'not-the-password');
+    await view.click(`${PANEL} [data-factor="sign-in"] button`);
+    await settle();
+    expect(view.find(`${PANEL} [role="alert"]`)?.textContent).toContain(
+      'Invalid login credentials',
+    );
+    expect(view.find(`${PANEL} [data-factor="password"]`)).not.toBeNull();
+    expect(typedPasswords(view)).toStrictEqual(['']);
+    expect(server.calls.filter((call) => call.url === '/api/session')).toEqual([]);
+    expect(sessions.session?.sessionId).toBe('sid-old');
+  });
 });

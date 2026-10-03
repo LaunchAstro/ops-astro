@@ -6,12 +6,24 @@
 // `STEP_UP_REQUIRED` naming `sign_in` asks for the password, and a good one
 // moves the tab to a new sign-in and sends the write once more. The prompt's
 // cases are `money-sign-in-again.test.tsx`'s, drawn in a stand-in application.
+// Of two sign-ins again at once, only the one that still holds the tab's
+// session is adopted: the identity check in `App.tsx`, which the generation
+// alone does not cover.
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SESSION_HEADER } from '../../packages/core-wire/src/index.ts';
 import type { Mounted } from '../surfaces/mount.tsx';
 import { json, open, settle } from './mp-2-1-support.tsx';
-import { EMAIL, FRESH, GOTRUE, PASSWORD, goodPassword, refusal } from './sign-in-again-support.tsx';
+import {
+  EMAIL,
+  FRESH,
+  FRESH_REFRESH,
+  GOTRUE,
+  PASSWORD,
+  goodPassword,
+  held,
+  refusal,
+} from './sign-in-again-support.tsx';
 
 const WRITE = '/budget/set_planning_cap';
 const PROMPT = '[data-step-up="prompt"]';
@@ -26,15 +38,21 @@ interface Sent {
   readonly authorization: string | null;
 }
 
+/** A case's own answer to a call, or null to leave it to the shared routes. */
+type Own = (call: Sent) => Promise<Response> | null;
+
 /** The API and GoTrue a client meets, signed in as `sid-old`, its money writes asking the step-up. */
-function api() {
+function api(own: Own = () => null) {
   const calls: Sent[] = [];
   const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const headers = new Headers(init?.headers);
     const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
     const session = headers.get(SESSION_HEADER);
-    calls.push({ url, session, authorization: headers.get('authorization') });
+    const call = { url, session, authorization: headers.get('authorization') };
+    calls.push(call);
+    const answered = own(call);
+    if (answered !== null) return await answered;
     if (url === `${GOTRUE}/token?grant_type=password`) return await goodPassword(body);
     if (url === '/api/session') {
       return headers.get('authorization') === `Bearer ${FRESH}`
@@ -102,5 +120,58 @@ describe('the application signs a client in again at the money step-up', () => {
     const ended = server.calls.filter((call) => call.url === '/api/session/end');
     expect(ended.map((call) => call.session)).toEqual(['sid-old']);
     expect(view.find(`${PROMPT}`)).toBeNull();
+  });
+});
+
+/** The enrol asks a fresh sign-in; the first password grant waits, the second signs in as `sid-B`. */
+function twoSignIns(first: ReturnType<typeof held>) {
+  const grants: Sent[] = [];
+  const own: Own = (call) => {
+    if (call.url === `${GOTRUE}/token?grant_type=password`) {
+      grants.push(call);
+      if (grants.length === 1) return first.wait();
+      return Promise.resolve(
+        json({ access_token: 'tok-two', refresh_token: 'r', expires_in: 3600 }),
+      );
+    }
+    if (call.url === '/api/session' && call.authorization === 'Bearer tok-two') {
+      return Promise.resolve(json({ ok: true, session: 'sid-B' }));
+    }
+    if (call.url.endsWith('/account/factor/enrol') && call.session === 'sid-old') {
+      return Promise.resolve(refusal('FRESH_SIGN_IN_REQUIRED', ['Sign in again.'], 403));
+    }
+    return null;
+  };
+  return { own, grants };
+}
+
+describe('two sign-ins again at once on the settings page', () => {
+  it('money sign-in again in the app: of two sign-ins at once the later one keeps the tab, and the earlier is signed out at GoTrue', async () => {
+    const first = held();
+    const race = twoSignIns(first);
+    const server = api(race.own);
+    const { view, sessions } = await open('/settings', { fetch: server.fetch, seed: SIGNED_IN });
+    live.push(view);
+    await settle();
+    await view.type('#settings-planning-cap', '75');
+    await view.click('[data-settings="save-planning-cap"]');
+    await view.click('[data-factor="panel"] [data-factor="enrol"] button');
+    await settle();
+
+    await view.type(`${PROMPT} [data-step-up="password"]`, PASSWORD);
+    await view.click(`${PROMPT} [data-step-up="confirm"]`);
+    await settle();
+    await view.type('[data-factor="panel"] [data-factor="password"]', PASSWORD);
+    await view.click('[data-factor="panel"] [data-factor="sign-in"] button');
+    await settle();
+    first.answer(json({ access_token: FRESH, refresh_token: FRESH_REFRESH, expires_in: 3600 }));
+    await settle();
+
+    expect(race.grants).toHaveLength(2);
+    expect(sessions.session?.sessionId).toBe('sid-B');
+    const logouts = server.calls.filter((call) => call.url === `${GOTRUE}/logout?scope=local`);
+    expect(logouts.map((call) => call.authorization)).toEqual([`Bearer ${FRESH}`]);
+    const ended = server.calls.filter((call) => call.url === '/api/session/end');
+    expect(ended.map((call) => call.session)).toEqual(['sid-old']);
   });
 });
