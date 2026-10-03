@@ -47,6 +47,7 @@ const KEY_OF: Readonly<Record<string, string>> = {
   'settings.set_money_step_up': 'money_step_up_required',
   'settings.set_conversation_window': 'conversation_window_days',
   'settings.set_retention_window': 'retention_window_days',
+  'settings.set_live_correction_approver': 'live_correction_approver',
 };
 
 type WindowCommand = 'settings.set_conversation_window' | 'settings.set_retention_window';
@@ -111,6 +112,7 @@ export async function setBusinessSetting(
     | 'settings.set_four_eyes_threshold'
     | 'settings.set_client_sign_off'
     | 'settings.set_money_step_up'
+    | 'settings.set_live_correction_approver'
     | WindowCommand,
   value: unknown,
   expectedRevision?: number,
@@ -123,7 +125,7 @@ export async function setBusinessSetting(
   // serialises by the type it is given, and an `unknown` that is really a
   // string reaches the column as the JSON string "500", which no comparison
   // reads and the check constraint correctly refuses.
-  let writable: number | boolean | null;
+  let writable: number | boolean | string | null;
   if (command === 'settings.set_four_eyes_threshold') {
     if (value === null) writable = null;
     else if (typeof value === 'number' && Number.isFinite(value) && value >= 0) writable = value;
@@ -142,7 +144,8 @@ export async function setBusinessSetting(
       return refused(refuseCommand('FIELD_VALUE_INVALID', ['value'], fixesFor(command)));
     }
     writable = value;
-  } else if (typeof value === 'boolean') writable = value;
+  } else if (command === 'settings.set_live_correction_approver') writable = value as string | null;
+  else if (typeof value === 'boolean') writable = value;
   else return refused(refuseCommand('FIELD_VALUE_INVALID', ['value'], fixesFor(command)));
 
   // `owningOperation` is this command's own name and never the caller's idea of

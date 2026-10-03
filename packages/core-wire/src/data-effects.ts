@@ -168,6 +168,11 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'settings.set_money_step_up': SETTINGS,
   'settings.set_conversation_window': SETTINGS,
   'settings.set_retention_window': SETTINGS,
+  // C80: the request and its decision are rows of the correction, at its party.
+  'settings.set_live_correction_approver': SETTINGS,
+  'live_correction.request': writing(client('live_corrections')),
+  'live_correction.decide': writing(client('live_corrections')),
+  'live_correction.read': READ,
   'privacy.record_incident': writing(business('privacy_incidents')),
   'legal.draft_version': LEGAL,
   'legal.approve_version': LEGAL,

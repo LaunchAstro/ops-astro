@@ -36,6 +36,7 @@ import type {
   OperationsReadResult,
   InboxCountResult,
   InboxReadResult,
+  LiveCorrectionReadResult,
   PersonListResult,
   TagListResult,
   TaskTodosResult,
@@ -181,6 +182,8 @@ export interface ReadOperands {
   readonly 'trace.read': { readonly recordId: string };
   /** The run whose harness test result is read (AW-12). */
   readonly 'harness.read': { readonly runId: string };
+  /** One live correction's decision, read again for its card (C80). */
+  readonly 'live_correction.read': { readonly correctionId: string };
 }
 
 /** A read about the business as a whole, which takes nothing. */
@@ -225,6 +228,7 @@ export type ReadResult =
   | AttributionResult
   | InboxReadResult
   | InboxCountResult
+  | LiveCorrectionReadResult
   | { readonly ok: true; readonly unattended: readonly UnattendedView[] }
   | {
       readonly ok: true;

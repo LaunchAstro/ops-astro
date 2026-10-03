@@ -186,6 +186,21 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
     outcome: 'any',
     receiptLink: 'any',
   },
+  // Typed by the handler, after authority, on both entries: an agent holding
+  // nothing is told that before anything about its body.
+  'live_correction.request': {
+    partyId: 'any',
+    taskId: 'any',
+    path: 'any',
+    word: 'any',
+    replacement: 'any',
+    pageUrl: 'any',
+    baseRevision: 'any',
+    before: 'any',
+    after: 'any',
+  },
+  'live_correction.decide': { correctionId: 'id', versionId: 'id', decision: 'text' },
+  'settings.set_live_correction_approver': { value: 'any', expectedRevision: 'any' },
   'task.check': {
     leaseId: 'any',
     recordId: 'any',

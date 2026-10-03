@@ -81,6 +81,8 @@ export const READ_NAMES = [
   'trace.read',
   // The harness test's result on one run (AW-12); no screen draws it yet.
   'harness.read',
+  // One live correction's decision, read again for its card (C80).
+  'live_correction.read',
 ] as const;
 
 /**

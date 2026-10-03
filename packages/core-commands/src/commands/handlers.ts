@@ -13,7 +13,9 @@
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import type { CommandContext } from './context.ts';
 import type { CommandRequest } from './requests.ts';
-import type { HandlerOutcome } from './outcome.ts';
+import { isActiveMember, isUuid } from '../../../core-records/src/index.ts';
+import { refused, type HandlerOutcome } from './outcome.ts';
+import { refuseCommand } from './refusal.ts';
 import { createTask, updateTask } from './tasks-write.ts';
 import { setState, setStateById, writeOwnedFields } from './tasks-state.ts';
 import { assignTask } from './tasks-agent.ts';
@@ -65,6 +67,7 @@ import { deleteEntry, logTimeEntry, setEntryNote, startTime, stopTime } from './
 import { addTagToTask, createTagNamed, removeTagFromTask } from './tasks-tags.ts';
 import { endOwnSession } from './session-end.ts';
 import { dismissOwnTip, saveOwnPreference } from './preference-save.ts';
+import { decideLiveCorrection, requestLiveCorrection } from './live-corrections.ts';
 import { stampOwnSeen } from './inbox-seen.ts';
 
 /**
@@ -164,6 +167,10 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.cancel': cancelOnTask,
   'task.restart': restartOnTask,
 
+  'live_correction.request': requestLiveCorrection,
+  'live_correction.decide': decideLiveCorrection,
+  'settings.set_live_correction_approver': setApprover,
+
   // EX-01. A person picks up, renews and hands back as themselves, on a
   // lease that carries no delegation; the agent does the same on its own
   // entry point in `agent-envelope.ts`, with the delegation its pickup
@@ -244,9 +251,31 @@ function setting(
     | 'settings.set_money_step_up'
     | 'settings.set_conversation_window'
     | 'settings.set_retention_window'
+    | 'settings.set_live_correction_approver'
   >,
 ): Promise<HandlerOutcome> {
   return setBusinessSetting(tx, context, request.command, request.value, request.expectedRevision);
+}
+
+const APPROVER_FIXES: readonly string[] = [
+  'Send value as the person id of an active member of this business, or null.',
+];
+
+/**
+ * C80: a named member or nobody. Checked here, in the writing transaction, so
+ * a person id from another business or a departed member is refused rather
+ * than stored as an approver no approval could ever match.
+ */
+async function setApprover(
+  tx: TenantQuery,
+  context: CommandContext,
+  request: RequestOf<'settings.set_live_correction_approver'>,
+): Promise<HandlerOutcome> {
+  const { value } = request;
+  if (value !== null && !(isUuid(value) && (await isActiveMember(tx, value)))) {
+    return refused(refuseCommand('FIELD_VALUE_INVALID', ['value'], APPROVER_FIXES));
+  }
+  return await setting(tx, context, request);
 }
 
 export async function handleCommand<K extends WriteName>(

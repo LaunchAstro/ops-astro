@@ -60,6 +60,7 @@ import { SERVER_HIT_LIMIT, searchTasks, wordsOf } from './search.ts';
 import { parseBreachNotices, readBreachNotices, readOperations } from './operations.ts';
 import { countOwed, readInbox, readUnattendedInbox } from './inbox.ts';
 import { readHarnessTrigger } from './harness-trigger.ts';
+import { parseCorrectionRead, serveCorrectionRead } from './live-correction.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
 import { readClientFacts } from '../commands/task-content.ts';
 import { isKnownTimeZone, readLedger } from './ledger.ts';
@@ -895,6 +896,18 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       const harness = await readHarnessTrigger(tx, session, runId);
       return 'refused' in harness ? harness : { ok: true, harness };
     },
+  },
+  // C80: one correction's decision, for its card. No subject record, as
+  // `gate.pending`: the door asks for any grant, and the read filters by the
+  // caller's `run:write` at the correction's own party inside its query, so a
+  // correction out of reach and one that does not exist are one answer.
+  'live_correction.read': {
+    identifiers: ['correctionId'],
+    parse: parseCorrectionRead,
+    spine: false,
+    authority: 'holds-any-grant',
+    outsiderNotFound: false,
+    serve: serveCorrectionRead,
   },
 };
 
