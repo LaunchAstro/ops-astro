@@ -105,4 +105,33 @@ describe('C80 Sol R1 proofs (publish)', () => {
       outcome: { state: 'refused', code: 'CANCELLED' },
     });
   });
+
+  it('Sol R1 4: an unknown publish is not dispatched blind on retry', async () => {
+    const sent: string[] = [];
+    let landed = false;
+    const ports = {
+      ...publishPorts(sent, {
+        publish: (input) => {
+          sent.push(input.seam);
+          return Promise.resolve({ kind: 'unknown', code: 'PROVIDER_TIMEOUT' });
+        },
+      }),
+      // After an uncertain send the seam cannot tell, until the merge shows.
+      readBack: () => {
+        if (landed) return Promise.resolve({ state: 'landed' as const, value: PUBLISHED });
+        return Promise.resolve({
+          state: sent.length === 0 ? ('absent' as const) : ('unknown' as const),
+        });
+      },
+    };
+    expect((await publishCorrection(approvedJob(), ports)).state).toBe('unknown');
+    expect((await publishCorrection(approvedJob(), ports)).state).toBe('unknown');
+    expect(sent).toHaveLength(1);
+    landed = true;
+    expect(await publishCorrection(approvedJob(), ports)).toMatchObject({
+      state: 'accepted',
+      ...PUBLISHED,
+    });
+    expect(sent).toHaveLength(1);
+  });
 });
