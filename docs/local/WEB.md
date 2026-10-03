@@ -227,7 +227,9 @@ the gesture law, it marks that client above the book from `client.list`) and Set
 Settings panel beside the page rather than navigating (MP-3-1). Agent has no
 address of its own: like the task panel it is drawn by the dock itself
 (`apps/web/src/dock/agent-dock.ts`), carries the page's standing scope only,
-and its door goes to the board. The dock's head names and closes it, over the
+and its door goes to the board. A door that asks for it, and Back and Forward through the dock's
+history, open it like any registered panel; only the open set restored from
+storage after a reload does not bring it back. The dock's head names and closes it, over the
 drawer's model picker and Page; the drawer draws no head of its own. A plain press shows one panel, shift adds one, each X
 closes only its own, Close all closes every one, and Escape closes the last
 opened unless a field, menu or editor took the key
