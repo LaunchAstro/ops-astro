@@ -15,9 +15,10 @@
 // source, never `mock` pointed elsewhere: mock takes a provider on this machine only,
 // and the send accepts the mock report only over the custody core-custody started
 // for that loopback provider (`startLoopbackMockCustody`, `email-mock-custody.ts`).
-// Mock records each send `accepted` (as `mock:<id>`), so it is refused where
-// `OPS_ENVIRONMENT`, the deployment's own marker, says production: over real
-// people's items it would mark mail sent that no one received (SEC28 F3).
+// Mock records each send `accepted` (as `mock:<id>`), so it runs only where
+// `OPS_ENVIRONMENT`, the deployment's own marker, is unset or exactly `staging`;
+// any other value, empty or misspelt, refuses it: over real people's items it
+// would mark mail sent that no one received (SEC28 F3, SEC29 N1).
 //
 // **Delivery is custody's egress**, as the trace export's is: a custody
 // process of its own holds the provider key for the one `email` destination,
@@ -121,9 +122,11 @@ export function mailDeliverySettings(
   if (toggle !== 'mock') {
     return invalid(`${MAIL_DELIVERY_SWITCH} is neither off nor mock (no provider account yet)`);
   }
-  if (environment[DEPLOYMENT_MARKER] === 'production') {
+  // An allowlist (SEC29 N1): an empty or misspelt marker may be production, so it refuses mock.
+  const where = environment[DEPLOYMENT_MARKER];
+  if (where !== undefined && where !== 'staging') {
     return invalid(
-      `${MAIL_DELIVERY_SWITCH} is mock where ${DEPLOYMENT_MARKER} is production (mock mail reaches no one)`,
+      `${MAIL_DELIVERY_SWITCH} is mock where ${DEPLOYMENT_MARKER} is set but not staging (mock mail reaches no one)`,
     );
   }
   const value = (name: (typeof MAIL_DELIVERY_SETTINGS)[number]): string => environment[name] ?? '';
