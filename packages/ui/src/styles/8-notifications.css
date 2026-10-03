@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only */
 /* The Notifications panel and `/inbox/` (MP-7-3): the pinned mockup's `nt__`
-   rules. The count badge is the kit's `cbadge`, placed, never restyled. */
+   rules. The count badge is the kit's `cbadge`, placed, never restyled; a tab's
+   count is its plain member (`.cmtab .cbadge--plain`). */
 
 .nt {
   display: flex;
@@ -64,8 +65,12 @@
   letter-spacing: var(--type-eyebrow-tracking);
   text-transform: var(--type-eyebrow-case);
 }
+/* A grid of the kind mark and the text: with the rule and padding, the text
+   sits 40px in (mockup app.css:9709). */
 .nt__row {
-  display: block;
+  display: grid;
+  grid-template-columns: 1.1rem minmax(0, 1fr);
+  gap: var(--s-2);
   padding: var(--s-1) var(--s-3);
   border-left: 2px solid var(--border);
   color: inherit;
@@ -78,6 +83,25 @@
 }
 .nt__row--owe {
   border-left-color: var(--accent);
+}
+.nt__mark {
+  color: var(--ink-faint);
+  font: var(--type-small);
+  letter-spacing: var(--type-small-tracking);
+  text-transform: var(--type-small-case);
+}
+.nt__mark--team {
+  color: var(--text-2);
+}
+.nt__mark--progress {
+  color: var(--text-muted);
+}
+/* The mention mark is mono (the mockup's CM 12.8/500); the data style is the
+   nearest declared one, so it draws at 400 (MP-1-4 census). */
+.nt__at {
+  font: var(--type-data);
+  letter-spacing: var(--type-data-tracking);
+  text-transform: var(--type-data-case);
 }
 .nt__body {
   display: flex;

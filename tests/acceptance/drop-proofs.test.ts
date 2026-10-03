@@ -48,10 +48,19 @@ describe.skipIf(!PROOFS_ASKED)('T3e1: drops from real processes, never a cancell
   const kinds = async (taskId: string): Promise<readonly string[]> =>
     (
       await p.admin.execute<{ kind: string }>(
-        'select kind from public.run_events where business_id = $1 and task_id = $2 order by position',
+        // The launch's runs (AW-08): the plan's own was handed back for review first.
+        `select e.kind from public.run_events e
+           join public.planned_runs r on r.business_id = e.business_id and r.id = e.run_id
+           join public.reviewed_outputs ro
+             on ro.business_id = r.business_id and ro.version_id = r.version_id
+          where e.business_id = $1 and e.task_id = $2 order by e.position`,
         [p.world.alpha, taskId],
       )
     ).map((row) => row.kind);
+
+  /** The database clock: each plan's hand-back raised its own awaiting_person alert before it (AW-08). */
+  const databaseNow = async (): Promise<string | undefined> =>
+    (await p.admin.execute<{ at: string }>('select clock_timestamp()::text as at'))[0]?.at;
 
   /**
    * The provider was reached and its answer lost, so the register cannot say
@@ -193,6 +202,7 @@ describe.skipIf(!PROOFS_ASKED)('T3e1: drops from real processes, never a cancell
   }, 60_000);
   it('one_report_per_outage: five real workers dropped by one outage give one report, and every run comes back', async () => {
     const five = await Promise.all(Array.from({ length: 5 }, async () => await fresh()));
+    const launched = await databaseNow();
     const runs = five.map((w, at) =>
       p.worker(w, 'none', `t3e2-worker-${String(at)}`, 900, 'provider_unavailable'),
     );
@@ -229,8 +239,8 @@ describe.skipIf(!PROOFS_ASKED)('T3e1: drops from real processes, never a cancell
       expect(await run.exited()).toBeNull();
     }
     const raised = await p.admin.execute<{ kind: string }>(
-      'select distinct kind from public.alerts where business_id = $1 and task_id = any($2::uuid[])',
-      [p.world.alpha, five.map((w) => w.taskId)],
+      'select distinct kind from public.alerts where business_id = $1 and task_id = any($2::uuid[]) and raised_at > $3',
+      [p.world.alpha, five.map((w) => w.taskId), launched],
     );
     // Each run's settlement is its own transition; the drop raised none.
     expect(raised.map((row) => row.kind)).toStrictEqual(['settled']);

@@ -45,6 +45,7 @@ import {
   type Schedules,
 } from './schedules-harness.ts';
 import { cq8World, type Party } from './cq-8-world.ts';
+import { seedLaunch } from './launch-seed.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -89,6 +90,7 @@ describe.skipIf(serverUrl === undefined)('T2h the alert record', () => {
   async function work(): Promise<Work> {
     const base = await approved();
     const picked = await pickup(s, base.decision['reservationId']);
+    await seedLaunch(s, picked);
     return {
       ...base,
       picked,

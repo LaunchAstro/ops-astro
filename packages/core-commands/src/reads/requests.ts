@@ -27,6 +27,7 @@
 import type { PresetField } from '../../../core-records/src/index.ts';
 import type { BreachNoticeOperands } from './operations.ts';
 import type {
+  AttributionResult,
   AccessReadResult,
   BreachNoticesResult,
   ClientListResult,
@@ -41,6 +42,10 @@ import type {
   TeamListResult,
   PresetPlanResult,
   QueueResult,
+  AwaitingReviewResult,
+  ConversationListResult,
+  AllowanceResult,
+  ConversationReadResult,
   SettingsReadResult,
   SharedTaskRead,
   TaskBoardResult,
@@ -50,7 +55,7 @@ import type {
   TaskLedgerResult,
 } from '../../../core-wire/src/index.ts';
 import type { TaskExecution } from './execution.ts';
-import type { Receipt } from '../../../core-runtime/src/index.ts';
+import type { ReadSpan, Receipt, TriggerReading } from '../../../core-runtime/src/index.ts';
 
 // The result types live in `views.ts`, which the clients import; the server's
 // own modules keep importing them from here.
@@ -100,6 +105,8 @@ export interface ReadOperands {
   readonly 'team.list': NoOperands;
   /** Approved, held and unpicked. A projection; reading it claims nothing. */
   readonly 'task.queue': NoOperands;
+  /** The pending gates the caller may decide, filtered by their `decide` in the query. */
+  readonly 'gate.pending': NoOperands;
   /**
    * The task's runs and their progress events after `cursor`, a position the
    * caller already holds (0 for the start). See `reads/execution.ts`.
@@ -139,6 +146,17 @@ export interface ReadOperands {
   readonly 'session.capabilities': NoOperands;
   /** What an observed effect came from, asked on its attempt (T2c2). */
   readonly 'task.receipt': { readonly attemptId: string };
+  /**
+   * A conversation at its address (AW-03): the owner's, or a holder of the
+   * read-any grant's. After the body purges it answers the wrap-up.
+   */
+  readonly 'conversation.read': { readonly conversationId: unknown };
+  /** The caller's own conversations, for the assistant panel's tab row (MP-7-11). */
+  readonly 'conversation.list': NoOperands;
+  /** The drawer's planning allowance, and the caller's own conversation's spend (AW-04). */
+  readonly 'conversation.allowance': { readonly conversationId: unknown };
+  /** The runs that read one file, by its digest: pre-review (AW-04). */
+  readonly 'definition.attribution': { readonly digest: string };
   /** Who is signed in: the caller's own name (C23). It takes no grant either. */
   readonly 'session.person': NoOperands;
   /** The caller's own saved preferences (MP-2-11a). */
@@ -159,6 +177,10 @@ export interface ReadOperands {
   readonly 'inbox.count': NoOperands;
   /** The business's items no path reaches, for `operations:read` (INB-1e). */
   readonly 'inbox.unattended': NoOperands;
+  /** The task whose runs' trace is read (AW-13 readers). */
+  readonly 'trace.read': { readonly recordId: string };
+  /** The run whose harness test result is read (AW-12). */
+  readonly 'harness.read': { readonly runId: string };
 }
 
 /** A read about the business as a whole, which takes nothing. */
@@ -185,17 +207,31 @@ export type ReadResult =
   | TaskTodosResult
   | TeamListResult
   | QueueResult
+  | AwaitingReviewResult
   | PresetPlanResult
   | SettingsReadResult
   | { readonly ok: true; readonly execution: TaskExecution }
   | { readonly ok: true; readonly receipt: Receipt }
   | CapabilitiesResult
+  | ConversationReadResult
+  | ConversationListResult
   | SessionPersonResult
   | { readonly ok: true; readonly preferences: Readonly<Record<string, unknown>> }
   | AccessReadResult
   | ClientListResult
   | OperationsReadResult
   | BreachNoticesResult
+  | AllowanceResult
+  | AttributionResult
   | InboxReadResult
   | InboxCountResult
-  | { readonly ok: true; readonly unattended: readonly UnattendedView[] };
+  | { readonly ok: true; readonly unattended: readonly UnattendedView[] }
+  | {
+      readonly ok: true;
+      readonly trace: {
+        readonly taskId: string;
+        readonly spans: readonly ReadSpan[];
+        readonly complete: boolean;
+      };
+    }
+  | { readonly ok: true; readonly harness: TriggerReading };

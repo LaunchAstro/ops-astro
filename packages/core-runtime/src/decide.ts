@@ -35,6 +35,7 @@ import type {
   Delegation,
 } from '../../core-records/src/index.ts';
 import { lockedInstant } from './clock.ts';
+import { launchDecisionRefusal } from './launch-gate.ts';
 import { capCommitted, capVerdict, envelopeVerdict, openEnvelopeOf } from './budget.ts';
 import { roundsUsed } from './proposal-writer.ts';
 import { only } from './only.ts';
@@ -58,6 +59,7 @@ import {
   type SigningKey,
 } from './signing.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
+import { reviewedByPerson } from './review-round.ts';
 import {
   assignedTo,
   escalateGate,
@@ -221,6 +223,11 @@ export async function decide(tx: TenantQuery, presented: DecideRequest): Promise
   const rechecked = await recheckDecision(tx, request, found.value, locked);
   if (!rechecked.ok) return rechecked;
   const { gate, version, pack } = rechecked.value;
+  // AW-08: the launch of a reviewed output waits on a required client sign-off.
+  if (request.decision === 'approve') {
+    const held = await launchDecisionRefusal(tx, gate.version_id);
+    if (held !== null) return held;
+  }
   if (request.decision === 'escalate') return await escalateGate(tx, request, gate);
   const written = await writeDecision(
     tx,
@@ -441,6 +448,9 @@ async function recheckDecision(
   if (await assignedTo(tx, found.task_id, request.decidedByPersonId)) {
     return { ok: false, refusal: fourEyesRequired() };
   }
+  // AW-09: every decision is a person's, as themselves (`review-round.ts`).
+  const reviewer = await reviewedByPerson(tx, request);
+  if (!reviewer.ok) return reviewer;
   const evidence = await recheckEvidence(tx, gate.value);
   if (!evidence.ok) return evidence;
   const work = await recheckWork(tx, request, found, gate.value, evidence.value.version, locked);

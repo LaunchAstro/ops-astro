@@ -78,7 +78,14 @@ describe('T3 shipped graph: the sweeper side', () => {
       /set\s+state\s*=\s*'liability_unknown'/u.test(readFileSync(join(ROOT, file), 'utf8')),
     );
     expect(writers.toSorted()).toStrictEqual([
+      // AW-01: the broker writes a model call's own ledger state (O6, O9) when
+      // the provider may have acted, never an attempt's; it reads no setting either.
+      'packages/core-custody/src/broker-settle.ts',
+      'packages/core-custody/src/broker.ts',
       'packages/core-runtime/src/budget.ts',
+      // AW-10: the sweep holds the started call of a worker it found lost, the
+      // call's own ledger state under the sweep's locks; it reads no setting.
+      'packages/core-runtime/src/recovery/broker-effect.ts',
       'packages/core-runtime/src/recovery/classifier.ts',
     ]);
     for (const file of writers) {

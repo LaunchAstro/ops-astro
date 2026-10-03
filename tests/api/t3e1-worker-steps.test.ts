@@ -25,6 +25,7 @@ import { passDeployment, registerEffectLookup } from '../../apps/api/recovery-en
 import type { Transport } from '../../apps/cli/client.ts';
 import { createWorker, EFFECT_BODY } from '../../apps/worker/worker.ts';
 import { ProviderFault, SYNTHETIC_USAGE, type Provider } from '../../apps/worker/usage.ts';
+import { launchThrough } from '../support/launch-worker.ts';
 import {
   authorised,
   BUSINESS_KEY,
@@ -37,6 +38,9 @@ import {
 
 const serverUrl = databaseUrlFromEnvironment();
 const ROOT = resolve(import.meta.dirname, '../..');
+/** The launch's holds only (AW-08): the plan's own was handed back for review. */
+const LAUNCHED = `join public.reviewed_outputs ro
+  on ro.business_id = res.business_id and ro.version_id = res.version_id`;
 type Name = Parameters<typeof pathOf>[0];
 
 describe.skipIf(serverUrl === undefined)(
@@ -114,6 +118,11 @@ describe.skipIf(serverUrl === undefined)(
         note: 'approve this version',
       });
       expect(decided.status, JSON.stringify(decided.body)).toBe(200);
+      // AW-08: the worker hands the plan's work back; the person's accept is the launch.
+      await launchThrough(proposer, taskId, async (body) => {
+        const launch = await asPerson('task.decide', body);
+        expect(launch.status, JSON.stringify(launch.body)).toBe(200);
+      });
       return { taskId, credential };
     }
 
@@ -150,6 +159,7 @@ describe.skipIf(serverUrl === undefined)(
          from public.attempts att
          join public.reservations res on res.business_id = att.business_id and res.id = att.reservation_id
          join public.planned_runs run on run.business_id = res.business_id and run.id = res.run_id
+         ${LAUNCHED}
         where att.business_id = $1 and run.task_id = $2 order by att.created_at, att.id`,
         [fixture.business, taskId],
       );
@@ -161,6 +171,9 @@ describe.skipIf(serverUrl === undefined)(
           await fixture.db.admin.execute<{ id: string }>(
             `select att.id from public.attempts att
              join public.planned_runs run on run.business_id = att.business_id and run.id = att.run_id
+             join public.reservations res
+               on res.business_id = att.business_id and res.id = att.reservation_id
+             ${LAUNCHED}
             where att.business_id = $1 and run.task_id = $2 order by att.created_at, att.id limit 1`,
             [fixture.business, taskId],
           )
@@ -430,6 +443,9 @@ describe.skipIf(serverUrl === undefined)(
          from public.attempts att
          join public.leases l on l.business_id = att.business_id and l.id = att.lease_id
          join public.planned_runs run on run.business_id = att.business_id and run.id = att.run_id
+         join public.reservations res
+           on res.business_id = att.business_id and res.id = att.reservation_id
+         ${LAUNCHED}
         where att.business_id = $1 and run.task_id = $2`,
         [fixture.business, taskId],
       );

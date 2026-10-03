@@ -11,8 +11,8 @@
 
 import type { ReactElement, ReactNode } from 'react';
 import { Gallery } from '@launchastro/ui';
+import { clientNamedIn } from './client-address.ts';
 import {
-  clientNamedIn,
   type AuthenticatedRouteId,
   type OpenRouteId,
   type ParamsOf,
@@ -20,6 +20,7 @@ import {
 } from './routes.ts';
 import type { PanelId } from './panels.ts';
 import type { OperationsClient } from './operations/client.ts';
+import { ConversationScreen } from './screens/Conversation.tsx';
 import { AccessScreen } from './screens/Access.tsx';
 import { ClientsScreen } from './screens/Clients.tsx';
 import { InboxScreen } from './screens/Inbox.tsx';
@@ -85,6 +86,13 @@ export const SCREENS: {
         inPanel={context.inPanel === true}
       />
     </>
+  ),
+  'agency:agent-conversation': (context) => (
+    <ConversationScreen
+      client={context.client}
+      grantKey={context.grantKey}
+      conversationId={context.params.conversation}
+    />
   ),
   'agency:gallery': () => <Gallery />,
   // Settings ▸ General, then the person's own sessions (C58), which post to

@@ -13,10 +13,11 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { COMMAND_SURFACE, pathOf, type CommandName } from '../../packages/core-wire/src/surface.ts';
 import { shareRecord } from '../../packages/core-records/src/authority/shares.ts';
-import { enrol } from '../commands/fixture.ts';
 import {
+  adminHooks,
   CLIENT_NOTE,
   DESCRIPTION,
+  revocationBodies,
   seedRecords,
   SIBLING_TITLE,
   TEAM_NOTE,
@@ -201,10 +202,7 @@ describe.skipIf(serverUrl === undefined)('R4: the external party over HTTP', () 
   // time over HTTP, which takes about 5 s alone and ran past the 5 s default
   // while the machine was busy. The assertions are unchanged.
   it('item 3: every write is refused on authority, nothing moves, and every attempt is audited', async () => {
-    const REVOCATION_BODIES: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
-      'grant.revoke': { grantId: randomUUID() },
-      'delegation.revoke': { delegationId: randomUUID() },
-    };
+    const REVOCATION_BODIES = revocationBodies();
     // The matrix's own valid bodies, so a refusal is authority's and not the
     // body check's. Each is sent as it is (against a sibling the admin made, or
     // the business) and again aimed at the shared record itself.
@@ -220,8 +218,7 @@ describe.skipIf(serverUrl === undefined)('R4: the external party over HTTP', () 
         });
         return { id: String(made.body['recordId']), revision: Number(made.body['revision']) };
       },
-      freshMember: async () =>
-        (await enrol(world.db.app, world.alpha, `ended-${randomUUID().slice(0, 8)}`)).personId,
+      ...adminHooks(world),
     });
     const revision = await revisionOf(shared);
     // Every write but the party's own sign-out (C23), which is their own

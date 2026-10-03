@@ -202,8 +202,8 @@ function exemptAndMergedTickets(): void {
     ]);
     const workflow = readFileSync('.github/workflows/ci.yml', 'utf8');
     expect(workflow).toContain('node scripts/command-parity.mjs --check');
-    const required = readFileSync('.github/required-checks.json', 'utf8');
-    expect(required).toContain('"command parity"');
+    // command parity runs on every pull request. It is not a required check: the live ruleset's
+    // 13 required checks leave it out, so the recorded list no longer claims it.
   });
 }
 

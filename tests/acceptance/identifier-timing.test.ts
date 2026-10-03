@@ -22,9 +22,11 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { COMMAND_SURFACE } from '../../packages/core-wire/src/surface.ts';
-import { PROPOSAL } from './role-case-bodies.ts';
+import { grantTo, type Member } from '../commands/fixture.ts';
+import { ACCEPTED_PLAN, PROPOSAL, childProbe } from './role-case-bodies.ts';
 import { targetKeyOf } from './role-case-harness.ts';
 import { TARGET_FREE as TARGET_FREE_BODIES } from './cd-alternatives.ts';
+import { foreignConversation } from './foreign-conversation.ts';
 import { serverUrl, type AgentIdentity, type Caller } from './world.ts';
 import { createIdentWorld, type IdentWorld, type RawAnswer } from './ident-audit-cases.ts';
 
@@ -41,6 +43,8 @@ interface Cell {
   readonly code: string;
   readonly foreign: () => Body;
   readonly fabricated: () => Body;
+  /** Where the operand is the credential itself (AW-11's handback): one per arm. */
+  readonly credentials?: { readonly foreign: string; readonly fabricated: () => string };
 }
 
 /** Pairs sent and thrown away first: connection pools, plans and JIT settle. */
@@ -76,6 +80,8 @@ const INJECTED_BOUNDS = 3;
 const TARGET_FREE: ReadonlySet<CommandName> = new Set(TARGET_FREE_BODIES.map(([op]) => op));
 
 const NOBODY = 'text nobody should find in an audit row';
+/** The ask an AW-05 answer names: the run is refused before any ask is read. */
+const ASK_ID = randomUUID();
 /** A tag no business has: the task is what the tag cells compare. */
 const TAG = randomUUID();
 
@@ -143,6 +149,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
 
   beforeAll(async () => {
     w = await createIdentWorld('ident_timing');
+    // MP-6-2's revision asks run:write, which the cast's admin holds on no
+    // run; on the whole business, so a foreign task is judged by the handler.
+    await w.h.world.db.app.withBusiness(w.h.world.alpha, async (tx) => {
+      await grantTo(tx, w.h.world.ada as Member, 'write', undefined, false, 'run');
+    });
   }, 180_000);
   afterAll(async () => {
     await w?.close();
@@ -155,11 +166,24 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
   }
 
   /** One timed request, its code checked against the cell's before it counts. */
-  async function timed(cell: Cell, shape: Body, delay: number): Promise<number> {
+  async function timed(
+    cell: Cell,
+    shape: Body,
+    delay: number,
+    arm: 'foreign' | 'fabricated',
+  ): Promise<number> {
     const body = { operationId: randomUUID(), ...shape };
+    const presented =
+      cell.credentials === undefined || cell.by.kind === 'person'
+        ? cell.by
+        : {
+            ...cell.by,
+            credential:
+              arm === 'foreign' ? cell.credentials.foreign : cell.credentials.fabricated(),
+          };
     const start = performance.now();
     if (delay > 0) await pause(delay);
-    const answer = await send(cell.by, cell.op, body);
+    const answer = await send(presented, cell.op, body);
     const took = performance.now() - start;
     expect(answer.code, `${cell.op} ${cell.operand}: ${answer.text}`).toBe(cell.code);
     return took;
@@ -176,11 +200,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     for (let pair = 0; pair < WARM_UP_PAIRS + PAIRS; pair += 1) {
       const keep = pair >= WARM_UP_PAIRS;
       const runForeign = async (): Promise<void> => {
-        const took = await timed(cell, cell.foreign(), 0);
+        const took = await timed(cell, cell.foreign(), 0, 'foreign');
         if (keep) foreign.push(took);
       };
       const runFabricated = async (): Promise<void> => {
-        const took = await timed(cell, cell.fabricated(), fabricatedDelay);
+        const took = await timed(cell, cell.fabricated(), fabricatedDelay, 'fabricated');
         if (keep) fabricated.push(took);
       };
       if (pair % 2 === 0) {
@@ -262,7 +286,35 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       foreign: () => ({ gateId: f.proposal.gateId, versionId: f.proposal.versionId, ...decision }),
       fabricated: () => ({ gateId: randomUUID(), versionId: randomUUID(), ...decision }),
     });
+    const accept = { ...ACCEPTED_PLAN, note: NOBODY };
+    out.push({
+      op: 'task.accept_plan',
+      operand: 'gateId',
+      by: ada,
+      code: 'NOT_FOUND',
+      foreign: () => ({ gateId: f.proposal.gateId, versionId: f.proposal.versionId, ...accept }),
+      fabricated: () => ({ gateId: randomUUID(), versionId: randomUUID(), ...accept }),
+    });
     byAda('task.board', 'board', f.task.id, (board) => ({ board }));
+    const conversation = await foreignConversation(w.h.world.db.admin, w.h.world.bravo);
+    byAda('conversation.read', 'conversationId', conversation, (conversationId) => ({
+      conversationId,
+    }));
+    byAda('conversation.allowance', 'conversationId', conversation, (conversationId) => ({
+      conversationId,
+    }));
+    byAda('conversation.message', 'conversationId', conversation, (conversationId) => ({
+      conversationId,
+      body: NOBODY,
+    }));
+    byAda('conversation.rename', 'conversationId', conversation, (conversationId) => ({
+      conversationId,
+      title: NOBODY,
+    }));
+    byAda('conversation.set_scope', 'conversationId', conversation, (conversationId) => ({
+      conversationId,
+      page: null,
+    }));
     byAda('task.restore', 'batchId', f.batchId, (batchId) => ({ batchId }));
     // MP-4-6: a task names what is timed, an entry what is noted or deleted.
     byAda('time.start', 'taskId', f.task.id, (taskId) => ({ taskId }));
@@ -326,6 +378,33 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       amountMinor: 0,
       reason: 'identifier timing',
     }));
+    // AW-05's answers name the task and the run on it: bravo's run, the one
+    // its pickup claimed, beside alpha's own task.
+    const [bravoRun] = await w.h.world.db.admin.execute<{ readonly run_id: string }>(
+      'select run_id from public.reservations where id = $1',
+      [f.picked.reservationId],
+    );
+    byAda('run.top_up', 'runId', String(bravoRun?.run_id), (runId) => ({
+      recordId: own.task.id,
+      runId,
+      askId: ASK_ID,
+      amountMinor: 100,
+      currency: 'AUD',
+    }));
+    byAda('run.end_at_budget_stop', 'runId', String(bravoRun?.run_id), (runId) => ({
+      recordId: own.task.id,
+      runId,
+      askId: ASK_ID,
+    }));
+    byAda('run.revise_state', 'runId', String(bravoRun?.run_id), (runId) => ({
+      recordId: own.task.id,
+      runId,
+      expectedVersion: 0,
+      knowledge: [NOBODY],
+      unknowns: [],
+    }));
+    // AW-12: the harness result on bravo's run is the same NOT_FOUND as on a made-up one.
+    byAda('harness.read', 'runId', String(bravoRun?.run_id), (runId) => ({ runId }));
     // Bravo's proposal raised its holders an inbox item (INB-1b); stamping it
     // from alpha is the same NOT_FOUND as stamping an item that never existed.
     const [bravoItem] = await w.h.world.db.admin.execute<{ id: string }>(
@@ -352,8 +431,27 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
       ['task.heartbeat', {}],
       ['task.dispatch', {}],
       ['task.observe', { attemptId: randomUUID() }],
+      ['task.check', { name: NOBODY, outcome: 'passed' }],
       ['task.handback', { outcome: 'completed', report: { wrote: NOBODY } }],
+      [
+        'model.call',
+        {
+          operation: 'model.replay_compose',
+          fields: [{ name: 'tone', source: 'business_internal', value: NOBODY }],
+        },
+      ],
+      ['run.delegate_child', childProbe(w.h.world.agent.actorId)],
     ];
+    // The helper's handback: another business's real credential, and a made-up one.
+    out.push({
+      op: 'run.child_handback',
+      operand: 'credential',
+      by: { kind: 'agent', identity: w.h.world.agent },
+      code: 'DELEGATION_NOT_LIVE',
+      foreign: () => ({ outcome: 'completed' }),
+      fabricated: () => ({ outcome: 'completed' }),
+      credentials: { foreign: f.picked.credential, fabricated: () => randomUUID() },
+    });
     for (const [op, extra] of byLease) {
       out.push({
         op,
@@ -367,15 +465,15 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 56 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 71 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(56);
-    expect(names).toHaveLength(56);
+    expect(new Set(names).size, 'distinct operations').toBe(71);
+    expect(names).toHaveLength(71);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();
-    expect(names.toSorted(), 'every declaration outside the nine target-free ones').toStrictEqual(
+    expect(names.toSorted(), 'every declaration outside the twelve target-free ones').toStrictEqual(
       bearing,
     );
     const outside: string[] = [];

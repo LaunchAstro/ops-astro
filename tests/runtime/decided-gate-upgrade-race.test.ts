@@ -71,7 +71,13 @@ if (serverUrl === undefined) {
 }
 
 const onDisk = readMigrations('migrations');
-const THROUGH_0029 = onDisk.filter((m) => m.version.slice(0, 4) <= '0029');
+// And AW-06's 0105 plan step key: the runtime that seeds below proposes with
+// it, and AW-08's 0108 reviewed outputs, which that runtime's revision reads
+// (AW-09). Neither reads anything the migrations under test add, so they are
+// applied with the seed and the runner applies whatever is pending after them.
+const THROUGH_0029 = onDisk.filter(
+  (m) => m.version.slice(0, 4) <= '0029' || ['0105', '0108'].includes(m.version.slice(0, 4)),
+);
 const UPGRADE = onDisk.find((m) => m.version.startsWith('0030'));
 
 const VERSION_FIXED = { code: '23514', constraint_name: 'gates_version_fixed_once_decided' };
@@ -351,9 +357,11 @@ async function asTheRunnerApplies(admin: AdminConnection, migration: Migration):
   });
 }
 
+/** The newest migration applied, less the two seeded ahead of their turn (0105, 0108). */
 async function lastApplied(db: EmptyDatabase): Promise<string | undefined> {
   const [row] = await db.admin.execute<{ readonly last: string }>(
-    `select max(version) as last from ops.schema_migrations`,
+    `select max(version) as last from ops.schema_migrations
+      where version not like '0105%' and version not like '0108%'`,
   );
   return row?.last.slice(0, 4);
 }

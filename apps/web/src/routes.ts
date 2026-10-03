@@ -19,10 +19,8 @@
 // report sixteen duplicates that are not duplicates or silently collapse the
 // agency and portal pairs into one entry.
 //
-// The working slice registers the four addresses it serves. `/agent/` is not
-// one: that surface draws records no part of this build stores, and a route
-// that resolves to nothing is a worse answer than an address that does not
-// resolve.
+// Every address the working slice serves is registered here, a conversation's
+// `/agent/:conversation` (C36) included.
 
 /** `agency` is the Hub; `clients` and `portal` are one client's two faces. */
 export type Namespace = 'agency' | 'clients' | 'portal';
@@ -175,6 +173,16 @@ export const ROUTES = {
     surface: 'none',
     authenticated: true,
   },
+  // C36: a conversation's own address (CS-7.38), reached from the drawer's
+  // tab; the manifest has no page for it, so no rail entry. After its body
+  // purges it draws the wrap-up.
+  'agency:agent-conversation': {
+    namespace: 'agency',
+    path: '/agent/:conversation',
+    title: 'Agent conversation',
+    surface: 'none',
+    authenticated: true,
+  },
   // The Clients panel (SL06; the target of MP-7-3's client group head, CS-7.29):
   // the client book as a list, drawn at the manifest's own Clients address in
   // full-page form until MP-8-5's CRM board takes the address, as `/inbox/` is
@@ -283,16 +291,6 @@ export function pathTo<Id extends RouteId>(
     path = path.replace(`:${name}`, encodeURIComponent(value));
   }
   return path;
-}
-
-/** The Clients panel at one client (CS-7.29): the book's address, the client in its query. */
-export const clientsAt = (clientId: string): string =>
-  `${pathTo('agency:clients')}?client=${encodeURIComponent(clientId)}`;
-
-/** The client an address names in its query, if any. */
-export function clientNamedIn(address: string | undefined): string | undefined {
-  const query = address?.split('#')[0]?.split('?')[1];
-  return query === undefined ? undefined : (new URLSearchParams(query).get('client') ?? undefined);
 }
 
 const segments = (path: string): readonly string[] => path.split('/').filter((part) => part !== '');

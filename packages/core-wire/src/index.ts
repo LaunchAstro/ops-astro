@@ -29,6 +29,8 @@ export {
   type OperandKind,
   type OperandSpec,
 } from './surface.ts';
+// A currency's minor digits, the ISO 4217 table the server and the browser share.
+export { minorDigits } from './currency.ts';
 // What a task's page link may hold, for the server's check and the web's door.
 export { PAGE_LINK_LIMIT, isInProductLink } from './page-link.ts';
 export { TASK_STAGES, type TaskStage } from './task-stages.ts';
@@ -55,6 +57,18 @@ export type {
   AccessPreview,
   AccessReadResult,
   AttemptView,
+  AwaitingReviewResult,
+  ConversationMessageView,
+  ConversationPointerView,
+  ConversationListResult,
+  ConversationReadResult,
+  ConversationTabView,
+  WrapUpItemView,
+  WrapUpView,
+  AwaitingReviewView,
+  CheckView,
+  RunPinView,
+  RunReadView,
   BoardCrumb,
   BreachNoticeDraft,
   BreachNoticesResult,
@@ -79,6 +93,8 @@ export type {
   DecisionLink,
   EvidenceView,
   ExecutionEvent,
+  ExecutionGraph,
+  ExecutionNode,
   ExecutionRun,
   GateView,
   HistoryEntry,
@@ -104,11 +120,17 @@ export type {
   PresetPlanResult,
   ProposalVersionView,
   ProposalView,
+  RunScopeView,
+  CoveringGrantView,
   QueuedWork,
   QueueResult,
   RankView,
   ReceiptResult,
   ReservationView,
+  EnvelopeView,
+  BudgetStopView,
+  RunStateView,
+  TaskLedgerView,
   SearchHit,
   SettingsReadResult,
   SessionCapabilities,
@@ -134,7 +156,17 @@ export type {
   TaskTimeView,
   TimeEntryView,
 } from './views.ts';
+// AW-04's attribution and allowance answers, beside the other agent views.
+export type {
+  AllowanceResult,
+  AttributionResult,
+  PlanningAllowanceView,
+  PreReviewAttribution,
+  PreReviewRun,
+} from './views-agent.ts';
 // the command catalogue and its parity check (API-1)
 export * from './catalogue.ts';
 // each command's data effects and its class, read by the first-client gate (S0-5)
 export * from './data-effects.ts';
+// the operations whose value is visual, and the command line's hand-off to them (AW-09)
+export { handoffAddress, handoffOf, VISUAL_HANDOFFS, type VisualHandoff } from './handoff.ts';

@@ -14,8 +14,12 @@ const root = fileURLToPath(new URL('../..', import.meta.url));
 // made-up reads and prints one line per probe, width and theme; a red line
 // names the property and both values. One run per screen, so each fits its own
 // time limit beside the rest of the suite and a slow screen names itself.
-it.each(LOOK_SCREENS.map((screen) => screen.id))(
-  'the %s screen matches the pinned mockup on its look probes',
+// A screen that holds a ticket's visual match carries that ticket's test name.
+const NAMED: Readonly<Record<string, string>> = {
+  frame: "; C4 visual match: the freshness marker held to the mockup's #fresh marker",
+};
+it.each(LOOK_SCREENS.map((screen) => [screen.id, NAMED[screen.id] ?? '']))(
+  'the %s screen matches the pinned mockup on its look probes%s',
   (id) => {
     const out = mkdtempSync(join(tmpdir(), `look-${id}-`));
     try {

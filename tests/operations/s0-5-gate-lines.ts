@@ -6,6 +6,7 @@
 
 import {
   gateRecordBody,
+  legalEvidence,
   OPT_IN_REGISTER,
   OWNER_LINES,
 } from '../acceptance/role-case-gate-bodies.ts';
@@ -179,10 +180,11 @@ const PROCEDURE_TRIES: readonly (readonly [string, object])[] = [
  */
 export async function procedureHeldOpen(w: GateWorld): Promise<string[]> {
   const wrong: string[] = [];
+  const links = await legalEvidence(w.harness.world.db.admin, w.harness.world.alpha);
   for (const item of (await readiness(w)).open_items) {
     if (item === PROCEDURE) continue;
     // oxlint-disable-next-line no-await-in-loop
-    const answer = await send(w, RECORD, gateRecordBody(item));
+    const answer = await send(w, RECORD, gateRecordBody(item, links));
     if (answer.status !== 200) wrong.push(`${item}: ${String(answer.status)} ${answer.code}`);
   }
   const open = JSON.stringify((await readiness(w)).open_items);

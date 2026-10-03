@@ -25,9 +25,9 @@
 // address with no parameters, and the tab has somewhere to arrive. The route
 // must also need a session: an authenticated route has a screen that reads the
 // business's records, and a public one such as sign-in reads none, so a
-// registration pointing there draws no tab. The draft's
-// `ai` panel reads conversation records this build does not store, so it has
-// an id and a rank and no registration; the rail grows as the stores land.
+// registration pointing there draws no tab. The Agent drawer (MP-7-11), `ai`,
+// has an id and a rank and no registration: it has no address of its own, so
+// the dock draws it itself (`dock/agent-dock.ts`), as it draws `task`.
 //
 // **A count chip is derived as the tab is built**, from the count its store
 // reports, so it paints at load rather than after the first open (D-18), and

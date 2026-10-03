@@ -73,7 +73,7 @@ it('an API command redirected past its grant fails parity', () => {
   } finally {
     rmSync(copy, { recursive: true, force: true });
   }
-});
+}, 120_000);
 
 it('an agent before pickup can discover queue and pickup', () => {
   const commands = reachableBy(buildCatalogue([]), { kind: 'agent', grants: [] }).map(

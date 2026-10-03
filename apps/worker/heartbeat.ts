@@ -61,7 +61,7 @@ export function offEgress(
   return undefined;
 }
 
-const EVERY = 'OPS_HEARTBEAT_EVERY_MS';
+export const EVERY = 'OPS_HEARTBEAT_EVERY_MS';
 const DAY = 86_400_000;
 
 /**

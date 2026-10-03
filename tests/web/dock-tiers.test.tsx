@@ -176,7 +176,8 @@ describe('MP-3-3 phone strip', () => {
     const page = await at(390);
     expect((page.find('.dock') as HTMLElement | null)?.dataset['mode']).toBe('phone');
     expect((page.find('.dock') as HTMLElement | null)?.dataset['open']).toBe('0');
-    expect(page.all('.dock__rail .dock__tab')).toHaveLength(2);
+    // The registry's two, and the Agent drawer's tab (MP-7-11), which has no registration.
+    expect(page.all('.dock__rail .dock__tab')).toHaveLength(3);
     const phone = media('(width <= 900px)');
     expect(phone).toMatch(/\.dock \{[^}]*bottom: 0/u);
     expect(phone).toMatch(/\.dock__rail \{[^}]*position: static[^}]*transform: none/u);

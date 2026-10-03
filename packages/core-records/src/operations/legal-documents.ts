@@ -43,6 +43,28 @@ export const PUBLIC_LEGAL_DOCUMENTS: readonly LegalDocument[] = [
   'data-handling',
 ];
 
+/**
+ * One page, for the breach runbook (C81): an A4 page at 10-point type with
+ * 2 cm margins holds about 60 lines of 100 characters, some 6,000 characters
+ * or 1,000 words.
+ */
+export const ONE_PAGE_WORDS = 1000;
+
+export const wordsIn = (text: string): number => text.split(/\s+/u).filter(Boolean).length;
+
+/**
+ * Where a published version is read, pinned to its version and digest: the
+ * public page for the three public documents, and the operations view, where
+ * the privacy incidents link it, for the breach runbook. The first-client gate
+ * takes it as items 3 to 6's evidence (S0-5).
+ */
+export function legalVersionPath(businessKey: string, published: PublishedVersion): string {
+  const pin = `digest=${published.digest}`;
+  return published.document === 'breach-runbook'
+    ? `/settings/operations/?runbook=${published.version}&${pin}`
+    : `/legal/${businessKey}/${published.document}/?version=${published.version}&${pin}`;
+}
+
 export interface DraftedVersion {
   readonly id: string;
   readonly digest: string;

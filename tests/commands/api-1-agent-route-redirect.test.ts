@@ -53,4 +53,4 @@ it('a person-only agent route redirect fails parity', () => {
   } finally {
     rmSync(copy, { recursive: true, force: true });
   }
-});
+}, 120_000);

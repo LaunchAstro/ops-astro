@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: AGPL-3.0-only
    ============================================================================
-   Layer 3 of 4: the shell (S6) and the Agent panel (S5).
+   Layer 3 of 4: the shell (S6). The Agent panel (S5) is `3-agent-panel.css`,
+   loaded straight after this sheet.
 
    Ported from the pinned mockup's `assets/app.css` at 7066bad. Geometry is
    reproduced exactly; the class names are the mockup's so a visual comparison
@@ -25,9 +26,12 @@
   min-height: 100vh;
 }
 /* The third track is the dock, and the shell is the only thing that writes
-   --dock-w, so there is no second opinion about how wide the edge is. */
+   --dock-w, so there is no second opinion about how wide the edge is. At rest
+   the track is empty: the dock's rail floats over the page's right gutter, as
+   the mockup's does, and the content runs to the window's edge. */
 @media not all and (max-width: 900px) {
   .shell[data-face='agency'] {
+    --dock-w: 0px;
     grid-template-columns: var(--rail-w) minmax(0, 1fr) var(--dock-w);
   }
 }
@@ -175,7 +179,6 @@
     z-index: 60;
     width: min(300px, 84vw);
     height: 100dvh;
-    background: var(--bg);
     transform: translateX(-100%);
     visibility: hidden;
     transition:
@@ -396,7 +399,9 @@
   display: flex;
   align-items: center;
   gap: var(--s-4);
-  min-height: 45px;
+  /* A 32px row (search, the face switch) inside its padding, as the mockup's
+     44.8: its controls centre on the same half pixel as the mockup's. */
+  min-height: calc(32px + 0.8rem);
   box-sizing: border-box;
   padding: 0.4rem var(--s-4);
   background: var(--app-chrome);
@@ -741,6 +746,7 @@
   min-height: 2.9rem;
   padding: var(--s-3) var(--s-6);
   border-bottom: 1px solid var(--border);
+  background: var(--bg);
 }
 .topbar__title {
   display: flex;
@@ -766,6 +772,13 @@
   flex: 1;
   padding: var(--s-6);
 }
+/* Above 900 the agency face's right gutter clears the dock's rail, which
+   floats over it: 16px past the rail's 40 (the mockup's calc). */
+@media not all and (max-width: 900px) {
+  .shell[data-face='agency'] :is(.topbar, .content) {
+    padding-right: calc(var(--s-4) + 40px);
+  }
+}
 @media (width <= 900px) {
   .topbar {
     justify-content: flex-start;
@@ -776,141 +789,6 @@
   .content {
     padding: var(--s-4);
   }
-}
-
-/* -- The Agent panel (S5) ------------------------------------------------
-   Docked, it is a grid TRACK beside the rail and the content; below 1280 it is
-   fixed and out of flow. Same parent in both forms, which is why it is a child
-   of the shell rather than of the document body. */
-.aipanel {
-  position: fixed;
-  inset: 0 0 0 auto;
-  z-index: 70;
-  display: flex;
-  flex-direction: column;
-  width: min(400px, 92vw);
-  height: 100dvh;
-  border-left: 1px solid var(--border);
-  background: var(--rail-bg);
-  box-shadow: var(--shadow-overlay);
-}
-.aipanel[hidden] {
-  display: none;
-}
-@media not all and (max-width: 1439px) {
-  .shell[data-dock='seated'] .aipanel {
-    position: sticky;
-    inset: 0 auto auto auto;
-    width: var(--aip-dock);
-    height: 100vh;
-    box-shadow: none;
-  }
-}
-.aip__head {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--s-3);
-  padding: var(--s-4) var(--s-5);
-  border-bottom: 1px solid var(--border);
-}
-.aip__id {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-.aip__title {
-  font: var(--type-subheading);
-  letter-spacing: var(--type-subheading-tracking);
-  text-transform: var(--type-subheading-case);
-}
-.aip__hmodel {
-  margin-left: auto;
-  min-width: 0;
-}
-.aip__acts {
-  display: flex;
-  align-items: center;
-  align-self: center;
-  gap: 0.15rem;
-}
-.aip__actdiv {
-  flex: none;
-  width: 1px;
-  align-self: stretch;
-  margin: 0.15rem 0.25rem;
-  background: var(--border);
-}
-.aip__scroll {
-  flex: 1;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: var(--s-3);
-  padding: var(--s-4) var(--s-5);
-}
-.aip__msg {
-  max-width: 92%;
-  padding: 0.6rem 0.8rem;
-  font: var(--type-body);
-  letter-spacing: var(--type-body-tracking);
-  text-transform: var(--type-body-case);
-}
-.aip__msg--ai {
-  align-self: flex-start;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-}
-.aip__msg--user {
-  align-self: flex-end;
-  background: var(--ink);
-  color: var(--paper);
-}
-.aip__msg--note {
-  background: transparent;
-  border: 1px dashed var(--border);
-  font: var(--type-caption);
-  letter-spacing: var(--type-caption-tracking);
-  text-transform: var(--type-caption-case);
-  color: var(--text-muted);
-}
-.aip__chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  padding: 0 var(--s-5) var(--s-3);
-}
-.aip__chip {
-  padding: 0.3em 0.75em;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: var(--surface-2);
-  color: var(--text-2);
-  font: var(--type-caption);
-  letter-spacing: var(--type-caption-tracking);
-  text-transform: var(--type-caption-case);
-  cursor: pointer;
-}
-.aip__inputrow {
-  display: flex;
-  align-items: stretch;
-  gap: var(--s-2);
-  padding: var(--s-3) var(--s-5) var(--s-4);
-  border-top: 1px solid var(--border);
-}
-.aip__input {
-  flex: 1;
-  min-width: 0;
-  padding: 0 0.6rem;
-  border: 1px solid var(--border);
-  background: var(--paper);
-  color: var(--text);
-  font: inherit;
-}
-.aip__tabs {
-  padding: var(--s-3) var(--s-5) 0;
-  border-bottom: 1px solid var(--border);
 }
 
 /* -- Search (C1): a modal palette over a scrim, one field, the hits the

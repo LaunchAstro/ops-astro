@@ -44,6 +44,7 @@ const LOGINS = [
   'ops_astro_lookup_login',
   'ops_astro_backup_login',
   'ops_astro_forwarder_login',
+  'ops_astro_upkeep_login',
 ];
 
 const serverUrl = databaseUrlFromEnvironment();
@@ -178,27 +179,29 @@ describeLive('S0-1 staging logins before the reset, run for real', () => {
   });
 });
 
+/** Each after-reset login's setting and its one group. */
+const AFTER_RESET = [
+  ['DATABASE_LOOKUP_URL', 'ops_astro_lookup'],
+  ['BACKUP_SOURCE_URL', 'ops_astro_backup'],
+  ['DATABASE_FORWARDER_URL', 'ops_astro_forwarder'],
+  ['DATABASE_UPKEEP_URL', 'ops_astro_upkeep'],
+] as const;
+
 describeLive('S0-1 staging logins after the reset, run for real', () => {
   it('after the reset: one login per group, each able only to set its role', async () => {
     await migrate(db!.admin, MIGRATIONS);
     // On the project the migrations run as its admin, which then holds ADMIN on each group.
-    for (const group of ['ops_astro_lookup', 'ops_astro_backup', 'ops_astro_forwarder']) {
+    for (const [, group] of AFTER_RESET) {
       // oxlint-disable-next-line no-await-in-loop -- one group at a time
       await db!.admin.execute(`grant ${group} to "${ADMIN}" with admin option`);
     }
     const folder = join(scratch, 'after');
     const { status, printed } = run('after-reset', folder);
     expect(status).toBe(0);
-    expect(readdirSync(folder).toSorted()).toEqual([
-      'BACKUP_SOURCE_URL',
-      'DATABASE_FORWARDER_URL',
-      'DATABASE_LOOKUP_URL',
-    ]);
-    for (const [setting, group] of [
-      ['DATABASE_LOOKUP_URL', 'ops_astro_lookup'],
-      ['BACKUP_SOURCE_URL', 'ops_astro_backup'],
-      ['DATABASE_FORWARDER_URL', 'ops_astro_forwarder'],
-    ] as const) {
+    expect(readdirSync(folder).toSorted()).toEqual(
+      AFTER_RESET.map(([setting]) => setting).toSorted(),
+    );
+    for (const [setting, group] of AFTER_RESET) {
       const address = readFileSync(join(folder, setting), 'utf8');
       expect(new URL(address).searchParams.get('sslmode')).toBe('require');
       expect(printed).not.toContain(new URL(address).password);

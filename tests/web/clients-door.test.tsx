@@ -10,7 +10,7 @@
 
 import { act } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { clientsAt } from '../../apps/web/src/routes.ts';
+import { clientsAt } from '../../apps/web/src/client-address.ts';
 import { ClientsScreen } from '../../apps/web/src/screens/Clients.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { mount, settle, type Mounted } from '../surfaces/mount.tsx';

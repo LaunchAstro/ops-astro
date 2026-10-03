@@ -32,6 +32,7 @@
 
 import type { Action } from '../../core-records/src/index.ts';
 import type { CommandName } from './command-names.ts';
+import { WRITE_OPERANDS, type OperandSpec } from './write-operands.ts';
 
 export type { CommandName } from './command-names.ts';
 
@@ -155,15 +156,7 @@ export interface CommandDeclaration {
   readonly rule?: string;
 }
 
-/**
- * The JSON kind of one operand: `id` and `text` are strings, `count` a finite
- * number, `flag` a boolean, `map` an object that is not an array, `any`
- * whatever the command checks by value itself. `?` admits absent, `|null`
- * admits null.
- */
-export type OperandKind = 'id' | 'text' | 'count' | 'flag' | 'map' | 'any';
-export type Operand = `${OperandKind}${'' | '?'}${'' | '|null'}`;
-export type OperandSpec = Readonly<Record<string, Operand>>;
+export type { Operand, OperandKind, OperandSpec } from './write-operands.ts';
 
 /**
  * The key `task.reparent` and `task.move` serialise on. One key for both: a
@@ -216,6 +209,7 @@ const ACCESS_COLLECTION = 'access';
 const SETTINGS_COLLECTION = 'settings';
 const SESSION_COLLECTION = 'session';
 const BILLING_COLLECTION = 'billing';
+const CONVERSATION_COLLECTION = 'conversation';
 const TIME_COLLECTION = 'time';
 const TAG_COLLECTION = 'tag';
 const SPEND_COLLECTION = 'spend';
@@ -257,179 +251,12 @@ function read(
   };
 }
 
-// Each write's operands, as `requests.ts` types them. `recordId` is here on
-// every targeted command, and `operationId` and `expectedRevision` nowhere:
-// the envelope reads those two itself. An operand whose kind its command
-// already answers in its own words (a comment's `comment_type`, a pickup's
-// reservation, a revocation's absent id, a reparent's parent after its task)
-// is `any` here, so the caller keeps that answer and its place.
-const TARGET = { recordId: 'id' } as const;
-const FIELDS = { ...TARGET, fields: 'map' } as const;
-const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>> = {
-  'task.create': {
-    fields: 'map',
-    parentId: 'id?|null',
-    board: 'id?|null',
-    boardSection: 'id?|null',
-    stateKey: 'any',
-  },
-  'task.update': FIELDS,
-  'task.complete': TARGET,
-  'task.reopen': { ...TARGET, reason: 'any' },
-  'task.start': TARGET,
-  'task.set_state': { ...TARGET, stateId: 'id' },
-  // The old task, the chosen client and the shell the person edited: no
-  // operand for anything else, so nothing else can carry over (MP-4-8).
-  'task.duplicate': {
-    recordId: 'id',
-    client: 'id|null',
-    title: 'text',
-    stepNames: 'any',
-    confirmCarried: 'flag?',
-  },
-  'task.comment': {
-    ...TARGET,
-    body: 'any',
-    audience: 'any',
-    commentType: 'any',
-    parentId: 'any',
-    mentions: 'any',
-  },
-  'task.edit_comment': { ...TARGET, commentId: 'any', body: 'any' },
-  'task.delete_comment': { ...TARGET, commentId: 'any' },
-  'task.propose': {
-    ...TARGET,
-    purpose: 'any',
-    maximumMinor: 'any',
-    currency: 'any',
-    payload: 'map',
-    step: 'any',
-    expiresInSeconds: 'any',
-    lineageId: 'id?|null',
-  },
-  'task.decide': {
-    gateId: 'id',
-    versionId: 'id',
-    decision: 'any',
-    note: 'any',
-    recipientPersonId: 'id?|null',
-  },
-  'task.pickup': { reservationId: 'any', leaseSeconds: 'any' },
-  // A lease call names its task through its lease; a `recordId` beside the
-  // lease is taken and plays no part in the check (API.md, id operands).
-  'task.handback': {
-    leaseId: 'any',
-    recordId: 'any',
-    fence: 'any',
-    outcome: 'any',
-    report: 'any',
-    actualMinor: 'any',
-    successor: 'any',
-  },
-  'task.assign': FIELDS,
-  'task.triage': FIELDS,
-  'task.set_stage': FIELDS,
-  'task.set_party': FIELDS,
-  'task.set_audience': FIELDS,
-  'task.set_scores': FIELDS,
-  'task.set_adhoc': FIELDS,
-  'task.set_category': FIELDS,
-  'task.share_with_client': TARGET,
-  'task.revoke_client_share': TARGET,
-  'task.reparent': { ...TARGET, parentId: 'any' },
-  'task.move': { ...TARGET, board: 'any', boardSection: 'any' },
-  'task.rank': { ...TARGET, afterId: 'id?|null', beforeId: 'id?|null' },
-  'task.trash': TARGET,
-  'task.restore': { batchId: 'id' },
-  'task.purge': { olderThanDays: 'any' },
-  'settings.set_four_eyes_threshold': { value: 'any', expectedRevision: 'any' },
-  'settings.set_client_sign_off': { value: 'any', expectedRevision: 'any' },
-  'settings.set_money_step_up': { value: 'any', expectedRevision: 'any' },
-  'settings.set_conversation_window': { value: 'any', expectedRevision: 'any' },
-  'settings.set_retention_window': { value: 'any', expectedRevision: 'any' },
-  'privacy.record_incident': {
-    whatHappened: 'any',
-    foundAt: 'any',
-    foundBy: 'any',
-    affected: 'any',
-    informationKinds: 'any',
-  },
-  'legal.draft_version': { document: 'any', version: 'any', body: 'any' },
-  'legal.approve_version': { versionId: 'id', digest: 'any' },
-  'legal.publish_version': { versionId: 'id' },
-  'credential.issue': { scope: 'any', expiresAt: 'any', purpose: 'any' },
-  'credential.revoke': { credentialId: 'id' },
-  'privacy.set_overseas_service': {
-    service: 'any',
-    receives: 'any',
-    where: 'any',
-    trainsOnIt: 'any',
-    contract: 'any',
-    toConfirm: 'any',
-    inUse: 'any',
-  },
-  'privacy.set_data_class': {
-    dataClass: 'any',
-    purpose: 'any',
-    disclosures: 'any',
-    retention: 'any',
-    deletion: 'any',
-    inUse: 'any',
-  },
-  'operations.record_gate_item': { item: 'any', evidence: 'any', statement: 'any?' },
-  'operations.change_installation_mode': { mode: 'any' },
-  'client.create': { name: 'any' },
-  'access.grant': { holderId: 'id', collection: 'any', action: 'any', clientId: 'id?|null' },
-  'access.revoke': { grantId: 'id' },
-  'access.end': { holderId: 'id' },
-  'grant.revoke': { grantId: 'any' },
-  'delegation.revoke': { delegationId: 'any' },
-  'task.cancel': { recordId: 'any', lineageId: 'any', reason: 'any' },
-  'task.restart': { recordId: 'any', lineageId: 'any', expiresInSeconds: 'any' },
-  'task.heartbeat': {
-    leaseId: 'any',
-    recordId: 'any',
-    fence: 'any',
-    leaseSeconds: 'any',
-    providerStarting: 'any',
-  },
-  'task.dispatch': { leaseId: 'any', recordId: 'any', fence: 'any' },
-  // Minor units, of the maximum the person saw; no standing ceiling (Q168).
-  'budget.top_up': { recordId: 'any', amountMinor: 'count', fromMaximumMinor: 'count' },
-  // The task, the attempt held unknown, and one of the three outcomes (O7).
-  'budget.record_outcome': { recordId: 'any', attemptId: 'any', outcome: 'any' },
-  // The task, the attempt held unknown, the minor units charged and why (T3c).
-  'budget.write_off': { recordId: 'any', attemptId: 'any', amountMinor: 'count', reason: 'text' },
-  'task.observe': {
-    leaseId: 'any',
-    recordId: 'any',
-    fence: 'any',
-    attemptId: 'any',
-    usage: 'any',
-    outcome: 'any',
-  },
-  // A duration is text the handler parses and answers in its own words.
-  'time.start': { taskId: 'id' },
-  'time.stop': { taskId: 'id' },
-  'time.log': { taskId: 'id', duration: 'any', note: 'any' },
-  'time.set_note': { entryId: 'id', note: 'any' },
-  'time.delete': { entryId: 'id' },
-  'tag.create': { name: 'any' },
-  'task.add_tag': { recordId: 'id', tagId: 'id' },
-  'task.remove_tag': { recordId: 'id', tagId: 'id' },
-  'session.end': {},
-  'preference.save': { preference: 'text', value: 'any' },
-  'preference.dismiss_tip': { page: 'text', tip: 'text', version: 'count' },
-  'inbox.seen': { itemId: 'id' },
-  'notifications.set_channel': { channel: 'text', mode: 'text', category: 'text?' },
-};
-
 export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // An agent credential's under its person's business-wide `task:write`
   // (API-2); under a pickup's one-task delegation it is outside the purpose.
   declare('task.create', 'write', {
     targetsExistingRecord: false,
-    untargetedIdentifiers: ['parentId', 'board', 'boardSection'],
+    untargetedIdentifiers: ['parentId', 'board', 'boardSection', 'conversationId'],
     agent: 'delegated',
   }),
   // An agent writes the description, its brief, the name, the due date and
@@ -452,6 +279,14 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     authorisedOn: 'target',
     untargetedIdentifiers: ['gateId', 'versionId'],
     agent: 'delegated',
+  }),
+  // AW-04: the plan accept is `task.decide`'s approval asked on the gate's own
+  // task, with the plan bound and the run's instruction file pinned in the
+  // same transaction. Out of the agent's reach: only a person activates.
+  declare('task.accept_plan', 'decide', {
+    targetsExistingRecord: false,
+    authorisedOn: 'target',
+    untargetedIdentifiers: ['gateId', 'versionId', 'conversationId'],
   }),
   // Own-lease work is `write` on the task the reservation or lease belongs to,
   // the scope the runtime and `grant.revoke` ask under their locks: a
@@ -538,6 +373,12 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   read('task.queue', TASK_COLLECTION, { agent: 'before-pickup' }),
   // One task's runs and their progress events (T2a), after `read` on that task.
   read('task.execution', TASK_COLLECTION, { authorisedOn: 'record' }),
+  // `decide` on tasks (`gate:decide`), asked per row inside the query, so a
+  // record-scoped decider sees its own records' gates (`reads/awaiting-review.ts`).
+  read('gate.pending', TASK_COLLECTION, { action: 'decide' }),
+  // `read` on tasks, asked per run inside the query, so a record-scoped reader
+  // sees its own tasks' runs (`reads/attribution.ts`). No agent route.
+  read('definition.attribution', TASK_COLLECTION),
   // The activity ledger. `read` on tasks across the business, because it
   // lists every task's writes; an agent works one delegated task and has no
   // use for the whole business's trail, so it is not offered one.
@@ -589,6 +430,46 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // C81's breach drill: `privacy:manage`, the incident's own key, never an
   // agent's. It drafts notices and sends nothing, so it is a read.
   read('privacy.draft_breach_notices', 'privacy', { action: 'manage' }),
+
+  // AW-03. `conversation:write` is the owner's key for their own conversation;
+  // the handler refuses a message into anyone else's. The read names its own
+  // rule (`reads/conversation.ts`): the owner, or a holder of the read-any
+  // grant `conversation:read`, which nobody holds on install. No agent entry:
+  // the agent's side of an exchange is written by the product's exchange,
+  // never by an agent calling in.
+  declare('conversation.start', 'write', {
+    collection: CONVERSATION_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+  }),
+  declare('conversation.message', 'write', {
+    collection: CONVERSATION_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['conversationId'],
+  }),
+  read('conversation.read', CONVERSATION_COLLECTION),
+  // MP-7-11's tab row, under the same rule: the owner's own, no agent entry.
+  // The list is the caller's own conversations and nobody else's, whatever
+  // read-any grant they hold; its rule is the read's own, like the read's.
+  // The grant that rule asks is `conversation:write`, the owner's key, so the
+  // catalogue names that one (API-1), not the declared pair.
+  read('conversation.list', CONVERSATION_COLLECTION, { authority: ['conversation:write'] }),
+  // AW-04 (U10): the drawer's allowance line, under the list's rule and the
+  // team's only, since the cap and what is left are the business's; the spend
+  // is the caller's own conversation's (`reads/allowance.ts`). No agent entry.
+  // Its rule asks `conversation:write`, as the list's does, so the catalogue
+  // names that one (API-1).
+  read('conversation.allowance', CONVERSATION_COLLECTION, { authority: ['conversation:write'] }),
+  declare('conversation.rename', 'write', {
+    collection: CONVERSATION_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['conversationId'],
+  }),
+  declare('conversation.set_scope', 'write', {
+    collection: CONVERSATION_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['conversationId'],
+  }),
 
   // Neither settings command names a record. The setting is chosen by the
   // command, so a body carrying a `recordId` is a body the caller believes was
@@ -762,8 +643,17 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     agent: 'delegated',
   }),
   // The lease owner's too, asked as heartbeat is; the runtime rechecks the
-  // four effect-time facts under its own locks.
+  // effect-time facts under its own locks.
   declare('task.dispatch', 'write', {
+    targetsExistingRecord: false,
+    authorisedOn: 'claim',
+    untargetedIdentifiers: ['leaseId'],
+    runtimeShaped: 'leaseId',
+    agent: 'delegated',
+  }),
+  // Asked of the lease like heartbeat: the lease holder records the check,
+  // and the row names the holder as the actor that performed it.
+  declare('task.check', 'write', {
     targetsExistingRecord: false,
     authorisedOn: 'claim',
     untargetedIdentifiers: ['leaseId'],
@@ -805,6 +695,72 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     targetsExistingRecord: false,
     authorisedOn: 'record',
     untargetedIdentifiers: ['recordId', 'attemptId'],
+  }),
+  // `billing:decide` on the whole business (AW-04, U10): owners and
+  // administrators set the planning cap; no agent route serves it.
+  declare('budget.set_planning_cap', 'decide', {
+    collection: BILLING_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+  }),
+  // The lease holder's, asked of the lease's task like the heartbeat. The
+  // agent path checks the delegation; the broker then verifies the lease, the
+  // delegation and the reservation again under their locks when it holds the
+  // money. A person holding a lease has no route to it (AW-01, "n/a (system)").
+  declare('model.call', 'write', {
+    targetsExistingRecord: false,
+    authorisedOn: 'claim',
+    untargetedIdentifiers: ['leaseId'],
+    runtimeShaped: 'leaseId',
+    agent: 'delegated',
+  }),
+  // The answers at the budget stop: `decide` on `billing` for a top-up and on
+  // `gate` for the end, each asked of the task the body names, like the work
+  // controls. The runtime asks the same pair of the run's own task again under
+  // its locks, and the handler refuses a run on another task. Neither writes
+  // the task record. No agent reaches either: an agent never holds decide.
+  declare('run.top_up', 'decide', {
+    collection: 'billing',
+    targetsExistingRecord: false,
+    authorisedOn: 'record',
+    untargetedIdentifiers: ['recordId', 'runId'],
+  }),
+  declare('run.end_at_budget_stop', 'decide', {
+    collection: 'gate',
+    targetsExistingRecord: false,
+    authorisedOn: 'record',
+    untargetedIdentifiers: ['recordId', 'runId'],
+  }),
+  // `write` on `run`, asked of the task the body names (ORCH33); the handler
+  // refuses a run on another task. It has a version of its own, not the
+  // task's revision. An agent reaches it only where its delegation was minted
+  // with `run` (ORCH34), and the mint holds `run` to `write`.
+  declare('run.revise_state', 'write', {
+    collection: 'run',
+    targetsExistingRecord: false,
+    authorisedOn: 'record',
+    untargetedIdentifiers: ['recordId', 'runId'],
+    agent: 'delegated',
+  }),
+  // AW-11: `run:write` inside the parent's delegation, asked of its lease's
+  // task like the heartbeat; the runtime binds the parent to that lease at its
+  // fence under the locks. A person holding a lease has no route to it.
+  declare('run.delegate_child', 'write', {
+    collection: 'run',
+    targetsExistingRecord: false,
+    authorisedOn: 'claim',
+    untargetedIdentifiers: ['leaseId'],
+    runtimeShaped: 'leaseId',
+    agent: 'delegated',
+  }),
+  // The helper's handback answers to its own child credential, bound to its
+  // own login by the runtime, not to a grant: a revoked or run-out child still
+  // hands its partial work back, and the handback grants nothing.
+  declare('run.child_handback', 'write', {
+    collection: 'run',
+    targetsExistingRecord: false,
+    untargetedIdentifiers: [],
+    agent: 'delegated',
   }),
   // Sign-out: the caller's own account, never anyone else's and never an
   // agent's. It targets no record and takes no identifier, so a body naming a
@@ -893,6 +849,15 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // (the catalogue's C55 row). It names other people's items, so it is not
   // `self`.
   read('inbox.unattended', 'operations'),
+  // AW-13 readers: a task's runs' trace, `operations:read` asked at the task's
+  // record scope and, inside it, the task's own read. Never an agent: no
+  // agent-reachable operation returns a trace (the ticket's `no agent read`).
+  read('trace.read', 'operations', { authorisedOn: 'record' }),
+  // AW-12: the harness test's result on one run, computed from its frozen
+  // manifest. `read` on tasks, asked inside the statement on the run's task
+  // (`reads/harness-trigger.ts`). Never an agent: the owner reads it, and no
+  // framework under test reaches its own verdict.
+  read('harness.read', TASK_COLLECTION),
   // Per channel, never per item: the body names no item. Self-scoped like
   // `inbox.seen`, so it asks no grant and reaches the caller's own setting.
   declare('notifications.set_channel', 'write', {

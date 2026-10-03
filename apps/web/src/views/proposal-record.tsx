@@ -6,7 +6,7 @@
 // part draws what it draws.
 
 import type { ReactElement } from 'react';
-import { drawRunState } from '@launchastro/ui';
+import { drawRunState, minorDigits } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
 import { useCommand } from '../records/use-command.ts';
 import type {
@@ -49,15 +49,25 @@ export function Chain(props: {
 const isUnknown = (reservation: ProposalReservation): boolean =>
   reservation.attempt?.state === 'liability_unknown';
 
+/** The currency a reservation's money is in: its run's version's, else the head's. */
+type CurrencyOf = (reservation: ProposalReservation) => string | undefined;
+
 export function Reservations(props: {
   readonly reservations: readonly ProposalReservation[];
+  /** The lineage's versions, newest first. */
+  readonly versions: readonly { readonly runId: string | null; readonly currency: string }[];
 }): ReactElement | null {
   const unknown = props.reservations.filter(isUnknown);
   const known = props.reservations.filter((reservation) => !isUnknown(reservation));
+  const currencyOf: CurrencyOf = (reservation) =>
+    (props.versions.find((version) => version.runId === reservation.runId) ?? props.versions[0])
+      ?.currency;
   return (
     <>
-      {unknown.length === 0 ? null : <UnknownCosts reservations={unknown} />}
-      {known.length === 0 ? null : <Known reservations={known} />}
+      {unknown.length === 0 ? null : (
+        <UnknownCosts currencyOf={currencyOf} reservations={unknown} />
+      )}
+      {known.length === 0 ? null : <Known currencyOf={currencyOf} reservations={known} />}
     </>
   );
 }
@@ -68,6 +78,7 @@ export function Reservations(props: {
  */
 function UnknownCosts(props: {
   readonly reservations: readonly ProposalReservation[];
+  readonly currencyOf: CurrencyOf;
 }): ReactElement {
   return (
     <div className="sbact" data-unknown-liabilities="list">
@@ -78,8 +89,8 @@ function UnknownCosts(props: {
         <div className="sbact__row" data-unknown-liability={reservation.id} key={reservation.id}>
           <span className="sb__state">started, not confirmed</span>
           <span className="sbact__meta">
-            {money(reservation.heldMinor ?? 0, '')} held as an unknown cost: it needs a person to
-            record what happened
+            {money(reservation.heldMinor ?? 0, props.currencyOf(reservation))} held as an unknown
+            cost: it needs a person to record what happened
           </span>
         </div>
       ))}
@@ -87,22 +98,32 @@ function UnknownCosts(props: {
   );
 }
 
-function Known(props: { readonly reservations: readonly ProposalReservation[] }): ReactElement {
+function Known(props: {
+  readonly reservations: readonly ProposalReservation[];
+  readonly currencyOf: CurrencyOf;
+}): ReactElement {
   return (
     <div className="sbact" data-reservations="list">
       <div className="sb__sh">
         <span className="sb__k">Money set aside</span>
       </div>
       {props.reservations.map((reservation) => (
-        <ReservationRow key={reservation.id} reservation={reservation} />
+        <ReservationRow
+          currency={props.currencyOf(reservation)}
+          key={reservation.id}
+          reservation={reservation}
+        />
       ))}
     </div>
   );
 }
 
 /** One reservation: what it held, what it spent, and its lease and attempt. */
-function ReservationRow(props: { readonly reservation: ProposalReservation }): ReactElement {
-  const { reservation } = props;
+function ReservationRow(props: {
+  readonly reservation: ProposalReservation;
+  readonly currency: string | undefined;
+}): ReactElement {
+  const { reservation, currency } = props;
   return (
     <div
       className="sbact__row"
@@ -114,11 +135,14 @@ function ReservationRow(props: { readonly reservation: ProposalReservation }): R
         {/* Held and actual are two different numbers and both are drawn: a
             reservation that held more than the work spent is the ordinary
             case, and one number cannot say which of the two it is. */}
-        held {reservation.heldMinor === null ? 'nothing' : money(reservation.heldMinor, '')} · spent{' '}
-        {reservation.actualMinor === null ? 'not reported' : money(reservation.actualMinor, '')}
+        held {reservation.heldMinor === null ? 'nothing' : money(reservation.heldMinor, currency)} ·
+        spent{' '}
+        {reservation.actualMinor === null
+          ? 'not reported'
+          : money(reservation.actualMinor, currency)}
         {reservation.releasedMinor === undefined || reservation.releasedMinor === null
           ? null
-          : ` · released ${money(reservation.releasedMinor, '')}`}
+          : ` · released ${money(reservation.releasedMinor, currency)}`}
         {reservation.classifiedCause === null ? null : ` · ${reservation.classifiedCause}`}
       </span>
       {reservation.lease === null ? (
@@ -209,13 +233,19 @@ export function RejectProposal(props: RejectProps): ReactElement | null {
   );
 }
 
-/** Minor units as money a person reads, with the currency the proposal named. */
-export function money(minor: number, currency: string): string {
-  const amount = (minor / 100).toLocaleString('en-AU', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+/**
+ * Minor units as money a person reads, in the currency's own minor digits (the
+ * server's rule), with the currency named. Without a currency the digits are
+ * unknown, so the figure stays in minor units.
+ */
+export function money(minor: number, currency: string | undefined): string {
+  if (currency === undefined) return `${String(minor)} minor units`;
+  const digits = minorDigits(currency);
+  const amount = (minor / 10 ** digits).toLocaleString('en-AU', {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
   });
-  return currency === '' ? amount : `${currency} ${amount}`;
+  return `${currency} ${amount}`;
 }
 
 /**

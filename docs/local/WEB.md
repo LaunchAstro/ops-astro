@@ -133,24 +133,29 @@ browser.
 
 ## Addresses
 
-| Address      | What it draws                                                                                                                                                                                                                                                                                                                     |
-| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/sign-in`   | Credentials and the business selector                                                                                                                                                                                                                                                                                             |
-| `/projects/` | Board tab: `task.board` for the unboarded tasks (`board: null`), and the create form. Work log tab (`#worklog`): `task.ledger` in the reader's zone, read on first opening; its search words live in the address as `?q=` (L-01); its section tip (MP-9-1) reads `preference.read` and dismisses through `preference.dismiss_tip` |
-| `/task/:key` | `task.read`: state buttons, the assignee select, title and due date, comments, history, revision                                                                                                                                                                                                                                  |
-| `/task/`     | No task named: says so and offers the board (MP-4-1), and reads nothing                                                                                                                                                                                                                                                           |
-| `/settings`  | Settings General: You and Notifications (the person's own preferences) and This business (the two operation-classified settings, from `settings.read` and `session.capabilities`)                                                                                                                                                 |
-| `/inbox/`    | The Notifications list in full-page form (MP-7-3): `inbox.read` and `inbox.count` drawn by the kit's `InboxPage`, one list and one owed count, grouped by the client each entry names; a live re-read keeps the list and its chosen tab drawn                                                                                     |
+| Address                | What it draws                                                                                                                                                                                                                                                                                                                     |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/sign-in`             | Credentials and the business selector                                                                                                                                                                                                                                                                                             |
+| `/projects/`           | Board tab: `task.board` for the unboarded tasks (`board: null`), and the create form. Work log tab (`#worklog`): `task.ledger` in the reader's zone, read on first opening; its search words live in the address as `?q=` (L-01); its section tip (MP-9-1) reads `preference.read` and dismisses through `preference.dismiss_tip` |
+| `/task/:key`           | `task.read`: state buttons, the assignee select, title and due date, comments, history, revision                                                                                                                                                                                                                                  |
+| `/task/`               | No task named: says so and offers the board (MP-4-1), and reads nothing                                                                                                                                                                                                                                                           |
+| `/settings`            | Settings General: You and Notifications (the person's own preferences) and This business (the two operation-classified settings, from `settings.read` and `session.capabilities`)                                                                                                                                                 |
+| `/inbox/`              | The Notifications list in full-page form (MP-7-3): `inbox.read` and `inbox.count` drawn by the kit's `InboxPage`, one list and one owed count, grouped by the client each entry names; a live re-read keeps the list and its chosen tab drawn                                                                                     |
+| `/agent/:conversation` | `conversation.read` by the id the address carries: the transcript while the body lives, only the wrap-up after it purges (C36); a started drawer tab links here                                                                                                                                                                   |
 
 `/task/:key` is a real address. A hard reload lands on it because the dev server
 falls back to `index.html`, and everything on the page is reread from the API.
 
 The dock's tabs are `PANELS` in `apps/web/src/panels.ts`, drawn in the rail's
-declared order: Notifications (the inbox at `/inbox/`), Team (`/team`),
+declared order: Agent (the assistant drawer, MP-7-11), Notifications (the inbox at `/inbox/`), Team (`/team`),
 Clients (`/clients/`, a made-up client book under the mock mark until client
 records land; at `/clients/?client=<id>`, the door an inbox group head opens by
 the gesture law, it marks that client above the book from `client.list`) and Settings (`/settings`). Each tab opens its own panel: Settings opens the
-Settings panel beside the page rather than navigating (MP-3-1). A plain press shows one panel, shift adds one, each X
+Settings panel beside the page rather than navigating (MP-3-1). Agent has no
+address of its own: like the task panel it is drawn by the dock itself
+(`apps/web/src/dock/agent-dock.ts`), carries the page's standing scope only,
+and its door goes to the board. The dock's head names and closes it, over the
+drawer's model picker and Page; the drawer draws no head of its own. A plain press shows one panel, shift adds one, each X
 closes only its own, Close all closes every one, and Escape closes the last
 opened unless a field, menu or editor took the key
 (`apps/web/src/dock/open-set.ts`). An open tab is announced as "Close
@@ -919,13 +924,10 @@ places this build does not yet reach it.
 - The board draws nine pinned columns. The client's name and the comment
   counts are not stored yet and draw the ported "not set" dash.
 - No facet menu, presets, undo/redo, typeahead or column drag-resize.
-- No Agent panel, gate or run surfaces, and no dock tab for them. The records
-  behind them are stored and read: `task.read` carries every proposal on the
-  task with its gate's state and expiry (`docs/local/API.md`'s "Proposal
-  projection", served by `packages/core-commands/src/reads/proposals.ts`). So this
-  is the web not drawing them yet and not the database failing to hold them; the
-  dock's panel registry (`apps/web/src/panels.ts`) gains an agent tab when there
-  is a screen for it to open.
+- The task page draws the Agent pane (MP-6-1 to MP-6-5): the run, its gate,
+  checks, scope and token panel from `task.read`, and a person's word on an
+  unknown effect (C54: the three outcomes and the write-off). The pane sits in
+  the task page's own column, not in the dock.
 - Comments are built, in the tabbed Internal / Client / All
   activity conversation; replies, edits, deletes and the Answered, Seen and
   Not acknowledged signals are not built yet, and history stays its own

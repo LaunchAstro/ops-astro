@@ -81,6 +81,25 @@ module.exports = {
       to: { path: '^packages/', pathNot: '^packages/core-digest/' },
     },
     {
+      name: 'custody-process-imports-no-package',
+      severity: 'error',
+      comment:
+        "Custody's process holds every provider credential, so adapter, connector and " +
+        'database code never load in it (AW-01): its entry and the two modules it runs on ' +
+        'import no other package.',
+      from: { path: '^packages/core-custody/src/(custody-main|egress|credentials)\\.ts$' },
+      to: { path: '^packages/', pathNot: '^packages/core-custody/' },
+    },
+    {
+      name: 'connectors-are-a-leaf',
+      severity: 'error',
+      comment:
+        'Provider operations say what a call is, what it may carry and to where. They hold ' +
+        'no credential and open no connection, so they import no other package.',
+      from: { path: '^packages/core-connectors/' },
+      to: { path: '^packages/', pathNot: '^packages/core-connectors/' },
+    },
+    {
       name: 'index-only',
       severity: 'error',
       comment:
@@ -103,6 +122,19 @@ module.exports = {
       to: {
         path: ['^packages/core-(records|runtime|commands)/', '^apps/api/', '(^|/)(postgres|pg)/'],
       },
+    },
+    {
+      name: 'pre-review-attribution-stays-in-its-read',
+      severity: 'error',
+      comment:
+        'AW-04: attribution by digest is pre-review. It may floor a declaration of reach and ' +
+        'nothing else, so no evaluation set, promotion input or conformance claim takes it: ' +
+        'only its catalogue row loads the read.',
+      from: {
+        path: '^(apps|packages)/',
+        pathNot: '^packages/core-commands/src/reads/(attribution|catalogue)\\.ts$',
+      },
+      to: { path: '^packages/core-commands/src/reads/attribution\\.ts$' },
     },
     {
       name: 'shippable-never-reaches-tests',

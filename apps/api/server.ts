@@ -57,6 +57,8 @@ import {
   executeCredentialCommand,
   executeCommand,
   executeRead as readExecutor,
+  type ConversationExchange,
+  type ModelCallExecutor,
   admitReads,
   type LoginProvider,
 } from '../../packages/core-commands/src/index.ts';
@@ -80,6 +82,8 @@ import {
 import { startLiveTopics } from './live.ts';
 import { createLivePresence } from './live-presence.ts';
 import { isLoopback, migrationHead, readIdentity, type ServedIdentity } from './identity.ts';
+import { brokerSettings, startModelBroker } from './model-broker.ts';
+import { startTraceExporter, traceExportSettings } from './trace-exporter.ts';
 import {
   describeRecovered,
   parseRecoveryScope,
@@ -206,6 +210,10 @@ export interface ApiConfig {
    * mounted. Its check is `admitReads` unless a test hands in its own to count.
    */
   readonly live?: Omit<LiveOptions, 'admit'> & { readonly admit?: ReadAdmitter };
+  /** `model.call` through the credential broker; absent where none is configured. */
+  readonly executeModelCall?: ModelCallExecutor;
+  /** AW-03's exchange through the same broker; absent where none is configured. */
+  readonly answerConversation?: ConversationExchange;
   /** The error sink and the security detections (ticket S0-2); absent without a sink. */
   readonly alerts?: Alerts;
   /** The agent credential's limits in this process (API-2); absent, the defaults. */
@@ -321,6 +329,12 @@ export function composeApi(config: ApiConfig): ComposedApi {
       ...(config.live === undefined
         ? {}
         : { live: { ...config.live, admit: config.live.admit ?? admitReads } }),
+      ...(config.executeModelCall === undefined
+        ? {}
+        : { executeModelCall: config.executeModelCall }),
+      ...(config.answerConversation === undefined
+        ? {}
+        : { answerConversation: config.answerConversation }),
       // The provider GoTrue is: the one destination its factor calls reach.
       factors: createGoTrueFactors({ baseUrl: config.signIn.issuer }),
       logins,
@@ -416,6 +430,23 @@ async function main(): Promise<void> {
   // LISTEN needs a direct or session-mode connection: hosted, `DATABASE_LISTEN_URL`.
   const listenUrl = environment['DATABASE_LISTEN_URL'] ?? (databaseUrl as string);
   const topics = await startLiveTopics(connectListener(listenUrl));
+  // The credential broker (AW-01): custody's own process, started only from a
+  // complete configuration. None configured, `model.call` answers 501.
+  const brokerConfig = brokerSettings(environment);
+  if (brokerConfig.kind === 'invalid') {
+    console.error(`api: ${brokerConfig.problem}`);
+    process.exit(1);
+  }
+  // The diagnostic trace export (AW-13): off until `TRACE_EXPORT=on`; on with
+  // a staged setting missing or malformed, the server stops before it listens.
+  const traceConfig = traceExportSettings(environment);
+  if (traceConfig.kind === 'invalid') {
+    console.error(`api: ${traceConfig.problem}`);
+    process.exit(1);
+  }
+  const broker =
+    brokerConfig.kind === 'configured' ? await startModelBroker(brokerConfig) : undefined;
+  console.log(`api: credential broker ${broker === undefined ? 'not configured' : 'started'}`);
   const alerts = alertsFrom(environment);
   let errorSink: ErrorSinkLink;
   try {
@@ -435,6 +466,9 @@ async function main(): Promise<void> {
     signIn: { issuer: issuer as string, keySetUrl },
     keys,
     live: { topics, presence: createLivePresence() },
+    ...(broker === undefined
+      ? {}
+      : { executeModelCall: broker.executor, answerConversation: broker.answerConversation }),
     ...(adminKey === undefined ? {} : { providerAdminKey: adminKey }),
     ...(tracingUrl === undefined || tracingUrl === '' ? {} : { tracingUrl }),
     errorSink,
@@ -456,10 +490,20 @@ async function main(): Promise<void> {
   const recovered = await withRuntimeKeys(keys, recovery);
   if (!recovered.ok) {
     console.error(`api: ${recovered.problem}`);
-    await Promise.allSettled([database.close(), admin.close(), topics.close()]);
+    await Promise.allSettled([database.close(), admin.close(), topics.close(), broker?.stop()]);
     process.exit(1);
   }
   for (const business of recovered.businesses) console.log(describeRecovered(business));
+
+  // AW-13: the trace export over the recovered businesses, as system work on
+  // an interval; nothing on the wire reaches it. Started before the port is
+  // bound, so a custody that cannot start stops the server first.
+  const traced = recovered.businesses.map((business) => business.businessId);
+  const tracer =
+    traceConfig.kind === 'on'
+      ? await startTraceExporter(traceConfig, database, async () => await Promise.resolve(traced))
+      : undefined;
+  console.log(`api: trace export ${tracer === undefined ? 'off' : 'on'}`);
 
   serve({ fetch: app.fetch, hostname: '127.0.0.1', port }, (info) => {
     console.log(`api: listening on http://127.0.0.1:${info.port}`);
@@ -473,7 +517,13 @@ async function main(): Promise<void> {
   const sweeper = startSweeper(
     async () =>
       await withRuntimeKeys(keys, async () => {
-        return await passDeployment(database, resolveBusiness, scope.keys, registerEffectLookup);
+        return await passDeployment(
+          database,
+          resolveBusiness,
+          scope.keys,
+          registerEffectLookup,
+          broker?.reconcile,
+        );
       }),
   );
 
@@ -483,7 +533,15 @@ async function main(): Promise<void> {
     sweeper.stop();
     // The live streams first: a question one has in flight ends before its pool does.
     void Promise.allSettled([topics.close()])
-      .then(async () => await Promise.allSettled([database.close(), admin.close()]))
+      .then(
+        async () =>
+          await Promise.allSettled([
+            database.close(),
+            admin.close(),
+            broker?.stop(),
+            tracer?.stop(),
+          ]),
+      )
       .then(() => process.exit(0));
   };
   process.on('SIGINT', stop);

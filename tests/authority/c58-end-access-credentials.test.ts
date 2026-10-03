@@ -179,6 +179,7 @@ function pausedBeforeIssueWrites(url: string): {
         async (tx) =>
           await run({
             businessId: tx.businessId,
+            savepoint: tx.savepoint,
             query: async (text, parameters) => {
               if (/^\s*insert into public\.actors\b/u.test(text)) {
                 reached.open();

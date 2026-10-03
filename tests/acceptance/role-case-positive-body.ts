@@ -7,6 +7,7 @@
 
 import { type CommandDeclaration } from '../../packages/core-wire/src/surface.ts';
 import {
+  ACCEPTED_PLAN,
   PROPOSAL,
   lineageOn,
   type Prepared,
@@ -14,11 +15,10 @@ import {
   batchOf,
   approvableGate,
   approvedReservationId,
-  approvedTaskId,
   ownLease,
-  ownAppliedEffect,
-  ownUnknownAttempt,
 } from './role-case-bodies.ts';
+import { answerAtTheStop } from './stopped-run.ts';
+import { revisedRunBody } from './revised-run.ts';
 import { commentChangeBody } from './role-case-comment-bodies.ts';
 import { tagRecipes } from './tag-recipes.ts';
 import { timeRecipes } from './time-recipes.ts';
@@ -26,7 +26,10 @@ import { privacyBody } from './role-case-privacy-bodies.ts';
 import { credentialBody } from './role-case-credential-bodies.ts';
 import { accessBody, madeClient } from './role-case-access-bodies.ts';
 import { createGateBody } from './role-case-gate-bodies.ts';
+import { conversationBody, leaseBody } from './role-case-run-bodies.ts';
 import { FIXED_BODIES } from './role-case-fixed-bodies.ts';
+import { moneyBody } from './role-case-money-bodies.ts';
+import { lineageBody } from './role-case-lineage-bodies.ts';
 
 export function createPositiveBody(
   context: BodyContext,
@@ -163,6 +166,10 @@ export function createPositiveBody(
         const gate = await approvableGate(context);
         return { body: { ...gate, decision: 'approve', note: 'the admin approves' } };
       }
+      case 'task.accept_plan': {
+        const gate = await approvableGate(context);
+        return { body: { ...gate, ...ACCEPTED_PLAN, note: 'the admin accepts the plan' } };
+      }
       case 'task.pickup':
         // Person pickup (EX-01, transaction contract T3 line 66, minimum
         // contract line 331, ledger line 30): the admin claims approved work
@@ -172,8 +179,11 @@ export function createPositiveBody(
         // The person's own lease, handed back by that person. The agent's
         // own-lease handback is case (h), `k-handback` rows.
         return { body: { ...(await ownLease(context)), outcome: 'completed' } };
+      // `trace.read` (AW-13 readers) asks `operations:read`, which the seed
+      // grants the admin (C55).
       case 'task.read':
       case 'task.execution':
+      case 'trace.read':
         return { body: { recordId: context.alphaTaskId } };
       case 'client.create':
       case 'access.grant':
@@ -207,47 +217,13 @@ export function createPositiveBody(
       case 'operations.change_installation_mode':
         return await gateBody(declaration.name);
       case 'budget.top_up':
-        // The admin approved the plan and holds billing, so a top-up under
-        // the band is hers alone (T2e).
-        return {
-          body: {
-            recordId: await approvedTaskId(context),
-            amountMinor: 100,
-            fromMaximumMinor: PROPOSAL.maximumMinor,
-          },
-        };
       case 'budget.record_outcome':
-        // The admin holds billing, so any unknown attempt on the business's
-        // tasks is hers to record (O8, T3d1).
-        return { body: { ...(await ownUnknownAttempt(context)), outcome: 'happened' } };
       case 'budget.write_off':
-        // The same unknown hold, closed at nothing with a reason (T3c).
-        return {
-          body: {
-            ...(await ownUnknownAttempt(context)),
-            amountMinor: 0,
-            reason: 'The matrix writes its own unknown hold off.',
-          },
-        };
-      case 'task.cancel': {
-        // A lineage to cancel is a proposal's, so one is proposed first.
-        const task = await context.freshTask('a task whose lineage is cancelled');
-        const lineageId = await lineageOn(context, task);
-        return { body: { recordId: task.id, lineageId, reason: 'the admin cancels it' } };
-      }
-      case 'task.restart': {
-        // Only a rejected or cancelled lineage is restarted, so this one is
-        // proposed and cancelled through the routes before the restart.
-        const task = await context.freshTask('a task whose lineage is restarted');
-        const lineageId = await lineageOn(context, task);
-        const cancelled = await context.asPerson('task.cancel', {
-          recordId: task.id,
-          lineageId,
-          reason: 'cancelled so it can be restarted',
-        });
-        if (cancelled.code !== 'ok') throw new Error(`matrix: cancel refused ${cancelled.code}`);
-        return { body: { recordId: task.id, lineageId } };
-      }
+      case 'budget.set_planning_cap':
+        return { body: await moneyBody(context, declaration.name) };
+      case 'task.cancel':
+      case 'task.restart':
+        return await lineageBody(declaration.name, context);
       case 'grant.revoke':
         // Its positive control is case (f): the admin revokes a member's read
         // through this route, and the member's next read is refused. A body
@@ -265,10 +241,29 @@ export function createPositiveBody(
             'executed alternative: needs a pickup; ada revokes a live delegation in ' +
             'case (h), k-revoke rows',
         };
-      case 'task.heartbeat':
-        // The person renews their own lease (ledger line 38, "current lease
-        // owner"). The agent's renewal is in the agent journey.
-        return { body: await ownLease(context) };
+      case 'model.call':
+      case 'run.delegate_child':
+      case 'run.child_handback':
+        // The run's worker's, never a person's: the person prefix refuses each
+        // SCOPE_NOT_GRANTED (AW-01, AW-11, "n/a (system)"). The agent makes the
+        // call under its delegation in the agent journey, case (h).
+        return {
+          exception:
+            'executed alternative: the person prefix refuses it by design; the agent calls it ' +
+            'in case (h)',
+        };
+      case 'run.top_up':
+      case 'run.end_at_budget_stop':
+        // A run the broker stopped at its approved ceiling (`stopped-run.ts`).
+        return await answerAtTheStop(context, declaration.name, PROPOSAL);
+      case 'run.revise_state':
+        // MP-6-2: a proposal's planned run, its state revised under run:write.
+        return await revisedRunBody(context, PROPOSAL);
+      case 'harness.read': {
+        // AW-12: the harness result on a proposal's planned run, under the admin's task read.
+        const run = await revisedRunBody(context, PROPOSAL);
+        return 'body' in run ? { body: { runId: run.body['runId'] } } : run;
+      }
       case 'time.start':
       case 'time.stop':
       case 'time.log':
@@ -280,19 +275,22 @@ export function createPositiveBody(
       case 'task.remove_tag':
       case 'tag.list':
         return await tags[declaration.name]();
+      case 'task.heartbeat':
       case 'task.dispatch':
-        // The person marks their own lease's step dispatched (T2c1).
-        return { body: await ownLease(context) };
+      case 'task.check':
       case 'task.observe':
-        // The person observes the effect they applied on their own lease (T2c2).
-        return { body: await ownAppliedEffect(context) };
-      case 'task.receipt': {
-        // The receipt of an effect the person applied and observed (T2c2).
-        const applied = await ownAppliedEffect(context);
-        const observed = await context.asPerson('task.observe', applied);
-        if (observed.code !== 'ok') throw new Error(`matrix: observe refused ${observed.code}`);
-        return { body: { attemptId: applied.attemptId } };
-      }
+      case 'task.receipt':
+        // The person's own lease and the effect applied on it: `role-case-run-bodies.ts`.
+        return await leaseBody(declaration.name, context);
+      case 'conversation.start':
+      case 'conversation.message':
+      case 'conversation.read':
+      case 'conversation.list':
+      case 'conversation.allowance':
+      case 'conversation.rename':
+      case 'conversation.set_scope':
+        // AW-03 and MP-7-11, the admin's own conversation: `role-case-run-bodies.ts`.
+        return await conversationBody(declaration.name, context);
       default:
         throw new Error(`matrix: no positive control recipe for ${String(declaration.name)}`);
     }

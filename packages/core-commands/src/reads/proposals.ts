@@ -32,7 +32,8 @@
 // the display is the one thing a gate cannot survive.
 //
 // **The whole answer is one snapshot.** The versions, their gates, the
-// decisions and the reservations are read in one statement, the one that reads
+// decisions, the reservations and each lease's scope (`run-scopes.ts`) are
+// read in one statement, the one that reads
 // the decision chain (`readVerifiedProjection`). Read separately, a
 // `task.decide` committed between them answers a gate `pending` beside its
 // own verified `approve`, and the page offers to decide a gate already
@@ -55,9 +56,11 @@ import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { keyResolver, gateSigningKey } from '../../../core-runtime/src/index.ts';
 import type { KeyResolver, SigningKey } from '../../../core-runtime/src/index.ts';
 import { readVerifiedProjection, type VerifiedDecision } from './verified-decisions.ts';
-import type { DecisionLink, ProposalView } from '../../../core-wire/src/index.ts';
-import { asReservation, asVersion } from './proposal-rows.ts';
-import type { ReservationRow, VersionRow } from './proposal-rows.ts';
+import { SCOPES, scopesOf, type ScopeRow } from './run-scopes.ts';
+import { ENVELOPES, ledgerOf, STATES, STOPS } from './task-ledger.ts';
+import type { DecisionLink, ProposalView, TaskLedgerView } from '../../../core-wire/src/index.ts';
+import { asReservation, asVersion, givenOf } from './proposal-rows.ts';
+import type { CheckRow, ReservationRow, VersionRow } from './proposal-rows.ts';
 
 /** What each payload format signed, in `DecisionLink`'s names (`signing.ts`). */
 const SIGNED_FIELDS: Readonly<Record<number, readonly string[]>> = {
@@ -95,6 +98,22 @@ const VERSIONS = `select row_number() over (order by lin.created_at desc, lin.id
             ver.payload,
             ver.superseded_at,
             run.id                as run_id,
+            -- MP-6-2: the run's start, its first claim, and its end, a hand-back
+            -- with no claim after it; both from this run's own events here.
+            (select min(e.created_at) from public.run_events e
+              where e.business_id = run.business_id and e.run_id = run.id
+                and e.kind = 'claimed') as run_started_at,
+            (select max(e.created_at) from public.run_events e
+              where e.business_id = run.business_id and e.run_id = run.id
+                and e.kind = 'handed_back'
+                and not exists (select 1 from public.run_events l
+                                 where l.business_id = e.business_id and l.run_id = e.run_id
+                                   and l.kind = 'claimed' and l.position > e.position))
+                                  as run_ended_at,
+            -- The token units this run's model calls recorded (0098); null for none.
+            (select sum(mc.input_units + mc.output_units)::text from public.model_calls mc
+              where mc.business_id = run.business_id and mc.run_id = run.id)
+                                  as run_token_units,
             pack.id               as evidence_pack_id,
             pack.renderer         as evidence_renderer,
             pack.rendered_digest  as evidence_digest,
@@ -118,7 +137,7 @@ const VERSIONS = `select row_number() over (order by lin.created_at desc, lin.id
 
 const RESERVATIONS = `select row_number() over (order by res.created_at, res.id) as ordinal,
             run.lineage_id,
-            res.id, res.state, res.held_minor::text as held_minor,
+            res.id, res.envelope_id, res.run_id, res.state, res.held_minor::text as held_minor,
             res.actual_minor::text as actual_minor, res.classified_cause,
             res.lease_id,
             lease.fence::text as lease_fence, lease.state as lease_state,
@@ -135,6 +154,47 @@ const RESERVATIONS = `select row_number() over (order by res.created_at, res.id)
          on att.business_id = res.business_id and att.reservation_id = res.id
       where res.business_id = $1
         and run.lineage_id in (select lineage_id from lineages)`;
+
+// MP-6-2: what each run on these lineages was given (its pin) and read (its ledger).
+const PINS = `select row_number() over (order by pin.pinned_at, pin.run_id) as ordinal,
+            run.version_id, pin.ref_kind, pin.path, pin.content_digest,
+            pin.content_size::text as content_size, pin.read_at,
+            pin.definition_version_id, pin.pinned_at
+       from public.run_definition_pins pin
+       join public.planned_runs run
+         on run.business_id = pin.business_id and run.id = pin.run_id
+      where pin.business_id = $1
+        and run.lineage_id in (select lineage_id from lineages)`;
+
+const READS = `select row_number() over (order by rd.run_id, rd.sequence) as ordinal,
+            run.version_id, rd.sequence, rd.path, rd.content_digest,
+            rd.content_size::text as content_size, rd.read_at, rd.is_entry
+       from public.bootstrap_reads rd
+       join public.planned_runs run
+         on run.business_id = rd.business_id and run.id = rd.run_id
+      where rd.business_id = $1
+        and run.lineage_id in (select lineage_id from lineages)`;
+
+const CHECKS = `select row_number() over (order by ck.created_at, ck.id) as ordinal,
+            ck.version_id, ck.id, ck.name, ck.outcome, ck.note, ck.actor_id, ck.created_at
+       from public.run_checks ck
+       join public.proposal_versions ver
+         on ver.business_id = ck.business_id and ver.id = ck.version_id
+      where ck.business_id = $1
+        and ver.lineage_id in (select lineage_id from lineages)`;
+
+/** Every shape the task's work read takes, in the one statement. */
+const SHAPES = {
+  versions: VERSIONS,
+  reservations: RESERVATIONS,
+  checks: CHECKS,
+  pins: PINS,
+  reads: READS,
+  scopes: SCOPES,
+  envelopes: ENVELOPES,
+  stops: STOPS,
+  states: STATES,
+};
 
 /**
  * Every proposal on one task, newest lineage first.
@@ -154,37 +214,52 @@ export async function readTaskProposals(
   taskId: string,
   signingKey: KeyResolver | SigningKey | null = configuredKeys(),
 ): Promise<readonly ProposalView[]> {
+  return (await readTaskWork(tx, taskId, signingKey)).proposals;
+}
+
+/** The proposals and the token ledger (MP-6-5) together, from the one statement. */
+export async function readTaskWork(
+  tx: TenantQuery,
+  taskId: string,
+  signingKey: KeyResolver | SigningKey | null = configuredKeys(),
+): Promise<{ readonly proposals: readonly ProposalView[]; readonly ledger: TaskLedgerView }> {
   const snapshot = await readVerifiedProjection(
     tx,
     {
       lineages: LINEAGES,
-      rows: { versions: VERSIONS, reservations: RESERVATIONS },
+      rows: SHAPES,
       parameter: taskId,
     },
     signingKey,
   );
   const versions = (snapshot.rows['versions'] ?? []) as readonly VersionRow[];
   const reservations = (snapshot.rows['reservations'] ?? []) as readonly ReservationRow[];
+  const checks = (snapshot.rows['checks'] ?? []) as readonly CheckRow[];
+  const given = givenOf(snapshot.rows);
+  const scopes = (snapshot.rows['scopes'] ?? []) as readonly ScopeRow[];
   const decisions = snapshot.decisions;
-  if (versions.length === 0) return [];
+  const ledger = ledgerOf(snapshot.rows);
+  if (versions.length === 0) return { proposals: [], ledger };
 
   const lineageIds = [...new Set(versions.map((row) => row.lineage_id))];
 
-  return lineageIds.map((lineageId) => {
+  const proposals = lineageIds.map((lineageId) => {
     const rows = versions.filter((row) => row.lineage_id === lineageId);
     const first = rows[0];
     return {
       lineageId,
       state: first?.lineage_state ?? 'unknown',
-      versions: rows.map((row) => asVersion(row)),
+      versions: rows.map((row) => asVersion(row, checks, given)),
       decisions: decisions
         .filter((row) => row.lineage_id === lineageId)
         .map((row) => asDecision(row)),
       reservations: reservations
         .filter((row) => row.lineage_id === lineageId)
         .map((row) => asReservation(row)),
+      scopes: scopesOf(scopes, lineageId),
     };
   });
+  return { proposals, ledger };
 }
 
 /** One stored decision link, as stored, with the fields its format signed. */

@@ -21,10 +21,12 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { READS } from '../../packages/core-wire/src/surface.ts';
+import { grantTo, type Member } from '../commands/fixture.ts';
 import { GATE_ITEMS } from '../../packages/core-commands/src/index.ts';
-import { gateRecordBody } from './role-case-gate-bodies.ts';
-import { PROPOSAL } from './role-case-bodies.ts';
+import { gateRecordBody, legalEvidence } from './role-case-gate-bodies.ts';
+import { ACCEPTED_PLAN, PROPOSAL, childProbe } from './role-case-bodies.ts';
 import { CASE, TARGET_FREE } from './cd-alternatives.ts';
+import { foreignConversation } from './foreign-conversation.ts';
 import { serverUrl, type AgentIdentity, type Caller } from './world.ts';
 import { createIdentWorld, type IdentWorld, type RawAnswer } from './ident-audit-cases.ts';
 import { auditMark, auditSince, domainState, expectAudited } from './ident-audit-rows.ts';
@@ -54,6 +56,14 @@ const TAG = randomUUID();
 const onTask = (extra: Body) => (taskId: string) => ({ taskId, ...extra });
 const onEntry = (extra: Body) => (entryId: string) => ({ entryId, ...extra });
 
+/** An AW-05 answer's body: the task, the run on it and an ask, and a top-up's amount. */
+const runOf = (recordId: string, runId: string, op: CommandName): Body =>
+  op === 'run.top_up'
+    ? { recordId, runId, askId: randomUUID(), amountMinor: 100, currency: 'AUD' }
+    : op === 'run.revise_state'
+      ? { recordId, runId, expectedVersion: 0, knowledge: [NOBODY], unknowns: [] }
+      : { recordId, runId, askId: randomUUID() };
+
 /** An operand in its foreign and fabricated forms. */
 const pair = (
   operand: string,
@@ -66,9 +76,11 @@ const pair = (
 
 /** Every gate item recorded in alpha, the operator, so the mode may move to real (S0-5). */
 async function gateReady(w: IdentWorld, caller: Caller): Promise<void> {
+  const links = await legalEvidence(w.h.world.db.admin, w.h.world.alpha);
   for (const item of GATE_ITEMS) {
+    const body = gateRecordBody(item, links);
     // eslint-disable-next-line no-await-in-loop
-    const answer = await w.person(caller, 'operations.record_gate_item', gateRecordBody(item));
+    const answer = await w.person(caller, 'operations.record_gate_item', body);
     expect(['ok', 'GATE_ITEM_ALREADY_RECORDED'], item).toContain(answer.code);
   }
 }
@@ -124,6 +136,11 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
 
   beforeAll(async () => {
     w = await createIdentWorld('ident_negatives');
+    // MP-6-2's revision asks run:write, which the cast's admin holds on no
+    // run; on the whole business, so a foreign task is judged by the handler.
+    await w.h.world.db.app.withBusiness(w.h.world.alpha, async (tx) => {
+      await grantTo(tx, w.h.world.ada as Member, 'write', undefined, false, 'run');
+    });
     alpha = w.h.world.alpha;
     bravo = w.h.world.bravo;
     ada = { kind: 'person', caller: w.h.world.ada };
@@ -375,12 +392,51 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         ['access.revoke', pair('grantId', f.grantId, (grantId) => ({ grantId }))],
         ...accessGrantCells(f.admin.personId as string, f.clientId),
       );
+      // AW-05's answers name the task and the run on it. Bravo's run is the
+      // one its pickup claimed; alpha's task is named beside it, and then
+      // bravo's task beside it.
+      const [bravoRun] = await w.h.world.db.admin.execute<{ readonly run_id: string }>(
+        'select run_id from public.reservations where id = $1',
+        [f.picked.reservationId],
+      );
+      for (const op of ['run.top_up', 'run.end_at_budget_stop', 'run.revise_state'] as const) {
+        cells.push(
+          [op, pair('runId', String(bravoRun?.run_id), (id) => runOf(own.task.id, id, op))],
+          [
+            op,
+            pair('recordId', f.proposal.task.id, (id) => runOf(id, String(bravoRun?.run_id), op)),
+          ],
+        );
+      }
       for (const [op, { operand, forms }] of cells) {
         // eslint-disable-next-line no-await-in-loop
         await refuses(op, operand, ada, 'NOT_FOUND', forms);
       }
     },
     300_000,
+  );
+
+  it(
+    CASE.conversation,
+    async () => {
+      // AW-03: another business's conversation and a made-up id are one answer.
+      const foreign = await foreignConversation(w.h.world.db.admin, bravo);
+      const cells: readonly [CommandName, Body][] = [
+        ['conversation.read', {}],
+        ['conversation.allowance', {}],
+        ['conversation.message', { body: NOBODY }],
+        ['conversation.rename', { title: NOBODY }],
+        ['conversation.set_scope', { page: null }],
+      ];
+      for (const [op, extra] of cells) {
+        // eslint-disable-next-line no-await-in-loop -- each operation against its own before and after
+        await refuses(op, 'conversationId', ada, 'NOT_FOUND', {
+          foreign: { conversationId: foreign, ...extra },
+          fabricated: { conversationId: randomUUID(), ...extra },
+        });
+      }
+    },
+    120_000,
   );
 
   it(
@@ -447,6 +503,16 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         foreign: { gateId, versionId, ...decision },
         fabricated: { gateId: randomUUID(), versionId: randomUUID(), ...decision },
       });
+      // AW-04: the plan accept is that decision, refused the same way.
+      await refuses('task.accept_plan', 'gateId', ada, 'NOT_FOUND', {
+        foreign: { gateId, versionId, ...ACCEPTED_PLAN, note: NOBODY },
+        fabricated: {
+          gateId: randomUUID(),
+          versionId: randomUUID(),
+          ...ACCEPTED_PLAN,
+          note: NOBODY,
+        },
+      });
     },
     120_000,
   );
@@ -500,7 +566,9 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         ['task.dispatch', {}],
         // The attempt token is one no form holds, so the lease is what is compared.
         ['task.observe', { attemptId: randomUUID() }],
+        ['task.check', { name: NOBODY, outcome: 'passed' }],
         ['task.handback', { outcome: 'completed', report: { wrote: NOBODY } }],
+        ['run.delegate_child', childProbe(w.h.world.agent.actorId)],
       ];
       for (const [op, extra] of byLease) {
         const forms = {

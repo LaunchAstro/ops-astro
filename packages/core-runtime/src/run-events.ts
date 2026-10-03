@@ -14,7 +14,14 @@ import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../../core-records/src/index.ts';
 import type { LockSet } from './locks.ts';
 
-export type RunEventKind = 'claimed' | 'handed_back' | 'dropped' | 'reactivated';
+export type RunEventKind =
+  | 'claimed'
+  | 'handed_back'
+  | 'dropped'
+  | 'reactivated'
+  // AW-11: a helper handed part of the work, and its result merged back.
+  | 'delegated'
+  | 'child_handed_back';
 
 export interface RunEvent {
   readonly kind: RunEventKind;
