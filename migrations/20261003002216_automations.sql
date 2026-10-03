@@ -188,6 +188,35 @@ create table public.activation_occurrences (
   constraint activation_occurrences_started_names_run check ((outcome = 'started') = (run_id is not null))
 );
 
+-- An occurrence's version is one of its activation's definition: the run it
+-- starts (P11) is that definition's, whoever writes the row. The keys above
+-- hold the business only; an activation's definition never changes.
+create function public.activation_occurrences_version_of_definition() returns trigger
+  language plpgsql
+  set search_path = pg_catalog, public
+  as $$
+begin
+  if not exists (select 1 from public.activations a
+                   join public.definition_versions v
+                     on v.business_id = a.business_id and v.definition_id = a.definition_id
+                  where a.business_id = new.business_id and a.id = new.activation_id
+                    and v.id = new.version_id) then
+    raise exception 'activation_occurrences: version % is not of activation %''s definition',
+      new.version_id, new.activation_id
+      using errcode = 'check_violation',
+            constraint = 'activation_occurrences_version_of_definition';
+  end if;
+  return null;
+end;
+$$;
+
+revoke execute on function public.activation_occurrences_version_of_definition() from public;
+
+create constraint trigger activation_occurrences_version_of_definition
+  after insert or update of activation_id, version_id on public.activation_occurrences
+  for each row
+  execute function public.activation_occurrences_version_of_definition();
+
 alter table public.automation_definitions enable row level security;
 alter table public.automation_definitions force row level security;
 alter table public.definition_versions enable row level security;

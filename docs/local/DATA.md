@@ -806,8 +806,9 @@ a mode its pinned version does not permit (`activations_mode_permitted`, an
 after trigger so row security answers another business first; an update that
 keeps the mode and the pin is not asked again). `activation_occurrences` holds
 each due time or event once (`activation_occurrences_due_once`,
-`activation_occurrences_event_once`), with its outcome, and names a run only
-when it started one, at most one occurrence per run. Nothing here starts a run:
+`activation_occurrences_event_once`), with its outcome and a version of its
+activation's own definition (`activation_occurrences_version_of_definition`),
+and names a run only when it started one, at most one occurrence per run. Nothing here starts a run:
 every occurrence is `activation_off` or `no_standing_approval` until C52-A's
 standing approval lands. The application may select and insert all four, and
 update an activation's setting, pin, switch and revision by column grant;
