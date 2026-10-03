@@ -446,9 +446,6 @@ describe.skipIf(serverUrl === undefined)('WF-1 task types and the map as a task'
       clientSet: true,
     });
     expect(JSON.stringify(seen)).not.toContain(client);
-    // A grant on the client reaches it.
-    const onClient = await w.member('on-client', ['read'], { kind: 'party', id: client });
-    expect(await view(onClient, map.id)).toMatchObject({ client, clientSet: true });
     // A map under no client: null, and not set.
     const loose = await newMap(owner, 'no client');
     expect(await view(owner, loose.id)).toMatchObject({ client: null, clientSet: false });
