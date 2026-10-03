@@ -17,12 +17,13 @@
 //    inbox send reads it; an answer carrying the token is malformed. Nothing
 //    returned or written holds the token.
 //
-// The concurrency ceiling is the catalogued one, counted over invitation
-// attempts in flight under a lock of their own.
+// The concurrency ceiling is the catalogued one, and the inbox send's own
+// (`roomFor`): one limit, under one lock, counts every email in flight
+// against the provider, inbox and invitation alike, each ask only until
+// custody's timeout and the grace have passed.
 
 import { createHash, randomBytes } from 'node:crypto';
 import {
-  hasRoom,
   isUuid,
   type BusinessId,
   type Database,
@@ -32,7 +33,7 @@ import type { ModelOperation } from '../../core-connectors/src/index.ts';
 import { observed, sendRoute } from './broker-email-route.ts';
 import type { MailSettings } from './broker-email.ts';
 import type { Broker } from './broker-types.ts';
-import type { DeliverRefusal } from './email-class.ts';
+import { roomFor, type DeliverRefusal } from './email-class.ts';
 
 /** The acts an invitation's send answers, one email each. */
 export const INVITATION_SEND_ACTS: readonly string[] = ['invitation.create', 'invitation.resend'];
@@ -58,17 +59,6 @@ interface Asked {
   readonly tokenId: string;
   readonly to: string;
   readonly token: string;
-}
-
-async function inFlight(tx: TenantQuery): Promise<number> {
-  const [row] = await tx.query<{ n: number }>(
-    `select count(*)::int as n from (
-       select distinct on (token_id) state from invitation_delivery_attempts
-        where business_id = $1 order by token_id, observed_seq desc) last
-      where state = 'asked'`,
-    [tx.businessId],
-  );
-  return row?.n ?? 0;
 }
 
 async function recordAttempt(
@@ -108,8 +98,7 @@ async function ask(
     [tx.businessId, invitationId, INVITATION_SEND_ACTS],
   );
   if ((tally?.sends ?? 0) >= (tally?.acts ?? 0)) return 'NO_SEND_ACT';
-  const limit = { name: `invitation-email:${operation.key}`, limit: operation.concurrency };
-  if (!(await hasRoom(tx, [{ ...limit, count: inFlight }]))) return 'EMAIL_AT_CEILING';
+  if (!(await roomFor(tx, operation)())) return 'EMAIL_AT_CEILING';
   const token = randomBytes(32).toString('base64url');
   const [minted] = await tx.query<{ id: string }>(
     `insert into enrolment_tokens (business_id, id, invitation_id, token_hash, expires_at)
