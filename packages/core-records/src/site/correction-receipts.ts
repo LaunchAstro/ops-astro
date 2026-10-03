@@ -39,11 +39,29 @@ const FROM: Readonly<Record<ObservedResult['step'], readonly CorrectionState[]>>
 };
 
 /**
- * The state a result moves to. A publish takes its outcome; a revert moves only
- * once the original word is observed back, so a revert accepted, unknown or
- * failed leaves the page recorded live, with its receipt saying why.
+ * A decided correction cancelled after its dispatch: the runner saw the cancel during the
+ * publish, or the cancel landed during its read-back. Either way the publish may be out, an
+ * uncertain effect (`core-connectors/src/site/publish.ts`), so the row takes any publish
+ * result, its receipt keeps the observed outcome, and it is recorded unknown. A request
+ * cancelled before any decision was never dispatched and takes none.
  */
-function nextState(result: ObservedResult): CorrectionState {
+const cancelledAfterDispatch = (result: ObservedResult, correction: LiveCorrection): boolean =>
+  correction.state === 'cancelled' &&
+  correction.decidedByPersonId !== null &&
+  result.step === 'publish';
+
+/** Whether the result may move `correction`: from its step's states, or cancelled after dispatch. */
+const movesFrom = (result: ObservedResult, correction: LiveCorrection): boolean =>
+  FROM[result.step].includes(correction.state) || cancelledAfterDispatch(result, correction);
+
+/**
+ * The state a result moves to. A publish takes its outcome, but a cancelled correction's
+ * is recorded unknown; a revert moves only once the original word is observed back, so a
+ * revert accepted, unknown or failed leaves the page recorded live, with its receipt
+ * saying why.
+ */
+function nextState(result: ObservedResult, correction: LiveCorrection): CorrectionState {
+  if (cancelledAfterDispatch(result, correction)) return 'unknown';
   if (result.step === 'publish' || result.outcome === 'reverted') return result.outcome;
   return 'live';
 }
@@ -55,26 +73,42 @@ type Refused = { readonly ok: false; readonly code: ObservedRefusal };
 
 /**
  * The correction locked, and a live worker lease on its task at the fence the
- * worker holds (under a share lock, so the lease cannot end until this
- * transaction does), or the refusal. The lease is the caller's own, and its
- * delegation, where it has one, is not revoked, settled or expired: the check
- * `core-runtime/src/lease-ownership.ts` makes before it trusts a lease.
+ * worker holds, or the refusal. The lease and then its delegation are locked
+ * `for share` (`core-runtime/src/locks.ts`'s order), so neither can end or be
+ * revoked until this transaction does; then the clock is read once, after the
+ * locks, and both expiries are judged at it (`core-runtime/src/clock.ts`), so a
+ * write that waited on the correction past an expiry sees it expired. The lease
+ * is the caller's own, and its delegation, where it has one, is not revoked,
+ * settled or expired: the check `core-runtime/src/lease-ownership.ts` makes.
  */
 async function holdUnderLease(tx: TenantQuery, at: UnderLease): Promise<Held> {
   const correction = await lockCorrectionForSystem(tx, at.correctionId);
   if (correction === undefined) return { ok: false, code: 'NOT_FOUND' };
-  const lease = await tx.query<{ readonly id: string }>(
-    `select l.id from public.leases l
+  const [lease] = await tx.query<{ readonly delegation_id: string | null }>(
+    `select l.delegation_id from public.leases l
       where l.business_id = $1 and l.id = $2 and l.task_id = $3 and l.fence = $4
-        and l.state = 'live' and l.expires_at > now() and l.holder_actor_id = $5
-        and (l.delegation_id is null or exists (
-              select 1 from public.delegations d
-               where d.business_id = l.business_id and d.id = l.delegation_id
-                 and d.revoked_at is null and d.settled_at is null and d.expires_at > now()))
+        and l.holder_actor_id = $5
       for share of l`,
     [tx.businessId, at.leaseId, correction.taskId, at.fence, at.actorId],
   );
-  if (lease.length === 0) return { ok: false, code: 'LEASE_NOT_OWNED' };
+  if (lease === undefined) return { ok: false, code: 'LEASE_NOT_OWNED' };
+  if (lease.delegation_id !== null) {
+    await tx.query(
+      `select 1 from public.delegations where business_id = $1 and id = $2 for share`,
+      [tx.businessId, lease.delegation_id],
+    );
+  }
+  const live = await tx.query<{ readonly id: string }>(
+    `with instant as materialized (select clock_timestamp() as at)
+     select l.id from public.leases l, instant
+      where l.business_id = $1 and l.id = $2 and l.state = 'live' and l.expires_at > instant.at
+        and (l.delegation_id is null or exists (
+              select 1 from public.delegations d
+               where d.business_id = l.business_id and d.id = l.delegation_id
+                 and d.revoked_at is null and d.settled_at is null and d.expires_at > instant.at))`,
+    [tx.businessId, at.leaseId],
+  );
+  if (live.length === 0) return { ok: false, code: 'LEASE_NOT_OWNED' };
   return { ok: true, correction };
 }
 
@@ -102,7 +136,9 @@ export async function readCorrectionForRun(
 }
 
 /**
- * `receipt written`: the observed result and its receipt, together.
+ * `receipt written`: the observed result and its receipt, together. The receipt
+ * keeps the outcome observed; a decided correction cancelled after its dispatch
+ * still takes it, and moves to unknown.
  *
  * Under a live worker lease the caller holds on the correction's task with the
  * fence it holds, both locked; the correction row locked first. The state moves and the
@@ -117,10 +153,9 @@ export async function recordObservedResult(
 > {
   const held = await holdUnderLease(tx, result);
   if (!held.ok) return held;
-  if (!FROM[result.step].includes(held.correction.state))
-    return { ok: false, code: 'GATE_NOT_APPROVED' };
+  if (!movesFrom(result, held.correction)) return { ok: false, code: 'GATE_NOT_APPROVED' };
 
-  const state = nextState(result);
+  const state = nextState(result, held.correction);
   await tx.query(
     `update public.live_corrections
         set state = $3, revision = revision + 1, updated_at = now()

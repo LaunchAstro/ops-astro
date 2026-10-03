@@ -11,8 +11,8 @@
 //   3. The receipt write needs the caller's own lease in a live delegation.
 //   4. A correction's party is its task's client, never the one supplied.
 //
-// Registered through `tests/tenancy/restricted-calls.test.ts`, a named suite,
-// which calls `describeLiveCorrectionLows` after its own cases.
+// Registered through `tests/tenancy/restricted-calls.test.ts`, a named suite, after
+// its own cases. Round 2 (`live-correction-lows-2.ts`) opens its own `describeWorld`.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -42,7 +42,7 @@ import {
 import type { Subject } from '../../packages/core-records/src/authority/grants.ts';
 import type { TransactionQuery } from '../../packages/core-records/src/tenancy/transaction.ts';
 
-interface Lows {
+export interface Lows {
   readonly s: Schedules;
   readonly requester: Member;
   readonly other: Member;
@@ -57,15 +57,15 @@ interface Lows {
 
 let world: Lows | undefined;
 
-const lows = (): Lows => {
+export const lows = (): Lows => {
   if (world === undefined) throw new Error('the P26 world is not open');
   return world;
 };
 
-const inBusiness = async <T>(run: (tx: TransactionQuery) => Promise<T>): Promise<T> =>
+export const inBusiness = async <T>(run: (tx: TransactionQuery) => Promise<T>): Promise<T> =>
   await lows().s.db.app.withBusiness(lows().s.business, run);
 
-async function taskOf(s: Schedules, client: string): Promise<string> {
+export async function taskOf(s: Schedules, client: string): Promise<string> {
   const taskId = await createTask(s, `P26 correction task ${randomUUID()}`);
   appliedDetail(
     await asPerson(s, {
@@ -80,8 +80,8 @@ async function taskOf(s: Schedules, client: string): Promise<string> {
   return taskId;
 }
 
-async function openLows(): Promise<Lows> {
-  const s = await openSchedules('p26lows', 1_000_000);
+async function openLows(part: string): Promise<Lows> {
+  const s = await openSchedules(part, 1_000_000);
   const requester = await enrol(s.db.app, s.business, 'requester');
   const other = await enrol(s.db.app, s.business, 'other');
   await s.db.app.withBusiness(s.business, async (tx) => {
@@ -101,7 +101,7 @@ async function openLows(): Promise<Lows> {
 }
 
 /** A request by the requester on `taskId` under `partyId`, as the record layer answers it. */
-async function file(taskId: string, partyId: string): Promise<unknown> {
+export async function file(taskId: string, partyId: string): Promise<unknown> {
   const { requester } = lows();
   return await inBusiness(
     async (tx) =>
@@ -124,7 +124,7 @@ async function file(taskId: string, partyId: string): Promise<unknown> {
 }
 
 /** A stored request on client A's task, decided by the decider when a decision is named. */
-async function filed(decision?: 'approved' | 'rejected'): Promise<LiveCorrection> {
+export async function filed(decision?: 'approved' | 'rejected'): Promise<LiveCorrection> {
   const made = await file(lows().taskA, lows().clientA);
   if (typeof made !== 'object' || made === null || !('id' in made)) {
     throw new Error(`the request was refused: ${JSON.stringify(made)}`);
@@ -143,7 +143,7 @@ async function filed(decision?: 'approved' | 'rejected'): Promise<LiveCorrection
   );
 }
 
-async function stateOf(id: string): Promise<string | undefined> {
+export async function stateOf(id: string): Promise<string | undefined> {
   const rows = await lows().s.db.admin.execute<{ readonly state: string }>(
     'select state from public.live_corrections where id = $1',
     [id],
@@ -151,12 +151,12 @@ async function stateOf(id: string): Promise<string | undefined> {
   return rows[0]?.state;
 }
 
-async function countOf(sql: string, id: string): Promise<number> {
+export async function countOf(sql: string, id: string): Promise<number> {
   const rows = await lows().s.db.admin.execute<{ readonly n: number }>(sql, [id]);
   return Number(rows[0]?.n);
 }
 
-const RECEIPTS =
+export const RECEIPTS =
   'select count(*)::int as n from public.live_correction_receipts where correction_id = $1';
 
 function findingOne(): void {
@@ -277,23 +277,23 @@ function findingFour(): void {
   });
 }
 
+/** `cases` over a world of its own (database `part`), opened first and dropped after. */
+export function describeWorld(name: string, part: string, cases: () => void): void {
+  describe.skipIf(databaseUrlFromEnvironment() === undefined)(name, () => {
+    beforeAll(async () => {
+      world = await openLows(part);
+    }, 180_000);
+    afterAll(async () => await world?.s.db.drop());
+    cases();
+  });
+}
+
 /** P26's findings, each its own block over one world. */
 export function describeLiveCorrectionLows(): void {
-  describe.skipIf(databaseUrlFromEnvironment() === undefined)(
-    'P26 lows: the live correction records',
-    () => {
-      beforeAll(async () => {
-        world = await openLows();
-      }, 180_000);
-
-      afterAll(async () => {
-        await world?.s.db.drop();
-      });
-
-      describe('finding 1: covered reads ask only the ticked keys', findingOne);
-      describe('finding 2: storage holds a decision once made', findingTwo);
-      describe('finding 3: the receipt write needs the caller’s own live lease', findingThree);
-      describe('finding 4: the party is the task’s client', findingFour);
-    },
-  );
+  describeWorld('P26 lows: the live correction records', 'p26lows', () => {
+    describe('finding 1: covered reads ask only the ticked keys', findingOne);
+    describe('finding 2: storage holds a decision once made', findingTwo);
+    describe('finding 3: the receipt write needs the caller’s own live lease', findingThree);
+    describe('finding 4: the party is the task’s client', findingFour);
+  });
 }

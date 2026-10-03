@@ -57,6 +57,7 @@ import {
 } from './restricted-calls-callers.ts';
 import { columnUpdateFindings } from './restricted-calls-columns.ts';
 import { describeLiveCorrectionLows } from '../site/live-correction-lows.ts';
+import { describeLiveCorrectionLowsRoundTwo } from '../site/live-correction-lows-2.ts';
 
 /**
  * One owner-written row per business in the tables the journey leaves
@@ -837,5 +838,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
 });
 
 // C80's live correction records, held on a world of their own after the cases
-// above: P26's four findings, each its own block (`../site/live-correction-lows.ts`).
+// above: P26's four findings, each its own block (`../site/live-correction-lows.ts`),
+// then the re-bind review's round 2 on a second world (`../site/live-correction-lows-2.ts`).
 describeLiveCorrectionLows();
+describeLiveCorrectionLowsRoundTwo();

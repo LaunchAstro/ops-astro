@@ -83,6 +83,9 @@ create table public.live_corrections (
 
 create index live_corrections_business_idx on public.live_corrections (business_id);
 create index live_corrections_party_idx on public.live_corrections (business_id, party_id);
+-- A task's corrections: the content check on every task read, and the purge's
+-- retention of a trashed task a correction names.
+create index live_corrections_task_idx on public.live_corrections (business_id, task_id);
 
 alter table public.live_corrections enable row level security;
 alter table public.live_corrections force row level security;
@@ -108,7 +111,14 @@ grant select, insert, update on public.live_corrections to ops_astro_app;
 -- written is never rewritten or moved to another person, and the state takes
 -- only the moves the record layer makes (a decision on a request, an observed
 -- publish, a revert). A rejection never becomes an approval, and nothing goes
--- back to requested. Invoker: raising needs no privilege.
+-- back to requested. Cancel is the runner's stop, which it polls for during a
+-- publish (`core-connectors/src/site/publish.ts`): a request, or an approved
+-- correction before its dispatch, moves to cancelled, the decision kept; a
+-- cancel the runner sees after its dispatch, or one landing during its
+-- read-back, is an uncertain effect: the record layer appends the observed
+-- result's receipt and moves a decided cancelled correction to unknown, and on
+-- as an unknown one does. Nothing else moves to or from cancelled. Invoker:
+-- raising needs no privilege.
 create or replace function public.live_corrections_pinned()
   returns trigger
   language plpgsql
@@ -137,6 +147,8 @@ begin
   end if;
   if new.state <> old.state and not (
        (old.state = 'requested' and new.state in ('approved', 'rejected', 'cancelled'))
+       or (old.state = 'approved' and new.state = 'cancelled')
+       or (old.state = 'cancelled' and new.state = 'unknown' and old.decided_at is not null)
        or (old.state in ('approved', 'accepted', 'unknown')
            and new.state in ('accepted', 'live', 'unknown', 'failed', 'reverted'))
        or (old.state = 'live' and new.state = 'reverted')) then
