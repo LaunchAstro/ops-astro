@@ -70,6 +70,15 @@ try {
     }
   }
   if (process.exitCode !== 1) {
+    const beyond = loginsBeyondTheirGroup(
+      await admin.execute(EXISTING_LOGINS, [addresses.map(({ login }) => login.role)]),
+    );
+    if (beyond !== undefined) {
+      console.error(`staging-logins: refused: ${beyond}. Nothing was done.`);
+      process.exitCode = 1;
+    }
+  }
+  if (process.exitCode !== 1) {
     // Made before the database is touched: an existing folder refuses the run.
     stage = 'making the folder';
     mkdirSync(env.OPS_LOGINS_DIR, { mode: 0o700 });
@@ -79,10 +88,10 @@ try {
       writeFileSync(join(env.OPS_LOGINS_DIR, login.setting), address, { mode: 0o600, flag: 'wx' });
     }
     stage = 'making the logins';
-    // What the logins hold is judged in the transaction that sets their
-    // passwords, first and again after its last statement, so a group or grant
-    // given to one meanwhile rolls back every password. The transaction's own
-    // grant holds its group's lock until commit, so a second run waits.
+    // Judged again in the transaction that sets the passwords, first and after
+    // its last statement, so a group or grant given to a login since the check
+    // above rolls back every password. The transaction's own grant holds its
+    // group's lock until commit, so a second run waits.
     let beyond;
     const judge = async (execute) => {
       const roles = addresses.map(({ login }) => login.role);

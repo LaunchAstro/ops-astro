@@ -46,7 +46,7 @@ import {
 import { join } from 'node:path';
 import { connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
 import { migrate } from '../../packages/core-records/src/tenancy/migrate.ts';
-import { markEmptied, resettable } from './made-up-only.ts';
+import { markEmptied, productionSigns, resettable } from './made-up-only.ts';
 import { RECORD_FILE } from './operator.ts';
 import {
   CARRY_ENDED_SESSIONS,
@@ -207,8 +207,10 @@ try {
     // dropped, and none lands after it: the tables are locked until commit.
     const tables = (await execute(TENANT_TABLES)).map(({ name }) => name);
     if (tables.length > 0) await execute(`lock table ${tables.join(', ')} in share mode`);
-    if (!(await resettable({ execute })))
-      throw new Refusal('the database took a write since it was judged; nothing was emptied');
+    if (!(await resettable({ execute }))) {
+      const signs = await productionSigns({ execute }, [], true);
+      throw new Refusal(`since it was judged, ${signs.join('; ')}; nothing was emptied`);
+    }
     // oxlint-disable-next-line no-await-in-loop -- in order: each builds on the one before
     for (const statement of [...CARRY_ENDED_SESSIONS, ...EMPTY]) await execute(statement);
   });
