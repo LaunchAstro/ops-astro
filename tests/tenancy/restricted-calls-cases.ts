@@ -120,7 +120,7 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['siu', 'access_endings'],
   // 0057 (C58): an ended session is written once; never changed or deleted.
   ['si', 'ended_sessions'],
-  // 0100 (C59): a factor reset is written, then its provider step is stamped by
+  // 20261003003537 (C59): a factor reset is written, then its provider step is stamped by
   // update; never deleted.
   ['siu', 'factor_resets'],
   // 0065: the live change record, stamped by the writes' own triggers (C4);
@@ -190,7 +190,7 @@ export const APPLICATION_EXECUTES: readonly string[] = [
   'public.audit_event_hash',
   // 0058 (S0-5): security invoker, so it reads no more than the caller may.
   'public.first_client_readiness',
-  // 0100 (C59): a definer answering one boolean for a login of the caller's own
+  // 20261003003537 (C59): a definer answering one boolean for a login of the caller's own
   // business; PUBLIC may not execute it.
   'public.factor_login_live_elsewhere',
 ];

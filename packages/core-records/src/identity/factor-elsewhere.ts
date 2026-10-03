@@ -5,7 +5,7 @@
 // per sign-in login, so clearing a factor that login holds would clear it in
 // every business it reaches; a reset is refused while another business holds
 // the login live. The meaning is C58's `loginLiveElsewhere`
-// (`shared-login.ts`), answered by a definer function in 0100 that takes this
+// (`shared-login.ts`), answered by a definer function in 20261003003537 that takes this
 // business's login id, never a subject, and says yes or no alone: no
 // business, person or count. An id that is not a login here answers yes.
 

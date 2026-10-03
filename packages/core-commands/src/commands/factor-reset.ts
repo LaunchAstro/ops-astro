@@ -11,7 +11,7 @@
 // one transaction under the business's access lock: the member's live factor
 // is recorded removed (here and by subject, 0064), every session of theirs is
 // ended (0057, 0063), and one reset row owes the provider its admin removal of
-// that factor (0100). The removal is never sent inside the transaction: the
+// that factor (20261003003537). The removal is never sent inside the transaction: the
 // local server tries it once the act commits, and the endings loop retries it
 // (`settleFactorResets`).
 //

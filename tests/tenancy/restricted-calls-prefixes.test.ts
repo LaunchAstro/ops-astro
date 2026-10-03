@@ -319,7 +319,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     login_id: randomUUID(),
     ended_by_actor_id: randomUUID(),
   },
-  // 0100 (C59): no journey resets a factor.
+  // 20261003003537 (C59): no journey resets a factor.
   'public.factor_resets': {
     person_id: randomUUID(),
     login_id: randomUUID(),

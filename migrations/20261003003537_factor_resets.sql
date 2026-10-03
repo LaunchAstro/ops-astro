@@ -1,7 +1,8 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
+-- A UTC timestamp ID (docs/local/DATA.md, "What the schema is"): written after
+-- batch 3b took 0100-0111 and migrations moved to timestamps.
 --
--- 0100 factor resets (C59, ORCH65-Q3). The number is a placeholder: it is
--- renumbered when this lands, after whatever migrations land first.
+-- 20261003003537 factor resets (C59, ORCH65-Q3).
 --
 -- A member who has lost their authenticator cannot clear it themselves:
 -- the provider refuses a new enrolment, and the removal of a verified

@@ -3089,7 +3089,7 @@ say where else the login is; nothing is written or sent.
 In one transaction, under the access lock, the member's live factor is
 recorded removed (here and by subject, 0064), every session of theirs is ended
 (0057, 0063), and one reset row owes the provider GoTrue's admin removal of
-that factor (`DELETE /admin/users/<subject>/factors/<factor id>`, 0100). It
+that factor (`DELETE /admin/users/<subject>/factors/<factor id>`, 20261003003537). It
 answers `{ resetId, providerStep }`: `owed` from the act, `done` when the local
 server, holding the admin key, sent the removal as soon as the act committed.
 Hosted, the endings loop sends it each `ACCESS_ENDING_RETRY_SECONDS`
