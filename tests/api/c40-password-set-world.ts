@@ -234,7 +234,8 @@ async function openWorld(): Promise<void> {
   const verify = createSupabaseVerifier(testSignIn(ACCEPTANCE_ISSUER));
   const factors = createGoTrueFactors({
     baseUrl: `http://127.0.0.1:${(provider.address() as AddressInfo).port}`,
-    timeoutMs: 300,
+    // Room for a held answer (SEC26 L2), and a hang still ends the call.
+    timeoutMs: 3000,
   });
   const inner = createApi({
     database: world.db.app,
