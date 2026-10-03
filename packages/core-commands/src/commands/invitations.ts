@@ -9,6 +9,11 @@
 // - `invitation.resend` moves a pending invitation's expiry on by a lifetime.
 // - `invitation.revoke` ends a pending invitation.
 //
+// An administrator's invitation, created or resent, also asks `access:manage`
+// on the whole business: an administrator manages access, so only a person
+// who already may can make one, and `access:share` alone is refused
+// `SCOPE_NOT_GRANTED`, writing nothing. A revoke asks `access:share` only.
+//
 // Each create and resend is one act the send may answer with one email
 // (`core-custody/src/broker-invitation.ts`): the send counts these acts from
 // the audit chain, so nothing here sends and nothing here holds a token.
@@ -22,7 +27,13 @@
 // An address already pending, or confirmed on a member of this business, is
 // refused: the inviter can see the team, so the answer tells them nothing new.
 
-import { hasRoom, isUuid, type TenantQuery } from '../../../core-records/src/index.ts';
+import {
+  checkAuthority,
+  hasRoom,
+  isUuid,
+  subjectsOf,
+  type TenantQuery,
+} from '../../../core-records/src/index.ts';
 import { INVITATION_SEND_ACTS } from '../../../core-custody/src/index.ts';
 import type { CommandContext } from './context.ts';
 import type { CommandRequest } from './requests.ts';
@@ -75,6 +86,29 @@ const notPending = (): HandlerOutcome =>
       ['Only a pending invitation is resent or revoked. Invite again instead.'],
     ),
   );
+
+/** The role an administrator's invitation names: it asks `access:manage` too. */
+const ADMIN_ROLE = 'admin';
+
+/** Refused unless the caller holds `access:manage` on the whole business. */
+async function notManager(
+  tx: TenantQuery,
+  context: CommandContext,
+): Promise<HandlerOutcome | undefined> {
+  const held = await checkAuthority(tx, subjectsOf(context.session), {
+    collection: 'access',
+    action: 'manage',
+    scope: { kind: 'business', id: null },
+  });
+  if (held.ok) return undefined;
+  return refused(
+    refuseCommand(
+      'SCOPE_NOT_GRANTED',
+      ['role'],
+      ['Only a person with access:manage on the whole business invites an administrator.'],
+    ),
+  );
+}
 
 /** Applied acts in the last hour that one of the counts below selects. */
 const ACTS_IN_HOUR = `a.business_id = $1 and a.outcome = 'applied' and a.command = any($2::text[])
@@ -150,6 +184,8 @@ async function create(
     return invalid('email', 'Send one email address.');
   }
   if (!ROLES.has(request.role)) return invalid('role', 'Send member or admin.');
+  const unmanaged = request.role === ADMIN_ROLE ? await notManager(tx, context) : undefined;
+  if (unmanaged !== undefined) return unmanaged;
   const limit = await overLimit(tx, address, context.session.actorId);
   if (limit !== undefined) return limit;
   // A pending invitation whose lifetime has passed is expired first, by the worker.
@@ -174,6 +210,7 @@ async function create(
 interface Pending {
   readonly id: string;
   readonly address: string;
+  readonly role_key: string;
   readonly state: string;
   readonly live: boolean;
 }
@@ -182,7 +219,7 @@ interface Pending {
 async function locked(tx: TenantQuery, id: string): Promise<Pending | undefined> {
   if (!isUuid(id)) return undefined;
   const [row] = await tx.query<Pending>(
-    `select id, address, state, expires_at > now() as live from invitations
+    `select id, address, role_key, state, expires_at > now() as live from invitations
       where business_id = $1 and id = $2 for update`,
     [tx.businessId, id],
   );
@@ -200,6 +237,8 @@ async function move(
   const resend = request.command === 'invitation.resend';
   if (resend) {
     if (!found.live) return notPending();
+    const unmanaged = found.role_key === ADMIN_ROLE ? await notManager(tx, context) : undefined;
+    if (unmanaged !== undefined) return unmanaged;
     const limit = await overLimit(tx, found.address, context.session.actorId);
     if (limit !== undefined) return limit;
   }
