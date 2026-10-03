@@ -2344,7 +2344,10 @@ yet: the recent sign-in a money action asks (C59).
 (`member` or `admin`); `invitation/resend` and `invitation/revoke` with
 `invitationId`. Each asks `share` on `access` for the whole business
 (`access:share`: owners and administrators), and no agent route serves them
-(`DELEGATION_EXCLUDES_OPERATION`). A create writes a new person and the
+(`DELEGATION_EXCLUDES_OPERATION`). A create or resend of an `admin`
+invitation also asks `access:manage` for the whole business, and without it
+is `SCOPE_NOT_GRANTED` 403 naming `role`, writing nothing; a revoke asks
+`access:share` alone. A create writes a new person and the
 invitation, pending for seven days; a resend moves that on by seven days; a
 revoke ends it. An ended invitation is `TRANSITION_NOT_PERMITTED` 409 naming
 `state`, another business's or an unissued id `NOT_FOUND`, an address already
@@ -2359,9 +2362,12 @@ Each create and each resend allows one email: `sendInvitation`
 (`core-custody`) sends through the broker's `email.send` only while the
 invitation is pending and has an applied act no send has answered, mints a
 fresh enrolment token (32 random bytes of its own), keeps its SHA-256 alone
-and records the attempt against it, under `email.send`'s one ceiling with the
-inbox's emails. The login provider is never asked for a token, and an address
-holding a login in another business is invited as a new one is.
+and records the attempt against it. It shares the inbox email's ceiling: one
+limit, `email.send`'s catalogued concurrency, counts inbox and invitation
+emails in flight together, each ask until custody's timeout and a minute's
+grace have passed (`EMAIL_AT_CEILING` at it, writing nothing). The login
+provider is never asked for a token, and an address holding a login in
+another business is invited as a new one is.
 
 `POST /api/hooks/auth-email` is the login provider's Send Email hook, mounted
 by `composeApi` when it is given the hook's secret (`AUTH_EMAIL_HOOK_SECRET`,

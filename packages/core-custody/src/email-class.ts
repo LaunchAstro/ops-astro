@@ -111,53 +111,65 @@ export async function windowSpent(
  */
 export const IN_FLIGHT_GRACE_MS = 60_000;
 
+/** `observed_at` inside the bound: an ask older than it holds no provider call open. */
+const INSIDE_BOUND = `observed_at > now() - make_interval(secs => $2::double precision / 1000)`;
+
 /**
- * Emails in flight for this business: asks younger than the bound whose item's
- * last email observation is still `asked`. One email is one provider call: a
- * daily batch's asks share their person and their transaction's `now()`, so
- * they count once; an email sent at once covers one item. A team
- * invitation's email (C39-T) is one call per enrolment token, counted the
- * same way under the same ceiling.
+ * Inbox emails in flight for this business: asks younger than the bound whose
+ * item's last email observation is still `asked`. One email is one provider
+ * call: a daily batch's asks share their person and their transaction's
+ * `now()`, so they count once; an email sent at once covers one item.
  */
-function emailsInFlight(boundMs: number): (tx: TenantQuery) => Promise<number> {
-  return async (tx) => {
-    const [flight] = await tx.query<{ readonly n: number }>(
-      `select (select count(distinct case when last.evidence like 'batch:daily%'
-                                  then 'batch:' || last.recipient || ':' || last.observed_at::text
-                                  else 'item:' || last.item_id::text end)
-         from (select distinct on (a.item_id) a.item_id, a.state, a.evidence, a.observed_at,
-                      i.recipient_person_id::text as recipient
-                 from public.inbox_delivery_attempts a
-                 join public.inbox_items i on i.business_id = a.business_id and i.id = a.item_id
-                where a.business_id = $1 and a.channel = 'email'
-                  and a.observed_at > now() - make_interval(secs => $2::double precision / 1000)
-                order by a.item_id, a.observed_seq desc) last
-        where last.state = 'asked')::int
-       + (select count(*)
-            from (select distinct on (token_id) state from public.invitation_delivery_attempts
-                   where business_id = $1
-                     and observed_at > now() - make_interval(secs => $2::double precision / 1000)
-                   order by token_id, observed_seq desc) invited
-           where invited.state = 'asked')::int as n`,
-      [tx.businessId, boundMs],
-    );
-    return flight?.n ?? 0;
-  };
+async function inboxInFlight(tx: TenantQuery, boundMs: number): Promise<number> {
+  const [flight] = await tx.query<{ readonly n: number }>(
+    `select count(distinct case when last.evidence like 'batch:daily%'
+                                then 'batch:' || last.recipient || ':' || last.observed_at::text
+                                else 'item:' || last.item_id::text end)::int as n
+       from (select distinct on (a.item_id) a.item_id, a.state, a.evidence, a.observed_at,
+                    i.recipient_person_id::text as recipient
+               from public.inbox_delivery_attempts a
+               join public.inbox_items i on i.business_id = a.business_id and i.id = a.item_id
+              where a.business_id = $1 and a.channel = 'email' and a.${INSIDE_BOUND}
+              order by a.item_id, a.observed_seq desc) last
+      where last.state = 'asked'`,
+    [tx.businessId, boundMs],
+  );
+  return flight?.n ?? 0;
 }
 
 /**
- * The catalogued concurrency, as a durable limit: an ask counts until its
- * outcome is kept, or until custody's timeout and the grace have passed.
- * Checked under the limit's lock just before `asked` is written, so a refusal
- * writes nothing.
+ * C39-T's invitation emails in flight, by the same bound: one per enrolment
+ * token whose last observation inside it is still `asked`. A sender that died
+ * after its `asked` committed stops holding a place once the bound passes.
+ */
+async function invitationsInFlight(tx: TenantQuery, boundMs: number): Promise<number> {
+  const [flight] = await tx.query<{ readonly n: number }>(
+    `select count(*)::int as n
+       from (select distinct on (token_id) state from public.invitation_delivery_attempts
+              where business_id = $1 and ${INSIDE_BOUND}
+              order by token_id, observed_seq desc) last
+      where last.state = 'asked'`,
+    [tx.businessId, boundMs],
+  );
+  return flight?.n ?? 0;
+}
+
+/**
+ * The catalogued concurrency, as one durable limit over every email the
+ * broker sends through the provider, an inbox item's and an invitation's
+ * alike: an ask counts until its outcome is kept, or until custody's timeout
+ * and the grace have passed. Checked under the limit's lock just before
+ * `asked` is written, so a refusal writes nothing.
  */
 export type Room = () => Promise<boolean>;
 
 export function roomFor(tx: TenantQuery, operation: ModelOperation): Room {
+  const boundMs = operation.timeoutMs + IN_FLIGHT_GRACE_MS;
   const limit = {
     name: `email:${operation.key}`,
     limit: operation.concurrency,
-    count: emailsInFlight(operation.timeoutMs + IN_FLIGHT_GRACE_MS),
+    count: async (q: TenantQuery) =>
+      (await inboxInFlight(q, boundMs)) + (await invitationsInFlight(q, boundMs)),
   };
   return async () => await hasRoom(tx, [limit]);
 }

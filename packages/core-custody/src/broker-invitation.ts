@@ -18,6 +18,11 @@
 //    inbox send reads it; an answer carrying the token is malformed. Nothing
 //    returned or written holds the token.
 //
+// The concurrency ceiling is the catalogued one, and the inbox send's own
+// (`roomFor`): one limit, under one lock, counts every email in flight
+// against the provider, inbox and invitation alike, each ask only until
+// custody's timeout and the grace have passed.
+//
 // The login provider is never asked: nothing it issues is a secret of ours,
 // and an address that already holds a login elsewhere is invited exactly as
 // a new one is. When the provider's Send Email hook asks for an invitation
