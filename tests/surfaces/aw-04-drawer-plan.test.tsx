@@ -67,6 +67,7 @@ function recorder(replies: readonly Answer[], accept: Answer | null = null) {
   const sent: Sent[] = [];
   const queue = [...replies];
   const client = {
+    newOperationId: () => 'op-1',
     // The allowance line's read (AW-04 on main), not asked here.
     read: () => Promise.resolve({ unavailable: true, because: 'not asked here' }),
     mutate: (name: string, body: Readonly<Record<string, unknown>>) => {

@@ -16,6 +16,8 @@ export type PlanCardState = 'offered' | 'accepting' | 'approved' | 'stale';
 
 export interface AssistantPlan {
   readonly version: number;
+  /** The exact words the click binds, drawn on the card as they are sent. */
+  readonly text: string;
   readonly steps: readonly string[];
   readonly ceilingMinor: number;
   readonly spendMinor: number;

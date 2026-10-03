@@ -53,7 +53,14 @@ export function useAsks(take: (entry: AskEntry) => void): void {
     pending = null;
     if (entry !== null) take(entry);
   };
-  useEffect(taken, []);
+  useEffect(() => {
+    taken();
+    // The drawer closing, or its session ending, drops an ask it never took.
+    return () => {
+      pending = null;
+    };
+    // oxlint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useHeard(taken);
 }
 
