@@ -10,6 +10,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   changeActivation,
   claimOccurrence,
+  insertDefinition,
   readActivation,
   readVersion,
   releaseVersion,
@@ -129,6 +130,42 @@ describe.skipIf(serverUrl === undefined)('C33 occurrences', () => {
   });
 
   // eslint-disable-next-line max-lines-per-function -- the race, then the database's own refusals
+  it("C33 an occurrence names a version of its own activation's definition: another definition's version is refused by the database", async () => {
+    const version = await w.release(['scheduled']);
+    const activation = await w.activate(version, 'scheduled');
+    const other = await w.inAlpha(async (tx) => {
+      const definitionId = await insertDefinition(tx, {
+        kind: 'automation',
+        name: `Other ${w.canary}`,
+        actorId: w.admin.actorId,
+      });
+      return await releaseVersion(tx, {
+        definitionId,
+        contentDigest: DIGEST,
+        contentSize: 1,
+        inputs: [],
+        operations: ['report.send'],
+        modes: ['scheduled'],
+        actorId: w.admin.actorId,
+      });
+    });
+    if (other === null || other === 'raced') throw new Error(`release answered ${String(other)}`);
+    // The app role writing the row itself, as a later writer (P11's intake) would.
+    const crossed = w.inAlpha(async (tx) =>
+      tx.query(
+        `insert into public.activation_occurrences
+           (business_id, id, activation_id, version_id, due_at, outcome)
+         values ((select public.app_business_id()), $1, $2, $3, now(), 'activation_off')`,
+        [randomUUID(), activation.id, other.id],
+      ),
+    );
+    await expect(crossed).rejects.toMatchObject({
+      code: '23514',
+      constraint_name: 'activation_occurrences_version_of_definition',
+    });
+    expect(await w.occurrences(activation.id)).toBe(0);
+  });
+
   it('C33 concurrent claim: racing schedulers and racing deliveries commit one occurrence, held by the database', async () => {
     const version = await w.release(['scheduled', 'event']);
     const scheduled = await w.activate(version, 'scheduled');
