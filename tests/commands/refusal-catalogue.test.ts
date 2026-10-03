@@ -175,6 +175,11 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   // AW-08, the launch gate and its client sign-off.
   ['LAUNCH_NOT_DECIDED', 409, 'caller'],
   ['CLIENT_SIGNOFF_REQUIRED', 409, 'caller'],
+  // C80's rows, read after the table from `site/refusal-rows.ts`.
+  ['CHANGE_ENVELOPE_EXCEEDED', 422, 'caller'],
+  ['APPROVER_NOT_CONFIGURED', 409, 'caller'],
+  ['APPROVER_NOT_CONFIGURED_ONE', 403, 'caller'],
+  ['SELF_APPROVAL_REFUSED', 403, 'caller'],
 ];
 
 /**
