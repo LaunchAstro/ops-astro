@@ -16,7 +16,8 @@ import { COMMAND_SURFACE } from '../../../core-wire/src/index.ts';
 const CONTENT_COMMANDS: readonly string[] = COMMAND_SURFACE.filter(
   (declaration) =>
     declaration.kind === 'write' &&
-    !['task.create', 'task.duplicate', 'task.set_party'].includes(declaration.name),
+    // `map.scope` is a map's `task.set_party` (WF-1): a client change too.
+    !['task.create', 'task.duplicate', 'task.set_party', 'map.scope'].includes(declaration.name),
 ).map((declaration) => declaration.name);
 
 /**
