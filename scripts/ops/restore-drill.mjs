@@ -53,9 +53,9 @@
 // anything is read, and learns nothing. A passed drill is that operator's own
 // attestation: the store takes a pass only through the store login the
 // installation appointed as them (deploy/staging/backup-store.sql). An export
-// asks the gate again before each read of the store, so an operator whose
-// sign-in ended or whose `operations:manage` was revoked part way reads no
-// further.
+// and a drill from the store ask the gate again before each step with the
+// store, so an operator whose sign-in ended or whose `operations:manage` was
+// revoked part way reads no further.
 //
 // It prints one JSON line, passed or failed, and exits 0 or 1. A failed line
 // names the stage and nothing else: Docker's, pg_restore's and the server's
@@ -78,9 +78,11 @@ export { restoreDrill } from './drill-restore.mjs';
 
 /**
  * The drill as the operator the gate admitted runs it (drill-acts.mjs): the
- * drill, then its receipt; this drill unless a test passes its own.
+ * drill, then its receipt; this drill unless a test passes its own. Its every
+ * read of and write to the store asks the gate again first.
  */
-export const drillAsOperator = (options) => actAsOperator({ drill: restoreDrill, ...options });
+export const drillAsOperator = ({ reach = stagingReach, ...options }) =>
+  actAsOperator({ drill: restoreDrill, ...options, reach: askingAgain(reach, options.gate) });
 
 /**
  * `reach` asking the gate again (operator.ts, `stillOperator`) before each

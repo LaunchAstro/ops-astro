@@ -55,7 +55,7 @@ export type Gate =
       readonly recordSignIn: () => Promise<void>;
       /** Dates a pass the store took for the operations view (tested-restore.ts); drills only. */
       readonly recordTestedRestore: () => Promise<string>;
-      /** Asks the gate again, now; rejects unless it admits the same person (an export's reads). */
+      /** Asks the gate again, now; rejects unless it admits the same person (store reads). */
       readonly stillOperator: () => Promise<void>;
     }
   | { readonly ok: false; readonly reason: string };
