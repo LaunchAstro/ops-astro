@@ -29,7 +29,8 @@ function Late(): ReactElement {
   return <p>{late ? 'late' : 'first'}</p>;
 }
 
-describe('a mounted view is unmounted when its test ends', () => {
+// In order, shuffled runs included: the second case reads what the first left.
+describe('a mounted view is unmounted when its test ends', { shuffle: false }, () => {
   it('leaves a view with a pending timer mounted', async () => {
     left = await mount(<Late />);
     expect(left.text()).toBe('first');
