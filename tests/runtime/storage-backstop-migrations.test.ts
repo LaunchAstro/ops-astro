@@ -37,7 +37,7 @@ import {
   type MigrationOutcome,
 } from '../../packages/core-records/src/tenancy/migrate.ts';
 import type { Database } from '../../packages/core-records/src/tenancy/database.ts';
-import { BEFORE_STEP_PLAN_RECORD, propose } from '../../packages/core-runtime/src/propose.ts';
+import { propose } from '../../packages/core-runtime/src/propose.ts';
 import { decide } from '../../packages/core-runtime/src/decide.ts';
 import {
   insertActor,
@@ -54,6 +54,7 @@ import {
   TASK_COLLECTION,
   TEST_SIGNING_KEY,
   type RuntimeFixture,
+  stepPlanRecord,
 } from './fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
@@ -95,8 +96,8 @@ async function heldReservation(
       currency: 'AUD',
       payload: { instruction: 'draft it' },
       step: { kind: 'local.draft', payload: { words: 200 } },
-      // Seeded before 20261003001115 (and 0102): the step has no plan record columns.
-      planRecordId: BEFORE_STEP_PLAN_RECORD,
+      // As this schema writes it: no plan record columns before 20261003001115, none bound after.
+      planRecordId: await stepPlanRecord(tx),
       expiresAt: new Date(Date.now() + 3_600_000),
     });
     if (!proposed.ok) throw new Error(`propose refused ${proposed.refusal.code}`);

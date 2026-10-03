@@ -33,7 +33,7 @@ import {
   type MigrationOutcome,
 } from '../../packages/core-records/src/tenancy/migrate.ts';
 import type { Database, TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
-import { BEFORE_STEP_PLAN_RECORD, propose } from '../../packages/core-runtime/src/propose.ts';
+import { propose } from '../../packages/core-runtime/src/propose.ts';
 import { decide } from '../../packages/core-runtime/src/decide.ts';
 import {
   buildFixture,
@@ -42,6 +42,7 @@ import {
   TASK_COLLECTION,
   TEST_SIGNING_KEY,
   type RuntimeFixture,
+  stepPlanRecord,
 } from './fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
@@ -93,8 +94,8 @@ async function proposed(
       currency: 'AUD',
       payload: { instruction: 'draft it' },
       step: { kind: 'local.draft', payload: { words: 200 } },
-      // Seeded before 20261003001115 (and 0102): the step has no plan record columns.
-      planRecordId: BEFORE_STEP_PLAN_RECORD,
+      // As this schema writes it: no plan record columns before 20261003001115, none bound after.
+      planRecordId: await stepPlanRecord(tx),
       expiresAt: new Date(Date.now() + 3_600_000),
       ...(on.lineageId === undefined ? {} : { lineageId: on.lineageId }),
     });
@@ -182,9 +183,14 @@ async function addVersion(
        from public.planned_runs where business_id = $1 and version_id = $2`,
     [...v, runId, versionId],
   );
+  // From 20261003001115 a step says its plan record; at 0029 it has no such columns.
+  const [intoColumns, fromColumns] =
+    (await stepPlanRecord(tx)) === null
+      ? [', plan_record_id, plan_record_written', ', s.plan_record_id, true']
+      : ['', ''];
   await tx.query(
-    `insert into public.planned_steps (business_id, id, run_id, ordinal, kind, payload)
-     select s.business_id, $3, $4, s.ordinal, s.kind, s.payload
+    `insert into public.planned_steps (business_id, id, run_id, ordinal, kind, payload${intoColumns})
+     select s.business_id, $3, $4, s.ordinal, s.kind, s.payload${fromColumns}
        from public.planned_steps s
        join public.planned_runs r on r.business_id = s.business_id and r.id = s.run_id
       where s.business_id = $1 and r.version_id = $2`,

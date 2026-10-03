@@ -162,8 +162,10 @@ async function withPlannedSteps(
     'grant select on public.fixture_steps to ops_astro_app',
     `create function public.fixture_steps() returns trigger language plpgsql as $$ begin
        if new.ordinal = 1 then
-         insert into public.planned_steps (business_id, id, run_id, ordinal, kind, payload)
-         select new.business_id, gen_random_uuid(), new.run_id, 1 + g, 'compose', '{}'::jsonb
+         insert into public.planned_steps (business_id, id, run_id, ordinal, kind, payload,
+                                           plan_record_id, plan_record_written)
+         select new.business_id, gen_random_uuid(), new.run_id, 1 + g, 'compose', '{}'::jsonb,
+                new.plan_record_id, true
            from public.planned_runs r join public.fixture_steps x on x.task_id = r.task_id
           cross join generate_series(1, x.extra) g
           where r.business_id = new.business_id and r.id = new.run_id;
