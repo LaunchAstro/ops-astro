@@ -106,7 +106,6 @@
         "tests/review/staging-logins-duplicate-sslmode-proof.test.ts",
         "tests/review/staging-logins-direct-privileges-proof.test.ts",
         "tests/review/staging-logins-group-race-proof.test.ts",
-        "tests/review/staging-reset-agent-password-proof.test.ts",
         "tests/review/seed-boundaries-proof.test.mjs",
         "tests/ci/queue-codeql-blocking-proof.test.mjs"
       ],

@@ -997,7 +997,7 @@
     "tests/review/staging-reset-encoded-user-proof.test.ts",
     "tests/review/staging-reset-write-after-admission-proof.test.ts",
     "tests/review/staging-reset-keeps-revoked-session-proof.test.ts",
-    "tests/review/staging-reset-agent-password-proof.test.ts",
+    "tests/ci/staging-reset-agent-signs-in.test.ts",
     "tests/operations/find-copies-values-only.proof.test.ts",
     "tests/db/identity-roles-hold-no-membership.test.ts"
   ]
