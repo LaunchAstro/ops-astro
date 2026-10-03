@@ -8,7 +8,7 @@
 // own, bounded: neither read grows with a person's history. Raising and
 // recording are `items.ts`.
 
-import { REACH, type InboxAccess } from './access.ts';
+import { inConversation, IS_CONVERSATION, REACH, type InboxAccess } from './access.ts';
 import type { Disclosed, InboxAlert, InboxItem, InboxItemAxes } from './items.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 
@@ -36,9 +36,12 @@ type ItemRow = InboxItemAxes &
 /**
  * Whether the recipient reads the row's task now, from the statement's own
  * `reach` (`REACH`): the same grants `taskAccess` asks, walked once for every row.
+ * A conversation's item (C71) is held by its current members alone, each from
+ * their latest join: an item raised before a re-join stays held.
  */
-const HELD = `((select business from reach) or i.subject_record_id = any((select records from reach)::uuid[])
-         or r.uuid_7 = any((select parties from reach)::uuid[]))`;
+const HELD = `(case when ${IS_CONVERSATION} then ${inConversation('$2', 'i.raised_at')}
+         else ((select business from reach) or i.subject_record_id = any((select records from reach)::uuid[])
+               or r.uuid_7 = any((select parties from reach)::uuid[])) end)`;
 
 /** An item's own columns, as `shown` carries them before trashed and held. */
 const COLUMNS = `i.id, i.business_id, i.recipient_person_id, i.subject_record_id, i.reason,
@@ -58,13 +61,15 @@ const OPEN = `select ${COLUMNS}, r.deleted_at is not null as trashed, ${HELD} as
  * its client, gives at most $3 of its newest items on the subject history
  * index (0044), and the newest $3 of those are the page. A closed item about
  * a task the recipient cannot read is never looked at, so it takes no place.
+ * A conversation's item (C71, a mention) is never closed on this head; were
+ * one, a business-wide reader in it would find it here.
  */
 const PAGE = `select * from (
          (select ${COLUMNS}, r.deleted_at is not null as trashed, true as held
             from public.inbox_items i
             join public.records r on r.business_id = i.business_id and r.id = i.subject_record_id
            where (select business from reach) and i.business_id = $1 and i.recipient_person_id = $2
-             and i.work_state <> 'open'
+             and i.work_state <> 'open' and ${HELD}
            order by i.closed_at desc, i.id desc
            limit $3)
          union all
