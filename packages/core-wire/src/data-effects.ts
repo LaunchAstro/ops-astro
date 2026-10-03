@@ -179,6 +179,11 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'operations.change_installation_mode': writing(business('ops.installation')),
   'credential.issue': CREDENTIAL,
   'credential.revoke': CREDENTIAL,
+  // Custody (C31): a secret row names a client only by its scope id, which
+  // holds no client content and no foreign key to one; the value is sealed.
+  'secret.list': READ,
+  'secret.set': writing(business('custody_secrets')),
+  'secret.clear': writing(business('custody_secrets')),
   'client.create': writing(client('clients')),
   // SL12 (batch 3a join, BATCH3-INTEG): a conversation can hold a task's
   // content once scoped to it, so its rows count as client-scoped.

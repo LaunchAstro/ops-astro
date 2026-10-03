@@ -209,6 +209,7 @@ const ACCESS_COLLECTION = 'access';
 const SETTINGS_COLLECTION = 'settings';
 const SESSION_COLLECTION = 'session';
 const BILLING_COLLECTION = 'billing';
+const CUSTODY_COLLECTION = 'custody';
 const CONVERSATION_COLLECTION = 'conversation';
 const TIME_COLLECTION = 'time';
 const TAG_COLLECTION = 'tag';
@@ -600,6 +601,22 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     collection: 'access',
     targetsExistingRecord: false,
     untargetedIdentifiers: ['holderId'],
+  }),
+
+  // Custody (C31). `custody:manage` for all three, never an agent (the key
+  // catalogue: owner and administrators). The list is asked per row by the
+  // scopes the caller holds the key at, so a client-scoped holder sees that
+  // client's secrets only; setting and clearing are business-wide.
+  read('secret.list', CUSTODY_COLLECTION, { action: 'manage' }),
+  declare('secret.set', 'manage', {
+    collection: CUSTODY_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['clientId'],
+  }),
+  declare('secret.clear', 'manage', {
+    collection: CUSTODY_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['secretId'],
   }),
 
   // The grant manager's authority, which is `manage` on the task family this

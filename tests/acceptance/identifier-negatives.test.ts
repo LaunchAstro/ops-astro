@@ -344,6 +344,7 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
       cells.push(
         ['task.restore', pair('batchId', f.batchId, (batchId) => ({ batchId }))],
         ['grant.revoke', pair('grantId', f.grantId, (grantId) => ({ grantId }))],
+        ['secret.clear', pair('secretId', f.secretId, (secretId) => ({ secretId }))],
         [
           'delegation.revoke',
           pair('delegationId', f.picked.delegationId, (delegationId) => ({ delegationId })),

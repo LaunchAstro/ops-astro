@@ -103,10 +103,31 @@ const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: strin
     from: '0072',
     line: `ops_astro_app ${act} ops.second_factor_codes.${column}`,
   })),
+  // C31: custody's select leaves out the three sealed columns (20261003001523).
+  ...[
+    'business_id',
+    'cleared_at',
+    'cleared_by_actor_id',
+    'created_at',
+    'id',
+    'key_id',
+    'last_used_at',
+    'name',
+    'revision',
+    'scope_id',
+    'scope_kind',
+    'set_at',
+    'set_by_actor_id',
+  ].map((column) => ({
+    from: '20261003001523',
+    line: `ops_astro_app SELECT public.custody_secrets.${column}`,
+  })),
 ];
 
 export function roleColumnGrantsAt(at?: string): readonly string[] {
-  return ROLE_COLUMN_GRANTS.filter((grant) => at === undefined || at.slice(0, 4) >= grant.from)
+  return ROLE_COLUMN_GRANTS.filter(
+    (grant) => at === undefined || at.slice(0, grant.from.length) >= grant.from,
+  )
     .map((grant) => grant.line)
     .toSorted();
 }
