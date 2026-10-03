@@ -236,3 +236,14 @@ it('Sol R1 9: a replacement decoy does not establish that the target word landed
   );
   expect((await observe('Parking beside the clinic. We walk beside you.')).state).toBe('live');
 });
+
+it('Sol R1 10: an unrelated replacement word does not prevent observing a correct revert', async () => {
+  // The target holds the original word again; the replacement stands only in other copy.
+  const reverted = page('We walk alongside you. Parking beside the clinic.');
+  const outcome = await revertCorrection(revertInput, revertPorts([], { capture: reverted }));
+  expect(outcome.state).toBe('reverted');
+  const notYet = page('We walk beside you. Parking beside the clinic.');
+  expect((await revertCorrection(revertInput, revertPorts([], { capture: notYet }))).state).toBe(
+    'revert_accepted',
+  );
+});
