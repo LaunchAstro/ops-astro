@@ -118,7 +118,10 @@ async function endingsPassSettles(): Promise<void> {
   const owed = await owedReset('vee');
   const { calls, provider } = factorFake();
   const from = harness.world.db.admin.log.entries.length;
-  expect(await retryOwedSteps(harness.world.db.admin, harness.world.db.app, provider, 0)).toBe(0);
+  expect(await retryOwedSteps(harness.world.db.admin, harness.world.db.app, provider, 0)).toEqual({
+    owed: 0,
+    faults: 0,
+  });
   expect(calls).toContainEqual({
     subject: owed.person.presented.subject,
     factorId: owed.factorId,

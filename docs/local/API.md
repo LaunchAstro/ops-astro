@@ -3066,10 +3066,14 @@ neither the key nor the owner login, and the endings loop (`pnpm endings`,
 every owed step each `ACCESS_ENDING_RETRY_SECONDS` (60): it reads business ids
 and the shared check on the owner login only, and settles business by
 business on the application login under each one's tenancy
-(`retryAccessEndings`). `pnpm endings --once` runs one pass and exits 1 if it
-failed, so a scheduler sees the backlog. It refuses to start without `DATABASE_URL`,
+(`retryAccessEndings`). Each pass prints its backlog, every ending and reset
+still owed, one another retry holds included. `pnpm endings --once` runs one
+pass and exits 1 if it could not finish or a step it asked ended on a fault, so
+a scheduler sees the backlog. It refuses to start without `DATABASE_URL`,
 `DATABASE_ADMIN_URL`, `GOTRUE_URL` (https or loopback) and
-`SUPABASE_SERVICE_KEY`. Each owed ending is claimed for 30
+`SUPABASE_SERVICE_KEY`, and refuses a database setting postgres.js would not
+read as written (a host list, or a raw comma or second `@` before the host),
+naming the setting and never its value. Each owed ending is claimed for 30
 seconds just before its own calls, so two retries never call the provider at
 once for one ending and a slow pass never lets a later row's claim lapse; a
 step done is stamped once and never asked again (`settleAccessEndings`,

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // C58's retry statements for access endings (`settleAccessEndings`,
-// `access-end.ts`): the claim on the next owed ending, one row at a time.
+// `access-end.ts`): the claim on the next owed ending, one row at a time, and
+// the count of endings a business still owes.
 
 import type { BusinessId, Database } from '../../../core-records/src/index.ts';
 
@@ -51,4 +52,23 @@ export async function claimNextEnding(
       ),
   );
   return row;
+}
+
+/** Every ending of the business still owing a step, one another retry holds included. */
+export async function endingsOwed(
+  database: Database,
+  businessId: BusinessId,
+  only: readonly string[] | null,
+): Promise<number> {
+  const [row] = await database.withBusiness(
+    businessId,
+    async (tx) =>
+      await tx.query<{ readonly owed: number }>(
+        `select count(*)::int as owed from public.access_endings
+          where business_id = $1 and (sessions_ended_at is null or login_deactivated_at is null)
+            and ($2::uuid[] is null or id = any($2::uuid[]))`,
+        [businessId, only],
+      ),
+  );
+  return row?.owed ?? 0;
 }

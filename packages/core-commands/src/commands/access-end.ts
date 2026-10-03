@@ -31,7 +31,7 @@ import {
   revokeAgentCredential,
 } from '../../../core-records/src/index.ts';
 import type { BusinessId, Database, TenantQuery } from '../../../core-records/src/index.ts';
-import { claimNextEnding, type OwedEnding } from './access-end-claim.ts';
+import { claimNextEnding, endingsOwed, type OwedEnding } from './access-end-claim.ts';
 import type { ProviderAnswer, ProviderFault } from './account-factor-provider.ts';
 import { endPersonAuthority } from './authority-controls.ts';
 import type { CommandContext } from './context.ts';
@@ -56,11 +56,17 @@ export interface LoginProvider {
   deleteFactor?(subject: string, factorId: string): Promise<ProviderAnswer<void>>;
 }
 
-/** What one pass over a business's owed endings did, by count only. */
+/**
+ * What one pass over a business's owed endings (or C59's resets) did, by
+ * count only: `owed` is every one still owing a step after it, one another
+ * retry holds included, and `faults` the ones this pass asked that ended on a
+ * fault.
+ */
 export interface SettleReport {
   readonly attempted: number;
   readonly settled: number;
   readonly owed: number;
+  readonly faults: number;
 }
 
 /**
@@ -199,6 +205,7 @@ export async function settleAccessEndings(
   const only = options.only ?? null;
   const tried: string[] = [];
   let settled = 0;
+  let faults = 0;
   for (;;) {
     // eslint-disable-next-line no-await-in-loop -- one ending at a time, each claimed before its calls
     const row = await claimNextEnding(database, businessId, claimSeconds, only, tried);
@@ -212,8 +219,10 @@ export async function settleAccessEndings(
       return answer;
     });
     if (done.sessions && done.login) settled += 1;
+    if (done.fault !== null) faults += 1;
   }
-  return { attempted: tried.length, settled, owed: tried.length - settled };
+  const owed = await endingsOwed(database, businessId, only);
+  return { attempted: tried.length, settled, owed, faults };
 }
 
 /** What was done, stamped once: `coalesce` keeps each step's first stamp. */
