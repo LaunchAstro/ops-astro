@@ -43,6 +43,21 @@ const shaped = (row: FactorRow): SecondFactor => ({
 });
 
 /**
+ * The sign-in login's installation-wide lock, the advisory key
+ * `second-factor-subject:<digest>` on its provider subject, taken first in its
+ * transaction. A factor's record step takes it, a factor reset and an access
+ * ending's provider steps (C58) hold it across their live-elsewhere check, and
+ * any path that maps a login into a business must take it first.
+ */
+export async function lockLoginSubject(
+  tx: Pick<TenantQuery, 'query'>,
+  subject: string,
+): Promise<void> {
+  const digest = createHash('sha256').update(subject).digest('hex');
+  await advisoryLock(tx, `second-factor-subject:${digest}`);
+}
+
+/**
  * The person's live factor. With `lock`, the subject of the login the person
  * signs in with, the login and then the person's own row are locked for the
  * rest of the transaction first, so an enrolment, a verification and a
@@ -64,8 +79,7 @@ export async function liveFactor(
   options: { readonly lock?: string } = {},
 ): Promise<SecondFactor | undefined> {
   if (options.lock !== undefined) {
-    const digest = createHash('sha256').update(options.lock).digest('hex');
-    await advisoryLock(tx, `second-factor-subject:${digest}`);
+    await lockLoginSubject(tx, options.lock);
     await tx.query(
       'select 1 from public.people where business_id = $1 and id = $2 for no key update',
       [tx.businessId, personId],

@@ -99,6 +99,7 @@ export {
 } from './identity/verified-subject.ts';
 export {
   liveFactor,
+  lockLoginSubject,
   loginHasVerifiedFactor,
   recordFactorEnrolled,
   recordFactorRemoved,

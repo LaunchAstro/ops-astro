@@ -13,22 +13,25 @@
 // (`AUTH_NO_MEMBERSHIP`), whatever the provider has or has not done
 // (TR-SEC5-4).
 //
-// The provider steps are never taken inside a database transaction. They are
-// tried as soon as the act commits and retried by the API server until each is
-// done (`settleAccessEndings`): end every session, which revokes their refresh
-// tokens, then deactivate the login. A step done is stamped once and never
-// asked again. An answer the adapter does not accept, a throw or a timeout is
-// a fault by its kind alone, and the step stays owed.
+// The provider steps are never taken inside the act's transaction. They are
+// tried as soon as the act commits and retried by the endings loop until each
+// is done (`settleAccessEndings`): end every session, which revokes their
+// refresh tokens, then deactivate the login. A step done is stamped once and
+// never asked again. An answer the adapter does not accept, a throw or a
+// timeout is a fault by its kind alone, and the step stays owed.
 
 import {
+  factorLoginLiveElsewhere,
   isUuid,
   lastManager,
   lockAccess,
   lockAgentCredential,
+  lockLoginSubject,
   otherManagers,
   revokeAgentCredential,
 } from '../../../core-records/src/index.ts';
 import type { BusinessId, Database, TenantQuery } from '../../../core-records/src/index.ts';
+import { claimNextEnding, type OwedEnding } from './access-end-claim.ts';
 import type { ProviderAnswer, ProviderFault } from './account-factor-provider.ts';
 import { endPersonAuthority } from './authority-controls.ts';
 import type { CommandContext } from './context.ts';
@@ -61,9 +64,10 @@ export interface SettleReport {
 }
 
 /**
- * How long a retry's claim on an ending lasts. Longer than both provider
- * calls can take (two time limits of 5 seconds), so a second retry never
- * calls the provider for an ending the first is still working on.
+ * How long a retry's claim on one ending lasts. Each ending is claimed just
+ * before its own calls, and this is longer than both can take (two time
+ * limits of 5 seconds), so a second retry never calls the provider for an
+ * ending the first is still working on.
  */
 export const ACCESS_ENDING_CLAIM_SECONDS = 30;
 
@@ -161,23 +165,19 @@ async function endStanding(
   );
 }
 
-interface Owed {
-  readonly id: string;
-  readonly subject: string;
-  readonly sessions_done: boolean;
-  readonly login_done: boolean;
-}
-
 /**
- * One pass over this business's endings with a provider step owed.
+ * One pass over this business's endings with a provider step owed, claimed
+ * one row at a time (`claimNextEnding`) just before its calls, so a pass of
+ * slow calls never lets a claim lapse on a row still waiting its turn.
  *
- * The claim is one statement: each row it returns is one no other retry has
- * claimed inside `claimSeconds`, and a second retry waiting on the row lock
- * re-reads the claim and passes over it. The provider is then called outside
- * any transaction, sessions before the login (a provider may refuse to sign
- * out a login it has already deactivated), stopping at the first fault, and
- * what was done is stamped in a second transaction. `coalesce` keeps a step's
- * first stamp, so a step done is never undone or re-dated.
+ * Each claimed ending is worked in one transaction that takes the login's
+ * subject lock (`lockLoginSubject`) first and writes nothing until its calls
+ * are done: the shared-login check, asked again under the lock, then the
+ * provider, sessions before the login (a provider may refuse to sign out a
+ * login it has already deactivated), stopping at the first fault, then the
+ * stamp. A login another business maps under that lock is either seen by the
+ * check or waits for the stamp. `coalesce` keeps a step's first stamp, so a
+ * step done is never undone or re-dated.
  */
 export async function settleAccessEndings(
   database: Database,
@@ -196,55 +196,39 @@ export async function settleAccessEndings(
   },
 ): Promise<SettleReport> {
   const claimSeconds = options.claimSeconds ?? ACCESS_ENDING_CLAIM_SECONDS;
-  const claimed = await database.withBusiness(
-    businessId,
-    async (tx) =>
-      await tx.query<Owed>(
-        `update public.access_endings e
-            set attempts = e.attempts + 1, attempt_started_at = now()
-           from public.logins l
-          where e.business_id = $1 and l.business_id = e.business_id and l.id = e.login_id
-            and (e.sessions_ended_at is null or e.login_deactivated_at is null)
-            and (e.attempt_started_at is null
-                 or e.attempt_started_at <= now() - make_interval(secs => $2))
-            and ($3::uuid[] is null or e.id = any($3::uuid[]))
-          returning e.id, l.subject,
-                    e.sessions_ended_at is not null as sessions_done,
-                    e.login_deactivated_at is not null as login_done`,
-        [businessId, claimSeconds, options.only ?? null],
-      ),
-  );
+  const only = options.only ?? null;
+  const tried: string[] = [];
   let settled = 0;
-  for (const row of claimed) {
-    // eslint-disable-next-line no-await-in-loop -- one ending at a time, each its own provider calls
-    const done = await attempt(provider, row, options.sharedElsewhere);
-    // eslint-disable-next-line no-await-in-loop -- its stamp, before the next ending is asked
-    await stamp(database, businessId, row.id, done);
+  for (;;) {
+    // eslint-disable-next-line no-await-in-loop -- one ending at a time, each claimed before its calls
+    const row = await claimNextEnding(database, businessId, claimSeconds, only, tried);
+    if (row === undefined) break;
+    tried.push(row.id);
+    // eslint-disable-next-line no-await-in-loop -- its calls and stamp, before the next is claimed
+    const done = await database.withBusiness(businessId, async (tx) => {
+      await lockLoginSubject(tx, row.subject);
+      const answer = await attempt(tx, provider, row, options.sharedElsewhere);
+      await stamp(tx, row.id, answer);
+      return answer;
+    });
     if (done.sessions && done.login) settled += 1;
   }
-  return { attempted: claimed.length, settled, owed: claimed.length - settled };
+  return { attempted: tried.length, settled, owed: tried.length - settled };
 }
 
 /** What was done, stamped once: `coalesce` keeps each step's first stamp. */
-async function stamp(
-  database: Database,
-  businessId: BusinessId,
-  id: string,
-  done: Attempted,
-): Promise<void> {
-  await database.withBusiness(businessId, async (tx) => {
-    await tx.query(
-      `update public.access_endings
-          set sessions_ended_at = case when $3 then coalesce(sessions_ended_at, now())
-                                       else sessions_ended_at end,
-              login_deactivated_at = case when $4 then coalesce(login_deactivated_at, now())
-                                          else login_deactivated_at end,
-              last_fault = $5,
-              provider_steps_skipped = coalesce(provider_steps_skipped, $6)
-        where business_id = $1 and id = $2`,
-      [businessId, id, done.sessions, done.login, done.fault, done.skipped],
-    );
-  });
+async function stamp(tx: TenantQuery, id: string, done: Attempted): Promise<void> {
+  await tx.query(
+    `update public.access_endings
+        set sessions_ended_at = case when $3 then coalesce(sessions_ended_at, now())
+                                     else sessions_ended_at end,
+            login_deactivated_at = case when $4 then coalesce(login_deactivated_at, now())
+                                        else login_deactivated_at end,
+            last_fault = $5,
+            provider_steps_skipped = coalesce(provider_steps_skipped, $6)
+      where business_id = $1 and id = $2`,
+    [tx.businessId, id, done.sessions, done.login, done.fault, done.skipped],
+  );
 }
 
 interface Attempted {
@@ -255,8 +239,9 @@ interface Attempted {
 }
 
 async function attempt(
+  tx: TenantQuery,
   provider: LoginProvider,
-  row: Owed,
+  row: OwedEnding,
   sharedElsewhere: (subject: string) => Promise<boolean>,
 ): Promise<Attempted> {
   let sessions = row.sessions_done;
@@ -268,6 +253,9 @@ async function attempt(
   } catch {
     return { sessions, login, fault: 'unreachable', skipped: null };
   }
+  // Asked again under the subject lock, so a login mapped after the first
+  // answer is seen. An answer of doubt is a yes: nothing is sent.
+  shared ||= await factorLoginLiveElsewhere(tx, row.login_id);
   if (shared) return { sessions: true, login: true, fault: null, skipped: 'shared' };
   if (!sessions) {
     const answer = await asked(async () => await provider.endSessions(row.subject));
