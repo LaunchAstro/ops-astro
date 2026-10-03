@@ -538,7 +538,7 @@ async function coveringMap(
   if (facts?.mapId === null || facts?.mapId === undefined) return undefined;
   // A create is covered only when filed under the map itself, never under a ticket.
   if (declaration.name === 'task.create') return facts.type === 'map' ? facts.mapId : undefined;
-  return facts.mapId !== id ? facts.mapId : undefined;
+  return facts.mapId === id ? undefined : facts.mapId;
 }
 
 /** Everything the handler needs first, or the refusal that stops it. */
