@@ -149,6 +149,13 @@ async function packOf(tx: TenantQuery, versionId: string): Promise<string> {
   return row.id;
 }
 
+/** A copied step's plan record columns: the source's, written true; at 0029 there are none. */
+async function recordColumns(tx: TenantQuery): Promise<readonly [string, string]> {
+  return (await stepPlanRecord(tx)) === null
+    ? [', plan_record_id, plan_record_written', ', s.plan_record_id, true']
+    : ['', ''];
+}
+
 /**
  * A superseded version 99 added to `from`'s lineage, with its own run and
  * step copied from `from`'s and, when asked, its own consistent pack. The
@@ -183,11 +190,7 @@ async function addVersion(
        from public.planned_runs where business_id = $1 and version_id = $2`,
     [...v, runId, versionId],
   );
-  // From 20261003001115 a step says its plan record; at 0029 it has no such columns.
-  const [intoColumns, fromColumns] =
-    (await stepPlanRecord(tx)) === null
-      ? [', plan_record_id, plan_record_written', ', s.plan_record_id, true']
-      : ['', ''];
+  const [intoColumns, fromColumns] = await recordColumns(tx);
   await tx.query(
     `insert into public.planned_steps (business_id, id, run_id, ordinal, kind, payload${intoColumns})
      select s.business_id, $3, $4, s.ordinal, s.kind, s.payload${fromColumns}
