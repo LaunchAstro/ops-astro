@@ -46,6 +46,16 @@ beforeAll(async () => {
 
 afterAll(async () => await controls?.drop());
 
+/** The markup's text: tags stripped until none is left, so a tag split by another never survives. */
+function textOf(html: string): string {
+  let text = html;
+  for (let last = ''; last !== text;) {
+    last = text;
+    text = text.replaceAll(/<[^>]*>/gu, '');
+  }
+  return text;
+}
+
 // Sol OW-075.1 criterion correctness, retitled by what it proves; its body is Sol's.
 it('token metadata survives the real evidence renderer', async () => {
   const task = await readTask();
@@ -102,7 +112,7 @@ it('a successor is never labelled pinned at its predecessor lease', async () => 
       ledgerHref: null,
     }),
   );
-  const text = html.replaceAll(/<[^>]*>/gu, '');
+  const text = textOf(html);
   expect(text).not.toContain(
     `Context snapshot v2 ${head.payloadDigest.slice(0, 12)} · pinned ${String(acquiredAt)}`,
   );
