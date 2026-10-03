@@ -111,13 +111,13 @@ function correctionFrom(row: Row): LiveCorrection {
   };
 }
 
-/** The one refusal of a request: its party is not the client of its task. */
+/** The one refusal of a request: its party is not the client of a live task. */
 export type PartyRefused = { readonly ok: false; readonly code: 'CORRECTION_PARTY_MISMATCH' };
 
 /**
- * Store a request at its task's own client (the `client` link), read in the insert under a
- * share lock on the task: a supplied party the task does not carry, or a task that is not
- * one, is refused and writes nothing. The version id is minted here: the approval names it.
+ * Store a request at its task's own client (the `client` link), read in the insert under a share
+ * lock on the task: a party the task does not carry, a record that is no task, or a trashed task
+ * is refused `CORRECTION_PARTY_MISMATCH`, writing nothing. The version id is minted here.
  */
 export async function insertLiveCorrection(
   tx: TenantQuery,
@@ -134,7 +134,7 @@ export async function insertLiveCorrection(
        from public.records r
        join public.record_types t on t.business_id = r.business_id and t.id = r.record_type_id
       where r.business_id = $1 and r.id = $4::uuid and t.key = 'task' and r.uuid_7 = $3::uuid
-      for share of r
+        and r.deleted_at is null for share of r
      returning ${COLUMNS}`,
     [
       tx.businessId,
