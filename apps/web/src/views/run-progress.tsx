@@ -22,10 +22,12 @@ import type {
   ExecutionRun,
   ExecutionEvent,
   ExecutionNode,
+  ProposalView,
   ReceiptResult,
   TaskExecutionResult,
 } from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
+import { RunMap } from './run-map.tsx';
 import { Observed } from './run-observed.tsx';
 
 export interface RunProgressProps {
@@ -37,6 +39,8 @@ export interface RunProgressProps {
    * task, and each new answer re-reads the run with it, so no second stream.
    */
   readonly readOf: unknown;
+  /** The task read's proposals, for each run's gate on the execution map (MP-6-3). */
+  readonly proposals?: readonly ProposalView[];
 }
 
 export function RunProgress(props: RunProgressProps): ReactElement {
@@ -53,31 +57,40 @@ export function RunProgress(props: RunProgressProps): ReactElement {
   const settledRead = state.outcome === 'ready' || state.outcome === 'empty';
   const readable = value !== null && Array.isArray(value.runs) && Array.isArray(value.events);
   const outcome = settledRead ? (readable ? value.outcome : 'unavailable') : state.outcome;
+  const graph = readable ? value.graph : undefined;
   return (
-    <section className="sb__sect" data-outcome={outcome} data-run-progress="">
-      <div className="sb__sh">
-        <span className="sb__k">The run</span>
-      </div>
-      {state.outcome === 'loading' ? (
-        <Empty look="inline" title="Reading the run…" />
-      ) : state.outcome === 'denied' ? (
-        <p className="card__sub" data-run="denied">
-          The server refused this read ({state.refusal.code}), so nothing about the run is shown.
-        </p>
-      ) : state.outcome === 'unavailable' || !readable ? (
-        // DS-PRIM-30: a read that could not be read is a section error, the bad banner.
-        <div data-run="unavailable">
-          <Banner tone="bad" lead="The run could not be read.">
-            {state.outcome === 'unavailable' ? `${state.because} ` : ''}That is not a claim that no
-            work ran.
-          </Banner>
+    <>
+      <RunMap
+        graph={graph}
+        loading={state.outcome === 'loading'}
+        proposals={props.proposals ?? []}
+        scope={`${props.grantKey} ${taskKey}`}
+      />
+      <section className="sb__sect" data-outcome={outcome} data-run-progress="">
+        <div className="sb__sh">
+          <span className="sb__k">The run</span>
         </div>
-      ) : value === null ? null : value.outcome === 'no-run' ? (
-        <Empty title="No run yet" description="Nothing has been picked up on this task." />
-      ) : (
-        <Runs client={client} grantKey={props.grantKey} readOf={props.readOf} value={value} />
-      )}
-    </section>
+        {state.outcome === 'loading' ? (
+          <Empty look="inline" title="Reading the run…" />
+        ) : state.outcome === 'denied' ? (
+          <p className="card__sub" data-run="denied">
+            The server refused this read ({state.refusal.code}), so nothing about the run is shown.
+          </p>
+        ) : state.outcome === 'unavailable' || !readable ? (
+          // DS-PRIM-30: a read that could not be read is a section error, the bad banner.
+          <div data-run="unavailable">
+            <Banner tone="bad" lead="The run could not be read.">
+              {state.outcome === 'unavailable' ? `${state.because} ` : ''}That is not a claim that
+              no work ran.
+            </Banner>
+          </div>
+        ) : value === null ? null : value.outcome === 'no-run' ? (
+          <Empty title="No run yet" description="Nothing has been picked up on this task." />
+        ) : (
+          <Runs client={client} grantKey={props.grantKey} readOf={props.readOf} value={value} />
+        )}
+      </section>
+    </>
   );
 }
 
