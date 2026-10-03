@@ -10,7 +10,7 @@ import { limited, readWith } from './api-2-agent-credential-quota-world.ts';
 
 openWorld();
 
-it('Sol proof, criterion 5: concurrent credential reads cannot export more records than the minute limit', async () => {
+it('concurrent credential reads cannot export more records than the minute limit', async () => {
   const pool = connect(harness.world.db.appUrl, { max: 5 });
   const release = latch();
   const twoEntered = latch();
@@ -61,7 +61,7 @@ it('Sol proof, criterion 5: concurrent credential reads cannot export more recor
   expect(answers.filter((answer) => answer.code === 'AGENT_QUOTA_EXCEEDED')).toHaveLength(3);
 });
 
-it('Sol proof, criterion correctness: task search exports contribute their record count to the security detector', async () => {
+it('task search exports contribute their record count to the security detector', async () => {
   const created = await harness.asPerson('task.create', {
     fields: { title: `solsearchcanary ${randomUUID()}` },
   });

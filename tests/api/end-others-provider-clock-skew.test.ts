@@ -22,7 +22,7 @@ import {
 
 useSessionsWorld();
 
-it('Sol proof, criterion 3: end others revokes a session seen only by another business despite permitted provider clock skew', async () => {
+it('end others revokes a session seen only by another business despite permitted provider clock skew', async () => {
   const subject = world.mia.subject;
   await world.db.app.withBusiness(world.bravo, async (tx) => {
     const person = await insertPerson(tx, 'Sol session proof in bravo');
