@@ -163,15 +163,22 @@ export const isUtf8Label = (label: string): boolean =>
 /**
  * Whether a content type is `type` with no charset but UTF-8: another would have a browser read the
  * body, and so the addresses in it, in another encoding. An odd charset parameter is refused too.
+ * A document must name its charset. Without one a browser takes the encoding the markup declares
+ * (a `<meta charset>` in its first 1024 bytes), and the capture runs no such prescan; the header's
+ * charset outranks any declaration in the markup, so with it the capture and visitors agree.
  */
-function isUtf8Type(header: string, type: string): boolean {
+function isUtf8Type(header: string, type: string, named: boolean): boolean {
   const [media = '', ...parameters] = header.split(';');
-  const utf8 = (parameter: string) => {
-    const [name = '', ...value] = parameter.split('=');
-    if (name.trim().toLowerCase() !== 'charset') return true;
-    return isUtf8Label(value.join('=').replace(/^"(.*)"$/u, '$1'));
-  };
-  return media.trim().toLowerCase() === type && parameters.every((parameter) => utf8(parameter));
+  const charsets = parameters.filter(
+    (part) => part.split('=')[0]?.trim().toLowerCase() === 'charset',
+  );
+  const utf8 = (part: string) =>
+    isUtf8Label(part.slice(part.indexOf('=') + 1).replace(/^"(.*)"$/u, '$1'));
+  return (
+    media.trim().toLowerCase() === type &&
+    charsets.every((part) => utf8(part)) &&
+    (!named || charsets.length > 0)
+  );
 }
 
 /** One page or stylesheet, fetched through the fence. Every refusal is recorded before it returns. */
@@ -218,7 +225,7 @@ async function follow(
     return follow(new URL(location, url.href).href, hop + 1, options);
   }
   if (answer.status !== 200) return refuse('CAPTURE_STATUS_REFUSED');
-  if (!isUtf8Type(answer.headers['content-type'] ?? '', limits.type))
+  if (!isUtf8Type(answer.headers['content-type'] ?? '', limits.type, options.kind === 'document'))
     return refuse('CAPTURE_BODY_MALFORMED');
   let body: string;
   try {
