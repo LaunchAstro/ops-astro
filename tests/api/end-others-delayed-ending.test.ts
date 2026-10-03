@@ -30,21 +30,11 @@ import {
 
 useSessionsWorld();
 
-it('a delayed end-others transaction revokes a session signed in before its ending commits in another business', async () => {
-  const subject = world.mia.subject;
-  await world.db.app.withBusiness(world.bravo, async (tx) => {
-    const personId = await insertPerson(tx, 'Sol delayed-ending person in bravo');
-    const actorId = await insertActor(tx, personId);
-    await insertMembership(tx, personId);
-    await insertMapping(tx, await insertLogin(tx, subject), personId, actorId);
-    await grantTo(tx, { personId, actorId, presented: { provider: 'supabase', subject } }, 'read');
-  });
-  const kept = await tokenFor(subject, randomUUID(), undefined, now() + 600, now() - 60);
-  expect(await served(kept)).toEqual(OK);
-  const ready = latch();
-  const release = latch();
-  const pool = connect(world.db.appUrl, { max: 2 });
-  const database: Database = {
+type Latch = ReturnType<typeof latch>;
+
+// The app pool, its subject-wide ending insert held 62 s of real database time, then until released.
+function endingHeld(pool: Database, ready: Latch, release: Latch): Database {
+  return {
     ...pool,
     withBusiness: async (businessId, run) =>
       await pool.withBusiness(
@@ -65,21 +55,42 @@ it('a delayed end-others transaction revokes a session signed in before its endi
           }),
       ),
   };
-  const factors: FactorProvider = {
-    enrol: async () => ({ ok: false, fault: 'unreachable' }),
-    verify: async () => ({ ok: false, fault: 'unreachable' }),
-    remove: async () => ({ ok: false, fault: 'unreachable' }),
-    signOut: async () => ({ ok: true, value: undefined }),
-  };
+}
+
+const factors: FactorProvider = {
+  enrol: () => Promise.resolve({ ok: false, fault: 'unreachable' }),
+  verify: () => Promise.resolve({ ok: false, fault: 'unreachable' }),
+  remove: () => Promise.resolve({ ok: false, fault: 'unreachable' }),
+  signOut: () => Promise.resolve({ ok: true, value: undefined }),
+};
+
+function apiOver(database: Database): ReturnType<typeof createApi> {
   const byKey: Readonly<Record<string, string>> = { alpha: world.alpha, bravo: world.bravo };
-  const api = createApi({
+  return createApi({
     database,
     verify: createSupabaseVerifier(testSignIn(ACCEPTANCE_ISSUER)),
-    resolveBusiness: async (key) => byKey[key],
+    resolveBusiness: (key) => Promise.resolve(byKey[key]),
     executeCommand,
     executeRead,
     factors,
   });
+}
+
+it('a delayed end-others transaction revokes a session signed in before its ending commits in another business', async () => {
+  const subject = world.mia.subject;
+  await world.db.app.withBusiness(world.bravo, async (tx) => {
+    const personId = await insertPerson(tx, 'Sol delayed-ending person in bravo');
+    const actorId = await insertActor(tx, personId);
+    await insertMembership(tx, personId);
+    await insertMapping(tx, await insertLogin(tx, subject), personId, actorId);
+    await grantTo(tx, { personId, actorId, presented: { provider: 'supabase', subject } }, 'read');
+  });
+  const kept = await tokenFor(subject, randomUUID(), undefined, now() + 600, now() - 60);
+  expect(await served(kept)).toEqual(OK);
+  const ready = latch();
+  const release = latch();
+  const pool = connect(world.db.appUrl, { max: 2 });
+  const api = apiOver(endingHeld(pool, ready, release));
   const ending = call(api, personPath('alpha', '/account/sessions/end-others'), {}, bearer(kept));
   try {
     await ready.promise;

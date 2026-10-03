@@ -711,7 +711,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(wrong).toStrictEqual([]);
   });
 
-  // Exactly four, each for a named reason. The append-only trigger refuses
+  // Exactly five, each for a named reason. The append-only trigger refuses
   // the owner itself. The fair share's count (AW-01, ORCH-DECISION SL11
   // AW-01) is the one read across businesses: a provider route's ceiling is
   // the installation's, which a tenant transaction cannot count under row
@@ -752,17 +752,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
       expect(fn?.firedBy).toStrictEqual([]);
     });
 
-    it("the ending's commit time is a trigger fired only by an insert of an ending", () => {
-      // 20261003024319 (Sol OW-001-FIX2): it sets a new subject-wide ending's time at commit.
-      const fn = definer('ops.ended_subject_sessions_at_commit()');
-      expect(fn?.trigger).toBe(true);
-      expect(fn?.config).toStrictEqual(['search_path=pg_catalog']);
-      expect(fn?.firedBy).toStrictEqual([
-        { table: 'ops.ended_subject_sessions', events: 'insert' },
-      ]);
-    });
-
-    it('the third is the codes expiry, taking no argument', () => {
+    it('the fourth is the codes expiry, taking no argument', () => {
       // 20261002105957: no argument, so it deletes only rows past its fixed horizon; only the
       // upkeep identity executes it (second-factor-codes-retention).
       const expiry = definer('ops.expire_second_factor_codes()');
@@ -771,13 +761,28 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
       expect(expiry?.config).toStrictEqual(['search_path=pg_catalog']);
     });
 
-    it('the fourth is the drill stamp, taking no argument', () => {
+    it('the fifth is the drill stamp, taking no argument', () => {
       // 0070 (C55): no argument, so it writes only now(); only the drill's
       // identity executes it (c55-last-tested-restore), refused above to every caller here.
       const stamp = definer('ops.record_tested_restore()');
       expect(stamp?.trigger).toBe(false);
       expect(stamp?.argumentTypes).toStrictEqual([]);
       expect(stamp?.config).toStrictEqual(['search_path=pg_catalog']);
+    });
+  });
+
+  describe('the third security definer function', () => {
+    it("is the ending's commit time, a trigger fired only by an insert of an ending", () => {
+      // 20261003024319 (Sol OW-001-FIX2): it sets a new subject-wide ending's time at commit.
+      const fn = functions.find(
+        (one) => one.signature === 'ops.ended_subject_sessions_at_commit()',
+      );
+      expect(fn?.definer).toBe(true);
+      expect(fn?.trigger).toBe(true);
+      expect(fn?.config).toStrictEqual(['search_path=pg_catalog']);
+      expect(fn?.firedBy).toStrictEqual([
+        { table: 'ops.ended_subject_sessions', events: 'insert' },
+      ]);
     });
   });
 
