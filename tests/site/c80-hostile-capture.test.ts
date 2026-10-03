@@ -8,6 +8,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  capturePage,
   fencedFetch,
   type CapturePool,
   type FenceRefusal,
@@ -134,5 +135,45 @@ describe('C80 hostile provider (capture path)', () => {
     });
     expect(result).toMatchObject({ ok: false, code });
     expect(recorded.map((entry) => entry.code)).toEqual([code]);
+  });
+});
+
+const sheets = (count: number) =>
+  Array.from({ length: count }, (_, at) => `<link rel=stylesheet href="/s.css?n=${at}">`);
+
+describe('C80 hostile provider (capture path), stylesheet fan-out', () => {
+  // Security review of P25, low 2: every linked sheet was fetched at once, with no cap.
+  const page = (links: readonly string[]) =>
+    transportOf((request) => ({
+      kind: 'answer',
+      status: 200,
+      headers: { 'content-type': request.url.pathname === '/about' ? 'text/html' : 'text/css' },
+      body: new TextEncoder().encode(request.url.pathname === '/about' ? links.join('') : 'p{}'),
+    }));
+  const capture = (transport: Transport) =>
+    capturePage(ABOUT, { pool: POOL, resolve: resolverOf([PUBLIC_V4]), transport });
+
+  it('refuses a page linking 33 distinct sheets as oversized, fetching none of them', async () => {
+    const transport = page(sheets(33));
+    expect(await capture(transport)).toEqual({ ok: false, code: 'CAPTURE_OVERSIZED' });
+    expect(transport.seen.map((seen) => seen.url.pathname)).toEqual(['/about']);
+  });
+
+  it('fetches 32 sheets a few at a time, and counts one sheet linked twice once', async () => {
+    let open = 0;
+    let widest = 0;
+    const served = page([...sheets(32), ...sheets(32)]);
+    const transport: Transport = async (request) => {
+      open += 1;
+      widest = Math.max(widest, open);
+      await new Promise((resolve) => {
+        setTimeout(resolve, 1);
+      });
+      open -= 1;
+      return served(request);
+    };
+    expect((await capture(transport)).ok).toBe(true);
+    expect(served.seen).toHaveLength(33);
+    expect(widest).toBeLessThanOrEqual(4);
   });
 });

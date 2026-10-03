@@ -91,6 +91,23 @@ describe('C80 capture pool allowlist', () => {
   });
 });
 
+describe('C80 capture pool allowlist, review identities', () => {
+  // Security review of P25, low 4: any three distinct strings opened the pool.
+  it('keeps the pool closed on blank identities or one identity spelt with spaces', () => {
+    const other = 'https://client.example.org/';
+    for (const reviews of [
+      ['', ' ', '  '],
+      [' a', 'a', 'a '],
+      ['\t', '\n', 'review-a'],
+    ]) {
+      expect(
+        checkPageAllowed(other, { ...POOL, closedPoolReviews: reviews }),
+        JSON.stringify(reviews),
+      ).toMatchObject({ ok: false, code: 'CAPTURE_POOL_REVIEWS_OPEN' });
+    }
+  });
+});
+
 describe('C80 capture pool allowlist', () => {
   it('sends no credential of any kind and no header the fence did not set', async () => {
     const transport = transportOf(() => html('<p>We walk alongside you.</p>'));
