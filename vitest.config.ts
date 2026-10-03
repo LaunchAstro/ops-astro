@@ -52,8 +52,9 @@ export default defineConfig({
     // emptied folder mid-run), so they run alone: CI's `local checks` step with
     // BROWSER_PROOFS=1. Sol's leaked-client proof, Sol's two PR-345 web proofs
     // on c59-factor-routes-world and Sol's six F2 lost-answer retry proofs,
-    // kept byte for byte, open their world with no skip; without a database
-    // they are left out here, and the manifests run them where there is one.
+    // kept byte for byte but for one PR-345 cookie-jar split CQ-11 asks for,
+    // open their world with no skip; without a database they are left out
+    // here, and the manifests run them where there is one.
     exclude: [
       ...configDefaults.exclude,
       ...(process.env['BROWSER_PROOFS'] === '1' ? [] : ['tests/browser/**']),
