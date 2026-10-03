@@ -193,6 +193,16 @@ const UNREACHED: Readonly<Record<string, string>> = {
   'public.clients': `insert into public.clients (business_id, id, name, created_by_actor_id)
      select business_id, gen_random_uuid(), 'restricted calls seed', id
        from public.actors where business_id = $1 order by id limit 1 returning 1`,
+  // C41-A: no journey starts an onboarding, so one on that client, and one step.
+  'public.onboardings': `insert into public.onboardings
+       (business_id, id, client_id, template_key, template_version, started_by_actor_id)
+     select business_id, gen_random_uuid(), id, 'restricted-calls', 1, created_by_actor_id
+       from public.clients where business_id = $1 order by id limit 1 returning 1`,
+  'public.onboarding_steps': `insert into public.onboarding_steps
+       (business_id, onboarding_id, step_key, task_id, position, phase, kind, state)
+     select business_id, id, 'restricted-calls', gen_random_uuid(), 0, 'restricted calls',
+            'agent', 'ready'
+       from public.onboardings where business_id = $1 order by id limit 1 returning 1`,
   // C58: no journey ends a person's access, so an ending is written here for a
   // person's own login, as `access.end` writes one.
   'public.access_endings': `insert into public.access_endings

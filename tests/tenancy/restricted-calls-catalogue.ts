@@ -16,12 +16,26 @@ const COLUMN_UPDATES: Readonly<
   Record<string, { readonly from: string; readonly columns: readonly string[] }>
 > = {
   'public.planned_runs': { from: '0086', columns: ['state'] },
+  // C41-A: an onboarding's state, stop and revision, a step's state, failures and close.
+  'public.onboardings': { from: '20261003172353', columns: ['revision', 'state', 'stopped_at'] },
+  'public.onboarding_steps': {
+    from: '20261003172353',
+    columns: ['closed_at', 'failures', 'state'],
+  },
 };
+
+/**
+ * Whether the migration `at` (its version, `0086_bootstrap_pins` or
+ * `20261003002216_automations`) is `from` or later. Every four-digit ID sorts
+ * before every fourteen-digit timestamp, so both are padded to fourteen.
+ */
+const reached = (at: string, from: string): boolean =>
+  (at.split('_', 1)[0] ?? at).padStart(14, '0') >= from.padStart(14, '0');
 
 /** The `table.column` pairs the application group may update after `at`, or at the full schema. */
 export function columnUpdatesAt(at?: string): readonly string[] {
   return Object.entries(COLUMN_UPDATES)
-    .filter(([, grant]) => at === undefined || at.slice(0, 4) >= grant.from)
+    .filter(([, grant]) => at === undefined || reached(at, grant.from))
     .flatMap(([table, grant]) => grant.columns.map((column) => `${table}.${column}`))
     .toSorted();
 }
@@ -106,7 +120,7 @@ const ROLE_COLUMN_GRANTS: readonly { readonly from: string; readonly line: strin
 ];
 
 export function roleColumnGrantsAt(at?: string): readonly string[] {
-  return ROLE_COLUMN_GRANTS.filter((grant) => at === undefined || at.slice(0, 4) >= grant.from)
+  return ROLE_COLUMN_GRANTS.filter((grant) => at === undefined || reached(at, grant.from))
     .map((grant) => grant.line)
     .toSorted();
 }

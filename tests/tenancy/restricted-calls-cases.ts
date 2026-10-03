@@ -115,6 +115,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['siu', 'agent_credentials'],
   // 0055 (C32): a client is written once; never updated or deleted.
   ['si', 'clients'],
+  // 20261003172353 (C41-A): an onboarding and its steps are laid out once and
+  // never deleted; each moves on by the column grants in COLUMN_UPDATES.
+  ['si', 'onboarding_steps onboardings'],
   // 0056 (C58): an access ending is written, then its provider steps are
   // stamped by update; never deleted.
   ['siu', 'access_endings'],

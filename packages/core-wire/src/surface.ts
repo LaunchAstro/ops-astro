@@ -216,6 +216,7 @@ const SPEND_COLLECTION = 'spend';
 const ACCOUNT_COLLECTION = 'account';
 const PREFERENCE_COLLECTION = 'preference';
 const INBOX_COLLECTION = 'inbox';
+const RECORD_WRITE = { collection: 'record', targetsExistingRecord: false } as const;
 
 /**
  * A read. It takes the `read` action on the collection it names, targets no
@@ -578,6 +579,17 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     collection: 'record',
     targetsExistingRecord: false,
     untargetedIdentifiers: [],
+  }),
+  // New client onboarding (C41-A, RC-13): `record:write` business-wide, a
+  // person's (a delegation reaches one task); the start asks `task:write` too,
+  // in its handler. A step result asks `task:write` at its task's client.
+  declare('record.create', 'write', { ...RECORD_WRITE, untargetedIdentifiers: [] }),
+  declare('onboarding.start', 'write', { ...RECORD_WRITE, untargetedIdentifiers: ['clientId'] }),
+  declare('onboarding.step_result', 'write', {
+    targetsExistingRecord: false,
+    authorisedOn: 'target',
+    untargetedIdentifiers: ['recordId'],
+    agent: 'delegated',
   }),
   // C32: the tracked action `grant changed` on Settings ▸ Access, under
   // `access:manage` (the owner and administrators), never an agent's. A grant

@@ -125,6 +125,12 @@ export type CommandName =
   // and the lease owner's heartbeat. None is a new actor power; each asks for
   // authority the caller already holds (see each row below).
   | 'client.create'
+  // New client onboarding (C41-A): the one record-create command (a client,
+  // for now), laying a template out as tasks on that client, and the result
+  // each step writes onto its own task.
+  | 'record.create'
+  | 'onboarding.start'
+  | 'onboarding.step_result'
   | 'access.grant'
   | 'access.revoke'
   | 'access.end'

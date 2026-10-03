@@ -151,6 +151,11 @@ export const DECLARED: Readonly<
   'credential.revoke': { carry: 'not carried', plant: 'authority, not task content' },
   'session.end': { carry: 'not carried', plant: 'a sign-in, not task content' },
   'client.create': { carry: 'not carried', plant: 'a client of the business, not task content' },
+  // C41-A: a client and its onboarding are not task content; a step's result is
+  // a system comment on the step's own task, which a duplicate leaves behind.
+  'record.create': { carry: 'not carried', plant: 'a client of the business, not task content' },
+  'onboarding.start': { carry: 'not carried', plant: 'lays new tasks out, not task content' },
+  'onboarding.step_result': { carry: 'not carried', plant: 'needs an onboarding step task' },
   'preference.save': { carry: 'not carried', plant: 'a person’s setting' },
   'preference.dismiss_tip': { carry: 'not carried', plant: 'a person’s setting' },
   'settings.set_money_step_up': { carry: 'not carried', plant: 'a business setting' },

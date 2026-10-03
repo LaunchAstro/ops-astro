@@ -24,6 +24,7 @@ import { pathOf } from '../../packages/core-wire/src/surface.ts';
 import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
 import { ADMIN_ACTIONS, ADMIN_COLLECTIONS, enrolAgent, enrolCaller } from './cast.ts';
 import { bravoRecords } from './ident-audit-bravo-rows.ts';
+import { bravoStepTask } from './ident-audit-onboarding.ts';
 import { createHarness, type Harness } from './role-case-harness.ts';
 import { PROPOSAL, type Task } from './role-case-bodies.ts';
 import {
@@ -84,6 +85,7 @@ export interface IdentWorld {
     legalVersionId: string;
     credentialId: string;
     clientId: string;
+    stepTaskId: string;
   }>;
   /** The second alpha agent's live pickup. */
   readonly otherPicked: Picked;
@@ -280,6 +282,7 @@ export async function createIdentWorld(part: string): Promise<IdentWorld> {
       grantId: String(bravoGrants[0]?.id),
       entryId: bravoEntry.entryId,
       ...bravoRows,
+      ...(await bravoStepTask(person, bravoAdmin, bravoRows.clientId)),
     },
     otherPicked,
     rhea,

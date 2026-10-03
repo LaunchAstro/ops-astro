@@ -35,6 +35,7 @@ import { checkLease } from './tasks-check.ts';
 import { reviseRunState } from './run-state.ts';
 import { MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/index.ts';
 import { agentClaimant } from './tasks-claimant.ts';
+import { writeStepResult } from './onboarding.ts';
 import { writeTaskComment } from './tasks-comment.ts';
 import { proposeFor, type ProposeFields } from './tasks-propose.ts';
 import { deleteTaskComment, editTaskComment, type CommentChange } from './tasks-comment-edit.ts';
@@ -771,6 +772,32 @@ export const AGENT_OPERATIONS: ReadonlyMap<CommandName, AgentOperation> = new Ma
       replay: 'reauthorise',
       operands: recordIdOperand(() => refuseNotFound()),
       serve: servePropose,
+    }),
+  ],
+  [
+    // C41-A: the onboarding skill writes an agent step's result onto the task
+    // it is delegated on, and on no other (`authorise` holds the purpose
+    // scope to this record and `task:write` to the delegating person's grant).
+    'onboarding.step_result',
+    row({
+      authority: 'record',
+      subjectTask: 'record',
+      replay: 'reauthorise',
+      operands: recordIdOperand(() => refuseNotFound()),
+      serve: async (tx, { session, request }, _operands, _delegation, taskId) => {
+        if (taskId === undefined) return NOT_FOUND();
+        const spine = await readTaskSpine(tx);
+        return await writeStepResult(
+          tx,
+          {
+            actorId: session.actorId,
+            actorKind: 'agent',
+            entryPoint: 'api',
+            commentTypeId: spine.taskCommentTypeId,
+          },
+          { recordId: taskId, outcome: request['outcome'], result: request['result'] },
+        );
+      },
     }),
   ],
   [

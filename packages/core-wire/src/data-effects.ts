@@ -108,7 +108,8 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   // Client access (MP-4-10): a share grant on the task for its client's people.
   'task.share_with_client': SHARE,
   'task.revoke_client_share': GRANTS,
-  'task.set_party': TASK,
+  // A step task moved to another client is no longer anyone's move (C41-A).
+  'task.set_party': writing(client('records', 'record_unique_values', 'inbox_items')),
   'task.set_audience': TASK,
   'task.reparent': TASK,
   'task.move': TASK,
@@ -180,6 +181,16 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'credential.issue': CREDENTIAL,
   'credential.revoke': CREDENTIAL,
   'client.create': writing(client('clients')),
+  // New client onboarding (C41-A): the client row, its tasks laid out from a
+  // template, a step's result as a comment on its task, and the inbox item
+  // that parks a person or client-wait step with whoever owns its move.
+  'record.create': writing(client('clients')),
+  'onboarding.start': writing(
+    client('records', 'record_unique_values', 'onboardings', 'onboarding_steps', 'inbox_items'),
+  ),
+  'onboarding.step_result': writing(
+    client('records', 'onboardings', 'onboarding_steps', 'inbox_items'),
+  ),
   // SL12 (batch 3a join, BATCH3-INTEG): a conversation can hold a task's
   // content once scoped to it, so its rows count as client-scoped.
   'gate.pending': READ,

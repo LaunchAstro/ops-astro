@@ -30,7 +30,7 @@ export const CASE = {
 } as const;
 
 /**
- * The thirty-nine operations that name no identifier, each with a minimal valid body.
+ * The forty operations that name no identifier, each with a minimal valid body.
  *
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed
  * at bravo is refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line
@@ -86,6 +86,8 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['operations.read', {}],
   ['client.list', {}],
   ['client.create', { name: 'A made-up client made while bravo is watched' }],
+  // The one record-create command (C41-A) names no row; a name of its own each run.
+  ['record.create', { type: 'client', fields: { name: `a target-free client ${randomUUID()}` } }],
   [
     'privacy.draft_breach_notices',
     {
@@ -146,7 +148,7 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['notifications.set_channel', { channel: 'in_app', mode: 'on' }],
 ];
 
-/** The forty identifier-bearing operations outside (c) and (d): operand and executed case. */
+/** The forty-two identifier-bearing operations outside (c) and (d): operand and executed case. */
 export const IDENTIFIER_BEARING: Readonly<
   Partial<Record<CommandName, readonly [operand: string, kase: keyof typeof CASE]>>
 > = {
@@ -194,6 +196,9 @@ export const IDENTIFIER_BEARING: Readonly<
   'access.end': ['holderId', 'control'],
   'task.duplicate': ['recordId', 'duplicate'],
   'inbox.seen': ['itemId', 'control'],
+  // New client onboarding (C41-A): the client a start names, the step task a result names.
+  'onboarding.start': ['clientId', 'control'],
+  'onboarding.step_result': ['recordId', 'control'],
 };
 
 /**

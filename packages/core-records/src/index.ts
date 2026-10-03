@@ -272,6 +272,11 @@ export {
   type TransactionQuery,
 } from './tenancy/database.ts';
 export { isUuid } from './tenancy/ids.ts';
+export {
+  ONBOARDING_TEMPLATES,
+  stepTaskTitle,
+  type OnboardingTemplate,
+} from './onboarding/template.ts';
 export { hasRoom, type DurableLimit } from './tenancy/limit.ts';
 export { connectOutbox, type ApiEvent, type Outbox } from './tenancy/outbox.ts';
 export { loginLiveElsewhere } from './identity/shared-login.ts';
