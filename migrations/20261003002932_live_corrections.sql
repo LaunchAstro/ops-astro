@@ -16,9 +16,10 @@
 -- The decision records the version digest it approved, which the storage
 -- keeps equal to the pinned version: the runner binds the dispatch to it.
 --
--- `party_id` is the party the site belongs to. It is the scope the grants are
--- asked at, so a party-scoped grant on one client's site reaches no other
--- client's correction.
+-- `party_id` is the party the site belongs to: the client of the correction's
+-- task, which the record layer reads from the task in the insert and never
+-- takes as given. It is the scope the grants are asked at, so a party-scoped
+-- grant on one client's site reaches no other client's correction.
 
 create table public.live_corrections (
   business_id            uuid        not null,

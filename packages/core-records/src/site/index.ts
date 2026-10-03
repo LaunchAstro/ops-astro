@@ -17,6 +17,7 @@ export {
   type CorrectionState,
   type LiveCorrection,
   type NewLiveCorrection,
+  type PartyRefused,
 } from './live-corrections.ts';
 export {
   holdsAnywhere,

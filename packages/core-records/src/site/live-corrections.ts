@@ -111,17 +111,30 @@ function correctionFrom(row: Row): LiveCorrection {
   };
 }
 
-/** Store a request. The version id is minted here: the approval names it back. */
+/** The one refusal of a request: its party is not the client of its task. */
+export type PartyRefused = { readonly ok: false; readonly code: 'CORRECTION_PARTY_MISMATCH' };
+
+/**
+ * Store a request at its task's own client (the `client` link), read in the insert under a
+ * share lock on the task: a supplied party the task does not carry, or a task that is not
+ * one, is refused and writes nothing. The version id is minted here: the approval names it.
+ */
 export async function insertLiveCorrection(
   tx: TenantQuery,
   input: NewLiveCorrection,
-): Promise<LiveCorrection> {
-  const rows = await tx.query<Row>(
+): Promise<LiveCorrection | PartyRefused> {
+  const [row] = await tx.query<Row>(
     `insert into public.live_corrections as c
        (business_id, id, party_id, task_id, requested_by_actor_id, requested_by_person_id,
         delegation_id, target_path, word, replacement, page_url, pre_image_digest,
         base_revision, seam, version_id, version_digest)
-     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+     select r.business_id, $2::uuid, r.uuid_7, r.id, $5::uuid, $6::uuid, $7::uuid, $8::text,
+            $9::text, $10::text, $11::text, $12::text, $13::text, $14::text, $15::uuid,
+            $16::text
+       from public.records r
+       join public.record_types t on t.business_id = r.business_id and t.id = r.record_type_id
+      where r.business_id = $1 and r.id = $4::uuid and t.key = 'task' and r.uuid_7 = $3::uuid
+      for share of r
      returning ${COLUMNS}`,
     [
       tx.businessId,
@@ -142,9 +155,7 @@ export async function insertLiveCorrection(
       input.versionDigest,
     ],
   );
-  const [row] = rows;
-  if (row === undefined) throw new Error('insertLiveCorrection: no row returned');
-  return correctionFrom(row);
+  return row === undefined ? { ok: false, code: 'CORRECTION_PARTY_MISMATCH' } : correctionFrom(row);
 }
 
 /**

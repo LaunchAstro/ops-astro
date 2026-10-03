@@ -30,4 +30,10 @@ export const LIVE_CORRECTION_ROWS = [
     meaning: 'The requester cannot approve their own change',
     source: 'C80, release decision 3.4',
   },
+  {
+    code: 'CORRECTION_PARTY_MISMATCH',
+    status: 409,
+    meaning: 'The correction names a party that is not the client of its task',
+    source: 'C80, P26 security review',
+  },
 ] as const;
