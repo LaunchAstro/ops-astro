@@ -481,6 +481,22 @@ async function roleClasses(
   return classes;
 }
 
+/**
+ * The security definer functions, by signature. WF-1 added the map read
+ * models' four writers, so the summary and frontier tables have one writer and
+ * the application only reads them.
+ */
+const DEFINERS: readonly string[] = [
+  'handback_reports_append_only()',
+  'map_summary_on_link()',
+  'map_summary_on_map_part()',
+  'map_summary_on_record()',
+  'map_summary_refresh(uuid)',
+  'model_route_room(text,integer)',
+  'ops.expire_second_factor_codes()',
+  'ops.record_tested_restore()',
+];
+
 describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full schema', () => {
   let world: World;
   let callers: Callers;
@@ -736,19 +752,8 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     const definer = (signature: string): CatalogueFunction | undefined =>
       definers().find((fn) => fn.signature === signature);
 
-    // WF-1 added the map read models' four writers: security definer so the
-    // summary and frontier tables have one writer and the application only reads them.
     it('are exactly eight, each with its search path pinned', () => {
-      expect(definers().map((fn) => fn.signature)).toStrictEqual([
-        'handback_reports_append_only()',
-        'map_summary_on_link()',
-        'map_summary_on_map_part()',
-        'map_summary_on_record()',
-        'map_summary_refresh(uuid)',
-        'model_route_room(text,integer)',
-        'ops.expire_second_factor_codes()',
-        'ops.record_tested_restore()',
-      ]);
+      expect(definers().map((fn) => fn.signature)).toStrictEqual(DEFINERS);
     });
 
     it('the first is a trigger on handback_reports', () => {

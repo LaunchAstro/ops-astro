@@ -2,8 +2,8 @@
 //
 // The positive control's Wayfinder recipes (WF-1): the minimal valid body for
 // each map and ticket command, with the map it needs filed first through the
-// routes. `role-case-positive-body.ts` reads this table in its switch's
-// default, before it throws for a declaration with no recipe.
+// routes. `role-case-positive-body.ts` calls `wayfinderBody` in its switch's
+// default, which throws for a declaration with no recipe.
 
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import type { BodyContext } from './role-case-bodies.ts';
@@ -28,7 +28,7 @@ async function freshMap(
   };
 }
 
-export const WAYFINDER_BODIES: Partial<Record<CommandName, Recipe>> = {
+const WAYFINDER_BODIES: Partial<Record<CommandName, Recipe>> = {
   // An unguarded retype is `write` on the task.
   'task.set_type': async (_, target) => ({ ...(await target()), taskType: 'build' }),
   // A map's client change: an empty map and a client of this business (C32).
@@ -37,3 +37,15 @@ export const WAYFINDER_BODIES: Partial<Record<CommandName, Recipe>> = {
     client: await madeClient(context),
   }),
 };
+
+/** The recipe's body for `name`; a name with no recipe fails the matrix. */
+export async function wayfinderBody(
+  name: CommandName,
+  context: BodyContext,
+  target: Target,
+): Promise<Body> {
+  const recipe = WAYFINDER_BODIES[name];
+  if (recipe === undefined)
+    throw new Error(`matrix: no positive control recipe for ${String(name)}`);
+  return await recipe(context, target);
+}
