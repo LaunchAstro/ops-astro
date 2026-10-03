@@ -285,3 +285,27 @@ describe('C80 the fenced capture reads a page as a browser does', () => {
     }
   });
 });
+
+// The fourth re-bind, finding 1: a second <html> or <body> merges its attributes onto the first,
+// checking each against every name the first holds, so distinct names piled up past the per-tag
+// bound and a 2 MiB page took about 18 minutes.
+const merging = (tag: string): string => {
+  const named: string[] = [];
+  for (let size = 0, at = 0; size < 1020 * 1024; at += 250) {
+    named.push(`<${tag}${Array.from({ length: 250 }, (_, n) => ` a${at + n}`).join('')}>`);
+    size += named.at(-1)?.length ?? 0;
+  }
+  const head = named.join('');
+  return head + `<${tag}>`.repeat(Math.floor((2040 * 1024 - head.length) / (tag.length + 2)));
+};
+
+describe('C80 the fenced capture: attributes merged onto one element', () => {
+  it.each(['html', 'body'])(
+    'refuses a 2 MiB page of <%s> tags with distinct attributes as oversized within a second',
+    async (tag) => {
+      const started = performance.now();
+      expect(await captured(merging(tag))).toEqual({ ok: false, code: 'CAPTURE_OVERSIZED' });
+      expect(performance.now() - started).toBeLessThan(1000);
+    },
+  );
+});
