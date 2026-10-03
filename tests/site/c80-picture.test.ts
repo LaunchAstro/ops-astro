@@ -104,3 +104,25 @@ describe('C80 capture picture, failures', () => {
     expect([answers[0], transport.seen]).toEqual([null, []]);
   });
 });
+
+describe('C80 capture picture, stylesheet fan-out', () => {
+  // Security review of P25, low 2: the picture's route fetched any number of sheets.
+  it('refuses the 33rd distinct stylesheet without fetching it, and fails the picture', async () => {
+    const served = site();
+    const transport = Object.assign(
+      (request: Parameters<typeof served>[0]) =>
+        served(request.url.pathname === '/s.css' ? { ...request, url: new URL(SHEET) } : request),
+      { seen: served.seen },
+    );
+    const sheets = Array.from({ length: 33 }, (_, at) => ({
+      ...STYLESHEET,
+      url: `https://www.example.com/s.css?n=${at}`,
+    }));
+    const { browser, answers } = scripted([DOCUMENT, ...sheets]);
+    const picture = await capturePicture(ABOUT, options(transport), browser);
+    expect(picture).toEqual({ ok: false, code: 'CAPTURE_OVERSIZED' });
+    expect(answers[33]).toBeNull();
+    expect(answers[32]).not.toBeNull();
+    expect(transport.seen).toEqual([ABOUT, ...Array.from({ length: 32 }, () => SHEET)]);
+  });
+});
