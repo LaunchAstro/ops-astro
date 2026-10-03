@@ -117,7 +117,7 @@ import {
   type PanelOpener,
   type Perspective,
 } from './task/Perspectives.tsx';
-import { TeamSubtasks } from './task/Subtasks.tsx';
+import { StepTitleHeld, TeamSubtasks } from './task/Subtasks.tsx';
 
 import type { ProposeDraft, TopUpNote } from '../views/propose-form.tsx';
 import { RunProgress } from '../views/run-progress.tsx';
@@ -193,11 +193,10 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   // **The draft lives above the read.** A re-read under a draft keeps `Loaded`
   // mounted (C4 live-sync 4: the rest of the page stays live and the edit is
   // never read over), and any other re-read unmounts it, so the draft has to
-  // outlive that to be settled at all.
-  // It is still dropped exactly where it always was: a different task, a
-  // different grant, or a read the server denied. A draft that outlived its
-  // authority would be stale authorised data left on the screen, which is the
-  // thing that must not happen.
+  // outlive that to be settled at all. It is still dropped exactly where it
+  // always was: a different task, a different grant, or a read the server
+  // denied. A draft that outlived its authority would be stale authorised data
+  // left on the screen, which is the thing that must not happen.
   const identity = `${props.grantKey}\u0000${props.taskKey}`;
   if (draft !== null && (draft.identity !== identity || state.outcome === 'denied')) {
     setDraft(null);
@@ -205,13 +204,11 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   const held = draft !== null && draft.identity === identity ? draft : null;
 
   // **A refused decision is remembered above the read, for one task under one
-  // grant.** Deciding rereads the task, and a reread unmounts everything below
-  // `RecordState`, so a refusal held inside the proposals view would disappear
-  // together with the version it was about — the screen would change and say
-  // nothing about why. It is dropped when the task or the reader changes, for
-  // the same reason a draft is: it is an answer about one record read under one
-  // authority. The comment and proposal refusals, and a stale press's quote,
-  // are held the same way for the same reason.
+  // grant.** A reread unmounts everything below `RecordState`, so a refusal held
+  // in the proposals view would go with the version it was about, and the screen
+  // say nothing about why. It is dropped when the task or the reader changes, as
+  // a draft is. The other refusals, a stale press's quote and unsent words (the
+  // subtask box's too) are held the same way.
   const denied = state.outcome === 'denied';
   const [note, setNote] = useHeld<DecisionNote>(identity, denied);
   const [commentRefusal, setCommentRefusal] = useHeld<string>(identity, denied);
@@ -224,6 +221,7 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   const [perspective, setPerspective] = useHeld<Perspective>(identity, denied);
   const [showAllTime, setShowAllTime] = useHeld<boolean>(identity, denied);
   const [showFinished, setShowFinished] = useHeld<boolean>(identity, denied);
+  const [stepTitle, setStepTitle] = useHeld<string>(identity, denied);
 
   return (
     <div className="stack">
@@ -268,6 +266,8 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
                 onShowAllTime={setShowAllTime}
                 showFinished={showFinished}
                 onShowFinished={setShowFinished}
+                stepTitle={stepTitle}
+                onStepTitle={setStepTitle}
                 onOpenPanel={props.onOpenPanel}
                 onAttempt={(attempt) => {
                   setDraft((current) =>
@@ -575,6 +575,9 @@ interface LoadedProps {
   /** Whether the finished subtasks are unfolded, held above the read (MP-4-4). */
   readonly showFinished: boolean | null;
   readonly onShowFinished: (next: boolean | null) => void;
+  /** The subtask add box's unsent name, held above the read so a reread keeps it. */
+  readonly stepTitle: string | null;
+  readonly onStepTitle: (next: string | null) => void;
   /** Whether every time entry shows, not only the latest three, held above the read (MP-4-6). */
   readonly showAllTime: boolean;
   readonly onShowAllTime: (next: boolean) => void;
@@ -734,7 +737,9 @@ function TeamSide(side: TeamSideProps): ReactElement {
 
       <TeamControls {...side} />
 
-      <TeamSubtasks {...side.props} />
+      <StepTitleHeld value={[side.props.stepTitle ?? '', side.props.onStepTitle]}>
+        <TeamSubtasks {...side.props} />
+      </StepTitleHeld>
 
       <TeamComments {...side.props} />
 

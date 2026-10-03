@@ -15,19 +15,19 @@
 // screen draws. Editing: Esc puts the old words back, Ctrl or Cmd and Enter or
 // leaving the box stores the new ones, and an emptied box keeps the old words
 // (the × is how words are taken back). The box stays open, busy, until the
-// answer, and only a stored edit closes it: a refusal keeps the words, held
-// above the read (a stale one rereads the task). The × deletes by its id.
+// answer, and only a stored edit closes it; its words are held above the read
+// as typed, so a remount or a refusal keeps them. The × deletes by its id.
 //
 // **Where a client message stands is a label, never a control** (DT-19, R56):
 // Reply owed, Not acknowledged or Answered, with a title saying what it means.
 // Seen waits on the portal's read receipt.
 
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactElement } from 'react';
+import { useEffect, useRef, type KeyboardEvent, type ReactElement } from 'react';
 import { Empty } from '@launchastro/ui';
 import type { InternalCommentView } from '../../../../../packages/core-wire/src/index.ts';
 import { parentOf, threadOf } from './thread-shape.ts';
 
-/** The row being edited: its words as last sent or opened, and why they were refused. */
+/** The row being edited: its words as typed, and why they were refused. */
 export interface RowEdit {
   readonly commentId: string;
   readonly body: string;
@@ -108,6 +108,7 @@ function Row(props: {
           saved={comment.body}
           body={edit.body}
           busy={actions.busy}
+          onText={(body) => actions.onEditing({ ...edit, body })}
           onDone={(next) => {
             if (next === null) actions.onEditing(null);
             else actions.onEdit(comment.id, next);
@@ -213,17 +214,17 @@ function Act(props: {
 }
 
 /**
- * The box a row's words are edited in, opening on `body`. It hands back the
- * new words, or null when nothing is to be stored: Esc, words the same as the
- * stored ones (`saved`), or an emptied box.
+ * The box a row's words are edited in, showing `body` and handing each
+ * keystroke up. It hands back the new words, or null when nothing is to be
+ * stored: Esc, words the same as the stored ones (`saved`), or an emptied box.
  */
 function EditBox(props: {
   readonly saved: string;
   readonly body: string;
   readonly busy: boolean;
+  readonly onText: (body: string) => void;
   readonly onDone: (next: string | null) => void;
 }): ReactElement {
-  const [text, setText] = useState(props.body);
   // Esc or a commit ends the edit once; the blur that can follow the box
   // leaving the page must not end it a second time. A refusal reopens it.
   const ended = useRef(false);
@@ -243,7 +244,7 @@ function EditBox(props: {
     }
     if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
       event.preventDefault();
-      end(text);
+      end(props.body);
     }
   };
   return (
@@ -256,13 +257,13 @@ function EditBox(props: {
       aria-busy={props.busy}
       // oxlint-disable-next-line jsx-a11y/no-autofocus -- the pencil was pressed to write here
       autoFocus
-      value={text}
+      value={props.body}
       onKeyDown={onKeyDown}
       onBlur={() => {
-        end(text);
+        end(props.body);
       }}
       onChange={(event) => {
-        setText(event.target.value);
+        props.onText(event.target.value);
       }}
     />
   );
