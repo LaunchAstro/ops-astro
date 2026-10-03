@@ -112,7 +112,12 @@ export function psqlOn(network, { connectSeconds, timeoutMs } = {}) {
   };
 }
 
-/** psql's output: whole, or line by line to `onLine`, stopping psql if `onLine` throws. */
+/**
+ * psql's output: whole, or line by line to `onLine`, stopping psql if `onLine`
+ * throws. SIGINT, which docker passes on to psql even as the container's PID 1,
+ * makes psql cancel the statement the server is running and exit, so the
+ * server's session ends too rather than running the script's next query.
+ */
 async function readOut(child, onLine) {
   if (onLine === undefined) {
     const chunks = [];
@@ -126,7 +131,7 @@ async function readOut(child, onLine) {
       await onLine(line);
     } catch (thrown) {
       error = thrown;
-      child.kill();
+      child.kill('SIGINT');
     }
   }
   return { text: '', error };

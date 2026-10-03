@@ -19,6 +19,9 @@
 // With both stopped it migrates, points production at the artefact and starts
 // the auth server, then the API. A migration that fails promotes nothing and
 // starts nothing, so the old build never runs against a half-moved schema.
+// The store is writable while the migration runs, so the artefact's bytes are
+// digested again before production is pointed at them; bytes that changed
+// fail the promotion the same way.
 //
 // Every act on the machine goes through `PromotionEffects`, so the decisions
 // here are tested with the effects watched and the command stays thin.
@@ -183,6 +186,12 @@ export function promote(request: PromotionRequest, effects: PromotionEffects): P
     return {
       kind: 'failed',
       reason: `the migration did not complete; nothing was promoted and the API and the auth server are left stopped`,
+    };
+  }
+  if (outputDigest(selected.path) !== selected.digest) {
+    return {
+      kind: 'failed',
+      reason: `${selected.name} changed in the store while the migration ran; the migration completed, nothing was promoted and the API and the auth server are left stopped`,
     };
   }
   effects.point(current, selected.path);

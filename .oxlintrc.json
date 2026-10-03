@@ -139,6 +139,23 @@
         "no-promise-executor-return": "off",
         "require-unicode-regexp": "off"
       }
+    },
+    {
+      "files": ["tests/ci/promotion-serves-validated-bytes.proof.test.ts"],
+      "rules": { "max-lines-per-function": "off" }
+    },
+    {
+      "files": ["tests/review/backup-process-lifetime-proof.test.ts"],
+      "rules": {
+        "max-lines": "off",
+        "max-lines-per-function": "off",
+        "no-await-in-loop": "off",
+        "no-inline-comments": "off",
+        "no-underscore-dangle": "off",
+        "no-unmodified-loop-condition": "off",
+        "promise/always-return": "off",
+        "require-await": "off"
+      }
     }
   ]
 }

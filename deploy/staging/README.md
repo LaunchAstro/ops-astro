@@ -77,7 +77,9 @@ a write by the owner or a superuser that the seed did not make (a restore or a
 hand-loaded file, say), a sign-in outside `.local`, or a guard switched off.
 Writes through the application pass, since they are what people type on
 staging. A new database is one whose tenant tables have never held a row, and
-a person confirms it once with `LOCAL_SEED_MADE_UP=confirm`.
+a person confirms it once with `LOCAL_SEED_MADE_UP=confirm`. One seed runs on a
+database at a time: the guard admits one seed's own writes, so a second seed
+started while the first's session is open is refused.
 
 A marked database that was migrated with a data change, or refused for any
 reason, starts again empty through the staging reset,
@@ -109,7 +111,11 @@ operator gate before anything else, like staging preparation and the promotion.
 Each drill it runs, passed or failed, leaves a receipt in the backup store
 (`backups.drills`: time, outcome, stage, majors, table count, stage timings
 and the operator; no record data, key, credential, fingerprint or path) and a
-line in the operator's record folder. The receipt names the date of the last
+line in the operator's record folder. The store takes a pass only with its
+target major and table count. The drill removes only a container Docker made
+for it, and a drill whose container Docker did not remove fails at its
+`cleanup` stage, however its checks went: the operator removes that copy by
+hand. The receipt names the date of the last
 tested restore. A pass the store took also stamps that date on staging's
 database (`ops.last_tested_restore`, migration 0070), where the operations
 view reads it; a failed drill stamps nothing. The daily upkeep job
@@ -155,6 +161,11 @@ The carried drill takes three commands:
 
 The receipt names the store's own id for the archive its drill restored, and
 `--record` refuses it with any other archive, even one taken at the same time.
+A drill that failed before it read its archive names none, and `--record` says
+so and sends the store nothing. When the store took a pass but its date could
+not be stamped, a note beside the receipt says so, and a re-run of `--record`
+writes only the stamp. The re-run removes the note first, so of two re-runs at
+once only one stamps.
 The store takes the record once, for the operator who ran it, in the business
 it ran in. It takes it only for the very archive (by its id) it handed out to
 the same login, and only with the digest it recorded, so an archive swapped on

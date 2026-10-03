@@ -26,6 +26,7 @@ import {
   gateOf,
   keys,
   noStore,
+  refusing,
   scope,
   type Receipt,
 } from './carried-archive.fixture.ts';
@@ -60,6 +61,8 @@ function keptCases() {
   keptCases2();
 
   keptCases3();
+
+  keptCases4();
 }
 
 function refusedCases() {
@@ -96,6 +99,8 @@ function refusedCases() {
       'a missing field': JSON.stringify({ ...good, tables: undefined }),
       'a prototype key': `{"__proto__":{"outcome":"passed"},${JSON.stringify(good).slice(1)}`,
       'a major that is not a number': JSON.stringify({ ...good, sourceMajor: '17' }),
+      'a pass naming no archive': JSON.stringify({ ...good, archiveId: null }),
+      'a pass naming no archive time': JSON.stringify({ ...good, archiveTakenAt: null }),
       'an outcome of its own': JSON.stringify({ ...good, outcome: 'maybe' }),
       'a pass the store never checked': JSON.stringify({ ...good, outcome: 'passed' }),
       'a digest carried in it': JSON.stringify({ ...good, archiveDigest: 'ab'.repeat(32) }),
@@ -220,5 +225,42 @@ function keptCases3() {
       recordCarried({ gate: recording, storeUrl: 'store', receiptFile, archiveFile: file, reach }),
     ).resolves.toMatchObject({ outcome: 'passed' });
     expect(reached).toBe(1);
+  });
+}
+
+function keptCases4() {
+  it('--record of a drill that failed before it read its archive refuses it, before the store, and writes nothing', async () => {
+    const { file } = await carriedFile();
+    const personId = randomUUID();
+    const { drillAsOperator, recordCarried, restoreDrill } = await drillModule();
+    const fake = refusing();
+    // No person in the scope: the drill fails at its first stage and reads no archive.
+    const receipt = await drillAsOperator({
+      gate: gateOf(personId),
+      archiveFile: file,
+      privateKey: keys.privateKey,
+      scope: { ...scope, person: undefined },
+      drill: (options: Record<string, unknown>) =>
+        restoreDrill({ ...options, docker: fake.docker }),
+      reach: noStore,
+    });
+    expect(receipt).toMatchObject({ outcome: 'failed', stage: 'scope', archiveId: null });
+    const recording = gateOf(personId);
+    let reached = 0;
+    const reach = () => {
+      reached += 1;
+      return Promise.resolve(JSON.stringify(new Date().toISOString()));
+    };
+    await expect(
+      recordCarried({
+        gate: recording,
+        storeUrl: 'store',
+        receiptFile: saved(JSON.stringify(receipt)),
+        archiveFile: file,
+        reach,
+      }),
+    ).rejects.toThrow(/names no archive/u);
+    expect(reached).toBe(0);
+    expect(readdirSync(recording.records)).toStrictEqual([]);
   });
 }
