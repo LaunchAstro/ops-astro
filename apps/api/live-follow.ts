@@ -157,7 +157,7 @@ export async function follow(
  * while one is pending merge into it, the strongest kept; a presence change
  * rides with it. Every delivery asks again first, and writes nothing. The
  * seat, under one id, holds on each task the person the bearer resolves to
- * once that task's recheck admitted that same person. A new person leaves
+ * once that task's recheck, the first one included, admitted that same person. A new person leaves
  * every seat, and what was due waits for each task's next answer; a recheck
  * that answered for anyone else closes the task.
  */
@@ -190,7 +190,8 @@ class Follower {
       async () => await stop(),
     );
     this.#stops.set(watch, unsubscribe);
-    this.#sit(watch);
+    // No seat on the door's word: the first recheck seats whoever it admits.
+    if (this.#seated !== undefined) this.#show(watch);
   }
 
   checkAll(): void {
@@ -216,10 +217,15 @@ class Follower {
     if (this.#seated === undefined || this.#sitter === undefined) return;
     const session = { ...this.#sitter, sessionId: this.#seated.session.sessionId };
     const leave = this.#seated.presence.seat(this.#asks.businessId, watch.taskId, session, () => {
-      this.#queue(watch);
-      this.#presence.add(watch);
+      this.#show(watch);
     });
     this.#leaves.set(watch, leave);
+  }
+
+  /** A presence change on `watch`, said once its recheck passes. */
+  #show(watch: Watch): void {
+    this.#queue(watch);
+    this.#presence.add(watch);
   }
 
   #end(watch: Watch): void {
