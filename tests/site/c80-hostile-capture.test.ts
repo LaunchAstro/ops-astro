@@ -51,6 +51,14 @@ function transportOf(script: Script): Transport & { seen: TransportRequest[] } {
   return Object.assign(transport, { seen });
 }
 
+const answering = (type: string, body: string | Uint8Array, status = 200) =>
+  ({
+    kind: 'answer',
+    status,
+    headers: { 'content-type': type },
+    body: typeof body === 'string' ? new TextEncoder().encode(body) : body,
+  }) as const;
+
 const options = (transport: Transport) => ({
   pool: POOL,
   resolve: resolverOf([PUBLIC_V4], [OTHER_PUBLIC_V4]),
@@ -96,33 +104,9 @@ describe('C80 hostile provider (capture path)', () => {
     [{ kind: 'timeout' } as const, 'CAPTURE_TIMEOUT'],
     [{ kind: 'oversized' } as const, 'CAPTURE_OVERSIZED'],
     [{ kind: 'failed' } as const, 'CAPTURE_FAILED'],
-    [
-      {
-        kind: 'answer',
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-        body: new Uint8Array([123]),
-      } as const,
-      'CAPTURE_BODY_MALFORMED',
-    ],
-    [
-      {
-        kind: 'answer',
-        status: 200,
-        headers: { 'content-type': 'text/html' },
-        body: new Uint8Array([0xff, 0xfe, 0xfd]),
-      } as const,
-      'CAPTURE_BODY_MALFORMED',
-    ],
-    [
-      {
-        kind: 'answer',
-        status: 500,
-        headers: { 'content-type': 'text/html' },
-        body: new Uint8Array(),
-      } as const,
-      'CAPTURE_STATUS_REFUSED',
-    ],
+    [answering('application/json', '{'), 'CAPTURE_BODY_MALFORMED'],
+    [answering('text/html', new Uint8Array([0xff, 0xfe, 0xfd])), 'CAPTURE_BODY_MALFORMED'],
+    [answering('text/html', '', 500), 'CAPTURE_STATUS_REFUSED'],
     [
       { kind: 'answer', status: 301, headers: {}, body: new Uint8Array() } as const,
       'CAPTURE_BODY_MALFORMED',
@@ -247,4 +231,67 @@ describe('C80 hostile provider (capture path), imported sheets', () => {
       '/d3.css',
     ]);
   });
+});
+
+// The fourth re-bind, finding 3: the import reader differed from CSS's tokenizer, dropped an
+// import it could not read, and read every sheet as UTF-8 whatever it declared. Each import sits
+// in a linked /s.css; what a browser loads follows CSS Syntax 3 and the URL standard.
+const S = 'https://www.example.com/s.css';
+const linking = (css: string) =>
+  captured(
+    served((path) => (path === '/s.css' ? css : 'p{}'), '<link rel=stylesheet href=/s.css>'),
+  );
+
+describe('C80 hostile provider (capture path), imports read as CSS reads them', () => {
+  it.each([
+    ['@import url(/a\\ b.css);', '/a%20b.css'],
+    ['@import url(/a\\"b.css);', '/a%22b.css'],
+    ['@import url(/a\\(b.css);', '/a(b.css'],
+    ['@import url(/a b.css);', '/a%C2%A0b.css'],
+    ['@import url(/a.css );', '/a.css%C2%A0'],
+    ['@import url(/a.css﻿);', '/a.css%EF%BB%BF'],
+    ['@import "/a\0b.css";', '/a%EF%BF%BDb.css'],
+    ['@import url(/a\0b.css);', '/a%EF%BF%BDb.css'],
+    ['@import "/a.css\\', '/a.css'],
+    ['@import url( /\\61 .css\t);', '/a.css'],
+    ['@import url(/a.css', '/a.css'],
+    ['@charset "windows-1252"; @import "/é.css";', 'malformed'],
+    ['@import url(/a b.css);', 'malformed'],
+    ['@import url(/a"b.css);', 'malformed'],
+    ['@import "/a.css\n";', 'malformed'],
+    ['@import /a.css;', 'malformed'],
+    ['@import;', 'malformed'],
+  ])('reads a sheet holding %j as a browser does: %s', async (css, path) => {
+    const result = await linking(css);
+    expect(result.ok ? Object.keys(result.value.stylesheets) : result.code).toEqual(
+      path === 'malformed'
+        ? 'CAPTURE_BODY_MALFORMED'
+        : [S, `https://www.example.com${path}`].toSorted(),
+    );
+  });
+});
+
+describe('C80 hostile provider (capture path), charsets and long sheets', () => {
+  it.each([
+    [ABOUT, 'text/html; charset=iso-8859-1', false],
+    [ABOUT, 'text/html; charset="utf-8;x"', false],
+    [ABOUT, 'text/html; Charset=UTF8', true],
+    [S, 'text/css; charset=windows-1252', false],
+    [S, 'text/css;charset="UTF-8"', true],
+  ] as const)('reads %s served as %s only as UTF-8: %s', async (url, type, ok) => {
+    const transport = transportOf(() => answering(type, 'p{}'));
+    const kind = url === S ? 'stylesheet' : 'document';
+    expect((await fencedFetch(url, { ...options(transport), kind, page: ABOUT })).ok).toBe(ok);
+  });
+
+  // The reader stays linear: a hostile 1 MiB sheet answers at once, whatever it answers.
+  it.each(['url(', 'url(a ', 'url(\\', '@import url(a b ', '@import ', '@import;', '"', '\\'])(
+    'answers a 1 MiB sheet of %j within a second',
+    async (shape) => {
+      const started = performance.now();
+      const result = await linking(shape.repeat(Math.floor(1_040_000 / shape.length)));
+      expect(result.ok || result.code === 'CAPTURE_BODY_MALFORMED').toBe(true);
+      expect(performance.now() - started).toBeLessThan(1000);
+    },
+  );
 });

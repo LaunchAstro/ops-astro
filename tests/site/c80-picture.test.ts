@@ -60,7 +60,7 @@ describe('C80 capture picture', () => {
       },
       body: PAGE,
     });
-    expect(answers[1]).toMatchObject({ headers: { 'content-type': 'text/css' } });
+    expect(answers[1]).toMatchObject({ headers: { 'content-type': 'text/css; charset=utf-8' } });
     expect(PICTURE_POLICY).toMatch(/script-src 'none'.*frame-src 'none'/u);
     expect(transport.seen).toEqual([ABOUT, SHEET]);
   });
