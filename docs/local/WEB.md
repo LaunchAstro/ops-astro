@@ -142,6 +142,17 @@ The address and its business are kept in `sessionStorage` under
 out clears it too, so an ordinary sign-in is never redirected by an interruption
 somebody already answered.
 
+**A change of owner shows nothing of the last one.** A business switch, another
+person in the tab or another assistant conversation is a new owner. The search
+palette's answer, the new-task draft and its pending attempt, the preferences
+in Settings, the allowance line, a dock grip's unfinished width and a read's
+held answer and freshness each belong to the owner they were read or typed for.
+The moment the owner changes they are hidden, before the new owner's read
+answers, and nothing of the old owner is sent under the new one: a preference
+saved while the new read is pending merges into the new reader's values only
+(`use-read.ts`, `search.tsx`, `CreateTask.tsx`, `settings/you.tsx`,
+`allowance-line.tsx`, `use-layout.ts`, `freshness.tsx`).
+
 All browser storage is read and written through `jsonSlot` in
 `apps/web/src/session/token.ts`. The screens get their storage from
 `tabStorage()` in the same file. A tab with blocked site data draws the screens
@@ -492,6 +503,18 @@ title and due date whose answer never arrived is retried under the same
 replayed as the success it was ([API.md](API.md), "A replay of a stored
 success") instead of being drawn as somebody else's change; any keystroke starts
 a new attempt (`saveFields` in `TaskDetail.tsx`).
+
+**A write whose answer was lost keeps its `operationId` until the server
+answers.** The incident form, the duplicate, a subtask's Enter and the time log
+hold each id keyed by the exact request it was sent with. An unchanged retry
+presents the same id and the server's register replays the write it recorded,
+so nothing is recorded twice; a changed request mints a new one, and any answer
+from the server lets the id go. The comment box keeps its attempt while a
+reply, a tab or Cancel is chosen, so posting the unchanged box to the same
+reply again is that attempt. A draft's Create gives each part the id
+`<create id>.<index>`, and a new tag's `tag.create` the id `<part id>.tag`, so
+every run of one attempt sends the same ids (`record-incident.tsx`, `client-seam.ts`, `Subtasks.tsx`, `Time.tsx`,
+`Comments.tsx`, `task-draft.ts`).
 
 The settings screen's writes go through `useCommand` too. `use-settings.ts`
 keeps only what settings does with each kind, and its memory of the last
