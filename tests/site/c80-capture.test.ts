@@ -6,7 +6,8 @@
 // cannot be fetched fails the capture rather than dropping out of the
 // comparison.
 
-import { describe, expect, it } from 'vitest';
+import { Parser, Tokenizer, defaultTreeAdapter } from 'parse5';
+import { describe, expect, it, onTestFinished, vi } from 'vitest';
 import {
   capturePage,
   type CapturePool,
@@ -30,23 +31,16 @@ const PAGE = `<!doctype html><html><head>
 <noscript>alongside</noscript>
 </body></html>`;
 
-function answer(type: string, body: string): TransportAnswer {
-  return {
-    kind: 'answer',
-    status: 200,
-    headers: { 'content-type': type },
-    body: new TextEncoder().encode(body),
-  };
-}
+const answer = (type: string, body: string, status = 200): TransportAnswer => ({
+  kind: 'answer',
+  status,
+  headers: { 'content-type': type },
+  body: new TextEncoder().encode(body),
+});
 
 function site(pages: Record<string, TransportAnswer>): Transport & { seen: string[] } {
   const seen: string[] = [];
-  const missing: TransportAnswer = {
-    kind: 'answer',
-    status: 404,
-    headers: {},
-    body: new Uint8Array(),
-  };
+  const missing = answer('', '', 404);
   const transport = (request: TransportRequest) => {
     seen.push(request.url.href);
     return Promise.resolve(pages[request.url.href] ?? missing);
@@ -55,6 +49,18 @@ function site(pages: Record<string, TransportAnswer>): Transport & { seen: strin
 }
 
 const publicResolver = () => Promise.resolve(['93.184.215.14']);
+const EVIL = 'https://www.example.com/evil.css';
+const ASSETS = 'https://www.example.com/assets/evil.css';
+const captured = (body: string) =>
+  capturePage(ABOUT, {
+    pool: POOL,
+    resolve: publicResolver,
+    transport: site({
+      [ABOUT]: answer('text/html', body),
+      [EVIL]: answer('text/css', 'p{display:none}'),
+      [ASSETS]: answer('text/css', 'p{display:none}'),
+    }),
+  });
 
 describe('C80 one word only (the fenced capture it compares)', () => {
   it('observes the visible text, the document digest and every served stylesheet through the fence', async () => {
@@ -95,37 +101,23 @@ describe('C80 one word only (the fenced capture it compares)', () => {
   });
 });
 
+const [HOST, STATUS] = ['CAPTURE_HOST_NOT_CATALOGUED', 'CAPTURE_STATUS_REFUSED'];
+const OVERSIZED = 'CAPTURE_OVERSIZED';
+
 describe('C80 one word only (the fenced capture it compares)', () => {
   it.each([
-    [
-      'another host',
-      '<link rel="stylesheet" href="https://cdn.example.net/a.css">',
-      'CAPTURE_HOST_NOT_CATALOGUED',
-    ],
-    [
-      'the metadata address',
-      '<link rel="stylesheet" href="http://169.254.169.254/a.css">',
-      'CAPTURE_HOST_NOT_CATALOGUED',
-    ],
-    [
-      'a missing stylesheet',
-      '<link rel="stylesheet" href="/missing.css">',
-      'CAPTURE_STATUS_REFUSED',
-    ],
+    ['another host', '<link rel="stylesheet" href="https://cdn.example.net/a.css">', HOST],
+    ['the metadata address', '<link rel="stylesheet" href="http://169.254.169.254/a.css">', HOST],
+    ['a missing stylesheet', '<link rel="stylesheet" href="/missing.css">', STATUS],
     [
       'single quotes and odd case',
       "<LINK REL='StyleSheet' HREF='https://cdn.example.net/a.css'>",
-      'CAPTURE_HOST_NOT_CATALOGUED',
+      HOST,
     ],
   ])(
     'fails the whole capture on %s, rather than dropping it from the comparison',
     async (_name, link, code) => {
-      const result = await capturePage(ABOUT, {
-        pool: POOL,
-        resolve: publicResolver,
-        transport: site({ [ABOUT]: answer('text/html', `${link}<p>x</p>`) }),
-      });
-      expect(result).toMatchObject({ ok: false, code });
+      expect(await captured(`${link}<p>x</p>`)).toMatchObject({ ok: false, code });
     },
   );
 
@@ -158,12 +150,7 @@ describe('C80 the fenced capture: a page that never closes', () => {
     async (_name, opener, tail) => {
       const body = `<p>x</p>${opener.repeat(Math.floor((256 * 1024) / opener.length))}${tail}`;
       const started = performance.now();
-      const result = await capturePage(ABOUT, {
-        pool: POOL,
-        resolve: publicResolver,
-        transport: site({ [ABOUT]: answer('text/html', body) }),
-      });
-      expect(result).toMatchObject({ ok: true });
+      expect(await captured(body)).toMatchObject({ ok: true });
       expect(performance.now() - started).toBeLessThan(1000);
     },
   );
@@ -180,39 +167,15 @@ describe('C80 the fenced capture: a page that never closes', () => {
   ])('answers a page of %s within a second', async (_name, opener, tail) => {
     const body = `<p>x</p>${opener.repeat(Math.floor((256 * 1024) / opener.length))}${tail}`;
     const started = performance.now();
-    const result = await capturePage(ABOUT, {
-      pool: POOL,
-      resolve: publicResolver,
-      transport: site({ [ABOUT]: answer('text/html', body) }),
-    });
+    const result = await captured(body);
     expect(result.ok || result.code === 'CAPTURE_BODY_MALFORMED').toBe(true);
     expect(performance.now() - started).toBeLessThan(1000);
   });
 });
 
-describe('C80 the fenced capture: a page nested deep', () => {
-  // Ruling P25PARSER: a browser's tree builder walks its open elements, so deep nesting costs
-  // depth times tags; past a depth no real page reaches, the capture refuses at once.
-  it.each(['<div>', '<ul><li>'])(
-    'refuses 100,000 nested %s as oversized within a second',
-    async (opener) => {
-      const started = performance.now();
-      const result = await capturePage(ABOUT, {
-        pool: POOL,
-        resolve: publicResolver,
-        transport: site({ [ABOUT]: answer('text/html', `<p>x</p>${opener.repeat(100_000)}`) }),
-      });
-      expect(result).toEqual({ ok: false, code: 'CAPTURE_OVERSIZED' });
-      expect(performance.now() - started).toBeLessThan(1000);
-    },
-  );
-});
-
 // Security review of P25, low 3, re-reported by the second re-bind: the capture read some
 // markup differently from a browser, so a region could hide visible text or a loaded sheet.
 // Each region follows `<p>Base</p>`; what a browser reads was checked against parse5.
-const EVIL = 'https://www.example.com/evil.css';
-const ASSETS = 'https://www.example.com/assets/evil.css';
 const R = '<p>SHOWN</p><link rel=stylesheet href=/evil.css>';
 const AS_A_BROWSER_READS: readonly (readonly [string, string, readonly string[]])[] = [
   ['<!-->SHOWN<!-- -->', 'Base SHOWN', []],
@@ -249,17 +212,6 @@ const AS_A_BROWSER_READS: readonly (readonly [string, string, readonly string[]]
   ['<svg><style>p{}</style></svg><template><style>q{}</style></template>', 'Base', ['inline:0']],
 ];
 
-const captured = (body: string) =>
-  capturePage(ABOUT, {
-    pool: POOL,
-    resolve: publicResolver,
-    transport: site({
-      [ABOUT]: answer('text/html', body),
-      [EVIL]: answer('text/css', 'p{display:none}'),
-      [ASSETS]: answer('text/css', 'p{display:none}'),
-    }),
-  });
-
 describe('C80 the fenced capture reads a page as a browser does', () => {
   it.each(AS_A_BROWSER_READS)('reads <p>Base</p>%s', async (region, text, sheets) => {
     const result = await captured(`<p>Base</p>${region}`);
@@ -286,30 +238,6 @@ describe('C80 the fenced capture reads a page as a browser does', () => {
   });
 });
 
-// The fourth re-bind, finding 1: a second <html> or <body> merges its attributes onto the first,
-// checking each against every name the first holds, so distinct names piled up past the per-tag
-// bound and a 2 MiB page took about 18 minutes.
-const merging = (tag: string): string => {
-  const named: string[] = [];
-  for (let size = 0, at = 0; size < 1020 * 1024; at += 250) {
-    named.push(`<${tag}${Array.from({ length: 250 }, (_, n) => ` a${at + n}`).join('')}>`);
-    size += named.at(-1)?.length ?? 0;
-  }
-  const head = named.join('');
-  return head + `<${tag}>`.repeat(Math.floor((2040 * 1024 - head.length) / (tag.length + 2)));
-};
-
-describe('C80 the fenced capture: attributes merged onto one element', () => {
-  it.each(['html', 'body'])(
-    'refuses a 2 MiB page of <%s> tags with distinct attributes as oversized within a second',
-    async (tag) => {
-      const started = performance.now();
-      expect(await captured(merging(tag))).toEqual({ ok: false, code: 'CAPTURE_OVERSIZED' });
-      expect(performance.now() - started).toBeLessThan(1000);
-    },
-  );
-});
-
 // The fourth re-bind, finding 2: a declarative shadow root or a srcdoc frame shows text and loads
 // sheets the capture never reads, so a page carrying one is refused rather than read in part.
 describe('C80 the fenced capture: what a browser renders that it cannot read', () => {
@@ -320,5 +248,53 @@ describe('C80 the fenced capture: what a browser renders that it cannot read', (
     `<p>Base</p><div><template shadowroot=closed>${R}</template></div>`,
   ])('refuses %s as malformed', async (body) => {
     expect(await captured(body)).toEqual({ ok: false, code: 'CAPTURE_BODY_MALFORMED' });
+  });
+});
+
+// The parser bounds. Ruling P25PARSER: a browser's tree builder walks its open elements, so deep
+// nesting costs depth times tags. The fourth re-bind, findings 1 and 4: each later <html> or <body>
+// merged its attributes onto the first, checking every name held (18 minutes at 2 MiB), and three
+// bounds had no row though each leans on parse5's internals. Each row answers within a second.
+const named = (count: number, from = 0): string =>
+  Array.from({ length: count }, (_, at) => ` a${from + at}`).join('');
+const repeated = (head: string, tail: string): string =>
+  head + tail.repeat(Math.floor((2040 * 1024 - head.length) / tail.length));
+const merging = (tag: string): string => {
+  let head = '';
+  for (let at = 0; head.length < 1020 * 1024; at += 250) head += `<${tag}${named(250, at)}>`;
+  return repeated(head, `<${tag}>`);
+};
+
+describe('C80 the fenced capture: the parser bounds', () => {
+  it.each([
+    ['100,000 nested <div>', () => `<p>x</p>${'<div>'.repeat(100_000)}`, OVERSIZED],
+    ['100,000 nested <ul><li>', () => `<p>x</p>${'<ul><li>'.repeat(100_000)}`, OVERSIZED],
+    ['<html> tags of distinct attributes', () => merging('html'), OVERSIZED],
+    ['<body> tags of distinct attributes', () => merging('body'), OVERSIZED],
+    ['one tag of distinct attributes', () => `<p${named(250_000)}>`, OVERSIZED],
+    ['<template><td></template>', () => repeated('', '<template><td></template>'), OVERSIZED],
+    ['<a><table><a>', () => repeated('', '<a><table><a>'), 'ok'],
+    ['one tag of 256 distinct attributes', () => `<p${named(256)}>x</p>`, 'ok'],
+    ['one tag of 257', () => `<p${named(257)}>x</p>`, OVERSIZED],
+  ])('answers a page of %s within a second', async (_name, body, expected) => {
+    const started = performance.now();
+    const result = await captured(body());
+    expect(result.ok ? 'ok' : result.code).toBe(expected);
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
+  // The bounds lean on parse5's internals, so the capture refuses to load where one has moved.
+  it.each([
+    ['a tokenizer without _leaveAttrName', Tokenizer.prototype, '_leaveAttrName', undefined],
+    ['a tree adapter without insertBefore', defaultTreeAdapter, 'insertBefore', undefined],
+    ['a parser that tells the adapter of no push', Parser.prototype, 'onItemPush', () => null],
+  ])('refuses to load over %s', async (_name, owner, member, value) => {
+    const kept = Object.getOwnPropertyDescriptor(owner, member) ?? {};
+    Object.defineProperty(owner, member, { value, configurable: true, writable: true });
+    onTestFinished(() => void Object.defineProperty(owner, member, kept));
+    vi.resetModules();
+    await expect(import('../../packages/core-connectors/src/capture/page.ts')).rejects.toThrow(
+      /parse5/u,
+    );
   });
 });
