@@ -290,7 +290,8 @@
     "REVIEW-BATCH-2 #313 batch 3b adds review-3b-5-delegate-child-lease-id (run.delegate_child with a leaseId that is not a uuid, a number or missing is refused LEASE_NOT_OWNED or FIELD_VALUE_INVALID with no child written, never a 22P02 fault) as conformance.",
     "REVIEW-BATCH-2 #313 batch 3b adds review-3b-1-planning-hold-released (a failed planning reply held liability_unknown is released by the pass or a person's outcome, and the planning allowance gets its hold back) as conformance; its fix adds planfix-3b-1-planning-outcome (a planning reply whose operation declares a lookup is released by the pass alone; another person of the business and another business's owner naming the owner's conversation and call are refused NOT_FOUND with nothing written; the owner's outcome settles it once).",
     "SEC3B F1 (batch 3b security review) adds sec3b-1-ended-owner-planning-release (a planning reply held unknown whose owner's access has since ended is released by the provider phase in the owner's name, as their person actor, and the same pass goes on to release the next business's held reply) as conformance.",
-    "C80 (PORT-C P27) adds the live correction command layer's suites: c80-approval (C80 approver, C80 no self-approval, the pinned version), c80-isolation (three crossings and C80 canary), c80-agent-request (the agent's reach under a live delegation) and c80-decision-read (the state, the deciding approver by name and the version, refused as an unknown id across a business, a client party and a delegation)."
+    "C80 (PORT-C P27) adds the live correction command layer's suites: c80-approval (C80 approver, C80 no self-approval, the pinned version), c80-isolation (three crossings and C80 canary), c80-agent-request (the agent's reach under a live delegation) and c80-decision-read (the state, the deciding approver by name and the version, refused as an unknown id across a business, a client party and a delegation).",
+    "C80 (PORT-C P28) adds the live correction runner's suites: c80-runner (C80 publish runner and C80 revert runner: the approved bytes rebuilt from the pinned source and dispatched once, the capture on the correction's own page, refusals before any dispatch, unknown and accepted never dispatched again, a lease lost mid-flight writing nothing, the revert observed and timed), c80-runner-fence (C80 capture through the fence: a stored page outside the catalogue, spelt any other way or awaiting the pool reviews, refused before anything is read, sent, resolved or fetched; a name answering a private address never fetched), and c80-runner-register and c80-revert-register (C80 on the effect register: the accepted publish and revert registered under the identity derived from the correction, observed again and never sent again, an unknown revert receipted before it is sent, an entry accepted only with the publish's own token, no entry reached across a business or a lease)."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -850,7 +851,11 @@
     "tests/site/c80-approval.test.ts",
     "tests/site/c80-isolation.test.ts",
     "tests/site/c80-agent-request.test.ts",
-    "tests/site/c80-decision-read.test.ts"
+    "tests/site/c80-decision-read.test.ts",
+    "tests/site/c80-runner.test.ts",
+    "tests/site/c80-runner-fence.test.ts",
+    "tests/site/c80-runner-register.test.ts",
+    "tests/site/c80-revert-register.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
