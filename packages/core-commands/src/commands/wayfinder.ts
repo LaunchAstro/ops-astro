@@ -221,8 +221,7 @@ async function refuseSharedChildren(
     [tx.businessId, context.spine.taskTypeId, recordId],
   );
   for (const { id } of children) {
-    // Sequential, stopping at the first: the answer is the same whichever.
-    // oxlint-disable-next-line no-await-in-loop
+    // oxlint-disable-next-line no-await-in-loop -- stops at the first; the answer is the same
     const shared = await refuseSharedIntoMap(tx, id);
     if (shared !== undefined) return shared;
   }
