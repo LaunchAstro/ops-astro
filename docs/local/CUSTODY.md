@@ -38,7 +38,9 @@ a read that names them fails in the server, whatever the code asks.
 | `secret.clear` | `custody:manage` | never | removes the value, keeps the row and who cleared it       |
 
 A client-scoped holder of `custody:manage` lists that client's rows only;
-setting and clearing need the key business-wide. The body of a set reaches no
+setting and clearing need the key business-wide. A set for one client names
+a client of this business; another business's client or a made-up id is
+refused `NOT_FOUND` on `clientId`, and nothing is written. The body of a set reaches no
 log, error, audit payload or repeat-request row: the envelope stores its digest
 only. The tests are `tests/custody/c31-credentials.test.ts` and
 `tests/surfaces/c31-keys-panel.test.tsx`.

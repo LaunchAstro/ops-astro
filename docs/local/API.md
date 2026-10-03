@@ -3221,10 +3221,10 @@ trashed task still answers `NOT_FOUND`.
 Three rows, `custody:manage` each and never an agent. [CUSTODY.md](CUSTODY.md)
 has the table, the sealing and the compromise runbook.
 
-| Operation      | Route           | Body                                                                    | Answer or refusals                                                                                                                                  |
-| -------------- | --------------- | ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `secret.list`  | `/secret/list`  | `{}`                                                                    | `{ ok: true, secrets: [{ id, name, clientId, state, setAt, lastUsedAt, revision }] }`; `SCOPE_NOT_GRANTED` 403                                      |
-| `secret.set`   | `/secret/set`   | `operationId`, `name`, `value` (text), `clientId?`, `expectedRevision?` | `detail: { secretId, name, clientId, state }`; `SCOPE_NOT_GRANTED` 403, `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422, `DEPENDENCY_NOT_LANDED` 501 |
-| `secret.clear` | `/secret/clear` | `operationId`, `secretId`, `expectedRevision?`                          | `detail: { secretId, state }`; `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404, `VERSION_STALE` 409                                                        |
+| Operation      | Route           | Body                                                                    | Answer or refusals                                                                                                                                                                                    |
+| -------------- | --------------- | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `secret.list`  | `/secret/list`  | `{}`                                                                    | `{ ok: true, secrets: [{ id, name, clientId, state, setAt, lastUsedAt, revision }] }`; `SCOPE_NOT_GRANTED` 403                                                                                        |
+| `secret.set`   | `/secret/set`   | `operationId`, `name`, `value` (text), `clientId?`, `expectedRevision?` | `detail: { secretId, name, clientId, state }`; `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404 (`clientId` not this business's), `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422, `DEPENDENCY_NOT_LANDED` 501 |
+| `secret.clear` | `/secret/clear` | `operationId`, `secretId`, `expectedRevision?`                          | `detail: { secretId, state }`; `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404, `VERSION_STALE` 409                                                                                                          |
 
 No answer carries a value, and a refusal names the field, never what was sent.
