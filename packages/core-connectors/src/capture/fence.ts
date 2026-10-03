@@ -177,8 +177,9 @@ export const isUtf8Label = (label: string): boolean =>
  * outranks any declaration in the markup, so with it the capture and visitors agree. A browser
  * reads every Content-Type line, split on commas outside quotes, and a later type or charset wins,
  * so a second line or any comma is refused; the one value goes through the WHATWG MIME parser, as
- * in a browser. A content or transfer coding a browser would undo, and the capture does not, is
- * refused too.
+ * in a browser. Firefox takes the last charset and WebKit scans for the word, so `charset` may
+ * appear only as the one parameter that parser read. A content or transfer coding a browser would
+ * undo, and the capture does not, is refused too.
  */
 function isUtf8Type(answer: Answer, type: string, named: boolean): boolean {
   const { headers } = answer;
@@ -192,9 +193,11 @@ function isUtf8Type(answer: Answer, type: string, named: boolean): boolean {
     return false;
   }
   const charset = media.params.get('charset');
+  const mentions = (header.match(/charset/giu) ?? []).length;
   return (
     media.essence === type &&
     !header.includes(',') &&
+    mentions === (charset === null ? 0 : 1) &&
     (charset === null ? !named : isUtf8Label(charset))
   );
 }
