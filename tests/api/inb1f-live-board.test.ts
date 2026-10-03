@@ -515,6 +515,7 @@ describe.skipIf(serverUrl === undefined)(
       });
       const tab = await tabOf(first, await tokenFor(first.presented.subject));
       await joined(tab);
+      const before = await still(tab);
       await s.db.admin.execute(
         `update public.person_logins set person_id = $2
           where business_id = $1 and person_id = $3 and active`,
@@ -523,12 +524,17 @@ describe.skipIf(serverUrl === undefined)(
       expect(await joinLiveBoard(pool, s.business, first.presented)).toEqual({
         personId: second.personId,
       });
-      return { first, second, firstTask, secondTask, tab };
+      return { first, second, firstTask, secondTask, tab, before };
     };
 
     it('a remapped login stops hearing the previous person’s inbox', async () => {
-      const { first, firstTask, tab } = await remapped();
-      // The rebind's own resync, from the stream's recheck, is said before this settles.
+      const { first, firstTask, tab, before } = await remapped();
+      // The rebind's own resync, from the stream's recheck, is taken in before
+      // the count. Under load the recheck came after still()'s quiet window,
+      // and the late resync read as the inbox item's ('expected 2 to be 1').
+      // Two seconds at most: whether a rebind is said at all is the next case's
+      // claim (inb1f-rebind-mutation-review), so its absence is left to it here.
+      await within(2_000, () => moves(tab) > before, 'the rebind’s resync').catch(() => {});
       const rebound = await still(tab);
       await raiseFor(first, firstTask);
       expect(await still(tab)).toBe(rebound);
