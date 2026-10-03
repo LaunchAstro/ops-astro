@@ -9,7 +9,9 @@
 // After the click it is the approved card: "Exact words kept", the task's
 // link and "Run started", the only place the person learns the click changed
 // nothing live. A newer version in the same chat makes the card stale, with
-// no accept. Every word on it is text: nothing a model wrote is markup.
+// no accept, unless its click got no answer: that run may have started, so the
+// card says so and keeps the accept to send again. Every word on it is text:
+// nothing a model wrote is markup.
 
 import type { ReactElement } from 'react';
 import { money } from '../agent/format.ts';
@@ -42,21 +44,31 @@ function Offer(props: {
   }
   if (props.onAccept === undefined) return null;
   const onAccept = props.onAccept;
+  // Replaced yet still offering its accept: its last click got no answer.
+  const replaced = plan.replacedBy !== null;
   return (
-    <div className="aip__plan-act">
-      <span className="aip__plan-meta" data-plan="version">
-        Version {plan.version}
-      </span>
-      <button
-        className="btn btn--primary btn--sm"
-        type="button"
-        data-plan="accept"
-        disabled={plan.state === 'accepting'}
-        onClick={onAccept}
-      >
-        Accept plan
-      </button>
-    </div>
+    <>
+      {replaced ? (
+        <p className="aip__plan-meta" data-plan="unknown">
+          Replaced by Version {plan.replacedBy}, but this accept got no answer, so its run may have
+          started. Send it again to learn which.
+        </p>
+      ) : null}
+      <div className="aip__plan-act">
+        <span className="aip__plan-meta" data-plan="version">
+          Version {plan.version}
+        </span>
+        <button
+          className="btn btn--primary btn--sm"
+          type="button"
+          data-plan="accept"
+          disabled={plan.state === 'accepting'}
+          onClick={onAccept}
+        >
+          {replaced ? 'Send the accept again' : 'Accept plan'}
+        </button>
+      </div>
+    </>
   );
 }
 

@@ -10,6 +10,8 @@
 // words make it the approved card, a refusal offers the click again with the
 // server's words. A committed accept is approved even if a newer version made
 // the card stale meanwhile: the server kept those words and started that run.
+// So a card whose click got no answer is never silenced: replaced, it keeps
+// its accept to send again (accept.ts), and only a refusal then makes it stale.
 
 import { useRef } from 'react';
 import type { AssistantPlan, PlanCardState } from '@launchastro/ui';
@@ -41,6 +43,9 @@ export function cardOf(offer: PlanOffer): AssistantPlan {
   };
 }
 
+const staled = (plan: AssistantPlan): PlanCardState =>
+  plan.state === 'unknown' ? 'unknown' : 'stale';
+
 /** A planning reply's plan, as the tab's newest card; older offered cards go stale. */
 export function offerPlan(
   state: AssistantState,
@@ -53,13 +58,17 @@ export function offerPlan(
     messages: [
       ...chat.messages.map((each) =>
         each.plan !== undefined && each.plan.state !== 'approved'
-          ? { ...each, plan: { ...each.plan, state: 'stale' as const, replacedBy: card.version } }
+          ? { ...each, plan: { ...each.plan, state: staled(each.plan), replacedBy: card.version } }
           : each,
       ),
       { id: message.id, role: 'plan', body: message.body, cites: [], plan: card },
     ],
   }));
 }
+
+/** A replaced card's refused click leaves it stale; any other answer stands. */
+const kept = (plan: AssistantPlan, state: PlanCardState): PlanCardState =>
+  plan.replacedBy !== null && state === 'offered' ? 'stale' : state;
 
 /** One card's click, in flight or answered. */
 export function settlePlan(
@@ -73,8 +82,8 @@ export function settlePlan(
     messages: chat.messages.map((each) =>
       each.id === id &&
       each.plan !== undefined &&
-      (each.plan.state !== 'stale' || settled.state === 'approved')
-        ? { ...each, plan: { ...each.plan, ...settled } }
+      (each.plan.state !== 'stale' || settled.state === 'approved' || settled.state === 'unknown')
+        ? { ...each, plan: { ...each.plan, ...settled, state: kept(each.plan, settled.state) } }
         : each,
     ),
   }));

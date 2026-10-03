@@ -5,7 +5,8 @@
 // words, each step and what it waits on, the files, the ceiling) the card drew,
 // and the figures agree with the words; an accept whose answer lands after a newer version
 // arrived still says what the server did; and an accept whose outcome is
-// unknown is retried under its own operation id, so the register can replay it.
+// unknown is retried under its own operation id, so the register can replay it,
+// even after a newer version made its card stale.
 /* eslint-disable unicorn/prefer-dom-node-dataset -- each assertion reads its data- attribute by the DOM name */
 
 import { afterEach, describe, expect, it } from 'vitest';
@@ -176,5 +177,26 @@ describe('AW-04 plan card accept', () => {
     expect(accepts).toHaveLength(2);
     expect(accepts[0]?.options?.operationId).toBeDefined();
     expect(accepts[1]?.options?.operationId).toBe(accepts[0]?.options?.operationId);
+  });
+
+  it('SL12-24-F5 accept with a lost answer, then a newer version: the stale card keeps its replay, and a committed replay approves it', async () => {
+    const { client, sent } = drawerWith([planned(1), planned(2)], [lostAnswer]);
+    const { page, ask } = await open(client);
+    await ask('Write the spring brief');
+    await page.click('[data-plan="accept"]');
+    await settle();
+    // Version 1's run may have started; version 2 lands before anyone knows.
+    await ask('Make the check shorter');
+    const first = () =>
+      page.all('[data-plan="card"]').find((each) => each.getAttribute('data-version') === '1');
+    expect(first()?.querySelector('[data-plan="unknown"]')?.textContent).toContain('Version 2');
+    await page.click('[data-version="1"] [data-plan="accept"]');
+    await settle();
+    const accepts = sent.filter((each) => each.name === 'task.accept_plan');
+    expect(accepts).toHaveLength(2);
+    expect(accepts[1]?.options?.operationId).toBe(accepts[0]?.options?.operationId);
+    // The replay found the accept committed: version 1 is the approved card.
+    expect(first()?.querySelector('[data-plan="approved"]')).not.toBeNull();
+    expect(first()?.querySelector('[data-plan="unknown"]')).toBeNull();
   });
 });

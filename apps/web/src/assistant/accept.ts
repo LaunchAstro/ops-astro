@@ -7,6 +7,7 @@
 // them). Nothing else in the drawer moves, and nothing is retried. A click
 // after an unknown outcome reuses the attempt's operation id, so a committed
 // accept replays (operations/client.ts); a settled answer ends the attempt.
+// That card stays `unknown`, its accept kept, even once a newer version lands.
 
 import type { PlanOffer } from '../../../../packages/core-wire/src/index.ts';
 import type { OperationsClient } from '../operations/client.ts';
@@ -41,7 +42,8 @@ export async function acceptPlanCard(
   if (settled.kind !== 'unknown') attempts.delete(offer);
   store.update((current) =>
     settlePlan(current, key, id, {
-      state: settled.kind === 'ok' ? 'approved' : 'offered',
+      state:
+        settled.kind === 'ok' ? 'approved' : settled.kind === 'unknown' ? 'unknown' : 'offered',
       refusal: settled.kind === 'ok' ? null : settled.because,
     }),
   );

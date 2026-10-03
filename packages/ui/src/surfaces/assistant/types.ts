@@ -10,9 +10,11 @@ export type AssistantRole = 'user' | 'ai' | 'note' | 'failed' | 'plan';
 /**
  * AW-04: a plan version drawn as a card in the chat. `offered` carries the one
  * accept; `accepting` while the click is in flight; `approved` once the server
- * kept the words; `stale` once a newer version replaced it in this chat.
+ * kept the words; `unknown` when the click got no answer, its accept offered
+ * again under the same operation id even once replaced; `stale` once a newer
+ * version replaced it in this chat.
  */
-export type PlanCardState = 'offered' | 'accepting' | 'approved' | 'stale';
+export type PlanCardState = 'offered' | 'accepting' | 'approved' | 'unknown' | 'stale';
 
 export interface AssistantPlan {
   readonly version: number;
