@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 // SPDX-License-Identifier: AGPL-3.0-only
+/* oxlint-disable max-lines-per-function -- Sol's proof, kept as written */
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { cookieNameFor, sessionIdOf } from '../../apps/api/auth/session.ts';
 import { open } from './mp-2-1-support.tsx';

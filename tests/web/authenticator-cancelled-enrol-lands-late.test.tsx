@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 // SPDX-License-Identifier: AGPL-3.0-only
+/* oxlint-disable max-lines-per-function -- Sol's proof, kept as written */
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { AuthenticatorSetup } from '../../apps/web/src/screens/settings/authenticator.tsx';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';

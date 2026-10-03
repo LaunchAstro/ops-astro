@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 // SPDX-License-Identifier: AGPL-3.0-only
+/* oxlint-disable max-lines-per-function -- Sol's proof, kept as written */
 import { StrictMode, useState, type ReactElement } from 'react';
 import { expect, it } from 'vitest';
 import { App } from '../../apps/web/src/App.tsx';
