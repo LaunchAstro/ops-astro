@@ -15,6 +15,7 @@
 // there is none, so choosing `bravo` with an alpha-only account does not get
 // anybody into bravo — it gets them `AUTH_NO_MEMBERSHIP`.
 
+import { isRefusal, OperationsClient } from '../operations/client.ts';
 import {
   CSRF_HEADER,
   PREFIX,
@@ -69,6 +70,35 @@ export async function openSession(
     })();
   }
   return await tradeForCookie(request, result.token);
+}
+
+/** A password sign-in the API serves only after its second factor: its client and cookie id. */
+export interface AskedForCode {
+  readonly client: OperationsClient;
+  readonly sessionId?: string;
+}
+
+/**
+ * The browser's sign-in, then one read on its new cookie in the chosen business: an extra
+ * round trip. A login with a verified authenticator app is refused
+ * `AUTH_SECOND_FACTOR_REQUIRED` below `aal2` (C59), and then the sign-in is not open yet:
+ * `asked` carries what its code step needs. Any other answer opens it as before; the API,
+ * not this read, refuses whatever it refuses.
+ */
+export async function openSignIn(
+  request: SignInRequest & ApiRoute & { readonly businessKey: string },
+): Promise<
+  | { readonly ok: true; readonly sessionId?: string; readonly asked?: AskedForCode }
+  | { readonly ok: false; readonly because: string }
+> {
+  const result = await openSession(request);
+  if (!result.ok) return result;
+  const named = result.sessionId === undefined ? {} : { sessionId: result.sessionId };
+  const { apiOrigin: origin, businessKey, fetch } = request;
+  const client = new OperationsClient({ origin, businessKey, signedIn: false, fetch, ...named });
+  const answer = await client.read('session.person', {});
+  const asked = isRefusal(answer) && answer.code === 'AUTH_SECOND_FACTOR_REQUIRED';
+  return asked ? { ok: true, ...named, asked: { client, ...named } } : result;
 }
 
 /** A provider token handed to the API for this tab's session cookie, and the id it named it. */
