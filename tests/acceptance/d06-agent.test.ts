@@ -42,7 +42,7 @@ import { createHarness, type Harness } from './role-case-harness.ts';
 import { agentHold } from './d06-agent-fixture.ts';
 import { revisedState } from './d06-run-state.ts';
 import { ownWriteBody, proposalBody } from './d06-agent-own-writes.ts';
-import { c80AgentBody } from './c80-bodies.ts';
+import { c80AgentBody, c80AgentPickup } from './c80-bodies.ts';
 import type { Answer } from './world.ts';
 import { serverUrl } from './world.ts';
 
@@ -109,6 +109,8 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
   let durable: () => Promise<Durable>;
   const hold = agentHold(() => harness);
   const tally = new Tally();
+  /** The hold is C80's pickup, on a plan lease that fires nothing. */
+  let planOnly = false;
 
   beforeAll(async () => {
     harness = await createHarness('d06a');
@@ -126,6 +128,19 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
     name: CommandName,
   ): Promise<{ body: Record<string, unknown>; credential?: string }> {
     const operationId = randomUUID();
+    if (name === 'live_correction.request') {
+      // A correction names its task's client (P26 low 4), so the agent picks
+      // up a task the admin put under one, and names that client.
+      await hold.release();
+      const { pickup, partyId } = await c80AgentPickup(harness);
+      expect(pickup.code, 'the pickup a correction is asked under').toBe('ok');
+      hold.track(pickup);
+      planOnly = true;
+      return c80AgentBody(operationId, await hold.ensureLive(), partyId);
+    }
+    // Every other cell holds a launched lease, so C80's pickup is given back first.
+    if (planOnly) await hold.release();
+    planOnly = false;
     if (name === 'task.queue') return { body: { operationId } };
     if (name === 'task.pickup') {
       await hold.release();
@@ -137,7 +152,6 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
     if (name === 'model.call') await hold.release();
     const held = await hold.ensureLive();
     const credential = held.credential;
-    if (name === 'live_correction.request') return c80AgentBody(operationId, held);
     if (name === 'session.capabilities') return { body: { operationId }, credential };
     if (name === 'task.read') return { body: { operationId, recordId: held.taskId }, credential };
     if (name === 'task.comment') {

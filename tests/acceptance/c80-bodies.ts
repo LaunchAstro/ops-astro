@@ -18,8 +18,8 @@ import type { Database } from '../../packages/core-records/src/tenancy/database.
 import type { VerifiedSubject } from '../../packages/core-records/src/identity/verified-subject.ts';
 import type { CommandName } from '../../packages/core-wire/src/surface.ts';
 import { madeClient } from './role-case-access-bodies.ts';
-import type { BodyContext, Prepared } from './role-case-bodies.ts';
-import type { World } from './world.ts';
+import { PROPOSAL, type BodyContext, type Prepared, type Task } from './role-case-bodies.ts';
+import type { Answer, World } from './world.ts';
 
 /** C80's one-word request, less the party and the task each recipe names. */
 export const C80_REQUEST = {
@@ -178,11 +178,42 @@ export async function c80PositiveBody(name: CommandName, context: BodyContext): 
   return { body: { ...correction, decision: 'approve' } };
 }
 
-/** D06's positive agent body for C80's request: the picked-up task, a party of its own. */
+/** What D06's agent case asks of its harness (`role-case-harness.ts`). */
+type AgentCase = Pick<BodyContext, 'asPerson' | 'freshTask'> & {
+  reserve(task: Task, purpose: string): Promise<Answer>;
+  asAgent(name: CommandName, body: Readonly<Record<string, unknown>>): Promise<Answer>;
+};
+
+/**
+ * D06's pickup for C80's request: a fresh task the admin puts under a client it
+ * makes while the task is still empty, then reserved and picked up. Its
+ * proposal locks the client, so the client is set first (P26 low 4).
+ */
+export async function c80AgentPickup(
+  harness: AgentCase,
+): Promise<{ readonly pickup: Answer; readonly partyId: string }> {
+  const task = await harness.freshTask('a task an agent asks a live correction under');
+  const made = await harness.asPerson('client.create', { name: `A client ${randomUUID()}` });
+  if (made.code !== 'ok') throw new Error(`d06: client.create refused ${made.code}`);
+  const partyId = String((made.body['detail'] as Record<string, unknown>)['clientId']);
+  const set = await harness.asPerson('task.set_party', {
+    recordId: task.id,
+    expectedRevision: task.revision,
+    fields: { client: partyId },
+  });
+  if (set.code !== 'ok') throw new Error(`d06: task.set_party refused ${set.code}`);
+  const decided = await harness.reserve(task, PROPOSAL.purpose);
+  if (decided.code !== 'ok') throw new Error(`d06: the reservation refused ${decided.code}`);
+  const { reservationId } = decided.body['detail'] as Record<string, unknown>;
+  return { pickup: await harness.asAgent('task.pickup', { reservationId }), partyId };
+}
+
+/** D06's positive agent body for C80's request: the picked-up task, at its client. */
 export const c80AgentBody = (
   operationId: string,
   held: { readonly taskId: string; readonly credential: string },
+  partyId: string,
 ): { body: Record<string, unknown>; credential: string } => ({
-  body: { operationId, ...C80_REQUEST, partyId: randomUUID(), taskId: held.taskId },
+  body: { operationId, ...C80_REQUEST, partyId, taskId: held.taskId },
   credential: held.credential,
 });
