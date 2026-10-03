@@ -153,15 +153,19 @@ export async function stampSeen(
   personId: string,
   itemId: string,
 ): Promise<boolean> {
-  const mine = await tx.query<{ readonly subject: string }>(
-    `select subject_record_id as subject from public.inbox_items
+  const mine = await tx.query<{ readonly subject: string; readonly raisedAt: string }>(
+    `select subject_record_id as subject, raised_at::text as "raisedAt" from public.inbox_items
       where business_id = $1 and id = $2 and recipient_person_id = $3`,
     [tx.businessId, itemId, personId],
   );
   // Opening needs read on the task now: an item about a task the recipient
-  // cannot read (another client's, a lost grant) is answered as not theirs.
-  const subject = mine[0]?.subject;
-  if (subject === undefined || (await taskAccess(tx, personId, subject)) !== 'readable') {
+  // cannot read (another client's, a lost grant, a conversation they rejoined
+  // since) is answered as not theirs.
+  const item = mine[0];
+  if (
+    item === undefined ||
+    (await taskAccess(tx, personId, item.subject, item.raisedAt)) !== 'readable'
+  ) {
     return false;
   }
   await tx.query(

@@ -29,7 +29,8 @@
 //
 // An item about a team conversation (C71, a mention in it) is listed only to
 // a viewer who is a current member of it, as only its members read it; its
-// path is a recipient who signs in and is a current member.
+// path is a recipient who signs in and is a current member. Both since before
+// the item was raised: a re-added member reads from the new join only.
 
 import { standsOnShares } from '../identity/login-resolution.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
@@ -55,9 +56,13 @@ export interface UnattendedItem {
 /** The reasons whose obligation any one of its recipients discharges. */
 const SHARED: ReadonlySet<InboxReason> = new Set(['decision', 'incident']);
 
+/** A row's `inside`, membership since the item was raised, as `HELD` in read.ts asks it. */
+const INSIDE = `case when ${IS_CONVERSATION}
+  then ${inConversation('i.recipient_person_id', 'i.raised_at')} end`;
+
 type OpenRow = UnattendedItem & {
   readonly clientId: string | null;
-  /** Null unless the item is about a conversation; then whether its recipient is in it. */
+  /** Null unless the item is about a conversation; then whether its recipient was in it since. */
   readonly inside: boolean | null;
   readonly member: boolean;
   readonly loginAndActor: boolean;
@@ -79,8 +84,7 @@ export async function readUnattended(
      select i.id, i.recipient_person_id as "recipientPersonId",
             i.subject_record_id as "subjectRecordId", i.reason, i.fact_kind as "factKind",
             i.fact_id as "factId", i.raised_at as "raisedAt", r.uuid_7 as "clientId",
-            case when ${IS_CONVERSATION} then ${inConversation('i.recipient_person_id')} end
-              as inside,
+            ${INSIDE} as inside,
             exists (select 1 from public.memberships m
                      where m.business_id = i.business_id and m.person_id = i.recipient_person_id
                        and m.active) as member,
@@ -100,7 +104,7 @@ export async function readUnattended(
        join public.records r
          on r.business_id = i.business_id and r.id = i.subject_record_id and r.deleted_at is null
       where i.business_id = $1 and i.work_state = 'open'
-        and (case when ${IS_CONVERSATION} then ${inConversation('$2')}
+        and (case when ${IS_CONVERSATION} then ${inConversation('$2', 'i.raised_at')}
              else ((select business from reach) or r.id = any((select records from reach)::uuid[])
                    or r.uuid_7 = any((select parties from reach)::uuid[])) end)
       order by i.raised_at, i.id`,
