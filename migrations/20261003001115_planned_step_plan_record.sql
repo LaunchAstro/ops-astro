@@ -14,7 +14,8 @@
 -- `plan_record_written` says the proposal wrote it: true with a record, or
 -- true with none when no plan was bound. A row from before this migration
 -- holds false and keeps the old placement by time; nothing here can tell
--- which record it saw, so no row is backfilled.
+-- which record it saw, so no row is backfilled. A step inserted from here on
+-- says which record it saw: the trigger refuses a new row holding false.
 --
 -- The record is one of this business's (the foreign key) on the step's own
 -- task (the trigger), and both columns are fixed once written: the
@@ -40,6 +41,10 @@ begin
   if tg_op = 'UPDATE' and (new.plan_record_id is distinct from old.plan_record_id
      or new.plan_record_written is distinct from old.plan_record_written) then
     raise exception 'planned_steps: the plan record is written once, at proposal'
+      using errcode = 'check_violation';
+  end if;
+  if tg_op = 'INSERT' and not new.plan_record_written then
+    raise exception 'planned_steps: a step is written with the plan record its proposal saw'
       using errcode = 'check_violation';
   end if;
   if tg_op = 'INSERT' and new.plan_record_id is not null and not exists (
