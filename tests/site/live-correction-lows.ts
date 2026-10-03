@@ -8,6 +8,7 @@
 //   1. A credential ticked only for `task:write` covers no correction.
 //   2. Storage holds a decision once made: no rejection turned approval, no
 //      decider moved, nothing back to requested.
+//   3. The receipt write needs the caller's own lease in a live delegation.
 //
 // Registered through `tests/tenancy/restricted-calls.test.ts`, a named suite,
 // which calls `describeLiveCorrectionLows` after its own cases.
@@ -33,6 +34,7 @@ import {
   listCoveredCorrections,
   lockCoveredCorrection,
   readCoveredDecision,
+  recordObservedResult,
   writeCorrectionDecision,
   type LiveCorrection,
 } from '../../packages/core-records/src/site/index.ts';
@@ -148,6 +150,14 @@ async function stateOf(id: string): Promise<string | undefined> {
   return rows[0]?.state;
 }
 
+async function countOf(sql: string, id: string): Promise<number> {
+  const rows = await lows().s.db.admin.execute<{ readonly n: number }>(sql, [id]);
+  return Number(rows[0]?.n);
+}
+
+const RECEIPTS =
+  'select count(*)::int as n from public.live_correction_receipts where correction_id = $1';
+
 function findingOne(): void {
   it('a subject ticked only for task:write covers no correction: list, lock and read', async () => {
     const { id } = await filed();
@@ -203,6 +213,54 @@ function findingTwo(): void {
   });
 }
 
+function findingThree(): void {
+  const observe = async (
+    correctionId: string,
+    actorId: string,
+    step: 'publish' | 'revert',
+    outcome: 'live' | 'failed' | 'reverted',
+  ) => {
+    const { leaseId, fence } = lows();
+    // Built apart from the call, so the case also compiles against a write that takes no actor.
+    const result = {
+      correctionId,
+      leaseId,
+      fence,
+      actorId,
+      step,
+      outcome,
+      observations: { seen: outcome },
+    };
+    return await inBusiness(async (tx) => await recordObservedResult(tx, result));
+  };
+  const refused = { ok: false, code: 'LEASE_NOT_OWNED' };
+
+  it('a live lease held by another actor refuses the receipt write and writes nothing', async () => {
+    const { id } = await filed('approved');
+    expect(await observe(id, lows().s.decider.actorId, 'publish', 'live')).toStrictEqual(refused);
+    expect([await stateOf(id), await countOf(RECEIPTS, id)]).toStrictEqual(['approved', 0]);
+    // The control: the holder writes it, and every move the record layer makes passes storage.
+    const agent = lows().s.agentActorId;
+    expect(await observe(id, agent, 'publish', 'live')).toMatchObject({ ok: true, state: 'live' });
+    expect(await observe(id, agent, 'revert', 'failed')).toMatchObject({ ok: true, state: 'live' });
+    expect(await observe(id, agent, 'revert', 'reverted')).toMatchObject({
+      ok: true,
+      state: 'reverted',
+    });
+  });
+
+  it('a live lease whose delegation is revoked refuses the receipt write and writes nothing', async () => {
+    const { id } = await filed('approved');
+    await lows().s.db.admin.execute(
+      `update public.delegations set revoked_at = now()
+        where id = (select delegation_id from public.leases where id = $1)`,
+      [lows().leaseId],
+    );
+    expect(await observe(id, lows().s.agentActorId, 'publish', 'live')).toStrictEqual(refused);
+    expect([await stateOf(id), await countOf(RECEIPTS, id)]).toStrictEqual(['approved', 0]);
+  });
+}
+
 /** P26's findings, each its own block over one world. */
 export function describeLiveCorrectionLows(): void {
   describe.skipIf(databaseUrlFromEnvironment() === undefined)(
@@ -218,6 +276,7 @@ export function describeLiveCorrectionLows(): void {
 
       describe('finding 1: covered reads ask only the ticked keys', findingOne);
       describe('finding 2: storage holds a decision once made', findingTwo);
+      describe('finding 3: the receipt write needs the caller’s own live lease', findingThree);
     },
   );
 }
