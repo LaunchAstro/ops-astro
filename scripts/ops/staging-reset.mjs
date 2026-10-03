@@ -17,8 +17,10 @@
 // database neither marked made-up nor new is refused, and so are a service key
 // the admin API does not accept (one read) and a record that is not a real
 // file (a `started` line is written to it and read back); then the owner's
-// folder is made; only then empty (the product's schemas, and the guard's
-// notes on them), mark the database made-up again, migrate, make the sign-ins
+// folder is made; only then, judged again with the tenant tables locked, empty
+// (the product's schemas, and the guard's notes on them, carrying the ended
+// sessions across), mark the database made-up again, migrate, put the ended
+// sessions back, make the sign-ins
 // (the provider keeps them in `auth.users`, where the guard judges each), seed
 // (`scripts/local-seed.mjs`, which judges the database again and marks it with
 // what it made) and write the installation's operating business once, and
@@ -47,9 +49,12 @@ import { migrate } from '../../packages/core-records/src/tenancy/migrate.ts';
 import { markEmptied, resettable } from './made-up-only.ts';
 import { RECORD_FILE } from './operator.ts';
 import {
+  CARRY_ENDED_SESSIONS,
   OPERATING_BUSINESS,
   Refusal,
+  RESTORE_ENDED_SESSIONS,
   STAGING_CAST,
+  TENANT_TABLES,
   refusalBeforeConnecting,
 } from './staging-reset.ts';
 
@@ -197,8 +202,16 @@ try {
     refuse('the record in OPS_ASTRO_DEPLOYMENTS is not a file it can write');
   mkdirSync(folder, { mode: 0o700 });
   step = 'emptying';
-  // oxlint-disable-next-line no-await-in-loop -- in order: each builds on the one before
-  for (const statement of EMPTY) await admin.execute(statement);
+  await admin.transaction(async (execute) => {
+    // A tenant write committed since the check is judged before anything is
+    // dropped, and none lands after it: the tables are locked until commit.
+    const tables = (await execute(TENANT_TABLES)).map(({ name }) => name);
+    if (tables.length > 0) await execute(`lock table ${tables.join(', ')} in share mode`);
+    if (!(await resettable({ execute })))
+      throw new Refusal('the database took a write since it was judged; nothing was emptied');
+    // oxlint-disable-next-line no-await-in-loop -- in order: each builds on the one before
+    for (const statement of [...CARRY_ENDED_SESSIONS, ...EMPTY]) await execute(statement);
+  });
   // Marked from here on: the guard stays on `auth.users`, guards each table a
   // migration makes, and a stopped run stays resettable.
   await markEmptied(admin);
@@ -207,9 +220,15 @@ try {
   const { applied } = await migrate(admin, MIGRATIONS);
   console.log(`staging-reset: ${applied.length} migrations applied`);
   migrations = applied.length;
+  step = 'keeping the ended sessions';
+  await admin.transaction(async (execute) => {
+    // oxlint-disable-next-line no-await-in-loop -- in order: the copy goes before its schema
+    for (const statement of RESTORE_ENDED_SESSIONS) await execute(statement);
+  });
 } catch (error) {
   await admin.close();
-  console.error(`staging-reset: stopped while ${step} (${named(error)}); run it again.`);
+  const said = error instanceof Refusal ? error.message : named(error);
+  console.error(`staging-reset: stopped while ${step} (${said}); run it again.`);
   process.exit(1);
 }
 await admin.close();
