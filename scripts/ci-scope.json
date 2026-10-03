@@ -1,0 +1,18 @@
+{
+  "comment": [
+    "The kept part of checks by scope, read by scripts/ci-scope.ts (code-factory METHOD Phase 2 step 8).",
+    "A pull request runs the heavy checks its change touches; the merge queue and main run everything.",
+    "A changed path under `scopable` puts in scope the areas of the named suites that import it or name",
+    "it; a path under `runsEverything`, or outside `scopable`, runs everything. Widen `scopable` only",
+    "with the queue's results to show it holds. `visualDrift` is what the visual drift job builds and reads."
+  ],
+  "scopable": ["tests/", "apps/web/", "packages/ui/", "docs/"],
+  "runsEverything": [
+    "tests/support/",
+    "tests/ci/",
+    "tests/db/named-suites",
+    "tests/db/shard-plan.json",
+    "tests/db/isolation-suites.json"
+  ],
+  "visualDrift": ["apps/web/", "packages/ui/", "tests/visual/"]
+}
