@@ -10,7 +10,7 @@ import { createTask, openSchedules } from '../runtime/schedules-harness.ts';
 import { authorised, tokenFor } from './fixture.ts';
 import { join, liveApi, topic, within, type Joined } from './c4-live-support.ts';
 
-it('Sol proof, criterion 2: person to person presence cannot retain the previous person after a login remaps', async () => {
+it('person to person presence cannot retain the previous person after a login remaps', async () => {
   const s = await openSchedules('solow002presence', 100_000);
   const pool = connect(s.db.appUrl, { max: 4 });
   const topics = await startLiveTopics(connectListener(s.db.appUrl));

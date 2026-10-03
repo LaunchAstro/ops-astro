@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { expect, it } from 'vitest';
 
-it('Sol proof, criterion 7: the hidden inbox isolation test must reject an injected hidden-item resync', () => {
+it('the hidden inbox isolation test must reject an injected hidden-item resync', () => {
   const folder = mkdtempSync(resolve('tests/api/.sol-ow002-faithfulness-'));
   try {
     const setup = resolve(folder, 'mutation.ts');

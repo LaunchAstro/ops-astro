@@ -7,7 +7,7 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { TEST_ISSUER } from '../support/sign-in.ts';
 import { openSchedules } from '../runtime/schedules-harness.ts';
 
-it('Sol proof, criterion correctness: the function must persist its security signal before returning a response that can freeze the instance', async () => {
+it('the function must persist its security signal before returning a response that can freeze the instance', async () => {
   const s = await openSchedules('solow002outbox', 100_000);
   const address = new URL(databaseUrlFromEnvironment()!);
   address.pathname = `/${s.db.name}`;

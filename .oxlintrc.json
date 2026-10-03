@@ -60,6 +60,13 @@
       }
     },
     {
+      "files": [
+        "tests/api/live-presence-remap-drops-previous-person.test.ts",
+        "tests/api/function-outbox-before-response.test.ts"
+      ],
+      "rules": { "max-lines-per-function": "off" }
+    },
+    {
       "files": ["tests/ci/staging-special-objects.test.ts"],
       "rules": { "max-lines-per-function": "off" }
     },
