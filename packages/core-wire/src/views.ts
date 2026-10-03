@@ -23,7 +23,7 @@ import type {
   PresetPlan,
   SettingValueType,
 } from '../../core-records/src/index.ts';
-import type { TaskLedgerView } from './views-agent.ts';
+import type { AttemptView, TaskLedgerView } from './views-agent.ts';
 import type { CheckView, RunPinView, RunReadView, RunScopeView } from './views-run.ts';
 
 // A run's pins, reads, checks and scope, and the task's execution and receipt
@@ -60,6 +60,7 @@ export type {
   ConversationReadResult,
   AwaitingReviewView,
   AwaitingReviewResult,
+  AttemptView,
 } from './views-agent.ts';
 
 export type {
@@ -458,15 +459,6 @@ export interface LeaseView {
   readonly state: string;
   readonly expiresAt: string;
   readonly holderActorId: string | null;
-}
-
-export interface AttemptView {
-  readonly id: string;
-  readonly state: string;
-  readonly dispatchMarker: boolean;
-  readonly observed: boolean;
-  /** Why the work dropped under it (T3e1), or null: never a person's cancellation. */
-  readonly dropCause: string | null;
 }
 
 export interface GateView {
