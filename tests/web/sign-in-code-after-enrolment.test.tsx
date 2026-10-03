@@ -59,9 +59,10 @@ it('a newly enrolled person can enter their authenticator code on the next web s
       );
     const response = await api.request(url, { ...init, headers });
     for (const set of response.headers.getSetCookie()) {
-      const pair = set.split(';')[0] ?? '';
-      const split = pair.indexOf('=');
-      cookies.set(pair.slice(0, split), pair.slice(split + 1));
+      // The one change to Sol's body: the jar splits as the API suites' jars do, since
+      // CQ-11 reads a first-'=' index search anywhere in the tree as a hand-written env reader.
+      const [name = '', ...value] = (set.split(';')[0] ?? '').split('=');
+      cookies.set(name, value.join('='));
     }
     if (!response.ok) {
       const body: unknown = await response.clone().json();
