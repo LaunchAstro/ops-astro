@@ -515,6 +515,7 @@ describe.skipIf(serverUrl === undefined)(
       });
       const tab = await tabOf(first, await tokenFor(first.presented.subject));
       await joined(tab);
+      const before = await still(tab);
       await s.db.admin.execute(
         `update public.person_logins set person_id = $2
           where business_id = $1 and person_id = $3 and active`,
@@ -523,6 +524,10 @@ describe.skipIf(serverUrl === undefined)(
       expect(await joinLiveBoard(pool, s.business, first.presented)).toEqual({
         personId: second.personId,
       });
+      // The stream's recheck tells the tab of the rebind with one resync. Waited
+      // for by name: a recheck slower than still()'s quiet window under load
+      // said it after the case's next write and read as that write's signal.
+      await within(2_000, () => moves(tab) > before, 'the rebind’s resync');
       return { first, second, firstTask, secondTask, tab };
     };
 
