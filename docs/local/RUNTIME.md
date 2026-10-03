@@ -1773,11 +1773,11 @@ calls on one run reaching the ceiling at once stop it once.
   neither is a transition to classify, and the wait is not a clock. A
   cancelled, rejected or superseded lineage is still classified.
 - **Not here yet.** The question in the conversation where the plan was
-  approved, with its two buttons (AW-04's origin, SL12's drawer), and the
-  second-factor check on a money answer (C59). The answers themselves are
-  commands, `run.top_up` and `run.end_at_budget_stop`, on the API, the command
-  line and the app's client
-  ([API.md](API.md#the-answers-at-the-budget-stop)).
+  approved, with its two buttons (AW-04's origin, SL12's drawer). The answers
+  themselves are commands, `run.top_up` and `run.end_at_budget_stop`, on the
+  API, the command line and the app's client
+  ([API.md](API.md#the-answers-at-the-budget-stop)); `run.top_up` holds
+  `billing:decide`, so C59's step-up asks it in the envelope.
 
 ## The answers at the budget stop
 
