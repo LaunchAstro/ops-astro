@@ -4,7 +4,9 @@
 // subdomain's setup check is read again at the start of each pass, so a
 // sender that stops verifying stops the next pass's sends. Its refusal is the
 // send's own SENDER_NOT_VERIFIED, which writes nothing: no attempt row, and
-// nothing reaches the provider.
+// nothing reaches the provider. And stopped between sends (SEC28 F5): a
+// worker stopped while one business has several items due starts no send
+// after the stop; the item already asked is left as it is, never sent twice.
 
 import { randomUUID } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
@@ -13,6 +15,7 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, expect, it as vitestIt } from 'vitest';
 import { mailDeliverySettings, startMailDelivery } from '../../apps/api/mail-delivery.ts';
 import type { SenderReport } from '../../packages/core-connectors/src/index.ts';
+import { startMailWorker, type Custody } from '../../packages/core-custody/src/index.ts';
 import {
   attemptsOf,
   itemFor,
@@ -22,7 +25,7 @@ import {
   VERIFIED_SENDER,
   w,
 } from './email-world.ts';
-import { freshInbox } from './email-timing-world.ts';
+import { freshInbox, preferences } from './email-timing-world.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
 
@@ -30,6 +33,7 @@ useEmailWorld();
 
 let folder = '';
 let credentialsFile = '';
+let workerActor = '';
 
 beforeAll(async () => {
   folder = mkdtempSync(join(tmpdir(), 'aw07b-pass-checks-'));
@@ -41,10 +45,11 @@ beforeAll(async () => {
     { mode: 0o600 },
   );
   if (noDatabase) return;
+  workerActor = randomUUID();
   await w.db.app.withBusiness(w.alpha, async (tx) => {
     await tx.query(
       `insert into public.actors (business_id, id, kind, person_id, active) values ($1, $2, 'worker', null, true)`,
-      [tx.businessId, randomUUID()],
+      [tx.businessId, workerActor],
     );
   });
 });
@@ -105,3 +110,38 @@ it('AW-07b delivery worker: a sender that turns unverified between passes stops 
     await delivery.stop();
   }
 }, 40_000);
+
+it('AW-07b delivery worker: stopped during a business with several items due, no send starts after', async () => {
+  await freshInbox();
+  const items = [
+    await itemFor(w.task, 'decision'),
+    await itemFor(w.task, 'decision'),
+    await itemFor(w.task, 'decision'),
+  ];
+  const before = w.provider.received.length;
+  let dispatches = 0;
+  let stopping: Promise<void> | undefined;
+  // The first send stops the worker while it is in flight, then goes on to the provider.
+  const custody: Custody = {
+    ...w.custody,
+    dispatch: async (credentialRef, request) => {
+      dispatches += 1;
+      stopping ??= worker.stop();
+      return await w.custody.dispatch(credentialRef, request);
+    },
+  };
+  const timing = { broker: { ...w.broker, custody }, mail: MAIL, preferences };
+  const worker = startMailWorker(
+    w.db.app,
+    async () => await Promise.resolve([{ businessId: w.alpha, workerActorId: workerActor }]),
+    async () => await Promise.resolve(timing),
+    { atOnceMs: 50, dailyTickMs: 60_000 },
+  );
+  await expect.poll(() => stopping !== undefined, { timeout: 10_000 }).toBe(true);
+  await stopping;
+  await settle(300);
+  expect(dispatches, 'a send started after the stop').toBe(1);
+  expect(w.provider.received.length).toBe(before + 1);
+  const sent = await Promise.all(items.map(async (item) => await states(item)));
+  expect(sent.filter((rows) => rows.length > 0)).toEqual([['asked', 'accepted']]);
+}, 30_000);
