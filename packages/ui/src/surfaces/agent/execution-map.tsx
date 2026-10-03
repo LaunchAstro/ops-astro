@@ -2,7 +2,7 @@
 //
 // The execution map on the task page's Agent perspective (MP-6-3, TA-02,
 // TG-03 to TG-09): the bound plan's steps by depth, each card beside what its
-// runs did, Rail lines between them, and one step in the inspector under it.
+// runs did, and Rail lines between them.
 //
 // Read-only: a card is a button that selects, never a handle that edits, and
 // the reading line says "not editable" once (D-19). The connector style is
@@ -21,7 +21,6 @@ import {
   type MapGraph,
   type MapStep,
 } from '../../state/execution-map.ts';
-import { MapInspector } from './execution-inspector.tsx';
 
 export interface ExecutionMapProps {
   readonly graph: MapGraph;
@@ -95,7 +94,6 @@ function Canvas({ view }: { readonly view: Bound }): ReactElement {
           ))}
         </div>
       </div>
-      <MapInspector step={chosen} />
       {view.orphans.length === 0 ? null : (
         <div className="tg__orphan" data-map="orphans">
           <Empty
