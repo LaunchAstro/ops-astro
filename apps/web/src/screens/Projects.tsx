@@ -43,6 +43,7 @@ import { Inbox } from '../views/inbox.tsx';
 import { CreateTask } from './projects/CreateTask.tsx';
 import { WorkLog } from './projects/WorkLog.tsx';
 import { ProjectsTabs } from './projects/ProjectsTabs.tsx';
+import { TABS, tabInAddress, writeTab } from './projects/tab-address.ts';
 
 export interface ProjectsProps {
   readonly client: OperationsClient;
@@ -54,24 +55,6 @@ export interface ProjectsProps {
 }
 
 type ProjectsTab = 'board' | 'worklog';
-
-const WORK_LOG = '#worklog';
-
-const TABS = [
-  { id: 'board', label: 'Board', href: pathTo('agency:projects-board') },
-  { id: 'worklog', label: 'Work log', href: `${pathTo('agency:projects-board')}${WORK_LOG}` },
-] as const;
-
-const tabInAddress = (): ProjectsTab =>
-  globalThis.location?.hash === WORK_LOG ? 'worklog' : 'board';
-
-/** Keeps the address on the open tab, so a reload lands on it. */
-function writeTab(tab: ProjectsTab): void {
-  const here = globalThis.location;
-  if (here === undefined) return;
-  const address = `${here.pathname}${here.search}${tab === 'worklog' ? WORK_LOG : ''}`;
-  globalThis.history.replaceState(globalThis.history.state, '', address);
-}
 
 export function Projects(props: ProjectsProps): ReactElement {
   const [tab, setTab] = useState<ProjectsTab>(tabInAddress);
