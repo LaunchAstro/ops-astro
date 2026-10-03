@@ -126,3 +126,18 @@ describe('C80 capture picture, stylesheet fan-out', () => {
     expect(transport.seen).toEqual([ABOUT, ...Array.from({ length: 32 }, () => SHEET)]);
   });
 });
+
+describe('C80 capture picture, no network of its own', () => {
+  // Security review of P25, low 5: a policy with no default let any other fetch through.
+  it('serves a policy whose default is none, keeping only styles and data: images', () => {
+    const directives = PICTURE_POLICY.split(';').map((directive) => directive.trim());
+    expect(directives).toEqual(
+      expect.arrayContaining([
+        "default-src 'none'",
+        "style-src 'self' 'unsafe-inline'",
+        'img-src data:',
+        "script-src 'none'",
+      ]),
+    );
+  });
+});
