@@ -52,7 +52,7 @@ afterAll(async () => {
 
 describe.skipIf(serverUrl === undefined)('C80 agent request under a pickup’s run reach', () => {
   it('is made under the delegation a pickup minted for a person who holds run:write', async () => {
-    const picked = await w.world.pickUp(w.ava, 'the about page');
+    const picked = await w.pickUpUnder(w.ava, 'the about page', w.partyA);
     const asked = await w.world.asAgent(body(w.partyA, picked.taskId), picked.credential);
     expect(codeOf(asked)).toBe('not-a-refusal');
     const stored = await w.world.db.admin.execute<{
@@ -128,7 +128,7 @@ describe.skipIf(serverUrl === undefined)('C80 agent request, parties under a run
     const writeGrant = await w.world.db.app.withBusiness(w.world.business, async (tx) => {
       return await grantTo(tx, fay, 'write', { kind: 'business', id: null }, false, 'run');
     });
-    const picked = await w.world.pickUp(fay, 'a client’s page');
+    const picked = await w.pickUpUnder(fay, 'a client’s page', w.partyB);
     await w.world.db.app.withBusiness(w.world.business, async (tx) => {
       await revokeGrant(tx, writeGrant);
       await grantTo(tx, fay, 'write', { kind: 'party', id: w.partyB }, false, 'run');
@@ -143,7 +143,7 @@ describe.skipIf(serverUrl === undefined)('C80 agent request, parties under a run
 
   it('records the delegating person as the requester, who then cannot approve it', async () => {
     await w.setApprover(w.ava.personId);
-    const picked = await w.world.pickUp(w.ava, 'approved by another');
+    const picked = await w.pickUpUnder(w.ava, 'approved by another', w.partyA);
     const asked = detailOf(await w.world.asAgent(body(w.partyA, picked.taskId), picked.credential));
     const id = String(asked['correctionId']);
     const approve = await w.approve(w.ava, id, String(asked['versionId']));

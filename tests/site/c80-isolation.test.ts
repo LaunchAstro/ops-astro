@@ -3,8 +3,9 @@
 // C80 isolation and C80 canary (standing gate 9). Three real crossings, each
 // with the stored state checked afterwards: another business; another client
 // party in the same business; another person under a live delegation. A
-// planted canary in a correction's content never reaches a refusal, a list,
-// the audit payload or the process's output.
+// request naming another client than its task's is refused and stores
+// nothing. A planted canary in a correction's content never reaches a
+// refusal, a list, the audit payload or the process's output.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
@@ -48,6 +49,7 @@ beforeAll(async () => {
   await w.setApprover(w.ben.personId);
   const result = await w.request(w.ava, {
     partyId: w.partyB,
+    taskId: w.taskB,
     before: `${BEFORE}${CANARY}\n`,
     after: `${AFTER}${CANARY}\n`,
   });
@@ -76,13 +78,7 @@ describe.skipIf(serverUrl === undefined)('C80 isolation, another business', () =
   });
 
   it('lists a correction of its own business and none of another', async () => {
-    const task = await w.asIn(w.beta, w.eve, {
-      command: 'task.create',
-      fields: { title: 'About' },
-    });
-    if (!('recordId' in task)) throw new Error('task.create refused in beta');
-    const taskId = String(task.recordId);
-    const own = detailOf(await w.asIn(w.beta, w.eve, requestBody(randomUUID(), taskId)));
+    const own = detailOf(await w.asIn(w.beta, w.eve, requestBody(w.betaParty, w.betaTask)));
     const listed = await listFor(w.beta, w.eve);
     expect(listed).toEqual([String(own['correctionId'])]);
     expect(listed).not.toContain(foreign.correctionId);
@@ -93,7 +89,7 @@ describe.skipIf(serverUrl === undefined)(
   'C80 isolation, another client in the same business',
   () => {
     it('a grant on party B reaches party B and nothing on party A', async () => {
-      const own = detailOf(await w.request(w.dee, { partyId: w.partyB }));
+      const own = detailOf(await w.request(w.dee, { partyId: w.partyB, taskId: w.taskB }));
       const onA = await w.request(w.dee, { partyId: w.partyA });
       expect(codeOf(onA)).toBe('SCOPE_NOT_GRANTED');
       const onlyA = detailOf(await w.request(w.ava));
@@ -110,6 +106,22 @@ describe.skipIf(serverUrl === undefined)(
     });
   },
 );
+
+describe.skipIf(serverUrl === undefined)('C80 isolation, a party that is not the task’s', () => {
+  it('refuses a request naming party A for a task under party B, and stores nothing', async () => {
+    const stored = async () =>
+      (
+        await w.world.db.admin.execute<{ readonly n: string }>(
+          'select count(*)::text as n from public.live_corrections where business_id = $1',
+          [w.world.business],
+        )
+      )[0]?.n;
+    const before = await stored();
+    const crossed = await w.request(w.ava, { partyId: w.partyA, taskId: w.taskB });
+    expect(codeOf(crossed)).toBe('CORRECTION_PARTY_MISMATCH');
+    expect(await stored()).toBe(before);
+  });
+});
 
 describe.skipIf(serverUrl === undefined)(
   'C80 isolation, another person under a live delegation',

@@ -90,7 +90,7 @@ describe.skipIf(serverUrl === undefined)('C80 decision read, another business', 
 
 describe.skipIf(serverUrl === undefined)('C80 decision read, another client', () => {
   it('a grant on party B reads party B’s correction and nothing on party A', async () => {
-    const onB = await requested(w.dee, { partyId: w.partyB });
+    const onB = await requested(w.dee, { partyId: w.partyB, taskId: w.taskB });
     const onA = await requested(w.ava);
     expect(readCode(await readAs(w.dee, onB.id))).toBe('not-a-refusal');
     const crossed = await readAs(w.dee, onA.id);
@@ -105,7 +105,7 @@ describe.skipIf(serverUrl === undefined)(
   'C80 decision read, another person under a delegation',
   () => {
     it('an agent under a live delegation reads no decision, its own task’s included', async () => {
-      const picked = await w.world.pickUp(w.ava, 'the about page, read back');
+      const picked = await w.pickUpUnder(w.ava, 'the about page, read back', w.partyA);
       const made = await w.world.asAgent(
         { ...requestBody(w.partyA, picked.taskId), operationId: randomUUID() },
         picked.credential,
