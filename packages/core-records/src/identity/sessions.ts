@@ -10,7 +10,7 @@
 // ends their own sessions and nobody else's.
 
 import type { TenantQuery } from '../tenancy/database.ts';
-import { SESSION_ABSOLUTE_SECONDS } from './verified-subject.ts';
+import { SESSION_ABSOLUTE_SECONDS, SIGN_IN_CLOCK_SKEW_SECONDS } from './verified-subject.ts';
 
 export type SessionEndReason = 'sign_out' | 'end_others' | 'factor_change';
 
@@ -34,7 +34,7 @@ const END_PROVIDER_SESSIONS = `insert into ops.ended_provider_sessions (session_
 const LISTED = 50;
 
 /** The limit plus the minute of clock the door allows a first sign-in time. */
-const WINDOW_SECONDS = SESSION_ABSOLUTE_SECONDS + 60;
+const WINDOW_SECONDS = SESSION_ABSOLUTE_SECONDS + SIGN_IN_CLOCK_SKEW_SECONDS;
 
 const SEEN = `
   select a.session_id::text as session_id, min(a.at) as first_seen, max(a.at) as last_seen

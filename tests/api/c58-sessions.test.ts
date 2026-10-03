@@ -32,6 +32,7 @@ import {
   eventsFor,
   endedCount,
   EXPIRED,
+  endingsBehind,
   OK,
   GOOD,
   now,
@@ -167,6 +168,9 @@ describe.skipIf(serverUrl === undefined)('C58 a person’s own sessions, through
 describe.skipIf(serverUrl === undefined)('C58 a person’s own sessions, through the API', () => {
   it('C58 hostile provider: a sign-out the provider does not confirm is not done, and the local end stands', async () => {
     for (const [index, [name, reply]] of Object.entries(HOSTILE).entries()) {
+      // Each round's sign-ins past the clock allowance after the last round's ending.
+      // oxlint-disable-next-line no-await-in-loop
+      await endingsBehind();
       const [here, other] = [randomUUID(), randomUUID()];
       // oxlint-disable-next-line no-await-in-loop
       const [token, otherToken] = await Promise.all([
