@@ -866,6 +866,17 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     authorisedOn: 'self',
     untargetedIdentifiers: [],
   }),
+
+  // C39-T: `access:share` on the whole business, a person's key no agent holds
+  // (the permission key catalogue). Another business's invitation is
+  // NOT_FOUND from the handler, as an id nobody issued.
+  ...(['invitation.create', 'invitation.resend', 'invitation.revoke'] as const).map((name) =>
+    declare(name, 'share', {
+      collection: 'access',
+      targetsExistingRecord: false,
+      untargetedIdentifiers: name === 'invitation.create' ? [] : ['invitationId'],
+    }),
+  ),
 ];
 
 const BY_NAME = new Map(COMMAND_SURFACE.map((command) => [command.name, command]));

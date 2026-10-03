@@ -25,6 +25,7 @@ import { timeRecipes } from './time-recipes.ts';
 import { privacyBody } from './role-case-privacy-bodies.ts';
 import { credentialBody } from './role-case-credential-bodies.ts';
 import { accessBody, madeClient } from './role-case-access-bodies.ts';
+import { invitationBody, isInvitation } from './role-case-invitation-bodies.ts';
 import { createGateBody } from './role-case-gate-bodies.ts';
 import { conversationBody, leaseBody } from './role-case-run-bodies.ts';
 import { FIXED_BODIES } from './role-case-fixed-bodies.ts';
@@ -48,6 +49,7 @@ export function createPositiveBody(
     };
     const fixed = FIXED_BODIES[declaration.name];
     if (fixed !== undefined) return { body: { ...fixed } };
+    if (isInvitation(declaration.name)) return await invitationBody(declaration.name, context);
     switch (declaration.name) {
       case 'task.create':
         return { body: { fields: { title: 'the admin creates a task' } } };

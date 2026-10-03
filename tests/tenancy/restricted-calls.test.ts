@@ -374,6 +374,24 @@ const UNREACHED: Readonly<Record<string, string>> = {
        (business_id, id, item_id, channel, state)
      select business_id, gen_random_uuid(), id, 'in_app', 'asked' from public.inbox_items
       where business_id = $1 order by id limit 1 returning 1`,
+  // C39-T: nothing on the journey invites anyone, so one invitation, the token
+  // its send minted and that send's attempt are written here, in order. The
+  // invitation names the business's first person and actor.
+  'public.invitations': `insert into public.invitations
+       (business_id, id, person_id, role_key, address, expires_at, created_by_actor_id)
+     select $1, gen_random_uuid(),
+            (select id from public.people where business_id = $1 order by id limit 1),
+            'member', 'invitee@example.test', now() + interval '7 days',
+            (select id from public.actors where business_id = $1 order by id limit 1)
+     returning 1`,
+  'public.enrolment_tokens': `insert into public.enrolment_tokens
+       (business_id, id, invitation_id, token_hash, expires_at)
+     select business_id, gen_random_uuid(), id, encode(sha256(id::text::bytea), 'hex'), expires_at
+       from public.invitations where business_id = $1 order by id limit 1 returning 1`,
+  'public.invitation_delivery_attempts': `insert into public.invitation_delivery_attempts
+       (business_id, id, invitation_id, token_id, state)
+     select business_id, gen_random_uuid(), invitation_id, id, 'asked'
+       from public.enrolment_tokens where business_id = $1 order by id limit 1 returning 1`,
 };
 
 /**

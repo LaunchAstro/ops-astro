@@ -2,7 +2,7 @@
 //
 // Root ruling 3 (ROOT-906613f-RULINGS.md, section 3) and ledger I03: every
 // declared operation stays in the matrix. The (c) and (d) cells swap a task
-// `recordId`, which reaches 17 of the 62. For each of the other 45 this file
+// `recordId`, which reaches 17 of the 65. For each of the other 48 this file
 // names where its target comparison is executed instead, or why it has none,
 // once, so the matrix row and the case it points at cannot drift apart:
 // `identifier-negatives.test.ts` titles its cases from `CASE` below.
@@ -30,7 +30,7 @@ export const CASE = {
 } as const;
 
 /**
- * The thirty-nine operations that name no identifier, each with a minimal valid body.
+ * The forty operations that name no identifier, each with a minimal valid body.
  *
  * A positive request moves and shows nothing of bravo's, and a `recordId` aimed
  * at bravo is refused `COMMAND_BODY_INVALID` (SC2, TRANSACTION-CONTRACT line
@@ -144,6 +144,8 @@ export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['inbox.count', {}],
   ['inbox.unattended', {}],
   ['notifications.set_channel', { channel: 'in_app', mode: 'on' }],
+  // C39-T: a new invitation names a person and an address, no record.
+  ['invitation.create', { name: 'Invited Ivy', email: 'ivy@example.test', role: 'member' }],
 ];
 
 /** The forty identifier-bearing operations outside (c) and (d): operand and executed case. */
@@ -222,6 +224,13 @@ export function alternativeFor(name: CommandName): string | undefined {
     return (
       'executed alternative: aw-12-harness-read-isolation.test.ts "another business" ' +
       "compares another business's run and a fabricated one by status and bytes"
+    );
+  }
+  if (name === 'invitation.resend' || name === 'invitation.revoke') {
+    // C39-T: the invitation is the target, not a task.
+    return (
+      'executed alternative: c39-t-invitation-refusals.test.ts "C39-T isolation" compares ' +
+      "another business's invitation and a fabricated one by code and raw bytes"
     );
   }
   if (TARGET_FREE.some(([op]) => op === name)) {
