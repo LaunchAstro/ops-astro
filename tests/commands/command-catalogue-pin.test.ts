@@ -221,6 +221,21 @@ vi.mock('../../packages/core-commands/src/commands/wayfinder-revision.ts', async
   ...(await original<object>()),
   reviseMap: recorder('reviseMap'),
 }));
+vi.mock('../../packages/core-commands/src/commands/wayfinder-chart.ts', async (original) => ({
+  ...(await original<object>()),
+  chartMap: recorder('chartMap'),
+}));
+vi.mock('../../packages/core-commands/src/commands/wayfinder-blocking.ts', async (original) => ({
+  ...(await original<object>()),
+  setBlocking: recorder('setBlocking'),
+  claimTicket: recorder('claimTicket'),
+  graduateFog: recorder('graduateFog'),
+}));
+vi.mock('../../packages/core-commands/src/commands/wayfinder-resolve.ts', async (original) => ({
+  ...(await original<object>()),
+  resolveTicket: recorder('resolveTicket'),
+  closeOutOfScope: recorder('closeOutOfScope'),
+}));
 vi.mock('../../packages/core-commands/src/commands/tasks-handback.ts', async (original) => ({
   ...(await original<object>()),
   handbackOwnLease: recorder('handbackOwnLease'),
@@ -347,6 +362,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'legal.approve_version': ['versionId'],
   'legal.draft_version': [],
   'legal.publish_version': ['versionId'],
+  'map.chart': [],
   'model.call': ['leaseId'],
   'operations.change_installation_mode': [],
   'operations.record_gate_item': [],
@@ -421,6 +437,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'legal.approve_version',
   'legal.draft_version',
   'legal.publish_version',
+  'map.chart',
   'map.frontier',
   'map.view',
   'model.call',
@@ -698,6 +715,12 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'task.set_type', operationId: 'op', recordId: 'r', taskType: 'research' },
   { command: 'map.revise', operationId: 'op', recordId: 'r', notes: 'n' },
   { command: 'map.scope', operationId: 'op', recordId: 'r', client: 'c' },
+  { command: 'map.chart', operationId: 'op', title: 't' },
+  { command: 'task.set_blocking', operationId: 'op', recordId: 'r', blockedBy: [] },
+  { command: 'task.claim', operationId: 'op', recordId: 'r' },
+  { command: 'map.graduate', operationId: 'op', recordId: 'r', patchId: 'p', tickets: [] },
+  { command: 'task.resolve', operationId: 'op', recordId: 'r', answer: 'a', gist: 'g' },
+  { command: 'task.close_out_of_scope', operationId: 'op', recordId: 'r', reason: 'x' },
   {
     command: 'budget.set_planning_cap',
     operationId: 'op',
@@ -864,6 +887,12 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'task.set_type': ['setTaskType', 'request'],
   'map.revise': ['reviseMap', 'request'],
   'map.scope': ['scopeMap', 'request'],
+  'map.chart': ['chartMap', 'request'],
+  'task.set_blocking': ['setBlocking', 'request'],
+  'task.claim': ['claimTicket'],
+  'map.graduate': ['graduateFog', 'request'],
+  'task.resolve': ['resolveTicket', 'request'],
+  'task.close_out_of_scope': ['closeOutOfScope', 'request'],
   'budget.set_planning_cap': ['setPlanningCap', 'request'],
   'task.check': ['checkOwnLease', 'request'],
   'conversation.start': ['startConversation', 'request'],
@@ -928,7 +957,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same ninety-two from an expected revision', () => {
+  it('exempts the same ninety-three from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

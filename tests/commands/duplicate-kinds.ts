@@ -108,6 +108,13 @@ export const DECLARED: Readonly<
   // neither; it ends untyped, so the share planted below still applies.
   'task.set_type': { carry: 'not carried', plant: retypedAndBack },
   'map.revise': { carry: 'not carried', plant: 'revises a map; the duplicated task is none' },
+  // WF-2: the shell is a new task, so none of a ticket's chart, claim, blocking or close.
+  'map.chart': { carry: 'not carried', plant: 'charts a new map; the duplicated task is none' },
+  'map.graduate': { carry: 'not carried', plant: 'graduates a map’s fog; the task is no map' },
+  'task.claim': { carry: 'not carried', plant: 'the assignee, planted by task.assign' },
+  'task.set_blocking': { carry: 'not carried', plant: 'blocks links: needs a second task' },
+  'task.resolve': { carry: 'not carried', plant: 'ends the old task; task.start plants state' },
+  'task.close_out_of_scope': { carry: 'not carried', plant: 'a ticket of a map only' },
   'task.start': {
     carry: 'not carried',
     plant: async (taskId) =>

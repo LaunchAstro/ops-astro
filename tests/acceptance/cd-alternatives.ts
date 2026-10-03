@@ -39,6 +39,8 @@ export const CASE = {
  */
 export const TARGET_FREE: readonly (readonly [CommandName, Body])[] = [
   ['task.create', { fields: { title: 'a task made while bravo is watched' } }],
+  // WF-2: a chart files a new map and its tickets, naming no existing record.
+  ['map.chart', { title: 'a map charted while bravo is watched' }],
   ['task.purge', {}],
   ['settings.set_four_eyes_threshold', { value: 1300 }],
   ['settings.set_client_sign_off', { value: false }],
