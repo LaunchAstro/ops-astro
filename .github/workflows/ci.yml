@@ -185,6 +185,11 @@ jobs:
       # here, after every capture in `pnpm check`.
       - name: The suites that start containers, after the browser captures
         run: pnpm vitest run $(node -p "require('./tests/ci/container-suites.json').suites.join(' ')")
+      # Sol's OW-061 proof is a node:test file that runs scripts/local/signing-key.mjs
+      # in a container on the declared Node floor, so it runs here, beside the
+      # other container suites; no manifest or pnpm script runs it.
+      - name: The local signing key on the declared Node floor
+        run: node --test tests/ci/signing-key-first-runs-and-node-floor.proof.test.mjs
       # S0-6 content policy: the built page, in the headless shell above,
       # refuses planted scripts. Alone, since it builds apps/web/dist.
       - name: The built page refuses planted scripts in a real browser
