@@ -17,6 +17,7 @@ export {
   type CorrectionState,
   type LiveCorrection,
   type NewLiveCorrection,
+  type PartyRefused,
 } from './live-corrections.ts';
 export {
   holdsAnywhere,
@@ -29,4 +30,5 @@ export {
   type HeldForRun,
   type ObservedResult,
   type ReceiptOutcome,
+  type UnderLease,
 } from './correction-receipts.ts';

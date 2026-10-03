@@ -56,6 +56,7 @@ import {
   type Callers,
 } from './restricted-calls-callers.ts';
 import { columnUpdateFindings } from './restricted-calls-columns.ts';
+import { describeLiveCorrectionLows } from '../site/live-correction-lows.ts';
 
 /**
  * One owner-written row per business in the tables the journey leaves
@@ -834,3 +835,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     });
   });
 });
+
+// C80's live correction records, held on a world of their own after the cases
+// above: P26's four findings, each its own block (`../site/live-correction-lows.ts`).
+describeLiveCorrectionLows();

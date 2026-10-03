@@ -16,9 +16,10 @@
 -- The decision records the version digest it approved, which the storage
 -- keeps equal to the pinned version: the runner binds the dispatch to it.
 --
--- `party_id` is the party the site belongs to. It is the scope the grants are
--- asked at, so a party-scoped grant on one client's site reaches no other
--- client's correction.
+-- `party_id` is the party the site belongs to: the client of the correction's
+-- task, which the record layer reads from the task in the insert and never
+-- takes as given. It is the scope the grants are asked at, so a party-scoped
+-- grant on one client's site reaches no other client's correction.
 
 create table public.live_corrections (
   business_id            uuid        not null,
@@ -103,7 +104,11 @@ grant select, insert, update on public.live_corrections to ops_astro_app;
 -- What a request pinned stays pinned: an approval names this row's version,
 -- and a version whose target, word, digests or seam could change after the
 -- decision would be an approval of something else. Only the state, the
--- decision and the revision move. Invoker: raising needs no privilege.
+-- decision and the revision move, and those only forward: a decision once
+-- written is never rewritten or moved to another person, and the state takes
+-- only the moves the record layer makes (a decision on a request, an observed
+-- publish, a revert). A rejection never becomes an approval, and nothing goes
+-- back to requested. Invoker: raising needs no privilege.
 create or replace function public.live_corrections_pinned()
   returns trigger
   language plpgsql
@@ -121,6 +126,22 @@ begin
       old.replacement, old.page_url, old.pre_image_digest, old.base_revision, old.seam,
       old.version_id, old.version_digest, old.created_at) then
     raise exception 'live_corrections_pinned: correction % keeps what it pinned', old.id;
+  end if;
+  if old.decided_at is not null
+     and (new.decided_by_actor_id, new.decided_by_person_id, new.decided_at,
+          new.decided_version_digest)
+     is distinct from
+     (old.decided_by_actor_id, old.decided_by_person_id, old.decided_at,
+      old.decided_version_digest) then
+    raise exception 'live_corrections_pinned: correction % keeps its decision', old.id;
+  end if;
+  if new.state <> old.state and not (
+       (old.state = 'requested' and new.state in ('approved', 'rejected', 'cancelled'))
+       or (old.state in ('approved', 'accepted', 'unknown')
+           and new.state in ('accepted', 'live', 'unknown', 'failed', 'reverted'))
+       or (old.state = 'live' and new.state = 'reverted')) then
+    raise exception 'live_corrections_pinned: correction % cannot move from % to %',
+      old.id, old.state, new.state;
   end if;
   return new;
 end;
