@@ -6,6 +6,8 @@
 // live lease on a task of client A, and a task of client B.
 //
 //   1. A credential ticked only for `task:write` covers no correction.
+//   2. Storage holds a decision once made: no rejection turned approval, no
+//      decider moved, nothing back to requested.
 //
 // Registered through `tests/tenancy/restricted-calls.test.ts`, a named suite,
 // which calls `describeLiveCorrectionLows` after its own cases.
@@ -138,6 +140,14 @@ async function filed(decision?: 'approved' | 'rejected'): Promise<LiveCorrection
   );
 }
 
+async function stateOf(id: string): Promise<string | undefined> {
+  const rows = await lows().s.db.admin.execute<{ readonly state: string }>(
+    'select state from public.live_corrections where id = $1',
+    [id],
+  );
+  return rows[0]?.state;
+}
+
 function findingOne(): void {
   it('a subject ticked only for task:write covers no correction: list, lock and read', async () => {
     const { id } = await filed();
@@ -163,6 +173,36 @@ function findingOne(): void {
   });
 }
 
+function findingTwo(): void {
+  const refusedUpdate = async (id: string, set: string, parameters: readonly unknown[] = []) =>
+    await expect(
+      inBusiness(
+        async (tx) =>
+          await tx.query(
+            `update public.live_corrections set ${set} where business_id = $1 and id = $2`,
+            [lows().s.business, id, ...parameters],
+          ),
+      ),
+    ).rejects.toThrow(/live_corrections_pinned: correction .* (keeps its decision|cannot move)/u);
+
+  it('a raw update flipping a rejection to an approval is refused', async () => {
+    const { id } = await filed('rejected');
+    await refusedUpdate(id, `state = 'approved'`);
+    expect(await stateOf(id)).toBe('rejected');
+  });
+
+  it('a raw update moving the decider, or clearing the decision back to requested, is refused', async () => {
+    const { id } = await filed('approved');
+    await refusedUpdate(id, 'decided_by_person_id = $3', [lows().other.personId]);
+    await refusedUpdate(
+      id,
+      `state = 'requested', decided_by_actor_id = null, decided_by_person_id = null,
+       decided_at = null, decided_version_digest = null`,
+    );
+    expect(await stateOf(id)).toBe('approved');
+  });
+}
+
 /** P26's findings, each its own block over one world. */
 export function describeLiveCorrectionLows(): void {
   describe.skipIf(databaseUrlFromEnvironment() === undefined)(
@@ -177,6 +217,7 @@ export function describeLiveCorrectionLows(): void {
       });
 
       describe('finding 1: covered reads ask only the ticked keys', findingOne);
+      describe('finding 2: storage holds a decision once made', findingTwo);
     },
   );
 }
