@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 // SPDX-License-Identifier: AGPL-3.0-only
+/* oxlint-disable max-lines-per-function, require-await -- Sol's proof, kept as written */
 import { useState, type ReactElement } from 'react';
 import { afterEach, expect, it } from 'vitest';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';

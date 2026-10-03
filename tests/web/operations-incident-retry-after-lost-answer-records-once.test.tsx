@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // @vitest-environment jsdom
+/* oxlint-disable max-lines-per-function, no-promise-executor-return, require-await -- Sol's proof, kept as written */
 
 import { expect, it } from 'vitest';
 import { act } from 'react';
