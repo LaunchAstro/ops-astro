@@ -2,27 +2,34 @@
 //
 // C4's one stream per tab, from join to end, and C2's presence on it: the
 // topics a tab names, and the loop that re-asks before every delivery. Moved
-// out of app.ts unchanged in what it sends, with presence added.
+// out of app.ts unchanged in what it sends, with presence added. A team
+// conversation (C71, CS-7.42) is a topic as a task is, asked about as its
+// members' alone, and carries no presence.
 
 import type { SSEStreamingApi } from 'hono/streaming';
 import type { CommandRefusal } from '../../packages/core-commands/src/index.ts';
-import { TOPIC, type LiveSignal, type LiveTopics } from './live.ts';
+import { CONVERSATION_TOPIC, TOPIC, type LiveSignal, type LiveTopics } from './live.ts';
 import type { LivePresence } from './live-presence.ts';
 import type { PresenceSession } from './presence.ts';
 
-/** How a stream asks, for its business, whether its caller may still watch a task. */
+/** How a stream asks, for its business, whether its caller may still watch a task or a conversation. */
 export interface Watching {
   readonly businessId: string;
-  /** At join, every topic in one transaction: the login's one authentication attempt, nothing else. */
-  atDoor(taskIds: readonly string[]): Promise<readonly (string | CommandRefusal)[]>;
+  /** At join, every topic (tasks, unless `watches` says): the login's one authentication attempt, nothing else. */
+  atDoor(
+    ids: readonly string[],
+    watches?: readonly Watch[],
+  ): Promise<readonly (string | CommandRefusal)[]>;
   /** Before each delivery and on the recheck: writes nothing. */
-  again(taskId: string): Promise<string | CommandRefusal>;
+  again(id: string, watch?: Watch): Promise<string | CommandRefusal>;
 }
 
-/** One followed task, and the name the stream gives it: the caller's own topic. */
+/** One followed task or conversation, and the name the stream gives it: the caller's own topic. */
 export interface Watch {
   readonly label: string;
+  /** The record followed: a task's id, or a conversation's where `kind` says so. */
   readonly taskId: string;
+  readonly kind?: 'conversation';
 }
 
 /** A stream's seat in the presence book (C2): its id is handed to the tab alone. */
@@ -32,7 +39,7 @@ export interface Seated {
 }
 
 const MOST_TOPICS = 32;
-export const TOPICS: string = `Name each topic once, as task:<id> or board, from one to ${String(MOST_TOPICS)}.`;
+export const TOPICS: string = `Name each topic once, as task:<id>, conversation:<id> or board, from one to ${String(MOST_TOPICS)}.`;
 
 /** The board's stream (INB-1f) as one topic on the tab's stream: every frame it sends is labelled so. */
 export const BOARD = 'board';
@@ -46,10 +53,20 @@ export function topicsOf(
 ): { readonly watches: readonly Watch[]; readonly board: boolean } | undefined {
   if (named.length === 0 || named.length > MOST_TOPICS) return undefined;
   if (new Set(named).size !== named.length) return undefined;
-  const tasks = named.filter((label) => label !== BOARD);
-  const watches = tasks.map((label) => ({ label, taskId: TOPIC.exec(label)?.[1] }));
-  if (!watches.every((watch): watch is Watch => watch.taskId !== undefined)) return undefined;
-  return { watches, board: tasks.length < named.length };
+  const topics = named.filter((label) => label !== BOARD);
+  const watches = topics.map((label) => watchOf(label));
+  if (!watches.every((watch) => watch !== undefined)) return undefined;
+  return { watches, board: topics.length < named.length };
+}
+
+/** A topic's kind and id, or undefined when it names neither a task nor a conversation. */
+function watchOf(label: string): Watch | undefined {
+  const task = TOPIC.exec(label)?.[1];
+  if (task !== undefined) return { label, taskId: task };
+  const conversation = CONVERSATION_TOPIC.exec(label)?.[1];
+  return conversation === undefined
+    ? undefined
+    : { label, taskId: conversation, kind: 'conversation' };
 }
 
 /**
@@ -191,7 +208,9 @@ class Follower {
       // Each topic's own handle: a topic closed alone must not take the stream's stop with it.
       async () => await stop(),
     );
-    const leave = seated?.presence.seat(businessId, watch.taskId, seated.session, () => {
+    // A conversation carries no presence: only a task's page seats a viewer.
+    const seat = watch.kind === undefined ? seated : undefined;
+    const leave = seat?.presence.seat(businessId, watch.taskId, seat.session, () => {
       this.#queue(watch);
       this.#presence.add(watch);
     });
@@ -233,7 +252,7 @@ class Follower {
     const shown = this.#presence.delete(watch);
     if ((signal === undefined && !shown) || this.#stream.aborted) return;
     if (!this.#stops.has(watch)) return;
-    if (typeof (await this.#asks.again(watch.taskId)) !== 'string') {
+    if (typeof (await this.#asks.again(watch.taskId, watch)) !== 'string') {
       await this.#close(watch);
       return;
     }

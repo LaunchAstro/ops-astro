@@ -62,6 +62,7 @@ export {
   type Viewer,
 } from './reads/execute.ts';
 export { boardReach, joinLiveBoard, shownInbox } from './reads/live-join.ts';
+export { admitConversations, hearsConversation } from './reads/live-chat.ts';
 export { isReadName } from './reads/catalogue.ts';
 export { readHarnessTrigger } from './reads/harness-trigger.ts';
 export {

@@ -25,6 +25,7 @@ import type {
 } from '../../core-records/src/index.ts';
 import type { TaskLedgerView } from './views-agent.ts';
 import type { CheckView, RunPinView, RunReadView, RunScopeView } from './views-run.ts';
+import type { InboxConversation } from './views-chat.ts';
 
 // A run's pins, reads, checks and scope, and the task's execution and receipt
 // reads, live in their own module, re-exported here, so this one stays under
@@ -967,6 +968,8 @@ export interface InboxEntry {
   readonly closedByPersonId?: string | null;
   /** The task the item is about, for its link and its name. */
   readonly task?: { readonly key: string; readonly title: string | null };
+  /** The team conversation a mention is about (C71), in place of a task. */
+  readonly conversation?: InboxConversation;
   /** Who closed it, by name: a cleared decision names who decided. */
   readonly closedBy?: PersonView | null;
   /**
