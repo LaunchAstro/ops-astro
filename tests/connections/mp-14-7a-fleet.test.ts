@@ -21,7 +21,12 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { authorised, post, tokenFor, type Answer } from '../api/fixture.ts';
 import { createControls, type Controls } from '../api/controls-fixture.ts';
 import { generateSealingPair } from '../../packages/core-records/src/custody/index.ts';
-import { createClient } from '../../packages/core-records/src/index.ts';
+import {
+  createClient,
+  isRepairRefusal,
+  startRepair,
+  type TenantQuery,
+} from '../../packages/core-records/src/index.ts';
 import { COMMAND_SURFACE } from '../../packages/core-wire/src/surface.ts';
 import type { ConnectionFleetResult, ConnectionView } from '../../packages/core-wire/src/index.ts';
 
@@ -50,6 +55,25 @@ async function madeClient(
   const made = await createClient(tx, name, actorId);
   if (!made.ok) throw new Error('mp-14-7a: the client was not made');
   return made.value;
+}
+
+/**
+ * The transaction, with `between` run and committed elsewhere after its
+ * first statement (the read) and before its next (the insert).
+ */
+function afterFirst(tx: TenantQuery, between: () => Promise<void>): TenantQuery {
+  let first = true;
+  return {
+    businessId: tx.businessId,
+    async query<Row>(text: string, parameters?: readonly unknown[]) {
+      const rows = await tx.query<Row>(text, parameters);
+      if (first) {
+        first = false;
+        await between();
+      }
+      return rows;
+    },
+  };
 }
 
 // eslint-disable-next-line max-lines-per-function -- one world, the cases that share it
@@ -527,6 +551,34 @@ describe.skipIf(serverUrl === undefined)('MP-14-7a connector fleet', () => {
         [fresh.id],
       ),
     ).toBe(1);
+  });
+
+  it('MP-14-7a a connection healed or moved on between the read and the insert starts no repair', async () => {
+    const { db } = controls.fixture;
+    const attempt = async (change: string): Promise<readonly [string, number]> => {
+      const moved = await seed(alpha, { label: 'Moving source', status: 'broken', clients: [] });
+      const started = await db.app.withBusiness(
+        alpha,
+        async (tx) =>
+          await startRepair(
+            afterFirst(tx, async () => {
+              await db.admin.execute(`update public.connections set ${change} where id = $1`, [
+                moved.id,
+              ]);
+            }),
+            { connectionId: moved.id, actorId: admin.actorId },
+          ),
+      );
+      const repairs = await controls.count(
+        'select count(*) as n from public.connection_repairs where connection_id = $1',
+        [moved.id],
+      );
+      return [isRepairRefusal(started) ? started.refused : 'started', repairs];
+    };
+    expect(
+      await attempt(`status = 'active', failure_class = null, revision = revision + 1`),
+    ).toStrictEqual(['not-broken', 0]);
+    expect(await attempt('revision = revision + 1')).toStrictEqual(['stale', 0]);
   });
 
   it('MP-14-7a nothing leaves before the approval gate: a started repair sends nothing and uses no credential', async () => {
