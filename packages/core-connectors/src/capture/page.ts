@@ -40,6 +40,39 @@ function decodeEntities(text: string): string {
   });
 }
 
+// Each scan below matches an opener lazily up to its closer. An opener with no
+// closer after it makes the scan retry from every later opener, quadratic in
+// a page the fence has already capped by size but not by parsing time. So the
+// last opener of each kind must close; if it does, every earlier one does.
+const CLOSERS: readonly (readonly [string, RegExp])[] = [
+  ['<!--', /-->/gu],
+  ['<script', /<\/script\s*>/gu],
+  ['<style', /<\/style\s*>/gu],
+  ['<noscript', /<\/noscript\s*>/gu],
+  ['<template', /<\/template\s*>/gu],
+  ['<', />/gu],
+];
+
+/** Where the last `opener` starts, as a whole tag name when it is one; -1 if none. */
+function lastOpener(lower: string, opener: string): number {
+  const named = /\w$/u.test(opener);
+  for (let at = lower.lastIndexOf(opener); at !== -1; at = lower.lastIndexOf(opener, at - 1)) {
+    if (!named || !/\w/u.test(lower.charAt(at + opener.length))) return at;
+    if (at === 0) break;
+  }
+  return -1;
+}
+
+function closesEveryOpener(html: string): boolean {
+  const lower = html.toLowerCase();
+  return CLOSERS.every(([opener, closer]) => {
+    const last = lastOpener(lower, opener);
+    if (last === -1) return true;
+    closer.lastIndex = last + 1;
+    return closer.test(lower);
+  });
+}
+
 /** The text a reader sees: no comments, scripts, styles, fallbacks or markup. */
 export function visibleText(html: string): string {
   const stripped = html
@@ -84,6 +117,7 @@ export async function capturePage(
   const page = await fencedFetch(url, { ...options, kind: 'document' });
   if (!page.ok) return page;
   const html = page.value.body;
+  if (!closesEveryOpener(html)) return { ok: false, code: 'CAPTURE_BODY_MALFORMED' };
   const hrefs = stylesheetLinks(html).map((href) =>
     URL.canParse(href, page.value.url) ? new URL(href, page.value.url).href : undefined,
   );
