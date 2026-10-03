@@ -13,6 +13,30 @@ import { fencedFetch, type FetchOptions, type Fenced } from './fence.ts';
 
 export type CaptureOptions = Omit<FetchOptions, 'kind' | 'page'>;
 
+/** Distinct linked stylesheets one page may have; past it the capture is refused, none fetched. */
+export const MAX_STYLESHEETS = 32;
+export const SHEETS_AT_ONCE = 4;
+
+/** Runs at most `width` tasks at once; a finished task hands its place to the next waiting. */
+export function limiter(width: number): <T>(task: () => Promise<T>) => Promise<T> {
+  let running = 0;
+  const waiting: (() => void)[] = [];
+  return async (task) => {
+    if (running < width) running += 1;
+    else
+      await new Promise<void>((resolve) => {
+        waiting.push(resolve);
+      });
+    try {
+      return await task();
+    } finally {
+      const next = waiting.shift();
+      if (next === undefined) running -= 1;
+      else next();
+    }
+  };
+}
+
 const digest = (text: string): string =>
   `sha256:${createHash('sha256').update(text, 'utf8').digest('hex')}`;
 
@@ -140,8 +164,12 @@ export async function capturePage(
   );
   if (hrefs.includes(undefined)) return { ok: false, code: 'CAPTURE_BODY_MALFORMED' };
   const unique = [...new Set(hrefs as string[])];
+  if (unique.length > MAX_STYLESHEETS) return { ok: false, code: 'CAPTURE_OVERSIZED' };
+  const run = limiter(SHEETS_AT_ONCE);
   const fetched = await Promise.all(
-    unique.map((href) => fencedFetch(href, { ...options, kind: 'stylesheet', page: url })),
+    unique.map((href) =>
+      run(() => fencedFetch(href, { ...options, kind: 'stylesheet', page: url })),
+    ),
   );
   const stylesheets: Record<string, string> = {};
   for (const [index, sheet] of fetched.entries()) {

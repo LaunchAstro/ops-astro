@@ -8,8 +8,9 @@
 // - the page's own document, fetched by the fence as a document, served with a
 //   policy that runs no script, loads no frame, object or worker, whatever the
 //   browser was told;
-// - its stylesheets, fetched by the fence as stylesheets of that page; one that
-//   cannot be fetched fails the picture, as it fails the page observation;
+// - its stylesheets, fetched by the fence as stylesheets of that page, a few at
+//   a time and no more distinct ones than the page observation allows; one
+//   that cannot be fetched fails the picture, as it fails the page observation;
 // - nothing else: images, fonts, scripts, frames and any other request are
 //   refused and recorded by code and origin only, never a path or query.
 //
@@ -17,7 +18,7 @@
 
 import { createHash } from 'node:crypto';
 import { fencedFetch, type FenceCode, type FenceRefusal, type Fenced } from './fence.ts';
-import type { CaptureOptions } from './page.ts';
+import { MAX_STYLESHEETS, SHEETS_AT_ONCE, limiter, type CaptureOptions } from './page.ts';
 
 /** One request the browser made, as the port describes it. */
 export interface PictureRequest {
@@ -56,6 +57,7 @@ const originOf = (url: string): string => (URL.canParse(url) ? new URL(url).orig
 
 interface RouteState {
   readonly refused: FenceRefusal[];
+  readonly sheets: Set<string>;
   failed: FenceCode | undefined;
 }
 
@@ -65,6 +67,7 @@ function pictureRoute(page: string, options: CaptureOptions, state: RouteState):
     options.record?.(refusal);
   };
   const fenced = { ...options, record };
+  const run = limiter(SHEETS_AT_ONCE);
   return async (request) => {
     if (request.kind === 'document' && request.mainFrame && request.url === page) {
       const fetched = await fencedFetch(page, { ...fenced, kind: 'document' });
@@ -79,7 +82,15 @@ function pictureRoute(page: string, options: CaptureOptions, state: RouteState):
       return { status: 200, headers, body: fetched.value.body };
     }
     if (request.kind === 'stylesheet') {
-      const sheet = await fencedFetch(request.url, { ...fenced, kind: 'stylesheet', page });
+      if (!state.sheets.has(request.url) && state.sheets.size >= MAX_STYLESHEETS) {
+        state.failed ??= 'CAPTURE_OVERSIZED';
+        record({ code: 'CAPTURE_OVERSIZED', hop: 0, origin: originOf(request.url) });
+        return null;
+      }
+      state.sheets.add(request.url);
+      const sheet = await run(() =>
+        fencedFetch(request.url, { ...fenced, kind: 'stylesheet', page }),
+      );
       if (!sheet.ok) {
         state.failed ??= sheet.code;
         return null;
@@ -97,7 +108,7 @@ export async function capturePicture(
   options: CaptureOptions,
   browser: PictureBrowser,
 ): Promise<Fenced<Picture>> {
-  const state: RouteState = { refused: [], failed: undefined };
+  const state: RouteState = { refused: [], sheets: new Set(), failed: undefined };
   let png: Uint8Array;
   try {
     png = await browser(url, pictureRoute(url, options, state));
