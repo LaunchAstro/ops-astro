@@ -22,6 +22,7 @@ import {
   SHEETS_AT_ONCE,
   fencedFetch,
   limiter,
+  type FenceCode,
   type FetchOptions,
   type Fenced,
 } from './fence.ts';
@@ -71,6 +72,12 @@ const fromEnd = {
 
 // Elements whose text a browser does not show: these in HTML, and script and style anywhere.
 const HIDDEN = new Set('script style noscript template iframe noembed noframes'.split(' '));
+// Attributes that make a browser render what the capture cannot read: a declarative shadow root
+// (its own text and sheets, the element's children hidden) and a frame's inline document.
+const UNREAD = new Map([
+  ['template', ['shadowrootmode', 'shadowroot']],
+  ['iframe', ['srcdoc']],
+]);
 
 interface Reading {
   readonly text: string;
@@ -111,9 +118,9 @@ function parsed(html: string): Tree.Document | undefined {
 }
 
 /** Reads the tree in document order with a stack of its own, so no depth can overflow the call stack. */
-function readDocument(html: string): Reading | undefined {
+function readDocument(html: string): Reading | FenceCode {
   const document = parsed(html);
-  if (document === undefined) return undefined;
+  if (document === undefined) return 'CAPTURE_OVERSIZED';
   const [text, links, styles]: [string[], string[], string[]] = [[], [], []];
   let base: string | undefined;
   const stack: (readonly [Tree.Node, boolean] | undefined)[] = [[document, false]];
@@ -130,6 +137,8 @@ function readDocument(html: string): Reading | undefined {
     if ('tagName' in node) {
       const html5 = node.namespaceURI === markup.NS.HTML;
       const name = node.tagName;
+      if (html5 && node.attrs.some((one) => UNREAD.get(name)?.includes(one.name)))
+        return 'CAPTURE_BODY_MALFORMED';
       const attribute = (wanted: string) => node.attrs.find((one) => one.name === wanted)?.value;
       const href = attribute('href');
       const rel = (attribute('rel') ?? '').replaceAll(/[A-Z]/gu, (letter) => letter.toLowerCase());
@@ -293,7 +302,7 @@ export async function capturePage(
   if (!page.ok) return page;
   const html = page.value.body;
   const document = readDocument(html);
-  if (document === undefined) return { ok: false, code: 'CAPTURE_OVERSIZED' };
+  if (typeof document === 'string') return { ok: false, code: document };
   const base = resolved(document.base ?? '', page.value.url) ?? page.value.url;
   const sheets = await readSheets(url, base, document, options);
   if (!sheets.ok) return sheets;
