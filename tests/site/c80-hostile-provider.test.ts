@@ -4,7 +4,7 @@
 // call meeting a hostile answer, an unlisted destination, undeclared
 // parameters and a planted credential canary.
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   SITE_OPERATIONS,
   callConnector,
@@ -199,5 +199,37 @@ describe('C80 Sol R1 proofs (the guarded provider call)', () => {
     expect(JSON.stringify({ result, recorded }).includes(canary)).toBe(false);
     expect(result).toEqual({ kind: 'unknown', code: 'PROVIDER_CREDENTIAL_ECHOED' });
     expect(recorded).toEqual(['PROVIDER_CREDENTIAL_ECHOED']);
+  });
+
+  it('Sol R1 6: the provider deadline also bounds DNS preparation', async () => {
+    const { timeoutMs } = publishRegistration.connector;
+    vi.useFakeTimers();
+    try {
+      const stalled = httpOf(json({ merged: true, sha: 'def456' }));
+      const pending = callConnector(publishRegistration, params, {
+        ...deps(stalled),
+        resolve: () => new Promise<readonly string[]>(() => {}),
+      });
+      await vi.advanceTimersByTimeAsync(timeoutMs + 1);
+      const settled = await Promise.race([pending, Promise.resolve('still pending')]);
+      expect({ settled, sent: stalled.seen.length }).toEqual({
+        settled: { kind: 'refused', code: 'PROVIDER_TIMEOUT' },
+        sent: 0,
+      });
+      // One deadline: a slow answer leaves the transport only what remains of it.
+      const slow = httpOf(json({ merged: true, sha: 'def456' }));
+      const call = callConnector(publishRegistration, params, {
+        ...deps(slow),
+        resolve: () =>
+          new Promise<readonly string[]>((answer) => {
+            setTimeout(() => answer(['140.82.112.6']), 4_000);
+          }),
+      });
+      await vi.advanceTimersByTimeAsync(4_000);
+      await call;
+      expect(slow.seen[0]?.timeoutMs).toBe(timeoutMs - 4_000);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
