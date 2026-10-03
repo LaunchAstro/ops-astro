@@ -67,7 +67,10 @@
       "rules": { "max-lines-per-function": "off" }
     },
     {
-      "files": ["tests/api/sol-ow002-remap-forbidden-topic.test.ts"],
+      "files": [
+        "tests/api/sol-ow002-remap-forbidden-topic.test.ts",
+        "tests/api/live-presence-remap-during-recheck-seats-no-one.test.ts"
+      ],
       "rules": {
         "max-lines-per-function": "off",
         "unicorn/consistent-function-scoping": "off"
