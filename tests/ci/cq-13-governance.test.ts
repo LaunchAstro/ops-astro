@@ -3,6 +3,7 @@
 // every check it had.
 import { readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
+import { checkNames } from './workflow-text.ts';
 
 const read = (path: string): string =>
   readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
@@ -102,11 +103,10 @@ it('CQ-13 no check dropped', () => {
     else expect(after).toContain(check);
   }
   // Every Actions check the list requires is a job this repository's CI emits. FU-93 moved
-  // review evidence into a workflow of its own.
-  const ci = ['ci.yml', 'review-evidence.yml']
-    .map((f) => read(`.github/workflows/${f}`))
-    .join('\n');
-  const jobs = [...ci.matchAll(/^ {4}name: (.+)$/gmu)].map((m) => m[1]?.trim());
+  // review evidence into a workflow of its own; CodeQL's analyses report one per language.
+  const jobs = ['ci.yml', 'review-evidence.yml', 'codeql.yml'].flatMap((f) =>
+    checkNames(read(`.github/workflows/${f}`)),
+  );
   for (const entry of after.filter((c) => c.endsWith(` @ ${ACTIONS}`)))
     expect(jobs, entry).toContain(entry.slice(0, -` @ ${ACTIONS}`.length));
 });

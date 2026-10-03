@@ -2,7 +2,8 @@
 
 This is the intended hosted configuration. Only the merge queue section and
 `.github/required-checks.json` record live settings, as read from the ruleset
-on 2 October 2026. Nothing here claims enforcement results. Configure and test
+on 2 October 2026, apart from the three CodeQL analyses that file requires,
+which wait on the ruleset change. Nothing here claims enforcement results. Configure and test
 the rest only during an authorised hosted preparation step.
 
 ## Configure two rulesets
@@ -55,7 +56,11 @@ CodeQL is a code scanning rule, not a required status check. GitHub posts the
 CodeQL results check on pull requests but never on a merge group, so a required
 CodeQL check would hold every group until it timed out. The code scanning rule
 blocks a merge on CodeQL errors and on security alerts of high severity or
-above.
+above, but GitHub does not apply it to a merge group. So the analyses
+themselves, `Analyze (actions)`, `Analyze (javascript-typescript)` and
+`Analyze (python)` from `.github/workflows/codeql.yml`, are required status
+checks: they run on the group too, and a group whose analysis fails does not
+merge.
 
 ## Bind checks to real hosted results
 
@@ -64,8 +69,9 @@ Require the applicable CI, contamination, secret, licence, provenance,
 review-evidence, pull-request-size and DCO results, and, for a change to any
 of the eight protected components, each affected component's conformance
 proof. Check that each expected result exists for the final revision.
-`.github/required-checks.json` records the 13 required checks, the code
-scanning rule and the queue settings as the live ruleset holds them; a change
+`.github/required-checks.json` records the 16 required checks, the code
+scanning rule and the queue settings as the live ruleset is to hold them (the
+three CodeQL analyses wait on the ruleset change that requires them); a change
 that drops a check from it fails `CQ-13 no check dropped`. `command parity`
 and `visual drift` run on every pull request but are not required: they
 joined this file's list without ever reaching the live ruleset. Making them

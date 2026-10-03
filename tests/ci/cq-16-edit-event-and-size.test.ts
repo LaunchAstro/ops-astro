@@ -10,7 +10,7 @@ import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { script, step, top } from './workflow-text.ts';
+import { checkNames, script, step, top } from './workflow-text.ts';
 
 const ROOT = join(import.meta.dirname, '../..');
 const read = (path: string) => readFileSync(join(ROOT, path), 'utf8');
@@ -314,9 +314,6 @@ function prTypes(text: string): string[] {
   return listed === undefined ? ['opened', 'synchronize', 'reopened'] : listed.split(/,\s*/u);
 }
 
-/** Every check name a workflow's jobs report under. */
-const names = (text: string) => [...text.matchAll(/^ {4}name: (.+)$/gmu)].map((m) => m[1]?.trim());
-
 describe('FU-93 one workflow owns review evidence', () => {
   it('FU-93 one workflow owns review evidence: one job in one workflow carries the check name, so a newer run replaces a stale failure', () => {
     expect(workflows().filter((p) => job(read(p), CHECK) !== '')).toEqual([REVIEW]);
@@ -352,7 +349,7 @@ describe('FU-93 one workflow owns review evidence', () => {
     const on = (event: string) =>
       workflows()
         .filter((p) => prTypes(read(p)).includes(event))
-        .flatMap((p) => names(read(p)));
+        .flatMap((p) => checkNames(read(p)));
     for (const event of ['opened', 'synchronize', 'reopened'])
       for (const context of required) expect(on(event), `${event}: ${context}`).toContain(context);
     // Nothing else runs on an edit, so no other check is re-run, skipped, cancelled or left missing.
