@@ -1,0 +1,13 @@
+{
+  "rules": {
+    "eslint(max-lines-per-function)": 6,
+    "eslint(max-lines)": 6,
+    "eslint(no-inline-comments)": 10,
+    "eslint(no-loop-func)": 2,
+    "eslint(no-promise-executor-return)": 3,
+    "eslint(require-await)": 16,
+    "unicorn(no-array-callback-reference)": 6,
+    "unicorn(no-useless-undefined)": 1,
+    "unicorn(prefer-string-replace-all)": 2
+  }
+}
