@@ -3,9 +3,10 @@
 // The world the C39-T invitation cases share, one per test file: AW-07b's
 // email world (two businesses, the fake provider on loopback, custody holding
 // the mail credential, a broker over them), and in it the people C39-T needs.
-// In alpha: an administrator holding `access:share` on the whole business, a
-// second one, a member holding none, and a person holding `access:share` on
-// one client only. In bravo: its own administrator.
+// In alpha: an administrator holding `access:share` and `access:manage` on
+// the whole business, a second person holding `access:share` alone, a member
+// holding none, and a person holding `access:share` on one client only. In
+// bravo: its own administrator.
 
 import { randomUUID } from 'node:crypto';
 import { beforeAll } from 'vitest';
@@ -23,7 +24,9 @@ export { MAIL, w };
 export { noDatabase } from '../broker/email-world.ts';
 
 export interface InvitationCast {
+  /** Holds `access:share` and `access:manage` on the whole business. */
   admin: Member;
+  /** Holds `access:share` on the whole business, never `access:manage`. */
   second: Member;
   member: Member;
   /** Holds `access:share` on one client of alpha, never on the business. */
@@ -46,6 +49,7 @@ export function useInvitationWorld(): void {
     c.clientA = randomUUID();
     await w.db.app.withBusiness(w.alpha, async (tx) => {
       await grantTo(tx, c.admin, 'share', undefined, false, 'access');
+      await grantTo(tx, c.admin, 'manage', undefined, false, 'access');
       await grantTo(tx, c.second, 'share', undefined, false, 'access');
       await grantTo(tx, c.member, 'read');
       await grantTo(tx, c.clientSharer, 'share', { kind: 'party', id: c.clientA }, false, 'access');

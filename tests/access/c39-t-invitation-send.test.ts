@@ -6,7 +6,7 @@
 // is kept: an answer that carries it is read as malformed, and nothing stored
 // holds it. The send's acts and records are `c39-t-invitations.test.ts`.
 
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { sendInvitation } from '../../packages/core-custody/src/index.ts';
 import {
   c,
@@ -21,6 +21,17 @@ import {
   useInvitationWorld,
   w,
 } from './c39-t-world.ts';
+
+// Every link token this file mints is one the answer schema admits as a message
+// id ([A-Za-z0-9-]{1,64}): each `_` in the bytes' base64url becomes `A`. Still
+// random, so the token case's echo is certain in one send rather than likely
+// in twelve.
+vi.mock('node:crypto', async (importOriginal) => {
+  const real = await importOriginal<typeof import('node:crypto')>();
+  const randomBytes = (size: number): Buffer =>
+    Buffer.from(real.randomBytes(size).toString('base64url').replaceAll('_', 'A'), 'base64url');
+  return { ...real, randomBytes };
+});
 
 useInvitationWorld();
 
@@ -63,18 +74,10 @@ describe.skipIf(noDatabase)('C39-T invitation send', () => {
         return { ...outcome, outbound: { ok: true, status: 200, body } };
       },
     };
-    // A token is an id the answer schema admits only when it has no underscore.
-    for (let n = 0; n < 12; n += 1) {
-      // oxlint-disable-next-line no-await-in-loop
-      const id = await invite(c.admin);
-      // oxlint-disable-next-line no-await-in-loop
-      const sent = await sendInvitation(w.db.app, w.alpha, id, { ...w.broker, custody }, MAIL);
-      if (echoed !== '') {
-        expect(sent).toMatchObject({ ok: false, code: 'EMAIL_FAILED' });
-        break;
-      }
-    }
-    expect(echoed, 'an echoable token in twelve sends').not.toBe('');
+    const id = await invite(c.admin);
+    const sent = await sendInvitation(w.db.app, w.alpha, id, { ...w.broker, custody }, MAIL);
+    expect(echoed, 'the answer echoed the link token').not.toBe('');
+    expect(sent).toMatchObject({ ok: false, code: 'EMAIL_FAILED' });
     expect((await storedText()).includes(echoed)).toBe(false);
   });
 });
