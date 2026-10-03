@@ -27,6 +27,13 @@ export { startCustody, type Custody, type CustodyConfig, type CustodyOutcome } f
 export { raiseBudgetWait, stopWords } from './broker-wait.ts';
 export { giveBack } from './broker-give-back.ts';
 export {
+  ENROL_PATH,
+  INVITATION_SEND_ACTS,
+  sendInvitation,
+  type InvitationSendRefusal,
+  type InvitationSendResult,
+} from './broker-invitation.ts';
+export {
   callModelInConversation,
   type ConversationCallRequest,
   type ConversationScope,

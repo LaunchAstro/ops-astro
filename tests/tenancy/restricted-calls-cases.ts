@@ -89,9 +89,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'trace_export_gaps'],
   // AW-13: a retention batch is a fact, never rewritten.
   ['si', 'trace_expiry_batches'],
-  // 0042: an attempt and a seen stamp are observations, never rewritten (INB-1a).
-  ['si', 'inbox_attention inbox_delivery_attempts'],
-  ['siu', 'inbox_items'],
+  // 0042, 20261003175457 (C39-T): an attempt, a seen stamp and a token are written once (INB-1a).
+  ['si', 'inbox_attention inbox_delivery_attempts enrolment_tokens invitation_delivery_attempts'],
+  ['siu', 'inbox_items invitations'],
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
   ['siu', 'leases planned_steps proposal_lineages proposal_versions'],
   // AW-02: a historical run is never rewritten; the application moves its

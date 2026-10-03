@@ -221,6 +221,12 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'definition.attribution': READ,
   'trace.read': READ,
   'harness.read': READ,
+  // C39-T: a team member's invitation, the business's own; it admits no outside
+  // person and sends nothing itself. A create writes the person it names, and
+  // first expires a lapsed invitation to the same address as the worker.
+  'invitation.create': writing(business('people', 'invitations', 'actors')),
+  'invitation.resend': writing(business('invitations')),
+  'invitation.revoke': writing(business('invitations')),
   'budget.set_planning_cap': writing(business('budget_caps', 'business_settings')),
   'run.delegate_child': writing([...client('run_events'), ...business('delegations')]),
   'run.child_handback': writing([...client('run_events'), ...business('delegations')]),
