@@ -12,6 +12,7 @@
 
 import {
   clearSecret,
+  isClientHere,
   isSecretStale,
   isUuid,
   readSecret,
@@ -40,6 +41,10 @@ const REVISION_FIXES = [
 ];
 const CLIENT_FIXES = [
   "Send clientId as the client's identifier, or leave it out for the whole business.",
+];
+const NOT_HERE_FIXES = [
+  'No client of this business carries that identifier.',
+  'Read client.list for the clients this business has.',
 ];
 const NO_KEY_FIXES = [
   'This deployment has no custody key to seal a secret to.',
@@ -125,6 +130,10 @@ export async function setCustodySecret(
   const clientId = request.clientId ?? null;
   if (clientId !== null && !isUuid(clientId)) {
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['clientId'], CLIENT_FIXES));
+  }
+  // Another business's client and a made-up one answer alike: not here.
+  if (clientId !== null && !(await isClientHere(tx, clientId))) {
+    return refused(refuseCommand('NOT_FOUND', ['clientId'], NOT_HERE_FIXES));
   }
   const scope: SecretScope =
     clientId === null ? { kind: 'business', id: null } : { kind: 'party', id: clientId };
