@@ -46,8 +46,10 @@ export function SectionTip(props: {
   readonly preferences: TipPreferences;
 }): ReactElement | null {
   // Hidden at once on the press; the saved key keeps it hidden on the next load.
-  const [dismissedHere, setDismissedHere] = useState(false);
-  if (dismissedHere || !visibleTip(props.tip, props.preferences)) return null;
+  // Only the version pressed: a rewritten tip shows again in the same view.
+  const here = `${tipKey(props.tip)}@${String(props.tip.version)}`;
+  const [dismissedHere, setDismissedHere] = useState<string | null>(null);
+  if (dismissedHere === here || !visibleTip(props.tip, props.preferences)) return null;
   return (
     // The kit's info banner (DS-PRIM-22). Its own dismiss says only "Dismiss",
     // so the tip passes the kit's icon button as the banner's action instead.
@@ -59,7 +61,7 @@ export function SectionTip(props: {
             icon="cross-small"
             label="Dismiss this tip"
             onClick={() => {
-              setDismissedHere(true);
+              setDismissedHere(here);
               props.preferences.dismiss(tipKey(props.tip), props.tip.version);
             }}
           />

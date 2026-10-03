@@ -64,7 +64,9 @@ export function sortRows<Row>(
       const bEmpty = isEmpty(b.value);
       if (aEmpty || bEmpty) return aEmpty === bEmpty ? a.index - b.index : aEmpty ? 1 : -1;
       const order = compareRaw(a.value as string | number, b.value as string | number);
-      return order === 0 ? a.index - b.index : sign * order;
+      // Numbers stay before text either way; the direction orders within a kind.
+      const mixed = typeof a.value !== typeof b.value;
+      return order === 0 ? a.index - b.index : mixed ? order : sign * order;
     })
     .map((entry) => entry.row);
 }
