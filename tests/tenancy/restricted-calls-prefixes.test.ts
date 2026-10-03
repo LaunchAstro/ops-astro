@@ -55,6 +55,7 @@ import {
   APPLICATION_CALLERS,
   OPERATIONS,
   callFor,
+  copyRowFinding,
   copyStatement,
   expectedOutcome,
   fingerprint,
@@ -539,6 +540,11 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at every pre
         // oxlint-disable-next-line no-await-in-loop
         const row = table.tenant ? await ownRowJson(db.admin, table, alpha) : undefined;
         if (row === undefined) continue;
+        const finding = copyRowFinding(table, row);
+        if (finding !== undefined) {
+          wrong.push(`${table.qualified} insert copy: ${finding}`);
+          continue;
+        }
         for (const caller of activeCallers.slice(1)) {
           // oxlint-disable-next-line no-await-in-loop
           const before = await fingerprint(db.admin, table.qualified);

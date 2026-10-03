@@ -43,6 +43,7 @@ import {
   APPLICATION_CALLERS,
   OPERATIONS,
   callFor,
+  copyRowFinding,
   copyStatement,
   expectedOutcome,
   fingerprint,
@@ -595,6 +596,11 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
       // oxlint-disable-next-line no-await-in-loop
       const row = await ownRowJson(world.db.admin, table, world.alpha);
       if (row === undefined) continue;
+      const finding = copyRowFinding(table, row);
+      if (finding !== undefined) {
+        wrong.push(`${table.qualified}\tinsert copy\t${finding}`);
+        continue;
+      }
       copied += 1;
       for (const caller of TABLE_CALLERS.slice(1)) {
         // oxlint-disable-next-line no-await-in-loop
