@@ -18,7 +18,11 @@ export interface AssistantPlan {
   readonly version: number;
   /** The exact words the click binds, drawn on the card as they are sent. */
   readonly text: string;
-  readonly steps: readonly string[];
+  /** Each step's title, and the titles of the steps it waits on. */
+  readonly steps: readonly { readonly title: string; readonly after: readonly string[] }[];
+  /** The bootstrap file the click activates, and the other files the run may read. */
+  readonly entryPath: string;
+  readonly paths: readonly string[];
   readonly ceilingMinor: number;
   readonly spendMinor: number;
   readonly currency: string;

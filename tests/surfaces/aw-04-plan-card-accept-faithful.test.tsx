@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // @vitest-environment jsdom
 //
-// AW-04's plan card on the approval path: the words the one click binds are
-// the words the card drew; an accept whose answer lands after a newer version
+// AW-04's plan card on the approval path: everything the one click binds (the
+// words, each step and what it waits on, the files, the ceiling) the card drew,
+// and the figures agree with the words; an accept whose answer lands after a newer version
 // arrived still says what the server did; and an accept whose outcome is
 // unknown is retried under its own operation id, so the register can replay it.
 /* eslint-disable unicorn/prefer-dom-node-dataset -- each assertion reads its data- attribute by the DOM name */
@@ -23,7 +24,7 @@ const offer = (version: number): PlanOffer => ({
   versionId: `77777777-7777-4777-8777-77777777777${String(version)}`,
   version,
   task: { id: '55555555-5555-4555-8555-555555555555', key: 'T-12', title: 'Spring brief' },
-  text: 'Draft the brief, then check it. Ceiling: $900.00. Launch happens later, on the task.',
+  text: 'Draft the brief, then check it. Ceiling: $10.00. Launch happens later, on the task.',
   steps: [
     { key: 'draft', title: 'Draft the brief', after: [] },
     { key: 'check', title: 'Check it', after: ['draft'] },
@@ -32,7 +33,7 @@ const offer = (version: number): PlanOffer => ({
   currency: 'AUD',
   planningSpendMinor: 12,
   entryPath: 'agents/brief.md',
-  paths: [],
+  paths: ['agents/notes.md', 'agents/style.md'],
 });
 
 const planned = (version: number) => ({
@@ -109,16 +110,36 @@ async function open(client: OperationsClient) {
 }
 
 describe('AW-04 plan card accept', () => {
-  it('AW-04 plan card binds what it shows: the exact words the accept sends are drawn on the card', async () => {
+  it('AW-04 plan card binds what it shows: every bound field the accept sends is drawn on the card', async () => {
     const { client, sent } = drawerWith([planned(1)], []);
     const { page, ask } = await open(client);
     await ask('Write the spring brief');
     await page.click('[data-plan="accept"]');
     await settle();
-    const bound = sent.find((each) => each.name === 'task.accept_plan')?.body['planText'];
-    expect(bound).toBe(offer(1).text);
+    const body = sent.find((each) => each.name === 'task.accept_plan')?.body ?? {};
+    const card = page.find('[data-plan="card"]');
     // "Exact words kept" claims the person approved these words; they must have been on screen.
-    expect(page.find('[data-plan="card"]')?.textContent).toContain(offer(1).text);
+    expect(body['planText']).toBe(offer(1).text);
+    expect(card?.textContent).toContain(body['planText']);
+    const steps = (body['plan'] as { steps: PlanOffer['steps'] }).steps;
+    const drawn = page.all('[data-plan="steps"] li').map((each) => each.textContent);
+    const titleOf = (key: string) => steps.find((each) => each.key === key)?.title;
+    expect(drawn).toStrictEqual(
+      steps.map((step) =>
+        step.after.length === 0
+          ? step.title
+          : `${step.title} after: ${step.after.map(titleOf).join(', ')}`,
+      ),
+    );
+    expect(page.find('[data-plan="entry"]')?.textContent).toContain(body['entryPath']);
+    for (const path of body['paths'] as string[]) {
+      expect(page.find('[data-plan="paths"]')?.textContent).toContain(path);
+    }
+    // The ceiling the click names is the one the card drew, and the words name it too.
+    expect(body['ceilingMinor']).toBe(offer(1).ceilingMinor);
+    expect(body['currency']).toBe(offer(1).currency);
+    expect(page.find('[data-plan="cost"]')?.textContent).toContain('AUD 10.00');
+    expect(offer(1).text).toContain('$10.00');
   });
 
   it('AW-04 accept answered after a newer version arrived: a committed accept still shows the approved card, never "accept the newer card"', async () => {

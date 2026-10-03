@@ -21,19 +21,25 @@ function change(state: AssistantState, key: string, edit: (chat: Chat) => Chat):
   return { ...state, chats: state.chats.map((chat) => (chat.key === key ? edit(chat) : chat)) };
 }
 
-/** The card a plan version draws, offered. */
-export const cardOf = (offer: PlanOffer): AssistantPlan => ({
-  version: offer.version,
-  text: offer.text,
-  steps: offer.steps.map((step) => step.title),
-  ceilingMinor: offer.ceilingMinor,
-  spendMinor: offer.planningSpendMinor,
-  currency: offer.currency,
-  state: 'offered',
-  replacedBy: null,
-  refusal: null,
-  task: { label: offer.task.title, href: pathTo('agency:task-detail', { key: offer.task.key }) },
-});
+/** The card a plan version draws, offered: every field the accept binds. */
+export function cardOf(offer: PlanOffer): AssistantPlan {
+  const titleOf = (key: string): string =>
+    offer.steps.find((step) => step.key === key)?.title ?? key;
+  return {
+    version: offer.version,
+    text: offer.text,
+    steps: offer.steps.map((step) => ({ title: step.title, after: step.after.map(titleOf) })),
+    entryPath: offer.entryPath,
+    paths: offer.paths,
+    ceilingMinor: offer.ceilingMinor,
+    spendMinor: offer.planningSpendMinor,
+    currency: offer.currency,
+    state: 'offered',
+    replacedBy: null,
+    refusal: null,
+    task: { label: offer.task.title, href: pathTo('agency:task-detail', { key: offer.task.key }) },
+  };
+}
 
 /** A planning reply's plan, as the tab's newest card; older offered cards go stale. */
 export function offerPlan(
@@ -74,7 +80,7 @@ export function settlePlan(
   }));
 }
 
-/** The accept's body: the version on screen and the exact words the card showed. */
+/** The accept's body: the version on screen and everything the card showed, ceiling too. */
 export const acceptBody = (offer: PlanOffer, conversationId: string | null) => ({
   gateId: offer.gateId,
   versionId: offer.versionId,
@@ -83,6 +89,8 @@ export const acceptBody = (offer: PlanOffer, conversationId: string | null) => (
   plan: { steps: offer.steps },
   entryPath: offer.entryPath,
   paths: offer.paths,
+  ceilingMinor: offer.ceilingMinor,
+  currency: offer.currency,
   conversationId,
 });
 

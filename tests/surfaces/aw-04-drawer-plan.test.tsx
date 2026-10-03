@@ -151,6 +151,8 @@ describe('AW-04 drawer', () => {
           plan: { steps: offer(1).steps },
           entryPath: 'agents/brief.md',
           paths: ['agents/notes.md'],
+          ceilingMinor: 1000,
+          currency: 'AUD',
           conversationId: CONVERSATION,
         },
       },

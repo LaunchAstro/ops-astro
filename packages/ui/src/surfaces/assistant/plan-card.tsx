@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // AW-04: the plan as a card in the chat (U7-SCORE's recommendation, owner line
-// 67). The card shows the steps, the rough cost (the ceiling the words name),
+// 67). The card shows everything the click binds: the steps and what each waits
+// on, the words, the files the run starts from and may read, the rough cost (the ceiling the words name),
 // what planning has spent so far (U10), and the version on screen beside the
 // one accept, so the click names the version the person read (U7).
 //
@@ -67,18 +68,29 @@ export function PlanCard(props: {
   return (
     <div className="aip__plan" data-plan="card" data-version={plan.version}>
       <span className="aip__plan-k">Plan</span>
-      <ol className="aip__plan-steps">
+      <ol className="aip__plan-steps" data-plan="steps">
         {plan.steps.map((step, at) => (
           // Two steps may share a title; the position is the stable key.
           // oxlint-disable-next-line react/no-array-index-key -- the list is never reordered
-          <li key={at} data-plan="step">
-            {step}
+          <li key={at}>
+            <span data-plan="step">{step.title}</span>
+            {step.after.length === 0 ? null : (
+              <span className="aip__plan-meta"> after: {step.after.join(', ')}</span>
+            )}
           </li>
         ))}
       </ol>
       <p className="aip__plan-words" data-plan="words">
         {plan.text}
       </p>
+      <p className="aip__plan-meta" data-plan="entry">
+        Starts from: {plan.entryPath}
+      </p>
+      {plan.paths.length === 0 ? null : (
+        <p className="aip__plan-meta" data-plan="paths">
+          May also read: {plan.paths.join(', ')}
+        </p>
+      )}
       <p className="aip__plan-meta" data-plan="cost">
         Rough cost: up to {money(plan.ceilingMinor, plan.currency)}
       </p>
