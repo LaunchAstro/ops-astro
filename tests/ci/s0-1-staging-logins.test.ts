@@ -123,12 +123,13 @@ describe('S0-1 staging logins: each login, its one group and its address', () =>
     ]);
   });
 
-  it('after the reset: lookup, backup identity and forwarder, each only by setting its role', () => {
+  it('after the reset: lookup, backup identity, forwarder and upkeep, each only by setting its role', () => {
     const after = LOGINS.filter((login) => login.step === 'after-reset');
     expect(after.map((login) => [login.setting, login.role, login.group, login.inherit])).toEqual([
       ['DATABASE_LOOKUP_URL', 'ops_astro_lookup_login', 'ops_astro_lookup', false],
       ['BACKUP_SOURCE_URL', 'ops_astro_backup_login', 'ops_astro_backup', false],
       ['DATABASE_FORWARDER_URL', 'ops_astro_forwarder_login', 'ops_astro_forwarder', false],
+      ['DATABASE_UPKEEP_URL', 'ops_astro_upkeep_login', 'ops_astro_upkeep', false],
     ]);
   });
 
@@ -146,6 +147,10 @@ describe('S0-1 staging logins: each login, its one group and its address', () =>
       [
         'DATABASE_FORWARDER_URL',
         `postgresql://ops_astro_forwarder_login.${STAGING}:pw-1@${POOLER}:5432/postgres?sslmode=require`,
+      ],
+      [
+        'DATABASE_UPKEEP_URL',
+        `postgresql://ops_astro_upkeep_login.${STAGING}:pw-1@${POOLER}:5432/postgres?sslmode=require`,
       ],
     ]);
     const [runtime] = loginAddresses(admin(STAGING), STAGING, 'before-reset', () => 'pw-2');
@@ -183,7 +188,7 @@ describe('S0-1 staging logins: a password reaches the database only as a SCRAM v
     const addresses = loginAddresses(admin(STAGING), STAGING, 'after-reset', () => 'pw-plain');
     const statements = statementsFor('after-reset', addresses).join('\n');
     expect(statements).not.toContain('pw-plain');
-    expect(statements.match(/password 'SCRAM-SHA-256\$4096:/gu)).toHaveLength(3);
+    expect(statements.match(/password 'SCRAM-SHA-256\$4096:/gu)).toHaveLength(4);
   });
 });
 
@@ -191,7 +196,12 @@ describe('S0-1 staging logins: each login made with no power of its own', () => 
   it('makes each login with no power of its own, in its one group', () => {
     const addresses = loginAddresses(admin(STAGING), STAGING, 'after-reset', () => 'pw');
     const statements = statementsFor('after-reset', addresses).join('\n');
-    for (const role of ['ops_astro_lookup', 'ops_astro_backup', 'ops_astro_forwarder']) {
+    for (const role of [
+      'ops_astro_lookup',
+      'ops_astro_backup',
+      'ops_astro_forwarder',
+      'ops_astro_upkeep',
+    ]) {
       expect(statements).toContain(
         `create role ${role}_login login nosuperuser nocreatedb nocreaterole nobypassrls ` +
           `noreplication noinherit`,

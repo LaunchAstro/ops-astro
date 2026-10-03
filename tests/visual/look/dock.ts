@@ -78,10 +78,10 @@ export const DOCK: LookScreen = {
       ],
       {
         widths: SIDE,
-        // The doors the registry holds, not the mockup's eight (R34): five since
-        // the to-dos joined (notifications, team, clients, to-dos, settings),
-        // 178 tall, centred on the edge below the app strip.
-        ruled: [...both('box.height', '178', 'R34'), ...both('box.y', '384', 'R34')],
+        // The doors the registry holds, not the mockup's eight (R34): six since
+        // the Agent joined (ai, notifications, team, clients, to-dos, settings),
+        // 210 tall, centred on the edge below the app strip.
+        ruled: [...both('box.height', '210', 'R34'), ...both('box.y', '368', 'R34')],
       },
     ),
     // A panel open: the shadow goes, Close all is added, the rail rides the panel.

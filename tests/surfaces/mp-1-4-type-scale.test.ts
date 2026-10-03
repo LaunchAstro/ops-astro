@@ -176,6 +176,7 @@ describe('MP-1-4 type scale', () => {
     const drawn = new Set<string>();
     for (const view of views) {
       const page = view.name.slice(0, view.name.indexOf('@'));
+      expect(view.landed, `${view.name} drew at another address`).toBe(view.address);
       expect(view.drew, view.name).toBe(intendedScreen(page));
       expect(view.sideways, `${view.name} scrolls sideways`).toBe(0);
       expect(view.counted, `${view.name}: no text measured`).toBeGreaterThan(0);

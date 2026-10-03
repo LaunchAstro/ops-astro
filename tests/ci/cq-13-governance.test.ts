@@ -84,11 +84,23 @@ const BEFORE = [
 
 type Check = { context: string; integration_id: number };
 
+// CodeQL left the required checks on 2 October 2026 (AEST) and became the ruleset's code
+// scanning rule. Under a merge queue a required CodeQL check never reports on a merge group, so
+// it would hold every group. The rule still blocks a merge on CodeQL's results: moved, not dropped.
+const MOVED_TO_CODE_SCANNING = new Set(['CodeQL @ 57789']);
+
 it('CQ-13 no check dropped', () => {
-  const after = (
-    JSON.parse(read('.github/required-checks.json')) as { required_status_checks: Check[] }
-  ).required_status_checks.map((c) => `${c.context} @ ${c.integration_id}`);
-  for (const [context, app] of BEFORE) expect(after).toContain(`${context} @ ${app}`);
+  const list = JSON.parse(read('.github/required-checks.json')) as {
+    required_status_checks: Check[];
+    code_scanning: { tool: string }[];
+  };
+  const after = list.required_status_checks.map((c) => `${c.context} @ ${c.integration_id}`);
+  const scanned = list.code_scanning.map((t) => `${t.tool} @ 57789`);
+  for (const [context, app] of BEFORE) {
+    const check = `${context} @ ${app}`;
+    if (MOVED_TO_CODE_SCANNING.has(check)) expect(scanned).toContain(check);
+    else expect(after).toContain(check);
+  }
   // Every Actions check the list requires is a job this repository's CI emits. FU-93 moved
   // review evidence into a workflow of its own.
   const ci = ['ci.yml', 'review-evidence.yml']

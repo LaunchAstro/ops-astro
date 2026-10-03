@@ -47,7 +47,14 @@ import { SUCCESS, except, failures, observe, refusal, writeMatrix } from './role
 import { createHarness, targetKeyOf, type Harness } from './role-case-harness.ts';
 import type { FixtureClient } from './role-case-clients.ts';
 import { alternativeFor } from './cd-alternatives.ts';
-import { PROPOSAL } from './role-case-bodies.ts';
+import { PROPOSAL, childProbe } from './role-case-bodies.ts';
+
+/** The person prefix refuses these by design; the agent reaches them in case (h). */
+const AGENT_ONLY: ReadonlySet<string> = new Set([
+  'model.call',
+  'run.delegate_child',
+  'run.child_handback',
+]);
 
 /** The inbox's `self` rows (INB-1d, INB-1e); the account's (C23) take the branch after. */
 const INBOX_SELF: ReadonlySet<string> = new Set([
@@ -414,13 +421,15 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
     // disagreeing with them. Runs before (f), which takes `mia`'s read away.
     // Person work (EX-01) is a sequence on the member's own lease rather than
     // three independent bodies: the member picks up approved work as
-    // themselves, renews that lease, dispatches its step and hands it back. It is driven once per
-    // member, when the first of the three comes up in the surface's order.
+    // themselves, renews that lease, checks it and hands it back for review; once the admin
+    // launches the reviewed output (AW-08), the member picks the launch up, dispatches and
+    // observes it. It is driven once per member, when the first comes up in the surface's order.
     const personWork = new Set([
       'task.pickup',
       'task.heartbeat',
       'task.dispatch',
       'task.observe',
+      'task.check',
       'task.handback',
     ]);
     const drivenFor = new Set<string>();
@@ -442,12 +451,44 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       if ('exception' in prepared) throw new Error('matrix: task.pickup has no body');
       const picked = await harness.asPerson('task.pickup', prepared.body, 'alpha', caller);
       observe(caller.name, 'e-member-positive', 'task.pickup', picked, SUCCESS);
-      const lease = (picked.body['detail'] as Record<string, unknown> | undefined) ?? {};
-      const own = { leaseId: lease['leaseId'], fence: lease['fence'] };
+      const plan = (picked.body['detail'] as Record<string, unknown> | undefined) ?? {};
+      const planLease = { leaseId: plan['leaseId'], fence: plan['fence'] };
       if (grants.has(pairOf('task.heartbeat'))) {
-        const beat = await harness.asPerson('task.heartbeat', own, 'alpha', caller);
+        const beat = await harness.asPerson('task.heartbeat', planLease, 'alpha', caller);
         observe(caller.name, 'e-member-positive', 'task.heartbeat', beat, SUCCESS);
       }
+      if (grants.has(pairOf('task.check'))) {
+        const checked = await harness.asPerson(
+          'task.check',
+          { ...planLease, name: 'the member checks', outcome: 'passed' },
+          'alpha',
+          caller,
+        );
+        observe(caller.name, 'e-member-positive', 'task.check', checked, SUCCESS);
+      }
+      // AW-08: the plan's lease fires nothing. The member hands its work back for
+      // review; the admin's accept of that reviewed output is the launch, and
+      // the member picks the launch up: the lease their dispatch and observe use.
+      const settled = await harness.asPerson(
+        'task.handback',
+        { ...planLease, outcome: 'completed', successor: PROPOSAL },
+        'alpha',
+        caller,
+      );
+      observe(caller.name, 'e-member-positive', 'task.handback', settled, SUCCESS);
+      const handed = (settled.body['detail'] as Record<string, unknown> | undefined) ?? {};
+      const launch = await harness.asPerson('task.decide', {
+        gateId: handed['successorGateId'],
+        versionId: handed['successorVersionId'],
+        decision: 'approve',
+        note: 'launch the reviewed output',
+      });
+      const reservationId = (launch.body['detail'] as Record<string, unknown> | undefined)?.[
+        'reservationId'
+      ];
+      const relaunched = await harness.asPerson('task.pickup', { reservationId }, 'alpha', caller);
+      const lease = (relaunched.body['detail'] as Record<string, unknown> | undefined) ?? {};
+      const own = { leaseId: lease['leaseId'], fence: lease['fence'] };
       if (grants.has(pairOf('task.dispatch'))) {
         const marked = await harness.asPerson('task.dispatch', own, 'alpha', caller);
         observe(caller.name, 'e-member-positive', 'task.dispatch', marked, SUCCESS);
@@ -476,15 +517,7 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
         const seen = await harness.asPerson('task.observe', { ...own, attemptId }, 'alpha', caller);
         observe(caller.name, 'e-member-positive', 'task.observe', seen, SUCCESS);
       }
-      if (grants.has(pairOf('task.handback'))) {
-        const settled = await harness.asPerson(
-          'task.handback',
-          { ...own, outcome: 'completed' },
-          'alpha',
-          caller,
-        );
-        observe(caller.name, 'e-member-positive', 'task.handback', settled, SUCCESS);
-      }
+      await harness.asPerson('task.handback', { ...own, outcome: 'completed' }, 'alpha', caller);
     }
     for (const caller of harness.otherCallers) {
       const grants = harness.heldBy.get(caller.name);
@@ -498,6 +531,13 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
         }
         // eslint-disable-next-line no-await-in-loop
         const prepared = await harness.positiveBody(declaration, caller);
+        if ('exception' in prepared && AGENT_ONLY.has(declaration.name)) {
+          // A person's write grant carries no model call: the person prefix
+          // refuses it (tests/broker/aw-01-model-call.test.ts), and the agent
+          // makes it in case (h).
+          except(caller.name, 'e-member-positive', declaration.name, prepared.exception);
+          continue;
+        }
         if ('exception' in prepared) throw new Error(`matrix: ${declaration.name} has no body`);
         // eslint-disable-next-line no-await-in-loop
         const answer = await harness.asPerson(declaration.name, prepared.body, 'alpha', caller);
@@ -553,7 +593,8 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
     // (h) I12, over every declaration, with the expectation derived from the
     // exported `BEFORE_PICKUP` rather than from a list here. Three answers, as
     // minimum contract 8.2 case 9 names them: the queue and a pickup succeed,
-    // `task.decide` is `DELEGATION_EXCLUDES_DECISION`, and every other
+    // `task.decide` is `DELEGATION_EXCLUDES_DECISION`, `task.triage`
+    // `DELEGATION_EXCLUDES_INTAKE` (contract 6.1), and every other
     // operation, the agent's own after a pickup included, is
     // `DELEGATION_EXCLUDES_OPERATION`.
     for (const declaration of COMMAND_SURFACE) {
@@ -566,7 +607,9 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
         : refusal(
             declaration.name === 'task.decide'
               ? 'DELEGATION_EXCLUDES_DECISION'
-              : 'DELEGATION_EXCLUDES_OPERATION',
+              : declaration.name === 'task.triage'
+                ? 'DELEGATION_EXCLUDES_INTAKE'
+                : 'DELEGATION_EXCLUDES_OPERATION',
           );
       // A handback's outcome and fence are read by type before the delegation
       // (Sol 6 AUTHORITY-2), so they are sent well formed: the answer is the
@@ -662,11 +705,14 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
         // EX-35 (root ruling 5): the current intersection of the pickup's
         // purpose and the delegating person's effective grants on the task,
         // never the pre-pickup pair and never a pair outside the purpose. The
-        // person here holds what the purpose carries, so it is all of it.
+        // person here holds what the purpose carries, so it is all of it:
+        // the harness admin holds run:write, so the mint reached run, and
+        // write alone on it (MP-6-2, ORCH34).
         const reported = (after['grants'] as readonly { collection: string; action: string }[])
           .map((one) => `${one.collection}:${one.action}`)
           .toSorted();
         expect(reported, declaration.name).toStrictEqual([
+          'run:write',
           'task:comment',
           'task:read',
           'task:write',
@@ -703,32 +749,61 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
         expect(untouched[0]?.n, 'no report for a lease outside the purpose').toBe('0');
         continue;
       }
+      // A child handback answers to a child credential, which the pickup's is
+      // not, and names no record: the credential is its whole target.
       const expected = refusal(
         declaration.name === 'task.decide'
           ? 'DELEGATION_EXCLUDES_DECISION'
-          : AGENT_SURFACE.has(declaration.name)
-            ? 'DELEGATION_OUT_OF_PURPOSE'
-            : 'DELEGATION_EXCLUDES_OPERATION',
+          : declaration.name === 'run.child_handback'
+            ? 'DELEGATION_NOT_LIVE'
+            : AGENT_SURFACE.has(declaration.name)
+              ? 'DELEGATION_OUT_OF_PURPOSE'
+              : declaration.name === 'task.triage'
+                ? 'DELEGATION_EXCLUDES_INTAKE'
+                : 'DELEGATION_EXCLUDES_OPERATION',
       );
       // eslint-disable-next-line no-await-in-loop
       const answer = await harness.asAgent(
         declaration.name,
-        ['task.heartbeat', 'task.dispatch', 'task.observe'].includes(declaration.name)
-          ? // A heartbeat, a dispatch or an observe, like a handback, names its task through the lease
-            // and never through a stray `recordId` (final review R1 #23), so
+        [
+          'task.heartbeat',
+          'task.dispatch',
+          'task.observe',
+          'task.check',
+          'model.call',
+          'run.delegate_child',
+        ].includes(declaration.name)
+          ? // A heartbeat, a dispatch, an observe, a check or a model call, like a handback, names its task
+            // through the lease and never through a stray `recordId` (final review R1 #23), so
             // the sibling is reached by its own lease.
             {
               ...harness.probeBody(declaration),
+              ...(declaration.name === 'task.check'
+                ? { name: 'a check on the sibling', outcome: 'passed' }
+                : {}),
               leaseId: siblingLease['leaseId'],
               fence: siblingLease['fence'],
               ...(declaration.name === 'task.observe'
                 ? { attemptId: siblingLease['attemptId'] }
                 : {}),
+              ...(declaration.name === 'run.delegate_child'
+                ? childProbe(harness.world.agent.actorId)
+                : {}),
             }
-          : { ...harness.probeBody(declaration), recordId: sibling.id },
+          : declaration.name === 'run.child_handback'
+            ? harness.probeBody(declaration)
+            : { ...harness.probeBody(declaration), recordId: sibling.id },
         credential,
       );
       observe('agent-after-pickup', table, declaration.name, answer, expected);
+      if (declaration.name === 'model.call') {
+        // eslint-disable-next-line no-await-in-loop
+        const held = await harness.world.db.admin.execute<{ readonly n: string }>(
+          `select count(*)::text as n from public.model_calls where lease_id = $1`,
+          [siblingLease['leaseId']],
+        );
+        expect(held[0]?.n, 'no call held on a lease outside the purpose').toBe('0');
+      }
     }
 
     // (k) The operations the admin's positive control could not reach from the
@@ -842,6 +917,19 @@ describe.skipIf(serverUrl === undefined)('the role and case matrix, over every d
       stale,
       refusal('LEASE_NOT_OWNED'),
     );
+    // A check recorded under its own lease (MP-6-1): the system write the
+    // lease authorises, naming the agent as the actor that performed it.
+    const checked = await harness.asAgent(
+      'task.check',
+      {
+        leaseId: picked['leaseId'],
+        fence: picked['fence'],
+        name: 'the agent checks',
+        outcome: 'passed',
+      },
+      credential,
+    );
+    observe('agent-after-pickup', table, 'task.check (own lease)', checked, SUCCESS);
 
     // (j) I07, on one live gate. The decision is excluded from every
     // delegation and checked first in the order, so it is never reported as

@@ -114,6 +114,66 @@
         "border-bottom-color": "rgba(248,248,248,255)"
       }
     },
+    "inbox.tab-count": {
+      "1480-light": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "400",
+        "line-height": "18.6px",
+        "color": "rgba(140,133,127,255)",
+        "background-color": "rgba(0,0,0,0)",
+        "padding-left": "0px",
+        "display": "block"
+      },
+      "1480-dark": {
+        "font-family": "Chivo Mono",
+        "font-size": "12px",
+        "font-weight": "400",
+        "line-height": "18.6px",
+        "color": "rgba(248,248,248,140)",
+        "background-color": "rgba(0,0,0,0)",
+        "padding-left": "0px",
+        "display": "block"
+      }
+    },
+    "inbox.tab-mark": {
+      "1480-light": {
+        "box.drawn": "true",
+        "box.height": "2",
+        "background-color": "rgba(116,92,238,255)",
+        "bottom": "-1px"
+      },
+      "1480-dark": {
+        "box.drawn": "true",
+        "box.height": "2",
+        "background-color": "rgba(116,92,238,255)",
+        "bottom": "-1px"
+      }
+    },
+    "inbox.row-grid": {
+      "1480-light": {
+        "display": "grid",
+        "column-gap": "8px"
+      },
+      "1480-dark": {
+        "display": "grid",
+        "column-gap": "8px"
+      }
+    },
+    "inbox.row-mark": {
+      "1480-light": {
+        "box.width": "18",
+        "font-size": "12.8px",
+        "line-height": "19.2px",
+        "color": "rgba(107,99,93,255)"
+      },
+      "1480-dark": {
+        "box.width": "18",
+        "font-size": "12.8px",
+        "line-height": "19.2px",
+        "color": "rgba(248,248,248,184)"
+      }
+    },
     "inbox.info-row": {
       "1480-light": {
         "padding-top": "4px",

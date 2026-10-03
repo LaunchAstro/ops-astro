@@ -279,6 +279,53 @@ describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
     payload: {},
     step: { kind: 'compose', payload: {} },
   };
+  /** A person approves a gate (`task.decide`). */
+  const approveGate = async (gate: Record<string, unknown>) =>
+    detailOf(
+      ok(
+        await call('task.decide', {
+          gateId: gate['gateId'],
+          versionId: gate['versionId'],
+          decision: 'approve',
+          note: 'go',
+        }),
+      ),
+    );
+  const leaseOn = async (decided: Record<string, unknown>) =>
+    detailOf(
+      ok(
+        await call(
+          'task.pickup',
+          { reservationId: decided['reservationId'], leaseSeconds: 600 },
+          writerToken,
+        ),
+      ),
+    );
+  /**
+   * AW-08: the plan's accept fires nothing; the agent hands its output back for
+   * review, and only that accept launches the step (aw-08-plan-accept-gate).
+   */
+  const launchedThroughReview = async (
+    proposed: Record<string, unknown>,
+    step: Record<string, unknown>,
+  ): Promise<{ at: Record<string, unknown>; runId: unknown }> => {
+    const working = await leaseOn(await approveGate(proposed));
+    const output = { ...followUp, purpose: 'reviewed_output', step };
+    const handback = { leaseId: working['leaseId'], fence: working['fence'], outcome: 'completed' };
+    const handed = detailOf(
+      ok(await call('task.handback', { ...handback, successor: output }, writerToken)),
+    );
+    const launch = await approveGate({
+      gateId: handed['successorGateId'],
+      versionId: handed['successorVersionId'],
+    });
+    const picked = await leaseOn(launch);
+    const [launched] = await fixture.db.admin.execute<{ run_id: string }>(
+      'select run_id from public.reservations where id = $1',
+      [launch['reservationId']],
+    );
+    return { at: { leaseId: picked['leaseId'], fence: picked['fence'] }, runId: launched?.run_id };
+  };
   it.each([
     ['', undefined],
     [', a successor proposed beside it', followUp],
@@ -288,19 +335,7 @@ describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
       const task = await newTask('dispatched then completed');
       const step = { kind: 'synthetic_comment', payload: {} };
       const proposed = detailOf(ok(await call('task.propose', { ...proposal(task), step })));
-      const decided = detailOf(
-        ok(
-          await call('task.decide', {
-            gateId: proposed['gateId'],
-            versionId: proposed['versionId'],
-            decision: 'approve',
-            note: 'go',
-          }),
-        ),
-      );
-      const lease = { reservationId: decided['reservationId'], leaseSeconds: 600 };
-      const picked = detailOf(ok(await call('task.pickup', lease, writerToken)));
-      const at = { leaseId: picked['leaseId'], fence: picked['fence'] };
+      const { at, runId } = await launchedThroughReview(proposed, step);
       ok(await call('task.dispatch', at, writerToken));
       const settled = detailOf(
         ok(await call('task.handback', { ...at, outcome: 'completed', successor }, writerToken)),
@@ -314,15 +349,21 @@ describe.skipIf(serverUrl === undefined)('INB-1 raised on transition', () => {
           .filter((i) => readable(i))
           .filter((i) => i.subjectRecordId === task.id);
       expect(await launcher('waiting_run')).toMatchObject([
-        { factKind: 'planned_run', factId: proposed['runId'], owed: true },
+        { factKind: 'planned_run', factId: runId, owed: true },
       ]);
-      expect(await launcher('run_finished')).toStrictEqual([]);
+      // The plan's own run finished at its hand-back; the launched run did not.
+      const finished = await launcher('run_finished');
+      expect(finished.filter((i) => i.factId === runId)).toStrictEqual([]);
       // The alert agrees, as observe's does for the same state: a person records the outcome.
+      // Alerts are one row per transition: the reviewed output's gate came first.
       const alerts = await fixture.db.admin.execute(
-        'select kind, waiting_reason from public.alerts where task_id = $1',
+        'select kind, waiting_reason from public.alerts where task_id = $1 order by raised_at, id',
         [task.id],
       );
-      expect(alerts).toEqual([{ kind: 'awaiting_person', waiting_reason: 'liability_unknown' }]);
+      expect(alerts).toEqual([
+        { kind: 'awaiting_person', waiting_reason: 'needs_approval' },
+        { kind: 'awaiting_person', waiting_reason: 'liability_unknown' },
+      ]);
     },
   );
 

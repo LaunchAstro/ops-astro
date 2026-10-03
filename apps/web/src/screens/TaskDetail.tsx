@@ -96,6 +96,7 @@ import type {
   TaskStateView,
 } from '../../../../packages/core-wire/src/index.ts';
 import { useRead, type UseReadResult } from '../data/use-read.ts';
+import { AgentSection } from '../views/agent-pane.tsx';
 import type { ReadState } from '../data/authorised-read.ts';
 import { hubOf } from '../data/live.ts';
 import { usePresence } from '../data/presence.ts';
@@ -593,6 +594,24 @@ function namesOf(people: { readonly state: ReadState<PersonListResult> }): Map<s
   return new Map(persons.map((person) => [person.personId, person.name]));
 }
 
+/** Every keystroke lands in both places: the form, and the draft above it. */
+function editorOf(
+  onDraft: LoadedProps['onDraft'],
+  base: DraftBase,
+  now: { readonly title: string; readonly due: string },
+): (next: { title?: string; due?: string }) => void {
+  return (next) => {
+    const nextTitle = next.title ?? now.title;
+    const nextDue = next.due ?? now.due;
+    // Typed back to where it started is not an unsaved edit. Holding a draft
+    // there would lock the other controls for no reason a person could see.
+    onDraft(
+      nextTitle === base.title && nextDue === base.due ? null : { title: nextTitle, due: nextDue },
+      base,
+    );
+  };
+}
+
 function Loaded(props: LoadedProps): ReactElement {
   const { client, task } = props;
   const saved = { title: task.title ?? '', due: task.due === null ? '' : task.due.slice(0, 10) };
@@ -622,17 +641,7 @@ function Loaded(props: LoadedProps): ReactElement {
   const presence = usePresence(client, `task:${task.id}`);
   useShowOnPage(presence.seen);
 
-  /** Every keystroke lands in both places: this form, and the draft above it. */
-  const edit = (next: { title?: string; due?: string }): void => {
-    const nextTitle = next.title ?? title;
-    const nextDue = next.due ?? due;
-    // Typed back to where it started is not an unsaved edit. Holding a draft
-    // there would lock the other controls for no reason a person could see.
-    props.onDraft(
-      nextTitle === base.title && nextDue === base.due ? null : { title: nextTitle, due: nextDue },
-      base,
-    );
-  };
+  const edit = editorOf(props.onDraft, base, { title, due });
 
   const writes = useTaskWrites(props, { title, due, base });
   const { busy, because, conflict } = writes;
@@ -845,12 +854,34 @@ function EditNotices(props: {
   );
 }
 
+/** The agent section (MP-6-1): the run's pane, full width above the Agent side's columns. */
+function AgentHead({
+  props,
+  persons,
+}: {
+  readonly props: LoadedProps;
+  readonly persons: PersonListResult['persons'];
+}): ReactElement {
+  const { client, task } = props;
+  return (
+    <AgentSection
+      client={client}
+      recordId={task.id}
+      proposals={task.proposals}
+      people={persons}
+      ledger={task.ledger}
+      onChanged={props.onChanged}
+    />
+  );
+}
+
 /**
  * The Agent side of the task (MP-4-3): the brief (MP-4-7), the proposals and
  * their gates with the top-up (T2e), and the run as it goes (T2a progress,
  * T2h alerts, T3e2 outages). DS-TASK-15 lays it out: the brief, the run and
  * its gate in the main column, the standing facts about the task's run (its
- * alerts, the team's outages) beside.
+ * alerts, the team's outages) beside. The agent section (MP-6-1) sits above
+ * them, full width, as batch 3a drew it.
  */
 function AgentSide({
   props,
@@ -863,33 +894,36 @@ function AgentSide({
 }): ReactElement {
   const { client, task } = props;
   return (
-    <div className="tpg">
-      <div className="tpg__main">
-        <BriefSection brief={task.agentBrief} />
-        <RunProgress client={client} grantKey={props.grantKey} readOf={task} taskKey={task.key} />
-        <Proposals
-          capCurrency={task.capCurrency}
-          client={client}
-          note={props.note}
-          onChanged={props.onChanged}
-          onDecided={props.onDecided}
-          onProposeRefused={props.onProposeRefused}
-          proposeRefusal={props.proposeRefusal}
-          proposeDraft={props.proposeDraft}
-          onProposeDraft={props.onProposeDraft}
-          persons={persons}
-          proposals={task.proposals}
-          envelope={task.envelope ?? null}
-          topUpNote={props.topUpNote}
-          onTopUpNote={props.onTopUpNote}
-          recordId={task.id}
-          revision={task.revision}
-        />
+    <div className="stack">
+      <AgentHead props={props} persons={persons} />
+      <div className="tpg">
+        <div className="tpg__main">
+          <BriefSection brief={task.agentBrief} />
+          <RunProgress client={client} grantKey={props.grantKey} readOf={task} taskKey={task.key} />
+          <Proposals
+            capCurrency={task.capCurrency}
+            client={client}
+            note={props.note}
+            onChanged={props.onChanged}
+            onDecided={props.onDecided}
+            onProposeRefused={props.onProposeRefused}
+            proposeRefusal={props.proposeRefusal}
+            proposeDraft={props.proposeDraft}
+            onProposeDraft={props.onProposeDraft}
+            persons={persons}
+            proposals={task.proposals}
+            envelope={task.envelope ?? null}
+            topUpNote={props.topUpNote}
+            onTopUpNote={props.onTopUpNote}
+            recordId={task.id}
+            revision={task.revision}
+          />
+        </div>
+        <aside className="tpg__side">
+          <Alerts alerts={task.alerts} />
+          {outages}
+        </aside>
       </div>
-      <aside className="tpg__side">
-        <Alerts alerts={task.alerts} />
-        {outages}
-      </aside>
     </div>
   );
 }

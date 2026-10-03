@@ -91,9 +91,11 @@ export async function readBusinessCapId(tx: TenantQuery): Promise<string | undef
   // on whichever was inserted first, and the fallback is the oldest rather
   // than an error: a business with exactly one cap under any key is the
   // ordinary case and refusing it would be refusing a correct installation.
+  // The `planning` cap is never a task's: it is AW-04's planning chat's own
+  // allowance, and its first reply writes it (`core-custody/src/broker-planning.ts`).
   const rows = await tx.query<{ readonly id: string }>(
     `select id from public.budget_caps
-      where business_id = $1
+      where business_id = $1 and key <> 'planning'
       order by (key = $2) desc, created_at
       limit 1`,
     [tx.businessId, LOCAL_CAP_KEY],

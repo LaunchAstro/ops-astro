@@ -65,9 +65,13 @@ describe('CQ-8 runtime structure', () => {
     const parts = sourceFiles(join(RUNTIME, 'recovery'));
     expect(parts.map((file) => relative(RUNTIME, file)).toSorted()).toEqual([
       'recovery/authority-loss.ts',
+      // AW-10: a broker call as its step's effect: the sweep's, the pass's and a person's half.
+      'recovery/broker-effect.ts',
       'recovery/classifier.ts',
       // T3e1: a drop, and the work coming back from it.
       'recovery/drop.ts',
+      // The effect register's lookup type, a leaf so broker-effect and reconcile import no cycle.
+      'recovery/effect-lookup.ts',
       'recovery/lease-retirement.ts',
       // T3d1: a person's recorded outcome, and the pass's reconciliation phase.
       // T3e2: one report per outage.
@@ -110,7 +114,10 @@ describe('CQ-8 runtime structure', () => {
       // C59: a login's one wrong-code lock, keyed by its subject's digest in
       // every business, taken first in a factor route's check transaction.
       'packages/core-commands/src/commands/account-factor-checks.ts',
+      'packages/core-commands/src/commands/conversation-lifecycle.ts',
+      'packages/core-commands/src/commands/occurrence-run.ts',
       'packages/core-commands/src/commands/prepare.ts',
+      'packages/core-custody/src/broker-reserve.ts',
       // C32: the business's one access lock, taken first by every change to
       // who may do what (a grant given, a grant revoked, access ended),
       // inside the handler's transaction.
@@ -125,6 +132,7 @@ describe('CQ-8 runtime structure', () => {
       'packages/core-records/src/operations/overseas-services.ts',
       'packages/core-records/src/tasks/placement.ts',
       'packages/core-records/src/tenancy/database.ts',
+      'packages/core-records/src/tenancy/limit.ts',
       'packages/core-runtime/src/locks.ts',
     ]);
   });

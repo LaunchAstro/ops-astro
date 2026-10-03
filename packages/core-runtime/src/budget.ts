@@ -12,7 +12,6 @@
 // the wrong one raises the wrong ceiling.
 
 import {
-  readBusinessSetting,
   refuseCommand,
   type CommandRefusal,
   type RefusalCode,
@@ -21,8 +20,8 @@ import {
 } from '../../core-records/src/index.ts';
 import { lockedInstant } from './clock.ts';
 import { acquire } from './locks.ts';
-import { AffectedSetChanged } from './rediscovery.ts';
 import { checkAuthorityAt, holdCoveringGrants } from './recovery/classifier.ts';
+import { fourEyesBandMinor, holdFirstApprovers, pairFor } from './four-eyes.ts';
 import { raiseAlert } from './alerts.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
 
@@ -341,28 +340,26 @@ export async function topUp(tx: TenantQuery, request: TopUpRequest): Promise<Top
   const ceiling = capVerdict({ cap, capId: envelope.capId, wanted, currency: envelope.currency });
   if (ceiling !== null) return ceiling;
 
-  // Null is the band switched off; a business with no row has the shipped 500.
-  const row = await readBusinessSetting(tx, 'four_eyes_threshold');
-  const band = row === undefined ? 500 : row.value;
-  const pairs = typeof band === 'number' && request.amountMinor > BigInt(Math.round(band * 100));
-  // Under the locks: the first approvals of exactly this figure, so one that
-  // committed after discovery counts. Its holder's grants are held without
-  // waiting on a grant row under runtime locks; rows discovery
-  // already holds come back at once.
+  // The one four-eyes rule (`four-eyes.ts`): the band read under these locks,
+  // and the first approvals of exactly this figure, so one that committed
+  // after discovery counts. Its holder's grants are held without waiting on a
+  // grant row under runtime locks; rows discovery already holds come back at
+  // once.
+  const band = await fourEyesBandMinor(tx, envelope.currency);
+  const pairs = band !== null && request.amountMinor > band;
   const firsts = pairs ? await approvers(tx, FIRST_APPROVALS, [envelope.id, figure]) : [];
-  if (firsts.length > 0) await holdWithoutWaiting(tx, firsts, request.collection);
-  const others = firsts.filter((first) => first.personId !== request.personId);
-  const live = await Promise.all(others.map(async (one) => (await holds(one.subjects)) && one));
-  const pair = live.find((one) => one !== false);
-  const by = [...(pair === undefined ? [] : [pair.personId]), request.personId];
-  if (pair === undefined && firsts.length > others.length) {
+  await holdFirstApprovers(tx, firsts, request.collection, 'top-up');
+  const paired = await pairFor(request.amountMinor, band, request.personId, firsts, holds);
+  if (paired === 'own') {
     return refused('FOUR_EYES_REQUIRED', 'you gave the first approval', 'Another holder approves.');
   }
+  const pair = paired ?? undefined;
+  const by = [...(pair === undefined ? [] : [pair.personId]), request.personId];
   const [plan] = pair === undefined ? await approvers(tx, PLAN_APPROVER, [request.taskId]) : [];
   if (plan !== undefined && plan.personId !== request.personId && (await holds(plan.subjects))) {
     return refused('SCOPE_NOT_GRANTED', "the plan's approver holds the grant", noGrant);
   }
-  if (pairs && pair === undefined) {
+  if (paired === undefined) {
     const state = 'awaiting_second_approver';
     return { ok: true, value: { ...figure, state, firstApproverPersonId: request.personId } };
   }
@@ -386,25 +383,6 @@ const FIRST_APPROVALS = `
      and pending.result -> 'detail' ->> 'fromMaximumMinor' = $3
      and pending.result -> 'detail' ->> 'amountMinor' = $4
    order by pending.created_at`;
-
-/** Contention on a late holder's grant rolls back into the entry's one retry. */
-async function holdWithoutWaiting(
-  tx: TenantQuery,
-  firsts: readonly { readonly subjects: readonly Subject[] }[],
-  collection: string,
-): Promise<void> {
-  try {
-    await holdCoveringGrants(
-      tx,
-      firsts.flatMap((first) => first.subjects),
-      collection,
-      'nowait',
-    );
-  } catch (cause) {
-    if ((cause as { readonly code?: unknown }).code !== '55P03') throw cause;
-    throw new AffectedSetChanged("top-up: a first approver's grant is being changed; retry");
-  }
-}
 
 /** Everyone with a first approval on this envelope, whatever its figure: the discovery set. */
 const ENVELOPE_APPROVERS = `

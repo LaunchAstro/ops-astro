@@ -40,14 +40,26 @@ const held = (role: string): readonly string[] =>
  * What each declaration asks the grant model about. `preset.plan` takes
  * `manage` on the family the request names (surface.ts), and the seeded
  * family is `task`. `session.capabilities` asks about nothing: it reports
- * what the caller holds; nor does `client.list` (C32), which answers the
- * clients the caller's grants reach.
+ * what the caller holds. `conversation.read` asks its own rule (the owner, or
+ * the read-any grant `conversation:read`, which no role holds on install), so
+ * its declared pair is deliberately seeded to nobody; `conversation.list`
+ * asks its own rule too (`conversation:write`, the caller's own only), and so
+ * does `conversation.allowance` (AW-04), the team's only;
+ * nor does `client.list` (C32), which answers the clients the caller's grants reach.
  */
+const NOT_SEEDED = new Set([
+  'session.capabilities',
+  'conversation.read',
+  'conversation.list',
+  'conversation.allowance',
+]);
 const ASKS_NOTHING: ReadonlySet<string> = new Set(['session.capabilities', 'client.list']);
+// A `self` row (the inbox) asks no grant either: it answers about the caller's own rows.
 const asked = COMMAND_SURFACE.filter(
   // The `self` operations ask about nothing either: the caller's own account
   // (C23) or own rows (the inbox), which every signed-in person holds.
-  (each) => !ASKS_NOTHING.has(each.name) && each.authorisedOn !== 'self',
+  (each) =>
+    !NOT_SEEDED.has(each.name) && !ASKS_NOTHING.has(each.name) && each.authorisedOn !== 'self',
 )
   .map((each) =>
     each.name === 'preset.plan' ? 'task:manage' : `${each.collection}:${each.action}`,
@@ -98,13 +110,15 @@ describe('the acceptance cast against the seed', () => {
     ]);
   });
 
-  it('gives the fixture admin every grant the seeded admin holds', () => {
+  it('gives the fixture admin every grant the seeded admin holds but run:write', () => {
     const cast = new Set([
       ...ADMIN_COLLECTIONS.flatMap((collection) =>
         ADMIN_ACTIONS.map((action) => `${collection}:${action}`),
       ),
       ...ADMIN_EXTRA_PAIRS.map(([collection, action]) => `${collection}:${action}`),
     ]);
-    expect(held('admin').filter((pair) => !cast.has(pair))).toStrictEqual([]);
+    // The one difference (ORCH38): a fixture admin holds no run, so its
+    // pickups mint the task delegation the agent suites pin.
+    expect(held('admin').filter((pair) => !cast.has(pair))).toStrictEqual(['run:write']);
   });
 });

@@ -6,10 +6,20 @@ import { MADE_UP_READS, madeUpAnswer, MOCKUP_TASK_KEY, TASKS } from './made-up-a
 
 // Reads no screen draws at the harness's addresses: the preset plan is the
 // command line's, the unattended list is the operations view's. No screen asks
-// the breach notice drafts (the command line's drill). Each is drawn "could not
-// be read" if asked. The task page's run has a receipt, so `task.receipt` is
-// drawn here, and the task's client field asks the client list.
-const NOT_DRAWN = new Set(['preset.plan', 'inbox.unattended', 'privacy.draft_breach_notices']);
+// the breach notice drafts (the command line's drill), nor an instruction
+// file's attribution yet (the command line and pre-review do). Each is drawn
+// "could not be read" if asked. The task page's run has a receipt, so
+// `task.receipt` is drawn here, and the task's client field asks the client list.
+const NOT_DRAWN = new Set([
+  'preset.plan',
+  'inbox.unattended',
+  'definition.attribution',
+  // AW-13 readers: no screen draws a trace yet.
+  'trace.read',
+  // AW-12: no screen draws the harness result in this piece.
+  'harness.read',
+  'privacy.draft_breach_notices',
+]);
 
 describe('the made-up reads the width-and-theme harness draws from', () => {
   it('answers a read at the path the app asks it on, with the made-up rows', () => {

@@ -34,6 +34,13 @@ const pendingGate = {
       payload: {},
       supersededAt: null,
       runId: null,
+      // Batch 3a's run facts (MP-6-1, MP-6-2): no run, so none.
+      startedAt: null,
+      endedAt: null,
+      tokenUnits: null,
+      pins: [],
+      reads: [],
+      checks: [],
       evidence: null,
       gate: {
         id: 'g1',
@@ -47,6 +54,7 @@ const pendingGate = {
   ],
   decisions: [],
   reservations: [],
+  scopes: [],
 };
 
 const liveLease = {

@@ -19,6 +19,7 @@ import {
   type Detail,
   type Schedules,
 } from './schedules-harness.ts';
+import { seedLaunch } from './launch-seed.ts';
 
 export interface Picked {
   readonly taskId: string;
@@ -39,6 +40,7 @@ export const work = async (on: Schedules, leaseSeconds = 600): Promise<Picked> =
   const proposal = appliedDetail(await asPerson(on, body), 'task.propose');
   const decision = await approve(on, proposal);
   const picked = await pickup(on, decision['reservationId'], leaseSeconds);
+  await seedLaunch(on, picked);
   return { taskId, decision, picked, credential: String(picked['credential']) };
 };
 

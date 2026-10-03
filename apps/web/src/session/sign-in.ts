@@ -68,11 +68,27 @@ export async function openSession(
       if (latest === mine) await toApi(request, SESSION_PATH, { authorization: bearer });
     })();
   }
-  const answer = await toApi(request, SESSION_PATH, { authorization: bearer });
+  return await tradeForCookie(request, result.token);
+}
+
+/** A provider token handed to the API for this tab's session cookie, and the id it named it. */
+export async function tradeForCookie(
+  route: ApiRoute,
+  token: string,
+): Promise<
+  | { readonly ok: true; readonly sessionId?: string }
+  | { readonly ok: false; readonly because: string }
+> {
+  const answer = await toApi(route, SESSION_PATH, { authorization: `Bearer ${token}` });
   if (answer === undefined) return { ok: false, because: 'The API did not accept the sign-in.' };
   const body: unknown = await answer.json().catch(() => {});
   const sessionId = (body as { session?: unknown } | undefined)?.session;
   return typeof sessionId === 'string' ? { ok: true, sessionId } : { ok: true };
+}
+
+/** The API clears the named sign-in's cookie and no other. */
+export async function endCookie(route: ApiRoute, sessionId: string): Promise<void> {
+  await toApi(route, `${SESSION_PATH}/end`, { [SESSION_HEADER]: sessionId });
 }
 
 export async function signIn(request: SignInRequest): Promise<SignInResult> {

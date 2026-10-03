@@ -21,6 +21,7 @@ import { createServer } from 'vite';
 import { launchChromium } from '../support/chromium.ts';
 import { load, openSide, shoot, type Catalogue, type Side } from './capture.ts';
 import { scrollMetrics } from './drift.ts';
+import { CONVERSATION_ID } from './made-up-agent.ts';
 import { answerMadeUp } from './made-up-api.ts';
 import { fetchAssets, MODE, readAssets, readPacket, type Packet, type Theme } from './packet.ts';
 import {
@@ -85,11 +86,27 @@ export async function withSignedInApp<T>(use: (at: SignedInApp) => Promise<T>): 
   }
 }
 
-/** The parameters a page's address is filled with: a made-up task, business and document. */
-export const MADE_UP_PARAMS = { key: 'T-1', business: 'alpha', document: 'privacy-policy' };
+/**
+ * The parameters a page's address is filled with: a made-up task, business,
+ * document and conversation (the made-up reads' own records).
+ */
+export const MADE_UP_PARAMS: Readonly<Record<string, string>> = {
+  key: 'T-1',
+  business: 'alpha',
+  document: 'privacy-policy',
+  conversation: CONVERSATION_ID,
+};
 
 /** A built page drawn at one width in one theme: `<page>@<width>-<theme>`. */
-export type BuiltPage = { id: string; name: string; width: number; theme: Theme; page: Page };
+export type BuiltPage = {
+  id: string;
+  name: string;
+  /** The address the page was loaded at, its route parameters filled from MADE_UP_PARAMS. */
+  address: string;
+  width: number;
+  theme: Theme;
+  page: Page;
+};
 
 /** The two sides of one width and theme: signed out and signed in. */
 export type Sides = { signedOut: Side; signedIn: Side };
@@ -140,9 +157,8 @@ export async function eachBuiltPage<T>(
           const side = needsSession(id) ? signedIn : signedOut;
           const address = addressOf(id, MADE_UP_PARAMS) ?? '/';
           const page = await loadNamed(side, packet, app, id, address);
-          out.push(
-            await visit({ id, name: `${id}@${String(width)}-${theme}`, width, theme, page }),
-          );
+          const name = `${id}@${String(width)}-${theme}`;
+          out.push(await visit({ id, name, address, width, theme, page }));
           await page.close();
         }
       } finally {

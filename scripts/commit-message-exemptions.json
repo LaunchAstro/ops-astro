@@ -51,6 +51,14 @@
     {
       "sha": "48da6f9c5419a592d63f0be7d509ca2107a833a7",
       "reason": "SL06-5's paused fork B: a 'wip' type commitlint refuses, pushed at the seat stop (ORCH47 00:32Z) and joined into slice/SL06 by bc2c180; kept in history because b0/SL08 and batch 2d hold it (SL06-7, 1 Oct 2026)"
+    },
+    {
+      "sha": "53429e2ff98acd5693ab43c8a2131ab0661e83a5",
+      "reason": "SL11's paused AW-04's planning allowance read: a 'wip' type commitlint refuses, pushed at the seat trim; kept in history because b0/SL11 and batch 3b hold it (BATCH3-INTEG-10, 2 Oct 2026)"
+    },
+    {
+      "sha": "b8b5ee6211ca58963390b1eb33e59e4c1d3dc0db",
+      "reason": "SL11's paused AW-08's part (b): a 'wip' type commitlint refuses, pushed at the seat trim; kept in history because b0/SL11 and batch 3b hold it (BATCH3-INTEG-10, 2 Oct 2026)"
     }
   ]
 }

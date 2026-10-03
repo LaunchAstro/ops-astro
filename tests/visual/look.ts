@@ -22,7 +22,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import type { Page } from 'playwright';
 import { launchChromium } from '../support/chromium.ts';
 import { load, MOCKUP_ORIGIN, openSide, type Side } from './capture.ts';
-import { madeUpSession, serveApp } from './app-pages.ts';
+import { MADE_UP_PARAMS, madeUpSession, serveApp } from './app-pages.ts';
 import { measure, type Measured } from './look-measure.ts';
 import { answerMadeUp } from './made-up-api.ts';
 import { LOOK_SCREENS, RULED_PAINT, type LookProbe, type LookScreen } from './look/index.ts';
@@ -218,7 +218,7 @@ async function checkAlike(
   const signedIn = target.path !== undefined || needsSession(target.page) ? { session } : {};
   const side = await openSide(browser, packet, width, { app, ...signedIn, colorScheme: theme });
   await answerMadeUp(side.context, target.reads);
-  const address = target.path ?? addressOf(target.page, { key: 'T-1' }) ?? '/';
+  const address = target.path ?? addressOf(target.page, MADE_UP_PARAMS) ?? '/';
   const probes = places.map((place) => place.probe);
   const got = await measureOn(side, new URL(address, app).href, probes, 'app');
   return places.map((place, at) => verdict(place, got[at] ?? null));

@@ -40,6 +40,17 @@ export const PROPOSAL = {
   step: { kind: 'synthetic_comment', payload: {} },
 } as const;
 
+/**
+ * The plan every accept case approves (AW-04): its words, its structured
+ * record and the instruction file in `tests/support/instruction-root`.
+ */
+export const ACCEPTED_PLAN = {
+  planText: 'Draft the reply. Ceiling: $30.00. Launch happens later, on the task.',
+  plan: { steps: [{ key: 'draft', title: 'Draft the reply', after: [] }] },
+  entryPath: 'skills/brief/SKILL.md',
+  paths: [],
+} as const;
+
 /** A proposal on `task`, answering with the lineage it opened. */
 /** A well-formed drill (C81), so a refusal is authority's and not the body's. */
 export const breachDrillBody = (): Record<string, unknown> => ({
@@ -75,6 +86,12 @@ export interface BodyContext {
   /** A person of this business, for the one field that must name one. */
   readonly assigneePersonId: string;
   asPerson(name: CommandName, body: Readonly<Record<string, unknown>>): Promise<Answer>;
+  /** The agent's own prefix, where a harness has one (`stopped-run.ts`). */
+  asAgent?(
+    name: CommandName,
+    body: Readonly<Record<string, unknown>>,
+    credential?: string,
+  ): Promise<Answer>;
   freshTask(title: string): Promise<Task>;
   /**
    * A task on a client with one person standing on it, which is what
@@ -88,6 +105,8 @@ export interface BodyContext {
   freshMember?(): Promise<string>;
   /** S0-5: a gate item's record removed by the owner, so the next record of it applies. */
   clearGateItem?(item: string): Promise<void>;
+  /** C81: the links to the published legal versions gate items 3 to 6 take (`legalEvidence`). */
+  legalEvidence?(): Promise<Readonly<Record<string, string>>>;
 }
 
 export const batchOf = (answer: Answer): string =>
@@ -149,6 +168,43 @@ async function ownPickup(context: BodyContext): Promise<Record<string, unknown>>
   return picked.body['detail'] as Record<string, unknown>;
 }
 
+/**
+ * AW-08: the person's own launch. Their plan's lease hands its output back as a
+ * successor, they accept it (the launch), and they pick the launch up: the one
+ * lease a dispatch releases an effect under.
+ */
+async function ownLaunchedPickup(context: BodyContext): Promise<Record<string, unknown>> {
+  const plan = await ownPickup(context);
+  const back = await context.asPerson('task.handback', {
+    leaseId: plan['leaseId'],
+    fence: plan['fence'],
+    outcome: 'completed',
+    report: { summary: 'the reviewed output' },
+    successor: PROPOSAL,
+  });
+  if (back.code !== 'ok') throw new Error(`matrix: handback refused ${back.code}`);
+  const handed = back.body['detail'] as Record<string, unknown>;
+  const launch = await context.asPerson('task.decide', {
+    gateId: handed['successorGateId'],
+    versionId: handed['successorVersionId'],
+    decision: 'approve',
+    note: 'launch the reviewed output',
+  });
+  if (launch.code !== 'ok') throw new Error(`matrix: launch refused ${launch.code}`);
+  const reservationId = (launch.body['detail'] as Record<string, unknown>)['reservationId'];
+  const picked = await context.asPerson('task.pickup', { reservationId });
+  if (picked.code !== 'ok') throw new Error(`matrix: launch pickup refused ${picked.code}`);
+  return picked.body['detail'] as Record<string, unknown>;
+}
+
+/** The person's launched lease (AW-08): what `task.dispatch` takes. */
+export async function ownLaunchedLease(
+  context: BodyContext,
+): Promise<{ leaseId: string; fence: number }> {
+  const detail = await ownLaunchedPickup(context);
+  return { leaseId: String(detail['leaseId']), fence: Number(detail['fence']) };
+}
+
 /** A lease the context's person holds: their own pickup of fresh approved work (EX-01). */
 export async function ownLease(context: BodyContext): Promise<{ leaseId: string; fence: number }> {
   const detail = await ownPickup(context);
@@ -170,7 +226,7 @@ export async function ownAppliedEffect(
 async function ownAppliedOnTask(
   context: BodyContext,
 ): Promise<{ leaseId: string; fence: number; attemptId: string; taskId: string }> {
-  const detail = await ownPickup(context);
+  const detail = await ownLaunchedPickup(context);
   const lease = { leaseId: String(detail['leaseId']), fence: Number(detail['fence']) };
   const attemptId = String(detail['attemptId']);
   const taskId = String(detail['taskId']);
@@ -205,4 +261,18 @@ export async function ownUnknownAttempt(context: BodyContext): Promise<Record<st
     throw new Error(`matrix: observe answered ${observed.code}, not the unknown hold`);
   }
   return { recordId: taskId, attemptId: applied.attemptId };
+}
+
+/**
+ * AW-11's hand-over, well formed, so what answers it is authority: its
+ * operands are read by type before the delegation, as a handback's are.
+ */
+export function childProbe(helperActorId: string): Readonly<Record<string, unknown>> {
+  return {
+    helperActorId,
+    purpose: 'a_helper',
+    collections: ['task'],
+    actions: ['read'],
+    expiresInSeconds: 60,
+  };
 }

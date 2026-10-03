@@ -7,7 +7,9 @@
 // is the one place its look is asserted, so two screens never share a list.
 
 import { ACCESS } from './access.ts';
+import { AGENT_PANE } from './agent-pane.ts';
 import { BOARD } from './board.ts';
+import { CONVERSATION } from './conversation.ts';
 import { CLIENTS } from './clients.ts';
 import { DOCK } from './dock.ts';
 import { FRAME } from './frame.ts';
@@ -47,4 +49,6 @@ export const LOOK_SCREENS: readonly LookScreen[] = [
   TEAM,
   WORKLOG,
   FRAME,
+  AGENT_PANE,
+  CONVERSATION,
 ];

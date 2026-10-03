@@ -484,6 +484,7 @@ async function attempt(
       outcome: 'applied',
       subjectRecordId: outcome.recordId,
       payloadDigest: digest,
+      originConversationId: outcome.originConversationId ?? null,
     });
     return handle;
   } catch (cause) {

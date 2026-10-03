@@ -9,37 +9,12 @@
 // things: `Refusal` is the authority check's, and the identity layer's is
 // `IdentityRefusal`.
 
-export {
-  configuredCredentialKeys,
-  DERIVED_SCHEME,
-  KEY_FILE_VARIABLE,
-  LEGACY_SCHEME,
-  withCredentialKeys,
-  type CredentialKeysDecision,
-  type DelegationCredentialKeys,
-} from './authority/credential-keys.ts';
-export {
-  CREDENTIAL_EXCLUDED_ACTIONS,
-  CREDENTIAL_MAX_DAYS,
-  deriveAgentCredential,
-  issueAgentCredential,
-  lockAgentCredential,
-  revokeAgentCredential,
-  type AgentCredential,
-  type CredentialKey,
-} from './authority/agent-credentials.ts';
-export {
-  credentialSubject,
-  isAgentCredentialForm,
-  isAgentCredentialLive,
-  recordCredentialRefusal,
-  resolveAgentCredential,
-  type CredentialStanding,
-} from './authority/agent-credential-standing.ts';
+export * from './authority/agent-credential-surface.ts';
 export { readEnvFile } from './env-file.ts';
 export {
   checkDelegatedAuthority,
   digestOf,
+  mintChildDelegation,
   mintDelegation,
   resolveDelegation,
   resolveHistoricalDelegation,
@@ -48,9 +23,11 @@ export {
   resolveSettledByLease,
   revokeDelegation,
   settleDelegation,
+  type ChildMintRequest,
   type Delegation,
   type DelegationRefusalCode,
   type MintedDelegation,
+  type PurposeScope,
 } from './authority/delegations.ts';
 export {
   checkAuthority,
@@ -69,6 +46,7 @@ export {
   type ScopeRequest,
   type Subject,
 } from './authority/grants.ts';
+export { coveredScopes } from './authority/covered-scopes.ts';
 export { heldScopes } from './authority/held-scopes.ts';
 export { heldPermissions, type HeldPermission } from './authority/held-permissions.ts';
 export {
@@ -163,11 +141,14 @@ export {
 } from './operations/breach-notices.ts';
 export {
   LEGAL_DOCUMENTS,
+  ONE_PAGE_WORDS,
   PUBLIC_LEGAL_DOCUMENTS,
   approveLegalVersion,
   draftLegalVersion,
+  legalVersionPath,
   publishLegalVersion,
   readPublishedLegal,
+  wordsIn,
   type DraftedVersion,
   type LegalDocument,
   type PublishedVersion,
@@ -288,7 +269,9 @@ export {
   type Database,
   type Listener,
   type TenantQuery,
+  type TransactionQuery,
 } from './tenancy/database.ts';
 export { isUuid } from './tenancy/ids.ts';
+export { hasRoom, type DurableLimit } from './tenancy/limit.ts';
 export { connectOutbox, type ApiEvent, type Outbox } from './tenancy/outbox.ts';
 export { loginLiveElsewhere } from './identity/shared-login.ts';

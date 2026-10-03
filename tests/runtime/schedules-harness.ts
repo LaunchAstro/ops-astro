@@ -56,7 +56,15 @@ export interface Schedules {
 export async function openSchedules(part: string, capLimitMinor: number): Promise<Schedules> {
   process.env['GATE_SIGNING_KEY_ID'] = `test/schedules-${part}@1`;
   process.env['GATE_SIGNING_SECRET'] = randomUUID();
-  const db = await createFreshDatabase({ part });
+  return await seedSchedules(await createFreshDatabase({ part }), part, capLimitMinor);
+}
+
+/** Another business on a database already open: a second tenant of the same installation. */
+export async function seedSchedules(
+  db: FreshDatabase,
+  part: string,
+  capLimitMinor: number,
+): Promise<Schedules> {
   const business = (await insertBusiness(db.app, `schedules-${part}`)) as BusinessId;
   await installSpine(db.app, business);
   const decider = await enrol(db.app, business, 'decider');
@@ -294,7 +302,7 @@ export async function envelopeHeld(s: Schedules, taskId: string): Promise<number
 }
 
 /** A promise the test resolves by hand, which is how a transaction is held open. */
-function barrier(): { readonly held: Promise<void>; readonly release: () => void } {
+export function barrier(): { readonly held: Promise<void>; readonly release: () => void } {
   let release!: () => void;
   const held = new Promise<void>((resolve) => {
     release = resolve;

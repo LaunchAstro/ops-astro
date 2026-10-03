@@ -24,6 +24,10 @@
 // (`register-unproduced.ts`) names them, so a later part closing one shows as a diff to
 // this file rather than as nothing at all.
 
+import { DEFINITION_ROWS } from './register-definitions.ts';
+import { EFFECT_ROWS } from './register-effects.ts';
+import { LAUNCH_ROWS } from './register-launch.ts';
+
 export type Visibility = 'caller' | 'audit';
 
 /**
@@ -63,7 +67,7 @@ interface Declared {
   readonly runtime?: true;
 }
 
-const ROWS = [
+const ROWS_HEAD = [
   // Identity, T1b. Not signed in, or signed in as nobody this business knows.
   {
     code: 'AUTH_UNKNOWN_LOGIN',
@@ -770,11 +774,9 @@ const ROWS = [
     source: 'L4 RUNTIME.md',
     runtime: true,
   },
-  // This and `CAP_BINDING_MISMATCH` are "something on this task has already been
-  // bound and does not match", not a malformed request: the lineage belongs to
-  // another task and the envelope draws on another cap or another currency. Re-
-  // reading the task and naming what it is actually bound to is the way forward,
-  // which is what a 409 tells a caller and a 422 would not.
+  // This and `CAP_BINDING_MISMATCH` are "something on this task is bound and
+  // does not match" (a lineage of another task, an envelope on another cap or
+  // currency), not a malformed request: re-reading the task is the way forward.
   {
     code: 'LINEAGE_NOT_ON_TASK',
     status: 409,
@@ -812,64 +814,25 @@ const ROWS = [
     source: 'L4 RUNTIME.md',
     runtime: true,
   },
-  // T2c1, the dispatch transaction's recheck of the effect-time facts
-  // (`core-runtime/src/dispatch.ts`). Each is 409: the call was well formed,
-  // and state moved under it, so nothing was dispatched.
-  {
-    code: 'AUTHORITY_LOST',
-    status: 409,
-    meaning: 'The authority behind the work was lost before its effect was dispatched',
-    source: 'T2 T2c1',
-    runtime: true,
-  },
-  {
-    code: 'DECISION_STALE',
-    status: 409,
-    meaning: 'The approval behind the work is no longer current, so its effect is not dispatched',
-    source: 'T2 T2c1',
-    runtime: true,
-  },
-  {
-    code: 'EFFECT_NOT_RECONCILABLE',
-    status: 409,
-    meaning: 'The effect can be neither replayed nor reconciled, and no gate accepts a duplicate',
-    source: 'T2 T2c1',
-    runtime: true,
-  },
-  // T2c2: an effect is applied only after its dispatch mark, and observed only
-  // once the operation register holds it (`core-runtime/src/observe.ts`).
-  {
-    code: 'EFFECT_NOT_DISPATCHED',
-    status: 409,
-    meaning: 'The attempt this effect names is not dispatched to this caller, so nothing applied',
-    source: 'T2 T2c2',
-  },
-  {
-    code: 'EFFECT_NOT_OBSERVED',
-    status: 409,
-    meaning:
-      'The operation register holds no applied effect for this attempt, so nothing is observed',
-    source: 'T2 T2c2',
-    runtime: true,
-  },
-  {
-    code: 'LIABILITY_NOT_UNKNOWN',
-    status: 409,
-    meaning: 'The attempt is not held as an unknown liability, so there is no outcome to record',
-    source: 'T3 T3d1',
-    runtime: true,
-  },
 ] as const;
 
+// AW-02's and AW-01 J's definition codes sit here, in `register-definitions.ts`; the
+// effect and broker codes follow them, in `register-effects.ts`.
+
 /** Every registered code. Declared by the rows above and nowhere else. */
-export type RefusalCode = (typeof ROWS)[number]['code'];
+/** Every row, in register order: the head, the definition codes, the effect codes, the launch. */
+type Row = (
+  typeof ROWS_HEAD | typeof DEFINITION_ROWS | typeof EFFECT_ROWS | typeof LAUNCH_ROWS
+)[number];
+
+export type RefusalCode = Row['code'];
 
 /**
  * The codes `core-runtime` returns as its own (`core-runtime/src/refusals.ts`).
  * A narrow union for that module's own types, taken from the rows marked
  * `runtime` rather than spelled a second time there.
  */
-export type RuntimeRefusalCode = Extract<(typeof ROWS)[number], { readonly runtime: true }>['code'];
+export type RuntimeRefusalCode = Extract<Row, { readonly runtime: true }>['code'];
 
 export interface RegisterEntry {
   readonly code: RefusalCode;
@@ -885,16 +848,19 @@ export interface RegisterEntry {
   readonly runtime: boolean;
 }
 
-export const REFUSAL_REGISTER: readonly RegisterEntry[] = ROWS.map(
-  (row: Declared & { readonly code: RefusalCode }) => ({
-    code: row.code,
-    status: row.status,
-    visibility: row.visibility ?? 'caller',
-    meaning: row.meaning,
-    source: row.source,
-    runtime: row.runtime ?? false,
-  }),
-);
+export const REFUSAL_REGISTER: readonly RegisterEntry[] = [
+  ...ROWS_HEAD,
+  ...DEFINITION_ROWS,
+  ...EFFECT_ROWS,
+  ...LAUNCH_ROWS,
+].map((row: Declared & { readonly code: RefusalCode }) => ({
+  code: row.code,
+  status: row.status,
+  visibility: row.visibility ?? 'caller',
+  meaning: row.meaning,
+  source: row.source,
+  runtime: row.runtime ?? false,
+}));
 
 const BY_CODE = new Map(REFUSAL_REGISTER.map((row) => [row.code, row]));
 

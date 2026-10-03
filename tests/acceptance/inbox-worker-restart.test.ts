@@ -24,6 +24,20 @@ describe.skipIf(!PROOFS_ASKED)('INB-1 the inbox reads back after the worker rest
   const inbox = async (): Promise<readonly Entry[]> =>
     (await p.asAda('inbox.read', {}))['inbox'] as Entry[];
 
+  /** Whether the launch's lease is still live (AW-08); the plan's ended at its hand-back. */
+  const launchLeaseLive = async (taskId: string): Promise<boolean> =>
+    (
+      await p.admin.execute(
+        `select 1 from public.leases l
+           join public.reservations res
+             on res.business_id = l.business_id and res.id = l.reservation_id
+           join public.reviewed_outputs ro
+             on ro.business_id = res.business_id and ro.version_id = res.version_id
+          where l.business_id = $1 and l.task_id = $2 and l.expires_at > now()`,
+        [p.world.alpha, taskId],
+      )
+    ).length > 0;
+
   beforeAll(async () => {
     p = await openProofWorld('inb1_worker');
   }, 120_000);
@@ -44,17 +58,7 @@ describe.skipIf(!PROOFS_ASKED)('INB-1 the inbox reads back after the worker rest
     expect(await inbox()).toStrictEqual(before);
 
     // Once the 20 s lease has run out, a replacement carries the run through.
-    await until(
-      async () =>
-        (
-          await p.admin.execute(
-            `select 1 from public.leases
-              where business_id = $1 and task_id = $2 and expires_at > now()`,
-            [p.world.alpha, w.taskId],
-          )
-        ).length === 0,
-      60_000,
-    );
+    await until(async () => !(await launchLeaseLive(w.taskId)), 60_000);
     const second = p.worker(w, 'none', 'inb1-worker-b', 20);
     expect(await second.exited()).toBeNull();
 

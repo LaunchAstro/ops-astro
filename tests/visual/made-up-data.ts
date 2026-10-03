@@ -1,47 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The made-up agent work behind the harness's answers (made-up-api.ts): the
-// task's proposal at an armed gate, its run and the run's receipt. The task
-// rows themselves are in made-up-rows.ts. Every name is made up. Test side only.
+// run and the run's receipt. The task's proposals at an armed gate and its
+// ledger are in made-up-agent.ts, and the task rows themselves in
+// made-up-rows.ts. Every name is made up. Test side only.
 
-import type {
-  ProposalView,
-  ReceiptResult,
-  TaskExecutionResult,
-} from '../../packages/core-wire/src/index.ts';
-
-// One proposal whose newest version waits at an armed gate, so the task page
-// draws the mockup's gate box (states.json `gate`). The gate's deadline sits
-// after the harness clock, so it reads pending and the controls are offered.
-const DIGEST = 'sha256:7c41e8f9a2d6b3915e0c47a8fd23b6c1e94a7f80d5b2c6e31a94f7d2b8c05e4a2';
-export const PROPOSAL: ProposalView = {
-  lineageId: 'l-1',
-  state: 'live',
-  versions: [
-    {
-      versionId: 'v-2',
-      version: 2,
-      purpose: 'contract_review_pack',
-      maximumMinor: 12_000,
-      currency: 'AUD',
-      payloadDigest: DIGEST,
-      payload: { pack: 'Signed scope, two variations and the renewal terms, in one PDF.' },
-      supersededAt: null,
-      runId: null,
-      evidence: null,
-      gate: {
-        id: 'g-2',
-        state: 'pending',
-        round: 1,
-        expiresAt: '2026-10-03T00:00:00.000Z',
-        expired: false,
-        payloadDigest: DIGEST,
-      },
-    },
-  ],
-  decisions: [],
-  reservations: [],
-};
+import type { ReceiptResult, TaskExecutionResult } from '../../packages/core-wire/src/index.ts';
 
 // An earlier version of the same lineage was approved and ran: one run whose
 // attempt has a receipt, so the Agent perspective draws the mockup's receipt
@@ -79,6 +43,7 @@ export const EXECUTION: TaskExecutionResult = {
     ],
     complete: true,
     next: null,
+    graph: { plan: 'unbound', sourceRevision: 1, complete: true, nodes: [] },
   },
 };
 

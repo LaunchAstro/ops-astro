@@ -1,7 +1,7 @@
 {
   "rules": {
     "eslint(max-classes-per-file)": 1,
-    "eslint(max-lines-per-function)": 621,
+    "eslint(max-lines-per-function)": 620,
     "eslint(max-lines)": 149,
     "eslint(no-inline-comments)": 17,
     "eslint(no-loop-func)": 34,

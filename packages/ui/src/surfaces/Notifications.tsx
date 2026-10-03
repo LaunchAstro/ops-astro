@@ -10,6 +10,7 @@
 
 import { useState, type ReactElement } from 'react';
 import { Empty } from '../primitives/Absence.tsx';
+import { Icon, type GlyphName } from '../primitives/Icon.tsx';
 import { TabPanel, TabStrip } from '../primitives/Tabs.tsx';
 import { follow, type OpenHow } from './gesture.ts';
 import {
@@ -58,6 +59,30 @@ const BAND_HEAD: Readonly<Record<Exclude<InboxBand, 'done'>, string>> = {
   fyi: 'No response needed',
 };
 
+/**
+ * The kind mark, the row's first column (the mockup's `KIND_MARK`), and its
+ * axis: a teammate's doing in the second ink, progress muted, the rest faint.
+ */
+type Mark = readonly [glyph: GlyphName | '@', axis: 'client' | 'team' | 'progress'];
+const MARK: Readonly<Record<InboxItem['reason'], Mark>> = {
+  decision: ['check', 'client'],
+  waiting_run: ['clock', 'client'],
+  run_finished: ['check', 'progress'],
+  assignment: ['user', 'team'],
+  mention: ['@', 'team'],
+  incident: ['bolt', 'client'],
+  client_comment: ['comment-alt', 'client'],
+};
+
+function KindMark(props: { readonly reason: InboxItem['reason'] }): ReactElement {
+  const [glyph, axis] = MARK[props.reason];
+  return (
+    <span className={`nt__mark nt__mark--${axis}`} aria-hidden="true">
+      {glyph === '@' ? <span className="nt__at">@</span> : <Icon name={glyph} size="sm" />}
+    </span>
+  );
+}
+
 const when = new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'short' });
 
 function Row(props: { readonly item: DrawnItem; readonly list: NotificationsProps }): ReactElement {
@@ -73,6 +98,7 @@ function Row(props: { readonly item: DrawnItem; readonly list: NotificationsProp
         });
       }}
     >
+      <KindMark reason={item.reason} />
       <span className="nt__body">
         <span className="nt__text">{item.task.title ?? item.task.key}</span>
         <span className="nt__meta">
@@ -159,9 +185,9 @@ function Group(props: {
   );
 }
 
-/** A tab's figure, drawn only when there is something to count. */
+/** A tab's figure, plain muted text, drawn only when there is something to count. */
 const badge = (count: number): ReactElement | null =>
-  count > 0 ? <span className="cbadge">{count}</span> : null;
+  count > 0 ? <span className="cbadge cbadge--plain">{count}</span> : null;
 
 interface Pane {
   readonly tab: (typeof TABS)[number];

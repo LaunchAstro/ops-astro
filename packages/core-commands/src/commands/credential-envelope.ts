@@ -24,8 +24,9 @@
 // row. So `task.create`, under the ticked `task:write`, and
 // `session.capabilities`, whose answer is the ticked keys the person's grants
 // still cover (`readCapabilities` asks within them) and the agent actor as the
-// acting identity. Anything else is refused `DELEGATION_EXCLUDES_OPERATION`,
-// recorded against the agent.
+// acting identity. `run.revise_state` is excluded by name (`OUTSIDE_REACH`).
+// Anything else is refused `DELEGATION_EXCLUDES_OPERATION`, recorded against
+// the agent.
 
 import {
   isAgentCredentialLive,
@@ -54,11 +55,20 @@ import {
 import type { CommandResult } from './register-store.ts';
 import type { UncheckedRequest } from './requests.ts';
 
+/** Rows the rule below would admit that a credential still never reaches. */
+const OUTSIDE_REACH: ReadonlySet<CommandName> = new Set<CommandName>([
+  // A run's state is revised only inside a run's delegation; refused until proved (ORCH60).
+  'run.revise_state',
+]);
+
 /** The rows an agent credential's call may reach. */
 export const CREDENTIAL_REACH: ReadonlySet<CommandName> = new Set(
   COMMAND_SURFACE.filter(
     (row) =>
-      row.agent === 'delegated' && row.authorisedOn !== 'claim' && !profileOf(row).personOnly,
+      row.agent === 'delegated' &&
+      row.authorisedOn !== 'claim' &&
+      !profileOf(row).personOnly &&
+      !OUTSIDE_REACH.has(row.name),
   ).map((row) => row.name),
 );
 

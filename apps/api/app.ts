@@ -84,6 +84,7 @@ import type {
   AdmissionAt,
 } from '../../packages/core-commands/src/index.ts';
 import type { Verifier } from './auth/supabase.ts';
+import { executorFor, replyTo, type AgentAnswerOptions } from './agent-answers.ts';
 import { presentedBy } from './auth/agent-bearer.ts';
 import type { SSEStreamingApi } from 'hono/streaming';
 import type { LiveSignal, LiveTopics } from './live.ts';
@@ -131,7 +132,7 @@ import {
  */
 export type ReadExecutor = typeof executeRead;
 
-export interface ApiOptions {
+export interface ApiOptions extends AgentAnswerOptions {
   readonly database: Database;
   /**
    * Trusted authentication. It reads the request and returns the subject a
@@ -463,7 +464,8 @@ export function createApi(options: ApiOptions): Hono {
         await settleAccessEndings(options.database, businessId, logins, { only, sharedElsewhere });
       }
     }
-    return context.json({ ...result }, 200);
+    const reply = await replyTo(options, businessId, presented, result);
+    return context.json({ ...result, ...(reply === null ? {} : { reply }) }, 200);
   });
 
   // The second entry point. Same surface table, same paths, a different
@@ -492,7 +494,8 @@ export function createApi(options: ApiOptions): Hono {
       // operation run. `operationId` is passed as the JSON carried it, absent
       // included: the envelope asks `typeof` itself and refuses anything that
       // is not a string, so the rule lives in one place.
-      const result = await agentExecutor(
+      const execute = executorFor(declaration.name, options, agentExecutor);
+      const result = await execute(
         options.database,
         businessId,
         presented,

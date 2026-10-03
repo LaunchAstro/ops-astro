@@ -25,17 +25,15 @@
 import { revokeDelegation } from '../../../core-records/src/index.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
 import { settleAtObserved, type Settlement } from '../budget.ts';
+import { remainingOf, stopAtSpentHold } from '../budget-stop.ts';
 import { reserve } from '../decide.ts';
 import type { LockRequest } from '../locks.ts';
 import { priceAttempt } from '../price-book.ts';
 import { lockRediscovered } from '../rediscovery.ts';
+import type { EffectLookup } from './effect-lookup.ts';
 import { markCameBack } from './outage.ts';
 
-/** The register's answer for one unknown step: true, false, or `undefined` when it cannot answer. */
-export type EffectLookup = (
-  tx: TenantQuery,
-  step: { readonly attemptId: string; readonly holderActorId: string; readonly stepKind: string },
-) => Promise<boolean | undefined>;
+export type { EffectLookup } from './effect-lookup.ts';
 
 export interface Reconciled {
   readonly attemptId: string;
@@ -58,6 +56,8 @@ export interface Unknown {
   readonly holder_actor_id: string | null;
   readonly step_kind: string;
   readonly held_minor: string;
+  /** What the hold settled at from its model calls, `0` while it is held (AW-01). */
+  readonly spent_minor: string;
   readonly price_book: string;
   readonly currency: string;
   readonly attempt_state: string;
@@ -69,7 +69,8 @@ export interface Unknown {
 export const UNKNOWN_SELECT = `select att.id as attempt_id, res.id as reservation_id, res.envelope_id, env.cap_id,
             run.task_id, run.id as run_id, att.step_id, run.lineage_id, res.version_id,
             l.id as lease_id, l.delegation_id, l.holder_actor_id, step.kind as step_kind,
-            res.held_minor::text as held_minor, att.price_book, env.currency,
+            res.held_minor::text as held_minor,
+            coalesce(res.actual_minor, 0)::text as spent_minor, att.price_book, env.currency,
             att.state as attempt_state, res.state as reservation_state,
             (res.absence_proved_at is not null) as absence_proved,
             (g.state = 'approved' and ver.superseded_at is null and lin.state = 'live')
@@ -202,10 +203,12 @@ export const settle = async (
 
 /**
  * The step again, as a new attempt on its own hold, on the still-approved
- * version. `keep` marks the old hold absence-proved first, so it stays held
- * beside the replacement (0037); a hold a person has just settled needs no
- * mark. A replacement the envelope or cap has no room for, or whose approval
- * moved, is not reserved, and the step keeps its stop (the savepoint takes the
+ * version, holding what the old hold had not spent: a hold settled at its
+ * model calls' cost is never held again in full (AW-01). `keep` marks the old
+ * hold absence-proved first, so it stays held beside the replacement (0037);
+ * a hold a person has just settled needs no mark. Nothing left to hold stops
+ * the run at its budget and asks (AW-05). A replacement the envelope or cap
+ * has no room for, or whose approval moved, is not reserved, and the step keeps its stop (the savepoint takes the
  * mark back with it, so the next pass asks again). `actorId` is the person whose
  * recorded outcome resumed it, whom the clear of the old identity's agent from
  * the task names; null on the pass's own paths, which no person ran.
@@ -217,6 +220,18 @@ export async function resume(
   actorId: string | null = null,
 ): Promise<string> {
   if (!row.approval_current) return 'not resumed: the approval behind it is no longer current';
+  const heldMinor = BigInt(row.held_minor) - BigInt(row.spent_minor);
+  // AW-05: nothing left to hold stops the run at its budget and asks a person.
+  if (heldMinor <= 0n) {
+    const words = await stopAtSpentHold(tx, {
+      runId: row.run_id,
+      reservationId: row.reservation_id,
+      versionId: row.version_id,
+      delegationId: row.delegation_id,
+      remaining: await remainingOf(tx, row.reservation_id),
+    });
+    return `not resumed: its model calls spent the whole approved hold. ${words}`;
+  }
   await tx.query('savepoint t3d1_resume');
   if (keep) {
     await tx.query(
@@ -230,7 +245,7 @@ export async function resume(
     versionId: row.version_id,
     runId: row.run_id,
     stepId: row.step_id,
-    heldMinor: BigInt(row.held_minor),
+    heldMinor,
   });
   if (!replaced.ok) {
     await tx.query('rollback to savepoint t3d1_resume');

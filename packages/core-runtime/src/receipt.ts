@@ -11,6 +11,8 @@
 // operation: nothing on it undoes the effect. T2d: it names the settlement,
 // read from the settled attempt and its reservation: the amount held, spent
 // and released, or the hold alone while it is unpriced or an unknown liability.
+// AW-08: `link` is the receipt link captured when the effect was observed, or
+// null when none was kept (`receipt-link.ts`); a reader renders null as text.
 
 import type { TenantQuery } from '../../core-records/src/index.ts';
 import type { Settlement } from './budget.ts';
@@ -25,6 +27,7 @@ export interface Receipt {
     readonly decidedAt: string;
   };
   readonly version: { readonly id: string; readonly number: number };
+  readonly link: string | null;
   readonly effect: {
     readonly kind: string;
     readonly operationId: string;
@@ -60,6 +63,7 @@ export async function readReceipt(
                 'decidedByPersonId', d.decided_by_person_id,
                 'decidedAt', to_char(d.decided_at at time zone 'utc', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')),
               'version', json_build_object('id', ver.id, 'number', ver.version),
+              'link', att.receipt_link,
               'effect', json_build_object('kind', step.kind, 'operationId', o.operation_id,
                 'commentId', c.id, 'audience', c.data ->> 'audience'),
               'settlement', case when att.state = 'settled'

@@ -22,6 +22,9 @@ import { overflowOf } from '../visual/report.ts';
 type PageCensus = {
   /** `<page>@<width>-<theme>`. */
   name: string;
+  /** The address the page was loaded at, and the one it drew at once it settled. */
+  address: string;
+  landed: string;
   /** Which screen was drawn: the page itself, or sign-in for the public page. */
   drew: string;
   sideways: number;
@@ -109,7 +112,7 @@ function matchStyles(
   names: string[],
   looks: Look[],
   drawn: Drawn[],
-): Omit<PageCensus, 'name' | 'drew' | 'sideways'> {
+): Omit<PageCensus, 'name' | 'address' | 'landed' | 'drew' | 'sideways'> {
   const styles: Record<string, number> = {};
   const exceptions: Record<string, number> = {};
   const strays: string[] = [];
@@ -128,14 +131,15 @@ function matchStyles(
 async function measure(
   page: Page,
   given: { names: string[]; exceptions: string[] },
-): Promise<Omit<PageCensus, 'name'>> {
+): Promise<Omit<PageCensus, 'name' | 'address'>> {
   // Served from source, the sheets arrive as modules: measure once none is in flight.
   await page.waitForLoadState('networkidle');
+  const landed = new URL(page.url()).pathname;
   const drew = await page.evaluate(screenOf);
   const sideways = overflowOf(await page.evaluate(scrollMetrics));
   const looks = await page.evaluate(looksOfStyles, given.names);
   const drawn = await page.evaluate(drawnText, given.exceptions);
-  return { drew, sideways, ...matchStyles(given.names, looks, drawn) };
+  return { landed, drew, sideways, ...matchStyles(given.names, looks, drawn) };
 }
 
 /** The census over every built page at each width in each theme. */
@@ -146,8 +150,9 @@ export function pageCensus(given: {
   return withSignedInApp((at) =>
     eachBuiltPage(
       { ...at, widths: WIDTHS, themes: themesOf(at.packet) },
-      async ({ name, page }) => ({
+      async ({ name, address, page }) => ({
         name,
+        address,
         ...(await measure(page, given)),
       }),
     ),

@@ -23,6 +23,7 @@ import {
   type Schedules,
 } from './schedules-harness.ts';
 import { cq8World as sharedWorld, type Party } from './cq-8-world.ts';
+import { seedLaunch } from './launch-seed.ts';
 
 /**
  * The shared world, except that a new business also opens a populated
@@ -96,6 +97,7 @@ export function t2dHarness(get: () => Schedules): T2dHarness {
     const proposal = appliedDetail(await asPerson(get(), body), 'task.propose');
     const decision = await approve(get(), proposal);
     const picked = await pickup(get(), decision['reservationId']);
+    await seedLaunch(get(), picked);
     return {
       taskId,
       proposal,

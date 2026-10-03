@@ -32,7 +32,10 @@
 // *unavailable* one leaves them open, because nobody decided anything.
 //
 // The rules are in `settings/use-settings.ts` and the states this screen can be
-// in are drawn by `settings/panels.tsx`. What is left here is the form.
+// in are drawn by `settings/panels.tsx`. What is left here is the form. The AI
+// planning budget below them is not a setting: it is the business's planning
+// cap, moved by its own command under `billing:decide`
+// (`settings/planning-cap.tsx`).
 
 import { useState, type ReactElement } from 'react';
 import { Empty } from '@launchastro/ui';
@@ -45,6 +48,7 @@ import {
   ReadBanner,
   Written,
 } from './settings/panels.tsx';
+import { PlanningCapSection } from './settings/planning-cap.tsx';
 import { useSettings, type StorageLike, type Which } from './settings/use-settings.ts';
 import { WindowRow } from './settings/windows.tsx';
 
@@ -262,6 +266,13 @@ export function SettingsScreen(props: SettingsScreenProps): ReactElement {
           <WindowRow which="retention" model={model} conflict={conflictFor('retention')} />
         </div>
       </section>
+
+      <PlanningCapSection
+        client={props.client}
+        read={model.read}
+        capabilities={model.capabilities}
+        reload={model.reload}
+      />
     </div>
   );
 }

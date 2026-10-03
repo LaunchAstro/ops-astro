@@ -114,9 +114,10 @@ by design: write `2 findings, 2 closed` or `no findings`, and put the rest on
 the next line.
 
 GitHub's _update branch_ button writes a merge commit carrying no trailers,
-which fails `commit messages and provenance`. Because
-`strict_required_status_checks_policy` is on, a branch must be up to date
-with its base before it can merge, so do that update locally and push it.
+which fails `commit messages and provenance`. A branch need not be up to date
+with its base to merge: `strict_required_status_checks_policy` is off and the
+merge queue tests each pull request on top of `main`. When a branch does need
+its base, for a conflict, merge it locally and push.
 
 A conformance proof is a separate condition. For changes to the domain
 model, tenancy wrapper, queue and delivery contracts, gate engine, credential

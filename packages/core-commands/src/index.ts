@@ -11,6 +11,12 @@
 export { type AgentRequest } from './commands/agent-call.ts';
 export { agentAnswer, executeAgentCommand } from './commands/agent-envelope.ts';
 export {
+  conversationExchange,
+  type Asked,
+  type ConversationExchange,
+  type ConversationReply,
+} from './commands/conversation-exchange.ts';
+export {
   CREDENTIAL_REACH,
   credentialNotLive,
   executeCredentialCommand,
@@ -19,6 +25,19 @@ export {
 } from './commands/credential-envelope.ts';
 export { describeFault, executeCommand } from './commands/envelope.ts';
 export { setOwnAvailability } from './commands/availability.ts';
+export {
+  callerAudit,
+  modelCallExecutor,
+  type ModelBroker,
+  type ModelCallExecutor,
+} from './commands/model-call.ts';
+// AW-01 J: the worker's occurrence path, never a command (no API route, no CLI).
+export {
+  startOccurrenceRun,
+  type OccurrenceAuthority,
+  type OccurrenceRun,
+  type ReadOccurrenceAuthority,
+} from './commands/occurrence-run.ts';
 export {
   GATE_ITEMS,
   gateDecision,
@@ -44,6 +63,7 @@ export {
 } from './reads/execute.ts';
 export { boardReach, joinLiveBoard, shownInbox } from './reads/live-join.ts';
 export { isReadName } from './reads/catalogue.ts';
+export { readHarnessTrigger } from './reads/harness-trigger.ts';
 export {
   HEALTH_STALE_SECONDS,
   readServiceHealth,
@@ -53,6 +73,21 @@ export {
   type SourceAnswer,
 } from './reads/service-health.ts';
 export { type ReadRequest } from './reads/requests.ts';
+export {
+  purgeConversation,
+  writeWrapUp,
+  type PurgeOutcome,
+  type PurgeRefusalCode,
+  type PurgeRequest,
+  type WrapUpOutcome,
+  type WrapUpRequest,
+} from './commands/conversation-lifecycle.ts';
+export {
+  sweepConversations,
+  sweepPurgeOperationId,
+  type SweepReport,
+  type SweepRequest,
+} from './commands/conversation-sweep.ts';
 export {
   createRollupCache,
   readRollup,
