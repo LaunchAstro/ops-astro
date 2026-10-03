@@ -100,6 +100,14 @@
         "tests/ci/s0-3-unstarted-dump-stops.test.ts"
       ],
       "rules": { "no-inline-comments": "off" }
+    },
+    {
+      "files": [
+        "tests/review/ending-claim-per-row-proof.test.ts",
+        "tests/identity/ending-claim-and-shared-recheck-proof.test.ts",
+        "tests/authority/endings-once-exit-and-settings-proof.test.ts"
+      ],
+      "rules": { "max-lines-per-function": "off", "require-await": "off" }
     }
   ]
 }

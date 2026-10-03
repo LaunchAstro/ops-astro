@@ -113,3 +113,9 @@ tests/review/main-b1-p01-closed-tab-cookies-proof.test.ts
 # The condense pass's interim review proof (Opus, standing in for Sol), byte-for-byte apart from
 # its title, which names what it proves (tests/docs/test-files-by-behaviour.test.ts).
 tests/visual/coloured-summary-rejects-skipped-wrapper.test.ts
+# Sol's OW-008, OW-028 and OW-070 proofs (SOLOW-D D3), byte-for-byte as the review patches held
+# them apart from their titles, which name what they prove (tests/docs/test-files-by-behaviour.test.ts).
+tests/review/ending-claim-per-row-proof.test.ts
+tests/identity/ending-claim-and-shared-recheck-proof.test.ts
+tests/authority/endings-backlog-counts-claimed-proof.test.ts
+tests/authority/endings-once-exit-and-settings-proof.test.ts
