@@ -195,7 +195,7 @@ export function expectedOutcome(
   if (caller === 'login in the wrapper, own tenant') {
     return operation === 'select' ? `rows ${String(own)}` : 'past tenancy';
   }
-  if (operation === 'insert') return BEFORE_ROW_REFUSALS[table.qualified] ?? 'rls';
+  if (operation === 'insert') return beforeRowRefusal(table.qualified, at) ?? 'rls';
   return 'rows 0';
 }
 
@@ -209,6 +209,23 @@ export function expectedOutcome(
 export const BEFORE_ROW_REFUSALS: Readonly<Record<string, string>> = {
   'public.delegations': 'constraint',
 };
+
+/**
+ * The same, from the migration that adds the trigger on. 20261003001115
+ * (MP-6-2) refuses a new step holding `plan_record_written` false, so the bare
+ * insert, which names `business_id` alone, meets `check_violation` first.
+ */
+const BEFORE_ROW_REFUSALS_FROM: Readonly<
+  Record<string, { readonly from: string; readonly outcome: string }>
+> = {
+  'public.planned_steps': { from: '20261003001115', outcome: 'constraint' },
+};
+
+function beforeRowRefusal(qualified: string, at?: string): string | undefined {
+  const later = BEFORE_ROW_REFUSALS_FROM[qualified];
+  if (later !== undefined && (at === undefined || at >= later.from)) return later.outcome;
+  return BEFORE_ROW_REFUSALS[qualified];
+}
 
 /**
  * Which own row a table's copy case re-sends, where any row would not do.
