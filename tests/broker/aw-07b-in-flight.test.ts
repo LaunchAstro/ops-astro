@@ -126,12 +126,14 @@ it('AW-07b ceiling: a send racing an ask that takes the last room waits on the l
     taken();
     await released;
   });
+  // Awaited in the finally too, so a failed poll never leaves the send running past the case.
+  let racing: Promise<unknown> = Promise.resolve();
   try {
     // The holder's own failure ends the wait, rather than leaving it to the test timeout.
     await Promise.race([roomTaken, holding]);
     const held = await itemFor(w.task, 'decision');
     let settled = false;
-    const racing = atOnce(held).finally(() => (settled = true));
+    racing = atOnce(held).finally(() => (settled = true));
     // It reads the count only under the ceiling's lock, so it waits for the holder.
     await expect.poll(waitingOnLock, { timeout: 5000 }).toBe(1);
     expect(settled).toBe(false);
@@ -142,6 +144,7 @@ it('AW-07b ceiling: a send racing an ask that takes the last room waits on the l
   } finally {
     release();
     await holding.catch(() => {});
+    await racing.catch(() => {});
     await holder.close();
   }
 });
