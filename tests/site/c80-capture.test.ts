@@ -66,7 +66,7 @@ describe('C80 one word only (the fenced capture it compares)', () => {
     const result = await capturePage(ABOUT, { pool: POOL, resolve: publicResolver, transport });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value.text).toBe('We walk alongside you & your team.&#99999999;');
+    expect(result.value.text).toBe('We walk alongside you & your team.\uFFFD');
     expect(result.value.documentDigest).toMatch(/^sha256:[0-9a-f]{64}$/u);
     expect(Object.keys(result.value.stylesheets)).toEqual([
       'https://www.example.com/_astro/extra.css',
@@ -154,7 +154,7 @@ describe('C80 the fenced capture: a page that never closes', () => {
     ['links', '<link ', ''],
     ['tags', '<a ', ''],
   ])(
-    'refuses a page whose %s never close as malformed, without scanning it opener by opener',
+    'reads a page whose %s never close as a browser does, without scanning it opener by opener',
     async (_name, opener, tail) => {
       const body = `<p>x</p>${opener.repeat(Math.floor((256 * 1024) / opener.length))}${tail}`;
       const started = performance.now();
@@ -163,7 +163,7 @@ describe('C80 the fenced capture: a page that never closes', () => {
         resolve: publicResolver,
         transport: site({ [ABOUT]: answer('text/html', body) }),
       });
-      expect(result).toMatchObject({ ok: false, code: 'CAPTURE_BODY_MALFORMED' });
+      expect(result).toMatchObject({ ok: true });
       expect(performance.now() - started).toBeLessThan(1000);
     },
   );
@@ -267,9 +267,9 @@ describe('C80 the fenced capture reads a page as a browser does', () => {
     if (result.ok) expect(Object.keys(result.value.stylesheets)).toEqual(sheets);
   });
 
-  it('refuses a stylesheet address holding a named reference it cannot read', async () => {
+  it('reads a stylesheet address holding any named reference as a browser does', async () => {
     const result = await captured('<link rel=stylesheet href="/evil&period;css"><p>x</p>');
-    expect(result).toEqual({ ok: false, code: 'CAPTURE_BODY_MALFORMED' });
+    expect(result.ok && Object.keys(result.value.stylesheets)).toEqual([EVIL]);
   });
 
   it('captures two spellings a browser shows differently as different text', async () => {
