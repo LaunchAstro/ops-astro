@@ -18,7 +18,7 @@ import { createTask, openSchedules } from '../runtime/schedules-harness.ts';
 import { authorised, tokenFor, ISSUER } from './fixture.ts';
 import { join, topic, within, type Joined } from './c4-live-support.ts';
 
-it('Sol proof, criterion 2: person to person remapping must not seat a new person on another task they cannot read', async () => {
+it('person to person remapping must not seat a new person on another task they cannot read', async () => {
   const s = await openSchedules('solfix1forbidden', 100_000);
   const pool = connect(s.db.appUrl, { max: 4 });
   const topics = await startLiveTopics(connectListener(s.db.appUrl));
