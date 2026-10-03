@@ -198,9 +198,8 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   // denied. A draft that outlived its authority would be stale authorised data
   // left on the screen, which is the thing that must not happen.
   const identity = `${props.grantKey}\u0000${props.taskKey}`;
-  if (draft !== null && (draft.identity !== identity || state.outcome === 'denied')) {
-    setDraft(null);
-  }
+  const denied = state.outcome === 'denied';
+  if (draft !== null && (draft.identity !== identity || denied)) setDraft(null);
   const held = draft !== null && draft.identity === identity ? draft : null;
 
   // **A refused decision is remembered above the read, for one task under one
@@ -209,7 +208,6 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   // say nothing about why. It is dropped when the task or the reader changes, as
   // a draft is. The other refusals, a stale press's quote and unsent words (the
   // subtask box's too) are held the same way.
-  const denied = state.outcome === 'denied';
   const [note, setNote] = useHeld<DecisionNote>(identity, denied);
   const [commentRefusal, setCommentRefusal] = useHeld<string>(identity, denied);
   const [proposeRefusal, setProposeRefusal] = useHeld<string>(identity, denied);
@@ -222,6 +220,7 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
   const [showAllTime, setShowAllTime] = useHeld<boolean>(identity, denied);
   const [showFinished, setShowFinished] = useHeld<boolean>(identity, denied);
   const [stepTitle, setStepTitle] = useHeld<string>(identity, denied);
+  const [keep, setStepUp] = useKeep(held, identity, denied);
 
   return (
     <div className="stack">
@@ -233,7 +232,7 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
       {state.outcome === 'denied' && state.refusal.code === 'NOT_FOUND' ? (
         <TaskUnknown typed={props.taskKey} refusal={state.refusal} />
       ) : (
-        <RecordState state={state} subject="task" onRetry={reload} keep={held !== null}>
+        <RecordState state={state} subject="task" onRetry={reload} keep={keep}>
           {(value) =>
             'sharedTask' in value ? (
               <SharedTaskDetail task={value.sharedTask} />
@@ -317,6 +316,7 @@ export function TaskDetailScreen(props: TaskDetailProps): ReactElement {
                   reload();
                 }}
                 onChanged={reload}
+                onStepUp={setStepUp}
               />
             )
           }
@@ -377,6 +377,12 @@ function RefreshRow(props: {
       </div>
     </>
   );
+}
+
+/** The page kept under a reread: by an unsaved draft, or an open step-up prompt (OW-085.4). */
+function useKeep(held: Draft | null, identity: string, denied: boolean) {
+  const [stepUp, setStepUp] = useHeld<true>(identity, denied);
+  return [held !== null || stepUp !== null, setStepUp] as const;
 }
 
 function useHeld<T>(
@@ -588,6 +594,7 @@ interface LoadedProps {
   readonly onSaved: (generation: number) => void;
   readonly onDiscard: () => void;
   readonly onChanged: () => void;
+  readonly onStepUp: (open: true | null) => void;
 }
 
 /** The names this reader may list, by person. */
@@ -876,6 +883,7 @@ function AgentHead({
       people={persons}
       ledger={task.ledger}
       onChanged={props.onChanged}
+      onStepUp={props.onStepUp}
     />
   );
 }

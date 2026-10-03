@@ -17,7 +17,7 @@
 // (`gate:decide`), naming the task, the run and the stop the read showed.
 // Every outcome ends in a reread, as the proposals section's does.
 
-import { useState, type ReactElement } from 'react';
+import { useEffect, useState, type ReactElement } from 'react';
 import { AgentPane, type GateDecision, type RecordedOutcome } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
 import type {
@@ -37,6 +37,7 @@ export interface AgentSectionProps {
   /** `task.read`'s token ledger (MP-6-5): null for a reader it is not shown to, absent on an older read. */
   readonly ledger: TaskLedgerView | null | undefined;
   readonly onChanged: () => void;
+  readonly onStepUp?: (open: true | null) => void;
 }
 
 interface AgentControls {
@@ -78,13 +79,27 @@ const AWAITING =
 const STOP_AWAITING =
   'Your top-up is recorded. Above the four-eyes threshold it applies when a second person approves the same amount.';
 
+/** Holds the page under its reread while the step-up prompt is open, told as the refusal settles. */
+function useStepUpHold(props: AgentSectionProps, open: boolean): (settled: Settlement) => void {
+  useEffect(() => {
+    if (!open) props.onStepUp?.(null);
+  });
+  useEffect(() => () => props.onStepUp?.(null), []);
+  return (settled) => {
+    if (settled.kind === 'failed' && settled.refusal.code === 'STEP_UP_REQUIRED')
+      props.onStepUp?.(true);
+  };
+}
+
 /** The pane's controls on the real commands, each ending in a reread. */
 function useAgentControls(props: AgentSectionProps): AgentControls {
   const { busy, run, stepUp } = useMoneyCommand(props.client);
   const [refusal, setRefusal] = useState<string | null>(null);
   const [awaiting, setAwaiting] = useState<string | null>(null);
   const [stopAwaiting, setStopAwaiting] = useState<string | null>(null);
+  const hold = useStepUpHold(props, stepUp !== null);
   const settle = (settlement: Settlement): void => {
+    hold(settlement);
     setRefusal(settlement.kind === 'ok' ? null : settlement.because);
     const state = settlement.kind === 'ok' ? stateOf(settlement.value) : undefined;
     setAwaiting(state === 'awaiting_second_approver' ? AWAITING : null);
