@@ -87,7 +87,12 @@ function usePreferences(client: OperationsClient, grantKey: string) {
   useEffect(reread, [reread]);
 
   const save = (preference: string, value: unknown): void => {
-    setHeld((before) => ({ of: grantKey, value: { ...before?.value, [preference]: value } }));
+    // Only this reader's own preferences take the change: another reader's,
+    // still held while this one's read is pending, are not carried over.
+    setHeld((before) => {
+      const own = before?.of === grantKey ? before.value : {};
+      return { of: grantKey, value: { ...own, [preference]: value } };
+    });
     setBecause(null);
     void client.mutate('preference.save', { preference, value }).then((result) => {
       const failed = describeFailure(result);
