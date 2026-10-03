@@ -25,6 +25,12 @@ export {
 } from './commands/credential-envelope.ts';
 export { describeFault, executeCommand } from './commands/envelope.ts';
 export { setOwnAvailability } from './commands/availability.ts';
+// C39-T: accepting an invitation, on its one-time token, never a person's command.
+export {
+  acceptInvitation,
+  type AcceptRequest,
+  type AcceptResult,
+} from './commands/invitation-accept.ts';
 export {
   callerAudit,
   modelCallExecutor,

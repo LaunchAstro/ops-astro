@@ -1,19 +1,23 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // What a destination adds to, and allows beyond, a POST (AW-13): fixed
-// headers custody sets on every request to it, and the few DELETE and GET
-// routes it answers (the trace store's expiry and the read that confirms it).
-// Both are custody's own list, read once at start; a caller names neither.
+// headers custody sets on every request to it, and the few DELETE, GET and
+// PUT routes it answers (the trace store's expiry and the read that confirms
+// it; the login provider's update of one user, C39-T). Both are custody's own
+// list, read once at start; a caller names neither.
 
-/** A non-POST route: an exact path, or for a GET one trailing `/*` segment. */
+/**
+ * A non-POST route: an exact path, or for a GET one trailing `/*` segment.
+ * A PUT is only ever one `/*` segment under a prefix, never an exact path.
+ */
 export interface Route {
-  readonly method: 'DELETE' | 'GET';
+  readonly method: 'DELETE' | 'GET' | 'PUT';
   readonly path: string;
 }
 
 export type Method = 'POST' | Route['method'];
 
-export const METHODS: readonly Method[] = ['POST', 'DELETE', 'GET'];
+export const METHODS: readonly Method[] = ['POST', 'DELETE', 'GET', 'PUT'];
 
 /** A lower-case token: one spelling per name, so no two can collide by case. */
 const HEADER_NAME = /^[a-z][a-z0-9-]{0,62}$/u;
@@ -68,6 +72,7 @@ function routeOf(value: unknown): Route | undefined {
   if (method === 'DELETE' && ROUTE_PATH.test(path)) return { method, path };
   const prefix = path.endsWith('/*') ? path.slice(0, -2) : path;
   if (method === 'GET' && ROUTE_PATH.test(prefix)) return { method, path };
+  if (method === 'PUT' && prefix !== path && ROUTE_PATH.test(prefix)) return { method, path };
   return undefined;
 }
 

@@ -100,13 +100,15 @@ export async function captureBuiltPages(options: {
 
 /**
  * The parameters a page's address is filled with: a made-up task, business,
- * document and conversation (the made-up reads' own records).
+ * document, conversation and enrolment link (the made-up reads' own records).
  */
 export const MADE_UP_PARAMS: Readonly<Record<string, string>> = {
   key: 'T-1',
   business: 'alpha',
   document: 'privacy-policy',
   conversation: CONVERSATION_ID,
+  // The enrolment page's link (C39-T): drawn as the form, so no API answers it.
+  token: 'made-up-enrolment-link',
 };
 
 /** Each read named answers its made-up body; a route added last is asked first. */

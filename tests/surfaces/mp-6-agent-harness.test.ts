@@ -47,6 +47,10 @@ function lookLines(screen: string): string[] {
       },
     );
     if (run.error !== undefined) throw run.error;
+    // A run that died part way (a page that never loaded) names its own error,
+    // never reads as a short count of probe lines.
+    if (run.status !== 0 && !run.stdout.includes('look: '))
+      throw new Error(`look.ts --screen ${screen} stopped (${String(run.status)}): ${run.stderr}`);
     return run.stdout.split('\n').filter((line) => /^(ok|red) /u.test(line));
   } finally {
     rmSync(out, { recursive: true, force: true });

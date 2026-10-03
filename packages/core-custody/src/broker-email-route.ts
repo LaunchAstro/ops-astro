@@ -2,8 +2,9 @@
 //
 // What every broker email send shares (the inbox item's in `broker-email.ts`,
 // C39-T's invitation in `broker-invitation.ts`): the sender check, the
-// catalogued `email.send` and its route, and the one reading of what the
-// provider answered. Nothing here sends or writes.
+// catalogued `email.send` and its route, which the login provider's
+// `auth.create_user` shares (`broker-auth-user.ts`), and the one reading of
+// what the provider answered. Nothing here sends or writes.
 
 import type { ModelOperation, SenderReport } from '../../core-connectors/src/index.ts';
 import type { BrokerRoute, Broker, ProviderAdapter } from './broker-types.ts';
@@ -19,9 +20,9 @@ export interface Routed {
   readonly adapter: ProviderAdapter;
 }
 
-/** The catalogued send, its route and its adapter, or nothing when any is missing. */
-function routed(broker: Broker): Routed | undefined {
-  const operation = broker.operations.get(EMAIL_OPERATION);
+/** A catalogued operation, its route and its adapter, or nothing when any is missing. */
+export function routed(broker: Broker, key: string = EMAIL_OPERATION): Routed | undefined {
+  const operation = broker.operations.get(key);
   if (operation === undefined) return undefined;
   const route = broker.routes.find((entry) => entry.provider === operation.provider);
   const adapter = broker.providers.get(operation.provider);
@@ -37,21 +38,30 @@ export function sendRoute(
   return routed(broker) ?? 'OPERATION_NOT_CATALOGUED';
 }
 
+/** What came back: the answer as its schema reads it, or the fault's kind. Never the body. */
+export function answerOf(
+  outcome: CustodyOutcome,
+  operation: ModelOperation,
+): { readonly ok: true; readonly text: string } | { readonly ok: false; readonly fault: string } {
+  if (outcome.kind === 'refused') return { ok: false, fault: 'refused' };
+  if (outcome.kind === 'worker_lost') return { ok: false, fault: 'worker_lost' };
+  if (!outcome.outbound.ok) return { ok: false, fault: outcome.outbound.fault };
+  let body: unknown;
+  try {
+    body = JSON.parse(outcome.outbound.body);
+  } catch {
+    return { ok: false, fault: 'malformed' };
+  }
+  const answer = operation.answer(body);
+  return answer === undefined ? { ok: false, fault: 'malformed' } : { ok: true, text: answer.text };
+}
+
 /** What came back: the provider's message id, or the fault's kind. Never the answer's body. */
 export function observed(
   outcome: CustodyOutcome,
   operation: ModelOperation,
 ): { readonly state: 'accepted' | 'failed'; readonly evidence: string } {
-  if (outcome.kind === 'refused') return { state: 'failed', evidence: 'refused' };
-  if (outcome.kind === 'worker_lost') return { state: 'failed', evidence: 'worker_lost' };
-  if (!outcome.outbound.ok) return { state: 'failed', evidence: outcome.outbound.fault };
-  let body: unknown;
-  try {
-    body = JSON.parse(outcome.outbound.body);
-  } catch {
-    return { state: 'failed', evidence: 'malformed' };
-  }
-  const answer = operation.answer(body);
-  if (answer === undefined) return { state: 'failed', evidence: 'malformed' };
+  const answer = answerOf(outcome, operation);
+  if (!answer.ok) return { state: 'failed', evidence: answer.fault };
   return { state: 'accepted', evidence: `provider:${answer.text}` };
 }

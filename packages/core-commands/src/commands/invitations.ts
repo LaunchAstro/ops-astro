@@ -215,12 +215,12 @@ interface Pending {
   readonly live: boolean;
 }
 
-/** The invitation, locked; another business's and an unissued id are one answer. */
-async function locked(tx: TenantQuery, id: string): Promise<Pending | undefined> {
+/** The invitation, locked when `lock`; another business's and an unissued id are one answer. */
+async function read(tx: TenantQuery, id: string, lock: boolean): Promise<Pending | undefined> {
   if (!isUuid(id)) return undefined;
   const [row] = await tx.query<Pending>(
     `select id, address, role_key, state, expires_at > now() as live from invitations
-      where business_id = $1 and id = $2 for update`,
+      where business_id = $1 and id = $2 ${lock ? 'for update' : ''}`,
     [tx.businessId, id],
   );
   return row;
@@ -231,17 +231,22 @@ async function move(
   context: CommandContext,
   request: Act & { readonly command: 'invitation.resend' | 'invitation.revoke' },
 ): Promise<HandlerOutcome> {
-  const found = await locked(tx, request.invitationId);
-  if (found === undefined) return refused(refuseNotFound(['invitationId']));
-  if (found.state !== 'pending') return notPending();
   const resend = request.command === 'invitation.resend';
-  if (resend) {
-    if (!found.live) return notPending();
-    const unmanaged = found.role_key === ADMIN_ROLE ? await notManager(tx, context) : undefined;
+  // One lock order for every act and the expiry: the limiter's, then the
+  // invitation's row. `create` ends a lapsed row only under the limiter, so a
+  // resend holding the row while it waits on the limiter would deadlock with
+  // it. The address is fixed at create, so it is read before the row's lock.
+  const address = resend ? (await read(tx, request.invitationId, false))?.address : undefined;
+  const limit =
+    address === undefined ? undefined : await overLimit(tx, address, context.session.actorId);
+  const found = await read(tx, request.invitationId, true);
+  if (found === undefined) return refused(refuseNotFound(['invitationId']));
+  if (found.state !== 'pending' || (resend && !found.live)) return notPending();
+  if (resend && found.role_key === ADMIN_ROLE) {
+    const unmanaged = await notManager(tx, context);
     if (unmanaged !== undefined) return unmanaged;
-    const limit = await overLimit(tx, found.address, context.session.actorId);
-    if (limit !== undefined) return limit;
   }
+  if (limit !== undefined) return limit;
   const [moved] = resend
     ? await tx.query<{ revision: number; state: string }>(
         `update invitations set expires_at = now() + make_interval(days => $3::int),

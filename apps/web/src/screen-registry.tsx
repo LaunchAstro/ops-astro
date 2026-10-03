@@ -25,6 +25,7 @@ import { AccessScreen } from './screens/Access.tsx';
 import { ClientsScreen } from './screens/Clients.tsx';
 import { InboxScreen } from './screens/Inbox.tsx';
 import { LegalScreen } from './screens/Legal.tsx';
+import { Enrol } from './screens/Enrol.tsx';
 import { OperationsScreen } from './screens/Operations.tsx';
 import { Projects } from './screens/Projects.tsx';
 import { SettingsGeneralScreen } from './screens/SettingsGeneral.tsx';
@@ -174,6 +175,8 @@ export function drawScreen<Id extends AuthenticatedRouteId>(
 export interface OpenContext {
   readonly apiOrigin: string;
   readonly fetch: typeof globalThis.fetch;
+  /** Where the enrolment page sends its holder to sign in (C39-T). */
+  readonly navigate: (path: string) => void;
 }
 
 /** The screen each open route draws, with or without a session; keyed so none is missed. */
@@ -189,8 +192,13 @@ const OPEN_SCREENS: {
       read={context.fetch}
     />
   ),
+  'agency:enrol': (params, context) => <Enrol token={params.token} app={context} />,
 };
 
-export function drawOpenScreen(match: RouteMatch<OpenRouteId>, context: OpenContext): ReactElement {
-  return OPEN_SCREENS[match.id](match.params, context);
+export function drawOpenScreen<Id extends OpenRouteId>(
+  match: RouteMatch<Id>,
+  context: OpenContext,
+): ReactElement {
+  const draw: (params: ParamsOf<Id>, context: OpenContext) => ReactElement = OPEN_SCREENS[match.id];
+  return draw(match.params, context);
 }
