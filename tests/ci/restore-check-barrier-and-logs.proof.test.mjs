@@ -125,3 +125,46 @@ test('a restore error cannot put a private value into Docker daemon logs', async
   assert.ok(!JSON.stringify(result).includes(canary), 'the returned receipt is sanitised');
   assert.equal(leaked, false, 'the private restore error was persisted by the Docker log driver');
 });
+
+test('failed Docker cleanup cannot attest a completed restore', async () => {
+  const body = await archive();
+  let target;
+  const run = async (args, input) => {
+    if (args[0] === 'rm') {
+      target = args.at(-1);
+      return { code: 1, stdout: '' };
+    }
+    return docker(args, input);
+  };
+  try {
+    const result = await drill(body, run);
+    assert.ok(target);
+    const present = await must(docker(['inspect', '-f', '{{.State.Running}}', target]));
+    assert.equal(present.trim(), 'true', 'the full restored database remains running after cleanup failed');
+    assert.equal(result.outcome, 'failed', 'a drill must not report passed while its full restored copy is left running');
+  } finally {
+    if (target) await must(docker(['rm', '-f', '-v', target]));
+  }
+});
+
+test('a failed container start cannot remove another drill target', async () => {
+  let existing;
+  const run = async (args, input) => {
+    if (args[0] === 'run') {
+      existing = args[args.indexOf('--name') + 1];
+      // Another drill already owns the chosen name. Both starts use real Docker.
+      await must(docker(args, input));
+      assert.equal((await docker(['inspect', existing])).code, 0, 'the pre-existing target is present');
+    }
+    return docker(args, input);
+  };
+  try {
+    const result = await drill(sealArchive(Buffer.from('unused dump'), keys.publicKey), run);
+    assert.equal(result.outcome, 'failed');
+    assert.equal(result.stage, 'start');
+    assert.equal((await docker(['inspect', existing])).code, 0,
+      'a name-conflict failure must leave the other drill container intact');
+  } finally {
+    if (existing) await docker(['rm', '-f', '-v', existing]);
+  }
+});

@@ -12,7 +12,8 @@ import {
   operatorLogin,
   store,
 } from '../db/backup-identity.fixture.ts';
-import { operator } from '../db/backup-drill-records.fixture.ts';
+import { call, operator, passed } from '../db/backup-drill-records.fixture.ts';
+import { readNew } from '../db/backup-store-drills.fixture.ts';
 
 describe('OW-059 frozen-head proofs', () => {
   backupStoreHooks();
@@ -68,4 +69,26 @@ describe('OW-059 frozen-head proofs', () => {
       await writer.end();
     }
   });
+
+  it(
+    'passed restore receipts require a target major and table count',
+    async () => {
+      const reader = await asRole(operatorLogin.url, RESTORE);
+      try {
+        const binding = await readNew(reader);
+        const [text, values] = call(passed, binding);
+        expect(await attempt(reader, text, values)).toBe('ok');
+        for (const [field, index] of [
+          ['target major', 6],
+          ['table count', 7],
+        ] as const) {
+          // Each mutation changes one required field of an otherwise valid pass.
+          // oxlint-disable-next-line no-await-in-loop
+          expect.soft(await attempt(reader, text, values.with(index, null)), field).toBe('23514');
+        }
+      } finally {
+        await reader.end();
+      }
+    },
+  );
 });

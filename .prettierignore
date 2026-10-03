@@ -140,3 +140,15 @@ tests/review/ow066-export-revocation-proof.test.ts
 tests/ci/restore-check-barrier-and-logs.proof.test.mjs
 tests/ci/malformed-database-address-hidden.proof.test.ts
 tests/operations/scan-login-token-and-shared-login.proof.test.ts
+
+# Sol's proofs on the backup store's drill receipts, the dump and store reach, the
+# release digest, carried receipts, the restore drill's container, the seed guard,
+# previews and promotion, byte-for-byte as the review patches held them apart from
+# each title, which names what it proves.
+tests/review/backup-process-lifetime-proof.test.ts
+tests/review/carried-scope-failure-reads-back-proof.test.ts
+tests/review/carried-stamp-once-proof.test.ts
+tests/review/release-digest-framing-proof.test.ts
+tests/review/seed-admission-one-at-a-time-proof.test.mjs
+tests/ci/concurrent-preview-requests.proof.test.ts
+tests/ci/promotion-serves-validated-bytes.proof.test.ts

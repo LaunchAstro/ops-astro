@@ -289,7 +289,8 @@
     "REVIEW-BATCH-2 #313 batch 3b adds review-3b-4-parent-end-drops-helper (a parent revoked, or handed back, while its helper never handed back: the merged result shows the helper dropped with its fault, DELEGATION_REVOKED for the revocation, never working) as conformance.",
     "REVIEW-BATCH-2 #313 batch 3b adds review-3b-5-delegate-child-lease-id (run.delegate_child with a leaseId that is not a uuid, a number or missing is refused LEASE_NOT_OWNED or FIELD_VALUE_INVALID with no child written, never a 22P02 fault) as conformance.",
     "REVIEW-BATCH-2 #313 batch 3b adds review-3b-1-planning-hold-released (a failed planning reply held liability_unknown is released by the pass or a person's outcome, and the planning allowance gets its hold back) as conformance; its fix adds planfix-3b-1-planning-outcome (a planning reply whose operation declares a lookup is released by the pass alone; another person of the business and another business's owner naming the owner's conversation and call are refused NOT_FOUND with nothing written; the owner's outcome settles it once).",
-    "SEC3B F1 (batch 3b security review) adds sec3b-1-ended-owner-planning-release (a planning reply held unknown whose owner's access has since ended is released by the provider phase in the owner's name, as their person actor, and the same pass goes on to release the next business's held reply) as conformance."
+    "SEC3B F1 (batch 3b security review) adds sec3b-1-ended-owner-planning-release (a planning reply held unknown whose owner's access has since ended is released by the provider phase in the owner's name, as their person actor, and the same pass goes on to release the next business's held reply) as conformance.",
+    "SOLOW-D2A names backup-read-part-appointment-proof (a login removed from backups.appointed reads no archive part; a passed drill receipt needs a target major and a table count) and carried-stamp-once-proof (two re-runs of --record at once stamp an accepted carried pass once) as conformance."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -999,6 +1000,8 @@
     "tests/review/staging-reset-keeps-revoked-session-proof.test.ts",
     "tests/ci/staging-reset-agent-signs-in.test.ts",
     "tests/operations/find-copies-values-only.proof.test.ts",
-    "tests/db/identity-roles-hold-no-membership.test.ts"
+    "tests/db/identity-roles-hold-no-membership.test.ts",
+    "tests/review/backup-read-part-appointment-proof.test.ts",
+    "tests/review/carried-stamp-once-proof.test.ts"
   ]
 }
