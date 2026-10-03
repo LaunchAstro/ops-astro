@@ -8,7 +8,7 @@ import { expect, it } from 'vitest';
 const ROOT = resolve(import.meta.dirname, '../..');
 const NAMED = 'tests/api/live-task-frame-no-identifier-review.test.ts';
 
-it('Sol proof, criterion 7: the dedicated task-frame proof fails when notification frames export the task identifier', () => {
+it('the dedicated task-frame proof fails when notification frames export the task identifier', () => {
   const snapshot = mkdtempSync(join(tmpdir(), 'sol-ow001-frame-mutation-'));
   try {
     const archive = spawnSync('git', ['archive', 'HEAD'], { cwd: ROOT, maxBuffer: 50_000_000 });
