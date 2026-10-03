@@ -6,7 +6,6 @@
 // outside the agency's own stay refused until three other-company
 // adversarial reviews of the pool are recorded closed (D17-14).
 
-import { MIMEType } from 'node:util';
 import {
   familyOf,
   isDeniedAddress,
@@ -169,37 +168,28 @@ const UTF8_LABELS = new Set(
 export const isUtf8Label = (label: string): boolean =>
   UTF8_LABELS.has(label.replaceAll(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/gu, '').toLowerCase());
 
+/** The one Content-Type shape read: a type, then at most one charset, plain or quoted. */
+const CONTENT_TYPE = /^[\t ]*([\w.+-]+\/[\w.+-]+)[\t ]*(?:;[\t ]*charset=("?)([\w-]+)\2[\t ]*)?$/iu;
+
 /**
- * Whether an answer is `type` with no charset but UTF-8, read as a browser reads it: another would
- * have a browser read the body, and so the addresses in it, in another encoding. A document must
- * name its charset. Without one a browser takes the encoding the markup declares (a `<meta
- * charset>` in its first 1024 bytes), and the capture runs no such prescan; the header's charset
- * outranks any declaration in the markup, so with it the capture and visitors agree. A browser
- * reads every Content-Type line, split on commas outside quotes, and a later type or charset wins,
- * so a second line or any comma is refused; the one value goes through the WHATWG MIME parser, as
- * in a browser. Firefox takes the last charset and WebKit scans for the word, so `charset` may
- * appear only as the one parameter that parser read. A content or transfer coding a browser would
- * undo, and the capture does not, is refused too.
+ * Whether an answer is `type` with no charset but UTF-8: another would have a browser read the
+ * body, and so the addresses in it, in another encoding. A document must name its charset. Without
+ * one a browser takes the encoding the markup declares (a `<meta charset>` in its first 1024
+ * bytes), and the capture runs no such prescan; the header's charset outranks any declaration in
+ * the markup, so with it the capture and visitors agree. Browsers parse the rest of the header
+ * differently (Firefox opens a quoted string at any quote and takes the last charset, WebKit scans
+ * for the word, a later line or comma wins), so only one exact shape is read: one line, the type,
+ * and at most one charset parameter; anything else is refused, so no parser can read another
+ * charset. A content or transfer coding a browser would undo, and the capture does not, is
+ * refused too.
  */
 function isUtf8Type(answer: Answer, type: string, named: boolean): boolean {
   const { headers } = answer;
-  const header = headers['content-type'] ?? '';
   const coded = (headers['transfer-encoding'] ?? 'chunked').toLowerCase() !== 'chunked';
   if (coded || 'content-encoding' in headers || (answer.contentTypeLines ?? 1) > 1) return false;
-  let media: MIMEType;
-  try {
-    media = new MIMEType(header);
-  } catch {
-    return false;
-  }
-  const charset = media.params.get('charset');
-  const mentions = (header.match(/charset/giu) ?? []).length;
-  return (
-    media.essence === type &&
-    !header.includes(',') &&
-    mentions === (charset === null ? 0 : 1) &&
-    (charset === null ? !named : isUtf8Label(charset))
-  );
+  const [, media, , charset] = CONTENT_TYPE.exec(headers['content-type'] ?? '') ?? [];
+  if (media?.toLowerCase() !== type) return false;
+  return charset === undefined ? !named : isUtf8Label(charset);
 }
 
 /** One page or stylesheet, fetched through the fence. Every refusal is recorded before it returns. */
