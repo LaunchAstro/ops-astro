@@ -28,6 +28,7 @@ import { agentPath, bearer, call, createWorld, personPath, type Answer } from '.
 import { enrol } from '../commands/fixture.ts';
 import { PROPOSAL, type Task } from './role-case-bodies.ts';
 import { createPositiveBody } from './role-case-positive-body.ts';
+import { factorMember } from './role-case-access-bodies.ts';
 import { gateContext } from './role-case-gate-bodies.ts';
 import { probeOperands } from './role-case-fixed-bodies.ts';
 import { ownTaskRecipes } from './role-case-own-tasks.ts';
@@ -237,6 +238,7 @@ export async function createHarness(part: string): Promise<Harness> {
       ownComment: async (author) => await ownComment(author as { readonly token: string }),
       freshMember: async () =>
         (await enrol(world.db.app, world.alpha, `ended-${randomUUID().slice(0, 8)}`)).personId,
+      freshFactorMember: async () => await factorMember(world.db.app, world.alpha),
       ...gateContext(world.db.admin, world.alpha),
     }),
     approvedReservation,

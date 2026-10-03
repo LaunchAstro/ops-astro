@@ -189,6 +189,7 @@ export function createPositiveBody(
       case 'access.grant':
       case 'access.revoke':
       case 'access.end':
+      case 'access.reset_factor':
         return await accessBody(declaration.name, context);
       case 'inbox.seen': {
         // The caller's own item: a proposal raises a decision item for every
