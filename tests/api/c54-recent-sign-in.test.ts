@@ -193,11 +193,17 @@ describe.skipIf(serverMissing)('C54 recent sign-in', { timeout: 120_000 }, () =>
     const alphaStale = await answer('budget.record_outcome', await staleToken(world.ada.subject));
     expect([alphaStale.status, alphaStale.code]).toStrictEqual([403, 'STEP_UP_REQUIRED']);
 
-    // Alpha off, bravo on: bravo's stale holder is refused in bravo, and
-    // fresh it reaches the body, which names no task of bravo's.
+    // Alpha off, bravo on: alpha's stale answer is admitted, bravo's stale
+    // holder is refused in bravo, and fresh it reaches the body, which names
+    // no task of bravo's.
     await setStepUp(world.alpha, false);
     await setStepUp(world.bravo, true);
     try {
+      const alphaAdmitted = await answer(
+        'budget.record_outcome',
+        await staleToken(world.ada.subject),
+      );
+      expect(alphaAdmitted.code).toBe('ok');
       const body = { recordId: randomUUID(), amountMinor: 100, fromMaximumMinor: 3_000 };
       const bravoStale = await harness.asPerson('budget.top_up', body, 'bravo', {
         token: await staleToken(bravoHolder.presented.subject),
