@@ -3,9 +3,10 @@
 // MP-6-2's stored plan record (20261003001115), its security line against a real
 // database: a record of another business or of another client's task is
 // never stored on a step, a step written without one never takes one later,
-// and a row forged past the trigger reads nothing of the other task. Each
-// crossing is a real one, beside a positive control that stores the record
-// on its own task.
+// a step's stored record is never changed or cleared, no step is written
+// without saying which record it saw, and a row forged past the trigger reads
+// nothing of the other task. Each crossing is a real one, beside a positive
+// control that stores the record on its own task.
 
 import { randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';
@@ -18,7 +19,7 @@ import {
   proposeBody,
   rows,
 } from './schedules-harness.ts';
-import { acceptPlanOn, noDatabase, readAs, useAw06World, w } from './aw-06-world.ts';
+import { acceptPlanOn, noDatabase, proposeStep, readAs, useAw06World, w } from './aw-06-world.ts';
 import { cq8World } from './cq-8-world.ts';
 
 /** Every case needs the database; without one the file is skipped. */
@@ -101,7 +102,7 @@ async function forge(stepId: string, planRecordId: string): Promise<void> {
   });
 }
 
-it('MP-6-2 stored plan record isolation: a record of another business or another client is never stored on a step, a stored one never moves, and a forged one reads nothing', async () => {
+it('MP-6-2 stored plan record isolation: a record of another business or another client is never stored on a step, a step written without one never takes one, and a forged one reads nothing', async () => {
   const { own, plan, crossedTask, crossedRun } = await twoClients();
   expect((await stepOf(crossedRun)).plan_record_id).toBeNull();
 
@@ -142,4 +143,61 @@ it('MP-6-2 stored plan record isolation: a record of another business or another
   await forge((await stepOf(crossedRun)).id, plan.planRecordId);
   const body = JSON.stringify(await readAs(w.s.decider, crossedTask));
   for (const needle of [plan.planRecordId, plan.runId, own]) expect(body).not.toContain(needle);
+});
+
+/** `stepId`'s two stored columns, as the admin connection reads them. */
+async function recordOf(stepId: string) {
+  return await rows<{
+    readonly plan_record_id: string | null;
+    readonly plan_record_written: boolean;
+  }>(w.s, `select plan_record_id, plan_record_written from public.planned_steps where id = $1`, [
+    stepId,
+  ]);
+}
+
+it('MP-6-2 stored plan record isolation: a stored record never moves, to another record of the same task or to none', async () => {
+  const taskId = await createTask(w.s, `mp62-stored-moves-${randomUUID()}`);
+  const first = await acceptPlanOn(taskId);
+  const proposal = appliedDetail(
+    await proposeStep(taskId, { kind: 'synthetic_comment', payload: {}, planStep: 'draft' }),
+    'propose under draft',
+  );
+  const second = await acceptPlanOn(taskId);
+  const step = await stepOf(proposal['runId']);
+  const held = [{ plan_record_id: first.planRecordId, plan_record_written: true }];
+  expect(await recordOf(step.id)).toEqual(held);
+
+  /** `set` on the step as the application role: refused, the row unmoved. */
+  const refused = async (set: string, values: readonly unknown[] = []): Promise<void> => {
+    const moved = w.s.db.app.withBusiness(w.s.business, async (tx) => {
+      await tx.query(`update public.planned_steps set ${set} where id = $1`, [step.id, ...values]);
+    });
+    await expect(moved, set).rejects.toThrow(/written once, at proposal/u);
+    expect(await recordOf(step.id)).toEqual(held);
+  };
+  await refused('plan_record_written = false, plan_record_id = null');
+  await refused('plan_record_id = $2', [second.planRecordId]);
+  await refused('plan_record_id = null');
+});
+
+it('MP-6-2 stored plan record isolation: a step written without saying which record it saw is refused', async () => {
+  const taskId = await createTask(w.s, `mp62-stored-unsaid-${randomUUID()}`);
+  const { runId } = await propose(w.s, taskId, { maximumMinor: 300, purpose: freshPurpose() });
+  const unsaid = w.s.db.app.withBusiness(w.s.business, async (tx) => {
+    await tx.query(
+      `insert into public.planned_steps (business_id, id, run_id, ordinal, kind, payload)
+       values ($1, $2, $3, 2, 'compose', '{}'::jsonb)`,
+      [w.s.business, randomUUID(), runId],
+    );
+  });
+  await expect(unsaid).rejects.toMatchObject({
+    code: '23514',
+    message: expect.stringMatching(/planned_steps: a step is written with the plan record/u),
+  });
+  const steps = await rows<{ readonly n: string }>(
+    w.s,
+    `select count(*)::text as n from public.planned_steps where run_id = $1`,
+    [runId],
+  );
+  expect(steps).toEqual([{ n: '1' }]);
 });
