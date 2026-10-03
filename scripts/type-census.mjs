@@ -47,20 +47,20 @@ const RULING = /^type-exception\s+(R\d+|DR-\d+|DS-[A-Z]+-\d+)\s*:\s*\S/u;
 const LIMIT = 20;
 
 /**
- * One declaration's property and value, the value without `!important`; undefined for no colon.
+ * One declaration's property, its value without `!important` and whether it carried it;
+ * undefined for no colon.
  * A custom property keeps its case, as the browser does; every other property is lower-cased.
  */
 function declOf(text) {
   const at = text.indexOf(':');
   if (at < 0) return;
   const prop = text.slice(0, at).trim();
+  const raw = text.slice(at + 1);
+  const priority = /!\s*important\s*$/iu;
   return {
     prop: prop.startsWith('--') ? prop : prop.toLowerCase(),
-    value: text
-      .slice(at + 1)
-      .replace(/!\s*important\s*$/iu, '')
-      .replaceAll(/\s+/gu, ' ')
-      .trim(),
+    value: raw.replace(priority, '').replaceAll(/\s+/gu, ' ').trim(),
+    important: priority.test(raw),
   };
 }
 

@@ -4,12 +4,13 @@
 // It reads the two blocks of `packages/ui/src/styles/1-tokens.css` that carry
 // values, `:root` and `[data-theme='dark']`, and resolves every `var()` the way
 // the browser does when both blocks sit on the same element: dark declarations
-// win where they exist and every reference is substituted after that, so an
-// alias declared only in `:root` still follows a primitive the dark block
-// flips. Each expected token is then compared, as text with its whitespace
-// collapsed and one spelling per number and hex, to what that resolution
-// gives. A token that is missing or differs is named with both values, as is a
-// token declared in dark alone, and the run exits 1.
+// win where they exist, unless the `:root` one is `!important` and the dark one
+// is not, and every reference is substituted after that, so an alias declared
+// only in `:root` still follows a primitive the dark block flips. Each expected
+// token is then compared, as text with its whitespace collapsed and one
+// spelling per number and hex, to what that resolution gives. A token that is
+// missing or differs is named with both values, as is a token declared in dark
+// alone, and the run exits 1.
 //
 //   node scripts/token-diff.mjs [--css <file>] [--expected <file>]
 //   node scripts/token-diff.mjs --print [--css <file>]   the resolved sets as JSON
@@ -26,8 +27,17 @@ const DEFAULT_EXPECTED = `${root}tests/surfaces/fixtures/mp-1-1-tokens.json`;
 function block(css, selector) {
   const rule = parseSheet(css).find((one) => one.selector === selector && one.context === '');
   const tokens = (rule?.decls ?? []).filter(({ prop }) => prop.startsWith('--'));
-  return new Map(tokens.map(({ prop, value }) => [prop, value]));
+  return tokens.reduce((map, decl) => cascade(map, decl), new Map());
 }
+
+/** `map` with `decl` declared after what it holds; it loses only to an important held one. */
+function cascade(map, decl) {
+  const held = map.get(decl.prop);
+  return held?.important && !decl.important ? map : map.set(decl.prop, decl);
+}
+
+/** Each token's value, priority dropped. */
+const values = (declared) => new Map([...declared].map(([name, { value }]) => [name, value]));
 
 /** Every declared token with its references substituted, in one theme. */
 function resolve(declared) {
@@ -44,8 +54,11 @@ function resolve(declared) {
 /** The resolved light and dark sets of a token file's text. */
 export function resolveTokens(css) {
   const light = block(css, ':root');
-  const dark = new Map([...light, ...block(css, "[data-theme='dark']")]);
-  return { light: resolve(light), dark: resolve(dark) };
+  const dark = [...block(css, "[data-theme='dark']").values()].reduce(
+    (map, decl) => cascade(map, decl),
+    new Map(light),
+  );
+  return { light: resolve(values(light)), dark: resolve(values(dark)) };
 }
 
 /** One spelling per value: hex in lower case, no trailing zeros, as the formatter writes it. */
