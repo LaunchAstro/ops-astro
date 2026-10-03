@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Reviewer proof for C71-D (SL10-26), uncommitted: the conversations migration on a business
-// installed before it, with a comment already written, and its data
-// statements run a second time.
+// C71-D's conversations migration on a business installed before it, with a
+// comment already written, and its data statements run a second time.
 
 // oxlint-disable no-await-in-loop
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -185,7 +184,7 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)(
       await world?.db.drop();
     });
 
-    it('Sol proof, criterion 5: the conversations migration installs the conversation type once on an installed business, keeps its comments, and its data statements are stable on a second run', async () => {
+    it('the conversations migration installs the conversation type once on an installed business, keeps its comments, and its data statements are stable on a second run', async () => {
       await installsOnceAndKeeps(world);
     }, 300_000);
   },
