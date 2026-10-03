@@ -47,7 +47,8 @@ it('person to person presence cannot retain a revoked reader after a remap and b
           args[3].some((request) => 'recordId' in request && request['recordId'] === ids.task);
         if (own && phase === 'armed') {
           expect(isCommandRefusal(admitted)).toBe(false);
-          if (!isCommandRefusal(admitted)) expect(admitted.some(isCommandRefusal)).toBe(false);
+          if (!isCommandRefusal(admitted))
+            expect(admitted.some((answer) => isCommandRefusal(answer))).toBe(false);
           phase = 'passed';
         }
         return admitted;
@@ -113,10 +114,14 @@ it('person to person presence cannot retain a revoked reader after a remap and b
     await pool.withBusiness(s.business, async (tx) => {
       await tx.query('update public.records set data = data where id = $1', [ids.task]);
     });
+    // The stream's answer to the change once the login is back on A: the
+    // change notification on B's pass, or the task closed for A.
     await within(
       2_000,
-      () => phase === 'restored' && remapped.heard.some((frame) => frame.event === 'invalidate'),
-      'a delivery authorised as B after returning to A',
+      () =>
+        phase === 'restored' &&
+        remapped.heard.some((frame) => frame.event === 'invalidate' || frame.event === 'closed'),
+      'the stream answered the change after returning to A',
     );
     const shown = await api.request(
       `${PREFIX.person}${key}/live/presence?seat=${observerSeat}&topic=${topic(ids.task)}`,
@@ -128,6 +133,10 @@ it('person to person presence cannot retain a revoked reader after a remap and b
       visible.seenBy,
       'A has no grant but retained presence because B passed the recheck',
     ).not.toContainEqual(expect.objectContaining({ personId: first.personId }));
+    expect(
+      remapped.heard.filter((frame) => frame.event === 'invalidate'),
+      "A was refused the task but received its change notification on B's pass",
+    ).toEqual([]);
   } finally {
     await Promise.allSettled(opened.map(async (tab) => await tab.stop()));
     await topics.close();
