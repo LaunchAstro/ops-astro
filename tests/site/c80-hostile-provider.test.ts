@@ -233,3 +233,25 @@ describe('C80 Sol R1 proofs (the guarded provider call)', () => {
     }
   });
 });
+
+describe('C80 Sol R1 proofs (the guarded provider call)', () => {
+  it('Sol R1 7: source reads send the declared pinned ref', async () => {
+    const read = SITE_OPERATIONS.find(
+      (entry) => entry.declaration.operation_name === 'site.source.read',
+    )!;
+    const transport = httpOf(json({ sha: 'abc', content: 'PHA+', encoding: 'base64' }));
+    const at = (ref: string) =>
+      callConnector(
+        read,
+        { repository: 'agency/site', path: 'src/pages/about.astro', ref },
+        deps(transport),
+      );
+    expect((await at('approved/branch')).kind).toBe('ok');
+    expect((await at('main')).kind).toBe('ok');
+    expect(transport.seen.map((sent) => sent.url.searchParams.get('ref'))).toEqual([
+      'approved/branch',
+      'main',
+    ]);
+    expect(transport.seen[0]?.body).toBeUndefined();
+  });
+});
