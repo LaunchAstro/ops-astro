@@ -21,16 +21,3 @@ export function script(block: string): string {
   const body = lines.slice(at + 1).filter((l) => l === '' || l.startsWith('          '));
   return at === -1 ? '' : body.map((l) => l.slice(10)).join('\n');
 }
-
-/**
- * Every check name a workflow's jobs report under (`name:` at four spaces), a
- * job over a language matrix once per language, as GitHub expands it.
- */
-export function checkNames(text: string): string[] {
-  const languages = /^ {8}language: \[(.+)\]$/mu.exec(text)?.[1]?.split(', ') ?? [];
-  return [...text.matchAll(/^ {4}name: (.+)$/gmu)].flatMap(([, line = '']) => {
-    const name = line.trim();
-    if (!name.includes('${{ matrix.language }}')) return [name];
-    return languages.map((language) => name.replace('${{ matrix.language }}', language));
-  });
-}

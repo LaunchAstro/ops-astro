@@ -13,10 +13,9 @@ name: codeql
 # analysis of it is uploaded, named after the tool, as default setup's
 # uploads made it. GitHub does not post it on a merge group either, so it is
 # not a required check: the ruleset's code scanning rule gates on CodeQL's
-# results instead (docs/plan/ruleset.md). That rule does not apply to a merge
-# group, so the jobs below, which report as `Analyze (<language>)`, are
-# required checks: a group whose analysis fails does not merge. Default setup
-# is off, so GitHub accepts this workflow's uploads.
+# results instead (docs/plan/ruleset.md). The jobs below report as
+# `Analyze (<language>)`, required by nothing. Default setup is off, so
+# GitHub accepts this workflow's uploads.
 
 on:
   pull_request:

@@ -9,7 +9,7 @@ import { cpSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 import { cleanup, ENV, group, read, repo, ROOT, type Repo } from './merge-group-repo.ts';
-import { checkNames, script, step, top } from './workflow-text.ts';
+import { script, step, top } from './workflow-text.ts';
 
 afterAll(cleanup);
 
@@ -91,10 +91,10 @@ describe('merge group: every required check runs on a group, and none passes it 
   });
 
   it('every required Actions check is a job of a workflow that runs on merge_group, with no condition that skips a group', () => {
-    const all = [CI, REVIEW, '.github/workflows/codeql.yml'].flatMap((p) => jobs(read(p)));
+    const all = [CI, REVIEW].flatMap((p) => jobs(read(p)));
     const actions = required.filter((c) => c.integration_id === 15368).map((c) => c.context);
     for (const name of actions) {
-      const block = all.find((b) => checkNames(b).includes(name)) ?? '';
+      const block = all.find((b) => /^ {4}name: (.+)$/mu.exec(b)?.[1] === name) ?? '';
       expect(block, name).not.toBe('');
       const cond = /^ {4}["']?if["']?: (.+)$/mu.exec(block)?.[1];
       // A push to main has no pull request; anything narrower could skip a group.
