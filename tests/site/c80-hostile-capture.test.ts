@@ -177,3 +177,74 @@ describe('C80 hostile provider (capture path), stylesheet fan-out', () => {
     expect(widest).toBeLessThanOrEqual(4);
   });
 });
+
+// Security review of P25, third re-bind, finding 3: an imported sheet was never fetched, so it
+// could change while every digest the capture held stayed equal.
+const served = (css: (path: string) => string, html: string) =>
+  transportOf((request) => {
+    const path = request.url.pathname;
+    return {
+      kind: 'answer',
+      status: 200,
+      headers: { 'content-type': path === '/about' ? 'text/html' : 'text/css' },
+      body: new TextEncoder().encode(path === '/about' ? html : css(path + request.url.search)),
+    };
+  });
+const captured = (transport: Transport) =>
+  capturePage(ABOUT, { pool: POOL, resolve: resolverOf([PUBLIC_V4]), transport });
+const [X, A, B] = ['x', 'css/a', 'css/b'].map((name) => `https://www.example.com/${name}.css`);
+const chain = (path: string) => `@import "/d${Number(path.slice(2, 3)) + 1}.css";`;
+const [FOLLOWED, NOT] = [[X, 'inline:0'], ['inline:0']];
+const imported = (html: string, x = 'p{}') =>
+  captured(
+    served((path) => ({ '/x.css': x, '/css/a.css': '@import "b.css";' })[path] ?? 'p{}', html),
+  );
+
+describe('C80 hostile provider (capture path), imported sheets', () => {
+  it('sees a change in a sheet a <style> imports as a stylesheet change', async () => {
+    const html = '<style>@import "/x.css";</style><p>x</p>';
+    const [one, two] = await Promise.all([imported(html), imported(html, 'p{display:none}')]);
+    expect([one.ok && Object.keys(one.value.stylesheets), two.ok]).toEqual([FOLLOWED, true]);
+    if (one.ok && two.ok) expect(one.value.stylesheets).not.toEqual(two.value.stylesheets);
+  });
+
+  it.each([
+    ['<style>@import url(/x.css);</style>', FOLLOWED],
+    ['<style>@import url( "/x.css" ) screen;</style>', FOLLOWED],
+    ["<style>@IMPORT '/x.css' layer(a);</style>", FOLLOWED],
+    ['<style>@\\69 mport "/x.css";</style>', FOLLOWED],
+    ['<style>@import "/x\\2e css";</style>', FOLLOWED],
+    ['<style>/* @import "/evil.css"; */@import/**/"/x.css";</style>', FOLLOWED],
+    ['<style>a{content:"@import \'/evil.css\'"}</style>', NOT],
+    ['<style>a{content:"\\"@import \'/evil.css\'"}</style>', NOT],
+    ['<style>!!{background:u\\72l(/*)}@import "/x.css";/* */</style>', FOLLOWED],
+    ['<style>#\\@import "/evil.css";</style>', NOT],
+    ['<link rel=stylesheet href=/css/a.css>', [A, B]],
+  ])('follows the imports of %s', async (region, keys) => {
+    const result = await imported(`${region}<p>x</p>`);
+    expect(result.ok && Object.keys(result.value.stylesheets)).toEqual(keys);
+  });
+
+  // Imports count against the cap and stop at a fixed depth, refused before anything more is fetched.
+  it('refuses an import past the 32-sheet cap as oversized, fetching nothing more', async () => {
+    const transport = served(
+      (path) => (path === '/s.css?n=0' ? '@import "/more.css";' : 'p{}'),
+      sheets(32).join(''),
+    );
+    expect(await captured(transport)).toEqual({ ok: false, code: 'CAPTURE_OVERSIZED' });
+    const paths = transport.seen.map((seen) => seen.url.pathname);
+    expect([paths.length, paths.includes('/more.css')]).toEqual([33, false]);
+  });
+
+  it('follows imports of imports to depth 3 and refuses the next as oversized', async () => {
+    const transport = served(chain, '<link rel=stylesheet href=/d0.css>');
+    expect(await captured(transport)).toEqual({ ok: false, code: 'CAPTURE_OVERSIZED' });
+    expect(transport.seen.map((seen) => seen.url.pathname)).toEqual([
+      '/about',
+      '/d0.css',
+      '/d1.css',
+      '/d2.css',
+      '/d3.css',
+    ]);
+  });
+});
