@@ -16,7 +16,7 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { shareRecord } from '../../packages/core-records/src/authority/shares.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { insertActor, insertLogin, insertMapping, insertPerson } from '../identity/fixture.ts';
-import { addClient } from '../commands/fixture.ts';
+import { addClient, grantTo } from '../commands/fixture.ts';
 import {
   codeOf,
   must,
@@ -481,6 +481,9 @@ describe.skipIf(serverUrl === undefined)('WF-1 task types and the map as a task'
       id: mapA.id,
     });
     const bea = await w.outsider('bea');
+    // `share` too in bravo, so a scope from there is answered by the lookup,
+    // not by the missing grant: the crossing, not the key, is under test.
+    await w.db.app.withBusiness(w.bravo, async (tx) => await grantTo(tx, bea, 'share'));
     await w.create(bea, { title: 'bravo map' }, { taskType: 'map' }, w.bravo);
 
     const foreign = [mapB.id, ticketB.id, clientB, 'canary-map-B', 'canary-ticket-B'];
