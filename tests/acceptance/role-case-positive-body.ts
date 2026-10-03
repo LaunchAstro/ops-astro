@@ -30,7 +30,7 @@ import { conversationBody, leaseBody } from './role-case-run-bodies.ts';
 import { FIXED_BODIES } from './role-case-fixed-bodies.ts';
 import { moneyBody } from './role-case-money-bodies.ts';
 import { lineageBody } from './role-case-lineage-bodies.ts';
-import { chatBody } from './role-case-chat-bodies.ts';
+import { chatBody, isChatName } from './role-case-chat-bodies.ts';
 
 export function createPositiveBody(
   context: BodyContext,
@@ -49,9 +49,8 @@ export function createPositiveBody(
     };
     const fixed = FIXED_BODIES[declaration.name];
     if (fixed !== undefined) return { body: { ...fixed } };
+    if (isChatName(declaration.name)) return await chatBody(declaration.name, context);
     switch (declaration.name) {
-      case 'task.create':
-        return { body: { fields: { title: 'the admin creates a task' } } };
       case 'task.update':
         return { body: { ...(await target()), fields: { title: 'edited by the admin' } } };
       case 'task.start':
@@ -199,11 +198,6 @@ export function createPositiveBody(
         const items = listed.body['inbox'] as readonly Record<string, unknown>[];
         return { body: { itemId: String(items.at(-1)?.['id']) } };
       }
-      // C71-D: a direct message to the assignee, and the conversation it made.
-      case 'chat.send_direct':
-      case 'chat.messages':
-      case 'chat.mark_read':
-        return await chatBody(declaration.name, context);
       // C81: the admin holds `privacy:manage`, as the owner does.
       case 'legal.draft_version':
       case 'legal.approve_version':
