@@ -101,6 +101,28 @@ function stale(found: SecretStale): HandlerOutcome {
   );
 }
 
+/** The scope a set names: the business, or one client of this business. */
+async function scopeOf(
+  tx: TenantQuery,
+  clientId: string | null,
+): Promise<{ ok: true; value: SecretScope } | { ok: false; refusal: HandlerOutcome }> {
+  if (clientId === null) return { ok: true, value: { kind: 'business', id: null } };
+  if (!isUuid(clientId)) {
+    return {
+      ok: false,
+      refusal: refused(refuseCommand('FIELD_VALUE_INVALID', ['clientId'], CLIENT_FIXES)),
+    };
+  }
+  // Another business's client and a made-up one answer alike: not here.
+  if (!(await isClientHere(tx, clientId))) {
+    return {
+      ok: false,
+      refusal: refused(refuseCommand('NOT_FOUND', ['clientId'], NOT_HERE_FIXES)),
+    };
+  }
+  return { ok: true, value: { kind: 'party', id: clientId } };
+}
+
 /** Seal and store one secret, business-wide or for one client. */
 export async function setCustodySecret(
   tx: TenantQuery,
@@ -128,18 +150,11 @@ export async function setCustodySecret(
     );
   }
   const clientId = request.clientId ?? null;
-  if (clientId !== null && !isUuid(clientId)) {
-    return refused(refuseCommand('FIELD_VALUE_INVALID', ['clientId'], CLIENT_FIXES));
-  }
-  // Another business's client and a made-up one answer alike: not here.
-  if (clientId !== null && !(await isClientHere(tx, clientId))) {
-    return refused(refuseCommand('NOT_FOUND', ['clientId'], NOT_HERE_FIXES));
-  }
-  const scope: SecretScope =
-    clientId === null ? { kind: 'business', id: null } : { kind: 'party', id: clientId };
+  const scope = await scopeOf(tx, clientId);
+  if (!scope.ok) return scope.refusal;
   const written = await setSecret(tx, {
     name: request.name,
-    scope,
+    scope: scope.value,
     value: value.value,
     key,
     actorId: context.session.actorId,
