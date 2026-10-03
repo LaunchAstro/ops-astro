@@ -140,7 +140,9 @@ describe('C80 one word only (the fenced capture it compares)', () => {
     ).toMatchObject({ ok: false, code: 'CAPTURE_HOST_NOT_CATALOGUED' });
     expect(transport.seen).toHaveLength(0);
   });
+});
 
+describe('C80 the fenced capture: a page that never closes', () => {
   // Security review of P25, finding 1: an opener with no closer after it made
   // each scan restart at every opener, so a 2 MiB page froze the worker for
   // minutes after the fence's deadline had stopped counting.
