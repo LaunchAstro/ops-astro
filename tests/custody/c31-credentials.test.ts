@@ -24,6 +24,7 @@ import {
   seal,
 } from '../../packages/core-records/src/custody/index.ts';
 import { COMMAND_SURFACE } from '../../packages/core-wire/src/surface.ts';
+import { createClient } from '../../packages/core-records/src/index.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 const CANARY = `canary-${randomUUID()}-do-not-log`;
@@ -39,6 +40,16 @@ interface SecretView {
   readonly revision: number;
 }
 
+/** A real client of the transaction's business. */
+async function madeClient(
+  tx: Parameters<typeof createClient>[0],
+  actorId: string,
+): Promise<string> {
+  const made = await createClient(tx, `Client ${randomUUID()}`, actorId);
+  if (!made.ok) throw new Error('c31: the client was not made');
+  return made.value;
+}
+
 const path = (business: string, name: string): string =>
   `/api/b/${business}/${name.replace('.', '/')}`;
 
@@ -50,8 +61,9 @@ describe.skipIf(serverUrl === undefined)('C31 credentials screen (custody)', () 
   let plain: Member;
   let clientHolder: Member;
   let bravoAdmin: Member;
-  const clientA = randomUUID();
-  const clientB = randomUUID();
+  let clientA: string;
+  let clientB: string;
+  let bravoClient: string;
   const answers: Answer[] = [];
   const output: string[] = [];
 
@@ -112,6 +124,8 @@ describe.skipIf(serverUrl === undefined)('C31 credentials screen (custody)', () 
     plain = await enrol(db.app, business, 'plain');
     clientHolder = await enrol(db.app, business, 'clientholder');
     await db.app.withBusiness(business, async (tx) => {
+      clientA = await madeClient(tx, admin.actorId);
+      clientB = await madeClient(tx, admin.actorId);
       await grantTo(tx, admin, 'manage', { kind: 'business', id: null }, false, 'custody');
       await grantTo(tx, plain, 'read', { kind: 'business', id: null }, false, 'custody');
       await grantTo(tx, plain, 'write', { kind: 'business', id: null }, false, 'custody');
@@ -122,6 +136,7 @@ describe.skipIf(serverUrl === undefined)('C31 credentials screen (custody)', () 
     bravoAdmin = await enrol(db.app, bravo, 'bravoadmin');
     await db.app.withBusiness(bravo, async (tx) => {
       await grantTo(tx, bravoAdmin, 'manage', { kind: 'business', id: null }, false, 'custody');
+      bravoClient = await madeClient(tx, bravoAdmin.actorId);
     });
   }, 120_000);
 
@@ -146,6 +161,19 @@ describe.skipIf(serverUrl === undefined)('C31 credentials screen (custody)', () 
     const after = (await list(admin)).find((one) => one.name === 'xero.client-secret');
     expect(after?.state).toBe('not set');
     expect(after?.setAt).toBeNull();
+  });
+
+  it("C31 a key is set only for a client of this business: bravo's client and a made-up one are refused, nothing written", async () => {
+    const before = await rowCount();
+    for (const clientId of [bravoClient, randomUUID()]) {
+      // oxlint-disable-next-line no-await-in-loop -- each refusal is counted against the same rows
+      const answer = await set('foreign.client', `${CANARY}-foreign`, { clientId });
+      expect(answer.status, clientId).toBe(404);
+      expect(answer.body['code']).toBe('NOT_FOUND');
+      expect(answer.body['names']).toStrictEqual(['clientId']);
+      expect(JSON.stringify(answer.body)).not.toContain(CANARY);
+    }
+    expect(await rowCount()).toBe(before);
   });
 
   it('C31 every change is recorded and joins the audit chain', async () => {
