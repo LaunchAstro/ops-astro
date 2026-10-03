@@ -69,6 +69,11 @@ export type EmailResult =
  */
 const NOTHING_SENT: ReadonlySet<string> = new Set(['refused', 'unlisted', 'bad_path', 'forbidden']);
 
+/** RFC 5322's dot-atom in ASCII: a from's local part, never a display name, space or line break. */
+const DOT_ATOM = /^[\w!#$%&'*+/=?^`{|}~-]+(?:\.[\w!#$%&'*+/=?^`{|}~-]+)*$/u;
+/** Printable ASCII: a domain that lower-cases to the verified subdomain only if it already is one. */
+const ASCII = /^[!-~]+$/u;
+
 /** Emails in flight for this business: items whose last email observation is still `asked`. */
 async function emailsInFlight(tx: TenantQuery): Promise<number> {
   const [flight] = await tx.query<{ readonly n: number }>(
@@ -168,14 +173,15 @@ export async function sendInboxEmail(
   broker: Broker,
   mail: MailSettings,
 ): Promise<EmailResult> {
-  // The report vouches for one subdomain: mail from anything but one address on it is not
-  // verified, and a report drawn from the fake source (`mock`) never verifies a real send.
-  const [local, domain, ...rest] = mail.from.split('@');
+  // The report vouches for one subdomain: mail from anything but one bare address on it is
+  // not verified, and only a report that says it is not from the fake source (`mock`) counts.
+  const [local = '', domain = '', ...rest] = mail.from.split('@');
   const onSubdomain =
-    local !== '' &&
+    DOT_ATOM.test(local) &&
     rest.length === 0 &&
-    domain?.toLowerCase() === mail.sender.subdomain.toLowerCase();
-  if (!mail.sender.verified || mail.sender.mock || !onSubdomain) {
+    ASCII.test(domain) &&
+    domain.toLowerCase() === mail.sender.subdomain.toLowerCase();
+  if (!mail.sender.verified || mail.sender.mock !== false || !onSubdomain) {
     return { ok: false, code: 'SENDER_NOT_VERIFIED' };
   }
   const found = routed(broker);
