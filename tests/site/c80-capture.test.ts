@@ -309,3 +309,16 @@ describe('C80 the fenced capture: attributes merged onto one element', () => {
     },
   );
 });
+
+// The fourth re-bind, finding 2: a declarative shadow root or a srcdoc frame shows text and loads
+// sheets the capture never reads, so a page carrying one is refused rather than read in part.
+describe('C80 the fenced capture: what a browser renders that it cannot read', () => {
+  it.each([
+    `<p>Base</p><div><template shadowrootmode=open>${R}</template></div>`,
+    '<div><template shadowrootmode=open><p>NEW</p></template><p>Base rest of page</p></div>',
+    `<p>Base</p><iframe srcdoc="${R}"></iframe>`,
+    `<p>Base</p><div><template shadowroot=closed>${R}</template></div>`,
+  ])('refuses %s as malformed', async (body) => {
+    expect(await captured(body)).toEqual({ ok: false, code: 'CAPTURE_BODY_MALFORMED' });
+  });
+});
