@@ -210,6 +210,7 @@ const SETTINGS_COLLECTION = 'settings';
 const SESSION_COLLECTION = 'session';
 const BILLING_COLLECTION = 'billing';
 const CUSTODY_COLLECTION = 'custody';
+const CONNECTION_COLLECTION = 'connection';
 const CONVERSATION_COLLECTION = 'conversation';
 const TIME_COLLECTION = 'time';
 const TAG_COLLECTION = 'tag';
@@ -617,6 +618,18 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
     collection: CUSTODY_COLLECTION,
     targetsExistingRecord: false,
     untargetedIdentifiers: ['secretId'],
+  }),
+
+  // The connector fleet (MP-14-7a). The fleet is `connection:read`, asked per
+  // row by the scopes the caller holds it at, so a client-scoped reader sees
+  // the connections serving that client only. Starting a repair touches the
+  // credential's custody, so it is `custody:manage` business-wide, never an
+  // agent (the ticket's permissions table).
+  read('connection.fleet', CONNECTION_COLLECTION),
+  declare('connector.repair', 'manage', {
+    collection: CUSTODY_COLLECTION,
+    targetsExistingRecord: false,
+    untargetedIdentifiers: ['connectionId'],
   }),
 
   // The grant manager's authority, which is `manage` on the task family this

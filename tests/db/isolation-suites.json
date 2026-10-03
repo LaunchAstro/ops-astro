@@ -14,6 +14,7 @@
     "tests/acceptance/role-case-matrix.test.ts",
     "tests/ci/cq-15-security-gate.test.ts",
     "tests/custody/c31-credentials.test.ts",
+    "tests/connections/mp-14-7a-fleet.test.ts",
     "tests/api/mp-6-1-isolation.test.ts",
     "tests/api/mp-6-4-isolation.test.ts",
     "tests/api/aw-03-isolation.test.ts",

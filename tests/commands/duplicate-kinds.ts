@@ -181,6 +181,8 @@ export const DECLARED: Readonly<
   // C31: a business's custody key, never task content.
   'secret.set': { carry: 'not carried', plant: 'a business key, not task content' },
   'secret.clear': { carry: 'not carried', plant: 'a business key, not task content' },
+  // MP-14-7a: a repair names a connection, never task content.
+  'connector.repair': { carry: 'not carried', plant: 'a connection, not task content' },
 };
 
 /** The carried name fields: each gets its canary and its old-client-name case. */

@@ -217,6 +217,17 @@ const UNREACHED: Readonly<Record<string, string>> = {
   'public.custody_secrets': `insert into public.custody_secrets
        (business_id, id, name, scope_kind, scope_id)
      values ($1, gen_random_uuid(), 'restricted-calls.seed', 'business', null) returning 1`,
+  // The connector fleet (MP-14-7a): nothing the journey does writes a
+  // connection, so each of the three is written here, foreign keys off.
+  'public.connections': `insert into public.connections
+       (business_id, id, connector_key, label, status)
+     values ($1, gen_random_uuid(), 'restricted-calls', 'restricted calls', 'active') returning 1`,
+  'public.connection_clients': `insert into public.connection_clients
+       (business_id, connection_id, client_id)
+     values ($1, gen_random_uuid(), gen_random_uuid()) returning 1`,
+  'public.connection_repairs': `insert into public.connection_repairs
+       (business_id, id, connection_id, connection_revision, started_by_actor_id)
+     values ($1, gen_random_uuid(), gen_random_uuid(), 1, gen_random_uuid()) returning 1`,
   'public.outage_reports': `insert into public.outage_reports (business_id, id, cause)
      values ($1, gen_random_uuid(), 'worker_lost') returning 1`,
   // AW-01: the copy register, which the journey never reaches.

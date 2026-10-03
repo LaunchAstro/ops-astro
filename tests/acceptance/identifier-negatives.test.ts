@@ -346,6 +346,10 @@ describe.skipIf(serverUrl === undefined)('identifier negatives (I03, I04)', () =
         ['grant.revoke', pair('grantId', f.grantId, (grantId) => ({ grantId }))],
         ['secret.clear', pair('secretId', f.secretId, (secretId) => ({ secretId }))],
         [
+          'connector.repair',
+          pair('connectionId', f.connectionId, (connectionId) => ({ connectionId })),
+        ],
+        [
           'delegation.revoke',
           pair('delegationId', f.picked.delegationId, (delegationId) => ({ delegationId })),
         ],

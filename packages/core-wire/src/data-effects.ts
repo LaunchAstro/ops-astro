@@ -184,6 +184,10 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'secret.list': READ,
   'secret.set': writing(business('custody_secrets')),
   'secret.clear': writing(business('custody_secrets')),
+  // The connector fleet (MP-14-7a): a repair row names a connection, its
+  // revision and its starter; no client and no task.
+  'connection.fleet': READ,
+  'connector.repair': writing(business('connection_repairs')),
   'client.create': writing(client('clients')),
   // SL12 (batch 3a join, BATCH3-INTEG): a conversation can hold a task's
   // content once scoped to it, so its rows count as client-scoped.

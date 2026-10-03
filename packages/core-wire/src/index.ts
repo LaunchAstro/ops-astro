@@ -164,8 +164,14 @@ export type {
   PreReviewAttribution,
   PreReviewRun,
 } from './views-agent.ts';
-// Custody's secrets as Settings ▸ Keys reads them (C31).
-export type { SecretListResult, SecretView } from './connection-views.ts';
+// Custody's secrets as Settings ▸ Keys reads them (C31), and the connector
+// fleet as Connections & signal reads it (MP-14-7a).
+export type {
+  ConnectionFleetResult,
+  ConnectionView,
+  SecretListResult,
+  SecretView,
+} from './connection-views.ts';
 // the command catalogue and its parity check (API-1)
 export * from './catalogue.ts';
 // each command's data effects and its class, read by the first-client gate (S0-5)

@@ -29,6 +29,7 @@ import { commentOnTask } from './tasks-comment.ts';
 import { changeFrom, deleteTaskComment, editTaskComment } from './tasks-comment-edit.ts';
 import { setBusinessSetting, setNotificationChannel } from './settings-write.ts';
 import { clearCustodySecret, setCustodySecret } from './custody-secrets.ts';
+import { startConnectorRepair } from './connector-repair.ts';
 import { recordIncident } from './privacy-write.ts';
 import { approveVersion, draftVersion, publishVersion } from './legal-write.ts';
 import { issueCredential, revokeCredential } from './credential-write.ts';
@@ -141,6 +142,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
 
   'secret.set': (tx, context, request) => setCustodySecret(tx, context, request),
   'secret.clear': (tx, context, request) => clearCustodySecret(tx, context, request),
+  'connector.repair': (tx, context, request) => startConnectorRepair(tx, context, request),
 
   'privacy.record_incident': recordIncident,
   'legal.draft_version': draftVersion,

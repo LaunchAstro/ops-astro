@@ -27,6 +27,7 @@ const OUTSIDER_NOT_FOUND = rows.filter(([, row]) => row.outsiderNotFound).map(([
 const PINNED_SHAPE = {
   'access.read': { spine: false, subject: false, authority: 'declared' },
   'client.list': { spine: false, subject: false, authority: 'holds-any-grant' },
+  'connection.fleet': { spine: false, subject: false, authority: 'holds-any-grant' },
   'conversation.allowance': { spine: false, subject: false, authority: 'holds-any-grant' },
   'conversation.list': { spine: false, subject: false, authority: 'holds-any-grant' },
   'conversation.read': { spine: false, subject: false, authority: 'holds-any-grant' },
@@ -61,6 +62,7 @@ const PINNED_SHAPE = {
 const PINNED_IDENTIFIERS = {
   'access.read': [],
   'client.list': [],
+  'connection.fleet': [],
   'conversation.allowance': ['conversationId'],
   'conversation.list': [],
   'conversation.read': ['conversationId'],
@@ -204,6 +206,7 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'task.todos': BODIES.map(() => null),
   'settings.read': BODIES.map(() => null),
   'secret.list': BODIES.map(() => null),
+  'connection.fleet': BODIES.map(() => null),
   'session.capabilities': BODIES.map(() => null),
   'conversation.read': BODIES.map(() => null),
   'conversation.list': BODIES.map(() => null),
@@ -242,7 +245,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same twenty-nine reads', () => {
+  it('names the same thirty reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 
