@@ -1,0 +1,6 @@
+{
+  "comment": [
+    "WAYFINDER (PORT-B P14, WF-1 from b0/SL14) names tests/wayfinder/wf-1.test.ts (the map as a task, typed tickets, the summary read model kept in the writing transaction, client scope and the client-surface refusals, the retype owner rule, a refusal per key and the three isolation crossings) as an invariant. world.ts is a harness, not a suite."
+  ],
+  "invariant": ["tests/wayfinder/wf-1.test.ts"]
+}
