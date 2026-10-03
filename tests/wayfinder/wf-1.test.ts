@@ -15,6 +15,7 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { shareRecord } from '../../packages/core-records/src/authority/shares.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { insertActor, insertLogin, insertMapping, insertPerson } from '../identity/fixture.ts';
+import { addClient } from '../commands/fixture.ts';
 import {
   codeOf,
   must,
@@ -99,6 +100,13 @@ describe.skipIf(serverUrl === undefined)('WF-1 task types and the map as a task'
   const newMap = async (who: Member, title: string): Promise<Made> =>
     await w.create(who, { title }, { taskType: 'map' });
 
+  /** A real client of the business: `map.scope`, like `task.set_party`, names only one. */
+  const newClient = async (): Promise<string> => {
+    const id = randomUUID();
+    await addClient(w.db.app, w.business, id, owner);
+    return id;
+  };
+
   const ticket = async (who: Member, map: string, title: string, taskType: string) =>
     await w.create(who, { title }, { taskType, parentId: map });
 
@@ -109,6 +117,8 @@ describe.skipIf(serverUrl === undefined)('WF-1 task types and the map as a task'
     writer = await w.member('writer', ['read', 'write']);
     reader = await w.member('reader', ['read']);
     sharer = await w.member('sharer', ['read', 'write', 'share']);
+    // A map's client is a client change, asked under `share` like `task.set_party`.
+    await w.grant(owner, 'share');
   }, 180_000);
 
   afterAll(async () => await w?.drop());
@@ -268,7 +278,7 @@ describe.skipIf(serverUrl === undefined)('WF-1 task types and the map as a task'
   });
 
   it('WF-1 a client-scoped map carries its client; a map, its tickets and threads never reach a client surface', async () => {
-    const client = randomUUID();
+    const client = await newClient();
     const map = await newMap(owner, 'client map');
     must(
       await w.as(owner, {
@@ -410,7 +420,7 @@ describe.skipIf(serverUrl === undefined)('WF-1 task types and the map as a task'
       command: 'map.scope',
       recordId: map.id,
       expectedRevision: await w.revisionOf(map.id),
-      client: randomUUID(),
+      client: await newClient(),
     });
     const research = await ticket(owner, map.id, 'audited research', 'research');
     const retyped = await retype(owner, research.id, 'grilling');
@@ -497,6 +507,47 @@ describe.skipIf(serverUrl === undefined)('WF-1 task types and the map as a task'
     expect(codeOf(await retype(teammate, research.id, 'task'))).toBe('SCOPE_NOT_GRANTED');
     // The map's owner is its creator, recorded on the map.
     expect((await view(owner, map.id)).owner).toBe(owner.personId);
+    // Nor by the side door: detaching the ticket from its map (to retype it
+    // ownerless and file it back) is the owner's too, and moves nothing.
+    const detached = await w.as(teammate, {
+      command: 'task.reparent',
+      recordId: research.id,
+      expectedRevision: await w.revisionOf(research.id),
+      parentId: null,
+    });
+    expect(codeOf(detached)).toBe('SCOPE_NOT_GRANTED');
+    expect(JSON.stringify(detached)).toContain('map owner');
+    expect(await dataOf(research.id, 'parent')).toBe(map.id);
+    expect(await dataOf(research.id, 'type')).toBe('grilling');
+  });
+
+  it('WF-1 map scoped follows the client rules of task.set_party', async () => {
+    const scope = async (who: Member, map: string, client: unknown) =>
+      await w.as(who, {
+        command: 'map.scope',
+        recordId: map,
+        expectedRevision: await w.revisionOf(map),
+        client,
+      });
+    const map = await newMap(owner, 'rules map');
+    // A client change asks share, which a writer does not hold.
+    expect(codeOf(await scope(writer, map.id, await newClient()))).toBe('SCOPE_NOT_GRANTED');
+    // Only a client of this business, never a made-up identifier.
+    const unknown = await scope(owner, map.id, randomUUID());
+    expect(codeOf(unknown)).toBe('NOT_FOUND');
+    expect(await dataOf(map.id, 'client')).toBeNull();
+    // Once the map has a ticket it has content, so its client is locked (S0-5).
+    const client = await newClient();
+    must(await scope(owner, map.id, client), 'scope while empty');
+    await ticket(owner, map.id, 'content now', 'research');
+    const revision = await w.revisionOf(map.id);
+    const locked = await scope(owner, map.id, await newClient());
+    expect(codeOf(locked)).toBe('CLIENT_LOCKED');
+    expect(await dataOf(map.id, 'client')).toBe(client);
+    expect(await w.revisionOf(map.id)).toBe(revision);
+    // Only a map is scoped this way.
+    const plain = await w.create(owner, { title: 'not a map either' });
+    expect(codeOf(await scope(owner, plain.id, client))).toBe('TRANSITION_NOT_PERMITTED');
   });
 
   it('WF-1 retype agent refused', async () => {
@@ -549,8 +600,8 @@ describe.skipIf(serverUrl === undefined)('WF-1 task types and the map as a task'
     const mapA = await newMap(owner, 'canary-map-A');
     const mapB = await newMap(owner, 'canary-map-B');
     for (const [map, client] of [
-      [mapA.id, randomUUID()],
-      [mapB.id, randomUUID()],
+      [mapA.id, await newClient()],
+      [mapB.id, await newClient()],
     ] as const) {
       must(
         await w.as(owner, {
@@ -604,11 +655,35 @@ describe.skipIf(serverUrl === undefined)('WF-1 task types and the map as a task'
     expect((await view(onA, mapA.id)).id).toBe(mapA.id);
     const research = await ticket(onA, mapA.id, 'A research', 'research');
     expect(codeOf(await retype(onA, research.id, 'task'))).toBe('applied');
+    // The map's grant covers a task filed under the map, not one under its ticket.
+    const under = await w.as(onA, {
+      command: 'task.create',
+      fields: { title: 'under the ticket' },
+      parentId: research.id,
+    });
+    expect(codeOf(under)).toBe('SCOPE_NOT_GRANTED');
     // The map's grant reads its ticket too (W12), on the read path as on commands.
     const ownTicket = (await w.read(onA, { read: 'task.read', recordId: research.id })) as {
       readonly task?: { readonly id: string };
     };
     expect(ownTicket.task?.id).toBe(research.id);
+    // A map filed under map A is a map of its own: map A's grant does not
+    // reach it, so map A's view and frontier never name it.
+    const nested = await w.create(
+      owner,
+      { title: 'canary-nested-map' },
+      { taskType: 'map', parentId: mapA.id },
+    );
+    expect(codeOf(await w.read(onA, { read: 'task.read', recordId: nested.id }))).toBe(
+      'SCOPE_NOT_GRANTED',
+    );
+    for (const answer of [
+      await w.read(onA, { read: 'map.view', recordId: mapA.id }),
+      await w.read(onA, { read: 'map.frontier', recordId: mapA.id }),
+    ]) {
+      expect(JSON.stringify(answer)).not.toContain(nested.id);
+      expect(JSON.stringify(answer)).not.toContain('canary-nested-map');
+    }
     for (const answer of [
       await w.read(onA, { read: 'map.view', recordId: mapB.id }),
       await w.read(onA, { read: 'task.read', recordId: ticketB.id }),

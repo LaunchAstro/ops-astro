@@ -706,7 +706,11 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
   // lands: the retype rule's floor.
   declare('task.set_type', 'write'),
   declare('map.revise', 'write', { serialise: WAYFINDER_MAP_LOCK }),
-  declare('map.scope', 'write', { serialise: WAYFINDER_MAP_LOCK }),
+  // A client change, as `task.set_party`: `share`, and locked once the map has content.
+  declare('map.scope', 'share', {
+    serialise: WAYFINDER_MAP_LOCK,
+    rule: 'once the map has content: refused CLIENT_LOCKED (409), writes nothing, as task.set_party (S0-5)',
+  }),
   read('map.view', TASK_COLLECTION, { authorisedOn: 'record' }),
   read('map.frontier', TASK_COLLECTION, { authorisedOn: 'record' }),
   // `billing:decide` on the whole business (AW-04, U10): owners and

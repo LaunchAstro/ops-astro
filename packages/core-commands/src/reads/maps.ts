@@ -131,6 +131,8 @@ async function readMapTickets(
        left join public.records s on s.business_id = c.business_id and s.id = c.uuid_1
       where c.business_id = $1 and c.uuid_4 = $2 and c.record_type_id = $3
         and c.deleted_at is null
+        -- A map filed under this one is a map of its own, outside this map's grant.
+        and coalesce(c.data ->> 'type', 'task') <> 'map'
       order by c.num_2 nulls last, c.created_at, c.id`,
     [tx.businessId, mapId, taskTypeId],
   );
@@ -183,11 +185,12 @@ export async function readMapFrontier(
     readonly title: string | null;
     readonly type: string;
   }>(
-    `select f.ticket_id as id, t.txt_1 as key, t.txt_4 as title,
+    `select t.id as id, t.txt_1 as key, t.txt_4 as title,
             coalesce(t.data ->> 'type', 'task') as type
        from public.records m
        left join public.map_frontier f on f.business_id = m.business_id and f.map_id = m.id
        left join public.records t on t.business_id = f.business_id and t.id = f.ticket_id
+        and coalesce(t.data ->> 'type', 'task') <> 'map'
       where m.business_id = $1 and m.id = $2 and m.record_type_id = $3
         and m.deleted_at is null and m.data ->> 'type' = 'map'
       order by f.position`,
@@ -202,6 +205,7 @@ export async function readMapFrontier(
   );
   return {
     ok: true,
+    // A nested map joins no ticket, so its row carries no id: it is not this map's.
     frontier: frontier
       .filter((row) => row.id !== null)
       .map((row) => ({ id: row.id, key: row.key, title: row.title, type: row.type })),
