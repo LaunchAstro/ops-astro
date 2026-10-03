@@ -113,3 +113,18 @@ tests/review/main-b1-p01-closed-tab-cookies-proof.test.ts
 # The condense pass's interim review proof (Opus, standing in for Sol), byte-for-byte apart from
 # its title, which names what it proves (tests/docs/test-files-by-behaviour.test.ts).
 tests/visual/coloured-summary-rejects-skipped-wrapper.test.ts
+
+# Sol's proofs on roles, staging logins and reset, the seed, the CodeQL queue gate
+# and the copy finder, byte-for-byte as the review patches held them apart from
+# each title, which names what it proves (tests/docs/test-files-by-behaviour.test.ts).
+tests/review/role-repair-drops-inherited-access-proof.test.ts
+tests/review/staging-logins-duplicate-sslmode-proof.test.ts
+tests/review/staging-logins-direct-privileges-proof.test.ts
+tests/review/staging-logins-group-race-proof.test.ts
+tests/review/staging-reset-encoded-user-proof.test.ts
+tests/review/staging-reset-write-after-admission-proof.test.ts
+tests/review/staging-reset-keeps-revoked-session-proof.test.ts
+tests/review/staging-reset-agent-password-proof.test.ts
+tests/review/seed-boundaries-proof.test.mjs
+tests/ci/queue-codeql-blocking-proof.test.mjs
+tests/operations/find-copies-values-only.proof.test.ts

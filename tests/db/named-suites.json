@@ -989,6 +989,16 @@
     "tests/runtime/review-3b-5-delegate-child-lease-id.test.ts",
     "tests/broker/review-3b-1-planning-hold-released.test.ts",
     "tests/broker/planfix-3b-1-planning-outcome.test.ts",
-    "tests/broker/sec3b-1-ended-owner-planning-release.test.ts"
+    "tests/broker/sec3b-1-ended-owner-planning-release.test.ts",
+    "tests/review/role-repair-drops-inherited-access-proof.test.ts",
+    "tests/review/staging-logins-duplicate-sslmode-proof.test.ts",
+    "tests/review/staging-logins-direct-privileges-proof.test.ts",
+    "tests/review/staging-logins-group-race-proof.test.ts",
+    "tests/review/staging-reset-encoded-user-proof.test.ts",
+    "tests/review/staging-reset-write-after-admission-proof.test.ts",
+    "tests/review/staging-reset-keeps-revoked-session-proof.test.ts",
+    "tests/review/staging-reset-agent-password-proof.test.ts",
+    "tests/operations/find-copies-values-only.proof.test.ts",
+    "tests/db/identity-roles-hold-no-membership.test.ts"
   ]
 }
