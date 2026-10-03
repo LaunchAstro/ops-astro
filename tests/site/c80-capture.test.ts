@@ -190,11 +190,30 @@ describe('C80 the fenced capture: a page that never closes', () => {
   });
 });
 
+describe('C80 the fenced capture: a page nested deep', () => {
+  // Ruling P25PARSER: a browser's tree builder walks its open elements, so deep nesting costs
+  // depth times tags; past a depth no real page reaches, the capture refuses at once.
+  it.each(['<div>', '<ul><li>'])(
+    'refuses 100,000 nested %s as oversized within a second',
+    async (opener) => {
+      const started = performance.now();
+      const result = await capturePage(ABOUT, {
+        pool: POOL,
+        resolve: publicResolver,
+        transport: site({ [ABOUT]: answer('text/html', `<p>x</p>${opener.repeat(100_000)}`) }),
+      });
+      expect(result).toEqual({ ok: false, code: 'CAPTURE_OVERSIZED' });
+      expect(performance.now() - started).toBeLessThan(1000);
+    },
+  );
+});
+
 // Security review of P25, low 3, re-reported by the second re-bind: the capture read some
 // markup differently from a browser, so a region could hide visible text or a loaded sheet.
 // Each region follows `<p>Base</p>`; what a browser reads was checked against parse5.
 const EVIL = 'https://www.example.com/evil.css';
 const ASSETS = 'https://www.example.com/assets/evil.css';
+const R = '<p>SHOWN</p><link rel=stylesheet href=/evil.css>';
 const AS_A_BROWSER_READS: readonly (readonly [string, string, readonly string[]])[] = [
   ['<!-->SHOWN<!-- -->', 'Base SHOWN', []],
   ['<!--->SHOWN<!-- -->', 'Base SHOWN', []],
@@ -218,6 +237,16 @@ const AS_A_BROWSER_READS: readonly (readonly [string, string, readonly string[]]
   ['<noembed><!--</noembed>SHOWN<!-- -->', 'Base SHOWN', []],
   ['<noframes><!--</noframes>SHOWN<!-- -->', 'Base SHOWN', []],
   ['<plaintext><!--</plaintext>SHOWN-->', 'Base <!--</plaintext>SHOWN-->', []],
+  // The third re-bind, findings 1 and 2: foreign content, CDATA, script escapes and template
+  // contents left the capture inside a hidden element, and an svg <base> moved its links.
+  [`<svg><iframe></svg>${R}</iframe>`, 'Base SHOWN', [EVIL]],
+  [`<svg><script></svg>${R}<title></script></title>`, 'Base SHOWN </script>', [EVIL]],
+  [`<math><noembed>${R}</noembed></math>`, 'Base SHOWN', [EVIL]],
+  [`<svg><![CDATA[><noscript>]]></svg>${R}</noscript>`, 'Base ><noscript> SHOWN', [EVIL]],
+  [`<script><!--<script></script><iframe></script>${R}</iframe>`, 'Base SHOWN', [EVIL]],
+  [`<template><!--</template><iframe>--></template>${R}</iframe>`, 'Base SHOWN', [EVIL]],
+  ['<svg><base href=/assets/></svg><link rel=stylesheet href=evil.css>', 'Base', [EVIL]],
+  ['<svg><style>p{}</style></svg><template><style>q{}</style></template>', 'Base', ['inline:0']],
 ];
 
 const captured = (body: string) =>
