@@ -156,6 +156,8 @@ export type {
   TaskTimeView,
   TimeEntryView,
 } from './views.ts';
+// the team conversation reads' answers (C71-D)
+export type * from './views-chat.ts';
 // AW-04's attribution and allowance answers, beside the other agent views.
 export type {
   AllowanceResult,

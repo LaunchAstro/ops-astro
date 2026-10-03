@@ -163,6 +163,13 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'inbox.seen': writing(client('inbox_attention')),
   // Validated only: in-app is always on, and nothing is stored (INB-1e).
   'notifications.set_channel': READ,
+  // C71-D: the message is a comment record, its conversation a record beside
+  // it with its two members; the marker is the reader's own member row. Both
+  // tables are the records table's scope, as a task comment's is.
+  'chat.send_direct': writing(client('records', 'team_conversation_members')),
+  'chat.conversations': READ,
+  'chat.messages': READ,
+  'chat.mark_read': writing(client('team_conversation_members')),
   'settings.set_four_eyes_threshold': SETTINGS,
   'settings.set_client_sign_off': SETTINGS,
   'settings.set_money_step_up': SETTINGS,

@@ -26,6 +26,8 @@ const OUTSIDER_NOT_FOUND = rows.filter(([, row]) => row.outsiderNotFound).map(([
 /** How each read reaches its answer: spine, a resolved subject, and how authority is asked. */
 const PINNED_SHAPE = {
   'access.read': { spine: false, subject: false, authority: 'declared' },
+  'chat.conversations': { spine: false, subject: false, authority: 'declared' },
+  'chat.messages': { spine: false, subject: false, authority: 'declared' },
   'client.list': { spine: false, subject: false, authority: 'holds-any-grant' },
   'conversation.allowance': { spine: false, subject: false, authority: 'holds-any-grant' },
   'conversation.list': { spine: false, subject: false, authority: 'holds-any-grant' },
@@ -59,6 +61,8 @@ const PINNED_SHAPE = {
 
 const PINNED_IDENTIFIERS = {
   'access.read': [],
+  'chat.conversations': [],
+  'chat.messages': ['conversationId'],
   'client.list': [],
   'conversation.allowance': ['conversationId'],
   'conversation.list': [],
@@ -91,8 +95,11 @@ const PINNED_IDENTIFIERS = {
   'trace.read': ['recordId'],
 };
 
-// MP-7-10: `team.list` is staff only; a client is told NOT_FOUND.
+// MP-7-10: `team.list` is staff only; a client is told NOT_FOUND. So are
+// C71-D's two conversation reads.
 const PINNED_OUTSIDER_NOT_FOUND = [
+  'chat.conversations',
+  'chat.messages',
   'task.board',
   'task.execution',
   'task.ledger',
@@ -222,6 +229,13 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'inbox.read': BODIES.map(() => null),
   'inbox.count': BODIES.map(() => null),
   'inbox.unattended': BODIES.map(() => null),
+  // C71-D: a conversation is named by its id, which none of these bodies carries.
+  'chat.conversations': BODIES.map(() => null),
+  'chat.messages': BODIES.map(() => ({
+    code: 'FIELD_VALUE_INVALID',
+    names: ['conversationId'],
+    fixes: ['Send conversationId as a conversation’s identifier.'],
+  })),
   // AW-12: the run, which none of these bodies carries.
   'harness.read': BODIES.map(() => ({
     code: 'FIELD_VALUE_INVALID',
@@ -239,7 +253,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same twenty-eight reads', () => {
+  it('names the same thirty-two reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 
@@ -247,7 +261,7 @@ describe('the per-read facts at 06ab232', () => {
     expect({ ...READ_IDENTIFIERS }).toStrictEqual(PINNED_IDENTIFIERS);
   });
 
-  it('tells an outsider NOT_FOUND on the same six', () => {
+  it('tells an outsider NOT_FOUND on the same eight', () => {
     expect([...OUTSIDER_NOT_FOUND].toSorted()).toStrictEqual(PINNED_OUTSIDER_NOT_FOUND);
   });
 

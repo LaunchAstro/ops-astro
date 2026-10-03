@@ -29,7 +29,7 @@ import type { CheckRequest } from './requests-check.ts';
 import type { ConversationRequest } from './requests-conversation.ts';
 import type { RunRequest } from './requests-run.ts';
 import type { Envelope } from './request-envelope.ts';
-import type { CommentRequest } from './requests-comments.ts';
+import type { ChatRequest, CommentRequest } from './requests-comments.ts';
 import type { DuplicateRequest } from './requests-duplicate.ts';
 import type { TagRequest } from './requests-tags.ts';
 import type { TimeRequest } from './requests-time.ts';
@@ -295,5 +295,6 @@ export type CommandRequest =
   | SelfRequest<Envelope>
   // Time tracking (MP-4-6), in `requests-time.ts`.
   | TimeRequest<Envelope>
-  // Tags (MP-4-11), in `requests-tags.ts`.
-  | TagRequest<Envelope>;
+  // Tags (MP-4-11), in `requests-tags.ts`; team conversations (C71-D) beside the comments.
+  | TagRequest<Envelope>
+  | ChatRequest<Envelope>;

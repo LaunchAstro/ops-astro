@@ -219,6 +219,24 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return { foreign, fabricated };
   }
 
+  /** A direct conversation of bravo's, opened by bravo's admin writing to bea. */
+  async function bravoConversation(): Promise<string> {
+    const { world } = w.h;
+    const bram = w.foreign.admin;
+    await world.db.app.withBusiness(world.bravo, async (tx) => {
+      await grantTo(tx, bram as unknown as Member, 'comment', undefined, false, 'chat');
+    });
+    const sent = await w.person(
+      bram,
+      'chat.send_direct',
+      { teammateId: world.bea.personId, body: 'bravo timing' },
+      'bravo',
+    );
+    const id = (sent.body['detail'] as Body | undefined)?.['conversationId'];
+    if (typeof id !== 'string') throw new Error(`bravo opened no conversation: ${sent.text}`);
+    return id;
+  }
+
   /** The cells: the record-targeted operations, then those with their own operand. */
   // eslint-disable-next-line max-lines-per-function -- one table, built in one place
   async function cells(): Promise<readonly Cell[]> {
@@ -413,6 +431,15 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     );
     if (bravoItem === undefined) throw new Error('bravo raised no inbox item to aim at');
     byAda('inbox.seen', 'itemId', bravoItem.id, (itemId) => ({ itemId }));
+    // C71-D: bravo's admin and bravo's conversation, named from alpha.
+    const bravoDirect = await bravoConversation();
+    const bram = f.admin.personId as string;
+    byAda('chat.send_direct', 'teammateId', bram, (teammateId) => ({ teammateId, body: NOBODY }));
+    byAda('chat.messages', 'conversationId', bravoDirect, (conversationId) => ({ conversationId }));
+    byAda('chat.mark_read', 'conversationId', bravoDirect, (conversationId) => ({
+      conversationId,
+      upTo: new Date().toISOString(),
+    }));
     out.push({
       op: 'task.pickup',
       operand: 'reservationId',
@@ -465,11 +492,11 @@ describe.skipIf(serverUrl === undefined)('identifier timing (I04)', () => {
     return out;
   }
 
-  it('times foreign and fabricated identifiers alike on all 71 operations', async () => {
+  it('times foreign and fabricated identifiers alike on all 74 operations', async () => {
     const table = await cells();
     const names = table.map((cell) => cell.op);
-    expect(new Set(names).size, 'distinct operations').toBe(71);
-    expect(names).toHaveLength(71);
+    expect(new Set(names).size, 'distinct operations').toBe(74);
+    expect(names).toHaveLength(74);
     const bearing = COMMAND_SURFACE.map((declaration) => declaration.name)
       .filter((name) => !TARGET_FREE.has(name))
       .toSorted();
