@@ -84,6 +84,7 @@ export {
 export {
   NO_MEMBERSHIP_FIXES,
   standsOnShares,
+  standingOf,
   resolveLogin,
   withSession,
   type SecondFactorRule,
@@ -107,9 +108,11 @@ export {
   type SecondFactor,
 } from './identity/second-factor.ts';
 export {
+  claimProviderSession,
   endOtherSeenSessions,
   endProviderSession,
   endOwnSession,
+  endSubjectSessions,
   listSeenSessions,
   type SeenSession,
   type SessionEndReason,

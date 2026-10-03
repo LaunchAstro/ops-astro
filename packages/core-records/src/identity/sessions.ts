@@ -82,11 +82,7 @@ export async function endOtherSeenSessions(
   /** The login's provider subject: the ending holds in every business (0063). */
   subject: string,
 ): Promise<number> {
-  await tx.query(
-    `insert into ops.ended_subject_sessions (subject_digest, kept_session)
-     values (encode(sha256(convert_to($1, 'UTF8')), 'hex'), $2::uuid)`,
-    [subject, keep ?? null],
-  );
+  await endSubjectSessions(tx, subject, keep);
   const seen = await tx.query<{ readonly session_id: string }>(
     `select distinct a.session_id::text as session_id
        from public.authentication_attempts a
@@ -100,11 +96,41 @@ export async function endOtherSeenSessions(
 }
 
 /**
+ * End every session of the login but `keep` (none when undefined), in every
+ * business, from this commit (0063): a sign-in after it is served.
+ */
+export async function endSubjectSessions(
+  tx: TenantQuery,
+  subject: string,
+  keep?: string,
+): Promise<void> {
+  await tx.query(
+    `insert into ops.ended_subject_sessions (subject_digest, kept_session)
+     values (encode(sha256(convert_to($1, 'UTF8')), 'hex'), $2::uuid)`,
+    [subject, keep ?? null],
+  );
+}
+
+/**
  * End one provider session in every business (0061), with no person: a
  * sign-out the business no longer admits still ends its verified session.
  */
 export async function endProviderSession(tx: TenantQuery, sessionId: string): Promise<void> {
   await tx.query(END_PROVIDER_SESSIONS, [[sessionId]]);
+}
+
+/**
+ * End one provider session in every business and answer whether this call
+ * ended it (C40): of any number of callers at once, exactly one is told yes,
+ * since the row is the claim and a second insert waits on the first's commit.
+ */
+export async function claimProviderSession(tx: TenantQuery, sessionId: string): Promise<boolean> {
+  const rows = await tx.query(
+    `insert into ops.ended_provider_sessions (session_id) values ($1::uuid)
+     on conflict (session_id) do nothing returning 1`,
+    [sessionId],
+  );
+  return rows.length > 0;
 }
 
 /** End the one session the person is signing out of. */

@@ -360,13 +360,14 @@ export function createApi(options: ApiOptions): Hono {
   );
 
   // The browser trades the provider's token for the session cookie here, and
-  // gives it back at `/end`; both only from this application's own pages.
+  // gives it back at `/end`; both only from this application's own pages. A
+  // reset link's session sets the password and nothing else (C40): no cookie.
   api.post(SESSION_PATH, async (context) => {
     if (!fromOwnPages(context.req)) return refuse(context, CROSS_SITE());
     const token = bearerOf(context.req);
     const presented = token === undefined ? undefined : await options.verify(context.req);
     if (presented === 'unavailable') return unavailable(context);
-    if (presented === 'expired') {
+    if (presented === 'expired' || (typeof presented === 'object' && presented.recovery)) {
       return refuse(context, refuseCommand('AUTH_SESSION_EXPIRED', [], EXPIRED_FIXES));
     }
     if (token === undefined || presented === undefined || presented === 'absent') {

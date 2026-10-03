@@ -2852,6 +2852,39 @@ In the web app, Settings ▸ General's "Your sessions" panel calls the first two
 ending the others only once confirmed, then listing again; it draws no session
 id (`apps/web/src/screens/settings/sessions.tsx`).
 
+`POST /api/password/set` with `password` and the bearer of the session a
+reset link opened sets the new password (C40, `setPasswordByRecovery`,
+mounted by `mountPasswordSet` with the deployment's businesses; `main()` does
+not mount it yet). A token whose `amr` holds `recovery` is a recovery
+session: login resolution refuses it everywhere else (`AUTH_SESSION_EXPIRED`),
+and this route takes nothing else. The provider sets the password on the
+person's own token (GoTrue `PUT /user`, not custody), and only a user whose
+id is the token's subject is a yes. Before the provider is asked, one
+transaction spends the link (its session ended) and ends every session of the
+login in every business (0063, keeping none). On the yes, in each business the
+login is mapped in, one transaction ends the sessions seen there and audits
+`account.password_changed`; after commit the provider signs out the others,
+then this session. The answer is 200 `{ signedOutAtProvider }`. A session
+that is not a live recovery session of a mapped login (none, naming no
+session, expired, spent, a sign-in) is 401 `RESET_LINK_INVALID`; a spent link,
+and a request that lost the claim, are recorded as a refused attempt in each
+business that knows the login. A password outside 12 to 72 bytes is 400
+`PASSWORD_INVALID`, a body that is not a JSON object holding it 400
+`RESET_MALFORMED`, and one over 1 KiB 413 `RESET_TOO_LARGE`. The link is spent
+before the provider is asked, so of two requests on one link at once one sets
+the password and the other is 401. A password the provider refuses itself
+(GoTrue's 422: weak, leaked, the same as before) is 422
+`RESET_PASSWORD_REFUSED`: choose a different password and ask for a new link,
+since this one is spent. Any other provider fault or wrong answer is 503
+`RESET_UNAVAILABLE`; a key set the provider cannot serve is 503
+`RESET_UNAVAILABLE` too, as at the session exchange; anything else failing is
+503 `RESET_FAULT`. A reset that fails after the link is spent ends every
+session of the login here again (a sign-in made while the provider was asked
+included), then the provider is asked to sign out the others and this
+session; nothing is audited. A recovery session is never traded for the
+session cookie (`AUTH_SESSION_EXPIRED`). Answers carry a code alone; nothing
+is logged. No limit holds the route's rate yet.
+
 ## The operations view and privacy incidents (C55)
 
 `operations.read` answers `{ ok, unattended, privacyIncidents, breachRunbook, securityAlerts, serviceHealth, errorSink, lastTestedRestore }`

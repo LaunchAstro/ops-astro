@@ -11,12 +11,15 @@
 // `ProviderFault`, never a partial success, and the fault names only its kind:
 // the provider's own words, which could carry anything, go nowhere.
 
-import type {
-  FactorProvider,
-  FactorSession,
-  IssuedFactor,
-  ProviderAnswer,
-  ProviderFault,
+import {
+  PASSWORD_REFUSED,
+  type FactorProvider,
+  type FactorSession,
+  type PasswordAnswer,
+  type PasswordProvider,
+  type IssuedFactor,
+  type ProviderAnswer,
+  type ProviderFault,
 } from '../../../packages/core-commands/src/index.ts';
 
 export interface GoTrueFactorOptions {
@@ -37,7 +40,7 @@ type Json = Readonly<Record<string, unknown>>;
 
 /** One request to the provider: its answer unread, or a fault if none came. */
 type Request = (
-  method: 'POST' | 'DELETE',
+  method: 'POST' | 'DELETE' | 'PUT',
   path: string,
   accessToken: string,
   body?: Json,
@@ -45,7 +48,7 @@ type Request = (
 
 /** One call to the provider, its answer shaped to a JSON object or a fault. */
 type Call = (
-  method: 'POST' | 'DELETE',
+  method: 'POST' | 'DELETE' | 'PUT',
   path: string,
   accessToken: string,
   body?: Json,
@@ -57,18 +60,22 @@ interface Limits {
   readonly maxBytes: number;
 }
 
-export function createGoTrueFactors(options: GoTrueFactorOptions): FactorProvider {
+export function createGoTrueFactors(
+  options: GoTrueFactorOptions,
+): FactorProvider & PasswordProvider {
   const limits = {
     timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     maxBytes: options.maxBytes ?? DEFAULT_MAX_BYTES,
   };
   const request = requestGoTrue(options, limits.timeoutMs);
-  const call = callGoTrue(request, limits);
+  const call: Call = async (method, path, accessToken, body) =>
+    await shapeAnswer(await request(method, path, accessToken, body), limits);
   return {
     enrol: (accessToken) => enrol(call, accessToken),
     verify: (accessToken, factorId, code) => verify(call, accessToken, factorId, code),
     remove: (accessToken, factorId) => remove(call, accessToken, factorId),
     signOut: (accessToken, scope) => signOut(request, limits, accessToken, scope),
+    setPassword: (accessToken, password) => setPassword(request, limits, accessToken, password),
   };
 }
 
@@ -101,27 +108,28 @@ function requestGoTrue(options: GoTrueFactorOptions, timeoutMs: number): Request
   };
 }
 
-function callGoTrue(request: Request, limits: Limits): Call {
-  return async (method, path, accessToken, body) => {
-    const response = await request(method, path, accessToken, body);
-    if (!(response instanceof Response)) return { ok: false, fault: response.fault };
-    const read = await readBounded(response, limits.maxBytes, limits.timeoutMs);
-    if ('fault' in read) return { ok: false, fault: read.fault };
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(read.text);
-    } catch {
-      return { ok: false, fault: 'malformed' };
-    }
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      return { ok: false, fault: 'malformed' };
-    }
-    // A 4xx is the provider saying no (a wrong code, an expired challenge);
-    // it is not a fault in the answer, and it is not a success either.
-    if (response.status >= 400 && response.status < 500) return { ok: false, fault: 'refused' };
-    if (!response.ok) return { ok: false, fault: 'unreachable' };
-    return { ok: true, value: parsed as Json };
-  };
+/** A request's answer shaped to a JSON object, or a fault. */
+async function shapeAnswer(
+  response: Response | { readonly fault: ProviderFault },
+  limits: Limits,
+): Promise<ProviderAnswer<Json>> {
+  if (!(response instanceof Response)) return { ok: false, fault: response.fault };
+  const read = await readBounded(response, limits.maxBytes, limits.timeoutMs);
+  if ('fault' in read) return { ok: false, fault: read.fault };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(read.text);
+  } catch {
+    return { ok: false, fault: 'malformed' };
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    return { ok: false, fault: 'malformed' };
+  }
+  // A 4xx is the provider saying no (a wrong code, an expired challenge);
+  // it is not a fault in the answer, and it is not a success either.
+  if (response.status >= 400 && response.status < 500) return { ok: false, fault: 'refused' };
+  if (!response.ok) return { ok: false, fault: 'unreachable' };
+  return { ok: true, value: parsed as Json };
 }
 
 async function enrol(call: Call, accessToken: string): Promise<ProviderAnswer<IssuedFactor>> {
@@ -183,6 +191,28 @@ async function remove(
   return answer.value['id'] === factorId
     ? { ok: true, value: undefined }
     : { ok: false, fault: 'malformed' };
+}
+
+// C40: the recovery session sets its own login's password (GoTrue `PUT /user`).
+// Done is the user back, as a JSON object whose `id` is a provider id; the
+// caller holds it to the token's subject. Nothing else of the answer is read.
+// A 422 is GoTrue's definitive no to this password (weak, leaked, the same as
+// before): its status alone is read, never its words.
+async function setPassword(
+  request: Request,
+  limits: Limits,
+  accessToken: string,
+  password: string,
+): Promise<PasswordAnswer> {
+  const response = await request('PUT', '/user', accessToken, { password });
+  if (response instanceof Response && response.status === 422) {
+    await response.body?.cancel().catch(() => null);
+    return { ok: false, fault: PASSWORD_REFUSED };
+  }
+  const answer = await shapeAnswer(response, limits);
+  if (!answer.ok) return answer;
+  const id = answer.value['id'];
+  return isFactorId(id) ? { ok: true, value: id } : { ok: false, fault: 'malformed' };
 }
 
 // GoTrue's sign-out (C58): done is a 204 and nothing else, with nothing in

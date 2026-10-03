@@ -84,6 +84,7 @@ import { startLiveTopics } from './live.ts';
 import { createLivePresence } from './live-presence.ts';
 import { isLoopback, migrationHead, readIdentity, type ServedIdentity } from './identity.ts';
 import { brokerSettings, startModelBroker } from './model-broker.ts';
+import { mountPasswordSet, type PasswordSetOptions } from './password-set.ts';
 import { startTraceExporter, traceExportSettings } from './trace-exporter.ts';
 import {
   describeRecovered,
@@ -211,6 +212,8 @@ export interface ApiConfig {
    * mounted. Its check is `admitReads` unless a test hands in its own to count.
    */
   readonly live?: Omit<LiveOptions, 'admit'> & { readonly admit?: ReadAdmitter };
+  /** C40's `POST /api/password/set` over these businesses; absent, the route is not mounted. */
+  readonly passwordSet?: Pick<PasswordSetOptions, 'businesses'>;
   /** `model.call` through the credential broker; absent where none is configured. */
   readonly executeModelCall?: ModelCallExecutor;
   /** AW-03's exchange through the same broker; absent where none is configured. */
@@ -308,6 +311,20 @@ export function composeApi(config: ApiConfig): ComposedApi {
     });
   }
 
+  const verify = createSupabaseVerifier({
+    ...config.signIn,
+    // The reason alone: an answer the provider sent is never repeated.
+    onRefusal: ({ reason }) => {
+      console.error(`api: the sign-in key set answer was refused (${reason})`);
+    },
+  });
+  // The provider GoTrue is: the one destination its factor and password calls reach.
+  const factors = createGoTrueFactors({ baseUrl: config.signIn.issuer });
+  // C40: a reset link's password set, mounted when given; `main()` does not yet.
+  if (config.passwordSet !== undefined) {
+    mountPasswordSet(server, database, { ...config.passwordSet, provider: factors, verify });
+  }
+
   server.route(
     '/',
     createApi({
@@ -315,13 +332,7 @@ export function composeApi(config: ApiConfig): ComposedApi {
       ...(config.agentLimits === undefined
         ? {}
         : { agentCredentials: { limits: config.agentLimits } }),
-      verify: createSupabaseVerifier({
-        ...config.signIn,
-        // The reason alone: an answer the provider sent is never repeated.
-        onRefusal: ({ reason }) => {
-          console.error(`api: the sign-in key set answer was refused (${reason})`);
-        },
-      }),
+      verify,
       resolveBusiness,
       executeRead,
       executeCommand,
@@ -336,8 +347,7 @@ export function composeApi(config: ApiConfig): ComposedApi {
       ...(config.answerConversation === undefined
         ? {}
         : { answerConversation: config.answerConversation }),
-      // The provider GoTrue is: the one destination its factor calls reach.
-      factors: createGoTrueFactors({ baseUrl: config.signIn.issuer }),
+      factors,
       logins,
       // Only where a provider key is held (the local server): the Vercel
       // function has none, so it asks the owner nothing and leaves every

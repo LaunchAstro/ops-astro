@@ -110,6 +110,15 @@ export {
   type SessionsEnded,
 } from './commands/account-factor-provider.ts';
 export {
+  RESET_COMMAND,
+  PASSWORD_REFUSED,
+  setPasswordByRecovery,
+  type PasswordAnswer,
+  type PasswordProvider,
+  type PasswordReset,
+  type PasswordResetResult,
+} from './commands/account-password.ts';
+export {
   endOtherSessions,
   listOwnSessions,
   signOutSession,
