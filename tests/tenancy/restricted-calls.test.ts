@@ -780,14 +780,6 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
       expect(expiry?.config).toStrictEqual(['search_path=pg_catalog']);
     });
 
-    it('the token lookup takes the hash alone and is pinned to read every business', () => {
-      const lookup = definer('enrolment_token_find(text)');
-      expect(lookup?.trigger).toBe(false);
-      expect(lookup?.argumentTypes).toStrictEqual(['text']);
-      expect(lookup?.config).toStrictEqual(['search_path=pg_catalog', 'row_security=off']);
-      expect(lookup?.firedBy).toStrictEqual([]);
-    });
-
     it('the fourth is the drill stamp, taking no argument', () => {
       // 0070 (C55): no argument, so it writes only now(); only the drill's
       // identity executes it (c55-last-tested-restore), refused above to every caller here.
@@ -796,6 +788,15 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
       expect(stamp?.argumentTypes).toStrictEqual([]);
       expect(stamp?.config).toStrictEqual(['search_path=pg_catalog']);
     });
+  });
+
+  it('the token lookup is a definer taking the hash alone, pinned to read every business', () => {
+    const lookup = functions.find((fn) => fn.signature === 'enrolment_token_find(text)');
+    expect(lookup?.definer).toBe(true);
+    expect(lookup?.trigger).toBe(false);
+    expect(lookup?.argumentTypes).toStrictEqual(['text']);
+    expect(lookup?.config).toStrictEqual(['search_path=pg_catalog', 'row_security=off']);
+    expect(lookup?.firedBy).toStrictEqual([]);
   });
 
   describe('the security definer function', () => {
