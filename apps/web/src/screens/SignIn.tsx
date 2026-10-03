@@ -29,12 +29,20 @@
 // control carries `aria-invalid` and points at the message with
 // `aria-describedby`, the pairing `FieldError` documents, and the message sits
 // in an alert region so a screen reader hears it when it appears.
+//
+// **A login with an authenticator app gives its code before the session opens
+// (C59).** A password alone is `aal1`, refused `AUTH_SECOND_FACTOR_REQUIRED`
+// (`openSignIn`). The code goes through the money step-up's `stepUpSession`; a
+// wrong one says so and asks again. Cancel, or leaving the page, signs the half-made
+// sign-in out, and any new one it lands on; Cancel returns to the emptied password.
 
-import { useState, type FormEvent, type ReactElement } from 'react';
+import { useEffect, useRef, useState, type FormEvent, type ReactElement } from 'react';
 import { BrandMark, FieldError } from '@launchastro/ui';
 import { buildStamp } from '../app-state.ts';
 import { pathTo } from '../routes.ts';
-import { openSession } from '../session/sign-in.ts';
+import { openSignIn, signOutOf, type ApiRoute, type AskedForCode } from '../session/sign-in.ts';
+import { stepUpSession } from '../session/step-up.ts';
+import { CodeField } from '../views/step-up-prompt.tsx';
 import { PUBLIC_DOCUMENTS } from './Legal.tsx';
 import type { Interruption, Session } from '../session/token.ts';
 
@@ -56,6 +64,83 @@ const BUSINESSES: readonly { readonly key: string; readonly label: string }[] = 
   { key: 'bravo', label: 'Bravo' },
 ];
 
+/** The code step: its field, its check through the step-up, and its cancel. */
+function useCodeStep(route: ApiRoute, open: (sessionId: string) => void) {
+  const [asked, setAsked] = useState<AskedForCode | null>(null);
+  const [code, setCode] = useState('');
+  const [because, setBecause] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
+  // Moved on by every check, cancel and unmount: an answer for an older one is dropped. The
+  // half sign-in goes with its code step (Cancel, or the page left) unless a good code opened.
+  const attempt = useRef(0);
+  const opened = useRef(false);
+  const leave = (client: AskedForCode['client'], sessionId?: string): void => {
+    if (sessionId !== undefined)
+      void signOutOf(route, { sessionId, businessKey: client.businessKey });
+  };
+  useEffect(
+    () => () => {
+      attempt.current += 1;
+      if (asked !== null && !opened.current) leave(asked.client, asked.sessionId);
+    },
+    [asked],
+  );
+  const check = (): void => {
+    if (asked === null) return;
+    const mine = ++attempt.current;
+    setChecking(true);
+    setBecause(null);
+    void (async () => {
+      const { client, sessionId: from } = asked;
+      const current = () => attempt.current === mine;
+      const result = await stepUpSession({ code, client, route, from, current, adopt: () => {} });
+      // A cancel or a leave landing as the new sign-in was finished signs that one out too.
+      if (result.ok && !current()) leave(client, result.sessionId);
+      if (!current()) return;
+      setChecking(false);
+      setCode('');
+      if (result.ok) {
+        opened.current = true;
+        open(result.sessionId);
+      } else setBecause(result.because);
+    })();
+  };
+  const cancel = (): void => {
+    attempt.current += 1;
+    setAsked(null);
+    setCode('');
+    setBecause(null);
+    setChecking(false);
+  };
+  return { asked, setAsked, code, setCode, because, checking, check, cancel };
+}
+
+/** The six-digit code, its continue and its cancel back to the password. */
+function CodeStep(props: { readonly step: ReturnType<typeof useCodeStep> }): ReactElement {
+  const { code, setCode, because, checking } = props.step;
+  return (
+    <>
+      <p className="card__sub" data-sign-in="code">
+        Enter the six-digit code from your authenticator app to finish signing in.
+      </p>
+      <CodeField code={code} onCode={setCode} ask={{ because, checking }} />
+      <div className="signin__foot btnrow">
+        <button
+          className="btn btn--primary"
+          type="submit"
+          disabled={checking || !/^\d{6}$/u.test(code)}
+          aria-busy={checking}
+        >
+          {checking ? 'Checking…' : 'Continue'}
+        </button>
+        <button className="btn btn--ghost" type="button" onClick={props.step.cancel}>
+          Cancel
+        </button>
+      </div>
+    </>
+  );
+}
+
 export function SignIn(props: SignInProps): ReactElement {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -65,27 +150,36 @@ export function SignIn(props: SignInProps): ReactElement {
   const [businessKey, setBusinessKey] = useState(props.ended?.businessKey ?? 'alpha');
   const [because, setBecause] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const route = { apiOrigin: props.apiOrigin, fetch: props.fetch };
+  const opened = (sessionId: string | undefined): void => {
+    props.onSignedIn({ businessKey, email, ...(sessionId === undefined ? {} : { sessionId }) });
+  };
+  const step = useCodeStep(route, opened);
 
   const onSubmit = (event: FormEvent<HTMLFormElement>): void => {
     event.preventDefault();
+    if (step.asked !== null) {
+      step.check();
+      return;
+    }
     setBecause(null);
     setBusy(true);
     void (async () => {
-      const result = await openSession({
+      const result = await openSignIn({
         gotrueUrl: props.gotrueUrl,
-        apiOrigin: props.apiOrigin,
         email,
         password,
-        fetch: props.fetch,
+        businessKey,
+        ...route,
       });
       setBusy(false);
-      if (result.ok)
-        props.onSignedIn({
-          businessKey,
-          email,
-          ...(result.sessionId === undefined ? {} : { sessionId: result.sessionId }),
-        });
-      else setBecause(result.because);
+      if (!result.ok) setBecause(result.because);
+      else if (result.asked === undefined) opened(result.sessionId);
+      else {
+        // The password has been sent; the code step keeps nothing of it.
+        setPassword('');
+        step.setAsked(result.asked);
+      }
     })();
   };
 
@@ -118,69 +212,75 @@ export function SignIn(props: SignInProps): ReactElement {
             </p>
           </div>
         ) : null}
-        <div className="field">
-          <label className="field__label" htmlFor="signin-email">
-            Email
-          </label>
-          <input
-            id="signin-email"
-            className="tf"
-            type="email"
-            autoComplete="username"
-            required
-            value={email}
-            onChange={(event) => {
-              setEmail(event.target.value);
-            }}
-          />
-        </div>
-        <div className="field">
-          <label className="field__label" htmlFor="signin-password">
-            Password
-          </label>
-          <input
-            id="signin-password"
-            className="tf"
-            type="password"
-            autoComplete="current-password"
-            required
-            aria-invalid={because !== null}
-            aria-describedby={because === null ? undefined : 'signin-password-error'}
-            value={password}
-            onChange={(event) => {
-              setPassword(event.target.value);
-            }}
-          />
-          {because === null ? null : (
-            <div role="alert">
-              <FieldError controlId="signin-password" say={because} />
+        {step.asked === null ? (
+          <>
+            <div className="field">
+              <label className="field__label" htmlFor="signin-email">
+                Email
+              </label>
+              <input
+                id="signin-email"
+                className="tf"
+                type="email"
+                autoComplete="username"
+                required
+                value={email}
+                onChange={(event) => {
+                  setEmail(event.target.value);
+                }}
+              />
             </div>
-          )}
-        </div>
-        <div className="field">
-          <label className="field__label" htmlFor="signin-business">
-            Business
-          </label>
-          <select
-            id="signin-business"
-            className="tf"
-            value={businessKey}
-            onChange={(event) => {
-              setBusinessKey(event.target.value);
-            }}
-          >
-            {BUSINESSES.map((business) => (
-              <option key={business.key} value={business.key}>
-                {business.label}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="signin__foot">
-          <button className="btn btn--primary" type="submit" disabled={busy} aria-busy={busy}>
-            {busy ? 'Signing in…' : 'Sign in'}
-          </button>
-        </div>
+            <div className="field">
+              <label className="field__label" htmlFor="signin-password">
+                Password
+              </label>
+              <input
+                id="signin-password"
+                className="tf"
+                type="password"
+                autoComplete="current-password"
+                required
+                aria-invalid={because !== null}
+                aria-describedby={because === null ? undefined : 'signin-password-error'}
+                value={password}
+                onChange={(event) => {
+                  setPassword(event.target.value);
+                }}
+              />
+              {because === null ? null : (
+                <div role="alert">
+                  <FieldError controlId="signin-password" say={because} />
+                </div>
+              )}
+            </div>
+            <div className="field">
+              <label className="field__label" htmlFor="signin-business">
+                Business
+              </label>
+              <select
+                id="signin-business"
+                className="tf"
+                value={businessKey}
+                onChange={(event) => {
+                  setBusinessKey(event.target.value);
+                }}
+              >
+                {BUSINESSES.map((business) => (
+                  <option key={business.key} value={business.key}>
+                    {business.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="signin__foot">
+              <button className="btn btn--primary" type="submit" disabled={busy} aria-busy={busy}>
+                {busy ? 'Signing in…' : 'Sign in'}
+              </button>
+            </div>
+          </>
+        ) : (
+          <CodeStep step={step} />
+        )}
       </form>
       {/* The business's public legal documents (C81), for the business chosen above. */}
       <nav aria-label="Legal documents">
