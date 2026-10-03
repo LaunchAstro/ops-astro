@@ -21,7 +21,9 @@
 //
 // Not here yet, waiting for staging: the hook made for the preview branch on
 // Vercel's side, and the Viewer token's read-back of the built preview (its
-// commit, its target), refused on every other project.
+// commit, its target), refused on every other project. Requests in one process
+// take turns on the branch (`requestPreview`); two commands run at once are
+// told apart only by that read-back.
 
 import { spawnSync } from 'node:child_process';
 
@@ -101,7 +103,23 @@ async function jobOf(asked: Promise<Response>): Promise<string | undefined> {
   }
 }
 
-export async function requestPreview(
+/**
+ * The request in hand: the branch holds one commit at a time, so a second
+ * request pushes only once the first one's hook has answered, and each job is
+ * asked while the branch holds the commit its record names.
+ */
+let inHand: Promise<unknown> = Promise.resolve();
+
+export function requestPreview(
+  request: { version: string },
+  deps: PreviewDeps,
+): Promise<PreviewOutcome> {
+  const turn = inHand.then(() => pushThenAsk(request, deps));
+  inHand = turn.catch(() => null);
+  return turn;
+}
+
+async function pushThenAsk(
   request: { version: string },
   deps: PreviewDeps,
 ): Promise<PreviewOutcome> {

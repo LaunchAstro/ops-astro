@@ -38,6 +38,7 @@ export function pgDump(sourceUrl) {
     `--network=${staging.networks.staging.name}`,
     '--env=PGPASSWORD',
     '--env=PGSSLMODE',
+    '--env=PGDATABASE',
     staging.services.backups.image,
     'pg_dump',
     '--format=custom',
@@ -46,11 +47,17 @@ export function pgDump(sourceUrl) {
     `--host=${url.hostname}`,
     `--port=${url.port || '5432'}`,
     `--username=${decodeURIComponent(url.username)}`,
-    `--dbname=${url.pathname.slice(1)}`,
   ];
   const child = spawn('docker', args, {
     // TLS or no dump: the source's bytes are plaintext until the job seals them.
-    env: { ...process.env, PGPASSWORD: decodeURIComponent(url.password), PGSSLMODE: 'require' },
+    // The database by its decoded name, from the environment, where pg_dump
+    // reads a name as a name and never as connection settings.
+    env: {
+      ...process.env,
+      PGPASSWORD: decodeURIComponent(url.password),
+      PGSSLMODE: 'require',
+      PGDATABASE: decodeURIComponent(url.pathname.slice(1)),
+    },
     stdio: ['ignore', 'pipe', 'ignore'],
   });
   return printed(child);
@@ -95,7 +102,8 @@ function printed(child) {
       wake();
     };
     child.on('error', () => end(-1));
-    child.on('close', (code) => end(code));
+    // A client killed by a signal closes with code null: a failure, not still running.
+    child.on('close', (code) => end(code ?? -1));
   });
   const more = () =>
     new Promise((resolve) => {

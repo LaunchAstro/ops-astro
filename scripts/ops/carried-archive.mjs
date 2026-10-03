@@ -207,8 +207,9 @@ export function readCarried(file, into) {
 const isInteger = (v) => Number.isInteger(v);
 const orNull = (test) => (v) => v === null || test(v);
 const isTime = (v) => typeof v === 'string' && ISO.test(v);
-const STAGES = new Set(['scope', 'fetch', 'open', 'start', 'target', 'restore', 'check']);
 const TIMED = new Set(['fetch', 'open', 'start', 'restore', 'check']);
+const STAGES = new Set(['scope', 'target', 'cleanup', ...TIMED]);
+const ARCHIVE = new Set(['archiveId', 'archiveTakenAt']);
 
 /** Each field's one shape: a carried drill writes nothing else, and nothing is echoed. */
 const RECEIPT_SHAPE = {
@@ -220,8 +221,8 @@ const RECEIPT_SHAPE = {
   productionMajor: isInteger,
   sourceMajor: orNull(isInteger),
   targetMajor: orNull(isInteger),
-  archiveTakenAt: isTime,
-  archiveId: (v) => typeof v === 'string' && ID.test(v),
+  archiveTakenAt: orNull(isTime),
+  archiveId: orNull((v) => typeof v === 'string' && ID.test(v)),
   tables: orNull(isInteger),
   readAs: (v) => v === null || v === 'ops_astro_app',
   timings: (v) =>
@@ -244,7 +245,9 @@ const RECEIPT_SHAPE = {
 export function readCarriedReceipt(file, operator) {
   const receipt = exactly(readOwn(file, 'receipt file'), RECEIPT_KEYS, 'receipt');
   for (const field of RECEIPT_KEYS) {
-    if (!RECEIPT_SHAPE[field](receipt[field])) {
+    // A drill that failed before it read its archive names none; a pending pass always does.
+    const unnamed = receipt.outcome === 'pending' && ARCHIVE.has(field) && receipt[field] === null;
+    if (!RECEIPT_SHAPE[field](receipt[field]) || unnamed) {
       throw new Error(`the receipt's ${field} is not one a carried drill writes`);
     }
   }

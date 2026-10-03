@@ -383,7 +383,8 @@ create table backups.drills (
   id bigint generated always as identity primary key,
   at timestamptz not null default now(),
   outcome text not null check (outcome in ('passed', 'failed')),
-  stage text check (stage in ('scope', 'fetch', 'open', 'start', 'target', 'restore', 'check')),
+  stage text check (stage in ('scope', 'fetch', 'open', 'start', 'target', 'restore', 'check',
+    'cleanup')),
   operator uuid not null,
   archive_taken_at timestamptz,
   production_major integer not null,
@@ -403,8 +404,11 @@ create table backups.drills (
   check (ran_on = 'staging machine' or archive_id is not null),
   check (outcome = 'failed' or (archive_id is not null and business is not null)),
   check ((outcome = 'passed') = (stage is null)),
+  -- A pass names every fact it checked: a null would leave the comparison
+  -- unknown, which a check takes as passing.
   check (outcome = 'failed' or (archive_taken_at is not null and source_major is not null
-    and target_major = production_major and tables > 0)),
+    and target_major is not null and target_major = production_major
+    and tables is not null and tables > 0)),
   -- Stage timings in milliseconds, keyed by the drill's timed stages, and nothing else.
   check (jsonb_typeof(timings) = 'object' and not jsonb_path_exists(timings,
     '$.keyvalue() ? (!(@.key like_regex "^(fetch|open|start|restore|check)$") || @.value.type() != "number")'))

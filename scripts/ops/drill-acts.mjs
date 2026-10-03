@@ -221,14 +221,15 @@ export async function recordCarried({
   // time, is refused before the store is reached.
   if (carried.archiveId !== archiveId) {
     throw new Error(
-      'the receipt is of another archive than the one carried back: bring back the archive its drill restored',
+      'the receipt names no archive, or another archive than the one carried back: bring back the archive its drill restored',
     );
   }
   const outcome = carried.outcome === 'pending' ? 'passed' : 'failed';
   // The store takes a receipt once: a pass whose stamp failed is noted beside
-  // the receipt, and a re-run of --record writes only the stamp.
+  // the receipt, and a re-run of --record takes the note and writes only the stamp.
   const owed = `${receiptFile}.stamp-owed`;
-  if (outcome === 'passed' && stampOwed(owed, archiveId)) return await stampCarried(gate, owed);
+  if (outcome === 'passed' && takeOwed(owed, archiveId))
+    return await stampCarried(gate, owed, archiveId);
   let lastTestedRestore;
   try {
     lastTestedRestore = await recordCarriedDrill(
@@ -256,14 +257,12 @@ const carriedAct = (outcome, lastTestedRestore) => ({
   lastTestedRestore,
 });
 
-/** A carried pass the store took, stamped first; a note only if that fails (`archiveId` given). */
+/** A carried pass the store took, stamped; a note only if that fails. */
 async function stampCarried(gate, owed, archiveId) {
   const act = await stampIfPassed(gate, carriedAct('passed', 'owed')).catch((error) => {
-    if (archiveId !== undefined) noteOwed(owed, archiveId, error);
+    noteOwed(owed, archiveId, error);
     throw new Error(`${error.message}: re-run --record to write it`, { cause: error });
   });
-  // A re-run's stamp is written, so its note goes.
-  if (archiveId === undefined) unlinkSync(owed);
   return await recordDeployment(gate, act);
 }
 
@@ -283,8 +282,8 @@ function noteOwed(owed, archiveId, stampError) {
   }
 }
 
-/** Whether the store holds `archiveId`'s pass with its stamp still owed, from the note. */
-function stampOwed(owed, archiveId) {
+/** Whether `archiveId`'s pass owes its stamp, from the note, which it takes: one re-run stamps. */
+function takeOwed(owed, archiveId) {
   if (!existsSync(owed)) return false;
   let noted;
   try {
@@ -296,5 +295,6 @@ function stampOwed(owed, archiveId) {
     );
   }
   if (noted.archiveId !== archiveId) throw new Error('the stamp owed is of another archive');
+  unlinkSync(owed);
   return true;
 }

@@ -62,6 +62,7 @@ const SIGNS: Readonly<Record<string, string>> = {
 const RECORD = 'it holds a record the seed cannot vouch for';
 const UNGUARDED = 'a table has no made-up guard';
 const OWNER = '(select datdba from pg_database where datname = current_database())';
+const ALONE = `pg_try_advisory_lock(hashtext('ops_astro_made_up seed'))`;
 /**
  * The owner's option A (NATHAN-GUARD-A): the guard answers for the app and the
  * seed, not for a person with top-level access, so staging refuses to start
@@ -272,15 +273,13 @@ export async function markMadeUp(
   await admin.execute(row.statement);
 }
 
-/**
- * The seed's admission: judge, guard, then judge again before the first write.
- * A row that lands between the first judgement and the guard is seen by the
- * second, since the seed has written nothing yet; one after it is noted.
- */
+/** The seed's admission, alone (the guard admits one seed's tag): judge, guard, judge again. */
 export async function admitMadeUp(admin: OwnerQuery, confirmed: boolean): Promise<string[]> {
+  if (!(await yes(admin, ALONE))) return ['another seed is running on this database'];
   const signs = await productionSigns(admin, [], confirmed);
   if (signs.length > 0) return signs;
   await guardMadeUp(admin);
+  // A row landing before the guard is seen here, the seed having written nothing; after, noted.
   return productionSigns(admin, [], confirmed);
 }
 
