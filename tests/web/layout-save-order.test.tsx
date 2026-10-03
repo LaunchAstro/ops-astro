@@ -18,7 +18,7 @@ function deferred() {
 }
 
 describe.skipIf(databaseUrlFromEnvironment() === undefined)(
-  'OW-096 layout write ordering, real API and Postgres',
+  'layout write ordering, real API and Postgres',
   () => {
     usePreferencesWorld('solow096');
     // Sol OW-096.3 criterion 5, retitled by what it proves; its body is Sol's.
