@@ -40,46 +40,79 @@ function decodeEntities(text: string): string {
   });
 }
 
-// Each scan below matches an opener lazily up to its closer. An opener with no
-// closer after it makes the scan retry from every later opener, quadratic in
-// a page the fence has already capped by size but not by parsing time. So the
-// last opener of each kind must close; if it does, every earlier one does.
-const CLOSERS: readonly (readonly [string, RegExp])[] = [
-  ['<!--', /-->/gu],
-  ['<script', /<\/script\s*>/gu],
-  ['<style', /<\/style\s*>/gu],
-  ['<noscript', /<\/noscript\s*>/gu],
-  ['<template', /<\/template\s*>/gu],
-  ['<', />/gu],
-];
+// One pass, left to right, by index: no pattern runs from an opener to a
+// closer, so a page that never closes costs one read of it, not one read per
+// opener. Tag names are matched as HTML matches them, by ASCII case only.
+// A comment, raw-text element or tag that never closes makes the page
+// malformed; a `<` that cannot start one is text, as a browser reads it.
+const RAW_TEXT = ['script', 'style', 'noscript', 'template'] as const;
 
-/** Where the last `opener` starts, as a whole tag name when it is one; -1 if none. */
-function lastOpener(lower: string, opener: string): number {
-  const named = /\w$/u.test(opener);
-  for (let at = lower.lastIndexOf(opener); at !== -1; at = lower.lastIndexOf(opener, at - 1)) {
-    if (!named || !/\w/u.test(lower.charAt(at + opener.length))) return at;
-    if (at === 0) break;
+interface Document {
+  readonly text: string;
+  readonly links: readonly string[];
+  readonly styles: readonly string[];
+}
+
+function asciiLower(html: string): string {
+  return html.replaceAll(/[A-Z]/gu, (letter) => letter.toLowerCase());
+}
+
+function nameAt(lower: string, at: number, name: string): boolean {
+  return lower.startsWith(name, at) && !/[a-z0-9_-]/u.test(lower.charAt(at + name.length));
+}
+
+/** Where `</name>` (spaces allowed before `>`) ends after `from`, or -1. */
+function closerEnd(lower: string, name: string, from: number): number {
+  for (let at = lower.indexOf(`</${name}`, from); at !== -1;) {
+    let end = at + name.length + 2;
+    while (/\s/u.test(lower.charAt(end))) end += 1;
+    if (lower.charAt(end) === '>') return end + 1;
+    at = lower.indexOf(`</${name}`, at + 1);
   }
   return -1;
 }
 
-function closesEveryOpener(html: string): boolean {
-  const lower = html.toLowerCase();
-  return CLOSERS.every(([opener, closer]) => {
-    const last = lastOpener(lower, opener);
-    if (last === -1) return true;
-    closer.lastIndex = last + 1;
-    return closer.test(lower);
-  });
+function linkHref(tag: string): string | undefined {
+  const rel = (attribute(tag, 'rel') ?? '').toLowerCase().split(/\s+/u);
+  return rel.includes('stylesheet') ? attribute(tag, 'href') : undefined;
 }
 
-/** The text a reader sees: no comments, scripts, styles, fallbacks or markup. */
-export function visibleText(html: string): string {
-  const stripped = html
-    .replaceAll(/<!--[\s\S]*?-->/gu, ' ')
-    .replaceAll(/<(script|style|noscript|template)\b[\s\S]*?<\/\1\s*>/giu, ' ')
-    .replaceAll(/<[^>]*>/gu, ' ');
-  return decodeEntities(stripped).replaceAll(/\s+/gu, ' ').trim();
+function readDocument(html: string): Document | undefined {
+  const lower = asciiLower(html);
+  const text: string[] = [];
+  const links: string[] = [];
+  const styles: string[] = [];
+  let at = 0;
+  for (let open = lower.indexOf('<'); open !== -1; open = lower.indexOf('<', at)) {
+    const next = lower.charAt(open + 1);
+    if (!/[a-z/!?]/u.test(next)) {
+      text.push(html.slice(at, open + 1));
+      at = open + 1;
+      continue;
+    }
+    text.push(html.slice(at, open), ' ');
+    const raw = RAW_TEXT.find((name) => nameAt(lower, open + 1, name));
+    if (lower.startsWith('<!--', open)) {
+      const end = lower.indexOf('-->', open + 4);
+      if (end === -1) return undefined;
+      at = end + 3;
+    } else if (raw === undefined) {
+      const end = lower.indexOf('>', open);
+      if (end === -1) return undefined;
+      const tag = html.slice(open, end + 1);
+      const href = nameAt(lower, open + 1, 'link') ? linkHref(tag) : undefined;
+      if (href !== undefined) links.push(href);
+      at = end + 1;
+    } else {
+      const start = lower.indexOf('>', open);
+      const end = start === -1 ? -1 : closerEnd(lower, raw, start + 1);
+      if (end === -1) return undefined;
+      if (raw === 'style') styles.push(html.slice(start + 1, lower.lastIndexOf('</', end)));
+      at = end;
+    }
+  }
+  text.push(html.slice(at));
+  return { text: decodeEntities(text.join('')).replaceAll(/\s+/gu, ' ').trim(), links, styles };
 }
 
 // One literal pattern per attribute read, so no expression is built from a string.
@@ -93,23 +126,6 @@ function attribute(tag: string, name: keyof typeof ATTRIBUTES): string | undefin
   return found === null ? undefined : (found[1] ?? found[2] ?? found[3]);
 }
 
-/** Every `<link>` whose rel names a stylesheet, as written. */
-function stylesheetLinks(html: string): string[] {
-  const links: string[] = [];
-  for (const [tag] of html.matchAll(/<link\b[^>]*>/giu)) {
-    const rel = (attribute(tag, 'rel') ?? '').toLowerCase().split(/\s+/u);
-    const href = attribute(tag, 'href');
-    if (rel.includes('stylesheet') && href !== undefined) links.push(href);
-  }
-  return links;
-}
-
-function inlineStyles(html: string): string[] {
-  return [...html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style\s*>/giu)].map(
-    (match) => match[1] ?? '',
-  );
-}
-
 export async function capturePage(
   url: string,
   options: CaptureOptions,
@@ -117,8 +133,9 @@ export async function capturePage(
   const page = await fencedFetch(url, { ...options, kind: 'document' });
   if (!page.ok) return page;
   const html = page.value.body;
-  if (!closesEveryOpener(html)) return { ok: false, code: 'CAPTURE_BODY_MALFORMED' };
-  const hrefs = stylesheetLinks(html).map((href) =>
+  const document = readDocument(html);
+  if (document === undefined) return { ok: false, code: 'CAPTURE_BODY_MALFORMED' };
+  const hrefs = document.links.map((href) =>
     URL.canParse(href, page.value.url) ? new URL(href, page.value.url).href : undefined,
   );
   if (hrefs.includes(undefined)) return { ok: false, code: 'CAPTURE_BODY_MALFORMED' };
@@ -131,7 +148,7 @@ export async function capturePage(
     if (!sheet.ok) return sheet;
     stylesheets[unique[index] ?? ''] = digest(sheet.value.body);
   }
-  for (const [index, css] of inlineStyles(html).entries())
+  for (const [index, css] of document.styles.entries())
     stylesheets[`inline:${index}`] = digest(css);
   const sorted = Object.fromEntries(
     Object.entries(stylesheets).toSorted(([left], [right]) => (left < right ? -1 : 1)),
@@ -142,7 +159,7 @@ export async function capturePage(
       url: page.value.url,
       status: page.value.status,
       documentDigest: digest(html),
-      text: visibleText(html),
+      text: document.text,
       stylesheets: sorted,
     },
   };
