@@ -58,7 +58,8 @@ function stepFor(key: string, index: number, count: number): number | null {
 /**
  * One tab stop over a chart's points. The pointer shows a point's tip while it
  * is over it; focus shows it too, and the arrow keys, Home and End move focus
- * along the points. Hovering never moves the tab stop.
+ * along the points. Hovering never moves the tab stop, and the pointer leaving
+ * hands the tip back to the focused point. A point past `count` is never shown.
  */
 export function usePoints(count: number): {
   readonly shown: number | null;
@@ -68,7 +69,9 @@ export function usePoints(count: number): {
   const tipId = useId();
   const [stop, setStop] = useState(0);
   const [shown, setShown] = useState<number | null>(null);
+  const focused = useRef<number | null>(null);
   const nodes = useRef<(SVGElement | null)[]>([]);
+  const live = shown !== null && shown < count ? shown : null;
   const move = (event: KeyboardEvent, index: number): void => {
     const next = stepFor(event.key, index, count);
     if (next === null) return;
@@ -83,26 +86,28 @@ export function usePoints(count: number): {
     },
     role: 'img',
     'aria-label': tipLabel(tip),
-    'aria-describedby': shown === index ? tipId : undefined,
+    'aria-describedby': live === index ? tipId : undefined,
     tabIndex: index === Math.min(stop, count - 1) ? 0 : -1,
     onMouseEnter: () => {
       setShown(index);
     },
     onMouseLeave: () => {
-      setShown(null);
+      setShown(focused.current);
     },
     onFocus: () => {
+      focused.current = index;
       setStop(index);
       setShown(index);
     },
     onBlur: () => {
+      focused.current = null;
       setShown(null);
     },
     onKeyDown: (event: KeyboardEvent) => {
       move(event, index);
     },
   });
-  return { shown, props, tipId };
+  return { shown: live, props, tipId };
 }
 
 export function Tooltip(props: { readonly id: string; readonly tip: Tip }): ReactElement {
