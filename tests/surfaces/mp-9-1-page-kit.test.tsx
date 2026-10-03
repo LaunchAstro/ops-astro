@@ -21,6 +21,7 @@ import {
   type TipPreferences,
 } from '../../packages/ui/src/index.ts';
 import { mount, type Mounted } from './mount.tsx';
+import { tipShown } from './term-tip-drawn.ts';
 
 let mounted: Mounted | undefined;
 afterEach(async () => {
@@ -145,7 +146,10 @@ describe('MP-9-1 KPI tiles with delta, term tips and of-tracks', () => {
     expect(tip?.getAttribute('role')).toBe('tooltip');
     expect(tip?.textContent).toBe('Tracked time on tasks you can see.');
     expect(term?.getAttribute('title')).toBeNull();
-  });
+    // Drawn: the same markup in Chromium, under the package's sheets.
+    const drawn = await tipShown(mounted.host.innerHTML);
+    expect(drawn).toEqual({ rest: false, hover: true, left: false, keyboard: true, focus: true });
+  }, 30_000);
 });
 
 describe('MP-9-1 KPI tiles with delta, term tips and of-tracks: the track', () => {
