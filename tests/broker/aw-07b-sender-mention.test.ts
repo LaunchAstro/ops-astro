@@ -151,6 +151,8 @@ async function comment(
     'Please have a look.',
     audience,
     undefined,
+    // No parent: a top-level comment (R42 put `parentId` before the mentions).
+    undefined,
     mentions,
   );
 }
