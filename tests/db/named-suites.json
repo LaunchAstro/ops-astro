@@ -290,7 +290,8 @@
     "REVIEW-BATCH-2 #313 batch 3b adds review-3b-5-delegate-child-lease-id (run.delegate_child with a leaseId that is not a uuid, a number or missing is refused LEASE_NOT_OWNED or FIELD_VALUE_INVALID with no child written, never a 22P02 fault) as conformance.",
     "REVIEW-BATCH-2 #313 batch 3b adds review-3b-1-planning-hold-released (a failed planning reply held liability_unknown is released by the pass or a person's outcome, and the planning allowance gets its hold back) as conformance; its fix adds planfix-3b-1-planning-outcome (a planning reply whose operation declares a lookup is released by the pass alone; another person of the business and another business's owner naming the owner's conversation and call are refused NOT_FOUND with nothing written; the owner's outcome settles it once).",
     "SEC3B F1 (batch 3b security review) adds sec3b-1-ended-owner-planning-release (a planning reply held unknown whose owner's access has since ended is released by the provider phase in the owner's name, as their person actor, and the same pass goes on to release the next business's held reply) as conformance.",
-    "SOL-FIX OW-001 (Sol's review of 1c51169..4126931) adds end-others-provider-clock-skew (end-others refuses a session seen only in another business whose first sign-in is ahead of the database clock within the verifier's minute) beside c58-end-others-every-business, and agent-credential-exports-counted (reads let in together hand out no more than the export limit; a task search's hits reach the security detector's export count) and api-2-agent-credential-export-race (the read refused at hand-out rolls back its audit row) beside api-2-agent-credential-quota, as invariants. Sol's proofs, bodies kept byte for byte, filed by behaviour. Round 3 adds end-others-delayed-ending (an end-others transaction held past the clock allowance still ends a session signed in before it commits; 20261003024319)."
+    "SOL-FIX OW-001 (Sol's review of 1c51169..4126931) adds end-others-provider-clock-skew (end-others refuses a session seen only in another business whose first sign-in is ahead of the database clock within the verifier's minute) beside c58-end-others-every-business, and agent-credential-exports-counted (reads let in together hand out no more than the export limit; a task search's hits reach the security detector's export count) and api-2-agent-credential-export-race (the read refused at hand-out rolls back its audit row) beside api-2-agent-credential-quota, as invariants. Sol's proofs, bodies kept byte for byte, filed by behaviour. Round 3 adds end-others-delayed-ending (an end-others transaction held past the clock allowance still ends a session signed in before it commits; 20261003024319).",
+    "SL06 (Clients row door) adds board-row-client (each task.board row carries its client by id and name only where the reader's grants reach it, read back against task.read and client.list; the crossings: another business names none of alpha's clients, a reader of client A is never sent B, a task holder without the client reads null beside clientSet, the agent under a live delegation is refused)."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -765,6 +766,7 @@
     "tests/reads/mp-5-8-board-rank-steps.test.ts",
     "tests/reads/mp-5-8-board-actual.test.ts",
     "tests/reads/mp-5-8-board-estimate.test.ts",
+    "tests/reads/board-row-client.test.ts",
     "tests/commands/task-set-state.test.ts",
     "tests/commands/task-set-state-agent.test.ts",
     "tests/commands/task-set-category.test.ts",
