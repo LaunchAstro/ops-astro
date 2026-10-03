@@ -17,21 +17,43 @@
 // baseline in the same change with `pnpm lint:baseline`, which writes the
 // current counts and refuses when any of them is above the base branch's.
 //
+// When lint-baseline/ exists it is the baseline, one file per area
+// (scripts/lint-baseline-areas.ts), and each area is held on its own: its
+// warnings against its file, its file against the base's copy. A base that
+// still has the single file (the cut) holds the joined totals instead.
+// `--split` writes the folder from the current counts, once, and proves its
+// join equals lint-baseline.json. Without the folder nothing changes.
+//
 // The base branch is BASE_SHA when set, else origin/$GITHUB_BASE_REF (the pull
 // request's base in Actions), else origin/main. Actions checks out one commit,
 // so when that ref is absent it is fetched at depth 1. A base with no baseline
 // file (the change that adds the ratchet) has nothing to compare against.
 //
-// Usage: node scripts/lint-ratchet.mjs [--write]
+// Usage: node scripts/lint-ratchet.mjs [--write | --split]
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import {
+  BASELINE,
+  BASELINE_DIR,
+  areaRises,
+  countByArea,
+  countRules,
+  formatRules,
+  joinAreas,
+  parseAreaFiles,
+  parseRules as parse,
+  readBaseline,
+  rises,
+  sameRules,
+  splitBaseline,
+} from './lint-baseline-areas.ts';
 
-const BASELINE = 'lint-baseline.json';
 const MAX_LINES = 1000;
 const OXLINT = join(import.meta.dirname, '../node_modules/.bin/oxlint');
 const write = process.argv.includes('--write');
+const split = process.argv.includes('--split');
 
 function fail(message) {
   console.error(`lint ratchet: ${message}`);
@@ -43,7 +65,16 @@ function git(...args) {
   return run.status === 0 ? run.stdout : undefined;
 }
 
-function countWarnings() {
+/** `run()`, or the run ends with the message it threw. */
+function attempt(run) {
+  try {
+    return run();
+  } catch (error) {
+    return fail(error.message);
+  }
+}
+
+function lintReport() {
   const run = spawnSync(OXLINT, ['--format', 'json'], {
     encoding: 'utf8',
     maxBuffer: 256 * 1024 * 1024,
@@ -56,14 +87,11 @@ function countWarnings() {
     fail(`oxlint gave no readable report (exit ${run.status}).\n${run.stderr}`);
   }
   if (!(report.number_of_files > 0)) fail('oxlint linted no file, so there is nothing to compare.');
-  const counts = {};
-  for (const { code, severity } of report.diagnostics) {
-    if (severity === 'warning') counts[code] = (counts[code] ?? 0) + 1;
-  }
-  return counts;
+  return report.diagnostics;
 }
 
-function baseRules() {
+/** The base branch's baseline: its folder when it has one, else its single file, else none. */
+function baseBaseline() {
   const ref = process.env['BASE_SHA'] || `origin/${process.env['GITHUB_BASE_REF'] || 'main'}`;
   let commit = git('rev-parse', '--verify', '--quiet', `${ref}^{commit}`)?.trim();
   if (!commit && process.env['GITHUB_ACTIONS'] === 'true' && ref.startsWith('origin/')) {
@@ -71,36 +99,40 @@ function baseRules() {
     commit = git('rev-parse', '--verify', '--quiet', 'FETCH_HEAD^{commit}')?.trim();
   }
   if (!commit) fail(`cannot read the base ${ref}; set BASE_SHA to the base branch's commit.`);
+  const names = git('ls-tree', '-z', '--name-only', commit, `${BASELINE_DIR}/`) ?? '';
+  const files = names
+    .split('\0')
+    .filter(Boolean)
+    .map((path) => ({
+      name: path.slice(BASELINE_DIR.length + 1),
+      text: git('show', `${commit}:${path}`) ?? '',
+    }));
+  if (files.length > 0) {
+    return {
+      kind: 'areas',
+      areas: attempt(() => parseAreaFiles(files, `${BASELINE_DIR} on the base`)),
+    };
+  }
   const text = git('show', `${commit}:${BASELINE}`);
-  return text === undefined ? undefined : parseRules(text, `${BASELINE} on the base`);
+  return text === undefined
+    ? undefined
+    : { kind: 'total', rules: parseRules(text, `${BASELINE} on the base`) };
 }
 
-/**
- * A baseline's counts, each a whole number of at least 0. Anything else fails, because a
- * count that is not a number compares false against every warning and so would hide them.
- */
-function parseRules(text, where) {
-  let rules;
-  try {
-    ({ rules } = JSON.parse(text));
-  } catch {
-    fail(`${where} is not JSON.`);
-  }
-  if (typeof rules !== 'object' || rules === null || Array.isArray(rules)) {
-    fail(`${where} has no \`rules\` object.`);
-  }
-  for (const [rule, n] of Object.entries(rules)) {
-    if (!Number.isInteger(n) || n < 0)
-      fail(`${where}: ${rule} is ${JSON.stringify(n)}, not a count.`);
-  }
-  return rules;
-}
+const parseRules = (text, where) => attempt(() => parse(text, where));
+/** A baseline's totals per rule, whichever shape it has. */
+const totalOf = (baseline) =>
+  baseline.kind === 'areas' ? joinAreas(baseline.areas) : baseline.rules;
 
-/** Each rule whose count in `next` is above its count in `base`. */
-function rises(next, base) {
-  return Object.entries(next)
-    .filter(([rule, n]) => n > (base[rule] ?? 0))
-    .map(([rule, n]) => ({ rule, n, was: base[rule] ?? 0 }));
+/** Writes one file per area, removing the file of any area no longer counted. */
+function writeAreas(areas) {
+  mkdirSync(BASELINE_DIR, { recursive: true });
+  for (const name of readdirSync(BASELINE_DIR)) {
+    if (name.endsWith('.json') && !(name.slice(0, -5) in areas)) rmSync(join(BASELINE_DIR, name));
+  }
+  for (const [area, rules] of Object.entries(areas)) {
+    writeFileSync(join(BASELINE_DIR, `${area}.json`), formatRules(rules));
+  }
 }
 
 /**
@@ -129,38 +161,65 @@ function oversizeProductFiles() {
     .filter(({ lines }) => lines > MAX_LINES);
 }
 
-const counts = countWarnings();
-const base = baseRules();
+const diagnostics = lintReport();
+const counts = countRules(diagnostics);
+const base = baseBaseline();
 const problems = [];
 
 for (const { f, lines } of oversizeProductFiles()) {
   problems.push(`${f}: ${lines} lines, over the ${MAX_LINES}-line limit for product source.`);
 }
 
+if (split) {
+  if (existsSync(BASELINE_DIR)) fail(`${BASELINE_DIR}/ already exists; --split makes it once.`);
+  if (!existsSync(BASELINE)) fail(`${BASELINE} is missing, so there is nothing to split.`);
+  const single = parseRules(readFileSync(BASELINE, 'utf8'), BASELINE);
+  writeAreas(attempt(() => splitBaseline(single, countByArea(diagnostics))));
+  const back = attempt(() => readBaseline('.'));
+  if (back?.kind !== 'areas' || !sameRules(joinAreas(back.areas), single)) {
+    fail(`${BASELINE_DIR}/ does not join back to ${BASELINE}.`);
+  }
+  console.log(`lint ratchet: wrote ${BASELINE_DIR}/; joined, they equal ${BASELINE}.`);
+}
+
+const where = ({ area }) => (area ? `${area}: ` : '');
+const byArea = existsSync(BASELINE_DIR);
+const areaCounts = byArea ? attempt(() => countByArea(diagnostics)) : {};
+const wrote = byArea ? BASELINE_DIR : BASELINE;
+
 if (write) {
-  const higher = base ? rises(counts, base) : [];
+  let higher = [];
+  if (byArea && base?.kind === 'areas') higher = areaRises(areaCounts, base.areas);
+  else if (base) higher = rises(counts, totalOf(base));
   if (higher.length > 0) {
     fail(
       `the baseline can only be lowered. Remove the new warnings instead:\n${higher
-        .map(({ rule, n, was }) => `  ${rule}: ${n} here, ${was} on the base`)
+        .map((r) => `  ${where(r)}${r.rule}: ${r.n} here, ${r.was} on the base`)
         .join('\n')}`,
     );
   }
-  const rules = Object.fromEntries(
-    Object.entries(counts).toSorted(([a], [b]) => a.localeCompare(b)),
-  );
-  writeFileSync(BASELINE, `${JSON.stringify({ rules }, null, 2)}\n`);
-  console.log(`lint ratchet: wrote ${BASELINE}.`);
+  if (byArea) writeAreas(areaCounts);
+  else writeFileSync(BASELINE, formatRules(counts));
+  console.log(`lint ratchet: wrote ${wrote}.`);
 }
 
-if (!existsSync(BASELINE)) fail(`${BASELINE} is missing. Write it with \`pnpm lint:baseline\`.`);
-const recorded = parseRules(readFileSync(BASELINE, 'utf8'), BASELINE);
+const head = attempt(() => readBaseline('.'));
+if (!head) fail(`${BASELINE} is missing. Write it with \`pnpm lint:baseline\`.`);
+const recorded = totalOf(head);
 
-for (const { rule, n, was } of base ? rises(recorded, base) : []) {
-  problems.push(`the baseline can only be lowered: ${rule}: ${n} here, ${was} on the base.`);
+const lowered = (r) => `${r.rule}: ${r.n} here, ${r.was} on the base.`;
+if (head.kind === 'areas' && base?.kind === 'areas') {
+  for (const r of areaRises(head.areas, base.areas)) {
+    problems.push(`the baseline can only be lowered in ${r.area}: ${lowered(r)}`);
+  }
+} else if (base) {
+  for (const r of rises(recorded, totalOf(base))) {
+    problems.push(`the baseline can only be lowered: ${lowered(r)}`);
+  }
 }
-for (const { rule, n, was } of rises(counts, recorded)) {
-  problems.push(`new warnings: ${rule}: ${n}, baseline ${was}.`);
+const risen = head.kind === 'areas' ? areaRises(areaCounts, head.areas) : rises(counts, recorded);
+for (const { area, rule, n, was } of risen) {
+  problems.push(`new warnings${area ? ` in ${area}` : ''}: ${rule}: ${n}, baseline ${was}.`);
 }
 
 const rules = [...new Set([...Object.keys(counts), ...Object.keys(recorded)])].toSorted();
@@ -174,7 +233,11 @@ for (const rule of rules) {
 console.log(`total: ${sum(counts)} warnings, baseline ${sum(recorded)}.`);
 
 if (problems.length > 0) fail(`\n${problems.map((p) => `  ${p}`).join('\n')}`);
-if (rules.some((rule) => (counts[rule] ?? 0) < (recorded[rule] ?? 0))) {
+const slack =
+  head.kind === 'areas'
+    ? areaRises(head.areas, areaCounts).length > 0
+    : rules.some((rule) => (counts[rule] ?? 0) < (recorded[rule] ?? 0));
+if (slack) {
   console.log(
     'Fewer warnings than the baseline: lower it in this change with `pnpm lint:baseline`.',
   );
