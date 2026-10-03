@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  dispatchToken,
   revertCorrection,
   type CorrectionTarget,
 } from '../../packages/core-connectors/src/index.ts';
@@ -53,5 +54,52 @@ describe('C80 revert timed', () => {
     );
     expect(outcome).toMatchObject({ state: 'revert_accepted' });
     expect(outcome).not.toHaveProperty('intervalMs');
+  });
+});
+
+describe('C80 revert dispatch', () => {
+  it('carries one revert token for the published revision on every attempt', async () => {
+    const sent: unknown[] = [];
+    const attempt = () =>
+      revertCorrection(
+        { publishedRevision: 'def456', target: TARGET, seam: 'revert-of-def456' },
+        {
+          now: () => Date.parse('2026-09-29T10:00:00Z'),
+          revert: (input) => {
+            sent.push(input);
+            return Promise.resolve({ kind: 'unknown', code: 'PROVIDER_TIMEOUT' });
+          },
+          readDeployment: () => Promise.resolve({ kind: 'unknown', code: 'PROVIDER_TIMEOUT' }),
+          capture: () => Promise.resolve({ ok: false }),
+        },
+      );
+    await attempt();
+    await attempt();
+    const token = dispatchToken('site.source.revert', 'def456');
+    expect(sent).toEqual([
+      { seam: 'revert-of-def456', dispatchToken: token },
+      { seam: 'revert-of-def456', dispatchToken: token },
+    ]);
+  });
+
+  it('reports a refused revert as failed only with a declared nothing-happened proof', async () => {
+    const refusedWith = (proof?: string) =>
+      revertCorrection(
+        { publishedRevision: 'def456', target: TARGET, seam: 'revert-of-def456' },
+        {
+          now: () => Date.parse('2026-09-29T10:00:00Z'),
+          revert: () =>
+            Promise.resolve({
+              kind: 'refused',
+              code: 'PROVIDER_REFUSED',
+              ...(proof === undefined ? {} : { proof }),
+            }),
+          readDeployment: () => Promise.resolve({ kind: 'unknown', code: 'PROVIDER_TIMEOUT' }),
+          capture: () => Promise.resolve({ ok: false }),
+        },
+      );
+    expect(await refusedWith('sha_mismatch')).toMatchObject({ state: 'failed' });
+    expect(await refusedWith()).toMatchObject({ state: 'unknown', code: 'PROVIDER_REFUSED' });
+    expect(await refusedWith('not_declared')).toMatchObject({ state: 'unknown' });
   });
 });

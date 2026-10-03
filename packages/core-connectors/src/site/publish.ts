@@ -190,6 +190,7 @@ export interface RevertPorts extends Omit<ObservePorts, 'capture'> {
   /** `site.source.revert`: the forward change back to the pinned pre-image. */
   readonly revert: (input: {
     seam: string;
+    dispatchToken: string;
   }) => Promise<ProviderResult<{ revision: string; deploymentId: string }>>;
   readonly capture: () => Promise<
     { readonly ok: true; readonly value: { readonly text: string } } | { readonly ok: false }
@@ -228,13 +229,16 @@ export async function revertCorrection(
 ): Promise<RevertOutcome> {
   const decided = ports.now();
   const decidedAt = new Date(decided).toISOString();
-  const reverted = await ports.revert({ seam: input.seam });
+  // One token per published revision, so a retried revert is deduplicated, never sent twice.
+  const token = dispatchToken('site.source.revert', input.publishedRevision);
+  const reverted = await ports.revert({ seam: input.seam, dispatchToken: token });
   if (reverted.kind !== 'ok') {
-    return {
-      state: reverted.kind === 'refused' ? 'failed' : 'unknown',
-      code: reverted.code,
-      decidedAt,
-    };
+    const proofs = siteOperation('site.source.revert').declaration.nothing_happened_proof;
+    const proven =
+      reverted.kind === 'refused' &&
+      reverted.proof !== undefined &&
+      proofs.includes(reverted.proof);
+    return { state: proven ? 'failed' : 'unknown', code: reverted.code, decidedAt };
   }
   const { revision, deploymentId } = reverted.value;
   const pending = { state: 'revert_accepted', revision, deploymentId, decidedAt } as const;
