@@ -83,6 +83,9 @@ create table public.live_corrections (
 
 create index live_corrections_business_idx on public.live_corrections (business_id);
 create index live_corrections_party_idx on public.live_corrections (business_id, party_id);
+-- A task's corrections: the content check on every task read, and the purge's
+-- retention of a trashed task a correction names.
+create index live_corrections_task_idx on public.live_corrections (business_id, task_id);
 
 alter table public.live_corrections enable row level security;
 alter table public.live_corrections force row level security;
