@@ -604,8 +604,14 @@ describe.skipIf(serverUrl === undefined)('WF-1 task types and the map as a task'
     expect((await view(onA, mapA.id)).id).toBe(mapA.id);
     const research = await ticket(onA, mapA.id, 'A research', 'research');
     expect(codeOf(await retype(onA, research.id, 'task'))).toBe('applied');
+    // The map's grant reads its ticket too (W12), on the read path as on commands.
+    const ownTicket = (await w.read(onA, { read: 'task.read', recordId: research.id })) as {
+      readonly task?: { readonly id: string };
+    };
+    expect(ownTicket.task?.id).toBe(research.id);
     for (const answer of [
       await w.read(onA, { read: 'map.view', recordId: mapB.id }),
+      await w.read(onA, { read: 'task.read', recordId: ticketB.id }),
       await revise(onA, mapB.id, { notes: 'x' }),
       await retype(onA, ticketB.id, 'task'),
       await w.as(onA, {
