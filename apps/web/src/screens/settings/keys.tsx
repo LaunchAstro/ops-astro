@@ -5,18 +5,24 @@
 // The panel reads `secret.list` and writes through `secret.set` and
 // `secret.clear`, the one command family both secret screens use. It never
 // holds a value longer than the field the person is typing into: the input is
-// a password field, it is emptied as soon as the set is sent, and no answer the
+// a masked text field (a password field would hand it to the browser's password
+// manager), it is emptied as soon as the set is sent, and no answer the
 // server gives carries a value to draw. What a row shows is its name, its
 // scope, whether it is set, and when it was last used.
 
 import { useCallback, useEffect, useState, type ReactElement } from 'react';
 import { Chip, Empty } from '@launchastro/ui';
-import type { SecretView } from '../../../../../packages/core-wire/src/index.ts';
+import type { SecretListResult, SecretView } from '../../../../../packages/core-wire/src/index.ts';
 import { isRefusal, isUnavailable, type OperationsClient } from '../../operations/client.ts';
 
 type Listing =
   | { readonly state: 'loading' }
-  | { readonly state: 'shown'; readonly secrets: readonly SecretView[] }
+  | {
+      readonly state: 'shown';
+      readonly secrets: readonly SecretView[];
+      /** The key held business-wide: only then are Set and Clear offered. */
+      readonly canChange: boolean;
+    }
   | { readonly state: 'refused'; readonly because: string }
   | { readonly state: 'unavailable'; readonly because: string };
 
@@ -33,14 +39,16 @@ function useKeys(client: OperationsClient): {
   const [because, setBecause] = useState<string | null>(null);
 
   const load = useCallback(async (): Promise<void> => {
-    const answer = await client.read<{ readonly secrets: readonly SecretView[] }>(
-      'secret.list',
-      {},
-    );
+    const answer = await client.read<SecretListResult>('secret.list', {});
     if (isUnavailable(answer)) setListing({ state: 'unavailable', because: answer.because });
     else if (isRefusal(answer))
       setListing({ state: 'refused', because: answer.fixes[0] ?? answer.code });
-    else setListing({ state: 'shown', secrets: answer.value.secrets });
+    else
+      setListing({
+        state: 'shown',
+        secrets: answer.value.secrets,
+        canChange: answer.value.canChange,
+      });
   }, [client]);
 
   useEffect(() => {
@@ -60,8 +68,10 @@ function useKeys(client: OperationsClient): {
 
 function KeyRows(props: {
   readonly secrets: readonly SecretView[];
-  readonly clear: (secret: SecretView) => void;
+  /** Absent for a holder who may only list. */
+  readonly clear?: (secret: SecretView) => void;
 }): ReactElement {
+  const { clear } = props;
   return (
     <ul className="lrows" data-settings="key-rows">
       {props.secrets.map((secret) => (
@@ -82,12 +92,12 @@ function KeyRows(props: {
             <Chip kind="soft" tone={secret.state === 'set' ? 'ok' : 'idle'}>
               {secret.state === 'set' ? 'Set' : 'Not set'}
             </Chip>
-            {secret.state === 'set' ? (
+            {secret.state === 'set' && clear !== undefined ? (
               <button
                 type="button"
                 className="btn btn--secondary btn--sm"
                 onClick={() => {
-                  props.clear(secret);
+                  clear(secret);
                 }}
               >
                 Clear
@@ -100,7 +110,11 @@ function KeyRows(props: {
   );
 }
 
-/** One field of the set form; a sealed one is a password field and is never read back. */
+/**
+ * One field of the set form. A sealed one is masked text, never a password
+ * field: a password manager would offer to save the value, or fill a login into
+ * it. Autofill, spelling and the managers' own opt-outs are all off.
+ */
 function KeyField(props: {
   readonly id: string;
   readonly label: string;
@@ -115,11 +129,16 @@ function KeyField(props: {
       </label>
       <input
         id={props.id}
-        className="tf"
-        type={props.sealed === true ? 'password' : 'text'}
+        className={props.sealed === true ? 'tf tf--sealed' : 'tf'}
+        type="text"
         value={props.value}
         onChange={(event) => props.onChange(event.target.value)}
         autoComplete="off"
+        spellCheck={false}
+        autoCapitalize="off"
+        autoCorrect="off"
+        data-1p-ignore={props.sealed === true ? '' : undefined}
+        data-lpignore={props.sealed === true ? 'true' : undefined}
         data-settings={props.sealed === true ? 'key-value' : undefined}
       />
     </div>
@@ -184,9 +203,15 @@ export function KeysPanel(props: { readonly client: OperationsClient }): ReactEl
       {listing.state === 'shown' ? (
         <KeyRows
           secrets={listing.secrets}
-          clear={(secret) => {
-            void act(async () => await client.mutate('secret.clear', { secretId: secret.id }));
-          }}
+          {...(listing.canChange
+            ? {
+                clear: (secret: SecretView) => {
+                  void act(
+                    async () => await client.mutate('secret.clear', { secretId: secret.id }),
+                  );
+                },
+              }
+            : {})}
         />
       ) : null}
       {because === null ? null : (
@@ -194,11 +219,13 @@ export function KeysPanel(props: { readonly client: OperationsClient }): ReactEl
           {because}
         </p>
       )}
-      <KeyForm
-        set={(name, value) => {
-          void act(async () => await client.mutate('secret.set', { name, value }));
-        }}
-      />
+      {listing.state === 'shown' && listing.canChange ? (
+        <KeyForm
+          set={(name, value) => {
+            void act(async () => await client.mutate('secret.set', { name, value }));
+          }}
+        />
+      ) : null}
     </section>
   );
 }
