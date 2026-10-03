@@ -41,3 +41,10 @@ export interface ChatMessagesResult {
   /** Oldest first, from when the reader joined to when they left. */
   readonly messages: readonly ChatMessageView[];
 }
+
+/** A team conversation an inbox item is about (C71): a group's name, null on a direct one. */
+export interface InboxConversation {
+  readonly conversationId: string;
+  readonly kind: 'direct' | 'group';
+  readonly name: string | null;
+}

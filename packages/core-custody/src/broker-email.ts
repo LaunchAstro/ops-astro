@@ -110,15 +110,22 @@ async function ask(
   itemId: string,
   operation: ModelOperation,
 ): Promise<{ readonly attemptId: string; readonly to: string } | EmailRefusal> {
-  const [item] = await tx.query<{ readonly recipient: string; readonly subject: string }>(
-    `select recipient_person_id as recipient, subject_record_id as subject
+  const [item] = await tx.query<{
+    readonly recipient: string;
+    readonly subject: string;
+    readonly raisedAt: string;
+  }>(
+    `select recipient_person_id as recipient, subject_record_id as subject,
+            raised_at::text as "raisedAt"
        from public.inbox_items
       where business_id = $1 and id = $2 and work_state = 'open'
       for update`,
     [tx.businessId, itemId],
   );
   if (item === undefined) return 'ITEM_NOT_OPEN';
-  if ((await taskAccess(tx, item.recipient, item.subject)) !== 'readable') return 'ITEM_WITHHELD';
+  if ((await taskAccess(tx, item.recipient, item.subject, item.raisedAt)) !== 'readable') {
+    return 'ITEM_WITHHELD';
+  }
   const [address] = await tx.query<{ readonly value: string }>(
     `select value from public.person_identifiers
       where business_id = $1 and person_id = $2 and kind = 'email' and review_state = 'confirmed'

@@ -99,7 +99,6 @@ export type {
   GateView,
   HistoryEntry,
   InboxCountResult,
-  InboxConversation,
   InboxEntry,
   InboxReadResult,
   UnattendedView,

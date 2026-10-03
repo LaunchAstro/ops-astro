@@ -39,11 +39,17 @@ export const inConversation = (person: string, since?: string): string =>
        since === undefined ? '' : ` and cm.joined_at <= ${since}`
      })`;
 
-/** One person's access to one task, or to one conversation, derived as every read derives it. */
+/**
+ * One person's access to one task, or to one conversation, derived as every
+ * read derives it. Given an item's `raisedAt` (its `raised_at` as text, so no
+ * precision is lost on the way back), a conversation is read as `inbox.read`
+ * reads its items: by a member since then.
+ */
 export async function taskAccess(
   tx: TenantQuery,
   personId: string,
   taskId: string,
+  raisedAt?: string,
 ): Promise<InboxAccess> {
   const rows = await tx.query<{
     readonly trashed: boolean;
@@ -52,9 +58,10 @@ export async function taskAccess(
     readonly member: boolean;
   }>(
     `select r.deleted_at is not null as trashed, r.uuid_7 as "clientId",
-            ${IS_CONVERSATION} as conversation, ${inConversation('$3::uuid')} as member
+            ${IS_CONVERSATION} as conversation,
+            ${inConversation('$3::uuid', `coalesce($4::timestamptz, 'infinity')`)} as member
        from public.records r where r.business_id = $1 and r.id = $2`,
-    [tx.businessId, taskId, personId],
+    [tx.businessId, taskId, personId, raisedAt ?? null],
   );
   const task = rows[0];
   if (task === undefined) return 'gone';

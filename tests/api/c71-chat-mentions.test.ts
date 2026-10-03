@@ -5,14 +5,56 @@
 // mention of someone outside the conversation is refused as a task mention of
 // someone who cannot read is, and nothing is emailed beyond the existing
 // batched mention rule. The cast is `c71-g-world.ts`'s: Tess's group holds Ada
-// and Mia, and Zed is alpha staff outside it.
+// and Mia, and Zed is alpha staff outside it. A re-added member reads from the
+// new join only, in the unattended list, the seen stamp and the email gate too.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { InboxEntry } from '../../packages/core-wire/src/index.ts';
+import { catalogue, EMAIL_SEND, emailAdapter } from '../../packages/core-connectors/src/index.ts';
+import {
+  sendInboxEmail,
+  type Broker,
+  type Custody,
+} from '../../packages/core-custody/src/index.ts';
+import type { InboxEntry, UnattendedView } from '../../packages/core-wire/src/index.ts';
 import type { Caller } from '../acceptance/cast.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { createGroupWorld, detailOf, type GroupWorld } from './c71-g-world.ts';
+
+/** A broker whose custody sends nothing and counts what it was asked to send. */
+function mailGate(): { readonly broker: Broker; readonly dispatched: string[] } {
+  const dispatched: string[] = [];
+  const custody: Custody = {
+    pid: 0,
+    dispatch: async (credentialRef) => {
+      dispatched.push(credentialRef);
+      return await Promise.resolve({ kind: 'refused', started: false, code: 'NOT_SENT_IN_TEST' });
+    },
+    stderr: () => '',
+    raw: async () => await Promise.resolve({}),
+    kill: () => {},
+    stop: async () => await Promise.resolve(),
+  };
+  const broker: Broker = {
+    custody,
+    operations: catalogue([EMAIL_SEND]),
+    providers: new Map([['resend', { build: emailAdapter, price: () => 0 }]]),
+    routes: [
+      {
+        key: 'email',
+        reach: 'cloud',
+        provider: 'resend',
+        credentialRef: 'email_key',
+        credentialKind: 'api_key',
+        installation: 'here',
+        ceiling: 4,
+      },
+    ],
+    installation: 'here',
+    audit: async () => await Promise.resolve(),
+  };
+  return { broker, dispatched };
+}
 
 // eslint-disable-next-line max-lines-per-function -- one world, the ticket's lines
 describe.skipIf(databaseUrlFromEnvironment() === undefined)('C71 chat mentions', () => {
@@ -157,5 +199,75 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('C71 chat mentions',
     expect(after.status, after.text).toBe(200);
     expect(await mentionsOf(world.mia, g.conversationId)).toHaveLength(1);
     expect(await owedOf(world.mia)).toBe(owed + 1);
+  });
+
+  // eslint-disable-next-line max-lines-per-function -- one re-join, read by its three gates
+  it('CS-7.42 a mention raised before a re-join reaches no one it was not for: unattended, seen and the email gate read from the new join only', async () => {
+    const { world } = g.chat.harness;
+    const { tess } = g.chat;
+    const started = await g.start(tess, [world.ada.personId, world.mia.personId, g.zed.personId]);
+    expect(started.status, started.text).toBe(200);
+    const conversationId = String(detailOf(started)['conversationId']);
+    const members = async (change: Readonly<Record<string, unknown>>): Promise<void> => {
+      const changed = await g.as(tess, 'chat.change_members', { conversationId, ...change });
+      expect(changed.status, changed.text).toBe(200);
+    };
+    const mention = async (who: Caller): Promise<string> => {
+      const sent = await g.as(tess, 'chat.send_group', {
+        conversationId,
+        body: `@someone ${randomUUID()}`,
+        mentions: [who.personId],
+      });
+      expect(sent.status, sent.text).toBe(200);
+      const [item] = await world.db.admin.execute<{ readonly id: string }>(
+        `select id from public.inbox_items where fact_id = $1 and recipient_person_id = $2`,
+        [detailOf(sent)['commentId'], who.personId],
+      );
+      return String(item?.id);
+    };
+    // Zed is mentioned while Ada is out, then leaves: no path reaches his item.
+    await members({ remove: [world.ada.personId] });
+    const whileOut = await mention(g.zed);
+    await members({ remove: [g.zed.personId] });
+    await members({ add: [world.ada.personId] });
+    // Mia is mentioned while Ada is in, then removed and re-added.
+    const beforeRejoin = await mention(world.mia);
+    await members({ remove: [world.mia.personId] });
+    await members({ add: [world.mia.personId] });
+
+    const unattended = (await g.as(world.ada, 'inbox.unattended')).body[
+      'unattended'
+    ] as UnattendedView[];
+    const listed = unattended.map((item) => item.id);
+    // Mia's own pre-re-join item does not reach her, so it is unattended.
+    expect(listed).toContain(beforeRejoin);
+    // Ada was out when Zed's item was raised: she is not shown it.
+    expect(listed).not.toContain(whileOut);
+
+    // Mia opening it is answered as opening an item that is not hers.
+    const foreign = await g.as(world.mia, 'inbox.seen', { itemId: whileOut });
+    const seen = await g.as(world.mia, 'inbox.seen', { itemId: beforeRejoin });
+    expect(foreign.code).toBe('NOT_FOUND');
+    expect([seen.status, seen.code]).toEqual([foreign.status, foreign.code]);
+    expect(
+      await world.db.admin.execute('select 1 from public.inbox_attention where item_id = $1', [
+        beforeRejoin,
+      ]),
+    ).toEqual([]);
+
+    // The email gate does not mail her about it, address or no.
+    await world.db.admin.execute(
+      `insert into public.person_identifiers
+         (business_id, id, person_id, kind, value, observed_value, source_system, review_state)
+       values ($1, gen_random_uuid(), $2, 'email', $3, $3, 'test', 'confirmed')`,
+      [world.alpha, world.mia.personId, `mia-${randomUUID()}@example.test`],
+    );
+    const { broker, dispatched } = mailGate();
+    const mail = { appOrigin: 'https://ops.example.test', from: 'hello@example.test' };
+    expect(await sendInboxEmail(world.db.app, world.alpha, beforeRejoin, broker, mail)).toEqual({
+      ok: false,
+      code: 'ITEM_WITHHELD',
+    });
+    expect(dispatched).toEqual([]);
   });
 });
