@@ -261,6 +261,13 @@ describe.skipIf(serverUrl === undefined)('C31 credentials screen (custody)', () 
     expect((await list(admin)).find((one) => one.id === secretId)?.state).toBe('set');
   });
 
+  it('C31 the list says who may change keys: a business-wide holder may, a client-scoped one may not', async () => {
+    const changeable = async (who: Member): Promise<unknown> =>
+      (await as(who, 'secret.list', {})).body['canChange'];
+    expect(await changeable(admin)).toBe(true);
+    expect(await changeable(clientHolder)).toBe(false);
+  });
+
   it('C31 isolation: a client-scoped holder sees that client only, and writes nothing', async () => {
     await set('google.refresh', `${CANARY}-a`, { clientId: clientA });
     await set('google.refresh', `${CANARY}-b`, { clientId: clientB });
