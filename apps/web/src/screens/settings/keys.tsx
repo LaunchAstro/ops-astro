@@ -5,12 +5,21 @@
 // The panel reads `secret.list` and writes through `secret.set` and
 // `secret.clear`, the one command family both secret screens use. It never
 // holds a value longer than the field the person is typing into: the input is
-// a masked text field (a password field would hand it to the browser's password
-// manager), it is emptied as soon as the set is sent, and no answer the
+// masked, uncontrolled text (a password field would hand it to the browser's
+// password manager; a controlled one would mirror it into the page), it is
+// emptied as soon as the set is sent, and no answer the
 // server gives carries a value to draw. What a row shows is its name, its
 // scope, whether it is set, and when it was last used.
 
-import { useCallback, useEffect, useState, type ReactElement } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactElement,
+  type RefObject,
+  type SyntheticEvent,
+} from 'react';
 import { Chip, Empty } from '@launchastro/ui';
 import type { SecretListResult, SecretView } from '../../../../../packages/core-wire/src/index.ts';
 import { isRefusal, isUnavailable, type OperationsClient } from '../../operations/client.ts';
@@ -110,26 +119,19 @@ function KeyRows(props: {
   );
 }
 
-/**
- * One field of the set form. A sealed one is masked text, never a password
- * field: a password manager would offer to save the value, or fill a login into
- * it. Autofill, spelling and the managers' own opt-outs are all off.
- */
-function KeyField(props: {
-  readonly id: string;
-  readonly label: string;
+/** The name field: an ordinary text field, autofill and spelling off. */
+function NameField(props: {
   readonly value: string;
   readonly onChange: (value: string) => void;
-  readonly sealed?: boolean;
 }): ReactElement {
   return (
     <div className="field">
-      <label className="field__label" htmlFor={props.id}>
-        {props.label}
+      <label className="field__label" htmlFor="key-name">
+        Name
       </label>
       <input
-        id={props.id}
-        className={props.sealed === true ? 'tf tf--sealed' : 'tf'}
+        id="key-name"
+        className="tf"
         type="text"
         value={props.value}
         onChange={(event) => props.onChange(event.target.value)}
@@ -137,9 +139,47 @@ function KeyField(props: {
         spellCheck={false}
         autoCapitalize="off"
         autoCorrect="off"
-        data-1p-ignore={props.sealed === true ? '' : undefined}
-        data-lpignore={props.sealed === true ? 'true' : undefined}
-        data-settings={props.sealed === true ? 'key-value' : undefined}
+      />
+    </div>
+  );
+}
+
+const refuse = (event: SyntheticEvent): void => {
+  event.preventDefault();
+};
+
+/**
+ * The value field. Masked text, never a password field: a password manager
+ * would offer to save the value, or fill a login into it. It is uncontrolled,
+ * so React never mirrors the value into the page's `value` attribute, and it
+ * refuses copy, cut and drag. Autofill, spelling and the managers' own
+ * opt-outs are all off.
+ */
+function ValueField(props: {
+  readonly field: RefObject<HTMLInputElement | null>;
+  readonly onFilled: (filled: boolean) => void;
+}): ReactElement {
+  return (
+    <div className="field">
+      <label className="field__label" htmlFor="key-value">
+        Value
+      </label>
+      <input
+        id="key-value"
+        ref={props.field}
+        className="tf tf--sealed"
+        type="text"
+        onInput={(event) => props.onFilled(event.currentTarget.value !== '')}
+        onCopy={refuse}
+        onCut={refuse}
+        onDragStart={refuse}
+        autoComplete="off"
+        spellCheck={false}
+        autoCapitalize="off"
+        autoCorrect="off"
+        data-1p-ignore=""
+        data-lpignore="true"
+        data-settings="key-value"
       />
     </div>
   );
@@ -147,28 +187,30 @@ function KeyField(props: {
 
 function KeyForm(props: { readonly set: (name: string, value: string) => void }): ReactElement {
   const [name, setName] = useState('');
-  const [value, setValue] = useState('');
+  const [filled, setFilled] = useState(false);
+  const field = useRef<HTMLInputElement>(null);
   return (
     <form
       className="form"
       aria-label="Set a key"
       onSubmit={(event) => {
         event.preventDefault();
-        const sent = value;
+        const sent = field.current?.value ?? '';
         // Emptied before the answer: the value is not kept while the request is out.
-        setValue('');
+        if (field.current !== null) field.current.value = '';
+        setFilled(false);
         props.set(name, sent);
       }}
     >
       <div className="form__grid">
-        <KeyField id="key-name" label="Name" value={name} onChange={setName} />
-        <KeyField id="key-value" label="Value" value={value} onChange={setValue} sealed />
+        <NameField value={name} onChange={setName} />
+        <ValueField field={field} onFilled={setFilled} />
       </div>
       <div className="form__actions">
         <button
           type="submit"
           className="btn btn--primary btn--sm"
-          disabled={name === '' || value === ''}
+          disabled={name === '' || !filled}
         >
           Set key
         </button>
