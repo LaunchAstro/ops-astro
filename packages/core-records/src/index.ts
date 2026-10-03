@@ -278,6 +278,7 @@ export {
   type OnboardingTemplate,
 } from './onboarding/template.ts';
 export * from './onboarding/onboardings.ts';
+export { closeStepMove, raiseStepMoves, reparkStepMove } from './onboarding/moves.ts';
 export { hasRoom, type DurableLimit } from './tenancy/limit.ts';
 export { connectOutbox, type ApiEvent, type Outbox } from './tenancy/outbox.ts';
 export { loginLiveElsewhere } from './identity/shared-login.ts';
