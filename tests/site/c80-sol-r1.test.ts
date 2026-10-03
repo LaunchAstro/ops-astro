@@ -7,6 +7,7 @@
 import { expect, it } from 'vitest';
 import {
   contentDigest,
+  observeLanded,
   publishCorrection,
   revertCorrection,
   versionDigestOf,
@@ -218,4 +219,20 @@ it('Sol R1 8: a pending revert keeps the original decision time until observatio
     observedAt: new Date(now).toISOString(),
     intervalMs: 181_000,
   });
+});
+
+it('Sol R1 9: a replacement decoy does not establish that the target word landed', async () => {
+  const accepted = await publishCorrection(approvedJob(), publishPorts([]));
+  if (accepted.state !== 'accepted') throw new Error(`not accepted: ${accepted.state}`);
+  const observe = (text: string) =>
+    observeLanded(accepted, TARGET, {
+      readDeployment: () =>
+        Promise.resolve({ kind: 'ok', value: { revision: PUBLISHED.revision, served: true } }),
+      capture: page(text),
+    });
+  // The target still holds the original word; the replacement stands only in other copy.
+  expect((await observe('Parking beside the clinic. We walk alongside you.')).state).toBe(
+    'accepted',
+  );
+  expect((await observe('Parking beside the clinic. We walk beside you.')).state).toBe('live');
 });
