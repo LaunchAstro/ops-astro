@@ -30,6 +30,7 @@ import { conversationBody, leaseBody } from './role-case-run-bodies.ts';
 import { FIXED_BODIES } from './role-case-fixed-bodies.ts';
 import { moneyBody } from './role-case-money-bodies.ts';
 import { lineageBody } from './role-case-lineage-bodies.ts';
+import { WAYFINDER_BODIES } from './role-case-wayfinder.ts';
 
 export function createPositiveBody(
   context: BodyContext,
@@ -291,8 +292,12 @@ export function createPositiveBody(
       case 'conversation.set_scope':
         // AW-03 and MP-7-11, the admin's own conversation: `role-case-run-bodies.ts`.
         return await conversationBody(declaration.name, context);
-      default:
+      default: {
+        // Wayfinder (WF-1) keeps its recipes beside this table.
+        const wayfinder = WAYFINDER_BODIES[declaration.name];
+        if (wayfinder !== undefined) return { body: await wayfinder(context, target) };
         throw new Error(`matrix: no positive control recipe for ${String(declaration.name)}`);
+      }
     }
   };
 }

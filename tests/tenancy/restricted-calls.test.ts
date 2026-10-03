@@ -69,6 +69,17 @@ const UNREACHED: Readonly<Record<string, string>> = {
   // actor, its message and its wrap-up on that conversation, where the business
   // has them. Bravo's rows name ids that key nothing, written with foreign keys
   // off, as every seed here is.
+  // WF-1: a map's body rows. Any record stands in for the map; the read-model
+  // triggers find it is not one and write nothing.
+  'public.map_components': `insert into public.map_components
+       (business_id, id, map_id, kind, body, position, created_version)
+     select business_id, gen_random_uuid(), id, 'fog', 'restricted calls seed', 0, 1
+       from public.records where business_id = $1 order by id limit 1 returning 1`,
+  'public.map_versions': `insert into public.map_versions
+       (business_id, id, map_id, version, changed, actor_id)
+     select r.business_id, gen_random_uuid(), r.id, 1, array[r.id], a.id
+       from public.records r join public.actors a on a.business_id = r.business_id
+      where r.business_id = $1 order by r.id, a.id limit 1 returning 1`,
   'public.conversations': `insert into public.conversations
        (business_id, id, owner_actor_id, owner_person_id, title)
      select $1, gen_random_uuid(), coalesce(a.id, gen_random_uuid()),
@@ -725,9 +736,15 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     const definer = (signature: string): CatalogueFunction | undefined =>
       definers().find((fn) => fn.signature === signature);
 
-    it('are exactly four, each with its search path pinned', () => {
+    // WF-1 added the map read models' four writers: security definer so the
+    // summary and frontier tables have one writer and the application only reads them.
+    it('are exactly eight, each with its search path pinned', () => {
       expect(definers().map((fn) => fn.signature)).toStrictEqual([
         'handback_reports_append_only()',
+        'map_summary_on_link()',
+        'map_summary_on_map_part()',
+        'map_summary_on_record()',
+        'map_summary_refresh(uuid)',
         'model_route_room(text,integer)',
         'ops.expire_second_factor_codes()',
         'ops.record_tested_restore()',
