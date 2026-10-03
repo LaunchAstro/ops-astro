@@ -11,7 +11,10 @@
 // ending (0063): a session of that login, not the kept one, whose first
 // sign-in is at or before the ending is refused in every business; a sign-in
 // after it is served. A factor change in alpha ends bravo's sessions the
-// same way, and the session kept by either act is still served in bravo.
+// same way, and the session kept by either act is still served in bravo. The
+// first sign-in time is the provider's clock and may run up to a minute ahead
+// (Sol OW-001), so a sign-in inside that minute after the ending is refused,
+// and one past it is served.
 
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
@@ -30,6 +33,7 @@ import {
   clientA,
   clientB,
   EXPIRED,
+  endingsBehind,
   now,
   OK,
   served,
@@ -133,7 +137,7 @@ describe.skipIf(serverUrl === undefined)('C58 end other sessions in every busine
     expect(await served(laptopToken, 'bravo')).toEqual(EXPIRED);
   });
 
-  it('C58 end other sessions: a sign-in after the ending is served in every business', async () => {
+  it('C58 end other sessions: a sign-in past the clock allowance after the ending is served in every business', async () => {
     const [kept, other] = [randomUUID(), randomUUID()];
     const keptToken = await tokenFor(world.mia.subject, kept);
     expect(await served(await tokenFor(world.mia.subject, other), 'alpha')).toEqual(OK);
@@ -148,6 +152,11 @@ describe.skipIf(serverUrl === undefined)('C58 end other sessions in every busine
       session_id: randomUUID(),
       amr: [{ method: 'password', timestamp: now() + 2 }],
     });
+    // Inside the minute the provider's clock may run ahead, it cannot be told
+    // from a session signed in before the ending (Sol OW-001), so it is refused.
+    expect(await served(fresh, 'alpha')).toEqual(EXPIRED);
+    // The ending a little over that minute back: the same sign-in is after it.
+    await endingsBehind();
     expect(await served(fresh, 'alpha')).toEqual(OK);
     expect((await served(fresh, 'bravo')).status).toBe(403);
     expect(await served(keptToken, 'alpha')).toEqual(OK);

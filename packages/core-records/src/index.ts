@@ -94,6 +94,7 @@ export { withStanding } from './identity/standing.ts';
 export {
   NO_ASSURANCE,
   SESSION_ABSOLUTE_SECONDS,
+  SIGN_IN_CLOCK_SKEW_SECONDS,
   type Assurance,
   type AssuranceLevel,
 } from './identity/verified-subject.ts';

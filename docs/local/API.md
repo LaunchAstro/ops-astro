@@ -292,9 +292,10 @@ whichever route asked (`ops.ended_provider_sessions`, 0061; each business's
 own record is `ended_sessions`, 0057). Ending the other sessions, or a factor
 change, also ends every session of the login but the kept one in every
 business, seen here or not: a token whose first sign-in (`amr`) is at or
-before that ending is refused; a sign-in after it is served
-(`ops.ended_subject_sessions`, 0063, keyed by a SHA-256 digest of the
-subject). The provider's sign-out, which revokes
+before that ending, or within the minute the provider's clock may run ahead
+of the database's (`SIGN_IN_CLOCK_SKEW_SECONDS`), is refused; a sign-in after
+that is served (`ops.ended_subject_sessions`, 0063, keyed by a SHA-256 digest
+of the subject). So a sign-in in the minute after the ending is refused once. The provider's sign-out, which revokes
 the refresh tokens, comes after and cannot undo it. A sign-out this business refuses (it no
 longer admits the person) still ends the verified token's own session in
 every business and at the provider, and answers the refusal.
