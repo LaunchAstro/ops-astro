@@ -14,6 +14,18 @@ const database = (process.env['DATABASE_URL'] ?? '') !== '';
 const containerSuites: string[] = (
   JSON.parse(readFileSync('tests/ci/container-suites.json', 'utf8')) as { suites: string[] }
 ).suites;
+// These suites change the backup and lookup identities, which are the cluster's
+// and shared by every database on it: one grants them a role, the other drops
+// their row-security bypass. Any file migrating beside them reads or repairs
+// the same rows (0045, 0046, 20261003173600) and fails with "tuple concurrently
+// updated" or finds the membership mid-test. So a whole-suite run with a
+// database leaves them out; scripts/db-conformance.mjs, which runs the named
+// suites one at a time and sets SUITE_PART for each, runs them.
+const clusterRoleSuites = [
+  'tests/db/identity-roles-hold-no-membership.test.ts',
+  'tests/review/role-repair-drops-inherited-access-proof.test.ts',
+];
+const oneSuiteAtATime = process.env['SUITE_PART'] !== undefined;
 
 export default defineConfig({
   test: {
@@ -68,6 +80,7 @@ export default defineConfig({
       // CI's `local checks` runs the suites that start containers in a step of their own, after
       // the browser captures: a new network interface aborts a page load in flight.
       ...(process.env['CONTAINER_SUITES'] === 'apart' ? containerSuites : []),
+      ...(database && !oneSuiteAtATime ? clusterRoleSuites : []),
     ],
   },
 });
