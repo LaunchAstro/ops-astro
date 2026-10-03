@@ -10,7 +10,7 @@
 // could not select one if it tried (20261003001523).
 
 import {
-  grantedScopes,
+  heldScopes,
   listSecrets,
   subjectsOf,
   type Session,
@@ -24,7 +24,10 @@ export async function listCustodySecrets(
   tx: TenantQuery,
   session: Session,
 ): Promise<ReadResult | CommandRefusal> {
-  const scopes = await grantedScopes(tx, subjectsOf(session), 'custody', 'manage');
+  const scopes = await heldScopes(tx, subjectsOf(session), {
+    collection: 'custody',
+    action: 'manage',
+  });
   if (scopes.length === 0) {
     return refuseCommand(
       'SCOPE_NOT_GRANTED',

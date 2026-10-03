@@ -50,4 +50,3 @@ export {
   type MintedDelegation,
   type MintRequest,
 } from './delegations.ts';
-export { grantedScopes } from './scopes.ts';
