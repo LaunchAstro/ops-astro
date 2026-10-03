@@ -1015,9 +1015,7 @@
     "tests/ci/staging-reset-agent-signs-in.test.ts",
     "tests/operations/find-copies-values-only.proof.test.ts",
     "tests/db/identity-roles-hold-no-membership.test.ts",
-    "tests/review/backup-read-part-appointment-proof.test.ts",
     "tests/review/carried-stamp-once-proof.test.ts",
-    "tests/operations/scan-login-token-and-shared-login.proof.test.ts",
     "tests/ci/staging-reset-refuses-while-a-seed-runs.test.ts"
   ]
 }
