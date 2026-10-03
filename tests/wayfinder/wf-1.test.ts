@@ -628,15 +628,18 @@ describe.skipIf(serverUrl === undefined)('WF-1 task types and the map as a task'
       clean(answer);
     }
 
-    // 3. An agent under a live delegation on a ticket of map A: map B is
-    // outside its purpose, and so is retyping or scoping anything.
+    // 3. An agent under a live delegation on a ticket of a map: map B is
+    // outside its purpose, and so is retyping or scoping anything. The map has
+    // no client, since a subtask carries its parent's (MP-4-4) and the picked-up
+    // task has none.
     const picked = await w.pickUp(owner, 'delegated work');
+    const mapC = await newMap(owner, 'canary-map-C');
     must(
       await w.as(owner, {
         command: 'task.reparent',
         recordId: picked.taskId,
         expectedRevision: await w.revisionOf(picked.taskId),
-        parentId: mapA.id,
+        parentId: mapC.id,
       }),
       'reparent',
     );
