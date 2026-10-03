@@ -88,6 +88,7 @@ import { createLivePresence } from './live-presence.ts';
 import { isLoopback, migrationHead, readIdentity, type ServedIdentity } from './identity.ts';
 import { mailHookSettings, mountMailHook, type MailHookOptions } from './mail-hook.ts';
 import { brokerSettings, startModelBroker } from './model-broker.ts';
+import { mailDeliverySettings, startMailDelivery } from './mail-delivery.ts';
 import { startTraceExporter, traceExportSettings } from './trace-exporter.ts';
 import {
   describeRecovered,
@@ -455,6 +456,13 @@ async function main(): Promise<void> {
     console.error(`api: ${traceConfig.problem}`);
     process.exit(1);
   }
+  // AW-07b: the delivery worker, off unless `MAIL_DELIVERY=mock` (no provider
+  // account yet); mock with a setting missing or malformed stops the server here.
+  const mailConfig = mailDeliverySettings(environment);
+  if (mailConfig.kind === 'invalid') {
+    console.error(`api: ${mailConfig.problem}`);
+    process.exit(1);
+  }
   const broker =
     brokerConfig.kind === 'configured' ? await startModelBroker(brokerConfig) : undefined;
   console.log(`api: credential broker ${broker === undefined ? 'not configured' : 'started'}`);
@@ -535,6 +543,16 @@ async function main(): Promise<void> {
       ? await startTraceExporter(traceConfig, database, async () => await Promise.resolve(traced))
       : undefined;
   console.log(`api: trace export ${tracer === undefined ? 'off' : 'on'}`);
+  // AW-07b: the mail worker over the same businesses, started the same way.
+  const mail =
+    mailConfig.kind === 'mock'
+      ? await startMailDelivery(mailConfig, database, async () => await Promise.resolve(traced))
+      : undefined;
+  console.log(
+    mail === undefined
+      ? 'api: mail delivery off'
+      : 'api: mail delivery mock (fake provider, made-up sender check and email choices)',
+  );
 
   serve({ fetch: app.fetch, hostname: '127.0.0.1', port }, (info) => {
     console.log(`api: listening on http://127.0.0.1:${info.port}`);
@@ -571,6 +589,7 @@ async function main(): Promise<void> {
             admin.close(),
             broker?.stop(),
             tracer?.stop(),
+            mail?.stop(),
           ]),
       )
       .then(() => process.exit(0));
