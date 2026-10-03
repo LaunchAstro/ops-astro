@@ -10,6 +10,7 @@
 //      both expiries on the clock read after its locks. It runs last: it ends
 //      the world's delegation.
 //   3. A trashed task takes no correction.
+//   4. The draft runner's cancel (`live-correction-lows-cancel.ts`).
 //
 // Registered through `tests/tenancy/restricted-calls.test.ts`, a named suite,
 // which calls `describeLiveCorrectionLowsRoundTwo` after round 1.
@@ -39,6 +40,11 @@ import {
   stateOf,
   taskOf,
 } from './live-correction-lows.ts';
+import {
+  findingFourAllowed,
+  findingFourRefused,
+  observedPublish,
+} from './live-correction-lows-cancel.ts';
 
 async function clientOf(taskId: string): Promise<string | null | undefined> {
   const rows = await lows().s.db.admin.execute<{ readonly client: string | null }>(
@@ -96,17 +102,6 @@ function findingThree(): void {
   });
 }
 
-/** The holder's observed publish, as the runner writes it under the world's lease. */
-const publishLive = (correctionId: string) => ({
-  correctionId,
-  leaseId: lows().leaseId,
-  fence: lows().fence,
-  actorId: lows().s.agentActorId,
-  step: 'publish' as const,
-  outcome: 'live' as const,
-  observations: { seen: 'live' },
-});
-
 /** Each row's expiry, found from the world's lease (`$1`), for the harness's clock polls. */
 const EXPIRES = {
   leases: 'select expires_at from public.leases where id = $1',
@@ -153,7 +148,7 @@ async function writtenAcrossExpiry(table: keyof typeof EXPIRES, id: string): Pro
   try {
     const writing = writer.withBusiness(
       s.business,
-      async (tx) => await recordObservedResult(tx, publishLive(id)),
+      async (tx) => await recordObservedResult(tx, observedPublish(id, 'live')),
     );
     await awaitParked(s, 'live_corrections', 1);
     expect(await startedBefore(s, EXPIRES[table], leaseId)).toBe(true);
@@ -177,7 +172,7 @@ async function revokedDuringReceipt(id: string): Promise<{ first: string; receip
   const [written, commit] = [barrier(), barrier()];
   let receipt: unknown;
   const writing = writer.withBusiness(s.business, async (tx) => {
-    receipt = await recordObservedResult(tx, publishLive(id));
+    receipt = await recordObservedResult(tx, observedPublish(id, 'live'));
     written.release();
     await commit.held;
   });
@@ -229,6 +224,8 @@ export function describeLiveCorrectionLowsRoundTwo(): void {
   describeWorld('P26 lows round 2: the live correction records', 'p26lows2', () => {
     describe('finding 1: filing a correction locks the task’s client', findingOne);
     describe('finding 3: a trashed task takes no correction', findingThree);
+    describe('finding 4: the runner’s cancel, allowed', findingFourAllowed);
+    describe('finding 4: every other move to or from cancelled, refused', findingFourRefused);
     // Last: its revocation ends the world's delegation.
     describe('finding 2: the receipt write judges expiry after its locks', findingTwo);
   });
