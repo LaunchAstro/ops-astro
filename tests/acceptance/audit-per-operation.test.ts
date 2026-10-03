@@ -367,7 +367,7 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
         );
       case 'inbox.seen':
         // Self-scoped: noah holds `preference:write` like every signed-in
-        // person, so the refusal is the item's. One not his is NOT_FOUND.
+        // person, so the refusal is the item's. Another person's is NOT_FOUND.
         return personCell(noah, name, { itemId: randomUUID() }, 'NOT_FOUND');
       case 'chat.mark_read':
         // C71-D: the reader's own marker, no grant asked; a conversation noah is

@@ -9,6 +9,7 @@
 
 import { act, type ReactElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { onTestFinished } from 'vitest';
 
 // React only enables `act` when it is told it is in a test. Without this every
 // flush warns and the warning is the only sign the flush did not happen.
@@ -99,6 +100,16 @@ export async function mount(element: ReactElement): Promise<Mounted> {
       });
     },
   };
+  // A view its test leaves mounted is unmounted when the test ends, so no timer
+  // in it renders after the file's jsdom is torn down: React's scheduler then
+  // threw 'window is not defined' outside every test, a red run with every
+  // test green. Unmounting twice is harmless. A view mounted in `beforeAll`
+  // spans tests, so its file unmounts it (onTestFinished refuses there).
+  try {
+    onTestFinished(mounted.unmount);
+  } catch {
+    // Mounted outside a test.
+  }
   return mounted;
 }
 

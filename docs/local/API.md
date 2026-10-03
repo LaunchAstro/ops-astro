@@ -707,10 +707,10 @@ cannot hold reaches `business_settings`.
 `task.comment` writes a comment record beside the task and leaves the task's
 own revision alone, so a caller may keep writing against the revision they
 hold. The author is the acting actor and the posting time is the server's;
-neither is a payload field. `mentions` lists person ids; each one mentioned
-is raised an inbox item in the same transaction (INB-1), and one who cannot
-read the task, or an outside party named in an `internal` comment, refuses
-the whole comment before it saves.
+neither is a payload field. `mentions` lists person ids. Each person
+mentioned is raised an inbox item in the same transaction (INB-1). If one of
+them cannot read the task, or is an outside party named in an `internal`
+comment, the whole comment is refused before it saves.
 
 `preset.plan` is declared `kind: 'read'` because it writes nothing, even on
 success. It is the one read that does not take the `read` action, which is why
