@@ -111,6 +111,12 @@ record content for a signed-out tab (`C58 no draft after session end`). ND1 to
 ND3 in `tests/browser/cases-c58-no-draft.mjs` show it in a real browser against
 the real API, reading IndexedDB, Cache Storage and every cookie as well.
 
+**A refused live join or presence call ends it too.** The live channel
+(`#live` in `operations/client.ts`) hears a refusal through the same `#heard` as
+a read, so a join or a presence call refused for an expired session or ended
+access ends the session as a refused read does, with the same notice.
+`tests/surfaces/live-join-and-presence-refusals-end-session.test.ts` holds it.
+
 **The refusal belongs to the session that made the request.** A client keeps the
 bearer it was built with, so a call can be answered after that bearer has
 stopped being anybody's session. Two reads leave together, the first 401 sends
@@ -140,6 +146,11 @@ All browser storage is read and written through `jsonSlot` in
 `apps/web/src/session/token.ts`. The screens get their storage from
 `tabStorage()` in the same file. A tab with blocked site data draws the screens
 with nothing remembered rather than failing.
+
+A session kept before the session cookie (S0-6c) also held its bearer. On
+reload `SessionStore` takes only the fields a session has now and writes them
+back over the old copy, so that bearer is gone from `sessionStorage` and from
+memory (`tests/web/pre-cookie-bearer-and-factor-check-cancel.test.tsx`).
 
 Nothing in the web calls for a refresh token, inspects a token or decodes one.
 The server decides the hour, and the browser finds out only by being refused. `tests/surfaces/session-ended.test.tsx` holds the three rules, and
