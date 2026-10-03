@@ -16,6 +16,7 @@ import { useCallback, useEffect, useState, type ReactElement, type ReactNode } f
 import { NotConnected, Segmented, Switch } from '@launchastro/ui';
 import { dismissedTipCount } from '../../../../../packages/core-wire/src/index.ts';
 import { applyAppearance, isAppearance, type Appearance } from '../../appearance.ts';
+import { savedSince, savePreference, savesSoFar } from '../../data/preference-saves.ts';
 import { isRefusal, type OperationsClient } from '../../operations/client.ts';
 import { describeFailure, describeRefusal } from '../../records/submit.ts';
 import type { StorageLike } from '../../session/token.ts';
@@ -61,21 +62,30 @@ function Group(props: {
   );
 }
 
+type Held = { readonly of: string; readonly value: Preferences } | null;
+
+/** A read's answer for `of`, but a key saved since the read left keeps its saved value. */
+function answered(before: Held, of: string, read: Preferences, newer: (key: string) => boolean) {
+  const own = before?.of === of ? before.value : {};
+  const kept = Object.entries(own).filter(([key]) => newer(key));
+  return { of, value: { ...read, ...Object.fromEntries(kept) } };
+}
+
 /** The person's own preferences: read once per reader, changed at once, then saved. */
 function usePreferences(client: OperationsClient, grantKey: string) {
-  const [held, setHeld] = useState<{ readonly of: string; readonly value: Preferences } | null>(
-    null,
-  );
+  const [held, setHeld] = useState<Held>(null);
   // A refusal is said to one reader, as `held` is held for one.
   const [said, setSaid] = useState<{ readonly of: string; readonly text: string } | null>(null);
 
   const reread = useCallback(() => {
     let current = true;
+    const mark = savesSoFar(client);
     void client.read<{ readonly preferences?: unknown }>('preference.read', {}).then((answer) => {
       if (!current) return answer;
       const preferences = 'value' in answer ? answer.value.preferences : undefined;
+      const newer = (key: string): boolean => savedSince(client, key, mark);
       if (typeof preferences === 'object' && preferences !== null)
-        setHeld({ of: grantKey, value: preferences as Preferences });
+        setHeld((before) => answered(before, grantKey, preferences as Preferences, newer));
       else if (isRefusal(answer)) setSaid({ of: grantKey, text: describeRefusal(answer) });
       else setSaid({ of: grantKey, text: 'Your preferences could not be read.' });
       return answer;
@@ -95,7 +105,7 @@ function usePreferences(client: OperationsClient, grantKey: string) {
       return { of: grantKey, value: { ...own, [preference]: value } };
     });
     setSaid(null);
-    void client.mutate('preference.save', { preference, value }).then((result) => {
+    void savePreference(client, preference, value).then((result) => {
       const failed = describeFailure(result);
       if (failed !== null) {
         setSaid({ of: grantKey, text: failed });

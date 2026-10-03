@@ -14,7 +14,7 @@
 // again. A refusal is shown in the server's words, code first, and the list
 // stays as it was.
 
-import { useState, type ReactElement } from 'react';
+import { useRef, useState, type ReactElement } from 'react';
 import { Button, Card, Table } from '@launchastro/ui';
 import { useRead } from '../../data/use-read.ts';
 import type { OperationsClient } from '../../operations/client.ts';
@@ -92,12 +92,16 @@ function useEndOthers(client: OperationsClient, reload: () => void) {
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [outcome, setOutcome] = useState<string | null>(null);
+  // An answer for a reader the screen has since left is that reader's alone.
+  const reader = useRef(client);
+  reader.current = client;
   const endOthers = (): void => {
     setConfirming(false);
     setBusy(true);
     void (async () => {
       const result = await client.account<SessionsEnded>('sessions/end-others');
       setBusy(false);
+      if (reader.current !== client) return;
       setOutcome('ok' in result ? endedInWords(result.value) : describeFailure(result));
       if ('ok' in result) reload();
     })();

@@ -6,7 +6,7 @@
 // question joins it (`conversation.message`). A rename or a page chosen before
 // that first question is held in the tab and goes with the start: the title in
 // the start itself, the page by `conversation.set_scope` straight after it.
-// Once started, a rename and a page go to the conversation straight away.
+// After that, a rename and a page go to the conversation in turn, in order.
 //
 // **One start per tab.** A second question asked while the first is still
 // starting waits for that start and joins the conversation it made, so a
@@ -21,7 +21,7 @@
 // here, so the picker offers nothing and the choice is not sent.
 //
 // The agent's answer comes back beside each kept question (AW-03's exchange,
-// on AW-01's conversation seam) and is drawn as the agent's line, as text.
+// on AW-01's conversation seam) and is drawn after its question, as text.
 // Where the deployment answers nothing, or no model may take the question,
 // the tab says so in plain words: the server's own, for a refusal.
 //
@@ -32,7 +32,7 @@
 // the first message (`allowance-line.tsx`).
 
 import { useEffect, useRef, useState, type ReactElement } from 'react';
-import { AssistantPanel, type AssistantMessage, type AssistantPage } from '@launchastro/ui';
+import { AssistantPanel, type AssistantPage, type AssistantRole } from '@launchastro/ui';
 import {
   addPage,
   ask,
@@ -83,7 +83,19 @@ interface Store {
   /** The state as the last move left it, for a step that resumes after a wait. */
   readonly now: () => AssistantState;
   readonly chat: (key: string) => Chat | undefined;
-  readonly line: (key: string, role: AssistantMessage['role'], body: string) => void;
+  readonly line: (key: string, role: AssistantRole, body: string, after?: string) => string;
+}
+
+/** Tab `key`'s newest line, moved to follow the question `after` and its earlier answers. */
+function placed(state: AssistantState, key: string, after?: string): AssistantState {
+  const chats = state.chats.map((chat) => {
+    const { messages } = chat;
+    const from = messages.findIndex((each) => each.id === after);
+    const to = messages.findIndex((each, at) => at > from && each.role === 'user');
+    if (chat.key !== key || from < 0 || to < 0) return chat;
+    return { ...chat, messages: messages.slice(0, -1).toSpliced(to, 0, ...messages.slice(-1)) };
+  });
+  return { ...state, chats };
 }
 
 function useStore(): Store {
@@ -99,10 +111,11 @@ function useStore(): Store {
     update,
     now: () => latest.current,
     chat: (key) => latest.current.chats.find((each) => each.key === key),
-    line: (key, role, body) => {
+    line: (key, role, body, after) => {
       count.current += 1;
       const id = `${role}-${String(count.current)}`;
-      update((current) => said(current, key, { id, role, body, cites: [] }));
+      update((current) => placed(said(current, key, { id, role, body, cites: [] }), key, after));
+      return id;
     },
   };
 }
@@ -131,13 +144,9 @@ async function startWith(
   report: (key: string, sent: Sent) => Promise<boolean>,
 ): Promise<string | null> {
   const { chat, body, subject, scope } = opening;
+  const { title, page } = store.chat(chat.key) ?? chat;
   const settled = settle(
-    await client.mutate('conversation.start', {
-      body,
-      title: chat.title,
-      subject: subject.label,
-      scope,
-    }),
+    await client.mutate('conversation.start', { body, title, subject: subject.label, scope }),
   );
   const id = settled.kind === 'ok' ? settled.value.detail?.['conversationId'] : undefined;
   if (typeof id !== 'string') {
@@ -150,7 +159,6 @@ async function startWith(
   }
   store.update((current) => started(current, chat.key, id));
   replied(store, chat.key, settled.kind === 'ok' ? settled.value.reply : undefined);
-  const page = store.chat(chat.key)?.page ?? null;
   if (page !== null) await report(chat.key, setScope(client, id, page));
   return id;
 }
@@ -167,12 +175,13 @@ function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
     const task = store.now().scope.task;
     return subject.kind === 'task' && task !== null ? { kind: 'task', id: task.id } : null;
   };
-  const start = (chat: Chat, body: string): Promise<string | null> =>
-    startWith(props.client, store, { chat, body, subject, scope: scope() }, report);
+  const start = (chat: Chat, body: string, on: Store): Promise<string | null> =>
+    startWith(props.client, on, { chat, body, subject, scope: scope() }, report);
   const send = async (key: string, body: string): Promise<void> => {
     const chat = store.chat(key);
     if (chat === undefined) return;
-    store.line(key, 'user', body);
+    const question = store.line(key, 'user', body);
+    const on: Store = { ...store, line: (k, role, words) => store.line(k, role, words, question) };
     let known = chat.conversationId;
     if (known === null) {
       // Queued behind the tab's last start: joins what it made, or starts
@@ -182,7 +191,7 @@ function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
       const turn = before.then(async (id) => {
         if (id !== null) return id;
         asked = true;
-        return await start(chat, body);
+        return await start(chat, body, on);
       });
       starts.current.set(key, turn);
       known = await turn;
@@ -191,27 +200,30 @@ function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
     const settled = settle(
       await props.client.mutate('conversation.message', { conversationId: known, body }),
     );
-    if (settled.kind === 'ok') replied(store, key, settled.value.reply);
-    else store.line(key, 'failed', settled.because);
+    if (settled.kind === 'ok') replied(on, key, settled.value.reply);
+    else on.line(key, 'failed', settled.because);
   };
-  return { report, send };
+  return { report, send, starts: starts.current };
 }
 
 const setScope = (client: OperationsClient, conversationId: string, page: AssistantPage): Sent =>
   client.mutate('conversation.set_scope', { conversationId, page });
 
-/** A rename and a page: held in the tab, and sent at once when it has started. */
+/** A rename and a page: held in the tab until it starts, then sent after the start, in turn. */
 function useWrites(
   props: AssistantViewProps,
   store: Store,
-  report: (key: string, sent: Sent) => Promise<boolean>,
+  sender: Pick<ReturnType<typeof useSender>, 'report' | 'starts'>,
 ): {
   readonly rename: (key: string, title: string) => void;
   readonly addPage: (key: string) => void;
 } {
   const written = (key: string, write: (conversationId: string) => Sent): void => {
-    const id = store.chat(key)?.conversationId ?? null;
-    if (id !== null) void report(key, write(id));
+    const turn = sender.starts.get(key)?.then(async (id) => {
+      if (id !== null) await sender.report(key, write(id));
+      return id;
+    });
+    if (turn !== undefined) sender.starts.set(key, turn);
   };
   return {
     rename: (key, title) => {
@@ -249,7 +261,7 @@ export function AssistantView(props: AssistantViewProps): ReactElement {
   }, [props.entry]);
   const subject = subjectFor({ route: props.route, ...state.scope });
   const sender = useSender(props, store, subject);
-  const writes = useWrites(props, store, sender.report);
+  const writes = useWrites(props, store, sender);
   const chat = state.chats.find((each) => each.key === state.selected);
   const opened = chat?.conversationId ?? null;
   return (
