@@ -6,6 +6,12 @@
 // carry (AW-04). Anyone who reads the task already reaches its client, so the
 // field widens nothing; each crossing below stays the answer it was. Business
 // to business, client to client, person to person, over a real database.
+//
+// SL12-24-AW04, ported onto main: main sends the task's client as `client`,
+// and only where the reader's grants reach that client (CS-4.12), so this
+// file's two cases that read a `clientId` (the client id for a client task,
+// and a record-scoped grant reading client A) are left out; main proves that
+// rule in task-client-facts.test.ts and task-client-facts-isolation.test.ts.
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -27,9 +33,6 @@ if (serverUrl === undefined) {
 }
 
 type Answer = Readonly<Record<string, unknown>>;
-
-// main's wire name for the task's client (InternalTaskDetail.client, C32).
-const clientOf = (answer: Answer): unknown => (answer['task'] as Answer | undefined)?.['client'];
 
 const LINK = `update public.records set data = data || jsonb_build_object('client', $2::text)
                where business_id = $1 and id = $3`;
@@ -99,28 +102,10 @@ describe.skipIf(serverUrl === undefined)('task.read carries the task’s client'
     await w?.db.drop();
   });
 
-  it('the read returns the client id for a client task and null for an internal one', async () => {
-    expect(clientOf(await read(w.alpha, w.ada, w.tasks.a))).toBe(w.clientA);
-    expect(clientOf(await read(w.alpha, w.ada, w.tasks.b))).toBe(w.clientB);
-    const internal = await read(w.alpha, w.ada, w.tasks.internal);
-    expect(internal['task']).toBeDefined();
-    expect(clientOf(internal)).toBeNull();
-  });
-
   it('business to business: another business’s task stays NOT_FOUND, client or none', async () => {
     expect((await read(w.alpha, w.ada, w.tasks.bravo))['code']).toBe('NOT_FOUND');
     expect((await read(w.bravo, w.bruno, w.tasks.a))['code']).toBe('NOT_FOUND');
     expect((await read(w.bravo, w.bruno, w.tasks.internal))['code']).toBe('NOT_FOUND');
-  });
-
-  it('client to client: a grant kept to client A’s task reads client A and never client B', async () => {
-    expect(clientOf(await read(w.alpha, w.cleo, w.tasks.a))).toBe(w.clientA);
-    for (const other of [w.tasks.b, w.tasks.internal]) {
-      // eslint-disable-next-line no-await-in-loop -- one read at a time
-      const refused = await read(w.alpha, w.cleo, other);
-      expect(refused['task']).toBeUndefined();
-      expect(refused['refused']).toBe(true);
-    }
   });
 
   it('person to person: the client outside the business sees its shared view, no client id, and the other client’s task NOT_FOUND', async () => {
