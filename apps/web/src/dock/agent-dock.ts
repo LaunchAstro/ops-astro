@@ -6,9 +6,9 @@
 // there whenever the drawer can be drawn, first in the rank; the panel is open
 // while `ai` is in the open set, so the gesture law, Close all, Escape and the
 // phone's one panel treat it like any other. Its head is the dock panel's, which
-// names and closes it; the drawer draws no head of its own. Storage and the
-// history never bring it back after a reload: the dock restores only registered
-// panels.
+// names and closes it; the drawer draws no head of its own. A door that asks for
+// it and Back or Forward through the dock's history open it; storage never
+// brings it back after a reload, since the dock restores only registered panels.
 
 import type { ReactNode } from 'react';
 import type { DockPanel, DockTab } from '@launchastro/ui';
