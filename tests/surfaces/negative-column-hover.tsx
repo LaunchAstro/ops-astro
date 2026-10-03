@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { ColumnChart } from '../../packages/ui/src/kit/chart-column.tsx';
 import '../../packages/ui/src/styles/2-primitives.css';
 
-const root = document.getElementById('root');
+const root = document.querySelector<HTMLElement>('#root');
 if (root === null) throw new Error('proof fixture needs its root');
 createRoot(root).render(
   <ColumnChart

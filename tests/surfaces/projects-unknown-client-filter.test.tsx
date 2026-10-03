@@ -58,10 +58,9 @@ it('an unknown client filter cannot hide Client while both clients remain shown'
     />,
   );
   try {
-    expect(board.all('tr[data-row]').map((one) => one.getAttribute('data-row'))).toEqual([
-      'a',
-      'b',
-    ]);
+    expect(
+      board.all('tr[data-row]').map((one) => (one as HTMLElement).dataset['row'] ?? null),
+    ).toEqual(['a', 'b']);
     expect(
       board.find('th[data-key="client"]'),
       'unknown filters are dropped at intake',

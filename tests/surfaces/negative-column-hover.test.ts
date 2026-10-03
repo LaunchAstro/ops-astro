@@ -23,9 +23,7 @@ it('hovering a negative column shows its value', async () => {
     await bar.waitFor();
     const point = page.locator('.chart__hit').first();
     await point.focus();
-    await expect
-      .poll(async () => page.locator('[role="tooltip"]').textContent())
-      .toBe('MonRefunds -$30');
+    await expect.poll(() => page.locator('[role="tooltip"]').textContent()).toBe('MonRefunds -$30');
     await point.blur();
     expect(await page.locator('[role="tooltip"]').count()).toBe(0);
     const box = await bar.boundingBox();
@@ -33,7 +31,7 @@ it('hovering a negative column shows its value', async () => {
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await expect
       .poll(
-        async () =>
+        () =>
           page
             .locator('[role="tooltip"]')
             .textContent({ timeout: 200 })

@@ -22,7 +22,7 @@ it('the gallery table rows follow its announced sort direction', async () => {
       .all('tbody tr')
       .map((row) => Number(row.querySelectorAll('td')[column]?.textContent));
     expect(values.length).toBeGreaterThan(1);
-    expect(values.every(Number.isFinite)).toBe(true);
+    expect(values.every((value) => Number.isFinite(value))).toBe(true);
     const expected = values.toSorted((left, right) =>
       direction === 'descending' ? right - left : left - right,
     );
