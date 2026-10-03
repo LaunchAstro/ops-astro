@@ -783,7 +783,9 @@ Giving and revoking a grant on Settings ▸ Access (`access.grant`,
 never an agent's. A grant given here is a root grant, to a person with an
 active membership, over the whole business or over one client of it
 (`scope_kind = 'party'`, `scope_id` the client). Making a client
-(`client.create`) is `record:write`, never an agent's.
+(`client.create`) is `record:write`, never an agent's. Changing a client's
+privacy settings (`client.set_privacy`, C60) is `privacy:manage`, asked at that
+client's party scope, never an agent's.
 
 Every change to who may do what takes the business's one access lock first
 (`lockAccess`, `access:<business>`), before any grant row: a grant given, a
