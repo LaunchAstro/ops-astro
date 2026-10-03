@@ -32,9 +32,10 @@ const digest = (text: string): string =>
   `sha256:${createHash('sha256').update(text, 'utf8').digest('hex')}`;
 
 // parse5, the HTML standard's tree builder, reads the page as a browser does. Four of its costs
-// grow with the square of a hostile page, so each is bounded: a tag past MAX_ATTRIBUTES (each name
-// is checked against all before it), nesting or active formatting entries past MAX_DEPTH (walked
-// by many tags) are refused as oversized, and a sibling is looked for from the end, where it sits.
+// grow with the square of a hostile page, so each is bounded: a tag, or an <html> or <body> that
+// later tags merge theirs onto, past MAX_ATTRIBUTES (each name is checked against all before it),
+// and nesting or active formatting entries past MAX_DEPTH (walked by many tags) are refused as
+// oversized; a sibling is looked for from the end, where it sits.
 const [MAX_ATTRIBUTES, MAX_DEPTH] = [256, 256];
 const PAST_BOUND = new Error('past a bound');
 
@@ -61,6 +62,10 @@ const fromEnd = {
     const previous = parent.childNodes[parent.childNodes.lastIndexOf(before) - 1];
     if (previous && defaultTreeAdapter.isTextNode(previous)) previous.value += text;
     else fromEnd.insertBefore(parent, defaultTreeAdapter.createTextNode(text), before);
+  },
+  adoptAttributes(recipient: Tree.Element, attrs: Tree.Element['attrs']): void {
+    defaultTreeAdapter.adoptAttributes(recipient, attrs);
+    if (recipient.attrs.length > MAX_ATTRIBUTES) throw PAST_BOUND;
   },
 };
 
