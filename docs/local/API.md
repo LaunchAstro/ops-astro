@@ -2852,10 +2852,18 @@ mapped in, one transaction ends every session of the login (0063, keeping
 none, the recovery session too) and audits `account.password_changed`; after
 commit the provider signs out the others, then this session. The answer is
 200 `{ signedOutAtProvider }`. A session that is not a live recovery session
-of a mapped login (none, expired, spent, a sign-in) is 401
-`RESET_LINK_INVALID`, a password outside 12 to 72 bytes 400
-`PASSWORD_INVALID`, a provider fault or wrong answer 503 `RESET_UNAVAILABLE`,
-nothing ended or audited. Answers carry a code alone; nothing is logged.
+of a mapped login (none, naming no session, expired, spent, a sign-in) is
+401 `RESET_LINK_INVALID`, recorded as a refused attempt in each business that
+knows the login; a password outside 12 to 72 bytes is 400 `PASSWORD_INVALID`,
+a body that is not a JSON object holding it 400 `RESET_MALFORMED`, and one
+over 1 KiB 413 `RESET_TOO_LARGE`. The link is spent before the provider is
+asked, so of two requests on one link at once one sets the password and the
+other is 401. A provider fault or wrong answer is 503 `RESET_UNAVAILABLE`, the
+link spent and nothing else ended or audited; a key set the provider cannot
+serve is 503 `RESET_UNAVAILABLE` too, as at the session exchange; anything
+else failing is 503 `RESET_FAULT`. A recovery session is never traded for the
+session cookie (`AUTH_SESSION_EXPIRED`). Answers carry a code alone; nothing
+is logged. No limit holds the route's rate yet.
 
 ## The operations view and privacy incidents (C55)
 

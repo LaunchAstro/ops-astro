@@ -11,8 +11,10 @@
 // `{ signedOutAtProvider }`; 401 `RESET_LINK_INVALID` for every session that
 // is not a live recovery session of a mapped login (none, forged, expired,
 // spent, an ordinary sign-in); 400 `PASSWORD_INVALID` for a password out of
-// bounds; 503 `RESET_UNAVAILABLE` when the provider failed or answered
-// wrongly, nothing changed here.
+// bounds, `RESET_MALFORMED` for a body that is not one; 413 `RESET_TOO_LARGE`;
+// 503 `RESET_UNAVAILABLE` when the provider's key set could not be reached (as
+// the session exchange answers) or the provider failed or answered wrongly,
+// the link then spent and nothing else changed; 503 `RESET_FAULT` otherwise.
 //
 // Mounted by the composition root only when it is given the deployment's
 // businesses and the provider; `main()` does not turn it on yet (C40-plan).
@@ -68,6 +70,7 @@ export function mountPasswordSet(
     try {
       const accessToken = bearerOf(context.req);
       const presented = accessToken === undefined ? undefined : await options.verify(context.req);
+      if (presented === 'unavailable') return context.json({ code: 'RESET_UNAVAILABLE' }, 503);
       if (accessToken === undefined || typeof presented !== 'object') {
         return context.json({ code: 'RESET_LINK_INVALID' }, 401);
       }
