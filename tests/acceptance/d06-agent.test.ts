@@ -42,6 +42,7 @@ import { createHarness, type Harness } from './role-case-harness.ts';
 import { agentHold } from './d06-agent-fixture.ts';
 import { revisedState } from './d06-run-state.ts';
 import { ownWriteBody, proposalBody } from './d06-agent-own-writes.ts';
+import { c80AgentBody } from './c80-bodies.ts';
 import type { Answer } from './world.ts';
 import { serverUrl } from './world.ts';
 
@@ -71,6 +72,7 @@ const AGENT_OPERATIONS: readonly CommandName[] = [
   'task.update',
   // The assignee (MP-4-8), under a delegation that also holds assign.
   'task.assign',
+  'live_correction.request',
   'task.heartbeat',
   'task.dispatch',
   'task.observe',
@@ -135,6 +137,7 @@ describe.skipIf(serverUrl === undefined)('D06 on the agent prefix', () => {
     if (name === 'model.call') await hold.release();
     const held = await hold.ensureLive();
     const credential = held.credential;
+    if (name === 'live_correction.request') return c80AgentBody(operationId, held);
     if (name === 'session.capabilities') return { body: { operationId }, credential };
     if (name === 'task.read') return { body: { operationId, recordId: held.taskId }, credential };
     if (name === 'task.comment') {

@@ -85,6 +85,7 @@ describe.skipIf(serverUrl === undefined)('the reads this lane adds', () => {
         'client_sign_off_required',
         'conversation_window_days',
         'four_eyes_threshold',
+        'live_correction_approver',
         'money_step_up_required',
         'retention_window_days',
       ]);

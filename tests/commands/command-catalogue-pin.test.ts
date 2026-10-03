@@ -261,6 +261,11 @@ vi.mock('../../packages/core-commands/src/commands/tasks-tags.ts', async (origin
   addTagToTask: recorder('addTagToTask'),
   removeTagFromTask: recorder('removeTagFromTask'),
 }));
+vi.mock('../../packages/core-commands/src/commands/live-corrections.ts', async (original) => ({
+  ...(await original<object>()),
+  decideLiveCorrection: recorder('decideLiveCorrection'),
+  requestLiveCorrection: recorder('requestLiveCorrection'),
+}));
 vi.mock('../../packages/core-commands/src/commands/inbox-seen.ts', async (original) => ({
   ...(await original<object>()),
   stampOwnSeen: recorder('stampOwnSeen'),
@@ -338,6 +343,8 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'legal.approve_version': ['versionId'],
   'legal.draft_version': [],
   'legal.publish_version': ['versionId'],
+  'live_correction.decide': ['correctionId', 'versionId'],
+  'live_correction.request': ['partyId', 'taskId'],
   'model.call': ['leaseId'],
   'operations.change_installation_mode': [],
   'operations.record_gate_item': [],
@@ -356,6 +363,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'settings.set_money_step_up': [],
   'settings.set_conversation_window': [],
   'settings.set_retention_window': [],
+  'settings.set_live_correction_approver': [],
   'task.accept_plan': ['gateId', 'versionId', 'conversationId'],
   'task.cancel': ['recordId', 'lineageId'],
   'task.check': ['leaseId'],
@@ -412,6 +420,9 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'legal.approve_version',
   'legal.draft_version',
   'legal.publish_version',
+  'live_correction.decide',
+  'live_correction.read',
+  'live_correction.request',
   'model.call',
   'notifications.set_channel',
   'operations.change_installation_mode',
@@ -438,6 +449,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'settings.set_client_sign_off',
   'settings.set_conversation_window',
   'settings.set_four_eyes_threshold',
+  'settings.set_live_correction_approver',
   'settings.set_money_step_up',
   'settings.set_retention_window',
   'tag.create',
@@ -476,6 +488,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
 ];
 
 const PINNED_AGENT_SURFACE = [
+  'live_correction.request',
   'model.call',
   'run.child_handback',
   'run.delegate_child',
@@ -685,6 +698,27 @@ const REQUESTS: readonly CommandRequest[] = [
     reason: 'why',
   },
   {
+    command: 'live_correction.request',
+    operationId: 'op',
+    partyId: 'party',
+    taskId: 'task',
+    path: 'p',
+    word: 'w',
+    replacement: 'x',
+    pageUrl: 'u',
+    baseRevision: 'b',
+    before: 'before',
+    after: 'after',
+  },
+  {
+    command: 'live_correction.decide',
+    operationId: 'op',
+    correctionId: 'c',
+    versionId: 'v',
+    decision: 'approve',
+  },
+  { command: 'settings.set_live_correction_approver', operationId: 'op', value: null },
+  {
     command: 'budget.set_planning_cap',
     operationId: 'op',
     limitMinor: 2_000,
@@ -847,6 +881,14 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'budget.top_up': ['topUpOnTask', 'request'],
   'budget.record_outcome': ['recordOutcomeOnTask', 'request'],
   'budget.write_off': ['writeOffOnTask', 'request'],
+  'live_correction.request': ['requestLiveCorrection', 'request'],
+  'live_correction.decide': ['decideLiveCorrection', 'request'],
+  'settings.set_live_correction_approver': [
+    'setBusinessSetting',
+    'settings.set_live_correction_approver',
+    null,
+    undefined,
+  ],
   'budget.set_planning_cap': ['setPlanningCap', 'request'],
   'task.check': ['checkOwnLease', 'request'],
   'conversation.start': ['startConversation', 'request'],
@@ -911,7 +953,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same ninety-two from an expected revision', () => {
+  it('exempts the same ninety-six from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );

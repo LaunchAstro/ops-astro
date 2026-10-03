@@ -36,6 +36,7 @@ const PINNED_SHAPE = {
   'inbox.count': { spine: false, subject: false, authority: 'self' },
   'inbox.read': { spine: false, subject: false, authority: 'self' },
   'inbox.unattended': { spine: false, subject: false, authority: 'declared' },
+  'live_correction.read': { spine: false, subject: false, authority: 'holds-any-grant' },
   'operations.read': { spine: false, subject: false, authority: 'declared' },
   'person.list': { spine: false, subject: false, authority: 'declared' },
   'preference.read': { spine: false, subject: false, authority: 'self' },
@@ -69,6 +70,7 @@ const PINNED_IDENTIFIERS = {
   'inbox.count': [],
   'inbox.read': [],
   'inbox.unattended': [],
+  'live_correction.read': ['correctionId'],
   'operations.read': [],
   'person.list': [],
   'preference.read': [],
@@ -222,6 +224,12 @@ const PINNED_OPERANDS: Readonly<Record<string, readonly unknown[]>> = {
   'inbox.read': BODIES.map(() => null),
   'inbox.count': BODIES.map(() => null),
   'inbox.unattended': BODIES.map(() => null),
+  // C80: the correction, which none of these bodies carries.
+  'live_correction.read': BODIES.map(() => ({
+    code: 'FIELD_VALUE_INVALID',
+    names: ['correctionId'],
+    fixes: ['Send correctionId as the correction.'],
+  })),
   // AW-12: the run, which none of these bodies carries.
   'harness.read': BODIES.map(() => ({
     code: 'FIELD_VALUE_INVALID',
@@ -239,7 +247,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same twenty-eight reads', () => {
+  it('names the same twenty-nine reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 

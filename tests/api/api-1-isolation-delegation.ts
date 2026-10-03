@@ -26,6 +26,7 @@ import {
   task,
 } from './api-1-isolation-world.ts';
 import { SHAPE, asAgent, canonical, foreign, type Heard } from './api-1-isolation-surfaces.ts';
+import { requestBody as correction } from '../site/c80-world.ts';
 
 let attemptedForeignLeaseId = '';
 let attemptedForeignReservationId = '';
@@ -78,6 +79,7 @@ const FIELD_WRITES: Record<string, (record: string) => Record<string, unknown>> 
 const bodies = (
   claim: Claim,
 ): Record<string, (record: string) => Record<string, unknown> | null> => ({
+  'live_correction.request': (record) => ({ ...correction(randomUUID(), record) }),
   'task.read': (record) => ({ recordId: record }),
   'task.comment': (record) => ({ recordId: record, body: 'made-up', audience: 'internal' }),
   'task.heartbeat': () => ({ ...claim.lease, leaseSeconds: 60 }),
@@ -166,6 +168,7 @@ export function delegationCrossing(): void {
     // pickup: one live delegation per agent and purpose, so a second task never joins
     // the first one's reach. The control below tells this from a collection refusal.
     const reason: Record<string, string> = {
+      'live_correction.request': 'DELEGATION_OUT_OF_PURPOSE',
       'task.heartbeat': 'DELEGATION_OUT_OF_PURPOSE',
       'task.handback': 'DELEGATION_OUT_OF_PURPOSE',
       'task.dispatch': 'DELEGATION_OUT_OF_PURPOSE',

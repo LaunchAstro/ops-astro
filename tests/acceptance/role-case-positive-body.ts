@@ -6,6 +6,7 @@
 // same one: this is still the matrix's only knowledge of what a task is.
 
 import { type CommandDeclaration } from '../../packages/core-wire/src/surface.ts';
+import { C80_NAMES, c80PositiveBody } from './c80-bodies.ts';
 import {
   ACCEPTED_PLAN,
   PROPOSAL,
@@ -48,6 +49,7 @@ export function createPositiveBody(
     };
     const fixed = FIXED_BODIES[declaration.name];
     if (fixed !== undefined) return { body: { ...fixed } };
+    if (C80_NAMES.has(declaration.name)) return await c80PositiveBody(declaration.name, context);
     switch (declaration.name) {
       case 'task.create':
         return { body: { fields: { title: 'the admin creates a task' } } };
