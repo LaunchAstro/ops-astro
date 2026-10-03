@@ -69,7 +69,9 @@
     {
       "files": [
         "tests/api/live-presence-remap-seats-no-one-on-unreadable-task.test.ts",
-        "tests/api/live-presence-remap-during-recheck-seats-no-one.test.ts"
+        "tests/api/live-presence-remap-during-recheck-seats-no-one.test.ts",
+        "tests/api/sol-ow002-presence-remap-and-back.test.ts",
+        "tests/api/sol-ow002-remap-refused-notification.test.ts"
       ],
       "rules": {
         "max-lines-per-function": "off",
