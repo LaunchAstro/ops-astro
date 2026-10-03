@@ -773,9 +773,15 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
       expect(stamp?.argumentTypes).toStrictEqual([]);
       expect(stamp?.config).toStrictEqual(['search_path=pg_catalog']);
     });
+  });
 
-    it('the fourth is the pickup path, fired by nothing and under row security', () => {
-      const fn = definer('take_lease(uuid,uuid,uuid,uuid,uuid,timestamp with time zone,text)');
+  describe('the fifth security definer function', () => {
+    it('is the pickup path, fired by nothing and under row security', () => {
+      const fn = functions.find(
+        (each) =>
+          each.definer &&
+          each.signature === 'take_lease(uuid,uuid,uuid,uuid,uuid,timestamp with time zone,text)',
+      );
       expect(fn?.trigger).toBe(false);
       expect(fn?.config).toStrictEqual(['search_path=pg_catalog, pg_temp']);
       expect(fn?.firedBy).toStrictEqual([]);
