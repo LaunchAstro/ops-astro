@@ -7,6 +7,7 @@
 // split into parts runs each case in exactly one part, and the aggregate keeps
 // the required check's name and fails unless every shard passed.
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { expect, it } from 'vitest';
 import {
   assignShards,
@@ -17,14 +18,12 @@ import {
   readPlan,
   suitePart,
 } from '../../scripts/db-shards.ts';
+import { readNamedSuites } from '../../scripts/named-suites.ts';
 
 const read = (path: string): string =>
   readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
 
-const manifest = JSON.parse(read('tests/db/named-suites.json')) as {
-  invariant: string[];
-  conformance: string[];
-};
+const manifest = readNamedSuites(fileURLToPath(new URL('../..', import.meta.url)));
 const named = [...manifest.invariant, ...manifest.conformance];
 const plan = readPlan(new URL('../../tests/db/shard-plan.json', import.meta.url));
 const items = planItems(named, plan.parts);
@@ -51,7 +50,7 @@ it('the matrix numbers its shards 1 to n, and the runner is told which of n it i
     Array.from({ length: shardCount }, (_, i) => i + 1),
   );
   expect(shardJob).toContain(
-    'run: pnpm run db:conformance --shard ${{ matrix.shard }}/${{ strategy.job-total }}',
+    '-- pnpm run db:conformance --shard ${{ matrix.shard }}/${{ strategy.job-total }}',
   );
   expect(shardJob).toContain('fail-fast: false');
   expect(shardJob).toMatch(/image: postgres@sha256:[0-9a-f]{64}/u);
