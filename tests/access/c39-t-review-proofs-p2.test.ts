@@ -14,15 +14,24 @@
 //    (422 `email_exists`). The same provider subject may hold a login in two
 //    businesses (0002, `logins_subject_idx`), so a person who enrolled in one
 //    business can never be invited into another: every send is refused.
+//
+// SEC33 L1: the send's own replay refusal, under the invitation's lock. The
+// hook route's in-memory set and its first database read answer a replay
+// before the send is reached, so this case calls the send itself.
 
-import { createHash, randomInt } from 'node:crypto';
+import { createHash, randomInt, randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';
+import { sendInvitation } from '../../packages/core-custody/src/index.ts';
 import { authMessage, mailTo, mountAuthHook, postAuth } from './c39-t-hook-world.ts';
 import {
   addressFor,
+  as,
   auth,
   c,
+  codeOf,
+  countFor,
   invite,
+  MAIL,
   noDatabase,
   send,
   useInvitationWorld,
@@ -76,4 +85,22 @@ it('C39-T isolation: a person whose address already holds a login in another bus
   } finally {
     auth.fake.mode('accept');
   }
+});
+
+it('C39-T hook replay: the send itself refuses a hook message id it has answered, under the lock, writing nothing', async () => {
+  w.provider.mode('accept');
+  const address = addressFor('replayed-send');
+  const id = await invite(c.admin, address);
+  // A second act, so the replay is refused for being one, not for want of an act.
+  expect(codeOf(await as(c.admin, 'invitation.resend', { invitationId: id }))).toBe('applied');
+  const hookId = randomUUID();
+  const sendAs = async (): ReturnType<typeof sendInvitation> =>
+    await sendInvitation(w.db.app, w.alpha, id, w.broker, MAIL, hookId);
+  expect(await sendAs()).toMatchObject({ ok: true, state: 'accepted' });
+  const before = w.provider.received.length;
+  expect(await sendAs()).toStrictEqual({ ok: false, code: 'REPLAYED' });
+  expect(await countFor('enrolment_tokens', id)).toBe(1);
+  expect(await countFor('invitation_delivery_attempts', id)).toBe(2);
+  expect(w.provider.received).toHaveLength(before);
+  expect(mailTo(address)).toHaveLength(1);
 });
