@@ -165,19 +165,20 @@ describe('AW-04 drawer', () => {
   });
 
   it('AW-04 a refused accept leaves the plan unapproved, quotes the server and offers the click again', async () => {
+    // A stale version offers no click again (SL12-24-L3); a refused field does.
     const refusal = {
       ok: false,
       refused: true,
-      code: 'VERSION_STALE',
-      names: ['versionId'],
-      fixes: ['A newer plan version replaced this one. Accept the version on screen.'],
+      code: 'FIELD_VALUE_INVALID',
+      names: ['note'],
+      fixes: ['Write the note in 500 characters or fewer.'],
     };
     const { page, ask } = await drawer([planned(1)], refusal);
     await ask('Write the spring brief');
     await page.click('[data-plan="accept"]');
     await settle();
     expect(page.find('[data-plan="approved"]')).toBeNull();
-    expect(page.find('[data-plan="refusal"]')?.textContent).toContain('A newer plan version');
+    expect(page.find('[data-plan="refusal"]')?.textContent).toContain('Write the note');
     expect(page.all('[data-plan="accept"]')).toHaveLength(1);
   });
 

@@ -10,6 +10,8 @@
 // The dock's half (`useAgentDrawer`) opens the drawer on it; the drawer's half
 // (`useAsks`) takes the ask that opened it, then each later one while open.
 // The drawer drafts the question and sends nothing until the person does.
+// An ask carries the grant key of the session that made it, and a drawer takes
+// only its own session's: one left waiting never reaches a later sign-in.
 
 import { useEffect, useState, type Dispatch, type SetStateAction } from 'react';
 import type { AskEntry } from './chats.ts';
@@ -17,12 +19,12 @@ import type { ScopeInput } from './subject.ts';
 
 const ASK_EVENT = 'ops-astro:assistant-ask';
 
-/** The ask no open drawer has taken yet: the one that is opening it. */
-let pending: AskEntry | null = null;
+/** The ask no open drawer has taken yet, the one opening it, and whose session made it. */
+let pending: { readonly entry: AskEntry; readonly grantKey: string } | null = null;
 
-/** Asks the dock's drawer to open on `entry`. */
-export function askDrawer(entry: AskEntry): void {
-  pending = entry;
+/** Asks the dock's drawer, under the session `grantKey` names, to open on `entry`. */
+export function askDrawer(entry: AskEntry, grantKey: string): void {
+  pending = { entry, grantKey };
   window.dispatchEvent(new Event(ASK_EVENT));
 }
 
@@ -46,12 +48,15 @@ export function useAgentDrawer(): readonly [boolean, Dispatch<SetStateAction<boo
   return [open, setOpen];
 }
 
-/** The drawer's half: `take` gets the ask that opened it, then each one made while it is open. */
-export function useAsks(take: (entry: AskEntry) => void): void {
+/**
+ * The drawer's half: `take` gets the ask that opened it, then each one made
+ * while it is open, each only if made under the drawer's own `grantKey`.
+ */
+export function useAsks(grantKey: string | undefined, take: (entry: AskEntry) => void): void {
   const taken = (): void => {
-    const entry = pending;
+    const ask = pending;
     pending = null;
-    if (entry !== null) take(entry);
+    if (ask !== null && ask.grantKey === grantKey) take(ask.entry);
   };
   useEffect(() => {
     taken();

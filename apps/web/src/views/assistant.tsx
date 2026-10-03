@@ -28,10 +28,9 @@
 // A started tab links to the conversation's own address (C36), where it stays
 // after it is taken out of the tab row.
 //
-// The planning allowance line (AW-04) sits above the transcript, from before
-// the first message (`allowance-line.tsx`). A reply that carries a plan is a
-// plan card whose one click is `task.accept_plan` (`assistant/plans.ts`); the
-// Agent pane's new attempt opens the drawer through `useAsks`, drafted, unsent.
+// AW-04: the allowance line sits above the transcript from the start (`allowance-line.tsx`); a
+// reply's plan is a card whose one click is `task.accept_plan` (`assistant/plans.ts`); the Agent
+// pane's new attempt opens the drawer through `useAsks`, drafted, unsent, its session's alone.
 
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { AssistantPanel, type AssistantMessage, type AssistantPage } from '@launchastro/ui';
@@ -79,6 +78,8 @@ export interface AssistantViewProps {
   readonly entry: EntryPoint | null;
   /** Its own close and title; the dock leaves it out, as its panel head closes and names it. */
   readonly onClose?: () => void;
+  /** The session it serves: it takes a page's ask (`asks.ts`) only from this one, none without it. */
+  readonly grantKey?: string;
 }
 
 type Move = (state: AssistantState) => AssistantState;
@@ -259,7 +260,7 @@ export function AssistantView(props: AssistantViewProps): ReactElement {
     // the ask reads; only a new entry is a new ask.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [props.entry]);
-  useAsks((asked) => update((current) => ask(current, asked)));
+  useAsks(props.grantKey, (asked) => update((current) => ask(current, asked)));
   const subject = subjectFor({ route: props.route, ...state.scope });
   const sender = useSender(props, store, subject);
   const writes = useWrites(props, store, sender.report);

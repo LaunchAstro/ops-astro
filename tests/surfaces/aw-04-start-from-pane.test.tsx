@@ -44,6 +44,7 @@ function Dock(props: { readonly client: OperationsClient }): ReactElement | null
   const [open, setOpen] = useAgentDrawer();
   return open ? (
     <AssistantView
+      grantKey="alpha:ada"
       client={props.client}
       route="agency:task-detail"
       here="/task/T-12"
@@ -82,7 +83,7 @@ describe('AW-04 start from the pane', () => {
     expect(page.find('[data-assistant="input"]')).toBeNull();
 
     const entry: AskEntry = newAttemptAsk(TASK);
-    askDrawer(entry);
+    askDrawer(entry, 'alpha:ada');
     await settle();
     expect(input(page).value).toBe('Plan a new attempt at Spring brief.');
     expect(input(page).getAttribute('aria-label')).toBe('Ask the agent about Spring brief');
@@ -98,9 +99,34 @@ describe('AW-04 start from the pane', () => {
   });
 });
 
+describe('SL12-24-L2 an ask belongs to the session that made it', () => {
+  it('SL12-24-L2 an ask no drawer took stays with its session: a drawer under another grant key opens empty, no task in scope', async () => {
+    const client = {
+      read: () => Promise.resolve({ unavailable: true, because: 'not asked here' }),
+      mutate: () => Promise.resolve({ unavailable: true, because: 'not asked here' }),
+    } as unknown as OperationsClient;
+    // Ada's page asks; no drawer is mounted to take it. Then Bea signs in on the same tab.
+    askDrawer(newAttemptAsk(TASK), 'alpha:ada');
+    const page = track(
+      await mount(
+        <AssistantView
+          grantKey="alpha:bea"
+          client={client}
+          route="agency:projects-board"
+          here="/projects"
+          entry={null}
+        />,
+      ),
+    );
+    await settle();
+    expect(input(page).value).toBe('');
+    expect(input(page).getAttribute('aria-label')).not.toContain('Spring brief');
+  });
+});
+
 /** The drawer's half, recording each ask it takes. */
 function Heard(props: { readonly into: AskEntry[] }): null {
-  useAsks((entry) => {
+  useAsks('alpha:ada', (entry) => {
     props.into.push(entry);
   });
   return null;

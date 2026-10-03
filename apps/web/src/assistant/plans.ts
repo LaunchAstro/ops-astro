@@ -7,8 +7,8 @@
 // resets approvals, and only the version on screen may be accepted. A reply
 // that drops composes no plan version, so it adds no card (the drawer draws
 // its words as a failed line). The click's answer settles the one card: kept
-// words make it the approved card, a refusal offers the click again with the
-// server's words. A committed accept is approved even if a newer version made
+// words make it the approved card, a stale version's refusal makes it stale,
+// any other refusal offers the click again, each with the server's words. A committed accept is approved even if a newer version made
 // the card stale meanwhile: the server kept those words and started that run.
 // So a card whose click got no answer is never silenced: replaced, it keeps
 // its accept to send again (accept.ts), and only a refusal then makes it stale.

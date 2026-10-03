@@ -223,7 +223,14 @@ export function App(props: AppProps): ReactElement {
   // person or session drops every tab and a late reply has nowhere to land.
   const agent =
     dockScreen === null || match === null ? null : (
-      <AssistantView key={grantKey} client={client} route={match.id} here={here} entry={null} />
+      <AssistantView
+        key={grantKey}
+        grantKey={grantKey}
+        client={client}
+        route={match.id}
+        here={here}
+        entry={null}
+      />
     );
   return (
     <SignedInName value={personName}>

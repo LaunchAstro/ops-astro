@@ -866,6 +866,7 @@ function AgentHead({
   return (
     <AgentSection
       client={client}
+      grantKey={props.grantKey}
       recordId={task.id}
       title={task.title === null || task.title === '' ? task.key : task.title}
       clientId={task.client}

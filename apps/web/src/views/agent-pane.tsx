@@ -32,6 +32,8 @@ import { StepUpPrompt } from './step-up-prompt.tsx';
 
 export interface AgentSectionProps {
   readonly client: OperationsClient;
+  /** The session the page is read under: the drawer's ask carries it. */
+  readonly grantKey: string;
   readonly recordId: string;
   /** The task's title as the read gave it, or its key while it has none: the drawer's ask names it. */
   readonly title: string;
@@ -232,7 +234,7 @@ export function AgentSection(props: AgentSectionProps): ReactElement {
         onStartAttempt={() => {
           const { recordId: id, title, clientId } = props;
           const unseen = props.clientUnseen ? { clientUnseen: true as const } : {};
-          askDrawer(newAttemptAsk({ id, title, clientId, ...unseen }));
+          askDrawer(newAttemptAsk({ id, title, clientId, ...unseen }), props.grantKey);
         }}
       />
       {controls.stepUp === null ? null : <StepUpPrompt ask={controls.stepUp} />}

@@ -35,10 +35,11 @@ function Offer(props: {
   readonly onAccept: (() => void) | undefined;
 }): ReactElement | null {
   const { plan } = props;
+  // A version refused as stale with nothing newer here: the refusal says why.
   if (plan.state === 'stale') {
-    return (
+    return plan.replacedBy === null ? null : (
       <p className="aip__plan-meta" data-plan="stale">
-        Replaced by Version {plan.replacedBy ?? plan.version + 1}. Accept the newer card.
+        Replaced by Version {plan.replacedBy}. Accept the newer card.
       </p>
     );
   }

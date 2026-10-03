@@ -9,6 +9,7 @@
 // even after a newer version made its card stale.
 /* eslint-disable unicorn/prefer-dom-node-dataset -- each assertion reads its data- attribute by the DOM name */
 
+import { act } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { PlanOffer } from '../../packages/core-wire/src/index.ts';
 import { AssistantView } from '../../apps/web/src/views/assistant.tsx';
@@ -49,6 +50,15 @@ const APPROVED = { ok: true, value: { recordId: '', revision: 0, detail: { runId
 const unanswered = (_value: unknown): void => {};
 const lostAnswer = (): Promise<unknown> =>
   Promise.resolve({ unavailable: true, because: 'The network dropped the answer.' });
+// An accept refused because the ceiling sent is not the version's: VERSION_STALE.
+const ceilingRefused = (): Promise<unknown> =>
+  Promise.resolve({
+    ok: false,
+    refused: true,
+    code: 'VERSION_STALE',
+    names: ['ceilingMinor'],
+    fixes: ["The ceiling on this card is not the plan version's. Ask for the plan again."],
+  });
 
 interface Sent {
   readonly name: string;
@@ -198,5 +208,41 @@ describe('AW-04 plan card accept', () => {
     // The replay found the accept committed: version 1 is the approved card.
     expect(first()?.querySelector('[data-plan="approved"]')).not.toBeNull();
     expect(first()?.querySelector('[data-plan="unknown"]')).toBeNull();
+  });
+
+  it("SL12-24-L1 two cards of one version: after the first accept's answer is lost, either card's click carries the one operation id", async () => {
+    const { client, sent } = drawerWith([planned(1), planned(1)], [lostAnswer, lostAnswer]);
+    const { page, ask } = await open(client);
+    await ask('Write the spring brief');
+    await page.click('[data-plan="accept"]');
+    await settle();
+    // The same gate and version lands again as a second card.
+    await ask('Show the plan again');
+    const [first, second] = page.all('[data-plan="accept"]') as HTMLElement[];
+    await act(() => {
+      first?.click();
+    });
+    await settle();
+    await act(() => {
+      second?.click();
+    });
+    await settle();
+    const ids = sent
+      .filter((each) => each.name === 'task.accept_plan')
+      .map((each) => each.options?.operationId);
+    expect(ids).toStrictEqual(['op-1', 'op-1', 'op-1']);
+  });
+
+  it('SL12-24-L3 an accept refused as a stale version: the card offers no accept and quotes the refusal', async () => {
+    const { client, sent } = drawerWith([planned(1)], [ceilingRefused]);
+    const { page, ask } = await open(client);
+    await ask('Write the spring brief');
+    await page.click('[data-plan="accept"]');
+    await settle();
+    expect(sent.filter((each) => each.name === 'task.accept_plan')).toHaveLength(1);
+    expect(page.find('[data-plan="accept"]')).toBeNull();
+    expect(page.find('[data-plan="refusal"]')?.textContent).toContain('The ceiling on this card');
+    // Nothing newer is on screen, so the card claims no replacement.
+    expect(page.text()).not.toContain('Replaced by');
   });
 });

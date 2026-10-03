@@ -2,10 +2,11 @@
 //
 // AW-04: a plan card's one click. The card goes in flight, `task.accept_plan`
 // is sent with the version on screen and the words the card showed, and the
-// answer settles the card: approved once the server kept the words, or offered
-// again with the server's refusal quoted as it came (a stale version among
-// them). Nothing else in the drawer moves, and nothing is retried. A click
-// after an unknown outcome reuses the attempt's operation id, so a committed
+// answer settles the card: approved once the server kept the words, stale on
+// a stale version (a ceiling that is not the version's among them), or offered
+// again, the server's refusal quoted as it came either way. Nothing else in
+// the drawer moves, and nothing is retried. A click after an unknown outcome
+// reuses the version's operation id, from either of its cards, so a committed
 // accept replays (operations/client.ts); a settled answer ends the attempt.
 // That card stays `unknown`, its accept kept, even once a newer version lands.
 
@@ -22,8 +23,20 @@ export interface CardStore {
   readonly offer: (id: string) => PlanOffer | undefined;
 }
 
-/** The operation id of each card's attempt whose outcome is still unknown. */
-const attempts = new WeakMap<PlanOffer, string>();
+/**
+ * The operation id of each version's attempt whose outcome is still unknown,
+ * by gate and version: two cards of one version are one accept.
+ */
+const attempts = new Map<string, string>();
+
+/** A stale version can never be accepted, so its card offers no click; other refusals do. */
+const SETTLED = {
+  ok: 'approved',
+  unknown: 'unknown',
+  stale: 'stale',
+  closed: 'offered',
+  failed: 'offered',
+} as const;
 
 export async function acceptPlanCard(
   client: OperationsClient,
@@ -35,15 +48,15 @@ export async function acceptPlanCard(
   if (offer === undefined) return;
   store.update((current) => settlePlan(current, key, id, { state: 'accepting', refusal: null }));
   const conversationId = store.chat(key)?.conversationId ?? null;
-  const operationId = attempts.get(offer) ?? client.newOperationId();
-  attempts.set(offer, operationId);
+  const attempt = `${offer.gateId} ${offer.versionId}`;
+  const operationId = attempts.get(attempt) ?? client.newOperationId();
+  attempts.set(attempt, operationId);
   const body = acceptBody(offer, conversationId);
   const settled = settle(await client.mutate('task.accept_plan', body, { operationId }));
-  if (settled.kind !== 'unknown') attempts.delete(offer);
+  if (settled.kind !== 'unknown') attempts.delete(attempt);
   store.update((current) =>
     settlePlan(current, key, id, {
-      state:
-        settled.kind === 'ok' ? 'approved' : settled.kind === 'unknown' ? 'unknown' : 'offered',
+      state: SETTLED[settled.kind],
       refusal: settled.kind === 'ok' ? null : settled.because,
     }),
   );
