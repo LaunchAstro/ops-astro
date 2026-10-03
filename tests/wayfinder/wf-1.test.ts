@@ -536,6 +536,11 @@ describe.skipIf(serverUrl === undefined)('WF-1 task types and the map as a task'
     const unknown = await scope(owner, map.id, randomUUID());
     expect(codeOf(unknown)).toBe('NOT_FOUND');
     expect(await dataOf(map.id, 'client')).toBeNull();
+    // While the map is empty its client can be corrected or cleared, as an
+    // empty task's can: a scope is a client change, not content.
+    must(await scope(owner, map.id, await newClient()), 'a first, wrong client');
+    must(await scope(owner, map.id, null), 'cleared');
+    expect(await dataOf(map.id, 'client')).toBeNull();
     // Once the map has a ticket it has content, so its client is locked (S0-5).
     const client = await newClient();
     must(await scope(owner, map.id, client), 'scope while empty');
