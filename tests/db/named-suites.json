@@ -291,7 +291,8 @@
     "REVIEW-BATCH-2 #313 batch 3b adds review-3b-1-planning-hold-released (a failed planning reply held liability_unknown is released by the pass or a person's outcome, and the planning allowance gets its hold back) as conformance; its fix adds planfix-3b-1-planning-outcome (a planning reply whose operation declares a lookup is released by the pass alone; another person of the business and another business's owner naming the owner's conversation and call are refused NOT_FOUND with nothing written; the owner's outcome settles it once).",
     "SEC3B F1 (batch 3b security review) adds sec3b-1-ended-owner-planning-release (a planning reply held unknown whose owner's access has since ended is released by the provider phase in the owner's name, as their person actor, and the same pass goes on to release the next business's held reply) as conformance.",
     "SL12-17-F names c39-t-invitations (C39-T records, invite a team member, send only on the inviter's act, rate limit: invitation.create, resend and revoke under access:share and expiry by the business's worker each write the invitation and its audit event; each act is one send through the broker's email.send, its enrolment token kept as a SHA-256 only; acts limited per address and per account, counted from the records) and c39-t-invitation-refusals (C39-T refusal access:share and C39-T isolation: no key, a client-scoped key or an agent is refused writing nothing; another business is NOT_FOUND as an unissued id; another client's key reaches nothing; each invitation makes a new person).",
-    "SL12-18-F names c39-t-invitation-send (C39-T sender and C39-T token kept as a hash only: an invitation leaves only from the verified sending subdomain, refused before the provider and before a token is minted otherwise; a provider answer echoing the link's token fails the attempt and nothing stored holds the token) as an invariant."
+    "SL12-18-F names c39-t-invitation-send (C39-T sender and C39-T token kept as a hash only: an invitation leaves only from the verified sending subdomain, refused before the provider and before a token is minted otherwise; a provider answer echoing the link's token fails the attempt and nothing stored holds the token) as an invariant.",
+    "SL12-26 (SEC27 F1-F3) names c39-t-invitation-ceiling (an invitation's dead ask stops holding email.send's ceiling once custody's timeout and the grace pass, and inbox and invitation emails fill one ceiling together under one lock) and c39-t-invitation-admin (an access:share holder without access:manage neither creates nor resends an admin invitation, writing nothing; a revoke stays access:share) as invariants."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -861,7 +862,9 @@
     "tests/operations/c81-gate-evidence.test.ts",
     "tests/access/c39-t-invitations.test.ts",
     "tests/access/c39-t-invitation-refusals.test.ts",
-    "tests/access/c39-t-invitation-send.test.ts"
+    "tests/access/c39-t-invitation-send.test.ts",
+    "tests/access/c39-t-invitation-ceiling.test.ts",
+    "tests/access/c39-t-invitation-admin.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
