@@ -192,6 +192,7 @@ export const IDENTIFIER_BEARING: Readonly<
   'access.grant': ['holderId and clientId', 'control'],
   'access.revoke': ['grantId', 'control'],
   'access.end': ['holderId', 'control'],
+  'access.reset_factor': ['holderId', 'control'],
   'task.duplicate': ['recordId', 'duplicate'],
   'inbox.seen': ['itemId', 'control'],
 };

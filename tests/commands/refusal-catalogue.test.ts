@@ -78,6 +78,7 @@ const CATALOGUE: readonly (readonly [string, number, 'caller' | 'audit'])[] = [
   ['FRESH_SIGN_IN_REQUIRED', 403, 'caller'],
   ['FACTOR_ALREADY_ENROLLED', 409, 'caller'],
   ['FACTOR_NOT_ENROLLED', 409, 'caller'],
+  ['FACTOR_RESET_REFUSED', 409, 'caller'],
   ['SECOND_FACTOR_INVALID', 422, 'caller'],
   ['SECOND_FACTOR_LOCKED', 429, 'caller'],
   ['PROVIDER_ANSWER_INVALID', 502, 'caller'],

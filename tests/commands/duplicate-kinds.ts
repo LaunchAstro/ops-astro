@@ -147,6 +147,7 @@ export const DECLARED: Readonly<
   'access.grant': { carry: 'not carried', plant: 'authority, not task content' },
   'access.revoke': { carry: 'not carried', plant: 'authority, not task content' },
   'access.end': { carry: 'not carried', plant: 'authority, not task content' },
+  'access.reset_factor': { carry: 'not carried', plant: 'a sign-in factor, not task content' },
   'credential.issue': { carry: 'not carried', plant: 'authority, not task content' },
   'credential.revoke': { carry: 'not carried', plant: 'authority, not task content' },
   'session.end': { carry: 'not carried', plant: 'a sign-in, not task content' },
