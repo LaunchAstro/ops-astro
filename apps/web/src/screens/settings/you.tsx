@@ -66,7 +66,8 @@ function usePreferences(client: OperationsClient, grantKey: string) {
   const [held, setHeld] = useState<{ readonly of: string; readonly value: Preferences } | null>(
     null,
   );
-  const [because, setBecause] = useState<string | null>(null);
+  // A refusal is said to one reader, as `held` is held for one.
+  const [said, setSaid] = useState<{ readonly of: string; readonly text: string } | null>(null);
 
   const reread = useCallback(() => {
     let current = true;
@@ -75,8 +76,8 @@ function usePreferences(client: OperationsClient, grantKey: string) {
       const preferences = 'value' in answer ? answer.value.preferences : undefined;
       if (typeof preferences === 'object' && preferences !== null)
         setHeld({ of: grantKey, value: preferences as Preferences });
-      else if (isRefusal(answer)) setBecause(describeRefusal(answer));
-      else setBecause('Your preferences could not be read.');
+      else if (isRefusal(answer)) setSaid({ of: grantKey, text: describeRefusal(answer) });
+      else setSaid({ of: grantKey, text: 'Your preferences could not be read.' });
       return answer;
     });
     return () => {
@@ -93,11 +94,11 @@ function usePreferences(client: OperationsClient, grantKey: string) {
       const own = before?.of === grantKey ? before.value : {};
       return { of: grantKey, value: { ...own, [preference]: value } };
     });
-    setBecause(null);
+    setSaid(null);
     void client.mutate('preference.save', { preference, value }).then((result) => {
       const failed = describeFailure(result);
       if (failed !== null) {
-        setBecause(failed);
+        setSaid({ of: grantKey, text: failed });
         reread();
       }
       return result;
@@ -105,6 +106,7 @@ function usePreferences(client: OperationsClient, grantKey: string) {
   };
 
   const preferences = held !== null && held.of === grantKey ? held.value : null;
+  const because = said !== null && said.of === grantKey ? said.text : null;
   return { preferences, because, save };
 }
 
