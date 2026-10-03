@@ -88,4 +88,21 @@ describe('C80 Sol R1 proofs (publish)', () => {
       outcome: { state: 'refused', code: 'PROPOSAL_SUPERSEDED' },
     });
   });
+
+  it('Sol R1 3: cancellation during the drift read prevents dispatch', async () => {
+    const sent: string[] = [];
+    let cancelled = false;
+    const ports = publishPorts(sent, {
+      readSource: () => {
+        cancelled = true;
+        return Promise.resolve({ kind: 'ok', value: { content: BEFORE, revision: 'abc123' } });
+      },
+      cancellation: () => Promise.resolve(cancelled ? 'requested' : 'none'),
+    });
+    const outcome = await publishCorrection(approvedJob(), ports);
+    expect({ sent, outcome }).toEqual({
+      sent: [],
+      outcome: { state: 'refused', code: 'CANCELLED' },
+    });
+  });
 });
