@@ -19,7 +19,8 @@ function clientWith(send: (body: Record<string, unknown>) => Response): Operatio
   });
 }
 
-it('Sol proof, criterion 5: cancelling a step-up while its code is checked prevents the held money write', async () => {
+// Sol OW-099.1 criterion 5, retitled by what it proves; its body is Sol's.
+it('cancelling a step-up while its code is checked prevents the held money write', async () => {
   const sent: Record<string, unknown>[] = [];
   const oldClient = clientWith((body) => {
     sent.push(body);

@@ -3,7 +3,8 @@
 import { expect, it } from 'vitest';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 
-it('Sol proof, criterion 1: a live join refused for an expired session ends the tab session', async () => {
+// Sol OW-082.1 criterion 1, retitled by what it proves; its body is Sol's.
+it('a live join refused for an expired session ends the tab session', async () => {
   const ended: string[] = [];
   const client = new OperationsClient({
     origin: '',
@@ -23,7 +24,8 @@ it('Sol proof, criterion 1: a live join refused for an expired session ends the 
   expect(ended).toEqual(['AUTH_SESSION_EXPIRED']);
 });
 
-it('Sol proof, criterion 1: a presence call refused after access ended ends the tab session', async () => {
+// Sol OW-082.1 criterion 1, retitled by what it proves; its body is Sol's.
+it('a presence call refused after access ended ends the tab session', async () => {
   const ended: string[] = [];
   let revoked = false;
   const client = new OperationsClient({
@@ -48,7 +50,8 @@ it('Sol proof, criterion 1: a presence call refused after access ended ends the 
   expect(ended).toEqual(['AUTH_NO_MEMBERSHIP']);
 });
 
-it('Sol proof, criterion 1: the ordinary read control reports the same expired-session refusal', async () => {
+// Sol OW-082.1 criterion 1, retitled by what it proves; its body is Sol's.
+it('the ordinary read control reports the same expired-session refusal', async () => {
   const ended: string[] = [];
   const client = new OperationsClient({
     origin: '',

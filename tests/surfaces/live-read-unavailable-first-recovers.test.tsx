@@ -6,7 +6,8 @@ import { useRead } from '../../apps/web/src/data/use-read.ts';
 import { createLiveHub, FLOOR_MS } from '../../apps/web/src/data/live.ts';
 import { mount } from './mount.tsx';
 
-it('Sol proof, criterion 1: an initially unavailable live read recovers when the browser comes online', async () => {
+// Sol OW-080.2 criterion 1, retitled by what it proves; its body is Sol's.
+it('an initially unavailable live read recovers when the browser comes online', async () => {
   vi.useFakeTimers();
   let online = false;
   let reads = 0;

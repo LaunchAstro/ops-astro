@@ -26,7 +26,8 @@ afterAll(async () => {
   await closeRoutes();
 });
 
-it('Sol proof, criterion correctness: a newly enrolled person can enter their authenticator code on the next web sign-in', async () => {
+// Sol PR-345.3 criterion correctness, retitled by what it proves; its body is Sol's.
+it('a newly enrolled person can enter their authenticator code on the next web sign-in', async () => {
   const original = await fresh(world.mia);
   const upgraded = await tokenFor(world.mia.subject, {
     aal: 'aal2',

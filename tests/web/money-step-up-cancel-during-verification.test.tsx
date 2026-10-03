@@ -20,7 +20,8 @@ const seed = {
   }),
 };
 
-it('Sol proof, criterion 5: cancelling during verification prevents the held money write from being resent', async () => {
+// Sol OW-072.1 criterion 5, retitled by what it proves; its body is Sol's.
+it('cancelling during verification prevents the held money write from being resent', async () => {
   let answer: (response: Response) => void = () => {};
   const verifying = new Promise<Response>((resolve) => {
     answer = resolve;
