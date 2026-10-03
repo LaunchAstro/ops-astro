@@ -158,9 +158,10 @@ async function heldFactor(
   if (factor?.status !== 'verified') {
     return refused(refuseCommand('FACTOR_NOT_ENROLLED', [], NOT_ENROLLED_FIXES));
   }
-  // Holds to the commit only because no path maps a login meanwhile: any path
-  // that maps a login into a business must take the subject lock `liveFactor`
-  // took above, first (SEC-B1 M3).
+  // Holds to the commit only because no runtime path maps a login meanwhile (the
+  // seed scripts and scripts/security/scan-login.mjs map only a user they have
+  // just made): any path that maps a login into a business must take the
+  // subject lock `liveFactor` took above, first (SEC-B1 M3).
   if (await factorLoginLiveElsewhere(tx, login.id)) return resetRefused();
   return { login, factor };
 }

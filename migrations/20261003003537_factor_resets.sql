@@ -25,7 +25,9 @@
 --
 -- The live-elsewhere check below holds to the commit only while nothing else
 -- makes the login live in a business meanwhile. No runtime path maps a login
--- today (the seed scripts alone write `person_logins`). Any path that maps a
+-- today: the seed scripts and the security scan's sign-in
+-- (`scripts/security/scan-login.mjs`, a provider user it has just made) alone
+-- write `person_logins`. Any path that maps a
 -- login into a business must first take the `second-factor-subject:<digest>`
 -- lock the reset holds before its check, so the two serialise (SEC-B1 M3).
 
