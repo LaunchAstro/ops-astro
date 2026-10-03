@@ -35,6 +35,7 @@ interface MapView {
   readonly type: string;
   readonly owner: string | null;
   readonly client: string | null;
+  readonly clientSet: boolean;
   readonly version: number;
   readonly destination: { readonly id: string; readonly text: string } | null;
   readonly notes: { readonly id: string; readonly text: string } | null;
@@ -419,6 +420,38 @@ describe.skipIf(serverUrl === undefined)('WF-1 task types and the map as a task'
     });
     expect(codeOf(parentToMap)).toBe('TRANSITION_NOT_PERMITTED');
     expect(await dataOf(parent.id, 'type')).toBe('task');
+  });
+
+  it("WF-1 map.view names the map's client only to a reader whose grants reach that client", async () => {
+    const client = await newClient();
+    const map = await newMap(owner, 'whose client');
+    must(
+      await w.as(owner, {
+        command: 'map.scope',
+        recordId: map.id,
+        expectedRevision: await w.revisionOf(map.id),
+        client,
+      }),
+      'map.scope',
+    );
+    // A grant across the business reaches the client: its id, as task.read answers it.
+    expect(await view(owner, map.id)).toMatchObject({ client, clientSet: true });
+    // A grant on the map alone reaches the map, not its client: null beside
+    // clientSet (CS-4.12), and the id nowhere in the answer.
+    const onMap = await w.member('on-map', ['read'], { kind: 'record', id: map.id });
+    const seen = await w.read(onMap, { read: 'map.view', recordId: map.id });
+    expect((seen as { readonly map?: MapView }).map).toMatchObject({
+      id: map.id,
+      client: null,
+      clientSet: true,
+    });
+    expect(JSON.stringify(seen)).not.toContain(client);
+    // A grant on the client reaches it.
+    const onClient = await w.member('on-client', ['read'], { kind: 'party', id: client });
+    expect(await view(onClient, map.id)).toMatchObject({ client, clientSet: true });
+    // A map under no client: null, and not set.
+    const loose = await newMap(owner, 'no client');
+    expect(await view(owner, loose.id)).toMatchObject({ client: null, clientSet: false });
   });
 
   it('WF-1 the map summary read model is kept current in the writing transaction', async () => {
