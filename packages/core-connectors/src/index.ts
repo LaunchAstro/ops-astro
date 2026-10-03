@@ -2,8 +2,9 @@
 //
 // Provider operations: what a model call is, what it may carry and to where
 // (AW-01); the catalogue's registration rule, the one guarded provider call
-// over the pinned transport, and the live correction's catalogued operations,
-// envelope check and publish and revert executable (C80).
+// over the pinned transport, the fenced page capture, and the live
+// correction's catalogued operations, envelope check, receipts and publish
+// and revert executable (C80).
 //
 // Nothing here holds a credential: custody does (`core-custody`), and adapter
 // code never runs in its process; a connector borrows through a port the
@@ -96,6 +97,26 @@ export {
   type TransportRequest,
 } from './capture/transport.ts';
 export {
+  POOL_REVIEWS_REQUIRED,
+  checkPageAllowed,
+  fencedFetch,
+  type CapturePool,
+  type FenceCode,
+  type FenceRefusal,
+  type Fenced,
+  type FetchOptions,
+  type Fetched,
+} from './capture/fence.ts';
+export { capturePage, type CaptureOptions } from './capture/page.ts';
+export {
+  PICTURE_POLICY,
+  capturePicture,
+  type Picture,
+  type PictureBrowser,
+  type PictureRequest,
+  type PictureRoute,
+} from './capture/picture.ts';
+export {
   CONNECTOR_HOSTS,
   SITE_OPERATIONS,
   siteCatalogue,
@@ -123,3 +144,12 @@ export {
   type PublishPorts,
   type RevertOutcome,
 } from './site/publish.ts';
+export {
+  ACCEPTANCE_CASES,
+  PRECONDITIONS,
+  RECEIPT_L_OBSERVATIONS,
+  STAYS_HELD,
+  receiptL,
+  receiptLP,
+  type ReceiptLObservations,
+} from './site/receipts.ts';
