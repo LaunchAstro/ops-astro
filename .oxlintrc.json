@@ -140,6 +140,14 @@
         "no-promise-executor-return": "off",
         "require-unicode-regexp": "off"
       }
+    },
+    {
+      "files": ["tests/ci/signing-key-first-runs-and-node-floor.proof.test.mjs"],
+      "rules": {
+        "max-lines-per-function": "off",
+        "no-await-in-loop": "off",
+        "no-promise-executor-return": "off"
+      }
     }
   ]
 }
