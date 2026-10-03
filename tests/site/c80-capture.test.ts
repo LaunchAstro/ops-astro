@@ -189,3 +189,70 @@ describe('C80 the fenced capture: a page that never closes', () => {
     expect(performance.now() - started).toBeLessThan(1000);
   });
 });
+
+// Security review of P25, low 3, re-reported by the second re-bind: the capture read some
+// markup differently from a browser, so a region could hide visible text or a loaded sheet.
+// Each region follows `<p>Base</p>`; what a browser reads was checked against parse5.
+const EVIL = 'https://www.example.com/evil.css';
+const ASSETS = 'https://www.example.com/assets/evil.css';
+const AS_A_BROWSER_READS: readonly (readonly [string, string, readonly string[]])[] = [
+  ['<!-->SHOWN<!-- -->', 'Base SHOWN', []],
+  ['<!--->SHOWN<!-- -->', 'Base SHOWN', []],
+  ['<!-- x --!>SHOWN<!-- -->', 'Base SHOWN', []],
+  ['<script>x</script x>SHOWN<script>y</script>', 'Base SHOWN', []],
+  ['<script>x</script/>SHOWN<script>y</script>', 'Base SHOWN', []],
+  ['<script.x>SHOWN</script.x><script></script>', 'Base SHOWN', []],
+  ['<style:x>SHOWN</style:x><style>p{}</style>', 'Base SHOWN', ['inline:0']],
+  ['<link/rel="stylesheet"/href="/evil.css">', 'Base', [EVIL]],
+  ['<link/rel=stylesheet/href=evil.css>', 'Base', []],
+  ['<a title="><!--">SHOWN</a><!-- -->', 'Base SHOWN', []],
+  ['<a title="><!--"><link rel=stylesheet href=/evil.css><!-- -->', 'Base', [EVIL]],
+  ['<link rel="&#115tylesheet" href="/evil&#46;css">', 'Base', [EVIL]],
+  ['<link rel="x&Tab;stylesheet" href="/evil&#x2E;css">', 'Base', [EVIL]],
+  ['<!--<base href=/no/>--><base href=/assets/><base href=/later/>', 'Base', []],
+  ['<base href=/assets/><link rel=stylesheet href=evil.css>', 'Base', [ASSETS]],
+  ['<xmp><!--</xmp>SHOWN<!-- -->', 'Base <!-- SHOWN', []],
+  ['<textarea><!--</textarea>SHOWN<!-- -->', 'Base <!-- SHOWN', []],
+  ['<title><!--</title>SHOWN<!-- -->', 'Base <!-- SHOWN', []],
+  ['<iframe><!--</iframe>SHOWN<!-- -->', 'Base SHOWN', []],
+  ['<noembed><!--</noembed>SHOWN<!-- -->', 'Base SHOWN', []],
+  ['<noframes><!--</noframes>SHOWN<!-- -->', 'Base SHOWN', []],
+  ['<plaintext><!--</plaintext>SHOWN-->', 'Base <!--</plaintext>SHOWN-->', []],
+];
+
+const captured = (body: string) =>
+  capturePage(ABOUT, {
+    pool: POOL,
+    resolve: publicResolver,
+    transport: site({
+      [ABOUT]: answer('text/html', body),
+      [EVIL]: answer('text/css', 'p{display:none}'),
+      [ASSETS]: answer('text/css', 'p{display:none}'),
+    }),
+  });
+
+describe('C80 the fenced capture reads a page as a browser does', () => {
+  it.each(AS_A_BROWSER_READS)('reads <p>Base</p>%s', async (region, text, sheets) => {
+    const result = await captured(`<p>Base</p>${region}`);
+    expect(result).toMatchObject({ ok: true, value: { text } });
+    if (result.ok) expect(Object.keys(result.value.stylesheets)).toEqual(sheets);
+  });
+
+  it('refuses a stylesheet address holding a named reference it cannot read', async () => {
+    const result = await captured('<link rel=stylesheet href="/evil&period;css"><p>x</p>');
+    expect(result).toEqual({ ok: false, code: 'CAPTURE_BODY_MALFORMED' });
+  });
+
+  it('captures two spellings a browser shows differently as different text', async () => {
+    for (const [one, two] of [
+      ['&lt;', '&Lt;'],
+      ['\u0080', '&#x80;'],
+    ]) {
+      // oxlint-disable-next-line no-await-in-loop -- two captures per pair, in turn
+      const [left, right] = [await captured(`<p>${one}</p>`), await captured(`<p>${two}</p>`)];
+      expect(left.ok && right.ok && left.value.text !== right.value.text, `${one} ${two}`).toBe(
+        true,
+      );
+    }
+  });
+});
