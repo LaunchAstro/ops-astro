@@ -37,7 +37,7 @@ import {
   claimProviderSession,
   endOtherSeenSessions,
   endSubjectSessions,
-  recordAuthenticationAttempt,
+  recordRefusedLogin,
   standingOf,
   type BusinessId,
   type Database,
@@ -104,12 +104,7 @@ async function mappedIn(
     const standing = await database.withBusiness(business, async (tx) => {
       const known = await standingOf(tx, presented, 'recovering');
       if ('refused' in known && known.code !== 'AUTH_NO_MEMBERSHIP') {
-        await recordAuthenticationAttempt(tx, {
-          owner: 'person_login',
-          presented,
-          outcome: 'refused',
-          refusalCode: known.code,
-        });
+        await recordRefusedLogin(tx, presented, known.code);
       }
       return known;
     });
@@ -140,12 +135,7 @@ async function claimed(
   for (const { business } of mapped) {
     // oxlint-disable-next-line no-await-in-loop -- one business's record at a time
     await database.withBusiness(business, async (tx) => {
-      await recordAuthenticationAttempt(tx, {
-        owner: 'person_login',
-        presented,
-        outcome: 'refused',
-        refusalCode: 'AUTH_SESSION_EXPIRED',
-      });
+      await recordRefusedLogin(tx, presented, 'AUTH_SESSION_EXPIRED');
     });
   }
   return false;

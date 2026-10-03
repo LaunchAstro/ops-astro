@@ -80,6 +80,7 @@ export {
 export {
   recordAuthenticationAttempt,
   recordBodyRefusal,
+  recordRefusedLogin,
 } from './identity/authentication-attempts.ts';
 export {
   NO_MEMBERSHIP_FIXES,
