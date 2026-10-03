@@ -39,11 +39,11 @@ const WORDS: Readonly<Record<RunState, { word: string; tone: RunTone }>> = {
  * hand-back releases the hold under `handback_completed` as a completed one
  * does, so only the outcome tells them apart: `completed` is done; `failed`,
  * `abandoned`, `unknown`, none yet or any other value stopped short, the
- * dropped story. A read that does not carry the outcome keeps the hold's word.
+ * dropped story, a read that lost the key included.
  */
 function finished(reservation: RunReservation | undefined): RunState {
   const attempt = reservation?.attempt;
-  if (attempt === null || attempt === undefined || !('outcome' in attempt)) return 'done';
+  if (attempt === null || attempt === undefined) return 'done';
   return attempt.outcome === 'completed' ? 'done' : 'dropped';
 }
 
