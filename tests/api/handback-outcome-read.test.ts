@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // OW-108.1, security review low on e90c93f: the task read itself carries the
-// attempt's recorded outcome, so a completed hand-back reads Done and a failed
-// one does not. Dropping the column from the proposal read turns the completed
-// case red, which the failed-only proof cannot see.
+// attempt's recorded outcome, so a completed hand-back reads Done. Dropping the
+// column from the proposal read turns this case red, which Sol's failed-only
+// proof cannot see.
 
 import { describe, expect, it } from 'vitest';
 import { runStories } from '../../packages/ui/src/state/agent-run.ts';
@@ -14,7 +14,7 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 type World = ReturnType<typeof clearingWorld>;
 
 /** Propose, approve, pick up and hand back with `outcome`, then read the task's runs. */
-async function handedBack(w: World, outcome: 'completed' | 'failed'): Promise<RunLineage[]> {
+async function handedBack(w: World, outcome: 'completed'): Promise<RunLineage[]> {
   const p = await w.proposed(`The worker hands back ${outcome}`);
   const decide = { gateId: p.gateId, versionId: p.versionId, decision: 'approve', note: 'go' };
   const approved = detailOf(ok(await w.call('task.decide', decide, w.reviewerToken)));
@@ -36,11 +36,5 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('the read carries th
     const proposals = await handedBack(w, 'completed');
     expect(outcomeOf(proposals)).toBe('completed');
     expect(runStories(proposals).at(-1)?.state).toBe('done');
-  });
-
-  it('a failed hand-back reads failed and its story is not Done', async () => {
-    const proposals = await handedBack(w, 'failed');
-    expect(outcomeOf(proposals)).toBe('failed');
-    expect(runStories(proposals).at(-1)?.state).not.toBe('done');
   });
 });

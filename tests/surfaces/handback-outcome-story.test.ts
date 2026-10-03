@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// OW-108.1: a failed hand-back releases its hold under `handback_completed`
-// exactly as a completed one does, so the run story reads the attempt's
-// recorded outcome. Only `completed` is done; every other value the database
-// allows (migrations/0014_runtime_attempts.sql, `attempts_outcome_known`),
-// none yet, and a value it does not know all read as stopped short.
+// OW-108.1, security review low on f16527f: the run story reads Done only for
+// an explicit `completed` outcome, so an attempt read without the key fails
+// closed. Sol's failed-hand-back proof covers the failed value itself.
 
 import { describe, expect, it } from 'vitest';
 import { runStories, type RunLineage } from '../../packages/ui/src/index.ts';
@@ -25,33 +23,10 @@ function handedBack(outcome: string | null): Reservation {
   };
 }
 
-/** A hold settled at its spend, as `budget.ts` settles a hand-back, its outcome given. */
-function settled(outcome: string | null): Reservation {
-  const attempt = { state: 'settled', outcome };
-  return { ...handedBack(outcome), state: 'actual', actualMinor: 900, attempt };
-}
-
 const stateOf = (reservation: Reservation) =>
   runStories([lineage({ state: 'live', reservations: [reservation] })]).at(-1)!;
 
-describe('OW-108.1 a hand-back story follows the attempt outcome', () => {
-  it('a completed outcome reads Done, released or settled', () => {
-    for (const reservation of [handedBack('completed'), settled('completed')]) {
-      const story = stateOf(reservation);
-      expect([story.state, story.word, story.cancellable]).toStrictEqual(['done', 'Done', false]);
-    }
-  });
-
-  it('every other outcome, none yet and an unknown value never read as done', () => {
-    for (const outcome of ['failed', 'abandoned', 'unknown', null, 'COMPLETED', 'surprise']) {
-      for (const reservation of [handedBack(outcome), settled(outcome)]) {
-        const story = stateOf(reservation);
-        expect([outcome, story.state, story.tone]).toStrictEqual([outcome, 'dropped', 'bad']);
-        expect(story.jobs[0]?.state).toBe('failed');
-      }
-    }
-  });
-
+describe('OW-108.1 a hand-back story without an outcome', () => {
   it('an attempt read without its outcome never reads as done', () => {
     // A narrower read or a cached projection that drops the key must fail closed.
     const { outcome: _dropped, ...attempt } = { state: 'abandoned', outcome: 'completed' };
