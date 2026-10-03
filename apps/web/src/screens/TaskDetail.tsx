@@ -899,7 +899,13 @@ function AgentSide({
       <div className="tpg">
         <div className="tpg__main">
           <BriefSection brief={task.agentBrief} />
-          <RunProgress client={client} grantKey={props.grantKey} readOf={task} taskKey={task.key} />
+          <RunProgress
+            client={client}
+            grantKey={props.grantKey}
+            proposals={task.proposals}
+            readOf={task}
+            taskKey={task.key}
+          />
           <Proposals
             capCurrency={task.capCurrency}
             client={client}
