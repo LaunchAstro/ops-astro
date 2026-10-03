@@ -455,7 +455,8 @@ export function createApi(options: ApiOptions): Hono {
 
     if (isCommandRefusal(result)) return refuse(context, result);
     // C58 and C59: the provider steps the act owes, tried as soon as it
-    // commits, outside its transaction; what fails stays owed for the retry.
+    // commits, in transactions of their own after the act's
+    // (`settle-after-commit.ts`); what fails stays owed for the retry.
     const settled = await settleAfterCommit(options, businessId, name, result);
     const reply = await replyTo(options, businessId, presented, settled);
     return context.json({ ...settled, ...(reply === null ? {} : { reply }) }, 200);

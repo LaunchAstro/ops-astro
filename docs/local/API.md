@@ -3051,7 +3051,11 @@ The check is asked again under the login's subject lock
 (`second-factor-subject:<digest>`, `lockLoginSubject`), through
 `public.factor_login_live_elsewhere`, and the lock is held until the steps are
 stamped, so a login another business maps under that lock is either seen or
-mapped after the stamp. The calls carry the
+mapped after the stamp. The wait for that lock is bounded
+(`ACCESS_ENDING_LOCK_WAIT_MS`, 5 seconds, as `lock_timeout`): an ending that
+cannot take it in time is left unstamped and owed for the next pass, never a
+fault. Under the lock the ending's stamps are read again with its row locked,
+so a step another retry stamped while this one waited is never asked again. The calls carry the
 admin key, `SUPABASE_SERVICE_KEY` (hosted, the project's service key; with none
 set on a local stack, a five-minute `service_role` bearer signed with the local
 auth key, minted per call); with neither, nothing is sent and both steps stay

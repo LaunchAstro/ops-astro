@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The provider steps an act owes, tried as soon as it commits and outside its
-// transaction, where the server holds the provider's admin key (the local
-// server): C58's access endings and C59's factor resets (ORCH65-Q3). Whatever
-// fails stays owed for the endings loop. Moved from `app.ts` beside the reset.
+// The provider steps an act owes, tried as soon as it commits, in transactions
+// of their own after the act's, where the server holds the provider's admin key
+// (the local server): C58's access endings and C59's factor resets (ORCH65-Q3).
+// An ending's transaction holds the server's connection through its calls, and
+// waits a bounded time for its login's lock (`ACCESS_ENDING_LOCK_WAIT_MS`).
+// Whatever fails or waits too long stays owed for the endings loop. Moved from
+// `app.ts` beside the reset.
 //
 // Both are tried only where the shared-login check is held, the same signal
 // as the key: the Vercel function has neither, and leaves every step to the

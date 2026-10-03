@@ -26,12 +26,11 @@ import {
   lastManager,
   lockAccess,
   lockAgentCredential,
-  lockLoginSubject,
   otherManagers,
   revokeAgentCredential,
 } from '../../../core-records/src/index.ts';
 import type { BusinessId, Database, TenantQuery } from '../../../core-records/src/index.ts';
-import { claimNextEnding, endingsOwed, type OwedEnding } from './access-end-claim.ts';
+import { claimNextEnding, endingsOwed, lockEnding, type OwedEnding } from './access-end-claim.ts';
 import type { ProviderAnswer, ProviderFault } from './account-factor-provider.ts';
 import { endPersonAuthority } from './authority-controls.ts';
 import type { CommandContext } from './context.ts';
@@ -71,8 +70,8 @@ export interface SettleReport {
 
 /**
  * How long a retry's claim on one ending lasts. Each ending is claimed just
- * before its own calls, and this is longer than both can take (two time
- * limits of 5 seconds), so a second retry never calls the provider for an
+ * before its own calls, and this is longer than the wait for the login's lock
+ * and both calls can take, so a second retry never calls the provider for an
  * ending the first is still working on.
  */
 export const ACCESS_ENDING_CLAIM_SECONDS = 30;
@@ -177,11 +176,11 @@ async function endStanding(
  * slow calls never lets a claim lapse on a row still waiting its turn.
  *
  * Each claimed ending is worked in one transaction that takes the login's
- * subject lock (`lockLoginSubject`) first and writes nothing until its calls
- * are done: the shared-login check, asked again under the lock, then the
- * provider, sessions before the login (a provider may refuse to sign out a
- * login it has already deactivated), stopping at the first fault, then the
- * stamp. A login another business maps under that lock is either seen by the
+ * subject lock first and reads its stamps again (`lockEnding`), and writes
+ * nothing until its calls are done: the shared-login check, asked again under
+ * the lock, then the provider, sessions before the login (a provider may
+ * refuse to sign out a login it has already deactivated), stopping at the
+ * first fault, then the stamp. A login another business maps under that lock is either seen by the
  * check or waits for the stamp. `coalesce` keeps a step's first stamp, so a
  * step done is never undone or re-dated.
  */
@@ -197,6 +196,7 @@ export async function settleAccessEndings(
      */
     readonly sharedElsewhere: (subject: string) => Promise<boolean>;
     readonly claimSeconds?: number;
+    readonly lockWaitMs?: number;
     /** Only these endings: the ones an act has just written. All owed ones otherwise. */
     readonly only?: readonly string[];
   },
@@ -211,13 +211,20 @@ export async function settleAccessEndings(
     const row = await claimNextEnding(database, businessId, claimSeconds, only, tried);
     if (row === undefined) break;
     tried.push(row.id);
-    // eslint-disable-next-line no-await-in-loop -- its calls and stamp, before the next is claimed
-    const done = await database.withBusiness(businessId, async (tx) => {
-      await lockLoginSubject(tx, row.subject);
-      const answer = await attempt(tx, provider, row, options.sharedElsewhere);
-      await stamp(tx, row.id, answer);
-      return answer;
-    });
+    let done: Attempted;
+    try {
+      // eslint-disable-next-line no-await-in-loop -- its calls and stamp, before the next is claimed
+      done = await database.withBusiness(businessId, async (tx) => {
+        const now = await lockEnding(tx, row, options.lockWaitMs);
+        const answer = await attempt(tx, provider, now, options.sharedElsewhere);
+        await stamp(tx, row.id, answer);
+        return answer;
+      });
+    } catch (cause) {
+      // A lock not taken in time rolls back unstamped: the ending stays owed.
+      if ((cause as { readonly code?: unknown }).code === '55P03') continue;
+      throw cause;
+    }
     if (done.sessions && done.login) settled += 1;
     if (done.fault !== null) faults += 1;
   }
@@ -255,6 +262,8 @@ async function attempt(
 ): Promise<Attempted> {
   let sessions = row.sessions_done;
   let login = row.login_done;
+  // Both stamped by another retry while this one waited: nothing is asked.
+  if (sessions && login) return { sessions, login, fault: null, skipped: null };
   // Asked before any call; a failure to ask is a fault, and the steps stay owed.
   let shared: boolean;
   try {

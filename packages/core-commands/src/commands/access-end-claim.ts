@@ -1,10 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // C58's retry statements for access endings (`settleAccessEndings`,
-// `access-end.ts`): the claim on the next owed ending, one row at a time, and
-// the count of endings a business still owes.
+// `access-end.ts`): the claim on the next owed ending, one row at a time, the
+// login's lock with its stamps read again under it, and the count of endings a
+// business still owes.
 
-import type { BusinessId, Database } from '../../../core-records/src/index.ts';
+import { lockLoginSubject } from '../../../core-records/src/index.ts';
+import type { BusinessId, Database, TenantQuery } from '../../../core-records/src/index.ts';
+
+/**
+ * How long an ending waits for its login's lock (`lock_timeout`) before it
+ * gives up unstamped and stays owed for the next pass, so a contended login
+ * never holds a connection (the local server has one) for longer. With both
+ * calls' time limits it stays inside the claim.
+ */
+export const ACCESS_ENDING_LOCK_WAIT_MS = 5000;
 
 export interface OwedEnding {
   readonly id: string;
@@ -52,6 +62,30 @@ export async function claimNextEnding(
       ),
   );
   return row;
+}
+
+/**
+ * The claimed ending's login lock (`lockLoginSubject`), waiting at most
+ * `lockWaitMs` (a timeout throws 55P03), then its stamps as they are now, its
+ * row locked to the end of the transaction. Read under the lock, so a step
+ * another retry stamped while this one waited (its claim lapsed meanwhile) is
+ * not asked again. A row gone owes nothing.
+ */
+export async function lockEnding(
+  tx: TenantQuery,
+  row: OwedEnding,
+  lockWaitMs: number = ACCESS_ENDING_LOCK_WAIT_MS,
+): Promise<OwedEnding> {
+  await tx.query(`select set_config('lock_timeout', $1, true)`, [`${String(lockWaitMs)}ms`]);
+  await lockLoginSubject(tx, row.subject);
+  const [now] = await tx.query<Pick<OwedEnding, 'sessions_done' | 'login_done'>>(
+    `select sessions_ended_at is not null as sessions_done,
+            login_deactivated_at is not null as login_done
+       from public.access_endings where business_id = $1 and id = $2
+        for update`,
+    [tx.businessId, row.id],
+  );
+  return { ...row, sessions_done: now?.sessions_done ?? true, login_done: now?.login_done ?? true };
 }
 
 /** Every ending of the business still owing a step, one another retry holds included. */
