@@ -50,7 +50,7 @@ export function site(sheet = true): Transport & {
   seen: string[];
 } {
   const pages: Record<string, TransportAnswer> = {
-    [ABOUT]: answer('text/html', PAGE),
+    [ABOUT]: answer('text/html; charset=utf-8', PAGE),
     ...(sheet ? { [SHEET]: answer('text/css', CSS) } : {}),
   };
   const seen: string[] = [];

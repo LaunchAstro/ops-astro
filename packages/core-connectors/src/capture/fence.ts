@@ -6,7 +6,13 @@
 // outside the agency's own stay refused until three other-company
 // adversarial reviews of the pool are recorded closed (D17-14).
 
-import { familyOf, isDeniedAddress, type Resolver, type Transport } from './transport.ts';
+import {
+  familyOf,
+  isDeniedAddress,
+  type Resolver,
+  type Transport,
+  type TransportAnswer,
+} from './transport.ts';
 
 export interface CapturePool {
   /** The agency's own catalogued pages, exact addresses. */
@@ -40,6 +46,8 @@ export interface FenceRefusal {
   readonly hop: number;
   readonly origin: string;
 }
+
+type Answer = Extract<TransportAnswer, { kind: 'answer' }>;
 
 export type Fenced<T> =
   { readonly ok: true; readonly value: T } | { readonly ok: false; readonly code: FenceCode };
@@ -152,6 +160,38 @@ async function pinnedAddress(host: string, resolve: Resolver): Promise<Fenced<st
   return { ok: true, value: answers[0] ?? '' };
 }
 
+const UTF8_LABELS = new Set(
+  'unicode-1-1-utf-8 unicode11utf8 unicode20utf8 utf-8 utf8 x-unicode20utf8'.split(' '),
+);
+
+/** Whether an encoding label names UTF-8, as the Encoding standard reads a label. */
+export const isUtf8Label = (label: string): boolean =>
+  UTF8_LABELS.has(label.replaceAll(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/gu, '').toLowerCase());
+
+/** The one Content-Type shape read: a type, then at most one charset, plain or quoted. */
+const CONTENT_TYPE = /^[\t ]*([\w.+-]+\/[\w.+-]+)[\t ]*(?:;[\t ]*charset=("?)([\w-]+)\2[\t ]*)?$/iu;
+
+/**
+ * Whether an answer is `type` with no charset but UTF-8: another would have a browser read the
+ * body, and so the addresses in it, in another encoding. A document must name its charset. Without
+ * one a browser takes the encoding the markup declares (a `<meta charset>` in its first 1024
+ * bytes), and the capture runs no such prescan; the header's charset outranks any declaration in
+ * the markup, so with it the capture and visitors agree. Browsers parse the rest of the header
+ * differently (Firefox opens a quoted string at any quote and takes the last charset, WebKit scans
+ * for the word, a later line or comma wins), so only one exact shape is read: one line, the type,
+ * and at most one charset parameter; anything else is refused, so no parser can read another
+ * charset. A content or transfer coding a browser would undo, and the capture does not, is
+ * refused too.
+ */
+function isUtf8Type(answer: Answer, type: string, named: boolean): boolean {
+  const { headers } = answer;
+  const coded = (headers['transfer-encoding'] ?? 'chunked').toLowerCase() !== 'chunked';
+  if (coded || 'content-encoding' in headers || (answer.contentTypeLines ?? 1) > 1) return false;
+  const [, media, , charset] = CONTENT_TYPE.exec(headers['content-type'] ?? '') ?? [];
+  if (media?.toLowerCase() !== type) return false;
+  return charset === undefined ? !named : isUtf8Label(charset);
+}
+
 /** One page or stylesheet, fetched through the fence. Every refusal is recorded before it returns. */
 export function fencedFetch(start: string, options: FetchOptions): Promise<Fenced<Fetched>> {
   return follow(start, 0, options);
@@ -196,8 +236,8 @@ async function follow(
     return follow(new URL(location, url.href).href, hop + 1, options);
   }
   if (answer.status !== 200) return refuse('CAPTURE_STATUS_REFUSED');
-  const type = (answer.headers['content-type'] ?? '').split(';')[0]?.trim().toLowerCase();
-  if (type !== limits.type) return refuse('CAPTURE_BODY_MALFORMED');
+  if (!isUtf8Type(answer, limits.type, options.kind === 'document'))
+    return refuse('CAPTURE_BODY_MALFORMED');
   let body: string;
   try {
     body = new TextDecoder('utf-8', { fatal: true }).decode(answer.body);

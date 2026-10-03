@@ -10,52 +10,17 @@ import {
   checkPageAllowed,
   fencedFetch,
   isDeniedAddress,
-  type CapturePool,
   type FenceRefusal,
-  type Resolver,
-  type Transport,
-  type TransportRequest,
 } from '../../packages/core-connectors/src/index.ts';
-
-const ABOUT = 'https://www.example.com/about';
-const SERVICES = 'https://www.example.com/services';
-const PUBLIC_V4 = '93.184.215.14';
-
-const POOL: CapturePool = {
-  agencyPages: [ABOUT, SERVICES],
-  otherPages: ['https://client.example.org/'],
-  closedPoolReviews: [],
-};
-
-function resolverOf(...answers: string[][]): Resolver & { calls: string[] } {
-  const calls: string[] = [];
-  let index = 0;
-  const resolve = (host: string) => {
-    calls.push(host);
-    const answer = answers[Math.min(index, answers.length - 1)] ?? [];
-    index += 1;
-    return Promise.resolve(answer);
-  };
-  return Object.assign(resolve, { calls });
-}
-
-type Script = (request: TransportRequest) => Awaited<ReturnType<Transport>>;
-
-function transportOf(script: Script): Transport & { seen: TransportRequest[] } {
-  const seen: TransportRequest[] = [];
-  const transport = (request: TransportRequest) => {
-    seen.push(request);
-    return Promise.resolve(script(request));
-  };
-  return Object.assign(transport, { seen });
-}
-
-const html = (body: string) => ({
-  kind: 'answer' as const,
-  status: 200,
-  headers: { 'content-type': 'text/html; charset=utf-8' },
-  body: new TextEncoder().encode(body),
-});
+import {
+  ABOUT,
+  POOL,
+  PUBLIC_V4,
+  SERVICES,
+  html,
+  resolverOf,
+  transportOf,
+} from './c80-fence-world.ts';
 
 describe('C80 capture pool allowlist', () => {
   it('allows the agency catalogued pages and nothing else on that host', () => {

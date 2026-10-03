@@ -90,7 +90,8 @@
   },
   "dependencies": {
     "@hono/node-server": "2.1.1",
-    "hono": "4.13.9"
+    "hono": "4.13.9",
+    "parse5": "8.0.1"
   },
   "devDependencies": {
     "@commitlint/cli": "21.2.2",

@@ -1,19 +1,27 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// One fenced capture of a catalogued page, as the observation Receipt L
-// compares (fields 9 to 12): the page's visible text, the document's digest,
-// and the digest of every stylesheet it serves, linked or inline. Every fetch
-// goes through the fence. A linked stylesheet that cannot be fetched fails the
-// whole capture: dropping it would let "the stylesheets are unchanged" pass
-// over a stylesheet nobody looked at.
+// One fenced capture of a catalogued page, as the observation Receipt L compares (fields 9 to 12):
+// the page's visible text, the document's digest, and the digest of every stylesheet it serves,
+// linked, inline or imported by either (a few levels deep, all within the page's cap). Every fetch
+// goes through the fence. A linked stylesheet that cannot be fetched fails the whole capture:
+// dropping it would let "the stylesheets are unchanged" pass over a stylesheet nobody looked at.
 
 import { createHash } from 'node:crypto';
+import {
+  Parser,
+  Tokenizer,
+  defaultTreeAdapter,
+  html as markup,
+  type DefaultTreeAdapterTypes as Tree,
+} from 'parse5';
 import type { PageObservation } from '../site/envelope.ts';
 import {
   MAX_STYLESHEETS,
   SHEETS_AT_ONCE,
   fencedFetch,
+  isUtf8Label,
   limiter,
+  type FenceCode,
   type FetchOptions,
   type Fenced,
 } from './fence.ts';
@@ -23,232 +31,253 @@ export type CaptureOptions = Omit<FetchOptions, 'kind' | 'page'>;
 const digest = (text: string): string =>
   `sha256:${createHash('sha256').update(text, 'utf8').digest('hex')}`;
 
-// Named references this capture reads, by exact name, as HTML matches them.
-const ENTITIES: ReadonlyMap<string, string> = new Map([
-  ['amp', '&'],
-  ['AMP', '&'],
-  ['lt', '<'],
-  ['LT', '<'],
-  ['gt', '>'],
-  ['GT', '>'],
-  ['quot', '"'],
-  ['QUOT', '"'],
-  ['apos', "'"],
-  ['nbsp', ' '],
-  ['Tab', '\t'],
-  ['NewLine', '\n'],
+// parse5, the HTML standard's tree builder, reads the page as a browser does. Four of its costs
+// grow with the square of a hostile page, so each is bounded: a tag, or an <html> or <body> that
+// later tags merge theirs onto, past MAX_ATTRIBUTES (each name is checked against all before it),
+// and nesting or active formatting entries past MAX_DEPTH (walked by many tags) are refused as
+// oversized; a sibling is looked for from the end, where it sits.
+const [MAX_ATTRIBUTES, MAX_DEPTH] = [256, 256];
+const PAST_BOUND = new Error('past a bound');
+
+/* oxlint-disable no-underscore-dangle -- the name is parse5's own */
+class BoundedTokenizer extends Tokenizer {
+  protected override _leaveAttrName(): void {
+    const token = this.currentToken;
+    if (token && 'attrs' in token && token.attrs.length >= MAX_ATTRIBUTES) throw PAST_BOUND;
+    super._leaveAttrName();
+  }
+}
+/* oxlint-enable no-underscore-dangle */
+
+const fromEnd = {
+  insertBefore(parent: Tree.ParentNode, node: Tree.ChildNode, before: Tree.ChildNode): void {
+    parent.childNodes.splice(parent.childNodes.lastIndexOf(before), 0, node);
+    node.parentNode = parent;
+  },
+  detachNode(node: Tree.ChildNode): void {
+    node.parentNode?.childNodes.splice(node.parentNode.childNodes.lastIndexOf(node), 1);
+    node.parentNode = null;
+  },
+  insertTextBefore(parent: Tree.ParentNode, text: string, before: Tree.ChildNode): void {
+    const previous = parent.childNodes[parent.childNodes.lastIndexOf(before) - 1];
+    if (previous && defaultTreeAdapter.isTextNode(previous)) previous.value += text;
+    else fromEnd.insertBefore(parent, defaultTreeAdapter.createTextNode(text), before);
+  },
+  adoptAttributes(recipient: Tree.Element, attrs: Tree.Element['attrs']): void {
+    defaultTreeAdapter.adoptAttributes(recipient, attrs);
+    if (recipient.attrs.length > MAX_ATTRIBUTES) throw PAST_BOUND;
+  },
+};
+
+// Elements whose text a browser does not show: these in HTML, and script and style anywhere.
+const HIDDEN = new Set('script style noscript template iframe noembed noframes'.split(' '));
+// Attributes that make a browser render what the capture cannot read: a declarative shadow root
+// (its own text and sheets, the element's children hidden) and a frame's inline document. A sheet
+// with no charset of its own is decoded in its link's charset, so that must name UTF-8 or nothing.
+const UNREAD = new Map([
+  ['template', ['shadowrootmode', 'shadowroot']],
+  ['iframe', ['srcdoc']],
 ]);
 
-/** A code point a reference may name, else as written; C1 codes too (a browser reads windows-1252). */
-function codePoint(code: number, whole: string): string {
-  return Number.isInteger(code) && code > 0 && code <= 0x10_ff_ff && (code < 0x80 || code > 0x9f)
-    ? String.fromCodePoint(code)
-    : whole;
-}
+/** What the page shows and loads: its text, linked and inline sheets, and its base ('' if none). */
+type Reading = Readonly<{ text: string; links: string[]; styles: string[]; base: string }>;
 
-/**
- * Decodes references as a browser does. `unsure` hears of a named one this table cannot read
- * that a browser might: one ending in `;`, or one not followed by `=`.
- */
-function decodeReferences(text: string, unsure?: () => void): string {
-  return text.replaceAll(
-    /&(?:#x([0-9a-f]+);?|#([0-9]+);?|([a-z0-9]+)(;?))/giu,
-    (whole: string, hex?: string, decimal?: string, name = '', end = '', offset = 0) => {
-      if (hex !== undefined) return codePoint(Number(`0x${hex}`), whole);
-      if (decimal !== undefined) return codePoint(Number(decimal), whole);
-      const known = end === ';' ? ENTITIES.get(name) : undefined;
-      if (known === undefined && (end === ';' || text.charAt(offset + whole.length) !== '=')) {
-        unsure?.();
-      }
-      return known ?? whole;
-    },
-  );
-}
-
-/** An address attribute as a browser reads it, or undefined where a reference makes it unsure. */
-function addressValue(raw: string): string | undefined {
-  let sure = true;
-  const value = decodeReferences(raw, () => {
-    sure = false;
+/** The page's tree, or undefined where it passes a bound. */
+function parsed(html: string): Tree.Document | undefined {
+  // Read from parse5's own counts after each push; a count it no longer keeps reads as past.
+  const onItemPush = () => {
+    const depth = parser.openElements.stackTop + 1;
+    if (!(Math.max(depth, parser.activeFormattingElements.entries.length) <= MAX_DEPTH))
+      throw PAST_BOUND;
+  };
+  const parser = new Parser<Tree.DefaultTreeAdapterMap>({
+    treeAdapter: { ...defaultTreeAdapter, ...fromEnd, onItemPush },
   });
-  return sure ? value : undefined;
-}
-
-// One pass, left to right, by index, following the HTML tokenizer's states for
-// comments, tags, attributes and raw text: no pattern runs from an opener to a
-// closer, so a page that never closes costs one read of it, not one read per
-// opener. Tag names are matched as HTML matches them, by ASCII case only. A
-// comment, raw-text element or tag that never closes makes the page malformed;
-// a `<` that cannot start one is text, as a browser reads it.
-//
-// Elements whose content is text up to their own end tag, and how a reader sees
-// it: as written (raw), with references decoded (rcdata), or not at all.
-const HIDDEN_TEXT = 'script style noscript template iframe noembed noframes'.split(' ');
-const RAW_TEXT = new Map<string, 'raw' | 'rcdata' | 'hidden'>([
-  ...HIDDEN_TEXT.map((name) => [name, 'hidden'] as const),
-  ['xmp', 'raw'],
-  ['title', 'rcdata'],
-  ['textarea', 'rcdata'],
-]);
-
-interface Reading {
-  readonly html: string;
-  readonly lower: string;
-  readonly text: string[];
-  readonly links: string[];
-  readonly styles: string[];
-  /** The first `<base href>`: a browser resolves the page's links against it. */
-  base?: string;
-}
-
-interface Tag {
-  readonly end: number;
-  readonly attributes: ReadonlyMap<string, string>;
-}
-
-function asciiLower(html: string): string {
-  return html.replaceAll(/[A-Z]/gu, (letter) => letter.toLowerCase());
-}
-
-const isSpace = (char: string): boolean =>
-  char === ' ' || char === '\n' || char === '\t' || char === '\f' || char === '\r';
-const endsName = (char: string): boolean => isSpace(char) || char === '/' || char === '>';
-const endsAttribute = (char: string): boolean => endsName(char) || char === '=';
-const endsValue = (char: string): boolean => isSpace(char) || char === '>';
-const isAlpha = (char: string): boolean => char >= 'a' && char <= 'z';
-
-/** The first index at or after `from` whose character `stop` accepts, or the end. */
-function scan(lower: string, from: number, stop: (char: string) => boolean): number {
-  let at = from;
-  while (at < lower.length && !stop(lower.charAt(at))) at += 1;
-  return at;
-}
-
-/**
- * A tag's attributes, from its name's end to past its `>`, by the tokenizer's states: a quoted
- * value may hold `>`, `/` separates attributes, and the first of a name counts.
- */
-function readTag(html: string, lower: string, from: number): Tag | undefined {
-  const attributes = new Map<string, string>();
-  let at = from;
-  for (;;) {
-    while (isSpace(lower.charAt(at)) || lower.charAt(at) === '/') at += 1;
-    if (at >= lower.length) return undefined;
-    if (lower.charAt(at) === '>') return { end: at + 1, attributes };
-    const start = at;
-    at = scan(lower, at + 1, endsAttribute);
-    const name = lower.slice(start, at);
-    at = scan(lower, at, (char) => !isSpace(char));
-    let value = '';
-    if (lower.charAt(at) === '=') {
-      at = scan(lower, at + 1, (char) => !isSpace(char));
-      const quote = lower.charAt(at);
-      const close = quote === '"' || quote === "'" ? lower.indexOf(quote, at + 1) : undefined;
-      if (close === -1) return undefined;
-      const valueEnd = close ?? scan(lower, at, endsValue);
-      value = html.slice(close === undefined ? at : at + 1, valueEnd);
-      at = close === undefined ? valueEnd : valueEnd + 1;
-    }
-    if (!attributes.has(name)) attributes.set(name, value);
+  parser.tokenizer = new BoundedTokenizer(parser.options, parser);
+  try {
+    parser.tokenizer.write(html, true);
+    return parser.document;
+  } catch (error) {
+    if (error === PAST_BOUND) return undefined;
+    throw error;
   }
 }
 
-/** Where a comment whose text starts at `from` ends (`-->`, `--!>`, `<!-->`, `<!--->`), or -1. */
-function commentEnd(lower: string, from: number): number {
-  if (lower.startsWith('>', from)) return from + 1;
-  if (lower.startsWith('->', from)) return from + 2;
-  for (let at = lower.indexOf('--', from); at !== -1; at = lower.indexOf('--', at + 1)) {
-    if (lower.charAt(at + 2) === '>') return at + 3;
-    if (lower.startsWith('!>', at + 2)) return at + 4;
-  }
-  return -1;
-}
+// The bounds lean on parse5's internals. If a release drops a member they override, or stops
+// honouring one, the capture refuses to load rather than read pages unbounded.
+const names = Array.from({ length: MAX_ATTRIBUTES }, (_, at) => ` a${at}`).join('');
+const members = [
+  Reflect.get(Tokenizer.prototype, '_leaveAttrName'),
+  ...Object.keys(fromEnd).map((name) => Reflect.get(defaultTreeAdapter, name)),
+];
+const probes = [`<p${names} z>`, `<html${names}><html z>`, '<b>'.repeat(MAX_DEPTH)];
+if (
+  members.some((member) => typeof member !== 'function') ||
+  probes.some((probe) => parsed(probe) !== undefined)
+)
+  throw new Error('parse5 no longer holds the capture bounds');
 
-/** Where raw text `name` meets its end tag (`</name` then whitespace, `/` or `>`), or -1. */
-function closerAt(lower: string, name: string, from: number): number {
-  const opener = `</${name}`;
-  for (let at = lower.indexOf(opener, from); at !== -1; at = lower.indexOf(opener, at + 1)) {
-    if (endsName(lower.charAt(at + opener.length))) return at;
-  }
-  return -1;
-}
-
-const isStylesheet = (tag: Tag): boolean =>
-  asciiLower(decodeReferences(tag.attributes.get('rel') ?? ''))
-    .split(/[\t\n\f\r ]+/u)
-    .includes('stylesheet');
-
-/** Notes a stylesheet link or the first base address; false where a reference makes it unsure. */
-function noteTag(reading: Reading, name: string, tag: Tag): boolean {
-  const href = tag.attributes.get('href');
-  const wanted =
-    name === 'link' ? isStylesheet(tag) : name === 'base' && reading.base === undefined;
-  if (href === undefined || !wanted) return true;
-  const value = addressValue(href);
-  if (value === undefined) return false;
-  if (name === 'link') reading.links.push(value);
-  else reading.base = value;
-  return true;
-}
-
-/** Where an element that starts at `open` ends, past its end tag if its content is raw text; or -1. */
-function elementEnd(reading: Reading, open: number): number {
-  const { html, lower } = reading;
-  const nameStop = scan(lower, open + 1, endsName);
-  const name = lower.slice(open + 1, nameStop);
-  const tag = readTag(html, lower, nameStop);
-  if (tag === undefined) return -1;
-  if (name === 'plaintext') {
-    reading.text.push(html.slice(tag.end));
-    return html.length;
-  }
-  const kind = RAW_TEXT.get(name);
-  if (kind === undefined) return noteTag(reading, name, tag) ? tag.end : -1;
-  const closer = closerAt(lower, name, tag.end);
-  const close = closer === -1 ? undefined : readTag(html, lower, closer + name.length + 2);
-  if (close === undefined) return -1;
-  const content = html.slice(tag.end, closer);
-  if (name === 'style') reading.styles.push(content);
-  if (kind !== 'hidden')
-    reading.text.push(kind === 'raw' ? content : decodeReferences(content), ' ');
-  return close.end;
-}
-
-/** Where the markup starting at `open` ends, or -1 where it never does. */
-function markupEnd(reading: Reading, open: number): number {
-  const { html, lower } = reading;
-  if (lower.startsWith('<!--', open)) return commentEnd(lower, open + 4);
-  if (isAlpha(lower.charAt(open + 1))) return elementEnd(reading, open);
-  if (lower.charAt(open + 1) === '/' && isAlpha(lower.charAt(open + 2))) {
-    return readTag(html, lower, scan(lower, open + 2, endsName))?.end ?? -1;
-  }
-  // A doctype, a bogus comment (`<!x`, `<?x`, `</ x`) or `</>`: up to the first `>`.
-  const close = lower.indexOf('>', open + 2);
-  return close === -1 ? -1 : close + 1;
-}
-
-/** Whether a `<` at `open` starts markup rather than being text. */
-function opensMarkup(lower: string, open: number): boolean {
-  const next = lower.charAt(open + 1);
-  return isAlpha(next) || next === '!' || next === '?' || (next === '/' && open + 2 < lower.length);
-}
-
-function readDocument(html: string): (Omit<Reading, 'text'> & { text: string }) | undefined {
-  const reading: Reading = { html, lower: asciiLower(html), text: [], links: [], styles: [] };
-  let at = 0;
-  for (let open = html.indexOf('<'); open !== -1; open = html.indexOf('<', at)) {
-    reading.text.push(decodeReferences(html.slice(at, open)));
-    if (!opensMarkup(reading.lower, open)) {
-      reading.text.push('<');
-      at = open + 1;
+/** Reads the tree in document order with a stack of its own, so no depth can overflow the call stack. */
+function readDocument(html: string): Reading | FenceCode {
+  const document = parsed(html);
+  if (document === undefined) return 'CAPTURE_OVERSIZED';
+  const [text, links, styles]: [string[], string[], string[]] = [[], [], []];
+  let base: string | undefined;
+  const stack: (readonly [Tree.Node, boolean] | undefined)[] = [[document, false]];
+  while (stack.length > 0) {
+    const entry = stack.pop();
+    if (entry === undefined) {
+      text.push(' ');
       continue;
     }
-    reading.text.push(' ');
-    at = markupEnd(reading, open);
-    if (at === -1) return undefined;
+    const [node, hidden] = entry;
+    if (node.nodeName === '#text' && !hidden) text.push((node as Tree.TextNode).value);
+    if (!('childNodes' in node)) continue;
+    let hides = hidden;
+    if ('tagName' in node) {
+      const html5 = node.namespaceURI === markup.NS.HTML;
+      const name = node.tagName;
+      if (html5 && node.attrs.some((one) => UNREAD.get(name)?.includes(one.name)))
+        return 'CAPTURE_BODY_MALFORMED';
+      const attribute = (wanted: string) => node.attrs.find((one) => one.name === wanted)?.value;
+      const href = attribute('href');
+      const rel = (attribute('rel') ?? '').replaceAll(/[A-Z]/gu, (letter) => letter.toLowerCase());
+      const sheet = html5 && name === 'link' && rel.split(/[\t\n\f\r ]+/u).includes('stylesheet');
+      if (sheet && !isUtf8Label(attribute('charset') ?? 'utf-8')) return 'CAPTURE_BODY_MALFORMED';
+      if (sheet && href !== undefined) links.push(href);
+      if (html5 && name === 'base' && href !== undefined) base ??= href;
+      if (name === 'style' && (html5 || node.namespaceURI === markup.NS.SVG))
+        styles.push(node.childNodes.map((child) => ('value' in child ? child.value : '')).join(''));
+      hides ||= HIDDEN.has(name) && (html5 || name === 'script' || name === 'style');
+      text.push(' ');
+      stack.push(undefined);
+    }
+    for (const child of node.childNodes.toReversed()) stack.push([child, hides]);
   }
-  reading.text.push(decodeReferences(html.slice(at)));
-  return { ...reading, text: reading.text.join('').replaceAll(/\s+/gu, ' ').trim() };
+  return { text: text.join('').replaceAll(/\s+/gu, ' ').trim(), links, styles, base: base ?? '' };
+}
+
+// What a stylesheet imports, read a token at a time as CSS Syntax 3 reads it after its
+// preprocessing, so an `@import` in a comment, string or url() is not followed. Only space, tab and
+// line feed are whitespace. Every loop below steps over a run or an escape, so a read is linear.
+const ESCAPE = String.raw`\\(?:[0-9a-f]{1,6}[ \t\n]?|[^\n]|$)`;
+const STRING = (quote: string): string =>
+  String.raw`${quote}([^${quote}\\\n]*(?:(?:${ESCAPE}|\\\n)[^${quote}\\\n]*)*)(${quote})?`;
+const TOKEN = new RegExp(
+  String.raw`[ \t\n]+|/\*[^*]*(?:\*+(?!/)[^*]*)*(?:\*/|$)|${STRING('"')}|${STRING("'")}|([#@]?)((?:[\w\-\P{ASCII}]+|${ESCAPE})+)|[^]`,
+  'iuy',
+);
+// After `url(`: a quote ahead (a string follows), or an address and its `)`; with no `)` the url is
+// bad (a space inside, a quote, `(` or a non-printable code point), read on to its `)`.
+const URL_TAIL = new RegExp(
+  String.raw`[ \t\n]*(?:(?=["'])|((?:[^"'()\\ \t\n\0-\b\v\x0E-\x1F\x7F]+|${ESCAPE})*)[ \t\n]*` +
+    String.raw`(?:(\)|$)|[^)\\]*(?:(?:${ESCAPE}|\\)[^)\\]*)*\)?))`,
+  'iuy',
+);
+
+/** One CSS escape decoded; a line break after a backslash continues a string. */
+function unescaped(_all: string, hex?: string, line?: string, char = ''): string {
+  const code = Number.parseInt(hex ?? '', 16);
+  if (Number.isNaN(code)) return line === undefined ? char : '';
+  const bad = code === 0 || (code >= 0xd8_00 && code <= 0xdf_ff) || code > 0x10_ff_ff;
+  return bad ? '\uFFFD' : String.fromCodePoint(code);
+}
+/** Escapes decoded; a backslash at the end of the sheet becomes `atEnd` (a string drops it). */
+const cssText = (raw: string, atEnd = ''): string =>
+  raw.replaceAll(/\\(?:([0-9a-f]{1,6})[ \t\n]?|(\n)|([^])|$)/giu, (all, hex, line, char) =>
+    unescaped(all, hex, line, char ?? atEnd),
+  );
+
+/** A token's kind, its text (a string's or url's, undefined where CSS reads it bad) and its end. */
+type CssToken = { readonly kind: string; readonly text?: string | undefined; readonly end: number };
+
+/** The token at `at`: space, a comment, a string, a url, `url(` before a string, `@name`, other. */
+function cssToken(css: string, at: number): CssToken {
+  TOKEN.lastIndex = at;
+  const [all = '', double, closed, single, closedSingle, sign, name] = TOKEN.exec(css) ?? [];
+  const end = at + all.length;
+  if (double !== undefined || single !== undefined) {
+    const bad = (closed ?? closedSingle) === undefined && end < css.length;
+    return { kind: 'string', text: bad ? undefined : cssText(double ?? single ?? ''), end };
+  }
+  if (name === undefined) return { kind: /^(?:[ \t\n]|\/\*)/u.test(all) ? ' ' : 'other', end };
+  const word = cssText(name, '\uFFFD').toLowerCase();
+  if (sign === '@') return { kind: `@${word}`, end };
+  if (sign === '#' || word !== 'url' || css.charAt(end) !== '(') return { kind: 'name', end };
+  URL_TAIL.lastIndex = end + 1;
+  const [tail = '', address, close] = URL_TAIL.exec(css) ?? [];
+  if (address === undefined) return { kind: 'url(', end: end + 1 };
+  const text = close === undefined ? undefined : cssText(address, '\uFFFD');
+  return { kind: 'url', text, end: end + 1 + tail.length };
+}
+
+/** Every address the sheet's `@import` rules name; undefined for one CSS cannot read. */
+function importsOf(source: string): (string | undefined)[] {
+  const css = source.replaceAll(/\r\n?|\f/gu, '\n').replaceAll('\0', '\uFFFD');
+  const next = (from: number): CssToken => {
+    let token = cssToken(css, from);
+    while (token.kind === ' ') token = cssToken(css, token.end);
+    return token;
+  };
+  const found: (string | undefined)[] = [];
+  for (let at = 0; at < css.length;) {
+    let token = cssToken(css, at);
+    if (token.kind === '@import') {
+      token = next(token.end);
+      if (token.kind === 'url(') token = next(token.end);
+      found.push(token.kind === 'string' || token.kind === 'url' ? token.text : undefined);
+    }
+    at = token.end;
+  }
+  return found;
+}
+
+/** Rounds of `@import` followed past the sheets the page names; one more is refused as oversized. */
+const IMPORT_DEPTH = 3;
+
+const resolved = (href: string | undefined, from: string): string | undefined =>
+  href !== undefined && URL.canParse(href, from) ? new URL(href, from).href : undefined;
+
+/** The encoding a sheet declares as CSS reads it: a `@charset` rule at its very start. */
+const declared = (css: string): string => /^@charset "([^"]*)";/u.exec(css)?.[1] ?? 'utf-8';
+
+/** The digest of every sheet the page serves: inline, linked, and imported by either. */
+async function readSheets(
+  url: string,
+  base: string,
+  document: { readonly links: readonly string[]; readonly styles: readonly string[] },
+  options: CaptureOptions,
+): Promise<Fenced<Record<string, string>>> {
+  const stylesheets: Record<string, string> = {};
+  for (const [index, css] of document.styles.entries())
+    stylesheets[`inline:${index}`] = digest(css);
+  const seen = new Set<string>();
+  const run = limiter(SHEETS_AT_ONCE);
+  let wanted = [...document.links, ...document.styles.flatMap(importsOf)].map((href) =>
+    resolved(href, base),
+  );
+  for (let depth = 0; wanted.length > 0; depth += 1) {
+    if (wanted.includes(undefined)) return { ok: false, code: 'CAPTURE_BODY_MALFORMED' };
+    const fresh = [...new Set(wanted as string[])].filter((href) => !seen.has(href));
+    if (fresh.length > 0 && (depth > IMPORT_DEPTH || seen.size + fresh.length > MAX_STYLESHEETS))
+      return { ok: false, code: 'CAPTURE_OVERSIZED' };
+    for (const href of fresh) seen.add(href);
+    // oxlint-disable-next-line no-await-in-loop -- one round of imports waits on the last
+    const fetched = await Promise.all(
+      fresh.map((href) =>
+        run(() => fencedFetch(href, { ...options, kind: 'stylesheet', page: url })),
+      ),
+    );
+    wanted = [];
+    for (const [index, sheet] of fetched.entries()) {
+      if (!sheet.ok) return sheet;
+      if (!isUtf8Label(declared(sheet.value.body)))
+        return { ok: false, code: 'CAPTURE_BODY_MALFORMED' };
+      stylesheets[fresh[index] ?? ''] = digest(sheet.value.body);
+      for (const href of importsOf(sheet.value.body)) wanted.push(resolved(href, sheet.value.url));
+    }
+  }
+  return { ok: true, value: stylesheets };
 }
 
 export async function capturePage(
@@ -259,41 +288,13 @@ export async function capturePage(
   if (!page.ok) return page;
   const html = page.value.body;
   const document = readDocument(html);
-  if (document === undefined) return { ok: false, code: 'CAPTURE_BODY_MALFORMED' };
-  const base =
-    document.base !== undefined && URL.canParse(document.base, page.value.url)
-      ? new URL(document.base, page.value.url).href
-      : page.value.url;
-  const hrefs = document.links.map((href) =>
-    URL.canParse(href, base) ? new URL(href, base).href : undefined,
-  );
-  if (hrefs.includes(undefined)) return { ok: false, code: 'CAPTURE_BODY_MALFORMED' };
-  const unique = [...new Set(hrefs as string[])];
-  if (unique.length > MAX_STYLESHEETS) return { ok: false, code: 'CAPTURE_OVERSIZED' };
-  const run = limiter(SHEETS_AT_ONCE);
-  const fetched = await Promise.all(
-    unique.map((href) =>
-      run(() => fencedFetch(href, { ...options, kind: 'stylesheet', page: url })),
-    ),
-  );
-  const stylesheets: Record<string, string> = {};
-  for (const [index, sheet] of fetched.entries()) {
-    if (!sheet.ok) return sheet;
-    stylesheets[unique[index] ?? ''] = digest(sheet.value.body);
-  }
-  for (const [index, css] of document.styles.entries())
-    stylesheets[`inline:${index}`] = digest(css);
+  if (typeof document === 'string') return { ok: false, code: document };
+  const base = resolved(document.base, page.value.url) ?? page.value.url;
+  const sheets = await readSheets(url, base, document, options);
+  if (!sheets.ok) return sheets;
   const sorted = Object.fromEntries(
-    Object.entries(stylesheets).toSorted(([left], [right]) => (left < right ? -1 : 1)),
+    Object.entries(sheets.value).toSorted(([left], [right]) => (left < right ? -1 : 1)),
   );
-  return {
-    ok: true,
-    value: {
-      url: page.value.url,
-      status: page.value.status,
-      documentDigest: digest(html),
-      text: document.text,
-      stylesheets: sorted,
-    },
-  };
+  const value = { url: page.value.url, status: page.value.status, documentDigest: digest(html) };
+  return { ok: true, value: { ...value, text: document.text, stylesheets: sorted } };
 }
