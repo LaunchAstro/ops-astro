@@ -30,7 +30,7 @@ import { RecordState } from '../views/record-state.tsx';
 import { clientsAt } from '../client-address.ts';
 import { pathTo } from '../routes.ts';
 import type { PanelId } from '../panels.ts';
-import type { TaskPanelHost } from '../screen-registry.tsx';
+import type { TaskPanelHost } from './task/panel-host.ts';
 
 /** The group of an entry that names no client: the reader's own work. */
 const OWN_WORK: InboxGroupRef = { key: 'own', name: 'Your work' };
