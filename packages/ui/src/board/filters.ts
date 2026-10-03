@@ -13,7 +13,8 @@
 
 import type { Facet, Filters, Preset } from './types.ts';
 
-const WORD = /[\p{L}\p{N}]/u;
+// A combining mark belongs to the letter before it, so it never starts a word.
+const WORD = /[\p{L}\p{M}\p{N}]/u;
 
 /** Whether `term` appears in `text` starting at a word's first character. */
 export function startsAWord(text: string, term: string): boolean {
