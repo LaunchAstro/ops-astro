@@ -184,6 +184,7 @@
     "tests/reads/board-comments.test.ts",
     "tests/web/mp-3-1-isolation-api.test.tsx",
     "tests/web/dock-door-isolation-api.test.tsx",
-    "tests/api/preference-write-client-user.test.ts"
+    "tests/api/preference-write-client-user.test.ts",
+    "tests/wayfinder/wf-1.test.ts"
   ]
 }
