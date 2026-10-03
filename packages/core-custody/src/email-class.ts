@@ -168,20 +168,26 @@ export async function mayStillSend(tx: TenantQuery, itemId: string): Promise<boo
 /** What a delivery refuses before any item is asked. */
 export type DeliverRefusal = 'OPERATION_NOT_CATALOGUED' | 'SENDER_NOT_VERIFIED';
 
+/** RFC 5322's dot-atom in ASCII: a from's local part, never a display name, space or line break. */
+const DOT_ATOM = /^[\w!#$%&'*+/=?^`{|}~-]+(?:\.[\w!#$%&'*+/=?^`{|}~-]+)*$/u;
+/** Printable ASCII: a domain that lower-cases to the verified subdomain only if it already is one. */
+const ASCII = /^[!-~]+$/u;
+
 /**
- * The report vouches for one subdomain: mail from anything but one address on it is not
- * verified, and a report drawn from the fake source (`mock`) never verifies a real send.
+ * The report vouches for one subdomain: mail from anything but one bare address on it is not
+ * verified, and only a report that says it is not from the fake source (`mock`) counts.
  */
 export function fromVerifiedSender(
   from: string,
   sender: { readonly verified: boolean; readonly subdomain: string; readonly mock: boolean },
 ): boolean {
-  const [local, domain, ...rest] = from.split('@');
+  const [local = '', domain = '', ...rest] = from.split('@');
   return (
     sender.verified &&
-    !sender.mock &&
-    local !== '' &&
+    sender.mock === false &&
+    DOT_ATOM.test(local) &&
     rest.length === 0 &&
-    domain?.toLowerCase() === sender.subdomain.toLowerCase()
+    ASCII.test(domain) &&
+    domain.toLowerCase() === sender.subdomain.toLowerCase()
   );
 }
