@@ -6,9 +6,11 @@
 //   node scripts/security/scan-login.mjs make|remove
 //
 // Settings: deploy/staging/SECURITY-SCAN.md, plus SCAN_LOGIN_PLACE (staging or
-// local), SCAN_LOGIN_FILE and SCAN_TOKEN_FILE (written owner-only). `make` writes
-// SCAN_LOGIN_FILE once the sign-in exists, so `remove` finds it even when `make`
-// stopped part way. Exit 0 when done, 1 when refused or stopped. Nothing
+// local), SCAN_LOGIN_FILE and SCAN_TOKEN_FILE (written owner-only). `make` claims
+// SCAN_LOGIN_FILE, naming the sign-in's address and the id it asks the provider
+// to give it, before it asks: a second `make` finds it claimed, and `remove`
+// finds the sign-in even when `make` stopped part way or its reply was lost.
+// Exit 0 when done, 1 when refused or stopped. Nothing
 // printed carries an address, a key, a password or the token.
 
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -22,6 +24,7 @@ import {
   writeSync,
 } from 'node:fs';
 import { endPersonAuthority } from '../../packages/core-commands/src/commands/authority-controls.ts';
+import { lockAccess } from '../../packages/core-records/src/authority/access.ts';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
 import { connect, connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
 import {
@@ -61,9 +64,12 @@ async function provider(path, method, body, headers = admin) {
   return { status: response.status, body: await response.json().catch(() => ({})) };
 }
 
-/** Owner-only, a file there before included: emptied and narrowed before the text goes in. */
-function keep(file, text) {
-  const fd = openSync(file, 'w', 0o600);
+/**
+ * Owner-only, a file there before included: emptied and narrowed before the
+ * text goes in. With `wx`, a file there before is refused instead (EEXIST).
+ */
+function keep(file, text, flags = 'w') {
+  const fd = openSync(file, flags, 0o600);
   try {
     fchmodSync(fd, 0o600);
     writeSync(fd, text);
@@ -136,15 +142,23 @@ async function member(tx, subject) {
 }
 
 async function make() {
-  if (existsSync(env.SCAN_LOGIN_FILE))
-    stop('SCAN_LOGIN_FILE exists: remove the last scan login first');
   const email = scanEmail(randomBytes(6).toString('hex'));
+  const userId = randomUUID();
+  try {
+    keep(env.SCAN_LOGIN_FILE, JSON.stringify({ email, userId }), 'wx');
+  } catch (error) {
+    if (error?.code === 'EEXIST') stop('SCAN_LOGIN_FILE exists: remove the last scan login first');
+    throw error;
+  }
   const password = randomBytes(24).toString('base64url');
-  const made = await provider('/admin/users', 'POST', { email, password, email_confirm: true });
-  const userId = made.body?.id;
-  if (made.status >= 300 || typeof userId !== 'string')
+  const made = await provider('/admin/users', 'POST', {
+    id: userId,
+    email,
+    password,
+    email_confirm: true,
+  });
+  if (made.status >= 300 || made.body?.id !== userId)
     stop(`the admin API did not make the sign-in (${made.status})`);
-  keep(env.SCAN_LOGIN_FILE, JSON.stringify({ email, userId }));
 
   const business = businessId(await businesses());
   const db = connect(env.DATABASE_URL, { source: 'scan-login' });
@@ -171,25 +185,31 @@ async function make() {
 // Check first, then end what the sign-in is mapped to, found from its own login
 // row and never from the file: a lost reply is found, a tampered file names no one.
 // A sign-in another business still maps to a person is that person's too, so
-// nothing is ended and the provider keeps it.
+// nothing is ended and the provider keeps it. The scan business's transaction
+// takes the access lock, as every change to who may do what does, then holds
+// `person_logins` in share mode, so no sign-in is mapped to a person anywhere
+// between the check and the provider's deletion, which comes before the commit.
 async function endRows(record, providerEmail) {
   const all = await businesses();
   const scan = businessId(all);
-  const db = connect(env.DATABASE_URL, { source: 'scan-login' });
+  // Two connections: the scan business's transaction holds its locks while the others are read.
+  const db = connect(env.DATABASE_URL, { source: 'scan-login', max: 2 });
   try {
-    for (const { id } of all.filter((row) => row.id !== scan)) {
-      // eslint-disable-next-line no-await-in-loop -- one business at a time, each under its own barrier
-      const elsewhere = await db.withBusiness(id, (tx) =>
-        tx.query(
-          `select from public.logins l join public.person_logins pl on pl.login_id = l.id
-            where l.provider = 'supabase' and l.subject = $1 and pl.active limit 1`,
-          [record.userId],
-        ),
-      );
-      if (elsewhere.length > 0)
-        stop("the sign-in is a person's in another business too; nothing was removed");
-    }
     await db.withBusiness(scan, async (tx) => {
+      await lockAccess(tx);
+      await tx.query('lock table public.person_logins in share mode');
+      for (const { id } of all.filter((row) => row.id !== scan)) {
+        // eslint-disable-next-line no-await-in-loop -- one business at a time, each under its own barrier
+        const elsewhere = await db.withBusiness(id, (other) =>
+          other.query(
+            `select from public.logins l join public.person_logins pl on pl.login_id = l.id
+              where l.provider = 'supabase' and l.subject = $1 and pl.active limit 1`,
+            [record.userId],
+          ),
+        );
+        if (elsewhere.length > 0)
+          stop("the sign-in is a person's in another business too; nothing was removed");
+      }
       const mapped = await tx.query(
         `select pl.person_id, p.display_name from public.logins l
            join public.person_logins pl on pl.login_id = l.id
@@ -204,6 +224,11 @@ async function endRows(record, providerEmail) {
       for (const { person_id: personId } of mapped) {
         // eslint-disable-next-line no-await-in-loop -- one person, in one transaction
         await endPerson(tx, personId, record.userId);
+      }
+      if (providerEmail !== undefined) {
+        const gone = await provider(`/admin/users/${record.userId}`, 'DELETE');
+        if (gone.status >= 300 && gone.status !== 404)
+          stop(`the admin API did not delete the sign-in (${gone.status})`);
       }
     });
   } finally {
@@ -250,12 +275,6 @@ async function remove() {
     stop('the admin API answered for the sign-in with no address; nothing was removed');
 
   await endRows(record, providerEmail);
-
-  if (providerEmail !== undefined) {
-    const gone = await provider(`/admin/users/${record.userId}`, 'DELETE');
-    if (gone.status >= 300 && gone.status !== 404)
-      stop(`the admin API did not delete the sign-in (${gone.status})`);
-  }
   rmSync(env.SCAN_TOKEN_FILE, { force: true });
   rmSync(env.SCAN_LOGIN_FILE, { force: true });
   console.log(`scan-login: removed ${record.email}`);

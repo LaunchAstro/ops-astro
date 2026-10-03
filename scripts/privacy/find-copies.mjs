@@ -56,19 +56,16 @@ function containing(text) {
 }
 
 /**
- * Whether row `t` holds $1 in a value, at any depth: a column's or a JSON
- * field's name is never the person's text ("granted_at" names no Grant).
+ * Whether `value` holds $1 (or what `also` adds) in a value, at any depth: a
+ * column's or a JSON field's name is never the person's text ("granted_at" names no Grant).
+ * Postgres lowers both sides, so a letter is matched as the database's locale
+ * cases it ("İpek" is "ipek" there, never JavaScript's "i̇pek").
  */
-const HOLDS = `exists (select from jsonb_path_query(to_jsonb(t), 'strict $.**') v
-    where jsonb_typeof(v) not in ('object', 'array') and lower(v::text) like $1)`;
-
-/** Whether a column's value holds the text or an id, at any depth, never by a field's name. */
-function holds(value, needle, ids) {
-  if (value !== null && typeof value === 'object')
-    return Object.values(value).some((inner) => holds(inner, needle, ids));
-  const held = JSON.stringify(value).toLowerCase();
-  return held.includes(needle) || ids.some((id) => held.includes(id));
+function holding(value, also = '') {
+  return `exists (select from jsonb_path_query(${value}, 'strict $.**') v
+    where jsonb_typeof(v) not in ('object', 'array') and (lower(v::text) like lower($1)${also}))`;
 }
+const HOLDS = holding('to_jsonb(t)');
 
 /**
  * The ids standing for the people the text names ($1, in business $2): those
@@ -100,7 +97,9 @@ const PERSON_IDS = `with persons as (
 async function scan(admin, business, needle, exportRows) {
   let hits = null;
   await admin.transaction(async (execute) => {
-    await execute('set transaction read only');
+    // One snapshot for every query: a person committed after PERSON_IDS is in
+    // none of the rows, or in all of them with their memberships and logins.
+    await execute('set transaction isolation level repeatable read, read only');
     await execute('set local row_security = off');
     const [owner] = await execute(`select id from public.businesses where key = $1`, [business]);
     if (owner === undefined) return;
@@ -124,13 +123,15 @@ async function scan(admin, business, needle, exportRows) {
       if (!scoped) throw new Error(`find-copies: table ${name} has no business_id`);
       // oxlint-disable-next-line no-await-in-loop
       const rows = await execute(
-        `select t.ctid::text as address, to_jsonb(t) as row from public."${name}" t
+        `select t.ctid::text as address, to_jsonb(t) as row,
+                array(select c.key from jsonb_each(to_jsonb(t)) c
+                       where ${holding('c.value', ' or lower(v::text) like any($3::text[])')}) as columns
+           from public."${name}" t
           where t.business_id = $2
             and (${HOLDS} or to_jsonb(t)::text like any($3::text[]))`,
         [containing(needle), owner.id, ids.map((id) => `%${id}%`)],
       );
-      for (const { address, row } of rows) {
-        const columns = Object.keys(row).filter((column) => holds(row[column], needle, ids));
+      for (const { address, row, columns } of rows) {
         const found = { table: name, id: row.id ?? address, columns };
         if (exportRows) found.row = row;
         stdout.write(`${JSON.stringify(found)}\n`);
@@ -155,7 +156,7 @@ async function main() {
   const admin = connectAsAdmin(url, { source: 'privacy-find-copies' });
   // Rows are searched in their JSON form, so the text is escaped the same way
   // (a quote or backslash in a name is found as the row holds it).
-  const needle = JSON.stringify(options.text.toLowerCase()).slice(1, -1);
+  const needle = JSON.stringify(options.text).slice(1, -1);
   let hits = null;
   try {
     hits = await scan(admin, options.business, needle, options.exportRows);
