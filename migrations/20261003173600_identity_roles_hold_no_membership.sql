@@ -12,10 +12,10 @@
 -- run stops if one is left.
 --
 -- Both roles are the cluster's, shared by every database on it. Two databases
--- migrating at once can both find the same membership; the second's revoke
--- then waits for the first and fails with "tuple concurrently deleted"
--- (internal_error). That is caught, and the role judged again once the first
--- has committed, so a race costs neither run.
+-- migrating at once can both find the same membership: the second's revoke
+-- waits on the lock Postgres (16 on) takes on the granted role, then finds the
+-- membership gone and only warns, so a race costs neither run
+-- (tests/db/identity-roles-hold-no-membership.test.ts).
 
 do $$
 declare
@@ -27,11 +27,7 @@ begin
       from pg_auth_members m
      where m.member in ('ops_astro_backup'::regrole, 'ops_astro_lookup'::regrole)
   loop
-    begin
-      execute format('revoke %s from %s granted by %s', held.granted, held.member, held.grantor);
-    exception when internal_error then
-      null;
-    end;
+    execute format('revoke %s from %s granted by %s', held.granted, held.member, held.grantor);
   end loop;
   if exists (select from pg_auth_members
               where member in ('ops_astro_backup'::regrole, 'ops_astro_lookup'::regrole)) then
