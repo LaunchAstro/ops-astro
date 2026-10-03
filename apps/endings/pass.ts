@@ -76,7 +76,7 @@ function readAsWritten(raw: string): boolean {
   return scheme && host === url.host && !host.includes(',') && !authority.includes(',');
 }
 
-/** A pass's backlog, everything still owed, and how many rows it asked ended on a fault. */
+/** A pass's backlog, everything still owed, and how many rows it left owed on a fault. */
 export interface PassCount {
   readonly owed: number;
   readonly faults: number;
@@ -157,7 +157,8 @@ export async function retryFactorResets(
 
 /**
  * The endings loop's pass: the access endings, then the factor resets. A
- * fault on any step it asked fails the pass (`--once` exits 1).
+ * fault on any step it asked, or an ending's login lock not taken in time,
+ * fails the pass (`--once` exits 1).
  */
 export async function retryOwedSteps(
   admin: AdminConnection,

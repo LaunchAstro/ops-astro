@@ -58,8 +58,8 @@ export interface LoginProvider {
 /**
  * What one pass over a business's owed endings (or C59's resets) did, by
  * count only: `owed` is every one still owing a step after it, one another
- * retry holds included, and `faults` the ones this pass asked that ended on a
- * fault.
+ * retry holds included, and `faults` the ones this pass left owed on a fault
+ * (for an ending, its login's lock not taken in time included).
  */
 export interface SettleReport {
   readonly attempted: number;
@@ -221,9 +221,10 @@ export async function settleAccessEndings(
         return answer;
       });
     } catch (cause) {
-      // A lock not taken in time rolls back unstamped: the ending stays owed.
-      if ((cause as { readonly code?: unknown }).code === '55P03') continue;
-      throw cause;
+      // A lock not taken in time rolls back unstamped: the ending stays owed, a fault.
+      if ((cause as { readonly code?: unknown }).code !== '55P03') throw cause;
+      faults += 1;
+      continue;
     }
     if (done.sessions && done.login) settled += 1;
     if (done.fault !== null) faults += 1;

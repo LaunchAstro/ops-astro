@@ -8,8 +8,9 @@
 // provider's admin key, `SUPABASE_SERVICE_KEY`. Every
 // `ACCESS_ENDING_RETRY_SECONDS` it asks the provider for the steps each access
 // ending and each factor reset (C59) still owes; `--once` runs one pass and
-// exits 1 if that pass failed: it could not finish, or a step it asked ended
-// on a fault and is still owed.
+// exits 1 if that pass failed: it could not finish, or a step ended on a fault
+// (a provider fault, or an ending's login lock not taken in time) and is still
+// owed.
 // Nothing here prints a setting's value or a fault's words.
 
 import { connect, connectAsAdmin } from '../../packages/core-records/src/index.ts';
@@ -42,7 +43,7 @@ export async function main(
         const pass = await retryOwedSteps(owner, app, logins);
         process.stdout.write(`${JSON.stringify({ owed: pass.owed })}\n`);
         if (pass.faults > 0 && argv.includes('--once')) {
-          process.stderr.write('endings: a provider step failed and is still owed\n');
+          process.stderr.write('endings: a step failed and is still owed\n');
           return 1;
         }
       } catch {

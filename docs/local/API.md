@@ -3053,8 +3053,8 @@ The check is asked again under the login's subject lock
 stamped, so a login another business maps under that lock is either seen or
 mapped after the stamp. The wait for that lock is bounded
 (`ACCESS_ENDING_LOCK_WAIT_MS`, 5 seconds, as `lock_timeout`): an ending that
-cannot take it in time is left unstamped and owed for the next pass, never a
-fault. Under the lock the ending's stamps are read again with its row locked,
+cannot take it in time is left unstamped and owed for the next pass, and
+counted as a fault, so `--once` exits 1. Under the lock the ending's stamps are read again with its row locked,
 so a step another retry stamped while this one waited is never asked again. The calls carry the
 admin key, `SUPABASE_SERVICE_KEY` (hosted, the project's service key; with none
 set on a local stack, a five-minute `service_role` bearer signed with the local
@@ -3072,7 +3072,7 @@ and the shared check on the owner login only, and settles business by
 business on the application login under each one's tenancy
 (`retryAccessEndings`). Each pass prints its backlog, every ending and reset
 still owed, one another retry holds included. `pnpm endings --once` runs one
-pass and exits 1 if it could not finish or a step it asked ended on a fault, so
+pass and exits 1 if it could not finish or a step ended on a fault, so
 a scheduler sees the backlog. It refuses to start without `DATABASE_URL`,
 `DATABASE_ADMIN_URL`, `GOTRUE_URL` (https or loopback) and
 `SUPABASE_SERVICE_KEY`, and refuses a database setting postgres.js would not

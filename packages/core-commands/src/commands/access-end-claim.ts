@@ -10,7 +10,7 @@ import type { BusinessId, Database, TenantQuery } from '../../../core-records/sr
 
 /**
  * How long an ending waits for its login's lock (`lock_timeout`) before it
- * gives up unstamped and stays owed for the next pass, so a contended login
+ * gives up unstamped, a fault, and stays owed for the next pass, so a contended login
  * never holds a connection (the local server has one) for longer. With both
  * calls' time limits it stays inside the claim.
  */
