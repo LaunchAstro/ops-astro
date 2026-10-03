@@ -156,6 +156,7 @@ export type {
   TaskTimeView,
   TimeEntryView,
 } from './views.ts';
+export type { MapComponentView, MapView, MapViewResult, MapFrontierResult } from './views-map.ts';
 // AW-04's attribution and allowance answers, beside the other agent views.
 export type {
   AllowanceResult,

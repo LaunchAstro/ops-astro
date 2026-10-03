@@ -10,5 +10,13 @@ type Spec = Readonly<Record<string, 'id' | 'any'>>;
 
 export const WAYFINDER_OPERANDS: Readonly<Record<string, Spec>> = {
   'task.set_type': { ...TARGET, taskType: 'any' },
+  'map.revise': {
+    ...TARGET,
+    destination: 'any',
+    notes: 'any',
+    addFog: 'any',
+    addOutOfScope: 'any',
+    retire: 'any',
+  },
   'map.scope': { ...TARGET, client: 'any' },
 };

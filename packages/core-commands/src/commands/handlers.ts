@@ -67,6 +67,7 @@ import { endOwnSession } from './session-end.ts';
 import { dismissOwnTip, saveOwnPreference } from './preference-save.ts';
 import { stampOwnSeen } from './inbox-seen.ts';
 import { scopeMap, setTaskType } from './wayfinder.ts';
+import { reviseMap } from './wayfinder-revision.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
@@ -186,6 +187,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'budget.write_off': writeOffOnTask,
 
   'task.set_type': setTaskType,
+  'map.revise': reviseMap,
   'map.scope': scopeMap,
   // AW-04 (U10). A person sets the planning cap; no agent route reaches it.
   'budget.set_planning_cap': setPlanningCap,
