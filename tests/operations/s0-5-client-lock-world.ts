@@ -36,6 +36,15 @@ const NOT_CONTENT: Readonly<Record<string, string>> = {
   'conversation.message': "a message in the caller's own conversation",
   'conversation.rename': "the caller's own conversation's title",
   'conversation.set_scope': "the page the caller's own conversation is about",
+  // C71-D: a team conversation is a record beside tasks; its message names no task.
+  'chat.send_direct': 'a message in a team conversation, written with no task',
+  'chat.mark_read': "the reader's own member row in a team conversation",
+  // C71-G: a group is a team conversation too; its commands write it and its members.
+  'chat.start_group': 'a team group and its members, written with no task',
+  'chat.send_group': 'a message in a team group, written with no task',
+  'chat.rename_group': "a team group's own name",
+  'chat.change_members': "a team group's member rows",
+  'chat.leave': "the caller's own member row in a team group",
   'model.call':
     'the agent prefix only (the person path refuses it), under a lease: the task already has content',
   // SL11 (batch 3b): AW-11's two, agent-only like `model.call`.
