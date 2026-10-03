@@ -15,6 +15,7 @@ import {
   recordFactorEnrolled,
   recordFactorVerified,
 } from '../../packages/core-records/src/index.ts';
+import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import { ACCEPTANCE_ISSUER, serverUrl } from '../acceptance/world.ts';
 import { signBearer } from '../support/sign-in.ts';
 import { json } from './c58-sessions-world.ts';
@@ -230,6 +231,8 @@ C40('C40 review: the claim, at the records', () => {
     const sessionId = randomUUID();
     const held = gate();
     const claimedFirst = gate();
+    // A connection of its own: the app pool's one would queue the second claim, not race it.
+    const other = connect(world.db.appUrl, { source: 'runtime' });
     // The first claim inserts and holds its transaction open.
     const first = world.db.app.withBusiness(world.alpha, async (tx) => {
       const won = await claimProviderSession(tx, sessionId);
@@ -239,7 +242,7 @@ C40('C40 review: the claim, at the records', () => {
     });
     await claimedFirst.opened;
     // The second reaches its insert and waits on the first's uncommitted row.
-    const second = world.db.app.withBusiness(
+    const second = other.withBusiness(
       world.alpha,
       async (tx) => await claimProviderSession(tx, sessionId),
     );
@@ -248,6 +251,10 @@ C40('C40 review: the claim, at the records', () => {
     } finally {
       held.open();
     }
-    expect(await Promise.all([first, second])).toEqual([true, false]);
+    try {
+      expect(await Promise.all([first, second])).toEqual([true, false]);
+    } finally {
+      await other.close();
+    }
   });
 });
