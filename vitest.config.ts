@@ -62,10 +62,10 @@ export default defineConfig({
     ],
     // The browser proofs build `apps/web/dist`, which other suites rebuild (an
     // emptied folder mid-run), so they run alone: CI's `local checks` step with
-    // BROWSER_PROOFS=1. Sol's leaked-client proof and the role, staging-login
-    // and copy-finder proofs, kept byte for byte, open their world with no
-    // skip; without a database they are left out here, and the manifests run
-    // them where there is one.
+    // BROWSER_PROOFS=1. Sol's leaked-client proof and the role, staging-login,
+    // copy-finder, scan-login and backup revocation proofs, kept byte for byte,
+    // open their world with no skip; without a database they are left out
+    // here, and the manifests run them where there is one.
     exclude: [
       ...configDefaults.exclude,
       ...(process.env['BROWSER_PROOFS'] === '1' ? [] : ['tests/browser/**']),
@@ -76,6 +76,10 @@ export default defineConfig({
             'tests/review/role-repair-drops-inherited-access-proof.test.ts',
             'tests/review/staging-logins-*-proof.test.ts',
             'tests/operations/find-copies-values-only.proof.test.ts',
+            'tests/operations/scan-login-token-and-shared-login.proof.test.ts',
+            'tests/review/backup-read-part-appointment-proof.test.ts',
+            'tests/review/backup-restore-revocation-proof.test.ts',
+            'tests/review/ow066-export-revocation-proof.test.ts',
           ]),
       // CI's `local checks` runs the suites that start containers in a step of their own, after
       // the browser captures: a new network interface aborts a page load in flight.
