@@ -64,7 +64,10 @@ export function checkPageAllowed(raw: string, pool: CapturePool): Fenced<URL> {
   if (url === undefined || url.search !== '' || url.hash !== '') return notCatalogued;
   if (pool.agencyPages.includes(url.href)) return { ok: true, value: url };
   if (!pool.otherPages.includes(url.href)) return notCatalogued;
-  if (new Set(pool.closedPoolReviews).size < POOL_REVIEWS_REQUIRED) {
+  // A blank identity names no review, and spaces do not make a second one.
+  const reviews = new Set(pool.closedPoolReviews.map((review) => review.trim()));
+  reviews.delete('');
+  if (reviews.size < POOL_REVIEWS_REQUIRED) {
     return { ok: false, code: 'CAPTURE_POOL_REVIEWS_OPEN' };
   }
   return { ok: true, value: url };
