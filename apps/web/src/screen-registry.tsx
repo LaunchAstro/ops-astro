@@ -28,6 +28,7 @@ import { LegalScreen } from './screens/Legal.tsx';
 import { OperationsScreen } from './screens/Operations.tsx';
 import { Projects } from './screens/Projects.tsx';
 import { SettingsGeneralScreen } from './screens/SettingsGeneral.tsx';
+import { AuthenticatorSetup } from './screens/settings/authenticator.tsx';
 import { OwnSessions } from './screens/settings/sessions.tsx';
 import { TaskDetailScreen } from './screens/TaskDetail.tsx';
 import { TaskUnnamed } from './screens/task/Absent.tsx';
@@ -58,6 +59,8 @@ export interface ScreenContext<Id extends AuthenticatedRouteId = AuthenticatedRo
   readonly navigate: (path: string) => void;
   /** The whole address the screen is drawn at, query included: the page's, or a panel's place. */
   readonly address?: string;
+  /** True where the screen is drawn in a dock panel: the page's address is then not its to write. */
+  readonly inPanel?: boolean;
   /**
    * Opens a dock panel at a place by the gesture law (MP-3-4): false where
    * that panel has no tab, and absent where there is no dock.
@@ -80,6 +83,8 @@ export const SCREENS: {
         grantKey={context.grantKey}
         navigate={context.navigate}
         {...(context.taskPanel === undefined ? {} : { taskPanel: context.taskPanel })}
+        {...(context.address === undefined ? {} : { address: context.address })}
+        inPanel={context.inPanel === true}
       />
     </>
   ),
@@ -91,8 +96,8 @@ export const SCREENS: {
     />
   ),
   'agency:gallery': () => <Gallery />,
-  // Settings ▸ General, then the person's own sessions (C58), which post to
-  // their own account routes rather than to the settings commands.
+  // Settings ▸ General, then the person's own sessions (C58) and authenticator app (C59),
+  // which post to their own account routes rather than to the settings commands.
   'agency:settings': (context) => (
     <>
       <SettingsGeneralScreen
@@ -101,6 +106,7 @@ export const SCREENS: {
         storage={context.storage}
       />
       <OwnSessions client={context.client} grantKey={context.grantKey} />
+      <AuthenticatorSetup client={context.client} />
     </>
   ),
   'agency:inbox': (context) => (

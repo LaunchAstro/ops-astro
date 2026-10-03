@@ -24,8 +24,8 @@ import { readNamedSuites, splitNamedSuites, splitToFolder } from '../../scripts/
 const ROOT = join(import.meta.dirname, '../..');
 const SINGLE = 'tests/db/named-suites.json';
 const FOLDER = 'tests/db/named-suites';
-/** The commit the cut was made on: the last one that held the single file. */
-const CUT_PARENT = '423256029fd230222d0637b1306cd560d7081edb';
+/** The commit the cut was made from (main 3a90a92, #341): the last one that held the single file. */
+const CUT_PARENT = '3a90a92f8f4deab5bf64af2b8b830c911a6fbbb2';
 const realText = execFileSync('git', ['show', `${CUT_PARENT}:${SINGLE}`], {
   cwd: ROOT,
   encoding: 'utf8',
