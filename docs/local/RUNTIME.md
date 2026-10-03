@@ -820,8 +820,7 @@ abandoned. A hold the classifier settled at its calls' spend (`actual`, its
 attempt `abandoned`) is replaced the same way. The replacement holds the old
 hold less its calls' spend as it stands now, the step's budget that remains
 (`remainingOf`, `budget-stop.ts`): a call the classifier counted at its maximum
-and that came to less gives that room back, and one released unsent since
-gives none. A drop's resume sizes its new hold
+and that came to less gives that room back. A drop's resume sizes its new hold
 the same way (`resume`, `recovery/reconcile.ts`). When the spend used the whole
 hold, nothing is left to hold: the run stops at its budget and raises the
 AW-05 ask with the old hold as the ceiling and its spend (`stopAtSpentHold`),
@@ -996,9 +995,8 @@ release, and gives nothing back again (`broker-settle.ts`). A hold moves a call
 only out of `reserved` or `dispatched`; an answer that comes after the sweep
 held it still settles or releases it, since the answer is what happened, and
 gives nothing back. A call released
-unsent (a start refused, a sweep) gives nothing back; released after the
-settle counted it, it stays at its maximum in the replacement's size, as the
-envelope counts it (`spentNowOf`, `tests/broker/spend-closes-once.test.ts`).
+unsent (a start refused, a sweep) gives nothing back
+(`tests/broker/spend-closes-once.test.ts`).
 The sweep, a cancel, a lost
 authority, pickup's expired-lease replacement and every hand-back, a drop
 included, reach this one step (`tests/runtime/classifier-counts-spend.test.ts`).
