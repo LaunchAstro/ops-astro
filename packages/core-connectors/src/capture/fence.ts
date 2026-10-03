@@ -152,6 +152,28 @@ async function pinnedAddress(host: string, resolve: Resolver): Promise<Fenced<st
   return { ok: true, value: answers[0] ?? '' };
 }
 
+const UTF8_LABELS = new Set(
+  'unicode-1-1-utf-8 unicode11utf8 unicode20utf8 utf-8 utf8 x-unicode20utf8'.split(' '),
+);
+
+/** Whether an encoding label names UTF-8, as the Encoding standard reads a label. */
+export const isUtf8Label = (label: string): boolean =>
+  UTF8_LABELS.has(label.replaceAll(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/gu, '').toLowerCase());
+
+/**
+ * Whether a content type is `type` with no charset but UTF-8: another would have a browser read the
+ * body, and so the addresses in it, in another encoding. An odd charset parameter is refused too.
+ */
+function isUtf8Type(header: string, type: string): boolean {
+  const [media = '', ...parameters] = header.split(';');
+  const utf8 = (parameter: string) => {
+    const [name = '', ...value] = parameter.split('=');
+    if (name.trim().toLowerCase() !== 'charset') return true;
+    return isUtf8Label(value.join('=').replace(/^"(.*)"$/u, '$1'));
+  };
+  return media.trim().toLowerCase() === type && parameters.every((parameter) => utf8(parameter));
+}
+
 /** One page or stylesheet, fetched through the fence. Every refusal is recorded before it returns. */
 export function fencedFetch(start: string, options: FetchOptions): Promise<Fenced<Fetched>> {
   return follow(start, 0, options);
@@ -196,8 +218,8 @@ async function follow(
     return follow(new URL(location, url.href).href, hop + 1, options);
   }
   if (answer.status !== 200) return refuse('CAPTURE_STATUS_REFUSED');
-  const type = (answer.headers['content-type'] ?? '').split(';')[0]?.trim().toLowerCase();
-  if (type !== limits.type) return refuse('CAPTURE_BODY_MALFORMED');
+  if (!isUtf8Type(answer.headers['content-type'] ?? '', limits.type))
+    return refuse('CAPTURE_BODY_MALFORMED');
   let body: string;
   try {
     body = new TextDecoder('utf-8', { fatal: true }).decode(answer.body);

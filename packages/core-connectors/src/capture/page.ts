@@ -21,6 +21,7 @@ import {
   MAX_STYLESHEETS,
   SHEETS_AT_ONCE,
   fencedFetch,
+  isUtf8Label,
   limiter,
   type FenceCode,
   type FetchOptions,
@@ -86,15 +87,6 @@ interface Reading {
   readonly base?: string | undefined;
 }
 
-const isSpace = (char: string): boolean => /^[\t\n\f\r ]$/u.test(char);
-
-/** The first index at or after `from` whose character `stop` accepts, or the end. */
-function scan(text: string, from: number, stop: (char: string) => boolean): number {
-  let at = from;
-  while (at < text.length && !stop(text.charAt(at))) at += 1;
-  return at;
-}
-
 /** The page's tree, or undefined where it passes a bound. */
 function parsed(html: string): Tree.Document | undefined {
   let depth = 0;
@@ -156,26 +148,23 @@ function readDocument(html: string): Reading | FenceCode {
   return { text: text.join('').replaceAll(/\s+/gu, ' ').trim(), links, styles, base };
 }
 
-// What a stylesheet imports, read in one pass as CSS's tokenizer reads it: comments, strings,
-// url() and escapes are skipped whole, so an `@import` inside one is not followed.
-const isHex = (char: string): boolean => /^[0-9a-f]$/iu.test(char);
-const isNameChar = (char: string): boolean => /^[\w-]$/u.test(char) || char > '\u007F';
-
-/** Where a CSS name starting at `from` ends, escapes included. */
-function nameEnd(css: string, from: number): number {
-  let at = from;
-  for (;;) {
-    const char = css.charAt(at);
-    if (char === '\\' && at + 1 < css.length && css.charAt(at + 1) !== '\n') {
-      at += 2;
-      if (isHex(css.charAt(at - 1))) {
-        for (let digits = 1; digits < 6 && isHex(css.charAt(at)); digits += 1) at += 1;
-        if (isSpace(css.charAt(at))) at += 1;
-      }
-    } else if (char !== '' && isNameChar(char)) at += 1;
-    else return at;
-  }
-}
+// What a stylesheet imports, read a token at a time as CSS Syntax 3 reads it after its
+// preprocessing, so an `@import` in a comment, string or url() is not followed. Only space, tab and
+// line feed are whitespace. Every loop below steps over a run or an escape, so a read is linear.
+const ESCAPE = String.raw`\\(?:[0-9a-f]{1,6}[ \t\n]?|[^\n]|$)`;
+const STRING = (quote: string): string =>
+  String.raw`${quote}([^${quote}\\\n]*(?:(?:${ESCAPE}|\\\n)[^${quote}\\\n]*)*)(${quote})?`;
+const TOKEN = new RegExp(
+  String.raw`[ \t\n]+|${STRING('"')}|${STRING("'")}|([#@]?)((?:[\w\-\P{ASCII}]+|${ESCAPE})+)|[^]`,
+  'iuy',
+);
+// After `url(`: a quote ahead (a string follows), or an address and its `)`; with no `)` the url is
+// bad (a space inside, a quote, `(` or a non-printable code point), read on to its `)`.
+const URL_TAIL = new RegExp(
+  String.raw`[ \t\n]*(?:(?=["'])|((?:[^"'()\\ \t\n\0-\b\v\x0E-\x1F\x7F]+|${ESCAPE})*)[ \t\n]*` +
+    String.raw`(?:(\)|$)|[^)\\]*(?:(?:${ESCAPE}|\\)[^)\\]*)*\)?))`,
+  'iuy',
+);
 
 /** One CSS escape decoded; a line break after a backslash continues a string. */
 function unescaped(_all: string, hex?: string, line?: string, char = ''): string {
@@ -184,69 +173,56 @@ function unescaped(_all: string, hex?: string, line?: string, char = ''): string
   const bad = code === 0 || (code >= 0xd8_00 && code <= 0xdf_ff) || code > 0x10_ff_ff;
   return bad ? '\uFFFD' : String.fromCodePoint(code);
 }
-const cssText = (raw: string): string =>
-  raw.replaceAll(/\\(?:([0-9a-f]{1,6})[ \t\n]?|(\n)|([^]))/giu, unescaped);
+/** Escapes decoded; a backslash at the end of the sheet becomes `atEnd` (a string drops it). */
+const cssText = (raw: string, atEnd = ''): string =>
+  raw.replaceAll(/\\(?:([0-9a-f]{1,6})[ \t\n]?|(\n)|([^])|$)/giu, (all, hex, line, char) =>
+    unescaped(all, hex, line, char ?? atEnd),
+  );
 
-/** A token's text (undefined where CSS drops it) and where it ends. */
-type CssToken = { readonly text?: string | undefined; readonly end: number };
+/** A token's kind, its text (a string's or url's, undefined where CSS reads it bad) and its end. */
+type CssToken = { readonly kind: string; readonly text?: string | undefined; readonly end: number };
 
-/** A string token at `from`, its text (undefined if a line break ends it) and its end. */
-function cssString(css: string, from: number): CssToken {
-  const quote = css.charAt(from);
-  let at = from + 1;
-  while (at < css.length && css.charAt(at) !== quote && css.charAt(at) !== '\n')
-    at += css.charAt(at) === '\\' ? 2 : 1;
-  if (css.charAt(at) === '\n') return { end: at };
-  return { text: cssText(css.slice(from + 1, Math.min(at, css.length))), end: at + 1 };
+/** The token at `at`: space, a comment, a string, a url, `url(` before a string, `@name`, other. */
+function cssToken(css: string, at: number): CssToken {
+  if (css.startsWith('/*', at)) {
+    const close = css.indexOf('*/', at + 2);
+    return { kind: ' ', end: close === -1 ? css.length : close + 2 };
+  }
+  TOKEN.lastIndex = at;
+  const [all = '', double, closed, single, closedSingle, sign, name] = TOKEN.exec(css) ?? [];
+  const end = at + all.length;
+  if (double !== undefined || single !== undefined) {
+    const bad = (closed ?? closedSingle) === undefined && end < css.length;
+    return { kind: 'string', text: bad ? undefined : cssText(double ?? single ?? ''), end };
+  }
+  if (name === undefined) return { kind: /^[ \t\n]/u.test(all) ? ' ' : 'other', end };
+  const word = cssText(name, '\uFFFD').toLowerCase();
+  if (sign === '@') return { kind: `@${word}`, end };
+  if (sign === '#' || word !== 'url' || css.charAt(end) !== '(') return { kind: 'name', end };
+  URL_TAIL.lastIndex = end + 1;
+  const [tail = '', address, close] = URL_TAIL.exec(css) ?? [];
+  if (address === undefined) return { kind: 'url(', end: end + 1 };
+  const text = close === undefined ? undefined : cssText(address, '\uFFFD');
+  return { kind: 'url', text, end: end + 1 + tail.length };
 }
 
-/** After `url(` at `from`: an unquoted address and its end, or undefined where a string follows. */
-function cssUrl(css: string, from: number): CssToken | undefined {
-  const start = scan(css, from, (char) => !isSpace(char));
-  if (css.charAt(start) === '"' || css.charAt(start) === "'") return undefined;
-  let at = start;
-  while (at < css.length && css.charAt(at) !== ')') at += css.charAt(at) === '\\' ? 2 : 1;
-  const raw = css.slice(start, at).trimEnd();
-  return { text: /["'(\s]/u.test(raw) ? undefined : cssText(raw), end: at + 1 };
-}
-
-/** Where a comment opening at `from` ends: past its close, or at the end of the sheet. */
-function commentEnd(css: string, from: number): number {
-  const close = css.indexOf('*/', from + 2);
-  return close === -1 ? css.length : close + 2;
-}
-
-/** The address an `@import` whose name ends at `from` names, if any, and where it ends. */
-function importAt(css: string, from: number): CssToken {
-  let at = scan(css, from, (char) => !isSpace(char));
-  while (css.startsWith('/*', at)) at = scan(css, commentEnd(css, at), (char) => !isSpace(char));
-  const char = css.charAt(at);
-  if (char === '"' || char === "'") return cssString(css, at);
-  const end = nameEnd(css, at);
-  if (cssText(css.slice(at, end)).toLowerCase() !== 'url' || css.charAt(end) !== '(')
-    return { end: Math.max(end, at + 1) };
-  const open = scan(css, end + 1, (next) => !isSpace(next));
-  return cssUrl(css, end + 1) ?? cssString(css, open);
-}
-
-/** Every address the sheet's `@import` rules name, as written. */
-function importsOf(source: string): string[] {
-  const css = source.replaceAll(/\r\n?|\f/gu, '\n');
-  const found: string[] = [];
-  let at = 0;
-  while (at < css.length) {
-    const char = css.charAt(at);
-    const end = char === '@' ? nameEnd(css, at + 1) : nameEnd(css, at);
-    const name = cssText(css.slice(char === '@' ? at + 1 : at, end)).toLowerCase();
-    if (css.startsWith('/*', at)) at = commentEnd(css, at);
-    else if (char === '"' || char === "'") at = cssString(css, at).end;
-    else if (char === '@' && name === 'import') {
-      const named = importAt(css, end);
-      if (named.text !== undefined) found.push(named.text);
-      at = named.end;
-    } else if (char !== '@' && name === 'url' && css.charAt(end) === '(')
-      at = cssUrl(css, end + 1)?.end ?? end + 1;
-    else at = Math.max(end, at + 1);
+/** Every address the sheet's `@import` rules name; undefined for one CSS cannot read. */
+function importsOf(source: string): (string | undefined)[] {
+  const css = source.replaceAll(/\r\n?|\f/gu, '\n').replaceAll('\0', '\uFFFD');
+  const next = (from: number): CssToken => {
+    let token = cssToken(css, from);
+    while (token.kind === ' ') token = cssToken(css, token.end);
+    return token;
+  };
+  const found: (string | undefined)[] = [];
+  for (let at = 0; at < css.length;) {
+    let token = cssToken(css, at);
+    if (token.kind === '@import') {
+      token = next(token.end);
+      if (token.kind === 'url(') token = next(token.end);
+      found.push(token.kind === 'string' || token.kind === 'url' ? token.text : undefined);
+    }
+    at = token.end;
   }
   return found;
 }
@@ -254,8 +230,11 @@ function importsOf(source: string): string[] {
 /** Rounds of `@import` followed past the sheets the page names; one more is refused as oversized. */
 const IMPORT_DEPTH = 3;
 
-const resolved = (href: string, from: string): string | undefined =>
-  URL.canParse(href, from) ? new URL(href, from).href : undefined;
+const resolved = (href: string | undefined, from: string): string | undefined =>
+  href !== undefined && URL.canParse(href, from) ? new URL(href, from).href : undefined;
+
+/** The encoding a sheet declares as CSS reads it: a `@charset` rule at its very start. */
+const declared = (css: string): string => /^@charset "([^"]*)";/u.exec(css)?.[1] ?? 'utf-8';
 
 /** The digest of every sheet the page serves: inline, linked, and imported by either. */
 async function readSheets(
@@ -287,8 +266,10 @@ async function readSheets(
     wanted = [];
     for (const [index, sheet] of fetched.entries()) {
       if (!sheet.ok) return sheet;
+      if (!isUtf8Label(declared(sheet.value.body)))
+        return { ok: false, code: 'CAPTURE_BODY_MALFORMED' };
       stylesheets[fresh[index] ?? ''] = digest(sheet.value.body);
-      wanted.push(...importsOf(sheet.value.body).map((href) => resolved(href, sheet.value.url)));
+      for (const href of importsOf(sheet.value.body)) wanted.push(resolved(href, sheet.value.url));
     }
   }
   return { ok: true, value: stylesheets };

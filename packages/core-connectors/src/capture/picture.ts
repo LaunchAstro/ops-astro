@@ -129,7 +129,8 @@ function pictureRoute(page: string, options: CaptureOptions, state: RouteState):
         state.failed ??= sheet.code;
         return null;
       }
-      return { status: 200, headers: { 'content-type': 'text/css' }, body: sheet.value.body };
+      const headers = { 'content-type': 'text/css; charset=utf-8' };
+      return { status: 200, headers, body: sheet.value.body };
     }
     record({ code: 'CAPTURE_KIND_REFUSED', hop: 0, origin: originOf(request.url) });
     return null;
