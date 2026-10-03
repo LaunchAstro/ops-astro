@@ -37,4 +37,27 @@ export type ChatRequest<E> =
       readonly conversationId: string;
       /** The newest message's time the reader saw, as ISO text. */
       readonly upTo: string;
-    } & E);
+    } & E)
+  // Group conversations (C71-G): the lists and the name are checked by value.
+  | ({
+      readonly command: 'chat.start_group';
+      readonly name: unknown;
+      readonly members: unknown;
+    } & E)
+  | ({
+      readonly command: 'chat.send_group';
+      readonly conversationId: string;
+      readonly body: string;
+    } & E)
+  | ({
+      readonly command: 'chat.rename_group';
+      readonly conversationId: string;
+      readonly name: unknown;
+    } & E)
+  | ({
+      readonly command: 'chat.change_members';
+      readonly conversationId: string;
+      readonly add?: unknown;
+      readonly remove?: unknown;
+    } & E)
+  | ({ readonly command: 'chat.leave'; readonly conversationId: string } & E);

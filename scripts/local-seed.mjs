@@ -145,6 +145,9 @@ const GRANTS_BY_ROLE = {
     // Team conversations (C71-D): `chat:comment`, an agency member's key;
     // within a conversation the query holds it to its members.
     ['chat', 'comment'],
+    // Group conversations (C71-G): `chat:manage`, a group's creator's and the
+    // owner's and administrators', renames one and changes its members.
+    ['chat', 'manage'],
   ],
   member: [
     ['task', 'read'],

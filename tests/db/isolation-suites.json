@@ -185,6 +185,7 @@
     "tests/web/mp-3-1-isolation-api.test.tsx",
     "tests/web/dock-door-isolation-api.test.tsx",
     "tests/api/preference-write-client-user.test.ts",
-    "tests/api/c71-d-isolation.test.ts"
+    "tests/api/c71-d-isolation.test.ts",
+    "tests/api/c71-g-isolation.test.ts"
   ]
 }
