@@ -28,7 +28,7 @@ import {
   type Database,
   type TenantQuery,
 } from '../../core-records/src/index.ts';
-import type { ModelOperation } from '../../core-connectors/src/index.ts';
+import type { ModelOperation, SenderReport } from '../../core-connectors/src/index.ts';
 import type { Broker, BrokerRoute, ProviderAdapter } from './broker-types.ts';
 import type { CustodyOutcome } from './custody.ts';
 
@@ -39,9 +39,12 @@ export const EMAIL_OPERATION = 'email.send';
 export interface MailSettings {
   readonly appOrigin: string;
   readonly from: string;
+  /** The sending subdomain's setup check (`checkSender`): nothing is sent until it verified. */
+  readonly sender: SenderReport;
 }
 
 export type EmailRefusal =
+  | 'SENDER_NOT_VERIFIED'
   | 'OPERATION_NOT_CATALOGUED'
   | 'ITEM_NOT_OPEN'
   | 'ITEM_WITHHELD'
@@ -65,6 +68,11 @@ export type EmailResult =
  * have sent, so it is never followed by a second send (the broker's rule).
  */
 const NOTHING_SENT: ReadonlySet<string> = new Set(['refused', 'unlisted', 'bad_path', 'forbidden']);
+
+/** RFC 5322's dot-atom in ASCII: a from's local part, never a display name, space or line break. */
+const DOT_ATOM = /^[\w!#$%&'*+/=?^`{|}~-]+(?:\.[\w!#$%&'*+/=?^`{|}~-]+)*$/u;
+/** Printable ASCII: a domain that lower-cases to the verified subdomain only if it already is one. */
+const ASCII = /^[!-~]+$/u;
 
 /** Emails in flight for this business: items whose last email observation is still `asked`. */
 async function emailsInFlight(tx: TenantQuery): Promise<number> {
@@ -165,6 +173,17 @@ export async function sendInboxEmail(
   broker: Broker,
   mail: MailSettings,
 ): Promise<EmailResult> {
+  // The report vouches for one subdomain: mail from anything but one bare address on it is
+  // not verified, and only a report that says it is not from the fake source (`mock`) counts.
+  const [local = '', domain = '', ...rest] = mail.from.split('@');
+  const onSubdomain =
+    DOT_ATOM.test(local) &&
+    rest.length === 0 &&
+    ASCII.test(domain) &&
+    domain.toLowerCase() === mail.sender.subdomain.toLowerCase();
+  if (!mail.sender.verified || mail.sender.mock !== false || !onSubdomain) {
+    return { ok: false, code: 'SENDER_NOT_VERIFIED' };
+  }
   const found = routed(broker);
   if (found === undefined) return { ok: false, code: 'OPERATION_NOT_CATALOGUED' };
   const { operation, route, adapter } = found;
