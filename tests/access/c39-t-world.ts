@@ -6,18 +6,29 @@
 // In alpha: an administrator holding `access:share` on the whole business, a
 // second one, a member holding none, and a person holding `access:share` on
 // one client only. In bravo: its own administrator.
+//
+// With `auth` (piece P2) the world's custody also holds the login provider's
+// service key for the `auth` destination, a stand-in for the provider's admin
+// route on loopback (`c39-t-auth-fake.ts`), as a deployment with the login
+// provider configured has. The broker catalogues no operation of it: an
+// invitation's send never asks the provider, and the cases show that.
 
-import { randomUUID } from 'node:crypto';
-import { beforeAll } from 'vitest';
+import { randomBytes, randomUUID } from 'node:crypto';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterAll, beforeAll } from 'vitest';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import type { CommandResult } from '../../packages/core-commands/src/commands/register-store.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import {
   sendInvitation,
+  startCustody,
   type InvitationSendResult,
 } from '../../packages/core-custody/src/index.ts';
 import { enrol, grantTo, type Member } from '../commands/fixture.ts';
 import { MAIL, useEmailWorld, w } from '../broker/email-world.ts';
+import { startFakeAuth, type FakeAuth } from './c39-t-auth-fake.ts';
 
 export { MAIL, w };
 export { noDatabase } from '../broker/email-world.ts';
@@ -34,10 +45,37 @@ export interface InvitationCast {
 
 export const c = {} as InvitationCast;
 
-/** The email world, then the cast. */
-export function useInvitationWorld(): void {
+/** The login provider's stand-in and the made-up service key custody holds for it. */
+export const auth = {} as { fake: FakeAuth; key: string; folder: string };
+
+/** Custody again, holding the mail key and the service key, and the broker over it. */
+async function withAuth(): Promise<void> {
+  auth.fake = await startFakeAuth();
+  auth.folder = mkdtempSync(join(tmpdir(), 'c39t-auth-'));
+  auth.key = `servicekey-${randomBytes(18).toString('hex')}`;
+  const credentialsFile = join(auth.folder, 'credentials.json');
+  const held = { kind: 'api_key', header: 'authorization' };
+  const credentials = [
+    { ref: 'email_key', destination: 'email', account: 'mail-1', value: w.key, ...held },
+    { ref: 'auth_key', destination: 'auth', account: 'auth-1', value: auth.key, ...held },
+  ];
+  writeFileSync(credentialsFile, JSON.stringify(credentials), { mode: 0o600 });
+  await w.custody.stop();
+  w.custody = await startCustody({
+    credentialsFile,
+    destinations: [
+      { key: 'email', origin: w.provider.origin },
+      { key: 'auth', origin: auth.fake.origin },
+    ],
+  });
+  w.broker = { ...w.broker, custody: w.custody };
+}
+
+/** The email world, then the cast; with `auth`, the login provider too. */
+export function useInvitationWorld(options: { readonly auth?: boolean } = {}): void {
   useEmailWorld();
   beforeAll(async () => {
+    if (options.auth === true) await withAuth();
     c.admin = await enrol(w.db.app, w.alpha, 'Avery Admin');
     c.second = await enrol(w.db.app, w.alpha, 'Sam Second');
     c.member = await enrol(w.db.app, w.alpha, 'Mo Member');
@@ -54,6 +92,10 @@ export function useInvitationWorld(): void {
       await grantTo(tx, c.bravoAdmin, 'share', undefined, false, 'access');
     });
   }, 120_000);
+  afterAll(async () => {
+    await auth.fake?.close();
+    if (auth.folder !== undefined) rmSync(auth.folder, { recursive: true, force: true });
+  });
 }
 
 /** Which business a cast member belongs to. */
