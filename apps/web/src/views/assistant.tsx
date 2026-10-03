@@ -293,7 +293,7 @@ export function AssistantView(props: AssistantViewProps): ReactElement {
       }}
       onAddPage={writes.addPage}
       onSend={sender.send}
-      onAccept={(key, id) => void acceptPlanCard(props.client, store, { key, id })}
+      onAccept={(key, id) => void acceptPlanCard(props, store, { key, id })}
       onClose={props.onClose}
     />
   );
