@@ -10,7 +10,8 @@
 //      both expiries on the clock read after its locks. It runs last: it ends
 //      the world's delegation.
 //   3. A trashed task takes no correction.
-//   4. The draft runner's cancel (`live-correction-lows-cancel.ts`).
+//   4. The draft runner's cancel (`live-correction-lows-cancel.ts`), and
+//      round 3's finding 2 there: a cancel during the read-back keeps the receipt.
 //
 // Registered through `tests/tenancy/restricted-calls.test.ts`, a named suite,
 // which calls `describeLiveCorrectionLowsRoundTwo` after round 1.
@@ -41,6 +42,7 @@ import {
   taskOf,
 } from './live-correction-lows.ts';
 import {
+  cancelDuringReadBack,
   findingFourAllowed,
   findingFourRefused,
   observedPublish,
@@ -226,6 +228,10 @@ export function describeLiveCorrectionLowsRoundTwo(): void {
     describe('finding 3: a trashed task takes no correction', findingThree);
     describe('finding 4: the runner’s cancel, allowed', findingFourAllowed);
     describe('finding 4: every other move to or from cancelled, refused', findingFourRefused);
+    describe(
+      'round 3 finding 2: a cancel during the read-back keeps the receipt',
+      cancelDuringReadBack,
+    );
     // Last: its revocation ends the world's delegation.
     describe('finding 2: the receipt write judges expiry after its locks', findingTwo);
   });
