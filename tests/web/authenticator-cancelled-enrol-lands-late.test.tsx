@@ -59,7 +59,8 @@ afterAll(async () => {
   await closeRoutes();
 });
 
-it('Sol proof, criterion 5: a cancelled enrolment cannot invalidate the displayed replacement when it finishes later', async () => {
+// Sol PR-345.2 criterion 5, retitled by what it proves; its body is Sol's.
+it('a cancelled enrolment cannot invalidate the displayed replacement when it finishes later', async () => {
   const token = await fresh(clientD);
   let completed = 0;
   const client = new OperationsClient({

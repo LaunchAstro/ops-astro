@@ -7,7 +7,8 @@ import { SessionStore } from '../../apps/web/src/session/token.ts';
 import { mount } from '../surfaces/mount.tsx';
 import { json, settle, storage } from './mp-2-1-support.tsx';
 
-it('Sol proof, criterion 1: the browser entry StrictMode completes a good first code and drops the secret', async () => {
+// Sol PR-345.1 criterion 1, retitled by what it proves; its body is Sol's.
+it('the browser entry StrictMode completes a good first code and drops the secret', async () => {
   const store = storage();
   const sessions = new SessionStore(store.like);
   sessions.set({ businessKey: 'alpha', email: 'mia@alpha.local', sessionId: 'sid-old' });

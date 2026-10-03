@@ -14,7 +14,8 @@ afterEach(async () => {
   await Promise.all(views.splice(0).map((view) => view.unmount()));
 });
 
-it('Sol proof, criterion 3: reloading a pre-cookie session removes its script-readable bearer', () => {
+// Sol OW-073.1 criterion 3, retitled by what it proves; its body is Sol's.
+it('reloading a pre-cookie session removes its script-readable bearer', () => {
   const bearer = 'ops-astro-test-only-legacy-bearer';
   const tab = storage({
     'ops-astro.session': JSON.stringify({
@@ -105,6 +106,7 @@ async function checkingMoneyChange() {
   return { ...opened, writes, finish };
 }
 
+// Sol OW-073.2 control for criterion 4, its title as Sol wrote it; its body is Sol's.
 it('control: accepting the delayed code resends the money change on the adopted session', async () => {
   const { writes, finish, sessions } = await checkingMoneyChange();
   await finish();
@@ -115,7 +117,8 @@ it('control: accepting the delayed code resends the money change on the adopted 
   ]);
 });
 
-it('Sol proof, criterion 4: cancelling while a factor check is in flight prevents the money resend', async () => {
+// Sol OW-073.2 criterion 4, retitled by what it proves; its body is Sol's.
+it('cancelling while a factor check is in flight prevents the money resend', async () => {
   const { view, writes, finish } = await checkingMoneyChange();
   const cancel = view.host.querySelector<HTMLButtonElement>('[data-step-up="cancel"]');
   expect(cancel?.disabled).toBe(false);
