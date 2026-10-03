@@ -62,7 +62,7 @@ import { parseBreachNotices, readBreachNotices, readOperations } from './operati
 import { countOwed, readInbox, readUnattendedInbox } from './inbox.ts';
 import { readHarnessTrigger } from './harness-trigger.ts';
 import { invalid, isFieldMap } from '../commands/operands.ts';
-import { readClientFacts } from '../commands/task-content.ts';
+import { readClientFacts, withBoardClients } from '../commands/task-content.ts';
 import { isKnownTimeZone, readLedger } from './ledger.ts';
 
 export type ReadName = ReadRequest['read'];
@@ -458,15 +458,12 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       // A named board is itself a task: one the caller cannot read is refused
       // as `task.read` refuses it, in-tenant (I05).
       if (unreadable(operands.board)) return refuseScope();
-      // The caller's decide reach, for the Review mode's rows (MP-5-12). It
-      // only marks rows already served under the read scope above.
-      const { tasks, changedAt } = await readBoardStamped(
+      const { tasks, changedAt } = await boardOf(
         tx,
+        session,
         spine.taskTypeId,
         operands.board,
-        scope.business ? null : scope.records,
-        await decideReach(tx, session),
-        session.personId,
+        scope,
       );
       // The withheld count goes only to a member holding task:read on the
       // whole collection, whose grant reaches every task, so it is 0 until a
@@ -949,6 +946,30 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
 
 async function holdsAnyGrant(tx: TenantQuery, session: Session): Promise<boolean> {
   return (await readCapabilities(tx, session)).grants.length > 0;
+}
+
+/**
+ * The board's rows in the caller's read scope and the newest change among them
+ * (MP-5-7), each row with its client where the caller reaches it, as `task.read`
+ * sends it (the Clients row door). The caller's decide reach marks the Review
+ * mode's rows (MP-5-12); it only marks rows already served under the read scope.
+ */
+async function boardOf(
+  tx: TenantQuery,
+  session: Session,
+  taskTypeId: string,
+  board: string | null,
+  scope: Awaited<ReturnType<typeof readableScope>>,
+) {
+  const { tasks, changedAt } = await readBoardStamped(
+    tx,
+    taskTypeId,
+    board,
+    scope.business ? null : scope.records,
+    await decideReach(tx, session),
+    session.personId,
+  );
+  return { tasks: await withBoardClients(tx, tasks, subjectsOf(session)), changedAt };
 }
 
 /** Whether `id` names a live task in the caller's business: `task.move`'s own check. */

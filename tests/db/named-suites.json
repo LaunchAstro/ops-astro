@@ -291,7 +291,8 @@
     "REVIEW-BATCH-2 #313 batch 3b adds review-3b-1-planning-hold-released (a failed planning reply held liability_unknown is released by the pass or a person's outcome, and the planning allowance gets its hold back) as conformance; its fix adds planfix-3b-1-planning-outcome (a planning reply whose operation declares a lookup is released by the pass alone; another person of the business and another business's owner naming the owner's conversation and call are refused NOT_FOUND with nothing written; the owner's outcome settles it once).",
     "SEC3B F1 (batch 3b security review) adds sec3b-1-ended-owner-planning-release (a planning reply held unknown whose owner's access has since ended is released by the provider phase in the owner's name, as their person actor, and the same pass goes on to release the next business's held reply) as conformance.",
     "WAYFINDER (PORT-B P14, WF-1 from b0/SL14) names tests/wayfinder/wf-1.test.ts (the map as a task, typed tickets, the summary read model kept in the writing transaction, client scope and the client-surface refusals, the retype owner rule, a refusal per key and the three isolation crossings) as an invariant. world.ts is a harness, not a suite.",
-    "WAYFINDER (PORT-B P15, WF-1 reads from b0/SL14) widens wf-1 to the map's components, versions and view (map.revise, map.view) and names tests/wayfinder/wf-1-cli.test.ts (each WF-1 command through the generated client over the composed API, the same result and refusal as the envelope) as an invariant."
+    "WAYFINDER (PORT-B P15, WF-1 reads from b0/SL14) widens wf-1 to the map's components, versions and view (map.revise, map.view) and names tests/wayfinder/wf-1-cli.test.ts (each WF-1 command through the generated client over the composed API, the same result and refusal as the envelope) as an invariant.",
+    "SL06 (Clients row door) adds board-row-client (each task.board row carries its client by id and name only where the reader's grants reach it, read back against task.read and client.list; the crossings: another business names none of alpha's clients, a reader of client A is never sent B, a task holder without the client reads null beside clientSet, the agent under a live delegation is refused)."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -762,6 +763,7 @@
     "tests/reads/mp-5-8-board-rank-steps.test.ts",
     "tests/reads/mp-5-8-board-actual.test.ts",
     "tests/reads/mp-5-8-board-estimate.test.ts",
+    "tests/reads/board-row-client.test.ts",
     "tests/commands/task-set-state.test.ts",
     "tests/commands/task-set-state-agent.test.ts",
     "tests/commands/task-set-category.test.ts",
