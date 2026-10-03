@@ -180,9 +180,8 @@ export async function follow(
  * The deliveries of one stream, one at a time. Signals that arrive for a task
  * while one is pending merge into it, the strongest kept; a presence change
  * rides with it. Every delivery asks again first, and writes nothing. The
- * seat follows the bearer: asked again before each delivery, it is held for
- * the person the bearer resolves to now, under the same id, and for no one
- * when it resolves to no one.
+ * seat, under one id, holds on each task the person the bearer resolves to
+ * once that task's recheck passed; a new person leaves every seat to recheck.
  */
 class Follower {
   readonly #stops = new Map<Watch, () => void>();
@@ -199,10 +198,7 @@ class Follower {
     this.#stream = stream;
     this.#asks = asks;
     this.#seated = seated;
-    if (seated !== undefined) {
-      const { personId, name, side } = seated.session;
-      this.#sitter = { personId, name, side };
-    }
+    this.#sitter = seated?.session;
   }
 
   watch(watch: Watch, topics: LiveTopics, stop: () => Promise<void>): void {
@@ -255,17 +251,19 @@ class Follower {
     this.#leaves.delete(watch);
   }
 
-  /** The seat held again for whoever the bearer resolves to now, when that changed. */
-  async #reseat(): Promise<void> {
+  /** `watch` passed its recheck: seated as before, or every seat left for a new person. */
+  async #reseat(watch: Watch): Promise<void> {
     if (this.#seated === undefined) return;
     const now = await this.#seated.sitter();
     const was = this.#sitter;
-    if (now?.personId === was?.personId && now?.name === was?.name && now?.side === was?.side)
+    if (now?.personId === was?.personId && now?.name === was?.name && now?.side === was?.side) {
+      if (!this.#leaves.has(watch)) this.#sit(watch);
       return;
+    }
     for (const leave of this.#leaves.values()) leave();
     this.#leaves.clear();
     this.#sitter = now;
-    for (const watch of this.#stops.keys()) this.#sit(watch);
+    this.checkAll();
   }
 
   #queue(watch: Watch): void {
@@ -285,7 +283,7 @@ class Follower {
       await this.#close(watch);
       return;
     }
-    await this.#reseat();
+    await this.#reseat(watch);
     if (signal !== undefined && signal !== 'check') {
       await this.#stream.writeSSE({ event: signal, data: watch.label });
     }
