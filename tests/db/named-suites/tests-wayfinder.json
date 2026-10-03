@@ -1,0 +1,7 @@
+{
+  "comment": [
+    "WAYFINDER (PORT-B P14, WF-1 from b0/SL14) names tests/wayfinder/wf-1.test.ts (the map as a task, typed tickets, the summary read model kept in the writing transaction, client scope and the client-surface refusals, the retype owner rule, a refusal per key and the three isolation crossings) as an invariant. world.ts is a harness, not a suite.",
+    "WAYFINDER (PORT-B P15, WF-1 reads from b0/SL14) widens wf-1 to the map's components, versions and view (map.revise, map.view) and names tests/wayfinder/wf-1-cli.test.ts (each WF-1 command through the generated client over the composed API, the same result and refusal as the envelope) as an invariant."
+  ],
+  "invariant": ["tests/wayfinder/wf-1.test.ts", "tests/wayfinder/wf-1-cli.test.ts"]
+}
