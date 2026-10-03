@@ -12,7 +12,7 @@
 // decision or an incident is never silenced, which the server refuses too
 // (`notifications.set_channel`, inbox-escalation-settings.test.ts).
 
-import { useCallback, useEffect, useState, type ReactElement, type ReactNode } from 'react';
+import { useEffect, useState, type ReactElement, type ReactNode } from 'react';
 import { NotConnected, Segmented, Switch } from '@launchastro/ui';
 import { dismissedTipCount } from '../../../../../packages/core-wire/src/index.ts';
 import { applyAppearance, isAppearance, type Appearance } from '../../appearance.ts';
@@ -71,33 +71,40 @@ function answered(before: Held, of: string, read: Preferences, newer: (key: stri
   return { of, value: { ...read, ...Object.fromEntries(kept) } };
 }
 
+/**
+ * A refused save's reread puts the refused value back (the page's theme, for
+ * Appearance), told the answer and which keys a newer save has moved on since.
+ */
+type Restore = (read: Preferences, newer: (key: string) => boolean) => void;
+
 /** The person's own preferences: read once per reader, changed at once, then saved. */
 function usePreferences(client: OperationsClient, grantKey: string) {
   const [held, setHeld] = useState<Held>(null);
   // A refusal is said to one reader, as `held` is held for one.
   const [said, setSaid] = useState<{ readonly of: string; readonly text: string } | null>(null);
 
-  const reread = useCallback(() => {
+  const reread = (restore?: Restore) => {
     let current = true;
     const mark = savesSoFar(client);
     void client.read<{ readonly preferences?: unknown }>('preference.read', {}).then((answer) => {
       if (!current) return answer;
       const preferences = 'value' in answer ? answer.value.preferences : undefined;
       const newer = (key: string): boolean => savedSince(client, key, mark);
-      if (typeof preferences === 'object' && preferences !== null)
+      if (typeof preferences === 'object' && preferences !== null) {
         setHeld((before) => answered(before, grantKey, preferences as Preferences, newer));
-      else if (isRefusal(answer)) setSaid({ of: grantKey, text: describeRefusal(answer) });
+        restore?.(preferences as Preferences, newer);
+      } else if (isRefusal(answer)) setSaid({ of: grantKey, text: describeRefusal(answer) });
       else setSaid({ of: grantKey, text: 'Your preferences could not be read.' });
       return answer;
     });
     return () => {
       current = false;
     };
-  }, [client, grantKey]);
+  };
 
-  useEffect(reread, [reread]);
+  useEffect(() => reread(), [client, grantKey]);
 
-  const save = (preference: string, value: unknown): void => {
+  const save = (preference: string, value: unknown, back?: (stored: unknown) => void): void => {
     // Only this reader's own preferences take the change: another reader's,
     // still held while this one's read is pending, are not carried over.
     setHeld((before) => {
@@ -109,7 +116,9 @@ function usePreferences(client: OperationsClient, grantKey: string) {
       const failed = describeFailure(result);
       if (failed !== null) {
         setSaid({ of: grantKey, text: failed });
-        reread();
+        reread((read, newer) => {
+          if (!newer(preference)) back?.(read[preference]);
+        });
       }
       return result;
     });
@@ -268,7 +277,10 @@ export function YouGroups(props: {
           appearance={isAppearance(stored) ? stored : 'system'}
           choose={(value) => {
             applyAppearance(value, props.storage, true);
-            save('appearance', value);
+            // Refused, the page and the tab's copy go back to what is stored.
+            save('appearance', value, (back) => {
+              applyAppearance(isAppearance(back) ? back : 'system', props.storage);
+            });
           }}
         />
         <TipsRow preferences={preferences} save={save} />

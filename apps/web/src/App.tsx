@@ -228,7 +228,16 @@ export function App(props: AppProps): ReactElement {
     dockScreen === null || match === null ? null : (
       <AssistantView key={grantKey} client={client} route={match.id} here={here} entry={null} />
     );
-  return (
+  // Around the shell, not the page alone: a money write in a dock panel (the
+  // Settings panel's planning cap) gets the same step-up as the page's.
+  const stepped = (shell: ReactElement): ReactElement => (
+    <StepUpContext.Provider value={session === null ? null : stepUp}>
+      <SignInAgainContext.Provider value={session === null ? null : signInAgain}>
+        {shell}
+      </SignInAgainContext.Provider>
+    </StepUpContext.Provider>
+  );
+  return stepped(
     <SignedInName value={personName}>
       <PageFreshnessProvider>
         <PagePresenceProvider>
@@ -267,11 +276,7 @@ export function App(props: AppProps): ReactElement {
             title={title}
             {...shellDock(docked, dockScreen, agent)}
           >
-            <StepUpContext.Provider value={session === null ? null : stepUp}>
-              <SignInAgainContext.Provider value={session === null ? null : signInAgain}>
-                <FaceProvider face={face}>{content}</FaceProvider>
-              </SignInAgainContext.Provider>
-            </StepUpContext.Provider>
+            <FaceProvider face={face}>{content}</FaceProvider>
           </Shell>
           {search.showing && searchable ? (
             <SearchPalette
@@ -285,6 +290,6 @@ export function App(props: AppProps): ReactElement {
           ) : null}
         </PagePresenceProvider>
       </PageFreshnessProvider>
-    </SignedInName>
+    </SignedInName>,
   );
 }

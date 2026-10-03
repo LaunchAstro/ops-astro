@@ -166,7 +166,8 @@ interface ListFieldProps {
 function ListField(props: ListFieldProps): ReactElement {
   const [text, setText] = useState('');
   const add = (event: KeyboardEvent<HTMLInputElement>): void => {
-    if (event.key !== 'Enter') return;
+    // An Enter that ends an input method's composition is the composition's.
+    if (event.key !== 'Enter' || event.nativeEvent.isComposing) return;
     event.preventDefault();
     if (props.locked) return;
     const wanted = text.trim();
