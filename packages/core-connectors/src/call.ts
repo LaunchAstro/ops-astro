@@ -44,6 +44,9 @@ function validSegment(value: string): boolean {
   return SEGMENT.test(value) && value !== '.' && value !== '..';
 }
 
+/** A many-segment slot with a fixed shape: a repository is its owner and name, nothing deeper. */
+const SLOT_SEGMENTS: ReadonlyMap<string, number> = new Map([['repository', 2]]);
+
 /** The request path, or the refusal code for the parameters. */
 function buildPath(
   template: string,
@@ -59,6 +62,9 @@ function buildPath(
     const value = params[name];
     if (typeof value !== 'string') return { code: 'PARAMETER_INVALID' };
     const segments = many === '*' ? value.split('/') : [value];
+    const fixed = SLOT_SEGMENTS.get(name);
+    if (many === '*' && fixed !== undefined && segments.length !== fixed)
+      return { code: 'PARAMETER_INVALID' };
     if (!segments.every((segment) => validSegment(segment))) return { code: 'PARAMETER_INVALID' };
     path = path.replace(slot, segments.map((segment) => encodeURIComponent(segment)).join('/'));
   }
