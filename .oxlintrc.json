@@ -67,6 +67,13 @@
       "rules": { "max-lines-per-function": "off" }
     },
     {
+      "files": ["tests/api/sol-ow002-remap-forbidden-topic.test.ts"],
+      "rules": {
+        "max-lines-per-function": "off",
+        "unicorn/consistent-function-scoping": "off"
+      }
+    },
+    {
       "files": ["tests/ci/staging-special-objects.test.ts"],
       "rules": { "max-lines-per-function": "off" }
     },
