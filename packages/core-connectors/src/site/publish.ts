@@ -21,12 +21,7 @@
 // unknown is never sent blind (broker contract 3.4).
 
 import type { ProviderResult } from '../call.ts';
-import {
-  checkEnvelope,
-  wordOffsets,
-  type CorrectionTarget,
-  type ProposedChange,
-} from './envelope.ts';
+import { checkEnvelope, type CorrectionTarget, type ProposedChange } from './envelope.ts';
 import {
   occurrenceOf,
   proven,
@@ -242,13 +237,15 @@ export type RevertOutcome =
 
 /**
  * Case 8: the revert is published forward, observed served, and the page shows
- * the original word; only then is the interval from the decision recorded. No
- * other recovery figure is quoted (ADR 0067).
+ * the original word at the approved occurrence; only then is the interval from
+ * the decision recorded. No other recovery figure is quoted (ADR 0067).
  */
 export async function revertCorrection(
   input: {
     readonly publishedRevision: string;
     readonly target: CorrectionTarget;
+    /** The approved change being reverted: it places the occurrence the page is observed at. */
+    readonly change: ProposedChange;
     readonly seam: string;
     /** When the revert was decided, kept across every resumed attempt until it is observed. */
     readonly decidedAt: number;
@@ -273,11 +270,9 @@ export async function revertCorrection(
     deployment.kind === 'ok' && deployment.value.served && deployment.value.revision === revision;
   if (!served) return pending;
   const captured = await ports.capture();
-  const original =
-    captured.ok &&
-    wordOffsets(captured.value.text, input.target.word).length > 0 &&
-    wordOffsets(captured.value.text, input.target.replacement).length === 0;
-  if (!original) return pending;
+  const { word, replacement } = input.target;
+  const where = occurrenceOf(input.change, input.target);
+  if (!captured.ok || !showsAt(captured.value.text, where, word, replacement)) return pending;
   const observed = ports.now();
   return {
     state: 'reverted',
