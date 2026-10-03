@@ -26,6 +26,8 @@ export interface TaskDock {
   readonly body: ReactNode;
   /** The open task's own page, or the board for a draft. */
   readonly door: string;
+  /** Opened by Shift: beside the open panels, not alone (CS-7.29). */
+  readonly beside?: boolean;
   /** The task panel's own close; false, closing nothing, while the draft's Create is out. */
   readonly close: () => boolean;
 }
@@ -35,6 +37,7 @@ const LABEL = 'Task';
 /** Keeps `task` in the dock's open set exactly while the task panel holds something. */
 export function useTaskDock(dock: DockModel, task: TaskDock | null): void {
   const open = task?.open ?? false;
+  const beside = task?.beside ?? false;
   const docked = dock.state.open.includes('task');
   const last = useRef({ open: false, docked: false });
   const { change } = dock;
@@ -46,8 +49,8 @@ export function useTaskDock(dock: DockModel, task: TaskDock | null): void {
     const was = last.current;
     last.current = { open, docked };
     if (open && !was.open) {
-      // A row or a door opened a task: the gesture law's plain open.
-      if (!docked) change((state) => openByGesture(state, 'task', false));
+      // A row or a door opened a task: plain alone, Shift beside (the gesture law).
+      if (!docked) change((state) => openByGesture(state, 'task', beside));
     } else if (!open && docked) {
       change((state) => close(state, 'task'));
     } else if (open && was.docked && !docked) {
@@ -56,7 +59,7 @@ export function useTaskDock(dock: DockModel, task: TaskDock | null): void {
       const closed = closeTask?.() ?? true;
       if (!closed) change((state) => openByGesture(state, 'task', true));
     }
-  }, [open, docked, change, closeTask]);
+  }, [open, docked, beside, change, closeTask]);
 }
 
 const rank = (id: string): number => PANEL_RANK.indexOf(id as PanelId);
