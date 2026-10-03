@@ -9,6 +9,7 @@
 //   2. The receipt write locks the lease and then its delegation, and judges
 //      both expiries on the clock read after its locks. It runs last: it ends
 //      the world's delegation.
+//   3. A trashed task takes no correction.
 //
 // Registered through `tests/tenancy/restricted-calls.test.ts`, a named suite,
 // which calls `describeLiveCorrectionLowsRoundTwo` after round 1.
@@ -71,6 +72,27 @@ function findingOne(): void {
     const empty = await taskOf(s, clientA);
     expect(await moveTo(empty, clientB)).toBe('applied');
     expect(await clientOf(empty)).toBe(clientB);
+  });
+}
+
+function findingThree(): void {
+  const OF_TASK = 'select count(*)::int as n from public.live_corrections where task_id = $1';
+
+  it('a correction on a trashed task is refused and writes nothing', async () => {
+    const { s, clientA } = lows();
+    const trashed = await taskOf(s, clientA);
+    const answer = await asPerson(s, {
+      command: 'task.trash',
+      operationId: randomUUID(),
+      recordId: trashed,
+      expectedRevision: await revisionOf(s, trashed),
+    });
+    expect(codeOf(answer)).toBe('applied');
+    expect(await file(trashed, clientA)).toStrictEqual({
+      ok: false,
+      code: 'CORRECTION_PARTY_MISMATCH',
+    });
+    expect(await countOf(OF_TASK, trashed)).toBe(0);
   });
 }
 
@@ -206,6 +228,8 @@ function findingTwo(): void {
 export function describeLiveCorrectionLowsRoundTwo(): void {
   describeWorld('P26 lows round 2: the live correction records', 'p26lows2', () => {
     describe('finding 1: filing a correction locks the task’s client', findingOne);
+    describe('finding 3: a trashed task takes no correction', findingThree);
+    // Last: its revocation ends the world's delegation.
     describe('finding 2: the receipt write judges expiry after its locks', findingTwo);
   });
 }
