@@ -76,8 +76,9 @@ async function signOutAtProvider(
   token: string,
   fetch: typeof globalThis.fetch,
 ): Promise<void> {
+  const url = `${gotrueUrl.replace(/\/$/u, '')}/logout?scope=local`;
   try {
-    await fetch(`${gotrueUrl.replace(/\/$/u, '')}/logout?scope=local`, {
+    await fetch(url, {
       method: 'POST',
       headers: { authorization: `Bearer ${token}` },
     });
