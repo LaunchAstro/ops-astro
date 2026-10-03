@@ -388,8 +388,37 @@ describe.skipIf(serverUrl === undefined)('WF-1 task types and the map as a task'
       parentId: (await newMap(owner, 'a map with no client')).id,
     });
     expect(codeOf(underMap)).toBe('TRANSITION_NOT_PERMITTED');
+    // Nor any other ticket type: a typed task is a wayfinder record too.
+    const toResearch = await w.as(owner, {
+      command: 'task.set_type',
+      recordId: plain.id,
+      expectedRevision: await w.revisionOf(plain.id),
+      taskType: 'research',
+    });
+    expect(codeOf(toResearch)).toBe('TRANSITION_NOT_PERMITTED');
     expect(await dataOf(plain.id, 'type')).toBe('task');
     expect(await dataOf(plain.id, 'parent')).toBeNull();
+    // Nor does a parent become a map while a subtask of it holds client
+    // access: the subtask would become a ticket keeping its share.
+    const parent = await w.create(owner, { title: 'a parent, not yet a map' });
+    const child = await w.create(owner, { title: 'its shared subtask' }, { parentId: parent.id });
+    await w.db.app.withBusiness(w.business, async (tx) => {
+      const by = { personId: sharer.personId, actorId: sharer.actorId };
+      const shared = await shareRecord(tx, by, {
+        collection: 'task',
+        recordId: child.id,
+        personId: outside,
+      });
+      expect(shared.ok).toBe(true);
+    });
+    const parentToMap = await w.as(owner, {
+      command: 'task.set_type',
+      recordId: parent.id,
+      expectedRevision: await w.revisionOf(parent.id),
+      taskType: 'map',
+    });
+    expect(codeOf(parentToMap)).toBe('TRANSITION_NOT_PERMITTED');
+    expect(await dataOf(parent.id, 'type')).toBe('task');
   });
 
   it('WF-1 the map summary read model is kept current in the writing transaction', async () => {

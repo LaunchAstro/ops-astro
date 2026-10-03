@@ -151,8 +151,14 @@ export async function setTaskType(
     });
     if (refusal !== undefined) return refused(refusal);
   }
-  if (to === 'map' || facts.mapId !== null) {
+  // Any typed task, or a ticket of a map, is a wayfinder record (`isWayfinderRecord`):
+  // none keeps client access, and a new map's subtasks become its tickets.
+  if (to !== 'task' || facts.mapId !== null) {
     const shared = await refuseSharedIntoMap(tx, target.id);
+    if (shared !== undefined) return refused(shared);
+  }
+  if (to === 'map') {
+    const shared = await refuseSharedChildren(tx, context, target.id);
     if (shared !== undefined) return refused(shared);
   }
   const rows = await tx.query<{ readonly revision: string }>(
@@ -202,6 +208,24 @@ export async function refuseSharedIntoMap(
     ['client access'],
     ['Turn client access off first: a map and its tickets stay internal.'],
   );
+}
+
+/** The first subtask, live or trashed, still holding client access, refused. */
+async function refuseSharedChildren(
+  tx: TenantQuery,
+  context: CommandContext,
+  recordId: string,
+): Promise<CommandRefusal | undefined> {
+  const children = await tx.query<{ readonly id: string }>(
+    `select id from records where business_id = $1 and record_type_id = $2 and uuid_4 = $3`,
+    [tx.businessId, context.spine.taskTypeId, recordId],
+  );
+  for (const { id } of children) {
+    // oxlint-disable-next-line no-await-in-loop -- stops at the first; the answer is the same
+    const shared = await refuseSharedIntoMap(tx, id);
+    if (shared !== undefined) return shared;
+  }
+  return undefined;
 }
 
 /**
