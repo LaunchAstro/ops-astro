@@ -3,16 +3,15 @@
 // C80's two commands: `live correction requested` and `live correction
 // approved` (the permissions table of #765).
 //
-// The request is checked against the envelope before anything is written, so
-// a change of more than one word on one line of one file is refused with
-// nothing stored; what is stored is the target, the digests and the version
-// the approval must name, never the file's text. The approval locks the row at
-// its party, reads the configured approver under a share lock on its setting,
-// and refuses the requester first: a person cannot approve their own change
-// even when they are the configured approver (release decision 3.4).
+// The request is checked against the envelope before anything is written, so a change of more
+// than one word on one line of one file is refused with nothing stored; what is stored is the
+// target, the digests and the version the approval must name, never the file's text. The approval
+// refuses a caller outside the staff roles before reading any correction (P27 L1), locks the row
+// at its party, reads the configured approver under a share lock on its setting, and refuses the
+// requester first: a person cannot approve their own change even when they are the configured
+// approver (release decision 3.4).
 //
-// Refusals carry fixed text only: no word, path, page or content of the
-// correction reaches a caller who is refused.
+// Refusals carry fixed text only: no word, path, page or content reaches a refused caller.
 
 import { randomUUID } from 'node:crypto';
 import {
@@ -33,6 +32,7 @@ import {
   contentDigest,
   versionDigestOf,
 } from '../../../core-connectors/src/index.ts';
+import { isInternalReader } from '../reads/tasks.ts';
 import { readTaskSpine, type CommandContext } from './context.ts';
 import type { CommandRequest } from './requests.ts';
 import { refuseCommand } from './refusal.ts';
@@ -181,6 +181,7 @@ export async function decideLiveCorrection(
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['decision'], DECISION_FIXES));
   }
   const { session } = context;
+  if (!isInternalReader(session.roleKey)) return refused(NOT_THE_APPROVER);
   const correction = await lockCoveredCorrection(tx, request.correctionId, {
     subjects: subjectsOf(session),
     collection: GATE_COLLECTION,
