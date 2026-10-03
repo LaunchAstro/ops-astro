@@ -75,6 +75,7 @@ const TASK_ABSENT = refuseCommand(
   ['taskId'],
   ['Name a task in this business for the correction to be worked under.'],
 );
+const PARTY = refuseCommand('CORRECTION_PARTY_MISMATCH', ['partyId'], ['Name the task’s client.']);
 
 async function taskExists(tx: TenantQuery, taskTypeId: string, taskId: string): Promise<boolean> {
   const rows = await tx.query<{ readonly id: string }>(
@@ -137,6 +138,8 @@ export async function storeRequest(
       pageUrl: request.pageUrl,
     }),
   });
+  // The party is the task's client (P26 low 4): another is refused, and nothing is stored.
+  if ('code' in stored) return refused(PARTY);
   return applied(stored.id, stored.revision, {
     correctionId: stored.id,
     versionId: stored.versionId,
