@@ -217,6 +217,52 @@ describe.skipIf(serverUrl === undefined)('WF-1 task types and the map as a task'
       expect(codeOf(read)).toBe('NOT_FOUND');
       expect(JSON.stringify(read)).not.toContain('client research');
     }
+    // Client access is never turned on for a map or its ticket, though the
+    // client has an outside person the command would share with.
+    await w.db.admin.execute(
+      `insert into public.grants (business_id, id, subject_kind, subject_id, scope_kind, scope_id,
+          collection, action, can_delegate, may_permit_delegation, granted_by_actor_id)
+       values ($1, gen_random_uuid(), 'person', $2, 'party', $3, 'task', 'read', false, false, $4)`,
+      [w.business, outside, client, owner.actorId],
+    );
+    await w.db.app.withBusiness(w.business, async (tx) => {
+      await grantTo(tx, sharer, 'share', { kind: 'business', id: null }, false, 'access');
+    });
+    const grantCount = async () =>
+      (
+        await w.db.admin.execute<{ readonly n: string }>(
+          `select count(*)::text as n from public.grants where business_id = $1`,
+          [w.business],
+        )
+      )[0]?.n;
+    const grantsBefore = await grantCount();
+    for (const id of [map.id, research.id]) {
+      const turnedOn = await w.as(sharer, {
+        command: 'task.share_with_client',
+        recordId: id,
+        expectedRevision: await w.revisionOf(id),
+      });
+      expect(codeOf(turnedOn)).toBe('NOT_FOUND');
+    }
+    expect(await grantCount()).toBe(grantsBefore);
+    // A task with client access does not become a map, or a map's ticket,
+    // while the access stands: the share would outlive its purpose.
+    const toMap = await w.as(owner, {
+      command: 'task.set_type',
+      recordId: plain.id,
+      expectedRevision: await w.revisionOf(plain.id),
+      taskType: 'map',
+    });
+    expect(codeOf(toMap)).toBe('TRANSITION_NOT_PERMITTED');
+    const underMap = await w.as(owner, {
+      command: 'task.reparent',
+      recordId: plain.id,
+      expectedRevision: await w.revisionOf(plain.id),
+      parentId: (await newMap(owner, 'a map with no client')).id,
+    });
+    expect(codeOf(underMap)).toBe('TRANSITION_NOT_PERMITTED');
+    expect(await dataOf(plain.id, 'type')).toBe('task');
+    expect(await dataOf(plain.id, 'parent')).toBeNull();
   });
 
   it('WF-1 the map summary read model is kept current in the writing transaction', async () => {
@@ -374,6 +420,23 @@ describe.skipIf(serverUrl === undefined)('WF-1 task types and the map as a task'
     expect(JSON.stringify(detached)).toContain('map owner');
     expect(await dataOf(research.id, 'parent')).toBe(map.id);
     expect(await dataOf(research.id, 'type')).toBe('grilling');
+    // Nor by arriving: a research ticket taken off the map, retyped to
+    // grilling while it has no map, is filed back only by the map's owner.
+    const reparent = async (who: Member, recordId: string, parentId: string | null) =>
+      await w.as(who, {
+        command: 'task.reparent',
+        recordId,
+        expectedRevision: await w.revisionOf(recordId),
+        parentId,
+      });
+    const loose = await ticket(owner, map.id, 'loose research', 'research');
+    must(await reparent(teammate, loose.id, null), 'research leaves its map');
+    must(await retype(teammate, loose.id, 'grilling'), 'retyped while it has no map');
+    const back = await reparent(teammate, loose.id, map.id);
+    expect(codeOf(back)).toBe('SCOPE_NOT_GRANTED');
+    expect(JSON.stringify(back)).toContain('map owner');
+    expect(await dataOf(loose.id, 'parent')).toBeNull();
+    must(await reparent(owner, loose.id, map.id), "the owner files it on the owner's map");
   });
 
   it('WF-1 map scoped follows the client rules of task.set_party', async () => {
