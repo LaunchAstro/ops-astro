@@ -39,6 +39,8 @@ export interface TaskPanelState {
   readonly host: TaskPanelHost;
   /** The open panel's task and door, or null when it is closed or shows a draft. */
   readonly opening: PanelOpening | null;
+  /** The open task came by Shift, to sit beside the dock's open panels. */
+  readonly beside: boolean;
   /** The new-task draft's scope while the panel shows the draft (MP-4-13), else null. */
   readonly draft: DraftScope | null;
   readonly changed: () => void;
@@ -95,6 +97,7 @@ export function useTaskPanel(owner: PanelOwner): TaskPanelState {
   const [opening, setOpening] = useState<PanelOpening | null>(null);
   const [draft, setDraft] = useState<DraftScope | null>(null);
   const { creating, hold } = useOwner(owner, setOpening, setDraft);
+  const [beside, setBeside] = useState(false);
   const [changes, setChanges] = useState(0);
   // Leaving the task (X, Escape, another task, a draft) stops its running
   // timer through MP-4-6's one stop-and-log step, once.
@@ -105,10 +108,11 @@ export function useTaskPanel(owner: PanelOwner): TaskPanelState {
     pending?.();
   }, []);
   const open = useCallback(
-    (taskKey: string, door: PanelDoor, tab?: ConversationTab) => {
+    (taskKey: string, door: PanelDoor, tab?: ConversationTab, by = false) => {
       if (creating.current !== null) return;
       if (taskKey !== opening?.taskKey) leave();
       setDraft(null);
+      setBeside(by);
       setOpening({ taskKey, door, tab: tab ?? null });
     },
     [opening, leave, creating],
@@ -117,6 +121,7 @@ export function useTaskPanel(owner: PanelOwner): TaskPanelState {
     (scope: DraftScope) => {
       leave();
       setOpening(null);
+      setBeside(false);
       setDraft(scope);
     },
     [leave],
@@ -139,5 +144,5 @@ export function useTaskPanel(owner: PanelOwner): TaskPanelState {
     return true;
   }, [opening, leave, creating]);
   const host = useMemo(() => ({ open, changes }), [open, changes]);
-  return { host, opening, draft, changed, close, openDraft, leaving, hold };
+  return { host, opening, beside, draft, changed, close, openDraft, leaving, hold };
 }
