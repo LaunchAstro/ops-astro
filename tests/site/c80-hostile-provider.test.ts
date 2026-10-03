@@ -42,7 +42,7 @@ const deps = (transport: Transport, recorded: string[] = []) => ({
   record: (code: string) => recorded.push(code),
 });
 
-const params = { repository: 'site', number: '17' };
+const params = { repository: 'agency/site', number: '17' };
 
 describe('C80 hostile provider (source control and hosting paths)', () => {
   it('returns only the declared response fields from a well-formed answer', async () => {
@@ -154,6 +154,18 @@ describe('C80 hostile provider (source control and hosting paths)', () => {
         deps(transport),
       ),
     ).toEqual({ kind: 'refused', code: 'PARAMETER_INVALID' });
+    expect(transport.seen).toHaveLength(0);
+  });
+
+  it('takes the repository as exactly owner and name, so the credential cannot reach another path', async () => {
+    const transport = httpOf(json({ merged: true, sha: 'def456' }));
+    const results = await Promise.all(
+      ['other-org/other-repo/git/refs', 'site', 'agency/site/'].map((repository) =>
+        callConnector(publishRegistration, { repository, number: '17' }, deps(transport)),
+      ),
+    );
+    for (const result of results)
+      expect(result).toEqual({ kind: 'refused', code: 'PARAMETER_INVALID' });
     expect(transport.seen).toHaveLength(0);
   });
 
