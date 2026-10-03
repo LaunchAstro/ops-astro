@@ -72,6 +72,7 @@ function ports(overrides: Partial<PublishPorts> = {}): PublishPorts & { calls: C
         },
       });
     },
+    readBack: () => Promise.resolve({ state: 'absent' as const }),
     cancellation: () => Promise.resolve('none' as const),
     raiseTask: (reason) => {
       calls.raised.push(reason);

@@ -17,6 +17,8 @@
 // an answer that cannot be read stays `unknown` with its reference and raises
 // a task (case 6); a cancellation that arrives after the dispatch is an
 // uncertain effect, not a cancellation (case 7). Live is a later observation.
+// Every send reads its effect back through the seam first, so a retry of an
+// unknown is never sent blind (broker contract 3.4).
 
 import type { ProviderResult } from '../call.ts';
 import {
@@ -55,6 +57,26 @@ export interface PublishJob {
   readonly seam: string;
 }
 
+/** An effect read back through its seam: landed, provably absent, or not known. */
+export type ReadBack<T> =
+  | { readonly state: 'landed'; readonly value: T }
+  | { readonly state: 'absent' }
+  | { readonly state: 'unknown' };
+
+/**
+ * A send that may repeat an earlier one. Landed is the effect's answer; only
+ * positive proof that nothing landed lets `send` go; anything else stays
+ * unknown and is never resent.
+ */
+async function reconciled<T>(
+  back: ReadBack<T>,
+  send: () => Promise<ProviderResult<T>>,
+): Promise<ProviderResult<T>> {
+  if (back.state === 'landed') return { kind: 'ok', value: back.value };
+  if (back.state === 'absent') return send();
+  return { kind: 'unknown', code: 'RECONCILE_UNPROVEN' };
+}
+
 export interface Published {
   readonly revision: string;
   readonly deploymentId: string;
@@ -64,6 +86,11 @@ export interface Published {
 export interface PublishPorts {
   /** `site.source.read` of the target file on the branch being published. */
   readonly readSource: () => Promise<ProviderResult<{ content: string; revision: string }>>;
+  /** `site.request.read` by the seam: absent only while the request is provably unmerged. */
+  readonly readBack: (input: {
+    seam: string;
+    dispatchToken: string;
+  }) => Promise<ReadBack<Published>>;
   /** `site.publish`, once. */
   readonly publish: (input: {
     seam: string;
@@ -122,8 +149,6 @@ async function beforeDispatch(
   ) {
     return { state: 'refused', code: 'CONTENT_DRIFTED', waitsOn: 'person' };
   }
-  // Last, after every awaited read: a cancellation that arrived during one still stops the send.
-  if ((await ports.cancellation()) === 'requested') return refused('CANCELLED');
   return undefined;
 }
 
@@ -134,11 +159,14 @@ export async function publishCorrection(
   const stopped = await beforeDispatch(job, ports);
   if (stopped !== undefined) return stopped;
   const token = dispatchToken('site.publish', job.version.digest);
-  const answer = await ports.publish({
-    seam: job.seam,
-    dispatchToken: token,
-    versionDigest: job.version.digest,
-  });
+  const back = await ports.readBack({ seam: job.seam, dispatchToken: token });
+  // Last, after every awaited read: a cancellation that arrived during one still stops the send.
+  if (back.state === 'absent' && (await ports.cancellation()) === 'requested') {
+    return refused('CANCELLED');
+  }
+  const answer = await reconciled(back, () =>
+    ports.publish({ seam: job.seam, dispatchToken: token, versionDigest: job.version.digest }),
+  );
   const unknown = async (code: string): Promise<PublishOutcome> => {
     await ports.raiseTask(code);
     return { state: 'unknown', code, reference: job.seam, dispatchToken: token };

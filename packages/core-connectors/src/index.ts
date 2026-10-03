@@ -121,5 +121,6 @@ export {
   type PublishJob,
   type PublishOutcome,
   type PublishPorts,
+  type ReadBack,
   type RevertOutcome,
 } from './site/publish.ts';
