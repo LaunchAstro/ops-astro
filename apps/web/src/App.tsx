@@ -33,7 +33,8 @@ import { SignIn } from './screens/SignIn.tsx';
 import { endThenSignOut } from './sign-out.ts';
 import { PagePresenceProvider, StripPresence } from './views/presence.tsx';
 import { PageFreshnessProvider, StripFreshness } from './views/freshness.tsx';
-import { AssistantView, useAgentDrawer } from './views/assistant.tsx';
+import { AssistantView } from './views/assistant.tsx';
+import { useAgentDrawer } from './assistant/asks.ts';
 import type { AppProps } from './app-props.ts';
 
 export function App(props: AppProps): ReactElement {

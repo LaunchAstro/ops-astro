@@ -29,12 +29,9 @@
 // after it is taken out of the tab row.
 //
 // The planning allowance line (AW-04) sits above the transcript, from before
-// the first message (`allowance-line.tsx`).
-//
-// AW-04: a reply that carries a plan is drawn as a plan card, and its one click
-// is `task.accept_plan` with the version on screen (`assistant/plans.ts`). An
-// ask from a page that is not a sparkle (the Agent pane's new attempt) opens
-// the drawer through `useAsks`, drafted and unsent, like an entry point's.
+// the first message (`allowance-line.tsx`). A reply that carries a plan is a
+// plan card whose one click is `task.accept_plan` (`assistant/plans.ts`); the
+// Agent pane's new attempt opens the drawer through `useAsks`, drafted, unsent.
 
 import { useEffect, useRef, useState, type ReactElement } from 'react';
 import { AssistantPanel, type AssistantMessage, type AssistantPage } from '@launchastro/ui';
@@ -55,7 +52,7 @@ import {
 import { entryFor, type EntryPoint } from '../assistant/entries.ts';
 import { acceptPlanCard } from '../assistant/accept.ts';
 import { useAsks } from '../assistant/asks.ts';
-import { offerPlan } from '../assistant/plans.ts';
+import { usePlanCards } from '../assistant/plans.ts';
 import { modelOffer, subjectFor, type ModelChoice, type Subject } from '../assistant/subject.ts';
 import type { PlanOffer } from '../../../../packages/core-wire/src/index.ts';
 import type {
@@ -67,8 +64,6 @@ import type {
 import { settle } from '../records/use-command.ts';
 import { pathTo, ROUTES, type RouteId } from '../routes.ts';
 import { AllowanceLine } from './allowance-line.tsx';
-
-export { useAgentDrawer } from '../assistant/asks.ts';
 
 export const KEPT = 'Kept in this conversation. The agent does not answer here yet.';
 
@@ -104,11 +99,11 @@ function useStore(): Store {
   const [state, setState] = useState(initial);
   const latest = useRef(state);
   const count = useRef(0);
-  const offers = useRef(new Map<string, PlanOffer>());
   const update = (move: Move): void => {
     latest.current = move(latest.current);
     setState(latest.current);
   };
+  const cards = usePlanCards(update, count);
   return {
     state,
     update,
@@ -119,13 +114,7 @@ function useStore(): Store {
       const id = `${role}-${String(count.current)}`;
       update((current) => said(current, key, { id, role, body, cites: [] }));
     },
-    plan: (key, body, offer) => {
-      count.current += 1;
-      const id = `plan-${String(count.current)}`;
-      offers.current.set(id, offer);
-      update((current) => offerPlan(current, key, { id, body, offer }));
-    },
-    offer: (id) => offers.current.get(id),
+    ...cards,
   };
 }
 

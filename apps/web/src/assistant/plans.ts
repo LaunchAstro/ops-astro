@@ -11,6 +11,7 @@
 // server's words. A committed accept is approved even if a newer version made
 // the card stale meanwhile: the server kept those words and started that run.
 
+import { useRef } from 'react';
 import type { AssistantPlan, PlanCardState } from '@launchastro/ui';
 import type { PlanOffer } from '../../../../packages/core-wire/src/index.ts';
 import { pathTo } from '../routes.ts';
@@ -84,3 +85,24 @@ export const acceptBody = (offer: PlanOffer, conversationId: string | null) => (
   paths: offer.paths,
   conversationId,
 });
+
+/**
+ * The drawer's plan cards: a reply's plan as the tab's newest card, its offer
+ * kept by the card's id for the one click. `count` is the drawer's own line
+ * counter, so a card's id is never another line's.
+ */
+export function usePlanCards(
+  update: (move: (state: AssistantState) => AssistantState) => void,
+  count: { current: number },
+) {
+  const offers = useRef(new Map<string, PlanOffer>());
+  return {
+    plan: (key: string, body: string, offer: PlanOffer): void => {
+      count.current += 1;
+      const id = `plan-${String(count.current)}`;
+      offers.current.set(id, offer);
+      update((current) => offerPlan(current, key, { id, body, offer }));
+    },
+    offer: (id: string): PlanOffer | undefined => offers.current.get(id),
+  };
+}
