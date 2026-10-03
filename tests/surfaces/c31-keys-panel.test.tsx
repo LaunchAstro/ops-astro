@@ -29,7 +29,17 @@ const tick = async (): Promise<void> => {
   });
 };
 
-function server(): { readonly fetch: typeof globalThis.fetch; readonly sent: string[] } {
+interface Stub {
+  /** What `secret.set` answers instead of applying; undefined applies it. */
+  readonly refuseSet?: () => Response;
+  /** The list's `canChange`: the key held business-wide. */
+  readonly canChange?: boolean;
+}
+
+function server(stub: Stub = {}): {
+  readonly fetch: typeof globalThis.fetch;
+  readonly sent: string[];
+} {
   const sent: string[] = [];
   let state: 'set' | 'not set' | null = null;
   const answer = (url: string | URL, init?: RequestInit): Response => {
@@ -38,6 +48,7 @@ function server(): { readonly fetch: typeof globalThis.fetch; readonly sent: str
     if (at.endsWith('/secret/list')) {
       return json({
         ok: true,
+        canChange: stub.canChange ?? true,
         secrets:
           state === null
             ? []
@@ -55,6 +66,7 @@ function server(): { readonly fetch: typeof globalThis.fetch; readonly sent: str
       });
     }
     if (at.endsWith('/secret/set')) {
+      if (stub.refuseSet !== undefined) return stub.refuseSet();
       state = 'set';
       return json({ recordId: 's-1', revision: 1, detail: { secretId: 's-1', state: 'set' } });
     }
@@ -80,7 +92,7 @@ describe('C31 Keys panel', () => {
     });
     const page = await mount(<KeysPanel client={client} />);
     await tick();
-    await page.type('[data-settings="keys"] input:not([type="password"])', 'xero.key');
+    await page.type('[data-settings="keys"] #key-name', 'xero.key');
     await page.type('[data-settings="key-value"]', VALUE);
     await page.click('[data-settings="keys"] button[type="submit"]');
     await tick();
@@ -105,6 +117,84 @@ describe('C31 Keys panel', () => {
   });
 });
 
+const REFUSALS: readonly (readonly [string, () => Response])[] = [
+  [
+    'a chat session token refused FIELD_VALUE_INVALID',
+    () =>
+      json(
+        { refused: true, code: 'FIELD_VALUE_INVALID', names: ['value'], fixes: ['Not a key.'] },
+        422,
+      ),
+  ],
+  [
+    'no custody key, DEPENDENCY_NOT_LANDED',
+    () =>
+      json({ refused: true, code: 'DEPENDENCY_NOT_LANDED', names: ['secret.set'], fixes: [] }, 501),
+  ],
+  ['a server fault with no body', () => new Response('', { status: 500 })],
+];
+
+const clientOf = (fetch: typeof globalThis.fetch): OperationsClient =>
+  new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
+
+const stored = (): string =>
+  [localStorage, sessionStorage]
+    .flatMap((store) => Object.keys(store).map((key) => `${key}=${store.getItem(key) ?? ''}`))
+    .join('\n');
+
+describe('C31 Keys panel keeps the value', () => {
+  for (const [what, refusal] of REFUSALS) {
+    it(`C31 a refused set (${what}) shows a fixed message and never the value`, async () => {
+      const stub = server({ refuseSet: refusal });
+      const page = await mount(<KeysPanel client={clientOf(stub.fetch)} />);
+      await tick();
+      await page.type('#key-name', 'xero.key');
+      await page.type('[data-settings="key-value"]', VALUE);
+      await page.click('[data-settings="keys"] button[type="submit"]');
+      await tick();
+      expect(page.find('[data-settings="keys-refusal"]')).not.toBeNull();
+      expect(page.host.innerHTML).not.toContain(VALUE);
+      expect((page.find('[data-settings="key-value"]') as HTMLInputElement).value).toBe('');
+      expect(stored()).not.toContain(VALUE);
+      await page.unmount();
+    });
+  }
+
+  it('C31 the value field is no password field: no password manager saves or fills it', async () => {
+    const page = await mount(<KeysPanel client={clientOf(server().fetch)} />);
+    await tick();
+    const field = page.find('[data-settings="key-value"]') as HTMLInputElement;
+    expect(field.type).toBe('text');
+    expect(page.find('input[type="password"]')).toBeNull();
+    expect(field.getAttribute('autocomplete')).toBe('off');
+    expect(field.getAttribute('spellcheck')).toBe('false');
+    expect(field.getAttribute('autocapitalize')).toBe('off');
+    expect(field.getAttribute('autocorrect')).toBe('off');
+    expect(field.getAttribute('data-1p-ignore')).not.toBeNull();
+    expect(field.getAttribute('data-lpignore')).toBe('true');
+    expect(field.className).toContain('tf--sealed');
+    await page.unmount();
+  });
+
+  it('C31 a holder who may not change keys sees them listed, with no Set form and no Clear', async () => {
+    const stub = server();
+    const page = await mount(<KeysPanel client={clientOf(stub.fetch)} />);
+    await tick();
+    await page.type('#key-name', 'xero.key');
+    await page.type('[data-settings="key-value"]', VALUE);
+    await page.click('[data-settings="keys"] button[type="submit"]');
+    await tick();
+    await page.unmount();
+    const listed = server({ canChange: false });
+    // The same row, now read by a client-scoped holder.
+    const row = await mount(<KeysPanel client={clientOf(listed.fetch)} />);
+    await tick();
+    expect(row.find('form[aria-label="Set a key"]')).toBeNull();
+    expect(row.find('[data-settings="keys"] button')).toBeNull();
+    await row.unmount();
+  });
+});
+
 describe('C31 Keys panel look', () => {
   it('C31 look: the keys draw as a list card of page rows, each state a chip', async () => {
     const stub = server();
@@ -116,7 +206,7 @@ describe('C31 Keys panel look', () => {
     });
     const page = await mount(<KeysPanel client={client} />);
     await tick();
-    await page.type('[data-settings="keys"] input:not([type="password"])', 'xero.key');
+    await page.type('[data-settings="keys"] #key-name', 'xero.key');
     await page.type('[data-settings="key-value"]', VALUE);
     await page.click('[data-settings="keys"] button[type="submit"]');
     await tick();
