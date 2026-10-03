@@ -293,7 +293,8 @@
     "SL11-30 STOPCAUSE names reservation-stop-cause (20261002235600: a hold settled actual at its spend may record its cause, written straight as the application role; an abandoned hold still needs one, and a held or quarantined hold still carries none) as an invariant.",
     "SL11-30 SETTLEGUARD names spend-closes-once (a call closes once: one the provider's proof released ignores its own late answer and one settled by its answer ignores a later release, so nothing is given back twice; a call released unsent costs nothing, its hold released at 0, and its late send is refused LEASE_EXPIRED (ORCH70-SPENDUNSENT); only in its own business's envelope) as an invariant.",
     "SL11-30 LEASEGUARD names lease-holder-guard and take-lease-path (20261002235700: the application role cannot rewrite a lease's holder or insert a lease, and keeps the three columns the product moves; a lease is taken through public.take_lease, which refuses another business's reservation, unclaimable work, a lease past its lifetime, and a holder the claimant's authority does not cover; pickup, heartbeat, hand-back and fence still work) as invariants.",
-    "SL11-31 STOPFENCE names pickup-stop-at-spent-hold-lease (a pickup that stops the run at a spent hold meets the task's lease first: another holder's live lease refuses it LEASE_HELD for a person and an agent, keeping no ask; with the lease handed back the stop keeps its ask; an expired lease is fenced and the stop kept; another business's live lease refuses nothing here) as an invariant."
+    "SL11-31 STOPFENCE names pickup-stop-at-spent-hold-lease (a pickup that stops the run at a spent hold meets the task's lease first: another holder's live lease refuses it LEASE_HELD for a person and an agent, keeping no ask; with the lease handed back the stop keeps its ask; an expired lease is fenced and the stop kept; another business's live lease refuses nothing here) as an invariant.",
+    "SL06 (Clients row door) adds board-row-client (each task.board row carries its client by id and name only where the reader's grants reach it, read back against task.read and client.list; the crossings: another business names none of alpha's clients, a reader of client A is never sent B, a task holder without the client reads null beside clientSet, the agent under a live delegation is refused)."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -765,6 +766,7 @@
     "tests/reads/mp-5-8-board-rank-steps.test.ts",
     "tests/reads/mp-5-8-board-actual.test.ts",
     "tests/reads/mp-5-8-board-estimate.test.ts",
+    "tests/reads/board-row-client.test.ts",
     "tests/commands/task-set-state.test.ts",
     "tests/commands/task-set-state-agent.test.ts",
     "tests/commands/task-set-category.test.ts",
