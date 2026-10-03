@@ -849,8 +849,8 @@
     "tests/operations/c81-gate-evidence.test.ts",
     "tests/api/c71-d-direct-messages.test.ts",
     "tests/api/c71-d-isolation.test.ts",
-    "tests/api/sol-proof-c71a.test.ts",
-    "tests/tasks/sol-proof-c71a-migration.test.ts"
+    "tests/api/c71-d-direct-message-races.test.ts",
+    "tests/tasks/c71-d-conversations-migration.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",
