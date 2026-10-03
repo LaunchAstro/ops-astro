@@ -9,6 +9,7 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { codeOf, detailOf } from '../commands/agent-fixture.ts';
 import { c80World, type C80World } from './c80-world.ts';
 import { grantTo } from '../commands/fixture.ts';
+import type { TenantQuery } from '../../packages/core-records/src/index.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 if (serverUrl === undefined) console.warn('C80 approver: DATABASE_URL is unset, so nothing ran.');
@@ -160,5 +161,60 @@ describe.skipIf(serverUrl === undefined)('C80 malformed operands', () => {
       expect(codeOf(await w.request(w.ava, overrides))).toBe('FIELD_VALUE_INVALID');
     }
     expect(await count()).toBe(before);
+  });
+});
+
+/** A member holding run:write and gate:decide business-wide, under `roleKey`. */
+async function memberAs(name: string, roleKey: string) {
+  const member = await w.world.decider(name);
+  await w.world.db.app.withBusiness(w.world.business, async (tx) => {
+    const whole = { kind: 'business', id: null } as const;
+    await grantTo(tx, member, 'write', whole, false, 'run');
+    await grantTo(tx, member, 'decide', whole, false, 'gate');
+    await roleOf(tx, member.personId, roleKey);
+  });
+  return member;
+}
+
+async function roleOf(tx: TenantQuery, personId: string, roleKey: string): Promise<void> {
+  await tx.query(`update public.memberships set role_key = $2 where person_id = $1`, [
+    personId,
+    roleKey,
+  ]);
+}
+
+const approverValue = async (): Promise<unknown> =>
+  (
+    await w.world.db.admin.execute<{ readonly value: unknown }>(
+      `select value from public.business_settings
+        where business_id = $1 and key = 'live_correction_approver'`,
+      [w.world.business],
+    )
+  )[0]?.value;
+
+describe.skipIf(serverUrl === undefined)('C80 approver, internal roles only (P27 L1)', () => {
+  it('P27 L1: refuses a client-role member as approver, as it refuses no person, and stores nothing', async () => {
+    await w.setApprover(w.ben.personId);
+    const before = await approverValue();
+    const client = await memberAs('cli', 'client');
+    const refused = await w.setApprover(client.personId);
+    expect(codeOf(refused)).toBe('FIELD_VALUE_INVALID');
+    const nobody = await w.setApprover('00000000-0000-4000-8000-000000000003');
+    expect(JSON.stringify(refused)).toBe(JSON.stringify(nobody));
+    expect(await approverValue()).toEqual(before);
+  });
+
+  it('P27 L1: a configured approver whose role became client cannot decide; it stays requested', async () => {
+    const turned = await memberAs('tur', 'member');
+    expect(codeOf(await w.setApprover(turned.personId))).toBe('not-a-refusal');
+    const { correctionId, versionId } = await requested();
+    await w.world.db.app.withBusiness(w.world.business, async (tx) => {
+      await roleOf(tx, turned.personId, 'client');
+    });
+    const refused = await w.approve(turned, correctionId, versionId);
+    expect(codeOf(refused)).toBe('APPROVER_NOT_CONFIGURED_ONE');
+    expect(await w.stateOf(correctionId)).toBe('requested');
+    const absent = await w.approve(turned, '00000000-0000-4000-8000-000000000004', versionId);
+    expect(JSON.stringify(refused)).toBe(JSON.stringify(absent));
   });
 });
