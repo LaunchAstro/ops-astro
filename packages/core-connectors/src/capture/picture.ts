@@ -19,8 +19,16 @@
 // route could refuse, so the port starts it with PICTURE_BROWSER_ARGS.
 
 import { createHash } from 'node:crypto';
-import { fencedFetch, type FenceCode, type FenceRefusal, type Fenced } from './fence.ts';
-import { MAX_STYLESHEETS, SHEETS_AT_ONCE, limiter, type CaptureOptions } from './page.ts';
+import {
+  MAX_STYLESHEETS,
+  SHEETS_AT_ONCE,
+  fencedFetch,
+  limiter,
+  type FenceCode,
+  type FenceRefusal,
+  type Fenced,
+} from './fence.ts';
+import type { CaptureOptions } from './page.ts';
 
 /** One request the browser made, as the port describes it. */
 export interface PictureRequest {

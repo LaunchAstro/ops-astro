@@ -106,6 +106,30 @@ const LIMITS = {
   stylesheet: { maxBytes: 1_048_576, type: 'text/css' },
 } as const;
 
+/** Distinct linked stylesheets one page may have; past it the capture is refused, none fetched. */
+export const MAX_STYLESHEETS = 32;
+export const SHEETS_AT_ONCE = 4;
+
+/** Runs at most `width` tasks at once; a finished task hands its place to the next waiting. */
+export function limiter(width: number): <T>(task: () => Promise<T>) => Promise<T> {
+  let running = 0;
+  const waiting: (() => void)[] = [];
+  return async (task) => {
+    if (running < width) running += 1;
+    else
+      await new Promise<void>((resolve) => {
+        waiting.push(resolve);
+      });
+    try {
+      return await task();
+    } finally {
+      const next = waiting.shift();
+      if (next === undefined) running -= 1;
+      else next();
+    }
+  };
+}
+
 const TRANSPORT_CODES: Record<string, FenceCode> = {
   timeout: 'CAPTURE_TIMEOUT',
   oversized: 'CAPTURE_OVERSIZED',
