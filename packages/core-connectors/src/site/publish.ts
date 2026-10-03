@@ -216,6 +216,11 @@ export async function observeLanded(
 
 export interface RevertPorts extends Omit<ObservePorts, 'capture'> {
   readonly now: () => number;
+  /** `site.source.read` of the default branch head: absent only while it provably holds no revert. */
+  readonly readBack: (input: {
+    seam: string;
+    dispatchToken: string;
+  }) => Promise<ReadBack<{ revision: string; deploymentId: string }>>;
   /** `site.source.revert`: the forward change back to the pinned pre-image. */
   readonly revert: (input: {
     seam: string;
@@ -258,9 +263,12 @@ export async function revertCorrection(
 ): Promise<RevertOutcome> {
   const decided = ports.now();
   const decidedAt = new Date(decided).toISOString();
-  // One token per published revision, so a retried revert is deduplicated, never sent twice.
+  // One token per published revision, and a retry is read back before it is ever sent again.
   const token = dispatchToken('site.source.revert', input.publishedRevision);
-  const reverted = await ports.revert({ seam: input.seam, dispatchToken: token });
+  const back = await ports.readBack({ seam: input.seam, dispatchToken: token });
+  const reverted = await reconciled(back, () =>
+    ports.revert({ seam: input.seam, dispatchToken: token }),
+  );
   if (reverted.kind !== 'ok') {
     const proofs = siteOperation('site.source.revert').declaration.nothing_happened_proof;
     const proven =

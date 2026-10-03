@@ -23,6 +23,7 @@ describe('C80 revert timed', () => {
       { publishedRevision: 'def456', target: TARGET, seam: 'revert-of-def456' },
       {
         now: () => times.shift() ?? Number.NaN,
+        readBack: () => Promise.resolve({ state: 'absent' as const }),
         revert: () =>
           Promise.resolve({ kind: 'ok', value: { revision: 'rev789', deploymentId: 'dpl_2' } }),
         readDeployment: () =>
@@ -45,6 +46,7 @@ describe('C80 revert timed', () => {
       { publishedRevision: 'def456', target: TARGET, seam: 'revert-of-def456' },
       {
         now: () => Date.parse('2026-09-29T10:00:00Z'),
+        readBack: () => Promise.resolve({ state: 'absent' as const }),
         revert: () =>
           Promise.resolve({ kind: 'ok', value: { revision: 'rev789', deploymentId: 'dpl_2' } }),
         readDeployment: () =>
@@ -65,6 +67,7 @@ describe('C80 revert dispatch', () => {
         { publishedRevision: 'def456', target: TARGET, seam: 'revert-of-def456' },
         {
           now: () => Date.parse('2026-09-29T10:00:00Z'),
+          readBack: () => Promise.resolve({ state: 'absent' as const }),
           revert: (input) => {
             sent.push(input);
             return Promise.resolve({ kind: 'unknown', code: 'PROVIDER_TIMEOUT' });
@@ -88,6 +91,7 @@ describe('C80 revert dispatch', () => {
         { publishedRevision: 'def456', target: TARGET, seam: 'revert-of-def456' },
         {
           now: () => Date.parse('2026-09-29T10:00:00Z'),
+          readBack: () => Promise.resolve({ state: 'absent' as const }),
           revert: () =>
             Promise.resolve({
               kind: 'refused',
