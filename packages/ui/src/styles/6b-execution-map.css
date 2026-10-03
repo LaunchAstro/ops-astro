@@ -51,8 +51,8 @@
 .tg__canvas {
   position: relative;
   box-sizing: border-box;
-  width: var(--tg-w);
-  height: var(--tg-h);
+  width: var(--tg-w, auto);
+  height: var(--tg-h, auto);
   margin: 0 auto;
   background-color: var(--surface);
   background-image:
@@ -146,7 +146,7 @@
 }
 .tg__nmain {
   display: grid;
-  grid-template-rows: 2.4rem 1.15rem minmax(0, 1fr);
+  grid-template-rows: 2.6rem 1.15rem minmax(0, 1fr);
   min-height: 0;
   padding: 0.5rem 0.55rem 0;
 }
@@ -155,7 +155,8 @@
   overflow: hidden;
   color: var(--text);
   font: var(--type-small-strong);
-  line-height: 1.2;
+  letter-spacing: var(--type-small-strong-tracking);
+  text-transform: var(--type-small-strong-case);
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
@@ -178,7 +179,6 @@
 }
 .tg__nout b {
   color: var(--accent);
-  font-weight: var(--weight-medium);
 }
 .tg__node[data-tone='gate'] .tg__nout b {
   color: var(--warning);
@@ -230,6 +230,8 @@
   margin: 0;
   color: var(--text);
   font: var(--type-card-title);
+  letter-spacing: var(--type-card-title-tracking);
+  text-transform: var(--type-card-title-case);
 }
 .tg__insp__facts {
   display: grid;
