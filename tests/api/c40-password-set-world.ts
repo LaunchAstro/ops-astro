@@ -18,6 +18,12 @@ import { executeAgentCommand } from '../../packages/core-commands/src/commands/a
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
+import { subjectDigest } from '../../packages/core-records/src/identity/authentication-attempts.ts';
+import type {
+  BusinessId,
+  Database,
+  TransactionQuery,
+} from '../../packages/core-records/src/index.ts';
 import {
   ACCEPTANCE_ISSUER,
   bearer,
@@ -79,6 +85,36 @@ let provider: Server;
 let replies: Record<string, Reply> = { ...GOOD };
 export let clientA: Member;
 export let clientB: Member;
+
+let faultIn: BusinessId | undefined;
+
+/** The route's change in `business`, ending the login's sessions, fails after its work. */
+export function faultTheChangeIn(business: BusinessId): void {
+  faultIn = business;
+}
+
+/** The app database as the route has it: the same, but for an injected fault. */
+function routeDatabase(app: Database): Database {
+  async function withBusiness<T>(
+    business: BusinessId,
+    run: (tx: TransactionQuery) => Promise<T>,
+  ): Promise<T> {
+    return await app.withBusiness(business, async (tx) => {
+      let ending = false;
+      const watched: TransactionQuery = {
+        ...tx,
+        query: async <Row>(text: string, parameters?: readonly unknown[]) => {
+          ending ||= text.includes('insert into ops.ended_subject_sessions');
+          return await tx.query<Row>(text, parameters);
+        },
+      };
+      const done = await run(watched);
+      if (ending && business === faultIn) throw new Error('an injected fault, after the change');
+      return done;
+    });
+  }
+  return { ...app, withBusiness };
+}
 
 /** The next answers, per route; the stand-in goes back to `GOOD` after each case. */
 export function answerWith(next: Record<string, Reply>): void {
@@ -145,6 +181,27 @@ export interface AuditRow {
   readonly row: string;
 }
 
+export interface AttemptRow {
+  readonly outcome: string;
+  readonly refusal_code: string | null;
+  readonly row: string;
+}
+
+/** Every authentication attempt a subject left in a business, each as its whole JSON too. */
+export const attemptsOf = async (
+  business: string,
+  subject: string,
+): Promise<readonly AttemptRow[]> =>
+  await world.db.app.withBusiness(
+    business,
+    async (tx) =>
+      await tx.query<AttemptRow>(
+        `select outcome, refusal_code, to_jsonb(a)::text as row
+           from public.authentication_attempts a where subject_digest = $1 order by at, id`,
+        [subjectDigest({ provider: 'supabase', subject })],
+      ),
+  );
+
 /** Every audit row of `command` in a business, each as its whole JSON too. */
 export const auditOf = async (business: string, command: string): Promise<readonly AuditRow[]> =>
   await world.db.app.withBusiness(
@@ -190,7 +247,7 @@ async function openWorld(): Promise<void> {
     factors,
   });
   api = new Hono();
-  mountPasswordSet(api, world.db.app, {
+  mountPasswordSet(api, routeDatabase(world.db.app), {
     businesses: async () => await Promise.resolve([world.alpha, world.bravo]),
     provider: factors,
     verify,
@@ -228,6 +285,7 @@ export function usePasswordWorld(): void {
   afterEach(() => {
     replies = { ...GOOD };
     seen = [];
+    faultIn = undefined;
   });
   afterAll(async () => {
     if (serverUrl === undefined) return;

@@ -4,9 +4,15 @@
 // in their own recovery session, and every session of theirs ends.
 //
 // The recovery session is the authority: a provider session whose first
-// factor was the reset link (`VerifiedSubject.recovery`), unended, of a login
-// mapped in at least one of the deployment's businesses. Anything else is one
-// answer, `RESET_LINK_INVALID`, and the provider is not asked.
+// factor was the reset link (`VerifiedSubject.recovery`), naming its session,
+// unended, of a login mapped in at least one of the deployment's businesses.
+// Anything else is one answer, `RESET_LINK_INVALID`, and the provider is not
+// asked. A refusal is recorded in each business that knows the login (I13).
+//
+// The link is spent before the provider is asked: its session is ended in one
+// transaction, and of any requests carrying it at once only the one whose
+// ending wrote the row goes on. A provider fault after that spends the link
+// too, and the person asks for another.
 //
 // The password is set by the provider, asked with the person's own token
 // (GoTrue `PUT /user`), never through custody and never with the service
@@ -20,7 +26,9 @@
 // which revokes their refresh tokens (C58), then the recovery session.
 
 import {
+  claimProviderSession,
   endOtherSeenSessions,
+  recordAuthenticationAttempt,
   standingOf,
   type BusinessId,
   type Database,
@@ -54,7 +62,13 @@ export type PasswordResetResult =
       readonly code: 'RESET_LINK_INVALID' | 'PASSWORD_INVALID' | 'RESET_UNAVAILABLE';
     };
 
-/** Where the login stands, business by business: its person and actor, read only. */
+const INVALID = { ok: false, code: 'RESET_LINK_INVALID' } as const;
+
+/**
+ * Where the login stands, business by business: its person and actor. A
+ * refusal is recorded where the login is known; a business that does not know
+ * it is not handed its digest.
+ */
 async function mappedIn(
   database: Database,
   businesses: readonly BusinessId[],
@@ -65,15 +79,42 @@ async function mappedIn(
   const found = [];
   for (const business of businesses) {
     // oxlint-disable-next-line no-await-in-loop -- one business at a time, every one of them
-    const standing = await database.withBusiness(
-      business,
-      async (tx) => await standingOf(tx, presented, 'recovering'),
-    );
+    const standing = await database.withBusiness(business, async (tx) => {
+      const known = await standingOf(tx, presented, 'recovering');
+      if ('refused' in known && known.code !== 'AUTH_NO_MEMBERSHIP') {
+        await recordAuthenticationAttempt(tx, {
+          owner: 'person_login',
+          presented,
+          outcome: 'refused',
+          refusalCode: known.code,
+        });
+      }
+      return known;
+    });
     if (!('refused' in standing)) {
       found.push({ business, personId: standing.personId, actorId: standing.actorId });
     }
   }
   return found;
+}
+
+/** End the link's session, once: false (recorded) when another request ended it first. */
+async function claimed(
+  database: Database,
+  business: BusinessId,
+  presented: VerifiedSubject,
+  sessionId: string,
+): Promise<boolean> {
+  return await database.withBusiness(business, async (tx) => {
+    if (await claimProviderSession(tx, sessionId)) return true;
+    await recordAuthenticationAttempt(tx, {
+      owner: 'person_login',
+      presented,
+      outcome: 'refused',
+      refusalCode: 'AUTH_SESSION_EXPIRED',
+    });
+    return false;
+  });
 }
 
 /** Set the new password in the recovery session, then end every session of the login. */
@@ -84,12 +125,16 @@ export async function setPasswordByRecovery(
   reset: PasswordReset,
 ): Promise<PasswordResetResult> {
   const { presented, accessToken } = reset;
-  const mapped = presented.recovery === true ? await mappedIn(database, businesses, presented) : [];
-  if (mapped.length === 0) return { ok: false, code: 'RESET_LINK_INVALID' };
+  const sessionId = presented.recovery === true ? presented.sessionId : undefined;
+  if (sessionId === undefined) return INVALID;
+  const mapped = await mappedIn(database, businesses, presented);
+  const first = mapped[0];
+  if (first === undefined) return INVALID;
   const bytes = Buffer.byteLength(reset.password, 'utf8');
   if (bytes < PASSWORD_BYTES.least || bytes > PASSWORD_BYTES.most) {
     return { ok: false, code: 'PASSWORD_INVALID' };
   }
+  if (!(await claimed(database, first.business, presented, sessionId))) return INVALID;
   const set = await provider.setPassword(accessToken, reset.password);
   if (!set.ok || set.value !== presented.subject) return { ok: false, code: 'RESET_UNAVAILABLE' };
   for (const { business, personId, actorId } of mapped) {

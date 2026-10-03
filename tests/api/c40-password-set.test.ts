@@ -11,6 +11,7 @@ import { serverUrl } from '../acceptance/world.ts';
 import { CANARY, HOSTILE, json } from './c58-sessions-world.ts';
 import {
   answerWith,
+  attemptsOf,
   auditOf,
   clientA,
   clientB,
@@ -115,11 +116,14 @@ C40('C40 password reset, link use: the provider', () => {
       'a 200 naming another user': json(200, { id: 'someone-else', msg: CANARY }),
       'a 200 with no user': json(200, { msg: CANARY }),
     };
-    const { old, recovery } = await sessionsOf(bea.presented.subject);
-    // One wrong answer at a time, each from a clean stand-in.
+    const { old } = await sessionsOf(bea.presented.subject);
+    // One wrong answer at a time, each from a clean stand-in, each on a link of
+    // its own: a fault spends the link it came on, and the person asks again.
     for (const [name, reply] of Object.entries(hostile)) {
       answerWith({ ...GOOD, 'PUT /user': reply });
       seen.length = 0;
+      // oxlint-disable-next-line no-await-in-loop
+      const { recovery } = await sessionsOf(bea.presented.subject);
       // oxlint-disable-next-line no-await-in-loop
       const set = await setPassword(recovery, NEW_PASSWORD);
       expect(answerOf(set), name).toEqual({ status: 503, code: 'RESET_UNAVAILABLE' });
@@ -129,6 +133,8 @@ C40('C40 password reset, link use: the provider', () => {
         seen.map((one) => one.route),
         name,
       ).toEqual(['PUT /user']);
+      // oxlint-disable-next-line no-await-in-loop
+      expect(answerOf(await setPassword(recovery, NEW_PASSWORD)), name).toEqual(INVALID);
     }
     expect(await doorAnswer(old, 'alpha')).toBe('served');
     const audited = await auditOf(world.alpha, CHANGED);
@@ -137,7 +143,7 @@ C40('C40 password reset, link use: the provider', () => {
 });
 
 C40('C40 password reset, link use: secrets', () => {
-  it('C40 token canary: the password and the link session never reach answers, records or logs', async () => {
+  it('C40 token canary: the password and link session reach no answer, audit or attempt row, or log', async () => {
     const ivy = await freshMember('ivy');
     const password = `${CANARY}-password`;
     const { recovery } = await sessionsOf(ivy.presented.subject);
@@ -162,6 +168,12 @@ C40('C40 password reset, link use: secrets', () => {
       expect(mine).toHaveLength(1);
       expect(mine[0]?.row).not.toContain(CANARY);
       expect(mine[0]?.row).not.toContain(recovery);
+      const attempts = await attemptsOf(world.alpha, ivy.presented.subject);
+      expect(attempts.map((one) => one.refusal_code)).toEqual(['AUTH_SESSION_EXPIRED']);
+      for (const one of attempts) {
+        expect(one.row).not.toContain(CANARY);
+        expect(one.row).not.toContain(recovery);
+      }
     } finally {
       for (const spy of spies) spy.mockRestore();
     }

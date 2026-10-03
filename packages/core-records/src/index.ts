@@ -108,6 +108,7 @@ export {
   type SecondFactor,
 } from './identity/second-factor.ts';
 export {
+  claimProviderSession,
   endOtherSeenSessions,
   endProviderSession,
   endOwnSession,
