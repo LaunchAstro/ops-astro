@@ -172,10 +172,14 @@ export type DeliverRefusal = 'OPERATION_NOT_CATALOGUED' | 'SENDER_NOT_VERIFIED';
 const DOT_ATOM = /^[\w!#$%&'*+/=?^`{|}~-]+(?:\.[\w!#$%&'*+/=?^`{|}~-]+)*$/u;
 /** Printable ASCII: a domain that lower-cases to the verified subdomain only if it already is one. */
 const ASCII = /^[!-~]+$/u;
+/** RFC 5321's limits in octets; both checks above take ASCII only, so a character is one octet. */
+const MAX_LOCAL_OCTETS = 64;
+const MAX_ADDRESS_OCTETS = 254;
 
 /**
- * The report vouches for one subdomain: mail from anything but one bare address on it is not
- * verified, and only a report that says it is not from the fake source (`mock`) counts.
+ * The report vouches for one subdomain: mail from anything but one bare address on it, within
+ * RFC 5321's lengths, is not verified, and only a report that says it is not from the fake
+ * source (`mock`) counts.
  */
 export function fromVerifiedSender(
   from: string,
@@ -186,6 +190,8 @@ export function fromVerifiedSender(
     sender.verified &&
     sender.mock === false &&
     DOT_ATOM.test(local) &&
+    local.length <= MAX_LOCAL_OCTETS &&
+    from.length <= MAX_ADDRESS_OCTETS &&
     rest.length === 0 &&
     ASCII.test(domain) &&
     domain.toLowerCase() === sender.subdomain.toLowerCase()
