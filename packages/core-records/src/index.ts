@@ -294,3 +294,5 @@ export {
   type Sealed,
   type SealingKey,
 } from './custody/sealing.ts';
+// The connector fleet and a repair's start (MP-14-7a): no value is read.
+export * from './connections/fleet.ts';
