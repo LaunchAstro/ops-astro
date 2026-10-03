@@ -176,6 +176,28 @@ describe('C31 Keys panel keeps the value', () => {
     await page.unmount();
   });
 
+  it('C31 a typed value is in no attribute of the page before it is sent', async () => {
+    const page = await mount(<KeysPanel client={clientOf(server().fetch)} />);
+    await tick();
+    await page.type('[data-settings="key-value"]', VALUE);
+    const field = page.find('[data-settings="key-value"]') as HTMLInputElement;
+    expect(field.getAttribute('value') ?? '').not.toContain(VALUE);
+    expect(page.host.innerHTML).not.toContain(VALUE);
+    await page.unmount();
+  });
+
+  it('C31 the typed value cannot be copied, cut or dragged out of its field', async () => {
+    const page = await mount(<KeysPanel client={clientOf(server().fetch)} />);
+    await tick();
+    const field = page.find('[data-settings="key-value"]') as HTMLInputElement;
+    for (const kind of ['copy', 'cut', 'dragstart']) {
+      const event = new Event(kind, { bubbles: true, cancelable: true });
+      field.dispatchEvent(event);
+      expect(event.defaultPrevented, kind).toBe(true);
+    }
+    await page.unmount();
+  });
+
   it('C31 a holder who may not change keys sees them listed, with no Set form and no Clear', async () => {
     const stub = server();
     const page = await mount(<KeysPanel client={clientOf(stub.fetch)} />);
