@@ -9,6 +9,7 @@
 //   2. Storage holds a decision once made: no rejection turned approval, no
 //      decider moved, nothing back to requested.
 //   3. The receipt write needs the caller's own lease in a live delegation.
+//   4. A correction's party is its task's client, never the one supplied.
 //
 // Registered through `tests/tenancy/restricted-calls.test.ts`, a named suite,
 // which calls `describeLiveCorrectionLows` after its own cases.
@@ -261,6 +262,21 @@ function findingThree(): void {
   });
 }
 
+function findingFour(): void {
+  const OF_TASK_B = 'select count(*)::int as n from public.live_corrections where task_id = $1';
+
+  it('a correction filed under client A for a task of client B is refused and writes nothing', async () => {
+    const { taskB, clientA, clientB } = lows();
+    expect(await file(taskB, clientA)).toStrictEqual({
+      ok: false,
+      code: 'CORRECTION_PARTY_MISMATCH',
+    });
+    expect(await countOf(OF_TASK_B, taskB)).toBe(0);
+    // The control: under the task's own client it is stored, at that party.
+    expect(await file(taskB, clientB)).toMatchObject({ taskId: taskB, partyId: clientB });
+  });
+}
+
 /** P26's findings, each its own block over one world. */
 export function describeLiveCorrectionLows(): void {
   describe.skipIf(databaseUrlFromEnvironment() === undefined)(
@@ -277,6 +293,7 @@ export function describeLiveCorrectionLows(): void {
       describe('finding 1: covered reads ask only the ticked keys', findingOne);
       describe('finding 2: storage holds a decision once made', findingTwo);
       describe('finding 3: the receipt write needs the caller’s own live lease', findingThree);
+      describe('finding 4: the party is the task’s client', findingFour);
     },
   );
 }
