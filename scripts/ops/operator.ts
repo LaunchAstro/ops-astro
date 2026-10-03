@@ -97,6 +97,7 @@ const NO_OPERATING_BUSINESS =
   'the installation has no operating business: it is written once, at installation, from the restore runbook';
 const NOT_OPERATING = "this act belongs to the installation's operating business alone";
 const NO_LONGER = `the operator no longer holds ${KEY} with this sign-in: stopped part way`;
+/** The person a gate admitted, and the business it was checked in. */
 type Held = { readonly personId: string; readonly businessId: BusinessId };
 
 /**
@@ -269,11 +270,6 @@ async function checkOperator(environment: Environment, operatingOnly: boolean): 
 export async function requireOperatingOperator(
   environment: Environment = process.env,
 ): Promise<Gate> {
-  if (!set(environment, 'DATABASE_URL') || !set(environment, 'DATABASE_ADMIN_URL')) {
-    return refused(
-      "the installation's operating business is read from the installation's own database, and none is named",
-    );
-  }
   return await checkOperator(environment, true);
 }
 

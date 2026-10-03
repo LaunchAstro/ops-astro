@@ -87,7 +87,7 @@ export async function restoreDrill({
       // directory is memory only, so restored rows never reach the disk, and
       // the server's own messages (a failed restore's can quote a row) go
       // to no log driver, so Docker keeps none of them either.
-      const container = `-d --rm --log-driver none --network none --name ${name} --tmpfs ${PGDATA} -e PGDATA=${PGDATA}`;
+      const container = `-d --rm --network none --log-driver none --name ${name} --tmpfs ${PGDATA} -e PGDATA=${PGDATA}`;
       const env = `-e POSTGRES_HOST_AUTH_METHOD=trust -e POSTGRES_DB=${DB}`;
       await must(run(['run', ...`${container} ${env}`.split(' '), image]));
       let ready = false;
@@ -138,21 +138,21 @@ export async function restoreDrill({
         `grant execute on function public.app_business_id() to ${APP_ROLE}`,
       );
       const [p, c] = [scope.person, scope.client];
-      const [tables = '', granted, businesses, people, unbarred] = (
+      const [tables = '', unbarred, granted, businesses, people] = (
         await psql(
           `set role ${APP_ROLE}`,
           `set app.business_id = '${scope.business}'`,
           `${EFFECTIVE_GRANTS} select (select string_agg(schemaname || '.' || tablename, ',') from pg_tables
              where schemaname not in ('pg_catalog', 'information_schema')),
+             (select count(*) from pg_class t join pg_namespace n on n.oid = t.relnamespace
+               where n.nspname = 'public' and t.relkind = 'r'
+                 and not (t.relrowsecurity and t.relforcerowsecurity)),
              (exists (select from public.memberships where person_id = '${p}' and active)
              and exists (select from effective where subject_kind = 'person' and subject_id = '${p}'
                and collection = 'person' and (action = 'read' and (scope_kind = 'business'
                or scope_kind = 'party' and scope_id = '${c}') or action = 'manage' and scope_kind = 'business'))
              )::int, (select count(*) from public.businesses),
-             (select count(*) from public.people where id in ('${p}', '${c}')),
-             (select count(*) from pg_class t join pg_namespace n on n.oid = t.relnamespace
-               where n.nspname = 'public' and t.relkind = 'r'
-                 and not (t.relrowsecurity and t.relforcerowsecurity))`,
+             (select count(*) from public.people where id in ('${p}', '${c}'))`,
         )
       ).split('|');
       const present = new Set(tables.split(','));

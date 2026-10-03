@@ -93,13 +93,16 @@ function askingAgain(reach, gate) {
   const again = async () => await gate.stillOperator?.();
   return async (url, script, onLine) => {
     await again();
-    const checked =
-      onLine &&
-      (async (line) => {
-        await again();
-        return await onLine(line);
-      });
-    return await reach(url, script, checked);
+    if (onLine === undefined) return await reach(url, script);
+    // Each line waits on the gate, in order, whether or not the route awaits it.
+    let asked = Promise.resolve();
+    const text = await reach(url, script, (line) => {
+      asked = asked.then(again).then(() => onLine(line));
+      asked.catch(() => {});
+      return asked;
+    });
+    await asked;
+    return text;
   };
 }
 
