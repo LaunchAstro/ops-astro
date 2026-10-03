@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Reviewer proofs for C71-D (SL10-26). Uncommitted; the orchestrator patches
-// them to the builder.
+// C71-D direct messages under races: two first sends of one pair start one
+// conversation, a message committed after the reader's marker still counts
+// unread, and API.md names the statuses an invalid body or upTo answers.
 
 // oxlint-disable no-await-in-loop
 import { readFileSync } from 'node:fs';
@@ -221,15 +222,15 @@ describe.skipIf(databaseUrlFromEnvironment() === undefined)('C71-D reviewer proo
     await chat?.harness.close();
   });
 
-  it('Sol proof, criterion 2: two concurrent first sends of one pair start one conversation', async () => {
+  it('two concurrent first sends of one pair start one conversation', async () => {
     await concurrentFirstSends(chat);
   }, 600_000);
 
-  it('Sol proof, criterion 2: a message whose send began before one the reader marked read, but committed after it, still counts unread', async () => {
+  it('a message whose send began before one the reader marked read, but committed after it, still counts unread', async () => {
     await lateCommitStaysUnread(chat);
   }, 600_000);
 
-  it('Sol proof, criterion 6: API.md names the status chat.send_direct and chat.mark_read answer for an invalid body or upTo', async () => {
+  it('API.md names the status chat.send_direct and chat.mark_read answer for an invalid body or upTo', async () => {
     await documentedStatuses(chat);
   }, 600_000);
 });
