@@ -163,7 +163,7 @@ async function tips(page: Page): Promise<ChartView['tip']> {
   return { hover, focus };
 }
 
-export async function chartsReport(): Promise<{ views: ChartView[]; sameInDark: string[] }> {
+async function chartsReport(): Promise<{ views: ChartView[]; sameInDark: string[] }> {
   const views: ChartView[] = [];
   const pictures = new Map<string, Buffer>();
   await eachGalleryView(async ({ width, theme, page, sideways }) => {

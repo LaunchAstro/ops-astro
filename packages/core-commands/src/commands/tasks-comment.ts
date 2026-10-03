@@ -177,10 +177,10 @@ export async function unreadableMentions(
 /** The people a comment names, or its refusal: a list of person ids, absent meaning none. */
 export function mentionsOf(mentions: unknown): readonly string[] | HandlerOutcome {
   const named = mentions ?? [];
-  if (!Array.isArray(named) || !named.every((id) => isIdentifier(id))) {
+  if (!Array.isArray(named) || !named.every((id): id is string => isIdentifier(id))) {
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['mentions'], MENTIONS_FIXES));
   }
-  return named as string[];
+  return named;
 }
 
 /**
@@ -215,7 +215,7 @@ export async function writeTaskComment(
   audience: unknown,
   commentType: unknown,
   parentId: unknown = undefined,
-  mentions: unknown = [],
+  mentions?: unknown,
 ): Promise<HandlerOutcome> {
   if (on.target.deleted_at !== null) return refused(refuseNotFound());
   const commentTypeId = on.commentTypeId;
