@@ -84,8 +84,10 @@ export async function restoreDrill({
       started = true;
       // No network and no published port: nothing outside can reach it, and it
       // can reach nothing. Local trust is safe for the same reason. The data
-      // directory is memory only, so restored rows never reach the disk.
-      const container = `-d --rm --network none --name ${name} --tmpfs ${PGDATA} -e PGDATA=${PGDATA}`;
+      // directory is memory only, so restored rows never reach the disk, and
+      // the server's own messages (a failed restore's can quote a row) go
+      // to no log driver, so Docker keeps none of them either.
+      const container = `-d --rm --log-driver none --network none --name ${name} --tmpfs ${PGDATA} -e PGDATA=${PGDATA}`;
       const env = `-e POSTGRES_HOST_AUTH_METHOD=trust -e POSTGRES_DB=${DB}`;
       await must(run(['run', ...`${container} ${env}`.split(' '), image]));
       let ready = false;
@@ -121,7 +123,10 @@ export async function restoreDrill({
       // itself. Every read runs as that role under the named business, where
       // the forced business barrier shows exactly one business: more means the
       // barrier did not survive the restore, and a person or client of another
-      // business is not there to find. Within it, the named person must be a
+      // business is not there to find. One table shows nothing of the others,
+      // so every application table's barrier is checked as well: row security
+      // enabled and forced, as the tenancy law has it (tenancy/conformance.ts),
+      // or the copy fails. Within it, the named person must be a
       // current member holding a live grant to read the named client, as the
       // product's own read asks it (collection `person`, action `read`, at party
       // or business scope), or the business's people manager (Sol's reviews of
@@ -133,7 +138,7 @@ export async function restoreDrill({
         `grant execute on function public.app_business_id() to ${APP_ROLE}`,
       );
       const [p, c] = [scope.person, scope.client];
-      const [tables = '', granted, businesses, people] = (
+      const [tables = '', granted, businesses, people, unbarred] = (
         await psql(
           `set role ${APP_ROLE}`,
           `set app.business_id = '${scope.business}'`,
@@ -144,12 +149,15 @@ export async function restoreDrill({
                and collection = 'person' and (action = 'read' and (scope_kind = 'business'
                or scope_kind = 'party' and scope_id = '${c}') or action = 'manage' and scope_kind = 'business'))
              )::int, (select count(*) from public.businesses),
-             (select count(*) from public.people where id in ('${p}', '${c}'))`,
+             (select count(*) from public.people where id in ('${p}', '${c}')),
+             (select count(*) from pg_class t join pg_namespace n on n.oid = t.relnamespace
+               where n.nspname = 'public' and t.relkind = 'r'
+                 and not (t.relrowsecurity and t.relforcerowsecurity))`,
         )
       ).split('|');
       const present = new Set(tables.split(','));
       const whole = expected.length > 0 && expected.every((t) => present.has(t));
-      if (!whole || granted !== '1' || businesses !== '1' || people !== '2')
+      if (!whole || granted !== '1' || businesses !== '1' || people !== '2' || unbarred !== '0')
         throw new Error('check failed');
       record.tables = expected.length;
       record.readAs = APP_ROLE;
