@@ -43,6 +43,7 @@ import './styles/4-board.css';
 import './styles/4b-board-machine.css';
 import './styles/5-task.css';
 import './styles/6-agent.css';
+import './styles/6b-execution-map.css';
 import './styles/7-page-kit.css';
 import './styles/8-notifications.css';
 import './styles/9-ledger.css';
