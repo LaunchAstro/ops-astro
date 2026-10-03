@@ -22,6 +22,7 @@ import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import { applied, refused, type HandlerOutcome } from './outcome.ts';
 import type { CommandContext } from './context.ts';
 import { raiseFrontierDecisions } from './wayfinder-frontier-raise.ts';
+import { outsideHolders } from '../reads/tasks.ts';
 import type { CommandRequest } from './requests.ts';
 import { setPartyWhileEmpty } from './task-client-lock.ts';
 
@@ -150,6 +151,10 @@ export async function setTaskType(
     });
     if (refusal !== undefined) return refused(refusal);
   }
+  if (to === 'map' || facts.mapId !== null) {
+    const shared = await refuseSharedIntoMap(tx, target.id);
+    if (shared !== undefined) return refused(shared);
+  }
   const rows = await tx.query<{ readonly revision: string }>(
     `update records set data = data || $3::jsonb, updated_at = now()
       where business_id = $1 and id = $2 returning revision::text as revision`,
@@ -183,10 +188,28 @@ function retypeChange(
 }
 
 /**
- * A grilling or prototype ticket moving to another parent. Its owner rule
- * reads the map it is filed under, so leaving that map would leave the rule
- * behind: a move to any other parent needs `task:decide` and the owner of the
- * map it leaves, as a retype does. Anything else moves as before.
+ * A task holding client access stays off maps (WF-1): a map, its tickets and
+ * their threads never reach a client surface, so the share would outlive its
+ * purpose. Refused, writing nothing, until client access is turned off.
+ */
+export async function refuseSharedIntoMap(
+  tx: TenantQuery,
+  recordId: string,
+): Promise<CommandRefusal | undefined> {
+  if ((await outsideHolders(tx, recordId)).length === 0) return undefined;
+  return refuseCommand(
+    'TRANSITION_NOT_PERMITTED',
+    ['client access'],
+    ['Turn client access off first: a map and its tickets stay internal.'],
+  );
+}
+
+/**
+ * A task moving to another parent, held to the map rules at both ends. A
+ * grilling or prototype ticket leaving its map needs `task:decide` and the
+ * owner of the map it leaves, as a retype does; one arriving on a map needs
+ * the same of the map it joins, so a ticket retyped while it had no map
+ * cannot route around the owner rule. A task with client access joins no map.
  */
 export async function refuseOwnerTicketMove(
   tx: TenantQuery,
@@ -195,15 +218,32 @@ export async function refuseOwnerTicketMove(
   parentId: string | null,
 ): Promise<CommandRefusal | undefined> {
   const facts = await wayfinderFacts(tx, recordId);
-  if (facts === undefined || facts.type === 'map' || !OWNER_TYPES.has(facts.type)) return undefined;
-  if (facts.mapId === null || facts.mapId === parentId) return undefined;
+  if (facts === undefined) return undefined;
+  const guarded = facts.type !== 'map' && OWNER_TYPES.has(facts.type);
+  if (guarded && facts.mapId !== null && facts.mapId !== parentId) {
+    const leaving = await refuseUnlessOwner(
+      tx,
+      context,
+      facts,
+      {
+        decide: 'Moving a grilling or prototype ticket off its map needs task:decide.',
+        owner: "Only the map's owner moves a grilling or prototype ticket off the map.",
+      },
+      'refuse',
+    );
+    if (leaving !== undefined) return leaving;
+  }
+  const into = parentId === null ? undefined : await wayfinderFacts(tx, parentId);
+  if (into?.type !== 'map' || into.mapId === facts.mapId) return undefined;
+  const shared = await refuseSharedIntoMap(tx, recordId);
+  if (shared !== undefined || !guarded) return shared;
   return await refuseUnlessOwner(
     tx,
     context,
-    facts,
+    into,
     {
-      decide: 'Moving a grilling or prototype ticket off its map needs task:decide.',
-      owner: "Only the map's owner moves a grilling or prototype ticket off the map.",
+      decide: 'Filing a grilling or prototype ticket on a map needs task:decide.',
+      owner: "Only the map's owner files a grilling or prototype ticket on the map.",
     },
     'refuse',
   );
