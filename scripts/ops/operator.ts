@@ -32,7 +32,9 @@ import {
   resolveLogin,
   subjectsOf,
   withSession,
+  type AdminConnection,
   type BusinessId,
+  type Database,
   type TenantQuery,
   type VerifiedSubject,
 } from '../../packages/core-records/src/index.ts';
@@ -65,8 +67,9 @@ type Environment = Readonly<Record<string, string | undefined>>;
 const KEY = `${OPERATIONS_MANAGE.collection}:${OPERATIONS_MANAGE.action}`;
 /** What an agent or a delegation carries, as the command line names it. */
 const NOT_A_PERSON = ['OPS_ASTRO_AGENT', 'OPS_ASTRO_DELEGATION', 'OPS_ASTRO_DELEGATION_FILE'];
-/** Addresses, each parsed before use: the driver's error for a malformed one holds it whole. */
+/** Each one named host before use: postgres.js re-reads a host list, and its error holds it. */
 const CHECKED_WITH = ['DATABASE_URL', 'DATABASE_ADMIN_URL', 'GOTRUE_URL'];
+const oneHost = (value = ''): boolean => /^[^,]+$/u.test(URL.parse(value)?.hostname ?? '');
 /** The file in the record folder, one JSON line per act. */
 export const RECORD_FILE = 'deployments.jsonl';
 
@@ -118,7 +121,7 @@ async function notOperating(tx: TenantQuery, businessId: string): Promise<string
  * The business and the person holding the key over all of it, or undefined.
  * Read-only: the transaction always ends in a rollback, so a refusal and an
  * admission alike commit nothing, the sign-in attempt login resolution writes
- * (I13) included. Both connections are closed.
+ * (I13) included. Both connections are closed; an unreadable address is named, never echoed.
  */
 async function personHolding(
   env: Readonly<Record<string, string>>,
@@ -126,8 +129,13 @@ async function personHolding(
   presented: VerifiedSubject,
   operatingOnly: boolean,
 ): Promise<Held | { readonly why: string } | undefined> {
-  const admin = connectAsAdmin(env['DATABASE_ADMIN_URL']!, { source: 'admin' });
-  const database = connect(env['DATABASE_URL']!, { source: 'runtime' });
+  let admin: AdminConnection, database: Database;
+  try {
+    admin = connectAsAdmin(env['DATABASE_ADMIN_URL']!, { source: 'admin' });
+    database = connect(env['DATABASE_URL']!, { source: 'runtime' });
+  } catch {
+    return { why: 'DATABASE_URL or DATABASE_ADMIN_URL not set or unreadable' };
+  }
   try {
     // A database the lookup identity (0046) may not read holds no business.
     const businessId = await createBusinessResolver(admin)(business).catch(
@@ -164,12 +172,8 @@ async function personHolding(
 }
 
 /** Record the admitted operator's sign-in attempt (I13), in a transaction of its own. */
-async function recordSignIn(
-  databaseUrl: string,
-  businessId: BusinessId,
-  presented: VerifiedSubject,
-): Promise<void> {
-  const database = connect(databaseUrl, { source: 'runtime' });
+async function recordSignIn(url: string, businessId: BusinessId, presented: VerifiedSubject) {
+  const database = connect(url, { source: 'runtime' });
   try {
     await withSession(database, businessId, presented, async () => {});
   } finally {
@@ -213,7 +217,7 @@ async function checkOperator(environment: Environment, operatingOnly: boolean): 
   if (!set(environment, 'OPS_ASTRO_TOKEN') || !set(environment, 'OPS_ASTRO_BUSINESS')) {
     return refused("no person's sign-in: OPS_ASTRO_TOKEN and OPS_ASTRO_BUSINESS are both needed");
   }
-  const unset = CHECKED_WITH.filter((name) => !URL.canParse(environment[name] ?? ''));
+  const unset = CHECKED_WITH.filter((name) => !oneHost(environment[name]));
   if (unset.length > 0)
     return refused(`${unset.join(', ')} not set or unreadable, so the sign-in cannot be checked`);
   const env = environment as Readonly<Record<string, string>>;
