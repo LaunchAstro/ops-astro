@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Review proof (SL12-19, MP-6-2 stored plan record, 0223): `task.restart`
+// Review proof (SL12-19, MP-6-2 stored plan record, 20261003001115): `task.restart`
 // proposes a new run through `propose` in core-runtime, which passes no
 // `planRecordId`, so its step is written with `plan_record_written` false and
-// the run is placed by time, the race 0223 closes. 0223 says only a row from
+// the run is placed by time, the race 20261003001115 closes. 20261003001115 says only a row from
 // before the migration holds false.
 
 import { randomUUID } from 'node:crypto';

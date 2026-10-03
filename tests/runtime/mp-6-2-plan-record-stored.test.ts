@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // MP-6-2's placement against a real database, with the plan record stored at
-// proposal (0223, ORCH49). The race the time order could not see: an accept
+// proposal (20261003001115, ORCH49). The race the time order could not see: an accept
 // that began before a proposal parks on the decision-chain lock (the first
 // lock `decide` takes, before the task), the proposal commits, and then the
 // accept binds its record with a `bound_at` earlier than the run's

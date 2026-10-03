@@ -31,7 +31,7 @@ import {
   liveWorkLocks,
   retireWork,
 } from './recovery.ts';
-import { BEFORE_0223, writeProposal } from './proposal-writer.ts';
+import { BEFORE_STEP_PLAN_RECORD, writeProposal } from './proposal-writer.ts';
 import { readProjectedPlan } from './plan-binding.ts';
 import { lockRediscovered } from './rediscovery.ts';
 import { refuse, type RuntimeResult } from './refusals.ts';
@@ -42,7 +42,7 @@ import { markRevision } from './reviewed-output.ts';
 // code rather than a second copy of it (T4). `roundsUsed` moved with them and
 // is re-exported here, because `index.ts` pins it under this module's name and
 // the command layer imports it from there.
-export { BEFORE_0223, roundsUsed } from './proposal-writer.ts';
+export { BEFORE_STEP_PLAN_RECORD, roundsUsed } from './proposal-writer.ts';
 
 export interface ProposeRequest {
   readonly taskId: string;
@@ -64,10 +64,10 @@ export interface ProposeRequest {
     readonly planStep?: string;
   };
   /**
-   * The bound plan record the command read under the task lock (0223), or
+   * The bound plan record the command read under the task lock (20261003001115), or
    * null; see `ProposalWrite`. Absent, it is read under this proposal's locks.
    */
-  readonly planRecordId?: string | null | typeof BEFORE_0223;
+  readonly planRecordId?: string | null | typeof BEFORE_STEP_PLAN_RECORD;
   readonly expiresAt: Date;
   /** Present to add a version to a live lineage; absent to open one. */
   readonly lineageId?: string;
@@ -334,7 +334,7 @@ export async function proposeUnderLocks(
     lineage = only(opened, 'propose: the lineage inserted above');
   }
 
-  // The plan bound now, stored with the step (0223). A command that checked a
+  // The plan bound now, stored with the step (20261003001115). A command that checked a
   // step key read it already; `restart` and the rest read it here, under the
   // task lock this set holds, so no run is left to be placed by time.
   const planRecordId =

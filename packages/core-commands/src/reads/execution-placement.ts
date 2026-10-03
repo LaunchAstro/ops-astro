@@ -10,7 +10,7 @@
 //
 //   the plan's run  the run a bound record was accepted on, or a run of that
 //                   run's lineage proposed once it was bound: the plan itself;
-//   a work run      the record stored with its step (0223): the bound
+//   a work run      the record stored with its step (20261003001115): the bound
 //                   record `task.propose` checked the step key against under
 //                   the task lock, with the step key the proposal named;
 //   neither         no plan record: the run was proposed under no plan.
@@ -21,7 +21,7 @@
 //
 // "Bound before" a run is the stored record and every record ordered below it
 // (`bound_at`, then id, the projection's own order), on the run's own task
-// only. A step written before 0223 stored none (`plan_record_written` false)
+// only. A step written before 20261003001115 stored none (`plan_record_written` false)
 // and keeps the placement by time: bound at or before the run's `created_at`.
 // Both clocks are their transaction's start, so for those rows alone an
 // accept that began before a proposal and took the task lock after it still

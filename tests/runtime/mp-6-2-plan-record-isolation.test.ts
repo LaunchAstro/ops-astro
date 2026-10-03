@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// MP-6-2's stored plan record (0223), its security line against a real
+// MP-6-2's stored plan record (20261003001115), its security line against a real
 // database: a record of another business or of another client's task is
 // never stored on a step, a step written without one never takes one later,
 // and a row forged past the trigger reads nothing of the other task. Each

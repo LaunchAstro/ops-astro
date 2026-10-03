@@ -230,7 +230,7 @@ export async function proposeFor(
     );
   }
   // The plan the step key is checked against is the one stored with the step
-  // (MP-6-2, 0223), so the log places the run in it whatever binds later.
+  // (MP-6-2, 20261003001115), so the log places the run in it whatever binds later.
   const plan = await readProjectedPlan(tx, target.id);
   const unplanned = planStepRefusal(plan, proposal.step);
   if (unplanned !== undefined) return unplanned;

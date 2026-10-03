@@ -547,7 +547,7 @@ async function writeSuccessor(
   locks: LockSet,
 ): Promise<RuntimeResult<Successor> | null> {
   if (successor === undefined) return null;
-  // The successor's step keeps the plan bound now, as a proposal's does (0223).
+  // The successor's step keeps the plan bound now, as a proposal's does (20261003001115).
   const plan = await readProjectedPlan(tx, found.task_id);
   const written = await writeProposal(
     tx,

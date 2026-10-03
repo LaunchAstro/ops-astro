@@ -33,7 +33,7 @@ import {
   type MigrationOutcome,
 } from '../../packages/core-records/src/tenancy/migrate.ts';
 import type { Database, TenantQuery } from '../../packages/core-records/src/tenancy/database.ts';
-import { BEFORE_0223, propose } from '../../packages/core-runtime/src/propose.ts';
+import { BEFORE_STEP_PLAN_RECORD, propose } from '../../packages/core-runtime/src/propose.ts';
 import { decide } from '../../packages/core-runtime/src/decide.ts';
 import {
   buildFixture,
@@ -93,8 +93,8 @@ async function proposed(
       currency: 'AUD',
       payload: { instruction: 'draft it' },
       step: { kind: 'local.draft', payload: { words: 200 } },
-      // Seeded before 0223 (and 0207): the step has no plan record columns.
-      planRecordId: BEFORE_0223,
+      // Seeded before 20261003001115 (and 0102): the step has no plan record columns.
+      planRecordId: BEFORE_STEP_PLAN_RECORD,
       expiresAt: new Date(Date.now() + 3_600_000),
       ...(on.lineageId === undefined ? {} : { lineageId: on.lineageId }),
     });

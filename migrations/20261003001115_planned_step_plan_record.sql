@@ -1,9 +1,11 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
+-- A UTC timestamp ID (docs/local/DATA.md, "What the schema is"): written after
+-- batch 3b took 0100-0111 and migrations moved to timestamps.
 --
 -- MP-6-2 (ORCH49): the plan record a run's step was proposed under, stored.
 --
 -- `task.propose` checks a step key against the task's bound plan under the
--- task lock (0210); the operational log then placed the run by time, as the
+-- task lock (0105); the operational log then placed the run by time, as the
 -- newest record bound at or before the run's `created_at`. Both clocks are
 -- their transaction's start, so an accept that began before a proposal and
 -- took the task lock after it read as bound first, and moved the run's rows.

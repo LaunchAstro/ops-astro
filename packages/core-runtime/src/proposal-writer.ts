@@ -47,11 +47,13 @@ import { renderEvidence } from './evidence.ts';
 import { type RuntimeResult } from './refusals.ts';
 
 /**
- * Said in place of a plan record only on a schema from before 0223: the
+ * Said in place of a plan record only on a schema from before 20261003001115: the
  * upgrade suites seed one and propose through this writer. Every other caller
  * names the record it read, or null, so no new step is written the old way.
  */
-export const BEFORE_0223: unique symbol = Symbol('planned_steps before 0223');
+export const BEFORE_STEP_PLAN_RECORD: unique symbol = Symbol(
+  'planned_steps before the stored plan record',
+);
 
 export interface ProposalWrite {
   readonly taskId: string;
@@ -76,10 +78,10 @@ export interface ProposalWrite {
   };
   /**
    * The task's bound plan record as the caller read it under the task lock,
-   * or null when none was bound, stored with the step (MP-6-2, 0223).
-   * `BEFORE_0223` writes the step as before 0223, its run placed by time.
+   * or null when none was bound, stored with the step (MP-6-2, 20261003001115).
+   * `BEFORE_STEP_PLAN_RECORD` writes the step as before 20261003001115, its run placed by time.
    */
-  readonly planRecordId: string | null | typeof BEFORE_0223;
+  readonly planRecordId: string | null | typeof BEFORE_STEP_PLAN_RECORD;
   readonly expiresAt: Date;
 }
 
@@ -194,7 +196,7 @@ export async function writeProposal(
     JSON.stringify(request.step.payload),
     request.step.planStep ?? null,
   ];
-  await (request.planRecordId === BEFORE_0223
+  await (request.planRecordId === BEFORE_STEP_PLAN_RECORD
     ? tx.query(
         `insert into public.planned_steps
            (business_id, id, run_id, ordinal, kind, payload, plan_step_key)
