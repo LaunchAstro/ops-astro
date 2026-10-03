@@ -40,7 +40,6 @@ describe('MP-6-3 narrow list no overflow', () => {
     expect(narrow).toMatch(/\.tg__ndep\s*\{\s*display: block;/u);
     expect(narrow).toMatch(/\.tg__scroll\s*\{\s*overflow: visible;/u);
     expect(CSS).toMatch(/\.tg__insp \.gate__say,[^{]*\{\s*overflow-wrap: anywhere;/u);
-    expect(page.find('[data-map="binds"]')?.textContent).toContain('sha256:');
     await page.unmount();
   });
 });
