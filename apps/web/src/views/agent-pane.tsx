@@ -35,6 +35,13 @@ export interface AgentSectionProps {
   readonly recordId: string;
   /** The task's title as the read gave it, or its key while it has none: the drawer's ask names it. */
   readonly title: string;
+  /**
+   * The client the task is under, as `task.read` sent it: null on an internal
+   * task, and on one whose client the reader's grants do not reach (CS-4.12).
+   * The drawer's ask carries it, so the egress rule sees whose data a plan
+   * would carry (AW-04).
+   */
+  readonly clientId: string | null;
   readonly proposals: readonly ProposalView[];
   readonly people: readonly PersonView[];
   /** `task.read`'s token ledger (MP-6-5): null for a reader it is not shown to, absent on an older read. */
@@ -221,7 +228,9 @@ export function AgentSection(props: AgentSectionProps): ReactElement {
         onEndAtStop={controls.endAtStop}
         stopAwaiting={controls.stopAwaiting}
         onStartAttempt={() => {
-          askDrawer(newAttemptAsk({ id: props.recordId, title: props.title, clientId: null }));
+          askDrawer(
+            newAttemptAsk({ id: props.recordId, title: props.title, clientId: props.clientId }),
+          );
         }}
       />
       {controls.stepUp === null ? null : <StepUpPrompt ask={controls.stepUp} />}

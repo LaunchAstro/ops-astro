@@ -9,11 +9,17 @@
 // one click (tests/surfaces/aw-04-drawer-plan.test.tsx) is the accept.
 /* eslint-disable unicorn/prefer-dom-node-dataset -- each assertion reads its data- attribute by the DOM name */
 
-import type { ReactElement } from 'react';
+import { act, type ReactElement } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { askDrawer, newAttemptAsk, useAgentDrawer } from '../../apps/web/src/assistant/asks.ts';
+import {
+  askDrawer,
+  newAttemptAsk,
+  useAgentDrawer,
+  useAsks,
+} from '../../apps/web/src/assistant/asks.ts';
 import type { AskEntry } from '../../apps/web/src/assistant/chats.ts';
-import type { OperationsClient } from '../../apps/web/src/operations/client.ts';
+import { OperationsClient } from '../../apps/web/src/operations/client.ts';
+import { TaskDetailScreen } from '../../apps/web/src/screens/TaskDetail.tsx';
 import { AssistantView } from '../../apps/web/src/views/assistant.tsx';
 import { lineage, pane, unmountAll as unmountPanes } from './mp-6-1-agent-fixtures.tsx';
 import { mount, settle } from './mount.tsx';
@@ -88,5 +94,85 @@ describe('AW-04 start from the pane', () => {
       body: 'Plan a new attempt at Spring brief.',
       scope: { kind: 'task', id: TASK.id },
     });
+  });
+});
+
+/** The drawer's half, recording each ask it takes. */
+function Heard(props: { readonly into: AskEntry[] }): null {
+  useAsks((entry) => {
+    props.into.push(entry);
+  });
+  return null;
+}
+
+const json = (body: unknown, status = 200): Response =>
+  new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+
+/** The task page over a stubbed `task.read` whose task belongs to `clientId`, an ended attempt on it. */
+async function taskPage(clientId: string | null, into: AskEntry[]) {
+  const task = {
+    id: TASK.id,
+    key: 'T-12',
+    title: TASK.title,
+    // main's wire name for the task's client (InternalTaskDetail.client, C32)
+    client: clientId,
+    description: null,
+    state: null,
+    assignee: null,
+    due: null,
+    priority: null,
+    completedAt: null,
+    revision: 3,
+    history: [],
+    comments: [],
+    proposals: [lineage({ state: 'rejected' })],
+  };
+  const answer = (at: string): Response => {
+    if (at.endsWith('/person/list')) return json({ ok: true, persons: [] });
+    if (at.endsWith('/task/read')) return json({ ok: true, task });
+    return json({ refused: true, code: 'NOT_FOUND', names: [], fixes: [] }, 404);
+  };
+  const client = new OperationsClient({
+    origin: '',
+    businessKey: 'alpha',
+    signedIn: true,
+    fetch: ((url: string | URL) =>
+      Promise.resolve(answer(String(url)))) as unknown as typeof globalThis.fetch,
+    newOperationId: () => 'operation-1',
+  });
+  const page = track(
+    await mount(
+      <>
+        <Heard into={into} />
+        <TaskDetailScreen client={client} grantKey="alpha:ada" taskKey="T-12" />
+      </>,
+    ),
+  );
+  await act(async () => {
+    for (let n = 0; n < 3; n += 1) {
+      // eslint-disable-next-line no-await-in-loop -- let each read settle in turn
+      await new Promise((resolve) => {
+        setTimeout(resolve, 0);
+      });
+    }
+  });
+  return page;
+}
+
+describe('SL12-19-F2 the pane asks with the task’s client', () => {
+  it('a client’s task: Start a new attempt asks the drawer with the client id task.read returned', async () => {
+    const asks: AskEntry[] = [];
+    const page = await taskPage('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', asks);
+    await page.click('[data-agent="start"]');
+    expect(asks.map((ask) => ask.scope.task)).toStrictEqual([
+      { id: TASK.id, title: TASK.title, clientId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' },
+    ]);
+  });
+
+  it('an internal task: the ask names no client', async () => {
+    const asks: AskEntry[] = [];
+    const page = await taskPage(null, asks);
+    await page.click('[data-agent="start"]');
+    expect(asks.map((ask) => ask.scope.task)).toStrictEqual([{ ...TASK }]);
   });
 });
