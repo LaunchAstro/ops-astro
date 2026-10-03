@@ -239,6 +239,7 @@ export {
 } from './register-gate.ts';
 export { UNPRODUCED_CODES } from './register-unproduced.ts';
 export * from './tasks/content.ts';
+export * from './team/chat.ts';
 export {
   DERIVED_ON_CREATE,
   deriveSource,

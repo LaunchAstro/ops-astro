@@ -28,6 +28,7 @@ import { accessBody, madeClient } from './role-case-access-bodies.ts';
 import { createGateBody } from './role-case-gate-bodies.ts';
 import { conversationBody, leaseBody } from './role-case-run-bodies.ts';
 import { FIXED_BODIES } from './role-case-fixed-bodies.ts';
+import { chatBody, isChatName } from './role-case-chat-bodies.ts';
 import { moneyBody } from './role-case-money-bodies.ts';
 import { lineageBody } from './role-case-lineage-bodies.ts';
 
@@ -48,9 +49,8 @@ export function createPositiveBody(
     };
     const fixed = FIXED_BODIES[declaration.name];
     if (fixed !== undefined) return { body: { ...fixed } };
+    if (isChatName(declaration.name)) return await chatBody(declaration.name, context);
     switch (declaration.name) {
-      case 'task.create':
-        return { body: { fields: { title: 'the admin creates a task' } } };
       case 'task.update':
         return { body: { ...(await target()), fields: { title: 'edited by the admin' } } };
       case 'task.start':

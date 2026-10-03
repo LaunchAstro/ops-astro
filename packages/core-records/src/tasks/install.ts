@@ -28,6 +28,7 @@ import { isRecordsRefusal } from '../records/refusals.ts';
 import { TASK_SPINE, TASK_TYPE_KEY, type SpineField } from './spine.ts';
 import { COMMENT_SPINE, COMMENT_TYPE_KEY } from './comments.ts';
 import { TASK_STATE_FIELDS, TASK_STATE_SEED, TASK_STATE_TYPE_KEY } from './states.ts';
+import { CONVERSATION_SPINE, CONVERSATION_TYPE_KEY } from '../team/conversations.ts';
 
 export interface InstalledTaskSpine {
   readonly taskTypeId: string;
@@ -257,17 +258,29 @@ async function readStates(
 }
 
 /**
- * The comment type, added beside a task type that is already installed.
+ * A type added beside a task type that is already installed: the comment
+ * type, and the team conversation type (C71) beside it.
  *
  * Its slots are planned against an empty `taken` because the type is new: a
- * slot is reserved per record type, so a comment field never competes with a
- * task field for one.
+ * slot is reserved per record type, so its field never competes with a task
+ * field for one.
  */
-async function addCommentType(tx: TenantQuery): Promise<string> {
+async function addType(
+  tx: TenantQuery,
+  key: string,
+  name: string,
+  fields: readonly SpineField[],
+): Promise<string> {
   const slots = await slotTable(tx);
-  const commentTypeId = await createRecordType(tx, COMMENT_TYPE_KEY, 'Task comment');
-  await createFields(tx, commentTypeId, COMMENT_SPINE, slots);
-  return commentTypeId;
+  const typeId = await createRecordType(tx, key, name);
+  await createFields(tx, typeId, fields, slots);
+  return typeId;
+}
+
+/** The team conversation type (C71), once per business, after the comment type it anchors. */
+async function ensureConversationType(tx: TenantQuery): Promise<void> {
+  if ((await findRecordType(tx, CONVERSATION_TYPE_KEY)) !== undefined) return;
+  await addType(tx, CONVERSATION_TYPE_KEY, 'Team conversation', CONVERSATION_SPINE);
 }
 
 /**
@@ -292,7 +305,9 @@ export async function installTaskSpine(tx: TenantQuery): Promise<InstalledTaskSp
     // task and state type ids, their field rows and every task record survive,
     // because nothing below rewrites them, bar the two visibility classes.
     const commentTypeId =
-      (await findRecordType(tx, COMMENT_TYPE_KEY)) ?? (await addCommentType(tx));
+      (await findRecordType(tx, COMMENT_TYPE_KEY)) ??
+      (await addType(tx, COMMENT_TYPE_KEY, 'Task comment', COMMENT_SPINE));
+    await ensureConversationType(tx);
     // The one exception to "touch nothing": title and state's visibility, the
     // I09 ruling an install from before it never received.
     await reconcileVisibility(tx, existing);
@@ -320,6 +335,7 @@ export async function installTaskSpine(tx: TenantQuery): Promise<InstalledTaskSp
   // not exist yet is the same ordering mistake the state type avoids above.
   const taskCommentTypeId = await createRecordType(tx, COMMENT_TYPE_KEY, 'Task comment');
   await createFields(tx, taskCommentTypeId, COMMENT_SPINE, slots);
+  await ensureConversationType(tx);
 
   return { taskTypeId, taskStateTypeId, taskCommentTypeId, stateIds, installed: true };
 }

@@ -38,10 +38,13 @@ const EMPTY: readonly CommandName[] = [
   'inbox.unattended',
   // The reader's own to-dos (MP-7-1): no operand.
   'task.todos',
+  // The reader's own team conversations (C71-D): no operand.
+  'chat.conversations',
 ];
 
 export const FIXED_BODIES: Readonly<Partial<Record<CommandName, Body>>> = {
   ...Object.fromEntries(EMPTY.map((name) => [name, {}])),
+  'task.create': { fields: { title: 'the admin creates a task' } },
   'task.board': { board: null },
   'task.ledger': { timeZone: 'UTC' },
   'preference.save': { preference: 'appearance', value: 'dark' },
@@ -81,6 +84,7 @@ export function probeOperands(name: CommandName): Body {
   if (name === 'task.receipt') return { attemptId: randomUUID() };
   if (name === 'harness.read') return { runId: randomUUID() };
   if (name === 'task.set_state') return { stateId: randomUUID() };
+  if (name === 'chat.messages') return { conversationId: randomUUID() };
   if (name === 'task.duplicate') return { client: null, title: 'a copy', stepNames: [] };
   // Well formed, so what answers is authority: the call's operands are read
   // by type before the delegation, as a handback's are (AW-01).

@@ -215,6 +215,20 @@ export type CommandName =
   // own notification setting on one channel.
   | 'inbox.unattended'
   | 'notifications.set_channel'
+  // Team conversations (C71-D): a direct message on the one comment record,
+  // the reader's conversations and one conversation's messages, and the
+  // reader's own read marker.
+  | 'chat.send_direct'
+  | 'chat.conversations'
+  | 'chat.messages'
+  | 'chat.mark_read'
+  // Group conversations (C71-G): started, written to, renamed, their members
+  // changed, and left.
+  | 'chat.start_group'
+  | 'chat.send_group'
+  | 'chat.rename_group'
+  | 'chat.change_members'
+  | 'chat.leave'
   // A run's trace, as the export sends it (AW-13 readers), for `operations:read`.
   | 'trace.read'
   // The harness adoption test's result on one run (AW-12): the team's.

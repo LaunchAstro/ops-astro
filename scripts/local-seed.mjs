@@ -142,6 +142,12 @@ const GRANTS_BY_ROLE = {
     // `spend:decide`, so C59's step-up judges it. Client sign-off and the
     // step-up switch stay `settings:manage` above.
     ['spend', 'decide'],
+    // Team conversations (C71-D): `chat:comment`, an agency member's key;
+    // within a conversation the query holds it to its members.
+    ['chat', 'comment'],
+    // Group conversations (C71-G): `chat:manage`, a group's creator's and the
+    // owner's and administrators', renames one and changes its members.
+    ['chat', 'manage'],
   ],
   member: [
     ['task', 'read'],
