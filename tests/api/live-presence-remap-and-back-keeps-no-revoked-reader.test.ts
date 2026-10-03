@@ -21,7 +21,7 @@ import { join, topic, within, type Joined } from './c4-live-support.ts';
 
 // Person to person: the login is A at its seat, B at the task recheck,
 // and A again at the sitter lookup. A's grant has been revoked.
-it('Sol proof, criterion 5: person to person presence cannot retain a revoked reader after a remap and back', async () => {
+it('person to person presence cannot retain a revoked reader after a remap and back', async () => {
   const s = await openSchedules('solfixremapback', 100_000);
   const pool = connect(s.db.appUrl, { max: 4 });
   const topics = await startLiveTopics(connectListener(s.db.appUrl));

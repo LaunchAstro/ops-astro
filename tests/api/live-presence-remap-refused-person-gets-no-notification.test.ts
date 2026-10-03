@@ -23,7 +23,7 @@ import { join, topic, within, type Joined } from './c4-live-support.ts';
 // then the login moves to a person without it before the stream asks who
 // sits. That pass must not seat the new person; the task asks again for them
 // first (held here, and refused).
-it('Sol proof, criterion 2: person to person remapping emits no task notification for a person the task refuses', async () => {
+it('person to person remapping emits no task notification for a person the task refuses', async () => {
   const s = await openSchedules('solfixremapsignal', 100_000);
   const pool = connect(s.db.appUrl, { max: 4 });
   const topics = await startLiveTopics(connectListener(s.db.appUrl));
