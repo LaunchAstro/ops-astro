@@ -13,7 +13,7 @@
 // **With no model on offer and a reason in words, the drawer sends nothing**
 // (owner line 72): the picker is empty and disabled, the reason sits under the
 // head, and a question asked anyway is answered in the drawer, not sent.
-import type { ReactElement } from 'react';
+import { useRef, type ReactElement } from 'react';
 import type {
   AssistantChat,
   AssistantMessage,
@@ -149,9 +149,34 @@ function Provenance(props: {
   );
 }
 
+/**
+ * Each tab's sends still in flight, kept here because the field is drawn anew
+ * for each tab: back on a tab, a chip is not sent again while that tab's last
+ * send is out, as the field itself refuses while it stays drawn.
+ */
+function useChipGuard(
+  chips: readonly string[],
+  onSend: AssistantPanelProps['onSend'],
+): AssistantPanelProps['onSend'] {
+  const out = useRef(new Map<string, number>());
+  return (key, text) => {
+    const sending = out.current.get(key) ?? 0;
+    if (sending > 0 && chips.includes(text)) return;
+    out.current.set(key, sending + 1);
+    const sent = onSend(key, text);
+    // The field hears a failure from `sent` itself; this branch only counts.
+    const landed = (): void => {
+      out.current.set(key, (out.current.get(key) ?? 1) - 1);
+    };
+    void Promise.resolve(sent).then(landed, landed);
+    return sent;
+  };
+}
+
 export function AssistantPanel(props: AssistantPanelProps): ReactElement {
   const chat = props.chats.find((each) => each.key === props.selected);
   const sendable = !(props.offer.models.length === 0 && props.offer.waiting !== null);
+  const send = useChipGuard(props.subject.chips, props.onSend);
   return (
     <section className="aipanel" data-assistant="panel" aria-label="Agent">
       <Head
@@ -185,7 +210,7 @@ export function AssistantPanel(props: AssistantPanelProps): ReactElement {
         chips={props.subject.chips}
         draft={props.draft}
         sendable={sendable}
-        onSend={(text) => (chat === undefined ? undefined : props.onSend(chat.key, text))}
+        onSend={(text) => (chat === undefined ? undefined : send(chat.key, text))}
       />
     </section>
   );

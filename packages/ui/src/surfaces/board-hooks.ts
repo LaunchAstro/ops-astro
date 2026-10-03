@@ -165,9 +165,9 @@ export function useColumnDrag<Row>(
     },
     [],
   );
-  const start = (key: string, startX: number): void => {
+  const start = (key: string, startX: number, pointerId: number): void => {
     endDrag.current?.();
-    const drag = { key, startX, columns, from: layout, previous: widths };
+    const drag = { key, startX, pointerId, columns, from: layout, previous: widths };
     endDrag.current = followPointer(drag, { setLive, endDrag, dispatch });
   };
   const nudge = (key: string, dx: number): void => {
@@ -177,11 +177,15 @@ export function useColumnDrag<Row>(
   return { layout, live, start, nudge };
 }
 
-/** Follows one drag's pointer until it lets go or is cancelled; answers the cancel. */
+/**
+ * Follows one drag's pointer until it lets go or is cancelled; answers the
+ * cancel. Another pointer's moves and release are not this drag's.
+ */
 function followPointer<Row>(
   drag: {
     readonly key: string;
     readonly startX: number;
+    readonly pointerId: number;
     readonly columns: readonly ColumnSpec<Row>[];
     readonly from: Layout;
     readonly previous: ColumnWidths | null;
@@ -194,7 +198,8 @@ function followPointer<Row>(
 ): () => void {
   const { key } = drag;
   let latest: ColumnWidths | null = null;
-  const move = (event: MouseEvent): void => {
+  const move = (event: PointerEvent): void => {
+    if (event.pointerId !== drag.pointerId) return;
     latest = widthsAfterDrag(
       drag.columns,
       drag.from,
@@ -212,11 +217,11 @@ function followPointer<Row>(
     to.setLive(null);
     if (keep && latest !== null) to.dispatch({ type: 'resize', key, widths: latest });
   };
-  const up = (): void => {
-    stop(true);
+  const up = (event: PointerEvent): void => {
+    if (event.pointerId === drag.pointerId) stop(true);
   };
-  const cancel = (): void => {
-    stop(false);
+  const cancel = (event?: PointerEvent): void => {
+    if (event === undefined || event.pointerId === drag.pointerId) stop(false);
   };
   window.addEventListener('pointermove', move);
   window.addEventListener('pointerup', up);
