@@ -152,7 +152,7 @@ describe('C80 the fenced capture: a page that never closes', () => {
     ['scripts, but for a near spelling of the closer,', '<script ', '</scriptx>'],
     ['styles', '<style ', ''],
     ['links', '<link ', ''],
-    ['tags', '<', ''],
+    ['tags', '<a ', ''],
   ])(
     'refuses a page whose %s never close as malformed, without scanning it opener by opener',
     async (_name, opener, tail) => {
@@ -167,4 +167,25 @@ describe('C80 the fenced capture: a page that never closes', () => {
       expect(performance.now() - started).toBeLessThan(1000);
     },
   );
+
+  // The re-bound review of P25: a guard over the original document did not
+  // hold, since each regex pass ran over the previous pass's output and the
+  // scans folded U+017F to s. Each body below answers at once, whatever it answers.
+  it.each([
+    ['tag openers whose only closer sits in a comment', '<', '<!-- > -->'],
+    ['tag openers whose only closer sits in a script', '<', '<script>></script>'],
+    ['scripts whose only closer sits in a comment', '<script>', '<!--</script>-->'],
+    ['styles spelt with a long s', '<\u017Ftyle>', ''],
+    ['scripts spelt with a long s', '<\u017Fcript>', ''],
+  ])('answers a page of %s within a second', async (_name, opener, tail) => {
+    const body = `<p>x</p>${opener.repeat(Math.floor((256 * 1024) / opener.length))}${tail}`;
+    const started = performance.now();
+    const result = await capturePage(ABOUT, {
+      pool: POOL,
+      resolve: publicResolver,
+      transport: site({ [ABOUT]: answer('text/html', body) }),
+    });
+    expect(result.ok || result.code === 'CAPTURE_BODY_MALFORMED').toBe(true);
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
 });
