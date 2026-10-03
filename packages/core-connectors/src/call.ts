@@ -87,7 +87,9 @@ export function readField(body: unknown, dotted: string): unknown {
   return value;
 }
 
-type Prepared = { readonly request: TransportRequest } | { readonly refused: string };
+type Prepared =
+  | { readonly request: TransportRequest; readonly secret: string | undefined }
+  | { readonly refused: string };
 
 function requestFor(
   registration: OperationRegistration,
@@ -152,7 +154,7 @@ async function prepare(
       return { refused: 'CREDENTIAL_UNAVAILABLE' };
     }
   }
-  return { request: requestFor(registration, params, built.path, address, token) };
+  return { request: requestFor(registration, params, built.path, address, token), secret: token };
 }
 
 type Read =
@@ -202,7 +204,14 @@ export async function callConnector(
     deps.record(prepared.refused);
     return { kind: 'refused', code: prepared.refused };
   }
-  const read = readAnswer(registration, await deps.transport(prepared.request));
+  const answered = readAnswer(registration, await deps.transport(prepared.request));
+  const { secret } = prepared;
+  // A field holding the borrowed credential is the provider echoing it: unreadable, never returned.
+  const echoed =
+    'value' in answered &&
+    secret !== undefined &&
+    Object.values(answered.value).some((field) => String(field).includes(secret));
+  const read: Read = echoed ? { unreadable: 'PROVIDER_CREDENTIAL_ECHOED' } : answered;
   if ('value' in read) return { kind: 'ok', value: read.value };
   if ('proof' in read) {
     deps.record(read.refused);
