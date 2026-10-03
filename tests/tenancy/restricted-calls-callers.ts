@@ -181,6 +181,7 @@ export function expectedOutcome(
   operation: Operation,
   own: number,
   at?: string,
+  copy = false,
 ): string {
   if (!APPLICATION_CALLERS.has(caller)) return 'denied';
   const granted = applicationGrantsAt(table.qualified, at);
@@ -195,7 +196,7 @@ export function expectedOutcome(
   if (caller === 'login in the wrapper, own tenant') {
     return operation === 'select' ? `rows ${String(own)}` : 'past tenancy';
   }
-  if (operation === 'insert') return beforeRowRefusal(table.qualified, at) ?? 'rls';
+  if (operation === 'insert') return beforeRowRefusal(table.qualified, at, copy) ?? 'rls';
   return 'rows 0';
 }
 
@@ -211,18 +212,20 @@ export const BEFORE_ROW_REFUSALS: Readonly<Record<string, string>> = {
 };
 
 /**
- * The same, from the migration that adds the trigger on. 20261003001115
- * (MP-6-2) refuses a new step holding `plan_record_written` false, so the bare
- * insert, which names `business_id` alone, meets `check_violation` first.
+ * The same for the bare insert alone, from the migration that adds the
+ * trigger on. 20261003001115 (MP-6-2) refuses a new step holding
+ * `plan_record_written` false, so the bare insert, which names `business_id`
+ * alone, meets `check_violation` first; the whole-row copy says true and
+ * meets the tenancy check.
  */
-const BEFORE_ROW_REFUSALS_FROM: Readonly<
+const BARE_INSERT_REFUSALS_FROM: Readonly<
   Record<string, { readonly from: string; readonly outcome: string }>
 > = {
   'public.planned_steps': { from: '20261003001115', outcome: 'constraint' },
 };
 
-function beforeRowRefusal(qualified: string, at?: string): string | undefined {
-  const later = BEFORE_ROW_REFUSALS_FROM[qualified];
+function beforeRowRefusal(qualified: string, at: string | undefined, copy: boolean) {
+  const later = copy ? undefined : BARE_INSERT_REFUSALS_FROM[qualified];
   if (later !== undefined && (at === undefined || at >= later.from)) return later.outcome;
   return BEFORE_ROW_REFUSALS[qualified];
 }

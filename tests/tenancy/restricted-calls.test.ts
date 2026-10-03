@@ -603,7 +603,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
         const outcome = await callers.call(caller, copyStatement(table), [row]);
         // oxlint-disable-next-line no-await-in-loop
         const after = await fingerprint(world.db.admin, table.qualified);
-        const expected = expectedOutcome(caller, table, 'insert', 0);
+        const expected = expectedOutcome(caller, table, 'insert', 0, undefined, true);
         const line = `${table.qualified}\tinsert copy\t${caller}\t${describeOutcome(outcome)}`;
         executed.push(line);
         if (!meets(expected, outcome)) wrong.push(`${line}\texpected ${expected}`);
