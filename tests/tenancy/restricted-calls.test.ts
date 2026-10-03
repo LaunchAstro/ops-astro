@@ -719,16 +719,18 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
   // may execute it (tests/broker/aw-01-broker-fair-share.test.ts). The drill
   // stamp (C55) writes only now(), and only the drill's identity runs it. The
   // codes expiry (20261002105957) deletes only rows past its fixed horizon, and only the
-  // upkeep identity runs it.
+  // upkeep identity runs it. The ending's commit time (20261003024319) is a
+  // trigger on the subject-wide endings that only moves a new row's time later.
   describe('the security definer functions', () => {
     const definers = (): readonly CatalogueFunction[] => functions.filter((fn) => fn.definer);
     const definer = (signature: string): CatalogueFunction | undefined =>
       definers().find((fn) => fn.signature === signature);
 
-    it('are exactly four, each with its search path pinned', () => {
+    it('are exactly five, each with its search path pinned', () => {
       expect(definers().map((fn) => fn.signature)).toStrictEqual([
         'handback_reports_append_only()',
         'model_route_room(text,integer)',
+        'ops.ended_subject_sessions_at_commit()',
         'ops.expire_second_factor_codes()',
         'ops.record_tested_restore()',
       ]);
@@ -748,6 +750,16 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
       expect(fn?.trigger).toBe(false);
       expect(fn?.config).toStrictEqual(['search_path=pg_catalog, public', 'row_security=off']);
       expect(fn?.firedBy).toStrictEqual([]);
+    });
+
+    it("the ending's commit time is a trigger fired only by an insert of an ending", () => {
+      // 20261003024319 (Sol OW-001-FIX2): it sets a new subject-wide ending's time at commit.
+      const fn = definer('ops.ended_subject_sessions_at_commit()');
+      expect(fn?.trigger).toBe(true);
+      expect(fn?.config).toStrictEqual(['search_path=pg_catalog']);
+      expect(fn?.firedBy).toStrictEqual([
+        { table: 'ops.ended_subject_sessions', events: 'insert' },
+      ]);
     });
 
     it('the third is the codes expiry, taking no argument', () => {

@@ -62,6 +62,7 @@ export default defineConfig({
         : [
             'tests/api/leaked-client-read-isolation-assertion.test.ts',
             'tests/api/end-others-provider-clock-skew.test.ts',
+            'tests/api/end-others-delayed-ending.test.ts',
             'tests/api/agent-credential-exports-counted.test.ts',
           ]),
       // CI's `local checks` runs the suites that start containers in a step of their own, after

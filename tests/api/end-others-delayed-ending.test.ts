@@ -30,7 +30,7 @@ import {
 
 useSessionsWorld();
 
-it('Sol proof, criterion 3: a delayed end-others transaction revokes a session signed in before its ending commits in another business', async () => {
+it('a delayed end-others transaction revokes a session signed in before its ending commits in another business', async () => {
   const subject = world.mia.subject;
   await world.db.app.withBusiness(world.bravo, async (tx) => {
     const personId = await insertPerson(tx, 'Sol delayed-ending person in bravo');
