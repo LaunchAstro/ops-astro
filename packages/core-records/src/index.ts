@@ -112,6 +112,7 @@ export {
   endOtherSeenSessions,
   endProviderSession,
   endOwnSession,
+  endSubjectSessions,
   listSeenSessions,
   type SeenSession,
   type SessionEndReason,

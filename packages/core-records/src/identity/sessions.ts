@@ -82,11 +82,7 @@ export async function endOtherSeenSessions(
   /** The login's provider subject: the ending holds in every business (0063). */
   subject: string,
 ): Promise<number> {
-  await tx.query(
-    `insert into ops.ended_subject_sessions (subject_digest, kept_session)
-     values (encode(sha256(convert_to($1, 'UTF8')), 'hex'), $2::uuid)`,
-    [subject, keep ?? null],
-  );
+  await endSubjectSessions(tx, subject, keep);
   const seen = await tx.query<{ readonly session_id: string }>(
     `select distinct a.session_id::text as session_id
        from public.authentication_attempts a
@@ -97,6 +93,22 @@ export async function endOtherSeenSessions(
   );
   const others = seen.map((row) => row.session_id).filter((id) => id !== keep);
   return await endSessions(tx, personId, others, reason);
+}
+
+/**
+ * End every session of the login but `keep` (none when undefined), in every
+ * business, from this commit (0063): a sign-in after it is served.
+ */
+export async function endSubjectSessions(
+  tx: TenantQuery,
+  subject: string,
+  keep?: string,
+): Promise<void> {
+  await tx.query(
+    `insert into ops.ended_subject_sessions (subject_digest, kept_session)
+     values (encode(sha256(convert_to($1, 'UTF8')), 'hex'), $2::uuid)`,
+    [subject, keep ?? null],
+  );
 }
 
 /**

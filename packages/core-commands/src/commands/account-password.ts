@@ -7,27 +7,32 @@
 // factor was the reset link (`VerifiedSubject.recovery`), naming its session,
 // unended, of a login mapped in at least one of the deployment's businesses.
 // Anything else is one answer, `RESET_LINK_INVALID`, and the provider is not
-// asked. A refusal is recorded in each business that knows the login (I13).
+// asked. A spent link, and a request that lost the claim, are recorded as
+// refused in each business that knows the login (I13).
 //
-// The link is spent before the provider is asked: its session is ended in one
-// transaction, and of any requests carrying it at once only the one whose
-// ending wrote the row goes on. A provider fault after that spends the link
-// too, and the person asks for another.
+// The link is spent before the provider is asked: in one transaction its
+// session is ended and every session of the login ends in every business
+// (0063, keeping none), so no fault or lost answer after the provider is asked
+// leaves an old session live here. Of any requests carrying the link at once,
+// only the one whose ending wrote the row goes on. A provider fault after
+// that spends the link too, the others are signed out at the provider in case
+// the password was set, and the person asks for another link.
 //
 // The password is set by the provider, asked with the person's own token
 // (GoTrue `PUT /user`), never through custody and never with the service
 // key. Its answer is shaped (`PasswordProvider`): only a user whose id is the
-// token's subject is a yes. A fault or any other answer changes nothing here.
+// token's subject is a yes. A fault or any other answer audits nothing.
 //
 // On the yes, in each business the login is mapped in, one transaction ends
-// every session of the login (0063, keeping none, so the recovery session is
-// spent too) and audits `account.password_changed`, with no password and no
-// token in it. After commit, the provider signs out the other sessions,
-// which revokes their refresh tokens (C58), then the recovery session.
+// the sessions it has seen and every session of the login again (0063), and
+// audits `account.password_changed`, with no password and no token in it.
+// After commit, the provider signs out the other sessions, which revokes
+// their refresh tokens (C58), then the recovery session.
 
 import {
   claimProviderSession,
   endOtherSeenSessions,
+  endSubjectSessions,
   recordAuthenticationAttempt,
   standingOf,
   type BusinessId,
@@ -64,6 +69,13 @@ export type PasswordResetResult =
 
 const INVALID = { ok: false, code: 'RESET_LINK_INVALID' } as const;
 
+/** The login in one business: its person and actor there. */
+interface Mapped {
+  readonly business: BusinessId;
+  readonly personId: string;
+  readonly actorId: string;
+}
+
 /**
  * Where the login stands, business by business: its person and actor. A
  * refusal is recorded where the login is known; a business that does not know
@@ -73,10 +85,8 @@ async function mappedIn(
   database: Database,
   businesses: readonly BusinessId[],
   presented: VerifiedSubject,
-): Promise<
-  { readonly business: BusinessId; readonly personId: string; readonly actorId: string }[]
-> {
-  const found = [];
+): Promise<Mapped[]> {
+  const found: Mapped[] = [];
   for (const business of businesses) {
     // oxlint-disable-next-line no-await-in-loop -- one business at a time, every one of them
     const standing = await database.withBusiness(business, async (tx) => {
@@ -98,7 +108,10 @@ async function mappedIn(
   return found;
 }
 
-/** End the link's session, once: false (recorded) when another request ended it first. */
+/**
+ * End the link's session, once, and with it every session of the login in
+ * every business: false (recorded) when another request ended it first.
+ */
 async function claimed(
   database: Database,
   business: BusinessId,
@@ -106,7 +119,10 @@ async function claimed(
   sessionId: string,
 ): Promise<boolean> {
   return await database.withBusiness(business, async (tx) => {
-    if (await claimProviderSession(tx, sessionId)) return true;
+    if (await claimProviderSession(tx, sessionId)) {
+      await endSubjectSessions(tx, presented.subject);
+      return true;
+    }
     await recordAuthenticationAttempt(tx, {
       owner: 'person_login',
       presented,
@@ -115,6 +131,27 @@ async function claimed(
     });
     return false;
   });
+}
+
+/** In each business the login is mapped in: end its seen sessions, and audit the change. */
+async function changedIn(
+  database: Database,
+  mapped: readonly Mapped[],
+  subject: string,
+): Promise<void> {
+  for (const { business, personId, actorId } of mapped) {
+    // oxlint-disable-next-line no-await-in-loop -- one business's transaction at a time
+    await database.withBusiness(business, async (tx) => {
+      await endOtherSeenSessions(tx, personId, undefined, 'end_others', subject);
+      await writeAuditEvent(tx, {
+        actorId,
+        command: PASSWORD_CHANGED,
+        outcome: 'applied',
+        refusalCode: null,
+        payloadDigest: payloadDigest({ command: PASSWORD_CHANGED, person: personId }),
+      });
+    });
+  }
 }
 
 /** Set the new password in the recovery session, then end every session of the login. */
@@ -136,19 +173,16 @@ export async function setPasswordByRecovery(
   }
   if (!(await claimed(database, first.business, presented, sessionId))) return INVALID;
   const set = await provider.setPassword(accessToken, reset.password);
-  if (!set.ok || set.value !== presented.subject) return { ok: false, code: 'RESET_UNAVAILABLE' };
-  for (const { business, personId, actorId } of mapped) {
-    // oxlint-disable-next-line no-await-in-loop -- one business's transaction at a time
-    await database.withBusiness(business, async (tx) => {
-      await endOtherSeenSessions(tx, personId, undefined, 'end_others', presented.subject);
-      await writeAuditEvent(tx, {
-        actorId,
-        command: PASSWORD_CHANGED,
-        outcome: 'applied',
-        refusalCode: null,
-        payloadDigest: payloadDigest({ command: PASSWORD_CHANGED, person: personId }),
-      });
-    });
+  if (!set.ok || set.value !== presented.subject) {
+    // The provider may have set it and lost the answer: its others end too.
+    await provider.signOut(accessToken, 'others');
+    return { ok: false, code: 'RESET_UNAVAILABLE' };
+  }
+  try {
+    await changedIn(database, mapped, presented.subject);
+  } catch (fault) {
+    await provider.signOut(accessToken, 'others');
+    throw fault;
   }
   const others = await provider.signOut(accessToken, 'others');
   const local = await provider.signOut(accessToken, 'local');

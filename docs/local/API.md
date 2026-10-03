@@ -2847,21 +2847,25 @@ not mount it yet). A token whose `amr` holds `recovery` is a recovery
 session: login resolution refuses it everywhere else (`AUTH_SESSION_EXPIRED`),
 and this route takes nothing else. The provider sets the password on the
 person's own token (GoTrue `PUT /user`, not custody), and only a user whose
-id is the token's subject is a yes. Then, in each business the login is
-mapped in, one transaction ends every session of the login (0063, keeping
-none, the recovery session too) and audits `account.password_changed`; after
-commit the provider signs out the others, then this session. The answer is
-200 `{ signedOutAtProvider }`. A session that is not a live recovery session
-of a mapped login (none, naming no session, expired, spent, a sign-in) is
-401 `RESET_LINK_INVALID`, recorded as a refused attempt in each business that
-knows the login; a password outside 12 to 72 bytes is 400 `PASSWORD_INVALID`,
-a body that is not a JSON object holding it 400 `RESET_MALFORMED`, and one
-over 1 KiB 413 `RESET_TOO_LARGE`. The link is spent before the provider is
-asked, so of two requests on one link at once one sets the password and the
-other is 401. A provider fault or wrong answer is 503 `RESET_UNAVAILABLE`, the
-link spent and nothing else ended or audited; a key set the provider cannot
-serve is 503 `RESET_UNAVAILABLE` too, as at the session exchange; anything
-else failing is 503 `RESET_FAULT`. A recovery session is never traded for the
+id is the token's subject is a yes. Before the provider is asked, one
+transaction spends the link (its session ended) and ends every session of the
+login in every business (0063, keeping none). On the yes, in each business the
+login is mapped in, one transaction ends the sessions seen there and audits
+`account.password_changed`; after commit the provider signs out the others,
+then this session. The answer is 200 `{ signedOutAtProvider }`. A session
+that is not a live recovery session of a mapped login (none, naming no
+session, expired, spent, a sign-in) is 401 `RESET_LINK_INVALID`; a spent link,
+and a request that lost the claim, are recorded as a refused attempt in each
+business that knows the login. A password outside 12 to 72 bytes is 400
+`PASSWORD_INVALID`, a body that is not a JSON object holding it 400
+`RESET_MALFORMED`, and one over 1 KiB 413 `RESET_TOO_LARGE`. The link is spent
+before the provider is asked, so of two requests on one link at once one sets
+the password and the other is 401. A provider fault or wrong answer is 503
+`RESET_UNAVAILABLE`; a key set the provider cannot serve is 503
+`RESET_UNAVAILABLE` too, as at the session exchange; anything else failing is
+503 `RESET_FAULT`. A reset that fails after the link is spent has still ended
+the person's sessions here, and the provider is asked to sign out the others;
+nothing is audited. A recovery session is never traded for the
 session cookie (`AUTH_SESSION_EXPIRED`). Answers carry a code alone; nothing
 is logged. No limit holds the route's rate yet.
 
