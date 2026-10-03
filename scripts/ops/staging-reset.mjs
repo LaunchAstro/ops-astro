@@ -13,20 +13,19 @@
 // for the made-up passwords and keys the owner puts in the password manager).
 // It is not behind the operator gate: the first reset makes staging's operator.
 //
-// In order: every refusal that needs no connection; then, connected, a
-// database neither marked made-up nor new is refused, and so are a service key
-// the admin API does not accept (one read) and a record that is not a real
-// file (a `started` line is written to it and read back); then the owner's
-// folder is made; only then, judged again with the tenant tables locked, empty
-// (the product's schemas, and the guard's notes on them, carrying the ended
-// sessions across), mark the database made-up again, migrate, put the ended
-// sessions back, make the sign-ins
-// (the provider keeps them in `auth.users`, where the guard judges each), seed
-// (`scripts/local-seed.mjs`, which judges the database again and marks it with
-// what it made) and write the installation's operating business once, and
+// In order: every refusal that needs no connection; then, connected, a running
+// seed (it holds the seed admission lock, kept from here to the reset's own seed)
+// is refused, and so are a database neither marked made-up nor new, a service key
+// the admin API does not accept (one read) and a record that is not a real file (a
+// `started` line is written to it and read back); then the owner's folder is made;
+// only then, judged again with the tenant tables locked, empty (the product's
+// schemas, and the guard's notes on them, carrying the ended sessions across),
+// mark the database made-up again, migrate, put the ended sessions back, make the
+// sign-ins (the provider keeps them in `auth.users`, where the guard judges each),
+// seed (`scripts/local-seed.mjs`, which judges the database again and marks it
+// with what it made) and write the installation's operating business once, and
 // append the done line to the same record. Exit 0 when done, 1 when refused or
-// stopped. Nothing it prints carries an address, a password, a key or a project
-// reference.
+// stopped. Nothing it prints carries an address, a password, a key or a reference.
 
 import { spawnSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -190,6 +189,8 @@ let migrations = 0;
 let record;
 const admin = connectAsAdmin(env.DATABASE_ADMIN_URL, { source: 'reset' });
 try {
+  const alone = `select pg_try_advisory_lock(hashtext('ops_astro_made_up seed')) as yes`;
+  if (!(await admin.execute(alone))[0]?.yes) refuse('another seed is running on this database');
   if (!(await resettable(admin)))
     refuse(
       'the database is neither marked made-up nor new, or its guard cannot vouch for a sign-in, ' +

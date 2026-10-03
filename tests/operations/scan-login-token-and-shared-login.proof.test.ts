@@ -10,8 +10,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
 import { createFreshDatabase } from '../support/fresh-database.ts';
+import { connect } from '../../packages/core-records/src/tenancy/database.ts';
+import { grantAccess } from '../../packages/core-records/src/authority/access.ts';
 
 type Run = { code: number | null; stdout: string; stderr: string };
+const uninitialised = (): void => {
+  throw new Error('promise not initialised');
+};
 
 async function fixture(
   run: (f: {
@@ -153,6 +158,27 @@ it('an existing token file is owner-only after make', async () => {
   });
 });
 
+it('concurrent make calls leave no untracked login after remove', async () => {
+  await fixture(async ({ cli, users, synchroniseMakes }) => {
+    synchroniseMakes();
+    const runs = await Promise.all([cli('make'), cli('make')]);
+    expect(runs.some((r) => r.code === 0)).toBe(true);
+    const removed = await cli('remove');
+    expect(removed.code, removed.stderr).toBe(0);
+    expect(users.size).toBe(0);
+  });
+});
+
+it('cleanup finds a provider login whose creation reply was lost', async () => {
+  await fixture(async ({ cli, users, loseReply }) => {
+    loseReply();
+    await cli('make');
+    const removed = await cli('remove');
+    expect(removed.code, removed.stderr).toBe(0);
+    expect(users.size).toBe(0);
+  });
+});
+
 it('business to business and person to person cleanup preserves a shared login in Bravo', async () => {
   await fixture(async ({ cli, db, users, loginFile }) => {
     const made = await cli('make');
@@ -198,5 +224,112 @@ it('business to business and person to person cleanup preserves a shared login i
     );
     expect(rows).toEqual([{ active: true }]);
     expect(users.has(record.userId)).toBe(true);
+  });
+});
+
+it('a grant issued while removal waits cannot outlive authority revocation', async () => {
+  await fixture(async ({ cli, db, alpha }) => {
+    const made = await cli('make');
+    expect(made.code, made.stderr).toBe(0);
+    const rows = await db.admin.execute<{ person_id: string; actor_id: string }>(
+      'select p.id as person_id, a.id as actor_id from public.people p join public.actors a on a.person_id=p.id where p.display_name=$1',
+      ['Scan Alpha'],
+    );
+    const scan = rows[0];
+    if (!scan) throw new Error('scan person missing');
+    const blocker = connect(db.appUrl);
+    const writer = connect(db.appUrl);
+    let locked = uninitialised;
+    const ready = new Promise<void>((resolve) => {
+      locked = resolve;
+    });
+    let release = uninitialised;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const holding = blocker.withBusiness(alpha, async (tx) => {
+      await tx.query(
+        'select id from public.grants where subject_id=$1 order by id limit 1 for update',
+        [scan.person_id],
+      );
+      locked();
+      await gate;
+    });
+    let removing: Promise<Run> | undefined;
+    let issuing: ReturnType<typeof writer.withBusiness> | undefined;
+    try {
+      await ready;
+      removing = cli('remove');
+      let parked = false;
+      for (let tries = 0; tries < 100 && !parked; tries++) {
+        // eslint-disable-next-line no-await-in-loop -- observe the blocked query before issuing the racing grant
+        const waiting = await db.admin.execute<{ n: number }>(
+          "select count(*)::int as n from pg_stat_activity where datname=$1 and wait_event_type='Lock' and query like '%select g.id from public.grants g%'",
+          [db.name],
+        );
+        parked = (waiting[0]?.n ?? 0) > 0;
+        if (!parked) {
+          // eslint-disable-next-line no-await-in-loop -- poll sequentially without a timing-only race
+          await new Promise((resolve) => {
+            setTimeout(resolve, 25);
+          });
+        }
+      }
+      expect(parked, 'remove reached its grant discovery and is waiting on the existing row').toBe(
+        true,
+      );
+      let settled = false;
+      issuing = writer
+        .withBusiness(alpha, (tx) =>
+          grantAccess(
+            tx,
+            {
+              personId: scan.person_id,
+              collection: 'task',
+              action: 'comment',
+              clientId: null,
+            },
+            scan.actor_id,
+          ),
+        )
+        .then((value) => {
+          settled = true;
+          return value;
+        });
+      let issuerParked = false;
+      // eslint-disable-next-line no-unmodified-loop-condition -- settled changes in the issuer's completion callback
+      for (let tries = 0; tries < 100 && !settled && !issuerParked; tries++) {
+        // eslint-disable-next-line no-await-in-loop -- a correct implementation parks the issuer on the access lock
+        const waiting = await db.admin.execute<{ n: number }>(
+          "select count(*)::int as n from pg_stat_activity where datname=$1 and wait_event_type='Lock' and query like '%pg_advisory_xact_lock%'",
+          [db.name],
+        );
+        issuerParked = (waiting[0]?.n ?? 0) > 0;
+        if (!settled && !issuerParked) {
+          // eslint-disable-next-line no-await-in-loop -- wait until issuance committed or the access lock serialised it
+          await new Promise((resolve) => {
+            setTimeout(resolve, 25);
+          });
+        }
+      }
+      expect(settled || issuerParked).toBe(true);
+      release();
+      await holding;
+      const removed = await removing;
+      expect(removed.code, removed.stderr).toBe(0);
+      await issuing;
+      const live = await db.admin.execute<{ n: number }>(
+        'select count(*)::int as n from public.grants where subject_id=$1 and revoked_at is null',
+        [scan.person_id],
+      );
+      expect(live[0]?.n).toBe(0);
+    } finally {
+      release();
+      await holding;
+      await removing;
+      await issuing;
+      await blocker.close();
+      await writer.close();
+    }
   });
 });

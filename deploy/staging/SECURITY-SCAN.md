@@ -12,7 +12,11 @@ baseline scan signed out. Then it makes a scan login (`scan-<12 hex>@alpha.local
 person "Scan Alpha", a member of `alpha` with a member's grants), runs the ZAP
 API scan of every command route signed in (the token sent to staging's host
 only, 45 minutes at most), and removes the login whatever happened, unless another
-business maps the same sign-in to a person of its own: then nothing is removed. The API scan
+business maps the same sign-in to a person of its own: then nothing is removed.
+The login's record names the sign-in before the provider is asked to make it,
+so a second make is refused and a make cut short, or whose reply was lost, is
+still removed. Removal holds the access lock and keeps every business from
+mapping a sign-in until the provider has deleted it. The API scan
 sends attack values to real commands; staging keeps what it made until the
 next reset. The findings table goes to the run's summary and, with the
 baseline's reports, into the artefact for 90 days; the API scan's raw reports,

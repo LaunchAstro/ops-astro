@@ -127,11 +127,17 @@ docker exec "${PG_CONTAINER}" psql -U postgres -d "${PG_DATABASE}" -v ON_ERROR_S
 # every session already issued. It is owner-only and never in auth.env, which
 # the API reads: the API fetches the public half from GoTrue instead (LF-4).
 KEY_FILE="${LOCAL}/auth-signing-key.json"
+# Two first runs at once each write their own new file, and a link never
+# replaces a key another run kept first, so both go on with one key.
 if [ ! -s "${KEY_FILE}" ]; then
-  (umask 077 && node "${ROOT}/scripts/local/signing-key.mjs" > "${KEY_FILE}.tmp")
-  [ -s "${KEY_FILE}.tmp" ] || { echo "BLOCKER: no signing key was generated" >&2; exit 1; }
-  mv "${KEY_FILE}.tmp" "${KEY_FILE}"
-  echo "auth-up: wrote ${KEY_FILE}"
+  KEY_NEW="$(mktemp "${KEY_FILE}.XXXXXX")"
+  (umask 077 && node "${ROOT}/scripts/local/signing-key.mjs" > "${KEY_NEW}")
+  [ -s "${KEY_NEW}" ] || { rm -f "${KEY_NEW}"; echo "BLOCKER: no signing key was generated" >&2; exit 1; }
+  # An empty key file is replaced, as a missing one is made.
+  if ln "${KEY_NEW}" "${KEY_FILE}" 2>/dev/null || { [ ! -s "${KEY_FILE}" ] && mv "${KEY_NEW}" "${KEY_FILE}"; }; then
+    echo "auth-up: wrote ${KEY_FILE}"
+  fi
+  rm -f "${KEY_NEW}"
 fi
 GOTRUE_JWT_KEYS="$(cat "${KEY_FILE}")"
 KEY_LABEL="$(shasum -a 256 "${KEY_FILE}" | cut -c1-16)"
