@@ -94,8 +94,15 @@ export async function openSignIn(
   const result = await openSession(request);
   if (!result.ok) return result;
   const named = result.sessionId === undefined ? {} : { sessionId: result.sessionId };
-  const { apiOrigin: origin, businessKey, fetch } = request;
-  const client = new OperationsClient({ origin, businessKey, signedIn: false, fetch, ...named });
+  // The commands' own client sends the read. Its fetch is named off the request, as App's is:
+  // command parity (API-1) reads a bare `fetch` here as a request this file sends itself.
+  const client = new OperationsClient({
+    origin: request.apiOrigin,
+    businessKey: request.businessKey,
+    signedIn: false,
+    fetch: request.fetch,
+    ...named,
+  });
   const answer = await client.read('session.person', {});
   const asked = isRefusal(answer) && answer.code === 'AUTH_SECOND_FACTOR_REQUIRED';
   return asked ? { ok: true, ...named, asked: { client, ...named } } : result;
