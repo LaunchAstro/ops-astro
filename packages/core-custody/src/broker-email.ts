@@ -39,7 +39,6 @@ import {
   askedEvidence,
   classOf,
   type DeliverRefusal,
-  fromVerifiedSender,
   mayStillSend,
   roomFor,
   WEEK_MS,
@@ -47,6 +46,7 @@ import {
   type MailClass,
   type Room,
 } from './email-class.ts';
+import { senderVerifiedFor } from './email-mock-custody.ts';
 
 export type { Room } from './email-class.ts';
 
@@ -238,7 +238,7 @@ export async function deliver<R extends string>(
   mail: MailSettings,
   ask: (tx: TenantQuery, room: Room) => Promise<Asked | R>,
 ): Promise<Delivered<R>> {
-  if (!fromVerifiedSender(mail.from, mail.sender))
+  if (!senderVerifiedFor(mail.from, mail.sender, broker.custody))
     return { ok: false, code: 'SENDER_NOT_VERIFIED' };
   const found = routed(broker);
   if (found === undefined) return { ok: false, code: 'OPERATION_NOT_CATALOGUED' };

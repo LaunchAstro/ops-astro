@@ -197,3 +197,52 @@ it('AW-07b server worker: once its stop is called, the delivery sends nothing mo
   await settle();
   expect(await attemptsOf(after)).toEqual([]);
 }, 30_000);
+
+const states = async (item: string): Promise<string[]> =>
+  (await attemptsOf(item)).map((row) => row.state);
+
+it("AW-07b server worker: a pass for one business never reads or sends another business's mail", async () => {
+  const settings = mailDeliverySettings(mockDelivery());
+  if (settings.kind !== 'mock') throw new Error(`mail delivery settings: ${settings.kind}`);
+  // Bravo has its own active worker and a decision waiting for its own person.
+  await w.db.app.withBusiness(w.bravo, async (tx) => {
+    await tx.query(
+      `insert into public.actors (business_id, id, kind, person_id, active) values ($1, $2, 'worker', null, true)`,
+      [tx.businessId, randomUUID()],
+    );
+  });
+  const alpha = await itemFor(w.task, 'decision');
+  const bravo = await itemFor(w.bravoTask, 'decision', { id: w.bravo, person: w.bravoPerson });
+  const deliverFor = async (business: string): Promise<{ readonly stop: () => Promise<void> }> =>
+    await startMailDelivery(settings, w.db.app, async () => await Promise.resolve([business]), {
+      atOnceMs: 50,
+      dailyTickMs: 60_000,
+    });
+  const before = w.provider.outbox.length;
+  const alphaPass = await deliverFor(w.alpha);
+  try {
+    await expect
+      .poll(async () => await states(alpha), { timeout: 10_000 })
+      .toEqual(['asked', 'accepted']);
+  } finally {
+    await alphaPass.stop();
+  }
+  // Alpha's passes left bravo's item alone and mailed no bravo address.
+  expect(await attemptsOf(bravo)).toEqual([]);
+  const alphaMail = w.provider.outbox.slice(before);
+  expect(alphaMail.length).toBeGreaterThan(0);
+  expect(alphaMail.some((message) => message.body.includes('bravo-'))).toBe(false);
+  // Served on its own, bravo's item goes, to bravo's person only; alpha's is not sent again.
+  const bravoPass = await deliverFor(w.bravo);
+  try {
+    await expect
+      .poll(async () => await states(bravo), { timeout: 10_000 })
+      .toEqual(['asked', 'accepted']);
+  } finally {
+    await bravoPass.stop();
+  }
+  const bravoMail = w.provider.outbox.slice(before + alphaMail.length);
+  expect(bravoMail.length).toBe(1);
+  expect(bravoMail[0]?.body.includes(`bravo-${w.canary.split('@')[0] ?? ''}`)).toBe(true);
+  expect(await states(alpha)).toEqual(['asked', 'accepted']);
+}, 30_000);

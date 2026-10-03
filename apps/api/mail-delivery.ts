@@ -12,7 +12,9 @@
 // for the subdomain `MAIL_FROM` names) and every person's email choice
 // (MP-2-11's setting is not in yet; anything not told at once waits for the
 // daily batch). A real provider is a new switch value with a real sender
-// source, never `mock` pointed elsewhere: mock takes a provider on this machine only.
+// source, never `mock` pointed elsewhere: mock takes a provider on this machine only,
+// and the send accepts the mock report only over the custody core-custody started
+// for that loopback provider (`startLoopbackMockCustody`, `email-mock-custody.ts`).
 //
 // **Delivery is custody's egress**, as the trace export's is: a custody
 // process of its own holds the provider key for the one `email` destination,
@@ -31,7 +33,7 @@ import {
 } from '../../packages/core-connectors/src/index.ts';
 import {
   parseDestinations,
-  startCustody,
+  startLoopbackMockCustody,
   startMailWorker,
   type Broker,
   type Custody,
@@ -194,10 +196,7 @@ export async function startMailDelivery(
   cadence: MailCadence = {},
 ): Promise<{ readonly stop: () => Promise<void> }> {
   const sender = await mockSender(settings.subdomain);
-  const custody = await startCustody({
-    credentialsFile: settings.credentialsFile,
-    destinations: [settings.destination],
-  });
+  const custody = await startLoopbackMockCustody(settings.credentialsFile, settings.destination);
   const timing = {
     broker: mailBroker(custody),
     mail: { appOrigin: settings.appOrigin, from: settings.from, sender },
