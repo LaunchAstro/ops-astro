@@ -277,4 +277,8 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'task.set_type': writing(client('records', 'inbox_items')),
   // The map and every ticket under it carry the client.
   'map.scope': TASK,
+  // One numbered version: its components and the map's own version number.
+  'map.revise': writing(client('map_components', 'map_versions', 'records')),
+  'map.view': READ,
+  'map.frontier': READ,
 };

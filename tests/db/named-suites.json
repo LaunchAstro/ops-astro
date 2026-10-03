@@ -290,7 +290,8 @@
     "REVIEW-BATCH-2 #313 batch 3b adds review-3b-5-delegate-child-lease-id (run.delegate_child with a leaseId that is not a uuid, a number or missing is refused LEASE_NOT_OWNED or FIELD_VALUE_INVALID with no child written, never a 22P02 fault) as conformance.",
     "REVIEW-BATCH-2 #313 batch 3b adds review-3b-1-planning-hold-released (a failed planning reply held liability_unknown is released by the pass or a person's outcome, and the planning allowance gets its hold back) as conformance; its fix adds planfix-3b-1-planning-outcome (a planning reply whose operation declares a lookup is released by the pass alone; another person of the business and another business's owner naming the owner's conversation and call are refused NOT_FOUND with nothing written; the owner's outcome settles it once).",
     "SEC3B F1 (batch 3b security review) adds sec3b-1-ended-owner-planning-release (a planning reply held unknown whose owner's access has since ended is released by the provider phase in the owner's name, as their person actor, and the same pass goes on to release the next business's held reply) as conformance.",
-    "WAYFINDER (PORT-B P14, WF-1 from b0/SL14) names tests/wayfinder/wf-1.test.ts (the map as a task, typed tickets, the summary read model kept in the writing transaction, client scope and the client-surface refusals, the retype owner rule, a refusal per key and the three isolation crossings) as an invariant. world.ts is a harness, not a suite."
+    "WAYFINDER (PORT-B P14, WF-1 from b0/SL14) names tests/wayfinder/wf-1.test.ts (the map as a task, typed tickets, the summary read model kept in the writing transaction, client scope and the client-surface refusals, the retype owner rule, a refusal per key and the three isolation crossings) as an invariant. world.ts is a harness, not a suite.",
+    "WAYFINDER (PORT-B P15, WF-1 reads from b0/SL14) widens wf-1 to the map's components, versions and view (map.revise, map.view) and names tests/wayfinder/wf-1-cli.test.ts (each WF-1 command through the generated client over the composed API, the same result and refusal as the envelope) as an invariant."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -847,7 +848,8 @@
     "tests/reads/task-client-facts.test.ts",
     "tests/api/history-trail-preference.test.ts",
     "tests/operations/c81-gate-evidence.test.ts",
-    "tests/wayfinder/wf-1.test.ts"
+    "tests/wayfinder/wf-1.test.ts",
+    "tests/wayfinder/wf-1-cli.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

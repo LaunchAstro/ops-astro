@@ -43,6 +43,7 @@ import {
   resolveTaskId,
 } from './tasks.ts';
 import { readStateChoices } from './task-states.ts';
+import { readMapFrontier, readMapView } from './maps.ts';
 import { decideReach } from './awaiting.ts';
 import { listPeople, listTeam, readAccess, readOwnName } from './people.ts';
 import { readTodos } from './todos.ts';
@@ -267,7 +268,55 @@ function parseTodoScope({
   });
 }
 
+/** A live task that is not a map is named as one; anything else is not there. */
+async function notAMap(tx: TenantQuery, recordId: string): Promise<CommandRefusal> {
+  const live = await tx.query<{ readonly type: string | null }>(
+    `select data ->> 'type' as type from public.records
+      where business_id = $1 and id = $2 and deleted_at is null`,
+    [tx.businessId, recordId],
+  );
+  if (live[0] === undefined || live[0].type === 'map') return refuseNotFound();
+  return refuseCommand(
+    'FIELD_VALUE_INVALID',
+    ['recordId'],
+    ['That task is not a map. Read it with task.read.'],
+  );
+}
+
 export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
+  'map.view': {
+    identifiers: ['recordId'],
+    parse: ({ recordId }) =>
+      typeof recordId === 'string'
+        ? parsed({ recordId })
+        : rejected('recordId', 'Send recordId as the map’s identifier or its key.'),
+    spine: true,
+    subject: (tx, spine, operands) => resolveTaskId(tx, spine.taskTypeId, operands.recordId),
+    authority: 'declared',
+    outsiderNotFound: true,
+    async serve(tx, session, _operands, { spine, recordId }) {
+      // A map never reaches a client surface (WF-1).
+      if (recordId === undefined || !isInternalReader(session.roleKey)) return refuseNotFound();
+      const map = await readMapView(tx, spine.taskTypeId, recordId);
+      return map === undefined ? await notAMap(tx, recordId) : { ok: true, map };
+    },
+  },
+  'map.frontier': {
+    identifiers: ['recordId'],
+    parse: ({ recordId }) =>
+      typeof recordId === 'string'
+        ? parsed({ recordId })
+        : rejected('recordId', 'Send recordId as the map’s identifier or its key.'),
+    spine: true,
+    subject: (tx, spine, operands) => resolveTaskId(tx, spine.taskTypeId, operands.recordId),
+    authority: 'declared',
+    outsiderNotFound: true,
+    async serve(tx, session, _operands, { spine, recordId }) {
+      if (recordId === undefined || !isInternalReader(session.roleKey)) return refuseNotFound();
+      const answer = await readMapFrontier(tx, spine.taskTypeId, recordId);
+      return answer ?? (await notAMap(tx, recordId));
+    },
+  },
   // AW-03. No collection is asked at the door: the owner reads their own
   // without the read-any grant, so the rule is the read's own
   // (`reads/conversation.ts`), and a caller holding nothing is refused there.
