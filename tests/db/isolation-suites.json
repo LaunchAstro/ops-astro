@@ -188,6 +188,7 @@
     "tests/web/dock-door-isolation-api.test.tsx",
     "tests/api/preference-write-client-user.test.ts",
     "tests/identity/ending-claim-and-shared-recheck-proof.test.ts",
-    "tests/identity/ending-holds-subject-lock-through-calls.test.ts"
+    "tests/identity/ending-holds-subject-lock-through-calls.test.ts",
+    "tests/identity/ending-waits-for-login-lock.test.ts"
   ]
 }
