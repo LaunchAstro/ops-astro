@@ -2,10 +2,12 @@
 
 import { readFileSync } from 'node:fs';
 import { expect, it } from 'vitest';
+import { readNamedSuites } from '../../scripts/named-suites.ts';
 
 const proof = 'tests/ci/named-service-stop-proof-two-urls.test.ts';
 const workflow = readFileSync('.github/workflows/ci.yml', 'utf8');
-const named = readFileSync('tests/db/named-suites.json', 'utf8');
+const manifest = readNamedSuites(process.cwd());
+const named = new Set([...manifest.invariant, ...manifest.conformance]);
 const isolation = readFileSync('tests/db/isolation-suites.json', 'utf8');
 
 function job(name: string): string {
@@ -27,7 +29,7 @@ it('the two-URL service-stop regression proof runs in required CI', () => {
   );
   const throughCheck = withBothUrls(check) && check.includes('run: pnpm check');
   const throughManifest =
-    (named.includes(`"${proof}"`) && withBothUrls(shard)) ||
+    (named.has(proof) && withBothUrls(shard)) ||
     (isolation.includes(`"${proof}"`) && withBothUrls(isolated));
   expect(direct || throughCheck || throughManifest).toBe(true);
 });
