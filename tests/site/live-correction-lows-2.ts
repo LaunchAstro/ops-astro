@@ -6,14 +6,38 @@
 // dropped, so its lease is live and its delegation not revoked.
 //
 //   1. Filing a correction locks the task's client.
+//   2. The receipt write locks the lease and then its delegation, and judges
+//      both expiries on the clock read after its locks. It runs last: it ends
+//      the world's delegation.
 //
 // Registered through `tests/tenancy/restricted-calls.test.ts`, a named suite,
 // which calls `describeLiveCorrectionLowsRoundTwo` after round 1.
 
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { asPerson, codeOf, revisionOf } from '../runtime/schedules-harness.ts';
-import { describeWorld, file, lows, taskOf } from './live-correction-lows.ts';
+import {
+  asPerson,
+  awaitParked,
+  barrier,
+  codeOf,
+  holdRows,
+  racer,
+  revisionOf,
+  startedBefore,
+  waitPast,
+} from '../runtime/schedules-harness.ts';
+import { revokeDelegation } from '../../packages/core-records/src/authority/delegations.ts';
+import { recordObservedResult } from '../../packages/core-records/src/site/index.ts';
+import {
+  countOf,
+  describeWorld,
+  file,
+  filed,
+  lows,
+  RECEIPTS,
+  stateOf,
+  taskOf,
+} from './live-correction-lows.ts';
 
 async function clientOf(taskId: string): Promise<string | null | undefined> {
   const rows = await lows().s.db.admin.execute<{ readonly client: string | null }>(
@@ -50,9 +74,138 @@ function findingOne(): void {
   });
 }
 
+/** The holder's observed publish, as the runner writes it under the world's lease. */
+const publishLive = (correctionId: string) => ({
+  correctionId,
+  leaseId: lows().leaseId,
+  fence: lows().fence,
+  actorId: lows().s.agentActorId,
+  step: 'publish' as const,
+  outcome: 'live' as const,
+  observations: { seen: 'live' },
+});
+
+/** Each row's expiry, found from the world's lease (`$1`), for the harness's clock polls. */
+const EXPIRES = {
+  leases: 'select expires_at from public.leases where id = $1',
+  delegations: `select d.expires_at from public.delegations d
+                  join public.leases l on l.business_id = d.business_id and l.delegation_id = d.id
+                 where l.id = $1`,
+} as const;
+
+const SET_EXPIRY = {
+  leases: 'update public.leases set expires_at = $2::timestamptz where id = $1',
+  delegations: `update public.delegations set expires_at = $2::timestamptz
+                 where id = (select delegation_id from public.leases where id = $1)`,
+} as const;
+
+/** Run `test` with three seconds left on `table`'s row, on the database clock; then restore it. */
+async function withThreeSeconds(
+  table: keyof typeof EXPIRES,
+  test: () => Promise<void>,
+): Promise<void> {
+  const { s, leaseId } = lows();
+  const [kept] = await s.db.admin.execute<{ readonly at: string }>(
+    `select expires_at::text as at from (${EXPIRES[table]}) e`,
+    [leaseId],
+  );
+  const [soon] = await s.db.admin.execute<{ readonly at: string }>(
+    `select (clock_timestamp() + interval '3 seconds')::text as at`,
+  );
+  await s.db.admin.execute(SET_EXPIRY[table], [leaseId, soon?.at]);
+  try {
+    await test();
+  } finally {
+    await s.db.admin.execute(SET_EXPIRY[table], [leaseId, kept?.at]);
+  }
+}
+
+/**
+ * The receipt write parked on the correction (held by another connection)
+ * until `table`'s row is past its expiry on the database clock, then let go.
+ */
+async function writtenAcrossExpiry(table: keyof typeof EXPIRES, id: string): Promise<unknown> {
+  const { s, leaseId } = lows();
+  const writer = racer(s);
+  const holder = await holdRows(s, 'live_corrections', [id]);
+  try {
+    const writing = writer.withBusiness(
+      s.business,
+      async (tx) => await recordObservedResult(tx, publishLive(id)),
+    );
+    await awaitParked(s, 'live_corrections', 1);
+    expect(await startedBefore(s, EXPIRES[table], leaseId)).toBe(true);
+    await waitPast(s, EXPIRES[table], leaseId);
+    await holder.release();
+    return await writing;
+  } finally {
+    await holder.release().catch(() => null);
+    await writer.close();
+  }
+}
+
+/** The receipt write held open after its check while the delegation is revoked: which came first. */
+async function revokedDuringReceipt(id: string): Promise<{ first: string; receipt: unknown }> {
+  const { s, leaseId } = lows();
+  const [lease] = await s.db.admin.execute<{ readonly delegation: string }>(
+    'select delegation_id as delegation from public.leases where id = $1',
+    [leaseId],
+  );
+  const [writer, revoker] = [racer(s), racer(s)];
+  const [written, commit] = [barrier(), barrier()];
+  let receipt: unknown;
+  const writing = writer.withBusiness(s.business, async (tx) => {
+    receipt = await recordObservedResult(tx, publishLive(id));
+    written.release();
+    await commit.held;
+  });
+  try {
+    await Promise.race([written.held, writing]);
+    const revoking = revoker.withBusiness(
+      s.business,
+      async (tx) => await revokeDelegation(tx, String(lease?.delegation)),
+    );
+    const first = await Promise.race([
+      revoking.then(() => 'revoked while the receipt was open'),
+      awaitParked(s, 'delegations', 1).then(() => 'the revocation waits on the receipt'),
+    ]);
+    commit.release();
+    await writing;
+    await revoking;
+    return { first, receipt };
+  } finally {
+    commit.release();
+    await writing.catch(() => null);
+    await Promise.all([writer.close(), revoker.close()]);
+  }
+}
+
+function findingTwo(): void {
+  for (const table of ['leases', 'delegations'] as const) {
+    it(`a ${table} row expiring while the receipt write waits on the correction refuses it`, async () => {
+      const { id } = await filed('approved');
+      let answer: unknown;
+      await withThreeSeconds(table, async () => {
+        answer = await writtenAcrossExpiry(table, id);
+      });
+      expect(answer).toStrictEqual({ ok: false, code: 'LEASE_NOT_OWNED' });
+      expect([await stateOf(id), await countOf(RECEIPTS, id)]).toStrictEqual(['approved', 0]);
+    }, 30_000);
+  }
+
+  it('a revocation waits for the receipt write that read its delegation live', async () => {
+    const { id } = await filed('approved');
+    const { first, receipt } = await revokedDuringReceipt(id);
+    expect(first).toBe('the revocation waits on the receipt');
+    expect(receipt).toMatchObject({ ok: true, state: 'live' });
+    expect([await stateOf(id), await countOf(RECEIPTS, id)]).toStrictEqual(['live', 1]);
+  }, 30_000);
+}
+
 /** Round 2's findings, each its own block over one world. */
 export function describeLiveCorrectionLowsRoundTwo(): void {
   describeWorld('P26 lows round 2: the live correction records', 'p26lows2', () => {
     describe('finding 1: filing a correction locks the task’s client', findingOne);
+    describe('finding 2: the receipt write judges expiry after its locks', findingTwo);
   });
 }
