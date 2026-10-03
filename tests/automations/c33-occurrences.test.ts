@@ -22,6 +22,28 @@ import { createAutomationWorld, DIGEST, type AutomationWorld } from './world.ts'
 const serverUrl = databaseUrlFromEnvironment();
 const ROUNDS = 25;
 
+/** A released version of a second definition of alpha's, not the world's own. */
+async function anotherDefinitionsVersion(w: AutomationWorld): Promise<{ readonly id: string }> {
+  const other = await w.inAlpha(async (tx) => {
+    const definitionId = await insertDefinition(tx, {
+      kind: 'automation',
+      name: `Other ${w.canary}`,
+      actorId: w.admin.actorId,
+    });
+    return await releaseVersion(tx, {
+      definitionId,
+      contentDigest: DIGEST,
+      contentSize: 1,
+      inputs: [],
+      operations: ['report.send'],
+      modes: ['scheduled'],
+      actorId: w.admin.actorId,
+    });
+  });
+  if (other === null || other === 'raced') throw new Error(`release answered ${String(other)}`);
+  return other;
+}
+
 // eslint-disable-next-line max-lines-per-function -- one world, the cases that share it
 describe.skipIf(serverUrl === undefined)('C33 occurrences', () => {
   let w: AutomationWorld;
@@ -133,25 +155,9 @@ describe.skipIf(serverUrl === undefined)('C33 occurrences', () => {
   it("C33 an occurrence names a version of its own activation's definition: another definition's version is refused by the database", async () => {
     const version = await w.release(['scheduled']);
     const activation = await w.activate(version, 'scheduled');
-    const other = await w.inAlpha(async (tx) => {
-      const definitionId = await insertDefinition(tx, {
-        kind: 'automation',
-        name: `Other ${w.canary}`,
-        actorId: w.admin.actorId,
-      });
-      return await releaseVersion(tx, {
-        definitionId,
-        contentDigest: DIGEST,
-        contentSize: 1,
-        inputs: [],
-        operations: ['report.send'],
-        modes: ['scheduled'],
-        actorId: w.admin.actorId,
-      });
-    });
-    if (other === null || other === 'raced') throw new Error(`release answered ${String(other)}`);
+    const other = await anotherDefinitionsVersion(w);
     // The app role writing the row itself, as a later writer (P11's intake) would.
-    const crossed = w.inAlpha(async (tx) =>
+    const crossed = w.inAlpha((tx) =>
       tx.query(
         `insert into public.activation_occurrences
            (business_id, id, activation_id, version_id, due_at, outcome)
@@ -203,24 +209,18 @@ describe.skipIf(serverUrl === undefined)('C33 occurrences', () => {
     const started = `insert into public.activation_occurrences
         (business_id, id, activation_id, version_id, event_id, outcome, run_id)
       values ($1, $2, $3, $4, $5, 'started', $6)`;
-    await w.db.admin.execute(started, [
+    const startedBy = (eventId: string): unknown[] => [
       w.alpha,
       randomUUID(),
       evented.id,
       version.id,
-      'one-run-a',
+      eventId,
       run,
-    ]);
-    await expect(
-      w.db.admin.execute(started, [
-        w.alpha,
-        randomUUID(),
-        evented.id,
-        version.id,
-        'one-run-b',
-        run,
-      ]),
-    ).rejects.toThrow(/activation_occurrences_run_once/u);
+    ];
+    await w.db.admin.execute(started, startedBy('one-run-a'));
+    await expect(w.db.admin.execute(started, startedBy('one-run-b'))).rejects.toThrow(
+      /activation_occurrences_run_once/u,
+    );
   });
 
   it('C33 isolation, records: another business sees, counts and claims none of these rows', async () => {
