@@ -74,8 +74,9 @@ async function offer<T>(
 
 /**
  * Re-read a live read that has no topic yet, its first answer unavailable: on
- * coming online, on being shown, and every 30 s while not hidden (C4). The
- * hub can only follow a topic, and the topic comes from an answer.
+ * coming online, on being shown, and every 30 s while not hidden (C4), until a
+ * re-read answers. The hub can only follow a topic, and the topic comes from an
+ * answer.
  */
 function untilAnswered(reload: () => void): () => void {
   const retry = (): void => {
@@ -142,7 +143,12 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadResult<T> {
   const topic = topicRef.current;
   const hub = options.live?.hub;
 
-  const unanswered = hub !== undefined && topic === null && state.outcome === 'unavailable';
+  // Unanswered from an unavailable answer until a retry answers: a retry that stalls is still
+  // loading, and the floor and the listeners stay armed under it.
+  const waitingRef = useRef(false);
+  if (state.outcome === 'unavailable') waitingRef.current = true;
+  else if (state.outcome !== 'loading') waitingRef.current = false;
+  const unanswered = hub !== undefined && topic === null && waitingRef.current;
   useEffect(() => {
     if (unanswered) return untilAnswered(reload);
     if (hub === undefined || topic === null) return;
