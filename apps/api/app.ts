@@ -918,9 +918,7 @@ const NO_CREDENTIAL = 'no-credential';
 
 /** How many records a read handed out: a task is one, a list (a search's hits too) is its length. */
 function recordsIn(read: object): number {
-  const lists = ['tasks', 'persons', 'queue', 'hits'].map(
-    (key) => (read as Record<string, unknown>)[key],
-  );
+  const lists = ['tasks', 'persons', 'queue', 'hits'].map((key): unknown => Reflect.get(read, key));
   const listed = lists.find((list): list is readonly unknown[] => Array.isArray(list));
   if (listed !== undefined) return listed.length;
   return 'task' in read || 'sharedTask' in read ? 1 : 0;

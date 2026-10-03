@@ -7,10 +7,16 @@
 // is what the door has seen: the distinct `session_id`s of the person's
 // resolved attempts inside the absolute limit, less the ones already ended.
 // Every statement names the business and the person, so a person reads and
-// ends their own sessions and nobody else's.
+// ends their own sessions and nobody else's. `sessionEnded`, which login
+// resolution asks, is the one exception: an ending holds in every business,
+// so it names only the token's session and its subject's digest.
 
 import type { TenantQuery } from '../tenancy/database.ts';
-import { SESSION_ABSOLUTE_SECONDS, SIGN_IN_CLOCK_SKEW_SECONDS } from './verified-subject.ts';
+import {
+  SESSION_ABSOLUTE_SECONDS,
+  SIGN_IN_CLOCK_SKEW_SECONDS,
+  type VerifiedSubject,
+} from './verified-subject.ts';
 
 export type SessionEndReason = 'sign_out' | 'end_others' | 'factor_change';
 
@@ -133,4 +139,38 @@ async function endSessions(
   // Ended in every business the login reaches, not only this one (0061).
   await tx.query(END_PROVIDER_SESSIONS, [sessionIds]);
   return rows.length;
+}
+
+/**
+ * Whether the session the token belongs to has ended (C58): signed out, in any
+ * business the login reaches (0061), or one of the login's other sessions
+ * ended from any business (0063): not the kept one, first signed in at or
+ * before that ending. A token naming no session has none to end.
+ *
+ * The first sign-in time is the provider's clock and the ending is this
+ * database's, and the verifier serves a sign-in time up to
+ * `SIGN_IN_CLOCK_SKEW_SECONDS` ahead. So a session signed in that much after
+ * an ending is taken as signed in before it: a sign-in in the minute after
+ * "end my other sessions" is refused once, and never a session the ending
+ * should have ended served.
+ */
+export async function sessionEnded(tx: TenantQuery, presented: VerifiedSubject): Promise<boolean> {
+  if (presented.sessionId === undefined) return false;
+  const rows = await tx.query<{ readonly ended: boolean }>(
+    `select exists (
+       select 1 from ops.ended_provider_sessions where session_id = $1::uuid
+     ) or exists (
+       select 1 from ops.ended_subject_sessions s
+        where s.subject_digest = encode(sha256(convert_to($2, 'UTF8')), 'hex')
+          and s.kept_session is distinct from $1::uuid
+          and to_timestamp($3::bigint) <= s.ended_before + make_interval(secs => $4)
+     ) as ended`,
+    [
+      presented.sessionId,
+      presented.subject,
+      presented.assurance?.signedInAt ?? null,
+      SIGN_IN_CLOCK_SKEW_SECONDS,
+    ],
+  );
+  return rows[0]?.ended === true;
 }
