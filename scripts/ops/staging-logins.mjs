@@ -17,7 +17,8 @@
 // it and holding its whole address, for `vercel env add <NAME> production <
 // file` and the M5's settings files; the owner then deletes the folder. It
 // refuses a folder that exists, so no earlier address is overwritten, and a
-// login already there holding more than its one group. Each address requires TLS. Exit 0
+// login already there holding more than its one group, judged in the
+// transaction that sets the passwords. Each address requires TLS. Exit 0
 // when done, 1 when refused or stopped; nothing printed carries a value.
 
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -69,15 +70,6 @@ try {
     }
   }
   if (process.exitCode !== 1) {
-    const beyond = loginsBeyondTheirGroup(
-      await admin.execute(EXISTING_LOGINS, [addresses.map(({ login }) => login.role)]),
-    );
-    if (beyond !== undefined) {
-      console.error(`staging-logins: refused: ${beyond}. Nothing was done.`);
-      process.exitCode = 1;
-    }
-  }
-  if (process.exitCode !== 1) {
     // Made before the database is touched: an existing folder refuses the run.
     stage = 'making the folder';
     mkdirSync(env.OPS_LOGINS_DIR, { mode: 0o700 });
@@ -87,18 +79,35 @@ try {
       writeFileSync(join(env.OPS_LOGINS_DIR, login.setting), address, { mode: 0o600, flag: 'wx' });
     }
     stage = 'making the logins';
+    // What the logins hold is judged in the transaction that sets their
+    // passwords, first and again after its last statement, so a group or grant
+    // given to one meanwhile rolls back every password. The transaction's own
+    // grant holds its group's lock until commit, so a second run waits.
+    let beyond;
+    const judge = async (execute) => {
+      const roles = addresses.map(({ login }) => login.role);
+      beyond = loginsBeyondTheirGroup(await execute(EXISTING_LOGINS, [roles]));
+      if (beyond !== undefined) throw new Error('refused');
+    };
     try {
       await admin.transaction(async (execute) => {
+        await judge(execute);
         // oxlint-disable-next-line no-await-in-loop -- in order: a grant needs its role
         for (const statement of statementsFor(step, addresses)) await execute(statement);
+        await judge(execute);
       });
     } catch (error) {
       // Rolled back: the addresses name passwords the database never took.
       rmSync(env.OPS_LOGINS_DIR, { recursive: true, force: true });
-      throw error;
+      if (beyond === undefined) throw error;
     }
-    const names = addresses.map(({ login }) => login.setting).join(', ');
-    console.log(`staging-logins: ${step}: ${String(addresses.length)} login(s) set: ${names}`);
+    if (beyond === undefined) {
+      const names = addresses.map(({ login }) => login.setting).join(', ');
+      console.log(`staging-logins: ${step}: ${String(addresses.length)} login(s) set: ${names}`);
+    } else {
+      console.error(`staging-logins: refused: ${beyond}. Nothing was done.`);
+      process.exitCode = 1;
+    }
   }
 } catch (error) {
   console.error(`staging-logins: stopped while ${stage} (${named(error)}).`);
