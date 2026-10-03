@@ -140,4 +140,29 @@ describe('C80 one word only (the fenced capture it compares)', () => {
     ).toMatchObject({ ok: false, code: 'CAPTURE_HOST_NOT_CATALOGUED' });
     expect(transport.seen).toHaveLength(0);
   });
+
+  // Security review of P25, finding 1: an opener with no closer after it made
+  // each scan restart at every opener, so a 2 MiB page froze the worker for
+  // minutes after the fence's deadline had stopped counting.
+  it.each([
+    ['comments', '<!--', ''],
+    ['scripts', '<script ', ''],
+    ['scripts, but for a near spelling of the closer,', '<script ', '</scriptx>'],
+    ['styles', '<style ', ''],
+    ['links', '<link ', ''],
+    ['tags', '<', ''],
+  ])(
+    'refuses a page whose %s never close as malformed, without scanning it opener by opener',
+    async (_name, opener, tail) => {
+      const body = `<p>x</p>${opener.repeat(Math.floor((256 * 1024) / opener.length))}${tail}`;
+      const started = performance.now();
+      const result = await capturePage(ABOUT, {
+        pool: POOL,
+        resolve: publicResolver,
+        transport: site({ [ABOUT]: answer('text/html', body) }),
+      });
+      expect(result).toMatchObject({ ok: false, code: 'CAPTURE_BODY_MALFORMED' });
+      expect(performance.now() - started).toBeLessThan(1000);
+    },
+  );
 });
