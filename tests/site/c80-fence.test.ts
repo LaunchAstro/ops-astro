@@ -225,3 +225,49 @@ describe('C80 dns rebinding', () => {
     expect(result).toMatchObject({ ok: false, code: 'CAPTURE_ADDRESS_CHANGED' });
   });
 });
+
+// Security review of P25, fifth re-bind, finding 1: with no charset parameter a browser reads the
+// page in the encoding its markup declares, while the capture read UTF-8 whatever it declared.
+const typed = (type: string, body: string) => ({
+  ...html(body),
+  headers: { 'content-type': type },
+});
+const page = (type: string, body: string, recorded: FenceRefusal[] = []) =>
+  fencedFetch(ABOUT, {
+    pool: POOL,
+    resolve: resolverOf([PUBLIC_V4]),
+    transport: transportOf(() => typed(type, body)),
+    kind: 'document',
+    record: (refusal) => recorded.push(refusal),
+  });
+
+describe('C80 capture, the document encoding', () => {
+  it.each([
+    ['text/html', '<meta charset=windows-1252><p>Base é</p>'],
+    [
+      'text/html',
+      '<meta http-equiv=content-type content="text/html; charset=windows-1252"><p>é</p>',
+    ],
+    ['text/html; q=1', '<meta charset=iso-2022-kr><p>Base SHOWN</p>'],
+    ['TEXT/HTML', '<meta charset=iso-2022-jp><p>Base \u001B$B</p>'],
+    ['text/html', '<p>Base</p>'],
+  ])(
+    'refuses and records a page served as %s holding %j, its charset unnamed',
+    async (type, body) => {
+      const recorded: FenceRefusal[] = [];
+      expect(await page(type, body, recorded)).toEqual({
+        ok: false,
+        code: 'CAPTURE_BODY_MALFORMED',
+      });
+      expect(recorded.map((entry) => entry.code)).toEqual(['CAPTURE_BODY_MALFORMED']);
+    },
+  );
+
+  it.each(['text/html; charset=utf-8', 'text/html; charset=UTF-8'])(
+    'reads a page served as %s as UTF-8, whatever its markup declares',
+    async (type) => {
+      const body = '<meta charset=windows-1252><p>Base é</p>';
+      expect(await page(type, body)).toMatchObject({ ok: true, value: { body } });
+    },
+  );
+});

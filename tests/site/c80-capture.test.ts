@@ -56,7 +56,7 @@ const captured = (body: string) =>
     pool: POOL,
     resolve: publicResolver,
     transport: site({
-      [ABOUT]: answer('text/html', body),
+      [ABOUT]: answer('text/html; charset=utf-8', body),
       [EVIL]: answer('text/css', 'p{display:none}'),
       [ASSETS]: answer('text/css', 'p{display:none}'),
     }),
@@ -88,7 +88,7 @@ describe('C80 one word only (the fenced capture it compares)', () => {
         pool: POOL,
         resolve: publicResolver,
         transport: site({
-          [ABOUT]: answer('text/html', '<link rel="stylesheet" href="/a.css"><p>x</p>'),
+          [ABOUT]: answer('text/html; charset=utf-8', '<link rel=stylesheet href=/a.css><p>x</p>'),
           'https://www.example.com/a.css': answer('text/css', css),
         }),
       });

@@ -21,6 +21,7 @@ const ABOUT = 'https://www.example.com/about';
 const SERVICES = 'https://www.example.com/services';
 const PUBLIC_V4 = '93.184.215.14';
 const OTHER_PUBLIC_V4 = '93.184.215.15';
+const HTML = 'text/html; charset=utf-8';
 
 const POOL: CapturePool = {
   agencyPages: [ABOUT, SERVICES],
@@ -105,8 +106,8 @@ describe('C80 hostile provider (capture path)', () => {
     [{ kind: 'oversized' } as const, 'CAPTURE_OVERSIZED'],
     [{ kind: 'failed' } as const, 'CAPTURE_FAILED'],
     [answering('application/json', '{'), 'CAPTURE_BODY_MALFORMED'],
-    [answering('text/html', new Uint8Array([0xff, 0xfe, 0xfd])), 'CAPTURE_BODY_MALFORMED'],
-    [answering('text/html', '', 500), 'CAPTURE_STATUS_REFUSED'],
+    [answering(HTML, new Uint8Array([0xff, 0xfe, 0xfd])), 'CAPTURE_BODY_MALFORMED'],
+    [answering(HTML, '', 500), 'CAPTURE_STATUS_REFUSED'],
     [
       { kind: 'answer', status: 301, headers: {}, body: new Uint8Array() } as const,
       'CAPTURE_BODY_MALFORMED',
@@ -131,7 +132,7 @@ describe('C80 hostile provider (capture path), stylesheet fan-out', () => {
     transportOf((request) => ({
       kind: 'answer',
       status: 200,
-      headers: { 'content-type': request.url.pathname === '/about' ? 'text/html' : 'text/css' },
+      headers: { 'content-type': request.url.pathname === '/about' ? HTML : 'text/css' },
       body: new TextEncoder().encode(request.url.pathname === '/about' ? links.join('') : 'p{}'),
     }));
   const capture = (transport: Transport) =>
@@ -170,7 +171,7 @@ const served = (css: (path: string) => string, html: string) =>
     return {
       kind: 'answer',
       status: 200,
-      headers: { 'content-type': path === '/about' ? 'text/html' : 'text/css' },
+      headers: { 'content-type': path === '/about' ? HTML : 'text/css' },
       body: new TextEncoder().encode(path === '/about' ? html : css(path + request.url.search)),
     };
   });

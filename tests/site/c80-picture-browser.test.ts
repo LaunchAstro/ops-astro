@@ -143,7 +143,7 @@ describe.skipIf(!installed)('C80 capture picture, in a real browser, no network 
         ? Promise.resolve({
             kind: 'answer',
             status: 200,
-            headers: { 'content-type': 'text/html' },
+            headers: { 'content-type': 'text/html; charset=utf-8' },
             body: new TextEncoder().encode(PAGE.replace('<head>', `<head>${hints}`)),
           })
         : served(request);
