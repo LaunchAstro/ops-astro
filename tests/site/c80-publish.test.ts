@@ -33,6 +33,7 @@ function job(overrides: Partial<PublishJob> = {}): PublishJob {
     preImageDigest: contentDigest(BEFORE),
     baseRevision: 'abc123',
     pageUrl: 'https://agency.example/throwaway/',
+    seam: 'request-17',
   };
   const versionDigest = versionDigestOf(pinned);
   return {
@@ -45,7 +46,6 @@ function job(overrides: Partial<PublishJob> = {}): PublishJob {
       versionId: 'version-2',
       versionDigest,
     },
-    seam: 'request-17',
     ...overrides,
   };
 }

@@ -21,6 +21,7 @@ const PIN = {
   preImageDigest: contentDigest(BEFORE),
   baseRevision: 'rev-1',
   pageUrl: 'https://agency.example/about/',
+  seam: 'request-17',
 };
 const APPROVED = versionDigestOf({
   ...PIN,
