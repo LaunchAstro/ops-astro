@@ -25,6 +25,7 @@ import type {
 } from '../../core-records/src/index.ts';
 import type { TaskLedgerView } from './views-agent.ts';
 import type { CheckView, RunPinView, RunReadView, RunScopeView } from './views-run.ts';
+import type { InboxConversation } from './views-chat.ts';
 
 // A run's pins, reads, checks and scope, and the task's execution and receipt
 // reads, live in their own module, re-exported here, so this one stays under
@@ -948,13 +949,6 @@ export interface ClientListResult {
  * nothing of the task or the fact it points at (INB-1g reads them at the same
  * read, so the item stays a pointer and never a copy).
  */
-/** A team conversation an inbox item is about (C71): a group's name, null on a direct one. */
-export interface InboxConversation {
-  readonly conversationId: string;
-  readonly kind: 'direct' | 'group';
-  readonly name: string | null;
-}
-
 export interface InboxEntry {
   readonly id: string;
   readonly reason: InboxReason;
