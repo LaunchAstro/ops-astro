@@ -11,7 +11,10 @@
 // client's label is its name in `clients`. The credential is a reference: the
 // secret's id and whether custody holds a value for it, never a column that
 // could carry one (20261003001523 refuses those to the application role in
-// any case).
+// any case). The reference is shown only for a secret the caller's scopes
+// reach, as `listSecrets` would: a business-wide reader, a business-wide
+// secret, or one scoped to one of the caller's clients. A secret scoped to
+// another client the same connection serves shows as no secret, not set.
 
 import { randomUUID } from 'node:crypto';
 import type { TenantQuery } from '../tenancy/database.ts';
@@ -74,9 +77,8 @@ export async function listConnections(
   const parties = scopes.filter((scope) => scope.kind === 'party').map((scope) => scope.id);
   const rows = await tx.query<Row>(
     `select c.id, c.connector_key, c.label, c.auth_method, c.status, c.failure_class,
-            c.cadence_minutes, c.last_synced_at, c.last_attempt_at, c.scope,
-            c.read_components, c.execute_components, c.secret_id,
-            coalesce(s.set_at is not null, false) as secret_set,
+            c.cadence_minutes, c.last_synced_at, c.last_attempt_at, c.scope, c.read_components,
+            c.execute_components, s.id as secret_id, s.set_at is not null as secret_set,
             r.started_at as repair_started_at, c.revision,
             coalesce((select json_agg(json_build_object('id', k.id, 'label', k.name)
                                       order by k.name, k.id)
@@ -86,6 +88,7 @@ export async function listConnections(
                          and ($1::boolean or cc.client_id = any($2::uuid[]))), '[]'::json) as clients
        from public.connections c
        left join public.custody_secrets s on s.business_id = c.business_id and s.id = c.secret_id
+        and ($1::boolean or s.scope_kind = 'business' or s.scope_id = any($2::uuid[]))
        left join public.connection_repairs r
          on r.business_id = c.business_id and r.connection_id = c.id
         and r.connection_revision = c.revision
@@ -129,6 +132,19 @@ export type RepairRefusal =
   | { readonly refused: 'not-broken'; readonly status: ConnectionStatus }
   | { readonly refused: 'stale'; readonly revision: number };
 
+/** The connection's status and revision now, looked up as this business's own. */
+async function connectionNow(
+  tx: TenantQuery,
+  id: string,
+): Promise<{ readonly status: ConnectionStatus; readonly revision: string } | undefined> {
+  const found = await tx.query<{ readonly status: ConnectionStatus; readonly revision: string }>(
+    `select status, revision from public.connections
+      where business_id = (select public.app_business_id()) and id = $1`,
+    [id],
+  );
+  return found[0];
+}
+
 /**
  * Record `connector repair started` on a broken connection, at the revision
  * it is at now. It sends nothing and changes nothing on the connection:
@@ -137,9 +153,12 @@ export type RepairRefusal =
  * well as the tenancy policy, so another business's id is not found.
  *
  * No row lock: the application role may not update `connections`, so it
- * cannot take one. Two starters on one revision serialise on the unique key
- * (connection, revision) instead: the second insert waits for the first to
- * commit, does nothing, and both answer with the one repair.
+ * cannot take one. The insert checks again, in its own statement, that the
+ * connection is still broken at the revision read; if it healed or moved on
+ * in between, nothing is inserted and the start is refused as the first
+ * checks would refuse it now. Two starters on one revision serialise on the
+ * unique key (connection, revision): the second insert waits for the first
+ * to commit, does nothing, and both answer with the one repair.
  */
 export async function startRepair(
   tx: TenantQuery,
@@ -149,12 +168,7 @@ export async function startRepair(
     readonly expectedRevision?: number;
   },
 ): Promise<RepairStarted | RepairRefusal> {
-  const found = await tx.query<{ readonly status: ConnectionStatus; readonly revision: string }>(
-    `select status, revision from public.connections
-      where business_id = (select public.app_business_id()) and id = $1`,
-    [start.connectionId],
-  );
-  const connection = found[0];
+  const connection = await connectionNow(tx, start.connectionId);
   if (connection === undefined) return { refused: 'not-found' };
   const revision = Number(connection.revision);
   if (start.expectedRevision !== undefined && start.expectedRevision !== revision) {
@@ -164,7 +178,10 @@ export async function startRepair(
   await tx.query(
     `insert into public.connection_repairs
        (business_id, id, connection_id, connection_revision, started_by_actor_id)
-     values ((select public.app_business_id()), $1, $2, $3, $4)
+     select (select public.app_business_id()), $1::uuid, $2::uuid, $3::bigint, $4::uuid
+      where exists (select 1 from public.connections
+                     where business_id = (select public.app_business_id()) and id = $2::uuid
+                       and revision = $3::bigint and status = 'broken')
      on conflict (business_id, connection_id, connection_revision) do nothing`,
     [randomUUID(), start.connectionId, revision, start.actorId],
   );
@@ -175,7 +192,13 @@ export async function startRepair(
     [start.connectionId, revision],
   );
   const row = rows[0];
-  if (row === undefined) throw new Error('startRepair: the repair row is not there after insert');
+  if (row === undefined) {
+    // Healed or moved on since the read: refuse as the checks above would now.
+    const moved = await connectionNow(tx, start.connectionId);
+    if (moved === undefined) return { refused: 'not-found' };
+    if (moved.status !== 'broken') return { refused: 'not-broken', status: moved.status };
+    return { refused: 'stale', revision: Number(moved.revision) };
+  }
   return {
     id: row.id,
     connectionId: start.connectionId,

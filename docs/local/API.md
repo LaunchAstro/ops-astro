@@ -3240,8 +3240,11 @@ list. A client in a list is a client of this business by foreign key, shown by
 its name. The repair is `custody:manage`, business-wide, never an agent. It
 records `connector repair started` on a broken connection of this business at
 its current revision and sends nothing: re-authorising is the broker's (AW-01),
-behind the approval gate on that revision. Connection rows are written by
-MP-13-5 and the broker; this build only reads them.
+behind the approval gate on that revision. The insert checks again that the
+connection is still broken at that revision; one that healed or moved on since
+the read is refused `TRANSITION_NOT_PERMITTED` or `VERSION_STALE` and records
+nothing. Connection rows are written by MP-13-5 and the broker; this build only
+reads them.
 
 | Operation          | Route               | Body                                               | Answer or refusals                                                                                                                                                                                                                                                                                                                                            |
 | ------------------ | ------------------- | -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -3249,4 +3252,7 @@ MP-13-5 and the broker; this build only reads them.
 | `connector.repair` | `/connector/repair` | `operationId`, `connectionId`, `expectedRevision?` | `detail: { repairId, connectionId, connectionRevision, state: 'awaiting approval' }`; `SCOPE_NOT_GRANTED` 403, `NOT_FOUND` 404 (another business's, made-up or malformed alike), `TRANSITION_NOT_PERMITTED` 409 (not broken), `VERSION_STALE` 409, `FIELD_VALUE_INVALID` 422                                                                                  |
 
 The custody field is a reference: the secret's id and whether custody holds a
-value, never any part of one. No sealed column is read.
+value, never any part of one. No sealed column is read. It is shown only for a
+secret the caller's scopes reach (a business-wide reader, a business-wide
+secret, or one of the caller's clients'); a secret scoped to another client the
+connection serves shows as `{ secretId: null, state: 'not set' }`.
