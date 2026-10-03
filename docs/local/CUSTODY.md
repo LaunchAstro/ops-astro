@@ -31,11 +31,11 @@ a read that names them fails in the server, whatever the code asks.
 
 ## The commands
 
-| Command        | Permission key   | Agent | What it does                                              |
-| -------------- | ---------------- | ----- | --------------------------------------------------------- |
-| `secret.list`  | `custody:manage` | never | rows at the scopes the caller holds the key at            |
-| `secret.set`   | `custody:manage` | never | seals and stores a value, business-wide or for one client |
-| `secret.clear` | `custody:manage` | never | removes the value, keeps the row and who cleared it       |
+| Command        | Permission key   | Agent | What it does                                                                         |
+| -------------- | ---------------- | ----- | ------------------------------------------------------------------------------------ |
+| `secret.list`  | `custody:manage` | never | rows at the scopes the caller holds the key at, and `canChange` (held business-wide) |
+| `secret.set`   | `custody:manage` | never | seals and stores a value, business-wide or for one client                            |
+| `secret.clear` | `custody:manage` | never | removes the value, keeps the row and who cleared it                                  |
 
 A client-scoped holder of `custody:manage` lists that client's rows only;
 setting and clearing need the key business-wide. A set for one client names

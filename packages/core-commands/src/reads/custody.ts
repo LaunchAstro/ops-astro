@@ -45,5 +45,7 @@ export async function listCustodySecrets(
     lastUsedAt: row.lastUsedAt?.toISOString() ?? null,
     revision: row.revision,
   }));
-  return { ok: true, secrets };
+  // Set and clear need the key business-wide; a client-scoped holder only lists.
+  const canChange = scopes.some((scope) => scope.kind === 'business');
+  return { ok: true, secrets, canChange };
 }

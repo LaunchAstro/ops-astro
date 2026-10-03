@@ -22,4 +22,6 @@ export interface SecretView {
 export interface SecretListResult {
   readonly ok: true;
   readonly secrets: readonly SecretView[];
+  /** The key held business-wide: set and clear are offered only then. */
+  readonly canChange: boolean;
 }
