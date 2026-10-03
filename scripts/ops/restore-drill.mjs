@@ -86,25 +86,24 @@ export const drillAsOperator = ({ reach = stagingReach, ...options }) =>
 
 /**
  * `reach` asking the gate again (operator.ts, `stillOperator`) before each
- * call and before each line it hands on, a part of the archive each: an
- * operator whose sign-in ended or whose `operations:manage` was revoked part
- * way reads no further, and the fetch removes what it wrote. Every gate
- * operator.ts admits carries it.
+ * call, and in a parts read before each `read_part` statement is handed to
+ * psql: a part is read from the store only after the gate admits it again, so
+ * an operator whose sign-in ended or whose `operations:manage` was revoked
+ * part way reads no further part, and the fetch removes what it wrote. Every
+ * gate operator.ts admits carries `stillOperator`.
  */
 function askingAgain(reach, gate) {
   const again = async () => await gate.stillOperator?.();
+  async function* heldBack(script) {
+    for (const piece of typeof script === 'string' ? [script] : script) {
+      // oxlint-disable-next-line no-await-in-loop -- one part at a time, each admitted first
+      if (piece.includes('backups.read_part(')) await again();
+      yield piece;
+    }
+  }
   return async (url, script, onLine) => {
     await again();
-    if (onLine === undefined) return await reach(url, script);
-    // Each line waits on the gate, in order, whether or not the route awaits it.
-    let asked = Promise.resolve();
-    const text = await reach(url, script, (line) => {
-      asked = asked.then(again).then(() => onLine(line));
-      asked.catch(() => {});
-      return asked;
-    });
-    await asked;
-    return text;
+    return await reach(url, onLine === undefined ? script : heldBack(script), onLine);
   };
 }
 
