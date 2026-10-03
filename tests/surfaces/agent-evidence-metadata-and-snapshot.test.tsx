@@ -7,6 +7,10 @@ import { scopeStamp } from '../../packages/ui/src/state/agent-scope.ts';
 import { tokenStory, type TaskLedger } from '../../packages/ui/src/state/token-ledger.ts';
 import type { RunLineage } from '../../packages/ui/src/state/run-projection.ts';
 import { createControls, PROPOSAL, type Controls } from '../api/controls-fixture.ts';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
+
+// Real reads need a database: without one the cases skip; database conformance runs them.
+const live = databaseUrlFromEnvironment() !== undefined;
 
 let controls: Controls;
 let taskId: string;
@@ -26,6 +30,7 @@ async function readTask(): Promise<{ proposals: readonly RunLineage[]; ledger: T
 }
 
 beforeAll(async () => {
+  if (!live) return;
   controls = await createControls('ow075_sol_agent');
   const task = await controls.createTask('Sol scope and evidence proof');
   taskId = task.id;
@@ -46,8 +51,18 @@ beforeAll(async () => {
 
 afterAll(async () => await controls?.drop());
 
+/** The markup's text: tags stripped until none is left, so a tag split by another never survives. */
+function textOf(html: string): string {
+  let text = html;
+  for (let last = ''; last !== text;) {
+    last = text;
+    text = text.replaceAll(/<[^>]*>/gu, '');
+  }
+  return text;
+}
+
 // Sol OW-075.1 criterion correctness, retitled by what it proves; its body is Sol's.
-it('token metadata survives the real evidence renderer', async () => {
+it.skipIf(!live)('token metadata survives the real evidence renderer', async () => {
   const task = await readTask();
   const evidence = task.proposals[0]?.versions[0]?.evidence?.body;
   expect(evidence).toMatchObject({ payload: metadata });
@@ -61,7 +76,7 @@ it('token metadata survives the real evidence renderer', async () => {
 });
 
 // Sol OW-075.2 criterion correctness, retitled by what it proves; its body is Sol's.
-it('a successor is never labelled pinned at its predecessor lease', async () => {
+it.skipIf(!live)('a successor is never labelled pinned at its predecessor lease', async () => {
   const before = await readTask();
   const old = before.proposals[0]?.versions[0];
   const acquiredAt = before.proposals[0]?.scopes?.[0]?.acquiredAt;
@@ -102,7 +117,7 @@ it('a successor is never labelled pinned at its predecessor lease', async () => 
       ledgerHref: null,
     }),
   );
-  const text = html.replaceAll(/<[^>]*>/gu, '');
+  const text = textOf(html);
   expect(text).not.toContain(
     `Context snapshot v2 ${head.payloadDigest.slice(0, 12)} · pinned ${String(acquiredAt)}`,
   );
