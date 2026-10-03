@@ -1,17 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// SL12-19-F2: the task detail carries its client. `task.read` answers with the
-// record's `client` slot (`uuid_7`) as `clientId`, null on an internal task, so
-// the Agent pane's ask to the drawer names the client whose data the plan would
-// carry (AW-04). Anyone who reads the task already reaches its client, so the
-// field widens nothing; each crossing below stays the answer it was. Business
-// to business, client to client, person to person, over a real database.
-//
-// SL12-24-AW04, ported onto main: main sends the task's client as `client`,
-// and only where the reader's grants reach that client (CS-4.12), so this
-// file's two cases that read a `clientId` (the client id for a client task,
-// and a record-scoped grant reading client A) are left out; main proves that
-// rule in task-client-facts.test.ts and task-client-facts-isolation.test.ts.
+// SL12-19-F2, ported onto main (SL12-24-AW04): `task.read` carries the task's
+// client as `client`, and only where the reader's grants reach that client
+// (CS-4.12); main proves that rule in task-client-facts.test.ts and
+// task-client-facts-isolation.test.ts. This file proves the crossings it leaves
+// standing, over a real database: business to business, client to client (a
+// member kept to client A's task), and person to person (client A's person
+// outside the business).
 
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -85,7 +80,7 @@ async function openWorld(): Promise<World> {
   return { db, alpha, bravo, clientA, clientB, ada, cleo, bruno, outsider, tasks };
 }
 
-describe.skipIf(serverUrl === undefined)('task.read carries the task’s client', () => {
+describe.skipIf(serverUrl === undefined)('task.read keeps the client crossings', () => {
   let w: World;
 
   const read = async (business: BusinessId, who: Member, recordId: string): Promise<Answer> =>
@@ -106,6 +101,16 @@ describe.skipIf(serverUrl === undefined)('task.read carries the task’s client'
     expect((await read(w.alpha, w.ada, w.tasks.bravo))['code']).toBe('NOT_FOUND');
     expect((await read(w.bravo, w.bruno, w.tasks.a))['code']).toBe('NOT_FOUND');
     expect((await read(w.bravo, w.bruno, w.tasks.internal))['code']).toBe('NOT_FOUND');
+  });
+
+  it('client to client: Cleo, kept to client A’s task, is refused client B’s task, and neither answer names client B', async () => {
+    const own = await read(w.alpha, w.cleo, w.tasks.a);
+    expect(own['code']).toBeUndefined();
+    expect(JSON.stringify(own)).not.toContain(w.clientB);
+    // A member of the business is told she lacks the grant; the refusal carries no client.
+    const other = await read(w.alpha, w.cleo, w.tasks.b);
+    expect(other['code']).toBe('SCOPE_NOT_GRANTED');
+    expect(JSON.stringify(other)).not.toContain(w.clientB);
   });
 
   it('person to person: the client outside the business sees its shared view, no client id, and the other client’s task NOT_FOUND', async () => {
