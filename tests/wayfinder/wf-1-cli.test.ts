@@ -13,6 +13,7 @@ import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { createCli, type CliAnswer, type Transport } from '../../apps/cli/client.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { createApiFixture, BUSINESS_KEY, tokenFor, type ApiFixture } from '../api/fixture.ts';
+import { addClient } from '../commands/fixture.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
@@ -123,7 +124,9 @@ describe.skipIf(serverUrl === undefined)('WF-1 from the command line', () => {
         'recordId',
       ),
     );
+    // A client of this business (C32): map.scope runs task.set_party's path.
     const client = randomUUID();
+    await addClient(fixture.db.app, fixture.business, client, fixture.member);
     const scoped = await run('map.scope', {
       recordId: map,
       expectedRevision: await revisionOf(map),

@@ -60,8 +60,6 @@ const PINNED_SHAPE = {
 };
 
 const PINNED_IDENTIFIERS = {
-  'map.frontier': ['recordId'],
-  'map.view': ['recordId'],
   'access.read': [],
   'client.list': [],
   'conversation.allowance': ['conversationId'],
@@ -73,6 +71,8 @@ const PINNED_IDENTIFIERS = {
   'inbox.count': [],
   'inbox.read': [],
   'inbox.unattended': [],
+  'map.frontier': ['recordId'],
+  'map.view': ['recordId'],
   'operations.read': [],
   'person.list': [],
   'preference.read': [],
@@ -252,7 +252,7 @@ function answerOf(read: ReadName, body: Readonly<Record<string, unknown>>): unkn
 }
 
 describe('the per-read facts at 06ab232', () => {
-  it('names the same thirty reads', () => {
+  it('names the same thirty-two reads', () => {
     expect([...READS].toSorted()).toStrictEqual(Object.keys(PINNED_IDENTIFIERS));
   });
 

@@ -490,20 +490,21 @@ describe.skipIf(serverUrl === undefined)('WF-1 task types and the map as a task'
   it('WF-1 each tracked action is written by its command in the same transaction and audited', async () => {
     const map = await newMap(owner, 'audited map');
     const before = (await w.audit()).length;
-    const revised = await revise(owner, map.id, { destination: 'audited' });
+    // Scoped first: a revision is content, and a map with content is CLIENT_LOCKED (S0-5).
     const scoped = await w.as(owner, {
       command: 'map.scope',
       recordId: map.id,
       expectedRevision: await w.revisionOf(map.id),
       client: await newClient(),
     });
+    const revised = await revise(owner, map.id, { destination: 'audited' });
     const research = await ticket(owner, map.id, 'audited research', 'research');
     const retyped = await retype(owner, research.id, 'grilling');
     for (const result of [revised, scoped, retyped]) expect(codeOf(result)).toBe('applied');
     const lines = (await w.audit()).slice(before);
     expect(lines.map((l) => [l.command, l.outcome, l.subject])).toStrictEqual([
-      ['map.revise', 'applied', map.id],
       ['map.scope', 'applied', map.id],
+      ['map.revise', 'applied', map.id],
       ['task.create', 'applied', research.id],
       ['task.set_type', 'applied', research.id],
     ]);
