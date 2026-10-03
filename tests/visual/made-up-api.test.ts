@@ -19,6 +19,8 @@ const NOT_DRAWN = new Set([
   // AW-12: no screen draws the harness result in this piece.
   'harness.read',
   'privacy.draft_breach_notices',
+  // C31: the Keys panel that draws custody's list is P01b's.
+  'secret.list',
   // MP-14-7a: the fleet's data lands before its screen, which draws it next.
   'connection.fleet',
 ]);
