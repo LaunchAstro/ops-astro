@@ -14,7 +14,7 @@
 // receipt is `correction-receipts.ts`; the decision read, `correction-decisions.ts`.
 
 import { randomUUID } from 'node:crypto';
-import { EFFECTIVE, type Subject } from '../authority/grants.ts';
+import { EFFECTIVE, askedFor, type Subject } from '../authority/grants.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 
 export const RUN_COLLECTION = 'run';
@@ -179,12 +179,20 @@ export interface Covering {
   readonly action: string;
 }
 
-export const coveringParameters = (covering: Covering): readonly unknown[] => [
-  covering.collection,
-  covering.action,
-  covering.subjects.map((subject) => subject.kind),
-  covering.subjects.map((subject) => subject.id),
-];
+/**
+ * The query's parameters, with only the subjects asked about this key: an
+ * agent credential's person counts within the keys it ticked (API-2), so the
+ * guarantee lives here and not in each caller.
+ */
+export const coveringParameters = (covering: Covering): readonly unknown[] => {
+  const asked = askedFor(covering.subjects, covering);
+  return [
+    covering.collection,
+    covering.action,
+    asked.map((subject) => subject.kind),
+    asked.map((subject) => subject.id),
+  ];
+};
 
 /**
  * One correction the caller's grant covers at its party, locked for the
