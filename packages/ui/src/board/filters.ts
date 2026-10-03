@@ -53,6 +53,17 @@ export function narrowRows<Row>(
   );
 }
 
+// The free words a view keeps (OW-100.1): one bound, generous for typing,
+// applied alike at commit and on reload, so a committed view always reloads
+// the same and an address no one typed cannot grow the view without limit.
+const MAX_WORDS = 32;
+const MAX_WORD_LENGTH = 128;
+
+/** The view's free words within the bound: over-long words drop, the first ones stay. */
+export function boundedWords(words: readonly string[]): string[] {
+  return words.filter((word) => word.length <= MAX_WORD_LENGTH).slice(0, MAX_WORDS);
+}
+
 /** Split a typed query: a token naming a facet is that facet, the rest are free words. */
 export function parseQuery<Row>(raw: string, facets: readonly Facet<Row>[]): Filters {
   const ids: string[] = [];
