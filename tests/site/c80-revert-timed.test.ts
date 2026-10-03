@@ -16,13 +16,14 @@ const TARGET: CorrectionTarget = {
   replacement: 'beside',
 };
 
+const DECIDED = Date.parse('2026-09-29T10:00:00Z');
+
 describe('C80 revert timed', () => {
   it('publishes the revert forward, observes it served, and records the interval from the decision to revert', async () => {
-    const times = [Date.parse('2026-09-29T10:00:00Z'), Date.parse('2026-09-29T10:03:30Z')];
     const outcome = await revertCorrection(
-      { publishedRevision: 'def456', target: TARGET, seam: 'revert-of-def456' },
+      { publishedRevision: 'def456', target: TARGET, seam: 'revert-of-def456', decidedAt: DECIDED },
       {
-        now: () => times.shift() ?? Number.NaN,
+        now: () => Date.parse('2026-09-29T10:03:30Z'),
         readBack: () => Promise.resolve({ state: 'absent' as const }),
         revert: () =>
           Promise.resolve({ kind: 'ok', value: { revision: 'rev789', deploymentId: 'dpl_2' } }),
@@ -43,7 +44,7 @@ describe('C80 revert timed', () => {
 
   it('records no interval until the original word is observed live', async () => {
     const outcome = await revertCorrection(
-      { publishedRevision: 'def456', target: TARGET, seam: 'revert-of-def456' },
+      { publishedRevision: 'def456', target: TARGET, seam: 'revert-of-def456', decidedAt: DECIDED },
       {
         now: () => Date.parse('2026-09-29T10:00:00Z'),
         readBack: () => Promise.resolve({ state: 'absent' as const }),
@@ -64,7 +65,12 @@ describe('C80 revert dispatch', () => {
     const sent: unknown[] = [];
     const attempt = () =>
       revertCorrection(
-        { publishedRevision: 'def456', target: TARGET, seam: 'revert-of-def456' },
+        {
+          publishedRevision: 'def456',
+          target: TARGET,
+          seam: 'revert-of-def456',
+          decidedAt: DECIDED,
+        },
         {
           now: () => Date.parse('2026-09-29T10:00:00Z'),
           readBack: () => Promise.resolve({ state: 'absent' as const }),
@@ -88,7 +94,12 @@ describe('C80 revert dispatch', () => {
   it('reports a refused revert as failed only with a declared nothing-happened proof', async () => {
     const refusedWith = (proof?: string) =>
       revertCorrection(
-        { publishedRevision: 'def456', target: TARGET, seam: 'revert-of-def456' },
+        {
+          publishedRevision: 'def456',
+          target: TARGET,
+          seam: 'revert-of-def456',
+          decidedAt: DECIDED,
+        },
         {
           now: () => Date.parse('2026-09-29T10:00:00Z'),
           readBack: () => Promise.resolve({ state: 'absent' as const }),

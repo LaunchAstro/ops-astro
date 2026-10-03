@@ -258,10 +258,12 @@ export async function revertCorrection(
     readonly publishedRevision: string;
     readonly target: CorrectionTarget;
     readonly seam: string;
+    /** When the revert was decided, kept across every resumed attempt until it is observed. */
+    readonly decidedAt: number;
   },
   ports: RevertPorts,
 ): Promise<RevertOutcome> {
-  const decided = ports.now();
+  const decided = input.decidedAt;
   const decidedAt = new Date(decided).toISOString();
   // One token per published revision, and a retry is read back before it is ever sent again.
   const token = dispatchToken('site.source.revert', input.publishedRevision);
