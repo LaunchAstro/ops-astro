@@ -55,6 +55,8 @@ export interface ScreenContext<Id extends AuthenticatedRouteId = AuthenticatedRo
   readonly navigate: (path: string) => void;
   /** The whole address the screen is drawn at, query included: the page's, or a panel's place. */
   readonly address?: string;
+  /** True where the screen is drawn in a dock panel: the page's address is then not its to write. */
+  readonly inPanel?: boolean;
   /**
    * Opens a dock panel at a place by the gesture law (MP-3-4): false where
    * that panel has no tab, and absent where there is no dock.
@@ -77,6 +79,8 @@ export const SCREENS: {
         grantKey={context.grantKey}
         navigate={context.navigate}
         {...(context.taskPanel === undefined ? {} : { taskPanel: context.taskPanel })}
+        {...(context.address === undefined ? {} : { address: context.address })}
+        inPanel={context.inPanel === true}
       />
     </>
   ),

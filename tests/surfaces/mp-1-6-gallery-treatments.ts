@@ -85,7 +85,7 @@ async function markers(page: Page): Promise<TreatmentView['markers']> {
   return { count, buttons, hoverDraws };
 }
 
-export async function treatmentsReport(): Promise<{
+async function treatmentsReport(): Promise<{
   views: TreatmentView[];
   sameInDark: number[];
 }> {
