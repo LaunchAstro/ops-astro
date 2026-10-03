@@ -113,7 +113,6 @@ async function beforeDispatch(
     versionDigestOf(job) === job.version.digest;
   if (!bound) return refused('PROPOSAL_SUPERSEDED');
   if (!checkEnvelope(job.change, job.target).ok) return refused('CHANGE_ENVELOPE_EXCEEDED');
-  if ((await ports.cancellation()) === 'requested') return refused('CANCELLED');
   const current = await ports.readSource();
   if (current.kind !== 'ok') return refused('CONTENT_DRIFT_UNCHECKED');
   const pinned = contentDigest(job.change.files[0]?.before ?? null);
@@ -123,6 +122,8 @@ async function beforeDispatch(
   ) {
     return { state: 'refused', code: 'CONTENT_DRIFTED', waitsOn: 'person' };
   }
+  // Last, after every awaited read: a cancellation that arrived during one still stops the send.
+  if ((await ports.cancellation()) === 'requested') return refused('CANCELLED');
   return undefined;
 }
 
