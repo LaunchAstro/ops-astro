@@ -1740,8 +1740,9 @@ totals.
   the page's AI planning budget field moves it through the command, opened only
   for a session holding `billing:decide` (`screens/settings/planning-cap.tsx`).
 
-Not here yet: the recent sign-in the command asks as a money action (C59), and
-the planning spend beside the plan.
+As a money action (`billing:decide`) the command asks C59's recent sign-in in
+the envelope (`STEP_UP_REQUIRED` past 60 minutes while the business's money
+step-up setting is on). Not here yet: the planning spend beside the plan.
 
 ## The budget wait
 
