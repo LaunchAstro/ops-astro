@@ -6,7 +6,14 @@
 // outside the agency's own stay refused until three other-company
 // adversarial reviews of the pool are recorded closed (D17-14).
 
-import { familyOf, isDeniedAddress, type Resolver, type Transport } from './transport.ts';
+import { MIMEType } from 'node:util';
+import {
+  familyOf,
+  isDeniedAddress,
+  type Resolver,
+  type Transport,
+  type TransportAnswer,
+} from './transport.ts';
 
 export interface CapturePool {
   /** The agency's own catalogued pages, exact addresses. */
@@ -40,6 +47,8 @@ export interface FenceRefusal {
   readonly hop: number;
   readonly origin: string;
 }
+
+type Answer = Extract<TransportAnswer, { kind: 'answer' }>;
 
 export type Fenced<T> =
   { readonly ok: true; readonly value: T } | { readonly ok: false; readonly code: FenceCode };
@@ -161,23 +170,32 @@ export const isUtf8Label = (label: string): boolean =>
   UTF8_LABELS.has(label.replaceAll(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/gu, '').toLowerCase());
 
 /**
- * Whether a content type is `type` with no charset but UTF-8: another would have a browser read the
- * body, and so the addresses in it, in another encoding. An odd charset parameter is refused too.
- * A document must name its charset. Without one a browser takes the encoding the markup declares
- * (a `<meta charset>` in its first 1024 bytes), and the capture runs no such prescan; the header's
- * charset outranks any declaration in the markup, so with it the capture and visitors agree.
+ * Whether an answer is `type` with no charset but UTF-8, read as a browser reads it: another would
+ * have a browser read the body, and so the addresses in it, in another encoding. A document must
+ * name its charset. Without one a browser takes the encoding the markup declares (a `<meta
+ * charset>` in its first 1024 bytes), and the capture runs no such prescan; the header's charset
+ * outranks any declaration in the markup, so with it the capture and visitors agree. A browser
+ * reads every Content-Type line, split on commas outside quotes, and a later type or charset wins,
+ * so a second line or any comma is refused; the one value goes through the WHATWG MIME parser, as
+ * in a browser. A content or transfer coding a browser would undo, and the capture does not, is
+ * refused too.
  */
-function isUtf8Type(header: string, type: string, named: boolean): boolean {
-  const [media = '', ...parameters] = header.split(';');
-  const charsets = parameters.filter(
-    (part) => part.split('=')[0]?.trim().toLowerCase() === 'charset',
-  );
-  const utf8 = (part: string) =>
-    isUtf8Label(part.slice(part.indexOf('=') + 1).replace(/^"(.*)"$/u, '$1'));
+function isUtf8Type(answer: Answer, type: string, named: boolean): boolean {
+  const { headers } = answer;
+  const header = headers['content-type'] ?? '';
+  const coded = (headers['transfer-encoding'] ?? 'chunked').toLowerCase() !== 'chunked';
+  if (coded || 'content-encoding' in headers || (answer.contentTypeLines ?? 1) > 1) return false;
+  let media: MIMEType;
+  try {
+    media = new MIMEType(header);
+  } catch {
+    return false;
+  }
+  const charset = media.params.get('charset');
   return (
-    media.trim().toLowerCase() === type &&
-    charsets.every((part) => utf8(part)) &&
-    (!named || charsets.length > 0)
+    media.essence === type &&
+    !header.includes(',') &&
+    (charset === null ? !named : isUtf8Label(charset))
   );
 }
 
@@ -225,7 +243,7 @@ async function follow(
     return follow(new URL(location, url.href).href, hop + 1, options);
   }
   if (answer.status !== 200) return refuse('CAPTURE_STATUS_REFUSED');
-  if (!isUtf8Type(answer.headers['content-type'] ?? '', limits.type, options.kind === 'document'))
+  if (!isUtf8Type(answer, limits.type, options.kind === 'document'))
     return refuse('CAPTURE_BODY_MALFORMED');
   let body: string;
   try {

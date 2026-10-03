@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// One fenced capture of a catalogued page, as the observation Receipt L
-// compares (fields 9 to 12): the page's visible text, the document's digest,
-// and the digest of every stylesheet it serves, linked, inline or imported by
-// either (a few levels deep, all within the page's cap). Every fetch goes
-// through the fence. A linked stylesheet that cannot be fetched fails the
-// whole capture: dropping it would let "the stylesheets are unchanged" pass
-// over a stylesheet nobody looked at.
+// One fenced capture of a catalogued page, as the observation Receipt L compares (fields 9 to 12):
+// the page's visible text, the document's digest, and the digest of every stylesheet it serves,
+// linked, inline or imported by either (a few levels deep, all within the page's cap). Every fetch
+// goes through the fence. A linked stylesheet that cannot be fetched fails the whole capture:
+// dropping it would let "the stylesheets are unchanged" pass over a stylesheet nobody looked at.
 
 import { createHash } from 'node:crypto';
 import {
@@ -74,7 +72,8 @@ const fromEnd = {
 // Elements whose text a browser does not show: these in HTML, and script and style anywhere.
 const HIDDEN = new Set('script style noscript template iframe noembed noframes'.split(' '));
 // Attributes that make a browser render what the capture cannot read: a declarative shadow root
-// (its own text and sheets, the element's children hidden) and a frame's inline document.
+// (its own text and sheets, the element's children hidden) and a frame's inline document. A sheet
+// with no charset of its own is decoded in its link's charset, so that must name UTF-8 or nothing.
 const UNREAD = new Map([
   ['template', ['shadowrootmode', 'shadowroot']],
   ['iframe', ['srcdoc']],
@@ -143,8 +142,9 @@ function readDocument(html: string): Reading | FenceCode {
       const attribute = (wanted: string) => node.attrs.find((one) => one.name === wanted)?.value;
       const href = attribute('href');
       const rel = (attribute('rel') ?? '').replaceAll(/[A-Z]/gu, (letter) => letter.toLowerCase());
-      const sheet = name === 'link' && rel.split(/[\t\n\f\r ]+/u).includes('stylesheet');
-      if (html5 && sheet && href !== undefined) links.push(href);
+      const sheet = html5 && name === 'link' && rel.split(/[\t\n\f\r ]+/u).includes('stylesheet');
+      if (sheet && !isUtf8Label(attribute('charset') ?? 'utf-8')) return 'CAPTURE_BODY_MALFORMED';
+      if (sheet && href !== undefined) links.push(href);
       if (html5 && name === 'base' && href !== undefined) base ??= href;
       if (name === 'style' && (html5 || node.namespaceURI === markup.NS.SVG))
         styles.push(node.childNodes.map((child) => ('value' in child ? child.value : '')).join(''));
