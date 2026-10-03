@@ -711,6 +711,12 @@ and a fold saves at once. The tab keeps a copy per business as
 on its first render; another person signed in to the tab never reads it, and a
 switch or sign-out removes it. The read then brings what another device saved.
 
+Preference saves through one client leave one at a time, each once the last
+has answered (`data/preference-saves.ts`), so the last change is the one the
+store keeps: the appearance, a task fold, the rail and the dock alike. A read
+started before a save never overwrites what that save changed; the screen keeps
+the newer choice.
+
 This business draws the two settings the model classifies `operation`:
 `four_eyes_threshold` and `client_sign_off_required`. Each is written through
 the command that owns it, `settings.set_four_eyes_threshold` or
