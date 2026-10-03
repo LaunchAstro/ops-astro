@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* oxlint-disable max-lines-per-function, unicorn/prefer-dom-node-dataset -- Sol's proof body, committed unchanged */
 /// <reference lib="dom" />
 import { readFileSync } from 'node:fs';
 import { renderToStaticMarkup } from 'react-dom/server';
