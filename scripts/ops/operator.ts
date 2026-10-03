@@ -40,6 +40,7 @@ import {
 } from '../../packages/core-records/src/index.ts';
 import { createSupabaseVerifier, keySetUrlFor } from '../../apps/api/auth/supabase.ts';
 import { createBusinessResolver } from '../../apps/api/server.ts';
+import { oneHost } from './one-host.ts';
 import { recordTestedRestore } from './tested-restore.ts';
 
 /** The person an operator act runs as, and the business it was checked in. */
@@ -69,7 +70,6 @@ const KEY = `${OPERATIONS_MANAGE.collection}:${OPERATIONS_MANAGE.action}`;
 const NOT_A_PERSON = ['OPS_ASTRO_AGENT', 'OPS_ASTRO_DELEGATION', 'OPS_ASTRO_DELEGATION_FILE'];
 /** Each one named host before use: postgres.js re-reads a host list, and its error holds it. */
 const CHECKED_WITH = ['DATABASE_URL', 'DATABASE_ADMIN_URL', 'GOTRUE_URL'];
-const oneHost = (value = ''): boolean => /^[^,]+$/u.test(URL.parse(value)?.hostname ?? '');
 /** The file in the record folder, one JSON line per act. */
 export const RECORD_FILE = 'deployments.jsonl';
 
@@ -217,7 +217,7 @@ async function checkOperator(environment: Environment, operatingOnly: boolean): 
   if (!set(environment, 'OPS_ASTRO_TOKEN') || !set(environment, 'OPS_ASTRO_BUSINESS')) {
     return refused("no person's sign-in: OPS_ASTRO_TOKEN and OPS_ASTRO_BUSINESS are both needed");
   }
-  const unset = CHECKED_WITH.filter((name) => !oneHost(environment[name]));
+  const unset = CHECKED_WITH.filter((name) => !oneHost(name, environment[name]));
   if (unset.length > 0)
     return refused(`${unset.join(', ')} not set or unreadable, so the sign-in cannot be checked`);
   const env = environment as Readonly<Record<string, string>>;

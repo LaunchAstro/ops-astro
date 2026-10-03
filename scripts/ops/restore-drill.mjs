@@ -54,8 +54,8 @@
 // attestation: the store takes a pass only through the store login the
 // installation appointed as them (deploy/staging/backup-store.sql). An export
 // and a drill from the store ask the gate again before each step with the
-// store, so an operator whose sign-in ended or whose `operations:manage` was
-// revoked part way reads no further.
+// store, each part's read included, so an operator whose sign-in ended or whose
+// `operations:manage` was revoked part way reads no further.
 //
 // It prints one JSON line, passed or failed, and exits 0 or 1. A failed line
 // names the stage and nothing else: Docker's, pg_restore's and the server's
@@ -86,24 +86,18 @@ export const drillAsOperator = ({ reach = stagingReach, ...options }) =>
 
 /**
  * `reach` asking the gate again (operator.ts, `stillOperator`) before each
- * call, and in a parts read before each `read_part` statement is handed to
- * psql: a part is read from the store only after the gate admits it again, so
- * an operator whose sign-in ended or whose `operations:manage` was revoked
- * part way reads no further part, and the fetch removes what it wrote. Every
- * gate operator.ts admits carries `stillOperator`.
+ * call. The fetch reads each part in a call of its own, begun only once the
+ * one before it has ended (drill-acts.mjs, `fetchLatest`), so a part is read
+ * from the store only after the gate admits it again, with nothing admitted
+ * earlier still queued: an operator whose sign-in ended or whose
+ * `operations:manage` was revoked part way reads no further part, and the
+ * fetch removes what it wrote. Every gate operator.ts admits carries
+ * `stillOperator`.
  */
 function askingAgain(reach, gate) {
-  const again = async () => await gate.stillOperator?.();
-  async function* heldBack(script) {
-    for (const piece of typeof script === 'string' ? [script] : script) {
-      // oxlint-disable-next-line no-await-in-loop -- one part at a time, each admitted first
-      if (piece.includes('backups.read_part(')) await again();
-      yield piece;
-    }
-  }
   return async (url, script, onLine) => {
-    await again();
-    return await reach(url, onLine === undefined ? script : heldBack(script), onLine);
+    await gate.stillOperator?.();
+    return await reach(url, script, onLine);
   };
 }
 
