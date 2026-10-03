@@ -32,7 +32,12 @@ const refuse = (code: IdentityRefusalCode, fixes: readonly string[]): Refusal =>
   refuseCommand(code, [], fixes);
 import { recordAuthenticationAttempt } from './authentication-attempts.ts';
 import { loginHasVerifiedFactor } from './second-factor.ts';
-import { NO_ASSURANCE, type Assurance, type VerifiedSubject } from './verified-subject.ts';
+import {
+  NO_ASSURANCE,
+  SIGN_IN_CLOCK_SKEW_SECONDS,
+  type Assurance,
+  type VerifiedSubject,
+} from './verified-subject.ts';
 
 export type { VerifiedSubject } from './verified-subject.ts';
 
@@ -241,6 +246,13 @@ export async function standsOnShares(tx: TenantQuery, personId: string): Promise
  * business the login reaches (0061), or one of the login's other sessions
  * ended from any business (0063): not the kept one, first signed in at or
  * before that ending. A token naming no session has none to end.
+ *
+ * The first sign-in time is the provider's clock and the ending is this
+ * database's, and the verifier serves a sign-in time up to
+ * `SIGN_IN_CLOCK_SKEW_SECONDS` ahead. So a session signed in that much after
+ * an ending is taken as signed in before it: a sign-in in the minute after
+ * "end my other sessions" is refused once, and never a session the ending
+ * should have ended served.
  */
 async function sessionEnded(tx: TenantQuery, presented: VerifiedSubject): Promise<boolean> {
   if (presented.sessionId === undefined) return false;
@@ -251,9 +263,14 @@ async function sessionEnded(tx: TenantQuery, presented: VerifiedSubject): Promis
        select 1 from ops.ended_subject_sessions s
         where s.subject_digest = encode(sha256(convert_to($2, 'UTF8')), 'hex')
           and s.kept_session is distinct from $1::uuid
-          and to_timestamp($3::bigint) <= s.ended_before
+          and to_timestamp($3::bigint) <= s.ended_before + make_interval(secs => $4)
      ) as ended`,
-    [presented.sessionId, presented.subject, presented.assurance?.signedInAt ?? null],
+    [
+      presented.sessionId,
+      presented.subject,
+      presented.assurance?.signedInAt ?? null,
+      SIGN_IN_CLOCK_SKEW_SECONDS,
+    ],
   );
   return rows[0]?.ended === true;
 }

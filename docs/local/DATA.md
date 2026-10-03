@@ -717,7 +717,8 @@ row.
 factor change: a SHA-256 digest of the login's subject, the session kept
 (null keeps none) and when. Installation-wide, no business, person or
 reason. Login resolution refuses a token of that subject whose session is not
-the kept one and whose first sign-in is at or before the ending. The
+the kept one and whose first sign-in is at or before the ending, allowing
+the minute the provider's clock may run ahead (`SIGN_IN_CLOCK_SKEW_SECONDS`). The
 application may insert the digest and the kept session and read the three
 columns; nothing changes or deletes a row.
 
