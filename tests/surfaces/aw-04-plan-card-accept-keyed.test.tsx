@@ -40,9 +40,11 @@ const ok = (value: Readonly<Record<string, unknown>>) => ({
 const refusal = (code: string) => ({ ok: false, refused: true, code, names: [], fixes: [code] });
 const LOST = { unavailable: true, because: 'The network dropped the answer.' };
 
-/** Each start answers the next conversation id with version 1's plan. */
-function registerClient(conversations: readonly string[]) {
-  const register = new Map<string, { readonly digest: string; readonly answer: unknown }>();
+/** Each start answers the next conversation id with version 1's plan; `spent` ids hold another body. */
+function registerClient(conversations: readonly string[], spent: readonly string[] = []) {
+  const register = new Map<string, { readonly digest: string; readonly answer: unknown }>(
+    spent.map((id) => [id, { digest: 'another body', answer: null }]),
+  );
   const queue = [...conversations];
   const ids: (string | undefined)[] = [];
   let decided = false;
@@ -137,4 +139,17 @@ it('AW04FIX4-F2 a kept accept stays with its session: another grant key on the s
   await bea.accept();
   expect(drawer.minted()).toBe(2);
   expect(drawer.ids).toStrictEqual(['op-1', 'op-2']);
+});
+
+it('AW04FIX4-F1b an accept refused OPERATION_ID_REUSED drops that id: the click again mints a new one and lands', async () => {
+  const drawer = registerClient([TAB_ONE], ['op-1']);
+  // Its own session, so no id an earlier test kept is in play.
+  const { page, ask, accept } = await open(drawer.client, 'grant-cal');
+  track(page);
+  await ask();
+  await accept();
+  expect(page.find('[data-plan="refusal"]')?.textContent).toContain('OPERATION_ID_REUSED');
+  await accept();
+  expect(drawer.ids).toStrictEqual(['op-1', 'op-2']);
+  expect(page.find('[data-plan="approved"]')).not.toBeNull();
 });
