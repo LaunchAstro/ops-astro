@@ -52,7 +52,14 @@ import {
 } from '../../../../packages/core-wire/src/index.ts';
 import type { CommandName } from '../../../../packages/core-wire/src/index.ts';
 import type { AccountRoute, NotARead, ReadName } from './read-names.ts';
-import type { CallResult, CommandOutcome, WireRefusal } from './results.ts';
+import type {
+  CallResult,
+  CommandOutcome,
+  FactorRemoved,
+  FactorVerified,
+  IssuedFactor,
+  WireRefusal,
+} from './results.ts';
 
 export { READ_NAMES } from './read-names.ts';
 export type { AccountRoute, NotARead, ReadName } from './read-names.ts';
@@ -61,25 +68,12 @@ export type {
   CallResult,
   CommandOutcome,
   ConversationReply,
+  FactorRemoved,
+  FactorVerified,
+  IssuedFactor,
   Unavailable,
   WireRefusal,
 } from './results.ts';
-
-/** What `account/factor/verify` answers: only the access token is read, once, to trade it. */
-export interface FactorVerified {
-  readonly accessToken?: unknown;
-}
-
-/**
- * What `account/factor/enrol` answers (`IssuedFactor`): the secret goes to the person once. It
- * is drawn and dropped, and never stored, logged or put in an error.
- */
-export interface IssuedFactor {
-  readonly factorId: string;
-  readonly qrCode: string;
-  readonly secret: string;
-  readonly uri: string;
-}
 
 export interface ClientOptions {
   /**
@@ -181,6 +175,11 @@ export class OperationsClient {
     return await this.#post<IssuedFactor>('/account/factor/enrol', {});
   }
 
+  /** The authenticator app removed (C59) with its current code; the person's other sessions end. */
+  async removeFactor(code: string): Promise<CallResult<FactorRemoved>> {
+    return await this.#post<FactorRemoved>('/account/factor/remove', { code });
+  }
+
   /** The person's own availability (MP-7-10), on the path the surface names. */
   setAvailability(body: Readonly<Record<string, unknown>>): Promise<CallResult<unknown>> {
     return this.#post(ACCOUNT_AVAILABILITY_PATH, body);
@@ -201,7 +200,7 @@ export class OperationsClient {
     return response === null ? null : await response.json().catch(() => null);
   }
 
-  /** The live channel at `path`, credentials as `#post` sends them: 2xx, else null. */
+  /** The live channel at `path`, sent and its refusal heard as `#post`'s are: 2xx, else null. */
   async #live(path: string, init: RequestInit): Promise<Response | null> {
     const { origin, businessKey, sessionId } = this.#options;
     const url = `${origin}${PREFIX.person}${encodeURIComponent(businessKey)}/live${path}`;
@@ -210,7 +209,10 @@ export class OperationsClient {
     if (sessionId !== undefined) headers.set(SESSION_HEADER, sessionId);
     try {
       const response = await this.#options.fetch(url, { ...init, headers });
-      return response.ok ? response : null;
+      if (response.ok) return response;
+      const parsed: unknown = await response.json().catch(() => {});
+      if (isWireRefusal(parsed)) this.#heard(response.status, parsed);
+      return null;
     } catch {
       return null;
     }
@@ -242,10 +244,7 @@ export class OperationsClient {
     const parsed: unknown = await response.json().catch(() => {});
 
     if (isWireRefusal(parsed)) {
-      if (this.#options.signedIn && this.#endsSession(response.status, parsed.code)) {
-        this.#options.onSessionEnded?.(parsed);
-      }
-      if (response.status !== 401 && !BEFORE_LOGIN.has(parsed.code)) this.#answered = true;
+      this.#heard(response.status, parsed);
       return parsed;
     }
 
@@ -261,9 +260,11 @@ export class OperationsClient {
     return { ok: true, value: parsed as T };
   }
 
-  #endsSession(status: number, code: string): boolean {
-    if (status === 401) return SESSION_ENDED.has(code);
-    return status === 403 && code === 'AUTH_NO_MEMBERSHIP' && this.#answered;
+  #heard(status: number, refusal: WireRefusal): void {
+    const revoked = status === 403 && refusal.code === 'AUTH_NO_MEMBERSHIP' && this.#answered;
+    const ends = status === 401 ? SESSION_ENDED.has(refusal.code) : revoked;
+    if (ends && this.#options.signedIn) this.#options.onSessionEnded?.(refusal);
+    if (status !== 401 && !BEFORE_LOGIN.has(refusal.code)) this.#answered = true;
   }
 }
 

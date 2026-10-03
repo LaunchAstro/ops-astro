@@ -9,10 +9,12 @@
 //
 // The projection is rebuilt when the grant key changes, because a projection
 // belongs to a grant and a new reader may not inherit the old one's answers.
+// Nor may it see them for one render: until the new projection publishes, the
+// hook answers a first read's loading state, never the old grant's state.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AuthorisedRead, initialState, type ReadState } from './authorised-read.ts';
-import type { LiveHub } from './live.ts';
+import { FLOOR_MS, type LiveHub } from './live.ts';
 import type { RollupFloor } from './rollup-floor.ts';
 import type { CallResult } from '../operations/client.ts';
 
@@ -39,6 +41,18 @@ export interface UseReadResult<T> {
   readonly reload: () => void;
 }
 
+/** The states a projection starts from: a first read, not a re-read of one. */
+const opening = new WeakSet<ReadState<unknown>>();
+
+/** Whether `state` opens a read (a grant's or a record's first), so nothing earlier describes it. */
+export const opensRead = (state: ReadState<unknown>): boolean => opening.has(state);
+
+function opened<T>(grantKey: string): ReadState<T> {
+  const state = initialState<T>(grantKey);
+  opening.add(state);
+  return state;
+}
+
 /**
  * Run the read and offer its answer. An answer the read or the projection
  * cannot take (a malformed body the read rejects on, an emptiness test that
@@ -58,14 +72,35 @@ async function offer<T>(
   }
 }
 
+/**
+ * Re-read a live read that has no topic yet, its first answer unavailable: on
+ * coming online, on being shown, and every 30 s while not hidden (C4). The
+ * hub can only follow a topic, and the topic comes from an answer.
+ */
+function untilAnswered(reload: () => void): () => void {
+  const retry = (): void => {
+    if (document.visibilityState !== 'hidden') reload();
+  };
+  const floor = setInterval(retry, FLOOR_MS);
+  window.addEventListener('online', retry);
+  document.addEventListener('visibilitychange', retry);
+  return () => {
+    clearInterval(floor);
+    window.removeEventListener('online', retry);
+    document.removeEventListener('visibilitychange', retry);
+  };
+}
+
 export function useRead<T>(options: UseReadOptions<T>): UseReadResult<T> {
-  const [state, setState] = useState<ReadState<T>>(() => initialState<T>(options.grantKey));
+  const [held, setState] = useState<ReadState<T>>(() => opened<T>(options.grantKey));
   const readRef = useRef<AuthorisedRead<T> | null>(null);
   const runRef = useRef(options.run);
   runRef.current = options.run;
 
   const grantKey = options.grantKey;
   const isEmpty = options.isEmpty;
+  const first = useMemo(() => opened<T>(grantKey), [grantKey]);
+  const state = held.grantKey === grantKey ? held : first;
 
   const reload = useCallback(() => {
     const projection = readRef.current;
@@ -81,6 +116,7 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadResult<T> {
         : { grantKey, onState: setState, isEmpty },
     );
     readRef.current = projection;
+    opening.add(projection.state);
     setState(projection.state);
     const generation = projection.begin();
     void offer(projection, generation, runRef.current, grantKey);
@@ -106,10 +142,12 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadResult<T> {
   const topic = topicRef.current;
   const hub = options.live?.hub;
 
+  const unanswered = hub !== undefined && topic === null && state.outcome === 'unavailable';
   useEffect(() => {
+    if (unanswered) return untilAnswered(reload);
     if (hub === undefined || topic === null) return;
     return hub.follow(topic, reload);
-  }, [hub, topic, reload]);
+  }, [hub, topic, reload, unanswered]);
 
   const { rollup } = options;
   useEffect(() => rollup?.follow(reload), [rollup, reload]);

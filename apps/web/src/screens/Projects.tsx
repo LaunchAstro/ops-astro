@@ -170,7 +170,8 @@ function ProjectBoard(props: Omit<ProjectsProps, 'navigate'>): ReactElement {
     <div className="stack">
       {/* The inbox lives inside Tasks (INB-1g): the working minimum above the board. */}
       <Inbox client={client} grantKey={props.grantKey} follow={followInbox} />
-      <CreateTask client={client} onCreated={reload} />
+      {/* Keyed on the reader: its lock, refusal and in-flight create are theirs. */}
+      <CreateTask key={grantKey} client={client} onCreated={reload} />
 
       {said === null ? null : (
         <p className="field__error" role="alert" data-board-refusal>
