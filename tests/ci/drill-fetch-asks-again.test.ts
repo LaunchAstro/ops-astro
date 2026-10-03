@@ -8,10 +8,15 @@
 import { randomUUID } from 'node:crypto';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { keys } from './carried-archive.fixture.ts';
 import { scratch } from './operator-only-commands.fixture.ts';
-import { operatorOnlyHooks, subjects, type OperatorOnlyState } from './operator-only.fixture.ts';
+import {
+  operatorOnlyHooks,
+  serverUrl,
+  subjects,
+  type OperatorOnlyState,
+} from './operator-only.fixture.ts';
 import {
   load,
   plantedStore,
@@ -21,51 +26,54 @@ import {
   type Seal,
 } from './s0-3e-operating-business.fixture.ts';
 
-let state: OperatorOnlyState;
-operatorOnlyHooks((shared) => {
-  state = shared;
-});
+// Without a database the fixture has nothing to build, as in operator-only-acts.test.ts.
+describe.skipIf(serverUrl === undefined)('the store drill asks the gate again', () => {
+  let state: OperatorOnlyState;
+  operatorOnlyHooks((shared) => {
+    state = shared;
+  });
 
-const revoke = async (): Promise<void> => {
-  await state.db.admin.execute(
-    "update public.grants set revoked_at = now() where subject_id = $1 and collection = 'operations' and action = 'manage'",
-    [state.operatorPerson],
-  );
-};
-
-it('a store drill reads no part and records nothing once operations:manage is revoked', async () => {
-  const { sealArchive } = await load<Seal>('../../scripts/ops/archive-seal.mjs');
-  const store = plantedStore(sealArchive(Buffer.from('synthetic drill record'), keys.publicKey));
-  const folder = mkdtempSync(join(scratch, 'drill-again-'));
-  const keyFile = join(folder, 'restore.key');
-  writeFileSync(keyFile, keys.privateKey, { mode: 0o600 });
-  const { env } = await signedIn(subjects.operator, 'alpha');
-  const { runDrillCommand } = await load<DrillCommand>('../../scripts/ops/restore-drill.mjs');
-  let revoked = false;
-  const afterRevocation: string[] = [];
-  const reach: Reach = async (url, script, onLine) => {
-    if (revoked) afterRevocation.push(onLine === undefined ? 'statement' : 'parts');
-    const answer = await store.reach(url, script, onLine);
-    if (!revoked) {
-      // The header is read; the operator's key goes before any part is asked for.
-      await revoke();
-      revoked = true;
-    }
-    return answer;
+  const revoke = async (): Promise<void> => {
+    await state.db.admin.execute(
+      "update public.grants set revoked_at = now() where subject_id = $1 and collection = 'operations' and action = 'manage'",
+      [state.operatorPerson],
+    );
   };
-  const outcome = await runDrillCommand(['--drill'], {
-    environment: {
-      ...env,
-      RESTORE_KEY_FILE: keyFile,
-      DRILL_BUSINESS_ID: randomUUID(),
-      DRILL_CLIENT_ID: randomUUID(),
-      DRILL_PERSON_ID: randomUUID(),
-    },
-    reach,
-  }).then(
-    (run) => run.receipt?.['outcome'],
-    () => 'stopped',
-  );
-  expect(revoked).toBe(true);
-  expect({ afterRevocation, outcome }).toEqual({ afterRevocation: [], outcome: 'stopped' });
+
+  it('a store drill reads no part and records nothing once operations:manage is revoked', async () => {
+    const { sealArchive } = await load<Seal>('../../scripts/ops/archive-seal.mjs');
+    const store = plantedStore(sealArchive(Buffer.from('synthetic drill record'), keys.publicKey));
+    const folder = mkdtempSync(join(scratch, 'drill-again-'));
+    const keyFile = join(folder, 'restore.key');
+    writeFileSync(keyFile, keys.privateKey, { mode: 0o600 });
+    const { env } = await signedIn(subjects.operator, 'alpha');
+    const { runDrillCommand } = await load<DrillCommand>('../../scripts/ops/restore-drill.mjs');
+    let revoked = false;
+    const afterRevocation: string[] = [];
+    const reach: Reach = async (url, script, onLine) => {
+      if (revoked) afterRevocation.push(onLine === undefined ? 'statement' : 'parts');
+      const answer = await store.reach(url, script, onLine);
+      if (!revoked) {
+        // The header is read; the operator's key goes before any part is asked for.
+        await revoke();
+        revoked = true;
+      }
+      return answer;
+    };
+    const outcome = await runDrillCommand(['--drill'], {
+      environment: {
+        ...env,
+        RESTORE_KEY_FILE: keyFile,
+        DRILL_BUSINESS_ID: randomUUID(),
+        DRILL_CLIENT_ID: randomUUID(),
+        DRILL_PERSON_ID: randomUUID(),
+      },
+      reach,
+    }).then(
+      (run) => run.receipt?.['outcome'],
+      () => 'stopped',
+    );
+    expect(revoked).toBe(true);
+    expect({ afterRevocation, outcome }).toEqual({ afterRevocation: [], outcome: 'stopped' });
+  });
 });
