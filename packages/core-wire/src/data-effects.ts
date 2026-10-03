@@ -251,9 +251,18 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
     ),
     [{ provider: 'identity', forClient: false }],
   ),
-  // C59: a member's factor cleared here and at the identity provider.
+  // C59: a member's factor cleared here and at the identity provider; the
+  // factor's state and the sessions' ending are also kept by subject, for
+  // every business the login reaches (0063, 0064).
   'access.reset_factor': writing(
-    business('factor_resets', 'second_factors', 'people', 'ended_sessions'),
+    business(
+      'factor_resets',
+      'second_factors',
+      'people',
+      'ended_sessions',
+      'ops.second_factor_subjects',
+      'ops.ended_subject_sessions',
+    ),
     [{ provider: 'identity', forClient: false }],
   ),
   'grant.revoke': GRANTS,
