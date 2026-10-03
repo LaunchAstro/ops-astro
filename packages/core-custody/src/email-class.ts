@@ -168,11 +168,20 @@ export async function mayStillSend(tx: TenantQuery, itemId: string): Promise<boo
 /** What a delivery refuses before any item is asked. */
 export type DeliverRefusal = 'OPERATION_NOT_CATALOGUED' | 'SENDER_NOT_VERIFIED';
 
-/** The report vouches for one subdomain: mail from any other domain is not verified. */
+/**
+ * The report vouches for one subdomain: mail from anything but one address on it is not
+ * verified, and a report drawn from the fake source (`mock`) never verifies a real send.
+ */
 export function fromVerifiedSender(
   from: string,
-  sender: { readonly verified: boolean; readonly subdomain: string },
+  sender: { readonly verified: boolean; readonly subdomain: string; readonly mock: boolean },
 ): boolean {
-  const domain = from.slice(from.lastIndexOf('@') + 1).toLowerCase();
-  return sender.verified && domain === sender.subdomain.toLowerCase();
+  const [local, domain, ...rest] = from.split('@');
+  return (
+    sender.verified &&
+    !sender.mock &&
+    local !== '' &&
+    rest.length === 0 &&
+    domain?.toLowerCase() === sender.subdomain.toLowerCase()
+  );
 }
