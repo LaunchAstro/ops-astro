@@ -68,6 +68,9 @@ import { dismissOwnTip, saveOwnPreference } from './preference-save.ts';
 import { stampOwnSeen } from './inbox-seen.ts';
 import { scopeMap, setTaskType } from './wayfinder.ts';
 import { reviseMap } from './wayfinder-revision.ts';
+import { chartMap } from './wayfinder-chart.ts';
+import { claimTicket, graduateFog, setBlocking } from './wayfinder-blocking.ts';
+import { closeOutOfScope, resolveTicket } from './wayfinder-resolve.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
@@ -189,6 +192,12 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.set_type': setTaskType,
   'map.revise': reviseMap,
   'map.scope': scopeMap,
+  'map.chart': chartMap,
+  'task.set_blocking': setBlocking,
+  'task.claim': (tx, context) => claimTicket(tx, context),
+  'map.graduate': graduateFog,
+  'task.resolve': resolveTicket,
+  'task.close_out_of_scope': closeOutOfScope,
   // AW-04 (U10). A person sets the planning cap; no agent route reaches it.
   'budget.set_planning_cap': setPlanningCap,
   // AW-03: the conversation's first message mints it; later ones are its owner's.

@@ -34,6 +34,10 @@ const TASK = writing(client('records', 'record_unique_values'));
 const MAP_TASK = writing(
   client('records', 'record_unique_values', 'map_summaries', 'map_frontier'),
 );
+// A map write that can put a grilling or prototype ticket on the frontier: the owner's decision item.
+const MAP_RAISE = writing(MAP_TASK.writes.concat(client('inbox_items')));
+// A map write that numbers a new version of the map too (WF-2).
+const MAP_VERSION = writing(MAP_RAISE.writes.concat(client('map_components', 'map_versions')));
 // A proposal raises the decision's inbox items (INB-1b).
 const PROPOSAL = writing(
   client(
@@ -276,11 +280,9 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
     ...business('delegations'),
   ]),
   'budget.write_off': writing(client('attempts', 'model_calls', 'reservations', 'task_envelopes')),
-  // Wayfinder (WF-1): a retype writes the task, and a grilling or prototype
-  // ticket newly on its map's frontier raises the owner's decision item. A
-  // write to a map or its ticket refreshes the map's summary and frontier
-  // (the records trigger, map_summary_on_record).
-  'task.set_type': writing(MAP_TASK.writes.concat(client('inbox_items'))),
+  // Wayfinder (WF-1). A write to a map or its ticket refreshes the map's
+  // summary and frontier (the records trigger, map_summary_on_record).
+  'task.set_type': MAP_RAISE,
   // The map and every ticket under it carry the client.
   'map.scope': MAP_TASK,
   // One numbered version: its components and the map's own version number,
@@ -288,4 +290,11 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'map.revise': writing(MAP_TASK.writes.concat(client('map_components', 'map_versions'))),
   'map.view': READ,
   'map.frontier': READ,
+  // WF-2: a chart files the map, its tickets, their links and its first version.
+  'map.chart': writing(MAP_VERSION.writes.concat(client('record_links'))),
+  'task.set_blocking': writing(MAP_RAISE.writes.concat(client('record_links'))),
+  'task.claim': MAP_TASK,
+  'map.graduate': MAP_VERSION,
+  'task.resolve': MAP_RAISE,
+  'task.close_out_of_scope': MAP_VERSION,
 };

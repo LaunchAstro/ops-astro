@@ -2,7 +2,9 @@
 //
 // A map's revisions (WF-1): one numbered version per revision, recording
 // every component it added or retired. A replaced Destination or Notes is
-// retired, not overwritten, so a version's body stays readable.
+// retired, not overwritten, so a version's body stays readable. WF-2's chart,
+// graduation and out-of-scope close write their versions through
+// `applyRevision` here too.
 
 import { randomUUID } from 'node:crypto';
 import { isUuid } from '../../../core-records/src/index.ts';
@@ -25,7 +27,7 @@ export interface Revision {
   readonly retire: readonly string[];
 }
 
-/** The operands a revision is read from. */
+/** The operands a revision is read from: `map.revise`'s, or a chart's. */
 export interface RevisionOperands {
   readonly destination?: unknown;
   readonly notes?: unknown;
@@ -158,6 +160,12 @@ async function writeComponents(
   return changed;
 }
 
+/** A patch leaving the fog for the tickets it became (WF-2). */
+export interface Graduation {
+  readonly patchId: string;
+  readonly tickets: readonly string[];
+}
+
 /**
  * Write one numbered version of a map: retire, replace and add components,
  * record which ones changed, and move the map's revision. The caller has
@@ -168,6 +176,7 @@ export async function applyRevision(
   context: CommandContext,
   mapId: string,
   parsed: Revision,
+  graduation?: Graduation,
 ): Promise<{
   readonly version: number;
   readonly changed: readonly string[];
@@ -179,9 +188,19 @@ export async function applyRevision(
     [tx.businessId, mapId],
   );
   const version = Number(numbered[0]?.next ?? 1);
-  // In order: the retirements, then what replaces and adds.
-  const retired = await retireComponents(tx, mapId, version, { ids: parsed.retire });
-  const changed = [...retired, ...(await writeComponents(tx, mapId, version, parsed))];
+  // In order: the retirements, the graduated patch, then what replaces and adds.
+  const changed: string[] = [
+    ...(await retireComponents(tx, mapId, version, { ids: parsed.retire })),
+  ];
+  if (graduation !== undefined) {
+    await tx.query(
+      `update map_components set retired_version = $3, graduated_into = $4::uuid[]
+        where business_id = $1 and id = $2 and map_id = $5`,
+      [tx.businessId, graduation.patchId, version, graduation.tickets, mapId],
+    );
+    changed.push(graduation.patchId);
+  }
+  changed.push(...(await writeComponents(tx, mapId, version, parsed)));
   await tx.query(
     `insert into map_versions (business_id, id, map_id, version, changed, actor_id)
      values ($1, $2, $3, $4, $5::uuid[], $6)`,

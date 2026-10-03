@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The wayfinder commands' operands (WF-1), spread into `surface.ts`'s write
-// operand table, which checks each against its `OperandSpec`.
+// The wayfinder commands' operands (WF-1, WF-2), spread into `surface.ts`'s
+// write operand table, which checks each against its `OperandSpec`.
 
 const TARGET = { recordId: 'id' } as const;
 
@@ -19,4 +19,17 @@ export const WAYFINDER_OPERANDS: Readonly<Record<string, Spec>> = {
     retire: 'any',
   },
   'map.scope': { ...TARGET, client: 'any' },
+  'map.chart': {
+    title: 'any',
+    destination: 'any',
+    notes: 'any',
+    tickets: 'any',
+    fog: 'any',
+    outOfScope: 'any',
+  },
+  'task.set_blocking': { ...TARGET, blockedBy: 'any' },
+  'task.claim': TARGET,
+  'map.graduate': { ...TARGET, patchId: 'any', tickets: 'any' },
+  'task.resolve': { ...TARGET, answer: 'any', gist: 'any' },
+  'task.close_out_of_scope': { ...TARGET, reason: 'any' },
 };
