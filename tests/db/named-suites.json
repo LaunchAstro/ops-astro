@@ -279,6 +279,8 @@
     "preference:write for a client user (ORCH50 ruling on the catalogue, SL10-23) names preference-write-client-user as an invariant: a person with no membership dismisses their own tip and saves their own appearance; naming another person writes nothing; another client user and another business are never reached.",
     "MP-3-1 adds mp-3-1-isolation-api (the dock's stored open set and each panel's place against the real boundary: another business, another client in the same business and an agent under a live delegation each restore nothing and read nothing of a canary task, statuses checked; and the dock's own presses add no audit event); MP-3-4 and MP-3-5 add their isolation cases beside it in dock-door-isolation-api, on the same world (mp-3-1-isolation-world.tsx, a support module, not named) (a door naming a foreign task is refused for each crossing; a walk back to a task whose grant was revoked is refused). Its jsdom twins, dock-app, dock-frame and dock-open-set, have no database and must not be named.",
     "MP-2-3, MP-3-2 and MP-3-3 add layout-preferences-api (the rail, dock width and sheet height as keys of the one preference store through the application: a release is one save of the person's own row and their next tab draws it; another person in the business, another business and an agent under a live delegation neither read nor write it, statuses checked, a canary never shown; no audit event). Its jsdom twins in dock-grip, dock-tiers and rail-collapse-dock (on layout-store-app.tsx) have no database and must not be named.",
+    "C71-D (U87) names c71-d-direct-messages and c71-d-isolation as invariants (20261003000558 team conversations: a direct message is a task_comment record with audience direct anchored to the pair's one team_conversation, sent by chat.send_direct under chat:comment and audited applied or refused with no body; no other table holds the body; the reader's own marker, chat.mark_read, moves forward only and adds no audit event; unread derived from it; a third person, a client and an agent refused; a member reads nothing after leaving; isolation across another business, two clients with one grant each, another person and an agent under a live delegation, canaries in no foreign answer).",
+    "C71-G (U87) names c71-g-group-conversations, c71-g-group-members and c71-g-isolation as invariants (c71-g-world.ts is their helper and is not named) (group conversations on 20261003000558's rows: chat.start_group under chat:comment with two or more staff teammates and a name; messages through chat.send_group with audience group on the one comment record; chat.rename_group and chat.change_members by the creator or a member holding chat:manage; chat.leave for one's own membership; a member added later reads from joining, a removed or departed member nothing after; each command audited; a non-member, a client and an agent refused; isolation across another business, two clients with one grant each, an administrator outside the group and an agent under a live delegation).",
     "SL08 names mp-4-4-preferences (subtasks.showFinished is the person's own preference key), task-duplicate-client-name-guard (task.duplicate's carried-text guard names a client only to a caller who may read it; an empty duplicate is not client-locked), s0-5-share-grant (task.share_with_client is client data under the S0-5 gate; a revoke stays a business grant write), task-client-facts and task-read-client-reach (task.read sends client and hasContent to members, the client id only where the reader's grants reach it) and task-client-facts-isolation (its three crossings).",
     "SL08 names history-trail-preference (history.showTrail, the task panel's trail fold, is the person's own preference key: saved, read back, and another person's value never reached).",
     "BATCH2-INTEG-7 (review 2c1 findings 6 to 9) names task-time-bounds (a hostile duration refused FIELD_VALUE_INVALID at once; the note limit equal to 0078's 500; an own running timer stopped and deleted after task:read is lost, with no task content, while another person's and another business's timers stay refused) and task-purge-children (the purge taking a trashed task's tags with it and keeping its time entries detached, a running one stopped (ORCH58), so the rest of the business purges). parse-duration is a pure unit suite and must not be named.",
@@ -289,8 +291,7 @@
     "REVIEW-BATCH-2 #313 batch 3b adds review-3b-4-parent-end-drops-helper (a parent revoked, or handed back, while its helper never handed back: the merged result shows the helper dropped with its fault, DELEGATION_REVOKED for the revocation, never working) as conformance.",
     "REVIEW-BATCH-2 #313 batch 3b adds review-3b-5-delegate-child-lease-id (run.delegate_child with a leaseId that is not a uuid, a number or missing is refused LEASE_NOT_OWNED or FIELD_VALUE_INVALID with no child written, never a 22P02 fault) as conformance.",
     "REVIEW-BATCH-2 #313 batch 3b adds review-3b-1-planning-hold-released (a failed planning reply held liability_unknown is released by the pass or a person's outcome, and the planning allowance gets its hold back) as conformance; its fix adds planfix-3b-1-planning-outcome (a planning reply whose operation declares a lookup is released by the pass alone; another person of the business and another business's owner naming the owner's conversation and call are refused NOT_FOUND with nothing written; the owner's outcome settles it once).",
-    "SEC3B F1 (batch 3b security review) adds sec3b-1-ended-owner-planning-release (a planning reply held unknown whose owner's access has since ended is released by the provider phase in the owner's name, as their person actor, and the same pass goes on to release the next business's held reply) as conformance.",
-    "C71-D (U87) names c71-d-direct-messages and c71-d-isolation as invariants (20261003000558 team conversations: a direct message is a task_comment record with audience direct anchored to the pair's one team_conversation, sent by chat.send_direct under chat:comment and audited applied or refused with no body; no other table holds the body; the reader's own marker, chat.mark_read, moves forward only and adds no audit event; unread derived from it; a third person, a client and an agent refused; a member reads nothing after leaving; isolation across another business, two clients with one grant each, another person and an agent under a live delegation, canaries in no foreign answer)."
+    "SEC3B F1 (batch 3b security review) adds sec3b-1-ended-owner-planning-release (a planning reply held unknown whose owner's access has since ended is released by the provider phase in the owner's name, as their person actor, and the same pass goes on to release the next business's held reply) as conformance."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -839,6 +840,13 @@
     "tests/web/dock-door-isolation-api.test.tsx",
     "tests/web/layout-preferences-api.test.tsx",
     "tests/api/preference-write-client-user.test.ts",
+    "tests/api/c71-d-direct-messages.test.ts",
+    "tests/api/c71-d-isolation.test.ts",
+    "tests/api/c71-d-direct-message-races.test.ts",
+    "tests/tasks/c71-d-conversations-migration.test.ts",
+    "tests/api/c71-g-group-conversations.test.ts",
+    "tests/api/c71-g-group-members.test.ts",
+    "tests/api/c71-g-isolation.test.ts",
     "tests/api/mp-4-4-preferences.test.ts",
     "tests/commands/task-duplicate-client-name-guard.test.ts",
     "tests/operations/s0-5-share-grant.test.ts",
@@ -846,11 +854,7 @@
     "tests/reads/task-client-facts-isolation.test.ts",
     "tests/reads/task-client-facts.test.ts",
     "tests/api/history-trail-preference.test.ts",
-    "tests/operations/c81-gate-evidence.test.ts",
-    "tests/api/c71-d-direct-messages.test.ts",
-    "tests/api/c71-d-isolation.test.ts",
-    "tests/api/c71-d-direct-message-races.test.ts",
-    "tests/tasks/c71-d-conversations-migration.test.ts"
+    "tests/operations/c81-gate-evidence.test.ts"
   ],
   "conformance": [
     "tests/tenancy/tenancy-conformance.test.ts",

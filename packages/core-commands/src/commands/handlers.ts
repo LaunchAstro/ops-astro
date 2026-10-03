@@ -67,6 +67,13 @@ import { endOwnSession } from './session-end.ts';
 import { dismissOwnTip, saveOwnPreference } from './preference-save.ts';
 import { stampOwnSeen } from './inbox-seen.ts';
 import { markOwnRead, sendDirect } from './chat.ts';
+import {
+  changeGroupConversationMembers,
+  leaveGroupConversation,
+  renameGroupConversation,
+  sendGroupMessage,
+  startGroupConversation,
+} from './chat-groups.ts';
 
 /**
  * Each write's request, by name. An intersection rather than `Extract`, so the
@@ -232,6 +239,17 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
     sendDirect(tx, context, request.teammateId, request.body),
   'chat.mark_read': (tx, context, request) =>
     markOwnRead(tx, context, request.conversationId, request.upTo),
+  // C71-G. The creator, the sender and the leaver are the session's.
+  'chat.start_group': (tx, context, request) =>
+    startGroupConversation(tx, context, request.name, request.members),
+  'chat.send_group': (tx, context, request) =>
+    sendGroupMessage(tx, context, request.conversationId, request.body),
+  'chat.rename_group': (tx, context, request) =>
+    renameGroupConversation(tx, context, request.conversationId, request.name),
+  'chat.change_members': (tx, context, request) =>
+    changeGroupConversationMembers(tx, context, request.conversationId, request),
+  'chat.leave': (tx, context, request) =>
+    leaveGroupConversation(tx, context, request.conversationId),
 };
 
 function writeOwned(

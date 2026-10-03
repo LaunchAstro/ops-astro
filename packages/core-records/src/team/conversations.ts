@@ -91,7 +91,7 @@ const CLOCK_MS = `date_trunc('milliseconds', clock_timestamp())`;
  * under this lock, so a message that commits later is always stamped later
  * than any marker moved before it, and never hides behind one.
  */
-async function lockConversation(tx: TenantQuery, conversationId: string): Promise<void> {
+export async function lockConversation(tx: TenantQuery, conversationId: string): Promise<void> {
   await advisoryLock(tx, `chat.conversation:${tx.businessId}:${conversationId}`);
 }
 
@@ -164,8 +164,9 @@ const MEMBER_READS = `
 export interface ConversationSummary {
   readonly conversationId: string;
   readonly kind: ConversationKind;
+  /** A group's name; null on a direct conversation, and to a member who has left. */
   readonly name: string | null;
-  /** Every current member's person id, the reader included. */
+  /** Every current member's person id, the reader included; none to one who has left. */
   readonly members: readonly string[];
   readonly lastRead: string | null;
   readonly lastMessageAt: string | null;
@@ -188,10 +189,13 @@ export async function listConversations(
     readonly last_message_at: Date | null;
     readonly unread: string;
   }>(
-    `select m.conversation_id as id, r.txt_1 as kind, r.txt_2 as name, m.last_read_at,
-            array(select o.person_id::text from public.team_conversation_members o
-                   where o.business_id = m.business_id and o.conversation_id = m.conversation_id
-                     and o.left_at is null order by o.joined_at, o.person_id) as members,
+    `select m.conversation_id as id, r.txt_1 as kind, m.last_read_at,
+            case when m.left_at is null then r.txt_2 end as name,
+            case when m.left_at is null then array(
+              select o.person_id::text from public.team_conversation_members o
+               where o.business_id = m.business_id and o.conversation_id = m.conversation_id
+                 and o.left_at is null order by o.joined_at, o.person_id)
+            else '{}' end as members,
             (select max(c.ts_1) from public.records c where ${MEMBER_READS}) as last_message_at,
             (select count(*) from public.records c
                join public.actors a on a.business_id = c.business_id and a.id = c.uuid_2
