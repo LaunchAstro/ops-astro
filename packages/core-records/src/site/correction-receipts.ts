@@ -55,26 +55,42 @@ type Refused = { readonly ok: false; readonly code: ObservedRefusal };
 
 /**
  * The correction locked, and a live worker lease on its task at the fence the
- * worker holds (under a share lock, so the lease cannot end until this
- * transaction does), or the refusal. The lease is the caller's own, and its
- * delegation, where it has one, is not revoked, settled or expired: the check
- * `core-runtime/src/lease-ownership.ts` makes before it trusts a lease.
+ * worker holds, or the refusal. The lease and then its delegation are locked
+ * `for share` (`core-runtime/src/locks.ts`'s order), so neither can end or be
+ * revoked until this transaction does; then the clock is read once, after the
+ * locks, and both expiries are judged at it (`core-runtime/src/clock.ts`), so a
+ * write that waited on the correction past an expiry sees it expired. The lease
+ * is the caller's own, and its delegation, where it has one, is not revoked,
+ * settled or expired: the check `core-runtime/src/lease-ownership.ts` makes.
  */
 async function holdUnderLease(tx: TenantQuery, at: UnderLease): Promise<Held> {
   const correction = await lockCorrectionForSystem(tx, at.correctionId);
   if (correction === undefined) return { ok: false, code: 'NOT_FOUND' };
-  const lease = await tx.query<{ readonly id: string }>(
-    `select l.id from public.leases l
+  const [lease] = await tx.query<{ readonly delegation_id: string | null }>(
+    `select l.delegation_id from public.leases l
       where l.business_id = $1 and l.id = $2 and l.task_id = $3 and l.fence = $4
-        and l.state = 'live' and l.expires_at > now() and l.holder_actor_id = $5
-        and (l.delegation_id is null or exists (
-              select 1 from public.delegations d
-               where d.business_id = l.business_id and d.id = l.delegation_id
-                 and d.revoked_at is null and d.settled_at is null and d.expires_at > now()))
+        and l.holder_actor_id = $5
       for share of l`,
     [tx.businessId, at.leaseId, correction.taskId, at.fence, at.actorId],
   );
-  if (lease.length === 0) return { ok: false, code: 'LEASE_NOT_OWNED' };
+  if (lease === undefined) return { ok: false, code: 'LEASE_NOT_OWNED' };
+  if (lease.delegation_id !== null) {
+    await tx.query(
+      `select 1 from public.delegations where business_id = $1 and id = $2 for share`,
+      [tx.businessId, lease.delegation_id],
+    );
+  }
+  const live = await tx.query<{ readonly id: string }>(
+    `with instant as materialized (select clock_timestamp() as at)
+     select l.id from public.leases l, instant
+      where l.business_id = $1 and l.id = $2 and l.state = 'live' and l.expires_at > instant.at
+        and (l.delegation_id is null or exists (
+              select 1 from public.delegations d
+               where d.business_id = l.business_id and d.id = l.delegation_id
+                 and d.revoked_at is null and d.settled_at is null and d.expires_at > instant.at))`,
+    [tx.businessId, at.leaseId],
+  );
+  if (live.length === 0) return { ok: false, code: 'LEASE_NOT_OWNED' };
   return { ok: true, correction };
 }
 
