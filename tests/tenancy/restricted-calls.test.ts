@@ -738,7 +738,8 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(wrong).toStrictEqual([]);
   });
 
-  // Exactly four, each for a named reason. The append-only trigger refuses
+  // Eight, each for a named reason. The map read models' four (WF-1) are
+  // pinned in their own block below. The append-only trigger refuses
   // the owner itself. The fair share's count (AW-01, ORCH-DECISION SL11
   // AW-01) is the one read across businesses: a provider route's ceiling is
   // the installation's, which a tenant transaction cannot count under row
@@ -788,6 +789,24 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
       expect(stamp?.trigger).toBe(false);
       expect(stamp?.argumentTypes).toStrictEqual([]);
       expect(stamp?.config).toStrictEqual(['search_path=pg_catalog']);
+    });
+  });
+
+  // WF-1: the map read models' writers. Three fire on a map's parts, links and
+  // records; the refresh they call takes the map's id. Each pins its search path.
+  describe("the map read models' security definer functions", () => {
+    const definer = (signature: string): CatalogueFunction | undefined =>
+      functions.find((fn) => fn.definer && fn.signature === signature);
+
+    it.each([
+      ['map_summary_on_link()', true],
+      ['map_summary_on_map_part()', true],
+      ['map_summary_on_record()', true],
+      ['map_summary_refresh(uuid)', false],
+    ])('%s pins its search path (a trigger: %s)', (signature, trigger) => {
+      const fn = definer(signature);
+      expect(fn?.trigger).toBe(trigger);
+      expect(fn?.config).toStrictEqual(['search_path=pg_catalog, public']);
     });
   });
 
