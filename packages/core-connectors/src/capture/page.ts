@@ -80,24 +80,19 @@ const UNREAD = new Map([
   ['iframe', ['srcdoc']],
 ]);
 
-interface Reading {
-  readonly text: string;
-  readonly links: readonly string[];
-  readonly styles: readonly string[];
-  readonly base?: string | undefined;
-}
+/** What the page shows and loads: its text, linked and inline sheets, and its base ('' if none). */
+type Reading = Readonly<{ text: string; links: string[]; styles: string[]; base: string }>;
 
 /** The page's tree, or undefined where it passes a bound. */
 function parsed(html: string): Tree.Document | undefined {
-  let depth = 0;
-  const onItemPop = () => (depth -= 1);
+  // Read from parse5's own counts after each push; a count it no longer keeps reads as past.
   const onItemPush = () => {
-    depth += 1;
-    if (Math.max(depth, parser.activeFormattingElements.entries.length) > MAX_DEPTH)
+    const depth = parser.openElements.stackTop + 1;
+    if (!(Math.max(depth, parser.activeFormattingElements.entries.length) <= MAX_DEPTH))
       throw PAST_BOUND;
   };
   const parser = new Parser<Tree.DefaultTreeAdapterMap>({
-    treeAdapter: { ...defaultTreeAdapter, ...fromEnd, onItemPush, onItemPop },
+    treeAdapter: { ...defaultTreeAdapter, ...fromEnd, onItemPush },
   });
   parser.tokenizer = new BoundedTokenizer(parser.options, parser);
   try {
@@ -108,6 +103,20 @@ function parsed(html: string): Tree.Document | undefined {
     throw error;
   }
 }
+
+// The bounds lean on parse5's internals. If a release drops a member they override, or stops
+// honouring one, the capture refuses to load rather than read pages unbounded.
+const names = Array.from({ length: MAX_ATTRIBUTES }, (_, at) => ` a${at}`).join('');
+const members = [
+  Reflect.get(Tokenizer.prototype, '_leaveAttrName'),
+  ...Object.keys(fromEnd).map((name) => Reflect.get(defaultTreeAdapter, name)),
+];
+const probes = [`<p${names} z>`, `<html${names}><html z>`, '<b>'.repeat(MAX_DEPTH)];
+if (
+  members.some((member) => typeof member !== 'function') ||
+  probes.some((probe) => parsed(probe) !== undefined)
+)
+  throw new Error('parse5 no longer holds the capture bounds');
 
 /** Reads the tree in document order with a stack of its own, so no depth can overflow the call stack. */
 function readDocument(html: string): Reading | FenceCode {
@@ -145,7 +154,7 @@ function readDocument(html: string): Reading | FenceCode {
     }
     for (const child of node.childNodes.toReversed()) stack.push([child, hides]);
   }
-  return { text: text.join('').replaceAll(/\s+/gu, ' ').trim(), links, styles, base };
+  return { text: text.join('').replaceAll(/\s+/gu, ' ').trim(), links, styles, base: base ?? '' };
 }
 
 // What a stylesheet imports, read a token at a time as CSS Syntax 3 reads it after its
@@ -155,7 +164,7 @@ const ESCAPE = String.raw`\\(?:[0-9a-f]{1,6}[ \t\n]?|[^\n]|$)`;
 const STRING = (quote: string): string =>
   String.raw`${quote}([^${quote}\\\n]*(?:(?:${ESCAPE}|\\\n)[^${quote}\\\n]*)*)(${quote})?`;
 const TOKEN = new RegExp(
-  String.raw`[ \t\n]+|${STRING('"')}|${STRING("'")}|([#@]?)((?:[\w\-\P{ASCII}]+|${ESCAPE})+)|[^]`,
+  String.raw`[ \t\n]+|/\*[^*]*(?:\*+(?!/)[^*]*)*(?:\*/|$)|${STRING('"')}|${STRING("'")}|([#@]?)((?:[\w\-\P{ASCII}]+|${ESCAPE})+)|[^]`,
   'iuy',
 );
 // After `url(`: a quote ahead (a string follows), or an address and its `)`; with no `)` the url is
@@ -184,10 +193,6 @@ type CssToken = { readonly kind: string; readonly text?: string | undefined; rea
 
 /** The token at `at`: space, a comment, a string, a url, `url(` before a string, `@name`, other. */
 function cssToken(css: string, at: number): CssToken {
-  if (css.startsWith('/*', at)) {
-    const close = css.indexOf('*/', at + 2);
-    return { kind: ' ', end: close === -1 ? css.length : close + 2 };
-  }
   TOKEN.lastIndex = at;
   const [all = '', double, closed, single, closedSingle, sign, name] = TOKEN.exec(css) ?? [];
   const end = at + all.length;
@@ -195,7 +200,7 @@ function cssToken(css: string, at: number): CssToken {
     const bad = (closed ?? closedSingle) === undefined && end < css.length;
     return { kind: 'string', text: bad ? undefined : cssText(double ?? single ?? ''), end };
   }
-  if (name === undefined) return { kind: /^[ \t\n]/u.test(all) ? ' ' : 'other', end };
+  if (name === undefined) return { kind: /^(?:[ \t\n]|\/\*)/u.test(all) ? ' ' : 'other', end };
   const word = cssText(name, '\uFFFD').toLowerCase();
   if (sign === '@') return { kind: `@${word}`, end };
   if (sign === '#' || word !== 'url' || css.charAt(end) !== '(') return { kind: 'name', end };
@@ -284,7 +289,7 @@ export async function capturePage(
   const html = page.value.body;
   const document = readDocument(html);
   if (typeof document === 'string') return { ok: false, code: document };
-  const base = resolved(document.base ?? '', page.value.url) ?? page.value.url;
+  const base = resolved(document.base, page.value.url) ?? page.value.url;
   const sheets = await readSheets(url, base, document, options);
   if (!sheets.ok) return sheets;
   const sorted = Object.fromEntries(
