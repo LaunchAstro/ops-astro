@@ -81,6 +81,8 @@ export const READ_NAMES = [
   'trace.read',
   // The harness test's result on one run (AW-12); no screen draws it yet.
   'harness.read',
+  // The business's team invitations (C39-T), under `access:share` on the server.
+  'invitation.list',
 ] as const;
 
 /**

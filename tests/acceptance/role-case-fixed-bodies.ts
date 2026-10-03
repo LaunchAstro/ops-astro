@@ -36,6 +36,8 @@ const EMPTY: readonly CommandName[] = [
   'inbox.read',
   'inbox.count',
   'inbox.unattended',
+  // C39-T's `invitation.list` asks `access:share`, which the admin holds.
+  'invitation.list',
   // The reader's own to-dos (MP-7-1): no operand.
   'task.todos',
 ];

@@ -878,6 +878,9 @@ export const COMMAND_SURFACE: readonly CommandDeclaration[] = [
       untargetedIdentifiers: name === 'invitation.create' ? [] : ['invitationId'],
     }),
   ),
+  // C39-T: the business's invitations for Settings ▸ Access, under the key
+  // their acts take, `access:share`; never an agent's.
+  read('invitation.list', 'access', { action: 'share' }),
 ];
 
 const BY_NAME = new Map(COMMAND_SURFACE.map((command) => [command.name, command]));

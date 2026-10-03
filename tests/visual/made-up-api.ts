@@ -33,7 +33,7 @@ import type {
 } from '../../packages/core-wire/src/index.ts';
 import type { BrowserContext } from 'playwright';
 import type { ReadName } from '../../apps/web/src/operations/read-names.ts';
-import { ACCESS, HARBOUR, MERIDIAN, MIA, NATHAN, OPERATIONS } from './made-up-access.ts';
+import { ACCESS_READS, HARBOUR, MERIDIAN, MIA, NATHAN, OPERATIONS } from './made-up-access.ts';
 import { AGENT_READS } from './made-up-agent.ts';
 import { EXECUTION, RECEIPT } from './made-up-data.ts';
 import { DETAIL, LEDGER, STATE, TAGS, TASKS, TODOS } from './made-up-rows.ts';
@@ -156,7 +156,7 @@ const READS = {
     ok: true,
     hits: TASKS.slice(0, 3).map(({ id, key, title }) => ({ id, key, title })),
   } satisfies TaskSearchResult,
-  'access.read': ACCESS,
+  ...ACCESS_READS,
   'operations.read': OPERATIONS,
   ...AGENT_READS,
   'conversation.allowance': {

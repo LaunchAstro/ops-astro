@@ -17,14 +17,28 @@
 // an agent's, by its delegation. After each, the list is read again: the
 // preview on the page is always the server's, never this screen's guess.
 // A refusal is shown in the server's words and changes nothing on the page.
+//
+// A fifth, C39-T's: "Invite a team member" sends `invitation.create` under
+// `access:share`, drawn only when `session.capabilities` says the session
+// holds that key (`access/invite.tsx`); the server still refuses anyone else.
+// Under it, the business's invitations from `invitation.list`, each pending
+// one with `invitation.resend` and `invitation.revoke` (`access/invitations.tsx`).
+// An administrator's invitation, made or resent, also asks `access:manage`
+// (SEC27): without it the role is not offered and such a resend is not drawn.
 
 import { useState, type ReactElement } from 'react';
 import { useRead } from '../data/use-read.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import { describeFailure, type SubmitResult } from '../records/submit.ts';
 import { RecordState } from '../views/record-state.tsx';
-import type { AccessReadResult, PersonView } from '../../../../packages/core-wire/src/index.ts';
+import type {
+  AccessReadResult,
+  CapabilitiesResult,
+  PersonView,
+} from '../../../../packages/core-wire/src/index.ts';
 import { ConfirmEnd, ConfirmRevokeGrant, GiveAccess, type Revoking } from './access/acts.tsx';
+import { holdsAccess, InviteMember, type Invitation } from './access/invite.tsx';
+import { Invitations, type InvitationAct } from './access/invitations.tsx';
 import { Agents, People } from './access/rows.tsx';
 
 export interface AccessScreenProps {
@@ -33,12 +47,12 @@ export interface AccessScreenProps {
 }
 
 /** One write, then the list read again; a refusal changes nothing but the outcome line. */
-type Act = (send: () => Promise<SubmitResult>, done: string) => void;
+type Act = (send: () => Promise<SubmitResult>, done: string) => Promise<SubmitResult>;
 
 const revokeWith =
   (client: OperationsClient, act: Act) =>
   (agent: AccessReadResult['agents'][number]): void => {
-    act(
+    void act(
       () => client.mutate('delegation.revoke', { delegationId: agent.delegationId }),
       `Revoked the delegation for ${agent.purpose}.`,
     );
@@ -49,7 +63,25 @@ const giveWith =
   (holder: PersonView, key: string, clientId: string | null): void => {
     const [collection, action] = key.split(':');
     const body = { holderId: holder.personId, collection, action, clientId };
-    act(() => client.mutate('access.grant', body), `Gave ${holder.name} ${key}.`);
+    void act(() => client.mutate('access.grant', body), `Gave ${holder.name} ${key}.`);
+  };
+
+const inviteWith =
+  (client: OperationsClient, act: Act) =>
+  async (invitation: Invitation): Promise<SubmitResult> =>
+    await act(
+      () => client.mutate('invitation.create', { ...invitation }),
+      `Invited ${invitation.name}. The invitation is pending until it is accepted, resent, revoked or expires.`,
+    );
+
+const actOnInvitationWith =
+  (client: OperationsClient, act: Act): InvitationAct =>
+  (command, invitation) => {
+    const done = command === 'invitation.resend' ? 'Sent again' : 'Revoked';
+    void act(
+      () => client.mutate(command, { invitationId: invitation.invitationId }),
+      `${done}: the invitation to ${invitation.name}.`,
+    );
   };
 
 /** A refusal is drawn as Settings draws one; a success stays a quiet line. */
@@ -73,14 +105,14 @@ function usePending(client: OperationsClient, act: Act) {
   const [revoking, setRevoking] = useState<Revoking | null>(null);
   const endAccess = (person: PersonView): void => {
     setEnding(null);
-    act(
+    void act(
       () => client.mutate('access.end', { holderId: person.personId }),
       `Ended ${person.name}'s access: their login, sessions and grants.`,
     );
   };
   const revokeGrant = ({ person, grant }: Revoking): void => {
     setRevoking(null);
-    act(
+    void act(
       () => client.mutate('access.revoke', { grantId: grant.grantId }),
       `Revoked ${person.name}'s ${grant.collection}:${grant.action}.`,
     );
@@ -115,6 +147,12 @@ function AccessLists(props: {
   readonly busy: boolean;
   readonly act: Act;
   readonly outcome: ReactElement | null;
+  readonly canInvite: boolean;
+  /** The session holds `access:manage`, which an administrator's invitation asks. */
+  readonly canManage: boolean;
+  readonly grantKey: string;
+  /** Moved on after each act that worked, so the invitations are read again. */
+  readonly version: number;
 }): ReactElement {
   const { client, result, act } = props;
   const { confirmations, onEnd, onRevokeGrant } = usePending(client, act);
@@ -136,8 +174,57 @@ function AccessLists(props: {
       <section className="sec">
         <GiveAccess result={result} busy={props.busy} onGive={giveWith(client, act)} />
       </section>
+      {props.canInvite ? <InviteSection {...props} /> : null}
     </>
   );
+}
+
+/** C39-T: the invitation form and the business's invitations, for a holder of `access:share`. */
+function InviteSection(props: {
+  readonly client: OperationsClient;
+  readonly busy: boolean;
+  readonly act: Act;
+  readonly canManage: boolean;
+  readonly grantKey: string;
+  readonly version: number;
+}): ReactElement {
+  const { client, act } = props;
+  return (
+    <section className="sec">
+      <InviteMember
+        busy={props.busy}
+        canInviteAdmin={props.canManage}
+        onInvite={inviteWith(client, act)}
+      />
+      <Invitations
+        client={client}
+        grantKey={props.grantKey}
+        version={props.version}
+        onAct={actOnInvitationWith(client, act)}
+        canManage={props.canManage}
+      />
+    </section>
+  );
+}
+
+/** One write at a time; after one that worked, the list and the invitations are read again. */
+function useAct(reload: () => void) {
+  const [busy, setBusy] = useState(false);
+  const [version, setVersion] = useState(0);
+  const [outcome, setOutcome] = useState<{ text: string; refused: boolean } | null>(null);
+  const act: Act = async (send, done) => {
+    setBusy(true);
+    const result = await send();
+    const failure = describeFailure(result);
+    setBusy(false);
+    setOutcome({ text: failure ?? done, refused: failure !== null });
+    if (failure === null) {
+      reload();
+      setVersion((was) => was + 1);
+    }
+    return result;
+  };
+  return { act, busy, version, outcome };
 }
 
 export function AccessScreen(props: AccessScreenProps): ReactElement {
@@ -147,17 +234,12 @@ export function AccessScreen(props: AccessScreenProps): ReactElement {
     run: () => client.read<AccessReadResult>('access.read', {}),
     deps: [client],
   });
-  const [busy, setBusy] = useState(false);
-  const [outcome, setOutcome] = useState<{ text: string; refused: boolean } | null>(null);
-  const act: Act = (send, done) => {
-    setBusy(true);
-    void (async () => {
-      const failure = describeFailure(await send());
-      setBusy(false);
-      setOutcome({ text: failure ?? done, refused: failure !== null });
-      if (failure === null) reload();
-    })();
-  };
+  const capabilities = useRead<CapabilitiesResult>({
+    grantKey,
+    run: () => client.read<CapabilitiesResult>('session.capabilities', {}),
+    deps: [client],
+  });
+  const { act, busy, version, outcome } = useAct(reload);
   // The top bar names the page; the body is the page kit's sections (PAGE-MAP SH-40 to 44).
   return (
     <div className="secs" data-screen="access" data-business={client.businessKey}>
@@ -173,6 +255,10 @@ export function AccessScreen(props: AccessScreenProps): ReactElement {
               busy={busy}
               act={act}
               outcome={outcome === null ? null : <Outcome {...outcome} />}
+              canInvite={holdsAccess(capabilities.state, 'share')}
+              canManage={holdsAccess(capabilities.state, 'manage')}
+              grantKey={grantKey}
+              version={version}
             />
           </div>
         )}
