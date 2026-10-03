@@ -4,19 +4,19 @@
 // topics a tab names, and the loop that re-asks before every delivery. Moved
 // out of app.ts unchanged in what it sends, with presence added.
 
-import { randomUUID } from 'node:crypto';
 import type { SSEStreamingApi } from 'hono/streaming';
-import type { CommandRefusal, Viewer } from '../../packages/core-commands/src/index.ts';
+import type { CommandRefusal } from '../../packages/core-commands/src/index.ts';
 import { TOPIC, type LiveSignal, type LiveTopics } from './live.ts';
-import type { LivePresence } from './live-presence.ts';
-import type { PresenceSession } from './presence.ts';
+import type { Seated, Sitter } from './live-presence.ts';
+
+export { seatFor, type Seated } from './live-presence.ts';
 
 /** How a stream asks, for its business, whether its caller may still watch a task. */
 export interface Watching {
   readonly businessId: string;
   /** At join, every topic in one transaction: the login's one authentication attempt, nothing else. */
   atDoor(taskIds: readonly string[]): Promise<readonly (string | CommandRefusal)[]>;
-  /** Before each delivery and on the recheck: writes nothing. */
+  /** Before each delivery and on the recheck: the person admitted, or the refusal; writes nothing. */
   again(taskId: string): Promise<string | CommandRefusal>;
 }
 
@@ -24,30 +24,6 @@ export interface Watching {
 export interface Watch {
   readonly label: string;
   readonly taskId: string;
-}
-
-/** Who a seat is held for: the person the bearer resolves to, without the seat's id. */
-export type Sitter = Omit<PresenceSession, 'sessionId'>;
-
-/** A stream's seat in the presence book (C2): its id is handed to the tab alone. */
-export interface Seated {
-  readonly session: PresenceSession;
-  readonly presence: LivePresence;
-  /** Who the bearer resolves to now, asked before each delivery; undefined when no one. */
-  sitter(): Promise<Sitter | undefined>;
-}
-
-/** A stream's seat for whoever `viewer` resolves to now, under a new id; none when no one. */
-export async function seatFor(
-  presence: LivePresence,
-  viewer: () => Promise<Viewer | undefined>,
-): Promise<Seated | undefined> {
-  const sitter = async (): Promise<Sitter | undefined> => {
-    const now = await viewer();
-    return now && { personId: now.personId, name: now.name, side: now.staff ? 'staff' : 'client' };
-  };
-  const now = await sitter();
-  return now && { presence, session: { ...now, sessionId: randomUUID() }, sitter };
 }
 
 const MOST_TOPICS = 32;
@@ -181,7 +157,9 @@ export async function follow(
  * while one is pending merge into it, the strongest kept; a presence change
  * rides with it. Every delivery asks again first, and writes nothing. The
  * seat, under one id, holds on each task the person the bearer resolves to
- * once that task's recheck passed; a new person leaves every seat to recheck.
+ * once that task's recheck admitted that same person. A new person leaves
+ * every seat, and what was due waits for each task's next answer; a recheck
+ * that answered for anyone else closes the task.
  */
 class Follower {
   readonly #stops = new Map<Watch, () => void>();
@@ -251,19 +229,26 @@ class Follower {
     this.#leaves.delete(watch);
   }
 
-  /** `watch` passed its recheck: seated as before, or every seat left for a new person. */
-  async #reseat(watch: Watch): Promise<void> {
-    if (this.#seated === undefined) return;
+  /**
+   * `watch` passed its recheck for `admitted`: `sits` when that person still
+   * sits, seated as before; `moved` when the login now resolves to someone
+   * else, every seat left and every task asked again; `other` when the
+   * recheck answered for someone who does not sit.
+   */
+  async #reseat(watch: Watch, admitted: string): Promise<'sits' | 'moved' | 'other'> {
+    if (this.#seated === undefined) return 'sits';
     const now = await this.#seated.sitter();
     const was = this.#sitter;
-    if (now?.personId === was?.personId && now?.name === was?.name && now?.side === was?.side) {
-      if (!this.#leaves.has(watch)) this.#sit(watch);
-      return;
+    if (now?.personId !== was?.personId || now?.name !== was?.name || now?.side !== was?.side) {
+      for (const leave of this.#leaves.values()) leave();
+      this.#leaves.clear();
+      this.#sitter = now;
+      this.checkAll();
+      return 'moved';
     }
-    for (const leave of this.#leaves.values()) leave();
-    this.#leaves.clear();
-    this.#sitter = now;
-    this.checkAll();
+    if (now?.personId !== admitted) return 'other';
+    if (!this.#leaves.has(watch)) this.#sit(watch);
+    return 'sits';
   }
 
   #queue(watch: Watch): void {
@@ -279,11 +264,18 @@ class Follower {
     const shown = this.#presence.delete(watch);
     if ((signal === undefined && !shown) || this.#stream.aborted) return;
     if (!this.#stops.has(watch)) return;
-    if (typeof (await this.#asks.again(watch.taskId)) !== 'string') {
+    const admitted = await this.#asks.again(watch.taskId);
+    const seat = typeof admitted === 'string' ? await this.#reseat(watch, admitted) : 'other';
+    if (seat === 'other') {
       await this.#close(watch);
       return;
     }
-    await this.#reseat(watch);
+    if (seat === 'moved') {
+      // Held for the task's next answer, which is about the new person.
+      this.want(watch, signal ?? 'check');
+      if (shown) this.#presence.add(watch);
+      return;
+    }
     if (signal !== undefined && signal !== 'check') {
       await this.#stream.writeSSE({ event: signal, data: watch.label });
     }

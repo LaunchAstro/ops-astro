@@ -72,7 +72,7 @@ async function topicsNow(): Promise<LiveTopics> {
 const asks: Watching = {
   businessId: business,
   atDoor: (taskIds) => Promise.resolve(taskIds.map(() => task)),
-  again: () => Promise.resolve(task),
+  again: () => Promise.resolve(person),
 };
 
 /** 'resolved', or 'hung' when `running` has not settled within the bound. */
