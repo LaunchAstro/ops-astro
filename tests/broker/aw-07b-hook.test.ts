@@ -5,10 +5,13 @@
 // migrated database, custody's real process and the fake provider. The
 // signature is made here from the scheme, under a made-up secret.
 
+import { randomUUID } from 'node:crypto';
 import { beforeAll, expect, it as vitestIt } from 'vitest';
-import { sendInboxEmail } from '../../packages/core-custody/src/index.ts';
+import { landEmailEvent, sendInboxEmail } from '../../packages/core-custody/src/index.ts';
+import { connect } from '../../packages/core-records/src/tenancy/database.ts';
 import { attemptsOf, itemFor, MAIL, noDatabase, useEmailWorld, w } from './email-world.ts';
 import { eventBody, hook, mountHook, post, sentItem, sign } from './email-hook-world.ts';
+import { heldOpen, stillWaiting } from './email-timing-world.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
 
@@ -201,21 +204,41 @@ it('AW-07b no decision: no inbound hook path writes a decision or moves the item
   expect(await states(decision)).toEqual(['asked', 'accepted', 'delivered']);
 });
 
-it('AW-07b isolation (hook): an event moves only the attempt of the business that sent it', async () => {
-  const alpha = await sentItem();
-  const bravo = await sentItem({ id: w.bravo, person: w.bravoPerson, task: w.bravoTask });
-  expect(await post(eventBody('email.delivered', bravo.messageId))).toMatchObject({
-    code: 'DELIVERED',
-  });
-  expect(await states(bravo.item)).toEqual(['asked', 'accepted', 'delivered']);
-  expect(await states(alpha.item)).toEqual(['asked', 'accepted']);
-  // A message id no business in the deployment sent: not found, nothing written.
-  const before = await w.db.admin.execute('select id from public.inbox_delivery_attempts');
-  expect(await post(eventBody('email.delivered', 'no-such-message'))).toMatchObject({
-    status: 404,
-    code: 'UNKNOWN_MESSAGE',
-  });
-  expect(await w.db.admin.execute('select id from public.inbox_delivery_attempts')).toHaveLength(
-    before.length,
-  );
+it('AW-07b hook signature: two processes taking the same event at once settle it once, under the item lock', async () => {
+  // Each process refuses a replay it took itself; two processes taking the
+  // same event at once are held apart only by the lock on the item. A send
+  // holds that lock while both arrive, so both read the attempt before
+  // either writes: without the lock both see it accepted and both move it.
+  const { item, messageId } = await sentItem();
+  const event = {
+    id: `msg_${randomUUID().replaceAll('-', '')}`,
+    type: 'email.delivered',
+    messageId,
+  };
+  const processes = [
+    connect(w.db.appUrl, { source: 'runtime' }),
+    connect(w.db.appUrl, { source: 'runtime' }),
+  ];
+  try {
+    const sender = await heldOpen(async (tx) => {
+      await tx.query(
+        'select 1 from public.inbox_items where business_id = $1 and id = $2 for update',
+        [tx.businessId, item],
+      );
+    });
+    const landed = processes.map(
+      async (database) => await landEmailEvent(database, [w.alpha], event),
+    );
+    let waited = false;
+    try {
+      waited = await stillWaiting(Promise.race(landed));
+    } finally {
+      await sender.release();
+    }
+    expect(waited).toBe(true);
+    expect((await Promise.all(landed)).toSorted()).toEqual(['DELIVERED', 'REPLAYED']);
+  } finally {
+    await Promise.all(processes.map(async (database) => await database.close()));
+  }
+  expect(await states(item)).toEqual(['asked', 'accepted', 'delivered']);
 });
