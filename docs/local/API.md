@@ -1355,7 +1355,8 @@ with its wait, `BUDGET_UNAVAILABLE`); one recorded as a step keeps its
 run stops and asks in the same transaction (AW-05, the budget wait in
 [RUNTIME.md](RUNTIME.md)), its lease ends, and every later call on that lease
 is refused as an ended lease is. `RATE_LIMITED` writes nothing and answers two ceilings,
-each counting a call from its hold until it ends: the business's own per
+each counting a call from its hold until it ends, and a reconciliation pass's
+provider lookup while its slot lasts (AW-10, [RUNTIME.md](RUNTIME.md)): the business's own per
 operation, and its fair share of the route's, which is the installation's.
 The business's own is a durable limit (`hasRoom`, `core-records/src/tenancy/limit.ts`):
 a count read back from the records under a lock keyed by the business, against

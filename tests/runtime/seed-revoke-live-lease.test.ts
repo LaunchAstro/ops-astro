@@ -214,7 +214,8 @@ describe.skipIf(serverUrl === undefined)('the seed and a live lease', () => {
         claimant: 'person',
         personId: noah.personId,
         actorId: noah.actorId,
-        authorisedByPersonId: noah.personId,
+        // The approving person, as `tasks.pickup` names them; noah's write is his own.
+        authorisedByPersonId: ada.personId,
         reservationId: decided.value.reservationId,
         collection: TASK_COLLECTION,
         leaseSeconds: 600,

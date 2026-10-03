@@ -93,10 +93,11 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'inbox_attention inbox_delivery_attempts'],
   ['siu', 'inbox_items'],
   ['siu', 'actor_logins attempts budget_caps business_settings delegations gates grants'],
-  ['siu', 'leases planned_steps proposal_lineages proposal_versions'],
-  // AW-02: a historical run is never rewritten; the application moves its
-  // state alone, by the column grant in COLUMN_UPDATES.
+  ['siu', 'planned_steps proposal_lineages proposal_versions'],
+  // AW-02 and SL11-30: a historical run and a lease's holder are never rewritten; the
+  // application moves their states by COLUMN_UPDATES, and takes a lease by take_lease.
   ['si', 'planned_runs'],
+  ['s', 'leases'],
   ['siu', 'outage_reports outage_runs reservations task_envelopes'],
   // 0049 (C59): a factor is written and moved on, never deleted.
   ['siu', 'second_factors'],
@@ -156,6 +157,8 @@ const REVOKED: Readonly<Record<string, { readonly from: string; readonly letters
   'public.person_merges': { from: '0028', letters: 'd' },
   // 0086 takes back update on the whole run and grants it on `state` alone.
   'public.planned_runs': { from: '0086', letters: 'u' },
+  // 20261002235700 takes back insert and update on the whole lease and grants update by column.
+  'public.leases': { from: '20261002235700', letters: 'iu' },
 };
 
 /**
@@ -173,7 +176,7 @@ const ADDED: Readonly<Record<string, { readonly from: string; readonly letters: 
 export function applicationGrantsAt(qualified: string, at?: string): string | undefined {
   const granted = APPLICATION_GRANTS[qualified];
   if (granted === undefined || at === undefined) return granted;
-  const version = at.slice(0, 4);
+  const version = at;
   const revoked = REVOKED[qualified];
   const added = ADDED[qualified];
   if (revoked !== undefined && version < revoked.from) return granted + revoked.letters;
@@ -187,6 +190,8 @@ export const APPLICATION_EXECUTES: readonly string[] = [
   'public.audit_event_hash',
   // 0058 (S0-5): security invoker, so it reads no more than the caller may.
   'public.first_client_readiness',
+  // 20261002235700 (SL11-30): the pickup path, the one way a lease is written.
+  'public.take_lease',
 ];
 
 /** What the server said, reduced to what a contract can name. */
