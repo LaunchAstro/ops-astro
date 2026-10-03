@@ -5,7 +5,7 @@
 // tickets in closing order, never stored on the map, so a decision lives once,
 // on its ticket (W2).
 
-import type { TenantQuery } from '../../../core-records/src/index.ts';
+import { clientsReached, type Subject, type TenantQuery } from '../../../core-records/src/index.ts';
 import type { MapComponentView, MapFrontierResult, MapView } from '../../../core-wire/src/index.ts';
 
 interface MapRow {
@@ -69,7 +69,7 @@ function decisionsSoFar(tickets: readonly TicketRow[]): MapView['decisions'] {
 
 function mapView(
   mapId: string,
-  map: MapRow,
+  map: MapRow & { readonly reached: string | null },
   components: readonly ComponentRow[],
   tickets: readonly TicketRow[],
   versions: readonly VersionRow[],
@@ -82,7 +82,8 @@ function mapView(
     title: map.title,
     type: 'map',
     owner: map.owner,
-    client: map.client,
+    client: map.reached,
+    clientSet: map.client !== null,
     version: map.version ?? 0,
     revision: Number(map.revision),
     destination: of('destination')[0] ?? null,
@@ -138,15 +139,20 @@ async function readMapTickets(
   );
 }
 
-/** The map, or undefined when the id names no live map of this business. */
+/**
+ * The map, or undefined when the id names no live map of this business. Its
+ * client goes by `readClientFacts`' rule: the id only where the reader's
+ * grants reach that client, so a grant on the map alone reads null.
+ */
 export async function readMapView(
   tx: TenantQuery,
   taskTypeId: string,
   mapId: string,
+  subjects: readonly Subject[],
 ): Promise<MapView | undefined> {
   const maps = await tx.query<MapRow>(
     `select r.txt_1 as key, r.txt_4 as title, r.data ->> 'map_owner' as owner,
-            r.data ->> 'client' as client, s.version, r.revision::text as revision
+            r.uuid_7::text as client, s.version, r.revision::text as revision
        from public.records r
        left join public.map_summaries s on s.business_id = r.business_id and s.map_id = r.id
       where r.business_id = $1 and r.id = $2 and r.record_type_id = $3
@@ -167,7 +173,10 @@ export async function readMapView(
       where business_id = $1 and map_id = $2 order by version`,
     [tx.businessId, mapId],
   );
-  return mapView(mapId, map, components, tickets, versions);
+  const reached =
+    map.client === null ? [] : ((await clientsReached(tx, subjects, [map.client])) ?? []);
+  const client = reached.some((one) => one.clientId === map.client) ? map.client : null;
+  return mapView(mapId, { ...map, reached: client }, components, tickets, versions);
 }
 
 /**

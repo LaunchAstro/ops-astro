@@ -20,7 +20,14 @@ export interface MapView {
   readonly title: string | null;
   readonly type: 'map';
   readonly owner: string | null;
+  /**
+   * The map's client by id, as `task.read` answers it: only to a reader whose
+   * grants reach that client (a grant across the business, or one on the
+   * client); anyone else reads null beside `clientSet: true` (CS-4.12).
+   */
   readonly client: string | null;
+  /** True when the map is scoped to a client (`map.scope`). */
+  readonly clientSet: boolean;
   readonly version: number;
   /** The map record's revision, which an edit sends back as `expectedRevision`. */
   readonly revision: number;
