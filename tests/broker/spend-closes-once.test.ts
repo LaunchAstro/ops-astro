@@ -4,9 +4,9 @@
 // as an unknown liability, whichever comes first. A call already closed, by
 // the provider's proof or by its own answer, ignores any later close and gives
 // nothing back again, so the envelope counts what the call came to, once.
-// A call released unsent after its hold's settle counted it at its maximum
-// gives nothing back, and the step's replacement hold counts it as the envelope
-// does. Through the real broker, custody, sweep, pass, top-up and pickup.
+// A call still unsent when its hold closes counts nothing, and its send is then
+// refused, so no spend goes unaccounted (ORCH70-SPENDUNSENT). Through the real
+// broker, custody, sweep, pass, top-up and pickup.
 
 import { randomUUID } from 'node:crypto';
 import { beforeAll, expect, it as vitestIt } from 'vitest';
@@ -209,24 +209,26 @@ it('a call settled by its answer ignores a later release: no second give-back', 
   expect(await envelopeActual(work), 'no second give-back').toBe(before + came);
 });
 
-// The release counts for nothing: the step's fresh hold is its old hold less
-// what the envelope still counts of it, as it was before the release.
-it('a call released unsent counts nothing in the replacement hold', async () => {
+// An unsent call costs nothing: the revoke releases its hold at 0, the send
+// after that is refused and sends nothing, and the step's fresh hold is the
+// whole of the old one.
+it('a call unsent when its hold closed is refused at its send and counts nothing', async () => {
   const work = await liveWork(s, `closes once unsent ${randomUUID()}`, 2_000);
   const { sent } = await heldCall(s, work, broker);
   const before = await envelopeActual(work);
   await revoke(work);
-  expect(await envelopeActual(work), 'counted at its maximum').toBe(before + 500);
+  expect(await envelopeActual(work), 'an unsent call counts nothing').toBe(before);
+  expect(await holdsOn(work)).toMatchObject([{ state: 'abandoned', held: '2000', actual: null }]);
 
-  expect(await sent()).toMatchObject({ ok: false });
-  expect(await calls(work)).toMatchObject([{ state: 'released' }]);
-  expect(await envelopeActual(work), 'released unsent, nothing given back').toBe(before + 500);
+  expect(await sent()).toMatchObject({ ok: false, code: 'LEASE_EXPIRED' });
+  expect(await calls(work)).toMatchObject([{ state: 'released', came_to: '0' }]);
+  expect(await envelopeActual(work), 'released unsent, nothing counted').toBe(before);
 
   await pickup(s, reservationOf(work));
 
   expect(await holdsOn(work)).toMatchObject([
-    { state: 'actual', held: '2000', actual: '500' },
-    { state: 'held', held: '1500' },
+    { state: 'abandoned', held: '2000', actual: null },
+    { state: 'held', held: '2000' },
   ]);
 });
 
