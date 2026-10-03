@@ -19,7 +19,7 @@ import { createTask, openSchedules } from '../runtime/schedules-harness.ts';
 import { authorised, tokenFor, ISSUER } from './fixture.ts';
 import { join, topic, within, type Joined } from './c4-live-support.ts';
 
-it('Sol proof, criterion 2: person to person remapping at the door cannot seat a person on a task they cannot read', async () => {
+it('person to person remapping at the door cannot seat a person on a task they cannot read', async () => {
   const s = await openSchedules('soldoorremap', 100_000);
   const pool = connect(s.db.appUrl, { max: 4 });
   const topics = await startLiveTopics(connectListener(s.db.appUrl));
@@ -45,7 +45,8 @@ it('Sol proof, criterion 2: person to person remapping at the door cannot seat a
         const admitted = await admitReads(...args);
         if (args[2].subject === ids.subject && phase === 'armed' && args[4] === 'door') {
           expect(isCommandRefusal(admitted)).toBe(false);
-          if (!isCommandRefusal(admitted)) expect(admitted.some(isCommandRefusal)).toBe(false);
+          if (!isCommandRefusal(admitted))
+            expect(admitted.some((answer) => isCommandRefusal(answer))).toBe(false);
           phase = 'passed';
         } else if (
           args[2].subject === ids.subject &&
