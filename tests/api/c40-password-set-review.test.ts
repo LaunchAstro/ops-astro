@@ -4,23 +4,28 @@
 // One reset link's session sets one password, however many requests carry it
 // at once (F1), and only a session it can spend (F2); a refused or replayed
 // reset is recorded where the login is mapped (F3); a second factor outlives
-// the reset (F5a); and a fault in a later business's change, after the
-// provider set the password, still leaves the sessions ended (F5b).
+// the reset (F5a); and a fault in any business's change, or a lost answer to
+// the password set, still leaves every session ended (F5b, N1). Of two claims
+// of one session at once, exactly one is told yes (N3).
 
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import {
+  claimProviderSession,
   recordFactorEnrolled,
   recordFactorVerified,
 } from '../../packages/core-records/src/index.ts';
 import { ACCEPTANCE_ISSUER, serverUrl } from '../acceptance/world.ts';
 import { signBearer } from '../support/sign-in.ts';
+import { json } from './c58-sessions-world.ts';
 import {
+  answerWith,
   attemptsOf,
   auditOf,
   doorAnswer,
   faultTheChangeIn,
   freshMember,
+  GOOD,
   inBravoToo,
   now,
   seen,
@@ -142,8 +147,8 @@ C40('C40 review: a fault after the provider', () => {
     const set = await setPassword(recovery, NEW_PASSWORD);
 
     expect(answerOf(set)).toEqual({ status: 503, code: 'RESET_FAULT' });
-    // The provider set the password; nothing was signed out there.
-    expect(seen.map((one) => one.route)).toEqual(['PUT /user']);
+    // The provider set the password, then was asked to sign out the others.
+    expect(seen.map((one) => one.route)).toEqual(['PUT /user', 'POST /logout?scope=others']);
     // Alpha's change committed and holds in every business; bravo's audit rolled back.
     expect(await doorAnswer(old, 'alpha')).toBe(ENDED);
     expect(await doorAnswer(old, 'bravo')).toBe(ENDED);
@@ -154,5 +159,95 @@ C40('C40 review: a fault after the provider', () => {
     expect(bravo.filter((row) => row.actor_id === bravoActor)).toEqual([]);
     // The link is spent: the person asks for another.
     expect(answerOf(await setPassword(recovery, NEW_PASSWORD))).toEqual(INVALID);
+  });
+});
+
+/** The same login in alpha and bravo, a session signed in a minute ago, and a reset link's. */
+async function bothBusinesses(name: string) {
+  const member = await freshMember(name);
+  await inBravoToo(member.presented.subject, `${name}-in-bravo`);
+  const old = await tokenFor(member.presented.subject, randomUUID(), 'password', now() - 60);
+  const recovery = await tokenFor(member.presented.subject, randomUUID(), 'recovery', now() - 30);
+  expect(await doorAnswer(old, 'alpha')).toBe('served');
+  expect(await doorAnswer(old, 'bravo')).toBe('served');
+  return { old, recovery };
+}
+
+C40('C40 review: the claim ends every session before the provider is asked', () => {
+  it('C40 N1a a fault in the first business’s change after the password set: sessions ended in both', async () => {
+    const { old, recovery } = await bothBusinesses('quinn');
+    faultTheChangeIn(world.alpha);
+
+    const set = await setPassword(recovery, NEW_PASSWORD);
+
+    expect(answerOf(set)).toEqual({ status: 503, code: 'RESET_FAULT' });
+    expect(await doorAnswer(old, 'alpha')).toBe(ENDED);
+    expect(await doorAnswer(old, 'bravo')).toBe(ENDED);
+    expect(seen.map((one) => one.route)).toEqual(['PUT /user', 'POST /logout?scope=others']);
+  });
+
+  it('C40 N1b the provider commits PUT /user and answers 500: sessions ended in both', async () => {
+    const { old, recovery } = await bothBusinesses('rae');
+    // The stand-in "commits" (the request reached it) and the answer is lost to a 500.
+    answerWith({ ...GOOD, 'PUT /user': json(500, { msg: 'committed, then failed' }) });
+
+    const set = await setPassword(recovery, NEW_PASSWORD);
+
+    expect(answerOf(set)).toEqual({ status: 503, code: 'RESET_UNAVAILABLE' });
+    expect(await doorAnswer(old, 'alpha')).toBe(ENDED);
+    expect(await doorAnswer(old, 'bravo')).toBe(ENDED);
+    expect(seen.map((one) => one.route)).toEqual(['PUT /user', 'POST /logout?scope=others']);
+  });
+});
+
+/** Resolves once a backend of this database waits on a lock over the claim's table. */
+async function claimBlocked(deadline: number): Promise<void> {
+  const rows = await world.db.admin.execute<{ readonly n: string }>(
+    `select count(*)::text as n from pg_stat_activity
+      where datname = current_database() and wait_event_type = 'Lock'
+        and query like '%ended_provider_sessions%'`,
+  );
+  if (Number(rows[0]?.n) > 0) return;
+  if (Date.now() > deadline) throw new Error('the second claim never waited on the first');
+  await new Promise((resolve) => {
+    setTimeout(resolve, 25);
+  });
+  await world.db.admin.execute('select pg_stat_clear_snapshot()');
+  await claimBlocked(deadline);
+}
+
+/** A promise and the call that settles it. */
+function gate(): { readonly opened: Promise<void>; readonly open: () => void } {
+  const settle: { resolve?: () => void } = {};
+  const opened = new Promise<void>((resolve) => {
+    settle.resolve = resolve;
+  });
+  return { opened, open: () => settle.resolve?.() };
+}
+
+C40('C40 review: the claim, at the records', () => {
+  it('C40 N3 two claims of one session at once: exactly one is told yes', async () => {
+    const sessionId = randomUUID();
+    const held = gate();
+    const claimedFirst = gate();
+    // The first claim inserts and holds its transaction open.
+    const first = world.db.app.withBusiness(world.alpha, async (tx) => {
+      const won = await claimProviderSession(tx, sessionId);
+      claimedFirst.open();
+      await held.opened;
+      return won;
+    });
+    await claimedFirst.opened;
+    // The second reaches its insert and waits on the first's uncommitted row.
+    const second = world.db.app.withBusiness(
+      world.alpha,
+      async (tx) => await claimProviderSession(tx, sessionId),
+    );
+    try {
+      await claimBlocked(Date.now() + 10_000);
+    } finally {
+      held.open();
+    }
+    expect(await Promise.all([first, second])).toEqual([true, false]);
   });
 });

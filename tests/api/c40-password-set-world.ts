@@ -88,7 +88,7 @@ export let clientB: Member;
 
 let faultIn: BusinessId | undefined;
 
-/** The route's change in `business`, ending the login's sessions, fails after its work. */
+/** The route's change in `business`, ending and auditing, fails after its work (not the claim). */
 export function faultTheChangeIn(business: BusinessId): void {
   faultIn = business;
 }
@@ -100,16 +100,16 @@ function routeDatabase(app: Database): Database {
     run: (tx: TransactionQuery) => Promise<T>,
   ): Promise<T> {
     return await app.withBusiness(business, async (tx) => {
-      let ending = false;
+      let auditing = false;
       const watched: TransactionQuery = {
         ...tx,
         query: async <Row>(text: string, parameters?: readonly unknown[]) => {
-          ending ||= text.includes('insert into ops.ended_subject_sessions');
+          auditing ||= text.includes('insert into audit_events');
           return await tx.query<Row>(text, parameters);
         },
       };
       const done = await run(watched);
-      if (ending && business === faultIn) throw new Error('an injected fault, after the change');
+      if (auditing && business === faultIn) throw new Error('an injected fault, after the change');
       return done;
     });
   }

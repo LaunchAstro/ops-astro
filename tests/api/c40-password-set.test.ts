@@ -109,7 +109,7 @@ C40('C40 password reset, link use: the link', () => {
 });
 
 C40('C40 password reset, link use: the provider', () => {
-  it('C40 hostile provider: a wrong answer to the password set changes nothing', async () => {
+  it('C40 hostile provider: a wrong answer to the password set audits nothing', async () => {
     const bea = await freshMember('bea');
     const hostile = {
       ...HOSTILE,
@@ -118,25 +118,27 @@ C40('C40 password reset, link use: the provider', () => {
     };
     const { old } = await sessionsOf(bea.presented.subject);
     // One wrong answer at a time, each from a clean stand-in, each on a link of
-    // its own: a fault spends the link it came on, and the person asks again.
+    // its own opened after the last ending: a fault spends the link it came on
+    // and ends the login's sessions, and the person asks again.
     for (const [name, reply] of Object.entries(hostile)) {
       answerWith({ ...GOOD, 'PUT /user': reply });
       seen.length = 0;
       // oxlint-disable-next-line no-await-in-loop
-      const { recovery } = await sessionsOf(bea.presented.subject);
+      const recovery = await tokenFor(bea.presented.subject, randomUUID(), 'recovery', now() + 1);
       // oxlint-disable-next-line no-await-in-loop
       const set = await setPassword(recovery, NEW_PASSWORD);
       expect(answerOf(set), name).toEqual({ status: 503, code: 'RESET_UNAVAILABLE' });
       expect(set.text, name).not.toContain(CANARY);
-      // Nothing signed out, and (below) nothing ended or audited.
+      // The others signed out at the provider too, in case it set the password.
       expect(
         seen.map((one) => one.route),
         name,
-      ).toEqual(['PUT /user']);
+      ).toEqual(['PUT /user', 'POST /logout?scope=others']);
       // oxlint-disable-next-line no-await-in-loop
       expect(answerOf(await setPassword(recovery, NEW_PASSWORD)), name).toEqual(INVALID);
     }
-    expect(await doorAnswer(old, 'alpha')).toBe('served');
+    // The claim ended every session of the login here before the provider was asked.
+    expect(await doorAnswer(old, 'alpha')).toBe(ENDED);
     const audited = await auditOf(world.alpha, CHANGED);
     expect(audited.filter((row) => row.actor_id === bea.actorId)).toEqual([]);
   });
