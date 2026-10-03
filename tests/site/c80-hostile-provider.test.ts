@@ -185,3 +185,19 @@ describe('C80 hostile provider (source control and hosting paths)', () => {
     expect(shown).not.toContain('canary-token-C80-never-shown');
   });
 });
+
+describe('C80 Sol R1 proofs (the guarded provider call)', () => {
+  const canary = 'canary-token-C80-never-shown';
+
+  it('Sol R1 1: a credential echoed in a declared string field cannot escape', async () => {
+    const recorded: string[] = [];
+    const transport = httpOf(json({ merged: true, sha: canary }));
+    const result = await callConnector(publishRegistration, params, deps(transport, recorded));
+    // The provider did get the credential, so the search below is not vacuous.
+    expect(transport.seen[0]?.headers['authorization']).toBe(`Bearer ${canary}`);
+    // A boolean, so a failure never prints the credential.
+    expect(JSON.stringify({ result, recorded }).includes(canary)).toBe(false);
+    expect(result).toEqual({ kind: 'unknown', code: 'PROVIDER_CREDENTIAL_ECHOED' });
+    expect(recorded).toEqual(['PROVIDER_CREDENTIAL_ECHOED']);
+  });
+});
