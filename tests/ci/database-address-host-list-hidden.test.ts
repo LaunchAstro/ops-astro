@@ -7,6 +7,12 @@
 // address, password included. A real gated command, given such an address in
 // either setting, refuses by the setting's name and never prints the password;
 // so does an address with an empty host or a host list.
+//
+// postgres.js also decodes the authority before it looks for a comma, and cuts
+// at the first `@`, where `URL` cuts at the last (D1 security review R2). An
+// encoded comma, or an `@` and a comma inside the password, would hand it a
+// host list `URL` never shows, pieces of the password among the hosts; an
+// address it cannot read at all throws. Each is refused by the setting's name.
 
 import { spawnSync } from 'node:child_process';
 import { expect, it } from 'vitest';
@@ -18,6 +24,11 @@ const ADDRESSES: Record<string, string> = {
   'a host list that starts empty': `postgres://owner:${MARKER}@,db.example.com:5432/database`,
   'an empty host': `postgres://owner:${MARKER}@/database`,
   'a host list': `postgres://owner:${MARKER}@127.0.0.1,127.0.0.2/database`,
+  'an encoded comma in the host': `postgres://owner:${MARKER}@127.0.0.1%2C127.0.0.2:1/database`,
+  'a lower-case encoded comma': `postgres://owner:${MARKER}@127.0.0.1%2c127.0.0.2:1/database`,
+  'an encoded comma for the host': `postgres://owner:${MARKER}@%2C:1/database`,
+  'an @ and a comma in the password': `postgres://owner:${MARKER}@127.0.0.3,127.0.0.4@127.0.0.1:1/database`,
+  'an address the driver cannot read': `postgres://owner:${MARKER}@,h@127.0.0.1:1/database`,
 };
 
 const cases = Object.entries(ADDRESSES).flatMap(([shape, address]) =>
@@ -51,10 +62,11 @@ it.each(cases)(
         },
       });
       const out = `${result.stdout}${result.stderr}`;
-      expect(out).not.toContain(MARKER);
+      // A failure names the outcome, never the password: the output goes in with it masked.
+      expect(out.includes(MARKER), 'the planted password was printed').toBe(false);
       expect(
         { status: result.status, refusedByName: out.includes(`REFUSED: ${setting} `) },
-        out,
+        out.replaceAll(MARKER, '[planted password]'),
       ).toEqual({
         status: 1,
         refusedByName: true,
