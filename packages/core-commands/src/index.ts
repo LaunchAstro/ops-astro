@@ -111,7 +111,9 @@ export {
 } from './commands/account-factor-provider.ts';
 export {
   PASSWORD_CHANGED,
+  PASSWORD_REFUSED,
   setPasswordByRecovery,
+  type PasswordAnswer,
   type PasswordProvider,
   type PasswordReset,
   type PasswordResetResult,

@@ -12,10 +12,12 @@
 // is not a live recovery session of a mapped login (none, forged, expired,
 // spent, an ordinary sign-in); 400 `PASSWORD_INVALID` for a password out of
 // bounds, `RESET_MALFORMED` for a body that is not one; 413 `RESET_TOO_LARGE`;
-// 503 `RESET_UNAVAILABLE` when the provider's key set could not be reached (as
-// the session exchange answers) or the provider failed or answered wrongly;
-// 503 `RESET_FAULT` otherwise. Once the link is spent, a failure has still
-// ended the person's sessions and audited nothing.
+// 422 `RESET_PASSWORD_REFUSED` when the provider refused the password itself
+// (choose another, with a new link); 503 `RESET_UNAVAILABLE` when the
+// provider's key set could not be reached (as the session exchange answers)
+// or the provider failed or answered wrongly; 503 `RESET_FAULT` otherwise.
+// Once the link is spent, a failure has still ended the person's sessions,
+// signed the recovery session out and audited nothing.
 //
 // Mounted by the composition root only when it is given the deployment's
 // businesses and the provider; `main()` does not turn it on yet (C40-plan).
@@ -43,7 +45,12 @@ export interface PasswordSetOptions {
   readonly verify: Verifier;
 }
 
-const STATUS = { RESET_LINK_INVALID: 401, PASSWORD_INVALID: 400, RESET_UNAVAILABLE: 503 } as const;
+const STATUS = {
+  RESET_LINK_INVALID: 401,
+  PASSWORD_INVALID: 400,
+  RESET_PASSWORD_REFUSED: 422,
+  RESET_UNAVAILABLE: 503,
+} as const;
 
 /** The body's password, when it is one JSON object holding it as a string. */
 async function passwordOf(request: Request): Promise<string | undefined> {

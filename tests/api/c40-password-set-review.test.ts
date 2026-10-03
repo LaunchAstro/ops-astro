@@ -41,6 +41,8 @@ usePasswordWorld();
 const NEW_PASSWORD = 'a long new password 7f3c';
 const INVALID = { status: 401, code: 'RESET_LINK_INVALID' };
 const ENDED = 'AUTH_SESSION_EXPIRED';
+/** A failure past the claim: the others signed out at the provider, then the recovery session. */
+const FAILED_ROUTES = ['PUT /user', 'POST /logout?scope=others', 'POST /logout?scope=local'];
 
 const answerOf = (answer: { status: number; body: Record<string, unknown> }) => ({
   status: answer.status,
@@ -148,8 +150,8 @@ C40('C40 review: a fault after the provider', () => {
     const set = await setPassword(recovery, NEW_PASSWORD);
 
     expect(answerOf(set)).toEqual({ status: 503, code: 'RESET_FAULT' });
-    // The provider set the password, then was asked to sign out the others.
-    expect(seen.map((one) => one.route)).toEqual(['PUT /user', 'POST /logout?scope=others']);
+    // The provider set the password, then signed out the others and the link's session.
+    expect(seen.map((one) => one.route)).toEqual(FAILED_ROUTES);
     // Alpha's change committed and holds in every business; bravo's audit rolled back.
     expect(await doorAnswer(old, 'alpha')).toBe(ENDED);
     expect(await doorAnswer(old, 'bravo')).toBe(ENDED);
@@ -184,7 +186,7 @@ C40('C40 review: the claim ends every session before the provider is asked', () 
     expect(answerOf(set)).toEqual({ status: 503, code: 'RESET_FAULT' });
     expect(await doorAnswer(old, 'alpha')).toBe(ENDED);
     expect(await doorAnswer(old, 'bravo')).toBe(ENDED);
-    expect(seen.map((one) => one.route)).toEqual(['PUT /user', 'POST /logout?scope=others']);
+    expect(seen.map((one) => one.route)).toEqual(FAILED_ROUTES);
   });
 
   it('C40 N1b the provider commits PUT /user and answers 500: sessions ended in both', async () => {
@@ -197,7 +199,7 @@ C40('C40 review: the claim ends every session before the provider is asked', () 
     expect(answerOf(set)).toEqual({ status: 503, code: 'RESET_UNAVAILABLE' });
     expect(await doorAnswer(old, 'alpha')).toBe(ENDED);
     expect(await doorAnswer(old, 'bravo')).toBe(ENDED);
-    expect(seen.map((one) => one.route)).toEqual(['PUT /user', 'POST /logout?scope=others']);
+    expect(seen.map((one) => one.route)).toEqual(FAILED_ROUTES);
   });
 });
 

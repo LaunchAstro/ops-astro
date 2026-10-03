@@ -15,8 +15,12 @@
 // (0063, keeping none), so no fault or lost answer after the provider is asked
 // leaves an old session live here. Of any requests carrying the link at once,
 // only the one whose ending wrote the row goes on. A provider fault after
-// that spends the link too, the others are signed out at the provider in case
-// the password was set, and the person asks for another link.
+// that spends the link too: every session of the login is ended again (a
+// sign-in made while the provider was asked is after the claim's ending), the
+// others and then the recovery session are signed out at the provider in case
+// the password was set, and the person asks for another link. A password the
+// provider refuses outright (`PASSWORD_REFUSED`, GoTrue's 422) is answered as
+// such, so the person chooses another, with a new link.
 //
 // The password is set by the provider, asked with the person's own token
 // (GoTrue `PUT /user`), never through custody and never with the service
@@ -45,9 +49,15 @@ import { writeAuditEvent } from './audit.ts';
 
 /** The provider's calls the reset makes with the recovery session's own token. */
 export interface PasswordProvider extends Pick<FactorProvider, 'signOut'> {
-  /** Set the session's own login's password: the provider's user id, or a fault. */
-  setPassword(accessToken: string, password: string): Promise<ProviderAnswer<string>>;
+  /** Set the session's own login's password: the provider's user id, its no, or a fault. */
+  setPassword(accessToken: string, password: string): Promise<PasswordAnswer>;
 }
+
+/** The provider's definitive no to this password (weak, leaked, the same). */
+export const PASSWORD_REFUSED = 'password_refused';
+
+export type PasswordAnswer =
+  ProviderAnswer<string> | { readonly ok: false; readonly fault: typeof PASSWORD_REFUSED };
 
 /** A password's bounds in UTF-8 bytes (C40). */
 export const PASSWORD_BYTES = { least: 12, most: 72 } as const;
@@ -64,7 +74,8 @@ export type PasswordResetResult =
   | { readonly ok: true; readonly signedOutAtProvider: boolean }
   | {
       readonly ok: false;
-      readonly code: 'RESET_LINK_INVALID' | 'PASSWORD_INVALID' | 'RESET_UNAVAILABLE';
+      readonly code:
+        'RESET_LINK_INVALID' | 'PASSWORD_INVALID' | 'RESET_PASSWORD_REFUSED' | 'RESET_UNAVAILABLE';
     };
 
 const INVALID = { ok: false, code: 'RESET_LINK_INVALID' } as const;
@@ -110,27 +121,54 @@ async function mappedIn(
 
 /**
  * End the link's session, once, and with it every session of the login in
- * every business: false (recorded) when another request ended it first.
+ * every business: false when another request ended it first, recorded in each
+ * business the login is mapped in.
  */
 async function claimed(
   database: Database,
-  business: BusinessId,
+  mapped: readonly [Mapped, ...Mapped[]],
   presented: VerifiedSubject,
   sessionId: string,
 ): Promise<boolean> {
-  return await database.withBusiness(business, async (tx) => {
-    if (await claimProviderSession(tx, sessionId)) {
-      await endSubjectSessions(tx, presented.subject);
-      return true;
-    }
-    await recordAuthenticationAttempt(tx, {
-      owner: 'person_login',
-      presented,
-      outcome: 'refused',
-      refusalCode: 'AUTH_SESSION_EXPIRED',
-    });
-    return false;
+  const won = await database.withBusiness(mapped[0].business, async (tx) => {
+    if (!(await claimProviderSession(tx, sessionId))) return false;
+    await endSubjectSessions(tx, presented.subject);
+    return true;
   });
+  if (won) return true;
+  for (const { business } of mapped) {
+    // oxlint-disable-next-line no-await-in-loop -- one business's record at a time
+    await database.withBusiness(business, async (tx) => {
+      await recordAuthenticationAttempt(tx, {
+        owner: 'person_login',
+        presented,
+        outcome: 'refused',
+        refusalCode: 'AUTH_SESSION_EXPIRED',
+      });
+    });
+  }
+  return false;
+}
+
+/**
+ * After a failure past the claim: every session of the verified login ends
+ * again, then the provider signs out the others and the recovery session, so
+ * the spent link's token asks it nothing more.
+ */
+async function failedAfterClaim(
+  database: Database,
+  business: BusinessId,
+  provider: PasswordProvider,
+  reset: PasswordReset,
+): Promise<void> {
+  try {
+    await database.withBusiness(business, async (tx) => {
+      await endSubjectSessions(tx, reset.presented.subject);
+    });
+  } finally {
+    await provider.signOut(reset.accessToken, 'others');
+    await provider.signOut(reset.accessToken, 'local');
+  }
 }
 
 /** In each business the login is mapped in: end its seen sessions, and audit the change. */
@@ -165,23 +203,24 @@ export async function setPasswordByRecovery(
   const sessionId = presented.recovery === true ? presented.sessionId : undefined;
   if (sessionId === undefined) return INVALID;
   const mapped = await mappedIn(database, businesses, presented);
-  const first = mapped[0];
+  const [first, ...rest] = mapped;
   if (first === undefined) return INVALID;
   const bytes = Buffer.byteLength(reset.password, 'utf8');
   if (bytes < PASSWORD_BYTES.least || bytes > PASSWORD_BYTES.most) {
     return { ok: false, code: 'PASSWORD_INVALID' };
   }
-  if (!(await claimed(database, first.business, presented, sessionId))) return INVALID;
+  if (!(await claimed(database, [first, ...rest], presented, sessionId))) return INVALID;
   const set = await provider.setPassword(accessToken, reset.password);
   if (!set.ok || set.value !== presented.subject) {
-    // The provider may have set it and lost the answer: its others end too.
-    await provider.signOut(accessToken, 'others');
-    return { ok: false, code: 'RESET_UNAVAILABLE' };
+    // Not set, or set with the answer lost: every session ends again.
+    await failedAfterClaim(database, first.business, provider, reset);
+    const refused = !set.ok && set.fault === PASSWORD_REFUSED;
+    return { ok: false, code: refused ? 'RESET_PASSWORD_REFUSED' : 'RESET_UNAVAILABLE' };
   }
   try {
     await changedIn(database, mapped, presented.subject);
   } catch (fault) {
-    await provider.signOut(accessToken, 'others');
+    await failedAfterClaim(database, first.business, provider, reset);
     throw fault;
   }
   const others = await provider.signOut(accessToken, 'others');

@@ -2860,12 +2860,16 @@ business that knows the login. A password outside 12 to 72 bytes is 400
 `PASSWORD_INVALID`, a body that is not a JSON object holding it 400
 `RESET_MALFORMED`, and one over 1 KiB 413 `RESET_TOO_LARGE`. The link is spent
 before the provider is asked, so of two requests on one link at once one sets
-the password and the other is 401. A provider fault or wrong answer is 503
+the password and the other is 401. A password the provider refuses itself
+(GoTrue's 422: weak, leaked, the same as before) is 422
+`RESET_PASSWORD_REFUSED`: choose a different password and ask for a new link,
+since this one is spent. Any other provider fault or wrong answer is 503
 `RESET_UNAVAILABLE`; a key set the provider cannot serve is 503
 `RESET_UNAVAILABLE` too, as at the session exchange; anything else failing is
-503 `RESET_FAULT`. A reset that fails after the link is spent has still ended
-the person's sessions here, and the provider is asked to sign out the others;
-nothing is audited. A recovery session is never traded for the
+503 `RESET_FAULT`. A reset that fails after the link is spent ends every
+session of the login here again (a sign-in made while the provider was asked
+included), then the provider is asked to sign out the others and this
+session; nothing is audited. A recovery session is never traded for the
 session cookie (`AUTH_SESSION_EXPIRED`). Answers carry a code alone; nothing
 is logged. No limit holds the route's rate yet.
 

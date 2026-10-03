@@ -129,11 +129,12 @@ C40('C40 password reset, link use: the provider', () => {
       const set = await setPassword(recovery, NEW_PASSWORD);
       expect(answerOf(set), name).toEqual({ status: 503, code: 'RESET_UNAVAILABLE' });
       expect(set.text, name).not.toContain(CANARY);
-      // The others signed out at the provider too, in case it set the password.
+      // The others signed out at the provider too, in case it set the password,
+      // then the spent link's own session.
       expect(
         seen.map((one) => one.route),
         name,
-      ).toEqual(['PUT /user', 'POST /logout?scope=others']);
+      ).toEqual(['PUT /user', 'POST /logout?scope=others', 'POST /logout?scope=local']);
       // oxlint-disable-next-line no-await-in-loop
       expect(answerOf(await setPassword(recovery, NEW_PASSWORD)), name).toEqual(INVALID);
     }
