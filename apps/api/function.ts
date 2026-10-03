@@ -37,8 +37,10 @@
 // sink and no memory another instance shares: a deployment (`OPS_ENVIRONMENT`
 // set) appends each signal and error to `ops.api_events` on its own runtime
 // login, scopes keyed by `ALERT_SCOPE_KEY`, and the environment's forwarder
-// counts and sends (`apps/forwarder`). The sink's DSN is the forwarder's, so
-// the entry refuses to start beside it.
+// counts and sends (`apps/forwarder`). A response is handed back only once
+// every event appended so far is in the outbox or dropped, since the instance
+// may be frozen once it answers. The sink's DSN is the forwarder's, so the
+// entry refuses to start beside it.
 //
 // **The agent quota is per instance (API-2).** Its counts live in one
 // process's memory and every instance starts its own, so each holds the
@@ -133,8 +135,19 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
       return new Response(null, { status: 421, headers: { 'cache-control': 'private, no-store' } });
     }
     await pass();
-    return await app.fetch(request);
+    return await answered(app, request, alerts);
   };
+}
+
+/** The app's answer, handed back once the events it raised are in the outbox or dropped. */
+async function answered(
+  app: { fetch: (request: Request) => Response | Promise<Response> },
+  request: Request,
+  alerts: Alerts | undefined,
+): Promise<Response> {
+  const response = await app.fetch(request);
+  await alerts?.settled();
+  return response;
 }
 
 /** The most instances the limits split across with at least one of each. */
