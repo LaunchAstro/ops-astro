@@ -241,6 +241,17 @@ const page = (type: string, body: string, recorded: FenceRefusal[] = []) =>
     record: (refusal) => recorded.push(refusal),
   });
 
+// The sixth re-bind, finding 1: a browser reads every Content-Type line, split on commas, with the
+// WHATWG MIME parser, where the capture split one line on each `;`. Bodies hold a windows-1252 meta.
+type Row = readonly ['document' | 'stylesheet', string, number, object, boolean];
+const served = ([kind, type, lines, coding]: Row) => {
+  const headers = { 'content-type': type, ...coding };
+  const answer = { ...html('<meta charset=windows-1252>é'), headers, contentTypeLines: lines };
+  const options = { pool: POOL, resolve: resolverOf([PUBLIC_V4]), page: ABOUT, kind };
+  const url = kind === 'document' ? ABOUT : `${ABOUT}.css`;
+  return fencedFetch(url, { ...options, transport: transportOf(() => answer) });
+};
+const [DOC, CSS, NONE, NBSP] = ['text/html; charset=utf-8', 'text/css', {}, '\u00A0'];
 describe('C80 capture, the document encoding', () => {
   it.each([
     ['text/html', '<meta charset=windows-1252><p>Base é</p>'],
@@ -270,4 +281,20 @@ describe('C80 capture, the document encoding', () => {
       expect(await page(type, body)).toMatchObject({ ok: true, value: { body } });
     },
   );
+
+  it.each([
+    ['document', 'text/html; x="a;charset=utf-8;"', 1, NONE, false],
+    ['document', 'text/html; charset =utf-8', 1, NONE, false],
+    ['document', DOC, 2, NONE, false],
+    ['stylesheet', CSS, 2, NONE, false],
+    ['document', `${NBSP}${DOC}`, 1, NONE, false],
+    ['document', `${DOC}; x=1, text/plain`, 1, NONE, false],
+    ['stylesheet', `${CSS}; x=1, text/plain`, 1, NONE, false],
+    ['document', DOC, 1, { 'content-encoding': 'br' }, false],
+    ['document', DOC, 1, { 'transfer-encoding': 'gzip' }, false],
+    ['document', 'text/html;charset="UTF-8"', 1, { 'transfer-encoding': 'chunked' }, true],
+    ['stylesheet', CSS, 1, NONE, true],
+  ] as const)('reads a %s as %j, %i line(s), with %j, only as UTF-8: %s', async (...row) => {
+    expect((await served(row)).ok).toBe(row[4]);
+  });
 });

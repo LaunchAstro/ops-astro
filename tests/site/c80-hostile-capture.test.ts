@@ -238,9 +238,9 @@ describe('C80 hostile provider (capture path), imported sheets', () => {
 // import it could not read, and read every sheet as UTF-8 whatever it declared. Each import sits
 // in a linked /s.css; what a browser loads follows CSS Syntax 3 and the URL standard.
 const S = 'https://www.example.com/s.css';
-const linking = (css: string) =>
+const linking = (css: string, link = '') =>
   captured(
-    served((path) => (path === '/s.css' ? css : 'p{}'), '<link rel=stylesheet href=/s.css>'),
+    served((path) => (path === '/s.css' ? css : 'p{}'), `<link ${link}rel=stylesheet href=/s.css>`),
   );
 
 describe('C80 hostile provider (capture path), imports read as CSS reads them', () => {
@@ -257,13 +257,15 @@ describe('C80 hostile provider (capture path), imports read as CSS reads them', 
     ['@import url( /\\61 .css\t);', '/a.css'],
     ['@import url(/a.css', '/a.css'],
     ['@charset "windows-1252"; @import "/é.css";', 'malformed'],
+    ['@import "/é.css";', 'malformed', 'charset=windows-1252 '],
+    ['@import "/é.css";', '/%C3%A9.css', 'charset=UTF-8 '],
     ['@import url(/a b.css);', 'malformed'],
     ['@import url(/a"b.css);', 'malformed'],
     ['@import "/a.css\n";', 'malformed'],
     ['@import /a.css;', 'malformed'],
     ['@import;', 'malformed'],
-  ])('reads a sheet holding %j as a browser does: %s', async (css, path) => {
-    const result = await linking(css);
+  ])('reads a sheet holding %j as a browser does: %s', async (css, path, link = '') => {
+    const result = await linking(css, link);
     expect(result.ok ? Object.keys(result.value.stylesheets) : result.code).toEqual(
       path === 'malformed'
         ? 'CAPTURE_BODY_MALFORMED'
