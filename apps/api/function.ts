@@ -38,9 +38,9 @@
 // set) appends each signal and error to `ops.api_events` on its own runtime
 // login, scopes keyed by `ALERT_SCOPE_KEY`, and the environment's forwarder
 // counts and sends (`apps/forwarder`). A response is handed back only once
-// every event appended so far is in the outbox or dropped, since the instance
-// may be frozen once it answers. The sink's DSN is the forwarder's, so the
-// entry refuses to start beside it.
+// the events its own request raised are in the outbox or dropped, since the
+// instance may be frozen once it answers; another request's never hold it.
+// The sink's DSN is the forwarder's, so the entry refuses to start beside it.
 //
 // **The agent quota is per instance (API-2).** Its counts live in one
 // process's memory and every instance starts its own, so each holds the
@@ -63,8 +63,7 @@ import {
   type RuntimeKeys,
   withRuntimeKeys,
 } from '../../packages/core-runtime/src/index.ts';
-import { createOutboxAlerts, scopeKey } from './alerts/outbox.ts';
-import type { Alerts } from './alerts/sink.ts';
+import { createOutboxAlerts, scopeKey, type OutboxAlerts } from './alerts/outbox.ts';
 import { DEFAULT_AGENT_LIMITS, type AgentLimits, type Tiers } from './auth/agent-quota.ts';
 import { publishableKey } from './auth/publishable-key.ts';
 import { errorSinkLink } from './health/error-sink-link.ts';
@@ -139,15 +138,14 @@ export function createFunctionHandler(settings: Settings): (request: Request) =>
   };
 }
 
-/** The app's answer, handed back once the events it raised are in the outbox or dropped. */
+/** The app's answer, handed back once the events this request raised are in the outbox or dropped. */
 async function answered(
   app: { fetch: (request: Request) => Response | Promise<Response> },
   request: Request,
-  alerts: Alerts | undefined,
+  alerts: OutboxAlerts | undefined,
 ): Promise<Response> {
-  const response = await app.fetch(request);
-  await alerts?.settled();
-  return response;
+  const fetched = async (): Promise<Response> => await app.fetch(request);
+  return await (alerts === undefined ? fetched() : alerts.raisedBy(fetched));
 }
 
 /** The most instances the limits split across with at least one of each. */
@@ -240,7 +238,7 @@ function outboxAlerts(
   settings: Settings,
   databaseUrl: string,
   required: (name: string) => string,
-): Alerts | undefined {
+): OutboxAlerts | undefined {
   const where = settings['OPS_ENVIRONMENT'] ?? '';
   if (where === '' && (settings['ALERT_SCOPE_KEY'] ?? '') === '') return undefined;
   if (where !== 'staging' && where !== 'production') {
