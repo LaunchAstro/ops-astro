@@ -138,7 +138,7 @@ async function fixture(
   }
 }
 
-it('Sol proof, criterion 3: an existing token file is owner-only after make', async () => {
+it('an existing token file is owner-only after make', async () => {
   await fixture(async ({ cli, tokenFile }) => {
     writeFileSync(tokenFile, 'old-invented-token');
     chmodSync(tokenFile, 0o644);
@@ -153,7 +153,7 @@ it('Sol proof, criterion 3: an existing token file is owner-only after make', as
   });
 });
 
-it('Sol proof, criterion 2: business to business and person to person cleanup preserves a shared login in Bravo', async () => {
+it('business to business and person to person cleanup preserves a shared login in Bravo', async () => {
   await fixture(async ({ cli, db, users, loginFile }) => {
     const made = await cli('make');
     expect(made.code, made.stderr).toBe(0);

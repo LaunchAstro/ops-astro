@@ -12,9 +12,9 @@ import {
 import { manager, marks } from '../ci/operator-only-commands.fixture.ts';
 import { fake, spawn, STOP } from '../ci/service-stop.fixture.ts';
 
-describe.skipIf(serverUrl === undefined)('Sol OW-067 installation operator boundary', () => {
+describe.skipIf(serverUrl === undefined)('installation operator boundary', () => {
   operatorOnlyHooks(() => {});
-  it('Sol proof, criterion 2: business to business, a non-operating business cannot stop production', async () => {
+  it('business to business, a non-operating business cannot stop production', async () => {
     const stopped = fake();
     const env = environment(marks(manager(false)), stopped.path, {
       OPS_ASTRO_BUSINESS: 'beta',
@@ -22,9 +22,7 @@ describe.skipIf(serverUrl === undefined)('Sol OW-067 installation operator bound
       OPS_ASTRO_DEPLOYMENTS: stopped.records,
     });
     const scoped = await requireOperatingOperator(env);
-    expect(scoped.ok, 'positive control: beta is outside the recorded operating business').toBe(
-      false,
-    );
+    expect(scoped.ok, 'positive control: beta is outside the recorded operating business').toBe(false);
     const result = spawn(STOP, [], env);
     expect({ status: result.status, calledDocker: existsSync(stopped.calls) }).toEqual({
       status: 1,

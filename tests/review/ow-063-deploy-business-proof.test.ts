@@ -20,7 +20,7 @@ describe.skipIf(serverUrl === undefined)('OW-063 deployment isolation', () => {
     db = state.db;
   });
 
-  it('Sol proof, criterion 2: business to business, beta operations manager cannot deploy alpha installation', async () => {
+  it('business to business, beta operations manager cannot deploy alpha installation', async () => {
     await markMadeUp(db.admin, []);
     const fake = manager(false);
     const at = marks(fake);

@@ -37,7 +37,7 @@ describe.skipIf(serverUrl === undefined)('OW-063 export revocation', () => {
   afterAll(() => rmSync(scratch, { recursive: true, force: true }));
   afterAll(() => rmSync(carriedScratch, { recursive: true, force: true }));
 
-  it('Sol proof, criterion 3: an operator session ended before part reads cannot finish an archive export', async () => {
+  it('an operator session ended before part reads cannot finish an archive export', async () => {
     // Match the two real installations, including the store's appointed person.
     await db.app.withBusiness(business, (tx) =>
       tx.query("update public.businesses set key = 'made-up' where id = $1", [business]),

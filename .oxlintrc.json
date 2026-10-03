@@ -103,13 +103,13 @@
     },
     {
       "files": [
-        "tests/review/sol-ow059-backup-store.test.ts",
+        "tests/review/backup-read-part-appointment-proof.test.ts",
         "tests/review/ow-063-export-revocation-proof.test.ts"
       ],
       "rules": { "max-lines-per-function": "off" }
     },
     {
-      "files": ["tests/review/sol-ow062-restore-revocation.test.ts"],
+      "files": ["tests/review/backup-restore-revocation-proof.test.ts"],
       "rules": { "require-await": "off" }
     },
     {
@@ -117,7 +117,7 @@
       "rules": { "unicorn/no-useless-undefined": "off" }
     },
     {
-      "files": ["tests/ci/sol-ow064.proof.test.mjs"],
+      "files": ["tests/ci/restore-check-barrier-and-logs.proof.test.mjs"],
       "rules": {
         "no-await-in-loop": "off",
         "require-await": "off",

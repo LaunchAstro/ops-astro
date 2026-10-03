@@ -79,7 +79,7 @@ async function drill(body, run = docker) {
   });
 }
 
-test('Sol proof, criterion 2: business-to-business separation rejects a restore with only the tasks barrier missing', async () => {
+test('business-to-business separation rejects a restore with only the tasks barrier missing', async () => {
   assert.equal((await drill(await archive())).outcome, 'passed', 'the fully barred control passes');
   const body = await archive('alter table public.tasks disable row level security');
   let crossed = false;
@@ -98,7 +98,7 @@ test('Sol proof, criterion 2: business-to-business separation rejects a restore 
   assert.equal(result.outcome, 'failed', 'a target with a broken business barrier must not earn a passed receipt');
 });
 
-test('Sol proof, criterion 3: a restore error cannot put a private value into Docker daemon logs', async () => {
+test('a restore error cannot put a private value into Docker daemon logs', async () => {
   const canary = 'SOL_OW064_PRIVATE_CREDENTIAL_CANARY';
   const body = await archive(`
     create function public.check_payload(v text) returns boolean language sql immutable as 'select true';

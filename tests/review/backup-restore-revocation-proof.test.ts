@@ -18,7 +18,7 @@ import { operator } from '../db/backup-drill-records.fixture.ts';
 describe('OW-062 restore read revocation on the real store', () => {
   backupStoreHooks();
 
-  it('Sol proof, criterion 3: revoking an appointed operator blocks subsequent archive part reads', async () => {
+  it('revoking an appointed operator blocks subsequent archive part reads', async () => {
     const added = await (
       await job()
     ).runBackup({

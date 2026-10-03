@@ -19,7 +19,7 @@ operatorOnlyHooks((shared) => {
   state = shared;
 });
 
-it('Sol proof, criterion 5: revoking operations authority before backup bytes are fetched prevents an archive export', async () => {
+it('revoking operations authority before backup bytes are fetched prevents an archive export', async () => {
   const { sealArchive } = await load<Seal>('../../scripts/ops/archive-seal.mjs');
   const store = plantedStore(sealArchive(Buffer.from('synthetic client record'), keys.publicKey));
   const file = join(mkdtempSync(join(scratch, 'ow066-export-')), 'archive.sealed');

@@ -17,7 +17,7 @@ import { operator } from '../db/backup-drill-records.fixture.ts';
 describe('OW-059 frozen-head proofs', () => {
   backupStoreHooks();
 
-  it('Sol proof, criterion 3: revoking an operator appointment revokes access to archive parts', async () => {
+  it('revoking an operator appointment revokes access to archive parts', async () => {
     const writer = await asRole(backupLogin.url, BACKUP);
     const reader = await asRole(operatorLogin.url, RESTORE);
     try {

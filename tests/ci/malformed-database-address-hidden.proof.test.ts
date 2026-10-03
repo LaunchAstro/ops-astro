@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { expect, it } from 'vitest';
 import { serveTestKeySetApart, signBearer, TEST_ISSUER } from '../support/sign-in.ts';
 
-it('Sol proof, criterion 3: a malformed database address never prints its password', async () => {
+it('a malformed database address never prints its password', async () => {
   const keys = await serveTestKeySetApart();
   const password = 'sol-ow065-synthetic-password-canary';
   try {

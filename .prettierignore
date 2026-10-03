@@ -127,3 +127,16 @@ tests/review/staging-reset-keeps-revoked-session-proof.test.ts
 tests/review/seed-boundaries-proof.test.mjs
 tests/ci/queue-codeql-blocking-proof.test.mjs
 tests/operations/find-copies-values-only.proof.test.ts
+
+# Sol's proofs on the installation gate, backup part reads, the restore check and
+# drill, and the scan login, byte-for-byte as the review patches held them apart
+# from each title, which names what it proves, and cases owned by other pieces.
+tests/review/backup-read-part-appointment-proof.test.ts
+tests/review/backup-restore-revocation-proof.test.ts
+tests/review/stop-production-installation-gate-proof.test.ts
+tests/review/ow-063-deploy-business-proof.test.ts
+tests/review/ow-063-export-revocation-proof.test.ts
+tests/review/ow066-export-revocation-proof.test.ts
+tests/ci/restore-check-barrier-and-logs.proof.test.mjs
+tests/ci/malformed-database-address-hidden.proof.test.ts
+tests/operations/scan-login-token-and-shared-login.proof.test.ts
