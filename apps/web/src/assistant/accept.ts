@@ -31,6 +31,23 @@ export interface CardStore {
  */
 const attempts = new Map<string, string>();
 
+/**
+ * The register's canonical form (core-digest, which loads node:crypto, so
+ * copied here): keys sorted at every depth, undefined members dropped, arrays
+ * in order. Two cards whose steps arrive in another key order send one body.
+ */
+const canonical = (value: unknown): unknown =>
+  Array.isArray(value)
+    ? value.map((member) => canonical(member))
+    : typeof value === 'object' && value !== null
+      ? Object.fromEntries(
+          Object.entries(value)
+            .filter(([, member]) => member !== undefined)
+            .toSorted(([left], [right]) => (left < right ? -1 : left > right ? 1 : 0))
+            .map(([key, member]) => [key, canonical(member)]),
+        )
+      : value;
+
 /** A stale version can never be accepted, so its card offers no click; other refusals do. */
 const SETTLED = {
   ok: 'approved',
@@ -52,7 +69,7 @@ export async function acceptPlanCard(
   store.update((current) => settlePlan(current, key, id, { state: 'accepting', refusal: null }));
   const conversationId = store.chat(key)?.conversationId ?? null;
   const body = acceptBody(offer, conversationId);
-  const attempt = JSON.stringify([grantKey ?? null, body]);
+  const attempt = JSON.stringify([grantKey ?? null, canonical(body)]);
   const operationId = attempts.get(attempt) ?? client.newOperationId();
   attempts.set(attempt, operationId);
   const settled = settle(await client.mutate('task.accept_plan', body, { operationId }));

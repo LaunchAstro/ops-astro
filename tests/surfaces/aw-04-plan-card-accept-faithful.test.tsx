@@ -233,6 +233,32 @@ describe('AW-04 plan card accept', () => {
     expect(ids).toStrictEqual(['op-1', 'op-1', 'op-1']);
   });
 
+  it('AW04FIX5-N1 two cards of one version whose steps arrive in another key order: one accept, one id', async () => {
+    const again = planned(1);
+    // The register digests with keys sorted, so this is the first card's body.
+    const steps = again.plan.steps.map(({ key, after, title }) => ({ key, after, title }));
+    const reordered = { ...again, plan: { ...again.plan, steps } };
+    const { client, sent } = drawerWith([planned(1), reordered], [lostAnswer, lostAnswer]);
+    const { page, ask } = await open(client);
+    await ask('Write the spring brief');
+    await page.click('[data-plan="accept"]');
+    await settle();
+    await ask('Show the plan again');
+    const [first, second] = page.all('[data-plan="accept"]') as HTMLElement[];
+    await act(() => {
+      second?.click();
+    });
+    await settle();
+    await act(() => {
+      first?.click();
+    });
+    await settle();
+    const ids = sent
+      .filter((each) => each.name === 'task.accept_plan')
+      .map((each) => each.options?.operationId);
+    expect(ids).toStrictEqual(['op-1', 'op-1', 'op-1']);
+  });
+
   it('SL12-24-L3 an accept refused as a stale version: the card offers no accept and quotes the refusal', async () => {
     const { client, sent } = drawerWith([planned(1)], [ceilingRefused]);
     const { page, ask } = await open(client);
