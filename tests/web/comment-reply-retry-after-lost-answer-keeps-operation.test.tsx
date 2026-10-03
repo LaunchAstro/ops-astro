@@ -9,7 +9,8 @@ import { tick } from './task-page-stub.tsx';
 
 afterEach(unmountAll);
 
-it('Sol proof, criterion 5: reselecting the same reply after a lost response retries the original operation', async () => {
+// Sol OW-089.2 criterion 5, retitled by what it proves; its body is Sol's.
+it('reselecting the same reply after a lost response retries the original operation', async () => {
   const stored = new Map<string, Record<string, unknown>>();
   const requests: Record<string, unknown>[] = [];
   const fetch: typeof globalThis.fetch = async (_url, init) => {

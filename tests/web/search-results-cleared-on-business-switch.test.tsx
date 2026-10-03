@@ -28,7 +28,8 @@ function client(businessKey: string, fetch: typeof globalThis.fetch) {
   return new OperationsClient({ origin: '', businessKey, signedIn: true, fetch });
 }
 
-it('Sol proof, criterion 2: business to business search results disappear when the business client changes', async () => {
+// Sol OW-096.1 criterion 2, retitled by what it proves; its body is Sol's.
+it('business to business search results disappear when the business client changes', async () => {
   const alpha = client('alpha', async () => json({ ok: true, hits: [hit] }));
   const calls: string[] = [];
   const bravo = client('bravo', (input) => {
@@ -50,7 +51,8 @@ it('Sol proof, criterion 2: business to business search results disappear when t
   expect(page.text()).not.toContain(hit.key);
 });
 
-it('Sol proof, criterion 2: business to business the mounted App clears Alpha hits on its held-address switch to Bravo', async () => {
+// Sol OW-096.1 criterion 2, retitled by what it proves; its body is Sol's.
+it('business to business the mounted App clears Alpha hits on its held-address switch to Bravo', async () => {
   const tab = storage({
     'ops-astro.return-to': JSON.stringify({
       address: '/task/B-1',

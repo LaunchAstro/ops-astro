@@ -50,11 +50,12 @@ async function pressAppearance(label: string): Promise<void> {
   await settle();
 }
 
+// Sol OW-084.1 and OW-084.2 criterion 2, retitled by what it proves; its body is Sol's.
 it.each([
   ['business to business', 'beta', 'beta:ada'],
   ['person to person', 'alpha', 'alpha:ben'],
 ])(
-  'Sol proof, criterion 2: %s preference state stays with its original reader during a pending new read',
+  '%s preference state stays with its original reader during a pending new read',
   async (_boundary, business, grant) => {
     const oldApi = settingsFetch(
       async () =>

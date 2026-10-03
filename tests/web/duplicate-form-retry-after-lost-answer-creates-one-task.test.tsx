@@ -38,7 +38,8 @@ async function until(ready: () => boolean): Promise<void> {
   throw new Error('The duplicate request did not settle');
 }
 
-it('Sol proof, criterion 5: retrying a duplicate after its committed response is lost creates only one task', async () => {
+// Sol OW-090.2 criterion 5, retitled by what it proves; its body is Sol's.
+it('retrying a duplicate after its committed response is lost creates only one task', async () => {
   databaseStarted = true;
   await setUp();
   const oldId = await taskFor(alpha, owner, 'Source shell', clientA);

@@ -36,7 +36,8 @@ function network(answer: (path: string, body: Record<string, unknown>) => Promis
   });
 }
 
-it('Sol proof, criterion correctness: switching conversations clears the previous conversation allowance while reading', async () => {
+// Sol OW-098.4 criterion correctness, retitled by what it proves; its body is Sol's.
+it('switching conversations clears the previous conversation allowance while reading', async () => {
   const pending = gate();
   const client = network(async (_path, body) => {
     if (body['conversationId'] === 'second') await pending.held;
@@ -77,7 +78,8 @@ function ReadPage(props: { client: OperationsClient; recordId: string; hub: Live
   return <span data-read={state.outcome} />;
 }
 
-it('Sol proof, criterion correctness: an unread task claims no freshness after navigating from a read task', async () => {
+// Sol OW-098.5 criterion correctness, retitled by what it proves; its body is Sol's.
+it('an unread task claims no freshness after navigating from a read task', async () => {
   const pending = gate();
   const client = network(async (_path, body) => {
     if (body['recordId'] === 'second') await pending.held;

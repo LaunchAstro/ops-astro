@@ -18,7 +18,8 @@ afterAll(async () => {
   await w?.db.drop();
 });
 
-it('Sol proof, criterion 5: retrying a committed time log after a lost response stores one entry', async () => {
+// Sol OW-093.1 criterion 5, retitled by what it proves; its body is Sol's.
+it('retrying a committed time log after a lost response stores one entry', async () => {
   const taskId = await w.fresh(w.alpha, w.ada, 'Lost time-log response');
   const operationIds: string[] = [];
   const client = new OperationsClient({

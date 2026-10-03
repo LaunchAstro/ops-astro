@@ -9,7 +9,8 @@ import { TASK_ID, tick } from './task-page-stub.tsx';
 
 afterEach(unmountAll);
 
-it('Sol proof, criterion 5: retrying a subtask create after a lost committed response creates only one child', async () => {
+// Sol OW-092.1 criterion 5, retitled by what it proves; its body is Sol's.
+it('retrying a subtask create after a lost committed response creates only one child', async () => {
   const committed = new Map<unknown, string>();
   const attempts: unknown[] = [];
   let changed = 0;

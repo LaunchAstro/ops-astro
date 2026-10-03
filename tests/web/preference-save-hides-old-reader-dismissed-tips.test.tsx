@@ -54,7 +54,8 @@ async function choose(label: string) {
   });
 }
 
-it("Sol proof, criterion 2: business to business, saving while the new reader loads must not expose the old reader's dismissed tips", async () => {
+// Sol OW-088.1 criterion 2, retitled by what it proves; its body is Sol's.
+it("business to business, saving while the new reader loads must not expose the old reader's dismissed tips", async () => {
   const pending = deferred<Response>();
   const alpha = client('alpha', async (url) => {
     if (!url.endsWith('/preference/read')) throw new Error(`Unexpected Alpha route ${url}`);

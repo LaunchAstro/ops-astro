@@ -20,7 +20,8 @@ async function waitFor(condition: () => boolean): Promise<void> {
   expect(condition(), 'the database-backed screen must finish its request').toBe(true);
 }
 
-it('Sol proof, criterion 5: retrying an incident after a lost committed response records it once', async () => {
+// Sol OW-083.8 criterion 5, retitled by what it proves; its body is Sol's.
+it('retrying an incident after a lost committed response records it once', async () => {
   const world = await createWorld('sol_ow083_retry');
   let page: Mounted | undefined;
   try {

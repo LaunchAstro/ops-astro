@@ -4,7 +4,8 @@ import { expect, it } from 'vitest';
 import { ask, initial, select } from '../../apps/web/src/assistant/chats.ts';
 import { subjectFor } from '../../apps/web/src/assistant/subject.ts';
 
-it('Sol proof, criterion 2: client to client separation follows the selected assistant conversation', () => {
+// Sol OW-079.3 criterion 2, retitled by what it proves; its body is Sol's.
+it('client to client separation follows the selected assistant conversation', () => {
   const first = ask(initial(), {
     row: 'CL-M03',
     widget: { id: 'a', label: 'Client A' },

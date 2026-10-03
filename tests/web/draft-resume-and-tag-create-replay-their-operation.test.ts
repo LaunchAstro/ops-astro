@@ -59,7 +59,8 @@ function clientWith(
   return new OperationsClient({ origin: '', businessKey: 'alpha', signedIn: true, fetch });
 }
 
-it('Sol proof, criterion 5: resuming a draft before its first create response arrives logs time only once', async () => {
+// Sol OW-095.1 criterion 5, retitled by what it proves; its body is Sol's.
+it('resuming a draft before its first create response arrives logs time only once', async () => {
   const gate = deferred();
   const committed = deferred();
   let creates = 0;
@@ -103,7 +104,8 @@ it('Sol proof, criterion 5: resuming a draft before its first create response ar
   ).toBe('1');
 });
 
-it('Sol proof, criterion 5: a lost tag-create response replays the same tag operation when tag.list is refused', async () => {
+// Sol OW-095.2 criterion 5, retitled by what it proves; its body is Sol's.
+it('a lost tag-create response replays the same tag operation when tag.list is refused', async () => {
   let lose = true;
   const tagIds: unknown[] = [];
   const client = clientWith(async (path, body, serve) => {

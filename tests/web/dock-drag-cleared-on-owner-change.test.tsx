@@ -59,6 +59,8 @@ function LayoutProbe(props: {
   );
 }
 
+// Sol OW-081.3 criterion 2, retitled by what it proves; its body is Sol's.
+// prettier-ignore
 it.each([
   { boundary: 'business to business', next: { ...MIA, businessKey: 'bravo' } },
   {
@@ -66,7 +68,7 @@ it.each([
     next: { ...MIA, email: 'noah@alpha.local', sessionId: 'noah-session' },
   },
 ])(
-  'Sol proof, criterion 2: $boundary clears an unfinished dock drag before drawing the next owner',
+  '$boundary clears an unfinished dock drag before drawing the next owner',
   async ({ next }) => {
     const storage = memory();
     storage.setItem(

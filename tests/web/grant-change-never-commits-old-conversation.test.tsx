@@ -35,7 +35,8 @@ function ObservedScreen(props: {
   );
 }
 
-it('Sol proof, criterion 2: business to business, a new grant never commits the old conversation into its DOM', async () => {
+// Sol OW-083.1 criterion 2, retitled by what it proves; its body is Sol's.
+it('business to business, a new grant never commits the old conversation into its DOM', async () => {
   const alpha = new OperationsClient({
     origin: '',
     businessKey: 'alpha',

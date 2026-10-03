@@ -56,7 +56,8 @@ function common(at: string): Response | undefined {
   return undefined;
 }
 
-it('Sol proof, criterion 2: business to business search hits disappear when the held-address switch changes business', async () => {
+// Sol OW-078.1 criterion 2, retitled by what it proves; its body is Sol's.
+it('business to business search hits disappear when the held-address switch changes business', async () => {
   window.sessionStorage.setItem(
     'ops-astro.return-to',
     JSON.stringify({

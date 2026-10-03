@@ -18,7 +18,8 @@ afterEach(async () => {
   harness = undefined;
 });
 
-it('Sol proof, criterion 5: retrying an incident after a committed response is lost records it once', async () => {
+// Sol OW-086.2 criterion 5, retitled by what it proves; its body is Sol's.
+it('retrying an incident after a committed response is lost records it once', async () => {
   harness = await createHarness('sol_ow086_retry');
   const world = harness.world;
   const requests: Record<string, unknown>[] = [];
@@ -85,7 +86,8 @@ it('Sol proof, criterion 5: retrying an incident after a committed response is l
   );
 });
 
-it('Sol proof, criterion 2: business to business switching cannot carry a confidential new-task draft into the other business', async () => {
+// Sol OW-086.1 criterion 2, retitled by what it proves; its body is Sol's.
+it('business to business switching cannot carry a confidential new-task draft into the other business', async () => {
   const writes: { url: string; body: Record<string, unknown> }[] = [];
   const fetch: typeof globalThis.fetch = (url, init) => {
     const at = String(url);

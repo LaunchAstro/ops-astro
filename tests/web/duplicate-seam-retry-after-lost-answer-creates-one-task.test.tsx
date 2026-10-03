@@ -64,7 +64,8 @@ function transport(run: typeof globalThis.fetch) {
   };
 }
 
-it('Sol proof, criterion 5: retrying a duplicate after its committed response is lost creates only one task', async () => {
+// Sol OW-094.1 criterion 5, retitled by what it proves; its body is Sol's.
+it('retrying a duplicate after its committed response is lost creates only one task', async () => {
   const source = await world.fresh(world.alpha, world.writer, 'original shell');
   const target = randomUUID();
   await addClient(world.db.app, world.alpha, target, world.writer);
