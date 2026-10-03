@@ -90,7 +90,9 @@ describe('C80 revert dispatch', () => {
       { seam: 'revert-of-def456', dispatchToken: token },
     ]);
   });
+});
 
+describe('C80 revert dispatch', () => {
   it('reports a refused revert as failed only with a declared nothing-happened proof', async () => {
     const refusedWith = (proof?: string) =>
       revertCorrection(

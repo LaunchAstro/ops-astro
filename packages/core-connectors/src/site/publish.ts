@@ -27,7 +27,14 @@ import {
   type CorrectionTarget,
   type ProposedChange,
 } from './envelope.ts';
-import { siteOperation } from './operations.ts';
+import {
+  occurrenceOf,
+  proven,
+  reconciled,
+  showsAt,
+  type Occurrence,
+  type ReadBack,
+} from './reconcile.ts';
 import { contentDigest, versionDigestOf } from './version.ts';
 
 /** The provider's idempotency key: stable for one intended effect across retries (broker contract 3.4). */
@@ -55,26 +62,6 @@ export interface PublishJob {
   readonly decision: GateDecision | undefined;
   /** The reference the publish is read back by, held before dispatch. */
   readonly seam: string;
-}
-
-/** An effect read back through its seam: landed, provably absent, or not known. */
-export type ReadBack<T> =
-  | { readonly state: 'landed'; readonly value: T }
-  | { readonly state: 'absent' }
-  | { readonly state: 'unknown' };
-
-/**
- * A send that may repeat an earlier one. Landed is the effect's answer; only
- * positive proof that nothing landed lets `send` go; anything else stays
- * unknown and is never resent.
- */
-async function reconciled<T>(
-  back: ReadBack<T>,
-  send: () => Promise<ProviderResult<T>>,
-): Promise<ProviderResult<T>> {
-  if (back.state === 'landed') return { kind: 'ok', value: back.value };
-  if (back.state === 'absent') return send();
-  return { kind: 'unknown', code: 'RECONCILE_UNPROVEN' };
 }
 
 export interface Published {
@@ -112,6 +99,7 @@ export type PublishRefusal =
 export interface Accepted extends Published {
   readonly state: 'accepted';
   readonly dispatchToken: string;
+  readonly occurrence: Occurrence | undefined;
 }
 
 export type PublishOutcome =
@@ -172,9 +160,11 @@ export async function publishCorrection(
     return { state: 'unknown', code, reference: job.seam, dispatchToken: token };
   };
   if ((await ports.cancellation()) === 'requested') return unknown('CANCELLED_AFTER_DISPATCH');
-  if (answer.kind === 'ok') return { state: 'accepted', ...answer.value, dispatchToken: token };
-  const proofs = siteOperation('site.publish').declaration.nothing_happened_proof;
-  if (answer.kind === 'refused' && answer.proof !== undefined && proofs.includes(answer.proof)) {
+  if (answer.kind === 'ok') {
+    const occurrence = occurrenceOf(job.change, job.target);
+    return { state: 'accepted', ...answer.value, dispatchToken: token, occurrence };
+  }
+  if (proven('site.publish', answer)) {
     return { state: 'failed', code: answer.code, proof: answer.proof };
   }
   return unknown(answer.code);
@@ -196,7 +186,7 @@ export interface ObservePorts {
   >;
 }
 
-/** Live is two observations: the revision served, and the fenced capture showing the new word. */
+/** Live is two observations: the revision served, and the fenced capture showing the new word where it was approved. */
 export async function observeLanded(
   accepted: Accepted,
   target: CorrectionTarget,
@@ -209,8 +199,10 @@ export async function observeLanded(
     deployment.value.revision === accepted.revision;
   if (!served) return accepted;
   const captured = await ports.capture(accepted.liveUrl);
-  if (!captured.ok || wordOffsets(captured.value.text, target.replacement).length === 0)
+  const where = accepted.occurrence;
+  if (!captured.ok || !showsAt(captured.value.text, where, target.replacement, target.word)) {
     return accepted;
+  }
   return { ...accepted, state: 'live' };
 }
 
@@ -263,8 +255,7 @@ export async function revertCorrection(
   },
   ports: RevertPorts,
 ): Promise<RevertOutcome> {
-  const decided = input.decidedAt;
-  const decidedAt = new Date(decided).toISOString();
+  const decidedAt = new Date(input.decidedAt).toISOString();
   // One token per published revision, and a retry is read back before it is ever sent again.
   const token = dispatchToken('site.source.revert', input.publishedRevision);
   const back = await ports.readBack({ seam: input.seam, dispatchToken: token });
@@ -272,23 +263,15 @@ export async function revertCorrection(
     ports.revert({ seam: input.seam, dispatchToken: token }),
   );
   if (reverted.kind !== 'ok') {
-    const proofs = siteOperation('site.source.revert').declaration.nothing_happened_proof;
-    const proven =
-      reverted.kind === 'refused' &&
-      reverted.proof !== undefined &&
-      proofs.includes(reverted.proof);
-    return { state: proven ? 'failed' : 'unknown', code: reverted.code, decidedAt };
+    const state = proven('site.source.revert', reverted) ? 'failed' : 'unknown';
+    return { state, code: reverted.code, decidedAt };
   }
   const { revision, deploymentId } = reverted.value;
   const pending = { state: 'revert_accepted', revision, deploymentId, decidedAt } as const;
   const deployment = await ports.readDeployment(deploymentId);
-  if (
-    deployment.kind !== 'ok' ||
-    !deployment.value.served ||
-    deployment.value.revision !== revision
-  ) {
-    return pending;
-  }
+  const served =
+    deployment.kind === 'ok' && deployment.value.served && deployment.value.revision === revision;
+  if (!served) return pending;
   const captured = await ports.capture();
   const original =
     captured.ok &&
@@ -302,6 +285,6 @@ export async function revertCorrection(
     deploymentId,
     decidedAt,
     observedAt: new Date(observed).toISOString(),
-    intervalMs: observed - decided,
+    intervalMs: observed - input.decidedAt,
   };
 }

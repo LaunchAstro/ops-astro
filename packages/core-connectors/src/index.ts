@@ -121,6 +121,6 @@ export {
   type PublishJob,
   type PublishOutcome,
   type PublishPorts,
-  type ReadBack,
   type RevertOutcome,
 } from './site/publish.ts';
+export type { Occurrence, ReadBack } from './site/reconcile.ts';
