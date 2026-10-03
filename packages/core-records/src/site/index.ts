@@ -29,4 +29,5 @@ export {
   type HeldForRun,
   type ObservedResult,
   type ReceiptOutcome,
+  type UnderLease,
 } from './correction-receipts.ts';
