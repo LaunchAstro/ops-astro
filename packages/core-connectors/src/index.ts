@@ -109,6 +109,7 @@ export {
 } from './capture/fence.ts';
 export { capturePage, type CaptureOptions } from './capture/page.ts';
 export {
+  PICTURE_BROWSER_ARGS,
   PICTURE_POLICY,
   capturePicture,
   type Picture,

@@ -14,7 +14,9 @@
 // - nothing else: images, fonts, scripts, frames and any other request are
 //   refused and recorded by code and origin only, never a path or query.
 //
-// No credential reaches the browser: the fence sends none.
+// No credential reaches the browser: the fence sends none. Nor has the browser
+// a network of its own: a preconnect or DNS prefetch makes no request the
+// route could refuse, so the port starts it with PICTURE_BROWSER_ARGS.
 
 import { createHash } from 'node:crypto';
 import { fencedFetch, type FenceCode, type FenceRefusal, type Fenced } from './fence.ts';
@@ -38,8 +40,21 @@ export interface PictureAnswer {
 /** Answers one browser request, or null to refuse it. */
 export type PictureRoute = (request: PictureRequest) => Promise<PictureAnswer | null>;
 
-/** Loads `url` with every request handed to `route`, and returns the PNG it rendered. */
+/**
+ * Loads `url` with every request handed to `route`, and returns the PNG it rendered. The
+ * browser has no network of its own: it is started with PICTURE_BROWSER_ARGS.
+ */
 export type PictureBrowser = (url: string, route: PictureRoute) => Promise<Uint8Array>;
+
+/**
+ * The picture browser's launch arguments: no name resolves, and every connection goes to a
+ * proxy that refuses it, loopback included, so a hint the route never sees reaches nothing.
+ */
+export const PICTURE_BROWSER_ARGS: readonly string[] = [
+  '--host-resolver-rules=MAP * ~NOTFOUND',
+  '--proxy-server=http://127.0.0.1:9',
+  '--proxy-bypass-list=<-loopback>',
+];
 
 export interface Picture {
   readonly url: string;
@@ -49,9 +64,10 @@ export interface Picture {
   readonly refused: readonly FenceRefusal[];
 }
 
-/** The document's policy: markup and the fenced stylesheets render, nothing executes. */
-export const PICTURE_POLICY =
-  "script-src 'none'; object-src 'none'; frame-src 'none'; worker-src 'none'; base-uri 'none'";
+/** The document's policy: markup, the fenced stylesheets and data: images render, nothing else loads. */
+export const PICTURE_POLICY: string =
+  "default-src 'none'; style-src 'self' 'unsafe-inline'; img-src data:; script-src 'none'; " +
+  "object-src 'none'; frame-src 'none'; worker-src 'none'; base-uri 'none'";
 
 const originOf = (url: string): string => (URL.canParse(url) ? new URL(url).origin : '');
 

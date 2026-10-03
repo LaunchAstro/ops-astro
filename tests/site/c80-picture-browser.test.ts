@@ -6,7 +6,8 @@
 // browser's setting, stops it), the image on another host and the frame never
 // load, and the only requests that reach the transport are the page and its
 // stylesheet. The page's host does not resolve anywhere: a request that
-// escaped the route would fail the load.
+// escaped the route would fail the load. The browser starts with the
+// picture's launch arguments, so a hint the route never sees reaches nothing.
 //
 // Skipped, with a warning, where no Chromium is installed (CI installs none
 // today); the scripted run in c80-picture.test.ts holds the route's rules there.
@@ -18,6 +19,7 @@ import { join } from 'node:path';
 import { chromium, type Browser, type BrowserContext } from 'playwright';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
+  PICTURE_BROWSER_ARGS,
   capturePicture,
   type PictureBrowser,
   type Transport,
@@ -31,7 +33,7 @@ if (!installed)
 
 let browser: Browser;
 beforeAll(async () => {
-  if (installed) browser = await launchChromium();
+  if (installed) browser = await launchChromium({ args: [...PICTURE_BROWSER_ARGS] });
 }, 60_000);
 afterAll(async () => {
   if (installed) await browser.close();
@@ -110,9 +112,6 @@ describe.skipIf(!installed)('C80 capture picture, in a real browser', () => {
     expect(picture.value.digest).toMatch(/^sha256:[0-9a-f]{64}$/u);
     expect(probe.ran).toBeNull();
     expect(transport.seen.toSorted()).toEqual([ABOUT, SHEET].toSorted());
-    expect(picture.value.refused.map((refusal) => refusal.origin)).toContain(
-      'https://tracker.example.net',
-    );
   }, 60_000);
 });
 
@@ -153,7 +152,7 @@ describe.skipIf(!installed)('C80 capture picture, in a real browser, no network 
       const picture = await capturePicture(
         ABOUT,
         options,
-        chromiumPort({}, () => profiled([])),
+        chromiumPort({}, () => profiled(PICTURE_BROWSER_ARGS)),
       );
       expect(picture.ok).toBe(true);
       await new Promise((resolve) => {
