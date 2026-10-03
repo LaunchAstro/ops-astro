@@ -8,12 +8,14 @@
 // A retry whose 30-second claim lapsed while it waited, with a second retry
 // claiming the row meanwhile, reads the stamps again under the lock, so no
 // provider step runs twice. And the wait is bounded: an ending that cannot
-// take the lock in time gives up unstamped, stays owed, and the next pass
-// settles it.
+// take the lock in time gives up unstamped and stays owed, counted as a
+// fault so `endings --once` exits 1, and the next pass settles it.
 
 import { randomUUID } from 'node:crypto';
+import { createServer } from 'node:http';
 import { setTimeout as delay } from 'node:timers/promises';
 import { afterAll, beforeAll, expect, it } from 'vitest';
+import { main as endingsLoop } from '../../apps/endings/loop.ts';
 import {
   settleAccessEndings,
   type LoginProvider,
@@ -164,11 +166,11 @@ it.skipIf(!live)(
         waiting,
         delay(4000).then(() => 'still waiting' as const),
       ]);
-      expect(gaveUp, 'gave up within the bound, the ending owed').toEqual({
+      expect(gaveUp, 'gave up within the bound, the ending owed, a fault').toEqual({
         attempted: 1,
         settled: 0,
         owed: 1,
-        faults: 0,
+        faults: 1,
       });
       expect(calls, 'nothing asked without the lock').toEqual([]);
       expect(await stamps(alpha)).toEqual([{ sessions: false, login: false }]);
@@ -184,6 +186,56 @@ it.skipIf(!live)(
     expect(next).toEqual({ attempted: 1, settled: 1, owed: 0, faults: 0 });
     expect(calls).toEqual(['sessions', 'login']);
     expect(await stamps(alpha)).toEqual([{ sessions: true, login: true }]);
+  },
+  20_000,
+);
+
+/** A loopback provider that counts every request and answers none done. */
+async function countingIssuer() {
+  const seen = { requests: 0 };
+  const server = createServer((_request, response) => {
+    seen.requests += 1;
+    response.writeHead(503, { 'content-type': 'application/json' });
+    response.end('{}');
+  });
+  await new Promise<void>((resolve) => {
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const address = server.address();
+  if (address === null || typeof address === 'string') throw new Error('no issuer address');
+  const close = async () => {
+    await new Promise<void>((resolve) => {
+      server.close(() => {
+        resolve();
+      });
+    });
+  };
+  return { seen, url: `http://127.0.0.1:${String(address.port)}/auth/v1`, close };
+}
+
+it.skipIf(!live)(
+  'endings --once exits 1 while a held login lock leaves an ending owed',
+  async () => {
+    const { alpha, subject } = await owedEnding();
+    const issuer = await countingIssuer();
+    const owner = new URL(databaseUrlFromEnvironment() ?? '');
+    owner.pathname = `/${db.name}`;
+    const holder = await holdSubjectLock(subject);
+    let code: number;
+    try {
+      code = await endingsLoop(['--once'], {
+        DATABASE_ADMIN_URL: owner.toString(),
+        DATABASE_URL: db.appUrl,
+        GOTRUE_URL: issuer.url,
+        SUPABASE_SERVICE_KEY: 'D3S1-SYNTHETIC-SERVICE-KEY',
+      });
+    } finally {
+      await holder.release();
+      await issuer.close();
+    }
+    expect(code, 'an ending left owed fails the scheduler job').toBe(1);
+    expect(issuer.seen.requests, 'nothing asked without the lock').toBe(0);
+    expect(await stamps(alpha)).toEqual([{ sessions: false, login: false }]);
   },
   20_000,
 );
