@@ -27,6 +27,7 @@
 import { DEFINITION_ROWS } from './register-definitions.ts';
 import { EFFECT_ROWS } from './register-effects.ts';
 import { LAUNCH_ROWS } from './register-launch.ts';
+import { LIVE_CORRECTION_ROWS } from './site/refusal-rows.ts';
 
 export type Visibility = 'caller' | 'audit';
 
@@ -820,9 +821,16 @@ const ROWS_HEAD = [
 // effect and broker codes follow them, in `register-effects.ts`.
 
 /** Every registered code. Declared by the rows above and nowhere else. */
-/** Every row, in register order: the head, the definition codes, the effect codes, the launch. */
+/**
+ * Every row, in register order: the head, the definition codes, the effect codes, the
+ * launch, C80's.
+ */
 type Row = (
-  typeof ROWS_HEAD | typeof DEFINITION_ROWS | typeof EFFECT_ROWS | typeof LAUNCH_ROWS
+  | typeof ROWS_HEAD
+  | typeof DEFINITION_ROWS
+  | typeof EFFECT_ROWS
+  | typeof LAUNCH_ROWS
+  | typeof LIVE_CORRECTION_ROWS
 )[number];
 
 export type RefusalCode = Row['code'];
@@ -853,6 +861,7 @@ export const REFUSAL_REGISTER: readonly RegisterEntry[] = [
   ...DEFINITION_ROWS,
   ...EFFECT_ROWS,
   ...LAUNCH_ROWS,
+  ...LIVE_CORRECTION_ROWS,
 ].map((row: Declared & { readonly code: RefusalCode }) => ({
   code: row.code,
   status: row.status,
