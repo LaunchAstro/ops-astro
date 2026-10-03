@@ -39,6 +39,15 @@ const FROM: Readonly<Record<ObservedResult['step'], readonly CorrectionState[]>>
 };
 
 /**
+ * Whether the result may move a correction in `state`. A cancel the runner saw after its
+ * dispatch is an uncertain effect (`core-connectors/src/site/publish.ts`), recorded unknown:
+ * the one result a cancelled correction takes.
+ */
+const movesFrom = (result: ObservedResult, state: CorrectionState): boolean =>
+  FROM[result.step].includes(state) ||
+  (state === 'cancelled' && result.step === 'publish' && result.outcome === 'unknown');
+
+/**
  * The state a result moves to. A publish takes its outcome; a revert moves only
  * once the original word is observed back, so a revert accepted, unknown or
  * failed leaves the page recorded live, with its receipt saying why.
@@ -133,8 +142,7 @@ export async function recordObservedResult(
 > {
   const held = await holdUnderLease(tx, result);
   if (!held.ok) return held;
-  if (!FROM[result.step].includes(held.correction.state))
-    return { ok: false, code: 'GATE_NOT_APPROVED' };
+  if (!movesFrom(result, held.correction.state)) return { ok: false, code: 'GATE_NOT_APPROVED' };
 
   const state = nextState(result);
   await tx.query(
