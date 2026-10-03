@@ -27,18 +27,15 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { revokeGrant, type Scope } from '../../packages/core-records/src/authority/grants.ts';
 import { raiseInboxItem, type InboxReason } from '../../packages/core-records/src/index.ts';
-import { COMMAND_SURFACE, pathOf, type CommandName } from '../../packages/core-wire/src/surface.ts';
+import { COMMAND_SURFACE } from '../../packages/core-wire/src/surface.ts';
 import { createCli, type Transport } from '../../apps/cli/client.ts';
 import { enrol, grantTo, installSpine, WHOLE_BUSINESS, type Member } from './fixture.ts';
-import { authorised, BUSINESS_KEY, post, tokenFor, type Answer } from '../api/fixture.ts';
+import { BUSINESS_KEY, tokenFor } from '../api/fixture.ts';
 import { clearingWorld, ok } from './inbox-clearing-world.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 
 type Entry = Readonly<Record<string, unknown>>;
-
-/** A route by its surface name, as the command line builds it. */
-const route = (name: string): string => pathOf(name as CommandName);
 
 const CLIENT_A = randomUUID();
 const CLIENT_B = randomUUID();
@@ -55,32 +52,15 @@ describe.skipIf(serverUrl === undefined)('INB-1e unattended', () => {
   let bruno: Member;
   let brunoToken = '';
 
-  const call = async (
-    name: string,
-    token: string,
-    body: Readonly<Record<string, unknown>> = {},
-    key = BUSINESS_KEY,
-  ): Promise<Answer> => await post(w.api, `/api/b/${key}${route(name)}`, body, authorised(token));
+  const call = w.send;
   const unattended = async (token: string, key = BUSINESS_KEY): Promise<readonly Entry[]> =>
     ok(await call('inbox.unattended', token, {}, key)).body['unattended'] as Entry[];
   const listed = async (token: string = opalToken): Promise<readonly string[]> =>
     (await unattended(token)).map((entry) => String(entry['id']));
   const inAlpha = async <T>(work: Parameters<typeof w.fixture.db.app.withBusiness>[1]) =>
     (await w.fixture.db.app.withBusiness(w.fixture.business, work)) as T;
-  const task = async (title: string, client?: string, token = w.memberToken): Promise<string> => {
-    const created = ok(
-      await call('task.create', token, { operationId: randomUUID(), fields: { title } }),
-    );
-    const id = String(created.body['recordId']);
-    if (client !== undefined) {
-      await w.fixture.db.admin.execute(
-        `update public.records set data = data || jsonb_build_object('client', $2::text)
-          where id = $1`,
-        [id, client],
-      );
-    }
-    return id;
-  };
+  const task = async (title: string, client?: string): Promise<string> =>
+    (await w.task(title, client)).id;
   const raise = async (
     recipient: string,
     subject: string,

@@ -110,7 +110,7 @@ function ciOnTheCases1() {
     // The runner it calls is the one that fails a run with a skipped test
     // (tests/ci/db-conformance-cases.mjs holds that to cases).
     expect(block).toMatch(
-      /^ {6}- run: pnpm run db:conformance --shard \$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\}$/mu,
+      /^ {6}- run: node scripts\/ci-scope\.ts 'database conformance' --shard \$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\} -- pnpm run db:conformance --shard \$\{\{ matrix\.shard \}\}\/\$\{\{ strategy\.job-total \}\}$/mu,
     );
     expect(read('scripts/db-conformance.mjs')).toMatch(/A skip is the failure/u);
     // The required jobs never ask for another major.
