@@ -51,6 +51,8 @@ export interface ProjectsBoardProps {
   readonly viewerOn?: boolean;
   /** What a row can do (MP-5-9); the page owns the commands. */
   readonly actions?: RowActions;
+  /** Whether its tab is not shown: a hidden board takes no Undo and writes no address. */
+  readonly hidden?: boolean;
   /** The clients the reader reaches, by name: each a Client filter, with rows or none. */
   readonly clients?: readonly string[];
 }
@@ -63,6 +65,11 @@ function withWorkOrder(address: string): string {
   if (!params.has('sort')) params.set('sort', `${WORK_ORDER.key}.${WORK_ORDER.dir}`);
   return params.toString();
 }
+
+const BOARD_EMPTY = {
+  title: 'No task matches that.',
+  description: 'Drop a filter or Clear all to widen the list.',
+};
 
 const REVIEW_EMPTY = {
   title: 'Nothing is waiting for your decision.',
@@ -128,6 +135,7 @@ export function ProjectsBoard(props: ProjectsBoardProps): ReactElement {
   const statuses = useMemo(() => statusOrder(props.rows), [props.rows]);
   return (
     <BoardMachine<ProjectRow>
+      hidden={props.hidden === true}
       rows={rows}
       withheld={props.withheld ?? 0}
       columns={columns}
@@ -140,10 +148,7 @@ export function ProjectsBoard(props: ProjectsBoardProps): ReactElement {
       hay={(row) => `${row.name} ${row.client ?? ''} ${row.assignee?.name ?? ''}`}
       name={(row) => row.name}
       noun="task"
-      empty={{
-        title: 'No task matches that.',
-        description: 'Drop a filter or Clear all to widen the list.',
-      }}
+      empty={BOARD_EMPTY}
       address={opening}
       onAddress={(next) => {
         setAddress(next);

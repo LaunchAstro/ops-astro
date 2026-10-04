@@ -40,26 +40,40 @@ export interface EdgeGripProps {
   readonly onCommit: ((value: number) => void) | undefined;
 }
 
+/** A drag in progress: its own pointer, where it began and the value then. */
+interface Drag {
+  readonly pointer: number;
+  readonly at: number;
+  readonly value: number;
+}
+
+/** Whether `event` is the drag's own pointer: another finger neither moves nor ends it. */
+const owns = (drag: Drag | null, event: PointerEvent<HTMLDivElement>): boolean =>
+  drag?.pointer === event.pointerId;
+
+/** Where a pointer is along the axis the grip sizes. */
+const along = (edge: GripEdge, event: PointerEvent<HTMLDivElement>): number =>
+  edge === 'top' ? event.clientY : event.clientX;
+
 export function EdgeGrip(props: EdgeGripProps): ReactElement {
-  const start = useRef<{ readonly at: number; readonly value: number } | null>(null);
+  const start = useRef<Drag | null>(null);
   const { sign } = GROWS[props.edge];
-  const along = (event: PointerEvent<HTMLDivElement>): number =>
-    props.edge === 'top' ? event.clientY : event.clientX;
   const at = (point: number): number => {
     const from = start.current ?? { at: point, value: props.value };
     return held(props, from.value + (sign * (point - from.at)) / props.per);
   };
   const onPointerDown = (event: PointerEvent<HTMLDivElement>): void => {
-    start.current = { at: along(event), value: props.value };
+    if (start.current !== null && !owns(start.current, event)) return;
+    start.current = { pointer: event.pointerId, at: along(props.edge, event), value: props.value };
     event.currentTarget.setPointerCapture(event.pointerId);
     props.onDragging(true);
   };
   const onPointerMove = (event: PointerEvent<HTMLDivElement>): void => {
-    if (start.current !== null) props.onChange?.(at(along(event)));
+    if (owns(start.current, event)) props.onChange?.(at(along(props.edge, event)));
   };
   const onPointerUp = (event: PointerEvent<HTMLDivElement>): void => {
-    if (start.current === null) return;
-    const value = at(along(event));
+    if (!owns(start.current, event)) return;
+    const value = at(along(props.edge, event));
     start.current = null;
     props.onDragging(false);
     props.onCommit?.(value);
