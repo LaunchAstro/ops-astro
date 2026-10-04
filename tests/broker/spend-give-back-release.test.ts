@@ -24,7 +24,7 @@ import {
   topUpAtBudgetStop,
 } from '../../packages/core-runtime/src/index.ts';
 import { grantTo } from '../commands/fixture.ts';
-import { asAgent, codeOf, liveWork, type Work } from '../runtime/schedules-harness.ts';
+import { asAgent, codeOf, liveWork, rows, type Work } from '../runtime/schedules-harness.ts';
 import { openBilling } from '../runtime/t3d1-harness.ts';
 import {
   broker,
@@ -151,4 +151,50 @@ it('a counted call the model-call sweep releases gives its maximum back once', a
   await sweepCalls();
   await sweepWorkers();
   expect(await envelopeActual(work), 'given back once').toBe(before);
+});
+
+/** The hold's own figure and the envelope's held, read as the administrator. */
+const held = async (work: Work): Promise<{ readonly hold: number; readonly envelope: number }> => {
+  const [row] = await rows<{ hold: string; envelope: string }>(
+    s,
+    `select r.held_minor::text as hold, e.held_minor::text as envelope
+       from public.reservations r join public.task_envelopes e on e.id = r.envelope_id
+      where r.id = $1`,
+    [reservationOf(work)],
+  );
+  return { hold: Number(row?.hold), envelope: Number(row?.envelope) };
+};
+
+it('a counted call released at its start while its topped-up hold is still held gives back onto that hold', async () => {
+  const { work, before, request, reserved } = await stoppedUnsent();
+  expect(await topUp(work)).toMatchObject({ ok: true, value: { state: 'applied' } });
+  expect(await envelopeActual(work), 'counted at its maximum').toBe(before + 500);
+  const topped = await held(work);
+
+  const started = await sendReservedCall(
+    s.db.app,
+    s.business,
+    caller(work),
+    request,
+    reserved,
+    broker,
+  );
+
+  expect(started).toMatchObject({ ok: false, callId: reserved.callId });
+  expect(await calls(work)).toMatchObject([{ state: 'released' }]);
+  expect(await envelopeActual(work)).toBe(before);
+  expect(await held(work)).toEqual({ hold: topped.hold + 500, envelope: topped.envelope + 500 });
+  await sweepCalls();
+  expect(await envelopeActual(work), 'given back once').toBe(before);
+});
+
+it('a call released before any top-up or end gives nothing back, and a later top-up does not count it', async () => {
+  const { work, before } = await stoppedUnsent();
+
+  await sweepCalls();
+
+  expect(await calls(work)).toMatchObject([{ state: 'released' }]);
+  expect(await envelopeActual(work)).toBe(before);
+  expect(await topUp(work)).toMatchObject({ ok: true, value: { state: 'applied' } });
+  expect(await envelopeActual(work), 'nothing counted, nothing given').toBe(before);
 });
