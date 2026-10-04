@@ -128,3 +128,13 @@ $$;
 
 revoke all on function public.factor_login_live_elsewhere(uuid) from public;
 grant execute on function public.factor_login_live_elsewhere(uuid) to ops_astro_app;
+
+-- A subject's ending is dated when its row is written, by the database's
+-- clock, not when its transaction began (0063 took `now()`). A reset waits for
+-- the access lock and writes several rows before its ending, and a session
+-- the provider issued meanwhile signed in after the transaction began: dated
+-- at the transaction's start, the ending would leave that session served after
+-- the reset commits. Every ending (a reset, and C58's ending of one's other
+-- sessions) takes the later time; the column grants are unchanged, so the time
+-- is still the database's own.
+alter table ops.ended_subject_sessions alter column ended_before set default clock_timestamp();
