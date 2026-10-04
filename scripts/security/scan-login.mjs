@@ -251,14 +251,15 @@ async function remove() {
   // The login subject lock (migrations/20261004005736_login_subject_lock.sql),
   // held from the check through the provider delete: a mapping already being
   // written commits first and the check finds it; one begun after is refused.
-  const all = await businesses();
+  // The businesses are read again once it is held, so one made while the lock
+  // was awaited is checked too.
   const held = connect(env.DATABASE_URL, { source: 'scan-login' });
   try {
-    await held.withBusiness(businessId(all), async (tx) => {
+    await held.withBusiness(businessId(await businesses()), async (tx) => {
       await tx.query(`select pg_advisory_xact_lock(hashtextextended('supabase:' || $1, 0))`, [
         record.userId,
       ]);
-      await endRows(record, providerEmail, all);
+      await endRows(record, providerEmail, await businesses());
       if (providerEmail === undefined) return;
       const gone = await provider(`/admin/users/${record.userId}`, 'DELETE');
       if (gone.status >= 300 && gone.status !== 404)
