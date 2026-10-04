@@ -2439,7 +2439,9 @@ T2h's latest alert on that run (the same record, `id`, `kind`,
 `waitingReason` and `raisedAt`, that the task page and the queue read show);
 no other read carries it. A readable entry carries its pointers, its task's `key` and `title`,
 and `closedBy`, the decider's `personId` and `name` once it is cleared, all
-read in the same transaction, so the item stores none of them. It carries
+read in the same transaction, so the item stores none of them. The `key` and
+`title` are read in a statement that asks the caller's task `read` again, so a
+task whose read ends mid-read is named nothing. It carries
 `client`, its task's `clientId` and `name`, only where the caller reaches that
 client as `client.list` does (MP-7-3's groups): a caller who holds the task
 alone is not told its client. A gone entry

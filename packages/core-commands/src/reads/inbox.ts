@@ -23,7 +23,7 @@ import {
   CONVERSATION_TYPE_KEY,
   clientsReached,
   countOwedItems,
-  inConversation,
+  readableNow,
   readInboxItems,
   readUnattended,
   type InboxItem,
@@ -103,8 +103,8 @@ interface Named {
 
 /**
  * Each task's key, title and client link, or each conversation's kind and name,
- * read at the read. A conversation is named only while `personId` is in it and
- * may chat, asked in this statement: access read earlier names nothing here.
+ * read at the read. Each is named only while `personId` reads it now
+ * (`readableNow`), asked in this statement: access read earlier names nothing here.
  */
 async function taskNames(
   tx: TenantQuery,
@@ -122,8 +122,8 @@ async function taskNames(
             r.uuid_7 as "clientId", t.key = $3 as conversation
        from public.records r
        join public.record_types t on t.business_id = r.business_id and t.id = r.record_type_id
-      where r.business_id = $1 and r.id = any($2::uuid[]) and r.deleted_at is null
-        and (t.key <> $3 or ${inConversation('$4::uuid')})`,
+      where r.business_id = $1 and r.id = any($2::uuid[])
+        and ${readableNow('$4::uuid', "'infinity'")}`,
     [tx.businessId, taskIds, CONVERSATION_TYPE_KEY, personId],
   );
   return new Map(rows.map((row) => [row.id, { ...row, key: row.key ?? '' }]));
