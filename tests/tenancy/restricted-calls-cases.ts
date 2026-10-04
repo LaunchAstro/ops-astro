@@ -30,6 +30,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 0070 (C55): the date of the last tested restore; the application reads it
   // only, and the drill writes it through ops.record_tested_restore().
   ['s', 'ops.last_tested_restore'],
+  // 20261004072829: the archives a carried drill stamped; the owner writes them.
+  ['', 'ops.tested_restore_archives'],
   // 0047: the API's outbox; the application inserts its four columns, and reads nothing.
   ['i', 'ops.api_events'],
   // 0048: the forwarder's kept alerts; the application holds nothing on them.

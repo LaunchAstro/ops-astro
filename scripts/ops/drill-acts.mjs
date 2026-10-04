@@ -13,6 +13,7 @@ import { readCarried, readCarriedReceipt, writeCarried } from './carried-archive
 import { RESTORE_ROLE, recordCarriedDrill, recordDrill } from './drill-receipt.mjs';
 import { recordDeployment } from './operator.ts';
 import { holdOwed, noteOwed } from './stamp-owed.mjs';
+import { stampedArchive } from './tested-restore.ts';
 
 const HEX64 = /^[0-9a-f]{64}$/u;
 // The store's part size (deploy/staging/backup-store.sql, backups.archive_parts).
@@ -250,9 +251,16 @@ const carriedAct = (outcome, lastTestedRestore) => ({
   lastTestedRestore,
 });
 
-/** A carried pass the store took, stamped; the note (`held`) is gone only once it is. */
+/**
+ * A carried pass the store took, stamped once for its archive (tested-restore.ts),
+ * so a run killed after the stamp committed is not dated again; the note (`held`)
+ * is gone only once it is.
+ */
 async function stampCarried(gate, owed, archiveId, held) {
-  const act = await stampIfPassed(gate, carriedAct('passed', 'owed')).catch((error) => {
+  const stamping = stampedArchive.run(archiveId, () =>
+    stampIfPassed(gate, carriedAct('passed', 'owed')),
+  );
+  const act = await stamping.catch((error) => {
     if (held) renameSync(held, owed);
     else noteOwed(owed, archiveId, error);
     throw new Error(`${error.message}: re-run --record to write it`, { cause: error });
