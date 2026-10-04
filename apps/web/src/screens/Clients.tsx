@@ -12,8 +12,8 @@
 // A row carries only the doors this application serves. The one drawn is
 // Projects: a link to the board that the dock's gesture law takes when the
 // Projects panel is registered (plain solos, shift stacks) and the application
-// follows as a link when it is not. It opens the whole board: the board has no
-// client to filter by until client records exist. Not drawn, and why:
+// follows as a link when it is not. A made-up row's door opens the whole board:
+// no board row is under a made-up client. Not drawn, and why:
 // - a row press walking to the client's record: the record is MP-10-1's;
 // - Portal (`/clients/<slug>/`): no person holds a client grant before MP-10-1,
 //   so every one lands on the refusal;
@@ -27,9 +27,15 @@
 // the name the read gives, outside the mock mark: the client is real, the book
 // is not. A client the read leaves out, gone or another business's, is said in
 // a sentence that names nothing of it.
+//
+// The marked client's row carries the Clients row door: Projects filtered to
+// that client (`/projects/?f=client:"<name>"`, the board's Client facet), by the
+// same gesture law. The board names a row's client only where the reader's
+// grants reach it, as `client.list` does, so the door shows that client's work
+// the reader may see and nothing of a client they do not reach.
 
 import { useState, type ReactElement } from 'react';
-import { Count, Icon, MockRegion } from '@launchastro/ui';
+import { Count, Icon, MockRegion, clientFacetId } from '@launchastro/ui';
 import type { ClientListResult } from '../../../../packages/core-wire/src/index.ts';
 import { MADE_UP_BOOK, type BookClient, type ClientBook } from '../data/clients-book.ts';
 import { useRead } from '../data/use-read.ts';
@@ -67,9 +73,30 @@ function countLine(shown: readonly BookClient[], book: ClientBook): string {
   return waiting > 0 ? `${line} · ${String(waiting)} waiting on us` : line;
 }
 
+/** The Projects door: to `place`, by the dock's gesture law, or as a link without a dock. */
+function ProjectsDoor(props: { readonly place: string; readonly label: string }): ReactElement {
+  return (
+    <span className="clbook__go">
+      <a
+        className="clbook__door"
+        href={props.place}
+        data-dock-open="todos"
+        data-dock-place={props.place}
+        aria-label={props.label}
+        title={props.label}
+      >
+        <Icon name="briefcase" size="sm" />
+      </a>
+    </span>
+  );
+}
+
+/** The board filtered to one client, by the Client facet's key for its name. */
+const boardOf = (name: string): string =>
+  `${pathTo('agency:projects-board')}?${new URLSearchParams({ f: clientFacetId(name) }).toString()}`;
+
 function Row(props: { readonly client: BookClient }): ReactElement {
   const { client } = props;
-  const board = pathTo('agency:projects-board');
   return (
     <li className="clbook__item">
       <div className="clbook__row">
@@ -81,18 +108,10 @@ function Row(props: { readonly client: BookClient }): ReactElement {
           <span className="clbook__industry">{client.industry}</span>
         </span>
       </div>
-      <span className="clbook__go">
-        <a
-          className="clbook__door"
-          href={board}
-          data-dock-open="todos"
-          data-dock-place={board}
-          aria-label="Open Projects, every client's work"
-          title="Open Projects, every client's work"
-        >
-          <Icon name="briefcase" size="sm" />
-        </a>
-      </span>
+      <ProjectsDoor
+        place={pathTo('agency:projects-board')}
+        label="Open Projects, every client's work"
+      />
       {client.waiting > 0 ? (
         <span className="clbook__waiting">
           <Icon name="comment-alt" size="sm" />
@@ -136,6 +155,10 @@ function OpenedClient(props: {
                 <span className="clbook__name">{found.name}</span>
               </span>
             </div>
+            <ProjectsDoor
+              place={boardOf(found.name)}
+              label={`Open Projects, ${found.name}'s work`}
+            />
           </div>
         );
       }}
