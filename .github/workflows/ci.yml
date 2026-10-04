@@ -584,7 +584,7 @@ jobs:
       # the merge queue, the only way into main, and passes, so the check
       # still reports under its name; on a merge group or a push each always
       # runs. No step here carries a condition.
-      - run: node scripts/ci-scope.ts 'isolation tests' -- node scripts/db-conformance.mjs --manifest tests/db/isolation-suites.json
+      - run: node scripts/ci-scope.ts 'isolation tests' -- node scripts/db-conformance.mjs --isolation
         env:
           DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
           # The T4a fixture suites are named here too; their clone past a

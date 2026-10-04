@@ -62,7 +62,11 @@ const repoRoot = resolve(import.meta.dirname, '..');
 
 /** The manifest's path under `root`: the folder when it exists, else the single file. */
 export const manifestPathIn = (root: string): string =>
-  existsSync(join(root, FOLDER)) ? join(root, FOLDER) : join(root, SINGLE);
+  existsSync(join(root, SUITES))
+    ? join(root, SUITES)
+    : existsSync(join(root, FOLDER))
+      ? join(root, FOLDER)
+      : join(root, SINGLE);
 
 const listOf = (value: unknown): string[] => (Array.isArray(value) ? value.map(String) : []);
 
@@ -200,6 +204,11 @@ const same = (original: NamedSuites, joined: NamedSuites): boolean =>
 export async function splitToFolder(root: string): Promise<NamedSuites> {
   const folder = join(root, FOLDER);
   if (existsSync(folder)) throw new Error(`${FOLDER} already exists; split reads only ${SINGLE}`);
+  if (existsSync(join(root, SUITES))) {
+    throw new Error(
+      `${SUITES} already exists: each suite has its own file, so there is nothing to split`,
+    );
+  }
   const original = readNamedSuites(root);
   const { history, areas } = splitNamedSuites(original);
   const { format, resolveConfig } = await import('prettier');

@@ -92,14 +92,15 @@ it('splits the real manifest and reads back the same suites, each once, and ever
   expect(formatted.every(Boolean), 'every file is already prettier-formatted').toBe(true);
 });
 
-it('split, run as a command in the repository, refuses now the folder exists and changes nothing', () => {
-  const before = readdirSync(join(ROOT, FOLDER));
+it('split, run as a command in the repository, refuses now each suite has its own file and changes nothing', () => {
+  const before = readdirSync(join(ROOT, 'tests/db'));
   const script = join(ROOT, 'scripts/named-suites.ts');
   const run = spawnSync(process.execPath, [script, 'split'], { cwd: ROOT, encoding: 'utf8' });
   expect(run.status).toBe(1);
   expect(run.stderr).toMatch(/already exists/u);
-  expect(readdirSync(join(ROOT, FOLDER))).toStrictEqual(before);
+  expect(readdirSync(join(ROOT, 'tests/db'))).toStrictEqual(before);
   expect(existsSync(join(ROOT, SINGLE))).toBe(false);
+  expect(existsSync(join(ROOT, FOLDER))).toBe(false);
 }, 60_000);
 
 it('split refuses when the folder already exists, and leaves it alone', async () => {

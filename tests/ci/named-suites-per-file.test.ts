@@ -8,7 +8,8 @@
 // the conversion of the real lists loses nothing, the reader refuses a file it
 // cannot trust and names it, and a suite dropped from the manifest is caught
 // unless its test file went with it.
-import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, expect, it } from 'vitest';
@@ -51,12 +52,30 @@ function refused(files: Record<string, unknown>, file: string, reason: RegExp): 
 
 const sorted = (list: readonly string[]) => list.toSorted();
 
-it('converts the real lists and reads back the same suites, each once, the isolation set and the history', () => {
-  const before = readNamedSuites(ROOT);
-  const isolationBefore = readIsolationSuites(ROOT);
+/** Main when the suites got their own files (2f3cd92, #387): the last commit with the lists. */
+const LISTS_PARENT = '2f3cd927d8fbbced8b02e8653eb5007446ba2e47';
+const git = (...args: string[]) => execFileSync('git', args, { cwd: ROOT, encoding: 'utf8' });
+
+/** A root holding the lists exactly as the parent commit had them. */
+function listsRoot(): string {
   const root = tempRoot();
-  cpSync(join(ROOT, AREAS), join(root, AREAS), { recursive: true });
-  cpSync(join(ROOT, ISOLATION), join(root, ISOLATION));
+  const paths = git('ls-tree', '-r', '--name-only', LISTS_PARENT, '--', AREAS, ISOLATION);
+  for (const path of paths.split('\n').filter(Boolean)) {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    writeFileSync(join(root, path), git('show', `${LISTS_PARENT}:${path}`));
+  }
+  return root;
+}
+
+it('converts the lists the parent commit had into the files committed here, losing nothing', () => {
+  const lists = listsRoot();
+  const before = readNamedSuites(lists);
+  const isolationBefore = readIsolationSuites(lists);
+  expect(readNamedSuites(ROOT)).toStrictEqual(before);
+  expect(readIsolationSuites(ROOT).invariant.toSorted()).toStrictEqual(
+    isolationBefore.invariant.toSorted(),
+  );
+  const root = listsRoot();
   suitesToFiles(root);
   expect(existsSync(join(root, AREAS))).toBe(false);
   expect(existsSync(join(root, ISOLATION))).toBe(false);
