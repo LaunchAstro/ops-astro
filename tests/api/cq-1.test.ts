@@ -20,6 +20,7 @@ import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { runtimeKeys } from '../../packages/core-runtime/src/runtime-config.ts';
 import { DELEGATION_HEADER, pathOf } from '../../packages/core-wire/src/surface.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
+import { consoleLine } from '../support/console-text.ts';
 
 const ROOT = join(import.meta.dirname, '../..');
 const file = (path: string) => readFileSync(join(ROOT, path), 'utf8');
@@ -196,9 +197,9 @@ function cq1SignCases3() {
   it('CQ-1 token canary: a planted token and secret reach no log, trace, refusal or stored row', async () => {
     const canary = `cq1-canary-${randomUUID()}`;
     const planted = await signBearer(claims({ aud: 'anon', canary }));
-    const lines: unknown[] = [];
+    const lines: string[] = [];
     const levels = ['log', 'info', 'warn', 'error', 'debug', 'trace'] as const;
-    const push = (...parts: unknown[]) => lines.push(...parts) > 0;
+    const push = (...parts: unknown[]) => lines.push(consoleLine(...parts)) > 0;
     const spies = [
       ...levels.map((level) => vi.spyOn(console, level).mockImplementation(push)),
       ...[process.stdout, process.stderr].map((s) => vi.spyOn(s, 'write').mockImplementation(push)),
@@ -213,7 +214,7 @@ function cq1SignCases3() {
     ]).finally(() => spies.forEach((spy) => spy.mockRestore()));
     const dump = (t: string) => fixture.db.admin.execute(`select x::text from public.${t} x`);
     const stored = await Promise.all(TABLES.map(dump));
-    const seen = JSON.stringify([answers, lines.map(String), stored]);
+    const seen = JSON.stringify([answers, lines, stored]);
     expect([answers[3]?.status, seen.includes('api: unhandled')]).toStrictEqual([503, true]);
     for (const value of [canary, planted, token.member]) expect(seen).not.toContain(value);
   });

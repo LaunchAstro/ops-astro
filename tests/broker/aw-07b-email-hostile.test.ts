@@ -10,6 +10,7 @@ import type { FakeEmailMode } from '../../packages/core-connectors/src/index.ts'
 import { emailAdapter } from '../../packages/core-connectors/src/index.ts';
 import { sendInboxEmail } from '../../packages/core-custody/src/index.ts';
 import { attemptsOf, itemFor, MAIL, noDatabase, useEmailWorld, w } from './email-world.ts';
+import { consoleLine } from '../support/console-text.ts';
 
 const it = noDatabase ? vitestIt.skip : vitestIt;
 
@@ -78,7 +79,7 @@ it('AW-07b canary: a planted recipient address and item link never reach logs, e
     vi.spyOn(process.stderr, 'write').mockImplementation(capture),
     ...(['log', 'info', 'warn', 'error', 'debug'] as const).map((level) =>
       vi.spyOn(console, level).mockImplementation((...args: unknown[]) => {
-        written.push(args.map(String).join(' '));
+        written.push(consoleLine(...args));
       }),
     ),
   ];
