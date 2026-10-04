@@ -47,6 +47,7 @@ function server() {
       return json({ access_token: 'fresh-token' });
     }
     if (at === '/api/session') return json({ ok: true, session: 'fresh-session' });
+    if (at.endsWith('/session/person')) return json({ person: { name: 'Mia Hart' } });
     const business = /^\/api\/b\/([a-z]+)\//u.exec(at)?.[1];
     if (business === undefined) return json({ ok: true });
     if (ended) {

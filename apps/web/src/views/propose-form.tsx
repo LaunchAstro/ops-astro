@@ -5,11 +5,33 @@
 // its refusal above the read.
 
 import { useState, type FormEvent, type ReactElement } from 'react';
-import { minorOf } from '@launchastro/ui';
+import { minorDigits, minorOf } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
 import type { TaskEnvelope } from '../../../../packages/core-wire/src/index.ts';
 import { useCommand, type Settlement } from '../records/use-command.ts';
 import { money } from './proposal-record.tsx';
+
+/** One minor unit of the currency, a number field's step: 0.01 AUD, 0.001 KWD, 1 JPY. */
+function stepOf(currency: string | null): string {
+  const digits = currency === null ? 2 : minorDigits(currency);
+  return digits === 0 ? '1' : `0.${'0'.repeat(digits - 1)}1`;
+}
+
+/**
+ * A number field's text in plain decimal digits for `minorOf`: the field takes
+ * `1e2` as it takes `100`. The point is moved in the text, never by arithmetic,
+ * so no float rounds the amount; anything else is left as typed.
+ */
+function plainDecimal(text: string): string {
+  const parts = /^(\d*)(?:\.(\d+))?e([+-]?\d{1,2})$/iu.exec(text.trim());
+  const [, whole = '', fraction = '', power = '0'] = parts ?? [];
+  const digits = `${whole}${fraction}`;
+  if (parts === null || digits === '') return text;
+  const point = whole.length + Number(power);
+  if (point <= 0) return `0.${'0'.repeat(-point)}${digits}`;
+  if (point >= digits.length) return `${digits}${'0'.repeat(point - digits.length)}`;
+  return `${digits.slice(0, point)}.${digits.slice(point)}`;
+}
 
 interface ProposeProps {
   readonly client: OperationsClient;
@@ -107,7 +129,7 @@ export function Propose(props: ProposeProps): ReactElement {
             // Money crosses the wire in minor units. The conversion happens once,
             // here, because three places that each convert are three places that
             // can disagree about what a dollar is.
-            maximumMinor: minorOf(maximum, attempt.currency),
+            maximumMinor: minorOf(plainDecimal(maximum), attempt.currency),
             currency,
             payload: { step: purpose },
             // **`step` is an object, not the purpose again.** The contract is
@@ -254,7 +276,7 @@ function ProposeFields(props: {
             props.onPut({ maximum: event.target.value });
           }}
           required
-          step="0.01"
+          step={stepOf(props.currency)}
           type="number"
           value={props.maximum}
         />
@@ -307,7 +329,7 @@ export function TopUp(props: {
   const command = useCommand();
   const [amount, setAmount] = useState('');
   const submit = (): void => {
-    const minor = minorOf(amount, envelope.currency);
+    const minor = minorOf(plainDecimal(amount), envelope.currency);
     if (command.locked || minor === null || minor <= 0) return;
     command.run(
       () =>
@@ -355,7 +377,7 @@ export function TopUp(props: {
           disabled={command.locked}
           id="top-up-amount"
           min="0"
-          step="0.01"
+          step={stepOf(envelope.currency)}
           type="number"
           onChange={(event) => {
             setAmount(event.target.value);

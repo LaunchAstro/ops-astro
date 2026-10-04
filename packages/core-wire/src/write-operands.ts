@@ -85,6 +85,9 @@ export const WRITE_OPERANDS: Readonly<Partial<Record<CommandName, OperandSpec>>>
     plan: 'any',
     entryPath: 'any',
     paths: 'any',
+    // The ceiling the card drew; refused under the locks if the version's differs.
+    ceilingMinor: 'count?',
+    currency: 'text?',
     conversationId: 'id?|null',
   },
   'task.pickup': { reservationId: 'any', leaseSeconds: 'any' },

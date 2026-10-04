@@ -33,6 +33,7 @@
 import type { Context } from 'hono';
 import {
   SESSION_ABSOLUTE_SECONDS,
+  SIGN_IN_CLOCK_SKEW_SECONDS,
   type Assurance,
   type VerifiedSubject,
 } from '../../../packages/core-records/src/index.ts';
@@ -211,7 +212,7 @@ function assuranceOf(claims: Readonly<Record<string, unknown>>): Assurance {
 function pastAbsoluteLimit(signedInAt: number | null, now: number): boolean {
   if (signedInAt === null) return true;
   const age = now - signedInAt;
-  return age > SESSION_ABSOLUTE_SECONDS || age < -60;
+  return age > SESSION_ABSOLUTE_SECONDS || age < -SIGN_IN_CLOCK_SKEW_SECONDS;
 }
 
 /**

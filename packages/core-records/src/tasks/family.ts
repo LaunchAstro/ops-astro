@@ -5,10 +5,13 @@
 // A subtask is a full task whose `parent` slot (`uuid_4`) names another, so a
 // parent and its children are one statement over the records table: the
 // parent by its id, the children by the slot, both filtered by the business
-// the session set. The wayfinder map and the agent bundles read a family the
-// same way; who may be shown each child is the caller's question, asked on
-// the ids this returns (`reads/steps.ts`).
+// the session set. A record grant on the parent is not one on its children,
+// so a child comes back only when the reader's live `task:read` grants reach
+// it, asked inside the same statement: a child the reader may not read never
+// leaves the database, not even its title (catalogue #412). The parent is
+// the caller's to have admitted.
 
+import { askedFor, EFFECTIVE, type Subject } from '../authority/grants.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 
 export interface FamilyRow {
@@ -78,9 +81,12 @@ export async function readTaskFamily(
   tx: TenantQuery,
   taskTypeId: string,
   parentId: string,
+  readers: readonly Subject[],
 ): Promise<TaskFamily> {
+  const asked = askedFor(readers, { collection: 'task', action: 'read' });
   const rows = await tx.query<Row>(
-    `select r.id, r.uuid_4::text as parent_id, r.txt_1 as key, r.txt_4 as title,
+    `${EFFECTIVE}
+     select r.id, r.uuid_4::text as parent_id, r.txt_1 as key, r.txt_4 as title,
             r.revision::text as revision,
             s.id as state_id, s.data ->> 'key' as state_key, s.data ->> 'label' as state_label,
             s.data ->> 'machine_category' as state_category,
@@ -92,9 +98,24 @@ export async function readTaskFamily(
        left join public.people p
          on p.business_id = r.business_id and p.id = r.uuid_2
       where r.business_id = $1 and r.record_type_id = $2 and r.deleted_at is null
-        and (r.id = $3::uuid or r.uuid_4 = $3::uuid)
+        and (r.id = $3::uuid
+             or (r.uuid_4 = $3::uuid
+                 and exists (
+                   select 1 from effective e
+                    where e.collection = 'task'
+                      and e.action = 'read'
+                      and exists (select 1 from unnest($4::text[], $5::uuid[]) as s (kind, id)
+                                   where s.kind = e.subject_kind and s.id = e.subject_id)
+                      and (e.scope_kind = 'business'
+                           or (e.scope_kind = 'record' and e.scope_id = r.id)))))
       order by r.num_2 nulls last, r.created_at, r.id`,
-    [tx.businessId, taskTypeId, parentId],
+    [
+      tx.businessId,
+      taskTypeId,
+      parentId,
+      asked.map((subject) => subject.kind),
+      asked.map((subject) => subject.id),
+    ],
   );
   const family = rows.map((row) => familyRow(row));
   return {
