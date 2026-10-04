@@ -1,9 +1,13 @@
 {
+  "comment": [
+    "SOLOW-G G1 names agent-evidence-metadata-and-snapshot (Sol OW-075.1-2: token metadata survives the real evidence renderer; a successor is never labelled pinned at its predecessor's lease)."
+  ],
   "invariant": [
     "tests/surfaces/aw-09-reject-header.test.tsx",
     "tests/surfaces/inbox-three-surfaces.test.tsx",
+    "tests/surfaces/incident-retry-once-and-task-draft-stays-with-business.test.tsx",
     "tests/surfaces/mp-7-3-inbox-isolation.test.tsx",
     "tests/surfaces/proposal-snapshot.test.tsx"
   ],
-  "conformance": []
+  "conformance": ["tests/surfaces/agent-evidence-metadata-and-snapshot.test.tsx"]
 }

@@ -13,6 +13,7 @@
 import { useState, type ReactElement } from 'react';
 import { runStories, type RunStory } from '../state/agent-run.ts';
 import type { RunLineage } from '../state/run-projection.ts';
+import { Activity, type RunActivity } from './agent/activity.tsx';
 import { Attempts } from './agent/attempts.tsx';
 import { Gate, type GateDecision, type GateRef } from './agent/gate.tsx';
 import { RunKnowledge } from './agent/knowledge.tsx';
@@ -29,6 +30,7 @@ import { UnknownOutcome, type RecordedOutcome } from './agent/unknown.tsx';
 
 export type { GateDecision } from './agent/gate.tsx';
 export type { RecordedOutcome } from './agent/unknown.tsx';
+export type { RunActivity } from './agent/activity.tsx';
 
 export interface AgentPaneProps {
   /** `task.read`'s proposals; absent on a read that carries none. */
@@ -69,6 +71,10 @@ export interface AgentPaneProps {
   readonly onEndAtStop?: (runId: string, askId: string) => void;
   /** The server's word that the last top-up at a stop waits on a second person, or null. */
   readonly stopAwaiting?: string | null;
+  /** AW-04: Start a new attempt asks the drawer to plan one; absent, it is drawn unavailable. */
+  readonly onStartAttempt?: () => void;
+  /** The operational log (MP-6-2): `task.execution`'s events and bound plan; absent, no log. */
+  readonly activity?: RunActivity;
 }
 
 export function AgentPane(props: AgentPaneProps): ReactElement {
@@ -89,7 +95,7 @@ export function AgentPane(props: AgentPaneProps): ReactElement {
   return (
     <section className="agent" data-agent="pane" data-agent-lineage={shown.lineageId}>
       <RunView {...props} shown={shown} />
-      <Attempts stories={stories} shown={shown} onOpen={setOpened} />
+      <Attempts stories={stories} shown={shown} onOpen={setOpened} onStart={props.onStartAttempt} />
     </section>
   );
 }
@@ -133,6 +139,9 @@ function RunView(props: AgentPaneProps & { readonly shown: RunStory }): ReactEle
           onDecide={props.onDecide}
         />
         <Evidence story={shown} versions={lineage?.versions ?? [shown.head]} />
+        {props.activity === undefined ? null : (
+          <Activity activity={props.activity} hasRun={shown.head.runId !== null} />
+        )}
       </div>
       <RunSide {...props} shown={shown} />
     </div>

@@ -16,6 +16,7 @@ const COLUMN_UPDATES: Readonly<
   Record<string, { readonly from: string; readonly columns: readonly string[] }>
 > = {
   'public.planned_runs': { from: '0086', columns: ['state'] },
+  'public.leases': { from: '20261004040200', columns: ['expires_at', 'released_at', 'state'] },
   // C41-A: an onboarding's state, stop and revision, a step's state, failures and close.
   'public.onboardings': { from: '20261003172353', columns: ['revision', 'state', 'stopped_at'] },
   'public.onboarding_steps': {

@@ -90,7 +90,8 @@
   },
   "dependencies": {
     "@hono/node-server": "2.1.1",
-    "hono": "4.13.9"
+    "hono": "4.13.9",
+    "parse5": "8.0.1"
   },
   "devDependencies": {
     "@commitlint/cli": "21.2.2",
@@ -116,7 +117,8 @@
     "react-dom": "19.3.0",
     "typescript": "7.0.2",
     "vite": "8.3.0",
-    "vitest": "5.0.0"
+    "vitest": "5.0.0",
+    "yaml": "2.9.0"
   },
   "lint-staged": {
     "*.{ts,tsx,mts,cts}": [

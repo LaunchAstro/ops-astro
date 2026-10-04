@@ -21,6 +21,7 @@ import {
   type TipPreferences,
 } from '../../packages/ui/src/index.ts';
 import { mount, type Mounted } from './mount.tsx';
+import { tipShown } from './term-tip-drawn.ts';
 
 let mounted: Mounted | undefined;
 afterEach(async () => {
@@ -145,7 +146,10 @@ describe('MP-9-1 KPI tiles with delta, term tips and of-tracks', () => {
     expect(tip?.getAttribute('role')).toBe('tooltip');
     expect(tip?.textContent).toBe('Tracked time on tasks you can see.');
     expect(term?.getAttribute('title')).toBeNull();
-  });
+    // Drawn: the same markup in Chromium, under the package's sheets.
+    const drawn = await tipShown(mounted.host.innerHTML);
+    expect(drawn).toEqual({ rest: false, hover: true, left: false, keyboard: true, focus: true });
+  }, 30_000);
 });
 
 describe('MP-9-1 KPI tiles with delta, term tips and of-tracks: the track', () => {
@@ -175,6 +179,22 @@ describe('MP-9-1 KPI tiles with delta, term tips and of-tracks: the track', () =
   });
 });
 
+// A stylesheet as it ships, its comments dropped.
+const sheet = (name: string): string =>
+  readFileSync(join(process.cwd(), 'packages/ui/src/styles', name), 'utf8').replaceAll(
+    /\/\*[\s\S]*?\*\//gu,
+    '',
+  );
+// Every block at that width, the sheet's order kept.
+const at = (css: string, width: number): string =>
+  [
+    ...css.matchAll(
+      new RegExp(`@media \\((?:max-width: |width <= )${width}px\\) \\{([\\s\\S]*?)\\n\\}`, 'gu'),
+    ),
+  ]
+    .map((block) => block[1] ?? '')
+    .join('\n');
+
 describe('MP-9-1 stat row columns: stat rows follow the column rules at 1279, 900 and 640', () => {
   it('declares the columns as a prop and narrows at each width', async () => {
     mounted = await mount(
@@ -185,19 +205,16 @@ describe('MP-9-1 stat row columns: stat rows follow the column rules at 1279, 90
       </StatRow>,
     );
     expect(mounted.find('.statrow')?.className).toBe('statrow statrow--5');
-    const css = readFileSync(
-      join(process.cwd(), 'packages/ui/src/styles/7-page-kit.css'),
-      'utf8',
-    ).replaceAll(/\/\*[\s\S]*?\*\//gu, '');
-    const rule = (width: number): string =>
-      css.match(
-        new RegExp(`@media \\((?:max-width: |width <= )${width}px\\) \\{([\\s\\S]*?)\\n\\}`, 'u'),
-      )?.[1] ?? '';
+    expect(mounted.find('.stat')?.className).toBe('stat stat--row');
+    const rule = (width: number): string => at(sheet('7-page-kit.css'), width);
     expect(rule(1279)).toMatch(/\.statrow--[456][^{]*\{[^}]*repeat\(3, minmax\(0, 1fr\)\)/u);
     expect(rule(900)).toMatch(/\.statrow[^{]*\{[^}]*repeat\(2, minmax\(0, 1fr\)\)/u);
     expect(rule(640)).toMatch(/\.statrow[^{]*\{[^}]*grid-template-columns: minmax\(0, 1fr\)/u);
-    // The figure steps down to the declared narrow figure style (MP-1-4's scale).
-    expect(rule(640)).toMatch(/\.stat__num[^{]*\{[^}]*font: var\(--type-num-md\)/u);
+    // The row's tile steps its figure down to the declared narrow figure style
+    // (MP-1-4's scale); the kit's own row variant holds that step.
+    expect(at(sheet('2-primitives.css'), 640)).toMatch(
+      /\.stat--row \.stat__num[^{]*\{[^}]*font: var\(--type-num-md\)/u,
+    );
   });
 });
 

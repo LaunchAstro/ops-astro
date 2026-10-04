@@ -12,6 +12,7 @@ import { applied, refused, type HandlerOutcome, type Refused } from './outcome.t
 import { EXPIRY_FIX, expiryFrom } from './expiry.ts';
 import { invalid, isFieldMap } from './operands.ts';
 import { readBusinessCapId, readProjectedPlan } from '../../../core-runtime/src/index.ts';
+import type { ProjectedPlan } from '../../../core-runtime/src/index.ts';
 
 export interface ProposeFields {
   readonly purpose: string;
@@ -58,17 +59,12 @@ const PLAN_STEP_FIXES: readonly string[] = [
 ];
 
 /**
- * Whether `step` may be proposed on `taskId`: no plan step named, or one the
- * task's bound plan has (`readProjectedPlan`, the record the graph projects),
- * read under the task lock the caller holds.
+ * Whether `step` may be proposed under `plan`, the task's bound plan read under
+ * the task lock the caller holds (`readProjectedPlan`, the record the graph
+ * projects): no plan step named, or one the plan has.
  */
-async function planStepRefusal(
-  tx: TenantQuery,
-  taskId: string,
-  step: ProposedStep,
-): Promise<Refused | undefined> {
+function planStepRefusal(plan: ProjectedPlan | null, step: ProposedStep): Refused | undefined {
   if (step.planStep === undefined) return undefined;
-  const plan = await readProjectedPlan(tx, taskId);
   if (plan?.steps.some((each) => each.key === step.planStep) === true) return undefined;
   return refused(refuseCommand('FIELD_VALUE_INVALID', ['step'], PLAN_STEP_FIXES), {
     step: { planStep: step.planStep },
@@ -233,9 +229,13 @@ export async function proposeFor(
       refuseCommand('VERSION_STALE', [`revision=${current.revision}`], REVISION_FIXES),
     );
   }
-  const unplanned = await planStepRefusal(tx, target.id, proposal.step);
+  // The plan the step key is checked against is the one stored with the step
+  // (MP-6-2, 20261003001115), so the log places the run in it whatever binds later.
+  const plan = await readProjectedPlan(tx, target.id);
+  const unplanned = planStepRefusal(plan, proposal.step);
   if (unplanned !== undefined) return unplanned;
-  const result = await proposeUnderLocks(tx, proposal, held);
+  const planRecordId = plan?.planRecordId ?? null;
+  const result = await proposeUnderLocks(tx, { ...proposal, planRecordId }, held);
   if (!result.ok) return refused(result.refusal);
   await raiseDecision(tx, { taskId: target.id, gateId: result.value.gateId });
 

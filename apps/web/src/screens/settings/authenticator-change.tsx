@@ -28,12 +28,13 @@ export function useCheck(onDone: () => void) {
   const [checking, setChecking] = useState(false);
   const [because, setBecause] = useState<string | null>(null);
   const alive = useRef(true);
-  useEffect(
-    () => () => {
+  // Set on every run, so StrictMode's replay (cleanup, then the effect again) leaves it true.
+  useEffect(() => {
+    alive.current = true;
+    return () => {
       alive.current = false;
-    },
-    [],
-  );
+    };
+  }, []);
   const check = (attempt: () => Promise<Checked>): void => {
     setChecking(true);
     setBecause(null);

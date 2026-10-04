@@ -345,6 +345,8 @@ function byBearer(): {
     // The frame's reads (C23's name, MP-2-11's appearance) answer on either cookie.
     const framed = frame(at);
     if (framed !== undefined) return framed;
+    // A live join is answered as a read is on either cookie: the stream opens (C4).
+    if (at.includes('/live?')) return Promise.resolve(new Response(new ReadableStream()));
     if (at.endsWith('/task/read')) return Promise.resolve(json({ ok: true, task: TASK }));
     if (at.endsWith('/person/list')) {
       // The old token's people read never comes back on its own. The test

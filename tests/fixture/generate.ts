@@ -161,18 +161,18 @@ async function withPlannedSteps(
     'create table public.fixture_steps (task_id uuid primary key, extra int not null)',
     'grant select on public.fixture_steps to ops_astro_app',
     `create function public.fixture_steps() returns trigger language plpgsql as $$ begin
-       if new.ordinal = 1 then
-         insert into public.planned_steps (business_id, id, run_id, ordinal, kind, payload)
-         select new.business_id, gen_random_uuid(), new.run_id, 1 + g, 'compose', '{}'::jsonb
-           from public.planned_runs r join public.fixture_steps x on x.task_id = r.task_id
-          cross join generate_series(1, x.extra) g
-          where r.business_id = new.business_id and r.id = new.run_id;
-       end if;
+       insert into public.planned_steps (business_id, id, run_id, ordinal, kind, payload,
+                                         plan_record_id, plan_record_written)
+       select new.business_id, gen_random_uuid(), new.run_id, 1 + g, 'compose', '{}'::jsonb,
+              new.plan_record_id, true
+         from public.planned_runs r join public.fixture_steps x on x.task_id = r.task_id
+        cross join generate_series(1, x.extra) g
+        where r.business_id = new.business_id and r.id = new.run_id;
        return new;
      end $$`,
     'grant execute on function public.fixture_steps() to ops_astro_app',
     `create trigger fixture_steps after insert on public.planned_steps
-       for each row execute function public.fixture_steps()`,
+       for each row when (new.ordinal = 1) execute function public.fixture_steps()`,
   ]) {
     await db.admin.execute(statement);
   }
