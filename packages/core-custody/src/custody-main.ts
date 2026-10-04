@@ -170,7 +170,7 @@ function redact(text: string, credential: StoredCredential): string {
   const secrets = credential.scheme === 'basic' ? [value, value.split(':')[1] ?? value] : [value];
   const inside = (decoded: unknown): unknown => {
     if (typeof decoded === 'string') return redactText(decoded, secrets);
-    if (Array.isArray(decoded)) return decoded.map(inside);
+    if (Array.isArray(decoded)) return decoded.map((item) => inside(item));
     if (typeof decoded === 'object' && decoded !== null) {
       return Object.fromEntries(
         Object.entries(decoded).map(([key, field]) => [redactText(key, secrets), inside(field)]),

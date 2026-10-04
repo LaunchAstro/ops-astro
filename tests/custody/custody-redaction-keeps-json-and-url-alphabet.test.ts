@@ -10,6 +10,49 @@ import { startCustody } from '../../packages/core-custody/src/custody.ts';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 
+/** The synthetic key's credentials file in `folder`. */
+function writeCredentials(folder: string, key: string): string {
+  const credentialsFile = join(folder, 'credentials.json');
+  writeFileSync(
+    credentialsFile,
+    JSON.stringify([
+      {
+        ref: 'synthetic_key',
+        kind: 'api_key',
+        account: 'synthetic-account',
+        destination: 'synthetic',
+        header: 'authorization',
+        value: key,
+      },
+    ]),
+    { mode: 0o600 },
+  );
+  return credentialsFile;
+}
+
+/** Custody and the escaped-credential suite copied into `folder`, the URL alphabet branch removed. */
+function copyWithoutUrlAlphabet(folder: string): string {
+  cpSync(join(ROOT, 'packages/core-custody'), join(folder, 'packages/core-custody'), {
+    recursive: true,
+  });
+  const testFile = 'tests/custody/custody-redacts-escaped-credential.test.ts';
+  cpSync(join(ROOT, testFile), join(folder, testFile));
+  symlinkSync(join(ROOT, 'node_modules'), join(folder, 'node_modules'), 'dir');
+  const product = join(folder, 'packages/core-custody/src/custody-main.ts');
+  const source = readFileSync(product, 'utf8');
+  const branch = "return [stable, stable.replaceAll('+', '-').replaceAll('/', '_')];";
+  expect(source.includes(branch), 'negative control must remove the URL alphabet branch').toBe(
+    true,
+  );
+  writeFileSync(product, source.replace(branch, 'return [stable];'));
+  writeFileSync(join(folder, 'package.json'), '{"type":"module"}');
+  writeFileSync(
+    join(folder, 'vitest.config.mts'),
+    'export default { test: { include: ["tests/**/*.test.ts"], maxWorkers: 1 } };',
+  );
+  return testFile;
+}
+
 it('mixed percent matching preserves JSON delimiters outside string values', async () => {
   // Synthetic credential only. The provider's text contains no whole credential.
   const key = 'canary",';
@@ -22,24 +65,12 @@ it('mixed percent matching preserves JSON delimiters outside string values', asy
   });
   let custody: Awaited<ReturnType<typeof startCustody>> | undefined;
   try {
-    await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+    await new Promise<void>((done) => {
+      server.listen(0, '127.0.0.1', done);
+    });
     const address = server.address();
     if (address === null || typeof address === 'string') throw new Error('no port');
-    const credentialsFile = join(folder, 'credentials.json');
-    writeFileSync(
-      credentialsFile,
-      JSON.stringify([
-        {
-          ref: 'synthetic_key',
-          kind: 'api_key',
-          account: 'synthetic-account',
-          destination: 'synthetic',
-          header: 'authorization',
-          value: key,
-        },
-      ]),
-      { mode: 0o600 },
-    );
+    const credentialsFile = writeCredentials(folder, key);
     custody = await startCustody({
       credentialsFile,
       destinations: [{ key: 'synthetic', origin: `http://127.0.0.1:${String(address.port)}` }],
@@ -65,7 +96,9 @@ it('mixed percent matching preserves JSON delimiters outside string values', asy
   } finally {
     await custody?.stop();
     server.closeAllConnections();
-    await new Promise<void>((done) => server.close(() => done()));
+    await new Promise<void>((done) => {
+      server.close(() => done());
+    });
     rmSync(folder, { recursive: true, force: true });
   }
 });
@@ -75,24 +108,7 @@ it('the named base64url cases reject removal of URL alphabet support', () => {
   // No tracked product file is changed. Standard base64 remains supported.
   const folder = mkdtempSync(join(tmpdir(), 'sol-750-url-mutation-'));
   try {
-    cpSync(join(ROOT, 'packages/core-custody'), join(folder, 'packages/core-custody'), {
-      recursive: true,
-    });
-    const testFile = 'tests/custody/custody-redacts-escaped-credential.test.ts';
-    cpSync(join(ROOT, testFile), join(folder, testFile));
-    symlinkSync(join(ROOT, 'node_modules'), join(folder, 'node_modules'), 'dir');
-    const product = join(folder, 'packages/core-custody/src/custody-main.ts');
-    const source = readFileSync(product, 'utf8');
-    const branch = "return [stable, stable.replaceAll('+', '-').replaceAll('/', '_')];";
-    expect(source.includes(branch), 'negative control must remove the URL alphabet branch').toBe(
-      true,
-    );
-    writeFileSync(product, source.replace(branch, 'return [stable];'));
-    writeFileSync(join(folder, 'package.json'), '{"type":"module"}');
-    writeFileSync(
-      join(folder, 'vitest.config.mts'),
-      'export default { test: { include: ["tests/**/*.test.ts"], maxWorkers: 1 } };',
-    );
+    const testFile = copyWithoutUrlAlphabet(folder);
     const require = createRequire(import.meta.url);
     const cli = join(dirname(require.resolve('vitest/package.json')), 'vitest.mjs');
     const run = spawnSync(
