@@ -10,8 +10,8 @@
 -- The column is that first sign-in time, written beside `session_id` and only
 -- when a session is named, so the list can drop a session past its limit.
 -- Nullable: refused attempts, tokens naming no session, and every row written
--- before this migration carry none, and the list falls back to the session's
--- earliest attempt for those. No row is rewritten; no policy or grant changes
--- (the role keeps insert and select only).
+-- before this migration carry none; the list reads those by their attempts
+-- as before, and the door refuses their expired sessions. No row is
+-- rewritten; no policy or grant changes (the role keeps insert and select).
 
 alter table public.authentication_attempts add column signed_in_at timestamptz;

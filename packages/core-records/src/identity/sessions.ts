@@ -8,8 +8,9 @@
 // resolved attempts inside the absolute limit, less the ones already ended.
 // The limit runs from the session's first sign-in, not its latest call, so a
 // session the door now refuses as expired is not listed however recently it
-// was served (#771); rows written before that time was kept fall back to the
-// session's earliest attempt.
+// was served (#771). A row written before that time was kept carries none and
+// is listed by its attempts, as before; such rows are at most 12 hours old at
+// the upgrade, and the door refuses their expired sessions meanwhile.
 // Every statement names the business and the person, so a person reads and
 // ends their own sessions and nobody else's.
 

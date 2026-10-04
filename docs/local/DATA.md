@@ -724,6 +724,9 @@ deletes a row. Tenancy-keyed with the restrictive policy. The partial index
 `authentication_attempts.session_id` is the provider session a resolved
 attempt came in on (null on a refusal, and for a token that names none); a
 person's session list reads it through `authentication_attempts_person_sessions`.
+`authentication_attempts.signed_in_at` (20261004133405) is that session's
+first sign-in, written beside `session_id`; the list leaves out a session whose
+first sign-in is past the 12-hour limit (null on rows written before it).
 `ended_sessions` holds one row per session a person ended: signed out
 (`sign_out`), ended from another session (`end_others`) or by a second-factor
 change (`factor_change`). Unique on business, person and session. The

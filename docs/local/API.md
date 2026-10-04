@@ -2849,8 +2849,9 @@ route below.
 A person's own sessions have three more routes beside these, on the person
 prefix only, each with the body `{}` (anything else is `COMMAND_BODY_INVALID`
 400). The list is the distinct sessions this business has served the person
-in the last 12 hours, less the ended ones (GoTrue gives a person no list of
-their own); nobody else's is ever read.
+in the last 12 hours whose first sign-in is inside the 12-hour limit, less the
+ended ones (GoTrue gives a person no list of their own); nobody else's is ever
+read.
 
 | Route                          | Answer                                                                                      | Served at                        | Audit event                   |
 | ------------------------------ | ------------------------------------------------------------------------------------------- | -------------------------------- | ----------------------------- |

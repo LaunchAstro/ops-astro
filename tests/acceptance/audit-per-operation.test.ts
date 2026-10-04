@@ -606,8 +606,9 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
           login_id: null,
           actor_id: null,
           person_id: null,
-          // C58: a refused attempt names no session.
+          // C58: a refused attempt names no session, so no first sign-in either.
           session_id: null,
+          signed_in_at: null,
         },
       ]);
     }
