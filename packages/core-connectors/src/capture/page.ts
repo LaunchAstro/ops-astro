@@ -28,8 +28,7 @@ import {
 } from './fence.ts';
 
 export type CaptureOptions = Omit<FetchOptions, 'kind' | 'page'>;
-const digest = (text: string) =>
-  `sha256:${createHash('sha256').update(text, 'utf8').digest('hex')}`;
+const digest = (text: string) => `sha256:${createHash('sha256').update(text).digest('hex')}`;
 
 // parse5, the HTML standard's tree builder, reads the page as a browser does. Costs that outgrow a
 // hostile page are refused as oversized past: MAX_ATTRIBUTES on a tag, or on an <html> or <body>
@@ -130,7 +129,7 @@ if (!held || probes.some((probe) => parsed(probe) !== undefined))
   throw new Error('parse5 no longer holds the capture bounds');
 
 /** Reads the tree in document order with a stack of its own, so no depth can overflow the call stack. */
-function readDocument(html: string): Reading | FenceCode {
+export function readDocument(html: string): Reading | FenceCode {
   const document = parsed(html);
   if (document === undefined) return 'CAPTURE_OVERSIZED';
   const [text, links, styles]: [string[], string[], string[]] = [[], [], []];
@@ -217,7 +216,7 @@ function cssToken(css: string, at: number): CssToken {
 }
 
 /** Every address the sheet's `@import` rules name; undefined for one CSS cannot read. */
-function importsOf(source: string): (string | undefined)[] {
+export function importsOf(source: string): (string | undefined)[] {
   const css = source.replaceAll(/\r\n?|\f/gu, '\n').replaceAll('\0', '\uFFFD');
   const next = (from: number): CssToken => {
     let token = cssToken(css, from);
@@ -239,27 +238,29 @@ function importsOf(source: string): (string | undefined)[] {
 
 /** Rounds of `@import` followed past the sheets the page names; one more is refused as oversized. */
 const IMPORT_DEPTH = 3;
-const resolved = (href: string | undefined, from: string): string | undefined =>
+export const resolved = (href: string | undefined, from: string): string | undefined =>
   href !== undefined && URL.canParse(href, from) ? new URL(href, from).href : undefined;
 /** The encoding a sheet declares as CSS reads it: a `@charset` rule at its very start. */
 const declared = (css: string): string => /^@charset "([^"]*)";/u.exec(css)?.[1] ?? 'utf-8';
+/** The sheets the page names: linked, or imported by its inline styles, from its base. */
+export function named(document: Reading, at: string): (string | undefined)[] {
+  const hrefs = [...document.links, ...document.styles.flatMap(importsOf)];
+  return hrefs.map((href) => resolved(href, resolved(document.base, at) ?? at));
+}
 /** The digest of every sheet the page serves: inline, linked, and imported by either. */
 async function readSheets(
   url: string,
-  base: string,
-  document: { readonly links: readonly string[]; readonly styles: readonly string[] },
+  at: string,
+  document: Reading,
   options: CaptureOptions,
 ): Promise<Fenced<Record<string, string>>> {
   const stylesheets: Record<string, string> = {};
   for (const [index, css] of document.styles.entries())
     stylesheets[`inline:${index}`] = digest(css);
-  const seen = new Set<string>();
-  const run = limiter(SHEETS_AT_ONCE);
+  const [seen, run] = [new Set<string>(), limiter(SHEETS_AT_ONCE)];
   const fetchSheet = (href: string) =>
     run(() => fencedFetch(href, { ...options, kind: 'stylesheet', page: url }));
-  let wanted = [...document.links, ...document.styles.flatMap(importsOf)].map((href) =>
-    resolved(href, base),
-  );
+  let wanted = named(document, at);
   for (let depth = 0; wanted.length > 0; depth += 1) {
     if (wanted.includes(undefined)) return { ok: false, code: 'CAPTURE_BODY_MALFORMED' };
     const fresh = [...new Set(wanted as string[])].filter((href) => !seen.has(href));
@@ -289,8 +290,7 @@ export async function capturePage(
   const html = page.value.body;
   const document = readDocument(html);
   if (typeof document === 'string') return { ok: false, code: document };
-  const base = resolved(document.base, page.value.url) ?? page.value.url;
-  const sheets = await readSheets(url, base, document, options);
+  const sheets = await readSheets(url, page.value.url, document, options);
   if (!sheets.ok) return sheets;
   const sorted = Object.fromEntries(
     Object.entries(sheets.value).toSorted(([left], [right]) => (left < right ? -1 : 1)),
