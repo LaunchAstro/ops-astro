@@ -18,7 +18,16 @@ import {
   type Slice,
 } from './chart-numbers.ts';
 
-/** Each slice's ring segment, from the top clockwise, with the tip at its outer middle. */
+/** A whole circle about (c, c) from its top, clockwise (1) or back (0), in two half turns. */
+function circleOf(c: number, radius: number, clockwise: 0 | 1): string {
+  const arc = `A${trim(radius, 2)},${trim(radius, 2)} 0 1 ${String(clockwise)}`;
+  return `M${trim(c, 2)},${trim(c - radius, 2)} ${arc} ${trim(c, 2)},${trim(c + radius, 2)} ${arc} ${trim(c, 2)},${trim(c - radius, 2)} Z`;
+}
+
+/**
+ * Each slice's ring segment, from the top clockwise, with the tip at its outer middle. A slice
+ * that is the whole is the full ring, outer circle forward and inner back, so the hole stays open.
+ */
 function arcsOf(
   slices: readonly Slice[],
   r: number,
@@ -36,7 +45,8 @@ function arcsOf(
     const [x2, y2] = polar(r, r, inner, to);
     const [x3, y3] = polar(r, r, inner, from);
     const [mx, my] = polar(r, r, r, (from + to) / 2);
-    const d = `M${trim(x0, 2)},${trim(y0, 2)} A${trim(r, 2)},${trim(r, 2)} 0 ${String(big)} 1 ${trim(x1, 2)},${trim(y1, 2)} L${trim(x2, 2)},${trim(y2, 2)} A${trim(inner, 2)},${trim(inner, 2)} 0 ${String(big)} 0 ${trim(x3, 2)},${trim(y3, 2)} Z`;
+    const segment = `M${trim(x0, 2)},${trim(y0, 2)} A${trim(r, 2)},${trim(r, 2)} 0 ${String(big)} 1 ${trim(x1, 2)},${trim(y1, 2)} L${trim(x2, 2)},${trim(y2, 2)} A${trim(inner, 2)},${trim(inner, 2)} 0 ${String(big)} 0 ${trim(x3, 2)},${trim(y3, 2)} Z`;
+    const d = sweep >= Math.PI * 2 ? `${circleOf(r, r, 1)} ${circleOf(r, inner, 0)}` : segment;
     from = to;
     const rows: Tip['rows'] = [
       ['Value', formatValue(slice.value, unit)],
