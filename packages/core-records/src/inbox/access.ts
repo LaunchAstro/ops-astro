@@ -34,7 +34,7 @@ export const IS_CONVERSATION = `exists (select 1 from public.record_types ct
  * membership) holding a live `chat:comment` across the business, walked from
  * `EFFECTIVE` in the statement that asks it.
  */
-const chatsNow = (person: string): string => `(exists (select 1 from public.memberships ms
+export const chatsNow = (person: string): string => `(exists (select 1 from public.memberships ms
      where ms.business_id = r.business_id and ms.person_id = ${person} and ms.active
        and ms.role_key in ('owner', 'admin', 'member'))
    and exists (${EFFECTIVE}

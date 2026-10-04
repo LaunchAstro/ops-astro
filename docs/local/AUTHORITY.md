@@ -620,8 +620,9 @@ hold it.
 Membership is the filter here too. A tab follows `conversation:<id>` on its
 one live stream only while it is staff holding `chat:comment` and a current
 member, asked at the join and again before every delivery
-(`reads/live-chat.ts`); the board stream says a conversation moved only to its
-current members. A mention in a message is refused `MENTION_NOT_READABLE`
+(`reads/live-chat.ts`), membership and `chat:comment` in one statement, so a
+revocation committed mid-admission admits nothing; the board stream says a
+conversation moved only to its current members who may chat. A mention in a message is refused `MENTION_NOT_READABLE`
 unless the person named is a current member who may chat (staff holding
 `chat:comment`, as `chat.messages` asks), and its inbox item is held by such
 members alone: a member who leaves or is removed, loses `chat:comment` or whose

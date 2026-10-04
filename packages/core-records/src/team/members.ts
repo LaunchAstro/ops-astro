@@ -8,13 +8,14 @@
 
 import type { TenantQuery } from '../tenancy/database.ts';
 import { isUuid } from '../tenancy/ids.ts';
-import { inConversation } from '../inbox/access.ts';
+import { chatsNow, inConversation } from '../inbox/access.ts';
 import type { Mentioned } from '../inbox/mentions.ts';
 
 /**
- * Which of these live conversations `personId` is a current member of: joined
- * and not left. Another person's, another business's and a fabricated id are
- * all simply not in the answer.
+ * Which of these live conversations `personId` is a current member of (joined
+ * and not left) who may chat now (`chatsNow`), both asked in one statement so a
+ * revocation committed before it admits nothing. Another person's, another
+ * business's and a fabricated id are all simply not in the answer.
  */
 export async function currentConversations(
   tx: TenantQuery,
@@ -31,7 +32,7 @@ export async function currentConversations(
        join public.record_types t on t.business_id = r.business_id and t.id = r.record_type_id
         and t.key = 'team_conversation'
       where m.business_id = $1 and m.conversation_id = any($2::uuid[]) and m.person_id = $3
-        and m.left_at is null`,
+        and m.left_at is null and ${chatsNow('m.person_id')}`,
     [tx.businessId, ids, personId],
   );
   return new Set(rows.map((row) => row.id));

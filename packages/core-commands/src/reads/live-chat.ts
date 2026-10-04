@@ -10,7 +10,7 @@
 // channel shows no content (C4 live-sync 6).
 
 import {
-  checkAuthority,
+  askedFor,
   currentConversations,
   subjectsOf,
   withSession,
@@ -30,21 +30,20 @@ import {
   type CommandRefusal,
 } from '../commands/refusal.ts';
 import type { AdmissionAt } from './execute.ts';
-import { isInternalReader } from './tasks.ts';
 
-/** The conversations of these the session's person may hear now. */
+/**
+ * The conversations of these the session's person may hear now: staff, a
+ * current member and holding `chat:comment`, all asked in the one membership
+ * statement; none to an agent key (API-2) that does not tick `chat:comment`.
+ */
 async function heard(
   tx: TenantQuery,
   session: Session,
   conversationIds: readonly string[],
 ): Promise<ReadonlySet<string>> {
-  if (!isInternalReader(session.roleKey)) return new Set();
-  const granted = await checkAuthority(tx, subjectsOf(session), {
-    collection: 'chat',
-    action: 'comment',
-    scope: { kind: 'business', id: null },
-  });
-  if (!granted.ok) return new Set();
+  if (askedFor(subjectsOf(session), { collection: 'chat', action: 'comment' }).length === 0) {
+    return new Set();
+  }
   return await currentConversations(tx, conversationIds, session.personId);
 }
 
