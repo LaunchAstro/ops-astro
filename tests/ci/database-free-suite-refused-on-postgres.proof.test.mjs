@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-//
+/* oxlint-disable require-unicode-regexp -- Sol's proof, kept as written */
 // Rule 7 of scripts/db-conformance.mjs on a server whose configured database
 // is `postgres`, where every template builder takes its lock: the migrated
 // template's setup must not count as a named suite's database work. It needs
