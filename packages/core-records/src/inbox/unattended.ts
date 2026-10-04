@@ -30,6 +30,7 @@
 import { standsOnShares } from '../identity/login-resolution.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
 import { holdsAcrossBusiness, holdsOnTask, REACH } from './access.ts';
+import { CLIENT_SAFE } from './read.ts';
 import type { InboxFactKind, InboxReason } from './items.ts';
 
 export interface UnattendedItem {
@@ -57,6 +58,7 @@ type OpenRow = UnattendedItem & {
  * The viewer's read scopes, walked in the same statement (`REACH`), filter it,
  * so no row of a task they cannot read (another client's) is ever returned to
  * this read: that is the client separation, and the business's is the tenancy every query runs under.
+ * A viewer shown the client view is returned no map or map ticket (WF-1), as their `task.read`.
  */
 export async function readUnattended(
   tx: TenantQuery,
@@ -88,6 +90,7 @@ export async function readUnattended(
       where i.business_id = $1 and i.work_state = 'open'
         and ((select business from reach) or r.id = any((select records from reach)::uuid[])
              or r.uuid_7 = any((select parties from reach)::uuid[]))
+        and ${CLIENT_SAFE}
       order by i.raised_at, i.id`,
     [tx.businessId, viewerPersonId],
   );

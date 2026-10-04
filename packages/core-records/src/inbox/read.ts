@@ -36,8 +36,11 @@ type ItemRow = InboxItemAxes &
     readonly alertAt: Date | null;
   };
 
-/** A recipient shown the client view reads no map or map ticket (WF-1), as `taskAccess`. */
-const CLIENT_SAFE = `((select internal from reach) or not ${wayfinderCondition('r')})`;
+/**
+ * A reader shown the client view reads no map or map ticket (WF-1), as
+ * `taskAccess`: on the row `r`, for the person `reach` was walked for.
+ */
+export const CLIENT_SAFE: string = `((select internal from reach) or not ${wayfinderCondition('r')})`;
 
 /**
  * A ticket of a map the recipient reads (W12): a map grant covers its tickets,
