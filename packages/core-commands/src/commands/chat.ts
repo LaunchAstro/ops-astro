@@ -14,10 +14,10 @@
 //
 // **Authority is read again after the last lock wait.** The door admitted the
 // caller before the pair and conversation locks, and a wait there can outlast
-// a revocation. So both writes take the business's access lock after their
-// conversation locks and read the sender's or reader's membership, the grant
-// and the recipient's staff membership again under it. A grant revocation or
-// an ended access takes that lock first (`lockAccess`), so it either committed
+// a revocation. So both writes take the business's access lock, shared, after
+// their conversation locks and read the sender's or reader's membership, the
+// grant and the recipient's staff membership again under it. A revocation or
+// an ended access takes it exclusively first (`lockAccess`), so it committed
 // before this read, which then refuses with the door's own code, or waits for
 // this write to commit. Lock order: pair, conversation, access; nothing that
 // holds the access lock takes a conversation's. A conversation the send has
@@ -32,11 +32,11 @@ import {
   checkAuthority,
   directConversation,
   isStaff,
-  lockAccess,
   lockConversation,
   moveReadMarker,
   NO_MEMBERSHIP_FIXES,
   readConversationTypes,
+  shareAccessLock,
   subjectsOf,
   writeComment,
   type TenantQuery,
@@ -106,19 +106,21 @@ export async function markOwnRead(
   if (at === undefined || Number.isNaN(at.getTime())) {
     return refused(refuseCommand('FIELD_VALUE_INVALID', ['upTo'], UP_TO_FIXES));
   }
-  await lockConversation(tx, conversationId);
+  // The key in the form a send takes it: one conversation, one lock.
+  const key = conversationId.toLowerCase();
+  await lockConversation(tx, key);
   const lost = await standsNow(tx, context, null);
   if (lost !== undefined) return refused(lost);
-  return (await moveReadMarker(tx, conversationId, context.session.personId, at))
+  return (await moveReadMarker(tx, key, context.session.personId, at))
     ? applied(null, null, { conversationId })
     : refused(refuseNotFound());
 }
 
 /**
- * The caller's standing read again under the access lock, after every lock
- * wait the write takes: membership first, as the door asks it, then the
- * declaration's grant (none for the reader's own marker), then the recipient
- * is still staff. Nothing, or the refusal the next call would get.
+ * The caller's standing read again under the access lock (shared), after
+ * every lock wait the write takes: membership first, as the door asks it,
+ * then the declaration's grant (none for the reader's own marker), then the
+ * recipient is still staff. Nothing, or the refusal the next call would get.
  */
 async function standsNow(
   tx: TenantQuery,
@@ -126,7 +128,7 @@ async function standsNow(
   recipientId: string | null,
 ): Promise<CommandRefusal | undefined> {
   const { session, declaration } = context;
-  await lockAccess(tx);
+  await shareAccessLock(tx);
   if (!(await isStaff(tx, session.personId))) {
     return refuseCommand('AUTH_NO_MEMBERSHIP', [], NO_MEMBERSHIP_FIXES);
   }

@@ -34,6 +34,17 @@ export async function lockAccess(tx: TenantQuery): Promise<void> {
 }
 
 /**
+ * The same lock shared, for a write that only needs no change to who may do
+ * what to commit under it (team chat, C71-D): such writes do not queue behind
+ * each other, and every holder of `lockAccess` waits for them, and they for it.
+ */
+export async function shareAccessLock(tx: TenantQuery): Promise<void> {
+  await tx.query('select pg_advisory_xact_lock_shared(hashtextextended($1, 0))', [
+    `access:${tx.businessId}`,
+  ]);
+}
+
+/**
  * Give a person a grant, or answer the live root grant they already hold of
  * exactly that key and scope. A person or client not of this business is
  * `NOT_FOUND`, the same answer as a made-up id.
