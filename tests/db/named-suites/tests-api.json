@@ -1,4 +1,7 @@
 {
+  "comment": [
+    "SOLOW-G G1 names cancelled-unknown-hold-story (Sol OW-108.2: a cancellation never overrides an unresolved unknown hold in the run story, through the real task read)."
+  ],
   "invariant": [
     "tests/api/agent-bare-handback-replay.test.ts",
     "tests/api/agent-read-targets.test.ts",
@@ -51,6 +54,8 @@
     "tests/api/envelope-faults.test.ts",
     "tests/api/expiry-bound.test.ts",
     "tests/api/function-entry.test.ts",
+    "tests/api/function-outbox-before-response.test.ts",
+    "tests/api/function-outbox-waits-for-own-events.test.ts",
     "tests/api/history-trail-preference.test.ts",
     "tests/api/id-operand-shape.test.ts",
     "tests/api/inb1f-live-board.test.ts",
@@ -59,6 +64,10 @@
     "tests/api/live-board-client-move-review.test.ts",
     "tests/api/live-board-lost-access.test.ts",
     "tests/api/live-board-scoped-revocation-review.test.ts",
+    "tests/api/live-presence-remap-and-back-keeps-no-revoked-reader.test.ts",
+    "tests/api/live-presence-remap-drops-previous-person.test.ts",
+    "tests/api/live-presence-remap-refused-person-gets-no-notification.test.ts",
+    "tests/api/live-presence-remap-seats-no-one-on-unreadable-task.test.ts",
     "tests/api/mp-2-11-tips.test.ts",
     "tests/api/mp-4-4-preferences.test.ts",
     "tests/api/mp-6-1-isolation.test.ts",
@@ -95,6 +104,8 @@
     "tests/api/aw-03-sweep.test.ts",
     "tests/api/c36-address.test.ts",
     "tests/api/c54-money.test.ts",
+    "tests/api/c54-recent-sign-in.test.ts",
+    "tests/api/cancelled-unknown-hold-story.test.ts",
     "tests/api/fix-2b1-rs-rollup-issued-and-revoked.test.ts",
     "tests/api/fix-2b1-rs2-left-at-door-real-routes.test.ts",
     "tests/api/hosted-expired-lease-recovery.test.ts",

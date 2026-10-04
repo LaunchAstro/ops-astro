@@ -8,8 +8,10 @@ on:
   pull_request:
     # `labeled` and `unlabeled` were added in round four for the size
     # waivers. The waivers are retired (FU-400, 29 September 2026): the size
-    # is reported, not limited, and no check reads a label. The triggers stay
-    # as they were, so no required check changes when it runs.
+    # is reported, not limited. The triggers stay as they were. One label
+    # event changes a result (CI-SPEED): adding `sent-back` cancels the run on
+    # a head sent back for fixes and fails the gate there
+    # (scripts/sent-back-hold.mjs). No other label changes any check.
     # `edited` is not here. The review-evidence check reads the pull request
     # body, so an edit must refresh that result (round five), but only that
     # one: review-evidence.yml holds that check alone and runs it on code
@@ -30,9 +32,15 @@ on:
 permissions:
   contents: read
 
+# A newer run on a pull request (a push, a label change, a reopen) cancels its
+# older run still in flight or queued; the ref is the pull request's own, so
+# one pull request never cancels another's. A merge group's run is not
+# cancelled by a newer run (CI-SPEED): it may hold several pull requests, and
+# the queue drops a group whose checks were cancelled. Each group's ref is
+# its own anyway, so this guards the rule rather than changing a run.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 jobs:
   gate:
@@ -49,6 +57,10 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
+      # CI-SPEED: the run the `sent-back` label starts fails here, so nothing
+      # after the gate runs on a head sent back for fixes (scripts/sent-back-hold.mjs).
+      - name: A pull request sent back for fixes waits for its fix head
+        run: node scripts/sent-back-hold.mjs
       - name: Required scanner runtime
         run: python3 -c "import sys; assert sys.version_info >= (3, 11), 'Python 3.11 or newer is required'"
       - name: Self-test, before anything is believed
@@ -335,6 +347,10 @@ jobs:
     # (docs/supply-chain-pins.md).
     name: database look-ahead, Postgres 18 (not required)
     needs: [gate]
+    # Pull requests only (CI-SPEED, ORCH78 LOOKAHEAD). On a merge group or a
+    # push to main nobody reads it, and it held a runner to its 90-minute
+    # timeout there while the group's required checks waited for runners.
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     services:

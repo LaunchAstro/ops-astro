@@ -52,6 +52,24 @@ export const GATE_NOTE_RULED: Ruled = [
   ...bothThemes('text-transform', 'none', 'TASK-PAGE DT-04, DS-TOK-124'),
 ];
 
+/**
+ * The task key prints as stored (MP-4-14; TASKS D-14 lists the mockup's capitals
+ * as a defect): it is drawn in DS-TOK-124 `--type-data`, case none, not the eyebrow.
+ */
+const KEY_RULED: Ruled = [
+  ...FAINT_DARK,
+  ...bothThemes('font-weight', '400', 'MP-4-14, TASKS D-14'),
+  ...bothThemes('line-height', '18.6px', 'MP-4-14, TASKS D-14'),
+  ...bothThemes('letter-spacing', 'normal', 'MP-4-14, TASKS D-14'),
+  ...bothThemes('text-transform', 'none', 'MP-4-14, TASKS D-14'),
+];
+
+/** R60: the description is sans everywhere; the mockup's dock field drew it mono. */
+export const DESCRIPTION_SANS: Ruled = [
+  ...bothThemes('font-family', 'Funnel Sans', 'R60'),
+  ...bothThemes('font-size', '14px', 'R60'),
+];
+
 /** TOKENS' type map (TICKET-PLAN R53): the drawn style snaps to the row's canonical one. */
 const snapped = (row: string, ...pairs: [string, string][]): Ruled =>
   pairs.flatMap(([prop, want]) => bothThemes(prop, want, `TOKENS type row ${row}`));
@@ -86,7 +104,7 @@ export const PAGE_PROBES: readonly LookProbe[] = [
   text(
     'task.page-key',
     { mockup: '.tpr__crumb .sbact__meta', app: '.tpr__crumb [data-crumb="key"]' },
-    FAINT_DARK,
+    KEY_RULED,
   ),
   // --type-display's line height and tracking scale with its clamped size, and
   // a ruling holds one value per theme, so the title holds the size it scales from.
@@ -140,6 +158,7 @@ export const PAGE_PROBES: readonly LookProbe[] = [
     mockup: { ...PANEL, selector: '.dpanel .tf__ta[data-sb="detail"]' },
     app: { ...APP_PANEL, selector: 'aside.dtp textarea[data-writing="description"]' },
     props: [...TYPE, 'padding-left', 'padding-top', 'border-top-color', 'background-color'],
+    ruled: [...DESCRIPTION_SANS, ...bothThemes('line-height', '21.7px', 'R60')],
   }),
   // S4, MP-4-5: the conversation's head and its selected tab.
   text(
