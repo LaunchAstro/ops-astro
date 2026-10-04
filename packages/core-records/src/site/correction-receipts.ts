@@ -90,8 +90,8 @@ type OwnedLease = { readonly task_id: string; readonly delegation_id: string | n
  * is the caller's own, and its delegation, where it has one, is not revoked,
  * settled or expired: the check `core-runtime/src/lease-ownership.ts` makes.
  * A delegated lease then stands on its person's grants (`delegatedWriteStands`),
- * share-locked before any of these (`holdPersonWrites`) for the delegation the
- * locked lease still names.
+ * share-locked after the correction and before the lease (`holdPersonWrites`)
+ * for the delegation the locked lease still names.
  */
 async function holdUnderLease(tx: TenantQuery, at: UnderLease): Promise<Held> {
   // The lease the caller holds names the one task it may reach, asked before any correction:
@@ -102,13 +102,13 @@ async function holdUnderLease(tx: TenantQuery, at: UnderLease): Promise<Held> {
     [tx.businessId, at.leaseId, at.fence, at.actorId],
   );
   if (owned === undefined) return { ok: false, code: 'LEASE_NOT_OWNED' };
+  const correction = await lockCorrectionForSystem(tx, at.correctionId, owned.task_id);
+  if (correction === undefined) return { ok: false, code: 'NOT_FOUND' };
   const person =
     owned.delegation_id === null
       ? null
       : await holdPersonWrites(tx, at.actorId, owned.delegation_id);
   if (person === undefined) return { ok: false, code: 'LEASE_NOT_OWNED' };
-  const correction = await lockCorrectionForSystem(tx, at.correctionId, owned.task_id);
-  if (correction === undefined) return { ok: false, code: 'NOT_FOUND' };
   const [lease] = await tx.query<{ readonly delegation_id: string | null }>(
     `select l.delegation_id from public.leases l
       where l.business_id = $1 and l.id = $2 and l.task_id = $3 and l.fence = $4
@@ -153,10 +153,11 @@ interface PersonHeld {
  * The live delegation, and the ids of the grants `checkDelegatedAuthority`
  * reads for it share-locked, with their parents, in id order in one statement:
  * the person's writes on its collections, at the business or its purpose record
- * (a child draws on its parent's person; both fixed at mint, 0100). Grant rows
- * come first (`core-runtime/src/locks.ts`), as `grant.revoke` takes its own: a
- * revocation that committed first is seen after the locks, a later one waits
- * for the commit, and a grant issued after this statement is not held.
+ * (a child draws on its parent's person; both fixed at mint, 0100). Taken
+ * after the correction row, as `lockCoveredCorrection` takes its grants, and
+ * before the lease and delegation (`core-runtime/src/locks.ts`): a revocation
+ * that committed first is seen after the locks, a later one waits for the
+ * commit, and a grant issued after this statement is not held.
  */
 async function holdPersonWrites(
   tx: TenantQuery,
