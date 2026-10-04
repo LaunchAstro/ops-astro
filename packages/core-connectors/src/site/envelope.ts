@@ -8,7 +8,11 @@
 // And the captures' comparison: each pair is one address served
 // successfully both times, the word moved on the live page, the rest of the
 // page did not, the served stylesheets are equal and the decoy occurrence
-// elsewhere on the site is untouched (Receipt L fields 9 to 12).
+// elsewhere on the site, on another page, is untouched (Receipt L fields 9
+// to 12).
+
+import { parse } from '@astrojs/compiler/sync';
+import type { Node } from '@astrojs/compiler/types';
 
 export interface CorrectionTarget {
   readonly path: string;
@@ -70,105 +74,46 @@ function replacedAt(before: string, after: string, target: CorrectionTarget): nu
   return matches.length === 1 ? matches[0] : undefined;
 }
 
-/**
- * The offset just past the quote that closes the string opening at `open`. A
- * template literal's `${}` is read as an expression, so its braces and quotes
- * count only there.
- */
-function quotedEnd(source: string, open: number): number {
-  const quote = source.charAt(open);
-  for (let at = open + 1; at < source.length; at += 1) {
-    const character = source.charAt(at);
-    if (character === '\\') at += 1;
-    else if (character === quote) return at + 1;
-    else if (quote === '`' && source.startsWith('${', at)) at = expressionEnd(source, at + 1) - 1;
-    else if (quote !== '`' && character === '\n') return at + 1;
-  }
-  return source.length;
-}
+/** Elements whose children are code, never body copy. */
+const CODE_ELEMENTS: ReadonlySet<string> = new Set(['script', 'style']);
+/** Directives under which an element's children are not rendered as written. */
+const UNRENDERED: ReadonlySet<string> = new Set(['is:raw', 'set:html', 'set:text']);
 
 /**
- * The offset just past the `}` that closes the expression opening at `open`,
- * read as JavaScript: a brace or quote inside a string, a template literal or
- * a comment counts for nothing. The source's length when it never closes.
+ * Whether the bytes from `start` to `end` lie wholly inside one text node of
+ * the page as Astro's own compiler reads it, under elements and components
+ * only: never the frontmatter, an expression, a comment, a script or style,
+ * or an element whose children are raw or replaced. A text node whose
+ * recorded position does not hold its own text is not trusted.
  */
-function expressionEnd(source: string, open: number): number {
-  let depth = 0;
-  let at = open;
-  while (at < source.length) {
-    const character = source.charAt(at);
-    if (source.startsWith('//', at)) {
-      const end = source.indexOf('\n', at);
-      at = end < 0 ? source.length : end;
-    } else if (source.startsWith('/*', at)) {
-      const end = source.indexOf('*/', at + 2);
-      at = end < 0 ? source.length : end + 2;
-    } else if (character === '"' || character === "'" || character === '`') {
-      at = quotedEnd(source, at);
-    } else {
-      if (character === '{') depth += 1;
-      if (character === '}') depth -= 1;
-      at += 1;
-      if (depth === 0) return at;
-    }
+function copyAt(node: Node, bytes: Uint8Array, start: number, end: number): boolean {
+  if (node.type === 'text') {
+    const from = node.position?.start.offset;
+    const to = node.position?.end?.offset;
+    if (from === undefined || to === undefined || start < from || end > to) return false;
+    return new TextDecoder().decode(bytes.subarray(from, to)) === node.value;
   }
-  return source.length;
+  if (node.type === 'root') return node.children.some((child) => copyAt(child, bytes, start, end));
+  const tag =
+    node.type === 'element' ||
+    node.type === 'component' ||
+    node.type === 'custom-element' ||
+    node.type === 'fragment';
+  if (!tag || CODE_ELEMENTS.has(node.name.toLowerCase())) return false;
+  if (node.attributes.some((attribute) => UNRENDERED.has(attribute.name))) return false;
+  return node.children.some((child) => copyAt(child, bytes, start, end));
 }
 
-/**
- * Whether `offset` is in body copy: not frontmatter, a tag, a comment, an
- * expression, a script or a style. The scan starts past the frontmatter, so
- * nothing in its code carries over into the body.
- */
-function inTextNode(source: string, offset: number): boolean {
-  let start = 0;
-  if (source.startsWith('---\n')) {
-    const close = source.indexOf('\n---', 4);
-    if (close < 0 || offset <= close + 4) return false;
-    start = close + 4;
+/** Whether the `length` characters at `offset` are body copy the built page shows. */
+function inTextNode(source: string, offset: number, length: number): boolean {
+  const encoder = new TextEncoder();
+  const start = encoder.encode(source.slice(0, offset)).length;
+  const end = start + encoder.encode(source.slice(offset, offset + length)).length;
+  try {
+    return copyAt(parse(source, { position: true }).ast, encoder.encode(source), start, end);
+  } catch {
+    return false;
   }
-  let state: 'text' | 'tag' | 'comment' | 'raw' = 'text';
-  let quote = '';
-  let rawClose = '';
-  for (let at = start; at < offset; at += 1) {
-    const rest = source.slice(at);
-    const character = source.charAt(at);
-    if (state === 'comment') {
-      if (rest.startsWith('-->')) {
-        state = 'text';
-        at += 2;
-      }
-    } else if (state === 'raw') {
-      if (rest.toLowerCase().startsWith(rawClose)) {
-        state = 'tag';
-        rawClose = '';
-      }
-    } else if (state === 'tag') {
-      if (quote !== '') {
-        if (character === quote) quote = '';
-      } else if (character === '{') {
-        const end = expressionEnd(source, at);
-        if (end > offset) return false;
-        at = end - 1;
-      } else if (character === '"' || character === "'") {
-        quote = character;
-      } else if (character === '>') {
-        state = rawClose === '' ? 'text' : 'raw';
-      }
-    } else if (rest.startsWith('<!--')) {
-      state = 'comment';
-    } else if (/^<\/?[a-z!]/iu.test(rest)) {
-      state = 'tag';
-      const raw = /^<(script|style)\b/iu.exec(rest);
-      rawClose = raw === null ? '' : `</${raw[1]?.toLowerCase() ?? ''}`;
-      if (rest.startsWith('</')) rawClose = '';
-    } else if (character === '{') {
-      const end = expressionEnd(source, at);
-      if (end > offset) return false;
-      at = end - 1;
-    }
-  }
-  return state === 'text';
 }
 
 /** Refuses anything wider than the envelope, naming why. */
@@ -191,7 +136,9 @@ export function checkEnvelope(change: ProposedChange, target: CorrectionTarget):
   const at = replacedAt(before[index] ?? '', after[index] ?? '', target);
   if (at === undefined) return exceeded('not the one word replaced in place');
   const offset = before.slice(0, index).reduce((sum, line) => sum + line.length + 1, 0) + at;
-  if (!inTextNode(file.before, offset)) return exceeded('the word is not in body copy');
+  if (!inTextNode(file.before, offset, target.word.length)) {
+    return exceeded('the word is not in body copy');
+  }
   return {
     ok: true,
     value: { path: file.path, line: index + 1, before: target.word, after: target.replacement },
@@ -259,6 +206,7 @@ export function compareCaptures(input: CaptureComparison): ComparisonResult {
   if (moved || !samePage(before, after)) failed.push('page');
   if (!sameStylesheets(before, after)) failed.push('stylesheets');
   const decoyHeld =
+    decoyBefore.url !== before.url &&
     samePage(decoyBefore, decoyAfter) &&
     wordOffsets(decoyBefore.text, target.word).length > 0 &&
     decoyAfter.text === decoyBefore.text &&

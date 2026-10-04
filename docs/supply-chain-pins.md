@@ -123,15 +123,16 @@ Every npm dependency is pinned by `pnpm-lock.yaml`. These are recorded here as
 well, because a check's behaviour depends on the exact version and a reader
 comparing this page with the lockfile should find them agreeing.
 
-| Package              | Version | Why the version matters                                                                                                                                 |
-| -------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `dependency-cruiser` | 18.4.0  | The structural dependency check. Its own TypeScript path supports `typescript >=2.0.0 <7.0.0`.                                                          |
-| `typescript`         | 7.0.2   | Ahead of that range, so dependency-cruiser cannot use the project compiler to read `.ts` sources.                                                       |
-| `@swc/core`          | 1.16.2  | The parser that closes the gap. Without it the cruise reads no TypeScript at all and still exits 0. Do not drop this pin.                               |
-| `hono`               | 4.13.9  | The API and its sign-in `verify()`. 4.13.5 is the first release fixing every 4.10.7 advisory (issue 76).                                                |
-| `@hono/node-server`  | 2.1.1   | The API's Node listener in `apps/api/server.ts`, so a runtime dependency.                                                                               |
-| `markdown-it`        | 14.3.2  | The review-evidence check's parser (issue 88). 15.x needs `argparse` 3, whose PSF-2.0 licence the licence check refuses.                                |
-| `yaml`               | 2.9.0   | The parser `tests/ci/merge-group-jobs.test.ts` reads the workflows with (CI-SPEED), so no YAML form is misread. Already in the lockfile through `vite`. |
+| Package              | Version | Why the version matters                                                                                                                                                                                                                                     |
+| -------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `dependency-cruiser` | 18.4.0  | The structural dependency check. Its own TypeScript path supports `typescript >=2.0.0 <7.0.0`.                                                                                                                                                              |
+| `typescript`         | 7.0.2   | Ahead of that range, so dependency-cruiser cannot use the project compiler to read `.ts` sources.                                                                                                                                                           |
+| `@swc/core`          | 1.16.2  | The parser that closes the gap. Without it the cruise reads no TypeScript at all and still exits 0. Do not drop this pin.                                                                                                                                   |
+| `hono`               | 4.13.9  | The API and its sign-in `verify()`. 4.13.5 is the first release fixing every 4.10.7 advisory (issue 76).                                                                                                                                                    |
+| `@hono/node-server`  | 2.1.1   | The API's Node listener in `apps/api/server.ts`, so a runtime dependency.                                                                                                                                                                                   |
+| `@astrojs/compiler`  | 4.0.0   | The change envelope's parser (`packages/core-connectors/src/site/envelope.ts`): a word is body copy only inside a text node as Astro's own compiler reads the page. A runtime dependency; its parser is a bundled WebAssembly file, with no install script. |
+| `markdown-it`        | 14.3.2  | The review-evidence check's parser (issue 88). 15.x needs `argparse` 3, whose PSF-2.0 licence the licence check refuses.                                                                                                                                    |
+| `yaml`               | 2.9.0   | The parser `tests/ci/merge-group-jobs.test.ts` reads the workflows with (CI-SPEED), so no YAML form is misread. Already in the lockfile through `vite`.                                                                                                     |
 
 **The measured behaviour, on 18.4.0, on 23 September 2026.** With `typescript`
 7.0.2 and no alternative parser installed, `depcruise` pointed at a tree of
