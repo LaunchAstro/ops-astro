@@ -51,8 +51,9 @@
 // A planning reply (AW-04, U10; `core-custody/src/broker-planning.ts`)
 // takes its business's planning cap `for update` (the `cap` class, first),
 // then the same ceiling and route keys, last.
-// The pinned read (AW-02, `definitions-read.ts`) takes one lock, its lease,
-// through `acquire`, before it writes its ledger row.
+// The pinned read (AW-02, `definitions-read.ts`) takes its lease through
+// `acquire`, then holds an agent lease's delegation row `for share` (lease
+// before delegation, as here), before it writes its ledger row.
 // Every advisory lock, the chain class included, is taken through the one
 // helper, `advisoryLock` in `core-records/src/tenancy/database.ts`.
 // `tests/runtime/cq-8-db.test.ts` records each transaction's lock statements

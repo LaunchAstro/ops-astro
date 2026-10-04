@@ -101,8 +101,8 @@ export async function readPinned(
 }
 
 /**
- * The caller's lease, taken under the runtime's lock order (class `lease`,
- * the only lock the read takes) and then read as it stands: a release or an
+ * The caller's lease, taken under the runtime's lock order (class `lease`)
+ * and then read as it stands: a release or an
  * expiry committed while the read waited on the row is seen, and judged on the
  * database clock at the moment the lock is held, so the read cannot record
  * against a lease that ended under it.
