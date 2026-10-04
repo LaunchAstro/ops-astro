@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { expect, it } from 'vitest';
 import { startCustody } from '../../packages/core-custody/src/custody.ts';
+import { readReplayAnswer } from '../../packages/core-connectors/src/replay.ts';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 
@@ -143,3 +144,64 @@ it('the named base64url cases reject removal of URL alphabet support', () => {
     rmSync(folder, { recursive: true, force: true });
   }
 }, 40_000);
+
+/** The real custody child's reply for one bounded synthetic provider answer. */
+async function returnedAnswer(answer: string, key: string): Promise<string> {
+  const folder = mkdtempSync(join(tmpdir(), 'sol-750-json-'));
+  const server = createServer((incoming, response) => {
+    incoming.resume();
+    incoming.on('end', () => response.end(answer));
+  });
+  let custody: Awaited<ReturnType<typeof startCustody>> | undefined;
+  try {
+    await new Promise<void>((done) => {
+      server.listen(0, '127.0.0.1', done);
+    });
+    const address = server.address();
+    if (address === null || typeof address === 'string') throw new Error('no port');
+    const credentialsFile = writeCredentials(folder, key);
+    custody = await startCustody({
+      credentialsFile,
+      destinations: [{ key: 'synthetic', origin: `http://127.0.0.1:${String(address.port)}` }],
+    });
+    const outcome = await custody.dispatch('synthetic_key', {
+      destination: 'synthetic',
+      path: '/v1/complete',
+      method: 'POST',
+      body: '{}',
+      timeoutMs: 2_000,
+      maxResponseBytes: 65_536,
+    });
+    if (outcome.kind !== 'answered' || !outcome.outbound.ok) throw new Error('not answered');
+    return outcome.outbound.body;
+  } finally {
+    await custody?.stop();
+    server.closeAllConnections();
+    await new Promise<void>((done) => {
+      server.close(() => done());
+    });
+    rmSync(folder, { recursive: true, force: true });
+  }
+}
+
+it('valid nested provider metadata preserves the answer and usage', async () => {
+  // Synthetic credential only. The provider's text contains no whole credential.
+  const key = 'synthetic-canary-key';
+  // This body is about 6 KB, within the actual replay operation's 64 KB limit.
+  const depth = 3_000;
+  const answer =
+    '{"text":"ok","model":"replay-1","usage":{"input":1,"output":1},"metadata":' +
+    '['.repeat(depth) +
+    '0' +
+    ']'.repeat(depth) +
+    '}';
+  expect(
+    readReplayAnswer(JSON.parse(answer)),
+    'original body satisfies the answer schema',
+  ).toBeDefined();
+  expect(answer.includes(key)).toBe(false);
+  const body = await returnedAnswer(answer, key);
+  expect(body.length, 'custody must retain a valid answer').toBe(answer.length);
+  expect(readReplayAnswer(JSON.parse(body))).toEqual(readReplayAnswer(JSON.parse(answer)));
+  expect(body === answer, 'innocent metadata must preserve the answer').toBe(true);
+});
