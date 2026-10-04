@@ -207,15 +207,16 @@ export async function listSecrets(
   tx: TenantQuery,
   subjects: readonly Subject[],
 ): Promise<SecretsHeld | null> {
-  const asked = askedFor(subjects, { collection: 'custody', action: 'manage' });
+  const request = { collection: 'custody', action: 'manage' };
+  const asked = askedFor(subjects, request);
   const rows = await tx.query<
     { readonly held: boolean; readonly whole: boolean } & (Row | { readonly id: null })
   >(
     `${EFFECTIVE},
      mine as (
        select e.scope_kind, e.scope_id from effective e
-        where e.collection = 'custody' and e.action = 'manage'
-          and exists (select 1 from unnest($1::text[], $2::uuid[]) as s (kind, id)
+        where e.collection = $1 and e.action = $2
+          and exists (select 1 from unnest($3::text[], $4::uuid[]) as s (kind, id)
                        where s.kind = e.subject_kind and s.id = e.subject_id)
      )
      select exists (select 1 from mine) as held,
@@ -228,7 +229,12 @@ export async function listSecrets(
                         or (m.scope_kind = 'party' and c.scope_kind = 'party'
                             and c.scope_id = m.scope_id))
       order by name, scope_kind, scope_id nulls first`,
-    [asked.map((subject) => subject.kind), asked.map((subject) => subject.id)],
+    [
+      request.collection,
+      request.action,
+      asked.map((subject) => subject.kind),
+      asked.map((subject) => subject.id),
+    ],
   );
   if (rows[0]?.held !== true) return null;
   return {
