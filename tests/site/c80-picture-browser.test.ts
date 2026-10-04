@@ -249,3 +249,20 @@ describe.skipIf(!installed)('C80 capture picture, in a real browser, Sol R1', ()
     expect([RED, 'refused']).toContain(shown);
   }, 60_000);
 });
+
+// The eleventh security re-bind, L1: the document's policy (style-src 'self') blocked a sheet on
+// another host before any request reached the route, so the picture succeeded without a sheet the
+// page links, one the observation refuses. The review's case, a page redirected to another host
+// linking the first host's sheet, is refused already: Chromium hands a cross-site redirect to no
+// route, so the browser meets its proxy and the load fails.
+describe.skipIf(!installed)('C80 capture picture, in a real browser, the eleventh re-bind', () => {
+  it('is refused where a sheet the page links is refused, not shown without it', async () => {
+    const elsewhere = 'https://studio.example.org/site.css';
+    const { observed, shown } = await both({
+      [ABOUT]: page(`<link rel=stylesheet href=${elsewhere}>`),
+      [elsewhere]: sheet('red'),
+    });
+    expect(observed.ok).toBe(false);
+    expect(shown).toBe('refused');
+  }, 60_000);
+});
