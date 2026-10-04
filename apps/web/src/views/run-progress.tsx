@@ -43,7 +43,18 @@ export interface RunProgressProps {
   readonly proposals?: readonly ProposalView[];
 }
 
+/**
+ * The run of one task read under one grant. A section is keyed by both, so
+ * another grant or task (business, person or client) is a new section whose
+ * read starts afresh: nothing the last one read or held (its graph, runs or
+ * receipts) is drawn under the new scope, even when React batches the old
+ * scope's answer into the same render as the change (SEC35 M1).
+ */
 export function RunProgress(props: RunProgressProps): ReactElement {
+  return <RunSection key={JSON.stringify([props.grantKey, props.taskKey])} {...props} />;
+}
+
+function RunSection(props: RunProgressProps): ReactElement {
   const { client, taskKey } = props;
   const { state } = useRead<TaskExecutionResult>({
     grantKey: props.grantKey,
