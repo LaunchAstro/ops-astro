@@ -82,7 +82,7 @@ function browserPort(probe: Probe): PictureBrowser {
   };
 }
 
-it('Sol proof, criterion 1: the claimed catalogued document redirect produces a picture at its final URL', async () => {
+it('the claimed catalogued document redirect produces a picture at its final URL', async () => {
   const options = world('<link rel=stylesheet href=site.css><p>Hello</p>', true);
   const observed = await capturePage(PAGE, options);
   expect(observed).toMatchObject({ ok: true, value: { url: FINAL } });
@@ -93,7 +93,7 @@ it('Sol proof, criterion 1: the claimed catalogued document redirect produces a 
   expect(probe.colour).toBe(RED);
 }, 30_000);
 
-it('Sol proof, criterion correctness: markup CSP cannot silently remove an observed stylesheet from a successful picture', async () => {
+it('markup CSP cannot silently remove an observed stylesheet from a successful picture', async () => {
   const options = world(
     '<meta http-equiv=Content-Security-Policy content="style-src \'none\'">' +
       '<link rel=stylesheet href=/site.css><p>Hello</p>',
@@ -105,7 +105,7 @@ it('Sol proof, criterion correctness: markup CSP cannot silently remove an obser
   expect(!picture.ok || probe.colour === RED, JSON.stringify({ ok: picture.ok, probe })).toBe(true);
 }, 30_000);
 
-it('Sol proof, criterion correctness: a stylesheet refused before the browser route cannot leave a successful picture', async () => {
+it('a stylesheet refused before the browser route cannot leave a successful picture', async () => {
   const options = world('<link rel=stylesheet href=http://www.example.com/site.css><p>Hello</p>');
   const observed = await capturePage(PAGE, options);
   expect(observed).toEqual({ ok: false, code: 'CAPTURE_HOST_NOT_CATALOGUED' });
@@ -114,7 +114,7 @@ it('Sol proof, criterion correctness: a stylesheet refused before the browser ro
   expect(picture.ok, JSON.stringify(probe)).toBe(false);
 }, 30_000);
 
-it('Sol proof, criterion correctness: browser integrity rejection cannot leave a successful picture without the observed stylesheet', async () => {
+it('browser integrity rejection cannot leave a successful picture without the observed stylesheet', async () => {
   const integrity = `sha256-${'A'.repeat(43)}=`;
   const options = world(`<link rel=stylesheet href=/site.css integrity="${integrity}"><p>Hello</p>`);
   const observed = await capturePage(PAGE, options);

@@ -74,7 +74,7 @@ function browserPort(probe: { colour?: string }): PictureBrowser {
   };
 }
 
-it('Sol proof, criterion 1: shallow adoption-agency input stays within the linear capture bound', () => {
+it('shallow adoption-agency input stays within the linear capture bound', () => {
   const source = `
     import { capturePage } from './packages/core-connectors/src/capture/page.ts';
     const url = '${PAGE}';
@@ -99,7 +99,7 @@ it('Sol proof, criterion 1: shallow adoption-agency input stays within the linea
   expect(run).not.toThrow();
 }, 10_000);
 
-it('Sol proof, criterion correctness: picture retains the final document URL after a fenced redirect', async () => {
+it('picture retains the final document URL after a fenced redirect', async () => {
   const options = world(HTML, true);
   const observed = await capturePage(PAGE, options);
   expect(observed).toMatchObject({ ok: true, value: { url: FINAL } });
@@ -110,7 +110,7 @@ it('Sol proof, criterion correctness: picture retains the final document URL aft
   else expect(picture.code).toBe('CAPTURE_BODY_MALFORMED');
 }, 30_000);
 
-it('Sol proof, criterion correctness: picture retains the final stylesheet URL for relative imports', async () => {
+it('picture retains the final stylesheet URL for relative imports', async () => {
   const original = world(HTML);
   const child = 'https://www.example.com/assets/sub.css';
   const options: CaptureOptions = {
@@ -140,7 +140,7 @@ it('Sol proof, criterion correctness: picture retains the final stylesheet URL f
   else expect(picture.code).toBe('CAPTURE_BODY_MALFORMED');
 }, 30_000);
 
-it('Sol proof, criterion correctness: picture honours a same-host base URL or refuses the capture', async () => {
+it('picture honours a same-host base URL or refuses the capture', async () => {
   const options = world(HTML.replace('<link', '<base href=/assets/><link'));
   const observed = await capturePage(PAGE, options);
   expect(observed.ok).toBe(true);

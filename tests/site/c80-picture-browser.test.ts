@@ -177,23 +177,13 @@ describe.skipIf(!installed)('C80 capture picture, in a real browser, no network 
   }, 60_000);
 });
 
-// Sol's first review of PR 364, three correctness findings: the picture must load the sheets the
-// page observation read. Each site below serves a red sheet where the observation resolves the
-// page's addresses and a blue one where a browser that lost the final address or the base would.
-const RED = 'rgb(255, 0, 0)';
+// One site's answers for the observation and the picture of ABOUT, side by side.
 const MOVED = 'https://www.example.com/new/about';
-const at = (path: string) => `https://www.example.com${path}`;
 const ok = (type: string, body: string): TransportAnswer => ({
   kind: 'answer',
   status: 200,
   headers: { 'content-type': type },
   body: new TextEncoder().encode(body),
-});
-const moved = (path: string): TransportAnswer => ({
-  kind: 'answer',
-  status: 302,
-  headers: { location: path },
-  body: new Uint8Array(),
 });
 const page = (head: string) => ok('text/html; charset=utf-8', `${head}<p>Hello</p>`);
 const sheet = (colour: string) => ok('text/css', `p { color: ${colour}; }`);
@@ -209,46 +199,6 @@ async function both(pages: Record<string, TransportAnswer>) {
   const picture = await capturePicture(ABOUT, options, chromiumPort(probe));
   return { observed, shown: picture.ok ? probe.colour : 'refused' };
 }
-
-describe.skipIf(!installed)('C80 capture picture, in a real browser, Sol R1', () => {
-  it('Sol proof, criterion correctness: picture retains the final document URL after a fenced redirect', async () => {
-    const { observed, shown } = await both({
-      [ABOUT]: moved('/new/about'),
-      [MOVED]: page('<link rel=stylesheet href=site.css>'),
-      [at('/new/site.css')]: sheet('red'),
-      [at('/site.css')]: sheet('blue'),
-    });
-    expect(observed.ok && Object.keys(observed.value.stylesheets)).toEqual([at('/new/site.css')]);
-    expect([RED, 'refused']).toContain(shown);
-  }, 60_000);
-
-  it('Sol proof, criterion correctness: picture retains the final stylesheet URL for relative imports', async () => {
-    const { observed, shown } = await both({
-      [ABOUT]: page('<link rel=stylesheet href=/_astro/site.css>'),
-      [at('/_astro/site.css')]: moved('/_astro/v2/site.css'),
-      [at('/_astro/v2/site.css')]: ok('text/css', '@import "theme.css";'),
-      [at('/_astro/v2/theme.css')]: sheet('red'),
-      [at('/_astro/theme.css')]: sheet('blue'),
-    });
-    expect(observed.ok && Object.keys(observed.value.stylesheets)).toEqual([
-      at('/_astro/site.css'),
-      at('/_astro/v2/theme.css'),
-    ]);
-    expect([RED, 'refused']).toContain(shown);
-  }, 60_000);
-
-  it('Sol proof, criterion correctness: picture honours a same-host base URL or refuses the capture', async () => {
-    const { observed, shown } = await both({
-      [ABOUT]: page('<base href=/assets/><link rel=stylesheet href=site.css>'),
-      [at('/assets/site.css')]: sheet('red'),
-      [at('/site.css')]: sheet('blue'),
-    });
-    expect(observed.ok && Object.keys(observed.value.stylesheets)).toEqual([
-      at('/assets/site.css'),
-    ]);
-    expect([RED, 'refused']).toContain(shown);
-  }, 60_000);
-});
 
 // The eleventh security re-bind, L1: the document's policy (style-src 'self') blocked a sheet on
 // another host before any request reached the route, so the picture succeeded without a sheet the

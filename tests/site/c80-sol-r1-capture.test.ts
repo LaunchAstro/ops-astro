@@ -18,17 +18,7 @@ const captured = (body: string) =>
     transport: (): Promise<TransportAnswer> => Promise.resolve(html(body)),
   });
 
-describe('C80 the fenced capture, Sol R1', () => {
-  it('Sol proof, criterion 1: shallow adoption-agency input stays within the linear capture bound', async () => {
-    const body = `<b><p>${'<br>'.repeat(487_500)}</b>`;
-    expect(body).toHaveLength(1_950_010);
-    const started = performance.now();
-    const result = await captured(body);
-    const elapsed = performance.now() - started;
-    expect(elapsed).toBeLessThan(5000);
-    expect(result.ok ? 'ok' : result.code).toBe('CAPTURE_OVERSIZED');
-  }, 600_000);
-
+describe('C80 the fenced capture keeps its cost linear in the page', () => {
   it('refuses rebuilt elements that carry 255 attributes each well inside a second', async () => {
     const names = Array.from({ length: 254 }, (_, at) => ` a${at}`).join('');
     const head = `<div>${Array.from({ length: 10 }, (_, at) => `<b z=${at}${names}>`).join('')}</div>`;
