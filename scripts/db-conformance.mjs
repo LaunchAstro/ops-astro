@@ -99,12 +99,11 @@ if (!existsSync(manifestPath)) {
 
 let manifest;
 try {
-  manifest =
-    manifestFlag !== -1
-      ? JSON.parse(readFileSync(manifestPath, 'utf8'))
-      : isolationRun
-        ? readIsolationSuites(repoRoot)
-        : readNamedSuites(repoRoot);
+  if (manifestFlag === -1) {
+    manifest = isolationRun ? readIsolationSuites(repoRoot) : readNamedSuites(repoRoot);
+  } else {
+    manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  }
 } catch (error) {
   console.error(`db-conformance: cannot read ${manifestPath}: ${String(error)}`);
   process.exit(2);
