@@ -170,6 +170,15 @@
       }
     },
     {
+      "files": ["tests/ci/empty-signing-key-replaced-once.proof.test.mjs"],
+      "rules": {
+        "max-lines-per-function": "off",
+        "no-await-in-loop": "off",
+        "no-promise-executor-return": "off",
+        "no-unused-vars": "off"
+      }
+    },
+    {
       "files": ["tests/review/role-repair-drops-inherited-access-proof.test.ts"],
       "rules": { "max-lines-per-function": "off" }
     },
