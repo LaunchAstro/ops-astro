@@ -64,8 +64,7 @@ export function hasIdentity(request: UncheckedRequest): request is IdentifiedReq
   return typeof request.operationId === 'string' && OPERATION_ID.test(request.operationId);
 }
 
-// Type aliases rather than interfaces, so each member of the union is also an
-// `UncheckedRequest`: a parsed request is still the body it was parsed from.
+// Type aliases, not interfaces: each union member is also an `UncheckedRequest`.
 type Targeted = Envelope & {
   readonly recordId: string;
   readonly expectedRevision?: number;
