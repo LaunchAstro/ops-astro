@@ -4,8 +4,13 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
+import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 
-it('the named custody audit-chain test must fail when its stored hashes are wrong', () => {
+// The child reaches the database, so this proof runs where there is one: the
+// database conformance job names it (tests/db/named-suites/tests-custody.json).
+const proof = it.skipIf(databaseUrlFromEnvironment() === undefined);
+
+proof('the named custody audit-chain test must fail when its stored hashes are wrong', () => {
   const directory = mkdtempSync(join(tmpdir(), 'sol-pr-373-fix1-audit-'));
   const reportPath = join(directory, 'report.json');
   try {
