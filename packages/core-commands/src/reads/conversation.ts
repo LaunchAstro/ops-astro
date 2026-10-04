@@ -18,11 +18,13 @@
 //   reason and nothing of the conversation.
 //
 // Each refusal is decided before any title, subject or message is selected.
+// A wrap-up's pointers are served per reader (`contentsForReader`).
 
 import {
   checkAuthority,
   coveredScopes,
   isUuid,
+  readableScope,
   subjectsOf,
 } from '../../../core-records/src/index.ts';
 import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
@@ -34,6 +36,7 @@ import type {
 } from '../../../core-wire/src/index.ts';
 import { refuseCommand, refuseNotFound, type CommandRefusal } from '../commands/refusal.ts';
 import { conversationAddress } from '../commands/conversations.ts';
+import { contentsForReader } from '../commands/conversation-contents.ts';
 
 const COLLECTION = 'conversation';
 
@@ -107,16 +110,28 @@ export function leftOpenText(leftOpen: WrapUpView['leftOpen']): string {
   return `${String(leftOpen.length)} left open: ${leftOpen.map((pointer) => `${pointer.kind} ${pointer.id}`).join(', ')}`;
 }
 
-const wrapUpView = (row: WrapUpRow): WrapUpView => ({
-  version: row.version,
-  writtenAt: row.created_at.toISOString(),
-  writtenBy: { operation: row.written_by_operation, codeRevision: row.code_revision },
-  definitionVersion: row.definition_version,
-  request: { quotation: row.request_quotation },
-  items: row.items,
-  leftOpen: row.left_open,
-  leftOpenText: leftOpenText(row.left_open),
-});
+/** A stored wrap-up as this reader may see it (`contentsForReader`). */
+async function wrapUpView(
+  tx: TenantQuery,
+  session: Session,
+  stored: WrapUpRow,
+): Promise<WrapUpView> {
+  const tasks = await readableScope(tx, subjectsOf(session), 'task', 'read');
+  const row = contentsForReader(
+    stored,
+    (taskId) => tasks.business || tasks.records.includes(taskId),
+  );
+  return {
+    version: stored.version,
+    writtenAt: stored.created_at.toISOString(),
+    writtenBy: { operation: stored.written_by_operation, codeRevision: stored.code_revision },
+    definitionVersion: stored.definition_version,
+    request: { quotation: stored.request_quotation },
+    items: row.items,
+    leftOpen: row.left_open,
+    leftOpenText: leftOpenText(row.left_open),
+  };
+}
 
 /** The body, oldest first. */
 async function messagesOf(
@@ -142,7 +157,11 @@ async function messagesOf(
   }));
 }
 
-async function served(tx: TenantQuery, conversationId: string): Promise<ConversationReadResult> {
+async function served(
+  tx: TenantQuery,
+  session: Session,
+  conversationId: string,
+): Promise<ConversationReadResult> {
   const rows = await tx.query<ConversationRow>(
     `select id, title, subject, scope_kind, scope_record_id, page_address, page_shows,
             created_at, last_activity_at, body_purged_at
@@ -181,7 +200,7 @@ async function served(tx: TenantQuery, conversationId: string): Promise<Conversa
       bodyPurgedAt: row.body_purged_at?.toISOString() ?? null,
     },
     messages,
-    wrapUp: current === undefined ? null : wrapUpView(current),
+    wrapUp: current === undefined ? null : await wrapUpView(tx, session, current),
     wrapUpHistory: wrapUps.map((wrapUp) => ({
       version: wrapUp.version,
       writtenAt: wrapUp.created_at.toISOString(),
@@ -233,7 +252,7 @@ export async function readConversation(
   if (door === undefined) return refuseNotFound();
   const refusal = await mayRead(tx, session, door);
   if (refusal !== undefined) return refusal;
-  return await served(tx, conversationId);
+  return await served(tx, session, conversationId);
 }
 
 const LIST_LIMIT = 50;

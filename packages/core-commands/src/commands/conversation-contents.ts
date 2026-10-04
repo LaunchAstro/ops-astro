@@ -125,6 +125,44 @@ const pointersOf = (
 ): readonly ConversationPointerView[] =>
   work.filter((item) => item.pointer.kind === kind).map((item) => item.pointer);
 
+/** The facts that count their item's pointers, by item key. */
+export const COUNTED_FACTS = {
+  tasks_created: (n: number) => `${String(n)} ${n === 1 ? 'task' : 'tasks'} created`,
+  runs_started: (n: number) => `${String(n)} runs started`,
+  gates_raised: (n: number) => `${String(n)} gates raised`,
+};
+
+const TASK_ADDRESS = /^\/task\/([^/]+)$/u;
+
+/**
+ * A stored wrap-up's contents as one reader may see them: a pointer naming a
+ * task the reader may not read (a task, or a run or gate on one) is left out,
+ * and a counted fact counts what is left, so no id, address or count of such
+ * a task reaches them (catalogue #412).
+ */
+export function contentsForReader<
+  T extends {
+    readonly items: readonly WrapUpItemView[];
+    readonly left_open: readonly ConversationPointerView[];
+  },
+>(stored: T, readsTask: (taskId: string) => boolean): T {
+  const shown = (pointer: ConversationPointerView): boolean => {
+    const task = TASK_ADDRESS.exec(pointer.address)?.[1];
+    return task === undefined || readsTask(task);
+  };
+  return {
+    ...stored,
+    items: stored.items.map((item) => {
+      const pointers = item.pointers.filter(shown);
+      const count = Object.hasOwn(COUNTED_FACTS, item.key)
+        ? COUNTED_FACTS[item.key as keyof typeof COUNTED_FACTS]
+        : undefined;
+      return { ...item, pointers, fact: count === undefined ? item.fact : count(pointers.length) };
+    }),
+    left_open: stored.left_open.filter(shown),
+  };
+}
+
 /** The seven pointer-and-fact contents, from records. */
 export async function itemsOf(
   tx: TenantQuery,
@@ -166,11 +204,11 @@ export async function itemsOf(
     // Each task whose creation audit event names this conversation (AW-03).
     {
       key: 'tasks_created',
-      fact: `${String(created.length)} ${created.length === 1 ? 'task' : 'tasks'} created`,
+      fact: COUNTED_FACTS.tasks_created(created.length),
       pointers: created,
     },
-    { key: 'runs_started', fact: `${String(runs.length)} runs started`, pointers: runs },
-    { key: 'gates_raised', fact: `${String(gates.length)} gates raised`, pointers: gates },
+    { key: 'runs_started', fact: COUNTED_FACTS.runs_started(runs.length), pointers: runs },
+    { key: 'gates_raised', fact: COUNTED_FACTS.gates_raised(gates.length), pointers: gates },
     // Priced model calls go through AW-01's broker; the conversation's own
     // calls are counted here once the exchange makes them.
     { key: 'cost', fact: 'No priced model call recorded', pointers: [] },
