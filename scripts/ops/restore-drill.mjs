@@ -92,16 +92,31 @@ export const drillAsOperator = ({ reach = stagingReach, ...options }) =>
  * from the store only after the gate admits it again, with nothing admitted
  * earlier still queued: an operator whose sign-in ended or whose
  * `operations:manage` was revoked part way reads no further part, and the
- * fetch removes what it wrote. A part's read holds no lock, so a revocation
- * never waits on it; the gate is asked once more after the part has arrived,
- * so a sign-in ended or a grant revoked during the read refuses that part too,
- * and nothing read is kept or reported. Every gate operator.ts admits carries it.
+ * fetch removes what it wrote. A part's read asks once more as the store's
+ * route takes its script, so a sign-in ended or a grant revoked once the read
+ * was called sends the store nothing; the operator's grant is held from the
+ * call until that ask or the part's first line, so a revocation waits for the
+ * ask and never for the read. The gate is asked again after the part has
+ * arrived, so an ending during the read refuses that part too, and nothing
+ * read is kept or reported. Every gate operator.ts admits carries both.
  */
 function askingAgain(reach, gate) {
   return async (url, script, onLine) => {
     await gate.stillOperator?.();
-    const answer = await reach(url, script, onLine);
-    if (onLine !== undefined) await gate.stillOperator?.();
+    if (onLine === undefined) return await reach(url, script, onLine);
+    const hold = gate.holdingGrant ?? ((during) => during(() => {}));
+    const answer = await hold(async (release) => {
+      async function* asked() {
+        await gate.stillOperator?.();
+        release();
+        yield* typeof script === 'string' ? [script] : script;
+      }
+      return await reach(url, asked(), (line) => {
+        release();
+        return onLine(line);
+      });
+    });
+    await gate.stillOperator?.();
     return answer;
   };
 }
