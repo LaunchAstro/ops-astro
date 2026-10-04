@@ -39,6 +39,8 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // `select 1` needs one column, and c55-security-alerts proves which.
   ['s', 'ops.security_alert_log'],
   ['s', 'ops.slots'],
+  // The wayfinder's map read models (WF-1): their triggers write them; the app reads.
+  ['s', 'map_frontier map_summaries'],
   // 0058 (S0-5): the installation's mode and the gate items are read by the
   // application through first_client_readiness().
   // 0059 (S0-5, ORCH38): the gate's own commands write through the app, so it
@@ -58,6 +60,9 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['si', 'ops.second_factor_codes'],
   ['si', 'audit_events authentication_attempts evidence_packs gate_decisions'],
   ['si', 'alerts handback_reports operations run_events'],
+  // A map's versions are history; its components are retired by version, never deleted.
+  ['si', 'map_versions'],
+  ['siu', 'map_components'],
   // A run's checks, append only as handback_reports is (MP-6-1).
   ['si', 'run_checks'],
   // 0095 (MP-6-2): a run's state, each revision a version, never rewritten.
@@ -124,7 +129,7 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['siu', 'access_endings'],
   // 0057 (C58): an ended session is written once; never changed or deleted.
   ['si', 'ended_sessions'],
-  // 20261004091551 (C59): a factor reset is written, then its provider step is stamped by
+  // 20261004175013 (C59): a factor reset is written, then its provider step is stamped by
   // update; never deleted.
   ['siu', 'factor_resets'],
   // 0065: the live change record, stamped by the writes' own triggers (C4);
@@ -198,7 +203,7 @@ export const APPLICATION_EXECUTES: readonly string[] = [
   'public.first_client_readiness',
   // 20261004040200 (SL11-30): the pickup path, the one way a lease is written.
   'public.take_lease',
-  // 20261004091551 (C59): a definer answering one boolean for a login of the caller's own
+  // 20261004175013 (C59): a definer answering one boolean for a login of the caller's own
   // business; PUBLIC may not execute it.
   'public.factor_login_live_elsewhere',
 ];

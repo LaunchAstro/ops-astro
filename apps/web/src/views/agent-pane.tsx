@@ -27,6 +27,7 @@ import {
   type RecordedOutcome,
   type RunActivity,
 } from '@launchastro/ui';
+import { askDrawer, newAttemptAsk } from '../assistant/asks.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import type {
   ExecutionEvent,
@@ -37,16 +38,32 @@ import type {
 } from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
 import type { Settlement } from '../records/use-command.ts';
+import { useStepUpHold } from './step-up-hold.ts';
 import { useMoneyCommand, type StepUpAsk } from '../records/use-money-command.ts';
 import { StepUpPrompt } from './step-up-prompt.tsx';
 import { wholeExecution } from './run-progress.tsx';
 
 export interface AgentSectionProps {
   readonly client: OperationsClient;
-  readonly recordId: string;
-  /** The task's key and the page's grant, for the operational log's read (MP-6-2). */
-  readonly taskKey: string;
+  /**
+   * The session the page is read under: the drawer's ask carries it, and the
+   * operational log's read is made under it (MP-6-2).
+   */
   readonly grantKey: string;
+  readonly recordId: string;
+  /** The task's title as the read gave it, or its key while it has none: the drawer's ask names it. */
+  readonly title: string;
+  /**
+   * The client the task is under, as `task.read` sent it: null on an internal
+   * task, and on one whose client the reader's grants do not reach (CS-4.12).
+   * The drawer's ask carries it, so the egress rule sees whose data a plan
+   * would carry (AW-04).
+   */
+  readonly clientId: string | null;
+  /** The task is under a client the reader cannot see (`clientSet`, no id): its setting reads as off. */
+  readonly clientUnseen: boolean;
+  /** The task's key, for the operational log's read (MP-6-2). */
+  readonly taskKey: string;
   /** The task read's latest answer: each new one re-reads the log. */
   readonly readOf: unknown;
   readonly proposals: readonly ProposalView[];
@@ -54,6 +71,7 @@ export interface AgentSectionProps {
   /** `task.read`'s token ledger (MP-6-5): null for a reader it is not shown to, absent on an older read. */
   readonly ledger: TaskLedgerView | null | undefined;
   readonly onChanged: () => void;
+  readonly onStepUp?: (open: true | null) => void;
 }
 
 interface AgentControls {
@@ -101,7 +119,9 @@ function useAgentControls(props: AgentSectionProps): AgentControls {
   const [refusal, setRefusal] = useState<string | null>(null);
   const [awaiting, setAwaiting] = useState<string | null>(null);
   const [stopAwaiting, setStopAwaiting] = useState<string | null>(null);
+  const hold = useStepUpHold(props, stepUp !== null);
   const settle = (settlement: Settlement): void => {
+    hold(settlement);
     setRefusal(settlement.kind === 'ok' ? null : settlement.because);
     const state = settlement.kind === 'ok' ? stateOf(settlement.value) : undefined;
     setAwaiting(state === 'awaiting_second_approver' ? AWAITING : null);
@@ -235,6 +255,11 @@ export function AgentSection(props: AgentSectionProps): ReactElement {
         onTopUpAtStop={controls.topUpAtStop}
         onEndAtStop={controls.endAtStop}
         stopAwaiting={controls.stopAwaiting}
+        onStartAttempt={() => {
+          const { recordId: id, title, clientId } = props;
+          const unseen = props.clientUnseen ? { clientUnseen: true as const } : {};
+          askDrawer(newAttemptAsk({ id, title, clientId, ...unseen }), props.grantKey);
+        }}
         {...(activity === undefined ? {} : { activity })}
       />
       {controls.stepUp === null ? null : <StepUpPrompt ask={controls.stepUp} />}

@@ -179,7 +179,11 @@ export class SessionStore {
     this.#storage = storage;
     this.#kept = jsonSlot(storage, KEY, isSession);
     this.#returnTo = jsonSlot(storage, RETURN_KEY, isInterruption);
-    this.#session = this.#kept.read();
+    // A session kept before the cookie (S0-6c) also held its bearer: only the
+    // fields a session has now are taken, and written back over the old copy.
+    const kept = this.#kept.read();
+    this.#session = kept === null ? null : cookieEra(kept);
+    if (this.#session !== null) this.#kept.write(this.#session);
     this.#interruption = this.#returnTo.read();
   }
 
@@ -270,4 +274,9 @@ function isSession(value: unknown): value is Session {
     typeof body['email'] === 'string' &&
     (body['sessionId'] === undefined || typeof body['sessionId'] === 'string')
   );
+}
+
+/** A kept session with nothing but the fields a session has. */
+function cookieEra({ businessKey, email, sessionId }: Session): Session {
+  return sessionId === undefined ? { businessKey, email } : { businessKey, email, sessionId };
 }

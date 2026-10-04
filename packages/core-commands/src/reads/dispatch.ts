@@ -7,8 +7,8 @@
 // read after it, so "denied" and "not there" are answered by different code
 // paths and cannot be confused for each other.
 
-import { checkAuthority, subjectsOf } from '../../../core-records/src/index.ts';
-import type { TenantQuery, Session } from '../../../core-records/src/index.ts';
+import { checkAuthority, subjectsOf, wayfinderFacts } from '../../../core-records/src/index.ts';
+import type { TenantQuery, Session, ScopeRequest } from '../../../core-records/src/index.ts';
 import {
   isCommandRefusal,
   refuseCommand,
@@ -197,7 +197,7 @@ async function admit<K extends ReadName>(
   const listsWithin = row.authority === 'declared-within' && session.roleKey !== null;
   if (row.authority !== 'holds-any-grant' && row.authority !== 'self' && !listsWithin) {
     const declared = row.authority === 'declared' || row.authority === 'declared-within';
-    const authorised = await checkAuthority(tx, subjectsOf(session), {
+    const asked: ScopeRequest = {
       // The action is the declaration's, and so is the collection unless the
       // row names the one the request is really about (`preset.plan`).
       collection: declared ? declaration.collection : row.authority(parsed.operands),
@@ -209,7 +209,23 @@ async function admit<K extends ReadName>(
         readied.recordId === undefined
           ? { kind: 'business', id: null }
           : { kind: 'record', id: readied.recordId },
-    });
+    };
+    let authorised = await checkAuthority(tx, subjectsOf(session), asked);
+    // A grant scoped to a map covers its tickets too (W12), as on the command path.
+    const recordId = readied.recordId;
+    const map =
+      authorised.ok || recordId === undefined || asked.collection !== 'task'
+        ? null
+        : ((await wayfinderFacts(tx, recordId))?.mapId ?? null);
+    if (!authorised.ok && map !== null && recordId !== undefined && map !== recordId) {
+      const again = await checkAuthority(tx, subjectsOf(session), {
+        ...asked,
+        scope: { kind: 'record', id: map },
+      });
+      // Read again, held until the read is served: a move that committed
+      // since is seen, and none can commit before the answer is read.
+      if (again.ok && (await wayfinderFacts(tx, recordId, true))?.mapId === map) authorised = again;
+    }
     if (!authorised.ok) {
       // An external party is a session with no membership (`ReadRow.outsiderNotFound`).
       if (session.roleKey === null && row.outsiderNotFound) return refused(refuseNotFound());

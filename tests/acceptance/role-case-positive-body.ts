@@ -30,6 +30,7 @@ import { conversationBody, leaseBody } from './role-case-run-bodies.ts';
 import { FIXED_BODIES } from './role-case-fixed-bodies.ts';
 import { moneyBody } from './role-case-money-bodies.ts';
 import { lineageBody } from './role-case-lineage-bodies.ts';
+import { wayfinderBody } from './role-case-wayfinder.ts';
 
 export function createPositiveBody(
   context: BodyContext,
@@ -179,8 +180,7 @@ export function createPositiveBody(
         // The person's own lease, handed back by that person. The agent's
         // own-lease handback is case (h), `k-handback` rows.
         return { body: { ...(await ownLease(context)), outcome: 'completed' } };
-      // `trace.read` (AW-13 readers) asks `operations:read`, which the seed
-      // grants the admin (C55).
+      // `trace.read` (AW-13 readers) asks `operations:read`, which the seed grants the admin (C55).
       case 'task.read':
       case 'task.execution':
       case 'trace.read':
@@ -294,7 +294,7 @@ export function createPositiveBody(
         // AW-03 and MP-7-11, the admin's own conversation: `role-case-run-bodies.ts`.
         return await conversationBody(declaration.name, context);
       default:
-        throw new Error(`matrix: no positive control recipe for ${String(declaration.name)}`);
+        return { body: await wayfinderBody(declaration.name, context, target) };
     }
   };
 }

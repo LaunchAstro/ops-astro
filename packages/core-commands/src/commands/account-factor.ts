@@ -56,6 +56,9 @@ const ENROLLED_FIXES: readonly string[] = [
 ];
 const NOT_ENROLLED_FIXES: readonly string[] = ['Set up an authenticator app first.'];
 const BODY_FIXES: readonly string[] = ['Send only { "code": "<the six digits>" }.'];
+const NEWER_FIXES: readonly string[] = [
+  'A newer set-up started while this one was on its way. Use the newest, or start again.',
+];
 
 /**
  * First enrolment: a person with no factor, after a fresh password sign-in
@@ -70,12 +73,16 @@ export async function enrolSecondFactor(
   const act = 'account.factor_enrol';
   // An operation id, not a code `attempt`: no code is sent, so none counts.
   const sending = { ...caller, operation: randomUUID() };
+  // The live factor this enrolment starts from: only that one may it replace.
+  let startedFrom: string | undefined;
   const precondition = await judged(
     sending,
     act,
     async (tx, session) => {
-      if (await holdsVerified(tx, caller, await liveFactor(tx, session.personId)))
+      const live = await liveFactor(tx, session.personId);
+      if (await holdsVerified(tx, caller, live))
         return refuseCommand('FACTOR_ALREADY_ENROLLED', [], ENROLLED_FIXES);
+      startedFrom = live?.id;
       return (await freshSignIn(tx, session))
         ? undefined
         : refuseCommand('FRESH_SIGN_IN_REQUIRED', [], FRESH_FIXES);
@@ -90,6 +97,9 @@ export async function enrolSecondFactor(
     const live = await liveFactor(tx, session.personId, { lock: caller.presented.subject });
     if (await holdsVerified(tx, caller, live))
       return refuseCommand('FACTOR_ALREADY_ENROLLED', [], ENROLLED_FIXES);
+    // A newer one, recorded since that check, stays the target; this one is a stray.
+    if (live !== undefined && live.id !== startedFrom)
+      return refuseCommand('VERSION_STALE', [], NEWER_FIXES);
     // An enrolment never completed is replaced, not stacked: the newest
     // unverified factor is the one the first code completes.
     if (live !== undefined) await recordFactorRemoved(tx, ownFactor(caller, session, live.id));
