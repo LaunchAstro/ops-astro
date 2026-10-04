@@ -66,6 +66,8 @@ const HARNESS = [
   'tests/support/migrated-template.ts',
   'packages/core-records/src/tenancy/migrate.ts',
   'packages/core-records/src/tenancy/statements.ts',
+  'packages/core-records/src/tenancy/migration-ids.ts',
+  'packages/core-records/src/tenancy/database.ts',
 ];
 
 /**
