@@ -4,11 +4,14 @@
 // is written in its decision's transaction. A record the product's role
 // inserts later, with genuine digests and the decision's timestamp copied
 // into `bound_at`, must never become the task's plan.
-import { expect, it } from 'vitest';
+import { expect, it as vitestIt } from 'vitest';
 import { createHash, randomUUID } from 'node:crypto';
 import { payloadDigest } from '../../packages/core-digest/src/index.ts';
 import { appliedDetail, approveBody, asPerson, createTask, rows } from './schedules-harness.ts';
-import { acceptPlanOn, graphAs, proposeStep, useAw06World, w } from './aw-06-world.ts';
+import { acceptPlanOn, graphAs, noDatabase, proposeStep, useAw06World, w } from './aw-06-world.ts';
+
+/** The case needs the database; without one the file is skipped, as aw-06-planned-layer is. */
+const it = noDatabase ? vitestIt.skip : vitestIt;
 
 useAw06World('planborrow');
 
