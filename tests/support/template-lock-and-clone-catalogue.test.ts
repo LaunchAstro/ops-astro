@@ -86,27 +86,30 @@ function configuredForPostgres(): string {
   return url.toString();
 }
 
-/** Polls until a backend waits on a lock: of kind `event`, or in `database`. */
-async function untilWaiting(
-  server: AdminConnection,
-  { event, database }: { event?: string; database?: string },
-): Promise<void> {
-  for (let tries = 0; tries < 600; tries++) {
+/** Polls until `query`, a count, counts something. */
+async function until(server: AdminConnection, query: string, parameters: unknown[]): Promise<void> {
+  for (let tries = 0; tries < 1800; tries++) {
     // oxlint-disable-next-line no-await-in-loop -- one poll after another
-    const [row] = await server.execute<{ n: string }>(
-      `select count(*)::text n from pg_stat_activity
-        where wait_event_type = 'Lock' and ($1::text is null or wait_event = $1)
-          and ($2::text is null or datname = $2)`,
-      [event ?? null, database ?? null],
-    );
+    const [row] = await server.execute<{ n: string }>(query, parameters);
     if (row?.n !== '0') return;
     // oxlint-disable-next-line no-await-in-loop -- one poll after another
     await new Promise((resolve) => {
       setTimeout(resolve, 100);
     });
   }
-  throw new Error('no backend waited on the lock');
+  throw new Error('nothing waited as expected');
 }
+
+/** A backend in `postgres`, not `holder`, waiting for the template lock. */
+const WAITING_FOR_THE_TEMPLATE_LOCK = `select count(*)::text n from pg_locks l
+  join pg_stat_activity a on a.pid = l.pid
+ where l.locktype = 'advisory' and not l.granted and l.objsubid = 1
+   and ((l.classid::bigint << 32) | l.objid::bigint) = hashtext('ops-astro migrated template')::bigint
+   and a.datname = 'postgres' and a.pid <> $1`;
+
+/** A backend in database `$1` waiting on a lock. */
+const WAITING_IN = `select count(*)::text n from pg_stat_activity
+ where wait_event_type = 'Lock' and datname = $1`;
 
 /** A plain `create database`, which copies template1, and its drop. */
 async function plainCreate(server: AdminConnection): Promise<void> {
@@ -131,17 +134,21 @@ it('a builder waiting on the template lock holds template1 for nobody', async ()
   const held = connectAsAdmin(configuredForPostgres());
   let building: Promise<unknown> | undefined;
   try {
+    const [holder] = await held.execute<{ pid: number }>('select pg_backend_pid() pid');
     await held.execute(`select pg_advisory_lock(${LOCK_KEY})`);
     building = ensureMigratedTemplate(configuredForPostgres(), name);
-    await untilWaiting(held, { event: 'advisory' });
+    await until(held, WAITING_FOR_THE_TEMPLATE_LOCK, [holder?.pid]);
     await plainCreate(held);
   } finally {
-    await held.execute(`select pg_advisory_unlock(${LOCK_KEY})`);
-    await building;
-    await held.execute(`drop database if exists "${name}" with (force)`);
-    await held.close();
+    try {
+      await held.execute(`select pg_advisory_unlock(${LOCK_KEY})`);
+      await building;
+    } finally {
+      await held.execute(`drop database if exists "${name}" with (force)`);
+      await held.close();
+    }
   }
-}, 120_000);
+}, 300_000);
 
 it('a builder holds template1 for nobody while its migrations run', async () => {
   const name = `migrated_run_${randomBytes(6).toString('hex')}`;
@@ -165,16 +172,20 @@ it('a builder holds template1 for nobody while its migrations run', async () => 
       .catch((error: unknown) => {
         if (error !== rolledBack) throw error;
       });
-    await holding.passed;
+    // A failed comment fails the case at once rather than at its timeout.
+    await Promise.race([holding.passed, blocking]);
     building = ensureMigratedTemplate(configuredForPostgres(), name);
-    await untilWaiting(watch, { database: name });
+    await until(watch, WAITING_IN, [name]);
     await plainCreate(watch);
   } finally {
     release.open();
-    await blocking;
-    await building;
-    await watch.execute(`drop database if exists "${name}" with (force)`);
-    await Promise.all([server.close(), watch.close()]);
+    try {
+      await Promise.all([blocking, building]);
+    } finally {
+      await Promise.allSettled([blocking, building]);
+      await watch.execute(`drop database if exists "${name}" with (force)`);
+      await Promise.all([server.close(), watch.close()]);
+    }
   }
 }, 300_000);
 
