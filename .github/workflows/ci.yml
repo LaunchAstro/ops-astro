@@ -294,8 +294,11 @@ jobs:
     strategy:
       # Every shard runs to the end, so one red names all of its suites.
       fail-fast: false
+      # 16 since CI-SPEED (owner, 4 October 2026): two merge groups at once hold 32 shard jobs,
+      # inside the 60 jobs the account runs at once. scripts/db-census.ts proves the 8- and
+      # 16-way splits hold the same items and tests.
       matrix:
-        shard: [1, 2, 3, 4, 5, 6, 7, 8]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
     services:
       postgres:
         # Postgres 17, the hosted database's major (S0-7), pinned by digest:
