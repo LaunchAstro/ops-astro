@@ -547,6 +547,7 @@ const DEFINERS: readonly string[] = [
   'map_summary_on_record()',
   'map_summary_refresh(uuid)',
   'model_route_room(text,integer)',
+  'ops.ended_subject_sessions_at_commit()',
   'ops.expire_second_factor_codes()',
   'ops.record_tested_restore()',
   'take_lease(uuid,uuid,uuid,uuid,uuid,timestamp with time zone,text)',
@@ -801,7 +802,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     expect(wrong).toStrictEqual([]);
   });
 
-  // Nine, each for a named reason. The map read models' four (WF-1) and the
+  // Ten, each for a named reason. The map read models' four (WF-1) and the
   // pickup path (take_lease) are pinned in their own blocks below. The append-only trigger refuses
   // the owner itself. The fair share's count (AW-01, ORCH-DECISION SL11
   // AW-01) is the one read across businesses: a provider route's ceiling is
@@ -810,14 +811,16 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
   // may execute it (tests/broker/aw-01-broker-fair-share.test.ts). The drill
   // stamp (C55) writes only now(), and only the drill's identity runs it. The
   // codes expiry (20261002105957) deletes only rows past its fixed horizon, and only the
-  // upkeep identity runs it. The pickup path (SL11-30, 20261004040200) is the one way a lease is
+  // upkeep identity runs it. The ending's commit time (20261004181806) is a
+  // trigger on the subject-wide endings that only moves a new row's time later.
+  // The pickup path (SL11-30, 20261004040200) is the one way a lease is
   // written, in the caller's own business (tests/db/take-lease-path.test.ts).
   describe('the security definer functions', () => {
     const definers = (): readonly CatalogueFunction[] => functions.filter((fn) => fn.definer);
     const definer = (signature: string): CatalogueFunction | undefined =>
       definers().find((fn) => fn.signature === signature);
 
-    it('are exactly nine, each with its search path pinned', () => {
+    it('are exactly ten, each with its search path pinned', () => {
       expect(definers().map((fn) => fn.signature)).toStrictEqual(DEFINERS);
     });
 
@@ -837,7 +840,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
       expect(fn?.firedBy).toStrictEqual([]);
     });
 
-    it('the third is the codes expiry, taking no argument', () => {
+    it('the fourth is the codes expiry, taking no argument', () => {
       // 20261002105957: no argument, so it deletes only rows past its fixed horizon; only the
       // upkeep identity executes it (second-factor-codes-retention).
       const expiry = definer('ops.expire_second_factor_codes()');
@@ -846,13 +849,28 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
       expect(expiry?.config).toStrictEqual(['search_path=pg_catalog']);
     });
 
-    it('the fourth is the drill stamp, taking no argument', () => {
+    it('the fifth is the drill stamp, taking no argument', () => {
       // 0070 (C55): no argument, so it writes only now(); only the drill's
       // identity executes it (c55-last-tested-restore), refused above to every caller here.
       const stamp = definer('ops.record_tested_restore()');
       expect(stamp?.trigger).toBe(false);
       expect(stamp?.argumentTypes).toStrictEqual([]);
       expect(stamp?.config).toStrictEqual(['search_path=pg_catalog']);
+    });
+  });
+
+  describe('the third security definer function', () => {
+    it("is the ending's commit time, a trigger fired only by an insert of an ending", () => {
+      // 20261004181806 (Sol OW-001-FIX2): it sets a new subject-wide ending's time at commit.
+      const fn = functions.find(
+        (one) => one.signature === 'ops.ended_subject_sessions_at_commit()',
+      );
+      expect(fn?.definer).toBe(true);
+      expect(fn?.trigger).toBe(true);
+      expect(fn?.config).toStrictEqual(['search_path=pg_catalog']);
+      expect(fn?.firedBy).toStrictEqual([
+        { table: 'ops.ended_subject_sessions', events: 'insert' },
+      ]);
     });
   });
 
@@ -874,7 +892,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     });
   });
 
-  describe('the fifth security definer function', () => {
+  describe('the sixth security definer function', () => {
     it('is the pickup path, fired by nothing and under row security', () => {
       const fn = functions.find(
         (each) =>

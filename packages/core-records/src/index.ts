@@ -13,6 +13,8 @@ export * from './authority/agent-credential-surface.ts';
 export { readEnvFile } from './env-file.ts';
 export {
   checkDelegatedAuthority,
+  DELEGATION_STANDS,
+  DELEGATION_STANDS_AT_CHECK,
   digestOf,
   mintChildDelegation,
   mintDelegation,
@@ -108,6 +110,7 @@ export { withStanding } from './identity/standing.ts';
 export {
   NO_ASSURANCE,
   SESSION_ABSOLUTE_SECONDS,
+  SIGN_IN_CLOCK_SKEW_SECONDS,
   type Assurance,
   type AssuranceLevel,
 } from './identity/verified-subject.ts';
