@@ -219,6 +219,10 @@ declare
   v_business uuid := public.app_business_id();
   v_task_type uuid;
 begin
+  -- One refresh of a map at a time, to the end of the transaction: each
+  -- statement below then counts what an earlier writer committed, so two
+  -- concurrent writes cannot each upsert a count missing the other's.
+  perform pg_advisory_xact_lock(hashtextextended('map.summary:' || v_business || ':' || p_map, 0));
   select t.id into v_task_type
     from public.record_types t where t.business_id = v_business and t.key = 'task';
   if v_task_type is null then return; end if;
