@@ -9,10 +9,12 @@
 // database privilege for privilege, and keeps the from-empty path for the
 // callers that need it.
 
+import { execFile } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { cpSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { promisify } from 'node:util';
 import { afterAll, describe, expect, it, onTestFinished } from 'vitest';
 
 import {
@@ -64,6 +66,20 @@ const templateRow = async (name: string) =>
     )
   )[0];
 
+const run = promisify(execFile);
+/** ensureMigratedTemplate in a node process of its own, its answer read back. */
+async function builderProcess(name: string): Promise<unknown> {
+  const script =
+    "const m = await import('./tests/support/migrated-template.ts');" +
+    'console.log(JSON.stringify(await m.ensureMigratedTemplate(process.argv[1], process.argv[2])));';
+  const { stdout } = await run(
+    process.execPath,
+    ['--input-type=module', '-e', script, serverUrl as string, name],
+    { encoding: 'utf8' },
+  );
+  return JSON.parse(stdout) as unknown;
+}
+
 const ledgerSize = async (admin: AdminConnection) =>
   (await admin.execute<{ n: string }>('select count(*)::text n from ops.schema_migrations'))[0]?.n;
 
@@ -100,9 +116,12 @@ function theTemplate() {
     );
     // A builder that stopped after create: connectable, no comment, no schema.
     await onServer((server) => server.execute(`create database "${name}"`));
-    const built = await Promise.all(
-      [1, 2, 3].map(() => ensureMigratedTemplate(serverUrl as string, name)),
-    );
+    // Three builders in three processes, so only the server's lock keeps them apart.
+    const built = await Promise.all([
+      ensureMigratedTemplate(serverUrl as string, name),
+      builderProcess(name),
+      builderProcess(name),
+    ]);
     expect(built).toStrictEqual([1, 2, 3].map(() => ({ name, migration: FULL })));
     expect((await templateRow(name))?.connections).toBe(false);
     // What was built is the migrations' own output: a copy of it holds the full ledger.
