@@ -182,11 +182,12 @@ export async function emailDailyBatch(
     const items = await stillReadable(tx, prepared);
     const [first] = items;
     if (first === undefined) return 'NOTHING_WAITING';
-    await recordAsked(tx, items, true);
+    const reserved = await recordAsked(tx, items, true);
     return {
       itemIds: items.map((item) => item.itemId),
       to: first.to,
       link: items.length === 1 ? first.itemId : null,
+      reserved,
     };
   };
   const sent = await deliver(database, businessId, timing.broker, timing.mail, ask);

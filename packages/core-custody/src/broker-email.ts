@@ -15,8 +15,8 @@
 //    Then each item the email covers is recorded `asked`, with its class.
 // 2. Send, through custody, a request the adapter built from the declared
 //    fields. The body carries one address, the item's or the inbox's, and
-//    never a decision. A send that paused past the grace since its ask
-//    began sends nothing and records `failed`, `expired` (`lapsed`).
+//    never a decision. A send that paused past the fence since its ask was
+//    reserved sends nothing and records `failed`, `expired` (`lapsed`).
 // 3. Record what came back as each item's next observation: `accepted`
 //    with the provider's message id, or `failed` with the fault's kind. No
 //    answer body, address or link is kept, returned or written anywhere.
@@ -43,6 +43,7 @@ import {
   fromVerifiedSender,
   lapsed,
   mayStillSend,
+  type Reading,
   recordAsked,
   roomFor,
   stillReadable,
@@ -166,15 +167,19 @@ export async function askOne(
   }
   if (!(await room())) return 'EMAIL_AT_CEILING';
   if ((await stillReadable(tx, [item])).length === 0) return 'ITEM_WITHHELD';
-  await recordAsked(tx, [item], false);
-  return { itemIds: [itemId], to: item.to, link: itemId };
+  const reserved = await recordAsked(tx, [item], false);
+  return { itemIds: [itemId], to: item.to, link: itemId, reserved };
 }
 
-/** What one email covers: its items, its recipient's address, and the item it links, or the inbox. */
+/**
+ * What one email covers: its items, its recipient's address, the item it links or the inbox, and
+ * the host's clocks when its asks were reserved.
+ */
 export interface Asked {
   readonly itemIds: readonly string[];
   readonly to: string;
   readonly link: string | null;
+  readonly reserved: Reading;
 }
 
 /** Step 3's reading: the provider's message id, or the fault's kind. Never the answer's body. */
@@ -221,7 +226,6 @@ export async function deliver<R extends string>(
   const found = routed(broker);
   if (found === undefined) return { ok: false, code: 'OPERATION_NOT_CATALOGUED' };
   const { operation, route, adapter } = found;
-  const reserving = performance.now();
   const asked = await database.withBusiness(
     businessId,
     async (tx) => await ask(tx, roomFor(tx, operation)),
@@ -230,7 +234,7 @@ export async function deliver<R extends string>(
   const path = asked.link === null ? '/inbox' : `/inbox/${encodeURIComponent(asked.link)}`;
   const address = new URL(path, mail.appOrigin).href;
   const built = adapter.build({ to: asked.to, from: mail.from, address });
-  const seen = lapsed(reserving)
+  const seen = lapsed(asked.reserved)
     ? ({ state: 'failed', evidence: 'expired' } as const)
     : observed(
         await broker.custody.dispatch(route.credentialRef, {

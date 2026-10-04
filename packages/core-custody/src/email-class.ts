@@ -103,17 +103,27 @@ export async function stillReadable(
   return kept;
 }
 
+/** Both host clocks at one moment: the monotonic one, and the wall clock, which counts suspend. */
+export interface Reading {
+  readonly monotonic: number;
+  readonly wall: number;
+}
+
+export const readClocks = (): Reading => ({ monotonic: performance.now(), wall: Date.now() });
+
 /**
  * Record `asked` on each item the email covers, with the batch marker and class it carries. Each
  * is observed at one instant, the reservation's own (`clock_timestamp()`), not the transaction's
  * start: the windows and the ceiling count from when the email was reserved, however long it took
- * to prepare, and a batch's asks share it, so they count as one email.
+ * to prepare, and a batch's asks share it, so they count as one email. Answers the host's clocks
+ * read just before that instant, which the fence on the send counts from (`lapsed`).
  */
 export async function recordAsked(
   tx: TenantQuery,
   items: readonly CheckedItem[],
   daily: boolean,
-): Promise<void> {
+): Promise<Reading> {
+  const reading = readClocks();
   const [reserved] = await tx.query<{ readonly at: string }>(
     'select clock_timestamp()::text as at',
   );
@@ -128,6 +138,7 @@ export async function recordAsked(
       ...(reserved === undefined ? {} : { observedAt: reserved.at }),
     });
   }
+  return reading;
 }
 
 /**
@@ -177,15 +188,26 @@ export async function windowSpent(
 export const IN_FLIGHT_GRACE_MS = 60_000;
 
 /**
- * The fence on an ask whose sender paused: whether more than the grace has passed since
- * `reserving`, a `performance.now()` reading taken before the ask's transaction began. Checked
- * just before custody is asked: an ask past it may already have stopped counting, and a
- * replacement may hold its place under the ceiling, so its sender records `failed`, evidence
- * `expired`, and never calls the provider. One within it starts a call that custody ends while
- * the ask still counts.
+ * Kept off the grace by the fence, not added to the ceiling's bound: the fence and the ceiling
+ * read different clocks, and a call starts a moment after its check, so a fence at the grace
+ * itself could let a resumed send overlap its replacement by that moment.
  */
-export function lapsed(reserving: number): boolean {
-  return performance.now() - reserving > IN_FLIGHT_GRACE_MS;
+const FENCE_MARGIN_MS = 10_000;
+
+/**
+ * The fence on an ask whose sender paused: whether more than the grace, less a margin, has passed
+ * since `reserved` (`recordAsked`'s reading, taken inside the ask's transaction just before its
+ * instant) on either host clock. The monotonic clock does not count a suspended host and the wall
+ * clock can step, while the ceiling ages an ask on the database's clock, so either one past the
+ * fence lapses it. Checked just before custody is asked: an ask past it may already have stopped
+ * counting, and a replacement may hold its place under the ceiling, so its sender records
+ * `failed`, evidence `expired`, and never calls the provider. One within it starts a call that
+ * custody ends while the ask still counts.
+ */
+export function lapsed(reserved: Reading): boolean {
+  const now = readClocks();
+  const fence = IN_FLIGHT_GRACE_MS - FENCE_MARGIN_MS;
+  return now.monotonic - reserved.monotonic > fence || now.wall - reserved.wall > fence;
 }
 
 /**
