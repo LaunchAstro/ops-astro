@@ -145,6 +145,17 @@ The address and its business are kept in `sessionStorage` under
 out clears it too, so an ordinary sign-in is never redirected by an interruption
 somebody already answered.
 
+**A change of owner shows nothing of the last one.** A business switch, another
+person in the tab or another assistant conversation is a new owner. The search
+palette's answer, the new-task draft and its pending attempt, the preferences
+in Settings, the allowance line, a dock grip's unfinished width and a read's
+held answer and freshness each belong to the owner they were read or typed for.
+The moment the owner changes they are hidden, before the new owner's read
+answers, and nothing of the old owner is sent under the new one: a preference
+saved while the new read is pending merges into the new reader's values only
+(`use-read.ts`, `search.tsx`, `CreateTask.tsx`, `settings/you.tsx`,
+`allowance-line.tsx`, `use-layout.ts`, `freshness.tsx`).
+
 All browser storage is read and written through `jsonSlot` in
 `apps/web/src/session/token.ts`. The screens get their storage from
 `tabStorage()` in the same file. A tab with blocked site data draws the screens
@@ -219,7 +230,9 @@ the gesture law, it marks that client above the book from `client.list`) and Set
 Settings panel beside the page rather than navigating (MP-3-1). Agent has no
 address of its own: like the task panel it is drawn by the dock itself
 (`apps/web/src/dock/agent-dock.ts`), carries the page's standing scope only,
-and its door goes to the board. The dock's head names and closes it, over the
+and its door goes to the board. A door that asks for it, and Back and Forward through the dock's
+history, open it like any registered panel; only the open set restored from
+storage after a reload does not bring it back. The dock's head names and closes it, over the
 drawer's model picker and Page; the drawer draws no head of its own. A plain press shows one panel, shift adds one, each X
 closes only its own, Close all closes every one, and Escape closes the last
 opened unless a field, menu or editor took the key
@@ -363,7 +376,14 @@ the note, the tags, the subtasks and the time, each by its own command
 (`screens/task/task-draft.ts`); a part refused after the task exists is named,
 never retried as a second task. Closing the panel, or opening another task or
 a draft, while the reader's timer runs on the task stops it through
-`time.stop`. The name is
+`time.stop`, also when the panel closes before its reread lands or while a
+reread has failed: the panel holds the running timer's stop and its unsent
+comment above its read. The draft's fields are read-only while Create is out;
+a dock close refused then remounts the draft, which waits for that Create's
+answer. On the task page, a subtask add or a time log that answers late
+clears only the words it sent, and the subtask box's words and an open
+comment edit's words are held above the page's read, so a live reread keeps
+them. The name is
 edited in place in the head (Enter saves, Escape leaves it), and the field
 grid (`screens/task/PanelFields.tsx`) sets the assignee (a person from
 `person.list`, or Unassigned) through `task.assign` and the due date through
@@ -495,6 +515,18 @@ title and due date whose answer never arrived is retried under the same
 replayed as the success it was ([API.md](API.md), "A replay of a stored
 success") instead of being drawn as somebody else's change; any keystroke starts
 a new attempt (`saveFields` in `TaskDetail.tsx`).
+
+**A write whose answer was lost keeps its `operationId` until the server
+answers.** The incident form, the duplicate, a subtask's Enter and the time log
+hold each id keyed by the exact request it was sent with. An unchanged retry
+presents the same id and the server's register replays the write it recorded,
+so nothing is recorded twice; a changed request mints a new one, and any answer
+from the server lets the id go. The comment box keeps its attempt while a
+reply, a tab or Cancel is chosen, so posting the unchanged box to the same
+reply again is that attempt. A draft's Create gives each part the id
+`<create id>.<index>`, and a new tag's `tag.create` the id `<part id>.tag`, so
+every run of one attempt sends the same ids (`record-incident.tsx`, `client-seam.ts`, `Subtasks.tsx`, `Time.tsx`,
+`Comments.tsx`, `task-draft.ts`).
 
 The settings screen's writes go through `useCommand` too. `use-settings.ts`
 keeps only what settings does with each kind, and its memory of the last
@@ -690,6 +722,15 @@ and a fold saves at once. The tab keeps a copy per business as
 `ops-astro.layout.<business>`, naming its person, so a reload draws the layout
 on its first render; another person signed in to the tab never reads it, and a
 switch or sign-out removes it. The read then brings what another device saved.
+
+Preference saves through one client leave one at a time, each once the last
+has answered (`data/preference-saves.ts`), so the last change is the one the
+store keeps: the appearance, a task fold, the rail and the dock alike. A read
+started before a save never overwrites what that save changed; the screen keeps
+the newer choice. A refused save's reread counts from that save, so a later
+save, queued or landed, keeps its choice, and the refusal and its reread end
+with their reader, so neither reaches another business or person
+(`settings/you.tsx`).
 
 This business draws the two settings the model classifies `operation`:
 `four_eyes_threshold` and `client_sign_off_required`. Each is written through

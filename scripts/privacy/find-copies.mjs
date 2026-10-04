@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // The manual privacy runbook's copy finder (C81, docs/local/PRIVACY-RUNBOOK.md):
-// every row of one business that holds a person's text, in any table, in any
-// letter case, including the records' search column, and every row naming by
+// every row of one business that holds a person's text in a value (never a
+// column's or a JSON field's name), in any table, in any letter case,
+// including the records' search column, and every row naming by
 // id a person whose own row or identifier holds it, or their acting identity
 // or sign-in (their memberships, logins and grants), or the agent of a
 // credential they issued. It reads with the owner's connection from
@@ -55,6 +56,21 @@ function containing(text) {
 }
 
 /**
+ * Whether row `t` holds $1 in a value, at any depth: a column's or a JSON
+ * field's name is never the person's text ("granted_at" names no Grant).
+ */
+const HOLDS = `exists (select from jsonb_path_query(to_jsonb(t), 'strict $.**') v
+    where jsonb_typeof(v) not in ('object', 'array') and lower(v::text) like $1)`;
+
+/** Whether a column's value holds the text or an id, at any depth, never by a field's name. */
+function holds(value, needle, ids) {
+  if (value !== null && typeof value === 'object')
+    return Object.values(value).some((inner) => holds(inner, needle, ids));
+  const held = JSON.stringify(value).toLowerCase();
+  return held.includes(needle) || ids.some((id) => held.includes(id));
+}
+
+/**
  * The ids standing for the people the text names ($1, in business $2): those
  * whose own row or an identifier holds it, their actors, their logins and the
  * agent actor of each credential they issued (that actor has no person_id).
@@ -62,10 +78,10 @@ function containing(text) {
  */
 const PERSON_IDS = `with persons as (
     select t.id from public.people t
-     where t.business_id = $2 and lower(to_jsonb(t)::text) like $1
+     where t.business_id = $2 and ${HOLDS}
     union
     select t.person_id from public.person_identifiers t
-     where t.business_id = $2 and lower(to_jsonb(t)::text) like $1)
+     where t.business_id = $2 and ${HOLDS})
   select id::text as id from persons
   union
   select a.id::text from public.actors a
@@ -110,14 +126,11 @@ async function scan(admin, business, needle, exportRows) {
       const rows = await execute(
         `select t.ctid::text as address, to_jsonb(t) as row from public."${name}" t
           where t.business_id = $2
-            and (lower(to_jsonb(t)::text) like $1 or to_jsonb(t)::text like any($3::text[]))`,
+            and (${HOLDS} or to_jsonb(t)::text like any($3::text[]))`,
         [containing(needle), owner.id, ids.map((id) => `%${id}%`)],
       );
       for (const { address, row } of rows) {
-        const columns = Object.keys(row).filter((column) => {
-          const held = JSON.stringify(row[column]).toLowerCase();
-          return held.includes(needle) || ids.some((id) => held.includes(id));
-        });
+        const columns = Object.keys(row).filter((column) => holds(row[column], needle, ids));
         const found = { table: name, id: row.id ?? address, columns };
         if (exportRows) found.row = row;
         stdout.write(`${JSON.stringify(found)}\n`);

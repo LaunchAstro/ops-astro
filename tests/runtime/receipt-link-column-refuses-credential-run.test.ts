@@ -39,7 +39,7 @@ if (serverUrl === undefined) {
   console.warn('runtime/receipt-link-column: DATABASE_URL is unset, so nothing below ran.');
 }
 
-const RUN_CHECK = '20261004100647_receipt_link_credential_run';
+const RUN_CHECK = '20261004175314_receipt_link_credential_run';
 const BEFORE_RUN_CHECK = readMigrations('migrations').filter((m) => m.version !== RUN_CHECK);
 const linkWithRun = (length: number): string =>
   `https://receipts.example/effects/${'aB3_-'.repeat(9).slice(0, length)}`;

@@ -49,14 +49,14 @@ const unknownHold: Reservation = {
   actualMinor: null,
   classifiedCause: null,
   lease: { state: 'released' },
-  attempt: { id: 'att-1', state: 'liability_unknown' },
+  attempt: { id: 'att-1', state: 'liability_unknown', outcome: null },
 };
 
 /** v1's hold, quarantined by the classifier. */
 const quarantined: Reservation = {
   ...unknownHold,
   state: 'quarantined',
-  attempt: { id: 'att-1', state: 'dispatched' },
+  attempt: { id: 'att-1', state: 'dispatched', outcome: null },
 };
 
 const ignore = (): void => {
@@ -86,7 +86,7 @@ describe('REVIEW-3A-S1 an unknown hold on an older run after a hand-back with a 
       runId: 'run-2',
       heldMinor: 1_000,
       lease: { state: 'live' },
-      attempt: { id: 'att-2', state: 'dispatched' },
+      attempt: { id: 'att-2', state: 'dispatched', outcome: null },
     };
     const story = storyOf([unknownHold, v2Held]);
     expect(story.state).toBe('unknown-outcome');

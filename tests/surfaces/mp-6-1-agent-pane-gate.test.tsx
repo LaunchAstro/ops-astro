@@ -95,8 +95,14 @@ describe('MP-6-1 agent pane', () => {
     );
     // A hold the classifier settled at its calls' spend stopped; a hand-back that spent finished.
     const spent = { ...running, state: 'actual', actualMinor: 100, lease: null };
-    expect(word({ reservations: [{ ...spent, attempt: { state: 'abandoned' } }] })).toBe('Dropped');
-    expect(word({ reservations: [{ ...spent, attempt: { state: 'handed_back' } }] })).toBe('Done');
+    expect(
+      word({ reservations: [{ ...spent, attempt: { state: 'abandoned', outcome: null } }] }),
+    ).toBe('Dropped');
+    expect(
+      word({
+        reservations: [{ ...spent, attempt: { state: 'handed_back', outcome: 'completed' } }],
+      }),
+    ).toBe('Done');
     expect(word({ state: 'cancelled' })).toBe('Cancelled');
     // A completed hand-back as the server leaves it: the lineage live, the
     // reservation abandoned under `handback_completed`, the attempt abandoned.
@@ -105,12 +111,12 @@ describe('MP-6-1 agent pane', () => {
       state: 'abandoned',
       classifiedCause: 'handback_completed',
       lease: { state: 'released' },
-      attempt: { state: 'abandoned' },
+      attempt: { state: 'abandoned', outcome: 'completed' },
     };
     expect(word({ reservations: [handedBack] })).toBe('Done');
-    expect(word({ reservations: [{ ...handedBack, attempt: { state: 'dropped' } }] })).toBe(
-      'Dropped',
-    );
+    expect(
+      word({ reservations: [{ ...handedBack, attempt: { state: 'dropped', outcome: null } }] }),
+    ).toBe('Dropped');
   });
 
   it('MP-6-1 one story', () => {
