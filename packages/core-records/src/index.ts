@@ -129,6 +129,7 @@ export {
   listSeenSessions,
   openResetWindow,
   settleResetWindow,
+  waitForNextSecond,
   type SeenSession,
   type SessionEndReason,
 } from './identity/sessions.ts';

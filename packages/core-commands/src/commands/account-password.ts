@@ -55,6 +55,7 @@ import {
   openResetWindow,
   settleResetWindow,
   standingOf,
+  waitForNextSecond,
   type BusinessId,
   type Database,
   type Session,
@@ -249,6 +250,7 @@ async function setAndEnd(
     ended = true;
   } finally {
     await database.withBusiness(found.business, async (tx) => {
+      if (set === 'set') await waitForNextSecond(tx);
       await endIn(tx, own.session, unset());
       if (ended && set === 'set') await audited(tx, own.session);
       await settleResetWindow(tx, window);

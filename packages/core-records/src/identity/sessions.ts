@@ -129,6 +129,18 @@ export async function openResetWindow(tx: TenantQuery, subject: string): Promise
   return id;
 }
 
+/**
+ * Wait, on the database's clock, into its next whole second (C40). GoTrue
+ * stamps a sign-in in whole seconds, rounded down, and a settled window
+ * refuses only a stamp whose whole second had passed, so a reset that set the
+ * password waits here before it settles: every sign-in with the old password
+ * is then stamped a whole second before the settle and refused, and one with
+ * the new password after the answer is served.
+ */
+export async function waitForNextSecond(tx: TenantQuery): Promise<void> {
+  await tx.query(`select pg_sleep(1 - extract(epoch from clock_timestamp()) % 1)`);
+}
+
 /** Settle the window: a sign-in from this moment is served. */
 export async function settleResetWindow(tx: TenantQuery, id: string): Promise<void> {
   await tx.query(
@@ -153,8 +165,9 @@ export async function sessionEnded(tx: TenantQuery, presented: VerifiedSubject):
   // the settle's own second may follow the settle, and a new password's must
   // be served (round 3), so the settle refuses only a stamp whose whole second
   // had passed; comparing the stamp as an instant would refuse that sign-in.
-  // What this serves from before the settle in that second was ended if the
-  // door saw it (the reset's endings, or refused while open, below).
+  // A reset that set the password settles in a later whole second than the
+  // provider's answer (waitForNextSecond), so no old password's sign-in
+  // shares the settle's second; a failed one ends the login to the instant.
   const [row] = await tx.query<{ readonly ended: boolean; readonly open: boolean }>(
     `with reset as (
        select (to_timestamp($3::bigint) <= r.open_until and r.settled_at is null) as open,
