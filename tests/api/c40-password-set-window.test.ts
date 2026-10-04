@@ -6,6 +6,7 @@
 // they reach the door.
 
 import { randomUUID } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
 import { expect, it } from 'vitest';
 import { listOwnSessions } from '../../packages/core-commands/src/index.ts';
 import { serverUrl } from '../acceptance/world.ts';
@@ -108,6 +109,41 @@ SOL('C40 window: a sign-in stamped with the second a reset settled in is served'
     before: await doorAnswer(await tokenFor(subject, randomUUID(), second - 1)),
   }).toEqual({ same: 'served', before: 'AUTH_SESSION_EXPIRED' });
 });
+
+/** The database clock, in seconds since the epoch. */
+const databaseClock = async (): Promise<number> => {
+  const [row] = await world.db.admin.execute<{ at: string }>(
+    `select extract(epoch from clock_timestamp())::text as at`,
+  );
+  return Number(row?.at);
+};
+
+SOL(
+  'C40 window: after a successful reset, a session stamped with the second the provider answered in and never presented is refused',
+  async () => {
+    const member = await freshMember('answer-second');
+    const subject = member.presented.subject;
+    let answered = Number.NaN;
+    answerWith((request, response) => {
+      // Answer just past a whole second of the database's clock, so the reset
+      // can settle in the second the provider answered in.
+      void databaseClock()
+        .then(async (at) => {
+          await delay((Math.ceil(at) - at) * 1000 + 20);
+          answered = Math.floor(await databaseClock());
+          return answered;
+        })
+        .catch(() => Number.NaN)
+        .finally(() => json(200, { id: subject })(request, response));
+    });
+    expect((await setPassword(await mintToken(subject), PASSWORD)).status).toBe(200);
+    expect(Number.isInteger(answered)).toBe(true);
+    // An old-password sign-in in that second, made at the provider, never shown to the door.
+    expect(await doorAnswer(await tokenFor(subject, randomUUID(), answered))).toBe(
+      'AUTH_SESSION_EXPIRED',
+    );
+  },
+);
 
 // PR #382 round 3, correctness: the list agrees with the door after a failed reset.
 SOL('the live-session list excludes sessions ended by a failed reset', async () => {
