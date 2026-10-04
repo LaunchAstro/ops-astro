@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // A person's own sessions (C58, 0057): the ones this business has served them
-// lately, less the ones ended anywhere (0061).
+// lately, less the ones ended anywhere (0061, 0063).
 //
 // The sign-in provider gives a person no list of their sessions, so the list
 // is what the door has seen: the distinct `session_id`s of the person's
@@ -42,9 +42,16 @@ const LISTED = 50;
 /** The limit plus the minute of clock the door allows a first sign-in time. */
 const WINDOW_SECONDS = SESSION_ABSOLUTE_SECONDS + SIGN_IN_CLOCK_SKEW_SECONDS;
 
+/**
+ * Less the sessions an ending of the login's other sessions (0063) covers:
+ * first served here at or before it. Login resolution refuses those (a
+ * session's sign-in is no later than its first serving plus the minute of
+ * clock) and serves any other, so the list names what the door serves.
+ */
 const SEEN = `
   select a.session_id::text as session_id, min(a.at) as first_seen, max(a.at) as last_seen
     from public.authentication_attempts a
+    join public.logins l on l.business_id = a.business_id and l.id = a.login_id
    where a.business_id = $1
      and a.person_id = $2
      and a.outcome = 'resolved'
@@ -52,7 +59,12 @@ const SEEN = `
      and a.at > now() - make_interval(secs => $3)
      and not exists (
        select 1 from ops.ended_provider_sessions e where e.session_id = a.session_id)
-   group by a.session_id
+   group by a.session_id, l.subject
+  having not exists (
+       select 1 from ops.ended_subject_sessions s
+        where s.subject_digest = encode(sha256(convert_to(l.subject, 'UTF8')), 'hex')
+          and s.kept_session is distinct from a.session_id
+          and min(a.at) <= s.ended_before)
    order by max(a.at) desc, a.session_id
    limit $4`;
 
