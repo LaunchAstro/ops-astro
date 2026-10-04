@@ -25,6 +25,7 @@ import {
   readFieldDefinitions,
   checkAuthority,
   subjectsOf,
+  wayfinderFacts,
 } from '../../../core-records/src/index.ts';
 import { refuseOwnerTicketMove } from './wayfinder.ts';
 import type { TenantQuery } from '../../../core-records/src/index.ts';
@@ -80,6 +81,21 @@ async function refuseUnreachedRecord(
     scope: { kind: 'record', id },
   });
   return reached.ok ? undefined : reached.refusal;
+}
+
+/**
+ * A neighbour that is a ticket of the target's own map, under a write grant on
+ * that map (W12), never a nested map. The sibling read below asks again, in one
+ * statement, that it is still filed under that parent.
+ */
+async function reachedThroughMap(
+  tx: TenantQuery,
+  context: CommandContext,
+  id: string,
+  parent: string | null,
+): Promise<boolean> {
+  if (parent === null || (await wayfinderFacts(tx, id))?.mapId !== parent) return false;
+  return (await refuseUnreachedRecord(tx, context, parent)) === undefined;
 }
 
 /**
@@ -420,14 +436,17 @@ export async function rankTask(
       ),
     );
   }
+  const parent = (target.data['parent'] as string | undefined) ?? null;
   const given = [afterId, beforeId].filter((id) => id !== null);
   for (const id of given) {
     // eslint-disable-next-line no-await-in-loop
     const unreached = await refuseUnreachedRecord(tx, context, id);
-    if (unreached !== undefined) return refused(unreached);
+    // eslint-disable-next-line no-await-in-loop
+    if (unreached !== undefined && !(await reachedThroughMap(tx, context, id, parent))) {
+      return refused(unreached);
+    }
   }
 
-  const parent = (target.data['parent'] as string | undefined) ?? null;
   const board = parent === null ? ((target.data['board'] as string | undefined) ?? null) : null;
   await lockSiblings(tx, parent, board);
 
