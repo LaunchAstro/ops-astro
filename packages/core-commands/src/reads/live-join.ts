@@ -14,6 +14,7 @@
 import { createHash } from 'node:crypto';
 import {
   mapTicketCondition,
+  REACH,
   readScopes,
   subjectsOf,
   withSession,
@@ -85,6 +86,7 @@ export async function boardReach(
     const { business, records, parties } = await readScopes(tx, personId);
     const rows = await tx.query<{ readonly seen: string }>(SEEN, [
       tx.businessId,
+      personId,
       (await readTaskSpine(tx)).taskTypeId,
       business,
       records,
@@ -95,11 +97,14 @@ export async function boardReach(
   return typeof outcome === 'string' ? outcome : undefined;
 }
 
-const SEEN = `with seen as (
+/** A map's tickets by its grants walked here (`REACH`), so a revoked map grant moves nothing. */
+const SEEN = `${REACH},
+       seen as (
          select t.id from public.records t
-          where t.business_id = $1 and t.record_type_id = $2 and t.deleted_at is null
-            and ($3::boolean or t.id = any($4::uuid[]) or t.uuid_7 = any($5::uuid[])
-                 or (t.uuid_4 = any($4::uuid[]) and ${mapTicketCondition('t')})))
+          where t.business_id = $1 and t.record_type_id = $3 and t.deleted_at is null
+            and ($4::boolean or t.id = any($5::uuid[]) or t.uuid_7 = any($6::uuid[])
+                 or (t.uuid_4 = any((select records from reach)::uuid[])
+                     and ${mapTicketCondition('t')})))
        select encode(sha256(convert_to(coalesce(string_agg(part, ',' order by part), ''),
                 'UTF8')), 'hex') as seen
          from (select r.id::text || ':' || r.revision::text from public.records r

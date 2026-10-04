@@ -204,7 +204,7 @@ export {
   type InboxReason,
   type InboxWorkState,
 } from './inbox/items.ts';
-export { INTERNAL_ROLE_KEYS, readScopes, taskAccess } from './inbox/access.ts';
+export { INTERNAL_ROLE_KEYS, REACH, readScopes, taskAccess } from './inbox/access.ts';
 export {
   raiseAssignment,
   raiseDecision,
