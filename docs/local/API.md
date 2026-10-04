@@ -542,7 +542,8 @@ task.update names task.triage; task.create keeps SOURCE_SPOOFED".
 **A top-level key naming a system field is `FIELD_NOT_WRITABLE` 422**, by name.
 The list is the envelope's own (`SYSTEM_OWNED_FIELDS`) plus every installed
 field whose `field_defs.write_mode` is `system`, which today adds
-`completed_at`, `key`, `task`, `edited_at` and `machine_category`
+`completed_at`, `key`, `task`, `edited_at`, `on_behalf_of` and
+`machine_category`
 (`SYSTEM_OWNED_FIELDS` and `claimedSystemFields`, `commands/prepare.ts`). It
 applies on the person prefix, on the agent prefix and on every read. A nested
 key is the operation's own question: `fields.completed_at` is the field engine's
