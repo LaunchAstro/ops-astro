@@ -14,8 +14,8 @@
 // 2. Send, through custody, the adapter's message: the address the invitation
 //    names and one link, the enrolment page carrying the token.
 // 3. Record what came back as the attempt's next observation, read as the
-//    inbox send reads it; an answer carrying the token is malformed. Nothing
-//    returned or written holds the token.
+//    inbox send reads it; an answer holding anything token-shaped is
+//    malformed. Nothing returned or written holds a token.
 //
 // The concurrency ceiling is the catalogued one, and the inbox send's own
 // (`roomFor`): one limit, under one lock, counts every email in flight
@@ -40,6 +40,12 @@ export const INVITATION_SEND_ACTS: readonly string[] = ['invitation.create', 'in
 
 /** Where the link lands: the enrolment page, with the token as its last segment. */
 export const ENROL_PATH = '/enrol/';
+
+/**
+ * A run of base64url as long as an enrolment token (32 random bytes, 43 characters): evidence
+ * holding one may hold a live link, whichever send or business minted it.
+ */
+const TOKEN_SHAPED = /[\w-]{43}/u;
 
 export type InvitationSendRefusal =
   DeliverRefusal | 'INVITATION_NOT_PENDING' | 'NO_SEND_ACT' | 'EMAIL_AT_CEILING';
@@ -141,9 +147,10 @@ export async function sendInvitation(
     timeoutMs: operation.timeoutMs,
     maxResponseBytes: operation.maxResponseBytes,
   });
-  // An answer is evidence about the message, never a place the link's token is kept.
+  // An answer is evidence about the message, never a place a link's token is kept: this
+  // send's, an earlier send's or any other business's, all of one shape.
   const read = observed(outcome, operation);
-  const seen = read.evidence.includes(asked.token)
+  const seen = TOKEN_SHAPED.test(read.evidence)
     ? ({ state: 'failed', evidence: 'malformed' } as const)
     : read;
   const attemptId = await database.withBusiness(
