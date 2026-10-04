@@ -103,6 +103,7 @@
     },
     {
       "files": [
+        "tests/surfaces/page-kit-check-rejects-class-attribute-restyle.test.tsx",
         "tests/surfaces/page-kit-check-rejects-parent-scoped-tip-restyle.test.tsx",
         "tests/surfaces/page-kit-check-rejects-subject-only-restyle.test.tsx",
         "tests/surfaces/phone-width-funnel-check-rejects-collapsed-drawing.test.tsx"
