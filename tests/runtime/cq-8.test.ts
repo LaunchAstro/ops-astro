@@ -122,6 +122,10 @@ describe('CQ-8 runtime structure', () => {
       // who may do what (a grant given, a grant revoked, access ended),
       // inside the handler's transaction.
       'packages/core-records/src/authority/access.ts',
+      // #770: a business's lock on one observed identifier, taken by
+      // `resolveIdentifier` only when its lookup finds nobody, so two first
+      // observations make one person.
+      'packages/core-records/src/identity/identifier-resolution.ts',
       // C59: a login's one factor lock (`second-factor-subject:<digest>`), keyed
       // by its subject's digest in every business, taken first in a factor
       // route's record transaction, before the person's row.

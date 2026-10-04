@@ -61,6 +61,14 @@ jobs:
       # after the gate runs on a head sent back for fixes (scripts/sent-back-hold.mjs).
       - name: A pull request sent back for fixes waits for its fix head
         run: node scripts/sent-back-hold.mjs
+      # CI-SPEED (#724): a pull request whose head is a merge-queue commit (the
+      # tip of a gh-readonly-queue/ branch, under any branch name) fails here:
+      # every job that waits on the gate is skipped, and `database conformance`,
+      # which runs always(), fails. review-evidence.yml runs the same check, as
+      # it waits on no gate. It fails closed on a pull request it cannot read;
+      # other events pass (scripts/queue-head-check.mjs).
+      - name: A pull request never runs its checks on a merge-queue commit
+        run: node scripts/queue-head-check.mjs
       - name: Required scanner runtime
         run: python3 -c "import sys; assert sys.version_info >= (3, 11), 'Python 3.11 or newer is required'"
       - name: Self-test, before anything is believed
@@ -610,6 +618,17 @@ jobs:
           DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
           DATABASE_ADMIN_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
           FIXTURE_PG_CONTAINER: ${{ job.services.postgres.id }}
+      # The seed's boundary proof is a node:test file, so no manifest runs it: it
+      # makes and drops its own migrated databases on this service.
+      - run: node scripts/ci-scope.ts 'isolation tests' -- node --test tests/review/seed-boundaries-proof.test.mjs
+        env:
+          DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
+          DATABASE_ADMIN_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
+      # So is the proof that an HTTPS redirect cannot carry the seed's key to plaintext HTTP.
+      - run: node scripts/ci-scope.ts 'isolation tests' -- node --test tests/review/seed-redirect-keeps-key-off-http.proof.test.mjs
+        env:
+          DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
+          DATABASE_ADMIN_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
 
   parity:
     # API-1: every app action has its API and CLI equivalent; no database.
