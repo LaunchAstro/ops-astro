@@ -3070,7 +3070,11 @@ agent writes the step on the task it is delegated on. It answers `{ step,
 outcome, opened, stopped }`; `FIELD_VALUE_INVALID` 422 names `recordId`,
 `outcome` or `result`; a task that is no step of a running onboarding here is
 `NOT_FOUND` 404; a step still waiting, already closed or stopped is
-`TRANSITION_NOT_PERMITTED` 409.
+`TRANSITION_NOT_PERMITTED` 409. A result is content on its task (S0-5): it
+locks the onboarding, then its steps, then the step's task, and asks again
+under the task's lock whether the task is still on the onboarding's client. A
+task moved to another client meanwhile is `NOT_FOUND` 404 and nothing is
+written; a move after a result is `CLIENT_LOCKED` 409.
 
 A person or client-wait step that opens is parked with an inbox item
 (`assignment`, on the step's task) to whoever owns its move: the task's

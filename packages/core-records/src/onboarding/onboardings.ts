@@ -157,9 +157,11 @@ export async function insertSteps(
 }
 
 /**
- * The step on this task, with its onboarding locked first and then every step
- * of it, so two results on one onboarding serialise and each sees the other's
- * closed dependencies. Undefined when no step is on the task.
+ * The step on this task, with its onboarding locked first, then every step of
+ * it, so two results on one onboarding serialise and each sees the other's
+ * closed dependencies, and then the step's own task (S0-5: a step's result is
+ * content on it). Undefined when no step is on the task, or when the task, read
+ * again under its row lock, is no longer on the onboarding's client.
  */
 export async function lockStepOfTask(
   tx: TenantQuery,
@@ -184,8 +186,8 @@ export async function lockStepOfTask(
   );
   const onboardingId = found[0]?.onboarding_id;
   if (onboardingId === undefined) return undefined;
-  const onboarding = await tx.query<{ readonly state: string }>(
-    'select state from public.onboardings where business_id = $1 and id = $2 for update',
+  const onboarding = await tx.query<{ readonly state: string; readonly client_id: string }>(
+    'select state, client_id from public.onboardings where business_id = $1 and id = $2 for update',
     [tx.businessId, onboardingId],
   );
   const steps = await tx.query<StepRecord>(
@@ -193,11 +195,19 @@ export async function lockStepOfTask(
       where business_id = $1 and onboarding_id = $2 order by position for update`,
     [tx.businessId, onboardingId],
   );
+  // A client change holding the task's lock is waited on here, and the
+  // client it committed is the one read: `task.set_party` takes this lock
+  // first and no onboarding lock, so the order cannot cross.
+  const task = await tx.query<{ readonly client_id: string | null }>(
+    'select uuid_7 as client_id from public.records where business_id = $1 and id = $2 for update',
+    [tx.businessId, taskId],
+  );
   const all = steps.map((row) => stepOf(row));
   const step = all.find((one) => one.taskId === taskId);
-  const state = onboarding[0]?.state;
-  if (step === undefined || state === undefined) return undefined;
-  return { onboardingState: state, step, siblings: all };
+  const [held] = onboarding;
+  if (step === undefined || held === undefined) return undefined;
+  if (task[0]?.client_id !== held.client_id) return undefined;
+  return { onboardingState: held.state, step, siblings: all };
 }
 
 /**
