@@ -30,6 +30,7 @@
   "conformance": [
     "tests/operations/find-copies-values-only.proof.test.ts",
     "tests/operations/scan-login-cleanup-mapping-race.test.ts",
-    "tests/operations/scan-login-make-and-new-business-races.proof.test.ts"
+    "tests/operations/scan-login-make-and-new-business-races.proof.test.ts",
+    "tests/operations/scan-login-interrupted-make-keeps-recovery.proof.test.ts"
   ]
 }

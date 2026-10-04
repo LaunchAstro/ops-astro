@@ -167,3 +167,9 @@ tests/review/seed-redirect-keeps-key-off-http.proof.test.mjs
 # Sol's D2-FIX1 proofs, byte-for-byte as the review patch held them apart from each
 # title, which names what it proves.
 tests/operations/scan-login-make-and-new-business-races.proof.test.ts
+
+# Sol's D2-FIX2 proofs, byte-for-byte as the review patch held them apart from each
+# title, which names what it proves.
+tests/ci/preview-lock-shared-across-temp-dirs.proof.test.ts
+tests/review/carried-stamp-committed-before-kill-proof.test.ts
+tests/operations/scan-login-interrupted-make-keeps-recovery.proof.test.ts

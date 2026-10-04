@@ -20,6 +20,7 @@
     "tests/review/staging-reset-write-after-admission-proof.test.ts",
     "tests/review/staging-reset-keeps-revoked-session-proof.test.ts",
     "tests/review/carried-stamp-once-proof.test.ts",
-    "tests/review/carried-stamp-after-killed-retry-proof.test.ts"
+    "tests/review/carried-stamp-after-killed-retry-proof.test.ts",
+    "tests/review/carried-stamp-committed-before-kill-proof.test.ts"
   ]
 }
