@@ -72,20 +72,45 @@ function plain(text: string): string {
   }
 }
 
+/** A pattern's characters that stand for themselves only when escaped. */
+const SYNTAX = /[$()*+./?[\\\]^{|}]/gu;
+
+/** A byte as a percent escape's two hex digits, each matching either case. */
+const hex = (byte: number): string =>
+  [...byte.toString(16).padStart(2, '0')]
+    .map((digit) => (/[a-f]/u.test(digit) ? `[${digit}${digit.toUpperCase()}]` : digit))
+    .join('');
+
+/**
+ * The secret with any of its characters percent-escaped, in either hex case
+ * or a mix: one pattern for every spelling a URL decoder turns back into it.
+ * Each character is a fixed alternation, so matching stays linear.
+ */
+function escapedSpelling(secret: string): RegExp {
+  const characters = [...secret].map((character) => {
+    const escaped = [...Buffer.from(character, 'utf8')].map((byte) => `%${hex(byte)}`).join('');
+    return `(?:${character.replaceAll(SYNTAX, '\\$&')}|${escaped})`;
+  });
+  return new RegExp(characters.join(''), 'gu');
+}
+
 /**
  * Remove every spelling of the credential a provider might echo back: the
- * value, and a Basic pair's secret half alone, each as JSON text spells it.
+ * value, and a Basic pair's secret half alone, each as JSON text spells it,
+ * percent-escaped in either case, or in base64.
  */
 function redact(text: string, credential: StoredCredential): string {
   const { value } = credential;
   const secrets = credential.scheme === 'basic' ? [value, value.split(':')[1] ?? value] : [value];
   const spellings = secrets.flatMap((secret) => [
-    secret,
     JSON.stringify(secret).slice(1, -1),
-    encodeURIComponent(secret),
     Buffer.from(secret).toString('base64'),
   ]);
-  return spellings.reduce((out, spelling) => out.split(spelling).join('[redacted]'), plain(text));
+  const unescaped = secrets.reduce(
+    (out, secret) => out.replace(escapedSpelling(secret), '[redacted]'),
+    plain(text),
+  );
+  return spellings.reduce((out, spelling) => out.split(spelling).join('[redacted]'), unescaped);
 }
 
 /** Exactly these keys: a request naming a header, an origin or anything else is refused whole. */
