@@ -42,6 +42,7 @@
     "tests/api/c71-d-direct-messages.test.ts",
     "tests/api/c71-d-isolation.test.ts",
     "tests/api/c71-g-group-conversations.test.ts",
+    "tests/api/c71-g-group-lock-id-spelling.test.ts",
     "tests/api/c71-g-group-members.test.ts",
     "tests/api/c71-g-isolation.test.ts",
     "tests/api/c71-live-conversations.test.ts",
