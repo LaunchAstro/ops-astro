@@ -141,23 +141,6 @@ describe('merge group: no step skips a group', () => {
     expect(KEY('if').exec(top(read(REVIEW), 'jobs'))).toBeNull();
   });
 
-  // CI-SPEED (ORCH78 LOOKAHEAD): one job may skip a group, the Postgres 18 look-ahead, which is
-  // not required and runs on pull requests alone. Every other job runs on a group.
-  it('no job in either workflow skips a group, apart from the not-required look-ahead', () => {
-    const LOOKAHEAD = 'database look-ahead, Postgres 18 (not required)';
-    expect(required.map((c) => c.context)).not.toContain(LOOKAHEAD);
-    for (const path of [CI, REVIEW])
-      for (const block of jobs(read(path))) {
-        const name = /^ {4}name: (.+)$/mu.exec(block)?.[1] ?? block.slice(0, 80);
-        const cond = /^ {4}["']?if["']?: (.+)$/mu.exec(block)?.[1];
-        const allowed =
-          name === LOOKAHEAD
-            ? cond === "github.event_name == 'pull_request'"
-            : [undefined, 'always()', "github.event_name != 'push'"].includes(cond);
-        expect(allowed, `${path}: ${name}: if: ${cond}`).toBe(true);
-      }
-  });
-
   it('no job or step in either workflow lets a failure through', () => {
     for (const path of [CI, REVIEW])
       expect(top(read(path), 'jobs'), path).not.toMatch(/continue-on-error/u);
@@ -251,5 +234,24 @@ describe('merge group: CodeQL reports on a group', () => {
     expect(top(CODEQL, 'permissions')).toBe('permissions:\n  contents: read\n\n');
     expect(CODEQL.match(/^ +[\w-]+: write$/gmu)).toEqual(['      security-events: write']);
     expect(CODEQL).not.toMatch(/secrets\.|pull_request_target/u);
+  });
+});
+
+describe('merge group: no job skips a group', () => {
+  // CI-SPEED (ORCH78 LOOKAHEAD): one job may skip a group, the Postgres 18 look-ahead, which is
+  // not required and runs on pull requests alone. Every other job runs on a group.
+  it('no job in either workflow skips a group, apart from the not-required look-ahead', () => {
+    const LOOKAHEAD = 'database look-ahead, Postgres 18 (not required)';
+    expect(required.map((c) => c.context)).not.toContain(LOOKAHEAD);
+    for (const path of [CI, REVIEW])
+      for (const block of jobs(read(path))) {
+        const name = /^ {4}name: (.+)$/mu.exec(block)?.[1] ?? block.slice(0, 80);
+        const cond = /^ {4}["']?if["']?: (.+)$/mu.exec(block)?.[1];
+        const allowed =
+          name === LOOKAHEAD
+            ? cond === "github.event_name == 'pull_request'"
+            : [undefined, 'always()', "github.event_name != 'push'"].includes(cond);
+        expect(allowed, `${path}: ${name}: if: ${cond}`).toBe(true);
+      }
   });
 });

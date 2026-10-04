@@ -347,6 +347,10 @@ jobs:
     # (docs/supply-chain-pins.md).
     name: database look-ahead, Postgres 18 (not required)
     needs: [gate]
+    # Pull requests only (CI-SPEED, ORCH78 LOOKAHEAD). On a merge group or a
+    # push to main nobody reads it, and it held a runner to its 90-minute
+    # timeout there while the group's required checks waited for runners.
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     services:

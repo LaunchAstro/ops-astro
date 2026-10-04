@@ -109,8 +109,8 @@ tests` jobs, the local database, the restart proof and the local auth stack.
 `tests/ci/s0-7-postgres-major.test.ts` fails if any of them differs, and a
 planted migration calling `uuidv7()`, which only 18 has, fails the required
 job. The `database look-ahead, Postgres 18 (not required)` job runs the same
-conformance suites on the 18 digest on every pull request; its failure is
-reported and blocks nothing. When the provider offers Postgres 18, one ticket
+conformance suites on the 18 digest on every pull request, and not on a merge
+group or a push to main; its failure is reported and blocks nothing. When the provider offers Postgres 18, one ticket
 moves production, staging, CI and the restore drill (S0-3) to it together.
 
 As with an action hash, this establishes which bytes run and nothing about
