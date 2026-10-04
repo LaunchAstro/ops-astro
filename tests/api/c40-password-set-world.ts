@@ -1,29 +1,31 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The world `c40-password-set.test.ts` opens: the real API with C40's
-// `POST /api/password/set` mounted beside it, a stand-in login provider on a
-// loopback port that sets passwords and signs out (C58's stand-in, plus
-// `PUT /user`), and the people a reset is tried on.
+// The world the C40 reset cases open (ORCH77-C40B): the real API with
+// `POST /api/password/set` mounted beside it, custody holding a made-up
+// service key for the `auth` destination, a stand-in login provider on a
+// loopback port whose one route is the admin update of one user, a broker
+// that catalogues `auth.update_user_password`, a stand-in factor check, and
+// the people a reset is tried on. A reset token is minted here as the reset
+// ask (C40 P2) will mint one: 32 random bytes, kept as their SHA-256 alone.
 
-import { randomUUID } from 'node:crypto';
-import { createServer, type IncomingMessage, type Server } from 'node:http';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { Hono } from 'hono';
 import { afterAll, afterEach, beforeAll } from 'vitest';
 import { createApi } from '../../apps/api/app.ts';
-import { createGoTrueFactors } from '../../apps/api/auth/factors.ts';
 import { createSupabaseVerifier } from '../../apps/api/auth/supabase.ts';
 import { mountPasswordSet, PASSWORD_SET_PATH } from '../../apps/api/password-set.ts';
 import { executeAgentCommand } from '../../packages/core-commands/src/commands/agent-envelope.ts';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import { isCommandRefusal } from '../../packages/core-commands/src/commands/refusal.ts';
+import type { FactorCodeCheck } from '../../packages/core-commands/src/index.ts';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
-import { subjectDigest } from '../../packages/core-records/src/identity/authentication-attempts.ts';
-import type {
-  BusinessId,
-  Database,
-  TransactionQuery,
-} from '../../packages/core-records/src/index.ts';
+import type { Broker, Custody } from '../../packages/core-custody/src/index.ts';
+import type { BusinessId } from '../../packages/core-records/src/index.ts';
 import {
   ACCEPTANCE_ISSUER,
   bearer,
@@ -43,34 +45,21 @@ import {
   insertPerson,
 } from '../identity/fixture.ts';
 import { signBearer, testSignIn } from '../support/sign-in.ts';
-import { json, signedOut, type Reply } from './c58-sessions-world.ts';
+import { brokerFor, routeDatabase } from './c40-password-set-broker.ts';
+import { json, type Reply } from './c58-sessions-world.ts';
+
+export { brokerFor } from './c40-password-set-broker.ts';
 
 export const now = (): number => Math.floor(Date.now() / 1000);
 
-/** The subject a bearer names, read back off its unverified middle: the stand-in's view. */
-const subjectOf = (request: IncomingMessage): string => {
-  const token = (request.headers.authorization ?? '').replace(/^Bearer /u, '');
-  const middle = token.split('.')[1] ?? '';
-  try {
-    return String(JSON.parse(Buffer.from(middle, 'base64url').toString('utf8')).sub);
-  } catch {
-    return '';
-  }
-};
-
-/** GoTrue's `PUT /user`: the caller's own user back. */
+/** The admin route's stand-in: the user named by the path's last segment, back. */
 const userBack: Reply = (request, response) => {
-  json(200, { id: subjectOf(request), email: 'x@example.test', aud: 'authenticated' })(
-    request,
-    response,
-  );
+  const id = (request.url ?? '').split('/').at(-1) ?? '';
+  json(200, { id, email: 'x@example.test', aud: 'authenticated' })(request, response);
 };
 
-export const GOOD: Readonly<Record<string, Reply>> = {
-  'PUT /user': userBack,
-  'POST /logout?scope=others': signedOut,
-  'POST /logout?scope=local': signedOut,
-};
+/** The one code the stand-in factor check takes as good. */
+export const GOOD_CODE = '246810';
 
 export interface Seen {
   readonly route: string;
@@ -81,71 +70,81 @@ export interface Seen {
 export let world: World;
 export let api: Hono;
 export let seen: Seen[] = [];
-let provider: Server;
-let replies: Record<string, Reply> = { ...GOOD };
+export let serviceKey: string;
+/** The broker the mounted route holds. */
+export let broker: Broker;
 export let clientA: Member;
 export let clientB: Member;
-
+let provider: Server;
+let custody: Custody;
+let folder: string;
+let reply: Reply = userBack;
 let faultIn: BusinessId | undefined;
 
-/** The route's change in `business`, ending and auditing, fails after its work (not the claim). */
+/** The route's change in `business`, auditing and ending, fails after its work. */
 export function faultTheChangeIn(business: BusinessId): void {
   faultIn = business;
 }
 
-/** The app database as the route has it: the same, but for an injected fault. */
-function routeDatabase(app: Database): Database {
-  async function withBusiness<T>(
-    business: BusinessId,
-    run: (tx: TransactionQuery) => Promise<T>,
-  ): Promise<T> {
-    return await app.withBusiness(business, async (tx) => {
-      let auditing = false;
-      const watched: TransactionQuery = {
-        ...tx,
-        query: async <Row>(text: string, parameters?: readonly unknown[]) => {
-          auditing ||= text.includes('insert into audit_events');
-          return await tx.query<Row>(text, parameters);
-        },
-      };
-      const done = await run(watched);
-      if (auditing && business === faultIn) throw new Error('an injected fault, after the change');
-      return done;
-    });
-  }
-  return { ...app, withBusiness };
+/** The provider's next answer to the password update; back to a good one after each case. */
+export function answerWith(next: Reply): void {
+  reply = next;
 }
 
-/** The next answers, per route; the stand-in goes back to `GOOD` after each case. */
-export function answerWith(next: Record<string, Reply>): void {
-  replies = next;
-}
+/** The stand-in factor check: the good code is good, any other wrong. */
+export const checkFactor: FactorCodeCheck = async (_subject, _factorId, code) =>
+  await Promise.resolve(code === GOOD_CODE ? 'good' : 'wrong');
 
-/** A provider session's bearer: `recovery` when the reset link opened it, else a password sign-in. */
+/** An ordinary provider session's bearer, signed in at `signedInAt`. */
 export const tokenFor = async (
   subject: string,
   sessionId: string,
-  how: 'recovery' | 'password',
   signedInAt: number,
-  expiresAt: number = now() + 600,
 ): Promise<string> =>
   await signBearer({
     sub: subject,
     aud: 'authenticated',
     iss: ACCEPTANCE_ISSUER,
-    exp: expiresAt,
+    exp: now() + 600,
     aal: 'aal1',
     session_id: sessionId,
-    amr: [{ method: how, timestamp: signedInAt }],
+    amr: [{ method: 'password', timestamp: signedInAt }],
   });
 
-/** Set a password with a bearer, as the reset page does. */
-export const setPassword = async (token: string | undefined, password: unknown): Promise<Answer> =>
+/**
+ * A reset token for the login of `subject` in `business`, as the reset ask
+ * mints one; `ageMinutes` back-dates it, so 31 is one past its life.
+ */
+export async function mintToken(
+  subject: string,
+  business: BusinessId = world.alpha,
+  ageMinutes = 0,
+): Promise<string> {
+  const token = randomBytes(32).toString('base64url');
+  await world.db.app.withBusiness(business, async (tx) => {
+    await tx.query(
+      `insert into password_reset_tokens
+         (business_id, id, login_id, token_hash, created_at, expires_at)
+       select $1, gen_random_uuid(), l.id, $3,
+              now() - make_interval(mins => $4), now() - make_interval(mins => $4 - 30)
+         from logins l where l.business_id = $1 and l.subject = $2`,
+      [business, subject, createHash('sha256').update(token).digest('hex'), ageMinutes],
+    );
+  });
+  return token;
+}
+
+/** Set a password with a token, as the reset page does. */
+export const setPassword = async (
+  token: string,
+  password: unknown,
+  code?: string,
+): Promise<Answer> =>
   await call(
     api as unknown as ReturnType<typeof createApi>,
     PASSWORD_SET_PATH,
-    { password },
-    token === undefined ? {} : bearer(token),
+    code === undefined ? { token, password } : { token, password, code },
+    {},
   );
 
 /** Whether a session is served past the door in a business (any answer but a door refusal). */
@@ -181,27 +180,6 @@ export interface AuditRow {
   readonly row: string;
 }
 
-export interface AttemptRow {
-  readonly outcome: string;
-  readonly refusal_code: string | null;
-  readonly row: string;
-}
-
-/** Every authentication attempt a subject left in a business, each as its whole JSON too. */
-export const attemptsOf = async (
-  business: string,
-  subject: string,
-): Promise<readonly AttemptRow[]> =>
-  await world.db.app.withBusiness(
-    business,
-    async (tx) =>
-      await tx.query<AttemptRow>(
-        `select outcome, refusal_code, to_jsonb(a)::text as row
-           from public.authentication_attempts a where subject_digest = $1 order by at, id`,
-        [subjectDigest({ provider: 'supabase', subject })],
-      ),
-  );
-
 /** Every audit row of `command` in a business, each as its whole JSON too. */
 export const auditOf = async (business: string, command: string): Promise<readonly AuditRow[]> =>
   await world.db.app.withBusiness(
@@ -223,36 +201,37 @@ async function openWorld(): Promise<void> {
       const route = `${request.method} ${request.url}`;
       const body = Buffer.concat(chunks).toString('utf8');
       seen.push({ route, authorization: request.headers.authorization, body });
-      const found = new Map(Object.entries(replies)).get(route);
-      const reply = typeof found === 'function' ? found : json(404, { msg: 'no such route' });
       reply(request, response);
     });
   });
   await new Promise<void>((resolve) => {
     provider.listen(0, '127.0.0.1', resolve);
   });
-  const verify = createSupabaseVerifier(testSignIn(ACCEPTANCE_ISSUER));
-  const factors = createGoTrueFactors({
-    baseUrl: `http://127.0.0.1:${(provider.address() as AddressInfo).port}`,
-    // Room for a held answer (SEC26 L2), and a hang still ends the call.
-    timeoutMs: 3000,
-  });
+  folder = mkdtempSync(join(tmpdir(), 'c40p-'));
+  serviceKey = `servicekey-${randomBytes(18).toString('hex')}`;
+  const origin = `http://127.0.0.1:${(provider.address() as AddressInfo).port}`;
+  const held = await brokerFor(origin, serviceKey, folder);
+  custody = held.custody;
+  broker = held.broker;
   const inner = createApi({
     database: world.db.app,
-    verify,
+    verify: createSupabaseVerifier(testSignIn(ACCEPTANCE_ISSUER)),
     resolveBusiness: async (key: string) =>
       await Promise.resolve({ alpha: world.alpha, bravo: world.bravo }[key]),
     executeCommand,
     executeRead,
     executeAgentCommand,
-    factors,
   });
   api = new Hono();
-  mountPasswordSet(api, routeDatabase(world.db.app), {
-    businesses: async () => await Promise.resolve([world.alpha, world.bravo]),
-    provider: factors,
-    verify,
-  });
+  mountPasswordSet(
+    api,
+    routeDatabase(world.db.app, () => faultIn),
+    {
+      businesses: async () => await Promise.resolve([world.alpha, world.bravo]),
+      broker: held.broker,
+      checkFactor,
+    },
+  );
   api.route('/', inner);
   await openClients();
 }
@@ -284,7 +263,7 @@ export function usePasswordWorld(): void {
     await openWorld();
   }, 60_000);
   afterEach(() => {
-    replies = { ...GOOD };
+    reply = userBack;
     seen = [];
     faultIn = undefined;
   });
@@ -294,6 +273,8 @@ export function usePasswordWorld(): void {
     await new Promise<void>((resolve) => {
       provider?.close(() => resolve());
     });
+    await custody?.stop();
+    if (folder !== undefined) rmSync(folder, { recursive: true, force: true });
     await world?.close();
   });
 }

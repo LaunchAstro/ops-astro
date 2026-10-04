@@ -143,22 +143,10 @@ export function createSupabaseVerifier(options: SupabaseVerifierOptions): Verifi
     // transaction, not a claim a token can assert.
     const assurance = assuranceOf(verdict.claims);
     if (pastAbsoluteLimit(assurance.signedInAt, now())) return 'expired';
-    return { provider: SUPABASE_PROVIDER, subject, assurance, ...sessionMarks(verdict.claims) };
-  };
-}
-
-/**
- * The token's session (C58), and whether the reset link opened it (C40: such
- * a session serves the reset alone), each only when the token says so.
- */
-function sessionMarks(claims: Readonly<Record<string, unknown>>): {
-  readonly sessionId?: string;
-  readonly recovery?: true;
-} {
-  const sessionId = sessionIdOf(claims);
-  return {
-    ...(sessionId === undefined ? {} : { sessionId }),
-    ...(methodsOf(claims).includes('recovery') ? { recovery: true as const } : {}),
+    const sessionId = sessionIdOf(verdict.claims);
+    return sessionId === undefined
+      ? { provider: SUPABASE_PROVIDER, subject, assurance }
+      : { provider: SUPABASE_PROVIDER, subject, assurance, sessionId };
   };
 }
 
@@ -175,16 +163,6 @@ function sessionIdOf(claims: Readonly<Record<string, unknown>>): string | undefi
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
-
-/** The `amr` methods a verified token names, whatever else each entry holds. */
-function methodsOf(claims: Readonly<Record<string, unknown>>): readonly string[] {
-  const methods = Array.isArray(claims['amr']) ? (claims['amr'] as readonly unknown[]) : [];
-  return methods.map((entry) =>
-    typeof entry === 'object' && entry !== null
-      ? String((entry as Record<string, unknown>)['method'])
-      : '',
-  );
-}
 
 /**
  * The assurance a verified token carries: `aal`, and from `amr` the time of the

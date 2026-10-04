@@ -1,98 +1,149 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// C40, link use: a person who followed a reset link sets their new password
-// in their own recovery session, and every session of theirs ends.
+// C40, link use (ORCH77-C40B): a person who followed a reset link sets their
+// new password with the link's one-time token, and every session of theirs
+// ends. No provider session is trusted, opened or handed out: the token is
+// the authority, and the answer carries no credential.
 //
-// The recovery session is the authority: a provider session whose first
-// factor was the reset link (`VerifiedSubject.recovery`), naming its session,
-// unended, of a login mapped in at least one of the deployment's businesses.
-// Anything else is one answer, `RESET_LINK_INVALID`, and the provider is not
-// asked. A spent link, and a request that lost the claim, are recorded as
-// refused in each business that knows the login (I13).
-//
-// The link is spent before the provider is asked: in one transaction its
-// session is ended and every session of the login ends in every business
-// (0063, keeping none), so no fault or lost answer after the provider is asked
-// leaves an old session live here. Of any requests carrying the link at once,
-// only the one whose ending wrote the row goes on. A provider fault after
-// that spends the link too: every session of the login is ended again (a
-// sign-in made while the provider was asked is after the claim's ending), the
-// others and then the recovery session are signed out at the provider in case
-// the password was set, and the person asks for another link. A password the
-// provider refuses outright (`PASSWORD_REFUSED`, GoTrue's 422) is answered as
-// such, so the person chooses another, with a new link.
-//
-// The password is set by the provider, asked with the person's own token
-// (GoTrue `PUT /user`), never through custody and never with the service
-// key. Its answer is shaped (`PasswordProvider`): only a user whose id is the
-// token's subject is a yes. A fault or any other answer audits nothing.
-//
-// On the yes, in each business the login is mapped in, one transaction ends
-// the sessions it has seen and every session of the login again (0063), and
-// audits `account.password_changed`, with no password and no token in it.
-// After commit, the provider signs out the other sessions, which revokes
-// their refresh tokens (C58), then the recovery session.
+// 1. Find the token. Its SHA-256 is looked up once, by one narrow security
+//    definer function that answers the business and the token's id, and only
+//    for a hash exactly one business holds (`password_reset_token_find`). The
+//    token is then read in its own business: live only while unspent and
+//    inside its 30 minutes. Every other token, an unknown one among them, is
+//    one answer: `RESET_LINK_INVALID`.
+// 2. Where the token's login stands, business by business. A login mapped in
+//    none of the deployment's businesses is `RESET_LINK_INVALID` too.
+// 3. A login with a verified second factor gives its code, checked by us
+//    under C59's wrong-code lockout (`account-factor-checks.ts`) through the
+//    factor check the composition root hands in. No provider assurance level
+//    is read. A missing or wrong code is `RESET_FACTOR_INVALID`, and the
+//    token is not spent, so the person tries again inside its life.
+// 4. Spend it, under the token row's lock: every live token of the login is
+//    spent and every session of the login ends in every business (0063,
+//    keeping none), in one transaction. Of any requests carrying the token at
+//    once, only the one that spent it goes on.
+// 5. Set the password at the provider through custody (`setLoginPassword`,
+//    `auth.update_user_password`), never with a key this process holds. A
+//    no to the password itself is `RESET_PASSWORD_REFUSED`; a fault is
+//    `RESET_UNAVAILABLE`. Either way the token is spent and every session of
+//    the login ends again, and the person asks for a new link.
+// 6. In each business the login is mapped in, one transaction audits
+//    `account.password_changed`, with no password and no token in it, and
+//    then ends the sessions it has seen and every session of the login again,
+//    up to the moment that ending is written.
 
+import { createHash, randomUUID } from 'node:crypto';
 import {
-  claimProviderSession,
   endOtherSeenSessions,
   endSubjectSessions,
-  recordRefusedLogin,
+  liveFactor,
+  NO_ASSURANCE,
   standingOf,
   type BusinessId,
   type Database,
+  type Session,
+  type TenantQuery,
   type VerifiedSubject,
 } from '../../../core-records/src/index.ts';
+import { setLoginPassword, type Broker } from '../../../core-custody/src/index.ts';
 import { payloadDigest } from '../../../core-digest/src/index.ts';
-import type { FactorProvider, ProviderAnswer } from './account-factor-provider.ts';
+import { recordCode, wrongCodeLock } from './account-factor-checks.ts';
 import { writeAuditEvent } from './audit.ts';
-
-/** The provider's calls the reset makes with the recovery session's own token. */
-export interface PasswordProvider extends Pick<FactorProvider, 'signOut'> {
-  /** Set the session's own login's password: the provider's user id, its no, or a fault. */
-  setPassword(accessToken: string, password: string): Promise<PasswordAnswer>;
-}
-
-/** The provider's definitive no to this password (weak, leaked, the same). */
-export const PASSWORD_REFUSED = 'password_refused';
-
-export type PasswordAnswer =
-  ProviderAnswer<string> | { readonly ok: false; readonly fault: typeof PASSWORD_REFUSED };
 
 /** A password's bounds in UTF-8 bytes (C40). */
 export const PASSWORD_BYTES = { least: 12, most: 72 } as const;
 
-/** The audit command a reset link's password set records. */
+/** The audit command a reset's password set records. */
 export const RESET_COMMAND = 'account.password_changed';
 
+/** How long a reset token lives; the table's check holds the same bound. */
+export const RESET_TOKEN_MINUTES = 30;
+
+/** A token: 32 random bytes, base64url, 43 characters. */
+const TOKEN = /^[\w-]{43}$/u;
+
+/** A business-less transaction's business: the lookup reads no tenant's rows. */
+const NO_BUSINESS = '00000000-0000-0000-0000-000000000000';
+
+/** A second-factor code checked for a login with no session of the person's. */
+export type FactorCodeCheck = (
+  subject: string,
+  providerFactorId: string,
+  code: string,
+) => Promise<'good' | 'wrong' | 'fault'>;
+
 export interface PasswordReset {
-  readonly presented: VerifiedSubject;
-  readonly accessToken: string;
+  readonly token: string;
   readonly password: string;
+  readonly code?: string;
 }
+
+export interface ResetDependencies {
+  readonly broker: Broker;
+  /** Absent, a login with a verified factor cannot reset (`RESET_UNAVAILABLE`). */
+  readonly checkFactor?: FactorCodeCheck;
+}
+
+export type PasswordResetCode =
+  | 'RESET_LINK_INVALID'
+  | 'PASSWORD_INVALID'
+  | 'RESET_FACTOR_INVALID'
+  | 'SECOND_FACTOR_LOCKED'
+  | 'RESET_PASSWORD_REFUSED'
+  | 'RESET_UNAVAILABLE';
 
 export type PasswordResetResult =
-  | { readonly ok: true; readonly signedOutAtProvider: boolean }
-  | {
-      readonly ok: false;
-      readonly code:
-        'RESET_LINK_INVALID' | 'PASSWORD_INVALID' | 'RESET_PASSWORD_REFUSED' | 'RESET_UNAVAILABLE';
-    };
+  { readonly ok: true } | { readonly ok: false; readonly code: PasswordResetCode };
 
-const INVALID = { ok: false, code: 'RESET_LINK_INVALID' } as const;
+const refused = (code: PasswordResetCode): PasswordResetResult => ({ ok: false, code });
 
-/** The login in one business: its person and actor there. */
-interface Mapped {
+interface Found {
   readonly business: BusinessId;
-  readonly personId: string;
-  readonly actorId: string;
+  readonly tokenId: string;
+  readonly subject: string;
 }
 
-/**
- * Where the login stands, business by business: its person and actor. A
- * refusal is recorded where the login is known; a business that does not know
- * it is not handed its digest.
- */
+/** The login in one business, and its verified factor's provider id when it has one. */
+interface Mapped {
+  readonly business: BusinessId;
+  readonly session: Session;
+  readonly factorId?: string;
+}
+
+/** Step 1: the one business whose live token this is, among the deployment's, or none. */
+async function find(
+  database: Database,
+  businesses: readonly BusinessId[],
+  token: string,
+): Promise<Found | undefined> {
+  if (!TOKEN.test(token)) return undefined;
+  const hash = createHash('sha256').update(token).digest('hex');
+  const [at] = await database.withBusiness(
+    NO_BUSINESS,
+    async (tx) =>
+      await tx.query<{ business: string | null; token: string | null }>(
+        'select business_id as business, token_id as token from public.password_reset_token_find($1)',
+        [hash],
+      ),
+  );
+  const business = at?.business ?? null;
+  const tokenId = at?.token ?? null;
+  if (business === null || tokenId === null || !businesses.includes(business)) return undefined;
+  const [row] = await database.withBusiness(
+    business,
+    async (tx) =>
+      await tx.query<{ subject: string }>(
+        `select l.subject from password_reset_tokens t
+           join logins l on l.business_id = t.business_id and l.id = t.login_id
+          where t.business_id = $1 and t.id = $2 and l.provider = 'supabase'
+            and t.spent_at is null and t.expires_at > now()`,
+        [business, tokenId],
+      ),
+  );
+  return row === undefined ? undefined : { business, tokenId, subject: row.subject };
+}
+
+/** Step 2: where the login stands in each business, with its factor where it holds one. */
 async function mappedIn(
   database: Database,
   businesses: readonly BusinessId[],
@@ -101,120 +152,127 @@ async function mappedIn(
   const found: Mapped[] = [];
   for (const business of businesses) {
     // oxlint-disable-next-line no-await-in-loop -- one business at a time, every one of them
-    const standing = await database.withBusiness(business, async (tx) => {
-      const known = await standingOf(tx, presented, 'recovering');
-      if ('refused' in known && known.code !== 'AUTH_NO_MEMBERSHIP') {
-        await recordRefusedLogin(tx, presented, known.code);
-      }
-      return known;
+    const mapped = await database.withBusiness(business, async (tx) => {
+      const strict = await standingOf(tx, presented, 'required');
+      if (!('refused' in strict)) return { business, session: strict };
+      if (strict.code !== 'AUTH_SECOND_FACTOR_REQUIRED') return null;
+      const session = await standingOf(tx, presented, 'enrolling');
+      if ('refused' in session) return null;
+      const factor = await liveFactor(tx, session.personId);
+      return { business, session, factorId: factor?.providerFactorId ?? '' };
     });
-    if (!('refused' in standing)) {
-      found.push({ business, personId: standing.personId, actorId: standing.actorId });
-    }
+    if (mapped !== null) found.push(mapped);
   }
   return found;
 }
 
-/**
- * End the link's session, once, and with it every session of the login in
- * every business: false when another request ended it first, recorded in each
- * business the login is mapped in.
- */
-async function claimed(
+/** Step 3: the code checked under the wrong-code lockout; undefined when it is good. */
+async function factorRefusal(
   database: Database,
-  mapped: readonly [Mapped, ...Mapped[]],
+  check: FactorCodeCheck | undefined,
+  at: Mapped & { readonly factorId: string },
   presented: VerifiedSubject,
-  sessionId: string,
-): Promise<boolean> {
-  const won = await database.withBusiness(mapped[0].business, async (tx) => {
-    if (!(await claimProviderSession(tx, sessionId))) return false;
-    await endSubjectSessions(tx, presented.subject);
-    return true;
+  code: string | undefined,
+): Promise<PasswordResetResult | undefined> {
+  if (code === undefined || !/^[0-9]{6}$/u.test(code)) return refused('RESET_FACTOR_INVALID');
+  if (check === undefined) return refused('RESET_UNAVAILABLE');
+  const attempt = randomUUID();
+  const caller = { presented, attempt };
+  const lockout = await database.withBusiness(at.business, async (tx) => {
+    const refusal = await wrongCodeLock(tx, presented.subject);
+    await recordCode(tx, at.session, caller, 'before', refusal);
+    return refusal;
   });
-  if (won) return true;
-  for (const { business } of mapped) {
-    // oxlint-disable-next-line no-await-in-loop -- one business's record at a time
-    await database.withBusiness(business, async (tx) => {
-      await recordRefusedLogin(tx, presented, 'AUTH_SESSION_EXPIRED');
-    });
-  }
-  return false;
+  if (lockout !== undefined) return refused('SECOND_FACTOR_LOCKED');
+  const answer = await check(presented.subject, at.factorId, code);
+  if (answer === 'fault') return refused('RESET_UNAVAILABLE');
+  if (answer === 'wrong') return refused('RESET_FACTOR_INVALID');
+  await database.withBusiness(at.business, async (tx) => {
+    await recordCode(tx, at.session, { ...caller, proven: true }, 'after', lockout);
+  });
+  return undefined;
 }
 
-/**
- * After a failure past the claim: every session of the verified login ends
- * again, then the provider signs out the others and the recovery session, so
- * the spent link's token asks it nothing more.
- */
-async function failedAfterClaim(
-  database: Database,
-  business: BusinessId,
-  provider: PasswordProvider,
-  reset: PasswordReset,
-): Promise<void> {
-  try {
-    await database.withBusiness(business, async (tx) => {
-      await endSubjectSessions(tx, reset.presented.subject);
-    });
-  } finally {
-    await provider.signOut(reset.accessToken, 'others');
-    await provider.signOut(reset.accessToken, 'local');
-  }
+/** Step 4, under the token's lock: false when it was spent or died meanwhile. */
+async function spend(tx: TenantQuery, found: Found): Promise<boolean> {
+  const [live] = await tx.query<{ login_id: string }>(
+    `select login_id from password_reset_tokens
+      where business_id = $1 and id = $2 and spent_at is null and expires_at > now()
+      for update`,
+    [tx.businessId, found.tokenId],
+  );
+  if (live === undefined) return false;
+  await tx.query(
+    `update password_reset_tokens set spent_at = now()
+      where business_id = $1 and login_id = $2 and spent_at is null`,
+    [tx.businessId, live.login_id],
+  );
+  await endSubjectSessions(tx, found.subject);
+  return true;
 }
 
-/** In each business the login is mapped in: end its seen sessions, and audit the change. */
-async function changedIn(
-  database: Database,
-  mapped: readonly Mapped[],
-  subject: string,
-): Promise<void> {
-  for (const { business, personId, actorId } of mapped) {
+/** Step 6, in each business the login is mapped in. */
+async function changedIn(database: Database, mapped: readonly Mapped[], subject: string) {
+  for (const { business, session } of mapped) {
     // oxlint-disable-next-line no-await-in-loop -- one business's transaction at a time
     await database.withBusiness(business, async (tx) => {
-      await endOtherSeenSessions(tx, personId, undefined, 'end_others', subject);
       await writeAuditEvent(tx, {
-        actorId,
+        actorId: session.actorId,
         command: RESET_COMMAND,
         outcome: 'applied',
         refusalCode: null,
-        payloadDigest: payloadDigest({ command: RESET_COMMAND, person: personId }),
+        payloadDigest: payloadDigest({ command: RESET_COMMAND, person: session.personId }),
       });
+      // Last, so its ending reaches every session opened while this ran.
+      await endOtherSeenSessions(tx, session.personId, undefined, 'end_others', subject);
     });
   }
 }
 
-/** Set the new password in the recovery session, then end every session of the login. */
-export async function setPasswordByRecovery(
+/** Every session of the login ends again, after a failure past the spend. */
+async function endAgain(database: Database, found: Found): Promise<void> {
+  await database.withBusiness(found.business, async (tx) => {
+    await endSubjectSessions(tx, found.subject);
+  });
+}
+
+/** Set a new password with a reset token, then end every session of its login. */
+export async function setPasswordByToken(
   database: Database,
   businesses: readonly BusinessId[],
-  provider: PasswordProvider,
+  dependencies: ResetDependencies,
   reset: PasswordReset,
 ): Promise<PasswordResetResult> {
-  const { presented, accessToken } = reset;
-  const sessionId = presented.recovery === true ? presented.sessionId : undefined;
-  if (sessionId === undefined) return INVALID;
-  const mapped = await mappedIn(database, businesses, presented);
-  const [first, ...rest] = mapped;
-  if (first === undefined) return INVALID;
   const bytes = Buffer.byteLength(reset.password, 'utf8');
   if (bytes < PASSWORD_BYTES.least || bytes > PASSWORD_BYTES.most) {
-    return { ok: false, code: 'PASSWORD_INVALID' };
+    return refused('PASSWORD_INVALID');
   }
-  if (!(await claimed(database, [first, ...rest], presented, sessionId))) return INVALID;
-  const set = await provider.setPassword(accessToken, reset.password);
-  if (!set.ok || set.value !== presented.subject) {
-    // Not set, or set with the answer lost: every session ends again.
-    await failedAfterClaim(database, first.business, provider, reset);
-    const refused = !set.ok && set.fault === PASSWORD_REFUSED;
-    return { ok: false, code: refused ? 'RESET_PASSWORD_REFUSED' : 'RESET_UNAVAILABLE' };
+  const found = await find(database, businesses, reset.token);
+  if (found === undefined) return refused('RESET_LINK_INVALID');
+  const presented: VerifiedSubject = {
+    provider: 'supabase',
+    subject: found.subject,
+    assurance: NO_ASSURANCE,
+  };
+  const mapped = await mappedIn(database, businesses, presented);
+  if (mapped.length === 0) return refused('RESET_LINK_INVALID');
+  const factored = mapped.find((one): one is Mapped & { factorId: string } => 'factorId' in one);
+  if (factored !== undefined) {
+    const { checkFactor } = dependencies;
+    const refusal = await factorRefusal(database, checkFactor, factored, presented, reset.code);
+    if (refusal !== undefined) return refusal;
   }
+  const spent = await database.withBusiness(found.business, async (tx) => await spend(tx, found));
+  if (!spent) return refused('RESET_LINK_INVALID');
+  let set: Awaited<ReturnType<typeof setLoginPassword>> = 'fault';
+  let changed = false;
   try {
-    await changedIn(database, mapped, presented.subject);
-  } catch (fault) {
-    await failedAfterClaim(database, first.business, provider, reset);
-    throw fault;
+    set = await setLoginPassword(dependencies.broker, found.subject, reset.password);
+    if (set === 'set') await changedIn(database, mapped, found.subject);
+    changed = set === 'set';
+  } finally {
+    if (!changed) await endAgain(database, found);
   }
-  const others = await provider.signOut(accessToken, 'others');
-  const local = await provider.signOut(accessToken, 'local');
-  return { ok: true, signedOutAtProvider: others.ok && local.ok };
+  if (changed) return { ok: true };
+  return refused(set === 'refused' ? 'RESET_PASSWORD_REFUSED' : 'RESET_UNAVAILABLE');
 }

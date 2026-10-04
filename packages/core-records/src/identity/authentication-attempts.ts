@@ -86,20 +86,6 @@ export async function recordAuthenticationAttempt(
   );
 }
 
-/** A person's login refused with `code`, recorded in the business `tx` is bound to. */
-export async function recordRefusedLogin(
-  tx: TenantQuery,
-  presented: VerifiedSubject,
-  refusalCode: string,
-): Promise<void> {
-  await recordAuthenticationAttempt(tx, {
-    owner: 'person_login',
-    presented,
-    outcome: 'refused',
-    refusalCode,
-  });
-}
-
 /**
  * A body the boundary could not read as a JSON object, recorded as the
  * admission refusal it is (root ruling 4).

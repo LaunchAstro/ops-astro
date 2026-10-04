@@ -22,9 +22,13 @@ const docker = (...args) =>
 
 async function sparePort() {
   const server = createServer();
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  await new Promise((resolve) => {
+    server.listen(0, '127.0.0.1', resolve);
+  });
   const { port } = server.address();
-  await new Promise((resolve) => server.close(resolve));
+  await new Promise((resolve) => {
+    server.close(resolve);
+  });
   return port;
 }
 

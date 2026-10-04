@@ -2852,38 +2852,46 @@ In the web app, Settings ▸ General's "Your sessions" panel calls the first two
 ending the others only once confirmed, then listing again; it draws no session
 id (`apps/web/src/screens/settings/sessions.tsx`).
 
-`POST /api/password/set` with `password` and the bearer of the session a
-reset link opened sets the new password (C40, `setPasswordByRecovery`,
-mounted by `mountPasswordSet` with the deployment's businesses; `main()` does
-not mount it yet). A token whose `amr` holds `recovery` is a recovery
-session: login resolution refuses it everywhere else (`AUTH_SESSION_EXPIRED`),
-and this route takes nothing else. The provider sets the password on the
-person's own token (GoTrue `PUT /user`, not custody), and only a user whose
-id is the token's subject is a yes. Before the provider is asked, one
-transaction spends the link (its session ended) and ends every session of the
-login in every business (0063, keeping none). On the yes, in each business the
-login is mapped in, one transaction ends the sessions seen there and audits
-`account.password_changed`; after commit the provider signs out the others,
-then this session. The answer is 200 `{ signedOutAtProvider }`. A session
-that is not a live recovery session of a mapped login (none, naming no
-session, expired, spent, a sign-in) is 401 `RESET_LINK_INVALID`; a spent link,
-and a request that lost the claim, are recorded as a refused attempt in each
-business that knows the login. A password outside 12 to 72 bytes is 400
-`PASSWORD_INVALID`, a body that is not a JSON object holding it 400
-`RESET_MALFORMED`, and one over 1 KiB 413 `RESET_TOO_LARGE`. The link is spent
-before the provider is asked, so of two requests on one link at once one sets
-the password and the other is 401. A password the provider refuses itself
-(GoTrue's 422: weak, leaked, the same as before) is 422
-`RESET_PASSWORD_REFUSED`: choose a different password and ask for a new link,
-since this one is spent. Any other provider fault or wrong answer is 503
-`RESET_UNAVAILABLE`; a key set the provider cannot serve is 503
-`RESET_UNAVAILABLE` too, as at the session exchange; anything else failing is
-503 `RESET_FAULT`. A reset that fails after the link is spent ends every
-session of the login here again (a sign-in made while the provider was asked
-included), then the provider is asked to sign out the others and this
-session; nothing is audited. A recovery session is never traded for the
-session cookie (`AUTH_SESSION_EXPIRED`). Answers carry a code alone; nothing
-is logged. No limit holds the route's rate yet.
+`POST /api/password/set` with `{ token, password, code? }` sets a new
+password with a reset link's one-time token (C40, ORCH77-C40B,
+`setPasswordByToken`, mounted by `mountPasswordSet` with the deployment's
+businesses and the broker; `main()` does not mount it yet). No provider
+session is read, trusted, opened or answered: the token is the authority, and
+no cookie or bearer is read or set. A token is 32 random bytes, base64url,
+kept only as its SHA-256 in `password_reset_tokens` (20261004005844), for one
+login of one business, good for 30 minutes and spent once. The reset asks
+for one is C40 P2. The token is found by `password_reset_token_find`, a
+narrow security definer function the application group alone runs (the
+business and the token's id for a hash exactly one business holds), then
+read in its own business. A login with a verified second factor sends its
+six-digit `code`, checked under C59's wrong-code lockout by the factor check
+the composition root hands in; no provider assurance level is read. Then,
+under the token's row lock, every live token of the login is spent and every
+session of the login ends in every business (0063, keeping none), and the
+password is set at the provider through custody under the catalogued
+`auth.update_user_password` (`PUT /auth/v1/admin/users/{id}`, the service key
+held by custody alone; the answer must name the same user). In each business
+the login is mapped in, one transaction audits `account.password_changed` and
+then ends the sessions seen there and every session of the login again, up to
+the moment that ending is written (`clock_timestamp()`).
+
+The answer is 200 `{ passwordSet: true }`. A token that is not live
+(unknown, out of shape, spent, past its 30 minutes, of a login no business
+maps) is 401 `RESET_LINK_INVALID`. A second-factor code missing or wrong is
+401 `RESET_FACTOR_INVALID`, and the token stays live; five wrong codes in 15
+minutes are 429 `SECOND_FACTOR_LOCKED`. A password outside 12 to 72 bytes is
+400 `PASSWORD_INVALID`, a body that is not a JSON object holding the token and
+password as strings 400 `RESET_MALFORMED`, and one over 1 KiB 413
+`RESET_TOO_LARGE`. Of two requests on one token at once, one sets the
+password and the other is 401. A password the provider refuses itself (its
+422: weak, leaked, the same as before) is 422 `RESET_PASSWORD_REFUSED`: the
+token is spent, so choose a different password and ask for a new link. Any
+other provider fault or wrong answer is 503 `RESET_UNAVAILABLE`, as is a
+login with a factor when no factor check is configured; anything else
+failing is 503 `RESET_FAULT`. A reset that fails after the token is spent
+ends every session of the login again, a sign-in made while the provider was
+asked included, and audits nothing. Answers carry a code alone; nothing is
+logged. No limit holds the route's rate yet.
 
 ## The operations view and privacy incidents (C55)
 

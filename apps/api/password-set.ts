@@ -1,64 +1,69 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// `POST /api/password/set` (C40, link use): the reset page sends the new
-// password with the bearer of the recovery session the reset link opened,
-// and the password is set (`setPasswordByRecovery`). Outside the business
-// prefix, with no person grant: the recovery session is the authority. The
-// bearer only, never a cookie, so there is no ambient credential for another
-// site to ride, and a recovery session is never traded for one.
+// `POST /api/password/set` (C40, link use, ORCH77-C40B): the reset page sends
+// the link's one-time token, the new password and, for a login with a
+// verified second factor, its code, and the password is set
+// (`setPasswordByToken`). Outside the business prefix, with no person grant
+// and no session: the token is the authority. No cookie is read or set and
+// no credential is answered, so the reset opens no session of any kind.
 //
 // Answers carry a code and nothing else, and nothing is logged: 200
-// `{ signedOutAtProvider }`; 401 `RESET_LINK_INVALID` for every session that
-// is not a live recovery session of a mapped login (none, forged, expired,
-// spent, an ordinary sign-in); 400 `PASSWORD_INVALID` for a password out of
-// bounds, `RESET_MALFORMED` for a body that is not one; 413 `RESET_TOO_LARGE`;
-// 422 `RESET_PASSWORD_REFUSED` when the provider refused the password itself
-// (choose another, with a new link); 503 `RESET_UNAVAILABLE` when the
-// provider's key set could not be reached (as the session exchange answers)
-// or the provider failed or answered wrongly; 503 `RESET_FAULT` otherwise.
-// Once the link is spent, a failure has still ended the person's sessions,
-// signed the recovery session out and audited nothing.
+// `{ passwordSet: true }`; 401 `RESET_LINK_INVALID` for every token that is
+// not live (unknown, spent, expired, of a login no business maps), and
+// `RESET_FACTOR_INVALID` for a second-factor code missing or wrong; 429
+// `SECOND_FACTOR_LOCKED`; 400 `PASSWORD_INVALID` for a password out of bounds,
+// `RESET_MALFORMED` for a body that is not one; 413 `RESET_TOO_LARGE`; 422
+// `RESET_PASSWORD_REFUSED` when the provider refused the password itself
+// (choose another, with a new link); 503 `RESET_UNAVAILABLE` when the provider
+// failed or answered wrongly; 503 `RESET_FAULT` otherwise. Once the token is
+// spent, a failure has still ended the person's sessions and audited nothing.
 //
 // Mounted by the composition root only when it is given the deployment's
-// businesses and the provider; `main()` does not turn it on yet (C40-plan).
+// businesses and the broker; `main()` does not turn it on yet (C40-plan).
 
 import type { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import {
-  setPasswordByRecovery,
-  type PasswordProvider,
+  setPasswordByToken,
+  type FactorCodeCheck,
+  type PasswordReset,
+  type PasswordResetCode,
 } from '../../packages/core-commands/src/index.ts';
+import type { Broker } from '../../packages/core-custody/src/index.ts';
 import type { BusinessId, Database } from '../../packages/core-records/src/index.ts';
-import type { Verifier } from './auth/supabase.ts';
-import { bearerOf } from './auth/session.ts';
 
 export const PASSWORD_SET_PATH = '/api/password/set';
 
-/** A password and room for its JSON, no more. */
+/** A token, a password, a code and room for their JSON, no more. */
 const SET_MAX_BYTES = 1024;
 
 export interface PasswordSetOptions {
-  /** The deployment's businesses, the ones the login is looked for in. */
+  /** The deployment's businesses, the ones the token is looked for in. */
   readonly businesses: () => Promise<readonly BusinessId[]>;
-  /** The provider's calls with the person's own token. */
-  readonly provider: PasswordProvider;
-  readonly verify: Verifier;
+  /** The broker whose custody holds the login provider's service key. */
+  readonly broker: Broker;
+  /** The second-factor check for a login that has one. */
+  readonly checkFactor?: FactorCodeCheck;
 }
 
-const STATUS = {
+const STATUS: Readonly<Record<PasswordResetCode, 400 | 401 | 422 | 429 | 503>> = {
   RESET_LINK_INVALID: 401,
+  RESET_FACTOR_INVALID: 401,
+  SECOND_FACTOR_LOCKED: 429,
   PASSWORD_INVALID: 400,
   RESET_PASSWORD_REFUSED: 422,
   RESET_UNAVAILABLE: 503,
-} as const;
+};
 
-/** The body's password, when it is one JSON object holding it as a string. */
-async function passwordOf(request: Request): Promise<string | undefined> {
+/** The body, when it is one JSON object holding the token and password as strings. */
+async function resetOf(request: Request): Promise<PasswordReset | undefined> {
   try {
     const body: unknown = await request.json();
     if (typeof body !== 'object' || body === null || Array.isArray(body)) return undefined;
-    const { password } = body as Record<string, unknown>;
-    return typeof password === 'string' ? password : undefined;
+    const { token, password, code } = body as Record<string, unknown>;
+    if (typeof token !== 'string' || typeof password !== 'string') return undefined;
+    if (code !== undefined && typeof code !== 'string') return undefined;
+    return code === undefined ? { token, password } : { token, password, code };
   } catch {
     return undefined;
   }
@@ -76,21 +81,10 @@ export function mountPasswordSet(
   });
   server.post(PASSWORD_SET_PATH, tooLarge, async (context) => {
     try {
-      const accessToken = bearerOf(context.req);
-      const presented = accessToken === undefined ? undefined : await options.verify(context.req);
-      if (presented === 'unavailable') return context.json({ code: 'RESET_UNAVAILABLE' }, 503);
-      if (accessToken === undefined || typeof presented !== 'object') {
-        return context.json({ code: 'RESET_LINK_INVALID' }, 401);
-      }
-      const password = await passwordOf(context.req.raw);
-      if (password === undefined) return context.json({ code: 'RESET_MALFORMED' }, 400);
-      const result = await setPasswordByRecovery(
-        database,
-        await options.businesses(),
-        options.provider,
-        { presented, accessToken, password },
-      );
-      if (result.ok) return context.json({ signedOutAtProvider: result.signedOutAtProvider }, 200);
+      const reset = await resetOf(context.req.raw);
+      if (reset === undefined) return context.json({ code: 'RESET_MALFORMED' }, 400);
+      const result = await setPasswordByToken(database, await options.businesses(), options, reset);
+      if (result.ok) return context.json({ passwordSet: true }, 200);
       return context.json({ code: result.code }, STATUS[result.code]);
     } catch {
       return context.json({ code: 'RESET_FAULT' }, 503);

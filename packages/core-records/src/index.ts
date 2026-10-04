@@ -80,7 +80,6 @@ export {
 export {
   recordAuthenticationAttempt,
   recordBodyRefusal,
-  recordRefusedLogin,
 } from './identity/authentication-attempts.ts';
 export {
   NO_MEMBERSHIP_FIXES,
@@ -109,7 +108,6 @@ export {
   type SecondFactor,
 } from './identity/second-factor.ts';
 export {
-  claimProviderSession,
   endOtherSeenSessions,
   endProviderSession,
   endOwnSession,

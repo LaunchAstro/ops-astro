@@ -293,7 +293,7 @@
     "SL06 (Clients row door) adds board-row-client (each task.board row carries its client by id and name only where the reader's grants reach it, read back against task.read and client.list; the crossings: another business names none of alpha's clients, a reader of client A is never sent B, a task holder without the client reads null beside clientSet, the agent under a live delegation is refused).",
     "C40 P1 adds c40-password-set (a reset link's recovery session sets the new password over in-process Hono against a stand-in provider: every session of the login ended in every business it reaches, here and at the provider; a spent, expired, ordinary or unmapped session and an out-of-bounds password refused with nothing asked; hostile provider answers changing nothing; the canary kept from answers, audit rows and logs; person to person, client to client and business to business crossings), named as an isolation suite too. c40-password-set-world.ts is its helper and is not named.",
     "C40 P1's security review adds c40-password-set-review (two sets at once on one link: one 200, one 401, one PUT /user; a recovery token naming no session sets nothing; a replayed reset recorded refused in each business the login reaches; a verified second factor outlives the reset; a fault in a later business's change after the provider set the password answers 503 with the sessions still ended) as invariant. c40-password-set-door.test.ts needs no database and is not named.",
-    "C40 P1's second review adds c40-password-set-failure (a lost claim is recorded in every business that knows the login; a password sign-in made during the provider call is ended when the set fails; a provider 422 answers RESET_PASSWORD_REFUSED with the link spent and sessions ended) as invariant."
+    "C40 P1's second review adds c40-password-set-failure (a lost claim is recorded in every business that knows the login; a password sign-in made during the provider call is ended when the set fails; a provider 422 answers RESET_PASSWORD_REFUSED with the link spent and sessions ended) as invariant. C40B (ORCH77-C40B) moves the reset onto our own one-time token: c40-password-set-failure is folded into c40-password-set-review, c40-password-set-door is gone with the recovery session, and Sol's PR #382 round 1 proofs sol-pr382-reset-revocation (no recovery session exists; a paused reset whose token was spent is refused; an ending reaches a session opened before its commit) are named as invariant. sol-pr382-real-provider skips without SOL_AUTH_URL (the pinned GoTrue its container script starts) and is not named."
   ],
   "invariant": [
     "tests/tenancy/t4-no-notify.test.ts",
@@ -678,7 +678,7 @@
     "tests/api/c58-sign-out-no-membership.test.ts",
     "tests/api/c40-password-set.test.ts",
     "tests/api/c40-password-set-review.test.ts",
-    "tests/api/c40-password-set-failure.test.ts",
+    "tests/api/sol-pr382-reset-revocation.test.ts",
     "tests/authority/c58-shared-login.test.ts",
     "tests/authority/c58-endings-loop.test.ts",
     "tests/authority/c58-end-access-credentials.test.ts",

@@ -1,15 +1,28 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+//
+// Sol's PR #382 round 1 proofs, criteria 1 and 7, under ORCH77-C40B, at the
+// pinned GoTrue (`sol-pr382-proof-containers.mjs` starts it and sets
+// SOL_AUTH_URL; without it these skip). A reset sets the password through
+// custody's admin update with no provider recovery session anywhere, and an
+// MFA login's reset needs our checked second factor first. Custody reaches
+// GoTrue through a loopback stand-in for the gateway, which serves the auth
+// service under `/auth/v1` as a Supabase deployment's does.
 import { createHmac, randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { expect, it } from 'vitest';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterAll, beforeAll, expect, it } from 'vitest';
 import { createGoTrueFactors } from '../../apps/api/auth/factors.ts';
 import { composeApi } from '../../apps/api/server.ts';
+import type { FactorCodeCheck } from '../../packages/core-commands/src/index.ts';
+import type { Broker, Custody } from '../../packages/core-custody/src/index.ts';
 import { runtimeKeys } from '../../packages/core-runtime/src/runtime-config.ts';
 import {
   recordFactorEnrolled,
   recordFactorVerified,
 } from '../../packages/core-records/src/index.ts';
-import { connectAsAdmin } from '../../packages/core-records/src/tenancy/database.ts';
 // @ts-expect-error -- existing local JavaScript tool has no declarations
 import { serviceToken } from '../../scripts/local/signing-key.mjs';
 import {
@@ -19,13 +32,14 @@ import {
   insertMembership,
   insertPerson,
 } from '../identity/fixture.ts';
-import { bearer, call, personPath } from '../acceptance/world.ts';
-import { SESSION_PATH, CSRF_HEADER } from '../../packages/core-wire/src/index.ts';
-import { usePasswordWorld, world } from './c40-password-set-world.ts';
+import { call } from '../acceptance/world.ts';
+import { brokerFor, mintToken, usePasswordWorld, world } from './c40-password-set-world.ts';
+
+const issuer = process.env['SOL_AUTH_URL'];
+const keysPath = process.env['SOL_AUTH_KEYS'] ?? '';
+const REAL = it.skipIf(issuer === undefined || process.env['DATABASE_URL'] === undefined);
 
 usePasswordWorld();
-const issuer = process.env['SOL_AUTH_URL'] ?? 'http://127.0.0.1:49930';
-const keysPath = process.env['SOL_AUTH_KEYS'] ?? '/tmp/PRV-oa-382-R1-auth-keys.json';
 
 function field(body: Record<string, unknown>, key: string): string {
   const value = body[key];
@@ -33,17 +47,23 @@ function field(body: Record<string, unknown>, key: string): string {
   return value;
 }
 
-async function post(path: string, body: object, token?: string) {
+async function post(path: string, body: object, token?: string, expected = 200) {
   const response = await fetch(`${issuer}${path}`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json', ...(token ? bearer(token) : {}) },
+    headers: {
+      'content-type': 'application/json',
+      ...(token === undefined ? {} : { authorization: `Bearer ${token}` }),
+    },
     body: JSON.stringify(body),
   });
-  expect(response.status, path).toBe(200);
+  expect(response.status, path).toBe(expected);
   return (await response.json()) as Record<string, unknown>;
 }
 
-function codeFor(secret: string): string {
+const signIn = async (email: string, password: string, expected: number) =>
+  await post('/token?grant_type=password', { email, password }, undefined, expected);
+
+function codeFor(secret: string, step = 0): string {
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
   const bits = [...secret.toUpperCase()]
     .map((char) => alphabet.indexOf(char).toString(2).padStart(5, '0'))
@@ -51,108 +71,114 @@ function codeFor(secret: string): string {
   const bytes = bits.match(/.{8}/gu) ?? [];
   const key = Buffer.from(bytes.map((one) => Number.parseInt(one, 2)));
   const counter = Buffer.alloc(8);
-  counter.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30_000)));
+  counter.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30_000) + step));
   const digest = createHmac('sha1', key).update(counter).digest();
   const offset = (digest.at(-1) ?? 0) & 15;
   return String((digest.readUInt32BE(offset) & 0x7fffffff) % 1_000_000).padStart(6, '0');
 }
 
-function realApi() {
+/** The gateway's part: `/auth/v1/...` to GoTrue's own `/...`, the answer back as it came. */
+let gateway: Server;
+let held: { readonly broker: Broker; readonly custody: Custody };
+let folder: string;
+
+beforeAll(async () => {
+  if (issuer === undefined || process.env['DATABASE_URL'] === undefined) return;
+  gateway = createServer((request, response) => {
+    const chunks: Buffer[] = [];
+    request.on('data', (chunk: Buffer) => chunks.push(chunk));
+    request.on('end', () => {
+      const path = (request.url ?? '').replace(/^\/auth\/v1/u, '');
+      void fetch(`${issuer}${path}`, {
+        method: request.method ?? 'GET',
+        headers: {
+          'content-type': 'application/json',
+          authorization: request.headers.authorization ?? '',
+        },
+        body: Buffer.concat(chunks).toString('utf8'),
+      }).then(async (answer) => {
+        response.writeHead(answer.status, { 'content-type': 'application/json' });
+        response.end(await answer.text());
+        return answer.status;
+      });
+    });
+  });
+  await new Promise<void>((resolve) => {
+    gateway.listen(0, '127.0.0.1', resolve);
+  });
+  folder = mkdtempSync(join(tmpdir(), 'sol382-real-'));
+  const key = await serviceToken(JSON.parse(readFileSync(keysPath, 'utf8')));
+  const origin = `http://127.0.0.1:${(gateway.address() as AddressInfo).port}`;
+  held = await brokerFor(origin, key, folder);
+}, 60_000);
+
+afterAll(async () => {
+  await held?.custody.stop();
+  gateway?.close();
+  if (folder !== undefined) rmSync(folder, { recursive: true, force: true });
+});
+
+function realApi(checkFactor?: FactorCodeCheck) {
   return composeApi({
     database: world.db.app,
     admin: world.db.admin,
     keys: runtimeKeys(process.env),
-    signIn: { issuer, keySetUrl: `${issuer}/.well-known/jwks.json` },
-    passwordSet: { businesses: async () => [world.alpha] },
+    signIn: { issuer: issuer ?? '', keySetUrl: `${issuer}/.well-known/jwks.json` },
+    passwordSet: {
+      businesses: async () => await Promise.resolve([world.alpha]),
+      broker: held.broker,
+      ...(checkFactor === undefined ? {} : { checkFactor }),
+    },
   }).app;
 }
 
-async function recoveryFor(email: string) {
-  const admin = await serviceToken(JSON.parse(readFileSync(keysPath, 'utf8')));
-  const link = await post('/admin/generate_link', { type: 'recovery', email }, admin);
-  return await post('/verify', { type: 'recovery', token_hash: field(link, 'hashed_token') });
-}
-
-it('Sol proof, criterion 1: a pinned GoTrue implicit recovery link sets the password without becoming an ordinary session', async () => {
-  const email = `sol-${randomUUID()}@example.test`;
-  const signed = await post('/signup', { email, password: `old-password-${randomUUID()}` });
-  const subject = field(signed['user'] as Record<string, unknown>, 'id');
-  const recovered = await recoveryFor(email);
-  const recovery = field(recovered, 'access_token');
-  await world.db.app.withBusiness(world.alpha, async (tx) => {
-    const personId = await insertPerson(tx, 'sol-real-implicit');
+/** A provider login mapped to a new member of alpha: its subject. */
+async function mapped(subject: string, name: string): Promise<string> {
+  return await world.db.app.withBusiness(world.alpha, async (tx) => {
+    const personId = await insertPerson(tx, name);
     const actorId = await insertActor(tx, personId);
     await insertMembership(tx, personId);
     await insertMapping(tx, await insertLogin(tx, subject), personId, actorId);
+    return personId;
   });
-  const api = realApi();
-  const exchange = await call(
-    api,
-    SESSION_PATH,
-    {},
-    {
-      ...bearer(recovery),
-      [CSRF_HEADER]: '1',
-      'sec-fetch-site': 'same-origin',
-    },
-  );
-  const reset = await call(
-    api,
-    '/api/password/set',
-    { password: `new-password-${randomUUID()}` },
-    bearer(recovery),
-  );
-  expect({ exchange: exchange.status, reset: reset.status, resetCode: reset.body['code'] }).toEqual(
-    {
-      exchange: 401,
-      reset: 200,
-      resetCode: undefined,
-    },
-  );
-});
+}
 
-it('Sol proof, criterion 7: the named MFA reset case succeeds with a verified factor at the pinned GoTrue provider', async () => {
+REAL(
+  'Sol proof, criterion 1: a reset sets the password at the pinned GoTrue through the custody admin update without any provider recovery session',
+  async () => {
+    const email = `sol-${randomUUID()}@example.test`;
+    const old = `old-password-${randomUUID()}`;
+    const signed = await post('/signup', { email, password: old });
+    const subject = field(signed['user'] as Record<string, unknown>, 'id');
+    await mapped(subject, 'sol-real-token');
+    const token = await mintToken(subject);
+    const fresh = `new-password-${randomUUID()}`;
+    const reset = await call(realApi(), '/api/password/set', { token, password: fresh });
+    expect({ status: reset.status, body: reset.body }).toEqual({
+      status: 200,
+      body: { passwordSet: true },
+    });
+    // Set at the provider: the new password signs in, the old one no longer does.
+    expect(field(await signIn(email, fresh, 200), 'access_token')).not.toBe('');
+    await signIn(email, old, 400);
+  },
+);
+
+/** A provider login with a verified TOTP factor, mapped and mirrored in alpha. */
+async function mfaLogin() {
   const email = `sol-${randomUUID()}@example.test`;
-  const password = `old-password-${randomUUID()}`;
-  const signed = await post('/signup', { email, password });
+  const signed = await post('/signup', { email, password: `old-password-${randomUUID()}` });
   const initial = field(signed, 'access_token');
-  const user = signed['user'] as Record<string, unknown>;
-  const subject = field(user, 'id');
-  const provider = createGoTrueFactors({ baseUrl: issuer });
+  const subject = field(signed['user'] as Record<string, unknown>, 'id');
+  const provider = createGoTrueFactors({ baseUrl: issuer ?? '' });
   // Enrol at the actual provider. The existing adapter's QR cap is unrelated to C40.
   const factor = await post('/factors', { factor_type: 'totp' }, initial);
   const factorId = field(factor, 'id');
-  const totp = factor['totp'] as Record<string, unknown>;
-  const secret = field(totp, 'secret');
+  const secret = field(factor['totp'] as Record<string, unknown>, 'secret');
   const verified = await provider.verify(initial, factorId, codeFor(secret));
-  expect(verified.ok).toBe(true);
   if (!verified.ok) throw new Error('provider verification failed');
-  const recovered = await recoveryFor(email);
-  // Model the recovery AMR of the provider's PKCE flow in its own fixture DB,
-  // then let the real provider issue the bearer by refreshing that session.
-  const claims = JSON.parse(
-    Buffer.from(field(recovered, 'access_token').split('.')[1] ?? '', 'base64url').toString('utf8'),
-  ) as Record<string, unknown>;
-  const authDb = connectAsAdmin(
-    process.env['SOL_AUTH_DATABASE_URL'] ?? 'postgres://postgres@127.0.0.1:49826/sol_auth',
-  );
-  try {
-    await authDb.execute(
-      `update auth.mfa_amr_claims set authentication_method = 'recovery' where session_id = $1`,
-      [field(claims, 'session_id')],
-    );
-  } finally {
-    await authDb.close();
-  }
-  const refreshed = await post('/token?grant_type=refresh_token', {
-    refresh_token: field(recovered, 'refresh_token'),
-  });
-  const recovery = field(refreshed, 'access_token');
+  const personId = await mapped(subject, 'sol-real-mfa');
   await world.db.app.withBusiness(world.alpha, async (tx) => {
-    const personId = await insertPerson(tx, 'sol-real-mfa');
-    const actorId = await insertActor(tx, personId);
-    await insertMembership(tx, personId);
-    await insertMapping(tx, await insertLogin(tx, subject), personId, actorId);
     const local = await recordFactorEnrolled(tx, {
       personId,
       provider: 'supabase',
@@ -160,26 +186,42 @@ it('Sol proof, criterion 7: the named MFA reset case succeeds with a verified fa
     });
     await recordFactorVerified(tx, { personId, factorId: local.id, subject });
   });
-  const api = realApi();
-  // The route also refuses using the recovery bearer to raise its MFA level.
-  const stepUp = await call(
-    api,
-    personPath('alpha', '/account/factor/verify'),
-    { code: codeFor(secret) },
-    bearer(recovery),
-  );
-  expect({ status: stepUp.status, code: stepUp.body['code'] }).toEqual({
-    status: 401,
-    code: 'AUTH_SESSION_EXPIRED',
-  });
-  const reset = await call(
-    api,
-    '/api/password/set',
-    { password: `new-password-${randomUUID()}` },
-    bearer(recovery),
-  );
-  expect({ status: reset.status, code: reset.body['code'] }).toEqual({
-    status: 200,
-    code: undefined,
-  });
-});
+  return { email, subject, factorId, secret, provider, aal2: verified.value.accessToken };
+}
+
+REAL(
+  'Sol proof, criterion 7: an MFA login’s reset needs our verified second factor, then succeeds at the pinned GoTrue',
+  async () => {
+    const { email, subject, factorId, secret, provider, aal2 } = await mfaLogin();
+    // The check the reset is handed: the code proved at the provider, our verdict on it.
+    const asked: string[] = [];
+    const check: FactorCodeCheck = async (who, id, code) => {
+      asked.push(`${who}:${id}`);
+      const answer = await provider.verify(aal2, id, code);
+      if (answer.ok) return 'good';
+      return answer.fault === 'refused' ? 'wrong' : 'fault';
+    };
+    const api = realApi(check);
+    const token = await mintToken(subject);
+    const fresh = `new-password-${randomUUID()}`;
+    const none = await call(api, '/api/password/set', { token, password: fresh });
+    const wrong = await call(api, '/api/password/set', { token, password: fresh, code: '000000' });
+    expect([none, wrong].map((one) => [one.status, one.body['code']])).toEqual([
+      [401, 'RESET_FACTOR_INVALID'],
+      [401, 'RESET_FACTOR_INVALID'],
+    ]);
+    await signIn(email, fresh, 400);
+    // The token was not spent by either: with the code, the same token sets the password.
+    const good = await call(api, '/api/password/set', {
+      token,
+      password: fresh,
+      code: codeFor(secret, 1),
+    });
+    expect({ status: good.status, body: good.body }).toEqual({
+      status: 200,
+      body: { passwordSet: true },
+    });
+    expect(asked).toEqual([`${subject}:${factorId}`, `${subject}:${factorId}`]);
+    expect(field(await signIn(email, fresh, 200), 'access_token')).not.toBe('');
+  },
+);

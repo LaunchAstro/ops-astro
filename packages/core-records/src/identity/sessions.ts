@@ -97,7 +97,8 @@ export async function endOtherSeenSessions(
 
 /**
  * End every session of the login but `keep` (none when undefined), in every
- * business, from this commit (0063): a sign-in after it is served.
+ * business, up to the moment the ending is written (0063, 20261004005844): a
+ * sign-in after it is served.
  */
 export async function endSubjectSessions(
   tx: TenantQuery,
@@ -117,20 +118,6 @@ export async function endSubjectSessions(
  */
 export async function endProviderSession(tx: TenantQuery, sessionId: string): Promise<void> {
   await tx.query(END_PROVIDER_SESSIONS, [[sessionId]]);
-}
-
-/**
- * End one provider session in every business and answer whether this call
- * ended it (C40): of any number of callers at once, exactly one is told yes,
- * since the row is the claim and a second insert waits on the first's commit.
- */
-export async function claimProviderSession(tx: TenantQuery, sessionId: string): Promise<boolean> {
-  const rows = await tx.query(
-    `insert into ops.ended_provider_sessions (session_id) values ($1::uuid)
-     on conflict (session_id) do nothing returning 1`,
-    [sessionId],
-  );
-  return rows.length > 0;
 }
 
 /** End the one session the person is signing out of. */

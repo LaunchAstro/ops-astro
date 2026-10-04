@@ -1,22 +1,31 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+//
+// Sol's PR #382 round 1 proofs, criteria 3 and 5, under ORCH77-C40B: the
+// reset runs on our own one-time token, so no recovery session exists. The
+// agent queue proof becomes "a token's use yields no bearer session at all",
+// and the paused reset proof becomes "a paused reset whose token was spent
+// meanwhile is refused". The commit-window proof is kept as written, on the
+// token.
 import { randomUUID } from 'node:crypto';
 import { expect, it } from 'vitest';
-import { setPasswordByRecovery } from '../../packages/core-commands/src/index.ts';
+import { PASSWORD_SET_PATH } from '../../apps/api/password-set.ts';
+import { setPasswordByToken } from '../../packages/core-commands/src/index.ts';
 import type { Database } from '../../packages/core-records/src/index.ts';
-import { agentPath, bearer, call } from '../acceptance/world.ts';
+import { agentPath, bearer, call, serverUrl } from '../acceptance/world.ts';
 import {
-  answerWith,
+  api,
+  broker,
   doorAnswer,
   freshMember,
-  GOOD,
   inBravoToo,
+  mintToken,
   now,
+  seen,
   setPassword,
   tokenFor,
   usePasswordWorld,
   world,
 } from './c40-password-set-world.ts';
-import { json } from './c58-sessions-world.ts';
 
 usePasswordWorld();
 
@@ -28,14 +37,10 @@ function gate() {
   return { promise, open: () => settle.resolve?.() };
 }
 
-it('Sol proof, criterion 5: a reset revoked after standing was checked cannot claim another password change', async () => {
-  const member = await freshMember('sol-stale-link');
-  const subject = member.presented.subject;
-  await inBravoToo(subject, 'sol-stale-link-bravo');
-  const sessionId = randomUUID();
-  const at = now() - 30;
-  const token = await tokenFor(subject, sessionId, 'recovery', at);
-  const replacement = await tokenFor(subject, randomUUID(), 'recovery', at);
+const SOL = it.skipIf(serverUrl === undefined);
+
+/** The app database, paused once after the login's standing in bravo is read, until released. */
+function pausedAfterBravoStanding() {
   const checked = gate();
   const release = gate();
   let paused = false;
@@ -48,7 +53,7 @@ it('Sol proof, criterion 5: a reset revoked after standing was checked cannot cl
         business === world.bravo &&
         typeof result === 'object' &&
         result !== null &&
-        'loginId' in result
+        'session' in result
       ) {
         paused = true;
         checked.open();
@@ -57,127 +62,130 @@ it('Sol proof, criterion 5: a reset revoked after standing was checked cannot cl
       return result;
     },
   };
-  // No provider call from the stale request is expected. Record one if it happens.
-  const staleCalls: string[] = [];
-  const stale = setPasswordByRecovery(
-    delayed,
-    [world.alpha, world.bravo],
-    {
-      setPassword: async () => {
-        staleCalls.push('setPassword');
-        return { ok: true, value: subject };
-      },
-      signOut: async () => ({ ok: true, value: undefined }),
-    },
-    {
-      presented: {
-        provider: 'supabase',
-        subject,
-        sessionId,
-        recovery: true,
-        assurance: { level: 'aal1', signedInAt: at, factorAt: null },
-      },
-      accessToken: token,
-      password: 'sol stale link password',
-    },
-  );
-  await checked.promise;
-  try {
-    // Local revocation must hold even when the provider cannot sign out the other session.
-    answerWith({ ...GOOD, 'POST /logout?scope=others': json(500, {}) });
-    expect((await setPassword(replacement, 'sol replacement password')).body).toEqual({
-      signedOutAtProvider: false,
-    });
-    expect((await setPassword(token, 'sol replay password')).status).toBe(401);
-  } finally {
-    release.open();
-  }
-  const result = await stale;
-  expect({ result, staleCalls }).toEqual({
-    result: { ok: false, code: 'RESET_LINK_INVALID' },
-    staleCalls: [],
-  });
-});
+  return { delayed, checked, release };
+}
 
-it('Sol proof, criterion 3: the agent queue refuses a recovery session', async () => {
-  const recovery = await tokenFor(world.agent.subject, randomUUID(), 'recovery', now() - 30);
-  const ordinary = await tokenFor(world.agent.subject, randomUUID(), 'password', now() - 30);
+SOL(
+  'Sol proof, criterion 5: a reset revoked after standing was checked cannot claim another password change',
+  async () => {
+    const member = await freshMember('sol-stale-link');
+    const subject = member.presented.subject;
+    await inBravoToo(subject, 'sol-stale-link-bravo');
+    const token = await mintToken(subject);
+    const replacement = await mintToken(subject);
+    const { delayed, checked, release } = pausedAfterBravoStanding();
+    // No provider call from the stale request is expected. Record one if it happens.
+    const staleCalls: string[] = [];
+    const stale = setPasswordByToken(
+      delayed,
+      [world.alpha, world.bravo],
+      {
+        broker: {
+          ...broker,
+          custody: {
+            ...broker.custody,
+            dispatch: async (...args) => {
+              staleCalls.push('setPassword');
+              return await broker.custody.dispatch(...args);
+            },
+          },
+        },
+      },
+      { token, password: 'sol stale link password' },
+    );
+    await checked.promise;
+    try {
+      expect((await setPassword(replacement, 'sol replacement password')).body).toEqual({
+        passwordSet: true,
+      });
+      expect((await setPassword(token, 'sol replay password')).status).toBe(401);
+    } finally {
+      release.open();
+    }
+    const result = await stale;
+    expect({ result, staleCalls }).toEqual({
+      result: { ok: false, code: 'RESET_LINK_INVALID' },
+      staleCalls: [],
+    });
+  },
+);
+
+SOL('Sol proof, criterion 3: the agent queue refuses a recovery session', async () => {
+  // No recovery session exists: a token's use answers no credential and sets no cookie,
+  // and the token itself is no bearer anywhere, the agent queue included.
+  const member = await freshMember('sol-no-bearer');
+  const token = await mintToken(member.presented.subject);
+  const ordinary = await tokenFor(world.agent.subject, randomUUID(), now() - 30);
   const path = agentPath('alpha', '/task/queue');
   const normal = await call(world.api, path, { operationId: randomUUID() }, bearer(ordinary));
   expect(normal.status).toBe(200);
-  const reset = await call(world.api, path, { operationId: randomUUID() }, bearer(recovery));
-  expect({ status: reset.status, code: reset.body['code'] }).toEqual({
-    status: 401,
-    code: 'AUTH_SESSION_EXPIRED',
+  const used = await api.fetch(
+    new Request(`http://api.test${PASSWORD_SET_PATH}`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ token, password: 'sol no bearer password' }),
+    }),
+  );
+  expect({
+    status: used.status,
+    body: await used.json(),
+    cookie: used.headers.get('set-cookie'),
+  }).toEqual({ status: 200, body: { passwordSet: true }, cookie: null });
+  const queue = await call(world.api, path, { operationId: randomUUID() }, bearer(token));
+  const door = await doorAnswer(token, 'alpha');
+  expect({ queue: [queue.status, queue.body['code']], door }).toEqual({
+    queue: [401, 'DELEGATION_NOT_LIVE'],
+    door: 'AUTH_UNKNOWN_LOGIN',
   });
 });
 
-it('Sol proof, criterion 3: a password session opened before the reset commit is refused after provider logout', async () => {
-  const member = await freshMember('sol-commit-window');
-  const subject = member.presented.subject;
-  const sessionId = randomUUID();
-  const at = now() - 30;
-  const token = await tokenFor(subject, sessionId, 'recovery', at);
-  const audited = gate();
-  const release = gate();
-  const delayed: Database = {
-    ...world.db.app,
-    async withBusiness(business, run) {
-      return await world.db.app.withBusiness(
-        business,
-        async (tx) =>
-          await run({
-            ...tx,
-            async query<Row>(text: string, parameters?: readonly unknown[]) {
-              const rows = await tx.query<Row>(text, parameters);
-              if (text.includes('insert into audit_events')) {
-                audited.open();
-                await release.promise;
-              }
-              return rows;
-            },
-          }),
-      );
-    },
-  };
-  const providerCalls: string[] = [];
-  const pending = setPasswordByRecovery(
-    delayed,
-    [world.alpha],
-    {
-      setPassword: async () => {
-        providerCalls.push('setPassword');
-        return { ok: true, value: subject };
+SOL(
+  'Sol proof, criterion 3: a password session opened before the reset commit is refused after provider logout',
+  async () => {
+    const member = await freshMember('sol-commit-window');
+    const subject = member.presented.subject;
+    const token = await mintToken(subject);
+    const audited = gate();
+    const release = gate();
+    const delayed: Database = {
+      ...world.db.app,
+      async withBusiness(business, run) {
+        return await world.db.app.withBusiness(
+          business,
+          async (tx) =>
+            await run({
+              ...tx,
+              async query<Row>(text: string, parameters?: readonly unknown[]) {
+                const rows = await tx.query<Row>(text, parameters);
+                if (text.includes('insert into audit_events')) {
+                  audited.open();
+                  await release.promise;
+                }
+                return rows;
+              },
+            }),
+        );
       },
-      signOut: async (_accessToken, scope) => {
-        providerCalls.push(scope);
-        return { ok: true, value: undefined };
-      },
-    },
-    {
-      presented: {
-        provider: 'supabase',
-        subject,
-        sessionId,
-        recovery: true,
-        assurance: { level: 'aal1', signedInAt: at, factorAt: null },
-      },
-      accessToken: token,
-      password: 'sol commit window password',
-    },
-  );
-  await audited.promise;
-  let during: string;
-  try {
-    // The new session starts after the transaction timestamp, before its commit.
-    await new Promise((resolve) => {
-      setTimeout(resolve, 1100);
-    });
-    during = await tokenFor(subject, randomUUID(), 'password', now());
-  } finally {
-    release.open();
-  }
-  expect(await pending).toEqual({ ok: true, signedOutAtProvider: true });
-  expect(providerCalls).toEqual(['setPassword', 'others', 'local']);
-  expect(await doorAnswer(during, 'alpha')).toBe('AUTH_SESSION_EXPIRED');
-});
+    };
+    const pending = setPasswordByToken(
+      delayed,
+      [world.alpha],
+      { broker },
+      { token, password: 'sol commit window password' },
+    );
+    await audited.promise;
+    let during: string;
+    try {
+      // The new session starts after the transaction timestamp, before its commit.
+      await new Promise((resolve) => {
+        setTimeout(resolve, 1100);
+      });
+      during = await tokenFor(subject, randomUUID(), now());
+    } finally {
+      release.open();
+    }
+    expect(await pending).toEqual({ ok: true });
+    expect(seen.map((one) => one.route)).toEqual([`PUT /auth/v1/admin/users/${subject}`]);
+    expect(await doorAnswer(during, 'alpha')).toBe('AUTH_SESSION_EXPIRED');
+  },
+);
