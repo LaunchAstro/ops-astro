@@ -94,9 +94,13 @@ function useReads(
   useEffect(() => {
     let current = true;
     const asked = new Map<string, number>();
+    // Only the newest list read lands: an older answer never undoes a newer one.
+    let lists = 0;
     const list = (): void => {
+      lists += 1;
+      const generation = lists;
       void client.read<ChatConversationsResult>('chat.conversations', {}).then((answer) => {
-        if (!current) return answer;
+        if (!current || lists !== generation) return answer;
         const listed = 'value' in answer ? answer.value.conversations : undefined;
         // A body with no list is read as no conversations, never drawn.
         if (Array.isArray(listed)) setList(() => listed);
