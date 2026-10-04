@@ -70,6 +70,9 @@ export interface Disclosed {
   readonly subjectRecordId: string;
   readonly factId: string;
   readonly closedByPersonId: string | null;
+  /** The task's key, title and client, read in the statement that found it readable. */
+  readonly task: { readonly key: string; readonly title: string | null };
+  readonly clientId: string | null;
   /** T2h's alert on the run the item points at, the one the task page shows; null otherwise. */
   readonly alert: InboxAlert | null;
 }

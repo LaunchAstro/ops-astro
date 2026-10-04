@@ -390,6 +390,39 @@ export const TASK_SPINE: readonly SpineField[] = [
     owningOperations: ['task.assign'],
     escalatingOperation: null,
   },
+  // Wayfinder (WF-1). Unslotted: no view filters on them yet, and a slot
+  // would cost an index migration for nothing. The type changes views and
+  // rules, never the record kind; a map is a task whose type is `map`.
+  {
+    key: 'type',
+    label: 'Type',
+    valueType: 'text',
+    slot: null,
+    writeMode: 'operation',
+    owningOperations: ['task.set_type'],
+    escalatingOperation: null,
+  },
+  {
+    // The person who created the map; grilling and prototype tickets and
+    // guarded retypes are theirs alone.
+    key: 'map_owner',
+    label: 'Map owner',
+    valueType: 'uuid',
+    slot: null,
+    writeMode: 'system',
+    owningOperations: [],
+    escalatingOperation: null,
+  },
+  {
+    // Every retype, appended by `task.set_type`: from, to, actor and time.
+    key: 'type_history',
+    label: 'Type history',
+    valueType: 'json',
+    slot: null,
+    writeMode: 'system',
+    owningOperations: [],
+    escalatingOperation: null,
+  },
 ];
 
 /**
@@ -416,6 +449,9 @@ export const PROTECTED_TASK_FIELDS: readonly string[] = [
   'source',
   'stage',
   'state',
+  'type',
+  'map_owner',
+  'type_history',
 ];
 
 /** The two fields that are generic ordinarily and an access change sometimes. */

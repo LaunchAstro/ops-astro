@@ -170,7 +170,7 @@ describe('the workflows: every required check reports on a pull request and on a
   it('isolation tests runs each suite through its scope name', () => {
     const steps = load(CI).jobs['isolation']?.steps ?? [];
     const runs = steps.filter((s) => s.run !== undefined && !s.run.startsWith('pnpm install'));
-    expect(runs.length).toBe(2);
+    expect(runs.length).toBe(4);
     for (const s of runs)
       expect(s.run).toMatch(/^node scripts\/ci-scope\.ts 'isolation tests' -- /u);
   });

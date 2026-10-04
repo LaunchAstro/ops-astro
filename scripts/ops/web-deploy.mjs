@@ -12,18 +12,20 @@
 // `--maintenance` puts the maintenance page on the main address (`maintenance
 // recorded`); deploying a version again takes it off.
 //
-// The operator gate (`operator.ts`) answers before any argument is read and
-// before Vercel is asked; a refusal writes nothing. The deployment record is
+// The installation's operator gate (`operator.ts`, requireOperatingOperator:
+// the app and the maintenance page serve every business, so only the
+// operating business's `operations:manage` deploys them) answers before any
+// argument is read and before Vercel is asked; a refusal writes nothing. The deployment record is
 // written only once Vercel reports the deployment ready on production, its
 // output held to syd1 alone (`web-deploy.ts`). Exit 0 when deployed, 1 when
 // refused or failed, 2 when the arguments are unusable.
 
 import { parseArgs } from 'node:util';
 import { stagingSigns } from './deploy.ts';
-import { recordDeployment, requireOperator } from './operator.ts';
+import { recordDeployment, requireOperatingOperator } from './operator.ts';
 import { deployMaintenance, deployWeb } from './web-deploy.ts';
 
-const gate = await requireOperator();
+const gate = await requireOperatingOperator();
 if (!gate.ok) {
   console.error(`web-deploy: REFUSED: ${gate.reason}`);
   process.exit(1);
