@@ -9,32 +9,17 @@ import { expect, it, vi } from 'vitest';
 import { OperationsClient } from '../../apps/web/src/operations/client.ts';
 import { TeamScreen } from '../../apps/web/src/screens/Team.tsx';
 import { issueGrant } from '../../packages/core-records/src/authority/grants.ts';
-import { createGroupWorld } from '../api/c71-g-world.ts';
+import { createGroupWorld, type GroupWorld } from '../api/c71-g-world.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
 import { asBrowser } from '../support/sign-in.ts';
 import { mount, settle } from './mount.tsx';
 
-async function world(part: string) {
-  const g = await createGroupWorld(part);
-  const { mia, ada, alpha, db } = g.chat.harness.world;
-  const personId = mia.personId;
-  const actorId = ada.actorId;
-  if (personId === null || actorId === null) throw new Error('fixture needs a person and grantor');
-  await db.app.withBusiness(alpha, async (tx) => {
-    const granted = await issueGrant(tx, [], {
-      subject: { kind: 'person', id: personId },
-      collection: 'person',
-      action: 'read',
-      scope: { kind: 'business', id: null },
-      parentGrantId: null,
-      grantedByActorId: actorId,
-    });
-    expect(granted.ok).toBe(true);
-  });
+/** A reader's browser transport to the real API, with the stream and message reads held here. */
+function browser(g: GroupWorld, token: string) {
   let stream: ReadableStreamDefaultController<Uint8Array> | undefined;
   const calls: Promise<Response>[] = [];
   const transport = { unavailable: false, messageReads: 0, markerWrites: 0, calls };
-  const fetch: typeof globalThis.fetch = asBrowser(mia.token, async (input, init) => {
+  const fetch: typeof globalThis.fetch = asBrowser(token, async (input, init) => {
     const url = String(input);
     if (url.includes('/live?'))
       return new Response(
@@ -55,6 +40,33 @@ async function world(part: string) {
     transport.calls.push(response);
     return await response;
   });
+  const signal = async (event: string, topic: string): Promise<void> => {
+    await act(() => {
+      if (stream === undefined) throw new Error('no stream');
+      stream.enqueue(new TextEncoder().encode(`event: ${event}\ndata: ${topic}\n\n`));
+    });
+  };
+  return { transport, fetch, signal };
+}
+
+async function world(part: string) {
+  const g = await createGroupWorld(part);
+  const { mia, ada, alpha, db } = g.chat.harness.world;
+  const personId = mia.personId;
+  const actorId = ada.actorId;
+  if (personId === null || actorId === null) throw new Error('fixture needs a person and grantor');
+  await db.app.withBusiness(alpha, async (tx) => {
+    const granted = await issueGrant(tx, [], {
+      subject: { kind: 'person', id: personId },
+      collection: 'person',
+      action: 'read',
+      scope: { kind: 'business', id: null },
+      parentGrantId: null,
+      grantedByActorId: actorId,
+    });
+    expect(granted.ok).toBe(true);
+  });
+  const { transport, fetch, signal } = browser(g, mia.token);
   const client = new OperationsClient({
     origin: 'http://api.test',
     businessKey: 'alpha',
@@ -62,12 +74,6 @@ async function world(part: string) {
     fetch,
   });
   const page = await mount(<TeamScreen client={client} grantKey="alpha:mia" />);
-  const signal = async (event: string, topic: string): Promise<void> => {
-    await act(() => {
-      if (stream === undefined) throw new Error('no stream');
-      stream.enqueue(new TextEncoder().encode(`event: ${event}\ndata: ${topic}\n\n`));
-    });
-  };
   const change = async (side: 'add' | 'remove'): Promise<void> => {
     const result = await g.as(g.chat.tess, 'chat.change_members', {
       conversationId: g.conversationId,
