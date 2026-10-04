@@ -4,13 +4,14 @@
 // light-pull-requests.test.ts). Every required check still reports under its own name on a pull
 // request and on a group; the shards behind `database conformance` skip pull requests alone, and
 // the aggregate passes their skip on a pull request alone, and only when the contamination gate
-// passed; every always() job behind the gate reads the gate's result; `local checks` and `isolation tests`
-// defer their heavy steps through scripts/ci-scope.ts; and planted forms of each go red. The
-// workflows are read with a YAML parser, as merge-group-jobs.test.ts reads them.
+// passed; every job behind the gate on a status function (always(), cancelled(), failure())
+// reads the gate's result; `local checks` and `isolation tests` defer their heavy steps through
+// scripts/ci-scope.ts; and planted forms of each go red. The workflows are read with a YAML
+// parser, as merge-group-jobs.test.ts reads them.
 
-import { spawnSync } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import { parseDocument } from 'yaml';
+import { aggregateProblems, condition } from './light-pull-requests-aggregate.ts';
 import { read } from './merge-group-repo.ts';
 
 type Env = Record<string, string>;
@@ -47,8 +48,6 @@ const required = (
   .map((c) => c.context);
 
 /** A condition as GitHub evaluates it: `${{ x }}` and `x` are the same expression. */
-const condition = (value: unknown) =>
-  typeof value === 'string' ? value.trim().replace(/^\$\{\{\s*([\s\S]*?)\s*\}\}$/u, '$1') : value;
 const load = (path: string): Workflow =>
   parseDocument(read(path), { merge: true, uniqueKeys: true }).toJS({
     maxAliasCount: 100,
@@ -57,12 +56,13 @@ const queueOnlyOf = (): string[] =>
   (JSON.parse(read('scripts/ci-scope.json')) as { queueOnly?: string[] }).queueOnly ?? [];
 const problemsNow = (ci: Workflow) => workflowProblems(ci, load(REVIEW), queueOnlyOf());
 const aggregateStep = (ci: Workflow) => ci.jobs['database']?.steps?.[0];
-const BEHIND = 'runs always() behind the gate';
+const BEHIND = 'runs on a status function behind the gate';
 const needsOf = (job: Job | undefined): string[] =>
   job?.needs === undefined ? [] : ([] as unknown[]).concat(job.needs).map(String);
 
-// Each always() job behind the gate, directly or not, that does not need it and read its result:
-// always() runs it when a failed gate skipped every job between, and that skip must not pass.
+// Each job behind the gate, directly or not, on always(), cancelled() or failure(), that does not
+// need it and read its result: such a condition runs it when a failed gate skipped every job
+// between, and that skip must not pass.
 function alwaysProblems(ci: Workflow): string[] {
   const problems: string[] = [];
   const behindGate = (key: string, seen = new Set<string>()): boolean =>
@@ -71,7 +71,12 @@ function alwaysProblems(ci: Workflow): string[] {
     );
   for (const [key, job] of Object.entries(ci.jobs)) {
     const cond = condition(job.if);
-    if (typeof cond !== 'string' || !cond.includes('always()') || !behindGate(key)) continue;
+    if (
+      typeof cond !== 'string' ||
+      !/\b(always|cancelled|failure)\s*\(\s*\)/u.test(cond) ||
+      !behindGate(key)
+    )
+      continue;
     const env = (job.steps ?? []).flatMap((s) =>
       Object.values(s.env ?? {}).map((v) => condition(v)),
     );
@@ -143,54 +148,6 @@ export function workflowProblems(ci: Workflow, review: Workflow, queueOnly: stri
   for (const job of Object.values(ci.jobs))
     if (FULL_ON_PR.has(job.name ?? '') && JSON.stringify(job.steps).includes('ci-scope'))
       problems.push(`${String(job.name)}: scoped, but it runs in full`);
-  return problems;
-}
-
-const RESULTS = ['success', 'skipped', 'failure', 'cancelled'];
-
-/**
- * The aggregate's script, run under GitHub's bash with each event, gate result and shards result.
- * A skip passes on a pull request whose gate passed, and nowhere else: a failed, cancelled or
- * skipped gate skips the shards too, and that skip must not read as green.
- */
-function aggregateProblems(step: Step | undefined): string[] {
-  if (step?.run === undefined) return ['the aggregate has no script'];
-  const problems = step.run.includes('${{') ? ['the script interpolates an expression'] : [];
-  for (const event of ['merge_group', 'push', 'pull_request', '', 'workflow_dispatch'])
-    for (const gate of RESULTS)
-      for (const shards of RESULTS)
-        problems.push(...aggregateRun(step.run, step.env ?? {}, { event, gate, shards }));
-  return problems;
-}
-
-/** One run of the aggregate's script on one event, gate result and shards result. */
-function aggregateRun(
-  run: string,
-  stepEnv: Env,
-  { event, gate, shards }: { event: string; gate: string; shards: string },
-): string[] {
-  const problems: string[] = [];
-  const env: Env = { PATH: process.env['PATH'] ?? '' };
-  const values: Record<string, string> = {
-    'needs.database-shard.result': shards,
-    'needs.gate.result': gate,
-    'github.event_name': event,
-  };
-  for (const [key, value] of Object.entries(stepEnv)) {
-    const known = values[String(condition(value))];
-    if (known === undefined) problems.push(`env ${key}: ${String(value)} is not read here`);
-    else env[key] = known;
-  }
-  const out = spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', run], {
-    env,
-    encoding: 'utf8',
-  });
-  const wants =
-    shards === 'success' ||
-    (shards === 'skipped' && gate === 'success' && event === 'pull_request');
-  const got = out.status === 0 ? 'passed' : 'failed';
-  if ((out.status === 0) !== wants)
-    problems.push(`${event || 'no event'} gate ${gate} shards ${shards}: ${got}`);
   return problems;
 }
 
@@ -279,30 +236,24 @@ describe('planted: the aggregate and the gate, each goes red', () => {
     const ci = load(CI);
     ci.jobs['database'] = { ...ci.jobs['database'], needs: ['database-shard'] };
     expect(problemsNow(ci)).toStrictEqual([
-      'database: runs always() behind the gate, without needing it',
+      'database: runs on a status function behind the gate, without needing it',
       'database: must always run over the gate and database-shard',
     ]);
   });
 
-  it('a new always() job behind the gate that neither needs it nor reads its result', () => {
+  // Any status function lets a job run after a failed gate skipped every job between.
+  it.each([
+    '${{ always() && true }}',
+    '${{ !cancelled() }}',
+    'failure()',
+    'success() || failure()',
+    'cancelled( ) || true',
+  ])('a new job behind the gate on %s, neither needing it nor reading its result', (cond) => {
     const ci = load(CI);
-    ci.jobs['later'] = { needs: ['database-shard'], if: '${{ always() && true }}', steps: [] };
+    ci.jobs['later'] = { needs: ['database-shard'], if: cond, steps: [] };
     expect(problemsNow(ci)).toStrictEqual([
-      'later: runs always() behind the gate, without needing it',
-      'later: runs always() behind the gate, without reading its result',
+      'later: runs on a status function behind the gate, without needing it',
+      'later: runs on a status function behind the gate, without reading its result',
     ]);
   });
-
-  // Any status function lets a job run after a failed gate skipped every job between.
-  it.each(['${{ !cancelled() }}', 'failure()', 'success() || failure()', 'cancelled( ) || true'])(
-    'a new job behind the gate on %s, neither needing it nor reading its result',
-    (cond) => {
-      const ci = load(CI);
-      ci.jobs['later'] = { needs: ['database-shard'], if: cond, steps: [] };
-      expect(problemsNow(ci)).toStrictEqual([
-        'later: runs always() behind the gate, without needing it',
-        'later: runs always() behind the gate, without reading its result',
-      ]);
-    },
-  );
 });
