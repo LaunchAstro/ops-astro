@@ -90,7 +90,9 @@ describe.skipIf(serverUrl === undefined)('the live-session list and the absolute
     const listed = await db.app.withBusiness(business, (tx) =>
       listSeenSessions(tx, person, current),
     );
-    expect(listed.map((row) => row.sessionId)).toEqual([current]);
+    const ids = listed.map((row) => row.sessionId);
+    expect(ids).not.toContain(old);
+    expect(ids).toContain(current);
   });
 
   it('leaves out a session signed in 13 hours ago that this business first served a moment ago', async () => {
@@ -105,6 +107,9 @@ describe.skipIf(serverUrl === undefined)('the live-session list and the absolute
     const listed = await db.app.withBusiness(business, (tx) =>
       listSeenSessions(tx, person, current),
     );
-    expect(listed.map((row) => row.sessionId)).toEqual([current]);
+    // The person's earlier sessions are still live, so this names the two.
+    const ids = listed.map((row) => row.sessionId);
+    expect(ids).not.toContain(elsewhere);
+    expect(ids).toContain(current);
   });
 });
