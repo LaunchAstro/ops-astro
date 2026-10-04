@@ -6,8 +6,7 @@
 // first message as a marked quotation. `conversation-lifecycle.ts` writes
 // them at quiet and reads the work again before a purge.
 
-import { readableScope, subjectsOf } from '../../../core-records/src/index.ts';
-import type { Session, TenantQuery } from '../../../core-records/src/index.ts';
+import type { ReadableScope, TenantQuery } from '../../../core-records/src/index.ts';
 import type {
   ConversationPointerView,
   WrapUpItemView,
@@ -170,8 +169,7 @@ function taskOfAddress(address: string): string | null | undefined {
  * task under any spelling passes only when a business grant or a grant on
  * that task covers it, as `task.read` admits it; any other address passes.
  */
-export async function addressReader(tx: TenantQuery, session: Session): Promise<ReadsAddress> {
-  const tasks = await readableScope(tx, subjectsOf(session), 'task', 'read');
+export function addressReader(tasks: ReadableScope): ReadsAddress {
   return (address) => {
     const task = taskOfAddress(address);
     return task === undefined || tasks.business || (task !== null && tasks.records.includes(task));
