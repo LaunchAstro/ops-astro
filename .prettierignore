@@ -157,3 +157,7 @@ tests/operations/scan-login-cleanup-subject-race.proof.test.ts
 # preparation corrected.
 tests/review/staging-reset-keeps-session-ended-during-reset-proof.test.ts
 tests/review/staging-reset-proof-copies-before-competing-ending-proof.test.ts
+
+# Sol's PR 364 round-2 proofs, byte-for-byte as the review patch held them apart from their titles,
+# which name what they prove (tests/docs/test-files-by-behaviour.test.ts).
+tests/site/c80-picture-sheets-applied.test.ts

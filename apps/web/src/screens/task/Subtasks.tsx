@@ -15,7 +15,8 @@
 //
 // **The box stays ready.** Enter adds and clears the box, and focus stays in
 // it for the next one. The box sits at the top and a new step joins the end,
-// in the order the server lists them.
+// in the order the server lists them. An add whose answer was lost keeps its id,
+// so Enter on the unchanged name is that attempt and the server replays it.
 //
 // **Finished steps fold away.** A done step, and an archived one (it left the
 // count without being done, MP-4-15), sit under "Show finished", the person's
@@ -118,18 +119,18 @@ function AddStep(props: {
   const { busy, because, run } = useCommand();
   const [title, setTitle] = useState('');
   const box = useRef<HTMLInputElement>(null);
+  const held = useRef<Record<string, string | undefined>>({});
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>): void => {
     if (event.key !== 'Enter') return;
     event.preventDefault();
     const wanted = title.trim();
     if (wanted === '' || busy) return;
+    const body = { fields: { title: wanted }, parentId: props.parentId };
+    const operationId = (held.current[JSON.stringify(body)] ??= props.client.newOperationId());
     run(
-      () =>
-        props.client.mutate('task.create', {
-          fields: { title: wanted },
-          parentId: props.parentId,
-        }),
+      () => props.client.mutate('task.create', body, { operationId }),
       (settlement) => {
+        if (settlement.kind !== 'unknown') held.current[JSON.stringify(body)] = undefined;
         if (settlement.kind === 'ok') {
           setTitle('');
           props.onChanged();
