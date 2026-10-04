@@ -12,6 +12,11 @@ export interface ChatConversationView {
   readonly name: string | null;
   /** Every current member's person id, the reader included. */
   readonly members: readonly string[];
+  /**
+   * When the reader's own current membership began (their member row, never
+   * another's), so a group rejoined reads later; null once they have left.
+   */
+  readonly joinedAt: string | null;
   /** Where the reader's own marker sits; null before they have read any of it. */
   readonly lastRead: string | null;
   readonly lastMessageAt: string | null;

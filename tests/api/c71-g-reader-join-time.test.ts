@@ -27,12 +27,8 @@ it.skipIf(databaseUrlFromEnvironment() === undefined)(
       const answer = await as(chat.tess, 'chat.change_members', { conversationId, ...body });
       expect(answer.status, answer.text).toBe(200);
     };
-    // The reader's join time on their view of the group, read by its field name.
-    const joinOf = async (who: Caller): Promise<string | null | undefined> => {
-      const view: { readonly kind?: string; readonly joinedAt?: string | null } | undefined =
-        await viewOf(who);
-      return view?.joinedAt;
-    };
+    const joinOf = async (who: Caller): Promise<string | null | undefined> =>
+      (await viewOf(who))?.joinedAt;
     try {
       const first = await joined(world.mia);
       expect(await joinOf(world.mia)).toBe(first);

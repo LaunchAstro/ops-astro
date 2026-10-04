@@ -170,6 +170,8 @@ export interface ConversationSummary {
   readonly name: string | null;
   /** Every current member's person id, the reader included; none to one who has left. */
   readonly members: readonly string[];
+  /** When the reader's own current membership began; null once they have left. */
+  readonly joinedAt: string | null;
   readonly lastRead: string | null;
   readonly lastMessageAt: string | null;
   /** Others' messages after the reader's marker. */
@@ -187,12 +189,14 @@ export async function listConversations(
     readonly kind: ConversationKind;
     readonly name: string | null;
     readonly members: readonly string[];
+    readonly joined_at: Date | null;
     readonly last_read_at: Date | null;
     readonly last_message_at: Date | null;
     readonly unread: string;
   }>(
     `select m.conversation_id as id, r.txt_1 as kind, m.last_read_at,
             case when m.left_at is null then r.txt_2 end as name,
+            case when m.left_at is null then m.joined_at end as joined_at,
             case when m.left_at is null then array(
               select o.person_id::text from public.team_conversation_members o
                where o.business_id = m.business_id and o.conversation_id = m.conversation_id
@@ -215,6 +219,7 @@ export async function listConversations(
     kind: row.kind,
     name: row.name,
     members: row.members,
+    joinedAt: row.joined_at?.toISOString() ?? null,
     lastRead: row.last_read_at?.toISOString() ?? null,
     lastMessageAt: row.last_message_at?.toISOString() ?? null,
     unread: Number(row.unread),
