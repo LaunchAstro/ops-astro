@@ -3066,24 +3066,38 @@ steps waiting on it; a second failure stops the onboarding and says so on the
 task. `task:write` is asked at the step task's own client (`prepare.ts`, the
 `target` lookup), and only while the task is still on the onboarding's client,
 so a holder scoped to one client writes that client's steps and no other's; an
-agent writes the step on the task it is delegated on. It answers `{ step,
-outcome, opened, stopped }`; `FIELD_VALUE_INVALID` 422 names `recordId`,
-`outcome` or `result`; a task that is no step of a running onboarding here is
-`NOT_FOUND` 404; a step still waiting, already closed or stopped is
-`TRANSITION_NOT_PERMITTED` 409. A result is content on its task (S0-5): it
-locks the onboarding, then its steps, then the step's task, and asks again
-under the task's lock whether the task is still on the onboarding's client. A
-task moved to another client meanwhile is `NOT_FOUND` 404 and nothing is
-written; a move after a result is `CLIENT_LOCKED` 409.
+agent writes the step on the task it is delegated on. A step of any kind takes
+a result from either: the kind (agent-run, needs a person, waits on the client)
+says whose move it is, not who records it. An agent reaches a person or
+client-wait step only on a delegation a person approved for that task, and its
+result withdraws the step's open item, naming nobody, where a person's clears
+it (`closeStepMove`). Source: the C41-A draft (`b0/SL13`), whose agent row
+serves every step and whose `closeStepMove` withdraws the item "when an agent
+did", and the ticket's `C41-A step result on its task` line, which names no
+actor per kind. It answers `{ step, outcome, opened, stopped }`;
+`FIELD_VALUE_INVALID` 422 names `recordId`, `outcome` or `result`; a task that
+is no step here, or is in the trash, is `NOT_FOUND` 404, as `task.comment`
+answers a trashed task; a step of a stopped or finished onboarding is
+`TRANSITION_NOT_PERMITTED` 409 naming `state=stopped` or `state=done`, and a
+step still waiting, already closed or stopped is that 409 naming its own state.
+A result is content on its task (S0-5): it locks the onboarding, then its
+steps, then the step's task, and asks again under the task's lock whether the
+task is still on the onboarding's client and out of the trash. A task moved to
+another client or trashed meanwhile is `NOT_FOUND` 404 and nothing is written;
+a move after a result is `CLIENT_LOCKED` 409.
 
 A person or client-wait step that opens is parked with an inbox item
 (`assignment`, on the step's task) to whoever owns its move: the task's
 assignee, else the person who started the onboarding. Assigning, unassigning or
 moving the task to another client parks it again under that rule
 (`reparkStepMove`, from `task.assign` and `task.set_party`), and the item closes
-when the step's result is recorded. The agent step's run and its gate, the
-client email's draft and its one send path, and the first-client gate are not
-built here; `tests/onboarding/c41-a-held.test.ts` holds each by name.
+when the step's result is recorded. The agent step's run and its gate, and the
+client email's draft and its one send path, are not built here;
+`tests/onboarding/c41-a-held.test.ts` holds each by name. S0-5's first-client
+gate runs on all three commands, each classed `client-data`: after authority on
+the person path (`envelope.ts`) and after the delegation's answers on the agent
+path (`agent-envelope.ts`), before any write. Its named `C41-A gate refusal`
+case is held there too.
 
 ### A client's privacy settings (C60)
 
