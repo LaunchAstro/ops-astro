@@ -16,7 +16,7 @@
 // an export with no reachable target is never reported as success.
 
 import { randomUUID } from 'node:crypto';
-import type { TenantQuery } from '../../core-records/src/index.ts';
+import { readableNow, type TenantQuery } from '../../core-records/src/index.ts';
 import {
   TRACE_ERRORS,
   TRANSFORM_VERSION,
@@ -165,32 +165,41 @@ export type ReadSpan = TraceCells & { readonly runId: string; readonly exported:
 /**
  * One task's trace as an operator reads it (AW-13 readers, `trace.read`): each
  * event of its runs as the export sends it, less the two ids only the
- * exporter's key derives, and whether it is behind the cursor. The grant is
- * asked before this, by the read's row (`operations:read`, then the task's own
- * read); the task is the query's, under the business's tenancy.
+ * exporter's key derives, and whether it is behind the cursor. `operations:read`
+ * is asked before this, by the read's row; the task's own read is asked here,
+ * in the statement that reads the events (`readableNow`), and null answers a
+ * task `personId` does not read now.
  */
 export async function readTaskTrace(
   tx: TenantQuery,
   taskId: string,
-): Promise<{ readonly spans: readonly ReadSpan[]; readonly complete: boolean }> {
-  const rows = await tx.query<Row & { readonly exported: boolean }>(
+  personId: string,
+): Promise<{ readonly spans: readonly ReadSpan[]; readonly complete: boolean } | null> {
+  const rows = await tx.query<
+    Omit<Row, 'id'> & { readonly id: string | null; readonly exported: boolean }
+  >(
     `select ${EVENT_CELLS},
             coalesce((ev.tx, ev.id) <= (c.after_tx, c.after_id), false) as exported
-       from public.run_events ev
-       join public.planned_runs run on run.business_id = ev.business_id and run.id = ev.run_id
-       left join public.trace_export_cursors c on c.business_id = ev.business_id
-      where ev.business_id = $1 and run.task_id = $2
+       from public.records r
+       left join (public.run_events ev
+                  join public.planned_runs run
+                    on run.business_id = ev.business_id and run.id = ev.run_id)
+         on ev.business_id = r.business_id and run.task_id = r.id
+       left join public.trace_export_cursors c on c.business_id = r.business_id
+      where r.business_id = $1 and r.id = $2 and ${readableNow('$4::uuid', "'infinity'")}
       order by ev.position, ev.id
       limit $3`,
-    [tx.businessId, taskId, TRACE_READ_LIMIT + 1],
+    [tx.businessId, taskId, TRACE_READ_LIMIT + 1, personId],
   );
+  if (rows.length === 0) return null;
+  const events = rows.flatMap((row) => (row.id === null ? [] : [{ ...row, id: row.id }]));
   return {
-    spans: rows
+    spans: events
       .slice(0, TRACE_READ_LIMIT)
       .map((row): ReadSpan =>
         Object.assign({ runId: row.runId, exported: row.exported }, traceCells(cellsOf(row))),
       ),
-    complete: rows.length <= TRACE_READ_LIMIT,
+    complete: events.length <= TRACE_READ_LIMIT,
   };
 }
 

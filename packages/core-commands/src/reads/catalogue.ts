@@ -23,7 +23,6 @@ import {
   readableScope,
   readPreferences,
   subjectsOf,
-  taskAccess,
 } from '../../../core-records/src/index.ts';
 import { readAlerts, readOutages, readTaskTrace } from '../../../core-runtime/src/index.ts';
 import type { TenantQuery, Session, PresetField } from '../../../core-records/src/index.ts';
@@ -891,12 +890,14 @@ export const READ_CATALOGUE: { readonly [K in ReadName]: ReadRow<K> } = {
       if (
         recordId === undefined ||
         !isInternalReader(session.roleKey) ||
-        !(await liveTask(tx, spine.taskTypeId, recordId)) ||
-        (await taskAccess(tx, session.personId, recordId)) !== 'readable'
+        !(await liveTask(tx, spine.taskTypeId, recordId))
       ) {
         return refuseNotFound();
       }
-      return { ok: true, trace: { taskId: recordId, ...(await readTaskTrace(tx, recordId)) } };
+      const trace = await readTaskTrace(tx, recordId, session.personId);
+      return trace === null
+        ? refuseNotFound()
+        : { ok: true, trace: { taskId: recordId, ...trace } };
     },
   },
   // AW-12: the harness test's result on one run. No subject record and no

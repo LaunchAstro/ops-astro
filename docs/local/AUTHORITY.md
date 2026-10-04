@@ -1071,8 +1071,9 @@ labelled pre-review; see [API.md](API.md).
 ## Trace readers (AW-13)
 
 `trace.read` asks `operations:read` at the task's record scope, then the task's
-own `read` (`taskAccess`), so a reader whose task grant covers one client's
-task gets `NOT_FOUND` for another client's. The key is the catalogue's C55 row:
+own `read` in the statement that reads the events (`readableNow`), so a reader
+whose task grant covers one client's task gets `NOT_FOUND` for another client's,
+and one whose grant is revoked mid-read gets `NOT_FOUND` too. The key is the catalogue's C55 row:
 seeded to the owner and administrators, never a member, never an agent. The
 ticket's "the second owner after a timed restore rehearsal" is the trace
 target's Owner login (the Langfuse contract's recovery operator), an
