@@ -2,14 +2,15 @@
 import { readFileSync } from 'node:fs';
 import { configDefaults, defineConfig } from 'vitest/config';
 
-// With a database, the database-bound suites run, and every one migrates a
-// fresh database from empty in one transaction. Migration 0008 comments on a
-// cluster-wide role inside that transaction, so each file's migration waits
-// for every other migration on the server to commit, this run's and any other
-// run's sharing it. A loaded machine turned that queue into 5 s test timeouts
-// and 60 s hook timeouts that passed alone (product issue 56). So a database
-// run uses four workers, the hosted runner's cores, and times sized for the
-// queue. Without a database those suites skip and the defaults stand.
+// With a database, the database-bound suites run. Each file's fresh database
+// is a clone of one template the run migrates from empty once
+// (tests/support/migrated-template.ts); the few that migrate from empty still
+// queue on migration 0008, which comments on a cluster-wide role inside the
+// migration transaction, behind every other migration on the server. A loaded
+// machine turned that queue into 5 s test timeouts and 60 s hook timeouts that
+// passed alone (product issue 56). So a database run uses four workers, the
+// hosted runner's cores, and times sized for it. Without a database those
+// suites skip and the defaults stand.
 const database = (process.env['DATABASE_URL'] ?? '') !== '';
 const containerSuites: string[] = (
   JSON.parse(readFileSync('tests/ci/container-suites.json', 'utf8')) as { suites: string[] }
@@ -34,11 +35,12 @@ export default defineConfig({
     // The capture chain's longer timeout, file by file (see the file); a second
     // project would label the `vitest list` lines scripts/db-conformance.mjs reads.
     setupFiles: ['tests/support/capture-chain-timeout.ts'],
-    // Hooks are where every database-bound file migrates a fresh database from
-    // empty (`beforeAll`) and drops it (`afterAll`). That is legitimately slow
-    // work, and with many files and other runs sharing the machine it ran past
-    // the 10 s default while passing alone. The few slow tests name their own
-    // timeout, and a hook or test naming its own keeps it.
+    // Hooks are where every database-bound file makes a fresh database
+    // (`beforeAll`), a clone or a migration from empty, and drops it
+    // (`afterAll`). That is legitimately slow work, and with many files and
+    // other runs sharing the machine it ran past the 10 s default while passing
+    // alone. The few slow tests name their own timeout, and a hook or test
+    // naming its own keeps it.
     hookTimeout: database ? 180_000 : 60_000,
     testTimeout: database ? 30_000 : 5_000,
     ...(database ? { maxWorkers: 4 } : {}),
