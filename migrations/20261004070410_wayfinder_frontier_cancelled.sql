@@ -4,6 +4,8 @@
 -- completed one, and a cancelled blocker no longer holds a ticket back. Only
 -- the frontier's two state tests change; the summary counts, the definer, the
 -- search path, the per-map advisory lock and the revoke are 20261003001618's.
+-- Every live map is then refreshed once, so a ticket cancelled before this
+-- upgrade leaves its frontier now rather than at its map's next write.
 
 -- Recount one map, or drop its row when the id is no longer a live map.
 -- Security definer so the read model has one writer; it runs under the
@@ -99,3 +101,22 @@ end;
 $$;
 
 revoke all on function public.map_summary_refresh(uuid) from public;
+
+-- In id order, as map_summary_on_record refreshes, each under its own business
+-- setting (the function reads it) and its per-map lock; the setting is restored.
+do $$
+declare
+  v_was text := current_setting('app.business_id', true);
+  v_map record;
+begin
+  for v_map in
+    select r.business_id, r.id from public.records r
+     where r.deleted_at is null and r.data ->> 'type' = 'map'
+     order by r.id
+  loop
+    perform set_config('app.business_id', v_map.business_id::text, true);
+    perform public.map_summary_refresh(v_map.id);
+  end loop;
+  perform set_config('app.business_id', coalesce(v_was, ''), true);
+end;
+$$;
