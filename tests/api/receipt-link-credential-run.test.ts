@@ -10,7 +10,7 @@ import { receiptLinkOf } from '../../packages/core-runtime/src/receipt-link.ts';
 const HOST = 'receipts.stand-in.invalid';
 const credential = createHmac('sha256', 'not a real key').update('canary').digest('base64url');
 const escaped = (text: string, hex: (code: string) => string): string =>
-  [...text].map((c) => `%${hex(c.charCodeAt(0).toString(16).padStart(2, '0'))}`).join('');
+  [...text].map((c) => `%${hex((c.codePointAt(0) ?? 0).toString(16).padStart(2, '0'))}`).join('');
 
 it.each([
   ['as sent', credential],
