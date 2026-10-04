@@ -29,7 +29,13 @@
 
 import { standsOnShares } from '../identity/login-resolution.ts';
 import type { TenantQuery } from '../tenancy/database.ts';
-import { holdsAcrossBusiness, holdsOnTask, INTERNAL_ROLE_KEYS, REACH } from './access.ts';
+import {
+  holdsAcrossBusiness,
+  holdsOnTask,
+  INTERNAL_ROLE_KEYS,
+  REACH,
+  readsThroughMap,
+} from './access.ts';
 import { HELD } from './read.ts';
 import { mapTicketCondition, wayfinderCondition } from '../tasks/wayfinder.ts';
 import type { InboxFactKind, InboxReason } from './items.ts';
@@ -49,7 +55,7 @@ const SHARED: ReadonlySet<InboxReason> = new Set(['decision', 'incident']);
 
 type OpenRow = UnattendedItem & {
   readonly clientId: string | null;
-  /** The task's map when it is a map's ticket (W12), else null. */
+  /** The task's map when it was a map's ticket at the list's read (W12), else null. */
   readonly mapId: string | null;
   /** A map or map ticket, which the client view never reaches (WF-1). */
   readonly wayfinder: boolean;
@@ -132,7 +138,10 @@ async function reaches(tx: TenantQuery, row: OpenRow): Promise<boolean> {
   if (row.internal === null && !(await standsOnShares(tx, row.recipientPersonId))) return false;
   if (row.wayfinder && row.internal !== true) return false;
   const task = { id: row.subjectRecordId, clientId: row.clientId };
-  if (!(await holdsOnTask(tx, row.recipientPersonId, task, 'read')) && !(await readsMap(tx, row))) {
+  if (
+    !(await holdsOnTask(tx, row.recipientPersonId, task, 'read')) &&
+    !(row.mapId !== null && (await readsThroughMap(tx, row.recipientPersonId, task.id)))
+  ) {
     return false;
   }
   if (row.reason !== 'decision') return true;
@@ -140,10 +149,4 @@ async function reaches(tx: TenantQuery, row: OpenRow): Promise<boolean> {
   return row.escalated
     ? await holdsAcrossBusiness(tx, row.recipientPersonId, 'decide')
     : await holdsOnTask(tx, row.recipientPersonId, task, 'decide');
-}
-
-/** A read grant on its map, when the task is a map's ticket (W12). */
-async function readsMap(tx: TenantQuery, row: OpenRow): Promise<boolean> {
-  if (row.mapId === null) return false;
-  return await holdsOnTask(tx, row.recipientPersonId, { id: row.mapId, clientId: null }, 'read');
 }
