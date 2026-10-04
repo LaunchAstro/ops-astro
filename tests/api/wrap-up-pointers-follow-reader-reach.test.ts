@@ -70,6 +70,33 @@ async function scopeBlindReader(): Promise<void> {
   expect(JSON.stringify(own.body)).toContain(scoped);
 }
 
+/** A conversation started from a task carries the task's title as its subject, and as its title when none is sent. */
+async function subjectBlindReader(): Promise<void> {
+  const hidden = `hidden task title ${randomUUID()}`;
+  const scoped = await task(hidden);
+  const scope = { kind: 'task', id: scoped };
+  const conversations = [
+    await started(w, w.owner, { scope, subject: hidden, title: hidden, body: 'From the page' }),
+    await started(w, w.owner, { scope, subject: hidden, body: 'From the API, untitled' }),
+  ];
+  const reader = await enrol(w.fixture.db.app, w.fixture.business, 'subject_blind_reader');
+  await w.fixture.db.app.withBusiness(w.fixture.business, async (tx) => {
+    await grantTo(tx, reader, 'read', { kind: 'business', id: null }, false, 'conversation');
+  });
+  expect((await w.as(reader, 'task.read', { recordId: scoped })).status).toBe(403);
+  for (const conversationId of conversations) {
+    // eslint-disable-next-line no-await-in-loop -- each conversation is read in turn
+    const answer = await w.as(reader, 'conversation.read', { conversationId });
+    expect(answer.status).toBe(200);
+    expect(JSON.stringify(answer.body)).not.toContain(hidden);
+    expect(answer.body['conversation']).toMatchObject({ subject: null, title: 'New conversation' });
+    // The owner, who may read the task, still sees its title.
+    // eslint-disable-next-line no-await-in-loop -- each conversation is read in turn
+    const own = await w.as(w.owner, 'conversation.read', { conversationId });
+    expect(own.body['conversation']).toMatchObject({ subject: hidden, title: hidden });
+  }
+}
+
 describe.skipIf(serverUrl === undefined)('wrap-up pointers on a real database', () => {
   beforeAll(async () => {
     c = await createControls('solow031');
@@ -116,4 +143,6 @@ describe.skipIf(serverUrl === undefined)('wrap-up pointers on a real database', 
     'a business-wide conversation reader without task:read on the scope task gets no scope id',
     scopeBlindReader,
   );
+
+  it('a reader who may not read the scope task never sees its title', subjectBlindReader);
 });
