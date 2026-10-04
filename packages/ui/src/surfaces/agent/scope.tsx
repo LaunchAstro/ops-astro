@@ -117,15 +117,20 @@ function LedgerLinks(props: {
   );
 }
 
+/**
+ * The head's context and when the lease pinned it. A head whose run was never
+ * claimed (a successor a hand-back proposed) was pinned by no lease, so it is
+ * never stamped with its predecessor's.
+ */
 function SnapshotLine(props: {
   readonly head: RunVersion;
   readonly acquiredAt: string;
 }): ReactElement {
+  const pinned = props.head.startedAt === null ? 'not pinned yet' : `pinned ${props.acquiredAt}`;
   return (
     <div className="trs__snap" data-agent="snapshot-line">
       <span className="sbact__meta u-mono">
-        Context snapshot v{props.head.version} {shortDigest(props.head.payloadDigest)} · pinned{' '}
-        {props.acquiredAt}
+        Context snapshot v{props.head.version} {shortDigest(props.head.payloadDigest)} · {pinned}
       </span>
     </div>
   );

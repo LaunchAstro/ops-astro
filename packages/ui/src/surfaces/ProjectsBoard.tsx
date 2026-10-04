@@ -121,7 +121,8 @@ export function ProjectsBoard(props: ProjectsBoardProps): ReactElement {
   );
   const [address, setAddress] = useState(opening);
   const now = useMemo(() => props.now ?? new Date(), [props.now]);
-  const clientFilters = clientFiltersIn(address);
+  const { facets, presets, modes } = useChips(props.rows, viewer, now, props);
+  const clientFilters = clientFiltersIn(address, facets);
   const columns = useMemo(
     () => projectColumns({ stages: props.stages, rows: props.rows, clientFilters }),
     [props.stages, props.rows, clientFilters],
@@ -130,7 +131,6 @@ export function ProjectsBoard(props: ProjectsBoardProps): ReactElement {
     () => sortRows(props.rows, WORK_ORDER, projectColumns({ stages: props.stages })),
     [props.rows, props.stages],
   );
-  const { facets, presets, modes } = useChips(props.rows, viewer, now, props);
   const cells = useCells(props, now);
   const statuses = useMemo(() => statusOrder(props.rows), [props.rows]);
   return (

@@ -22,6 +22,7 @@ import { SignedInName } from './app-state.ts';
 import { FrameStrip } from './strip.tsx';
 import { HeldAddressNotice } from './held-address.tsx';
 import { shellDock, useDockShell } from './dock/dock-props.tsx';
+import { useAskOpensAgent } from './dock/agent-dock.ts';
 import { useDockPanel } from './screens/task/DockPanel.tsx';
 import { OperationsClient, type WireRefusal } from './operations/client.ts';
 import { grantKeyOf, sessionGeneration, type Session } from './session/token.ts';
@@ -117,6 +118,7 @@ export function App(props: AppProps): ReactElement {
   const taskDock = useDockPanel({ client, grantKey, session, storage: props.storage });
   const agency = face === 'agency';
   const docked = useDockShell(client, session, props.storage, props, taskDock.panel, agency);
+  useAskOpensAgent(docked.dock.change);
 
   // Sign-out (C23). The tab forgets the session first, so a server that never
   // answers cannot keep it. Then, with the ended session's own client:
@@ -226,7 +228,14 @@ export function App(props: AppProps): ReactElement {
   // person or session drops every tab and a late reply has nowhere to land.
   const agent =
     dockScreen === null || match === null ? null : (
-      <AssistantView key={grantKey} client={client} route={match.id} here={here} entry={null} />
+      <AssistantView
+        key={grantKey}
+        grantKey={grantKey}
+        client={client}
+        route={match.id}
+        here={here}
+        entry={null}
+      />
     );
   // Around the shell, not the page alone: a money write in a dock panel (the
   // Settings panel's planning cap) gets the same step-up as the page's.

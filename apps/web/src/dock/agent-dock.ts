@@ -10,10 +10,12 @@
 // it and Back or Forward through the dock's history open it; storage never
 // brings it back after a reload, since the dock restores only registered panels.
 
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import type { DockPanel, DockTab } from '@launchastro/ui';
 import { PANEL_RANK, type PanelId } from '../panels.ts';
 import { pathTo } from '../routes.ts';
+import { useAgentDrawer } from '../assistant/asks.ts';
+import { openByGesture, type DockState } from './open-set.ts';
 
 const LABEL = 'Agent';
 
@@ -43,3 +45,17 @@ export const agentPanelOf = (
   ...walked,
   body,
 });
+
+/**
+ * AW-04: an ask from a page (the Agent pane's new attempt) opens the dock's
+ * Agent panel through `change`; the drawer takes the ask as it draws
+ * (`assistant/asks.ts`).
+ */
+export function useAskOpensAgent(change: (next: (state: DockState) => DockState) => void): void {
+  const [asked, setAsked] = useAgentDrawer();
+  useEffect(() => {
+    if (!asked) return;
+    setAsked(false);
+    change((state) => openByGesture(state, 'ai', false));
+  }, [asked, setAsked, change]);
+}

@@ -9,7 +9,9 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type FocusEvent,
   type KeyboardEvent,
+  type MouseEvent,
   type ReactElement,
   type RefObject,
 } from 'react';
@@ -55,10 +57,46 @@ function stepFor(key: string, index: number, count: number): number | null {
   return null;
 }
 
+const focusIn = (drawn: readonly (Element | null)[]): Element | null =>
+  drawn.find((node) => node !== null && node.ownerDocument.activeElement === node) ?? null;
+
+/**
+ * The point a chart shows, read from its drawn nodes after each render: the
+ * hovered node while it is still drawn, else the node that holds focus, else
+ * none. So a render that removes, reorders or stops drawing points never shows
+ * another point's tip, whatever their order.
+ */
+function useShownPoint(
+  count: number,
+  nodes: RefObject<(Element | null)[]>,
+): {
+  readonly shown: number | null;
+  readonly setHovered: (node: Element | null) => void;
+  readonly setFocused: (node: Element | null) => void;
+} {
+  const [hovered, setHovered] = useState<Element | null>(null);
+  const [focused, setFocused] = useState<Element | null>(null);
+  const [shown, setShown] = useState<number | null>(null);
+  useLayoutEffect(() => {
+    const drawn = nodes.current.slice(0, count);
+    const held = focusIn(drawn);
+    const over = hovered !== null && drawn.includes(hovered) ? hovered : null;
+    const target = over ?? held;
+    const at = target === null ? -1 : drawn.indexOf(target);
+    setShown(at === -1 ? null : at);
+    if (hovered !== over) setHovered(over);
+    if (focused !== held) setFocused(held);
+  });
+  return { shown: shown !== null && shown < count ? shown : null, setHovered, setFocused };
+}
+
 /**
  * One tab stop over a chart's points. The pointer shows a point's tip while it
  * is over it; focus shows it too, and the arrow keys, Home and End move focus
- * along the points. Hovering never moves the tab stop.
+ * along the points. Hovering never moves the tab stop, and the pointer leaving
+ * hands the tip back to the point that holds focus. A point past `count` is
+ * never shown. The charts key their points by label, so labels must be unique;
+ * a data-driven caller passes a unique id per point.
  */
 export function usePoints(count: number): {
   readonly shown: number | null;
@@ -67,15 +105,16 @@ export function usePoints(count: number): {
 } {
   const tipId = useId();
   const [stop, setStop] = useState(0);
-  const [shown, setShown] = useState<number | null>(null);
-  const nodes = useRef<(SVGElement | null)[]>([]);
+  const nodes = useRef<(Element | null)[]>([]);
+  const { shown: live, setHovered, setFocused } = useShownPoint(count, nodes);
   const move = (event: KeyboardEvent, index: number): void => {
     const next = stepFor(event.key, index, count);
     if (next === null) return;
     event.preventDefault();
     const target = Math.max(0, Math.min(count - 1, next));
     setStop(target);
-    nodes.current[target]?.focus();
+    const node = nodes.current[target];
+    if (node instanceof SVGElement) node.focus();
   };
   const props = (index: number, tip: Tip): Record<string, unknown> => ({
     ref: (node: SVGElement | null) => {
@@ -83,26 +122,26 @@ export function usePoints(count: number): {
     },
     role: 'img',
     'aria-label': tipLabel(tip),
-    'aria-describedby': shown === index ? tipId : undefined,
+    'aria-describedby': live === index ? tipId : undefined,
     tabIndex: index === Math.min(stop, count - 1) ? 0 : -1,
-    onMouseEnter: () => {
-      setShown(index);
+    onMouseEnter: (event: MouseEvent<Element>) => {
+      setHovered(event.currentTarget);
     },
     onMouseLeave: () => {
-      setShown(null);
+      setHovered(null);
     },
-    onFocus: () => {
+    onFocus: (event: FocusEvent<Element>) => {
       setStop(index);
-      setShown(index);
+      setFocused(event.currentTarget);
     },
     onBlur: () => {
-      setShown(null);
+      setFocused(null);
     },
     onKeyDown: (event: KeyboardEvent) => {
       move(event, index);
     },
   });
-  return { shown, props, tipId };
+  return { shown: live, props, tipId };
 }
 
 export function Tooltip(props: { readonly id: string; readonly tip: Tip }): ReactElement {

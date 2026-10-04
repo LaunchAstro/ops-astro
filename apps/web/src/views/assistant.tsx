@@ -28,26 +28,27 @@
 // A started tab links to the conversation's own address (C36), where it stays
 // after it is taken out of the tab row.
 //
-// The planning allowance line (AW-04) sits above the transcript, from before
-// the first message (`allowance-line.tsx`).
+// AW-04: the allowance line sits above the transcript from the start (`allowance-line.tsx`); a
+// reply's plan is a card whose one click is `task.accept_plan` (`assistant/plans.ts`); the Agent
+// pane's new attempt opens the drawer through `useAsks`, drafted, unsent, its session's alone.
 
-import { useEffect, useRef, useState, type ReactElement } from 'react';
-import { AssistantPanel, type AssistantPage, type AssistantRole } from '@launchastro/ui';
+import { useEffect, useRef, type ReactElement } from 'react';
+import { AssistantPanel, type AssistantPage } from '@launchastro/ui';
 import {
   addPage,
   ask,
   chooseModel,
   fresh,
-  initial,
   rename,
-  said,
   select,
   started,
   takeOut,
-  type AssistantState,
   type Chat,
 } from '../assistant/chats.ts';
 import { entryFor, type EntryPoint } from '../assistant/entries.ts';
+import { acceptPlanCard } from '../assistant/accept.ts';
+import { useAsks } from '../assistant/asks.ts';
+import { useStore, type Store } from '../assistant/store.ts';
 import { modelOffer, subjectFor, type ModelChoice, type Subject } from '../assistant/subject.ts';
 import type {
   CallResult,
@@ -73,51 +74,8 @@ export interface AssistantViewProps {
   readonly entry: EntryPoint | null;
   /** Its own close and title; the dock leaves it out, as its panel head closes and names it. */
   readonly onClose?: () => void;
-}
-
-type Move = (state: AssistantState) => AssistantState;
-
-interface Store {
-  readonly state: AssistantState;
-  readonly update: (move: Move) => void;
-  /** The state as the last move left it, for a step that resumes after a wait. */
-  readonly now: () => AssistantState;
-  readonly chat: (key: string) => Chat | undefined;
-  readonly line: (key: string, role: AssistantRole, body: string, after?: string) => string;
-}
-
-/** Tab `key`'s newest line, moved to follow the question `after` and its earlier answers. */
-function placed(state: AssistantState, key: string, after?: string): AssistantState {
-  const chats = state.chats.map((chat) => {
-    const { messages } = chat;
-    const from = messages.findIndex((each) => each.id === after);
-    const to = messages.findIndex((each, at) => at > from && each.role === 'user');
-    if (chat.key !== key || from < 0 || to < 0) return chat;
-    return { ...chat, messages: messages.slice(0, -1).toSpliced(to, 0, ...messages.slice(-1)) };
-  });
-  return { ...state, chats };
-}
-
-function useStore(): Store {
-  const [state, setState] = useState(initial);
-  const latest = useRef(state);
-  const count = useRef(0);
-  const update = (move: Move): void => {
-    latest.current = move(latest.current);
-    setState(latest.current);
-  };
-  return {
-    state,
-    update,
-    now: () => latest.current,
-    chat: (key) => latest.current.chats.find((each) => each.key === key),
-    line: (key, role, body, after) => {
-      count.current += 1;
-      const id = `${role}-${String(count.current)}`;
-      update((current) => placed(said(current, key, { id, role, body, cites: [] }), key, after));
-      return id;
-    },
-  };
+  /** The session it serves: it takes a page's ask (`asks.ts`) only from this one, none without it. */
+  readonly grantKey?: string;
 }
 
 type Sent = Promise<CallResult<CommandOutcome>>;
@@ -132,6 +90,7 @@ interface Opening {
 /** The agent's answer to a kept question, why there is none, or that none comes here. */
 function replied(store: Store, key: string, reply: ConversationReply | undefined): void {
   if (reply === undefined) store.line(key, 'note', KEPT);
+  else if (reply.answered && reply.plan !== undefined) store.plan(key, reply.body, reply.plan);
   else if (reply.answered) store.line(key, 'ai', reply.body);
   else store.line(key, 'failed', reply.words);
 }
@@ -181,7 +140,11 @@ function useSender(props: AssistantViewProps, store: Store, subject: Subject) {
     const chat = store.chat(key);
     if (chat === undefined) return;
     const question = store.line(key, 'user', body);
-    const on: Store = { ...store, line: (k, role, words) => store.line(k, role, words, question) };
+    const on: Store = {
+      ...store,
+      line: (k, role, words) => store.line(k, role, words, question),
+      plan: (k, words, offer) => store.plan(k, words, offer, question),
+    };
     let known = chat.conversationId;
     if (known === null) {
       // Queued behind the tab's last start: joins what it made, or starts
@@ -259,6 +222,7 @@ export function AssistantView(props: AssistantViewProps): ReactElement {
     // the ask reads; only a new entry is a new ask.
     // oxlint-disable-next-line react-hooks/exhaustive-deps
   }, [props.entry]);
+  useAsks(props.grantKey, (asked) => update((current) => ask(current, asked)));
   const subject = subjectFor({ route: props.route, ...state.scope });
   const sender = useSender(props, store, subject);
   const writes = useWrites(props, store, sender);
@@ -291,6 +255,7 @@ export function AssistantView(props: AssistantViewProps): ReactElement {
       }}
       onAddPage={writes.addPage}
       onSend={sender.send}
+      onAccept={(key, id) => void acceptPlanCard(props, store, { key, id })}
       onClose={props.onClose}
     />
   );
