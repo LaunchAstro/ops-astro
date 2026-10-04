@@ -15,12 +15,17 @@
 //   PostgreSQL runs DDL inside transactions, which is what makes this possible
 //   at all, and a file holding a statement it will not run inside one is
 //   refused before anything runs.
+// - A run that loses a race on a shared catalogue row is applied again. Roles
+//   are the cluster's, so two databases migrating at once can both judge the
+//   same role and alter it, and the second fails with XX000 "tuple
+//   concurrently updated" (0046's lookup role, OW-007.3). That run rolled back
+//   whole, so it starts again, up to five attempts with a short jittered
+//   pause, and then reads the role as the other database left it
+//   (`retryOnSharedRace`).
 // - An applied migration's checksum is checked on every run, before anything
 //   runs. Editing a file that has already been applied is refused rather than
 //   ignored, because the database and the file would otherwise disagree in
-//   silence. The one exception is a file corrected in place: a ledger row
-//   holding the exact bytes it replaced passes only while the file is the
-//   exact correction (`CORRECTIONS`).
+//   silence.
 // - Statements are split and sent one at a time, so the statement log and any
 //   error name the statement rather than the file.
 // - It checks, when anything is pending, that no other client session is
@@ -36,6 +41,7 @@
 import { createHash } from 'node:crypto';
 import { lstatSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { setTimeout as pause } from 'node:timers/promises';
 import type { AdminConnection } from './database.ts';
 import { migrationIdProblems } from './migration-ids.ts';
 import { classifyStatement, scanToken, splitStatements } from './statements.ts';
@@ -308,28 +314,6 @@ export async function migrate(
   return await applyMigrations(admin, readMigrations(directory));
 }
 
-/**
- * Applied files corrected in place: the checksum of the bytes replaced, which a
- * database that ran them still records, and of the correction. A later file
- * cannot reach a race inside an earlier one's own statements on a fresh
- * install, so this is the one exception to writing a new file. A row holding
- * the old bytes passes only while the file is the correction, and any other
- * edit is refused as before.
- *
- * - 0046: the lookup role's repair takes COMMENT ON ROLE's cluster-wide lock on
- *   the role before judging it, so two databases repairing it at once wait in
- *   turn rather than one failing (OW-007.3).
- */
-const CORRECTIONS: ReadonlyMap<string, { readonly from: string; readonly to: string }> = new Map([
-  [
-    '0046_business_lookup',
-    {
-      from: 'af5adfb536d290586e06b35a2aae09a237cf807c91f0dbd1075c6693558a91d7',
-      to: '2258d978c9ed6d6e108b91953842bf0724471ffb18ae9f6c1adc6f5468513b78',
-    },
-  ],
-]);
-
 /** What the ledger already holds, checked against its file, and what it does not. */
 function splitByLedger(
   ledger: ReadonlyMap<string, string> | undefined,
@@ -343,11 +327,7 @@ function splitByLedger(
       pending.push(migration);
       continue;
     }
-    const corrected = CORRECTIONS.get(migration.version);
-    if (
-      recorded !== migration.checksum &&
-      !(recorded === corrected?.from && migration.checksum === corrected.to)
-    ) {
+    if (recorded !== migration.checksum) {
       throw new Error(
         `migrate: ${migration.version} was applied as ${recorded} but the file now hashes to ` +
           `${migration.checksum}. An applied migration is history; write a new one.`,
@@ -356,6 +336,41 @@ function splitByLedger(
     alreadyApplied.push(migration.version);
   }
   return { pending, alreadyApplied };
+}
+
+/** How many times a run is applied while each attempt loses the shared catalogue race. */
+const SHARED_RACE_ATTEMPTS = 5;
+
+/**
+ * Whether a statement failed only because another database's transaction
+ * updated the same shared catalogue row (a role) first. PostgreSQL waits for
+ * that transaction, then refuses the update rather than redo it: XX000 with
+ * this exact message. The run's one transaction rolled back, so nothing of it
+ * committed.
+ */
+function lostSharedRace(error: unknown): boolean {
+  const cause = (error instanceof Error ? error.cause : undefined) as
+    { readonly code?: unknown; readonly message?: unknown } | undefined;
+  return cause?.code === 'XX000' && cause.message === 'tuple concurrently updated';
+}
+
+/**
+ * Run `apply`, and run it again from the start while it loses the shared
+ * catalogue race. Any other failure, or the last attempt's, is thrown as it
+ * came.
+ */
+async function retryOnSharedRace<T>(apply: () => Promise<T>): Promise<T> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      // oxlint-disable-next-line no-await-in-loop -- one attempt after another, never two at once
+      return await apply();
+    } catch (error) {
+      if (attempt >= SHARED_RACE_ATTEMPTS || !lostSharedRace(error)) throw error;
+    }
+    // Jittered, so two runs that lost to each other do not meet again in step.
+    // oxlint-disable-next-line no-await-in-loop -- the next attempt follows this pause
+    await pause(50 * attempt + Math.floor(Math.random() * 100));
+  }
 }
 
 /**
@@ -367,6 +382,14 @@ function splitByLedger(
  * anything about it means being able to stand there.
  */
 export async function applyMigrations(
+  admin: AdminConnection,
+  migrations: readonly Migration[],
+): Promise<MigrationOutcome> {
+  return await retryOnSharedRace(async () => await applyOnce(admin, migrations));
+}
+
+/** One attempt: the ledger read, every check, and the one transaction. */
+async function applyOnce(
   admin: AdminConnection,
   migrations: readonly Migration[],
 ): Promise<MigrationOutcome> {
