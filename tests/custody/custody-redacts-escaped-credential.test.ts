@@ -158,6 +158,14 @@ it.each([
     (key: string) => Buffer.from(key).toString('base64').replace(/=+$/u, ''),
   ],
   ['base64url', (key: string) => Buffer.from(key).toString('base64url')],
+  [
+    'base64 of longer text, one byte in',
+    (key: string) => Buffer.from(`{${key}"}`).toString('base64'),
+  ],
+  [
+    'base64url of longer text, two bytes in',
+    (key: string) => Buffer.from(`{"${key}"}`).toString('base64url'),
+  ],
 ] as const)('the key in %s is redacted from the answer', async (_case, spell) => {
   const text = await answered(spell(KEY), KEY);
   expect(

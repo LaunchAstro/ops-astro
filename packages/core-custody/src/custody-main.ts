@@ -101,18 +101,33 @@ function escapedSpelling(secret: string): RegExp {
 }
 
 /**
+ * The secret's base64, standard and base64url, at each of the three byte
+ * offsets it can sit at inside longer encoded text: only the characters every
+ * bit of which comes from the secret, so neighbouring bytes cannot change
+ * them. A whole encoding alone, padded or not, contains the offset-0 one.
+ */
+function base64Spellings(secret: string): readonly string[] {
+  const bytes = Buffer.from(secret);
+  return [0, 1, 2].flatMap((offset) => {
+    const encoded = Buffer.concat([Buffer.alloc(offset), bytes]).toString('base64');
+    const stable = encoded.slice(
+      Math.ceil((8 * offset) / 6),
+      Math.floor((8 * (offset + bytes.length)) / 6),
+    );
+    return [stable, stable.replaceAll('+', '-').replaceAll('/', '_')];
+  });
+}
+
+/**
  * Remove every spelling of the credential a provider might echo back: the
  * value, and a Basic pair's secret half alone, each as itself, as JSON text
- * spells it, percent-escaped in either case, or in base64 with or without its
- * padding or in base64url.
+ * spells it, percent-escaped in either case, or in base64 or base64url,
+ * alone or inside longer encoded text.
  */
 function redact(text: string, credential: StoredCredential): string {
   const { value } = credential;
   const secrets = credential.scheme === 'basic' ? [value, value.split(':')[1] ?? value] : [value];
-  const spellings = secrets.flatMap((secret) => {
-    const base64 = Buffer.from(secret).toString('base64');
-    return [base64, base64.replace(/=+$/u, ''), Buffer.from(secret).toString('base64url')];
-  });
+  const spellings = secrets.flatMap((secret) => base64Spellings(secret));
   const unescaped = secrets.reduce(
     (out, secret) => out.replace(escapedSpelling(secret), '[redacted]'),
     plain(text),
