@@ -77,7 +77,7 @@ it('one operation identity on two tasks at once: Postgres aborts one whole trans
     await gate.held;
   });
   await locked.held;
-  let results: readonly [Awaited<ReturnType<typeof send>>, Awaited<ReturnType<typeof send>>];
+  let results: readonly PromiseSettledResult<Awaited<ReturnType<typeof send>>>[];
   try {
     // The assignment queues on the audit chain's lock first, holding no record.
     const assigning = send(w.s.db.app, agentTask, agentRevision, { agent: minted.delegation.id });
@@ -90,7 +90,7 @@ it('one operation identity on two tasks at once: Postgres aborts one whole trans
     await awaitParked(w.s, 'advisory', 2);
     gate.release();
     await held;
-    results = [await assigning, await assigningPerson];
+    results = await Promise.allSettled([assigning, assigningPerson]);
   } finally {
     gate.release();
     await database.close();
@@ -98,9 +98,15 @@ it('one operation identity on two tasks at once: Postgres aborts one whole trans
   }
 
   expect(await deadlocksReach(before + 1)).toBe(before + 1);
-  const codes = results.map((result) => codeOf(result)).toSorted();
-  expect(codes).toEqual(['OPERATION_ID_REUSED', 'not-a-refusal']);
-  const loserTask = codeOf(results[0]) === 'OPERATION_ID_REUSED' ? agentTask : personTask;
+  // The loser's one retry is refused on the winner's record, or raises when
+  // it read before the winner committed; either way it applied nothing.
+  const won = results.map(
+    (result) => result.status === 'fulfilled' && codeOf(result.value) === 'not-a-refusal',
+  );
+  expect(won.filter(Boolean), 'one of the two applied').toHaveLength(1);
+  const lost = results.find((_, index) => won[index] !== true);
+  if (lost?.status === 'fulfilled') expect(codeOf(lost.value)).toBe('OPERATION_ID_REUSED');
+  const loserTask = won[0] === true ? personTask : agentTask;
   const loserRevision = loserTask === agentTask ? agentRevision : personRevision;
   expect(await revisionOf(w.s, loserTask), 'the loser wrote nothing').toBe(loserRevision);
   const stored = await w.s.db.admin.execute<{ readonly n: string }>(

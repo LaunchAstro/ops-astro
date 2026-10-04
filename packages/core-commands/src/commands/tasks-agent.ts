@@ -17,9 +17,11 @@
 // task lock, so a revoke (an update of that row) either commits first and is
 // seen here as not live, or waits for this assignment and then clears it.
 // Liveness is read again once the write is made, after the audit chain's
-// lock (taken here, not at the audit write, so nothing later waits) and at
-// that statement's clock: a delegation or parent that expired while the
-// assignment waited on any lock holds no task, and the write rolls back.
+// lock (taken here, not at the audit write) and at that statement's clock: a
+// delegation or parent that expired while the assignment waited on a lock
+// holds no task, and the write rolls back. One wait can follow: the operation
+// record's insert, behind a request presenting the same operation identity,
+// until Postgres breaks that deadlock.
 //
 // **Assignment starts nothing.** It records who holds the task; a run still
 // needs its own commands.
