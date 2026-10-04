@@ -2,8 +2,8 @@
 //
 // API-2 quota: an agent credential's calls are held to per-credential,
 // per-person and per-business limits on requests a minute, calls in flight
-// and records handed out a minute, each refused with the same clear answer
-// and nothing run. The limits are the app's (`agent-quota.ts`). Each case
+// and records handed out a minute, each refused with the same clear answer,
+// naming no secret. The limits are the app's (`agent-quota.ts`). Each case
 // makes one limit at one level small and leaves the rest wide, so its refusal
 // can only come from that limit (catalogue #721): requests under a burst,
 // calls in flight with the first held on the task's row lock, and records
@@ -87,10 +87,16 @@ needsServer(
 const widePool = () => connect(harness.world.db.appUrl, { source: 'runtime', max: 3 });
 
 /**
- * A comment by `secret`, held in flight on the task's row lock until `release`.
- * The lock is taken on a connection of its own, so the calls keep the pool.
+ * `probe`'s answer, taken while a comment by `secret` is held in flight on the
+ * task's row lock, and the comment's own answer once it is let go. The lock is
+ * taken on a connection of its own, so the calls keep the pool, and it is let
+ * go and closed on every path.
  */
-async function heldComment(api: Api, secret: string) {
+async function whileHeld<T>(
+  api: Api,
+  secret: string,
+  probe: () => Promise<T>,
+): Promise<{ readonly probed: T; readonly held: Answer }> {
   const hold = latch();
   const locked = latch();
   const own = connect(harness.world.db.appUrl, { source: 'runtime', max: 1 });
@@ -101,34 +107,44 @@ async function heldComment(api: Api, secret: string) {
     locked.open();
     await hold.promise;
   });
-  await locked.promise;
-  const done = comment(bearer(secret), api);
-  // Long enough for the comment to be let in and reach the lock.
-  await new Promise<void>((resolve) => {
-    setTimeout(resolve, 300);
-  });
-  const release = async (): Promise<Answer> => {
+  let done: Promise<Answer>;
+  let probed: T;
+  try {
+    // A failed lock query ends the wait here, not at the test's timeout.
+    await Promise.race([locked.promise, holding]);
+    done = comment(bearer(secret), api);
+    // Read below; this only keeps an early failure from being reported unhandled.
+    done.catch(() => {});
+    // Long enough for the comment to be let in and reach the lock.
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 300);
+    });
+    probed = await probe();
+  } finally {
     hold.open();
     await holding.finally(async () => await own.close());
-    return await done;
-  };
-  return { release };
+  }
+  return { probed, held: await done };
 }
 
 needsServer(
   'API-2 quota in flight per credential: a call past the limit is refused at once',
   async () => {
     const pool = widePool();
-    const { api } = limited({ concurrent: { ...WIDE, credential: 1 } }, pool);
-    const credential = await issued();
-    const held = await heldComment(api, credential.secret);
     try {
-      expectClearRefusal(await readWith(api, credential.secret), credential.secret);
+      const { api } = limited({ concurrent: { ...WIDE, credential: 1 } }, pool);
+      const credential = await issued();
+      const { probed, held } = await whileHeld(
+        api,
+        credential.secret,
+        async () => await readWith(api, credential.secret),
+      );
+      expectClearRefusal(probed, credential.secret);
+      expect(held.code, 'the held comment').toBe('ok');
+      expect((await readWith(api, credential.secret)).code, 'its slot is back').toBe('ok');
     } finally {
-      expect((await held.release()).code).toBe('ok');
+      await pool.close();
     }
-    const back = await readWith(api, credential.secret).finally(async () => await pool.close());
-    expect(back.code, 'its slot is back').toBe('ok');
   },
 );
 
@@ -136,19 +152,21 @@ needsServer(
   'API-2 quota in flight per person: a second credential of the same person is refused while the first is in flight',
   async () => {
     const pool = widePool();
-    const { api } = limited({ concurrent: { ...WIDE, person: 1 } }, pool);
-    const [first, second] = [await issued(), await issued()];
-    const noahs = await issued(READ_ONLY, harness.world.noah.token);
-    const held = await heldComment(api, first.secret);
     try {
-      expectClearRefusal(await readWith(api, second.secret), second.secret);
-      expect((await readWith(api, noahs.secret)).code, 'another person is outside it').toBe('ok');
+      const { api } = limited({ concurrent: { ...WIDE, person: 1 } }, pool);
+      const [first, second] = [await issued(), await issued()];
+      const noahs = await issued(READ_ONLY, harness.world.noah.token);
+      const { probed, held } = await whileHeld(api, first.secret, async () => [
+        await readWith(api, second.secret),
+        await readWith(api, noahs.secret),
+      ]);
+      expectClearRefusal(probed[0], second.secret);
+      expect(probed[1]?.code, 'another person is outside it').toBe('ok');
+      expect(held.code, 'the held comment').toBe('ok');
+      expect((await readWith(api, second.secret)).code, 'its slot is back').toBe('ok');
     } finally {
-      expect((await held.release()).code).toBe('ok');
+      await pool.close();
     }
-    expect((await readWith(api, second.secret).finally(async () => await pool.close())).code).toBe(
-      'ok',
-    );
   },
 );
 
@@ -156,18 +174,21 @@ needsServer(
   'API-2 quota in flight per business: another person’s credential is refused while the business is at its limit',
   async () => {
     const pool = widePool();
-    const { api } = limited({ concurrent: { ...WIDE, business: 1 } }, pool);
-    const adas = await issued();
-    const noahs = await issued(READ_ONLY, harness.world.noah.token);
-    const held = await heldComment(api, adas.secret);
     try {
-      expectClearRefusal(await readWith(api, noahs.secret), noahs.secret);
+      const { api } = limited({ concurrent: { ...WIDE, business: 1 } }, pool);
+      const adas = await issued();
+      const noahs = await issued(READ_ONLY, harness.world.noah.token);
+      const { probed, held } = await whileHeld(
+        api,
+        adas.secret,
+        async () => await readWith(api, noahs.secret),
+      );
+      expectClearRefusal(probed, noahs.secret);
+      expect(held.code, 'the held comment').toBe('ok');
+      expect((await readWith(api, noahs.secret)).code, 'its slot is back').toBe('ok');
     } finally {
-      expect((await held.release()).code).toBe('ok');
+      await pool.close();
     }
-    expect((await readWith(api, noahs.secret).finally(async () => await pool.close())).code).toBe(
-      'ok',
-    );
   },
 );
 
