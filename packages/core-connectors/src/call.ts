@@ -197,6 +197,33 @@ function readAnswer(registration: OperationRegistration, answer: TransportAnswer
   return { value };
 }
 
+/** A base64 or base64url text decoded (line breaks ignored), or undefined if it does not decode cleanly. */
+function unbase64(text: string): string | undefined {
+  try {
+    return atob(text.replaceAll('-', '+').replaceAll('_', '/'));
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Every text an answer could carry the credential in: each field and all
+ * string fields joined in order, each as sent, base64 or base64url decoded,
+ * and percent-decoded. An arbitrary transform stays out of reach; the
+ * credential's own scope bounds that.
+ */
+function readings(value: ProviderValue): string[] {
+  const fields = Object.values(value).map(String);
+  const strings = Object.values(value).filter((field) => typeof field === 'string');
+  return [...fields, strings.join('')].flatMap((text) => [
+    text,
+    unbase64(text) ?? '',
+    text.replaceAll(/%([0-9A-Fa-f]{2})/gu, (_, hex: string) =>
+      String.fromCodePoint(Number.parseInt(hex, 16)),
+    ),
+  ]);
+}
+
 /** `work`'s answer, or undefined once `ms` pass first. */
 async function withinDeadline<T>(work: Promise<T>, ms: number): Promise<T | undefined> {
   let timer: Parameters<typeof clearTimeout>[0];
@@ -234,7 +261,7 @@ export async function callConnector(
   const echoed =
     'value' in answered &&
     secret !== undefined &&
-    Object.values(answered.value).some((field) => String(field).includes(secret));
+    readings(answered.value).some((text) => text.includes(secret));
   const read: Read = echoed ? { unreadable: 'PROVIDER_CREDENTIAL_ECHOED' } : answered;
   if ('value' in read) return { kind: 'ok', value: read.value };
   if ('proof' in read) {
