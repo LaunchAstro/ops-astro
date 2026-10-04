@@ -66,6 +66,19 @@ export {
   type ClientRow,
 } from './clients/clients.ts';
 export {
+  checkClientEditRun,
+  checkClientModelUse,
+  judgeModelRequest,
+  listClientPrivacy,
+  MODEL_PROVIDERS,
+  readClientPrivacy,
+  recordModelRequest,
+  writeClientPrivacy,
+  type ClientPrivacy,
+  type ClientUse,
+  type ModelRequest,
+} from './clients/privacy.ts';
+export {
   readableRecordIds,
   readableScope,
   type ReadableScope,
@@ -177,18 +190,12 @@ export {
   savePreference,
   type PreferenceKey,
 } from './preferences/store.ts';
+export { readInboxItems, countOwedItems } from './inbox/read.ts';
 export {
-  readInboxItems,
-  countOwedItems,
-  INBOX_HISTORY_PAGE,
-  INBOX_HISTORY_SCAN,
-} from './inbox/read.ts';
-export {
-  owes,
+  INBOX_REASONS,
   raiseInboxItem,
   stampSeen,
   recordDeliveryAttempt,
-  type DeliveryChannel,
   type DeliveryState,
   type InboxAccess,
   type InboxFactKind,
@@ -196,7 +203,6 @@ export {
   type InboxAlert,
   type InboxReason,
   type InboxWorkState,
-  type RaiseInboxItem,
 } from './inbox/items.ts';
 export { readScopes, taskAccess } from './inbox/access.ts';
 export {
@@ -286,8 +292,6 @@ export {
   type SecretScope,
   type SecretStale,
   type SecretWritten,
-} from './custody/index.ts';
-export {
   generateSealingPair,
   loadSealingKey,
   seal,

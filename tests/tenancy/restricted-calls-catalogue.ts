@@ -16,12 +16,17 @@ const COLUMN_UPDATES: Readonly<
   Record<string, { readonly from: string; readonly columns: readonly string[] }>
 > = {
   'public.planned_runs': { from: '0086', columns: ['state'] },
+  // C60: a client's four privacy settings, by `client.set_privacy` alone.
+  'public.clients': {
+    from: '20261003000423',
+    columns: ['handles_health', 'model_egress', 'model_providers', 'no_agent_edits'],
+  },
 };
 
 /** The `table.column` pairs the application group may update after `at`, or at the full schema. */
 export function columnUpdatesAt(at?: string): readonly string[] {
   return Object.entries(COLUMN_UPDATES)
-    .filter(([, grant]) => at === undefined || at.slice(0, 4) >= grant.from)
+    .filter(([, grant]) => at === undefined || at >= grant.from)
     .flatMap(([table, grant]) => grant.columns.map((column) => `${table}.${column}`))
     .toSorted();
 }
