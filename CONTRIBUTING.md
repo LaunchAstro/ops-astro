@@ -119,6 +119,17 @@ with its base to merge: `strict_required_status_checks_policy` is off and the
 merge queue tests each pull request on top of `main`. When a branch does need
 its base, for a conflict, merge it locally and push.
 
+A newer push, label change or reopen on a pull request cancels its older
+checks still running; a newer run does not cancel a merge group's checks. When
+review sends a pull request back for fixes, add the `sent-back` label: it
+cancels the ci checks on that head and fails `contamination gate` there, so no
+runner is spent on code about to change. The fix push runs every check in
+full. To run them on the same head instead, remove the label; any other label
+change or a reopen runs them too, so the hold lasts until the next such event.
+To send back a later head, remove the label and add it again. A held head
+cannot enter the merge queue, but one already queued is not stopped: remove it
+from the queue as well.
+
 A conformance proof is a separate condition. For changes to the domain
 model, tenancy wrapper, queue and delivery contracts, gate engine, credential
 broker, egress control, sandbox launcher, or migration system, that
