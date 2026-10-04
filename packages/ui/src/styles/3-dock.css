@@ -310,7 +310,7 @@
 }
 .dock[data-mode='sheet'] .dock__panels {
   flex-direction: column-reverse;
-  height: var(--dock-sheet-h);
+  min-height: var(--dock-sheet-h);
   border-top: 1px solid var(--border);
   box-shadow: none;
 }
@@ -320,6 +320,16 @@
   min-height: 0;
   width: 100%;
   border-left: 0;
+}
+/* A stacked panel never shrinks below its head and its body's padding, so
+   one panel's body never covers the next one's close: when the dragged
+   height cannot seat every head, the sheet grows to seat them (OW-126). */
+.dock[data-mode='sheet'] .dpanel {
+  flex-basis: 0;
+  min-height: auto;
+}
+.dock[data-mode='sheet'] .dpanel__body {
+  contain: size;
 }
 /* Stacked from the bottom edge up, so the rule falls under the upper panel. */
 .dock[data-mode='sheet'] .dpanel + .dpanel {

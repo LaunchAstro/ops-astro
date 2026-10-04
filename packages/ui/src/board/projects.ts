@@ -24,6 +24,8 @@ export {
 
 export { groupReason, statusOrder } from './project-groups.ts';
 
+export { clientFacetId, clientFiltersIn } from './project-facets.ts';
+
 export type {
   Actual,
   AgentOption,

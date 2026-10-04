@@ -109,8 +109,8 @@ tests` jobs, the local database, the restart proof and the local auth stack.
 `tests/ci/s0-7-postgres-major.test.ts` fails if any of them differs, and a
 planted migration calling `uuidv7()`, which only 18 has, fails the required
 job. The `database look-ahead, Postgres 18 (not required)` job runs the same
-conformance suites on the 18 digest on every pull request; its failure is
-reported and blocks nothing. When the provider offers Postgres 18, one ticket
+conformance suites on the 18 digest on every pull request, and not on a merge
+group or a push to main; its failure is reported and blocks nothing. When the provider offers Postgres 18, one ticket
 moves production, staging, CI and the restore drill (S0-3) to it together.
 
 As with an action hash, this establishes which bytes run and nothing about
@@ -132,6 +132,7 @@ comparing this page with the lockfile should find them agreeing.
 | `@hono/node-server`  | 2.1.1   | The API's Node listener in `apps/api/server.ts`, so a runtime dependency.                                                                                                                 |
 | `markdown-it`        | 14.3.2  | The review-evidence check's parser (issue 88). 15.x needs `argparse` 3, whose PSF-2.0 licence the licence check refuses.                                                                  |
 | `parse5`             | 8.0.1   | C80's capture reads a page with it, as a browser does (runtime). `capture/page.ts` overrides its protected `_leaveAttrName` to bound attributes per tag: re-read that bound on any raise. |
+| `yaml`               | 2.9.0   | The parser `tests/ci/merge-group-jobs.test.ts` reads the workflows with (CI-SPEED), so no YAML form is misread. Already in the lockfile through `vite`.                                   |
 
 **The measured behaviour, on 18.4.0, on 23 September 2026.** With `typescript`
 7.0.2 and no alternative parser installed, `depcruise` pointed at a tree of

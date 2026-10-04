@@ -55,6 +55,7 @@ import {
   APPLICATION_CALLERS,
   OPERATIONS,
   callFor,
+  copyRowFinding,
   copyStatement,
   expectedOutcome,
   fingerprint,
@@ -313,6 +314,16 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     name: `restricted calls seed ${randomUUID()}`,
     created_by_actor_id: randomUUID(),
   },
+  // C60: no journey records a client's written request.
+  'public.client_model_requests': {
+    client_id: randomUUID(),
+    requested_by: 'restricted calls seed',
+    requested_on: '2026-10-01',
+    request_link: 'https://files.example.test/seed.pdf',
+    providers: ['replay'],
+    outcome: 'applied',
+    recorded_by_actor: randomUUID(),
+  },
   // 0056 (C58): no journey ends a person's access.
   'public.access_endings': {
     person_id: randomUUID(),
@@ -539,6 +550,11 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at every pre
         // oxlint-disable-next-line no-await-in-loop
         const row = table.tenant ? await ownRowJson(db.admin, table, alpha) : undefined;
         if (row === undefined) continue;
+        const finding = copyRowFinding(table, row);
+        if (finding !== undefined) {
+          wrong.push(`${table.qualified} insert copy: ${finding}`);
+          continue;
+        }
         for (const caller of activeCallers.slice(1)) {
           // oxlint-disable-next-line no-await-in-loop
           const before = await fingerprint(db.admin, table.qualified);
@@ -547,7 +563,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at every pre
           // oxlint-disable-next-line no-await-in-loop
           const after = await fingerprint(db.admin, table.qualified);
           calls += 1;
-          const expected = expectedOutcome(caller, table, 'insert', 0, migration.version);
+          const expected = expectedOutcome(caller, table, 'insert', 0, migration.version, true);
           const line = `${table.qualified} insert copy ${caller}: ${describeOutcome(outcome)}`;
           if (!meets(expected, outcome)) wrong.push(`${line}, expected ${expected}`);
           if (before !== after) wrong.push(`${line}, the table changed`);

@@ -1,0 +1,11 @@
+{
+  "rules": {
+    "eslint(max-lines-per-function)": 19,
+    "eslint(max-lines)": 4,
+    "eslint(no-negated-condition)": 4,
+    "eslint(require-await)": 1,
+    "unicorn(no-negated-condition)": 4,
+    "unicorn(no-useless-undefined)": 1,
+    "unicorn(prefer-import-meta-properties)": 1
+  }
+}

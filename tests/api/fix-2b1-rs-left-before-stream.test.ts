@@ -52,7 +52,7 @@ async function topicsNow(): Promise<LiveTopics> {
 const asks: Watching = {
   businessId: business,
   atDoor: (taskIds) => Promise.resolve(taskIds.map(() => task)),
-  again: () => Promise.resolve(task),
+  again: () => Promise.resolve(person),
 };
 
 async function bounded(running: Promise<unknown>): Promise<'resolved' | 'hung'> {
@@ -109,7 +109,7 @@ describe('FIX-2B1 RS proof 1: a tab that leaves before the stream is built', () 
             { topics, recheckMs: 60_000 },
             [{ label: `task:${task}`, taskId: task }],
             asks,
-            { session, presence },
+            { session, presence, sitter: async () => await Promise.resolve(session) },
           );
           started();
           await running;

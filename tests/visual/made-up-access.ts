@@ -61,6 +61,14 @@ export const ACCESS: AccessReadResult = {
     },
   ],
   clientRecords: [MERIDIAN, HARBOUR],
+  // C60: a client that handles health information, and one with nothing switched on.
+  clientPrivacy: [MERIDIAN, HARBOUR].map(({ clientId }) => ({
+    clientId,
+    modelEgress: false,
+    providers: [],
+    handlesHealth: clientId === HARBOUR.clientId,
+    noAgentEdits: false,
+  })),
 };
 
 // Settings > Telemetry (C34): each of the four service states and a source switched off.
