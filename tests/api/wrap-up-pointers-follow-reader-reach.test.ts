@@ -14,6 +14,7 @@ import {
 } from './aw-03-fixture.ts';
 import { createControls, type Controls } from './controls-fixture.ts';
 import { addClient, enrol, grantTo } from '../commands/fixture.ts';
+import { serverUrl } from '../acceptance/world.ts';
 
 let w: ConversationWorld;
 let c: Controls;
@@ -69,7 +70,7 @@ async function scopeBlindReader(): Promise<void> {
   expect(JSON.stringify(own.body)).toContain(scoped);
 }
 
-describe('wrap-up pointers on a real database', () => {
+describe.skipIf(serverUrl === undefined)('wrap-up pointers on a real database', () => {
   beforeAll(async () => {
     c = await createControls('solow031');
     w = await conversationWorld(c);
