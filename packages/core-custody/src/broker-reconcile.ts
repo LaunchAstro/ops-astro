@@ -64,6 +64,8 @@ interface Asked {
   readonly id: string;
   readonly operation_key: string;
   readonly route_key: string | null;
+  readonly route_reach: string | null;
+  readonly credential_kind: string | null;
   readonly reserved_minor: string;
 }
 
@@ -95,7 +97,15 @@ async function ask(
   if (operation === undefined || adapter?.lookup === undefined || !adapter.readLookup) {
     return nothing('no lookup is declared for this operation; a person records the outcome');
   }
-  const route = broker.routes.find((one) => one.key === call.route_key);
+  // The route that carried the call, as its row records it: never another
+  // that shares its key (catalogue #439).
+  const route = broker.routes.find(
+    (one) =>
+      one.key === call.route_key &&
+      one.reach === call.route_reach &&
+      one.credentialKind === call.credential_kind &&
+      one.provider === operation.provider,
+  );
   if (route === undefined) return nothing('no configured route reaches its provider');
   // A person's own subscription is never carried by unattended work (AW-01's credential rule).
   if (route.credentialKind === 'subscription') {
@@ -208,7 +218,8 @@ export async function reconcileProviderCalls(
     businessId,
     async (tx) =>
       await tx.query<Asked>(
-        `select c.id, c.operation_key, c.route_key, c.reserved_minor::text as reserved_minor
+        `select c.id, c.operation_key, c.route_key, c.route_reach, c.credential_kind,
+                c.reserved_minor::text as reserved_minor
            from public.model_calls c
            left join public.attempts att
              on att.business_id = c.business_id and att.reservation_id = c.reservation_id
