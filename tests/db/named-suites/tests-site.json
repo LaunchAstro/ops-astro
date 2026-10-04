@@ -1,6 +1,7 @@
 {
   "invariant": [
     "tests/site/covered-correction-authority.test.ts",
+    "tests/site/delegated-worker-grant-expiry.test.ts",
     "tests/site/live-correction-boundaries.test.ts"
   ]
 }
