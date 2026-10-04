@@ -42,7 +42,10 @@ type ChatCommand =
   | 'chat.change_members'
   | 'chat.leave';
 
-/** The reader's conversations: null while the first read is out, `none` when chat is refused them. */
+/**
+ * The reader's conversations: null until a read answers with them or a
+ * refusal (an unavailable read keeps what was), `none` when chat is refused them.
+ */
 type Listed = readonly ChatConversationView[] | 'none' | null;
 
 /** Each conversation's messages; null when its read answered with none to draw. */
@@ -104,7 +107,7 @@ function useReads(
         const listed = 'value' in answer ? answer.value.conversations : undefined;
         // A body with no list is read as no conversations, never drawn.
         if (Array.isArray(listed)) setList(() => listed);
-        else setList((was) => (isUnavailable(answer) && was !== null ? was : 'none'));
+        else setList((was) => (isUnavailable(answer) ? was : 'none'));
         return answer;
       });
     };
