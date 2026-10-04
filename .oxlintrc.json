@@ -14,6 +14,18 @@
   "ignorePatterns": ["node_modules", "dist", "tests/gate/canary.txt", ".claude/skills", ".codex"],
   "overrides": [
     {
+      "files": [
+        "tests/surfaces/sol-pr374-r1.test.tsx",
+        "tests/surfaces/sol-pr374-r1-stale-clear.test.tsx"
+      ],
+      "rules": {
+        "require-await": "off",
+        "no-promise-executor-return": "off",
+        "unicorn/consistent-function-scoping": "off",
+        "max-lines-per-function": "off"
+      }
+    },
+    {
       "files": ["tests/surfaces/receipt-read-refusal-does-not-claim-no-effect.test.tsx"],
       "rules": { "require-await": "off", "no-promise-executor-return": "off" }
     },
