@@ -55,10 +55,13 @@ const NO_KEY_FIXES = [
 
 type Revision = { readonly ok: true; readonly value: number | undefined } | { readonly ok: false };
 
-/** A whole number from `least`; a set's 0 means the name must not exist yet. */
+/**
+ * A safe whole number from `least`, so the bigint compare cannot overflow; a
+ * set's 0 means the name must not exist yet.
+ */
 function revisionOf(value: unknown, least: 0 | 1): Revision {
   if (value === undefined) return { ok: true, value: undefined };
-  if (typeof value === 'number' && Number.isInteger(value) && value >= least)
+  if (typeof value === 'number' && Number.isSafeInteger(value) && value >= least)
     return { ok: true, value };
   return { ok: false };
 }
