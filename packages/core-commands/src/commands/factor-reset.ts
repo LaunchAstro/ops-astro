@@ -83,14 +83,8 @@ export async function resetFactorOnSettings(
   if (personId === context.session.personId) return resetRefused();
 
   await lockAccess(tx);
-  // The envelope asked the caller's grant before this lock: a revocation
-  // committed while the reset waited for it is seen only by asking again.
-  const still = await checkAuthority(tx, subjectsOf(context.session), {
-    collection: context.declaration.collection,
-    action: context.declaration.action,
-    scope: WHOLE_BUSINESS,
-  });
-  if (!still.ok) return refused(still.refusal);
+  const revoked = await grantRevoked(tx, context);
+  if (revoked !== undefined) return revoked;
   const member = await tx.query<{ readonly id: string }>(
     `select id from public.memberships
       where business_id = $1 and person_id = $2::uuid and active
@@ -117,6 +111,23 @@ export async function resetFactorOnSettings(
   // is as close to the commit as this act can put it.
   await endOtherSeenSessions(tx, personId, undefined, 'factor_change', login.subject);
   return applied(personId, null, { resetId: written[0]?.id, providerStep: 'owed' });
+}
+
+/**
+ * The caller's grant, asked again under the access lock: the envelope asked
+ * it before the lock, so a revocation committed while the reset waited for
+ * the lock is seen only here.
+ */
+async function grantRevoked(
+  tx: TenantQuery,
+  context: CommandContext,
+): Promise<Refused | undefined> {
+  const held = await checkAuthority(tx, subjectsOf(context.session), {
+    collection: context.declaration.collection,
+    action: context.declaration.action,
+    scope: WHOLE_BUSINESS,
+  });
+  return held.ok ? undefined : refused(held.refusal);
 }
 
 /**
