@@ -12,12 +12,8 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } fro
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, expect, it } from 'vitest';
-import {
-  droppedSuites,
-  readIsolationSuites,
-  readNamedSuites,
-  suitesToFiles,
-} from '../../scripts/named-suites.ts';
+import { readIsolationSuites, readNamedSuites, suitesToFiles } from '../../scripts/named-suites.ts';
+import { droppedSuites } from '../../scripts/suite-files.ts';
 
 const ROOT = join(import.meta.dirname, '../..');
 const AREAS = 'tests/db/named-suites';
@@ -55,13 +51,13 @@ function refused(files: Record<string, unknown>, file: string, reason: RegExp): 
 
 const sorted = (list: readonly string[]) => list.toSorted();
 
-it('converts the real lists and reads back the same suites, each once, the isolation set and the history', async () => {
+it('converts the real lists and reads back the same suites, each once, the isolation set and the history', () => {
   const before = readNamedSuites(ROOT);
   const isolationBefore = readIsolationSuites(ROOT);
   const root = tempRoot();
   cpSync(join(ROOT, AREAS), join(root, AREAS), { recursive: true });
   cpSync(join(ROOT, ISOLATION), join(root, ISOLATION));
-  await suitesToFiles(root);
+  suitesToFiles(root);
   expect(existsSync(join(root, AREAS))).toBe(false);
   expect(existsSync(join(root, ISOLATION))).toBe(false);
   const after = readNamedSuites(root);
@@ -79,14 +75,16 @@ it('converts the real lists and reads back the same suites, each once, the isola
 it("reads a suite's path from where its file sits, and its kind and isolation from the file", () => {
   const root = suites({
     'api/a.test.ts.json': { kind: 'invariant', isolation: true, why: 'the crossing' },
-    'runtime/deep/b.test.tsx.json': { kind: 'conformance', isolation: false, why: 'a contract' },
+    'runtime/deep/b.test.tsx.json': { kind: 'conformance', isolation: true, why: 'a contract' },
   });
   expect(readNamedSuites(root)).toStrictEqual({
     comment: [],
     invariant: ['tests/api/a.test.ts'],
     conformance: ['tests/runtime/deep/b.test.tsx'],
   });
-  expect(readIsolationSuites(root)).toStrictEqual({ invariant: ['tests/api/a.test.ts'] });
+  expect(readIsolationSuites(root)).toStrictEqual({
+    invariant: ['tests/api/a.test.ts', 'tests/runtime/deep/b.test.tsx'],
+  });
 });
 
 it('refuses a suite file it cannot trust, and names it', () => {
@@ -101,11 +99,6 @@ it('refuses a suite file it cannot trust, and names it', () => {
   refused({ 'api/a.test.ts.json': { ...ok, why: '' } }, 'api/a.test.ts.json', /why/u);
   refused({ 'api/a.test.ts.json': '{not json' }, 'api/a.test.ts.json', /not valid JSON/u);
   refused({ 'api/a.test.ts': ok }, 'api/a.test.ts', /\.json/u);
-  refused(
-    { 'api/a.test.ts.json': { kind: 'conformance', isolation: true, why: 'w' } },
-    'api/a.test.ts.json',
-    /isolation/u,
-  );
 });
 
 it('refuses a tree that holds the old lists beside the per-suite folder', () => {

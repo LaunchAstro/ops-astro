@@ -33,6 +33,13 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { areaOf } from './ci-areas.ts';
+import {
+  ISOLATION,
+  readSuiteFiles,
+  SUITES,
+  SUITES_HISTORY,
+  writeSuiteFiles,
+} from './suite-files.ts';
 
 export interface NamedSuites {
   comment: string[];
@@ -61,6 +68,20 @@ const listOf = (value: unknown): string[] => (Array.isArray(value) ? value.map(S
 
 /** The named suites under `root`, from the folder when it exists, else the single file. */
 export function readNamedSuites(root: string): NamedSuites {
+  if (existsSync(join(root, SUITES))) {
+    const files = readSuiteFiles(root, [FOLDER, SINGLE]);
+    const of = (kind: 'invariant' | 'conformance') =>
+      files.filter((entry) => entry.kind === kind).map((entry) => entry.suite);
+    const history = join(root, SUITES_HISTORY);
+    const comment = existsSync(history)
+      ? listOf((JSON.parse(readFileSync(history, 'utf8')) as Record<string, unknown>)['comment'])
+      : [];
+    return {
+      comment,
+      invariant: of('invariant').toSorted(),
+      conformance: of('conformance').toSorted(),
+    };
+  }
   if (existsSync(join(root, FOLDER))) return readFolder(root);
   const manifest = JSON.parse(readFileSync(join(root, SINGLE), 'utf8')) as Record<string, unknown>;
   return {
@@ -207,10 +228,12 @@ export async function splitToFolder(root: string): Promise<NamedSuites> {
   return original;
 }
 
-export const ISOLATION = 'tests/db/isolation-suites.json';
-
-/** The isolation suites under `root`. */
+/** The isolation suites under `root`: the suite files marked so, or else the isolation list. */
 export function readIsolationSuites(root: string): { invariant: string[] } {
+  if (existsSync(join(root, SUITES))) {
+    const files = readSuiteFiles(root, [FOLDER, SINGLE, ISOLATION]);
+    return { invariant: files.filter((entry) => entry.isolation).map((entry) => entry.suite) };
+  }
   const manifest = JSON.parse(readFileSync(join(root, ISOLATION), 'utf8')) as Record<
     string,
     unknown
@@ -218,16 +241,14 @@ export function readIsolationSuites(root: string): { invariant: string[] } {
   return { invariant: listOf(manifest['invariant']) };
 }
 
-/** Writes one file per suite under `root`. */
-export async function suitesToFiles(_root: string): Promise<void> {}
-
-/** The suites on the base that the head no longer names. */
-export function droppedSuites(
-  _base: readonly string[],
-  _head: readonly string[],
-  _deleted: readonly string[],
-): string[] {
-  return [];
+/** Converts the per-area lists and the isolation list to one file per suite, then removes them. */
+export function suitesToFiles(root: string): void {
+  const manifest = readNamedSuites(root);
+  const isolation = readIsolationSuites(root).invariant;
+  const why = `named in ${FOLDER}/ before each suite had its own file; its reason is in ${SUITES_HISTORY}`;
+  writeSuiteFiles(root, manifest, isolation, why);
+  rmSync(join(root, FOLDER), { recursive: true, force: true });
+  rmSync(join(root, ISOLATION), { force: true });
 }
 
 async function main(argv: readonly string[]): Promise<void> {
