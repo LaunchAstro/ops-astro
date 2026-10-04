@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// ORCH91 MAGNETS step 1: each named suite now has a file of its own, so a pull request drops a
-// suite by deleting one small file, and no list diff shows it. `database conformance gate` runs
-// `node scripts/named-suites.ts kept <base>`, which reads the manifest at the base commit in
-// whichever layout the base has (the single file, the per-area folder with the isolation list, or
-// one file per suite) and fails naming every suite the base named or marked isolation that the
-// head does not, unless its test file was deleted between the two. The script cases run the real
-// script in a throwaway git repository; the wiring case reads ci.yml with the YAML parser.
+// ORCH91 MAGNETS step 1: deleting a suite's own file drops it with no list diff, so `database
+// conformance gate` runs `node scripts/named-suites.ts kept <base>`. It reads the base's manifest in
+// any layout it has had and fails on each suite the base named or marked isolation that the head
+// does not: a deleted test file takes its suite with it, a renamed one takes it to the new path.
+// The script cases run the real script in a throwaway git repository; the wiring case reads ci.yml.
 
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -43,10 +41,8 @@ type Files = Record<string, unknown>;
 function write(repo: string, files: Files): void {
   for (const [path, body] of Object.entries(files)) {
     const file = join(repo, path);
-    if (body === null) {
-      rmSync(file, { recursive: true, force: true });
-      continue;
-    }
+    rmSync(file, { recursive: true, force: true });
+    if (body === null) continue;
     mkdirSync(dirname(file), { recursive: true });
     writeFileSync(file, typeof body === 'string' ? body : JSON.stringify(body));
   }
@@ -88,7 +84,7 @@ const B = 'tests/api/b.test.ts';
 const C = 'tests/api/c.test.ts';
 const suite = (kind: string, isolation: boolean) => ({ kind, isolation, why: 'w' });
 const fileOf = (path: string) => `tests/db/suites/${path.slice('tests/'.length)}.json`;
-const TESTS: Files = { [A]: '', [B]: '', [C]: '' };
+const TESTS: Files = { [A]: 'test a', [B]: 'test b', [C]: 'test c' };
 
 /** A named invariant and isolation, B named conformance, each in a file of its own. */
 const PER_SUITE: Files = {
@@ -146,52 +142,59 @@ describe('a suite named at the base stays named at the head', () => {
     expect(run.out).not.toContain(B);
   });
 
-  it('passes a suite whose test file was deleted with it, or renamed away with it', () => {
-    const deleted = repoWith(PER_SUITE);
-    head(deleted.repo, { [fileOf(B)]: null, [B]: null });
-    const run = kept(deleted.repo, deleted.base);
+  it('passes a suite whose test file was deleted with it', () => {
+    const { repo, base } = repoWith(PER_SUITE);
+    head(repo, { [fileOf(B)]: null, [B]: null });
+    const run = kept(repo, base);
     expect(run.status, run.out).toBe(0);
     expect(run.out).toContain('named 2 -> 1, isolation 1 -> 1');
-    // A rename is a deletion at the old path, so the suite may move with its file.
-    const renamed = repoWith(PER_SUITE);
-    head(renamed.repo, {
-      [A]: null,
-      [fileOf(A)]: null,
-      'tests/api/d.test.ts': '',
-      [fileOf('tests/api/d.test.ts')]: suite('invariant', true),
-    });
-    expect(kept(renamed.repo, renamed.base).status).toBe(0);
+  });
+});
+
+describe('a renamed test file keeps its suite at the new path', () => {
+  const MOVED = 'tests/api/moved.test.ts';
+  /** Renames A's test file to `to` in the head, removing A's suite file and writing `named`. */
+  function renamed(to: string, named: Files) {
+    const { repo, base } = repoWith(PER_SUITE);
+    git(repo, 'mv', A, to);
+    head(repo, { [fileOf(A)]: null, ...named });
+    return kept(repo, base);
+  }
+
+  it('passes a rename that takes the suite, its kind and its isolation to the new path', () => {
+    const run = renamed(MOVED, { [fileOf(MOVED)]: suite('invariant', true) });
+    expect(run.status, run.out).toBe(0);
+  });
+
+  it.each([
+    ['is not named', MOVED, {}],
+    ['differs only in case and is not named', 'tests/api/A.test.ts', {}],
+    ['is not marked isolation', MOVED, { [fileOf(MOVED)]: suite('invariant', false) }],
+    ['is named as another kind', MOVED, { [fileOf(MOVED)]: suite('conformance', true) }],
+  ])('fails when the new path %s, naming the old path and the new', (_, to, named: Files) => {
+    const run = renamed(to, named);
+    expect(run.status, run.out).toBe(1);
+    expect(run.out).toContain(`${A} -> ${to}`);
   });
 });
 
 describe('the base, in every layout it has had and wherever it is', () => {
-  it('reads a base in the per-area layout with its isolation list', () => {
-    const same = repoWith(PER_AREA);
+  it.each([
+    ['per-area', PER_AREA],
+    ['single-file', SINGLE],
+  ])('reads a base in the %s layout with its isolation list', (_, layout: Files) => {
+    const same = repoWith(layout);
     head(same.repo, TO_PER_SUITE);
     const run = kept(same.repo, same.base);
     expect(run.status, run.out).toBe(0);
     expect(run.out).toContain('named 2 -> 2, isolation 1 -> 1');
-    const dropped = repoWith(PER_AREA);
-    head(dropped.repo, { ...TO_PER_SUITE, [fileOf(B)]: null });
-    const lost = kept(dropped.repo, dropped.base);
-    expect(lost.status, lost.out).toBe(1);
-    expect(lost.out).toContain(B);
-    const unmarked = repoWith(PER_AREA);
-    head(unmarked.repo, { ...TO_PER_SUITE, [fileOf(A)]: suite('invariant', false) });
-    expect(kept(unmarked.repo, unmarked.base).status).toBe(1);
-  });
-
-  it('reads a base in the single-file layout with its isolation list', () => {
-    const same = repoWith(SINGLE);
-    head(same.repo, TO_PER_SUITE);
-    const run = kept(same.repo, same.base);
-    expect(run.status, run.out).toBe(0);
-    expect(run.out).toContain('named 2 -> 2, isolation 1 -> 1');
-    const dropped = repoWith(SINGLE);
-    head(dropped.repo, { ...TO_PER_SUITE, [fileOf(A)]: null });
-    const lost = kept(dropped.repo, dropped.base);
-    expect(lost.status, lost.out).toBe(1);
-    expect(lost.out).toContain(A);
+    for (const [path, body] of Object.entries({ [B]: null, [A]: suite('invariant', false) })) {
+      const dropped = repoWith(layout);
+      head(dropped.repo, { ...TO_PER_SUITE, [fileOf(path)]: body });
+      const lost = kept(dropped.repo, dropped.base);
+      expect(lost.status, lost.out).toBe(1);
+      expect(lost.out).toContain(path);
+    }
   });
 
   it('fetches a base the depth-1 checkout does not hold', () => {

@@ -9,7 +9,7 @@
 // cannot trust and names it, and a suite dropped from the manifest is caught
 // unless its test file went with it.
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { afterAll, expect, it } from 'vitest';
@@ -119,6 +119,18 @@ it('refuses a suite file it cannot trust, and names it', () => {
   refused({ 'api/a.test.ts.json': { ...ok, why: '' } }, 'api/a.test.ts.json', /why/u);
   refused({ 'api/a.test.ts.json': '{not json' }, 'api/a.test.ts.json', /not valid JSON/u);
   refused({ 'api/a.test.ts': ok }, 'api/a.test.ts', /\.json/u);
+  refused({ '.json': ok }, '.json', /test file/u);
+  refused({ 'api.json': ok }, 'api.json', /test file/u);
+  refused({ 'api/a.ts.json': ok }, 'api/a.ts.json', /test file/u);
+});
+
+it('refuses a symlink among the suite files by name, and never reads what it points at', () => {
+  const root = suites({ 'api/a.test.ts.json': { kind: 'invariant', isolation: true, why: 'w' } });
+  const elsewhere = join(root, 'elsewhere.json');
+  writeFileSync(elsewhere, JSON.stringify({ kind: 'invariant', isolation: true, why: 'w' }));
+  symlinkSync(elsewhere, join(root, SUITES, 'api/b.test.ts.json'));
+  expect(() => readNamedSuites(root)).toThrow(/symlink/u);
+  expect(() => readNamedSuites(root)).toThrow(`${SUITES}/api/b.test.ts.json`);
 });
 
 it('refuses a tree that holds the old lists beside the per-suite folder', () => {
@@ -128,6 +140,7 @@ it('refuses a tree that holds the old lists beside the per-suite folder', () => 
   const other = suites({ 'api/a.test.ts.json': { kind: 'invariant', isolation: false, why: 'w' } });
   writeFileSync(join(other, ISOLATION), '{"invariant":[]}');
   expect(() => readIsolationSuites(other)).toThrow(ISOLATION);
+  expect(() => readNamedSuites(other)).toThrow(ISOLATION);
 });
 
 it('names a suite the head dropped, unless its test file was deleted in the same change', () => {
