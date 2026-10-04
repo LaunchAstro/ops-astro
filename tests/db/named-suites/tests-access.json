@@ -4,7 +4,8 @@
     "SL12-18-F names c39-t-invitation-send (C39-T sender and C39-T token kept as a hash only: an invitation leaves only from the verified sending subdomain, refused before the provider and before a token is minted otherwise; a provider answer echoing the link's token fails the attempt and nothing stored holds the token) as an invariant.",
     "SL12-26 (SEC27 F1-F3) names c39-t-invitation-ceiling (an invitation's dead ask stops holding email.send's ceiling once custody's timeout and the grace pass, and inbox and invitation emails fill one ceiling together under one lock) and c39-t-invitation-admin (an access:share holder without access:manage neither creates nor resends an admin invitation, writing nothing; a revoke stays access:share) as invariants.",
     "SL12-31 names c39-t-invitation-evidence (no provider answer keeps any of the business's enrolment tokens, an earlier send's included) and c39-t-invitation-lock-timing (a send or a resend that waited for the invitation's lock judges its expiry when the lock is granted; asks delayed by locks still hold the email ceiling) as invariants, and tests/acceptance/role-case-invitation-controls (every D06 invitation.create cell serves its positive control and proves its field refusal) as an invariant in tests-acceptance.json.",
-    "SL12-31 names c39-t-invitation-fence (an invitation send paused past the in-flight fence, on either host clock, calls no provider and records failed, expired; one inside it still sends; an invitation expiring while its send waits on the email limit lock sends nothing and mints no token) as an invariant."
+    "SL12-31 names c39-t-invitation-fence (an invitation send paused past the in-flight fence, on either host clock, calls no provider and records failed, expired; one inside it still sends; an invitation expiring while its send waits on the email limit lock sends nothing and mints no token) as an invariant.",
+    "SL12-32 names c39-t-invitation-resend-limit-lock (a resend that waited on the address or the account limit lock past the invitation's expiry is refused as not pending and writes nothing) as an invariant."
   ],
   "invariant": [
     "tests/access/c39-t-invitation-admin.test.ts",
@@ -13,6 +14,7 @@
     "tests/access/c39-t-invitation-fence.test.ts",
     "tests/access/c39-t-invitation-lock-timing.test.ts",
     "tests/access/c39-t-invitation-refusals.test.ts",
+    "tests/access/c39-t-invitation-resend-limit-lock.test.ts",
     "tests/access/c39-t-invitation-send.test.ts",
     "tests/access/c39-t-invitations.test.ts"
   ]
