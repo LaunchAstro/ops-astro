@@ -104,7 +104,7 @@ function ciOnTheCases1() {
     const block = job(SHARD_JOB);
     expect(required).toContain('database conformance');
     // The required check passes only when every shard did.
-    expect(job('database conformance')).toMatch(/^ {4}needs: \[database-shard\]$/mu);
+    expect(job('database conformance')).toMatch(/^ {4}needs: \[gate, database-shard\]$/mu);
     expect(required).toContain('isolation tests');
     expect(images(block)).toStrictEqual([`postgres@sha256:${DIGEST}`]);
     // The runner it calls is the one that fails a run with a skipped test
@@ -132,9 +132,13 @@ function ciOnTheCases2() {
     expect(images(block)).toStrictEqual([`postgres@sha256:${eighteen}`]);
     expect(block).toMatch(new RegExp(`${LOOKAHEAD}: '18'`, 'u'));
     expect(block).toMatch(/^ {6}- run: pnpm run db:conformance$/mu);
-    // Every pull request: the workflow runs on them and the job has no condition.
+    // Every pull request, and only pull requests (CI-SPEED, ORCH78 LOOKAHEAD): the workflow runs
+    // on them and the job's one condition is the pull request event. On a merge group or a push
+    // to main it held a runner to its 90-minute timeout for a result nobody read.
     expect(read('.github/workflows/ci.yml')).toMatch(/^on:\n {2}pull_request:/mu);
-    expect(block).not.toMatch(/^ {4}if:/mu);
+    expect([...block.matchAll(/^ {4}if: (.+)$/gmu)].map((m) => m[1])).toStrictEqual([
+      "github.event_name == 'pull_request'",
+    ]);
     // Not required, and nothing required waits on it.
     expect(required).not.toContain(LOOKAHEAD_JOB);
     const id = [...jobs()].find(([, b]) => b === block)?.[0] ?? '';

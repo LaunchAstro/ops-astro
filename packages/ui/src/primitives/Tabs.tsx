@@ -87,22 +87,29 @@ export function TabStrip(props: TabStripProps): ReactElement {
   );
 }
 
-/** The strip's keys: left and right move the selection, Home and End go to the ends. */
+/**
+ * The strip's keys: left and right move the selection, Home and End go to the
+ * ends, and focus goes with the selection to the one tabbable tab.
+ */
 function arrowKeys(props: TabStripProps): (event: KeyboardEvent<HTMLDivElement>) => void {
   const index = props.tabs.findIndex((tab) => tab.id === props.selected);
-  const move = (by: number): void => {
+  const move = (by: number, strip: HTMLDivElement): void => {
     const count = props.tabs.length;
     if (count === 0) return;
-    const next = props.tabs[(((index + by) % count) + count) % count];
-    if (next !== undefined) props.onSelect(next.id);
+    const at = (((index + by) % count) + count) % count;
+    const next = props.tabs[at];
+    if (next === undefined) return;
+    props.onSelect(next.id);
+    strip.querySelectorAll<HTMLElement>(':scope > [role="tab"]')[at]?.focus();
   };
   return (event) => {
+    const strip = event.currentTarget;
     // Left and right only. Up and down belong to the page's own scroll, and a
     // strip that swallows them is a strip a reader cannot escape.
-    if (event.key === 'ArrowRight') move(1);
-    else if (event.key === 'ArrowLeft') move(-1);
-    else if (event.key === 'Home') move(-index);
-    else if (event.key === 'End') move(props.tabs.length - 1 - index);
+    if (event.key === 'ArrowRight') move(1, strip);
+    else if (event.key === 'ArrowLeft') move(-1, strip);
+    else if (event.key === 'Home') move(-index, strip);
+    else if (event.key === 'End') move(props.tabs.length - 1 - index, strip);
     else return;
     event.preventDefault();
   };

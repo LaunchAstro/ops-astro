@@ -16,7 +16,7 @@ import {
   type StorageLike,
 } from '../../apps/web/src/session/token.ts';
 
-const SESSION = { token: 't', businessKey: 'alpha', email: 'ada@example.test' };
+const SESSION = { businessKey: 'alpha', email: 'ada@example.test' };
 const ENDED = { address: '/task/T-1', businessKey: 'alpha', code: 'AUTH_UNKNOWN_LOGIN' };
 
 function map(

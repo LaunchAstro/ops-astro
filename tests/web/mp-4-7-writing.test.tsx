@@ -21,6 +21,8 @@ import { found, TASK_ID } from './task-page-stub.tsx';
 import { unheld } from './task-look.ts';
 import { mount, page, unmountAll } from './perspective-support.tsx';
 import { BRIEF, field, textOf } from './writing-support.tsx';
+import { panel, serving } from './panel-fields-support.tsx';
+import { drawnStyle } from './app-cascade.ts';
 import type { Mounted } from '../surfaces/mount.tsx';
 
 afterEach(async () => {
@@ -133,6 +135,20 @@ describe('MP-4-7 brief facts read from headings', () => {
   });
 });
 
+/** The dock task panel's description and brief families, and the sans and mono stacks. */
+async function dockFonts(): Promise<Record<string, string | null>> {
+  const docked = await panel(serving({ description: 'd', agentBrief: 'b' }).client);
+  return drawnStyle(
+    docked.host.innerHTML,
+    'font-family',
+    {
+      description: 'textarea[data-writing="description"]',
+      brief: 'textarea[data-writing="brief"]',
+    },
+    { sans: 'var(--font-sans)', mono: 'var(--font-mono)' },
+  );
+}
+
 describe('MP-4-7 the description is sans everywhere; mono only on the Agent MD field (R60)', () => {
   const css = readFileSync(
     join(import.meta.dirname, '../../packages/ui/src/styles/5-task.css'),
@@ -170,7 +186,11 @@ describe('MP-4-7 the description is sans everywhere; mono only on the Agent MD f
     expect(family('.tf__ta')).toBe('--font-sans');
     expect(family('.tf__ta--md')).toBe('--font-mono');
     expect(family('.tt__prose')).toBe('--font-sans');
-  });
+    // Drawn: in the dock task panel, under the app's whole cascade.
+    const fonts = await dockFonts();
+    expect(fonts['sans']).not.toBe(fonts['mono']);
+    expect([fonts['description'], fonts['brief']]).toEqual([fonts['sans'], fonts['mono']]);
+  }, 30_000);
 
   it('the page draws the description and the rendered brief as sans prose', async () => {
     const view = await page('Proj-Verity-Pacing', found({ description: 'x', agentBrief: 'y' }));
