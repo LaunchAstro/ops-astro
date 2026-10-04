@@ -131,6 +131,38 @@ The server decides the hour, and the browser finds out only by being refused. `t
 SX1 to SX3 in `tests/browser/cases-session-expiry.mjs` show them in a real
 browser.
 
+### The money step-up and the authenticator app
+
+A money write refused `STEP_UP_REQUIRED` (C59) opens one prompt where the
+write was made: the planning cap and the top-up at a budget stop
+(`views/step-up-prompt.tsx`, `records/use-money-command.ts`). A team member's
+refusal names nothing and asks for the six-digit code from the authenticator
+app; a good code is checked on the person's own account route, its token
+traded for a new cookie, the tab moved to it and the old cookie cleared
+(`session/step-up.ts`). It is the same provider session, so nothing is signed
+out. A client's refusal names `sign_in`, and the prompt asks for their
+password instead (`type="password"`, `autocomplete="current-password"`). A
+good password is a new provider session: GoTrue's password grant, its token
+traded for a new cookie, the tab moved to it, then the old sign-in signed out
+at the API, the provider and its cookie (`session/sign-in-again.ts`). Either
+way the refused write goes once more, on the client built for the new
+sign-in, and only while the session that asked is still the one in hand; a
+password sign-in the tab does not keep (the session ended, or the API refused
+the trade) is signed out at GoTrue with its own token, and sends nothing. A
+wrong code shows the server's words and a wrong password GoTrue's, and
+neither sends the write. The password leaves the field as it is sent and is
+kept nowhere.
+
+Settings ▸ General's authenticator panel (`screens/settings/authenticator.tsx`
+and `authenticator-change.tsx`) sets the app up, or removes it with the
+current code from it (`account/factor/remove`); a removal says the other
+sessions were signed out and offers set-up again. A set-up refused
+`FACTOR_ALREADY_ENROLLED` opens that removal. One refused
+`FRESH_SIGN_IN_REQUIRED` asks for the password, signs in again the same way,
+and starts the set-up again once the new sign-in's client is in hand.
+`tests/web/money-step-up.test.tsx`, `money-sign-in-again.test.tsx`,
+`authenticator-enrol.test.tsx` and `authenticator-change.test.tsx` hold them.
+
 ## Addresses
 
 | Address                | What it draws                                                                                                                                                                                                                                                                                                                     |

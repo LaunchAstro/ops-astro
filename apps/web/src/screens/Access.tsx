@@ -9,6 +9,9 @@
 // from the read's own client records. A scope the read does not list is said
 // as that, never by its identifier.
 //
+// C60's client privacy card is a fifth write, `client.set_privacy`, under
+// `privacy:manage`; its refusals are drawn like the others.
+//
 // Four writes, each the command the server checks under `access:manage`:
 // `access.grant` gives one person one key over the business or one client;
 // `access.revoke` ends one grant, by the id the read lists, once confirmed;
@@ -25,6 +28,7 @@ import { describeFailure, type SubmitResult } from '../records/submit.ts';
 import { RecordState } from '../views/record-state.tsx';
 import type { AccessReadResult, PersonView } from '../../../../packages/core-wire/src/index.ts';
 import { ConfirmEnd, ConfirmRevokeGrant, GiveAccess, type Revoking } from './access/acts.tsx';
+import { ClientPrivacy } from './access/privacy.tsx';
 import { Agents, People } from './access/rows.tsx';
 
 export interface AccessScreenProps {
@@ -135,6 +139,18 @@ function AccessLists(props: {
       </section>
       <section className="sec">
         <GiveAccess result={result} busy={props.busy} onGive={giveWith(client, act)} />
+      </section>
+      <section className="sec">
+        <ClientPrivacy
+          result={result}
+          busy={props.busy}
+          onSet={(body, name) =>
+            act(
+              () => client.mutate('client.set_privacy', body),
+              `Saved ${name}'s privacy settings.`,
+            )
+          }
+        />
       </section>
     </>
   );

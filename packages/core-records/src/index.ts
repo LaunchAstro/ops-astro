@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// The records package's one way in: tenancy, identity, authority, the records
-// engine, the task type and the refusal register. It is the bottom layer. It
-// imports neither the runtime nor the command package, and every other package
-// reaches it through this file (`.dependency-cruiser.cjs`).
+// The records package's one way in: tenancy, identity, authority, the records engine, the task type
+// and the refusal register. It is the bottom layer. It imports neither the runtime nor the command
+// package, and every other package reaches it through this file (`.dependency-cruiser.cjs`).
 //
-// Two names are renamed here because two modules use them for different
-// things: `Refusal` is the authority check's, and the identity layer's is
-// `IdentityRefusal`.
+// Two names are renamed here because two modules use them for different things: `Refusal` is the
+// authority check's, and the identity layer's is `IdentityRefusal`.
 
 export * from './authority/agent-credential-surface.ts';
 export { readEnvFile } from './env-file.ts';
@@ -65,6 +63,19 @@ export {
   type AccessDecision,
   type ClientRow,
 } from './clients/clients.ts';
+export {
+  checkClientEditRun,
+  checkClientModelUse,
+  judgeModelRequest,
+  listClientPrivacy,
+  MODEL_PROVIDERS,
+  readClientPrivacy,
+  recordModelRequest,
+  writeClientPrivacy,
+  type ClientPrivacy,
+  type ClientUse,
+  type ModelRequest,
+} from './clients/privacy.ts';
 export {
   readableRecordIds,
   readableScope,
@@ -177,18 +188,12 @@ export {
   savePreference,
   type PreferenceKey,
 } from './preferences/store.ts';
+export { readInboxItems, countOwedItems } from './inbox/read.ts';
 export {
-  readInboxItems,
-  countOwedItems,
-  INBOX_HISTORY_PAGE,
-  INBOX_HISTORY_SCAN,
-} from './inbox/read.ts';
-export {
-  owes,
+  INBOX_REASONS,
   raiseInboxItem,
   stampSeen,
   recordDeliveryAttempt,
-  type DeliveryChannel,
   type DeliveryState,
   type InboxAccess,
   type InboxFactKind,
@@ -196,7 +201,6 @@ export {
   type InboxAlert,
   type InboxReason,
   type InboxWorkState,
-  type RaiseInboxItem,
 } from './inbox/items.ts';
 export { readScopes, taskAccess } from './inbox/access.ts';
 export {
@@ -286,8 +290,6 @@ export {
   type SecretScope,
   type SecretStale,
   type SecretWritten,
-} from './custody/index.ts';
-export {
   generateSealingPair,
   loadSealingKey,
   seal,

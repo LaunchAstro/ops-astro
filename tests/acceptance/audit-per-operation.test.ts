@@ -2,12 +2,12 @@
 //
 // I13 and I08 over the whole exported surface, through the real boundary.
 //
-// **I13** (CONTRACT-LEDGER I13). For each of the 120 `COMMAND_SURFACE`
+// **I13** (CONTRACT-LEDGER I13). For each of the 121 `COMMAND_SURFACE`
 // declarations, one call that applies and one that is refused, and what each
 // wrote to `audit_events` in *every* business: one row, in the caller's own,
 // naming actor, command, operation, outcome and code, the request as a digest
 // only. A refused call also leaves both businesses' domain tables alone. The
-// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 120; on
+// refused call is R2's (`noah`, no grant: contract 8.2 case 3) on all 121; on
 // the two that are his own account (C23) he is refused for naming someone. For
 // the seven lease operations he names real work in his own business: an
 // approved reservation, and a live lease and its fence held by ada. The agent's
@@ -367,7 +367,7 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
         );
       case 'inbox.seen':
         // Self-scoped: noah holds `preference:write` like every signed-in
-        // person, so the refusal is the item's. One not his is NOT_FOUND.
+        // person, so the refusal is the item's. Another person's is NOT_FOUND.
         return personCell(noah, name, { itemId: randomUUID() }, 'NOT_FOUND');
       case 'notifications.set_channel':
         // Self-scoped too (INB-1e): the refusal is the setting's. In-app is
@@ -525,12 +525,12 @@ describe.skipIf(serverUrl === undefined)('I13 and I08: audit per exported operat
     );
   }
 
-  it('covered all 120 exported operations both ways', () => {
+  it('covered all 121 exported operations both ways', () => {
     const names = COMMAND_SURFACE.map((declaration) => declaration.name).toSorted();
-    expect(names).toHaveLength(120);
+    expect(names).toHaveLength(121);
     expect([...covered.applied].toSorted()).toStrictEqual(names);
     expect([...covered.refused].toSorted()).toStrictEqual(names);
-    // R2 (`noah`, no grant) is the refused caller on every one of the 120.
+    // R2 (`noah`, no grant) is the refused caller on every one of the 121.
     expect([...r2].toSorted()).toStrictEqual(names);
   });
 
