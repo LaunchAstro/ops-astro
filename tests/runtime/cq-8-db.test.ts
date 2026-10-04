@@ -206,7 +206,13 @@ describe.skipIf(serverUrl === undefined)('CQ-8 on a real database', () => {
       const kinds = classifyAll(statements);
       const lastCommand = kinds.lastIndexOf('command');
       const firstOrdered = kinds.indexOf('ordered');
-      commandLocks += kinds.filter((kind) => kind === 'command').length;
+      // The operation identity's door (#932) is in every call; the floor
+      // below counts the placement and sibling keys without it.
+      commandLocks += kinds.filter(
+        (kind, index) =>
+          kind === 'command' &&
+          !String(statements[index]?.parameters[0] ?? '').startsWith('operation:'),
+      ).length;
       orderedLocks += kinds.filter((kind) => kind === 'ordered').length;
       if (lastCommand < 0 || firstOrdered < 0) continue;
       compared += 1;

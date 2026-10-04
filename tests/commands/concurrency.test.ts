@@ -8,9 +8,10 @@
 // demonstration that Postgres locks:
 //
 // 1. **The same operation identity, twice at once.** One attempt commits and
-//    the other is refused by the register's unique index. The loser's whole
-//    transaction is gone and the winner's result is replayed, so two clients
-//    retrying the same request cannot produce two records.
+//    the other waits at the envelope's door (#932), or is refused by the
+//    register's unique index behind it. The loser's whole transaction is
+//    gone and the winner's result is replayed, so two clients retrying the
+//    same request cannot produce two records.
 // 2. **Two creates at once.** `key` is assigned by counting, so both pick the
 //    same number and the loser is refused by `record_unique_values`. The
 //    retry runs in a fresh transaction, reads the winner's row and takes the

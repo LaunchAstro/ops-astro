@@ -101,8 +101,8 @@ export function modelCallExecutor(broker: ModelBroker): ModelCallExecutor {
     if (isCommandRefusal(admitted)) return admitted;
     const callId = String(admitted.detail['callId']);
     // Held by this request and committed: the answer's call is the one it
-    // held. Anything else is a replay, including a first attempt that lost
-    // the identity key and was retried into one.
+    // held. Anything else is a replay, including a second attempt that
+    // waited at the identity's door, or lost the identity key and was retried.
     if (held === undefined || held.reserved.callId !== callId) {
       return await answerFrom(database, businessId, admitted, callId);
     }

@@ -27,6 +27,7 @@
 // asks and reports. No authority check lives only here, and none lives only in
 // the transport above it.
 
+import { createHash } from 'node:crypto';
 import { advisoryLock, withSession } from '../../../core-records/src/index.ts';
 import type {
   BusinessId,
@@ -127,11 +128,10 @@ export async function enter(
   }
   // One request per identity at a time, before any lock the command takes: a
   // second waits here, then reads the first's record, so nothing the first
-  // does can wait on the second's (#932).
-  await advisoryLock(
-    tx,
-    `operation:${tx.businessId.toLowerCase()}:${caller.actorId}:${request.operationId}`,
-  );
+  // does can wait on the second's (#932). The id is the caller's text, so it
+  // is digested: no caller can choose a key that collides with another lock.
+  const identity = createHash('sha256').update(request.operationId).digest('hex');
+  await advisoryLock(tx, `operation:${tx.businessId.toLowerCase()}:${caller.actorId}:${identity}`);
   // One register for both prefixes, keyed on the caller's own actor, so a
   // pickup retried after a lost response replays the lease it already holds.
   const seen = await lookupAttempt(tx, caller.actorId, request.operationId);
@@ -185,8 +185,9 @@ export async function runCommand(
  *
  * 1. **A unique violation is retried once, in a fresh transaction.** Two
  *    shapes of race resolve through the same rule. Two callers presenting one
- *    operation identity at once: the loser's whole attempt is gone, the
- *    winner's register row is committed, and the retry reads it and replays.
+ *    operation identity at once now queue at `enter`'s door (#932), so the
+ *    second reads the first's committed row and replays; the unique index is
+ *    the backstop, and its loser's retry reads the row and replays.
  *    Two creates at once: both counted the same `key`, the loser was refused
  *    by `record_unique_values`, and the retry counts again and takes the next
  *    number — which is the retry T1e's handback asked this part for.

@@ -139,11 +139,11 @@ export async function executeAgentOperation(
   operation: AgentOperation | undefined,
 ): Promise<CommandResult> {
   // One bounded retry, `retryOnce` in `envelope.ts`, which the person entry
-  // takes too, on its shared predicate (`isRetryableViolation`). It admits a lost
-  // identity claim: a same-operationId retry in flight behind its original
-  // read no register row, then lost `operations_identity_key` to the
-  // original's commit; its whole transaction is gone, so the second attempt
-  // reads the committed row and replays it rather than answering a fault.
+  // takes too, on its shared predicate (`isRetryableViolation`). A
+  // same-operationId retry in flight behind its original waits at `enter`'s
+  // door and replays (#932); a lost `operations_identity_key`, the backstop,
+  // is retried here, and the second attempt reads the committed row and
+  // replays it rather than answering a fault.
   // The predicate is not identity-only: it also admits
   // `AffectedSetChanged` and a lost unique-value claim, under the same single
   // retry. A second retryable failure of any kind propagates. There is no

@@ -5,7 +5,7 @@
 // its own, until the first commits, then answers from the first's record. So
 // nothing the first does after its final liveness read can wait on the second,
 // and the two cannot deadlock.
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';
 import { executeCommand } from '../../packages/core-commands/src/commands/envelope.ts';
 import type { Database } from '../../packages/core-records/src/index.ts';
@@ -52,6 +52,7 @@ interface Race {
   readonly agentTask: string;
   readonly personTask: string;
   readonly personRevision: number;
+  readonly agentRevision: number;
   readonly childId: string;
   readonly operationId: string;
   readonly atDoor: number;
@@ -84,6 +85,7 @@ async function race(whileParked: (parentId: string) => Promise<void>): Promise<R
         }),
     );
   const personRevision = await revisionOf(w.s, personTask);
+  const agentRevision = await revisionOf(w.s, agentTask);
   const database = racer(w.s);
   const second = racer(w.s);
   const locked = barrier();
@@ -99,16 +101,18 @@ async function race(whileParked: (parentId: string) => Promise<void>): Promise<R
     await awaitParked(w.s, 'advisory', 1);
     const assigningPerson = send(second, personTask, { assignee: w.s.decider.personId });
     await awaitParked(w.s, 'advisory', 2);
-    const door = `operation:${w.s.business}:${w.s.decider.actorId}:${operationId}`;
+    const identity = createHash('sha256').update(operationId).digest('hex');
+    const door = `operation:${w.s.business}:${w.s.decider.actorId}:${identity}`;
     const atDoor = await parkedOn(door);
     await whileParked(parent.id);
     gate.release();
     await held;
-    const results = [await assigning, await assigningPerson] as const;
+    const results = await Promise.all([assigning, assigningPerson]);
     return {
       agentTask,
       personTask,
       personRevision,
+      agentRevision,
       childId: minted.delegation.id,
       operationId,
       atDoor,
@@ -120,6 +124,11 @@ async function race(whileParked: (parentId: string) => Promise<void>): Promise<R
     await second.close();
   }
 }
+
+const OPERATIONS = `select count(*)::text as n from public.operations
+                     where business_id = $1 and operation_id = $2`;
+const APPLIED = `select count(*)::text as n from public.audit_events
+                  where business_id = $1 and operation_id = $2 and outcome = 'applied'`;
 
 const count = async (sql: string, operationId: string): Promise<string | undefined> =>
   (await w.s.db.admin.execute<{ readonly n: string }>(sql, [w.s.business, operationId]))[0]?.n;
@@ -133,12 +142,8 @@ it('one operation identity on two tasks at once: the second waits at the door an
   expect(await revisionOf(w.s, run.personTask), 'the second wrote nothing').toBe(
     run.personRevision,
   );
-  const operations = `select count(*)::text as n from public.operations
-                       where business_id = $1 and operation_id = $2`;
-  expect(await count(operations, run.operationId), 'one operation record').toBe('1');
-  const applied = `select count(*)::text as n from public.audit_events
-                    where business_id = $1 and operation_id = $2 and outcome = 'applied'`;
-  expect(await count(applied, run.operationId), 'one applied audit event').toBe('1');
+  expect(await count(OPERATIONS, run.operationId), 'one operation record').toBe('1');
+  expect(await count(APPLIED, run.operationId), 'one applied audit event').toBe('1');
   // A backend reports a deadlock when it next goes idle, within its ten-second flush.
   await pause(11_000);
   expect(await deadlocks(), 'no deadlock').toBe(before);
@@ -160,6 +165,9 @@ it('a parent that expires while a same-identity request waits at the door refuse
     [w.s.business, run.agentTask],
   );
   expect(stored[0]?.agent).not.toBe(run.childId);
+  expect(await revisionOf(w.s, run.agentTask), 'the refusal wrote nothing').toBe(run.agentRevision);
+  expect(await count(OPERATIONS, run.operationId), 'one operation record').toBe('1');
+  expect(await count(APPLIED, run.operationId), 'no applied audit event').toBe('0');
   expect(codeOf(run.results[1])).toBe('OPERATION_ID_REUSED');
   expect(await revisionOf(w.s, run.personTask), 'the second wrote nothing').toBe(
     run.personRevision,
