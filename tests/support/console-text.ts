@@ -8,7 +8,7 @@
 // Node cuts an object a `%s` or `%o` reads to depth 0 or 4 whatever options it
 // is given, so every inspected value is written out here first (an object `%s`
 // writes by its own toString keeps that text); a Buffer is written as the text
-// its bytes carry, as `String(part)` did, not as hex. Where a proxy's trap
+// its bytes carry, as `String(part)` did, then as the console shows it. Where a proxy's trap
 // throws deeper than the console reads, the console's own writing stands, so
 // the rest of the call is never lost.
 
@@ -43,6 +43,10 @@ function isBuffer(part: unknown): part is Buffer {
   }
 }
 
+/** A Buffer as the text its bytes carry, then as the console shows it, with any own keys. */
+const bytesWritten = (bytes: Buffer): string =>
+  `${bytes.toString('utf8')} ${inspected(bytes, whole)}`;
+
 /** The deeper writing, or the console's own when a trap makes the deeper one throw. */
 function deeperOr(deeper: () => string, nodeText: () => string): string {
   try {
@@ -61,7 +65,7 @@ const inspected = (value: unknown, deep: object, shown: object = {}): string =>
 /** An argument outside the format: text as is, a Buffer as its text, the rest inspected whole. */
 function written(part: unknown): string {
   if (typeof part === 'string') return part;
-  return isBuffer(part) ? part.toString('utf8') : inspected(part, whole);
+  return isBuffer(part) ? bytesWritten(part) : inspected(part, whole);
 }
 
 /** One console call's arguments as the console would print them, nothing cut short. */
@@ -75,7 +79,7 @@ export function consoleLine(...parts: readonly unknown[]): string {
     const index = next++;
     const value = rest[index];
     if (isBuffer(value)) {
-      args[index] = value.toString('utf8');
+      args[index] = bytesWritten(value);
       return '%s';
     }
     if (letter === 'o' || letter === 'O') {

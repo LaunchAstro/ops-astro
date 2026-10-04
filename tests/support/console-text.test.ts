@@ -77,6 +77,13 @@ it('keeps the rest of a call that also logs a revoked proxy', () => {
   expect(consoleLine('%s', planted, deep)).toContain(planted);
 });
 
+it('keeps what a Buffer carries beyond its bytes', () => {
+  const tagged = Object.assign(Buffer.from('x'), { token: planted });
+  expect(consoleLine(tagged)).toContain(planted);
+  expect(consoleLine('%O', tagged)).toContain(planted);
+  expect(consoleLine('%o', tagged)).toContain(planted);
+});
+
 it('writes a proxy that claims to be a Buffer as the console does, through to its target', () => {
   const claiming = new Proxy({ token: planted }, { getPrototypeOf: () => Buffer.prototype });
   expect(consoleLine(claiming)).toContain(planted);
