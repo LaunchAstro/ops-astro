@@ -30,6 +30,7 @@ export {
   type PurposeScope,
 } from './authority/delegations.ts';
 export {
+  askedFor,
   checkAuthority,
   EFFECTIVE as EFFECTIVE_GRANTS,
   effectiveGrants,

@@ -532,7 +532,9 @@ Nine reads are declared in `COMMAND_SURFACE` with `kind: 'read'` and served by
   (`team_conversation_members.last_read_at`, 20261003000558, set only by that person);
   the reader's member row is the query's filter, so nobody else's is listed.
   To a member who has left or been removed, a group shows no name and no
-  members: nothing of it changed after they left
+  members: nothing of it changed after they left. Each carries when the
+  reader's own current membership began (`joined_at`, never another member's),
+  null to one who has left, so a group rejoined reads later
 - `chat.messages { conversationId }` → one of the reader's conversations'
   messages: `task_comment` records with audience `direct` or `group`, anchored
   by their `conversation` field, written while the reader was a member (from

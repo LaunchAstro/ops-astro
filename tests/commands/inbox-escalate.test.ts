@@ -118,7 +118,10 @@ describe.skipIf(serverUrl === undefined)('INB-1 escalate and the inbox', () => {
     );
 
   const owed = async (person: string): Promise<number> =>
-    await s.db.app.withBusiness(s.business, async (tx) => await countOwed(tx, person));
+    await s.db.app.withBusiness(
+      s.business,
+      async (tx) => await countOwed(tx, person, [{ kind: 'person', id: person }]),
+    );
 
   it('INB-1 escalate withdraws a task-scoped decider’s item and keeps the recipient’s open and owed', async () => {
     const { taskId, v3, approver } = await atTheBound();

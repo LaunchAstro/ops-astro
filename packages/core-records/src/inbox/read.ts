@@ -37,9 +37,11 @@ type ItemRow = InboxItemAxes &
  * Whether the recipient reads the row's task now, from the statement's own
  * `reach` (`REACH`): the same grants `taskAccess` asks, walked once for every row.
  * A conversation's item (C71) is held by its current members alone, each from
- * their latest join: an item raised before a re-join stays held.
+ * their latest join: an item raised before a re-join stays held. Without
+ * `chats`, an agent key that does not tick `chat:comment` (API-2), none is.
  */
-const HELD = `(case when ${IS_CONVERSATION} then ${inConversation('$2', 'i.raised_at')}
+const heldOf = (chats: boolean): string => `(case when ${IS_CONVERSATION}
+         then ${chats ? inConversation('$2', 'i.raised_at') : 'false'}
          else ((select business from reach) or i.subject_record_id = any((select records from reach)::uuid[])
                or r.uuid_7 = any((select parties from reach)::uuid[])) end)`;
 
@@ -49,7 +51,8 @@ const COLUMNS = `i.id, i.business_id, i.recipient_person_id, i.subject_record_id
        i.closed_by_person_id`;
 
 /** Every open item, access derived per row. */
-const OPEN = `select ${COLUMNS}, r.deleted_at is not null as trashed, ${HELD} as held
+const openOf = (chats: boolean): string => `select ${COLUMNS}, r.deleted_at is not null as trashed,
+              ${heldOf(chats)} as held
          from public.inbox_items i
          join public.records r on r.business_id = i.business_id and r.id = i.subject_record_id
         where i.business_id = $1 and i.recipient_person_id = $2 and i.work_state = 'open'`;
@@ -64,12 +67,12 @@ const OPEN = `select ${COLUMNS}, r.deleted_at is not null as trashed, ${HELD} as
  * A conversation's item (C71, a mention) is never closed on this head; were
  * one, a business-wide reader in it would find it here.
  */
-const PAGE = `select * from (
+const pageOf = (chats: boolean): string => `select * from (
          (select ${COLUMNS}, r.deleted_at is not null as trashed, true as held
             from public.inbox_items i
             join public.records r on r.business_id = i.business_id and r.id = i.subject_record_id
            where (select business from reach) and i.business_id = $1 and i.recipient_person_id = $2
-             and i.work_state <> 'open' and ${HELD}
+             and i.work_state <> 'open' and ${heldOf(chats)}
            order by i.closed_at desc, i.id desc
            limit $3)
          union all
@@ -94,7 +97,7 @@ const PAGE = `select * from (
  * ($3, `-infinity` while the page is not full), among the newest $4 closed
  * items on the history index (0044), which the scan starts and stops on.
  */
-const WITHHELD = `shown as (${REACH}
+const withheldOf = (chats: boolean): string => `shown as (${REACH}
        select ${COLUMNS}, r.deleted_at is not null as trashed, false as held
          from (select ${COLUMNS}
                  from public.inbox_items i
@@ -103,7 +106,7 @@ const WITHHELD = `shown as (${REACH}
                 order by i.closed_at desc, i.id desc
                 limit $4) i
          join public.records r on r.business_id = i.business_id and r.id = i.subject_record_id
-        where not ${HELD}
+        where not ${heldOf(chats)}
      )`;
 
 /**
@@ -140,7 +143,10 @@ const listing = (ctes: string): string => `with ${ctes}
       order by s.raised_at, s.id`;
 
 /** Every open item and the page. */
-const ITEMS = listing(`shown as (${REACH}\n       ${OPEN}\n       union all\n       ${PAGE})`);
+const itemsOf = (chats: boolean): string =>
+  listing(
+    `shown as (${REACH}\n       ${openOf(chats)}\n       union all\n       ${pageOf(chats)})`,
+  );
 
 /**
  * What one recipient can be shown, each axis read separately and access derived
@@ -162,8 +168,9 @@ const ITEMS = listing(`shown as (${REACH}\n       ${OPEN}\n       union all\n   
 export async function readInboxItems(
   tx: TenantQuery,
   recipientPersonId: string,
+  chats = true,
 ): Promise<readonly InboxItem[]> {
-  const shown = await tx.query<ItemRow>(ITEMS, [
+  const shown = await tx.query<ItemRow>(itemsOf(chats), [
     tx.businessId,
     recipientPersonId,
     INBOX_HISTORY_PAGE,
@@ -172,7 +179,7 @@ export async function readInboxItems(
   // As text: the driver writes a timestamp parameter through `Date`, which has no infinity.
   const edge =
     page.length < INBOX_HISTORY_PAGE ? '-infinity' : new Date(Math.min(...page)).toISOString();
-  const withheld = await tx.query<ItemRow>(listing(WITHHELD), [
+  const withheld = await tx.query<ItemRow>(listing(withheldOf(chats)), [
     tx.businessId,
     recipientPersonId,
     edge,
@@ -213,14 +220,18 @@ function itemOf(row: ItemRow): InboxItem {
  * a task the recipient reads now that is not trashed. Every open item is on the
  * list, so this equals the list's counted entries.
  */
-export async function countOwedItems(tx: TenantQuery, recipientPersonId: string): Promise<number> {
+export async function countOwedItems(
+  tx: TenantQuery,
+  recipientPersonId: string,
+  chats = true,
+): Promise<number> {
   const rows = await tx.query<{ readonly owed: number }>(
     `${REACH}
      select count(*)::int as owed
        from public.inbox_items i
        join public.records r on r.business_id = i.business_id and r.id = i.subject_record_id
       where i.business_id = $1 and i.recipient_person_id = $2
-        and i.work_state = 'open' and i.owed and r.deleted_at is null and ${HELD}`,
+        and i.work_state = 'open' and i.owed and r.deleted_at is null and ${heldOf(chats)}`,
     [tx.businessId, recipientPersonId],
   );
   return rows[0]?.owed ?? 0;
