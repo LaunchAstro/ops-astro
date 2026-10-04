@@ -79,7 +79,7 @@ async function drill(body, run = docker) {
   });
 }
 
-test('Sol proof, criterion 2: a restore with an enabled but permissive tasks barrier is refused', async () => {
+test('a restore with an enabled but permissive tasks barrier is refused', async () => {
   assert.equal((await drill(await archive())).outcome, 'passed', 'the correctly scoped control passes');
   const body = await archive(`drop policy tenancy on public.tasks;
     create policy tenancy on public.tasks as restrictive for all using (true);`);

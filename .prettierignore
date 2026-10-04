@@ -137,5 +137,6 @@ tests/review/ow-063-deploy-business-proof.test.ts
 tests/review/ow-063-export-revocation-proof.test.ts
 tests/review/ow066-export-revocation-proof.test.ts
 tests/ci/restore-check-barrier-and-logs.proof.test.mjs
+tests/ci/restore-refuses-permissive-barrier.proof.test.mjs
 tests/ci/malformed-database-address-hidden.proof.test.ts
 tests/operations/scan-login-token-and-shared-login.proof.test.ts

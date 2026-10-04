@@ -105,7 +105,7 @@
       "files": [
         "tests/review/backup-read-part-appointment-proof.test.ts",
         "tests/review/ow-063-export-revocation-proof.test.ts",
-        "tests/review/sol-d1-export-session-gap.test.ts"
+        "tests/review/export-session-ended-after-part-gate-proof.test.ts"
       ],
       "rules": { "max-lines-per-function": "off" }
     },
@@ -120,7 +120,7 @@
     {
       "files": [
         "tests/ci/restore-check-barrier-and-logs.proof.test.mjs",
-        "tests/ci/sol-d1-restore-policy.test.mjs"
+        "tests/ci/restore-refuses-permissive-barrier.proof.test.mjs"
       ],
       "rules": {
         "no-await-in-loop": "off",

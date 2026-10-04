@@ -37,7 +37,7 @@ describe.skipIf(serverUrl === undefined)('OW-063 export revocation', () => {
   afterAll(() => rmSync(scratch, { recursive: true, force: true }));
   afterAll(() => rmSync(carriedScratch, { recursive: true, force: true }));
 
-  it('Sol proof, criterion 5: an ended session between the gate check and the store read prevents export', async () => {
+  it('an ended session between the gate check and the store read prevents export', async () => {
     // Match the two real installations, including the store's appointed person.
     await db.app.withBusiness(business, (tx) =>
       tx.query("update public.businesses set key = 'made-up' where id = $1", [business]),
