@@ -38,6 +38,7 @@ import {
   rowsOf,
   useClientsWorld,
 } from './c32-clients-world.ts';
+import { consoleLine } from '../support/console-text.ts';
 
 useClientsWorld();
 
@@ -143,7 +144,7 @@ async function c32IsolationAnotherBusinessAnotherClientAnd(): Promise<void> {
 
 async function c32CanaryAClientNameCarryingA(): Promise<void> {
   const logged: string[] = [];
-  const capture = (...parts: unknown[]) => void logged.push(parts.map(String).join(' '));
+  const capture = (...parts: unknown[]) => void logged.push(consoleLine(...parts));
   const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((level) =>
     vi.spyOn(console, level).mockImplementation(capture),
   );
