@@ -55,12 +55,25 @@ function stepFor(key: string, index: number, count: number): number | null {
   return null;
 }
 
+interface Held {
+  readonly at: number;
+  readonly key: string;
+}
+
+/** Where a held point is now: its place while its key is still there, else its key's place. */
+function placeOf(keys: readonly string[], held: Held | null): number | null {
+  if (held === null) return null;
+  const at = keys[held.at] === held.key ? held.at : keys.indexOf(held.key);
+  return at === -1 ? null : at;
+}
+
 /**
  * One tab stop over a chart's points. The pointer shows a point's tip while it
  * is over it; focus shows it too, and the arrow keys, Home and End move focus
  * along the points. Hovering never moves the tab stop, and the pointer leaving
  * hands the tip back to the point that holds focus now. The shown point is held
- * by its key, so a render that removes or reorders points never shows another.
+ * by its place and its key: a render that removes or reorders points finds it by
+ * key or shows none, and two points sharing a key each show their own.
  */
 export function usePoints(keys: readonly string[]): {
   readonly shown: number | null;
@@ -69,11 +82,13 @@ export function usePoints(keys: readonly string[]): {
 } {
   const tipId = useId();
   const [stop, setStop] = useState(0);
-  const [shown, setShown] = useState<string | null>(null);
+  const [shown, setShown] = useState<Held | null>(null);
   const nodes = useRef<(SVGElement | null)[]>([]);
   const count = keys.length;
-  const at = shown === null ? -1 : keys.indexOf(shown);
-  const live = at === -1 ? null : at;
+  const live = placeOf(keys, shown);
+  const show = (index: number): void => {
+    setShown({ at: index, key: keys[index] ?? '' });
+  };
   const move = (event: KeyboardEvent, index: number): void => {
     const next = stepFor(event.key, index, count);
     if (next === null) return;
@@ -91,15 +106,15 @@ export function usePoints(keys: readonly string[]): {
     'aria-describedby': live === index ? tipId : undefined,
     tabIndex: index === Math.min(stop, count - 1) ? 0 : -1,
     onMouseEnter: () => {
-      setShown(keys[index] ?? null);
+      show(index);
     },
     onMouseLeave: () => {
       const held = nodes.current.findIndex((node) => node?.ownerDocument.activeElement === node);
-      setShown(held === -1 ? null : (keys[held] ?? null));
+      setShown(held === -1 ? null : { at: held, key: keys[held] ?? '' });
     },
     onFocus: () => {
       setStop(index);
-      setShown(keys[index] ?? null);
+      show(index);
     },
     onBlur: () => {
       setShown(null);
