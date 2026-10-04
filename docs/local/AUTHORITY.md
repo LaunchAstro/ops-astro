@@ -623,7 +623,8 @@ Membership is the filter here too. A tab follows `conversation:<id>` on its
 one live stream only while it is staff holding `chat:comment` and a current
 member, asked at the join and again before every delivery
 (`reads/live-chat.ts`), membership and `chat:comment` in one statement, so a
-revocation committed mid-admission admits nothing; the board stream says a
+revocation committed mid-admission admits nothing, nor does a grant that lapses
+while the statement waits (its expiry read on `clock_timestamp()`); the board stream says a
 conversation moved only to its current members who may chat. A mention in a message is refused `MENTION_NOT_READABLE`
 unless the person named is a current member who may chat (staff holding
 `chat:comment`, as `chat.messages` asks), and its inbox item is held by such
@@ -637,7 +638,8 @@ reads the message, a re-added one included, is shown and counted its mention.
 The owner and administrators hold no way round any of it.
 `tests/api/c71-live-conversations.test.ts` and
 `tests/api/c71-chat-mentions.test.ts` and
-`tests/api/c71-c-agent-key-without-chat.test.ts` hold it.
+`tests/api/c71-c-agent-key-without-chat.test.ts` and
+`tests/api/c71-c-chat-grant-expiry-during-admission.test.ts` hold it.
 
 ## preset.plan
 

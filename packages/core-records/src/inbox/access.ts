@@ -32,7 +32,9 @@ export const IS_CONVERSATION = `exists (select 1 from public.record_types ct
  * Whether `person` (an SQL expression) may chat in `r`'s business now, as
  * `chat.messages` admits them: staff (an active owner, administrator or member
  * membership) holding a live `chat:comment` across the business, walked from
- * `EFFECTIVE` in the statement that asks it.
+ * `EFFECTIVE` in the statement that asks it. Its expiry is read against that
+ * statement's clock, not the transaction's start, so a grant that lapses while
+ * the statement waits admits nothing (a child never outlives its parent).
  */
 export const chatsNow = (person: string): string => `(exists (select 1 from public.memberships ms
      where ms.business_id = r.business_id and ms.person_id = ${person} and ms.active
@@ -40,7 +42,8 @@ export const chatsNow = (person: string): string => `(exists (select 1 from publ
    and exists (${EFFECTIVE}
      select 1 from effective e
       where e.business_id = r.business_id and e.collection = 'chat' and e.action = 'comment'
-        and e.scope_kind = 'business' and ${heldBy(person)}))`;
+        and e.scope_kind = 'business' and ${heldBy(person)}
+        and (e.expires_at is null or e.expires_at > clock_timestamp())))`;
 
 /** Whether grant `e` names `person` (an SQL expression) or one of their active acting identities. */
 const heldBy = (
