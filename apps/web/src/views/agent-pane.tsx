@@ -15,28 +15,63 @@
 // the task page's own (T2e). A run stopped at its ceiling (AW-05) is answered
 // with `run.top_up` (`billing:decide`) or `run.end_at_budget_stop`
 // (`gate:decide`), naming the task, the run and the stop the read showed.
-// Every outcome ends in a reread, as the proposals section's does.
+// Every outcome ends in a reread, as the proposals section's does. The
+// operational log (MP-6-2) is `task.execution`'s events and their runs' plans,
+// read again with each new task read, as the run's own section reads them; a
+// refused or failed read draws no log, and the run's section says why.
 
 import { useState, type ReactElement } from 'react';
-import { AgentPane, type GateDecision, type RecordedOutcome } from '@launchastro/ui';
+import {
+  AgentPane,
+  type GateDecision,
+  type RecordedOutcome,
+  type RunActivity,
+} from '@launchastro/ui';
+import { askDrawer, newAttemptAsk } from '../assistant/asks.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import type {
+  ExecutionEvent,
   PersonView,
   ProposalView,
+  TaskExecutionResult,
   TaskLedgerView,
 } from '../../../../packages/core-wire/src/index.ts';
+import { useRead } from '../data/use-read.ts';
 import type { Settlement } from '../records/use-command.ts';
+import { useStepUpHold } from './step-up-hold.ts';
 import { useMoneyCommand, type StepUpAsk } from '../records/use-money-command.ts';
 import { StepUpPrompt } from './step-up-prompt.tsx';
+import { wholeExecution } from './run-progress.tsx';
 
 export interface AgentSectionProps {
   readonly client: OperationsClient;
+  /**
+   * The session the page is read under: the drawer's ask carries it, and the
+   * operational log's read is made under it (MP-6-2).
+   */
+  readonly grantKey: string;
   readonly recordId: string;
+  /** The task's title as the read gave it, or its key while it has none: the drawer's ask names it. */
+  readonly title: string;
+  /**
+   * The client the task is under, as `task.read` sent it: null on an internal
+   * task, and on one whose client the reader's grants do not reach (CS-4.12).
+   * The drawer's ask carries it, so the egress rule sees whose data a plan
+   * would carry (AW-04).
+   */
+  readonly clientId: string | null;
+  /** The task is under a client the reader cannot see (`clientSet`, no id): its setting reads as off. */
+  readonly clientUnseen: boolean;
+  /** The task's key, for the operational log's read (MP-6-2). */
+  readonly taskKey: string;
+  /** The task read's latest answer: each new one re-reads the log. */
+  readonly readOf: unknown;
   readonly proposals: readonly ProposalView[];
   readonly people: readonly PersonView[];
   /** `task.read`'s token ledger (MP-6-5): null for a reader it is not shown to, absent on an older read. */
   readonly ledger: TaskLedgerView | null | undefined;
   readonly onChanged: () => void;
+  readonly onStepUp?: (open: true | null) => void;
 }
 
 interface AgentControls {
@@ -84,7 +119,9 @@ function useAgentControls(props: AgentSectionProps): AgentControls {
   const [refusal, setRefusal] = useState<string | null>(null);
   const [awaiting, setAwaiting] = useState<string | null>(null);
   const [stopAwaiting, setStopAwaiting] = useState<string | null>(null);
+  const hold = useStepUpHold(props, stepUp !== null);
   const settle = (settlement: Settlement): void => {
+    hold(settlement);
     setRefusal(settlement.kind === 'ok' ? null : settlement.because);
     const state = settlement.kind === 'ok' ? stateOf(settlement.value) : undefined;
     setAwaiting(state === 'awaiting_second_approver' ? AWAITING : null);
@@ -189,6 +226,7 @@ export function AgentSection(props: AgentSectionProps): ReactElement {
   // preference store once that store is in (MP-2-11); until then it lasts
   // as long as the page.
   const [jobListOpen, setJobListOpen] = useState(false);
+  const activity = useActivity(props);
   const nameOf = (personId: string): string =>
     props.people.find((person) => person.personId === personId)?.name ?? 'a person';
 
@@ -217,8 +255,36 @@ export function AgentSection(props: AgentSectionProps): ReactElement {
         onTopUpAtStop={controls.topUpAtStop}
         onEndAtStop={controls.endAtStop}
         stopAwaiting={controls.stopAwaiting}
+        onStartAttempt={() => {
+          const { recordId: id, title, clientId } = props;
+          const unseen = props.clientUnseen ? { clientUnseen: true as const } : {};
+          askDrawer(newAttemptAsk({ id, title, clientId, ...unseen }), props.grantKey);
+        }}
+        {...(activity === undefined ? {} : { activity })}
       />
       {controls.stepUp === null ? null : <StepUpPrompt ask={controls.stepUp} />}
     </section>
   );
 }
+
+/**
+ * The log's rows: the execution read's events, each placed in the plan its run
+ * was proposed under, and those plans, once read. A read without placements
+ * draws no log rather than rows placed against nothing.
+ */
+function useActivity(props: AgentSectionProps): RunActivity | undefined {
+  const { state } = useRead<TaskExecutionResult>({
+    grantKey: props.grantKey,
+    run: async () => await wholeExecution(props.client, props.taskKey),
+    deps: [props.taskKey, props.readOf],
+  });
+  if (state.outcome !== 'ready' && state.outcome !== 'empty') return undefined;
+  const execution = state.value.execution as Partial<TaskExecutionResult['execution']> | undefined;
+  if (!Array.isArray(execution?.events) || !Array.isArray(execution.plans)) return undefined;
+  if (!execution.events.every(placed)) return undefined;
+  return { plans: execution.plans, events: execution.events };
+}
+
+type Placed = ExecutionEvent & { readonly placement: NonNullable<ExecutionEvent['placement']> };
+
+const placed = (event: ExecutionEvent): event is Placed => event.placement !== undefined;

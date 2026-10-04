@@ -18,8 +18,17 @@
     "tests/db/inbox-conformance.test.ts",
     "tests/db/inbox-read-revocation-race.test.ts",
     "tests/db/inbox-records.test.ts",
+    "tests/db/lease-holder-guard.test.ts",
+    "tests/db/reservation-stop-cause.test.ts",
     "tests/db/reviewed-output-proposer.test.ts",
-    "tests/db/second-factor-codes-retention.test.ts"
+    "tests/db/second-factor-codes-retention.test.ts",
+    "tests/db/take-lease-path.test.ts",
+    "tests/db/backup-part-reads-wait-for-gate.test.ts"
   ],
-  "conformance": ["tests/db/mp-6-2-run-states.test.ts", "tests/db/storage-triggers.test.ts"]
+  "conformance": [
+    "tests/db/mp-6-2-run-states.test.ts",
+    "tests/db/storage-triggers.test.ts",
+    "tests/db/identity-roles-hold-no-membership.test.ts",
+    "tests/db/migration-retries-shared-role-race.test.ts"
+  ]
 }

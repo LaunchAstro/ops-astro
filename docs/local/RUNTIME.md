@@ -828,10 +828,14 @@ and the pickup is refused `BUDGET_UNAVAILABLE`, a refusal that keeps the stop
 and its ask. After the consolidated ask there is no ask left to raise: the run
 ends (`cancelled`, with no hold to release) and a person is told on the task
 (`awaiting_person`, `needs_approval`). The stop is written first, then the
+task's lease is met as a pickup meets it (`fenceLiveLease`), then the
 claimant's authority is read (`claimantMayWork`) before the refusal commits, so
 a caller without it is refused and the rollback takes the stop and its ask
 back (`tests/runtime/resume-sizing.test.ts`,
-`tests/runtime/resume-sizing-stop.test.ts`). A settled hold, a quarantined one,
+`tests/runtime/resume-sizing-stop.test.ts`). Another holder's live, unexpired
+lease refuses the stop `LEASE_HELD`, and the rollback takes it back too; an
+expired one is fenced and its hold classified, kept with the stop, as a pickup
+would (`tests/pickup/pickup-stop-at-spent-hold-lease.test.ts`). A settled hold, a quarantined one,
 or a version already holding elsewhere is refused `RESERVATION_NOT_CLAIMABLE` (`replaceable`). Storage
 counts a quarantined hold as active too.
 
@@ -971,7 +975,9 @@ only a hold with no spend is `abandoned`. A budget top-up already moved the
 spend to date to the envelope's actual (`raiseHold`, `budget-answer.ts`), so a
 topped-up hold counts only the spend the top-up did not move: the ask's
 ceiling and the top-up less the hold now. Below zero, a call counted at its
-maximum came to less, and the envelope gets the difference back.
+maximum came to less, and the envelope gets the difference back. Settled or
+abandoned, the stopped hold records its cause and the cause's identity
+(`20261004040100_reservation_stop_cause`).
 
 A call open when its hold's spend was counted, by this settle, a top-up or the
 end at a budget stop (`budget_stop_ended`), was counted at its maximum. When
@@ -983,7 +989,16 @@ the difference comes off the envelope's actual; while a topped-up hold is
 still held it goes back onto that hold, so the hold's later settle and its
 replacement's size see it once. A hold ended any other way never counted its
 calls and gives nothing back (`tests/broker/spend-give-back.test.ts`,
-`tests/broker/spend-give-back-late.test.ts`). The sweep, a cancel, a lost
+`tests/broker/spend-give-back-late.test.ts`). A call closes once: a call a
+provider's proof released or its own answer settled ignores a later answer or
+release, and gives nothing back again (`broker-settle.ts`). A hold moves a call
+only out of `reserved` or `dispatched`; an answer that comes after the sweep
+held it still settles or releases it, since the answer is what happened, and
+gives back what its hold counted, as an open call's answer does
+(`tests/broker/unknown-call-settled-lower-gives-back.test.ts`). A call released
+unsent (a start refused, a sweep) gives nothing back
+(`tests/broker/spend-closes-once.test.ts`).
+The sweep, a cancel, a lost
 authority, pickup's expired-lease replacement and every hand-back, a drop
 included, reach this one step (`tests/runtime/classifier-counts-spend.test.ts`).
 
@@ -1444,7 +1459,7 @@ under a dedicated delegation credential key
   or the gitignored 0600 file `.local/delegation.env`
   (`credential-keys.ts:120-165`, `:177-211`). `scripts/local-seed.mjs` or the
   first use creates that file once, with a fresh random key id, and never
-  rewrites it (`local-seed.mjs:821-832`). With neither setting present, the
+  rewrites it (`local-seed.mjs:855-866`). With neither setting present, the
   file is read, and created if absent (`configuredCredentialKeys`, `:220-230`).
   `DELEGATION_CREDENTIAL_KEY_FILE` names another file to use in its place
   (`KEY_FILE_VARIABLE`, `:53`). With `DELEGATION_CREDENTIAL_KEY_FILE` set in the
@@ -1561,7 +1576,17 @@ both tenancy-scoped with row security forced, and the fair share's count
   each through the gate a model call takes (`atCeiling`: the operation's
   ceiling for the business, then the route's ceiling and the business's fair
   share). A lookup with no room is not sent and writes nothing; the next pass
-  asks again. Only an answer in the
+  asks again. With room, the same transaction, under the gate's locks, takes
+  the lookup's slot on the asked call (`lookup_until`, `20261004040000_lookup_slot`)
+  before anything is sent. The route's ceiling, the fair share and the
+  business's own ceiling for the operation all count an unexpired slot as a
+  call in flight: the lookup uses the provider's capacity as a call does, so
+  two passes, or a pass and a model call, cannot both take the last place. A
+  call another pass holds a slot on waits too. The slot is given back when the
+  lookup ends, with proof, without, or when custody throws; a worker lost
+  while asking leaves it counting until the operation's timeout plus 60
+  seconds (`SLOT_MARGIN_MS`; custody's deadline covers the whole lookup).
+  Only an answer in the
   lookup's own shape with a declared code releases the call; the step then
   resumes through the register's answer (`withProviderCalls`). Anything else
   writes only `reconcile_note` ("could establish nothing: ..."); a provider
@@ -1741,8 +1766,9 @@ totals.
   the page's AI planning budget field moves it through the command, opened only
   for a session holding `billing:decide` (`screens/settings/planning-cap.tsx`).
 
-Not here yet: the recent sign-in the command asks as a money action (C59), and
-the planning spend beside the plan.
+As a money action (`billing:decide`) the command asks C59's recent sign-in in
+the envelope (`STEP_UP_REQUIRED` past 60 minutes while the business's money
+step-up setting is on). Not here yet: the planning spend beside the plan.
 
 ## The budget wait
 
@@ -1773,11 +1799,11 @@ calls on one run reaching the ceiling at once stop it once.
   neither is a transition to classify, and the wait is not a clock. A
   cancelled, rejected or superseded lineage is still classified.
 - **Not here yet.** The question in the conversation where the plan was
-  approved, with its two buttons (AW-04's origin, SL12's drawer), and the
-  second-factor check on a money answer (C59). The answers themselves are
-  commands, `run.top_up` and `run.end_at_budget_stop`, on the API, the command
-  line and the app's client
-  ([API.md](API.md#the-answers-at-the-budget-stop)).
+  approved, with its two buttons (AW-04's origin, SL12's drawer). The answers
+  themselves are commands, `run.top_up` and `run.end_at_budget_stop`, on the
+  API, the command line and the app's client
+  ([API.md](API.md#the-answers-at-the-budget-stop)); `run.top_up` holds
+  `billing:decide`, so C59's step-up asks it in the envelope.
 
 ## The answers at the budget stop
 
@@ -2147,8 +2173,16 @@ launch of the reviewed output is the only decision an effect waits on.
   it on the attempt (`attempts.receipt_link`, 0109) only when `receiptLinkOf`
   does: `https:`, exactly the step kind's declared host
   (`EFFECT_RECEIPT_HOSTS`), no user, password, port, query or fragment, at most
-  512 characters, and the parsed form byte for byte the text sent. Anything
-  else is stored as null, which a reader shows as "no link", never as a link.
+  512 characters, the parsed form byte for byte the text sent, and no run of
+  43 base64url characters, a delegation credential's length, as sent or once
+  its percent escapes decode (`CREDENTIAL_RUN`), and, for an agent's
+  observation, not the letters and digits of any live credential the agent
+  holds in order: its delegations, the child delegations they minted, and its
+  logins, unexpired (each derived again from its row, `agentCredentials`; one
+  that cannot be derived keeps no link), nor those letters reversed or the
+  credential's bytes in hex. The check is best effort against re-spellings: an
+  agent set on leaking a credential has other ways out, and its short-lived
+  sign-in token is not among them. Anything else is stored as null, which a reader shows as "no link", never as a link.
   0109's check repeats the shape and allows a link only on an observed
   attempt; its trigger fixes the link once the attempt is observed, so a link
   resolved later is not a receipt. `task.receipt` names it as `link` beside
@@ -2156,7 +2190,8 @@ launch of the reviewed output is the only decision an effect waits on.
 
 Tests: `aw-08-approval-gate`, `aw-08-client-sign-off`, `aw-08-isolation` and
 `aw-08-receipt-provider` (`AW-08 receipt link`, `AW-08 hostile provider`,
-`AW-08 canary`).
+`AW-08 canary`), `receipt-link-keeps-no-credential`,
+`receipt-link-keeps-no-respelled-credential` and `receipt-link-credential-run`.
 
 ## What is not here
 

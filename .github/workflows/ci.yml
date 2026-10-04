@@ -8,8 +8,10 @@ on:
   pull_request:
     # `labeled` and `unlabeled` were added in round four for the size
     # waivers. The waivers are retired (FU-400, 29 September 2026): the size
-    # is reported, not limited, and no check reads a label. The triggers stay
-    # as they were, so no required check changes when it runs.
+    # is reported, not limited. The triggers stay as they were. One label
+    # event changes a result (CI-SPEED): adding `sent-back` cancels the run on
+    # a head sent back for fixes and fails the gate there
+    # (scripts/sent-back-hold.mjs). No other label changes any check.
     # `edited` is not here. The review-evidence check reads the pull request
     # body, so an edit must refresh that result (round five), but only that
     # one: review-evidence.yml holds that check alone and runs it on code
@@ -30,9 +32,15 @@ on:
 permissions:
   contents: read
 
+# A newer run on a pull request (a push, a label change, a reopen) cancels its
+# older run still in flight or queued; the ref is the pull request's own, so
+# one pull request never cancels another's. A merge group's run is not
+# cancelled by a newer run (CI-SPEED): it may hold several pull requests, and
+# the queue drops a group whose checks were cancelled. Each group's ref is
+# its own anyway, so this guards the rule rather than changing a run.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name != 'merge_group' }}
 
 jobs:
   gate:
@@ -49,6 +57,18 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: .nvmrc
+      # CI-SPEED: the run the `sent-back` label starts fails here, so nothing
+      # after the gate runs on a head sent back for fixes (scripts/sent-back-hold.mjs).
+      - name: A pull request sent back for fixes waits for its fix head
+        run: node scripts/sent-back-hold.mjs
+      # CI-SPEED (#724): a pull request whose head is a merge-queue commit (the
+      # tip of a gh-readonly-queue/ branch, under any branch name) fails here:
+      # every job that waits on the gate is skipped, and `database conformance`,
+      # which runs always(), fails. review-evidence.yml runs the same check, as
+      # it waits on no gate. It fails closed on a pull request it cannot read;
+      # other events pass (scripts/queue-head-check.mjs).
+      - name: A pull request never runs its checks on a merge-queue commit
+        run: node scripts/queue-head-check.mjs
       - name: Required scanner runtime
         run: python3 -c "import sys; assert sys.version_info >= (3, 11), 'Python 3.11 or newer is required'"
       - name: Self-test, before anything is believed
@@ -176,34 +196,48 @@ jobs:
           echo "$bin" >> "$GITHUB_PATH"
       - name: The pinned headless shell for MP-1-1's harness captures and the browser proofs
         run: pnpm exec playwright install --with-deps --only-shell chromium
+      # CI-SPEED, light pull requests: CHECK_SCOPE names this check, and
+      # scripts/check.mjs asks scripts/ci-scope.ts. On a pull request it runs
+      # the light set: every step but the build, with the tests the change
+      # reaches in place of the full test run; the full run and the build run in the
+      # merge queue, the only way into main. On a merge group or a push it
+      # runs every step, as before. No step here carries a condition.
       - run: pnpm check
         env:
           # The suites in tests/ci/container-suites.json run in the next step instead.
           CONTAINER_SUITES: apart
+          CHECK_SCOPE: local checks
+      # CI-SPEED: every step below is queue-only (`queueOnly`,
+      # scripts/ci-scope.json). On a pull request each says it runs in the
+      # merge queue and passes; on a merge group or a push each runs in full.
       # They start containers, and a new network interface aborts a browser
       # capture's page load in flight (net::ERR_NETWORK_CHANGED), so they run
       # here, after every capture in `pnpm check`.
       - name: The suites that start containers, after the browser captures
-        run: pnpm vitest run $(node -p "require('./tests/ci/container-suites.json').suites.join(' ')")
+        run: node scripts/ci-scope.ts 'local checks' -- pnpm vitest run $(node -p "require('./tests/ci/container-suites.json').suites.join(' ')")
       # S0-6 content policy: the built page, in the headless shell above,
       # refuses planted scripts. Alone, since it builds apps/web/dist.
       - name: The built page refuses planted scripts in a real browser
-        run: pnpm vitest run tests/browser/
+        run: node scripts/ci-scope.ts 'local checks' -- pnpm vitest run tests/browser/
         env:
           BROWSER_PROOFS: '1'
       - name: Semgrep p/default on the supply-chain settings, image pinned by digest (CQ-3)
-        run: bash scripts/local/semgrep-settings.sh
+        run: node scripts/ci-scope.ts 'local checks' -- bash scripts/local/semgrep-settings.sh
+      # `pnpm check` reads the same policy over the working tree on a pull request too.
       - name: Public content in the actual checked-out snapshot
-        run: node scripts/public-content-check.mjs --repo "$PWD"
+        run: node scripts/ci-scope.ts 'local checks' -- node scripts/public-content-check.mjs --repo "$PWD"
       # S0-1 promotion same artefact, a dry run in CI: the release step turns
       # the build `pnpm check` just made into the build output (the Vercel
       # re-plan), stored the way staging keeps it, under the name the staging
       # definition gives it; the promotion step must select it by the stamp
       # it carries, check its bytes against the digest it records, and record
-      # it. It touches no service and no database.
+      # it. It touches no service and no database. A pull request makes no
+      # build, so this runs in the merge queue.
       - name: S0-1 promotion same artefact, a dry run over the build output just made
         run: |
           set -euo pipefail
+          decision="$(node scripts/ci-scope.ts 'local checks' --decide)"
+          case "$decision" in run) ;; skip) exit 0 ;; *) exit 1 ;; esac
           version="$(node -p "JSON.parse(require('node:fs').readFileSync('apps/web/dist/build.json', 'utf8')).build")"
           store="${RUNNER_TEMP}/artefacts"
           mkdir -p "$store"
@@ -217,7 +251,7 @@ jobs:
         env:
           DOCKER: docker
           L5_RUNTIME_PROOFS: '1'
-        run: bash scripts/local/restart-proof.sh --suite tests/acceptance/inbox-worker-restart.test.ts
+        run: node scripts/ci-scope.ts 'local checks' -- bash scripts/local/restart-proof.sh --suite tests/acceptance/inbox-worker-restart.test.ts
 
   database-gate:
     # Proving the gate. These probes start their own throwaway Postgres, run
@@ -256,6 +290,12 @@ jobs:
     # check, and it passes only when every shard did.
     name: database conformance shard ${{ matrix.shard }}
     needs: [gate]
+    # CI-SPEED, light pull requests: the shards run in the merge queue, the
+    # only way into main, and on a push; a pull request skips them, and the
+    # aggregate below passes that skip on a pull request whose contamination
+    # gate passed, and nowhere else. This never
+    # skips a group (tests/ci/merge-group-jobs.test.ts).
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     # Its slowest green run in the day to 1 October 2026: 18.6 min.
     timeout-minutes: 35
@@ -298,10 +338,9 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # Checks by scope (scripts/ci-scope.ts, scripts/ci-scope.json): on a pull
-      # request the wrapped command runs only when the change reaches what it
-      # proves, and the step says why when it does not; on a merge group or a
-      # push it always runs. No step here carries a condition.
+      # Checks by scope (scripts/ci-scope.ts, scripts/ci-scope.json): on a merge
+      # group or a push the wrapped command always runs, and the shards run on
+      # nothing else. No step here carries a condition.
       - run: node scripts/ci-scope.ts 'database conformance' --shard ${{ matrix.shard }}/${{ strategy.job-total }} -- pnpm run db:conformance --shard ${{ matrix.shard }}/${{ strategy.job-total }}
         env:
           DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
@@ -311,9 +350,9 @@ jobs:
       # S0-3: a pull request that adds a migration upgrades a database built and
       # seeded at the base branch's newest migration, with the application
       # stopped, and every row must come through unchanged. No migration added,
-      # nothing to drill; a push to main has no base to start from. On a merge
-      # group the base is main as it stands, and the head holds every
-      # migration the group's pull requests add.
+      # nothing to drill; a push to main has no base to start from. It runs on
+      # a merge group, where the base is main as it stands and the head holds
+      # every migration the group's pull requests add.
       - name: The upgrade drill, when this pull request adds a migration
         if: github.event_name != 'push'
         env:
@@ -335,6 +374,10 @@ jobs:
     # (docs/supply-chain-pins.md).
     name: database look-ahead, Postgres 18 (not required)
     needs: [gate]
+    # Pull requests only (CI-SPEED, ORCH78 LOOKAHEAD). On a merge group or a
+    # push to main nobody reads it, and it held a runner to its 90-minute
+    # timeout there while the group's required checks waited for runners.
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 90
     services:
@@ -369,21 +412,33 @@ jobs:
   database:
     # The required check (ruleset 23396133, .github/required-checks.json): one
     # name over every shard. `always()` runs it when a shard failed, was
-    # skipped or was cancelled, and each of those fails it; without it this
-    # job would be skipped, and a skipped required check reads as passed.
-    # docs/agents/database-conformance.md holds what the check means.
+    # skipped or was cancelled, and each of those fails it on a merge group or
+    # a push; without it this job would be skipped, and a skipped required
+    # check reads as passed. On a pull request the shards skip by design
+    # (CI-SPEED), so a skip passes there, only when the contamination gate
+    # passed, and nowhere else: a failed gate skips the shards too, and
+    # always() would otherwise pass that skip as green. A failure or a cancel
+    # fails everywhere. docs/agents/database-conformance.md holds what the
+    # check means.
     name: database conformance
-    needs: [database-shard]
+    needs: [gate, database-shard]
     if: always()
     runs-on: ubuntu-latest
     # Its slowest green run in the day to 1 October 2026: 0.2 min.
     timeout-minutes: 10
     steps:
-      - name: Every shard succeeded
+      - name: Every shard succeeded, or on a pull request whose gate passed none ran
         env:
           SHARDS: ${{ needs.database-shard.result }}
+          GATE: ${{ needs.gate.result }}
+          # The event reaches the script as a value, never as script text.
+          EVENT: ${{ github.event_name }}
         run: |
-          echo "database conformance shards: $SHARDS"
+          echo "database conformance shards: $SHARDS, contamination gate: $GATE"
+          if [ "$EVENT" = pull_request ] && [ "$GATE" = success ] && [ "$SHARDS" = skipped ]; then
+            echo "database conformance: the shards run in the merge queue, the only way into main"
+            exit 0
+          fi
           test "$SHARDS" = success
 
   licences:
@@ -522,7 +577,7 @@ jobs:
           --health-timeout 5s
           --health-retries 20
     steps:
-      # Full history: on a pull request the scope reads the change from its base.
+      # Full history, as before; a queue-only check reads no change.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
@@ -532,10 +587,11 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # Checks by scope (scripts/ci-scope.ts, scripts/ci-scope.json): on a pull
-      # request the wrapped command runs only when the change reaches what it
-      # proves, and the step says why when it does not; on a merge group or a
-      # push it always runs. No step here carries a condition.
+      # CI-SPEED, light pull requests: queue-only (`queueOnly`,
+      # scripts/ci-scope.json). On a pull request each step says it runs in
+      # the merge queue, the only way into main, and passes, so the check
+      # still reports under its name; on a merge group or a push each always
+      # runs. No step here carries a condition.
       - run: node scripts/ci-scope.ts 'isolation tests' -- node scripts/db-conformance.mjs --manifest tests/db/isolation-suites.json
         env:
           DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
@@ -549,6 +605,17 @@ jobs:
           DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
           DATABASE_ADMIN_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
           FIXTURE_PG_CONTAINER: ${{ job.services.postgres.id }}
+      # The seed's boundary proof is a node:test file, so no manifest runs it: it
+      # makes and drops its own migrated databases on this service.
+      - run: node scripts/ci-scope.ts 'isolation tests' -- node --test tests/review/seed-boundaries-proof.test.mjs
+        env:
+          DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
+          DATABASE_ADMIN_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
+      # So is the proof that an HTTPS redirect cannot carry the seed's key to plaintext HTTP.
+      - run: node scripts/ci-scope.ts 'isolation tests' -- node --test tests/review/seed-redirect-keeps-key-off-http.proof.test.mjs
+        env:
+          DATABASE_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
+          DATABASE_ADMIN_URL: postgres://postgres:conformance-throwaway@127.0.0.1:5432/conformance
 
   parity:
     # API-1: every app action has its API and CLI equivalent; no database.

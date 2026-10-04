@@ -10,7 +10,10 @@
 // and every named suite in those areas runs. scripts/ci-scope.json is the
 // kept part: `scopable` prefixes may be narrowed this way, `runsEverything`
 // prefixes never are, and any path outside `scopable` runs everything.
-// `visualDrift` lists what the visual drift job builds and reads.
+// `visualDrift` lists what the visual drift job builds and reads. A check under
+// `queueOnly` (CI-SPEED, light pull requests) never runs on a pull request: the
+// merge queue, the only way into main, runs it in full, as do a push and any
+// other or empty event.
 
 // A scoped job wraps each heavy step in this, so no step carries a condition
 // that could skip a merge group (tests/ci/merge-group-workflows.test.ts): the
@@ -21,6 +24,8 @@
 // Usage: node scripts/ci-scope.ts <check> [--shard i/n] -- <command> [args...]
 //        node scripts/ci-scope.ts <check> --decide   (prints run or skip)
 //   GITHUB_EVENT_NAME  the event; anything but pull_request runs everything.
+//   A queue-only check reads no change: on a pull request it says it runs in
+//   the merge queue and passes (`--decide` prints skip).
 //   On a pull request the base is `node scripts/merge-group.mjs base`.
 //   A scoped database shard gets `--manifest <in-scope suites>` appended.
 
@@ -37,6 +42,7 @@ export interface ScopeMap {
   readonly scopable: readonly string[];
   readonly runsEverything: readonly string[];
   readonly visualDrift: readonly string[];
+  readonly queueOnly: readonly string[];
 }
 
 /** The areas of the named suites that depend on a path. */
@@ -54,8 +60,9 @@ const isPrefixList = (value: unknown): value is string[] =>
 /** The kept map, refusing anything malformed rather than reading it as empty. */
 export const readScopeMap = (path: string): ScopeMap => {
   const map = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
-  for (const key of ['scopable', 'runsEverything', 'visualDrift']) {
-    if (!isPrefixList(map[key])) throw new Error(`${path}: ${key} must be a list of paths`);
+  for (const key of ['scopable', 'runsEverything', 'visualDrift', 'queueOnly']) {
+    if (!isPrefixList(map[key]))
+      throw new Error(`${path}: ${key} must be a list of non-empty strings`);
   }
   return map as unknown as ScopeMap;
 };
@@ -182,6 +189,12 @@ function main(argv: readonly string[]): number {
   }
   const event = process.env['GITHUB_EVENT_NAME'] ?? '';
   const map = readScopeMap(join(root, 'scripts/ci-scope.json'));
+  if (map.queueOnly.includes(check)) {
+    const run = event !== 'pull_request';
+    const why = 'deferred on a pull request; it runs in full in the merge queue';
+    console.error(`ci-scope: ${check}: ${run ? `${event || 'no event'}: runs in full` : why}`);
+    return decideOrRun(run, command, []);
+  }
   const changed = event === 'pull_request' ? changedFiles(pullRequestBase(root), root) : [];
   const manifest = readNamedSuites(root);
   const named = [...manifest.invariant, ...manifest.conformance];
@@ -201,6 +214,11 @@ function main(argv: readonly string[]): number {
   console.error(`ci-scope: ${check}: ${run ? 'runs' : 'not run, no mapped path changed'}`);
   if (!scope.everything) console.error(`ci-scope: areas ${scope.areas.join(', ') || 'none'}`);
   for (const reason of scope.reasons) console.error(`ci-scope:   ${reason}`);
+  return decideOrRun(run, command, extra);
+}
+
+/** Prints the decision when there is no command; otherwise runs it when it runs, passing its exit code. */
+function decideOrRun(run: boolean, command: readonly string[], extra: readonly string[]): number {
   if (command.length === 0) {
     process.stdout.write(run ? 'run\n' : 'skip\n');
     return 0;

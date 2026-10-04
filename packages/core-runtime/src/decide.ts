@@ -75,7 +75,10 @@ import {
  */
 export type DecideResult =
   | RuntimeResult<Decided>
-  | { readonly ok: false; readonly refusal: CommandRefusal<'FIELD_VALUE_INVALID'> };
+  | {
+      readonly ok: false;
+      readonly refusal: CommandRefusal<'FIELD_VALUE_INVALID' | 'VERSION_STALE'>;
+    };
 
 const NUL = String.fromCodePoint(0);
 // With the `u` flag a paired surrogate reads as one code point, so this
@@ -115,6 +118,8 @@ export interface DecideRequest {
   readonly capId: string;
   /** Escalate's recipient: a person who must hold decide at business scope. */
   readonly recipientPersonId?: string;
+  /** The ceiling the person was shown (AW-04's card), refused unless it is the version's. */
+  readonly ceiling?: { readonly minor: number; readonly currency: string };
 }
 
 interface DecidedCommon {
@@ -227,6 +232,15 @@ export async function decide(tx: TenantQuery, presented: DecideRequest): Promise
   if (request.decision === 'approve') {
     const held = await launchDecisionRefusal(tx, gate.version_id);
     if (held !== null) return held;
+    const shown = request.ceiling;
+    if (shown !== undefined && !sameCeiling(shown, version)) {
+      const reason = `the version's ceiling is ${version.maximum_minor} ${version.currency} minor units`;
+      const fix = 'Read the plan again and accept the ceiling it holds now.';
+      return {
+        ok: false,
+        refusal: refuseCommand('VERSION_STALE', ['ceilingMinor'], [reason, fix]),
+      };
+    }
   }
   if (request.decision === 'escalate') return await escalateGate(tx, request, gate);
   const written = await writeDecision(
@@ -260,6 +274,12 @@ export async function decide(tx: TenantQuery, presented: DecideRequest): Promise
   }
   return await reserveApproval(tx, locked.capId, found.value.task_id, gate, version, common);
 }
+
+const sameCeiling = (
+  shown: NonNullable<DecideRequest['ceiling']>,
+  version: Rechecked['version'],
+): boolean =>
+  BigInt(shown.minor) === BigInt(version.maximum_minor) && shown.currency === version.currency;
 
 interface FoundGate {
   readonly lineage_id: string;

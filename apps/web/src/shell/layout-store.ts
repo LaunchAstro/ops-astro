@@ -11,9 +11,11 @@
 // jumps, and the read then brings what another device saved. Another person
 // signed in to the tab never reads the copy, and a switch or sign-out removes
 // it (session/token.ts). A key is saved once per release or fold, never per
-// move: the rail and the dock hold a moving value themselves.
+// move: the rail and the dock hold a moving value themselves. Saves leave in
+// order, each after the last has answered, so the last release is kept.
 
 import { useEffect, useRef, useState } from 'react';
+import { savePreference } from '../data/preference-saves.ts';
 import type { OperationsClient } from '../operations/client.ts';
 import {
   grantKeyOf,
@@ -96,7 +98,7 @@ export function useLayoutStore(
       const layout = { ...current.layout, [key]: value };
       copy.write(layout);
       setHeld({ owner, layout });
-      void client.mutate('preference.save', { preference: key, value });
+      void savePreference(client, key, value);
     },
   };
 }

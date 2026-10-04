@@ -1,4 +1,8 @@
 {
+  "comment": [
+    "SOLOW-G G1 names cancelled-unknown-hold-story (Sol OW-108.2: a cancellation never overrides an unresolved unknown hold in the run story, through the real task read).",
+    "SOLOW-G G1c names failed-handback-story (Sol OW-108.1: a failed hand-back never reports successful completion, through the real API) and handback-outcome-read (the task read carries the attempt outcome: a completed hand-back reads completed and Done)."
+  ],
   "invariant": [
     "tests/api/agent-bare-handback-replay.test.ts",
     "tests/api/agent-read-targets.test.ts",
@@ -41,6 +45,9 @@
     "tests/api/cli-reach.test.ts",
     "tests/api/controls-revoke.test.ts",
     "tests/api/controls-work.test.ts",
+    "tests/api/conversation-hides-task-title-revoked-before-content.test.ts",
+    "tests/api/conversation-list-keeps-unreadable-subject-in-database.test.ts",
+    "tests/api/conversation-page-hides-unreadable-task-any-spelling.test.ts",
     "tests/api/cq-1.test.ts",
     "tests/api/cq-2-start-up-keys.test.ts",
     "tests/api/cq-2.test.ts",
@@ -51,6 +58,8 @@
     "tests/api/envelope-faults.test.ts",
     "tests/api/expiry-bound.test.ts",
     "tests/api/function-entry.test.ts",
+    "tests/api/function-outbox-before-response.test.ts",
+    "tests/api/function-outbox-waits-for-own-events.test.ts",
     "tests/api/history-trail-preference.test.ts",
     "tests/api/id-operand-shape.test.ts",
     "tests/api/inb1f-live-board.test.ts",
@@ -59,6 +68,10 @@
     "tests/api/live-board-client-move-review.test.ts",
     "tests/api/live-board-lost-access.test.ts",
     "tests/api/live-board-scoped-revocation-review.test.ts",
+    "tests/api/live-presence-remap-and-back-keeps-no-revoked-reader.test.ts",
+    "tests/api/live-presence-remap-drops-previous-person.test.ts",
+    "tests/api/live-presence-remap-refused-person-gets-no-notification.test.ts",
+    "tests/api/live-presence-remap-seats-no-one-on-unreadable-task.test.ts",
     "tests/api/mp-2-11-tips.test.ts",
     "tests/api/mp-4-4-preferences.test.ts",
     "tests/api/mp-6-1-isolation.test.ts",
@@ -71,6 +84,10 @@
     "tests/api/operand-refusals.test.ts",
     "tests/api/preference-write-client-user.test.ts",
     "tests/api/preferences.test.ts",
+    "tests/api/receipt-link-held-credentials-crossings.test.ts",
+    "tests/api/receipt-link-keeps-no-credential.test.ts",
+    "tests/api/receipt-link-keeps-no-respelled-credential.test.ts",
+    "tests/api/receipt-link-literal-percent-and-held-digests.test.ts",
     "tests/api/restart-expiry-bound.test.ts",
     "tests/api/s0-6-isolation.test.ts",
     "tests/api/settings-revision-routes.test.ts",
@@ -95,8 +112,12 @@
     "tests/api/aw-03-sweep.test.ts",
     "tests/api/c36-address.test.ts",
     "tests/api/c54-money.test.ts",
+    "tests/api/c54-recent-sign-in.test.ts",
+    "tests/api/cancelled-unknown-hold-story.test.ts",
+    "tests/api/failed-handback-story.test.ts",
     "tests/api/fix-2b1-rs-rollup-issued-and-revoked.test.ts",
     "tests/api/fix-2b1-rs2-left-at-door-real-routes.test.ts",
+    "tests/api/handback-outcome-read.test.ts",
     "tests/api/hosted-expired-lease-recovery.test.ts",
     "tests/api/hosted-recovery-waits-for-pass.test.ts",
     "tests/api/mp-6-1-checks.test.ts",
@@ -127,6 +148,7 @@
     "tests/api/surface-operations.test.ts",
     "tests/api/t2c1-rejected-decision-crash-seam.test.ts",
     "tests/api/t2c2-worker.test.ts",
-    "tests/api/unstorable-command-bodies.test.ts"
+    "tests/api/unstorable-command-bodies.test.ts",
+    "tests/api/wrap-up-pointers-follow-reader-reach.test.ts"
   ]
 }

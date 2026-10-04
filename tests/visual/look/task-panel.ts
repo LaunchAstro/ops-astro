@@ -15,6 +15,7 @@
 // app's narrower widths).
 
 import type { LookProbe, LookScreen } from './probe.ts';
+import { DESCRIPTION_SANS } from './task-page.ts';
 
 const MOCKUP = {
   path: '/agency/projects/',
@@ -126,6 +127,7 @@ export const TASK_PANEL: LookScreen = {
       'task-panel.description',
       { mockup: '.tf__ta[data-sb="detail"]', app: '[data-writing="description"]' },
       ['font-family', 'font-size', 'color', 'padding-left', 'border-top-color', 'background-color'],
+      { ruled: DESCRIPTION_SANS },
     ),
     // DT-01 and DT-02: the subtasks head and the add line.
     probe(

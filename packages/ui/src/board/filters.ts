@@ -13,7 +13,8 @@
 
 import type { Facet, Filters, Preset } from './types.ts';
 
-const WORD = /[\p{L}\p{N}]/u;
+// A combining mark belongs to the letter before it, so it never starts a word.
+const WORD = /[\p{L}\p{M}\p{N}]/u;
 
 /** Whether `term` appears in `text` starting at a word's first character. */
 export function startsAWord(text: string, term: string): boolean {
@@ -50,6 +51,17 @@ export function narrowRows<Row>(
       kinds.every((same) => same.some((facet) => facet.test(row))) &&
       filters.text.every((term) => startsAWord(hay(row), term)),
   );
+}
+
+// The free words a view keeps (OW-100.1): one bound, generous for typing,
+// applied alike at commit and on reload, so a committed view always reloads
+// the same and an address no one typed cannot grow the view without limit.
+const MAX_WORDS = 32;
+const MAX_WORD_LENGTH = 128;
+
+/** The view's free words within the bound: over-long words drop, the first ones stay. */
+export function boundedWords(words: readonly string[]): string[] {
+  return words.filter((word) => word.length <= MAX_WORD_LENGTH).slice(0, MAX_WORDS);
 }
 
 /** Split a typed query: a token naming a facet is that facet, the rest are free words. */

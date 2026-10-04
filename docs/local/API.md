@@ -142,7 +142,7 @@ naming `lineageId`, and the `COMMAND_BODY_INVALID` branch in `proposeOnTask`
 privacy incident's `whatHappened`, `foundBy` and `affected`, a legal
 document version's `body`, an overseas service's `service`, `receives`,
 `where`, `trainsOnIt` and `contract`, a data class's `dataClass`,
-`purpose`, `disclosures`, `retention` and `deletion`, and a client's `name`, holding U+0000 or an unpaired surrogate, in any string or key, are
+`purpose`, `disclosures`, `retention` and `deletion`, a client's `name`, and a client's written request's `requestedBy` and `requestLink` (C60), holding U+0000 or an unpaired surrogate, in any string or key, are
 `FIELD_VALUE_INVALID` 422 naming the operand. A successor is named by its inner
 key (`successor.<key>`). The check runs after authority and before the target
 is read, and nothing is written (`FREE_OPERANDS` and
@@ -1333,7 +1333,9 @@ second loses the register's identity key and replays. After that commit the
 broker starts the call, sends it through custody and settles it
 (`sendReservedCall`), re-reading the task's client link, the lease, the
 delegation and the reservation under their locks, so authority lost in between refuses the call when its
-effect applies.
+effect applies. The start sends only a call it moves from `reserved` to
+`dispatched` itself: a second send of the same hold, at once or later, or a
+hold the sweep released meanwhile, sends nothing (`EFFECT_NOT_RECONCILABLE`).
 
 The answer is the call as its ledger row stands: `callId`, `state`,
 `reservedMinor`, `actualMinor`, `observedMinor`, `drop`, and `text`, the
@@ -1355,7 +1357,8 @@ with its wait, `BUDGET_UNAVAILABLE`); one recorded as a step keeps its
 run stops and asks in the same transaction (AW-05, the budget wait in
 [RUNTIME.md](RUNTIME.md)), its lease ends, and every later call on that lease
 is refused as an ended lease is. `RATE_LIMITED` writes nothing and answers two ceilings,
-each counting a call from its hold until it ends: the business's own per
+each counting a call from its hold until it ends, and a reconciliation pass's
+provider lookup while its slot lasts (AW-10, [RUNTIME.md](RUNTIME.md)): the business's own per
 operation, and its fair share of the route's, which is the installation's.
 The business's own is a durable limit (`hasRoom`, `core-records/src/tenancy/limit.ts`):
 a count read back from the records under a lock keyed by the business, against
@@ -1445,9 +1448,9 @@ file pinned in the same transaction. The command line and the app's client
 post it to the same route. No agent reaches it: an agent may propose a plan,
 never activate one.
 
-| Operation          | Route                          | Body                                                                                                                | Authority                                                                                          |
-| ------------------ | ------------------------------ | ------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
-| `task.accept_plan` | `/api/b/:key/task/accept_plan` | `operationId`, `gateId`, `versionId`, `note`, `planText`, `plan`, `entryPath`, `paths`, `conversationId` (optional) | `decide`, asked of the gate's own task as `task.decide` is; `decide` asks it again under its locks |
+| Operation          | Route                          | Body                                                                                                                                                          | Authority                                                                                          |
+| ------------------ | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `task.accept_plan` | `/api/b/:key/task/accept_plan` | `operationId`, `gateId`, `versionId`, `note`, `planText`, `plan`, `entryPath`, `paths`, `ceilingMinor` and `currency` (optional), `conversationId` (optional) | `decide`, asked of the gate's own task as `task.decide` is; `decide` asks it again under its locks |
 
 `versionId` is the plan version shown beside the button; a newer reply makes
 it stale and the accept is `PROPOSAL_SUPERSEDED` 409. `planText` is the exact
@@ -1459,7 +1462,11 @@ references, no cycle; anything else is `FIELD_VALUE_INVALID` 422 naming `plan`
 files in the server's instruction root (`OPS_ASTRO_INSTRUCTION_ROOT`); an odd
 path, a symlink, a name outside the root, a directory or a missing file is
 `DEFINITION_UNAVAILABLE`. With no root configured the accept is
-`DEPENDENCY_NOT_LANDED`. `conversationId` is the caller's own conversation
+`DEPENDENCY_NOT_LANDED`. `ceilingMinor` and `currency` are the rough cost the
+card drew, sent together or not at all (half of one, or a fraction of a minor
+unit, is `FIELD_VALUE_INVALID` 422); under the locks, a ceiling other than the
+version's maximum and currency is `VERSION_STALE` 409 and nothing is approved
+or held. Callers that draw no ceiling send neither. `conversationId` is the caller's own conversation
 or `NOT_FOUND` 404, and becomes the audit event's origin. Every other refusal
 is `task.decide`'s. It answers the approval's detail with `runId`, `pin`,
 `manifestDigest`, `planRecordId`, `textDigest` and `recordDigest`. A repeat of
@@ -1516,9 +1523,12 @@ releasedMinor, spentMinor }`. The task stays open for a person. It reaches a
   an earlier stop never applies to a later one). A refusal writes nothing.
 - **No agent answers.** Neither row is in `AGENT_SURFACE`: the agent prefix
   answers `DELEGATION_EXCLUDES_OPERATION` 403 with or without a delegation.
+- **Recent sign-in.** `run.top_up` holds `billing:decide`, so C59's step-up
+  asks it in the envelope: `STEP_UP_REQUIRED` 403 past 60 minutes while the
+  business's money step-up setting is on (`C54 recent sign-in`). The end holds
+  `gate:decide`, which the step-up does not ask.
 - **Not here yet.** The question and its two buttons in the conversation where
-  the plan was approved (AW-04), and the recent sign-in a money answer asks
-  for (C59).
+  the plan was approved (AW-04).
 
 ## The launch and its receipt
 
@@ -1992,7 +2002,7 @@ proposals: {
     runId;                             // the run it holds for: one per-run row
     state; heldMinor; actualMinor; classifiedCause; leaseId;
     lease: { id; fence; state; expiresAt; holderActorId } | null;
-    attempt: { id; state; dispatchMarker; observed } | null;
+    attempt: { id; state; dispatchMarker; observed; dropCause; outcome } | null;
   }[];
 }[]
 ```
@@ -2347,8 +2357,9 @@ revision, and two setters at once from one limit leave one applied. The answer i
 and `{ key: 'planning', limitMinor, currency }`. A lower limit is taken even
 below what is committed: the next planning reply that no longer fits is
 refused ([RUNTIME.md](RUNTIME.md#the-planning-budget)). Until a person moves
-it the cap is AUD 50, and `settings.read`'s `planningCap` shows it. Not here
-yet: the recent sign-in a money action asks (C59).
+it the cap is AUD 50, and `settings.read`'s `planningCap` shows it. It holds
+`billing:decide`, so C59's step-up asks it in the envelope: `STEP_UP_REQUIRED`
+403 past 60 minutes while the business's money step-up setting is on.
 
 ## Tags
 
@@ -2501,12 +2512,12 @@ machineCategory }`, the status select's choices and the ids `task.set_state`
 takes (`reads/task-states.ts`). It is served only with a found task; a
 refusal, the shared answer and an agent's read carry none.
 
-| Read                   | Route                   | Body                     | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        | Refusals it can answer                                                                                     |
-| ---------------------- | ----------------------- | ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `settings.read`        | `/settings/read`        | `{}`; it takes no fields | `{ ok: true, settings: [{ key, value, valueType, revision, updatedAt, updatedByActorId }] }`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403                                |
-| `session.capabilities` | `/session/capabilities` | `{}`; it takes no fields | `{ ok: true, personId, businessKey, grants: [{ collection, action }] }`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403, `AUTH_SESSION_EXPIRED` 401    |
-| `access.read`          | `/access/read`          | `{}`; it takes no fields | `{ ok: true, team, clients, agents, clientRecords }` (`clientRecords`: every client `{ clientId, name }`): each person `{ personId, name, permissions: [{ collection, action, scope, stepUp }], grants: [{ grantId, collection, action, scope }] }` (`stepUp`: per key, the money step-up is asked before that key, by `asksMoneyStepUp`, C59; switching the money step-up off is asked on its own and is not marked; `grants`: their live grant rows in this business, each revocable by `access.revoke`), each agent its `person`, `purpose`, `expiresAt` and `permissions` | `SCOPE_NOT_GRANTED` 403 without `access:manage`, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403        |
-| `session.person`       | `/session/person`       | `{}`; it takes no fields | `{ ok: true, person: { name } }`, the caller's own name                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | `FIELD_NOT_WRITABLE` 422, `COMMAND_BODY_INVALID` 400, `AUTH_NO_MEMBERSHIP` 403, `AUTH_SESSION_EXPIRED` 401 |
+| Read                   | Route                   | Body                     | Answer                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | Refusals it can answer                                                                                     |
+| ---------------------- | ----------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------- |
+| `settings.read`        | `/settings/read`        | `{}`; it takes no fields | `{ ok: true, settings: [{ key, value, valueType, revision, updatedAt, updatedByActorId }] }`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403                                |
+| `session.capabilities` | `/session/capabilities` | `{}`; it takes no fields | `{ ok: true, personId, businessKey, grants: [{ collection, action }] }`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | `SCOPE_NOT_GRANTED` 403, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403, `AUTH_SESSION_EXPIRED` 401    |
+| `access.read`          | `/access/read`          | `{}`; it takes no fields | `{ ok: true, team, clients, agents, clientRecords, clientPrivacy }` (`clientRecords`: every client `{ clientId, name }`; `clientPrivacy`: each client's settings, C60): each person `{ personId, name, permissions: [{ collection, action, scope, stepUp }], grants: [{ grantId, collection, action, scope }] }` (`stepUp`: per key, the money step-up is asked before that key, by `asksMoneyStepUp`, C59; switching the money step-up off is asked on its own and is not marked; `grants`: their live grant rows in this business, each revocable by `access.revoke`), each agent its `person`, `purpose`, `expiresAt` and `permissions` | `SCOPE_NOT_GRANTED` 403 without `access:manage`, `FIELD_NOT_WRITABLE` 422, `AUTH_NO_MEMBERSHIP` 403        |
+| `session.person`       | `/session/person`       | `{}`; it takes no fields | `{ ok: true, person: { name } }`, the caller's own name                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    | `FIELD_NOT_WRITABLE` 422, `COMMAND_BODY_INVALID` 400, `AUTH_NO_MEMBERSHIP` 403, `AUTH_SESSION_EXPIRED` 401 |
 
 `session.person` and the command `session.end` are the person menu's (C23).
 Neither asks the grant model: `session.person` answers anyone signed in with
@@ -2761,7 +2772,11 @@ A command whose declared key is in the money set (every `billing` key,
 `offer:decide`, `mandate:manage`, `spend:decide`) is judged once, in
 `prepare.ts`, straight after its grant check: a team member needs a second
 factor verified in the last 60 minutes, a client a sign-in in the last 60
-minutes, or it is refused `STEP_UP_REQUIRED` 403. While the business setting
+minutes, or it is refused `STEP_UP_REQUIRED` 403. A client's refusal names
+`sign_in` and its first fix is "Sign in again with your password, then
+retry."; a team member's names nothing and asks for the code from the
+authenticator app. The web app asks the client for their password and signs
+in again (`WEB.md`). While the business setting
 `money_step_up_required` is `false` a live session is enough; only
 `settings:manage` switches it, through `settings.set_money_step_up`, which is
 judged the same way when switching it off, whatever the setting holds, so a
@@ -2782,11 +2797,13 @@ bearer). Each writes one audit event, applied or refused, named by the act.
 factor through any business it reaches (0064), not only this one, and so is
 `verify` on an enrolment here not yet completed, without asking the provider.
 `remove` works where the factor was verified: another business holds no verified
-factor of its own and answers `FACTOR_NOT_ENROLLED`.
+factor of its own and answers `FACTOR_NOT_ENROLLED`. Replacing the app is a
+`remove` with a code from the old one, then a new `enrol`; the web app opens
+the removal when `enrol` answers `FACTOR_ALREADY_ENROLLED` (`WEB.md`).
 
 | Route                    | Body                   | Answer                                                                                             | Refusals                                                                                                                                                                                                      |
 | ------------------------ | ---------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/account/factor/enrol`  | `{}`                   | `{ factorId, qrCode, secret, uri }`, shown once                                                    | `FRESH_SIGN_IN_REQUIRED` 403 (no password sign-in in the last 60 minutes), `FACTOR_ALREADY_ENROLLED` 409, `PROVIDER_ANSWER_INVALID` 502                                                                       |
+| `/account/factor/enrol`  | `{}`                   | `{ factorId, qrCode, secret, uri }`, shown once                                                    | `FRESH_SIGN_IN_REQUIRED` 403 (no password sign-in in the last 60 minutes), `FACTOR_ALREADY_ENROLLED` 409, `VERSION_STALE` 409 (a newer enrolment recorded first), `PROVIDER_ANSWER_INVALID` 502               |
 | `/account/factor/verify` | `{ code }`, six digits | `{ accessToken, refreshToken, expiresIn }` at `aal2`; completing an enrolment adds `otherSessions` | `COMMAND_BODY_INVALID` 400, `FACTOR_NOT_ENROLLED` 409, `FACTOR_ALREADY_ENROLLED` 409, `SECOND_FACTOR_INVALID` 422 (recorded as the failed attempt), `SECOND_FACTOR_LOCKED` 429, `PROVIDER_ANSWER_INVALID` 502 |
 | `/account/factor/remove` | `{ code }`, six digits | `{ removed: true, otherSessions }`                                                                 | `COMMAND_BODY_INVALID` 400, `FACTOR_NOT_ENROLLED` 409, `SECOND_FACTOR_INVALID` 422, `SECOND_FACTOR_LOCKED` 429, `PROVIDER_ANSWER_INVALID` 502                                                                 |
 
@@ -2808,12 +2825,14 @@ call, beside the record it changes, and carries the sent code's id as its
 too, so it stops counting, and a provider fault on the code leaves it counted. GoTrue served under a path (`/auth/v1`) is called
 under that path. The record step locks the login (a transaction-scoped
 advisory lock, `second-factor-subject:` and its subject's digest), then the
-person's own row (`for no key update`), so two tabs enrolling at once queue: the
-later enrolment replaces the earlier unverified one, and one live factor
-remains. Two businesses completing enrolments for one login at once queue too:
-the later is refused `FACTOR_ALREADY_ENROLLED`, and the factor the provider has
-just verified for it is removed there, best effort, so the login holds one
-verified factor.
+person's own row (`for no key update`), so two tabs enrolling at once queue.
+An enrolment replaces only the unverified factor it started from: one recorded
+after it started (another tab's) stays the factor the first code completes, and
+this one is refused `VERSION_STALE`, its provider factor reported as an
+`account.factor_orphaned` event. One live factor remains. Two businesses
+completing enrolments for one login at once queue too: the later is refused
+`FACTOR_ALREADY_ENROLLED`, and the factor the provider has just verified for it
+is removed there, best effort, so the login holds one verified factor.
 
 `PROVIDER_ANSWER_INVALID` names only the kind of fault (`malformed`,
 `oversized`, `slow`, `unreachable` or `refused`), never the provider's words.
@@ -3027,6 +3046,34 @@ this route and on `grant.revoke`.
 
 `task.set_party`'s `client` must name a client of this business: another
 business's or a made-up one is `NOT_FOUND` 404 naming `client`.
+
+### A client's privacy settings (C60)
+
+`client.set_privacy` takes `{ operationId, clientId, modelEgress, providers,
+handlesHealth, noAgentEdits, requestedBy?, requestedOn?, requestLink? }` under
+`privacy:manage` on that client (a grant over the whole business or over that
+client), never an agent's, and answers `{ clientId }`. Every setting is sent
+each time; a new client has all four off. `providers` names each of `claude`,
+`chatgpt` and `replay` (the tests' stand-in, not a cloud model) at most once,
+and none while `modelEgress` is false. Switching model use on (off to on, or to
+other providers) takes the client's written request in the same command:
+`requestedBy` (1 to 200 characters), `requestedOn` (`YYYY-MM-DD`) and
+`requestLink` (1 to 2000); without all three it is `CLIENT_REQUEST_REQUIRED`
+422, and a request sent with any other change is `FIELD_VALUE_INVALID` 422
+naming `requestedBy`. A request is kept with what came of it, and kept when the
+switch is refused: a cloud provider is `LOCAL_MODEL_REQUIRED` 501 ("personal
+information stays out of cloud AI until a local model exists", owner line 72),
+a client that handles health information `CLIENT_HANDLES_HEALTH` 409, and a
+provider with no assessed row in use on the overseas-services register
+`PROVIDER_NOT_ASSESSED` 409. A malformed field is `FIELD_VALUE_INVALID` 422
+naming it. A client of another business answers as a made-up one: `NOT_FOUND`
+404 to a business-wide holder, `SCOPE_NOT_GRANTED` 403 to a holder over one
+client, as another client of the same business is. `access.read` carries
+`clientPrivacy`, each client's `{ clientId, modelEgress, providers,
+handlesHealth, noAgentEdits }`, and never the written requests.
+`checkClientEditRun` (core-records) is the one check an edit run calls (C77,
+C78): `CLIENT_NO_AGENT_EDITS` while "no agent edits" is on, else
+`checkClientModelUse`'s answer for the run's provider.
 
 ### Ending a person's access (C58)
 
