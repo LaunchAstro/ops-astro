@@ -25,10 +25,14 @@ import {
   type StatementLog,
 } from '../../packages/core-records/src/tenancy/statements.ts';
 import { migrate, type MigrationOutcome } from '../../packages/core-records/src/tenancy/migrate.ts';
-import { ensureMigratedTemplate, templateEnabled } from './migrated-template.ts';
+import {
+  APPLICATION_ROLE,
+  ENSURE_APPLICATION_ROLE,
+  ensureMigratedTemplate,
+  templateEnabled,
+} from './migrated-template.ts';
 
-/** The group role the migrations grant to. Members are per-installation logins. */
-export const APPLICATION_ROLE = 'ops_astro_app';
+export { APPLICATION_ROLE };
 
 export interface EmptyDatabase {
   readonly name: string;
@@ -156,13 +160,7 @@ async function createDatabase(
   try {
     // The group role is cluster-wide and shared; the login roles are this
     // run's alone, so two runs on one server never share a credential.
-    await server.execute(
-      `do $$ begin
-         if not exists (select 1 from pg_roles where rolname = '${APPLICATION_ROLE}') then
-           create role ${APPLICATION_ROLE} nologin;
-         end if;
-       end $$`,
-    );
+    await server.execute(ENSURE_APPLICATION_ROLE);
     if (template === undefined) {
       await server.execute(`create database ${identifier(name)}`);
     } else {

@@ -48,6 +48,16 @@ export function besideUrl(serverUrl: string): string {
   return url.toString();
 }
 
+/** The group role the migrations grant to. Members are per-installation logins. */
+export const APPLICATION_ROLE = 'ops_astro_app';
+
+/** Makes the group role, cluster-wide and shared, if the cluster has not got it yet. */
+export const ENSURE_APPLICATION_ROLE: string = `do $$ begin
+  if not exists (select 1 from pg_roles where rolname = '${APPLICATION_ROLE}') then
+    create role ${APPLICATION_ROLE} nologin;
+  end if;
+end $$`;
+
 /** `off` makes every fresh database migrate from empty, as before the template. */
 export const TEMPLATE_SWITCH = 'OPS_ASTRO_DB_TEMPLATE';
 
@@ -173,6 +183,8 @@ async function buildFromEmpty(
   serverUrl: string,
   name: string,
 ): Promise<MigrationOutcome> {
+  // The migrations grant to the group role, which a new cluster has not got.
+  await server.execute(ENSURE_APPLICATION_ROLE);
   await server.execute(`drop database if exists ${quoted(name)} with (force)`);
   await server.execute(`create database ${quoted(name)}`);
   // As fresh-database.ts does for every database it makes.
