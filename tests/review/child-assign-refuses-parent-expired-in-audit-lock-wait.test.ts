@@ -12,6 +12,22 @@ import { awaitParked, barrier, racer, revisionOf, waitPast } from '../runtime/sc
 useChildWorld('sol816auditwait');
 const it = noDatabase ? vitestIt.skip : vitestIt;
 
+/** The parent delegation, and its lease with it, expires two seconds from now. */
+const expireInTwoSeconds = async (parentId: string): Promise<void> => {
+  await w.s.db.admin.execute(
+    `update public.delegations set expires_at = clock_timestamp() + interval '2 seconds'
+      where business_id = $1 and id = $2`,
+    [w.s.business, parentId],
+  );
+  await w.s.db.admin.execute(
+    `update public.leases l set expires_at = d.expires_at
+       from public.delegations d
+      where l.business_id = $1 and d.business_id = l.business_id
+        and d.id = $2 and l.delegation_id = d.id`,
+    [w.s.business, parentId],
+  );
+};
+
 it('child assignment refuses a parent that expires while it waits for the audit lock', async () => {
   const { parent } = await parentWork(w.s);
   const minted = await child(w.s, parent, w.helper);
@@ -26,18 +42,7 @@ it('child assignment refuses a parent that expires while it waits for the audit 
     await gate.held;
   });
   await locked.held;
-  await w.s.db.admin.execute(
-    `update public.delegations set expires_at = clock_timestamp() + interval '2 seconds'
-      where business_id = $1 and id = $2`,
-    [w.s.business, parent.id],
-  );
-  await w.s.db.admin.execute(
-    `update public.leases l set expires_at = d.expires_at
-       from public.delegations d
-      where l.business_id = $1 and d.business_id = l.business_id
-        and d.id = $2 and l.delegation_id = d.id`,
-    [w.s.business, parent.id],
-  );
+  await expireInTwoSeconds(parent.id);
   const assigning = executeCommand(w.s.db.app, w.s.business, w.s.decider.presented, 'api', {
     command: 'task.assign',
     operationId: randomUUID(),

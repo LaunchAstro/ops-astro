@@ -99,16 +99,22 @@ describe('CQ-8 runtime structure', () => {
   });
 });
 
+/**
+ * The product files that call `advisoryLock`, sorted. A lock taken outside
+ * `acquire` or `advisoryLock` fails the scan above; this names the callers, so
+ * a new one is a decision rather than a drift.
+ */
+function advisoryLockCallers(): readonly string[] {
+  const product = [join(ROOT, 'packages'), join(ROOT, 'apps')].flatMap(sourceFiles);
+  return product
+    .filter((file) => /\badvisoryLock\(/u.test(readFileSync(file, 'utf8')))
+    .map((file) => relative(ROOT, file))
+    .toSorted();
+}
+
 describe('CQ-8 runtime structure', () => {
   it('CQ-8 one lock path: the runtime, the envelope and placement take advisory locks only through the helper', () => {
-    // A lock taken outside `acquire` or `advisoryLock` fails the scan above;
-    // this names the callers, so a new one is a decision rather than a drift.
-    const product = [join(ROOT, 'packages'), join(ROOT, 'apps')].flatMap(sourceFiles);
-    const callers = product
-      .filter((file) => /\badvisoryLock\(/u.test(readFileSync(file, 'utf8')))
-      .map((file) => relative(ROOT, file))
-      .toSorted();
-    expect(callers).toEqual([
+    expect(advisoryLockCallers()).toEqual([
       // The outbox forwarder's one lock, alone in its own transaction: no command order.
       'apps/forwarder/forward.ts',
       // C59: a login's one wrong-code lock, keyed by its subject's digest in

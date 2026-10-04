@@ -48,6 +48,30 @@ const parkedOn = async (key: string): Promise<number> =>
     [key],
   );
 
+/** `task.assign` under `operationId`, at the record's revision when it is sent. */
+const assign = (
+  database: Database,
+  operationId: string,
+  recordId: string,
+  fields: Record<string, string>,
+) =>
+  revisionOf(w.s, recordId).then(
+    async (revision) =>
+      await executeCommand(database, w.s.business, w.s.decider.presented, 'api', {
+        command: 'task.assign',
+        operationId,
+        recordId,
+        expectedRevision: revision,
+        fields,
+      }),
+  );
+
+/** The envelope's door key for `operationId`, as the envelope spells it. */
+const doorOf = (operationId: string): string => {
+  const identity = createHash('sha256').update(operationId).digest('hex');
+  return `operation:${w.s.business}:${w.s.decider.actorId}:${identity}`;
+};
+
 interface Race {
   readonly agentTask: string;
   readonly personTask: string;
@@ -74,16 +98,7 @@ async function race(whileParked: (parentId: string) => Promise<void>): Promise<R
   const personTask = await createTask(w.s, `authz6 ${randomUUID()}`);
   const operationId = randomUUID();
   const send = (database: Database, recordId: string, fields: Record<string, string>) =>
-    revisionOf(w.s, recordId).then(
-      async (revision) =>
-        await executeCommand(database, w.s.business, w.s.decider.presented, 'api', {
-          command: 'task.assign',
-          operationId,
-          recordId,
-          expectedRevision: revision,
-          fields,
-        }),
-    );
+    assign(database, operationId, recordId, fields);
   const personRevision = await revisionOf(w.s, personTask);
   const agentRevision = await revisionOf(w.s, agentTask);
   const database = racer(w.s);
@@ -101,9 +116,7 @@ async function race(whileParked: (parentId: string) => Promise<void>): Promise<R
     await awaitParked(w.s, 'advisory', 1);
     const assigningPerson = send(second, personTask, { assignee: w.s.decider.personId });
     await awaitParked(w.s, 'advisory', 2);
-    const identity = createHash('sha256').update(operationId).digest('hex');
-    const door = `operation:${w.s.business}:${w.s.decider.actorId}:${identity}`;
-    const atDoor = await parkedOn(door);
+    const atDoor = await parkedOn(doorOf(operationId));
     await whileParked(parent.id);
     gate.release();
     await held;
