@@ -8,7 +8,11 @@ import {
   type Database,
   type TenantQuery,
 } from '../../packages/core-records/src/tenancy/database.ts';
-import { createFreshDatabase, type FreshDatabase } from '../support/fresh-database.ts';
+import {
+  createFreshDatabase,
+  databaseUrlFromEnvironment,
+  type FreshDatabase,
+} from '../support/fresh-database.ts';
 import {
   insertActor,
   insertBusiness,
@@ -25,7 +29,13 @@ function signal(): { promise: Promise<void>; resolve: () => void } {
   return { promise, resolve };
 }
 
-describe('identifier resolution contract', () => {
+const serverUrl = databaseUrlFromEnvironment();
+
+if (serverUrl === undefined) {
+  console.warn('identifier resolution contract: DATABASE_URL is unset, so nothing was proved.');
+}
+
+describe.skipIf(serverUrl === undefined)('identifier resolution contract', () => {
   let db: FreshDatabase;
   let second: Database;
   let business: string;
