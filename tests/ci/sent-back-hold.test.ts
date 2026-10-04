@@ -9,7 +9,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
-import { top } from './workflow-text.ts';
+import { parse } from 'yaml';
 
 const ROOT = join(import.meta.dirname, '..', '..');
 const read = (path: string) => readFileSync(join(ROOT, path), 'utf8');
@@ -74,24 +74,27 @@ describe('the sent-back hold', () => {
 });
 
 describe('the workflows', () => {
-  const ci = read('.github/workflows/ci.yml');
-  const gate = top(ci, 'jobs').split(/^(?= {2}[\w-]+:$)/mu)[1] ?? '';
+  // Read with the YAML parser, so a commented or misplaced copy of a line cannot stand in for it.
+  const load = (path: string) => parse(read(path)) as Record<string, unknown>;
+  const ci = load('.github/workflows/ci.yml') as {
+    on: { pull_request: { types: string[] } };
+    jobs: { gate: { steps: Record<string, unknown>[] } };
+  };
 
   it('the hold is the gate’s first check, with no condition, so it runs on every event', () => {
-    expect(gate).toMatch(/^ {2}gate:$/mu);
-    const steps = gate.split(/^(?= {6}- )/mu).slice(1);
-    const at = steps.findIndex((s) => s.includes('run: node scripts/sent-back-hold.mjs'));
+    const steps = ci.jobs.gate.steps;
+    const at = steps.findIndex((s) => s['run'] === 'node scripts/sent-back-hold.mjs');
     expect(at).toBeGreaterThan(-1);
     // Only the checkout and the pinned Node run before it.
     expect(
-      steps.slice(0, at).every((s) => /^ {6}- uses: actions\/(checkout|setup-node)@/u.test(s)),
+      steps.slice(0, at).every((s) => /^actions\/(checkout|setup-node)@/u.test(String(s['uses']))),
     ).toBe(true);
-    expect(steps[at]).not.toMatch(/^ {8}if:/mu);
-    expect(steps[at]).not.toMatch(/continue-on-error/u);
+    expect(steps[at]).not.toHaveProperty('if');
+    expect(steps[at]).not.toHaveProperty('continue-on-error');
   });
 
   it('a label event still starts a ci.yml run, so adding the label cancels the run in flight', () => {
-    expect(top(ci, 'on')).toMatch(/^ {4}types: \[.*\blabeled\b.*\]$/mu);
+    expect(ci.on.pull_request.types).toContain('labeled');
   });
 
   it('a pull request cancels its own older run, and a merge group is never cancelled', () => {
@@ -99,12 +102,10 @@ describe('the workflows', () => {
       '.github/workflows/ci.yml',
       '.github/workflows/codeql.yml',
       '.github/workflows/review-evidence.yml',
-    ]) {
-      const block = top(read(path), 'concurrency');
-      expect(block, path).toContain('  group: ${{ github.workflow }}-${{ github.ref }}\n');
-      expect(block, path).toContain(
-        "  cancel-in-progress: ${{ github.event_name != 'merge_group' }}\n",
-      );
-    }
+    ])
+      expect(load(path)['concurrency'], path).toStrictEqual({
+        group: '${{ github.workflow }}-${{ github.ref }}',
+        'cancel-in-progress': "${{ github.event_name != 'merge_group' }}",
+      });
   });
 });

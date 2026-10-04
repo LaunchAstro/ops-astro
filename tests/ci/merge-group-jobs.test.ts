@@ -44,6 +44,8 @@ export function groupSkips(text: string, path: string): string[] {
     const raw = job?.['needs'];
     const list = raw === undefined ? [] : Array.isArray(raw) ? raw : [raw];
     if (!list.every((n) => typeof n === 'string')) problems.push(`${path}: ${key}: needs unread`);
+    // Two IDs that differ only in case would share one entry, and the second would hide the first.
+    if (table.has(key.toLowerCase())) problems.push(`${path}: ${key}: job ID repeats without case`);
     table.set(key.toLowerCase(), {
       name: typeof job?.['name'] === 'string' ? job['name'] : key,
       cond: condition(job?.['if']),
@@ -121,6 +123,15 @@ const PLANTS: [string, [string, string][]][] = [
     ],
   ],
   ['a case variant of the job key', [licences('    needs: [gate, Database-Lookahead]\n')]],
+  [
+    'a job ID repeated without case',
+    [
+      [
+        '  licences:\n',
+        `  Sneaky:\n    name: sneaky\n    needs: [gate]\n    if: ${ONLY_PULL_REQUESTS}\n    runs-on: ubuntu-latest\n    steps:\n      - run: 'true'\n  SNEAKY:\n    runs-on: ubuntu-latest\n    steps:\n      - run: 'true'\n  licences:\n`,
+      ],
+    ],
+  ],
 ];
 
 describe('merge group: no job skips a group', () => {
@@ -142,7 +153,11 @@ describe('merge group: no job skips a group', () => {
     const conditioned = swaps.some(([, to]) =>
       /if ?: github\.event_name == 'pull_request'/u.test(to),
     );
-    const reason = conditioned ? `if: ${ONLY_PULL_REQUESTS}` : 'waits on database-lookahead';
+    const reason = _form.includes('repeated')
+      ? 'job ID repeats without case'
+      : conditioned
+        ? `if: ${ONLY_PULL_REQUESTS}`
+        : 'waits on database-lookahead';
     expect(groupSkips(planted(...swaps), CI).join('\n')).toContain(reason);
   });
 
