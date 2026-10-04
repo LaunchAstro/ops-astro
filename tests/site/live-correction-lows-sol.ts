@@ -9,10 +9,13 @@
 //      covers nothing once the lock is held.
 //   2. Criterion 5: the latest publish receipt is the one written last, not
 //      the one whose transaction started last.
+//   3. Criterion 2: a worker on client A's lease meets one answer for client
+//      B's correction and for an id that names none.
 //
 // Registered through `tests/tenancy/restricted-calls.test.ts`, a named suite,
 // which calls `describeLiveCorrectionSolRoundOne` after round 2.
 
+import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { enrol, grantTo, WHOLE_BUSINESS, type Member } from '../commands/fixture.ts';
 import {
@@ -29,7 +32,16 @@ import {
   recordObservedResult,
 } from '../../packages/core-records/src/site/index.ts';
 import type { Scope, Subject } from '../../packages/core-records/src/authority/grants.ts';
-import { describeWorld, filed, inBusiness, lows } from './live-correction-lows.ts';
+import {
+  countOf,
+  describeWorld,
+  file,
+  filed,
+  inBusiness,
+  lows,
+  RECEIPTS,
+  stateOf,
+} from './live-correction-lows.ts';
 import { observedPublish } from './live-correction-lows-cancel.ts';
 
 /** A fresh member and the grants it holds: run:write and gate:decide at `scope`. */
@@ -145,10 +157,42 @@ function findingTwo(): void {
   });
 }
 
+/** The id of a request stored on `taskId` under its own client `partyId`. */
+async function stored(taskId: string, partyId: string): Promise<string> {
+  const made = await file(taskId, partyId);
+  if (typeof made !== 'object' || made === null || !('id' in made)) {
+    throw new Error(`the request was refused: ${JSON.stringify(made)}`);
+  }
+  return String(made.id);
+}
+
+/** The runner's read and its receipt write of `correctionId`, under the world's lease (client A). */
+const underLease = async (correctionId: string) =>
+  await inBusiness(async (tx) => ({
+    read: await readCorrectionForRun(tx, observedPublish(correctionId, 'live')),
+    write: await recordObservedResult(tx, observedPublish(correctionId, 'live')),
+  }));
+
+function findingThree(): void {
+  it('Sol R1 3: client to client worker refusals hide inaccessible correction existence', async () => {
+    const { taskA, taskB, clientA, clientB } = lows();
+    const ofB = await stored(taskB, clientB);
+    const [existing, madeUp] = [await underLease(ofB), await underLease(randomUUID())];
+    expect(JSON.stringify(existing)).toBe(JSON.stringify(madeUp));
+    const notFound = { ok: false, code: 'NOT_FOUND' };
+    expect(existing).toStrictEqual({ read: notFound, write: notFound });
+    expect([await stateOf(ofB), await countOf(RECEIPTS, ofB)]).toStrictEqual(['requested', 0]);
+    // The control: the same lease reads client A's own correction.
+    const ofA = await stored(taskA, clientA);
+    expect((await underLease(ofA)).read).toMatchObject({ ok: true, correction: { id: ofA } });
+  });
+}
+
 /** Sol's first review's findings, each its own block over one world. */
 export function describeLiveCorrectionSolRoundOne(): void {
   describeWorld('P26 Sol R1: the live correction records', 'p26sol1', () => {
     describe('Sol R1 1: authority judged after the lock', findingOne);
     describe('Sol R1 2: receipts in write order', findingTwo);
+    describe('Sol R1 3: one refusal for another client’s correction', findingThree);
   });
 }
