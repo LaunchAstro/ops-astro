@@ -25,6 +25,7 @@ import {
 } from '../../packages/core-records/src/custody/index.ts';
 import { COMMAND_SURFACE } from '../../packages/core-wire/src/surface.ts';
 import { createClient } from '../../packages/core-records/src/index.ts';
+import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
 
 const serverUrl = databaseUrlFromEnvironment();
 const CANARY = `canary-${randomUUID()}-do-not-log`;
@@ -316,11 +317,39 @@ describe.skipIf(serverUrl === undefined)('C31 credentials screen (custody)', () 
   });
 
   it('C31 two setters at once leave one row, both applied in turn', async () => {
-    const [one, two] = await Promise.all([
-      set('race.key', `${CANARY}-r1`),
-      set('race.key', `${CANARY}-r2`),
-    ]);
-    expect([one.status, two.status]).toStrictEqual([200, 200]);
+    // Two connections, and neither transaction runs until both are open, so
+    // the setters overlap and race on the insert.
+    const pool = connect(controls.fixture.db.appUrl, { max: 2 });
+    let opened = 0;
+    let bothOpen!: () => void;
+    const together = new Promise<void>((resolve) => {
+      bothOpen = resolve;
+    });
+    const racing: Database = {
+      log: pool.log,
+      close: () => Promise.resolve(),
+      withBusiness: async (business, run) =>
+        await pool.withBusiness(business, async (tx) => {
+          opened += 1;
+          if (opened === 2) bothOpen();
+          await together;
+          return await run(tx);
+        }),
+    };
+    const api = controls.fixture.compose({ custody: pair.key }, undefined, racing);
+    const headers = authorised(await tokenFor(admin.presented.subject));
+    const setter = async (value: string): Promise<Answer> => {
+      const body = { operationId: randomUUID(), name: 'race.key', value };
+      const answer = await post(api, path('alpha', 'secret.set'), body, headers);
+      answers.push(answer);
+      return answer;
+    };
+    try {
+      const [one, two] = await Promise.all([setter(`${CANARY}-r1`), setter(`${CANARY}-r2`)]);
+      expect([one.status, two.status]).toStrictEqual([200, 200]);
+    } finally {
+      await pool.close();
+    }
     const rows = (await list(admin)).filter((row) => row.name === 'race.key');
     expect(rows.length).toBe(1);
     expect(rows[0]?.revision).toBe(2);
