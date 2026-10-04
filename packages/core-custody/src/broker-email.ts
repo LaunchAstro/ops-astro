@@ -100,6 +100,8 @@ function routed(broker: Broker): Routed | undefined {
 export interface CheckedItem {
   readonly itemId: string;
   readonly reason: InboxReason;
+  readonly recipient: string;
+  readonly subject: string;
   readonly to: string;
   /** The task's client, which the weekly cap counts by; null for a task of no client. */
   readonly client: string | null;
@@ -148,10 +150,29 @@ export async function checkItem(
   return {
     itemId,
     reason: item.reason,
+    recipient: item.recipient,
+    subject: item.subject,
     to: address.value,
     client: item.client,
     mailClass: await classOf(tx, item),
   };
+}
+
+/**
+ * The items whose recipient can still read their task, judged again after every lock the send
+ * waits on and just before `asked` is written: access lost while the email was prepared withholds
+ * the items it reaches, however early they were checked.
+ */
+export async function stillReadable(
+  tx: TenantQuery,
+  items: readonly CheckedItem[],
+): Promise<CheckedItem[]> {
+  const kept: CheckedItem[] = [];
+  for (const item of items) {
+    // oxlint-disable-next-line no-await-in-loop
+    if ((await taskAccess(tx, item.recipient, item.subject)) === 'readable') kept.push(item);
+  }
+  return kept;
 }
 
 /** Record `asked` on each item the email covers, with the batch marker and class it carries. */
@@ -188,6 +209,7 @@ export async function askOne(
     return 'CLIENT_CAP_SPENT';
   }
   if (!(await room())) return 'EMAIL_AT_CEILING';
+  if ((await stillReadable(tx, [item])).length === 0) return 'ITEM_WITHHELD';
   await recordAsked(tx, [item], false);
   return { itemIds: [itemId], to: item.to, link: itemId };
 }

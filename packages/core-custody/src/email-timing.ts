@@ -36,6 +36,7 @@ import {
   deliver,
   emailResult,
   recordAsked,
+  stillReadable,
   type Asked,
   type CheckedItem,
   type EmailResult,
@@ -175,10 +176,12 @@ export async function emailDailyBatch(
     if (await windowSpent(tx, { person: personId }, timing.dayMs ?? DAY_MS)) {
       return 'BATCH_ALREADY_SENT';
     }
-    const items = await withinCap(tx, await batchable(tx, personId, timing.preferences));
+    const prepared = await withinCap(tx, await batchable(tx, personId, timing.preferences));
+    if (prepared.length === 0) return 'NOTHING_WAITING';
+    if (!(await room())) return 'EMAIL_AT_CEILING';
+    const items = await stillReadable(tx, prepared);
     const [first] = items;
     if (first === undefined) return 'NOTHING_WAITING';
-    if (!(await room())) return 'EMAIL_AT_CEILING';
     await recordAsked(tx, items, true);
     return {
       itemIds: items.map((item) => item.itemId),
