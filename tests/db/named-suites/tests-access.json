@@ -2,11 +2,14 @@
   "comment": [
     "SL12-17-F names c39-t-invitations (C39-T records, invite a team member, send only on the inviter's act, rate limit: invitation.create, resend and revoke under access:share and expiry by the business's worker each write the invitation and its audit event; each act is one send through the broker's email.send, its enrolment token kept as a SHA-256 only; acts limited per address and per account, counted from the records) and c39-t-invitation-refusals (C39-T refusal access:share and C39-T isolation: no key, a client-scoped key or an agent is refused writing nothing; another business is NOT_FOUND as an unissued id; another client's key reaches nothing; each invitation makes a new person).",
     "SL12-18-F names c39-t-invitation-send (C39-T sender and C39-T token kept as a hash only: an invitation leaves only from the verified sending subdomain, refused before the provider and before a token is minted otherwise; a provider answer echoing the link's token fails the attempt and nothing stored holds the token) as an invariant.",
-    "SL12-26 (SEC27 F1-F3) names c39-t-invitation-ceiling (an invitation's dead ask stops holding email.send's ceiling once custody's timeout and the grace pass, and inbox and invitation emails fill one ceiling together under one lock) and c39-t-invitation-admin (an access:share holder without access:manage neither creates nor resends an admin invitation, writing nothing; a revoke stays access:share) as invariants."
+    "SL12-26 (SEC27 F1-F3) names c39-t-invitation-ceiling (an invitation's dead ask stops holding email.send's ceiling once custody's timeout and the grace pass, and inbox and invitation emails fill one ceiling together under one lock) and c39-t-invitation-admin (an access:share holder without access:manage neither creates nor resends an admin invitation, writing nothing; a revoke stays access:share) as invariants.",
+    "SL12-31 names c39-t-invitation-evidence (no provider answer keeps any of the business's enrolment tokens, an earlier send's included) and c39-t-invitation-lock-timing (a send or a resend that waited for the invitation's lock judges its expiry when the lock is granted; asks delayed by locks still hold the email ceiling) as invariants, and tests/acceptance/role-case-invitation-controls (every D06 invitation.create cell serves its positive control and proves its field refusal) as an invariant in tests-acceptance.json."
   ],
   "invariant": [
     "tests/access/c39-t-invitation-admin.test.ts",
     "tests/access/c39-t-invitation-ceiling.test.ts",
+    "tests/access/c39-t-invitation-evidence.test.ts",
+    "tests/access/c39-t-invitation-lock-timing.test.ts",
     "tests/access/c39-t-invitation-refusals.test.ts",
     "tests/access/c39-t-invitation-send.test.ts",
     "tests/access/c39-t-invitations.test.ts"

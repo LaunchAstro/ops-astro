@@ -11,6 +11,7 @@
     "tests/acceptance/identifier-timing.test.ts",
     "tests/acceptance/predicate-rls.test.ts",
     "tests/acceptance/protected-fields.test.ts",
+    "tests/acceptance/role-case-invitation-controls.test.ts",
     "tests/acceptance/role-case-matrix-fixture-clients.test.ts",
     "tests/acceptance/role-case-matrix.test.ts",
     "tests/acceptance/surface-inventory.test.ts"
