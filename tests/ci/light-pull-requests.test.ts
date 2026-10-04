@@ -4,9 +4,9 @@
 // full set runs in the merge queue, which is the only way into main, and a group or a push to main
 // runs everything it ran before. This proves, by running the real scripts: scripts/ci-scope.ts
 // defers a queue-only check on a pull request alone, running it on a group, a push and any other
-// or empty event; `pnpm check` drops only the full test run and the build on a pull request,
-// running the tests the change reaches in their place. The workflow's side is
-// light-pull-requests-workflow.test.ts.
+// or empty event; `pnpm check` swaps only the full test run on a pull request for the tests the
+// change reaches. The build runs everywhere and before the tests, because tests copy the bundle
+// it writes to apps/web/dist. The workflow's side is light-pull-requests-workflow.test.ts.
 
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -123,10 +123,11 @@ describe('scripts/ci-scope.ts: a queue-only check', () => {
 });
 
 describe('pnpm check: the light set on a pull request', () => {
-  it('a group, a push, any other event and a local run run every step, the tests and build included', () => {
+  it('a group, a push, any other event and a local run run every step, the build before the tests', () => {
     const local = check();
     expect(local.status, local.stderr).toBe(0);
     expect(local.ran).toEqual(expect.arrayContaining(['run test', 'run build', 'run gate']));
+    expect(local.ran.indexOf('run build')).toBeLessThan(local.ran.indexOf('run test'));
     expect(local.ran.length).toBeGreaterThan(30);
     for (const event of ['merge_group', 'push', 'workflow_dispatch', '']) {
       const run = check('local checks', event);
@@ -135,18 +136,15 @@ describe('pnpm check: the light set on a pull request', () => {
     }
   }, 120_000);
 
-  it('a pull request defers the full tests and the build, runs the tests the change reaches, and every other step', () => {
+  it('a pull request runs the build, then the tests the change reaches in place of the full tests, and every other step', () => {
     const full = check().ran;
     const light = check('local checks', 'pull_request');
     expect(light.status, light.stderr).toBe(0);
     const changed = `run test --changed ${BASE} --passWithNoTests`;
-    expect(light.ran).toStrictEqual(
-      full
-        .filter((line) => line !== 'run build')
-        .map((line) => (line === 'run test' ? changed : line)),
-    );
+    expect(light.ran).toStrictEqual(full.map((line) => (line === 'run test' ? changed : line)));
+    expect(light.ran.indexOf('run build')).toBeGreaterThanOrEqual(0);
+    expect(light.ran.indexOf('run build')).toBeLessThan(light.ran.indexOf(changed));
     expect(light.stdout).toMatch(/tests \(pnpm run test\): the full run is in the merge queue/u);
-    expect(light.stdout).toMatch(/build \(pnpm run build\): runs in the merge queue/u);
   }, 120_000);
 
   it('a pull request whose base cannot be read fails before any step runs', () => {

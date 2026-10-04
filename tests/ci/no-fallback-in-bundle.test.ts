@@ -21,7 +21,9 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { STAMP_FILE } from '../../apps/web/build-stamp.ts';
 import { fixtureSelectors, scanBundle } from './fixture-bundle.ts';
+import { needsBuild } from './web-bundle-build.ts';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 const DIST = join(ROOT, 'apps/web/dist');
@@ -118,5 +120,37 @@ describe('no_fallback_in_bundle: the selectors', () => {
       ]),
     );
     expect(selectors).toContain('sign-in');
+  });
+});
+
+describe('no_fallback_in_bundle: building the bundle only when it is not this tree', () => {
+  const HEAD = '0123456789ab';
+
+  /** A bundle directory stamped with `build`, or with no stamp file when it is undefined. */
+  function bundle(name: string, build?: string): string {
+    const dist = join(scratch, name);
+    mkdirSync(dist, { recursive: true });
+    if (build !== undefined) writeFileSync(join(dist, STAMP_FILE), JSON.stringify({ build }));
+    return dist;
+  }
+
+  it('builds when there is no bundle', () => {
+    expect(needsBuild(join(scratch, 'never-built'), HEAD)).toBe(true);
+  });
+
+  it('builds when the bundle carries no stamp', () => {
+    expect(needsBuild(bundle('unstamped'), HEAD)).toBe(true);
+  });
+
+  it('builds when the bundle is stamped with another commit', () => {
+    expect(needsBuild(bundle('other-commit', 'ba9876543210'), HEAD)).toBe(true);
+  });
+
+  it('builds on a changed tree, even over a bundle stamped with that same changed tree', () => {
+    expect(needsBuild(bundle('dirty', `${HEAD}-dirty`), `${HEAD}-dirty`)).toBe(true);
+  });
+
+  it('keeps the bundle the clean checkout already built, so nothing rewrites it mid-run', () => {
+    expect(needsBuild(bundle('this-commit', HEAD), HEAD)).toBe(false);
   });
 });
