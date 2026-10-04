@@ -111,7 +111,15 @@ it('split, run as a command in the repository, refuses now each suite has its ow
   const run = spawnSync(process.execPath, [script, 'split'], { cwd: ROOT, encoding: 'utf8' });
   expect(run.status).toBe(1);
   expect(run.stderr).toMatch(/already exists/u);
-  expect(testsDb()).toStrictEqual(before);
+  const after = testsDb();
+  expect([...after.keys()], 'no file under tests/db is added or removed').toStrictEqual([
+    ...before.keys(),
+  ]);
+  const changed = [...after].filter(([path, text]) => before.get(path) !== text);
+  expect(
+    changed.map(([path]) => path),
+    'no file under tests/db is rewritten',
+  ).toStrictEqual([]);
   expect(existsSync(join(ROOT, SINGLE))).toBe(false);
   expect(existsSync(join(ROOT, FOLDER))).toBe(false);
 }, 60_000);
