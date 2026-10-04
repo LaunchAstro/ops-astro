@@ -51,9 +51,12 @@ export default defineConfig({
     // The browser proofs build `apps/web/dist`, which other suites rebuild (an
     // emptied folder mid-run), so they run alone: CI's `local checks` step with
     // BROWSER_PROOFS=1. Sol's proofs kept byte for byte (the leaked-client
-    // proof and OW-002's) and the OW-002 proofs written beside them open their
-    // worlds with no skip; without a database they are left out here, and the
-    // manifests run them where there is one.
+    // proof and OW-002's), the OW-002 proofs written beside them, Sol's two
+    // PR-345 web proofs and F1-FIX1 other-tab enrolment proof on
+    // c59-factor-routes-world (byte for byte but for one cookie-jar split CQ-11
+    // asks for) and Sol's six F2 lost-answer retry proofs open their worlds with
+    // no skip; without a database they are left out here, and the manifests run
+    // them where there is one.
     exclude: [
       ...configDefaults.exclude,
       ...(process.env['BROWSER_PROOFS'] === '1' ? [] : ['tests/browser/**']),
@@ -67,6 +70,15 @@ export default defineConfig({
             'tests/api/live-presence-remap-drops-previous-person.test.ts',
             'tests/api/live-presence-remap-refused-person-gets-no-notification.test.ts',
             'tests/api/live-presence-remap-seats-no-one-on-unreadable-task.test.ts',
+            'tests/web/authenticator-cancelled-enrol-lands-late.test.tsx',
+            'tests/web/sign-in-code-after-enrolment.test.tsx',
+            'tests/surfaces/incident-retry-once-and-task-draft-stays-with-business.test.tsx',
+            'tests/web/draft-resume-and-tag-create-replay-their-operation.test.ts',
+            'tests/web/duplicate-form-retry-after-lost-answer-creates-one-task.test.tsx',
+            'tests/web/duplicate-seam-retry-after-lost-answer-creates-one-task.test.tsx',
+            'tests/web/operations-incident-retry-after-lost-answer-records-once.test.tsx',
+            'tests/web/time-log-retry-after-lost-answer-stores-once.test.tsx',
+            'tests/web/authenticator-other-tab-enrol-lands-late.test.tsx',
           ]),
       // CI's `local checks` runs the suites that start containers in a step of their own, after
       // the browser captures: a new network interface aborts a page load in flight.
