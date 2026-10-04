@@ -116,7 +116,9 @@ export async function resetFactorOnSettings(
 /**
  * The caller's grant, asked again under the access lock: the envelope asked
  * it before the lock, so a revocation committed while the reset waited for
- * the lock is seen only here.
+ * the lock is seen only here. Expiry is judged on `clock_timestamp()`, not
+ * `now()`, the transaction's start, which a grant lapsing during the wait
+ * would still be live at (as `delegations.ts` judges a lease's).
  */
 async function grantRevoked(
   tx: TenantQuery,
@@ -127,7 +129,19 @@ async function grantRevoked(
     action: context.declaration.action,
     scope: WHOLE_BUSINESS,
   });
-  return held.ok ? undefined : refused(held.refusal);
+  if (!held.ok) return refused(held.refusal);
+  const [clock] = await tx.query<{ readonly at: Date }>('select clock_timestamp() as at');
+  const at = clock?.at ?? new Date(Number.POSITIVE_INFINITY);
+  if (held.value.some((grant) => grant.expires_at === null || grant.expires_at > at)) {
+    return undefined;
+  }
+  return refused(
+    refuseCommand(
+      'SCOPE_NOT_GRANTED',
+      [],
+      ['no live grant covers it', 'ask a holder who may delegate'],
+    ),
+  );
 }
 
 /**
