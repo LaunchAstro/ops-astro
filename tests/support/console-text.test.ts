@@ -46,6 +46,17 @@ it('formats percent directives on plain values as the console does', () => {
   for (const call of calls) expect(consoleLine(...call)).toBe(format(...call));
 });
 
+it('writes an object with its own toString under percent-s as that text', () => {
+  class Key {
+    readonly #value = planted;
+    toString(): string {
+      return this.#value;
+    }
+  }
+  expect(consoleLine('key=%s', new Key())).toBe(`key=${planted}`);
+  expect(consoleLine('key=%s', { [Symbol.toPrimitive]: () => planted })).toBe(`key=${planted}`);
+});
+
 it('writes an error with its stack', () => {
   const error = new Error(planted);
   expect(consoleLine(error)).toContain(String(error.stack));

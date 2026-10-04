@@ -6,8 +6,9 @@
 // whatever the object held. This writes the call as the console prints it,
 // with no depth, array or string limit, so every nested value is in the text.
 // Node cuts an object a `%s` or `%o` reads to depth 0 or 4 whatever options it
-// is given, so those are written out here first; a Buffer is written as the
-// text its bytes carry, as `String(part)` did, not as hex.
+// is given, so those are written out here first (an object `%s` writes by its
+// own toString keeps that text); a Buffer is written as the text its bytes
+// carry, as `String(part)` did, not as hex.
 
 import { formatWithOptions, inspect } from 'node:util';
 
@@ -21,6 +22,9 @@ const whole = {
 /** What `%o` shows beyond `%O`, at the same unlimited depth. */
 const hidden = { ...whole, showHidden: true, showProxy: true } as const;
 
+/** How `%s` writes an object it inspects, rather than one with its own toString. */
+const shallow = { ...whole, depth: 0, colors: false, compact: 3 } as const;
+
 const bytesAsText = (part: unknown): unknown =>
   Buffer.isBuffer(part) ? part.toString('utf8') : part;
 
@@ -30,9 +34,9 @@ export function consoleLine(...parts: readonly unknown[]): string {
   if (typeof first !== 'string') {
     return parts.map((part) => formatWithOptions(whole, bytesAsText(part))).join(' ');
   }
-  const args = rest.map(bytesAsText);
+  const args = rest.map((part) => bytesAsText(part));
   let next = 0;
-  const format = first.replace(/%([sjdOoifc%])/gu, (spec, letter: string) => {
+  const format = first.replaceAll(/%([sjdOoifc%])/gu, (spec, letter: string) => {
     if (letter === '%' || next >= rest.length) return spec;
     const index = next++;
     const value = rest[index];
@@ -42,7 +46,8 @@ export function consoleLine(...parts: readonly unknown[]): string {
       return '%s';
     }
     if (letter === 's' && typeof value === 'object' && value !== null) {
-      args[index] = inspect(value, whole);
+      const shown = formatWithOptions(whole, '%s', value);
+      args[index] = shown === inspect(value, shallow) ? inspect(value, whole) : shown;
       return '%s';
     }
     return spec;
