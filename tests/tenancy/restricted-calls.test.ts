@@ -57,6 +57,9 @@ import {
   type Callers,
 } from './restricted-calls-callers.ts';
 import { columnUpdateFindings } from './restricted-calls-columns.ts';
+import { describeLiveCorrectionLows } from '../site/live-correction-lows.ts';
+import { describeLiveCorrectionLowsRoundTwo } from '../site/live-correction-lows-2.ts';
+import { describeLiveCorrectionSolRoundOne } from '../site/live-correction-lows-sol.ts';
 
 /**
  * One owner-written row per business in the tables the journey leaves
@@ -242,6 +245,27 @@ const UNREACHED: Readonly<Record<string, string>> = {
   // T3e2: the journey drops nothing, so one report and one of its runs.
   'public.outage_reports': `insert into public.outage_reports (business_id, id, cause)
      values ($1, gen_random_uuid(), 'worker_lost') returning 1`,
+  // C80's two tables: the journey requests no live correction. The receipt
+  // follows the correction, on a lease the journey left in the same business.
+  'public.live_corrections': `insert into public.live_corrections
+       (business_id, id, party_id, task_id, requested_by_actor_id, requested_by_person_id,
+        target_path, word, replacement, page_url, pre_image_digest, base_revision, seam,
+        version_id, version_digest)
+     select p.business_id, gen_random_uuid(), gen_random_uuid(), r.id, a.id, p.id,
+            'src/pages/about.md', 'friendly', 'welcoming', 'https://agency.example/about/',
+            'sha256:seed', 'rev-1', 'seam-seed', gen_random_uuid(), 'sha256:seed'
+       from public.people p
+       join public.actors a on a.business_id = p.business_id
+       join public.records r on r.business_id = p.business_id
+      where p.business_id = $1 order by p.id, a.id, r.id limit 1 returning 1`,
+  'public.live_correction_receipts': `insert into public.live_correction_receipts
+       (business_id, id, correction_id, lease_id, fence, step, outcome, observations)
+     select c.business_id, gen_random_uuid(), c.id, coalesce(l.id, gen_random_uuid()),
+            coalesce(l.fence, 1), 'publish', 'live', '{}'::jsonb
+       from public.live_corrections c
+       left join lateral (select id, fence from public.leases
+                           where business_id = c.business_id order by id limit 1) l on true
+      where c.business_id = $1 order by c.id limit 1 returning 1`,
   // AW-01: the copy register, which the journey never reaches.
   'public.copy_registrations': `insert into public.copy_registrations
        (business_id, id, copy_class, copy_key, invalidation_trigger, retention_class)
@@ -853,7 +877,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     });
   });
 
-  describe('the live-elsewhere definer (20261004175013, C59)', () => {
+  describe('the live-elsewhere definer (20261004201458, C59)', () => {
     // The sixth definer: one boolean for a login of the caller's own business,
     // never a subject; the application's group may execute it
     // (c59-factor-reset-settle).
@@ -912,3 +936,11 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at the full 
     });
   });
 });
+
+// C80's live correction records, held on a world of their own after the cases
+// above: P26's four findings, each its own block (`../site/live-correction-lows.ts`),
+// then the re-bind review's round 2 on a second world (`../site/live-correction-lows-2.ts`),
+// then Sol's first review on a third (`../site/live-correction-lows-sol.ts`).
+describeLiveCorrectionLows();
+describeLiveCorrectionLowsRoundTwo();
+describeLiveCorrectionSolRoundOne();

@@ -18,9 +18,10 @@
 // or write-off with no top-up, an observed cost) never counted its calls, and
 // gives nothing back.
 //
-// Each caller reaches here only for a call it just moved out of an open state,
-// under the envelope's lock it took first, so the difference is given once;
-// the hold is locked here too, after the envelope, so its state stands.
+// Each caller reaches here only for a call it just moved out of an open or
+// unknown state, under the envelope's lock it took first, so the difference is
+// given once; the hold is locked here too, after the envelope, so its state
+// stands.
 
 import type { TenantQuery } from '../../core-records/src/index.ts';
 
