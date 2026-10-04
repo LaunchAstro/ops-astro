@@ -9,7 +9,7 @@ useBrokerWorld('solow049band');
 usePeople();
 useAnswerRoutes('solow049band');
 
-it('Sol proof, criterion 4: a budget-stop top-up above a valid fractional threshold cannot apply with one approver', async () => {
+it('a budget-stop top-up above a valid fractional threshold cannot apply with one approver', async () => {
   await s.db.app.withBusiness(s.business, async (tx) => {
     await grantTo(tx, s.decider, 'decide', undefined, false, 'spend');
   });
