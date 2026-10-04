@@ -17,7 +17,7 @@
 //   vitest.config.ts leaves some named suites out without one.
 
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import { assignShards, itemOf, planItems, readPlan } from './db-shards.ts';
@@ -65,9 +65,17 @@ function listed(files: readonly string[], part = ''): Map<string, number> {
     const run = spawnSync(
       process.execPath,
       [join(root, 'node_modules/vitest/vitest.mjs'), 'list', `--json=${out}`, ...files],
-      { cwd: root, encoding: 'utf8', env: { ...process.env, SUITE_PART: part } },
+      {
+        cwd: root,
+        encoding: 'utf8',
+        env: { ...process.env, SUITE_PART: part },
+        maxBuffer: 256 * 1024 * 1024,
+      },
     );
-    if (run.status !== 0) throw new Error(`vitest list failed: ${run.stderr.slice(0, 2000)}`);
+    if (run.status !== 0 || !existsSync(out)) {
+      const said = `${run.error?.message ?? ''}${run.stdout}${run.stderr}`.slice(-4000);
+      throw new Error(`vitest list failed (${String(run.status ?? run.signal)}): ${said}`);
+    }
     const tests = JSON.parse(readFileSync(out, 'utf8')) as { file: string }[];
     const counts = new Map<string, number>();
     for (const { file } of tests) {
