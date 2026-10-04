@@ -142,7 +142,10 @@ function depths(steps: NonNullable<MapGraph['steps']>): Map<string, number> {
 
 function outLine(step: Omit<MapStep, 'out' | 'sentence' | 'x' | 'y'>): MapStep['out'] {
   const waiting = step.after.find((one) => !one.satisfied);
-  if (step.gate?.state === 'pending')
+  // A pending gate asks only while the step still reads as waiting at it: a
+  // run observed since (in progress, settled, superseded) is newer than the
+  // gate snapshot from `task.read`, and the newer observation wins.
+  if (step.gate?.state === 'pending' && step.state.tone === 'gate')
     return { k: 'NEEDS', v: `A person's approval of v${String(step.gate.version)}` };
   if (waiting !== undefined) return { k: 'WAIT', v: waiting.key };
   const newest = step.runs.at(-1);
