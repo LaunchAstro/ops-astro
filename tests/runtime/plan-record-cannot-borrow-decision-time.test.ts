@@ -12,7 +12,7 @@ import { acceptPlanOn, graphAs, proposeStep, useAw06World, w } from './aw-06-wor
 
 useAw06World('planborrow');
 
-it('Sol proof, criterion 7: a correctly hashed record inserted after approval cannot borrow the decision timestamp', async () => {
+it('a correctly hashed record inserted after approval cannot borrow the decision timestamp', async () => {
   const taskId = await createTask(w.s, 'Sol OW-050 unapproved plan');
   const accepted = await acceptPlanOn(taskId);
   const proposal = appliedDetail(
