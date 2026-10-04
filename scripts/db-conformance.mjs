@@ -171,15 +171,17 @@ const client = new pg.Client({ connectionString: url });
 let selfCost = 0;
 
 try {
-  await client.connect();
   // The migrated template is no suite's work, and building it takes a lock in
   // `postgres`, which may be the database measured here. So it is built now,
   // before the first read, and each suite's global setup only finds it
   // finished, beside the measured database (scripts/migrated-template.ts). A run
-  // that has already failed builds nothing.
+  // that has already failed builds nothing. It comes before the connection: a
+  // session flushes its counts at most once a second, so one left idle through
+  // the build makes the first read flush and the measured read cost twice that.
   if (failures.length === 0 && templateEnabled()) {
     await ensureMigratedTemplate(process.env['DATABASE_ADMIN_URL'] ?? url);
   }
+  await client.connect();
   // Two consecutive reads measure what a read of the counter costs, so the
   // threshold below is calibrated on this database rather than assumed. The
   // same pair of reads brackets each suite, so the cost is the same one.
