@@ -16,6 +16,7 @@ import { DELEGATION_HEADER } from '../../packages/core-wire/src/surface.ts';
 import { createHarness, type Harness } from '../acceptance/role-case-harness.ts';
 import { agentPath, bearer, call, personPath, serverUrl } from '../acceptance/world.ts';
 import { c55Keys, incident, incidentsOf, pathOf } from './c55-operations-world.ts';
+import { consoleLine } from '../support/console-text.ts';
 
 const CANARY = 'CANARY-c55-incident-detail-4b91d2';
 
@@ -134,7 +135,7 @@ describe.skipIf(serverUrl === undefined)('C55 the operations view', () => {
   it('C55 records: a NUL or a lone surrogate in a text field is refused by name, and no driver error carries the words to a log', async () => {
     const before = await incidentRows(harness.world.alpha);
     const logged: string[] = [];
-    const capture = (...parts: unknown[]) => void logged.push(parts.map(String).join(' '));
+    const capture = (...parts: unknown[]) => void logged.push(consoleLine(...parts));
     const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((level) =>
       vi.spyOn(console, level).mockImplementation(capture),
     );
@@ -235,7 +236,7 @@ describe.skipIf(serverUrl === undefined)('C55 the operations view', () => {
 describe.skipIf(serverUrl === undefined)('C55 the operations view', () => {
   it('C55 canary: incident words reach no log, audit row, operation register row or refusal', async () => {
     const logged: string[] = [];
-    const capture = (...parts: unknown[]) => void logged.push(parts.map(String).join(' '));
+    const capture = (...parts: unknown[]) => void logged.push(consoleLine(...parts));
     const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((level) =>
       vi.spyOn(console, level).mockImplementation(capture),
     );

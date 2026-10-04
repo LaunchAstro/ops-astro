@@ -22,15 +22,34 @@
 // clean repository.
 //
 // CI-SPEED, light pull requests. The `local checks` job sets CHECK_SCOPE to its
-// name and scripts/ci-scope.ts decides. On a pull request a step marked `queue`
-// runs in the merge queue instead, the only way into main, and the step marked
+// name and scripts/ci-scope.ts decides. On a pull request the step marked
 // `changed` runs only the tests the change reaches (`vitest run --changed`, from
-// the pull request's base). A merge group, a push, any other event and a run
-// with no CHECK_SCOPE, every local run, run every step in full. A decision or a
-// base it cannot read fails the check before any step runs.
+// the pull request's base); the full run is in the merge queue, the only way
+// into main. A merge group, a push, any other event and a run with no
+// CHECK_SCOPE, every local run, run every step in full. A decision or a base it
+// cannot read fails the check before any step runs.
+//
+// The build runs before the tests, on a pull request too. Tests copy the bundle
+// it writes to apps/web/dist. Run last, and on a pull request not at all, it
+// left them to whichever test worker built first, and a pull request's light set
+// could select them without the one test that builds, so they read no bundle at
+// all. The build takes seconds.
+//
+// Once the build passes, every step after it gets the stamp it wrote, in
+// CHECK_WEB_BUILD, and no step before it gets one from outside.
+// tests/ci/no-fallback-in-bundle.test.ts keeps a bundle carrying exactly that
+// stamp rather than rewriting it under the other tests, and rebuilds any other
+// (tests/ci/web-bundle-build.ts). A build that leaves no stamp this can read
+// names nothing, so that test builds for itself.
 
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
+import { readStamp } from '../apps/web/build-stamp.ts';
+
+/** The variable the steps after the build read the bundle's stamp from. */
+const BUILT = 'CHECK_WEB_BUILD';
+/** Where the build writes the bundle, from the directory every step runs in. */
+const BUNDLE = join('apps', 'web', 'dist');
 
 const STEPS = [
   ['brand:check', 'product name headings'],
@@ -39,6 +58,7 @@ const STEPS = [
   ['lint', 'lint'],
   ['lint:ratchet', 'no new lint warning, no product source file over 1,000 lines'],
   ['format:check', 'format'],
+  ['build', 'build'],
   ['test', 'tests', 'changed'],
   ['gate:selftest', 'the gate proves itself'],
   ['gate:cases', 'the gate catches what it must'],
@@ -67,7 +87,6 @@ const STEPS = [
   ['deps:cruise', 'structural dependency rules'],
   ['db:cases', 'the database gate refuses a skip, a missing suite and an empty run'],
   ['local:cases', 'the local scripts never reuse a database on another major'],
-  ['build', 'build', 'queue'],
 ];
 
 const execPath = process.env['npm_execpath'];
@@ -104,28 +123,29 @@ function lightBase() {
 
 const base = lightBase();
 const results = [];
+const env = { ...process.env };
+delete env[BUILT];
 
 for (const [script, label, light] of STEPS) {
-  if (base !== null && light === 'queue') {
-    console.log(`\n=== ${label} (pnpm run ${script}): runs in the merge queue ===`);
-    results.push({ script, label, ok: true, queued: true });
-    continue;
-  }
   const changed = base !== null && light === 'changed';
   const args = changed ? ['--changed', base, '--passWithNoTests'] : [];
   const note = changed
     ? ': the full run is in the merge queue; here, the tests the change reaches'
     : '';
   console.log(`\n=== ${label} (pnpm run ${script})${note} ===`);
-  const run = spawnSync(command, [...prefix, 'run', script, ...args], { stdio: 'inherit' });
+  const run = spawnSync(command, [...prefix, 'run', script, ...args], { stdio: 'inherit', env });
   const ok = run.status === 0;
   results.push({ script, label, ok });
   if (!ok) break;
+  if (script === 'build') {
+    const stamp = readStamp(BUNDLE);
+    if (stamp !== undefined) env[BUILT] = stamp;
+  }
 }
 
 console.log('\n=== summary ===');
-for (const { script, label, ok, queued } of results) {
-  console.log(`${queued ? 'queue' : ok ? 'pass' : 'FAIL'}  ${label} (${script})`);
+for (const { script, label, ok } of results) {
+  console.log(`${ok ? 'pass' : 'FAIL'}  ${label} (${script})`);
 }
 
 const failed = results.find((r) => !r.ok);
