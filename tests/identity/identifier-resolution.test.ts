@@ -10,6 +10,8 @@
 // wrong.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { connect, type Database } from '../../packages/core-records/src/tenancy/database.ts';
+import type { TenantQuery } from '../../packages/core-records/src/tenancy/transaction.ts';
 import {
   normaliseIdentifier,
   resolveIdentifier,
@@ -48,6 +50,58 @@ function personOf(resolution: IdentifierResolution): string {
 }
 
 const serverUrl = databaseUrlFromEnvironment();
+
+const delay = (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+
+/** How long the interleaving is given to appear. Generous, and finite. */
+const WITHIN = 10_000;
+
+// The lookup `resolveIdentifier` matches on. A call is held right after it,
+// which is the window two first observations race through.
+const LOOKUP = /from public\.person_identifiers where kind/u;
+
+/**
+ * A gate both calls stop at after their lookup. It opens once both have
+ * looked up (nothing serialised them) or once one has looked up and the other
+ * is parked on a lock (something did); it stays open after that. A run that
+ * reaches neither state throws rather than passing quietly.
+ */
+function lookupGate(db: FreshDatabase): {
+  readonly held: (tx: TenantQuery) => TenantQuery;
+} {
+  let arrived = 0;
+  let open: Promise<void> | undefined;
+  const watch = async (deadline: number): Promise<void> => {
+    if (arrived >= 2) return;
+    const blocked = await db.admin.execute<{ readonly n: string }>(
+      `select count(*)::text as n from pg_stat_activity
+        where datname = current_database() and state = 'active' and wait_event_type = 'Lock'`,
+    );
+    if (Number(blocked[0]?.n ?? 0) > 0) return;
+    if (Date.now() > deadline) {
+      throw new Error('neither both lookups ran nor did the second call wait on a lock');
+    }
+    await delay(25);
+    await watch(deadline);
+  };
+  return {
+    held: (tx) => ({
+      businessId: tx.businessId,
+      async query<Row>(text: string, parameters?: readonly unknown[]): Promise<readonly Row[]> {
+        const rows = await tx.query<Row>(text, parameters);
+        if (LOOKUP.test(text)) {
+          arrived += 1;
+          open ??= watch(Date.now() + WITHIN);
+          await open;
+        }
+        return rows;
+      },
+    }),
+  };
+}
 
 if (serverUrl === undefined) {
   console.warn(
@@ -186,6 +240,83 @@ describe.skipIf(serverUrl === undefined)('login_resolution: the identifier', () 
       });
       expect((await observe('shared@example.com')).outcome).toBe('unresolved');
     });
+  });
+
+  describe('a link a human rejected', () => {
+    it('is not evidence: the observation attaches to the confirmed person, and the rejected row is untouched', async () => {
+      const [ada, bea] = await db.app.withBusiness(business, async (tx) => {
+        const rejected = await insertPerson(tx, 'Ada');
+        const confirmed = await insertPerson(tx, 'Bea');
+        await insertIdentifier(tx, rejected, 'contested@example.com', 'crm');
+        await insertIdentifier(tx, confirmed, 'contested@example.com', 'forms');
+        await tx.query(
+          `update person_identifiers set review_state = case person_id when $1 then 'rejected' else 'confirmed' end
+            where value = 'contested@example.com'`,
+          [rejected],
+        );
+        return [rejected, confirmed] as const;
+      });
+      const rejectedRow = async (): Promise<unknown> =>
+        await db.app.withBusiness(business, (tx) =>
+          tx.query(
+            `select review_state, source_system, last_observed_at, confidence
+               from person_identifiers where person_id = $1`,
+            [ada],
+          ),
+        );
+      const before = await rejectedRow();
+      expect(await observe('contested@example.com')).toMatchObject({
+        outcome: 'attached',
+        personId: bea,
+        person: 'existing',
+      });
+      expect(await rejectedRow()).toStrictEqual(before);
+    });
+
+    it('alone, does not attach the observation to the rejected person', async () => {
+      const ada = await db.app.withBusiness(business, async (tx) => {
+        const rejected = await insertPerson(tx, 'Ada');
+        await insertIdentifier(tx, rejected, 'turned-down@example.com', 'crm');
+        await tx.query(
+          `update person_identifiers set review_state = 'rejected' where person_id = $1`,
+          [rejected],
+        );
+        return rejected;
+      });
+      const resolved = await observe('turned-down@example.com');
+      expect(resolved).toMatchObject({ outcome: 'attached', person: 'new' });
+      expect(personOf(resolved)).not.toBe(ada);
+    });
+  });
+
+  describe('two first observations at once', () => {
+    let second: Database;
+
+    beforeAll(() => {
+      // A second connection, because the first is `max: 1` and two
+      // transactions on it would queue in the pool rather than race.
+      second = connect(db.appUrl, { source: 'runtime' });
+    });
+
+    afterAll(async () => {
+      await second?.close();
+    });
+
+    it('make one person, and a third observation attaches to that person', async () => {
+      const gate = lookupGate(db);
+      const people = async (): Promise<number> =>
+        await db.app.withBusiness(business, (tx) => countRows(tx, 'people'));
+      const before = await people();
+      const value = 'first-seen@example.com';
+      const observation = { kind: 'email', value, sourceSystem: 'import' } as const;
+      const [one, two] = await Promise.all([
+        db.app.withBusiness(business, (tx) => resolveIdentifier(gate.held(tx), observation)),
+        second.withBusiness(business, (tx) => resolveIdentifier(gate.held(tx), observation)),
+      ]);
+      expect(personOf(two)).toBe(personOf(one));
+      expect(await people()).toBe(before + 1);
+      expect(personOf(await observe(value))).toBe(personOf(one));
+    }, 30_000);
   });
 
   describe('a merge that points at itself', () => {
