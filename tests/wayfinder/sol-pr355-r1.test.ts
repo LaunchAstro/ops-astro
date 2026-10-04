@@ -8,6 +8,7 @@ import { withSession } from '../../packages/core-records/src/identity/login-reso
 import { shareRecord } from '../../packages/core-records/src/authority/shares.ts';
 import { insertPerson } from '../identity/fixture.ts';
 import { executeCommand, runCommand } from '../../packages/core-commands/src/commands/envelope.ts';
+import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { codeOf, must, wayfinderWorld, type Decider, type WayfinderWorld } from './world.ts';
 
 let w: WayfinderWorld;
@@ -299,4 +300,69 @@ it('Sol proof, criterion 5: retyping a parent to map cannot race a client share 
     [w.business, child.id, outsider],
   );
   expect(rows[0]?.n).toBe('0');
+});
+
+// From Sol's PR #379 round 1 proofs (PRV-oa-379-R1-0e9c9b029.patch), the read half of
+// the map grant's reach, brought here with that reach (its `map()` is a map task here).
+function intercept(
+  after: (sql: string, parameters: readonly unknown[]) => Promise<void>,
+): Database {
+  return {
+    ...w.db.app,
+    async withBusiness(businessId, run) {
+      return await w.db.app.withBusiness(businessId, async (tx) => {
+        const wrapped: typeof tx = {
+          ...tx,
+          async query<Row>(sql: string, parameters: readonly unknown[] = []) {
+            const rows = await tx.query<Row>(sql, parameters);
+            await after(sql, parameters);
+            return rows;
+          },
+        };
+        return await run(wrapped);
+      });
+    },
+  };
+}
+
+it('Sol proof, criterion 5: person to person map grant cannot read content written after a ticket moves outside that grant', async () => {
+  const a = await w.create(owner, { title: 'reader map' }, { taskType: 'map' });
+  const b = await w.create(owner, { title: 'private map' }, { taskType: 'map' });
+  const ticket = await w.create(owner, { title: 'moving ticket' }, { parentId: a.id });
+  const reader = await w.member('moving-reader', ['read'], { kind: 'record', id: a.id });
+  let fired = false;
+  const db = intercept(async (sql, parameters) => {
+    if (fired || !sql.includes("select r.data ->> 'type' as type") || parameters[1] !== ticket.id)
+      return;
+    fired = true;
+    must(
+      await w.asOnSecond(owner, {
+        command: 'task.reparent',
+        recordId: ticket.id,
+        expectedRevision: await w.revisionOf(ticket.id),
+        parentId: b.id,
+      }),
+      'concurrent move',
+    );
+    must(
+      await w.asOnSecond(owner, {
+        command: 'task.update',
+        recordId: ticket.id,
+        expectedRevision: await w.revisionOf(ticket.id),
+        fields: { title: 'private content written only after moving to map B' },
+      }),
+      'private update after moving',
+    );
+  });
+  const answer = await executeRead(db, w.business, reader.presented, {
+    read: 'task.read',
+    recordId: ticket.id,
+  });
+  expect(fired).toBe(true);
+  expect(codeOf(await w.read(reader, { read: 'task.read', recordId: ticket.id }))).toBe(
+    'SCOPE_NOT_GRANTED',
+  );
+  expect(JSON.stringify(answer)).not.toContain(
+    'private content written only after moving to map B',
+  );
 });
