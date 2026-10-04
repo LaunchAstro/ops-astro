@@ -43,6 +43,7 @@ import {
 
 const SVG_QR = 'data:image/svg+xml';
 const NO_SECRET = 'The API answered with no set-up to show. Try again.';
+const UNSENT = { unavailable: true, because: 'The set-up did not finish. Try again.' } as const;
 
 /** What the page holds of an issued factor while it is shown. */
 interface Shown {
@@ -79,10 +80,15 @@ function refusedStage(result: CallResult<IssuedFactor>, canSignIn: boolean): Sta
   return { at: 'idle', said };
 }
 
+// The last enrol sent from any panel, as its settling and not its answer. A cancelled one still
+// lands and would replace the factor whose key is shown, so the next waits for it, as Start does.
+let landing: Promise<unknown> = Promise.resolve();
+
 /** The enrol and its stage; every answer is dropped once cancelled or left. */
 function useEnrol(client: OperationsClient) {
   const canSignIn = useContext(SignInAgainContext) !== null;
   const [stage, setStage] = useState<Stage>(IDLE);
+  const [settling, setSettling] = useState(false);
   const asked = useRef(0);
   useEffect(
     () => () => {
@@ -94,8 +100,11 @@ function useEnrol(client: OperationsClient) {
     asked.current += 1;
     const mine = asked.current;
     setStage({ at: 'asking' });
-    void (async () => {
-      const result = await client.enrolFactor();
+    setSettling(true);
+    const sent = landing.then(async () => await client.enrolFactor()).catch(() => UNSENT);
+    landing = (async () => {
+      const result = await sent;
+      setSettling(false);
       if (asked.current !== mine) return;
       setStage('ok' in result ? stageOf(result.value) : refusedStage(result, canSignIn));
     })();
@@ -107,6 +116,7 @@ function useEnrol(client: OperationsClient) {
   const to = (next: Stage) => () => setStage(next);
   return {
     stage,
+    settling,
     setStage,
     start,
     cancel,
@@ -209,6 +219,7 @@ function Said(props: { readonly stage: Stage }): ReactElement | null {
 function Actions(props: {
   readonly asking: boolean;
   readonly signedIn: boolean;
+  readonly settling: boolean;
   readonly removable: boolean;
   readonly onStart: () => void;
   readonly onRemove: () => void;
@@ -218,7 +229,7 @@ function Actions(props: {
     <div className="btnrow">
       <span data-factor="enrol">
         <Button
-          busy={props.asking ? 'Setting up…' : undefined}
+          busy={props.asking ? 'Setting up…' : props.settling ? 'Cancelling…' : undefined}
           disabled={!props.signedIn}
           reason="Sign in to set up an authenticator app."
           onClick={props.onStart}
@@ -246,7 +257,7 @@ function Actions(props: {
 
 export function AuthenticatorSetup(props: { readonly client: OperationsClient }): ReactElement {
   const signedIn = useContext(StepUpContext) !== null;
-  const { stage, setStage, start, cancel, done, removed } = useEnrol(props.client);
+  const { stage, settling, setStage, start, cancel, done, removed } = useEnrol(props.client);
   const restart = useRestart(props.client, start);
   const at = stage.at;
   return (
@@ -273,6 +284,7 @@ export function AuthenticatorSetup(props: { readonly client: OperationsClient })
             <Actions
               asking={at === 'asking'}
               signedIn={signedIn}
+              settling={settling}
               removable={at === 'idle'}
               onStart={start}
               onRemove={() => {
