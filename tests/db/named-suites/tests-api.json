@@ -1,6 +1,7 @@
 {
   "comment": [
-    "SOLOW-G G1 names cancelled-unknown-hold-story (Sol OW-108.2: a cancellation never overrides an unresolved unknown hold in the run story, through the real task read)."
+    "SOLOW-G G1 names cancelled-unknown-hold-story (Sol OW-108.2: a cancellation never overrides an unresolved unknown hold in the run story, through the real task read).",
+    "Not named: secret-log-capture-keeps-credential-in-object.test.ts and secret-log-capture-keeps-credential-in-format-and-buffer.test.ts import api-2-agent-credential-use-world.ts only for its console capture and open no database, and the runner refuses a named suite that leaves the counter alone (catalogue #720)."
   ],
   "invariant": [
     "tests/api/agent-bare-handback-replay.test.ts",
