@@ -196,6 +196,13 @@ const UNREACHED: Readonly<Record<string, string>> = {
   'public.clients': `insert into public.clients (business_id, id, name, created_by_actor_id)
      select business_id, gen_random_uuid(), 'restricted calls seed', id
        from public.actors where business_id = $1 order by id limit 1 returning 1`,
+  // C60: no journey records a client's written request, so one is written here.
+  'public.client_model_requests': `insert into public.client_model_requests
+       (business_id, id, client_id, requested_by, requested_on, request_link, providers, outcome,
+        recorded_by_actor)
+     select business_id, gen_random_uuid(), id, 'restricted calls seed', current_date,
+            'https://files.example.test/seed.pdf', array['replay'], 'applied', created_by_actor_id
+       from public.clients where business_id = $1 order by id limit 1 returning 1`,
   // C58: no journey ends a person's access, so an ending is written here for a
   // person's own login, as `access.end` writes one.
   'public.access_endings': `insert into public.access_endings
