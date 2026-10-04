@@ -83,8 +83,10 @@ const spelledAt = (text: string, offset: number, spelling: Spelling): boolean =>
  * there (steps that meet go on alike). Nothing is retried, so the cost is the
  * text's length times the secret's, and every spelling stays reachable.
  */
-function spans(text: string, secret: string): readonly (readonly [number, number])[] {
-  const groups = [...secret].map((character) => spellingsOf(character));
+function spans(
+  text: string,
+  groups: readonly (readonly Spelling[])[],
+): readonly (readonly [number, number])[] {
   if (groups.length === 0) return [];
   const ahead = new Map<number, Map<number, number>>();
   const found: [number, number][] = [];
@@ -144,15 +146,21 @@ function base64Spellings(secret: string): readonly string[] {
   });
 }
 
-/** The text with every spelling of each secret replaced by `[redacted]`. */
-function redactText(text: string, secrets: readonly string[]): string {
-  const unescaped = cut(
-    text,
-    secrets.flatMap((secret) => spans(text, secret)),
-  );
-  return secrets
-    .flatMap((secret) => base64Spellings(secret))
-    .reduce((out, spelling) => out.split(spelling).join('[redacted]'), unescaped);
+/**
+ * Text with every spelling of each secret replaced by `[redacted]`. The
+ * spellings are worked out once, so a JSON answer of many small values costs
+ * its length, not a setup per value.
+ */
+function redacterOf(secrets: readonly string[]): (text: string) => string {
+  const spelled = secrets.map((secret) => [...secret].map((character) => spellingsOf(character)));
+  const encoded = secrets.flatMap((secret) => base64Spellings(secret));
+  return (text) => {
+    const unescaped = cut(
+      text,
+      spelled.flatMap((groups) => spans(text, groups)),
+    );
+    return encoded.reduce((out, spelling) => out.split(spelling).join('[redacted]'), unescaped);
+  };
 }
 
 /**
@@ -167,23 +175,25 @@ function redactText(text: string, secrets: readonly string[]): string {
  */
 function redact(text: string, credential: StoredCredential): string {
   const { value } = credential;
-  const secrets = credential.scheme === 'basic' ? [value, value.split(':')[1] ?? value] : [value];
+  const redactText = redacterOf(
+    credential.scheme === 'basic' ? [value, value.split(':')[1] ?? value] : [value],
+  );
   const inside = (decoded: unknown): unknown => {
-    if (typeof decoded === 'string') return redactText(decoded, secrets);
+    if (typeof decoded === 'string') return redactText(decoded);
     if (Array.isArray(decoded)) return decoded.map((item) => inside(item));
     if (typeof decoded === 'object' && decoded !== null) {
       return Object.fromEntries(
-        Object.entries(decoded).map(([key, field]) => [redactText(key, secrets), inside(field)]),
+        Object.entries(decoded).map(([key, field]) => [redactText(key), inside(field)]),
       );
     }
     const written = JSON.stringify(decoded);
-    return redactText(written, secrets) === written ? decoded : '[redacted]';
+    return redactText(written) === written ? decoded : '[redacted]';
   };
   let decoded: unknown;
   try {
     decoded = JSON.parse(text);
   } catch {
-    return redactText(text, secrets);
+    return redactText(text);
   }
   try {
     return JSON.stringify(inside(decoded));
