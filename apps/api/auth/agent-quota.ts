@@ -4,6 +4,7 @@
 // and records handed out a minute, each held per credential, per person and
 // per business; and the made-up or dead bearers a business key is sent a
 // minute, past which a not-live one is answered as limited and not recorded.
+// A key nobody holds has the same door, so the two answer alike.
 //
 // Past a full door each bearer costs one unlocked read and writes nothing
 // (`executeCredentialCommand`); nothing here holds a bearer, its digest or a
@@ -61,15 +62,15 @@ function currentWindow(windows: Map<string, Window>, key: string, at: number): W
 }
 
 /**
- * A business's door: its not-live bearers a minute, counted in its own
- * window's `requests`. A knock takes a place at once; a released one is given
+ * A door: the not-live bearers a business, or a key nobody holds, is sent a
+ * minute, counted in its own window's `requests`. A knock takes a place at once; a released one is given
  * back to the window it was taken from.
  */
 function doorOf(refused: number, now: () => Date): Pick<CredentialQuota, 'knock'> {
   const windows = new Map<string, Window>();
   return {
-    knock(businessId) {
-      const window = currentWindow(windows, businessId, now().getTime());
+    knock(door) {
+      const window = currentWindow(windows, door, now().getTime());
       if (window.requests >= refused) return;
       window.requests += 1;
       let released = false;
