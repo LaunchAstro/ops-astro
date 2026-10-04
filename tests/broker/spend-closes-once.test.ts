@@ -14,6 +14,7 @@ import { sweepLostWorkers, topUpAtBudgetStop } from '../../packages/core-runtime
 import {
   reserveModelCall,
   sendReservedCall,
+  sweepModelCalls,
   type Broker,
   type ModelCallResult,
 } from '../../packages/core-custody/src/index.ts';
@@ -108,6 +109,31 @@ it("a call closed by the provider's proof ignores its own late answer: one give-
   expect(await envelopeActual(work), 'counted as the call came to').toBe(
     before + (await cameTo(work)),
   );
+});
+
+// The late answer and the provider's proof race on a call a top-up counted at
+// its maximum and the sweep then held unknown: whichever closes it first, the
+// call's row lock lets one close and one give-back through.
+it("a counted unknown call's late answer racing the provider's proof gives back once", async () => {
+  const work = await liveWork(s, `closes once raced ${randomUUID()}`, 900);
+  world.provider.mode('answer');
+  world.provider.lookupMode('honest');
+  const { broker: slow, open } = gated(faultBroker());
+  const late = callIn(s, work, slow);
+  await dispatched(work);
+  const before = await envelopeActual(work);
+  expect(await callIn(s, work, broker)).toMatchObject({ code: 'BUDGET_UNAVAILABLE' });
+  expect(await topUp(s, work)).toMatchObject({ ok: true, value: { state: 'applied' } });
+  expect(await envelopeActual(work), 'counted at its maximum').toBe(before + 500);
+  await s.db.app.withBusiness(s.business, async (tx) => await sweepModelCalls(tx));
+  expect(await calls(work)).toMatchObject([{ state: 'liability_unknown' }]);
+
+  open();
+  await Promise.all([late, pass()]);
+
+  const [ended] = await calls(work);
+  expect(['settled', 'released']).toContain(ended?.state);
+  expect(await envelopeActual(work), 'given back once').toBe(before + (await cameTo(work)));
 });
 
 it('a dispatched call settles once at its answer', async () => {
