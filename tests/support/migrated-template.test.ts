@@ -101,7 +101,7 @@ describe('the template name', () => {
     const root = mkdtempSync(join(tmpdir(), 'tpl-harness-'));
     onTestFinished(() => rmSync(root, { recursive: true, force: true }));
     const tenancy = 'packages/core-records/src/tenancy';
-    const self = 'tests/support/migrated-template.ts';
+    const self = 'scripts/migrated-template.ts';
     cpSync(tenancy, join(root, tenancy), { recursive: true });
     cpSync(self, join(root, self));
     expect(templateName('migrations', root)).toBe(templateName());

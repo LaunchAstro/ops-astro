@@ -60,7 +60,7 @@ import { join, relative, resolve } from 'node:path';
 import pg from 'pg';
 import { assignShards, itemOf, parseShard, planItems, readPlan } from './db-shards.ts';
 import { manifestPathIn, readNamedSuites } from './named-suites.ts';
-import { ensureMigratedTemplate, templateEnabled } from '../tests/support/migrated-template.ts';
+import { ensureMigratedTemplate, templateEnabled } from './migrated-template.ts';
 
 const repoRoot = resolve(import.meta.dirname, '..');
 
@@ -175,8 +175,9 @@ try {
   // The migrated template is no suite's work, and building it takes a lock in
   // `postgres`, which may be the database measured here. So it is built now,
   // before the first read, and each suite's global setup only finds it
-  // finished, beside the measured database (tests/support/migrated-template.ts).
-  if (templateEnabled()) {
+  // finished, beside the measured database (scripts/migrated-template.ts). A run
+  // that has already failed builds nothing.
+  if (failures.length === 0 && templateEnabled()) {
     await ensureMigratedTemplate(process.env['DATABASE_ADMIN_URL'] ?? url);
   }
   // Two consecutive reads measure what a read of the counter costs, so the
