@@ -187,7 +187,9 @@ async function build(serverUrl: string, name: string): Promise<MigratedTemplate>
       if (now !== undefined) return { name, migration: now };
       return { name, migration: await buildFromEmpty(serverUrl, name) };
     } finally {
-      await lock.execute(UNLOCK);
+      // Closing the session releases the lock too, so a failed unlock must not
+      // hide the build's own error.
+      await lock.execute(UNLOCK).catch(() => undefined);
     }
   } finally {
     await lock.close();
