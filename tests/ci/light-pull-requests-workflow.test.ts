@@ -248,6 +248,9 @@ describe('planted: the aggregate and the gate, each goes red', () => {
     'failure()',
     'success() || failure()',
     'cancelled( ) || true',
+    '!success()',
+    '${{ Always() }}',
+    'FAILURE()',
   ])('a new job behind the gate on %s, neither needing it nor reading its result', (cond) => {
     const ci = load(CI);
     ci.jobs['later'] = { needs: ['database-shard'], if: cond, steps: [] };
