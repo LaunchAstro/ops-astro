@@ -17,10 +17,28 @@ it('a sess token in a Basic secret is refused before storage', () => {
   expect(parsed.ok ? 'loaded' : parsed.code).toBe('SESSION_TOKEN_REFUSED');
 });
 
+/** An encrypted token in compact form: five base64url parts, the first naming its encryption. */
+const ENCRYPTED = [
+  Buffer.from('{"alg":"dir","enc":"A256GCM"}').toString('base64url'),
+  '',
+  'c3ludGhldGlj',
+  'c2Vzc2lvbg',
+  'dGFn',
+].join('.');
+
 it.each([
-  ['a cookie pair', 'auth=1; sess-synthetic-session-only'],
+  ['a cookie pair', 'auth=1;sess-synthetic-session-only'],
+  ['a cookie value', 'token=sess-synthetic-session-only'],
+  ['a query pair', 'a=1&sess-synthetic-session-only'],
+  ['a Basic secret after a zero-width space', 'person:\u200Bsess-synthetic-session-only'],
+  [
+    'a Basic pair encoded alone',
+    Buffer.from('person:sess-synthetic-session-only').toString('base64'),
+  ],
+  ['a Basic secret holding an encrypted token', `person:${ENCRYPTED}`],
+  ['quotes around an encrypted token', `"${ENCRYPTED}"`],
   ['a Basic secret with a space before it', 'person: sess-synthetic-session-only'],
-] as const)('a sess token in %s is refused before storage', (_case, value) => {
+] as const)('a session token in %s is refused before storage', (_case, value) => {
   const parsed = parseCredentials([
     {
       ref: 'auth_key',

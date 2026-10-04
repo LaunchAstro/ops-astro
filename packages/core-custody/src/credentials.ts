@@ -38,20 +38,36 @@ export type CredentialRefusal =
  * Shapes of a browser session token for a consumer chat product, or of the
  * cookie that carries one. Never stored. Matched anywhere in the value, so a
  * pasted cookie pair (`sessionKey=sk-ant-sid01-...`) is caught as well as the
- * bare token. A `sess-` token is matched where a token can start: the value's
- * start, or after a separator, such as a Basic pair's colon or a cookie's `=`.
+ * bare token. A `sess-` token, or an encrypted one, is matched where a token
+ * can start: the value's start, or after a separator (`SEPARATOR`), such as a
+ * Basic pair's colon, a cookie's `=` or `;`, a query's `&`, a quote, white
+ * space or a zero-width character.
  */
+/** What can stand between one token and the next in a pasted value. */
+const SEPARATOR = /[\s"'&,:;=\u200B-\u200D\u2060]/u;
+
 const SESSION_TOKEN = [
   /sk-ant-sid/iu,
-  /(?:^|[\s"',:;=])sess-/iu,
+  /(?:^|[\s"'&,:;=\u200B-\u200D\u2060])sess-/iu,
   /sessionkey/iu,
   /session[-_]?token/iu,
   /__secure-next-auth/iu,
 ];
 
-/** The value and each percent-decoding of it, until decoding changes nothing. */
+/** Printable text, as a base64 value that is really an encoded pair decodes to. */
+const PRINTABLE = /^[\u0020-\u007E]+$/u;
+
+/**
+ * The value and each percent-decoding of it, until decoding changes nothing;
+ * and, for a value wholly base64 or base64url (a Basic header's encoded pair
+ * pasted alone), its decoding when that is printable text.
+ */
 function readings(value: string): readonly string[] {
   const seen = [value];
+  if (/^[\w+/-]+={0,2}$/u.test(value)) {
+    const decoded = Buffer.from(value, 'base64').toString('latin1');
+    if (PRINTABLE.test(decoded)) seen.push(decoded);
+  }
   for (let round = 0; round < 3; round += 1) {
     let next: string;
     try {
@@ -86,7 +102,7 @@ function isSessionToken(value: string): boolean {
   return readings(value).some(
     (text) =>
       SESSION_TOKEN.some((pattern) => pattern.test(text)) ||
-      text.split(/[=;]/u).some((piece) => isEncryptedToken(piece)),
+      text.split(SEPARATOR).some((piece) => isEncryptedToken(piece)),
   );
 }
 
