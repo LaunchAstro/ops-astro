@@ -144,8 +144,9 @@ export async function purgeHold(
   tx: TenantQuery,
   conversation: Wrapped,
   window: number,
+  lockTask = false,
 ): Promise<'WORK_OPEN' | 'NOT_DUE' | undefined> {
-  const work = await workOf(tx, conversation.id, conversation.scope_record_id);
+  const work = await workOf(tx, conversation.id, conversation.scope_record_id, lockTask);
   if (work.some((item) => !item.terminal)) return 'WORK_OPEN';
   const since = work.reduce(
     (latest, item) => (item.endedAt !== null && item.endedAt > latest ? item.endedAt : latest),
@@ -204,7 +205,7 @@ export async function purgeConversation(
     [tx.businessId, request.conversationId],
   );
   if (covering[0]?.n === '0') return { ok: false, code: 'WRAP_UP_ABSENT' };
-  const hold = await purgeHold(tx, { ...locked, id: request.conversationId }, window);
+  const hold = await purgeHold(tx, { ...locked, id: request.conversationId }, window, true);
   if (hold !== undefined) return { ok: false, code: hold };
   const purged = await tx.query<{ id: string }>(
     `delete from conversation_messages

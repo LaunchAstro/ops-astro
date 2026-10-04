@@ -32,7 +32,7 @@ export interface Work {
 
 interface TaskRow {
   readonly id: string;
-  readonly category: string | null;
+  readonly status_id: string | null;
   readonly completed_at: Date | null;
   readonly updated_at: Date;
   readonly deleted_at: Date | null;
@@ -41,32 +41,43 @@ interface TaskRow {
 /**
  * The task the conversation was opened on, with its state; a completed task
  * ended at its stamp, and a task trashed before it ended, at its trash.
+ *
+ * The purge reads it locked (`for share`): a reopen or a trash in flight
+ * commits first and the purge reads the task as it left it, or waits for the
+ * purge. Its status is read after the lock, so it is the committed one.
  */
-async function taskWork(tx: TenantQuery, scopeRecordId: string | null): Promise<readonly Work[]> {
+async function taskWork(
+  tx: TenantQuery,
+  scopeRecordId: string | null,
+  lock: boolean,
+): Promise<readonly Work[]> {
   if (scopeRecordId === null) return [];
-  const tasks = await tx.query<TaskRow>(
-    `select r.id, s.data ->> 'machine_category' as category, r.ts_2 as completed_at,
-            r.updated_at, r.deleted_at
+  const [task] = await tx.query<TaskRow>(
+    `select r.id, r.uuid_1 as status_id, r.ts_2 as completed_at, r.updated_at, r.deleted_at
        from records r
-       left join records s
-         on s.business_id = r.business_id and s.id = r.uuid_1 and s.deleted_at is null
-      where r.business_id = $1 and r.id = $2`,
+      where r.business_id = $1 and r.id = $2${lock ? ' for share' : ''}`,
     [tx.businessId, scopeRecordId],
   );
-  return tasks.map((task) => {
-    const ended = task.category === 'completed' || task.category === 'cancelled';
-    const terminal = ended || task.deleted_at !== null;
-    return {
+  if (task === undefined) return [];
+  const [status] = await tx.query<{ readonly category: string | null }>(
+    `select data ->> 'machine_category' as category from records
+      where business_id = $1 and id = $2 and deleted_at is null`,
+    [tx.businessId, task.status_id],
+  );
+  const category = status?.category ?? null;
+  const ended = category === 'completed' || category === 'cancelled';
+  return [
+    {
       pointer: {
         kind: 'task',
         id: task.id,
         address: `/task/${task.id}`,
-        state: task.category ?? 'unknown',
+        state: category ?? 'unknown',
       },
-      terminal,
+      terminal: ended || task.deleted_at !== null,
       endedAt: ended ? (task.completed_at ?? task.updated_at) : task.deleted_at,
-    };
-  });
+    },
+  ];
 }
 
 /** The runs and gates the conversation started, each pointing at its task. */
@@ -111,12 +122,17 @@ async function createdTasks(
   return rows.map((row) => ({ kind: 'task', id: row.id, address: `/task/${row.id}` }));
 }
 
+/** The conversation's work; `lockTask` for the purge, which acts on it. */
 export async function workOf(
   tx: TenantQuery,
   conversationId: string,
   scopeRecordId: string | null,
+  lockTask = false,
 ): Promise<readonly Work[]> {
-  return [...(await taskWork(tx, scopeRecordId)), ...(await startedWork(tx, conversationId))];
+  return [
+    ...(await taskWork(tx, scopeRecordId, lockTask)),
+    ...(await startedWork(tx, conversationId)),
+  ];
 }
 
 const pointersOf = (
