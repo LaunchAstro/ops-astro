@@ -2,7 +2,7 @@
 import { expect, it } from 'vitest';
 import { consoleDuring } from './api-2-agent-credential-use-world.ts';
 
-it('Sol proof, criterion 2: the secret-log capture preserves a credential logged in an object', async () => {
+it('the secret-log capture keeps a credential logged inside an object', async () => {
   const credential = 'sol-proof-made-up-credential-not-a-real-secret';
   const captured = await consoleDuring(() => {
     console.error({ credential });
