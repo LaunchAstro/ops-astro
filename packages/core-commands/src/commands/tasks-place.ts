@@ -438,19 +438,20 @@ export async function rankTask(
   }
   const parent = (target.data['parent'] as string | undefined) ?? null;
   const given = [afterId, beforeId].filter((id) => id !== null);
-  let viaMap: CommandRefusal | undefined;
+  // Unreached at its own scope, the target was admitted by its map's grant (W12).
+  let viaMap = await refuseUnreachedRecord(tx, context, target.id);
   for (const id of given) {
     // eslint-disable-next-line no-await-in-loop
     const unreached = await refuseUnreachedRecord(tx, context, id);
     if (unreached === undefined) continue;
     // eslint-disable-next-line no-await-in-loop
     if (!(await reachedThroughMap(tx, context, id, parent))) return refused(unreached);
-    viaMap = unreached;
+    viaMap ??= unreached;
   }
 
   const board = parent === null ? ((target.data['board'] as string | undefined) ?? null) : null;
   await lockSiblings(tx, parent, board);
-  // A neighbour admitted by the map's grant: the parent is held and read again,
+  // A target or neighbour admitted by the map's grant: the parent is held and read again,
   // so a retype that committed meanwhile is refused and none commits before the rank.
   if (
     viaMap !== undefined &&
