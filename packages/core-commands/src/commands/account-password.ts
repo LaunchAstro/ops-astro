@@ -36,17 +36,17 @@
 //    no to the password itself is `RESET_PASSWORD_REFUSED`; a fault is
 //    `RESET_UNAVAILABLE`. Either way the token is spent, and the person asks
 //    for a new link.
-// 6. Set, each business the login is mapped in ends the sessions it has seen,
-//    one transaction each. Last, whatever happened, one transaction in the
-//    token's business settles the window (a sign-in after it is served) and,
-//    only when the password was set and every business's ending committed,
-//    audits `account.password_changed` there, once, with no password and no
-//    token in it. The other businesses keep their ended sessions alone, and a
+// 6. Set or not, each business the login is mapped in ends the sessions it
+//    has seen, one transaction each. Last, whatever happened, one transaction
+//    in the token's business settles the window (a sign-in after it is
+//    served) and, only when the password was set and every business's ending
+//    committed, audits `account.password_changed` there, once, with no
+//    password and no token in it. The other businesses keep their ended sessions alone, and a
 //    failure anywhere audits nothing anywhere.
 
 import { createHash } from 'node:crypto';
 import {
-  endOtherSeenSessions,
+  endSeenSessions,
   lockLoginFactors,
   loginHasVerifiedFactor,
   NO_ASSURANCE,
@@ -195,11 +195,11 @@ async function spend(
 }
 
 /** Step 6: in each business the login is mapped in, the sessions seen there end. */
-async function endedIn(database: Database, mapped: readonly Mapped[], subject: string) {
+async function endedIn(database: Database, mapped: readonly Mapped[]) {
   for (const { business, session } of mapped) {
     // oxlint-disable-next-line no-await-in-loop -- one business's transaction at a time
     await database.withBusiness(business, async (tx) => {
-      await endOtherSeenSessions(tx, session.personId, undefined, 'end_others', subject);
+      await endSeenSessions(tx, session.personId, undefined, 'end_others');
     });
   }
 }
@@ -247,12 +247,15 @@ export async function setPasswordByToken(
   let set: LoginPasswordSet = 'fault';
   let ended = false;
   try {
-    set = await setLoginPassword(dependencies.broker, found.subject, reset.password);
-    if (set === 'set') await endedIn(database, mapped, found.subject);
-    ended = set === 'set';
+    // Set or not, the sessions each business saw end there, so its list
+    // agrees with its door (Sol, PR #382 round 3).
+    set = await setLoginPassword(dependencies.broker, found.subject, reset.password).finally(
+      async () => await endedIn(database, mapped),
+    );
+    ended = true;
   } finally {
     await database.withBusiness(found.business, async (tx) => {
-      if (ended) await audited(tx, own.session);
+      if (ended && set === 'set') await audited(tx, own.session);
       await settleResetWindow(tx, spent.window);
     });
   }

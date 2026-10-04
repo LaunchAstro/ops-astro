@@ -88,6 +88,19 @@ export async function endOtherSeenSessions(
      values (encode(sha256(convert_to($1, 'UTF8')), 'hex'), $2::uuid)`,
     [subject, keep ?? null],
   );
+  return await endSeenSessions(tx, personId, keep, reason);
+}
+
+/**
+ * End the sessions the person has been seen on here except `keep`, by id
+ * alone: a reset's window ends the rest (C40).
+ */
+export async function endSeenSessions(
+  tx: TenantQuery,
+  personId: string,
+  keep: string | undefined,
+  reason: Exclude<SessionEndReason, 'sign_out'>,
+): Promise<number> {
   const seen = await tx.query<{ readonly session_id: string }>(
     `select distinct a.session_id::text as session_id
        from public.authentication_attempts a
@@ -129,27 +142,38 @@ export async function settleResetWindow(tx: TenantQuery, id: string): Promise<vo
  * Whether the session the token belongs to has ended (C58): signed out, in any
  * business the login reaches (0061), one of the login's other sessions ended
  * from any business (0063), not the kept one, first signed in at or before
- * that ending, or first signed in before a reset of the login settled (C40).
- * A token naming no session has none to end.
+ * that ending, or first signed in a whole second before a reset of the login
+ * settled, or up to the bound of one still open (C40); a session refused while
+ * one is open is ended, so it stays refused however the reset settles (Sol, PR
+ * #382 round 3). A token naming no session has none to end.
  */
 export async function sessionEnded(tx: TenantQuery, presented: VerifiedSubject): Promise<boolean> {
   if (presented.sessionId === undefined) return false;
-  const rows = await tx.query<{ readonly ended: boolean }>(
-    `select exists (
+  // GoTrue stamps a sign-in in whole seconds, rounded down. One stamped with
+  // the settle's own second may follow the settle, and a new password's must
+  // be served (round 3), so the settle refuses only a stamp whose whole second
+  // had passed; comparing the stamp as an instant would refuse that sign-in.
+  // What this serves from before the settle in that second was ended if the
+  // door saw it (the reset's endings, or refused while open, below).
+  const [row] = await tx.query<{ readonly ended: boolean; readonly open: boolean }>(
+    `with reset as (
+       select (to_timestamp($3::bigint) <= r.open_until and r.settled_at is null) as open,
+              to_timestamp($3::bigint + 1) <= r.settled_at as settled
+         from ops.subject_resets r
+        where r.subject_digest = encode(sha256(convert_to($2, 'UTF8')), 'hex'))
+     select exists (
        select 1 from ops.ended_provider_sessions where session_id = $1::uuid
      ) or exists (
        select 1 from ops.ended_subject_sessions s
         where s.subject_digest = encode(sha256(convert_to($2, 'UTF8')), 'hex')
           and s.kept_session is distinct from $1::uuid
           and to_timestamp($3::bigint) <= s.ended_before
-     ) or exists (
-       select 1 from ops.subject_resets r
-        where r.subject_digest = encode(sha256(convert_to($2, 'UTF8')), 'hex')
-          and to_timestamp($3::bigint) <= coalesce(r.settled_at, r.open_until)
-     ) as ended`,
+     ) or exists (select 1 from reset where open or settled) as ended,
+     exists (select 1 from reset where open) as open`,
     [presented.sessionId, presented.subject, presented.assurance?.signedInAt ?? null],
   );
-  return rows[0]?.ended === true;
+  if (row?.open === true) await tx.query(END_PROVIDER_SESSIONS, [[presented.sessionId]]);
+  return row?.ended === true;
 }
 
 /**

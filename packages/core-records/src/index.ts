@@ -123,6 +123,7 @@ export {
 } from './identity/second-factor.ts';
 export {
   endOtherSeenSessions,
+  endSeenSessions,
   endProviderSession,
   endOwnSession,
   listSeenSessions,
