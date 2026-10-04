@@ -63,3 +63,24 @@ export function isRefusal<T>(result: CallResult<T>): result is WireRefusal {
 export function isUnavailable<T>(result: CallResult<T>): result is Unavailable {
   return 'unavailable' in result;
 }
+
+/** What `account/factor/verify` answers: only the access token is read, once, to trade it. */
+export interface FactorVerified {
+  readonly accessToken?: unknown;
+}
+
+/**
+ * What `account/factor/enrol` answers (`IssuedFactor`): the secret goes to the person once. It
+ * is drawn and dropped, and never stored, logged or put in an error.
+ */
+export interface IssuedFactor {
+  readonly factorId: string;
+  readonly qrCode: string;
+  readonly secret: string;
+  readonly uri: string;
+}
+
+/** What `account/factor/remove` answers. */
+export interface FactorRemoved {
+  readonly removed: true;
+}

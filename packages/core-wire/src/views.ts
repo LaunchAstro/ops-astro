@@ -25,6 +25,9 @@ import type {
 } from '../../core-records/src/index.ts';
 import type { TaskLedgerView } from './views-agent.ts';
 import type { CheckView, RunPinView, RunReadView, RunScopeView } from './views-run.ts';
+import type { ClientPrivacyView, ClientView } from './views-client.ts';
+
+export type { ClientListResult, ClientPrivacyView, ClientView } from './views-client.ts';
 
 // A run's pins, reads, checks and scope, and the task's execution and receipt
 // reads, live in their own module, re-exported here, so this one stays under
@@ -933,18 +936,8 @@ export interface AccessReadResult {
   readonly agents: readonly AccessAgent[];
   /** The business's client records, which a `party` scope in a preview names. */
   readonly clientRecords: readonly ClientView[];
-}
-
-/** One client record (C32): an organisation the business works for. */
-export interface ClientView {
-  readonly clientId: string;
-  readonly name: string;
-}
-
-/** `client.list`'s answer: the clients the caller's live grants reach. */
-export interface ClientListResult {
-  readonly ok: true;
-  readonly clients: readonly ClientView[];
+  /** Each client record's privacy settings (C60), in the same order. */
+  readonly clientPrivacy: readonly ClientPrivacyView[];
 }
 
 /**
