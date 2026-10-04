@@ -33,7 +33,7 @@ import { dispatchLease } from './tasks-dispatch.ts';
 import { observeLease } from './tasks-observe.ts';
 import { checkLease } from './tasks-check.ts';
 import { reviseRunState } from './run-state.ts';
-import { MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/index.ts';
+import { holdCoveringGrants, MAXIMUM_RENEWAL_SECONDS } from '../../../core-runtime/src/index.ts';
 import { agentClaimant } from './tasks-claimant.ts';
 import { writeTaskComment } from './tasks-comment.ts';
 import { proposeFor, type ProposeFields } from './tasks-propose.ts';
@@ -442,7 +442,8 @@ async function servePropose(
  * this delegation acts for (`tasks-comment-edit.ts`, OW-036.1). Once the
  * comment is locked, the delegation and the delegating person's covering
  * grant are asked again, as `authorise` asked them: a revocation that
- * committed while the change waited on either lock refuses it.
+ * committed while the change waited on either lock refuses it. Both are held
+ * from that check to the write, so a later revocation waits for the change.
  */
 const serveCommentChange =
   (
@@ -460,10 +461,38 @@ const serveCommentChange =
   ) => ReturnType<typeof editTaskComment>) =>
   async (tx, { session, request, declaration, credential }, _operands, delegation, taskId) => {
     if (taskId === undefined) return NOT_FOUND();
+    // The delegating person's grants, and the chain each was delegated under,
+    // held `for share` before the task, as pickup holds them: a `grant.revoke`
+    // takes its row `for update` first, so it waits for this change to commit
+    // and then finds nothing left to change, or commits first and the check
+    // below refuses. A child stands on its parent's person, the same person.
+    await holdCoveringGrants(
+      tx,
+      [{ kind: 'person', id: delegation.delegatePersonId }],
+      declaration.collection,
+    );
     const spine = await readTaskSpine(tx);
     const task = await lockTask(tx, spine.taskTypeId, taskId);
     if (task === undefined) return NOT_FOUND();
     const stillAuthorised = async (): Promise<CommandRefusal | undefined> => {
+      // The delegation and, for a helper, its parent, held `for share` after
+      // the task (the global order's delegation class): a `delegation.revoke`
+      // writes the row, so one that has not committed waits for this change.
+      // A helper has no lease of its own and revoking it takes no task lock,
+      // so nothing else serialises that revocation with this change.
+      await tx.query(
+        `select id from public.delegations
+          where business_id = $1 and id = any($2::uuid[])
+          order by id
+          for share`,
+        [
+          tx.businessId,
+          [
+            delegation.id,
+            ...(delegation.parentDelegationId === null ? [] : [delegation.parentDelegationId]),
+          ],
+        ],
+      );
       const again = await resolveDelegation(tx, session.actorId, credential ?? '');
       if (!again.ok) return again.refusal;
       const decision = await checkDelegatedAuthority(tx, again.value, {
