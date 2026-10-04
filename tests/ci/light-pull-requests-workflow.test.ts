@@ -292,4 +292,17 @@ describe('planted: the aggregate and the gate, each goes red', () => {
       'later: runs always() behind the gate, without reading its result',
     ]);
   });
+
+  // Any status function lets a job run after a failed gate skipped every job between.
+  it.each(['${{ !cancelled() }}', 'failure()', 'success() || failure()', 'cancelled( ) || true'])(
+    'a new job behind the gate on %s, neither needing it nor reading its result',
+    (cond) => {
+      const ci = load(CI);
+      ci.jobs['later'] = { needs: ['database-shard'], if: cond, steps: [] };
+      expect(problemsNow(ci)).toStrictEqual([
+        'later: runs always() behind the gate, without needing it',
+        'later: runs always() behind the gate, without reading its result',
+      ]);
+    },
+  );
 });
