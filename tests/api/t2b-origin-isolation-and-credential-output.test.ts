@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { identityDefects, migrationHead, type IdentityEvidence } from '../../apps/api/identity.ts';
 import { main as workerMain } from '../../apps/worker/main.ts';
+import { streamText } from '../support/console-text.ts';
 
 describe('T2b served identity', () => {
   it('the web origin cannot hide a different API tree behind the same pid', () => {
@@ -61,7 +62,7 @@ describe('T2b credential output', () => {
       throw new Error(`transport failed with ${token} and ${delegation}`);
     };
     process.stderr.write = ((chunk: string | Uint8Array) => {
-      output.push(String(chunk));
+      output.push(streamText(chunk));
       return true;
     }) as typeof process.stderr.write;
     try {

@@ -27,6 +27,7 @@ import { COMMAND_SURFACE, declarationOf } from '../../packages/core-wire/src/sur
 import { usage } from '../../apps/cli/client.ts';
 import { insertBusiness } from '../identity/fixture.ts';
 import { enrol, grantTo, installSpine, shareWithClient, type Member } from './fixture.ts';
+import { consoleLine } from '../support/console-text.ts';
 
 const ROOTS = ['apps', 'packages', 'scripts', 'tests'];
 
@@ -171,8 +172,8 @@ describe('CQ-11 the tree', () => {
     const dir = scratch();
     const canary = randomBytes(32).toString('base64url');
     const before = JSON.stringify(process.env);
-    const lines: unknown[] = [];
-    const push = (...parts: unknown[]) => lines.push(...parts) > 0;
+    const lines: string[] = [];
+    const push = (...parts: unknown[]) => lines.push(consoleLine(...parts)) > 0;
     const spies = (['log', 'info', 'warn', 'error', 'debug'] as const).map((level) =>
       vi.spyOn(console, level).mockImplementation(push),
     );
@@ -196,7 +197,7 @@ describe('CQ-11 the tree', () => {
         thrown = String(cause);
       }
       expect(thrown).not.toBe('');
-      const seen = [JSON.stringify(decision), thrown, lines.map(String).join('\n')];
+      const seen = [JSON.stringify(decision), thrown, lines.join('\n')];
       expect(seen.join('\n')).not.toContain(canary);
       expect(JSON.stringify(process.env)).toBe(before);
     } finally {

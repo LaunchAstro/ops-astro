@@ -60,6 +60,7 @@ export function app(input: {
       const body = JSON.parse(String(init?.body)) as { preference: string; value: never };
       rail = { ...rail, [body.preference === 'rail.width' ? 'width' : 'collapsed']: body.value };
       input.saved?.push(rail);
+      return Promise.resolve(new Response(JSON.stringify({ recordId: null, revision: null })));
     }
     return new Promise<Response>(() => {});
   };

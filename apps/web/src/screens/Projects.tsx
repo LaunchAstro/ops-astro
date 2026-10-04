@@ -46,6 +46,7 @@ import { Inbox } from '../views/inbox.tsx';
 import { CreateTask } from './projects/CreateTask.tsx';
 import { WorkLog } from './projects/WorkLog.tsx';
 import { ProjectsTabs } from './projects/ProjectsTabs.tsx';
+import { TABS, tabInAddress, writeTab } from './projects/tab-address.ts';
 
 export interface ProjectsProps {
   readonly client: OperationsClient;
@@ -66,24 +67,6 @@ const queryOf = (address: string | undefined): string =>
 
 type ProjectsTab = 'board' | 'worklog';
 
-const WORK_LOG = '#worklog';
-
-const TABS = [
-  { id: 'board', label: 'Board', href: pathTo('agency:projects-board') },
-  { id: 'worklog', label: 'Work log', href: `${pathTo('agency:projects-board')}${WORK_LOG}` },
-] as const;
-
-const tabInAddress = (): ProjectsTab =>
-  globalThis.location?.hash === WORK_LOG ? 'worklog' : 'board';
-
-/** Keeps the address on the open tab, so a reload lands on it. */
-function writeTab(tab: ProjectsTab): void {
-  const here = globalThis.location;
-  if (here === undefined) return;
-  const address = `${here.pathname}${here.search}${tab === 'worklog' ? WORK_LOG : ''}`;
-  globalThis.history.replaceState(globalThis.history.state, '', address);
-}
-
 export function Projects(props: ProjectsProps): ReactElement {
   const [tab, setTab] = useState<ProjectsTab>(tabInAddress);
   const [workLogOpened, setWorkLogOpened] = useState(tab === 'worklog');
@@ -98,6 +81,7 @@ export function Projects(props: ProjectsProps): ReactElement {
       <ProjectsTabs label="Projects" name="projects" tabs={TABS} selected={tab} onSelect={select} />
       <TabPanel name="projects" tab="board" selected={tab}>
         <ProjectBoard
+          hidden={tab !== 'board'}
           client={props.client}
           grantKey={props.grantKey}
           {...(props.taskPanel === undefined ? {} : { taskPanel: props.taskPanel })}
@@ -114,7 +98,9 @@ export function Projects(props: ProjectsProps): ReactElement {
   );
 }
 
-function ProjectBoard(props: Omit<ProjectsProps, 'navigate'>): ReactElement {
+function ProjectBoard(
+  props: Omit<ProjectsProps, 'navigate'> & { readonly hidden: boolean },
+): ReactElement {
   const client = props.client;
   // The row open beside the board and the door it was opened by (MP-5-8).
   const [opened, setOpened] = useState<RowOpened | null>(null);
@@ -170,7 +156,8 @@ function ProjectBoard(props: Omit<ProjectsProps, 'navigate'>): ReactElement {
     <div className="stack">
       {/* The inbox lives inside Tasks (INB-1g): the working minimum above the board. */}
       <Inbox client={client} grantKey={props.grantKey} follow={followInbox} />
-      <CreateTask client={client} onCreated={reload} />
+      {/* Keyed on the reader: its lock, refusal and in-flight create are theirs. */}
+      <CreateTask key={grantKey} client={client} onCreated={reload} />
 
       {said === null ? null : (
         <p className="field__error" role="alert" data-board-refusal>
@@ -200,6 +187,7 @@ function ProjectBoard(props: Omit<ProjectsProps, 'navigate'>): ReactElement {
             <ProjectsBoard
               // A new place is a new view: the board opens on it afresh.
               key={props.address === undefined ? undefined : query}
+              hidden={props.hidden}
               rows={value.tasks.map((task) => rowOf(task))}
               withheld={value.withheld ?? 0}
               changedAt={value.changedAt ?? null}

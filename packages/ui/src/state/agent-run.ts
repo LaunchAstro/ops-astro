@@ -16,7 +16,7 @@
 // timer in the browser. What the run staged is read in `agent-staged.ts`.
 
 import { headReservation, heldMinorOf, unknownOf } from './run-projection.ts';
-import type { RunLineage, RunVersion } from './run-projection.ts';
+import type { RunLineage, RunReservation, RunVersion } from './run-projection.ts';
 import type { GateBox, Job, JobState, RunState, RunStory, RunTone } from './run-story.ts';
 
 export type { GateBox, Job, JobState, RunState, RunStory, RunTone } from './run-story.ts';
@@ -34,6 +34,19 @@ const WORDS: Readonly<Record<RunState, { word: string; tone: RunTone }>> = {
   cancelled: { word: 'Cancelled', tone: 'bad' },
 };
 
+/**
+ * A finished run's state from what its attempt recorded (OW-108.1). A failed
+ * hand-back releases the hold under `handback_completed` as a completed one
+ * does, so only the outcome tells them apart: `completed` is done; `failed`,
+ * `abandoned`, `unknown`, none yet or any other value stopped short, the
+ * dropped story, a read that lost the key included.
+ */
+function finished(reservation: RunReservation | undefined): RunState {
+  const attempt = reservation?.attempt;
+  if (attempt === null || attempt === undefined) return 'done';
+  return attempt.outcome === 'completed' ? 'done' : 'dropped';
+}
+
 function stateOf(lineage: RunLineage, head: RunVersion): RunState {
   const reservation = headReservation(lineage, head);
   if (reservation?.state === 'quarantined') return 'unknown-outcome';
@@ -46,12 +59,15 @@ function stateOf(lineage: RunLineage, head: RunVersion): RunState {
   // leaves the lineage live; a dropped hand-back also marks its attempt dropped.
   if (reservation?.state === 'abandoned') {
     const handedBack = reservation.classifiedCause === 'handback_completed';
-    return handedBack && reservation.attempt?.state !== 'dropped' ? 'done' : 'dropped';
+    return handedBack && reservation.attempt?.state !== 'dropped'
+      ? finished(reservation)
+      : 'dropped';
   }
   // A hold the classifier settled at its calls' spend stopped as an abandoned one did.
   const stopped = ['abandoned', 'dropped'].includes(reservation?.attempt?.state ?? '');
   if (reservation?.state === 'actual' && stopped) return 'dropped';
-  if (lineage.state === 'completed' || reservation?.state === 'actual') return 'done';
+  const ended = lineage.state === 'completed' || reservation?.state === 'actual';
+  if (ended) return finished(reservation);
   if (reservation?.lease?.state === 'live') return 'running';
   const gate = head.gate;
   if (gate === null) return reservation === undefined ? 'gate-stale' : 'approved';

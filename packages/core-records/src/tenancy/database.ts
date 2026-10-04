@@ -38,7 +38,8 @@ export function isBusinessId(value: string): value is BusinessId {
  *
  * Where it sits in the lock order is `core-runtime/src/locks.ts`: the chain
  * class is `acquire`'s own first class, and the command layer's keys (the
- * placement and sibling locks) come before anything `acquire` takes. Nothing
+ * operation identity's door first, then the placement and sibling locks) come
+ * before anything `acquire` takes. Nothing
  * else in `packages/` or `apps/` spells the SQL (`tests/runtime/cq-8.test.ts`).
  *
  * `shared` is the same key's reader mode: readers hold it together and only
