@@ -193,6 +193,8 @@ export const IDENTIFIER_BEARING: Readonly<
   'access.revoke': ['grantId', 'control'],
   'access.end': ['holderId', 'control'],
   'access.reset_factor': ['holderId', 'control'],
+  // C60: a client's privacy settings, by its client.
+  'client.set_privacy': ['clientId', 'control'],
   'task.duplicate': ['recordId', 'duplicate'],
   'inbox.seen': ['itemId', 'control'],
 };

@@ -8,6 +8,7 @@
     "tests/identity/c59-factor-orphan-reported.test.ts",
     "tests/identity/c59-factor-orphan.test.ts",
     "tests/identity/c59-second-factor-commands.test.ts",
+    "tests/identity/c59-step-up-client-sign-in.test.ts",
     "tests/identity/c59-step-up-person.test.ts",
     "tests/identity/c59-wrong-code-lock-concurrent.test.ts",
     "tests/identity/c59-wrong-code-lock-subject.test.ts",

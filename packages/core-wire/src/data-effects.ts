@@ -180,6 +180,7 @@ export const COMMAND_EFFECTS: { readonly [Name in CommandName]: DataEffects } = 
   'credential.issue': CREDENTIAL,
   'credential.revoke': CREDENTIAL,
   'client.create': writing(client('clients')),
+  'client.set_privacy': writing(client('clients')),
   // SL12 (batch 3a join, BATCH3-INTEG): a conversation can hold a task's
   // content once scoped to it, so its rows count as client-scoped.
   'gate.pending': READ,

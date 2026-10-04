@@ -510,6 +510,32 @@ const ROWS_HEAD = [
     meaning: 'It would leave the business with nobody who can change access',
     source: 'C32 CS-2.15',
   },
+  // C60: a client's privacy settings. LOCAL_MODEL_REQUIRED (owner line 72) is
+  // the broker's row, reused for a cloud provider named on a client.
+  {
+    code: 'CLIENT_REQUEST_REQUIRED',
+    status: 422,
+    meaning: "Model use goes on only with the client's written request in the same command",
+    source: 'C60 CS-7.40, owner line 51',
+  },
+  {
+    code: 'PROVIDER_NOT_ASSESSED',
+    status: 409,
+    meaning: 'The provider has no assessed row on the overseas-services register',
+    source: 'C60 CS-7.40, APP 8.1',
+  },
+  {
+    code: 'CLIENT_HANDLES_HEALTH',
+    status: 409,
+    meaning: 'A client that handles health information keeps model use off',
+    source: 'C60 CS-7.40',
+  },
+  {
+    code: 'CLIENT_NO_AGENT_EDITS',
+    status: 403,
+    meaning: 'No agent edits is on for this client, so no edit run works on its media',
+    source: 'C60 O2',
+  },
   // S0-6c. 403s: the session may be good, and ending it would hand the sign-out to others.
   {
     code: 'AUTH_CROSS_SITE',

@@ -14,6 +14,8 @@
     "tests/authority/c59-factor-reset-rank.test.ts",
     "tests/authority/c59-factor-reset-settle.test.ts",
     "tests/authority/c59-factor-reset.test.ts",
+    "tests/authority/c60-client-privacy-refusals.test.ts",
+    "tests/authority/c60-client-privacy.test.ts",
     "tests/authority/grant-chain.test.ts",
     "tests/authority/non-member-grants.test.ts"
   ],
