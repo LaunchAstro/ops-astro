@@ -61,15 +61,16 @@ async function agentWithDelegation() {
   });
   const expiresAt = new Date(Date.now() + 3_600_000);
   return await fixture.db.app.withBusiness(fixture.business, async (tx) => {
-    const issue = async () =>
+    const issue = async (until: Date) =>
       await issueAgentCredential(tx, keys.keys, {
         personId: fixture.member.personId,
         actorId: fixture.member.actorId,
         purpose: `rcpt_${randomUUID().slice(0, 8)}`,
         scope: [{ collection: 'task', action: 'read' }],
-        expiresAt,
+        expiresAt: until,
       });
-    const login = await issue();
+    // The login lives four seconds, so the case can watch it expire; credentials are written once.
+    const login = await issue(new Date(Date.now() + 4_000));
     const minted = await mintDelegation(tx, {
       agentActorId: login.agentActorId,
       delegatePersonId: fixture.member.personId,
@@ -81,7 +82,7 @@ async function agentWithDelegation() {
       expiresAt,
     });
     if (!minted.ok) throw new Error(`mint refused ${minted.refusal.code}`);
-    return { keys: keys.keys, login, helper: await issue(), minted: minted.value };
+    return { keys: keys.keys, login, helper: await issue(expiresAt), minted: minted.value };
   });
 }
 
@@ -115,11 +116,12 @@ it("the credentials checked for an agent's observation are its unexpired login, 
     delegationId: childId,
   });
   const held = (await heldBy(minted.delegation.id)) ?? [];
-  await r.fixture.db.admin.execute(
-    'update public.agent_credentials set expires_at = clock_timestamp() where id = $1',
-    [login.credentialId],
-  );
-  const afterExpiry = (await heldBy(minted.delegation.id)) ?? [];
+  await expect
+    .poll(async () => ((await heldBy(minted.delegation.id)) ?? []).includes(login.credential), {
+      timeout: 10_000,
+      interval: 500,
+    })
+    .toBe(false);
   await r.fixture.db.admin.execute(
     "update public.delegations set credential_key_id = 'no-such-key' where id = $1",
     [childId],
@@ -128,7 +130,6 @@ it("the credentials checked for an agent's observation are its unexpired login, 
     login: held.includes(login.credential),
     delegation: held.includes(minted.credential),
     child: child !== undefined && held.includes(child),
-    expiredLogin: afterExpiry.includes(login.credential),
     underivable: (await heldBy(minted.delegation.id)) === undefined,
   }).toEqual({
     login: true,
