@@ -190,8 +190,8 @@ jobs:
         run: pnpm exec playwright install --with-deps --only-shell chromium
       # CI-SPEED, light pull requests: CHECK_SCOPE names this check, and
       # scripts/check.mjs asks scripts/ci-scope.ts. On a pull request it runs
-      # the light set: every static step, and the tests the change reaches in
-      # place of the full test run; the full run and the build run in the
+      # the light set: every step but the build, with the tests the change
+      # reaches in place of the full test run; the full run and the build run in the
       # merge queue, the only way into main. On a merge group or a push it
       # runs every step, as before. No step here carries a condition.
       - run: pnpm check
