@@ -4,9 +4,7 @@
 // client scope. A map is a task of type `map` and its tickets are its
 // subtasks (W2, W3), so each command here targets a task the envelope has
 // already authorised, locked and revision-checked; what is left is the rule
-// that belongs to the type. The map's revisions are `wayfinder-revision.ts`;
-// WF-2's working commands are `wayfinder-chart.ts`, `wayfinder-blocking.ts`
-// and `wayfinder-resolve.ts`.
+// that belongs to the type; a map's revisions and WF-2's commands sit beside it.
 
 import {
   checkAuthority,
@@ -257,8 +255,7 @@ export async function refuseOwnerTicketMove(
     );
     if (leaving !== undefined) return leaving;
   }
-  // The parent is held `for share` before its type is read, so a retype to map
-  // in flight commits first and is seen (target, then parent, as before).
+  // Parent held `for share` before its type is read: a retype in flight is seen.
   if (parentId !== null) await wayfinderFacts(tx, parentId, true);
   const into = parentId === null ? undefined : await wayfinderFacts(tx, parentId);
   if (into?.type !== 'map' || into.mapId === facts.mapId) return undefined;

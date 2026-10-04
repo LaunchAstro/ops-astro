@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines-per-function -- the review's proofs, kept as written on one shared world */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { wayfinderWorld, must, codeOf, type WayfinderWorld, type Decider } from './world.ts';
