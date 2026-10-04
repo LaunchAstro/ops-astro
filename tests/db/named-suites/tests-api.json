@@ -40,6 +40,8 @@
     "tests/api/c71-c-agent-key-without-chat.test.ts",
     "tests/api/c71-c-board-member-removed-mid-rejoin.test.ts",
     "tests/api/c71-c-chat-access-revoked.test.ts",
+    "tests/api/c71-c-chat-conversations-after-revocation.test.ts",
+    "tests/api/c71-c-chat-messages-after-revocation.test.ts",
     "tests/api/c71-c-inbox-name-after-revocation.test.ts",
     "tests/api/c71-c-live-admission-after-revocation.test.ts",
     "tests/api/c71-c-mention-after-rejoin.test.ts",
