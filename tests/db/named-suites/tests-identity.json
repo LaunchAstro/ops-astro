@@ -15,6 +15,7 @@
     "tests/identity/c59-wrong-code-provider-fault.test.ts",
     "tests/identity/external-party.test.ts",
     "tests/identity/identifier-first-sighting-race.test.ts",
+    "tests/identity/identifier-resolution-contract.test.ts",
     "tests/identity/login-kind-race.test.ts",
     "tests/identity/mp-2-11-recent-sign-in.test.ts",
     "tests/identity/restricted-role.test.ts"
