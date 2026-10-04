@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+/* eslint-disable max-lines, max-lines-per-function -- the review's proofs, kept as written on one shared world */
 // Sol's uncommitted proofs for PR #355 at 3fac44c.
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
