@@ -106,16 +106,37 @@ export async function readPinned(
  * expiry committed while the read waited on the row is seen, and judged on the
  * database clock at the moment the lock is held, so the read cannot record
  * against a lease that ended under it.
+ *
+ * An agent's lease stands only while the delegation it was minted under does
+ * (catalogue #423): not revoked, handed back or expired, nor its parent, as
+ * `readLease` and `checkDelegatedAuthority` judge it. The delegation row is
+ * held `for share` until the read is recorded, so a revocation either
+ * committed first and is seen, or waits for this read to finish.
  */
 async function leaseHeld(tx: TenantQuery, request: ReadRequest): Promise<boolean> {
   await acquire(tx, [{ lockClass: 'lease', id: request.leaseId }]);
-  const leases = await tx.query(
-    `select 1 from public.leases
+  const leases = await tx.query<{ readonly delegation_id: string | null }>(
+    `select delegation_id from public.leases
       where business_id = $1 and id = $2 and run_id = $3 and holder_actor_id = $4
         and state = 'live' and expires_at > clock_timestamp()`,
     [tx.businessId, request.leaseId, request.runId, request.holderActorId],
   );
-  return leases.length > 0;
+  const lease = leases[0];
+  if (lease === undefined) return false;
+  if (lease.delegation_id === null) return true;
+  const standing = await tx.query(
+    `select 1 from public.delegations d
+       left join public.delegations parent
+         on parent.business_id = d.business_id and parent.id = d.parent_delegation_id
+      where d.business_id = $1 and d.id = $2
+        and d.revoked_at is null and d.settled_at is null and d.expires_at > clock_timestamp()
+        and (d.parent_delegation_id is null
+             or (parent.revoked_at is null and parent.settled_at is null
+                 and parent.expires_at > clock_timestamp()))
+        for share of d`,
+    [tx.businessId, lease.delegation_id],
+  );
+  return standing.length > 0;
 }
 
 async function entryRead(tx: TenantQuery, runId: string): Promise<boolean> {
