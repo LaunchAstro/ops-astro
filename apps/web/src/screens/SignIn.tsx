@@ -33,8 +33,9 @@
 // **A login with an authenticator app gives its code before the session opens (C59).** A
 // password alone is `aal1`, refused `AUTH_SECOND_FACTOR_REQUIRED` (`openSignIn`). The code goes
 // through the money step-up's `stepUpSession`; a wrong one says so and asks again. Cancel, or
-// leaving the page (before the code is asked for too), signs the half-made sign-in out, and any
-// new one it lands on; Cancel returns to the emptied password.
+// leaving the page, signs the half-made sign-in out, and any new one it lands on; Cancel returns
+// to the emptied password. Left while its first read is out, the page ends that sign-in at once,
+// and no answer the read gives later opens it.
 
 import { useState, type FormEvent, type ReactElement } from 'react';
 import { BrandMark, FieldError } from '@launchastro/ui';
@@ -120,15 +121,23 @@ export function SignIn(props: SignInProps): ReactElement {
         password,
         businessKey,
         ...route,
+        // Issued: ended at once if the page has gone, else if it goes before the read answers.
+        issued: (sessionId) => {
+          const end = (): void => step.leave(businessKey, sessionId);
+          if (step.attempt.current === sent) step.half.current = end;
+          else end();
+        },
       });
+      // A page left since has ended this sign-in, so no answer of its read opens it.
+      if (step.attempt.current !== sent) return;
+      step.half.current = null;
       setBusy(false);
       if (!result.ok) setBecause(result.because);
       else if (result.asked === undefined) opened(result.sessionId);
       else {
-        // Sent: the code step keeps no password, and a page left since signs this sign-in out.
+        // Sent: the code step keeps no password.
         setPassword('');
-        if (step.attempt.current === sent) step.setAsked(result.asked);
-        else step.leave(result.asked.client, result.asked.sessionId);
+        step.setAsked(result.asked);
       }
     })(step.attempt.current);
   };

@@ -15,17 +15,18 @@ export function useCodeStep(route: ApiRoute, open: (sessionId: string) => void) 
   const [because, setBecause] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
   // Moved on by every check, cancel and unmount: an answer for an older one is dropped. The
-  // half sign-in goes with its code step (Cancel, or the page left) unless a good code opened.
+  // half sign-in goes with its code step, or before that with the page (`half`), unless it opened.
   const attempt = useRef(0);
   const opened = useRef(false);
-  const leave = (client: AskedForCode['client'], sessionId?: string): void => {
-    if (sessionId !== undefined)
-      void signOutOf(route, { sessionId, businessKey: client.businessKey });
+  const half = useRef<(() => void) | null>(null);
+  const leave = (businessKey: string, sessionId?: string): void => {
+    if (sessionId !== undefined) void signOutOf(route, { sessionId, businessKey });
   };
   useEffect(
     () => () => {
       attempt.current += 1;
-      if (asked !== null && !opened.current) leave(asked.client, asked.sessionId);
+      if (asked !== null && !opened.current) leave(asked.client.businessKey, asked.sessionId);
+      half.current?.();
     },
     [asked],
   );
@@ -39,7 +40,7 @@ export function useCodeStep(route: ApiRoute, open: (sessionId: string) => void) 
       const current = () => attempt.current === mine;
       const result = await stepUpSession({ code, client, route, from, current, adopt: () => {} });
       // A cancel or a leave landing as the new sign-in was finished signs that one out too.
-      if (result.ok && !current()) leave(client, result.sessionId);
+      if (result.ok && !current()) leave(client.businessKey, result.sessionId);
       if (!current()) return;
       setChecking(false);
       setCode('');
@@ -56,5 +57,5 @@ export function useCodeStep(route: ApiRoute, open: (sessionId: string) => void) 
     setBecause(null);
     setChecking(false);
   };
-  return { asked, setAsked, attempt, leave, code, setCode, because, checking, check, cancel };
+  return { asked, setAsked, attempt, half, leave, code, setCode, because, checking, check, cancel };
 }

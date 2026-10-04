@@ -47,7 +47,9 @@ is emptied. The code goes through the money step-up's own `stepUpSession`:
 checked on the account route, the `aal2` token traded for a new cookie, the
 `aal1` one cleared, and only then does the session open. A wrong code shows
 the server's words and asks again; Cancel signs the half-made sign-in out (API,
-provider and cookie) and returns to the password step. Any other answer to the
+provider and cookie) and returns to the password step. Leaving the page signs it
+out too, at once even while `session.person` is still out, and no answer that
+read gives after the page has gone opens anything. Any other answer to the
 read opens the session as before: the API, not this read, refuses what it
 refuses, so a login with no membership still lands on a denial (N2).
 `tests/web/sign-in-second-factor.test.tsx` holds the three ways.
