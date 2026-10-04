@@ -150,7 +150,8 @@
         "tests/ci/restore-refuses-permissive-barrier.proof.test.mjs",
         "tests/ci/restore-refuses-permissive-partitioned-barrier.proof.test.mjs",
         "tests/operations/scan-login-cleanup-subject-race.proof.test.ts",
-        "tests/review/staging-reset-keeps-session-ended-during-reset-proof.test.ts"
+        "tests/review/staging-reset-keeps-session-ended-during-reset-proof.test.ts",
+        "tests/review/staging-reset-proof-copies-before-competing-ending-proof.test.ts"
       ],
       "rules": {
         "no-await-in-loop": "off",

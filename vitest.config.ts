@@ -85,6 +85,7 @@ export default defineConfig({
             'tests/review/ow066-export-revocation-proof.test.ts',
             'tests/review/revocation-after-part-gate-fetches-no-bytes-proof.test.ts',
             'tests/review/staging-reset-keeps-session-ended-during-reset-proof.test.ts',
+            'tests/review/staging-reset-proof-copies-before-competing-ending-proof.test.ts',
             'tests/operations/scan-login-cleanup-subject-race.proof.test.ts',
             'tests/api/function-outbox-before-response.test.ts',
             'tests/api/function-outbox-waits-for-own-events.test.ts',
