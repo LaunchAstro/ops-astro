@@ -147,8 +147,8 @@ export interface LiveDrag {
 
 /**
  * The table's layout and its grips. A drag draws its widths live and is one
- * history step when the pointer lets go; a cancelled one leaves nothing
- * behind. An arrow step is one history step at once.
+ * history step when its pointer lets go, and no other finger takes it over; a
+ * cancelled one leaves nothing behind. An arrow step is one history step at once.
  */
 export function useColumnDrag<Row>(
   columns: readonly ColumnSpec<Row>[],
@@ -159,6 +159,7 @@ export function useColumnDrag<Row>(
   const [live, setLive] = useState<LiveDrag | null>(null);
   const layout = layoutColumns(columns, room, live?.widths ?? widths);
   const endDrag = useRef<(() => void) | null>(null);
+  const dragPointer = useRef<number | null>(null);
   useEffect(
     () => () => {
       endDrag.current?.();
@@ -166,7 +167,9 @@ export function useColumnDrag<Row>(
     [],
   );
   const start = (key: string, startX: number, pointerId: number): void => {
+    if (endDrag.current !== null && dragPointer.current !== pointerId) return;
     endDrag.current?.();
+    dragPointer.current = pointerId;
     const drag = { key, startX, pointerId, columns, from: layout, previous: widths };
     endDrag.current = followPointer(drag, { setLive, endDrag, dispatch });
   };
