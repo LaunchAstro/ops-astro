@@ -13,6 +13,8 @@ export * from './authority/agent-credential-surface.ts';
 export { readEnvFile } from './env-file.ts';
 export {
   checkDelegatedAuthority,
+  DELEGATION_STANDS,
+  DELEGATION_STANDS_AT_CHECK,
   digestOf,
   mintChildDelegation,
   mintDelegation,
