@@ -1,18 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-/* oxlint-disable max-lines-per-function -- Sol's proof body, committed unchanged */
 import { expect, it } from 'vitest';
 import type { TenantQuery } from '../../packages/core-records/src/index.ts';
 import { installBusinessSettings } from '../../packages/core-records/src/records/business-settings.ts';
 import { dispatch } from '../../packages/core-runtime/src/dispatch.ts';
 import { useAw06World, w } from './aw-06-world.ts';
-import { leased, marked } from './aw-08-gate-world.ts';
-import { barrier, racer, rows } from './schedules-harness.ts';
+import { leased, marked, type Leased } from './aw-08-gate-world.ts';
+import { barrier, racer, rows, type Schedules } from './schedules-harness.ts';
 
 useAw06World('sol_ow050_signoff');
 
-it('Sol proof, criterion 5: first sign-off setting write cannot commit between dispatch check and marker', async () => {
-  const owner = w.s;
-  const work = await leased(owner, 'launch', 'Sol first sign-off setting');
+type Barrier = ReturnType<typeof barrier>;
+
+/** The business starts with no sign-off setting row: nothing for the reader to lock. */
+async function expectNoSignOffRow(owner: Schedules): Promise<void> {
   expect(
     await rows(
       owner,
@@ -21,10 +21,16 @@ it('Sol proof, criterion 5: first sign-off setting write cannot commit between d
       [owner.business],
     ),
   ).toEqual([]);
-  const rival = racer(owner);
-  const checked = barrier();
-  const continueDispatch = barrier();
-  const dispatching = owner.db.app.withBusiness(owner.business, async (tx) => {
+}
+
+/** Dispatch, paused after its sign-off setting read until `continueDispatch` is released. */
+function dispatchPausedAfterCheck(
+  owner: Schedules,
+  work: Leased,
+  checked: Barrier,
+  continueDispatch: Barrier,
+) {
+  return owner.db.app.withBusiness(owner.business, async (tx) => {
     const paused: TenantQuery = {
       businessId: tx.businessId,
       async query<Row>(sql: string, parameters?: readonly unknown[]): Promise<readonly Row[]> {
@@ -45,6 +51,16 @@ it('Sol proof, criterion 5: first sign-off setting write cannot commit between d
       fence: Number(work.picked['fence']),
     });
   });
+}
+
+it('first sign-off setting write cannot commit between dispatch check and marker', async () => {
+  const owner = w.s;
+  const work = await leased(owner, 'launch', 'Sol first sign-off setting');
+  await expectNoSignOffRow(owner);
+  const rival = racer(owner);
+  const checked = barrier();
+  const continueDispatch = barrier();
+  const dispatching = dispatchPausedAfterCheck(owner, work, checked, continueDispatch);
   await checked.held;
   let committedBeforeMarker = false;
   const setting = rival
