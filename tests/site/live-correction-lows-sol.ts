@@ -7,6 +7,8 @@
 //
 //   1. Criterion 3: a grant revoked, or expired, while a covered lock waits
 //      covers nothing once the lock is held.
+//   2. Criterion 5: the latest publish receipt is the one written last, not
+//      the one whose transaction started last.
 //
 // Registered through `tests/tenancy/restricted-calls.test.ts`, a named suite,
 // which calls `describeLiveCorrectionSolRoundOne` after round 2.
@@ -15,14 +17,20 @@ import { describe, expect, it } from 'vitest';
 import { enrol, grantTo, WHOLE_BUSINESS, type Member } from '../commands/fixture.ts';
 import {
   awaitParked,
+  barrier,
   holdRows,
   racer,
   startedBefore,
   waitPast,
 } from '../runtime/schedules-harness.ts';
-import { lockCoveredCorrection } from '../../packages/core-records/src/site/index.ts';
+import {
+  lockCoveredCorrection,
+  readCorrectionForRun,
+  recordObservedResult,
+} from '../../packages/core-records/src/site/index.ts';
 import type { Scope, Subject } from '../../packages/core-records/src/authority/grants.ts';
-import { describeWorld, filed, lows } from './live-correction-lows.ts';
+import { describeWorld, filed, inBusiness, lows } from './live-correction-lows.ts';
+import { observedPublish } from './live-correction-lows-cancel.ts';
 
 /** A fresh member and the grants it holds: run:write and gate:decide at `scope`. */
 async function holder(
@@ -105,9 +113,42 @@ function findingOne(): void {
   }, 30_000);
 }
 
+function findingTwo(): void {
+  it('Sol R1 2: the latest publish follows receipt write order when transactions start out of order', async () => {
+    const { s } = lows();
+    const { id } = await filed('approved');
+    const [started, go] = [barrier(), barrier()];
+    const early = racer(s);
+    try {
+      // The earlier transaction starts first and writes its receipt last.
+      const writtenLast = early.withBusiness(s.business, async (tx) => {
+        await tx.query('select 1');
+        started.release();
+        await go.held;
+        return await recordObservedResult(tx, observedPublish(id, 'live'));
+      });
+      await Promise.race([started.held, writtenLast]);
+      const first = await inBusiness(
+        async (tx) => await recordObservedResult(tx, observedPublish(id, 'accepted')),
+      );
+      expect(first).toMatchObject({ ok: true, state: 'accepted' });
+      go.release();
+      expect(await writtenLast).toMatchObject({ ok: true, state: 'live' });
+    } finally {
+      go.release();
+      await early.close();
+    }
+    const run = await inBusiness(
+      async (tx) => await readCorrectionForRun(tx, observedPublish(id, 'live')),
+    );
+    expect(run).toMatchObject({ ok: true, lastPublish: { seen: 'live' } });
+  });
+}
+
 /** Sol's first review's findings, each its own block over one world. */
 export function describeLiveCorrectionSolRoundOne(): void {
   describeWorld('P26 Sol R1: the live correction records', 'p26sol1', () => {
     describe('Sol R1 1: authority judged after the lock', findingOne);
+    describe('Sol R1 2: receipts in write order', findingTwo);
   });
 }
