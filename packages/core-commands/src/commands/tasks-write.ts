@@ -48,6 +48,7 @@ import { oneKind } from './tasks-agent.ts';
 import { writeOwnedFields, type FieldWriteContext } from './tasks-state.ts';
 import type { CommandContext } from './context.ts';
 import type { CommandRequest, FieldValues } from './requests.ts';
+import { taskTypeOperand, wayfinderDataOnCreate } from './wayfinder.ts';
 
 /** The fields a create body can use to claim a provenance it does not have. */
 const SPOOFABLE_ON_CREATE: readonly string[] = ['source', 'intake_state'];
@@ -141,6 +142,9 @@ export async function createTask(
 
   // A uuid names one task in either case. Lower-cased once, so the stored
   // `parent` and `board` and the sibling lock agree with the uuid-typed slots.
+  const taskType = taskTypeOperand(request.taskType);
+  if (typeof taskType !== 'string') return refused(taskType);
+
   const parentId =
     typeof request.parentId === 'string'
       ? request.parentId.toLowerCase()
@@ -192,6 +196,7 @@ export async function createTask(
   const id = randomUUID();
   const data: Record<string, unknown> = {
     ...request.fields,
+    ...(await wayfinderDataOnCreate(tx, context, taskType, parentId)),
     key: await nextTaskKey(tx, context.spine.taskTypeId),
     // An agent credential's create is the agent's (API-2), never its person's.
     source: deriveSource(

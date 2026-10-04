@@ -28,8 +28,12 @@ export class TabHistory {
     this.#window = window;
     const held = positionOf(window.history.state);
     this.#at = held ?? 0;
-    this.#top = Math.max(this.#at, this.#readTop() ?? this.#at);
-    if (held === null) window.history.replaceState({ at: this.#at }, '');
+    // An entry with no position is a new one a document navigation made, the
+    // tab's newest: nothing is ahead of it, whatever an earlier page kept.
+    this.#top = held === null ? this.#at : Math.max(this.#at, this.#readTop() ?? this.#at);
+    if (held !== null) return;
+    window.history.replaceState({ at: this.#at }, '');
+    this.#writeTop();
   }
 
   get canBack(): boolean {
