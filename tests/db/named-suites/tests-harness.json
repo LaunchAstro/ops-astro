@@ -5,7 +5,8 @@
     "tests/harness/aw-12-harness-read-isolation.test.ts",
     "tests/harness/aw-12-harness-read.test.ts",
     "tests/harness/aw-12-isolation.test.ts",
-    "tests/harness/aw-12-trigger-read.test.ts"
+    "tests/harness/aw-12-trigger-read.test.ts",
+    "tests/harness/reserved-model-call-retry-sends-once.test.ts"
   ],
   "conformance": []
 }
