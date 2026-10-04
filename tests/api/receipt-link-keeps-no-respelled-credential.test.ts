@@ -194,3 +194,20 @@ it('an observation whose agent holds a credential that cannot be derived stores 
     observed: stored.map((row) => row['observed'] === true && row['link'] === null),
   }).toEqual({ status: 200, shown: true, observed: [true] });
 });
+
+it("a helper's live child credential is still checked after its parent delegation is revoked", async () => {
+  const { keys, minted, helper } = await agentWithDelegation();
+  const childId = await childOf(minted.delegation.id, helper.agentActorId);
+  const child = keys.derive(keys.activeKeyId, {
+    businessId: r.fixture.business,
+    agentActorId: helper.agentActorId,
+    delegationId: childId,
+  });
+  // Revoking a parent leaves its children as they were; each authenticates on its own row.
+  await r.fixture.db.admin.execute(
+    'update public.delegations set revoked_at = now() where id = $1',
+    [minted.delegation.id],
+  );
+  const held = (await heldBy(minted.delegation.id)) ?? [];
+  expect(child !== undefined && held.includes(child)).toBe(true);
+});
