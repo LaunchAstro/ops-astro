@@ -2,14 +2,12 @@
 //
 // Settings ▸ Keys (C31): custody's secrets as set or not set.
 //
-// The panel reads `secret.list` and writes through `secret.set` and
-// `secret.clear`, the one command family both secret screens use. It never
-// holds a value longer than the field the person is typing into: the input is
-// masked, uncontrolled text (a password field would hand it to the browser's
-// password manager; a controlled one would mirror it into the page), it is
-// emptied as soon as the set is sent, and no answer the
-// server gives carries a value to draw. What a row shows is its name, its
-// scope, whether it is set, and when it was last used.
+// The panel reads `secret.list` and writes through `secret.set` and `secret.clear`, the one
+// command family both secret screens use. It never holds a value longer than the field the
+// person is typing into: the input is masked, uncontrolled text (a password field would hand it
+// to the browser's password manager; a controlled one would mirror it into the page), it is
+// emptied as soon as the set is sent, and no answer the server gives carries a value to draw.
+// What a row shows is its name, its scope, whether it is set, and when it was last used.
 
 import {
   useCallback,
@@ -74,6 +72,9 @@ function useKeys(client: OperationsClient): {
     if (isUnavailable(answer)) setBecause(answer.because);
     else if (isRefusal(answer)) setBecause(`${answer.code}: ${answer.names.join(', ')}`);
     else setBecause(null);
+    // A newer denial drops the rows and controls at once, whatever the reread does.
+    if (isRefusal(answer) && answer.code === 'SCOPE_NOT_GRANTED')
+      setListing({ state: 'refused', because: answer.fixes[0] ?? answer.code });
     await load();
   };
 
@@ -288,7 +289,9 @@ export function KeysPanel(props: { readonly client: OperationsClient }): ReactEl
       {listing.state === 'shown' && listing.canChange ? (
         <KeyForm
           set={(name, value) => {
-            void act(async () => await client.mutate('secret.set', { name, value }));
+            const listed = listing.secrets.find((s) => s.name === name && s.clientId === null);
+            const expected = listed === undefined ? {} : { expectedRevision: listed.revision };
+            void act(async () => await client.mutate('secret.set', { name, value, ...expected }));
           }}
         />
       ) : null}
