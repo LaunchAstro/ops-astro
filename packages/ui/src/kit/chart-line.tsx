@@ -142,7 +142,7 @@ export function LineChart(
 ): ReactElement {
   const height = props.height ?? 240;
   const [holder, width] = useWidth();
-  const points = usePoints(props.labels.length);
+  const points = usePoints(props.labels);
   const at = lineGeometry(props.series, props.labels.length, width, height);
   const tipAt = (i: number): Tip => ({
     title: props.labels[i] ?? '',

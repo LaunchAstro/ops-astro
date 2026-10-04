@@ -203,8 +203,10 @@ function useSelect(props: SelectProps): {
       close();
     } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
       event.preventDefault();
+      // Walk from the option drawn active, so a list that shrank while open
+      // never walks from an option it no longer has.
       if (shown)
-        setActive((i) => (event.key === 'ArrowDown' ? Math.min(last, i + 1) : Math.max(0, i - 1)));
+        setActive(event.key === 'ArrowDown' ? Math.min(last, at + 1) : Math.max(0, at - 1));
       else openAtValue();
     } else if ((event.key === 'Enter' || event.key === ' ') && shown) {
       event.preventDefault();
