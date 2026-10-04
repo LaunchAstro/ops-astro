@@ -104,7 +104,7 @@ function ciOnTheCases1() {
     const block = job(SHARD_JOB);
     expect(required).toContain('database conformance');
     // The required check passes only when every shard did.
-    expect(job('database conformance')).toMatch(/^ {4}needs: \[database-shard\]$/mu);
+    expect(job('database conformance')).toMatch(/^ {4}needs: \[gate, database-shard\]$/mu);
     expect(required).toContain('isolation tests');
     expect(images(block)).toStrictEqual([`postgres@sha256:${DIGEST}`]);
     // The runner it calls is the one that fails a run with a skipped test
