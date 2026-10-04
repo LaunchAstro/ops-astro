@@ -54,16 +54,22 @@ function kitClasses(): ReadonlySet<string> {
 
 // Every selector a stylesheet holds, read by a real CSS parser (jsdom's
 // CSSOM): comments, strings and at-rule blocks are the parser's, and a nested
-// rule is read with its parent's selector in front.
+// rule is read with its parent's selector in front, and each selector keeps
+// the properties its rule declares.
 const { window } = new JSDOM('') as { window: { CSSStyleSheet: typeof CSSStyleSheet } };
 interface Parsed {
   readonly selectorText?: string;
   readonly cssRules?: Iterable<Parsed>;
+  readonly style?: ArrayLike<string>;
 }
-function selectorsOf(css: string): readonly string[] {
+interface Ruled {
+  readonly selector: string;
+  readonly properties: readonly string[];
+}
+function selectorsOf(css: string): readonly Ruled[] {
   const sheet = new window.CSSStyleSheet();
   sheet.replaceSync(css);
-  const found: string[] = [];
+  const found: Ruled[] = [];
   const walk = (rules: Iterable<Parsed>, parents: readonly string[]): void => {
     for (const rule of rules) {
       let inner = parents;
@@ -77,7 +83,8 @@ function selectorsOf(css: string): readonly string[] {
                   child.includes('&') ? child.replaceAll('&', parent) : `${parent} ${child}`,
                 ),
               );
-        found.push(...inner);
+        const properties = Array.from(rule.style ?? []);
+        found.push(...inner.map((selector) => ({ selector, properties })));
       }
       if (rule.cssRules !== undefined) walk(rule.cssRules, inner);
     }
@@ -122,19 +129,26 @@ function split(text: string, at: ',' | 'combinator'): string[] {
 // the primitive: the first (a rule on the primitive itself), or one between
 // (a rule gated on a primitive's own state or part, as
 // `.host .term:focus-visible .term__tip` hides the tip on keyboard focus).
+// Placing that subject allows only placement declarations: a rule on it that
+// sets anything else (`.host .term__tip { visibility: hidden; }`) restyles it.
+const PLACEMENT =
+  /^(?:margin(?:-.+)?|grid-(?:area|row|column)(?:-.+)?|order|flex(?:-grow|-shrink|-basis)?|(?:align|justify|place)-self)$/u;
 function restyled(css: string, kit: ReadonlySet<string>): readonly string[] {
-  return selectorsOf(css).filter((selector) => {
-    const compounds = split(selector, 'combinator');
-    const reached = compounds.length === 1 ? compounds : compounds.slice(0, -1);
-    return reached.some((compound) => {
-      const classes = [...compound.matchAll(/\.(-?[_a-zA-Z][\w-]*)/gu)].map((m) => m[1] ?? '');
-      // A kit state (`is-on`) beside a page part's own class is the part's state,
-      // not a restyle; a compound of kit states alone restyles every primitive.
-      const primitive = classes.some((name) => kit.has(name) && !name.startsWith('is-'));
-      const statesOnly = classes.length > 0 && classes.every((name) => kit.has(name));
-      return primitive || statesOnly;
-    });
-  });
+  return selectorsOf(css)
+    .filter(({ selector, properties }) => {
+      const compounds = split(selector, 'combinator');
+      const placed = compounds.length > 1 && properties.every((name) => PLACEMENT.test(name));
+      const reached = placed ? compounds.slice(0, -1) : compounds;
+      return reached.some((compound) => {
+        const classes = [...compound.matchAll(/\.(-?[_a-zA-Z][\w-]*)/gu)].map((m) => m[1] ?? '');
+        // A kit state (`is-on`) beside a page part's own class is the part's state,
+        // not a restyle; a compound of kit states alone restyles every primitive.
+        const primitive = classes.some((name) => kit.has(name) && !name.startsWith('is-'));
+        const statesOnly = classes.length > 0 && classes.every((name) => kit.has(name));
+        return primitive || statesOnly;
+      });
+    })
+    .map(({ selector }) => selector);
 }
 
 describe('MP-9-1 primitives placed not restyled', () => {
