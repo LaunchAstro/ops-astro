@@ -47,7 +47,8 @@ const shaped = (row: FactorRow): SecondFactor => ({
  * `second-factor-subject:<digest>` on its provider subject, taken first in its
  * transaction. A factor's record step takes it, a factor reset and an access
  * ending's provider steps (C58) hold it across their live-elsewhere check, and
- * any path that maps a login into a business must take it first.
+ * the mapping trigger takes it before any live mapping of a login is written
+ * (20261004044057), with the same digest in SQL.
  */
 export async function lockLoginSubject(
   tx: Pick<TenantQuery, 'query'>,

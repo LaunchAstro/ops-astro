@@ -175,14 +175,17 @@ async function endStanding(
  * one row at a time (`claimNextEnding`) just before its calls, so a pass of
  * slow calls never lets a claim lapse on a row still waiting its turn.
  *
- * Each claimed ending is worked in one transaction that takes the login's
+ * The shared-login check is asked first, before any lock: it goes out on
+ * another connection, and a mapping it leads to must not wait on this ending.
+ * Each claimed ending is then worked in one transaction that takes the login's
  * subject lock first and reads its stamps again (`lockEnding`), and writes
  * nothing until its calls are done: the shared-login check, asked again under
  * the lock, then the provider, sessions before the login (a provider may
  * refuse to sign out a login it has already deactivated), stopping at the
- * first fault, then the stamp. A login another business maps under that lock is either seen by the
- * check or waits for the stamp. `coalesce` keeps a step's first stamp, so a
- * step done is never undone or re-dated.
+ * first fault, then the stamp. A login another business maps is either seen by
+ * the second check or its mapping waits on the lock for the stamp
+ * (20261004044057). `coalesce` keeps a step's first stamp, so a step done is
+ * never undone or re-dated.
  */
 export async function settleAccessEndings(
   database: Database,
@@ -211,12 +214,14 @@ export async function settleAccessEndings(
     const row = await claimNextEnding(database, businessId, claimSeconds, only, tried);
     if (row === undefined) break;
     tried.push(row.id);
+    // eslint-disable-next-line no-await-in-loop -- before its lock; null when it could not be asked
+    const first = await options.sharedElsewhere(row.subject).catch(() => null);
     let done: Attempted;
     try {
       // eslint-disable-next-line no-await-in-loop -- its calls and stamp, before the next is claimed
       done = await database.withBusiness(businessId, async (tx) => {
         const now = await lockEnding(tx, row, options.lockWaitMs);
-        const answer = await attempt(tx, provider, now, options.sharedElsewhere);
+        const answer = await attempt(tx, provider, now, first);
         await stamp(tx, row.id, answer);
         return answer;
       });
@@ -259,22 +264,17 @@ async function attempt(
   tx: TenantQuery,
   provider: LoginProvider,
   row: OwedEnding,
-  sharedElsewhere: (subject: string) => Promise<boolean>,
+  first: boolean | null,
 ): Promise<Attempted> {
   let sessions = row.sessions_done;
   let login = row.login_done;
-  // Both stamped by another retry while this one waited: nothing is asked.
+  // Both stamped by another retry while this one waited: nothing is sent.
   if (sessions && login) return { sessions, login, fault: null, skipped: null };
-  // Asked before any call; a failure to ask is a fault, and the steps stay owed.
-  let shared: boolean;
-  try {
-    shared = await sharedElsewhere(row.subject);
-  } catch {
-    return { sessions, login, fault: 'unreachable', skipped: null };
-  }
+  // A failure to ask first is a fault, and the steps stay owed.
+  if (first === null) return { sessions, login, fault: 'unreachable', skipped: null };
   // Asked again under the subject lock, so a login mapped after the first
   // answer is seen. An answer of doubt is a yes: nothing is sent.
-  shared ||= await factorLoginLiveElsewhere(tx, row.login_id);
+  const shared = first || (await factorLoginLiveElsewhere(tx, row.login_id));
   if (shared) return { sessions: true, login: true, fault: null, skipped: 'shared' };
   if (!sessions) {
     const answer = await asked(async () => await provider.endSessions(row.subject));
