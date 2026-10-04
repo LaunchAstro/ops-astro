@@ -13,6 +13,7 @@ it('a session ended after the reset copies revocations remains ended after reset
   const revoker = connect(db.appUrl);
   const sessionId = randomUUID();
   const earlierSession = randomUUID();
+  let ending: string | undefined;
   // Read the actual CLI's emptying statements, following its exported carry
   // statements in the same transaction. No second implementation of the copy.
   const source = readFileSync('scripts/ops/staging-reset.mjs', 'utf8');
@@ -25,13 +26,17 @@ it('a session ended after the reset copies revocations remains ended after reset
       const tables = (await execute<{ name: string }>(TENANT_TABLES)).map((row) => row.name);
       if (tables.length > 0) await execute(`lock table ${tables.join(', ')} in share mode`);
       for (const statement of CARRY_ENDED_SESSIONS) await execute(statement);
+      // The copy has run, as the reset runs it: the earlier ending is carried.
+      expect(await execute('select session_id from ops_astro_reset.ended_provider_sessions where session_id = $1', [earlierSession]),
+        'the copy runs before the competing ending').toHaveLength(1);
       // A different backend ends the session after the copy, before DROP. The
       // reset's real locks stay held; a timeout distinguishes refusal from loss.
-      await revoker.withBusiness(randomUUID(), async (tx) => {
+      ending = await revoker.withBusiness(randomUUID(), async (tx) => {
         await tx.query("set local lock_timeout = '200ms'");
         await endProviderSession(tx, sessionId);
-      });
-      expect(await execute('select session_id from ops.ended_provider_sessions where session_id = $1', [sessionId])).toHaveLength(1);
+      }).then(() => 'committed', (error: { code?: string }) => error.code);
+      expect(['55P03', 'committed'], 'the competing ending is refused under its lock timeout, or commits').toContain(ending);
+      expect(await execute('select session_id from ops.ended_provider_sessions where session_id = $1', [sessionId])).toHaveLength(ending === 'committed' ? 1 : 0);
       for (const statement of empty) await execute(statement);
     });
     await revoker.close();
@@ -42,7 +47,7 @@ it('a session ended after the reset copies revocations remains ended after reset
     expect(await db.admin.execute('select session_id from ops.ended_provider_sessions where session_id = $1', [earlierSession]),
       'positive control: a session ended before the copy remains ended').toHaveLength(1);
     expect(await db.admin.execute('select session_id from ops.ended_provider_sessions where session_id = $1', [sessionId]),
-      'a revocation committed during reset must not disappear with the old ops schema').toHaveLength(1);
+      'a revocation committed during reset must not disappear with the old ops schema').toHaveLength(ending === 'committed' ? 1 : 0);
   } finally {
     await revoker.close();
     await db.drop();

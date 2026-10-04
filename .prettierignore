@@ -149,10 +149,11 @@ tests/review/seed-redirect-keeps-key-off-http.proof.test.mjs
 # each title; the export gate-gap proof is Sol's D1-FIX1 original, restored.
 tests/review/store-hands-out-no-part-after-session-end-proof.test.ts
 tests/review/revocation-after-part-gate-fetches-no-bytes-proof.test.ts
-tests/review/staging-reset-keeps-session-ended-during-reset-proof.test.ts
 tests/ci/restore-refuses-permissive-partitioned-barrier.proof.test.mjs
 tests/operations/scan-login-cleanup-subject-race.proof.test.ts
 
 # Sol's D1-FIX3 reset-proof precondition, byte-for-byte as the review patch held it apart
-# from each title.
+# from each title, and the D1-FIX2 reset proof it checks, in Sol's layout with its
+# preparation corrected.
+tests/review/staging-reset-keeps-session-ended-during-reset-proof.test.ts
 tests/review/staging-reset-proof-copies-before-competing-ending-proof.test.ts
