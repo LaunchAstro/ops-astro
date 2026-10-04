@@ -284,7 +284,8 @@ jobs:
     needs: [gate]
     # CI-SPEED, light pull requests: the shards run in the merge queue, the
     # only way into main, and on a push; a pull request skips them, and the
-    # aggregate below passes that skip on a pull request alone. This never
+    # aggregate below passes that skip on a pull request whose contamination
+    # gate passed, and nowhere else. This never
     # skips a group (tests/ci/merge-group-jobs.test.ts).
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
@@ -406,24 +407,27 @@ jobs:
     # skipped or was cancelled, and each of those fails it on a merge group or
     # a push; without it this job would be skipped, and a skipped required
     # check reads as passed. On a pull request the shards skip by design
-    # (CI-SPEED), so a skip passes there and nowhere else; a failure or a
-    # cancel fails everywhere. docs/agents/database-conformance.md holds what
-    # the check means.
+    # (CI-SPEED), so a skip passes there, only when the contamination gate
+    # passed, and nowhere else: a failed gate skips the shards too, and
+    # always() would otherwise pass that skip as green. A failure or a cancel
+    # fails everywhere. docs/agents/database-conformance.md holds what the
+    # check means.
     name: database conformance
-    needs: [database-shard]
+    needs: [gate, database-shard]
     if: always()
     runs-on: ubuntu-latest
     # Its slowest green run in the day to 1 October 2026: 0.2 min.
     timeout-minutes: 10
     steps:
-      - name: Every shard succeeded, or on a pull request none ran
+      - name: Every shard succeeded, or on a pull request whose gate passed none ran
         env:
           SHARDS: ${{ needs.database-shard.result }}
+          GATE: ${{ needs.gate.result }}
           # The event reaches the script as a value, never as script text.
           EVENT: ${{ github.event_name }}
         run: |
-          echo "database conformance shards: $SHARDS"
-          if [ "$EVENT" = pull_request ] && [ "$SHARDS" = skipped ]; then
+          echo "database conformance shards: $SHARDS, contamination gate: $GATE"
+          if [ "$EVENT" = pull_request ] && [ "$GATE" = success ] && [ "$SHARDS" = skipped ]; then
             echo "database conformance: the shards run in the merge queue, the only way into main"
             exit 0
           fi

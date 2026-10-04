@@ -121,7 +121,8 @@ required check still reports on a pull request under its own name, but there
 tests the change reaches in place of the full test run; the full test run,
 the build and the heavy steps after it,
 `isolation tests` and the database conformance shards run in the merge queue,
-and `database conformance` passes on the shards' skip. The full set runs in the
+and `database conformance` passes on the shards' skip when the contamination
+gate passed (a failed gate fails it). The full set runs in the
 merge queue, which tests each pull request on top of `main` and is the only
 way into it, so nothing reaches `main` untested; a push to `main` runs it too.
 A green pull request is therefore not a full run: builders run the full
