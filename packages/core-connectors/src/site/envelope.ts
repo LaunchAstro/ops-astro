@@ -12,7 +12,7 @@
 // to 12).
 
 import { parse } from '@astrojs/compiler/sync';
-import type { Node } from '@astrojs/compiler/types';
+import type { Node, TextNode } from '@astrojs/compiler/types';
 
 export interface CorrectionTarget {
   readonly path: string;
@@ -55,6 +55,7 @@ const WORD_CHARACTER = /[\p{L}\p{M}\p{N}_]/u;
 /** Offsets at which `word` stands alone in `text`, not as part of a longer word. */
 export function wordOffsets(text: string, word: string): number[] {
   const found: number[] = [];
+  if (word === '') return found;
   for (let at = text.indexOf(word); at >= 0; at = text.indexOf(word, at + 1)) {
     // Whole characters, never one code unit: half a surrogate pair is no letter.
     const left = Array.from(text.slice(Math.max(0, at - 2), at)).at(-1) ?? '';
@@ -79,38 +80,74 @@ const CODE_ELEMENTS: ReadonlySet<string> = new Set(['script', 'style']);
 /** Directives under which an element's children are not rendered as written. */
 const UNRENDERED: ReadonlySet<string> = new Set(['is:raw', 'set:html', 'set:text']);
 
+/** Larger sources are refused unparsed: the compiler is not trusted with them. */
+const MOST_BYTES = 64 * 1024;
+
 /**
- * Whether the bytes from `start` to `end` lie wholly inside one text node of
- * the page as Astro's own compiler reads it, under elements and components
- * only: never the frontmatter, an expression, a comment, a script or style,
- * or an element whose children are raw or replaced. A text node whose
- * recorded position does not hold its own text is not trusted.
+ * The text node holding the bytes from `start` to `end` wholly, in the page
+ * as Astro's own compiler reads it, under elements and components only:
+ * never the frontmatter, an expression, a comment, a script or style, or an
+ * element whose children are raw or replaced. A text node whose recorded
+ * position does not hold its own text is not trusted.
  */
-function copyAt(node: Node, bytes: Uint8Array, start: number, end: number): boolean {
+function textAt(node: Node, bytes: Uint8Array, start: number, end: number): TextNode | undefined {
   if (node.type === 'text') {
     const from = node.position?.start.offset;
     const to = node.position?.end?.offset;
-    if (from === undefined || to === undefined || start < from || end > to) return false;
-    return new TextDecoder().decode(bytes.subarray(from, to)) === node.value;
+    if (from === undefined || to === undefined || start < from || end > to) return undefined;
+    return new TextDecoder().decode(bytes.subarray(from, to)) === node.value ? node : undefined;
   }
-  if (node.type === 'root') return node.children.some((child) => copyAt(child, bytes, start, end));
   const tag =
     node.type === 'element' ||
     node.type === 'component' ||
     node.type === 'custom-element' ||
     node.type === 'fragment';
-  if (!tag || CODE_ELEMENTS.has(node.name.toLowerCase())) return false;
-  if (node.attributes.some((attribute) => UNRENDERED.has(attribute.name))) return false;
-  return node.children.some((child) => copyAt(child, bytes, start, end));
+  if (tag && CODE_ELEMENTS.has(node.name.toLowerCase())) return undefined;
+  if (tag && node.attributes.some((attribute) => UNRENDERED.has(attribute.name))) return undefined;
+  if (!tag && node.type !== 'root') return undefined;
+  for (const child of node.children) {
+    const found = textAt(child, bytes, start, end);
+    if (found !== undefined) return found;
+  }
+  return undefined;
 }
 
-/** Whether the `length` characters at `offset` are body copy the built page shows. */
-function inTextNode(source: string, offset: number, length: number): boolean {
+/** What a page is made of, positions aside, with `edit` giving each text node's value. */
+function shapeOf(node: Node, edit: (text: TextNode) => string): unknown {
+  return {
+    type: node.type,
+    name: 'name' in node ? node.name : undefined,
+    attributes:
+      'attributes' in node
+        ? node.attributes.map(({ name, kind, value }) => [name, kind, value])
+        : [],
+    value: node.type === 'text' ? edit(node) : 'value' in node ? node.value : undefined,
+    children: 'children' in node ? node.children.map((child) => shapeOf(child, edit)) : [],
+  };
+}
+
+/**
+ * Whether the word at `offset` is body copy the built page shows, and the
+ * edited page reads to the compiler as the same page with only that word
+ * changed: a swap that turns text into markup changes the page's shape.
+ */
+function onlyTheWord(before: string, after: string, offset: number, target: CorrectionTarget) {
   const encoder = new TextEncoder();
-  const start = encoder.encode(source.slice(0, offset)).length;
-  const end = start + encoder.encode(source.slice(offset, offset + length)).length;
+  const bytes = encoder.encode(before);
+  if (bytes.length > MOST_BYTES || encoder.encode(after).length > MOST_BYTES) return false;
+  const start = encoder.encode(before.slice(0, offset)).length;
+  const end = start + encoder.encode(target.word).length;
   try {
-    return copyAt(parse(source, { position: true }).ast, encoder.encode(source), start, end);
+    const read = parse(before, { position: true }).ast;
+    const text = textAt(read, bytes, start, end);
+    const from = text?.position?.start.offset;
+    if (text === undefined || from === undefined) return false;
+    const at = new TextDecoder().decode(bytes.subarray(from, start)).length;
+    const edited =
+      text.value.slice(0, at) + target.replacement + text.value.slice(at + target.word.length);
+    const expected = shapeOf(read, (node) => (node === text ? edited : node.value));
+    const got = shapeOf(parse(after, { position: false }).ast, (node) => node.value);
+    return JSON.stringify(expected) === JSON.stringify(got);
   } catch {
     return false;
   }
@@ -136,8 +173,8 @@ export function checkEnvelope(change: ProposedChange, target: CorrectionTarget):
   const at = replacedAt(before[index] ?? '', after[index] ?? '', target);
   if (at === undefined) return exceeded('not the one word replaced in place');
   const offset = before.slice(0, index).reduce((sum, line) => sum + line.length + 1, 0) + at;
-  if (!inTextNode(file.before, offset, target.word.length)) {
-    return exceeded('the word is not in body copy');
+  if (!onlyTheWord(file.before, file.after, offset, target)) {
+    return exceeded('the word is not in body copy, or the edit changes more than the word');
   }
   return {
     ok: true,
@@ -192,6 +229,17 @@ function sameStylesheets(left: PageObservation, right: PageObservation): boolean
 
 const served = (page: PageObservation): boolean => page.status >= 200 && page.status < 300;
 
+/** A page's path, a trailing slash aside. */
+const pagePath = (url: URL): string => url.pathname.replace(/\/+$/u, '');
+
+/** `decoy` is on `primary`'s site, at another path, however either is spelled. */
+function anotherPageOfSite(decoy: string, primary: string): boolean {
+  const left = URL.parse(decoy);
+  const right = URL.parse(primary);
+  if (left === null || right === null) return false;
+  return left.origin === right.origin && pagePath(left) !== pagePath(right);
+}
+
 /** Both captures are of one address, and each was served successfully. */
 function samePage(left: PageObservation, right: PageObservation): boolean {
   return left.url === right.url && served(left) && served(right);
@@ -206,7 +254,7 @@ export function compareCaptures(input: CaptureComparison): ComparisonResult {
   if (moved || !samePage(before, after)) failed.push('page');
   if (!sameStylesheets(before, after)) failed.push('stylesheets');
   const decoyHeld =
-    decoyBefore.url !== before.url &&
+    anotherPageOfSite(decoyBefore.url, before.url) &&
     samePage(decoyBefore, decoyAfter) &&
     wordOffsets(decoyBefore.text, target.word).length > 0 &&
     decoyAfter.text === decoyBefore.text &&
