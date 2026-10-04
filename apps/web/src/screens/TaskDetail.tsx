@@ -879,6 +879,9 @@ function AgentHead({
     <AgentSection
       client={client}
       recordId={task.id}
+      taskKey={task.key}
+      grantKey={props.grantKey}
+      readOf={task}
       proposals={task.proposals}
       people={persons}
       ledger={task.ledger}

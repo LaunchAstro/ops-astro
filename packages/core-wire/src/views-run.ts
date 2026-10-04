@@ -96,6 +96,14 @@ export interface ExecutionEvent {
   /** The attempt the event is about; its receipt is read by this. */
   readonly attemptId: string;
   readonly at: string;
+  /** The plan its run was proposed under, as recorded (MP-6-2); absent from an older read. */
+  readonly placement?: {
+    /** The bound plan record, or null when the run was proposed under none. */
+    readonly planRecordId: string | null;
+    readonly stepKey: string | null;
+    /** The plan's own run, or a run of its lineage. */
+    readonly planRun: boolean;
+  };
 }
 
 /** `task.execution`'s answer, under `execution`; `denied`, `unavailable` and `loading` are the read's own. */
@@ -113,6 +121,11 @@ export interface TaskExecution {
   readonly next: number | null;
   /** Planned and observed per run (AW-06); every reader who may see the task gets the same one. */
   readonly graph: ExecutionGraph;
+  /** The steps of each bound plan record a run of the task was proposed under (MP-6-2). */
+  readonly plans?: readonly {
+    readonly planRecordId: string;
+    readonly steps: readonly { readonly key: string; readonly title: string }[];
+  }[];
 }
 
 /**
