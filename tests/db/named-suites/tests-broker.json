@@ -57,6 +57,7 @@
     "tests/broker/s3-bound-source.test.ts",
     "tests/broker/spend-closes-once.test.ts",
     "tests/broker/spend-give-back-late.test.ts",
+    "tests/broker/spend-give-back-release.test.ts",
     "tests/broker/spend-give-back.test.ts"
   ],
   "conformance": [
