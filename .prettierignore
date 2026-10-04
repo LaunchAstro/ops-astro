@@ -113,3 +113,7 @@ tests/review/main-b1-p01-closed-tab-cookies-proof.test.ts
 # The condense pass's interim review proof (Opus, standing in for Sol), byte-for-byte apart from
 # its title, which names what it proves (tests/docs/test-files-by-behaviour.test.ts).
 tests/visual/coloured-summary-rejects-skipped-wrapper.test.ts
+
+# Sol's PR-374-FIX1 proofs for the Keys screen, byte-for-byte as the review patch held them.
+tests/surfaces/sol-pr374-fix1-stale-set.test.tsx
+tests/surfaces/sol-pr374-fix1-write-denial.test.tsx
