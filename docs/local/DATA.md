@@ -340,7 +340,9 @@ whom it refuses. `model_route_room` (migration 0085, AW-01's fair share) is
 the second, and the one read across businesses: a route's ceiling is the
 installation's, which a tenant transaction cannot count under row security.
 It answers one whole number, 1 when the transaction's own business may hold
-one more call on the route and 0 when it may not, with no id and no count;
+one more call on the route and 0 when it may not, with no id and no count; a
+provider lookup's unexpired slot counts as a call (migration 20261004040000 replaces it,
+keeping its grants and rights);
 the business is `app_business_id()`, never an argument, and none is 0. It
 runs with `row_security = off`, so an owner that does not bypass row security
 is refused rather than answered from one business's rows. PUBLIC and the
@@ -349,7 +351,24 @@ application group may not execute it. Only `ops_astro_broker` may, a
 not inherit it, so the broker takes it for the one statement with
 `set_config('role', ..., true)` and gives it back. The suites sort that role
 into a class of its own (`broker`). `tests/broker/aw-01-broker-fair-share.test.ts`
-proves the separation and the grants.
+proves the separation and the grants. `take_lease` (migration 20261004040200, SL11-30) is
+the third, and the one way a lease is written. The application group holds no
+insert on `leases` and updates only `expires_at`, `state` and `released_at`, so
+it can neither rewrite a lease's holder nor forge a lease, and 0111's check
+that a reviewed output is its lease holder's work stands on the holder column.
+Pickup calls it after its own checks under the locks. It checks again inside, in
+`app_business_id()`'s business: the reservation is claimable, the approving
+person is the one named, the claimant's authority is live (a person's own write
+on the task, or an agent's own delegation for this lease from the approving
+person, judged as `EFFECTIVE` judges grants), and the expiry is within a lease's
+lifetime. It computes the fence itself. The application role still writes
+delegations, grants, gate decisions and actors, so a new lease is only as
+trustworthy as those rows; the delegation mint behind this path is the next step. It runs as its own
+role, `ops_astro_lease_path` (no login, no bypass, not the owner, and the
+application group cannot set it), so row security and the made-up guard judge
+its one insert as the application's; its search path is `pg_catalog, pg_temp`, PUBLIC may not execute it, and a call naming
+nothing answers null. `tests/db/take-lease-path.test.ts` and
+`tests/db/lease-holder-guard.test.ts` prove it.
 
 `ops_astro_occurrence` (migration 0097, AW-01 J) follows the same pattern
 without a function: it holds `insert` on `planned_runs`, `select` on a task's
@@ -729,7 +748,7 @@ factor change: a SHA-256 digest of the login's subject, the session kept
 reason. Login resolution refuses a token of that subject whose session is not
 the kept one and whose first sign-in is at or before the ending, allowing
 the minute the provider's clock may run ahead (`SIGN_IN_CLOCK_SKEW_SECONDS`). The
-ending's time is set as its transaction commits (20261003024319: a deferred
+ending's time is set as its transaction commits (20261004040300: a deferred
 constraint trigger, a pinned security definer that only moves the new row's
 time later), not when the transaction began. The
 application may insert the digest and the kept session and read the three

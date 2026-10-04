@@ -1,7 +1,7 @@
 -- SPDX-License-Identifier: AGPL-3.0-only
 -- A UTC timestamp ID (docs/local/DATA.md, "What the schema is").
 --
--- 20261003024319 other sessions ended at commit (C58, Sol OW-001-FIX2).
+-- 20261004040300 other sessions ended at commit (C58, Sol OW-001-FIX2).
 -- 0063's `ended_before` defaults to now(), the ending transaction's start.
 -- Login resolution refuses a session of the subject whose first sign-in is at
 -- or before that time (plus the provider's minute of clock), so an ending
