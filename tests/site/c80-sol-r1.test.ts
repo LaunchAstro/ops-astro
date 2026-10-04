@@ -247,3 +247,33 @@ it('Sol R1 10: an unrelated replacement word does not prevent observing a correc
     'revert_accepted',
   );
 });
+
+// The seam read absent, then an earlier attempt landed late, so the resend meets "already done".
+const raced = <T>(value: T, proof: string) => {
+  let landed = false;
+  return {
+    send: () => {
+      landed = true;
+      return Promise.resolve({ kind: 'refused' as const, code: 'PROVIDER_REFUSED', proof });
+    },
+    readBack: () =>
+      Promise.resolve(landed ? { state: 'landed' as const, value } : { state: 'absent' as const }),
+  };
+};
+
+it('Rebind 2 L2: a resend refused because a late landing beat it records landed, not failed', async () => {
+  const revert = raced(REVERTED, 'sha_mismatch');
+  const reverted = await revertCorrection(
+    revertInput,
+    revertPorts([], { revert: revert.send, readBack: revert.readBack }),
+  );
+  const publish = raced(PUBLISHED, 'not_mergeable');
+  const published = await publishCorrection(
+    approvedJob(),
+    publishPorts([], { publish: publish.send, readBack: publish.readBack }),
+  );
+  expect({ reverted: reverted.state, published: published.state }).toEqual({
+    reverted: 'reverted',
+    published: 'accepted',
+  });
+});
