@@ -16,16 +16,18 @@
 // the due and the estimate (MP-4-8) come from
 // stored records, and the hover door goes to the task's page link (MP-4-12).
 // What the product does not store yet draws a dash or nothing and is recorded
-// as such: the client's name (the client model), the comment counts (INB-1)
-// and starring (P-20). The actual is the time logged (MP-4-6).
+// as such: starring (P-20). The actual is the time logged (MP-4-6). The client
+// is the read's, by name, where the reader reaches it; a Clients row door (`?f=client:"<name>"`)
+// filters the board to it, in the dock as on the page (the view is the address's).
 
-import { useEffect, useRef, useState, type ReactElement } from 'react';
-import { Empty, ProjectsBoard, TabPanel, type ProjectRow } from '@launchastro/ui';
+import { useEffect, useMemo, useRef, useState, type ReactElement } from 'react';
+import { Empty, ProjectsBoard, TabPanel, clientFiltersIn, type ProjectRow } from '@launchastro/ui';
 import type { OperationsClient } from '../operations/client.ts';
 import { assigneeOf, rowActions, type BoardPanelHost, type RowOpened } from './projects-row.ts';
 import { titleOf } from '../views/task-title.ts';
 import type {
   BoardTask,
+  ClientListResult,
   PersonListResult,
   TaskBoardResult,
 } from '../../../../packages/core-wire/src/index.ts';
@@ -35,6 +37,7 @@ import {
   isInProductLink,
 } from '../../../../packages/core-wire/src/index.ts';
 import { useRead } from '../data/use-read.ts';
+import type { ReadState } from '../data/authorised-read.ts';
 import { useBoardLive } from '../data/board-live.ts';
 import { RecordState } from '../views/record-state.tsx';
 import { useRereadOn } from './task/reread-on.ts';
@@ -52,7 +55,15 @@ export interface ProjectsProps {
   readonly navigate: (path: string) => void;
   /** The dock task panel (MP-4-8): rows open beside the board through it. Absent, they open the task page. */
   readonly taskPanel?: BoardPanelHost;
+  /** The whole address the board is drawn at, the page's or a panel's place; its query is the view. */
+  readonly address?: string;
+  /** Drawn in a dock panel: the view stays the panel's own, and the page's address is left alone. */
+  readonly inPanel?: boolean;
 }
+
+/** The view part of an address (`?f=...`); the page's own query when none is given. */
+const queryOf = (address: string | undefined): string =>
+  address === undefined ? window.location.search : new URL(address, 'http://here').search;
 
 type ProjectsTab = 'board' | 'worklog';
 
@@ -63,7 +74,7 @@ export function Projects(props: ProjectsProps): ReactElement {
     const next: ProjectsTab = id === 'worklog' ? 'worklog' : 'board';
     setTab(next);
     if (next === 'worklog') setWorkLogOpened(true);
-    writeTab(next);
+    if (props.inPanel !== true) writeTab(next);
   };
   return (
     <div className="stack">
@@ -73,6 +84,8 @@ export function Projects(props: ProjectsProps): ReactElement {
           client={props.client}
           grantKey={props.grantKey}
           {...(props.taskPanel === undefined ? {} : { taskPanel: props.taskPanel })}
+          {...(props.address === undefined ? {} : { address: props.address })}
+          inPanel={props.inPanel === true}
         />
       </TabPanel>
       <TabPanel name="projects" tab="worklog" selected={tab}>
@@ -119,6 +132,20 @@ function ProjectBoard(props: Omit<ProjectsProps, 'navigate'>): ReactElement {
     deps: [],
   });
   const persons = people.state.outcome === 'ready' ? people.state.value.persons : null;
+  // At a client filter (a Clients row door) every client the reader reaches (C32)
+  // is a Client filter even with no row, and the board waits for them, so a door
+  // to a quiet client keeps its filter. At none, nothing more is read.
+  const query = queryOf(props.address);
+  const named = clientFiltersIn(query) > 0;
+  const reached = useRead<ClientListResult>({
+    grantKey: props.grantKey,
+    run: async () =>
+      named
+        ? await client.read<ClientListResult>('client.list', {})
+        : { ok: true as const, value: { ok: true as const, clients: [] } },
+    deps: [named],
+  });
+  const clients = useMemo(() => clientNamesOf(reached.state), [reached.state]);
   // INB-1f: one stream for the tab, shared by the board and the inbox panels.
   const followInbox = useBoardLive(client, props.grantKey, reload);
 
@@ -151,38 +178,57 @@ function ProjectBoard(props: Omit<ProjectsProps, 'navigate'>): ReactElement {
           />
         }
       >
-        {(value) => (
-          <ProjectsBoard
-            rows={value.tasks.map((task) => rowOf(task))}
-            withheld={value.withheld ?? 0}
-            changedAt={value.changedAt ?? null}
-            stages={STAGE_LABELS}
-            viewer={value.viewer ?? null}
-            {...(value.owed === undefined ? {} : { owed: value.owed })}
-            href={(row) => pathTo('agency:task-detail', { key: row.key })}
-            actions={rowActions({
-              client,
-              people: persons,
-              href: (key) => pathTo('agency:task-detail', { key }),
-              reload,
-              onSettled: (text) => {
-                if (live.current === grantKey) setRefused({ grant: grantKey, text });
-              },
-              ...(panel === undefined ? {} : { panel: { host: panel, opened, setOpened } }),
-            })}
-            address={window.location.search}
-            onAddress={(query) => {
-              window.history.replaceState(
-                window.history.state,
-                '',
-                `${window.location.pathname}${query === '' ? '' : `?${query}`}`,
-              );
-            }}
-          />
-        )}
+        {(value) =>
+          // At a client filter the board waits for the names, so its filter holds.
+          named && clients === null ? null : (
+            <ProjectsBoard
+              // A new place is a new view: the board opens on it afresh.
+              key={props.address === undefined ? undefined : query}
+              rows={value.tasks.map((task) => rowOf(task))}
+              withheld={value.withheld ?? 0}
+              changedAt={value.changedAt ?? null}
+              stages={STAGE_LABELS}
+              viewer={value.viewer ?? null}
+              {...(value.owed === undefined ? {} : { owed: value.owed })}
+              href={(row) => pathTo('agency:task-detail', { key: row.key })}
+              actions={rowActions({
+                client,
+                people: persons,
+                href: (key) => pathTo('agency:task-detail', { key }),
+                reload,
+                onSettled: (text) => {
+                  if (live.current === grantKey) setRefused({ grant: grantKey, text });
+                },
+                ...(panel === undefined ? {} : { panel: { host: panel, opened, setOpened } }),
+              })}
+              address={query}
+              clients={clients ?? NO_CLIENTS}
+              onAddress={(next) => {
+                if (props.inPanel === true) return;
+                window.history.replaceState(
+                  window.history.state,
+                  '',
+                  `${window.location.pathname}${next === '' ? '' : `?${next}`}`,
+                );
+              }}
+            />
+          )
+        }
       </RecordState>
     </div>
   );
+}
+
+const NO_CLIENTS: readonly string[] = [];
+
+/** The reached clients' names; null while the read is out, none when it is refused or fails. */
+function clientNamesOf(state: ReadState<ClientListResult>): readonly string[] | null {
+  if (state.outcome === 'loading') return null;
+  const answered = state.outcome === 'ready' || state.outcome === 'empty' ? state.value : null;
+  // An answer without its list offers none, rather than breaking the board.
+  return Array.isArray(answered?.clients) && answered.clients.length > 0
+    ? answered.clients.map((one) => one.name)
+    : NO_CLIENTS;
 }
 
 /** The Stage column's vocabulary and the stage editor's choices, in the list's order. */
@@ -192,7 +238,8 @@ const STAGE_LABELS = TASK_STAGES.list().map((stage) => stage.label);
 function rowOf(task: BoardTask): ProjectRow {
   // A read from a server that predates Assign to AI, the category or the
   // comment counts carries none of them: none.
-  const read: Partial<Pick<BoardTask, 'agent' | 'myAgents' | 'category' | 'comments'>> = task;
+  const read: Partial<Pick<BoardTask, 'agent' | 'myAgents' | 'category' | 'comments' | 'client'>> =
+    task;
   const agent = read.agent ?? null;
   const category = read.category ?? null;
   return {
@@ -203,9 +250,9 @@ function rowOf(task: BoardTask): ProjectRow {
     rank: { number: task.rank.number, calc: task.rank.calc },
     // No ticket builds starring yet, so the starred tier is empty (P-20).
     starred: false,
-    // The client's name waits on the client model; `clientSet` says only
-    // that there is one.
-    client: null,
+    // The client by name where the reader reaches it (C32's rule); a server
+    // that predates it, or a client out of reach, sends none.
+    client: read.client?.name ?? null,
     assignee: assigneeOf(task, agent),
     // The reader's own agents for the task; the read sends no one else's.
     agents: (read.myAgents ?? []).map((one) => ({ id: one.delegationId, name: one.purpose })),

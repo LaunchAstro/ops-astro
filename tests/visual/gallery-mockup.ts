@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 /// <reference lib="dom" />
-/* oxlint-disable no-await-in-loop -- widths, themes and units run one at a time,
-   in order: one browser context at a time. */
+/* oxlint-disable no-await-in-loop -- units run one at a time, in order: one
+   browser context at a time. */
 //
 // The local half of U04's visual-match legs (MP-1-2 3, MP-1-3 3, MP-1-6 3):
 // the pinned mockup beside the component gallery, in the pinned renderer, at
@@ -11,42 +11,27 @@
 //
 //   MOCKUP_DIR=<clone of the mockup> node tests/visual/gallery-mockup.ts --out DIR
 //
-// MP-1-2: the families each side draws its text in are the same three.
+// MP-1-2: both sides draw their text in the same three families.
 // MP-1-3 and MP-1-6: each component the ticket names is compared pixel by
-// pixel with its unit on the mockup page that draws it (the Invoices page and
-// the channel workbench, by their canonical addresses, for MP-1-6's
-// treatments). The gallery side is the component as the gallery renders it,
+// pixel with its unit on the mockup page that draws it (for MP-1-6's
+// treatments, the Invoices page and the channel workbench, by their canonical
+// addresses). The gallery side is the component as the gallery renders it,
 // photographed where it stands; nothing is drawn onto the gallery page. The
-// mockup side is that same markup drawn at one fixed place on the mockup page
-// by the mockup's stylesheet, in a host as wide as the gallery's picture, or,
-// for a treatment the ticket redraws, the mockup's own markup for the unit.
-// The two pictures are compared
-// (compare.ts): any difference beyond the harness tolerance fails, and so
-// does a component the mockup page or the gallery does not draw, or one that
-// cannot be photographed. Both pictures are written for a person to set side
-// by side.
+// mockup side is the same markup, drawn by the mockup's stylesheet at one
+// fixed place on the mockup page in a host as wide as the gallery's picture.
+// For a treatment the ticket redraws, it is the mockup's own markup instead.
+// compare.ts compares the two pictures. A difference beyond the harness
+// tolerance fails, and so does a component either side does not draw or that
+// cannot be photographed. Both pictures are written out for a person to set
+// side by side.
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Page } from 'playwright';
-import { launchChromium } from '../support/chromium.ts';
-import { madeUpSession, serveApp } from './app-pages.ts';
-import { load, MOCKUP_ORIGIN, openSide, type Side } from './capture.ts';
+import { load, MOCKUP_ORIGIN, type Side } from './capture.ts';
 import { comparePng } from './compare.ts';
-import { WIDTHS } from './gallery-views.ts';
-import {
-  checkMockupTree,
-  checkRenderer,
-  fetchAssets,
-  liveRenderer,
-  MODE,
-  readAssets,
-  readPacket,
-  themesOf,
-  type Packet,
-  type Theme,
-} from './packet.ts';
+import { besideMockup, type MockupView } from './mockup-run.ts';
+import type { Packet } from './packet.ts';
 
 /** Any client: a canonical pattern's `:client` takes one segment, and the mockup's pages are static. */
 const CLIENT = 'sample-client';
@@ -247,11 +232,8 @@ async function compareUnits(
 }
 
 /** Families and units at one width in one theme. */
-async function oneView(
-  sides: { mockup: Side; gallery: Side },
-  at: { packet: Packet; app: URL; width: number; theme: Theme; out: string },
-): Promise<string[]> {
-  const name = `@${String(at.width)}-${at.theme}`;
+async function oneView(sides: { mockup: Side; gallery: Side }, at: MockupView): Promise<string[]> {
+  const { name } = at;
   const board = await load(sides.mockup, at.packet, `${MOCKUP_ORIGIN}/agency/projects/`);
   const gallery = await load(sides.gallery, at.packet, new URL('/gallery/', at.app).href);
   const [left, right] = [await board.evaluate(textFamilies), await gallery.evaluate(textFamilies)];
@@ -259,40 +241,7 @@ async function oneView(
   writeFileSync(join(at.out, `gallery${name}.png`), await picture(gallery));
   const same = JSON.stringify(left) === JSON.stringify(right);
   const families = `${same ? 'ok' : 'FAIL'} families${name}: mockup ${left.join(', ')}; gallery ${right.join(', ')}`;
-  return [families, ...(await compareUnits(sides.mockup, gallery, { ...at, name }))];
+  return [families, ...(await compareUnits(sides.mockup, gallery, at))];
 }
 
-const mockupDir = process.env['MOCKUP_DIR'];
-if (mockupDir === undefined) throw new Error('visual: set MOCKUP_DIR to the pinned mockup clone');
-const at = process.argv.indexOf('--out');
-const out =
-  at === -1 ? mkdtempSync(join(tmpdir(), 'gallery-mockup-')) : (process.argv[at + 1] ?? '');
-mkdirSync(out, { recursive: true });
-const packet = readPacket();
-const tree = checkMockupTree(mockupDir, packet.mockup);
-await fetchAssets(readAssets(), packet);
-const browser = await launchChromium(MODE);
-checkRenderer(packet, liveRenderer(browser, MODE));
-const { app, close } = await serveApp();
-const lines: string[] = [];
-try {
-  const session = madeUpSession(app, join(out, 'session'));
-  for (const width of WIDTHS) {
-    for (const theme of themesOf(packet)) {
-      const mockup = await openSide(browser, packet, width, { mockupDir, tree, theme });
-      const gallery = await openSide(browser, packet, width, { app, session, colorScheme: theme });
-      try {
-        lines.push(...(await oneView({ mockup, gallery }, { packet, app, width, theme, out })));
-      } finally {
-        await Promise.all([mockup.context.close(), gallery.context.close()]);
-      }
-    }
-  }
-} finally {
-  rmSync(join(out, 'session'), { recursive: true, force: true });
-  await browser.close();
-  await close();
-}
-writeFileSync(join(out, 'summary.txt'), `${lines.join('\n')}\n`);
-console.log(lines.join('\n'));
-process.exitCode = lines.every((line) => line.startsWith('ok')) ? 0 : 1;
+await besideMockup('gallery-mockup-', oneView);

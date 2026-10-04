@@ -28,8 +28,9 @@ function byField(
   kind: string,
   rows: readonly ProjectRow[],
   of: (row: ProjectRow) => string | null,
+  offered: readonly string[] = [],
 ): readonly Facet<ProjectRow>[] {
-  const values = [...new Set(rows.map((row) => of(row)))]
+  const values = [...new Set([...rows.map((row) => of(row)), ...offered])]
     .filter((value): value is string => value !== null)
     .toSorted();
   return values.map((value) => {
@@ -42,6 +43,9 @@ function byField(
     };
   });
 }
+
+/** The Client filter on one client, by name: the address a Clients row door opens the board at. */
+export const clientFacetId = (name: string): string => facetId('client', name);
 
 /** The assignee filter on one person (the viewer preset's, P-11). */
 export const viewerFacetId = (person: string): string => `assignee:${person}`;
@@ -72,16 +76,20 @@ function byAssignee(
 /**
  * The facets these rows offer: client, assignee, stage, status, category and
  * overdue. `viewer` is the signed-in person, whose filter is always offered.
+ * `clients` are the names of the clients the reader reaches (`client.list`),
+ * each offered even with no row of theirs, so a Clients row door to a quiet
+ * client opens on no task rather than on every client's work.
  */
 export function projectFacets(
   rows: readonly ProjectRow[],
   now: Date,
   viewer: string | null = null,
+  clients: readonly string[] = [],
 ): readonly Facet<ProjectRow>[] {
   // The reader's own calendar day, as the due cell judges it (never the UTC day).
   const today = `${String(now.getFullYear())}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
   return [
-    ...byField('Client', rows, (row) => row.client),
+    ...byField('Client', rows, (row) => row.client, clients),
     ...byAssignee(rows, viewer),
     ...byField('Stage', rows, (row) => row.stage),
     ...byField('Status', rows, (row) => row.status),
