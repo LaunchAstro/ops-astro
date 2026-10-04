@@ -89,10 +89,12 @@ const CLOCK_MS = `date_trunc('milliseconds', clock_timestamp())`;
  * Serialise one conversation's message writes and read-marker moves until the
  * transaction ends. A message is stamped and a marker capped by the wall clock
  * under this lock, so a message that commits later is always stamped later
- * than any marker moved before it, and never hides behind one.
+ * than any marker moved before it, and never hides behind one. The key takes
+ * the id in lower case, so every spelling of one conversation's id takes the
+ * same lock.
  */
 export async function lockConversation(tx: TenantQuery, conversationId: string): Promise<void> {
-  await advisoryLock(tx, `chat.conversation:${tx.businessId}:${conversationId}`);
+  await advisoryLock(tx, `chat.conversation:${tx.businessId}:${conversationId.toLowerCase()}`);
 }
 
 /**
