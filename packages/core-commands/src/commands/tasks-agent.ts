@@ -16,15 +16,21 @@
 // **The lock.** The delegation row is read `for share` after the envelope's
 // task lock, so a revoke (an update of that row) either commits first and is
 // seen here as not live, or waits for this assignment and then clears it.
-// Liveness is read at this statement's clock, so a delegation or parent that
-// expired while the assignment waited on the task lock holds no task.
+// Liveness is read again once the write is made, after the audit chain's
+// lock (taken here, not at the audit write, so nothing later waits) and at
+// that statement's clock: a delegation or parent that expired while the
+// assignment waited on any lock holds no task, and the write rolls back.
 //
 // **Assignment starts nothing.** It records who holds the task; a run still
 // needs its own commands.
 
-import { DELEGATION_STANDS_AT_CHECK, type TenantQuery } from '../../../core-records/src/index.ts';
+import {
+  advisoryLock,
+  DELEGATION_STANDS_AT_CHECK,
+  type TenantQuery,
+} from '../../../core-records/src/index.ts';
 import type { CommandContext } from './context.ts';
-import { refused, type HandlerOutcome } from './outcome.ts';
+import { isRefused, refused, type HandlerOutcome } from './outcome.ts';
 import { refuseCommand, type CommandRefusal } from './refusal.ts';
 import type { FieldValues } from './requests.ts';
 import { writeOwnedFields } from './tasks-state.ts';
@@ -54,11 +60,13 @@ export async function assignTask(
   }
   const refusal = await refuseAgent(tx, context, agent.toLowerCase());
   if (refusal !== undefined) return refused(refusal);
-  return await writeOwnedFields(tx, context, 'task.assign', {
+  const outcome = await writeOwnedFields(tx, context, 'task.assign', {
     ...fields,
     agent: agent.toLowerCase(),
     assignee: null,
   });
+  if (isRefused(outcome) || (await standsAfterWaits(tx, agent.toLowerCase()))) return outcome;
+  return refused(notLive());
 }
 
 /**
@@ -97,15 +105,7 @@ async function refuseAgent(
       ],
     );
   }
-  if (!found.live) {
-    return refuseCommand(
-      'DELEGATION_NOT_LIVE',
-      ['agent'],
-      [
-        'This delegation, or the one it was minted under, is revoked, settled or expired, so it holds no task.',
-      ],
-    );
-  }
+  if (!found.live) return notLive();
   if (found.purpose_scope_id !== context.target?.id) {
     return refuseCommand(
       'DELEGATION_OUT_OF_PURPOSE',
@@ -114,4 +114,28 @@ async function refuseAgent(
     );
   }
   return undefined;
+}
+
+/**
+ * The last liveness read: after the audit chain's lock, the last wait left.
+ * Its key is the chain trigger's, `business_id::text`, which is lower case.
+ */
+async function standsAfterWaits(tx: TenantQuery, delegationId: string): Promise<boolean> {
+  await advisoryLock(tx, tx.businessId.toLowerCase());
+  const rows = await tx.query<{ readonly live: boolean }>(
+    `select ${DELEGATION_STANDS_AT_CHECK} as live from public.delegations d
+      where d.business_id = $1 and d.id = $2`,
+    [tx.businessId, delegationId],
+  );
+  return rows[0]?.live === true;
+}
+
+function notLive(): CommandRefusal {
+  return refuseCommand(
+    'DELEGATION_NOT_LIVE',
+    ['agent'],
+    [
+      'This delegation, or the one it was minted under, is revoked, settled or expired, so it holds no task.',
+    ],
+  );
 }
