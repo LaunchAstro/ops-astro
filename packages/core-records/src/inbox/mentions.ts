@@ -66,9 +66,11 @@ export async function readMentions(
 
 /**
  * Which of these people an author could already see, so a refusal may name
- * them: staff, or a person holding read on a client the author reads (a
- * business-wide reader reads every client). Anyone else is named back only by
- * the identifier as sent, so a commenter cannot learn another client's names.
+ * them: staff, to an author who is staff here too, or a person holding read on
+ * a client the author reads (a business-wide reader reads every client).
+ * Anyone else is named back only by the identifier as sent, so a commenter
+ * cannot learn another client's names, and one of the client's people, whose
+ * directory read is refused, cannot learn the team's (OW-037.1).
  */
 export async function seenBy(
   tx: TenantQuery,
@@ -84,8 +86,11 @@ export async function seenBy(
      select p.id from public.people p
       where p.business_id = $1 and p.id = any($3::uuid[])
         and ((select business from reach)
-             or exists (select 1 from public.memberships m
-                         where m.business_id = p.business_id and m.person_id = p.id and m.active)
+             or (exists (select 1 from public.memberships m
+                          where m.business_id = p.business_id and m.person_id = p.id and m.active)
+                 and exists (select 1 from public.memberships m
+                              where m.business_id = p.business_id and m.person_id = $2
+                                and m.active))
              or exists (select 1 from effective e
                          where e.collection = 'task' and e.action = 'read'
                            and e.scope_kind = 'party'

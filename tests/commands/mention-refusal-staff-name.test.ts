@@ -1,4 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+//
+// Catalogue #419: a refused mention names a staff member only to an author
+// who is staff here too. The first case is the review's proof (OW-037.1),
+// renamed for what it proves and otherwise as written; the second holds the
+// other side, so hiding every name could not pass for the fix.
+
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
@@ -21,7 +27,7 @@ import {
 beforeAll(setUp, 180_000);
 afterAll(tearDown);
 
-it('Sol proof, criterion 2: person to person, an external commenter cannot discover an unrelated staff name through a refused mention', async () => {
+it('person to person: an external commenter cannot discover an unrelated staff name through a refused mention', async () => {
   const canary = `private-staff-${randomUUID()}`;
   const hidden = await person(canary);
   const task = await taskFor(alpha, owner, 'client-visible task', clientA);
@@ -66,4 +72,28 @@ it('Sol proof, criterion 2: person to person, an external commenter cannot disco
     [alpha, task],
   );
   expect(rows[0]?.n).toBe('0');
+});
+
+it('a staff author is still told which staff member cannot read the comment', async () => {
+  const canary = `named-staff-${randomUUID()}`;
+  const unread = await person(canary);
+  const task = await taskFor(alpha, owner, 'team task', clientA);
+  // Staff held to this one task, so no business-wide read names anyone.
+  const author = await person('task-only-staff');
+  await db.app.withBusiness(alpha, async (tx) => {
+    for (const action of ['read', 'comment'] as const) {
+      // oxlint-disable-next-line no-await-in-loop
+      await grantTo(tx, author, action, { kind: 'record', id: task });
+    }
+  });
+  const answer = await as(alpha, author, {
+    command: 'task.comment',
+    recordId: task,
+    expectedRevision: await revisionOf(task),
+    body: 'note',
+    audience: 'internal',
+    mentions: [unread.personId],
+  });
+  expect(outcomeOf(answer)).toMatchObject({ code: 'MENTION_NOT_READABLE' });
+  expect(JSON.stringify(answer)).toContain(canary);
 });
