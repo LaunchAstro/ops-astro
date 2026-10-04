@@ -117,6 +117,10 @@ describe('CQ-8 runtime structure', () => {
       'packages/core-commands/src/commands/conversation-lifecycle.ts',
       'packages/core-commands/src/commands/occurrence-run.ts',
       'packages/core-commands/src/commands/prepare.ts',
+      // #413: an agent assignment takes the audit chain's key after its write,
+      // where the envelope's audit write would, so its last liveness read
+      // comes after every wait.
+      'packages/core-commands/src/commands/tasks-agent.ts',
       'packages/core-custody/src/broker-reserve.ts',
       // C32: the business's one access lock, taken first by every change to
       // who may do what (a grant given, a grant revoked, access ended),
