@@ -131,6 +131,7 @@
     "tests/api/settings-revision-type.test.ts",
     "tests/api/settings-unstorable-values.test.ts",
     "tests/api/shared-business-key.test.ts",
+    "tests/api/sol-ow009-credential-time-proof.test.ts",
     "tests/api/surface-operations.test.ts",
     "tests/api/t2c1-rejected-decision-crash-seam.test.ts",
     "tests/api/t2c2-worker.test.ts",
