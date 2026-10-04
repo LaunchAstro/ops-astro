@@ -11,7 +11,8 @@
 -- The reset arrives with the token and no business, and a hash is unique in
 -- its business only, which a tenant transaction cannot see past. So the lookup
 -- by hash is one narrow function that reads every business's tokens, as
--- `enrolment_token_find` does: it answers the business and the token's id of
+-- `model_route_room` (0085) reads every business's calls for a route's fair
+-- share: it answers the business and the token's id of
 -- the one token with that hash, and nothing (nulls) when no business or more
 -- than one holds it. Nothing else leaves it; the reset reads the rest in the
 -- token's own business. PUBLIC may not run it; the application group alone may.

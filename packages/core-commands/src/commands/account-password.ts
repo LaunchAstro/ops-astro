@@ -122,7 +122,7 @@ async function find(
         `select l.subject from password_reset_tokens t
            join logins l on l.business_id = t.business_id and l.id = t.login_id
           where t.business_id = $1 and t.id = $2 and l.provider = 'supabase'
-            and t.spent_at is null and t.expires_at > now()`,
+            and t.spent_at is null and t.expires_at > clock_timestamp()`,
         [business, tokenId],
       ),
   );
@@ -152,7 +152,7 @@ async function mappedIn(
 async function spend(tx: TenantQuery, found: Found): Promise<boolean> {
   const [live] = await tx.query<{ login_id: string }>(
     `select login_id from password_reset_tokens
-      where business_id = $1 and id = $2 and spent_at is null and expires_at > now()
+      where business_id = $1 and id = $2 and spent_at is null and expires_at > clock_timestamp()
       for update`,
     [tx.businessId, found.tokenId],
   );

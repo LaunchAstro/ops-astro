@@ -140,7 +140,7 @@ SOL('Sol proof, criterion 3: the agent queue refuses a recovery session', async 
 });
 
 SOL(
-  'Sol proof, criterion 3: a password session opened before the reset commit is refused after provider logout',
+  'Sol proof, criterion 3: a password session opened before the reset commit is refused once the reset ends sessions',
   async () => {
     const member = await freshMember('sol-commit-window');
     const subject = member.presented.subject;
