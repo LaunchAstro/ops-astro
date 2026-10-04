@@ -266,15 +266,23 @@ describe('the check fails closed', () => {
 });
 
 type Step = Record<string, unknown>;
-const RUN = 'node scripts/named-suites.ts kept "$BASE"';
-const BASE =
-  "${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha" +
-  " || github.event_name == 'merge_group' && github.event.merge_group.base_sha" +
-  " || github.event_name == 'push' && github.event.before || '' }}";
+const NAME = 'No named or isolation suite is dropped';
+// On a pull request or a group, merge-group.mjs runs the check once per pull request it judges,
+// each against its own base; on a push there is no pull request, so the base is the push's
+// `before`. A shell branch, not a step condition: a step condition could skip a group.
+const RUN = [
+  'if [ "$GITHUB_EVENT_NAME" = push ]; then',
+  '  node scripts/named-suites.ts kept "$BEFORE"',
+  'else',
+  `  node scripts/merge-group.mjs each sh -c 'node scripts/named-suites.ts kept "$BASE_SHA"'`,
+  'fi',
+  '',
+].join('\n');
 
 describe('the wiring', () => {
-  it('runs in the database conformance gate on every event, unconditionally, its base passed through env', () => {
-    const ci = parse(readFileSync(join(ROOT, '.github/workflows/ci.yml'), 'utf8')) as {
+  it('runs in the database conformance gate on every event, once per pull request on a pull request or a group, the push base through env', () => {
+    const text = readFileSync(join(ROOT, '.github/workflows/ci.yml'), 'utf8');
+    const ci = parse(text) as {
       on: Record<string, unknown>;
       jobs: Record<string, { name?: string; if?: unknown; steps?: Step[] }>;
     };
@@ -283,16 +291,22 @@ describe('the wiring', () => {
     expect(job?.name).toBe('database conformance gate');
     expect(job).not.toHaveProperty('if');
     const steps = job?.steps ?? [];
-    const at = steps.findIndex((s) => s['run'] === RUN);
+    // merge-group.mjs walks a group's first parents from its head down to the base tip, which a
+    // depth-1 checkout does not hold.
+    const checkout = steps.find((s) => String(s['uses']).startsWith('actions/checkout@'));
+    expect(checkout?.['with']).toStrictEqual({ 'fetch-depth': 0 });
+    const at = steps.findIndex((s) => s['name'] === NAME);
     expect(at).toBeGreaterThan(-1);
     const step = steps[at] ?? {};
+    expect(step['run']).toBe(RUN);
     expect(step).not.toHaveProperty('if');
     expect(step).not.toHaveProperty('continue-on-error');
     // The event's values reach the step through env alone; the script validates, then calls git.
-    expect(String((step['env'] as Record<string, unknown>)['BASE']).replaceAll(/\s+/gu, ' ')).toBe(
-      BASE,
-    );
+    expect(step['env']).toStrictEqual({ BEFORE: '${{ github.event.before }}' });
     for (const s of steps) expect(String(s['run'] ?? '')).not.toContain('${{');
+    expect(
+      steps.filter((s) => String(s['run'] ?? '').includes('named-suites.ts kept')),
+    ).toHaveLength(1);
     const node = steps.findIndex((s) => String(s['uses']).startsWith('actions/setup-node@'));
     expect(node).toBeGreaterThan(-1);
     expect(at).toBeGreaterThan(node);
