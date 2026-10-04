@@ -67,6 +67,11 @@ interface Asked {
   readonly token: string;
 }
 
+/**
+ * One observation, stamped when it is written (`clock_timestamp()`), not when its transaction
+ * began: an `asked` counts toward the ceiling from its reservation, however long the send waited
+ * on the invitation's lock before it, as `recordAsked` stamps an inbox ask.
+ */
 async function recordAttempt(
   tx: TenantQuery,
   asked: Pick<Asked, 'invitationId' | 'tokenId'>,
@@ -74,8 +79,8 @@ async function recordAttempt(
 ): Promise<string> {
   const [row] = await tx.query<{ id: string }>(
     `insert into invitation_delivery_attempts
-       (business_id, id, invitation_id, token_id, state, evidence)
-     values ($1, gen_random_uuid(), $2, $3, $4, $5) returning id`,
+       (business_id, id, invitation_id, token_id, state, evidence, observed_at)
+     values ($1, gen_random_uuid(), $2, $3, $4, $5, clock_timestamp()) returning id`,
     [tx.businessId, asked.invitationId, asked.tokenId, seen.state, seen.evidence ?? null],
   );
   return row?.id ?? '';
