@@ -85,5 +85,18 @@ export type PrivacyRequest<E> =
   | ({ readonly command: 'access.revoke'; readonly grantId: string } & E)
   // C59 (ORCH65-Q3): the owner resets a member's factor (`factor-reset.ts`).
   | ({ readonly command: 'access.reset_factor'; readonly holderId: unknown } & E)
+  // C60: a client's privacy settings, every field checked by the handler in
+  // its own words (`client-privacy-write.ts`).
+  | ({
+      readonly command: 'client.set_privacy';
+      readonly clientId: string;
+      readonly modelEgress: unknown;
+      readonly providers: unknown;
+      readonly handlesHealth: unknown;
+      readonly noAgentEdits: unknown;
+      readonly requestedBy?: unknown;
+      readonly requestedOn?: unknown;
+      readonly requestLink?: unknown;
+    } & E)
   // C58: end a person's access in one act (`access-end.ts`).
   | ({ readonly command: 'access.end'; readonly holderId: unknown } & E);

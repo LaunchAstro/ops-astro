@@ -35,6 +35,7 @@ import { setService } from './overseas-write.ts';
 import { setClass } from './data-class-write.ts';
 import { changeInstallationMode, recordGateItem } from './gate-write.ts';
 import { createClientRecord, grantOnAccess } from './access-write.ts';
+import { setClientPrivacy } from './client-privacy-write.ts';
 import { endAccessOnSettings } from './access-end.ts';
 import { resetFactorOnSettings } from './factor-reset.ts';
 import { decideOnGate } from './tasks-decide.ts';
@@ -156,6 +157,7 @@ const HANDLERS: { readonly [K in WriteName]: Handler<K> } = {
   'task.accept_plan': acceptPlanOnGate,
 
   'client.create': createClientRecord,
+  'client.set_privacy': setClientPrivacy,
   'access.grant': grantOnAccess,
   'access.revoke': (tx, context, request) => revokeGrantOnAccess(tx, context, request.grantId),
   'access.end': endAccessOnSettings,
