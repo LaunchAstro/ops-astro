@@ -42,6 +42,31 @@ const setClient = async (taskId: string, clientId: string) => {
   expect(answer.status, JSON.stringify(answer.body)).toBe(200);
 };
 
+/** catalogue #412: the conversation's scope id reaches only a reader who may read that task. */
+async function scopeBlindReader(): Promise<void> {
+  const scoped = await task('scope the reader may not read');
+  const other = await task('a task the reader may read');
+  const conversationId = await started(w, w.owner, {
+    scope: { kind: 'task', id: scoped },
+    body: 'Scoped conversation',
+  });
+  const reader = await enrol(w.fixture.db.app, w.fixture.business, 'scope_blind_reader');
+  await w.fixture.db.app.withBusiness(w.fixture.business, async (tx) => {
+    await grantTo(tx, reader, 'read', { kind: 'business', id: null }, false, 'conversation');
+    await grantTo(tx, reader, 'read', { kind: 'record', id: other });
+  });
+  expect((await w.as(reader, 'task.read', { recordId: scoped })).status).toBe(403);
+  await w.age(conversationId, 2);
+  expect(await wrap(conversationId)).toMatchObject({ ok: true, written: true });
+  const answer = await w.as(reader, 'conversation.read', { conversationId });
+  expect(answer.status).toBe(200);
+  expect(JSON.stringify(answer.body)).not.toContain(scoped);
+  expect((answer.body['conversation'] as { scope: unknown }).scope).toBeNull();
+  // The owner, who may read the task, still sees it.
+  const own = await w.as(w.owner, 'conversation.read', { conversationId });
+  expect(JSON.stringify(own.body)).toContain(scoped);
+}
+
 describe('Sol OW-031 proofs, real isolated Postgres and local replay provider', () => {
   beforeAll(async () => {
     c = await createControls('solow031');
@@ -83,4 +108,9 @@ describe('Sol OW-031 proofs, real isolated Postgres and local replay provider', 
     expect(answer.status).toBe(200);
     expect(JSON.stringify(answer.body)).not.toContain(foreign);
   });
+
+  it(
+    'a business-wide conversation reader without task:read on the scope task gets no scope id',
+    scopeBlindReader,
+  );
 });
