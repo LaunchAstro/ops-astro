@@ -117,7 +117,7 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   // 0055 (C32): a client is written once and never deleted; C60 updates its
   // four privacy settings alone, by the column grant in COLUMN_UPDATES.
   ['si', 'clients'],
-  // 20261003172353 (C41-A): an onboarding and its steps are laid out once and
+  // 20261004130802 (C41-A): an onboarding and its steps are laid out once and
   // never deleted; each moves on by the column grants in COLUMN_UPDATES.
   ['si', 'onboarding_steps onboardings'],
   // C60: a client's written request for model use is kept as written.

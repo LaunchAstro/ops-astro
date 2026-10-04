@@ -2,7 +2,7 @@
 -- A UTC timestamp ID (docs/local/DATA.md, "What the schema is"): b0/SL13's
 -- 0257, ported onto main after migrations moved to timestamps.
 --
--- 20261003172353 new client onboarding (C41-A, U38, CS-15.2 and CS-15.4).
+-- 20261004130802 new client onboarding (C41-A, U38, CS-15.2 and CS-15.4).
 --
 -- An onboarding is one client laid out as tasks from one template version.
 -- The template is versioned in code and never edited in place, so the row
