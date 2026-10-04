@@ -144,15 +144,37 @@ const TASK_ADDRESS = /^\/task\/([^/]+)$/u;
 export type ReadsAddress = (address: string) => boolean;
 
 /**
- * The reader's `task:read` reach, as a check on an address: one naming a task
- * passes only when a business grant or a grant on that task covers it, as
- * `task.read` admits it; any other address passes.
+ * The task an address reaches, read as the web router reads it (`routes.ts`
+ * `/task/:key`, `legacy.ts` `/agency/task/?task=`): path case and percent
+ * escapes, trailing slashes, query and hash aside. `undefined` reaches no
+ * task; `null` mentions one in a way this cannot pin down, and fails closed.
+ */
+function taskOfAddress(address: string): string | null | undefined {
+  let url: URL;
+  let path: string;
+  try {
+    url = new URL(address, 'http://page.invalid');
+    path = decodeURIComponent(url.pathname).toLowerCase();
+  } catch {
+    return null;
+  }
+  const query = url.searchParams.get('task');
+  if (/^\/agency\/task\/*$/u.test(path)) return query?.toLowerCase();
+  const named = /^\/task\/+([^/]+)\/*$/u.exec(path)?.[1];
+  if (named !== undefined) return named;
+  return query !== null || /(?:^|\/)task(?:\/|$)/u.test(path) ? null : undefined;
+}
+
+/**
+ * The reader's `task:read` reach, as a check on an address: one reaching a
+ * task under any spelling passes only when a business grant or a grant on
+ * that task covers it, as `task.read` admits it; any other address passes.
  */
 export async function addressReader(tx: TenantQuery, session: Session): Promise<ReadsAddress> {
   const tasks = await readableScope(tx, subjectsOf(session), 'task', 'read');
   return (address) => {
-    const task = TASK_ADDRESS.exec(address)?.[1];
-    return task === undefined || tasks.business || tasks.records.includes(task);
+    const task = taskOfAddress(address);
+    return task === undefined || tasks.business || (task !== null && tasks.records.includes(task));
   };
 }
 
