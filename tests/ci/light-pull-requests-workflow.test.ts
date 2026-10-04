@@ -4,9 +4,9 @@
 // light-pull-requests.test.ts). Every required check still reports under its own name on a pull
 // request and on a group; the shards behind `database conformance` skip pull requests alone, and
 // the aggregate passes their skip on a pull request alone, and only when the contamination gate
-// passed; every job behind the gate on a status function (always(), cancelled(), failure())
-// reads the gate's result; `local checks` and `isolation tests` defer their heavy steps through
-// scripts/ci-scope.ts; and planted forms of each go red. The workflows are read with a YAML
+// passed; every job behind the gate on a status function (always(), cancelled(), failure(),
+// success()) reads the gate's result; `local checks` and `isolation tests` defer their heavy steps
+// through scripts/ci-scope.ts; and planted forms of each go red. The workflows are read with a YAML
 // parser, as merge-group-jobs.test.ts reads them.
 
 import { describe, expect, it } from 'vitest';
@@ -47,7 +47,6 @@ const required = (
   .filter((c) => c.integration_id === 15368)
   .map((c) => c.context);
 
-/** A condition as GitHub evaluates it: `${{ x }}` and `x` are the same expression. */
 const load = (path: string): Workflow =>
   parseDocument(read(path), { merge: true, uniqueKeys: true }).toJS({
     maxAliasCount: 100,
@@ -60,9 +59,9 @@ const BEHIND = 'runs on a status function behind the gate';
 const needsOf = (job: Job | undefined): string[] =>
   job?.needs === undefined ? [] : ([] as unknown[]).concat(job.needs).map(String);
 
-// Each job behind the gate, directly or not, on always(), cancelled() or failure(), that does not
-// need it and read its result: such a condition runs it when a failed gate skipped every job
-// between, and that skip must not pass.
+// Each job behind the gate, directly or not, on always(), cancelled(), failure() or success() in
+// any case, that does not need it and read its result: such a condition runs it when a failed gate
+// skipped every job between, and that skip must not pass.
 function alwaysProblems(ci: Workflow): string[] {
   const problems: string[] = [];
   const behindGate = (key: string, seen = new Set<string>()): boolean =>
@@ -73,7 +72,7 @@ function alwaysProblems(ci: Workflow): string[] {
     const cond = condition(job.if);
     if (
       typeof cond !== 'string' ||
-      !/\b(always|cancelled|failure)\s*\(\s*\)/u.test(cond) ||
+      !/\b(always|cancelled|failure|success)\s*\(\s*\)/iu.test(cond) ||
       !behindGate(key)
     )
       continue;
