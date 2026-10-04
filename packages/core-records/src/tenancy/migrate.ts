@@ -18,7 +18,9 @@
 // - An applied migration's checksum is checked on every run, before anything
 //   runs. Editing a file that has already been applied is refused rather than
 //   ignored, because the database and the file would otherwise disagree in
-//   silence.
+//   silence. The one exception is a file corrected in place: a ledger row
+//   holding the exact bytes it replaced passes only while the file is the
+//   exact correction (`CORRECTIONS`).
 // - Statements are split and sent one at a time, so the statement log and any
 //   error name the statement rather than the file.
 // - It checks, when anything is pending, that no other client session is
@@ -306,6 +308,28 @@ export async function migrate(
   return await applyMigrations(admin, readMigrations(directory));
 }
 
+/**
+ * Applied files corrected in place: the checksum of the bytes replaced, which a
+ * database that ran them still records, and of the correction. A later file
+ * cannot reach a race inside an earlier one's own statements on a fresh
+ * install, so this is the one exception to writing a new file. A row holding
+ * the old bytes passes only while the file is the correction, and any other
+ * edit is refused as before.
+ *
+ * - 0046: the lookup role's repair takes COMMENT ON ROLE's cluster-wide lock on
+ *   the role before judging it, so two databases repairing it at once wait in
+ *   turn rather than one failing (OW-007.3).
+ */
+const CORRECTIONS: ReadonlyMap<string, { readonly from: string; readonly to: string }> = new Map([
+  [
+    '0046_business_lookup',
+    {
+      from: 'af5adfb536d290586e06b35a2aae09a237cf807c91f0dbd1075c6693558a91d7',
+      to: '2258d978c9ed6d6e108b91953842bf0724471ffb18ae9f6c1adc6f5468513b78',
+    },
+  ],
+]);
+
 /** What the ledger already holds, checked against its file, and what it does not. */
 function splitByLedger(
   ledger: ReadonlyMap<string, string> | undefined,
@@ -319,7 +343,11 @@ function splitByLedger(
       pending.push(migration);
       continue;
     }
-    if (recorded !== migration.checksum) {
+    const corrected = CORRECTIONS.get(migration.version);
+    if (
+      recorded !== migration.checksum &&
+      !(recorded === corrected?.from && migration.checksum === corrected.to)
+    ) {
       throw new Error(
         `migrate: ${migration.version} was applied as ${recorded} but the file now hashes to ` +
           `${migration.checksum}. An applied migration is history; write a new one.`,

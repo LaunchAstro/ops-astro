@@ -186,9 +186,11 @@ async function make() {
 // row and never from the file: a lost reply is found, a tampered file names no one.
 // A sign-in another business still maps to a person is that person's too, so
 // nothing is ended and the provider keeps it. The scan business's transaction
-// takes the access lock, as every change to who may do what does, then holds
-// `person_logins` in share mode, so no sign-in is mapped to a person anywhere
-// between the check and the provider's deletion, which comes before the commit.
+// takes the access lock, as every change to who may do what does, then the login
+// subject lock (migrations/20261004005736_login_subject_lock.sql), both held from
+// the check through the provider's deletion, which comes before the commit: a
+// mapping of this sign-in already being written commits first and the check
+// finds it; one begun after is refused.
 async function endRows(record, providerEmail) {
   const all = await businesses();
   const scan = businessId(all);
@@ -197,7 +199,9 @@ async function endRows(record, providerEmail) {
   try {
     await db.withBusiness(scan, async (tx) => {
       await lockAccess(tx);
-      await tx.query('lock table public.person_logins in share mode');
+      await tx.query(`select pg_advisory_xact_lock(hashtextextended('supabase:' || $1, 0))`, [
+        record.userId,
+      ]);
       for (const { id } of all.filter((row) => row.id !== scan)) {
         // eslint-disable-next-line no-await-in-loop -- one business at a time, each under its own barrier
         const elsewhere = await db.withBusiness(id, (other) =>

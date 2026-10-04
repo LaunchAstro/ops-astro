@@ -5,7 +5,8 @@
     "tests/review/ow-063-deploy-business-proof.test.ts",
     "tests/review/ow-063-export-revocation-proof.test.ts",
     "tests/review/ow066-export-revocation-proof.test.ts",
-    "tests/review/stop-production-installation-gate-proof.test.ts"
+    "tests/review/stop-production-installation-gate-proof.test.ts",
+    "tests/review/export-session-ended-after-part-gate-proof.test.ts"
   ],
   "conformance": [
     "tests/review/column-grants-name-batch-1.test.ts",
