@@ -13,6 +13,7 @@ import { executeCommand, runCommand } from '../../packages/core-commands/src/com
 import { executeRead } from '../../packages/core-commands/src/reads/execute.ts';
 import { boardReach } from '../../packages/core-commands/src/reads/live-join.ts';
 import { readUnattended } from '../../packages/core-records/src/inbox/unattended.ts';
+import { raiseInboxItem } from '../../packages/core-records/src/inbox/items.ts';
 import { grantTo } from '../commands/fixture.ts';
 import { codeOf, must, wayfinderWorld, type Decider, type WayfinderWorld } from './world.ts';
 import { databaseUrlFromEnvironment } from '../support/fresh-database.ts';
@@ -770,6 +771,38 @@ describe.skipIf(serverUrl === undefined)(
       );
       expect(before).toBeDefined();
       expect(after).not.toBe(before);
+    });
+
+    // Security review 1, M1 (R/lane-scratch/PORT-B/P15F-security-1.md): task.decide is authorised
+    // on the ticket itself, so a decide grant on its map decides nothing and attends nothing.
+    it('WF-1 a decide grant on the map alone leaves a ticket decision unattended', async () => {
+      const map = await w.create(owner, { title: 'decision map' }, { taskType: 'map' });
+      const ticket = await w.create(owner, { title: 'decision ticket' }, { parentId: map.id });
+      const decider = await w.member('map-only-decider', ['read', 'decide'], {
+        kind: 'record',
+        id: map.id,
+      });
+      expect(codeOf(await w.read(decider, { read: 'task.read', recordId: ticket.id }))).toBe(
+        'applied',
+      );
+      const gate = randomUUID();
+      const unattended = async () =>
+        (
+          await w.db.app.withBusiness(w.business, async (tx) => {
+            await raiseInboxItem(tx, {
+              recipientPersonId: decider.personId,
+              subjectRecordId: ticket.id,
+              reason: 'decision',
+              fact: { kind: 'gate', id: gate },
+            });
+            return await readUnattended(tx, owner.personId);
+          })
+        ).map((item) => item.subjectRecordId);
+      expect(await unattended()).toContain(ticket.id);
+      await w.db.app.withBusiness(w.business, async (tx) => {
+        await grantTo(tx, decider, 'decide', { kind: 'record', id: ticket.id });
+      });
+      expect(await unattended()).not.toContain(ticket.id);
     });
   },
 );

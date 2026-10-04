@@ -409,15 +409,32 @@ describe('WF-1 map reads: parent retype, cancelled tickets and download volume',
         executeRead,
         observe: (signal) => signals.push(signal),
       });
-      const response = await api.fetch(
-        new Request(`http://api.test${PREFIX.person}solp15fix2${pathOf(read)}`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ recordId: map.id }),
+      const download = async (recordId: string): Promise<string> => {
+        signals.length = 0;
+        const response = await api.fetch(
+          new Request(`http://api.test${PREFIX.person}solp15fix2${pathOf(read)}`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ recordId }),
+          }),
+        );
+        expect(response.status).toBe(200);
+        return await response.text();
+      };
+      expect(await download(map.id)).toContain(ticket.id);
+      expect(signals.some((signal) => signal.kind === 'export' && signal.items > 0)).toBe(true);
+      // Security review 1, M2: a map with fog and an empty frontier still hands out its fog.
+      const foggy = await w.create(owner, { title: 'fog only map' }, { taskType: 'map' });
+      must(
+        await w.as(owner, {
+          command: 'map.revise',
+          recordId: foggy.id,
+          expectedRevision: await w.revisionOf(foggy.id),
+          addFog: ['FOG-ONLY-PATCH'],
         }),
+        'add fog',
       );
-      expect(response.status).toBe(200);
-      expect(await response.text()).toContain(ticket.id);
+      await download(foggy.id);
       expect(signals.some((signal) => signal.kind === 'export' && signal.items > 0)).toBe(true);
     },
   );
