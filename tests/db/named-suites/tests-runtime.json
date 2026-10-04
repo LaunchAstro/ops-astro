@@ -118,6 +118,7 @@
     "tests/runtime/t3e2-outage.test.ts",
     "tests/runtime/t3f-expired-lease.test.ts",
     "tests/runtime/t3f-lease-edges.test.ts",
+    "tests/runtime/top-up-session-ended-during-the-settings-wait.test.ts",
     "tests/runtime/upgrade-guards.test.ts"
   ],
   "conformance": [
