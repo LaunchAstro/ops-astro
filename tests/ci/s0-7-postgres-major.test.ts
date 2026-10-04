@@ -70,6 +70,8 @@ const LOOKAHEAD_JOB = 'database look-ahead, Postgres 18 (not required)';
 const NIGHTLY = '.github/workflows/lookahead.yml';
 
 interface Step {
+  readonly uses?: string;
+  readonly with?: Record<string, unknown>;
   readonly run?: string;
   readonly env?: Record<string, string>;
 }
@@ -178,6 +180,10 @@ function ciOnTheCases2() {
     expect(run?.['continue-on-error']).toBeUndefined();
     const conformance = run?.steps.find((step) => step.run?.includes('pnpm run db:conformance'));
     expect(conformance?.env?.[LOOKAHEAD]).toBe('18');
+    // The upgrade drill, a named conformance suite, seeds through an older commit's checkout,
+    // found in the history: on a one-commit clone it refuses every night.
+    const checkout = run?.steps.find((step) => step.uses?.startsWith('actions/checkout@'));
+    expect(checkout?.with?.['fetch-depth']).toBe(0);
   });
 }
 
