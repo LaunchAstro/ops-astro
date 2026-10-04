@@ -28,7 +28,7 @@ beforeAll(async () => {
   });
 });
 
-it('Sol proof, criterion 5: a start whose reserved call was swept sends nothing', async () => {
+it('a start whose reserved call was swept sends nothing', async () => {
   const work = await liveWork(s, `Sol swept start ${randomUUID()}`, 2_000);
   await stepOf(work);
   const request = requestFor(work);

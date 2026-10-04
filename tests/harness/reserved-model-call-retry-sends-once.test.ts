@@ -15,7 +15,7 @@ import {
 
 useBrokerWorld('solowt06');
 
-it('Sol proof, criterion 5: retrying a reserved model call sends it only once', async () => {
+it('retrying a reserved model call sends it only once', async () => {
   world.provider.mode('answer');
   const work = await liveWork(s, 'Sol reserved retry', 2_000);
   await stepOf(work);

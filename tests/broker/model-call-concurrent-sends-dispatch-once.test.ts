@@ -7,7 +7,7 @@ import { callsOf, faultBroker, s, useFaultWorld, world } from './aw-10-world.ts'
 
 useFaultWorld('sol_ow019');
 
-it('Sol proof, criterion 5: one reserved call is dispatched once when its send is retried concurrently', async () => {
+it('one reserved call is dispatched once when its send is retried concurrently', async () => {
   const work = await liveWork(s, 'one hold and two sends', 2_000);
   await stepOf(work);
   const broker = faultBroker();

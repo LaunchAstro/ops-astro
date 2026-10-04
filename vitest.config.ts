@@ -67,6 +67,10 @@ export default defineConfig({
             'tests/api/live-presence-remap-drops-previous-person.test.ts',
             'tests/api/live-presence-remap-refused-person-gets-no-notification.test.ts',
             'tests/api/live-presence-remap-seats-no-one-on-unreadable-task.test.ts',
+            'tests/broker/model-call-concurrent-sends-dispatch-once.test.ts',
+            'tests/broker/model-call-retried-send-sends-once.test.ts',
+            'tests/broker/model-call-swept-hold-sends-nothing.test.ts',
+            'tests/harness/reserved-model-call-retry-sends-once.test.ts',
           ]),
       // CI's `local checks` runs the suites that start containers in a step of their own, after
       // the browser captures: a new network interface aborts a page load in flight.

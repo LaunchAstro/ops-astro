@@ -6,7 +6,7 @@ import { broker, caller, requestFor, s, stepOf, useBrokerWorld, world } from './
 
 useBrokerWorld('solow011retry');
 
-it('Sol proof, criterion 5: retrying a committed model-call hold sends and charges once', async () => {
+it('retrying a committed model-call hold sends and charges once', async () => {
   const work = await liveWork(s, 'one committed model-call hold', 2_000);
   await stepOf(work);
   world.provider.mode('answer');
