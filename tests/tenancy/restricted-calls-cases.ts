@@ -147,7 +147,7 @@ const GRANT_GROUPS: readonly (readonly [string, string])[] = [
   ['siu', 'person_logins person_merges'],
   ['siud', 'record_links record_types record_unique_values'],
   ['siud', 'records'],
-  // 20261004103606 (C31): custody's select is a column grant without the sealed
+  // 20261004175541 (C31): custody's select is a column grant without the sealed
   // columns, proved by name in `tests/custody/c31-credentials.test.ts`.
   ['siu', 'custody_secrets'],
 ];
