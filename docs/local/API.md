@@ -2448,7 +2448,8 @@ team conversation (C71, a mention in it) is held by the conversation's current
 members alone, whatever task grants they hold, in the list, the count, `inbox.seen`
 and `inbox.unattended` (listed only to a viewer in the conversation); a readable
 one carries `conversation`, `{ conversationId, kind, name }` (`name` a group's,
-null on a direct one), in place of `task`. The board screen
+null on a direct one), in place of `task`, asked again in the statement
+that reads the name, so one whose access ends mid-read is named nothing. The board screen
 draws both reads above the board (`apps/web/src/views/inbox.tsx`, INB-1g).
 
 The board's stream (INB-1f) is `GET <person prefix><business>/live` naming no

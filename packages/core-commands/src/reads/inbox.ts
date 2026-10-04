@@ -23,6 +23,7 @@ import {
   CONVERSATION_TYPE_KEY,
   clientsReached,
   countOwedItems,
+  inConversation,
   readInboxItems,
   readUnattended,
   type InboxItem,
@@ -76,7 +77,7 @@ export async function readInbox(
 ): Promise<readonly InboxEntry[]> {
   const items = await readInboxItems(tx, personId, chats(subjects));
   const listed = items.filter((item) => item.access !== 'withheld').map((item) => entryOf(item));
-  return await named(tx, listed, subjects);
+  return await named(tx, listed, personId, subjects);
 }
 
 /** The owed count: the list's counted entries, counted in one query under the same rule. */
@@ -100,10 +101,15 @@ interface Named {
   readonly conversation: boolean;
 }
 
-/** Each task's key, title and client link, or each conversation's kind and name, read at the read. */
+/**
+ * Each task's key, title and client link, or each conversation's kind and name,
+ * read at the read. A conversation is named only while `personId` is in it and
+ * may chat, asked in this statement: access read earlier names nothing here.
+ */
 async function taskNames(
   tx: TenantQuery,
   taskIds: readonly string[],
+  personId: string,
 ): Promise<ReadonlyMap<string, Named>> {
   const rows = await tx.query<{
     readonly id: string;
@@ -116,8 +122,9 @@ async function taskNames(
             r.uuid_7 as "clientId", t.key = $3 as conversation
        from public.records r
        join public.record_types t on t.business_id = r.business_id and t.id = r.record_type_id
-      where r.business_id = $1 and r.id = any($2::uuid[]) and r.deleted_at is null`,
-    [tx.businessId, taskIds, CONVERSATION_TYPE_KEY],
+      where r.business_id = $1 and r.id = any($2::uuid[]) and r.deleted_at is null
+        and (t.key <> $3 or ${inConversation('$4::uuid')})`,
+    [tx.businessId, taskIds, CONVERSATION_TYPE_KEY, personId],
   );
   return new Map(rows.map((row) => [row.id, { ...row, key: row.key ?? '' }]));
 }
@@ -139,13 +146,14 @@ async function reachedClients(
 async function named(
   tx: TenantQuery,
   entries: readonly InboxEntry[],
+  personId: string,
   subjects: readonly Subject[],
 ): Promise<readonly InboxEntry[]> {
   const readable = entries.filter((entry) => entry.access === 'readable');
   const taskIds = [...new Set(readable.map((entry) => entry.subjectRecordId ?? ''))];
   const deciderIds = [...new Set(readable.flatMap((entry) => entry.closedByPersonId ?? []))];
   if (taskIds.length === 0) return entries;
-  const tasks = await taskNames(tx, taskIds);
+  const tasks = await taskNames(tx, taskIds, personId);
   const clientIds = [...tasks.values()].flatMap((task) => task.clientId ?? []);
   const reached = await reachedClients(tx, subjects, clientIds);
   const people = new Map<string, PersonView>(

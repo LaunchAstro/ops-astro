@@ -192,7 +192,7 @@ export {
   type InboxReason,
   type InboxWorkState,
 } from './inbox/items.ts';
-export { readScopes, taskAccess } from './inbox/access.ts';
+export { inConversation, readScopes, taskAccess } from './inbox/access.ts';
 export {
   raiseAssignment,
   raiseDecision,
