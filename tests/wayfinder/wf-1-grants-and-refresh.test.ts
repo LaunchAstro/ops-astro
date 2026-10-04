@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 /* eslint-disable max-lines, max-lines-per-function -- the review's proofs, kept as written on one shared world */
-// Sol's uncommitted proofs for PR #355 at 3fac44c.
+// Review proofs for PR #355 at 3fac44c (Sol round 1, R/sol/PRV-oa-355-R1.md): one case per finding.
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { afterAll, beforeAll, expect, it } from 'vitest';
@@ -59,7 +59,7 @@ async function frontier(mapId: string) {
   return rows.map((row) => row.ticket_id);
 }
 
-it('Sol proof, criterion 1: a map record read grant covers its ticket', async () => {
+it('WF-1 a map record read grant covers its ticket', async () => {
   const map = await w.create(owner, { title: 'grant map' }, { taskType: 'map' });
   const holder = await w.member('map-reader', ['read', 'write'], { kind: 'record', id: map.id });
   const ticket = await w.create(
@@ -71,7 +71,7 @@ it('Sol proof, criterion 1: a map record read grant covers its ticket', async ()
   expect(codeOf(await w.read(holder, { read: 'task.read', recordId: ticket.id }))).toBe('applied');
 });
 
-it('Sol proof, criterion 1: completing an external blocker refreshes the blocked map frontier', async () => {
+it('WF-1 completing an external blocker refreshes the blocked map frontier', async () => {
   const map = await w.create(owner, { title: 'blocked map' }, { taskType: 'map' });
   const ticket = await w.create(owner, { title: 'blocked ticket' }, { parentId: map.id });
   const blocker = await w.create(owner, { title: 'blocker outside map' });
@@ -94,7 +94,7 @@ it('Sol proof, criterion 1: completing an external blocker refreshes the blocked
   expect(await frontier(map.id)).toStrictEqual([ticket.id]);
 });
 
-it('Sol proof, criterion 5: concurrent ticket completions cannot lose a map summary count', async () => {
+it('WF-1 concurrent ticket completions cannot lose a map summary count', async () => {
   const map = await w.create(owner, { title: 'summary race map' }, { taskType: 'map' });
   // Assigned tickets are absent from the frontier, so its rows cannot incidentally serialise these writes.
   const a = await w.create(owner, { title: 'race A' }, { parentId: map.id });
@@ -150,7 +150,7 @@ it('Sol proof, criterion 5: concurrent ticket completions cannot lose a map summ
   expect(summary[0]).toStrictEqual({ open_tickets: 0, closed_tickets: 2 });
 });
 
-it('Sol proof, criterion 5: a map A grant cannot write a ticket after its concurrent move to map B', async () => {
+it('WF-1 a map A grant cannot write a ticket after its concurrent move to map B', async () => {
   const a = await w.create(owner, { title: 'authority map A' }, { taskType: 'map' });
   const b = await w.create(owner, { title: 'authority map B' }, { taskType: 'map' });
   const ticket = await w.create(owner, { title: 'client B canary' }, { parentId: a.id });
@@ -197,7 +197,7 @@ it('Sol proof, criterion 5: a map A grant cannot write a ticket after its concur
   expect(saved[0]).toStrictEqual({ title: 'client B canary', parent: b.id });
 });
 
-it('Sol proof, criterion 2: a client reader cannot receive a map title through their assignment inbox', async () => {
+it('WF-1 a client reader cannot receive a map title through their assignment inbox', async () => {
   const plain = await w.create(owner, { title: 'INTERNAL-MAP-INBOX-CANARY' });
   const client = await w.member('client-view-reader', ['read'], { kind: 'record', id: plain.id });
   // Preset-defined roles outside owner/admin/member receive the shared client projection.
@@ -234,7 +234,7 @@ it('Sol proof, criterion 2: a client reader cannot receive a map title through t
   expect(JSON.stringify(inbox)).not.toContain(plain.id);
 });
 
-it('Sol proof, criterion 5: retyping a parent to map cannot race a client share on its child', async () => {
+it('WF-1 retyping a parent to map cannot race a client share on its child', async () => {
   const parent = await w.create(owner, { title: 'unshared parent' });
   const child = await w.create(owner, { title: 'child to be shared' }, { parentId: parent.id });
   await w.grant(owner, 'share');
@@ -326,7 +326,7 @@ function intercept(
   };
 }
 
-it('Sol proof, criterion 5: person to person map grant cannot read content written after a ticket moves outside that grant', async () => {
+it('WF-1 person to person map grant cannot read content written after a ticket moves outside that grant', async () => {
   const a = await w.create(owner, { title: 'reader map' }, { taskType: 'map' });
   const b = await w.create(owner, { title: 'private map' }, { taskType: 'map' });
   const ticket = await w.create(owner, { title: 'moving ticket' }, { parentId: a.id });

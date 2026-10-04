@@ -1,7 +1,7 @@
 {
   "comment": [
     "WAYFINDER (PORT-B P14, WF-1 from b0/SL14) names tests/wayfinder/wf-1.test.ts (the map as a task, typed tickets, the summary read model kept in the writing transaction, client scope and the client-surface refusals, the retype owner rule, a refusal per key and the three isolation crossings) as an invariant. world.ts is a harness, not a suite.",
-    "Sol's PR #355 round 1 proofs (tests/wayfinder/sol-pr355-r1.test.ts) are an invariant: the map grant's read and write reach, the frontier and summary read models under external blockers and concurrent completions, and the client-surface separation under retype, share and inbox."
+    "Sol's PR #355 round 1 proofs (tests/wayfinder/wf-1-grants-and-refresh.test.ts) are an invariant: the map grant's read and write reach, the frontier and summary read models under external blockers and concurrent completions, and the client-surface separation under retype, share and inbox."
   ],
-  "invariant": ["tests/wayfinder/sol-pr355-r1.test.ts", "tests/wayfinder/wf-1.test.ts"]
+  "invariant": ["tests/wayfinder/wf-1-grants-and-refresh.test.ts", "tests/wayfinder/wf-1.test.ts"]
 }
