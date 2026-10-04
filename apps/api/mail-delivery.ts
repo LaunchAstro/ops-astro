@@ -30,6 +30,7 @@
 
 import {
   catalogue,
+  checkableSender,
   checkSender,
   EMAIL_SEND,
   emailAdapter,
@@ -105,12 +106,21 @@ function onThisMachine(origin: string | undefined): string | undefined {
   return origin !== undefined && LOOPBACK.test(new URL(origin).hostname) ? origin : undefined;
 }
 
-/** The sending subdomain `from` is on, or undefined where the sender gate would refuse `from`. */
+/** The root a sending subdomain is set up under: everything after its first label. */
+const rootOf = (subdomain: string): string => subdomain.slice(subdomain.indexOf('.') + 1);
+
+/**
+ * The sending subdomain `from` is on, or undefined where the sender gate would refuse `from` or
+ * the setup check could never verify its subdomain.
+ */
 function sendingSubdomain(from: string): string | undefined {
   const subdomain = ADDRESS.exec(from)?.[1];
-  // The send's own address rule, run once here, so a from it would refuse stops the start.
+  // The send's own address rule and the setup check's host rule, run once here, so a from
+  // either would refuse stops the start rather than leave every email unsent.
   const accepted =
-    subdomain !== undefined && fromVerifiedSender(from, { verified: true, subdomain, mock: false });
+    subdomain !== undefined &&
+    checkableSender(subdomain, rootOf(subdomain)) &&
+    fromVerifiedSender(from, { verified: true, subdomain, mock: false });
   return accepted ? subdomain : undefined;
 }
 
@@ -149,7 +159,7 @@ export function mailDeliverySettings(
   const subdomain = sendingSubdomain(value('MAIL_FROM'));
   if (subdomain === undefined) {
     return invalid(
-      'MAIL_FROM is not an address the sender gate accepts (a dot-atom name of at most 64 octets, 254 in all, at a sending subdomain such as send.<your domain>)',
+      'MAIL_FROM is not an address the sender gate accepts (a dot-atom name of at most 64 octets, 254 in all, at a sending subdomain such as send.<your domain>, its labels letters, digits and inner hyphens)',
     );
   }
   return {
@@ -188,7 +198,7 @@ async function targetsOf(
 async function mockSender(subdomain: string): Promise<SenderReport> {
   const verified = { dkim: 'verified', spf: 'verified', returnPathMx: 'verified' };
   const source = fakeSenderSource({ name: subdomain, ...verified, dmarc: ['v=DMARC1; p=none'] });
-  return await checkSender(source, subdomain, subdomain.slice(subdomain.indexOf('.') + 1));
+  return await checkSender(source, subdomain, rootOf(subdomain));
 }
 
 /** The broker over custody: `email.send` alone, on the one `email` route. */

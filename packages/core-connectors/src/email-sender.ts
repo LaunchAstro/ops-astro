@@ -71,6 +71,15 @@ export function dmarcPolicy(records: readonly string[]): DmarcPolicy {
 }
 
 /**
+ * Whether the setup check can verify `subdomain` under `root` at all: both host names whose
+ * labels are letters, digits and inner hyphens, and the subdomain inside the root. A start
+ * that names a sender reads this, so it refuses what every check would.
+ */
+export function checkableSender(subdomain: string, root: string): boolean {
+  return HOST.test(subdomain) && HOST.test(root) && subdomain.endsWith(`.${root}`);
+}
+
+/**
  * The setup check: the subdomain's three records as the source answers, and
  * the root's DMARC policy. Verified only when the answer is for this exact
  * subdomain of this root and all three records verify. A source that throws
@@ -88,9 +97,7 @@ export async function checkSender(
     dmarc: 'missing',
     mock: source.mock,
   };
-  if (!HOST.test(subdomain) || !HOST.test(root) || !subdomain.endsWith(`.${root}`)) {
-    return unverified;
-  }
+  if (!checkableSender(subdomain, root)) return unverified;
   let answer: unknown;
   let txt: readonly string[];
   try {

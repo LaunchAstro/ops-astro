@@ -17,7 +17,9 @@
 // worker or another, sends nothing twice: the first's `asked` is what the
 // second reads (`checkItem`, `windowSpent`). The ceiling and each client's
 // week are the send path's too; a pass at the ceiling stops, and the next
-// pass carries on.
+// pass carries on. So is the worker's standing: each send holds the worker
+// actor and finds it active before custody is asked, so a worker deactivated
+// mid-pass sends nothing further.
 //
 // The daily tick runs every hour of the batch window, not once a day: each
 // person's day is their own window, read from their last batch, so a tick
@@ -51,11 +53,15 @@ const DUE = `select i.id, i.recipient_person_id as recipient, i.reason
                    order by a.observed_seq desc limit 1), true)
   order by i.raised_at, i.id`;
 
+/**
+ * The worker actor, held `for share` and active: a deactivation in flight is waited on and then
+ * read, and one that comes later waits for this transaction's end.
+ */
 async function activeWorker(tx: TenantQuery, actorId: string): Promise<boolean> {
   if (!isUuid(actorId)) return false;
   const rows = await tx.query<{ readonly id: string }>(
     `select id from public.actors
-      where business_id = $1 and id = $2 and kind = 'worker' and active`,
+      where business_id = $1 and id = $2 and kind = 'worker' and active for share`,
     [tx.businessId, actorId],
   );
   return rows.length === 1;
@@ -90,7 +96,9 @@ async function whomToTry(
 
 /**
  * One pass over one business; how many emails it handed to custody. `stop`, once aborted, starts
- * no further send: it is checked between sends, and a send already asked runs to its end.
+ * no further send: it is checked between sends, and a send already asked runs to its end. The
+ * worker's standing is checked again in each send's own transaction, before custody is asked: a
+ * worker deactivated mid-pass sends nothing further, and the pass answers `WORKER_REQUIRED`.
  */
 export async function deliverDue(
   database: Database,
@@ -104,6 +112,10 @@ export async function deliverDue(
     (await activeWorker(tx, workerActorId)) ? await whomToTry(tx, timing, kind) : undefined,
   );
   if (targets === undefined) return { ok: false, code: 'WORKER_REQUIRED' };
+  const asWorker: EmailTiming = {
+    ...timing,
+    standing: async (tx) => await activeWorker(tx, workerActorId),
+  };
   let emails = 0;
   for (const target of targets) {
     if (stop?.aborted === true) break;
@@ -111,9 +123,10 @@ export async function deliverDue(
     const sent =
       kind === 'at_once'
         ? // oxlint-disable-next-line no-await-in-loop
-          await emailAtOnce(database, businessId, target, timing)
+          await emailAtOnce(database, businessId, target, asWorker)
         : // oxlint-disable-next-line no-await-in-loop
-          await emailDailyBatch(database, businessId, target, timing);
+          await emailDailyBatch(database, businessId, target, asWorker);
+    if (!sent.ok && sent.code === 'WORKER_REQUIRED') return { ok: false, code: 'WORKER_REQUIRED' };
     if (sent.ok || sent.code === 'EMAIL_FAILED') emails += 1;
     else if (sent.code === 'EMAIL_AT_CEILING') break;
   }
