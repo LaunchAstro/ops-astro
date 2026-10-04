@@ -55,6 +55,7 @@ import {
   APPLICATION_CALLERS,
   OPERATIONS,
   callFor,
+  copyRowFinding,
   copyStatement,
   expectedOutcome,
   fingerprint,
@@ -329,7 +330,7 @@ const UNREACHED: Readonly<Record<string, Readonly<Record<string, unknown>>>> = {
     login_id: randomUUID(),
     ended_by_actor_id: randomUUID(),
   },
-  // 20261003003537 (C59): no journey resets a factor.
+  // 20261004091551 (C59): no journey resets a factor.
   'public.factor_resets': {
     person_id: randomUUID(),
     login_id: randomUUID(),
@@ -556,6 +557,11 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at every pre
         // oxlint-disable-next-line no-await-in-loop
         const row = table.tenant ? await ownRowJson(db.admin, table, alpha) : undefined;
         if (row === undefined) continue;
+        const finding = copyRowFinding(table, row);
+        if (finding !== undefined) {
+          wrong.push(`${table.qualified} insert copy: ${finding}`);
+          continue;
+        }
         for (const caller of activeCallers.slice(1)) {
           // oxlint-disable-next-line no-await-in-loop
           const before = await fingerprint(db.admin, table.qualified);
@@ -564,7 +570,7 @@ describe.skipIf(serverUrl === undefined)('I06/M02: restricted calls at every pre
           // oxlint-disable-next-line no-await-in-loop
           const after = await fingerprint(db.admin, table.qualified);
           calls += 1;
-          const expected = expectedOutcome(caller, table, 'insert', 0, migration.version);
+          const expected = expectedOutcome(caller, table, 'insert', 0, migration.version, true);
           const line = `${table.qualified} insert copy ${caller}: ${describeOutcome(outcome)}`;
           if (!meets(expected, outcome)) wrong.push(`${line}, expected ${expected}`);
           if (before !== after) wrong.push(`${line}, the table changed`);

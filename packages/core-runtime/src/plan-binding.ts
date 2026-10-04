@@ -64,16 +64,20 @@ const sha256 = (text: string): string => createHash('sha256').update(text, 'utf8
 
 /** The newest bound record among `candidates` (`PLAN_CANDIDATES`), or null. */
 export function projectedPlan(candidates: unknown): ProjectedPlan | null {
+  return boundPlans(candidates)[0] ?? null;
+}
+
+/** Every bound record among `candidates`, newest first, as their order gives them. */
+export function boundPlans(candidates: unknown): readonly ProjectedPlan[] {
   if (!Array.isArray(candidates)) throw new Error('plan binding: the candidates are not a list');
-  for (const candidate of candidates as readonly Candidate[]) {
-    if (!(candidate.linked && candidate.oneWrite)) continue;
-    if (sha256(candidate.planText) !== candidate.textDigest) continue;
-    if (payloadDigest(candidate.record) !== candidate.recordDigest) continue;
+  return (candidates as readonly Candidate[]).flatMap((candidate) => {
+    if (!(candidate.linked && candidate.oneWrite)) return [];
+    if (sha256(candidate.planText) !== candidate.textDigest) return [];
+    if (payloadDigest(candidate.record) !== candidate.recordDigest) return [];
     const record = planRecordOf(candidate.record);
-    if (typeof record === 'string') continue;
-    return { planRecordId: candidate.id, runId: candidate.runId, steps: record.steps };
-  }
-  return null;
+    if (typeof record === 'string') return [];
+    return [{ planRecordId: candidate.id, runId: candidate.runId, steps: record.steps }];
+  });
 }
 
 /** The task's projected plan, read now; the caller holds the task's lock. */

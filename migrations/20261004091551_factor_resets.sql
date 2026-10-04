@@ -2,7 +2,7 @@
 -- A UTC timestamp ID (docs/local/DATA.md, "What the schema is"): written after
 -- batch 3b took 0100-0111 and migrations moved to timestamps.
 --
--- 20261003003537 factor resets (C59, ORCH65-Q3).
+-- 20261004091551 factor resets (C59, ORCH65-Q3).
 --
 -- A member who has lost their authenticator cannot clear it themselves:
 -- the provider refuses a new enrolment, and the removal of a verified

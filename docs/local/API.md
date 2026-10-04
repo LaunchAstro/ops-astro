@@ -1355,7 +1355,8 @@ with its wait, `BUDGET_UNAVAILABLE`); one recorded as a step keeps its
 run stops and asks in the same transaction (AW-05, the budget wait in
 [RUNTIME.md](RUNTIME.md)), its lease ends, and every later call on that lease
 is refused as an ended lease is. `RATE_LIMITED` writes nothing and answers two ceilings,
-each counting a call from its hold until it ends: the business's own per
+each counting a call from its hold until it ends, and a reconciliation pass's
+provider lookup while its slot lasts (AW-10, [RUNTIME.md](RUNTIME.md)): the business's own per
 operation, and its fair share of the route's, which is the installation's.
 The business's own is a durable limit (`hasRoom`, `core-records/src/tenancy/limit.ts`):
 a count read back from the records under a lock keyed by the business, against
@@ -1516,9 +1517,12 @@ releasedMinor, spentMinor }`. The task stays open for a person. It reaches a
   an earlier stop never applies to a later one). A refusal writes nothing.
 - **No agent answers.** Neither row is in `AGENT_SURFACE`: the agent prefix
   answers `DELEGATION_EXCLUDES_OPERATION` 403 with or without a delegation.
+- **Recent sign-in.** `run.top_up` holds `billing:decide`, so C59's step-up
+  asks it in the envelope: `STEP_UP_REQUIRED` 403 past 60 minutes while the
+  business's money step-up setting is on (`C54 recent sign-in`). The end holds
+  `gate:decide`, which the step-up does not ask.
 - **Not here yet.** The question and its two buttons in the conversation where
-  the plan was approved (AW-04), and the recent sign-in a money answer asks
-  for (C59).
+  the plan was approved (AW-04).
 
 ## The launch and its receipt
 
@@ -2347,8 +2351,9 @@ revision, and two setters at once from one limit leave one applied. The answer i
 and `{ key: 'planning', limitMinor, currency }`. A lower limit is taken even
 below what is committed: the next planning reply that no longer fits is
 refused ([RUNTIME.md](RUNTIME.md#the-planning-budget)). Until a person moves
-it the cap is AUD 50, and `settings.read`'s `planningCap` shows it. Not here
-yet: the recent sign-in a money action asks (C59).
+it the cap is AUD 50, and `settings.read`'s `planningCap` shows it. It holds
+`billing:decide`, so C59's step-up asks it in the envelope: `STEP_UP_REQUIRED`
+403 past 60 minutes while the business's money step-up setting is on.
 
 ## Tags
 
@@ -3135,7 +3140,7 @@ say where else the login is; nothing is written or sent.
 In one transaction, under the access lock, the member's live factor is
 recorded removed (here and by subject, 0064), every session of theirs is ended
 (0057, 0063), and one reset row owes the provider GoTrue's admin removal of
-that factor (`DELETE /admin/users/<subject>/factors/<factor id>`, 20261003003537). It
+that factor (`DELETE /admin/users/<subject>/factors/<factor id>`, 20261004091551). It
 answers `{ resetId, providerStep }`: `owed` from the act, `done` when the local
 server, holding the admin key, sent the removal as soon as the act committed.
 Hosted, the endings loop sends it each `ACCESS_ENDING_RETRY_SECONDS`

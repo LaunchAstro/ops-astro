@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
 // Provider operations: what a model call is, what it may carry and to where
-// (AW-01); the catalogue's registration rule, and the live correction's
-// catalogued operations and its envelope check (C80).
+// (AW-01); the catalogue's registration rule, the one guarded provider call
+// over the pinned transport, and the live correction's catalogued operations,
+// envelope check and publish and revert executable (C80).
 //
-// Nothing here opens a connection or holds a credential. Custody does both
-// (`core-custody`), and adapter code never runs in its process.
+// Nothing here holds a credential: custody does (`core-custody`), and adapter
+// code never runs in its process; a connector borrows through a port the
+// caller supplies. Nothing in this package runs unless a worker under a lease
+// calls it after the gate.
 
 export {
   catalogue,
@@ -77,6 +80,22 @@ export {
   type Registered,
 } from './catalogue.ts';
 export {
+  callConnector,
+  type CallDependencies,
+  type ConnectorResult,
+  type ProviderResult,
+  type ProviderValue,
+} from './call.ts';
+export {
+  isDeniedAddress,
+  pinnedTransport,
+  systemResolver,
+  type Resolver,
+  type Transport,
+  type TransportAnswer,
+  type TransportRequest,
+} from './capture/transport.ts';
+export {
   CONNECTOR_HOSTS,
   SITE_OPERATIONS,
   siteCatalogue,
@@ -91,3 +110,17 @@ export {
   type PageObservation,
   type ProposedChange,
 } from './site/envelope.ts';
+export { approvedChange, contentDigest, versionDigestOf, type VersionPin } from './site/version.ts';
+export {
+  dispatchToken,
+  observeLanded,
+  publishCorrection,
+  revertCorrection,
+  type Accepted,
+  type GateDecision,
+  type PublishJob,
+  type PublishOutcome,
+  type PublishPorts,
+  type RevertOutcome,
+} from './site/publish.ts';
+export type { Occurrence, ReadBack } from './site/reconcile.ts';

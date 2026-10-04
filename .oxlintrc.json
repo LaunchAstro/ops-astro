@@ -19,6 +19,10 @@
     },
     { "files": ["tests/review/sl01-s06-proof.test.ts"], "rules": { "no-await-in-loop": "off" } },
     {
+      "files": ["tests/surfaces/select-arrow-up-after-open-shrink.test.tsx"],
+      "rules": { "no-await-in-loop": "off" }
+    },
+    {
       "files": ["tests/commands/review-p03-unattended-escalated-decider.test.ts"],
       "rules": { "max-lines-per-function": "off" }
     },
@@ -57,6 +61,24 @@
         "no-await-in-loop": "off",
         "unicorn/no-immediate-mutation": "off",
         "max-lines-per-function": "off"
+      }
+    },
+    {
+      "files": [
+        "tests/api/live-presence-remap-drops-previous-person.test.ts",
+        "tests/api/function-outbox-before-response.test.ts"
+      ],
+      "rules": { "max-lines-per-function": "off" }
+    },
+    {
+      "files": [
+        "tests/api/live-presence-remap-seats-no-one-on-unreadable-task.test.ts",
+        "tests/api/live-presence-remap-and-back-keeps-no-revoked-reader.test.ts",
+        "tests/api/live-presence-remap-refused-person-gets-no-notification.test.ts"
+      ],
+      "rules": {
+        "max-lines-per-function": "off",
+        "unicorn/consistent-function-scoping": "off"
       }
     },
     {
@@ -100,6 +122,24 @@
         "tests/ci/s0-3-unstarted-dump-stops.test.ts"
       ],
       "rules": { "no-inline-comments": "off" }
+    },
+    {
+      "files": [
+        "tests/surfaces/page-kit-check-rejects-class-attribute-restyle.test.tsx",
+        "tests/surfaces/page-kit-check-rejects-parent-scoped-tip-restyle.test.tsx",
+        "tests/surfaces/page-kit-check-rejects-subject-only-restyle.test.tsx",
+        "tests/surfaces/phone-width-funnel-check-rejects-collapsed-drawing.test.tsx"
+      ],
+      "rules": { "max-lines-per-function": "off" }
+    },
+    {
+      "files": ["tests/surfaces/term-tip-test-detects-invisible-tooltip.mjs"],
+      "rules": {
+        "no-control-regex": "off",
+        "unicorn/prefer-string-replace-all": "off",
+        "unicorn/escape-case": "off",
+        "unicorn/no-hex-escape": "off"
+      }
     }
   ]
 }
