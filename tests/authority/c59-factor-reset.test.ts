@@ -168,20 +168,18 @@ async function withoutSettingsManageRefused(): Promise<void> {
   const api = apiWith(factorFake().provider);
   const member = await memberWithFactor('lux');
   const before = await resetState(member.person);
-  // A manager of access alone, or of privacy alone, is refused like the others.
   const keeper = await enrol(harness.world.db.app, harness.world.alpha, `keeper-${randomUUID()}`);
   const warden = await enrol(harness.world.db.app, harness.world.alpha, `warden-${randomUUID()}`);
   await harness.world.db.app.withBusiness(harness.world.alpha, async (tx) => {
     await grantTo(tx, keeper, 'manage', WHOLE_BUSINESS, false, 'access');
     await grantTo(tx, warden, 'manage', WHOLE_BUSINESS, false, 'privacy');
   });
-  const keepers = [keeper, warden].map((one) => sessionToken(one.presented.subject));
-  const tokens = [harness.world.mia.token, harness.world.noah.token, clientToken];
-  for (const token of [...tokens, ...(await Promise.all(keepers))]) {
+  const keepers = await Promise.all([keeper, warden].map((k) => sessionToken(k.presented.subject)));
+  const tokens = [harness.world.mia.token, harness.world.noah.token, ...keepers, clientToken];
+  for (const token of tokens) {
     // oxlint-disable-next-line no-await-in-loop
     const refused = await reset(api, member.person.personId, token);
-    expect(refused.status).toBe(403);
-    expect(['SCOPE_NOT_GRANTED', 'AUTH_NO_MEMBERSHIP']).toContain(refused.code);
+    expect([refused.status, refused.code]).toEqual([403, 'SCOPE_NOT_GRANTED']);
   }
   expect(await resetState(member.person)).toEqual(before);
 }
