@@ -15,8 +15,8 @@ const NOT_SYSTEM = `not in (select oid from pg_namespace where nspname ~ '^(pg_|
  * security, columns, constraints, indexes, functions with their bodies,
  * triggers and whether each fires (a constraint's internal triggers by
  * constraint and function, as their names carry OIDs), policies, views,
- * types, default privileges, extensions, event triggers, the migration ledger
- * and each table's row count.
+ * types, default privileges, extensions, event triggers and whether each
+ * fires, the migration ledger and each table's row count.
  */
 const CATALOGUE = `
 select format('schema %s owner=%s acl=%s', nspname, pg_get_userbyid(nspowner), nspacl) line
@@ -66,7 +66,8 @@ select format('default privileges %s %s %s %s', pg_get_userbyid(defaclrole), def
 union all
 select format('extension %s %s', extname, extversion) from pg_extension
 union all
-select format('event trigger %s %s %s', evtname, evtevent, evtfoid::regproc) from pg_event_trigger
+select format('event trigger %s %s %s enabled=%s', evtname, evtevent, evtfoid::regproc, evtenabled)
+  from pg_event_trigger
 union all
 select format('ledger %s %s', version, checksum) from ops.schema_migrations
 union all
