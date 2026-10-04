@@ -31,15 +31,19 @@
 // would otherwise both find nobody and both create a person (the unique index
 // includes the person, so nothing conflicts), and every later observation would
 // then be unresolved between the two. A lookup that finds nobody takes the
-// business's first-sighting lock, held to commit, and looks again; under read
-// committed the second lookup sees what the lock's last holder committed. One
-// lock per business rather than per identifier, so two transactions first
-// sighting two identifiers in opposite order queue rather than deadlock, and a
-// lookup that finds someone takes no lock. Calls sharing one transaction share
-// its lock as well, so the create also refuses once a live link has appeared
+// business's lock on that identifier, held to commit, and looks again; under
+// read committed the second lookup sees what the lock's last holder committed.
+// A lookup that finds someone takes no lock, and the lock names the identifier
+// rather than the business, so a transaction holding one waits only on another
+// first sighting of the same identifier: batches mixing attaches and distinct
+// first sightings, in any order, never wait on each other. Two transactions
+// that each first-sight the same two identifiers in opposite order cannot both
+// commit without one creating a person the other has not seen, so Postgres
+// aborts one and its retry attaches. Calls sharing one transaction share its
+// locks as well, so the create also refuses once a live link has appeared
 // since its lookup, and the call resolves again.
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { advisoryLock, type TenantQuery } from '../tenancy/database.ts';
 
 export type IdentifierKind = 'email' | 'phone';
@@ -224,7 +228,9 @@ async function match(tx: TenantQuery, kind: IdentifierKind, value: string): Prom
 }
 
 async function matchLocked(tx: TenantQuery, kind: IdentifierKind, value: string): Promise<Match> {
-  await advisoryLock(tx, `person-identifier:${tx.businessId.toLowerCase()}`);
+  // A digest, so the address itself is not the lock's key.
+  const digest = createHash('sha256').update(`${kind}:${value}`).digest('hex');
+  await advisoryLock(tx, `person-identifier:${tx.businessId.toLowerCase()}:${digest}`);
   return await match(tx, kind, value);
 }
 
