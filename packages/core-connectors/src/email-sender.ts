@@ -63,9 +63,12 @@ export function dmarcPolicy(records: readonly string[]): DmarcPolicy {
   if (dmarc.length === 0) return 'missing';
   if (dmarc.length > 1) return 'invalid';
   // A tag is split at its first '=' only, so `p=reject=invalid` is not reject.
-  const tags = (dmarc[0] ?? '').split(';').map((tag) => /^\s*([^=]*?)\s*=(.*)$/su.exec(tag));
+  const tags = (dmarc[0] ?? '').split(';').map((tag) => {
+    const at = tag.indexOf('=');
+    return at < 0 ? [tag] : [tag.slice(0, at), tag.slice(at + 1)];
+  });
   const policy = tags
-    .find((tag) => tag?.[1] === 'p')?.[2]
+    .find(([name]) => name?.trim() === 'p')?.[1]
     ?.trim()
     .toLowerCase();
   return policy === 'reject' || policy === 'quarantine' || policy === 'none' ? policy : 'invalid';
