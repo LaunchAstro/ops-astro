@@ -9,8 +9,10 @@
 //
 // The projection is rebuilt when the grant key changes, because a projection
 // belongs to a grant and a new reader may not inherit the old one's answers.
+// Nor may it see them for one render: until the new projection publishes, the
+// hook answers a first read's loading state, never the old grant's state.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AuthorisedRead, initialState, type ReadState } from './authorised-read.ts';
 import { FLOOR_MS, type LiveHub } from './live.ts';
 import type { RollupFloor } from './rollup-floor.ts';
@@ -47,6 +49,18 @@ export interface UseReadLive<T> extends UseReadResult<T> {
    * A reload, a new grant or a changed dependency is not one.
    */
   readonly live: boolean;
+}
+
+/** The states a projection starts from: a first read, not a re-read of one. */
+const opening = new WeakSet<ReadState<unknown>>();
+
+/** Whether `state` opens a read (a grant's or a record's first), so nothing earlier describes it. */
+export const opensRead = (state: ReadState<unknown>): boolean => opening.has(state);
+
+function opened<T>(grantKey: string): ReadState<T> {
+  const state = initialState<T>(grantKey);
+  opening.add(state);
+  return state;
 }
 
 /**
@@ -89,13 +103,15 @@ function untilAnswered(reload: () => void): () => void {
 }
 
 export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
-  const [state, setState] = useState<ReadState<T>>(() => initialState<T>(options.grantKey));
+  const [held, setState] = useState<ReadState<T>>(() => opened<T>(options.grantKey));
   const readRef = useRef<AuthorisedRead<T> | null>(null);
   const runRef = useRef(options.run);
   runRef.current = options.run;
 
   const grantKey = options.grantKey;
   const isEmpty = options.isEmpty;
+  const first = useMemo(() => opened<T>(grantKey), [grantKey]);
+  const state = held.grantKey === grantKey ? held : first;
 
   const liveRef = useRef(false);
   /** The grant and dependencies the projection in `readRef` was built for. */
@@ -123,6 +139,7 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadLive<T> {
     readRef.current = projection;
     built.current = [grantKey, ...options.deps];
     liveRef.current = false;
+    opening.add(projection.state);
     setState(projection.state);
     const generation = projection.begin();
     void offer(projection, generation, runRef.current, grantKey);
