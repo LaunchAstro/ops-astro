@@ -161,17 +161,20 @@ export async function readMapView(
   );
   const map = maps[0];
   if (map === undefined) return undefined;
+  // The components and versions as of the version read with the map, so a
+  // revision committed since is not mixed into this one.
   const components = await tx.query<ComponentRow>(
     `select id, kind, body, ticket_id from public.map_components
-      where business_id = $1 and map_id = $2 and retired_version is null
+      where business_id = $1 and map_id = $2 and created_version <= $3
+        and (retired_version is null or retired_version > $3)
       order by kind, position`,
-    [tx.businessId, mapId],
+    [tx.businessId, mapId, map.version ?? 0],
   );
   const tickets = await readMapTickets(tx, taskTypeId, mapId);
   const versions = await tx.query<VersionRow>(
     `select version, changed, actor_id, created_at from public.map_versions
-      where business_id = $1 and map_id = $2 order by version`,
-    [tx.businessId, mapId],
+      where business_id = $1 and map_id = $2 and version <= $3 order by version`,
+    [tx.businessId, mapId, map.version ?? 0],
   );
   const reached =
     map.client === null ? [] : ((await clientsReached(tx, subjects, [map.client])) ?? []);
