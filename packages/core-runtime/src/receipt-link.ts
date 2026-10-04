@@ -43,7 +43,10 @@ export const RECEIPT_LINK_SHAPE: RegExp =
 /**
  * A run of base64url characters as long as a delegation credential, an
  * HMAC-SHA-256 in base64url (`credential-keys.ts`): 43 characters. A UUID
- * (36) or an ordinary id is shorter.
+ * (36) or an ordinary id is shorter, but a run of 43 or more inside a longer
+ * one is refused too (a long hyphenated slug, an id joined to a suffix): a
+ * credential glued to other characters still counts, and a refused link costs
+ * only the link. Revisit when a real provider's host is declared.
  */
 export const CREDENTIAL_RUN: RegExp = /[A-Za-z0-9_-]{43}/u;
 

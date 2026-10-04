@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { expect, it as vitestIt } from 'vitest';
 import {
   configuredCredentialKeys,
+  digestOf,
   issueAgentCredential,
   mintDelegation,
 } from '../../packages/core-records/src/index.ts';
@@ -139,4 +140,38 @@ it("the credentials checked for an agent's observation are its unexpired login, 
     child: true,
     underivable: true,
   });
+});
+
+it('an observation whose agent holds a credential that cannot be derived stores and shows no link', async () => {
+  const { taskId, credential } = await launched();
+  const [purpose] = await r.fixture.db.admin.execute<{ id: string }>(
+    'select id from public.delegations where credential_hash = $1',
+    [digestOf(credential)],
+  );
+  if (purpose === undefined) throw new Error('the purpose delegation is not stored');
+  const helper = await r.fixture.db.app.withBusiness(r.fixture.business, async (tx) => {
+    const keys = configuredCredentialKeys();
+    if (!keys.ok) throw new Error('no delegation credential keyring');
+    return await issueAgentCredential(tx, keys.keys, {
+      personId: r.fixture.member.personId,
+      actorId: r.fixture.member.actorId,
+      purpose: `rcpt_${randomUUID().slice(0, 8)}`,
+      scope: [{ collection: 'task', action: 'read' }],
+      expiresAt: new Date(Date.now() + 3_600_000),
+    });
+  });
+  await childOf(purpose.id, helper.agentActorId, 'no-such-key');
+  const outcome = await workerOn(
+    credential,
+    linking(`https://${HOST}/effects/${randomUUID()}`),
+  ).applyOnce(taskId);
+  if (!('applied' in outcome)) throw new Error('the synthetic effect did not apply');
+  const answer = await asPerson('task.receipt', { attemptId: outcome.applied.attemptId });
+  const receipt = answer.body['receipt'] as Record<string, unknown> | undefined;
+  const stored = await attempts(taskId);
+  expect({
+    status: answer.status,
+    shown: receipt?.['link'] === null,
+    observed: stored.map((row) => row['observed'] === true && row['link'] === null),
+  }).toEqual({ status: 200, shown: true, observed: [true] });
 });
