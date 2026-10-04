@@ -1329,8 +1329,9 @@ Its serve is the broker's reserve (`reserveModelCall`,
 operation's priced maximum, the prompt copy's registration, the register row
 and the audit event commit together. A repeat of the operation id replays the
 register row and sends nothing; two at once cannot both hold, because the
-second loses the register's identity key and replays. After that commit the
-broker starts the call, sends it through custody and settles it
+second waits at `enter`'s door (#932) and replays, the register's identity key
+the backstop. After that commit the broker starts the call, sends it through
+custody and settles it
 (`sendReservedCall`), re-reading the task's client link, the lease, the
 delegation and the reservation under their locks, so authority lost in between refuses the call when its
 effect applies.

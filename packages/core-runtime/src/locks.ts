@@ -56,10 +56,11 @@
 // The audit chain's key (the business id, `audit_events_chain`) is taken by
 // each audit write, for most commands their last lock; an agent `task.assign`
 // takes it just after its write, before its operation record (`tasks-agent.ts`).
-// The operation identity's key (`operation:<business>:<actor>:<id>`, the
-// envelope's `enter`) is a command-layer lock, taken first of all of them;
-// before it a call holds only key-share locks from its login's attempt row and
-// a credential's row `for share`, which no same-identity call updates.
+// The operation identity's key, its door (`enter` in the envelope:
+// `operation:<business>:<actor>:<sha256 of the id>`), is a command-layer lock,
+// taken first of all of them; before it a call holds only key-share locks
+// from its login's attempt row and a credential's row `for share`, which no
+// same-identity call updates.
 // Every advisory lock, the chain class included, is taken through the one
 // helper, `advisoryLock` in `core-records/src/tenancy/database.ts`.
 // `tests/runtime/cq-8-db.test.ts` records each transaction's lock statements

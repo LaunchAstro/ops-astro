@@ -12,7 +12,8 @@
 //    broker's reserve in the same transaction, so the hold, the prompt copy's
 //    registration, the register row and the audit event commit as one. A
 //    repeat of the operation id replays that row, and two at once cannot
-//    both hold: the second loses the register's identity key and replays.
+//    both hold: the second waits at `enter`'s door and replays, the
+//    register's identity key the backstop.
 // 2. After commit, the broker starts, sends through custody and settles, each
 //    in its own transaction, re-reading the lease, the delegation and the
 //    reservation under their locks (`sendReservedCall`).

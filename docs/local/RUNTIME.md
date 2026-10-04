@@ -740,9 +740,10 @@ claim (`record_unique_values_claim_idx`), a deadlock victim (`40P01`) and
 it is retried once, like a lost unique race, and a second one faults
 (`tests/commands/unstorable-values-direct-callers.test.ts` holds the retry). The
 identity case is the one an agent reaches. A same-operationId retry in flight
-behind its original loses `operations_identity_key` to the original's commit, and its whole
-transaction rolls back. The second attempt reads the committed register row and
-replays it (DB-PROOF-GAPS-B F1, `tests/runtime/l6-schedules.test.ts` "W02 (b)").
+behind its original waits at the envelope's door (`enter`, #932), then reads
+the committed register row and replays it; `operations_identity_key` is the
+backstop, and its loser's whole transaction rolls back and the retry replays
+(DB-PROOF-GAPS-B F1, `tests/runtime/l6-schedules.test.ts` "W02 (b)").
 
 **A trash can deadlock, and the retry answers from the winner's commit.**
 `trashSubtree` (`tasks/trash.ts`) locks the rows it walks in id order, but that
