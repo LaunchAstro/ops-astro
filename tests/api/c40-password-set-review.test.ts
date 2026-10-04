@@ -103,3 +103,31 @@ REVIEW(
     expect(await auditOf(world.bravo, 'account.password_changed')).toHaveLength(before);
   },
 );
+
+REVIEW(
+  'C40 a reset window settles once, at the database’s own moment, whatever the application sends',
+  async () => {
+    const id = randomUUID();
+    const settle = async (at: string) =>
+      await world.db.app.withBusiness(world.alpha, async (tx) => {
+        await tx.query('update ops.subject_resets set settled_at = $2::timestamptz where id = $1', [
+          id,
+          at,
+        ]);
+      });
+    await world.db.app.withBusiness(world.alpha, async (tx) => {
+      await tx.query('insert into ops.subject_resets (id, subject_digest) values ($1, $2)', [
+        id,
+        '0'.repeat(64),
+      ]);
+    });
+    await settle('9999-01-01T00:00:00Z');
+    const [row] = await world.db.admin.execute<{ near: boolean }>(
+      `select settled_at between clock_timestamp() - interval '1 minute' and clock_timestamp()
+         as near from ops.subject_resets where id = $1`,
+      [id],
+    );
+    expect(row?.near).toBe(true);
+    await expect(settle('1970-01-01T00:00:00Z')).rejects.toThrow(/already settled/u);
+  },
+);

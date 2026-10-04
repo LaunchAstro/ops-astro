@@ -135,6 +135,35 @@ C40('C40 password reset, link use: the provider', () => {
   });
 });
 
+C40('C40 password reset, link use: the token’s own business', () => {
+  it('C40 a login its token’s business no longer admits sets nothing, though another does', async () => {
+    const ora = await freshMember('ora');
+    const subject = ora.presented.subject;
+    const bravoActor = await inBravoToo(subject, 'ora-in-bravo');
+    const token = await mintToken(subject);
+    await world.db.admin.execute(
+      'update public.memberships set active = false, ended_at = now() where business_id = $1 and person_id = $2',
+      [world.alpha, ora.personId],
+    );
+    expect(answerOf(await setPassword(token, NEW_PASSWORD))).toEqual(INVALID);
+    expect(seen).toEqual([]);
+    const [state] = await world.db.admin.execute<{ live: boolean; windows: number }>(
+      `select (select count(*)::int from password_reset_tokens
+                where token_hash = encode(sha256(convert_to($1, 'UTF8')), 'hex')
+                  and spent_at is null) = 1 as live,
+              (select count(*)::int from ops.subject_resets
+                where subject_digest = encode(sha256(convert_to($2, 'UTF8')), 'hex')) as windows`,
+      [token, subject],
+    );
+    expect(state).toEqual({ live: true, windows: 0 });
+    const rows = [
+      ...(await auditOf(world.alpha, CHANGED)),
+      ...(await auditOf(world.bravo, CHANGED)),
+    ];
+    expect(rows.filter((row) => [ora.actorId, bravoActor].includes(row.actor_id))).toEqual([]);
+  });
+});
+
 C40('C40 password reset, link use: secrets', () => {
   it('C40 token canary: the password and token reach no answer, audit row or log', async () => {
     const ivy = await freshMember('ivy');
