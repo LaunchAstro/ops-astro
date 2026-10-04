@@ -156,9 +156,20 @@ async function steppedUp(tx: TenantQuery, context: CommandContext): Promise<bool
   return judgeStepUp(context.session, now) === 'fresh';
 }
 
-/** Whether the member holds a business-wide grant the caller does not. */
+/**
+ * Whether the member holds a business-wide grant the caller does not, each
+ * grant's expiry judged on the clock under the lock, as `grantRevoked` judges
+ * the caller's own: one lapsed during the wait counts for nobody.
+ */
 async function outranks(tx: TenantQuery, personId: string, callerId: string): Promise<boolean> {
-  const wide = (await heldPermissions(tx)).filter((each) => each.scope.kind === 'business');
+  const held = (await heldPermissions(tx)).filter((each) => each.scope.kind === 'business');
+  const lapsed = await tx.query<{ readonly id: string }>(
+    `select id from public.grants
+      where business_id = $1 and id = any($2::uuid[]) and expires_at <= clock_timestamp()`,
+    [tx.businessId, held.map((each) => each.grantId)],
+  );
+  const gone = new Set(lapsed.map((row) => row.id));
+  const wide = held.filter((each) => !gone.has(each.grantId));
   const keys = (id: string) =>
     new Set(
       wide
