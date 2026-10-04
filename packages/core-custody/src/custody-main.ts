@@ -154,7 +154,10 @@ function base64Spellings(secret: string): readonly string[] {
 function redacterOf(secrets: readonly string[]): (text: string) => string {
   const spelled = secrets.map((secret) => [...secret].map((character) => spellingsOf(character)));
   const encoded = secrets.flatMap((secret) => base64Spellings(secret));
+  // Every spelling is at least as long as its secret, so shorter text holds none.
+  const shortest = Math.min(...secrets.map((secret) => secret.length));
   return (text) => {
+    if (text.length < shortest) return text;
     const unescaped = cut(
       text,
       spelled.flatMap((groups) => spans(text, groups)),
