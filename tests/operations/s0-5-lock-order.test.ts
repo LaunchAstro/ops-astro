@@ -58,7 +58,10 @@ const BEFORE_LOCK: readonly (readonly [RegExp, string])[] = [
   [/^select key, id from record_types /u, 'the task spine (held: runtime half)'],
   [/^select id, data ->> 'key' as key, data ->> 'machine_category' /u, 'the spine (held)'],
   [/^with recursive effective as \( select g\.\*/u, 'authority asked (held: runtime half)'],
-  [/^select pg_advisory_xact_lock\(hashtextextended\(\$1, 0\)\)$/u, "a declared subtree's lock"],
+  [
+    /^select pg_advisory_xact_lock\(hashtextextended\(\$1, 0\)\)$/u,
+    "the operation identity's door (#932), or a declared subtree's lock",
+  ],
 ];
 
 const flat = (text: string): string => text.replaceAll(/\s+/gu, ' ').trim().toLowerCase();
