@@ -109,8 +109,9 @@ export async function readSecret(tx: TenantQuery, id: string): Promise<SecretRow
  * when neither row exists yet: the loser of that insert race waits, then
  * updates the winner's row. `expectedRevision` is compared in the upsert
  * itself, against the row it would replace under that lock, so a stale caller
- * changes nothing whichever way the race went. Setting again leaves
- * `last_used_at` where it was: a new value has not been used.
+ * changes nothing whichever way the race went; 0 (rows start at 1) refuses
+ * any existing row, so a first set never replaces a newer caller's. Setting
+ * again leaves `last_used_at` where it was: a new value has not been used.
  */
 export async function setSecret(
   tx: TenantQuery,

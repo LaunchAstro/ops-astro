@@ -50,9 +50,13 @@ its digest only, and a refusal's attempted values are dropped for `secret.set`.
 
 A set's `expectedRevision` is compared in the upsert itself, against the row it
 would replace under that row's lock, so a setter that lost an insert race to a
-newer value is refused `VERSION_STALE` and changes nothing. The tests are
-`tests/custody/c31-credentials.test.ts`, `c31-secret-set-guards.test.ts`,
-`c31-two-setters-overlap.test.ts` and `tests/surfaces/c31-keys-panel.test.tsx`.
+newer value is refused `VERSION_STALE` and changes nothing. `expectedRevision: 0`
+means the name must not exist yet (rows start at revision 1): a first set from
+a list that did not show the name sends it, so a key another administrator
+created since is refused `VERSION_STALE` naming its revision, not replaced. The
+tests are `tests/custody/c31-credentials.test.ts`, `c31-secret-set-absent.test.ts`,
+`c31-secret-set-guards.test.ts`, `c31-two-setters-overlap.test.ts` and
+`tests/surfaces/c31-keys-panel.test.tsx`.
 
 `markSecretUsed` moves a row's last-used time. The broker calls it when it
 injects the secret into a dispatch; setting a value again leaves it alone.
