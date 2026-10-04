@@ -51,9 +51,9 @@ export default defineConfig({
     // The browser proofs build `apps/web/dist`, which other suites rebuild (an
     // emptied folder mid-run), so they run alone: CI's `local checks` step with
     // BROWSER_PROOFS=1. Sol's proofs kept byte for byte (the leaked-client
-    // proof and OW-001's two) open their worlds with no skip; without a
-    // database they are left out here, and the manifests run them where there
-    // is one.
+    // proof, OW-001's two and OW-002's) and the OW-002 proofs written beside
+    // them open their worlds with no skip; without a database they are left out
+    // here, and the manifests run them where there is one.
     exclude: [
       ...configDefaults.exclude,
       ...(process.env['BROWSER_PROOFS'] === '1' ? [] : ['tests/browser/**']),
@@ -64,6 +64,12 @@ export default defineConfig({
             'tests/api/end-others-provider-clock-skew.test.ts',
             'tests/api/end-others-delayed-ending.test.ts',
             'tests/api/agent-credential-exports-counted.test.ts',
+            'tests/api/function-outbox-before-response.test.ts',
+            'tests/api/function-outbox-waits-for-own-events.test.ts',
+            'tests/api/live-presence-remap-and-back-keeps-no-revoked-reader.test.ts',
+            'tests/api/live-presence-remap-drops-previous-person.test.ts',
+            'tests/api/live-presence-remap-refused-person-gets-no-notification.test.ts',
+            'tests/api/live-presence-remap-seats-no-one-on-unreadable-task.test.ts',
           ]),
       // CI's `local checks` runs the suites that start containers in a step of their own, after
       // the browser captures: a new network interface aborts a page load in flight.
