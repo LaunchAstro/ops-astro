@@ -248,6 +248,10 @@ vi.mock('../../packages/core-commands/src/commands/access-write.ts', async (orig
   createClientRecord: recorder('createClientRecord'),
   grantOnAccess: recorder('grantOnAccess'),
 }));
+vi.mock('../../packages/core-commands/src/commands/client-privacy-write.ts', async (original) => ({
+  ...(await original<object>()),
+  setClientPrivacy: recorder('setClientPrivacy'),
+}));
 vi.mock('../../packages/core-commands/src/commands/access-end.ts', async (original) => ({
   ...(await original<object>()),
   endAccessOnSettings: recorder('endAccessOnSettings'),
@@ -329,6 +333,7 @@ const PINNED_UNTARGETED_IDENTIFIERS = {
   'access.grant': ['holderId', 'clientId'],
   'access.revoke': ['grantId'],
   'client.create': [],
+  'client.set_privacy': ['clientId'],
   'conversation.message': ['conversationId'],
   'conversation.rename': ['conversationId'],
   'conversation.set_scope': ['conversationId'],
@@ -396,6 +401,7 @@ const PINNED_NEEDS_NO_EXPECTED_REVISION = [
   'budget.write_off',
   'client.create',
   'client.list',
+  'client.set_privacy',
   'conversation.allowance',
   'conversation.list',
   'conversation.message',
@@ -651,6 +657,15 @@ const REQUESTS: readonly CommandRequest[] = [
   { command: 'operations.change_installation_mode', operationId: 'op', mode: 'm' },
   { command: 'client.create', operationId: 'op', name: 'n' },
   {
+    command: 'client.set_privacy',
+    operationId: 'op',
+    clientId: 'client',
+    modelEgress: false,
+    providers: [],
+    handlesHealth: false,
+    noAgentEdits: false,
+  },
+  {
     command: 'access.grant',
     operationId: 'op',
     holderId: 'person',
@@ -841,6 +856,7 @@ const PINNED_HANDLERS: Readonly<Record<string, readonly unknown[]>> = {
   'operations.record_gate_item': ['recordGateItem', 'request'],
   'operations.change_installation_mode': ['changeInstallationMode', 'request'],
   'client.create': ['createClientRecord', 'request'],
+  'client.set_privacy': ['setClientPrivacy', 'request'],
   'access.grant': ['grantOnAccess', 'request'],
   'access.revoke': ['revokeGrantOnAccess', 'grant'],
   'access.end': ['endAccessOnSettings', 'request'],
@@ -920,7 +936,7 @@ describe('the per-command tables at 06ab232', () => {
     expect(seen).toStrictEqual(PINNED_UNTARGETED_IDENTIFIERS);
   });
 
-  it('exempts the same ninety-two from an expected revision', () => {
+  it('exempts the same ninety-three from an expected revision', () => {
     expect([...NEEDS_NO_EXPECTED_REVISION].toSorted()).toStrictEqual(
       PINNED_NEEDS_NO_EXPECTED_REVISION,
     );
