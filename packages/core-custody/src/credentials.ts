@@ -38,11 +38,12 @@ export type CredentialRefusal =
  * Shapes of a browser session token for a consumer chat product, or of the
  * cookie that carries one. Never stored. Matched anywhere in the value, so a
  * pasted cookie pair (`sessionKey=sk-ant-sid01-...`) is caught as well as the
- * bare token.
+ * bare token. A `sess-` token is matched where a token can start: the value's
+ * start, or after a separator, such as a Basic pair's colon or a cookie's `=`.
  */
 const SESSION_TOKEN = [
   /sk-ant-sid/iu,
-  /^sess-/iu,
+  /(?:^|[\s"',:;=])sess-/iu,
   /sessionkey/iu,
   /session[-_]?token/iu,
   /__secure-next-auth/iu,
