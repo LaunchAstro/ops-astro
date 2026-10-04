@@ -44,8 +44,8 @@ function isBuffer(part: unknown): part is Buffer {
 }
 
 /** A Buffer as the text its bytes carry, then as the console shows it, with any own keys. */
-const bytesWritten = (bytes: Buffer): string =>
-  `${bytes.toString('utf8')} ${inspected(bytes, whole)}`;
+const bytesWritten = (bytes: Buffer, deep: object = whole, shown: object = {}): string =>
+  `${bytes.toString('utf8')} ${inspected(bytes, deep, shown)}`;
 
 /** The deeper writing, or the console's own when a trap makes the deeper one throw. */
 function deeperOr(deeper: () => string, nodeText: () => string): string {
@@ -79,7 +79,8 @@ export function consoleLine(...parts: readonly unknown[]): string {
     const index = next++;
     const value = rest[index];
     if (isBuffer(value)) {
-      args[index] = bytesWritten(value);
+      args[index] =
+        letter === 'o' ? bytesWritten(value, hidden, consoleHidden) : bytesWritten(value);
       return '%s';
     }
     if (letter === 'o' || letter === 'O') {

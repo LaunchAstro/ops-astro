@@ -82,6 +82,9 @@ it('keeps what a Buffer carries beyond its bytes', () => {
   expect(consoleLine(tagged)).toContain(planted);
   expect(consoleLine('%O', tagged)).toContain(planted);
   expect(consoleLine('%o', tagged)).toContain(planted);
+  const hiding = Buffer.from('x');
+  Object.defineProperty(hiding, 'token', { value: planted });
+  expect(consoleLine('%o', hiding)).toContain(planted);
 });
 
 it('writes a proxy that claims to be a Buffer as the console does, through to its target', () => {
