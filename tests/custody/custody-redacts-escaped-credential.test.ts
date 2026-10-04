@@ -9,6 +9,8 @@ import { parseDestinations, type OutboundRequest } from '../../packages/core-cus
 
 // Synthetic fixture data only. Never use a real provider credential here.
 const KEY = 'sol-ow018/fake-canary-key';
+// Its base64 holds '+' and '/' at every byte offset, so base64url holds '-' and '_'.
+const B64_KEY = 'synthetic>?>?canary~>?>?key';
 const request: OutboundRequest = {
   destination: 'auth_target',
   path: '/auth/v1/admin/users',
@@ -167,9 +169,9 @@ it.each([
     (key: string) => Buffer.from(`{"${key}"}`).toString('base64url'),
   ],
 ] as const)('the key in %s is redacted from the answer', async (_case, spell) => {
-  const text = await answered(spell(KEY), KEY);
+  const text = await answered(spell(B64_KEY), B64_KEY);
   // Every character of the key's encoding that depends on the key alone, at each offset.
-  const bytes = Buffer.from(KEY);
+  const bytes = Buffer.from(B64_KEY);
   const stable = [0, 1, 2].flatMap((offset) => {
     const encoded = Buffer.concat([Buffer.alloc(offset), bytes]).toString('base64');
     const slice = encoded.slice(
@@ -179,7 +181,7 @@ it.each([
     return [slice, slice.replaceAll('+', '-').replaceAll('/', '_')];
   });
   expect({
-    decodes: Buffer.from(text, 'base64').toString('utf8').includes(KEY),
+    decodes: Buffer.from(text, 'base64').toString('utf8').includes(B64_KEY),
     // Any four characters of a stable slice left over: a slice cut short fails here.
     left: stable.some((slice) =>
       [...slice].some((_, at) => at + 4 <= slice.length && text.includes(slice.slice(at, at + 4))),
@@ -226,4 +228,16 @@ it('a key holding two backslashes is redacted from an answer that is not JSON', 
   const key = 'synthetic\\\\canary-key-0123';
   const raw = await answeredRaw(`plain text ${key} end`, key);
   expect(raw.includes(key), 'the answer must not hold the key').toBe(false);
+});
+
+it('a key that a JSON answer writes as a number is redacted, and the answer stays JSON', async () => {
+  const key = '2026100412345';
+  const raw = await answeredRaw(
+    JSON.stringify({ text: 'ok', usage: { input: 2026100412345 } }),
+    key,
+  );
+  expect({ held: raw.includes(key), parsed: JSON.parse(raw) }).toEqual({
+    held: false,
+    parsed: { text: 'ok', usage: { input: '[redacted]' } },
+  });
 });

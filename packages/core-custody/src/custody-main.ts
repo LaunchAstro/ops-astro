@@ -52,26 +52,6 @@ function load(): Loaded {
   return { credentials: credentials.credentials, destinations: destinations.destinations };
 }
 
-/**
- * JSON text written back as JSON.stringify writes it, so an escape the
- * provider chose (`\/`, `c`) cannot hide a spelling that the broker's
- * parse would make whole again. Other text is left as it came.
- */
-function plain(text: string): string {
-  let decoded: unknown;
-  try {
-    decoded = JSON.parse(text);
-  } catch {
-    return text;
-  }
-  try {
-    return JSON.stringify(decoded);
-  } catch {
-    // Too deep to write back: no body, which the broker reads as no answer.
-    return '';
-  }
-}
-
 /** One way to spell one character of a secret; `fold` compares a percent escape's hex case-free. */
 interface Spelling {
   readonly text: string;
@@ -164,22 +144,53 @@ function base64Spellings(secret: string): readonly string[] {
   });
 }
 
+/** The text with every spelling of each secret replaced by `[redacted]`. */
+function redactText(text: string, secrets: readonly string[]): string {
+  const unescaped = cut(
+    text,
+    secrets.flatMap((secret) => spans(text, secret)),
+  );
+  return secrets
+    .flatMap((secret) => base64Spellings(secret))
+    .reduce((out, spelling) => out.split(spelling).join('[redacted]'), unescaped);
+}
+
 /**
  * Remove every spelling of the credential a provider might echo back: the
  * value, and a Basic pair's secret half alone, each as itself, as JSON text
  * spells it, percent-escaped in either case, or in base64 or base64url,
- * alone or inside longer encoded text.
+ * alone or inside longer encoded text. A JSON answer is redacted inside each
+ * key and value as the broker's parse reads them, then written back, so an
+ * escape the provider chose (`\/`, `\u0063`) hides nothing and no match
+ * reaches the quotes and commas between values; a number or literal that
+ * spells a secret becomes `[redacted]`. Other text is redacted as it came.
  */
 function redact(text: string, credential: StoredCredential): string {
   const { value } = credential;
   const secrets = credential.scheme === 'basic' ? [value, value.split(':')[1] ?? value] : [value];
-  const spellings = secrets.flatMap((secret) => base64Spellings(secret));
-  const written = plain(text);
-  const unescaped = cut(
-    written,
-    secrets.flatMap((secret) => spans(written, secret)),
-  );
-  return spellings.reduce((out, spelling) => out.split(spelling).join('[redacted]'), unescaped);
+  const inside = (decoded: unknown): unknown => {
+    if (typeof decoded === 'string') return redactText(decoded, secrets);
+    if (Array.isArray(decoded)) return decoded.map(inside);
+    if (typeof decoded === 'object' && decoded !== null) {
+      return Object.fromEntries(
+        Object.entries(decoded).map(([key, field]) => [redactText(key, secrets), inside(field)]),
+      );
+    }
+    const written = JSON.stringify(decoded);
+    return redactText(written, secrets) === written ? decoded : '[redacted]';
+  };
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(text);
+  } catch {
+    return redactText(text, secrets);
+  }
+  try {
+    return JSON.stringify(inside(decoded));
+  } catch {
+    // Too deep to walk or write back: no body, which the broker reads as no answer.
+    return '';
+  }
 }
 
 /** Exactly these keys: a request naming a header, an origin or anything else is refused whole. */
