@@ -6,6 +6,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { writeWrapUp } from '../../packages/core-commands/src/index.ts';
+import { revokeGrant } from '../../packages/core-records/src/index.ts';
 import {
   conversationWorld,
   setConversationWindow,
@@ -97,6 +98,26 @@ async function subjectBlindReader(): Promise<void> {
   }
 }
 
+/** The owner's tab row follows the same rule once the owner may no longer read the scope task. */
+async function listAfterTaskLost(): Promise<void> {
+  const hidden = `task title the owner loses ${randomUUID()}`;
+  const scoped = await task(hidden);
+  const starter = await enrol(w.fixture.db.app, w.fixture.business, 'task_losing_owner');
+  const taskGrant = await w.fixture.db.app.withBusiness(w.fixture.business, async (tx) => {
+    await grantTo(tx, starter, 'write', { kind: 'business', id: null }, false, 'conversation');
+    return await grantTo(tx, starter, 'read', { kind: 'record', id: scoped });
+  });
+  const scope = { kind: 'task', id: scoped };
+  await started(w, starter, { scope, subject: hidden, body: 'Started while readable' });
+  await w.fixture.db.app.withBusiness(w.fixture.business, async (tx) => {
+    expect(await revokeGrant(tx, taskGrant)).not.toBeNull();
+  });
+  const list = await w.as(starter, 'conversation.list', {});
+  expect(list.status).toBe(200);
+  expect(JSON.stringify(list.body)).not.toContain(hidden);
+  expect(list.body['conversations']).toMatchObject([{ title: 'New conversation' }]);
+}
+
 describe.skipIf(serverUrl === undefined)('wrap-up pointers on a real database', () => {
   beforeAll(async () => {
     c = await createControls('solow031');
@@ -145,4 +166,5 @@ describe.skipIf(serverUrl === undefined)('wrap-up pointers on a real database', 
   );
 
   it('a reader who may not read the scope task never sees its title', subjectBlindReader);
+  it('an owner who loses the scope task no longer lists its title', listAfterTaskLost);
 });
