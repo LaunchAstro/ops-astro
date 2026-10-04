@@ -59,7 +59,8 @@ function stepFor(key: string, index: number, count: number): number | null {
  * One tab stop over a chart's points. The pointer shows a point's tip while it
  * is over it; focus shows it too, and the arrow keys, Home and End move focus
  * along the points. Hovering never moves the tab stop, and the pointer leaving
- * hands the tip back to the focused point. A point past `count` is never shown.
+ * hands the tip back to the point that holds focus now, so a focused point a
+ * render removed hands it to nothing. A point past `count` is never shown.
  */
 export function usePoints(count: number): {
   readonly shown: number | null;
@@ -69,7 +70,6 @@ export function usePoints(count: number): {
   const tipId = useId();
   const [stop, setStop] = useState(0);
   const [shown, setShown] = useState<number | null>(null);
-  const focused = useRef<number | null>(null);
   const nodes = useRef<(SVGElement | null)[]>([]);
   const live = shown !== null && shown < count ? shown : null;
   const move = (event: KeyboardEvent, index: number): void => {
@@ -92,15 +92,14 @@ export function usePoints(count: number): {
       setShown(index);
     },
     onMouseLeave: () => {
-      setShown(focused.current);
+      const held = nodes.current.findIndex((node) => node?.ownerDocument.activeElement === node);
+      setShown(held === -1 ? null : held);
     },
     onFocus: () => {
-      focused.current = index;
       setStop(index);
       setShown(index);
     },
     onBlur: () => {
-      focused.current = null;
       setShown(null);
     },
     onKeyDown: (event: KeyboardEvent) => {
