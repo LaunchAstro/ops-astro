@@ -137,9 +137,19 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadResult<T> {
   // The last answer's topic, kept while a re-read is in flight or denied, so a
   // revoked page still hears the channel that tells it so.
   const topicRef = useRef<string | null>(null);
+  // Whether that answer is this record's: the last record's holds off no first-answer recovery.
+  const ownRef = useRef(false);
   if (state.outcome === 'ready' || state.outcome === 'empty') {
     topicRef.current = options.live?.topic(state.value) ?? null;
+    ownRef.current = true;
   }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the caller's dependency list.
+  useEffect(
+    () => () => {
+      ownRef.current = false;
+    },
+    options.deps,
+  );
   const topic = topicRef.current;
   const hub = options.live?.hub;
 
@@ -148,7 +158,7 @@ export function useRead<T>(options: UseReadOptions<T>): UseReadResult<T> {
   const waitingRef = useRef(false);
   if (state.outcome === 'unavailable') waitingRef.current = true;
   else if (state.outcome !== 'loading') waitingRef.current = false;
-  const unanswered = hub !== undefined && topic === null && waitingRef.current;
+  const unanswered = hub !== undefined && (topic === null || !ownRef.current) && waitingRef.current;
   useEffect(() => {
     if (unanswered) return untilAnswered(reload);
     if (hub === undefined || topic === null) return;

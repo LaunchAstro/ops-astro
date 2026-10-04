@@ -33,15 +33,16 @@
 // **A login with an authenticator app gives its code before the session opens (C59).** A
 // password alone is `aal1`, refused `AUTH_SECOND_FACTOR_REQUIRED` (`openSignIn`). The code goes
 // through the money step-up's `stepUpSession`; a wrong one says so and asks again. Cancel, or
-// leaving the page (before the code is asked for too), signs the half-made sign-in out, and any
-// new one it lands on; Cancel returns to the emptied password.
+// leaving the page, signs the half-made sign-in out, and any new one it lands on; Cancel returns
+// to the emptied password. Left while its first read is out, the page ends that sign-in at once,
+// and no answer the read gives later opens it.
 
-import { useEffect, useRef, useState, type FormEvent, type ReactElement } from 'react';
+import { useState, type FormEvent, type ReactElement } from 'react';
 import { BrandMark, FieldError } from '@launchastro/ui';
 import { buildStamp } from '../app-state.ts';
 import { pathTo } from '../routes.ts';
-import { openSignIn, signOutOf, type ApiRoute, type AskedForCode } from '../session/sign-in.ts';
-import { stepUpSession } from '../session/step-up.ts';
+import { useCodeStep } from '../session/code-step.ts';
+import { openSignIn } from '../session/sign-in.ts';
 import { CodeField } from '../views/step-up-prompt.tsx';
 import { PUBLIC_DOCUMENTS } from './Legal.tsx';
 import type { Interruption, Session } from '../session/token.ts';
@@ -63,57 +64,6 @@ const BUSINESSES: readonly { readonly key: string; readonly label: string }[] = 
   { key: 'alpha', label: 'Alpha' },
   { key: 'bravo', label: 'Bravo' },
 ];
-
-/** The code step: its field, its check through the step-up, and its cancel. */
-function useCodeStep(route: ApiRoute, open: (sessionId: string) => void) {
-  const [asked, setAsked] = useState<AskedForCode | null>(null);
-  const [code, setCode] = useState('');
-  const [because, setBecause] = useState<string | null>(null);
-  const [checking, setChecking] = useState(false);
-  // Moved on by every check, cancel and unmount: an answer for an older one is dropped. The
-  // half sign-in goes with its code step (Cancel, or the page left) unless a good code opened.
-  const attempt = useRef(0);
-  const opened = useRef(false);
-  const leave = (client: AskedForCode['client'], sessionId?: string): void => {
-    if (sessionId !== undefined)
-      void signOutOf(route, { sessionId, businessKey: client.businessKey });
-  };
-  useEffect(
-    () => () => {
-      attempt.current += 1;
-      if (asked !== null && !opened.current) leave(asked.client, asked.sessionId);
-    },
-    [asked],
-  );
-  const check = (): void => {
-    if (asked === null) return;
-    const mine = ++attempt.current;
-    setChecking(true);
-    setBecause(null);
-    void (async () => {
-      const { client, sessionId: from } = asked;
-      const current = () => attempt.current === mine;
-      const result = await stepUpSession({ code, client, route, from, current, adopt: () => {} });
-      // A cancel or a leave landing as the new sign-in was finished signs that one out too.
-      if (result.ok && !current()) leave(client, result.sessionId);
-      if (!current()) return;
-      setChecking(false);
-      setCode('');
-      if (result.ok) {
-        opened.current = true;
-        open(result.sessionId);
-      } else setBecause(result.because);
-    })();
-  };
-  const cancel = (): void => {
-    attempt.current += 1;
-    setAsked(null);
-    setCode('');
-    setBecause(null);
-    setChecking(false);
-  };
-  return { asked, setAsked, attempt, leave, code, setCode, because, checking, check, cancel };
-}
 
 /** The six-digit code, its continue and its cancel back to the password. */
 function CodeStep(props: { readonly step: ReturnType<typeof useCodeStep> }): ReactElement {
@@ -171,15 +121,23 @@ export function SignIn(props: SignInProps): ReactElement {
         password,
         businessKey,
         ...route,
+        // Issued: ended at once if the page has gone, else if it goes before the read answers.
+        issued: (sessionId) => {
+          const end = (): void => step.leave(businessKey, sessionId);
+          if (step.attempt.current === sent) step.half.current = end;
+          else end();
+        },
       });
+      // A page left since has ended this sign-in, so no answer of its read opens it.
+      if (step.attempt.current !== sent) return;
+      step.half.current = null;
       setBusy(false);
       if (!result.ok) setBecause(result.because);
       else if (result.asked === undefined) opened(result.sessionId);
       else {
-        // Sent: the code step keeps no password, and a page left since signs this sign-in out.
+        // Sent: the code step keeps no password.
         setPassword('');
-        if (step.attempt.current === sent) step.setAsked(result.asked);
-        else step.leave(result.asked.client, result.asked.sessionId);
+        step.setAsked(result.asked);
       }
     })(step.attempt.current);
   };

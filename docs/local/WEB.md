@@ -47,7 +47,9 @@ is emptied. The code goes through the money step-up's own `stepUpSession`:
 checked on the account route, the `aal2` token traded for a new cookie, the
 `aal1` one cleared, and only then does the session open. A wrong code shows
 the server's words and asks again; Cancel signs the half-made sign-in out (API,
-provider and cookie) and returns to the password step. Any other answer to the
+provider and cookie) and returns to the password step. Leaving the page signs it
+out too, at once even while `session.person` is still out, and no answer that
+read gives after the page has gone opens anything. Any other answer to the
 read opens the session as before: the API, not this read, refuses what it
 refuses, so a login with no membership still lands on a denial (N2).
 `tests/web/sign-in-second-factor.test.tsx` holds the three ways.
@@ -100,7 +102,8 @@ deactivates their login and ends their memberships, but their bearer still
 verifies until its hour is up, so the API answers their next call 403
 `AUTH_NO_MEMBERSHIP`. A login that was never a member gets the same answer, and
 for it that is a denial to draw (the browser's N2 row). So the client remembers
-whether its bearer has had an answer only a member gets: a success, or a refusal
+whether its bearer has had an answer only a member gets: a success (a live
+call's counts as a read's), or a refusal
 decided past login resolution such as `SCOPE_NOT_GRANTED` (a 401 or a door
 refusal proves nothing). Only a bearer that has ends its session on that
 refusal, with the same notice. A person who signs out in the tab
