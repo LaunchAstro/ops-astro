@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 //
-// Catalogue #423: Sol's OW-048 criterion 3 proof, unchanged
+// Catalogue #423: Sol's OW-048 criterion 3 proof (titles named by behaviour, bodies unchanged)
 // (R/sol/proofs/OW-048-4126931d1.patch); the file's other criterion is not
 // this issue's.
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -22,7 +22,7 @@ import {
 
 useAw02World('solow048');
 
-it('Sol proof, criterion 3: a revoked delegation cannot read pinned instructions through its still-live lease', async () => {
+it('a revoked delegation cannot read pinned instructions through its still-live lease', async () => {
   if (process.env['DATABASE_URL'] === undefined) throw new Error('Postgres is required');
   const owner = w.alpha;
   const work = await liveWork(owner, 'Sol OW-048 revoked reader', 1_000);

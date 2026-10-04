@@ -122,6 +122,7 @@
     "tests/runtime/mp-6-2-placement.test.ts",
     "tests/runtime/mp-6-2-plan-record-isolation.test.ts",
     "tests/runtime/mp-6-2-plan-record-stored.test.ts",
+    "tests/runtime/pinned-read-needs-standing-delegation.test.ts",
     "tests/runtime/propose-open-envelope-and-lineage.test.ts",
     "tests/runtime/propose-operands-and-authority.test.ts",
     "tests/runtime/recovery-replay-pin.test.ts",
@@ -134,7 +135,6 @@
     "tests/runtime/review-3b-5-delegate-child-lease-id.test.ts",
     "tests/runtime/seed-revoke-in-flight.test.ts",
     "tests/runtime/seed-revoke-live-lease.test.ts",
-    "tests/runtime/sol-ow048-pinned-revocation.test.ts",
     "tests/runtime/trashed-task-work-and-notes.test.ts",
     "tests/runtime/unstorable-operands.test.ts"
   ]
