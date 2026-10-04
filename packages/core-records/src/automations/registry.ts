@@ -45,26 +45,32 @@ export interface Registry {
   readonly activations: readonly RegistryActivation[];
 }
 
+// One statement, so one snapshot: separate reads under read committed could
+// list an activation re-pinned, between them, to a version not listed.
+const REGISTRY = `
+  select coalesce((select json_agg(json_build_object('id', id, 'kind', kind, 'name', name)
+                                   order by created_at, id)
+                     from public.automation_definitions), '[]'::json) as definitions,
+         coalesce((select json_agg(v order by v."definitionId", v.number) from (
+           select id, definition_id as "definitionId", number, content_digest as "contentDigest",
+                  content_size::float8 as "contentSize", modes,
+                  released_by_actor_id as "releasedBy",
+                  to_char(released_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+                    as "releasedAt"
+             from public.definition_versions) v), '[]'::json) as versions,
+         coalesce((select json_agg(a order by a."definitionId", a.id) from (
+           select a.id, a.definition_id as "definitionId", a.version_id as "versionId",
+                  v.number as "versionNumber", a.mode, a.every_minutes as "everyMinutes",
+                  a.event_kind as "eventKind", a.enabled, a.changed_by_actor_id as "changedBy",
+                  to_char(a.changed_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')
+                    as "changedAt",
+                  a.revision::float8 as revision
+             from public.activations a
+             join public.definition_versions v on v.id = a.version_id) a), '[]'::json)
+           as activations`;
+
 export async function listRegistry(tx: TenantQuery): Promise<Registry> {
-  const definitions = await tx.query<RegistryDefinition>(
-    `select id, kind, name from public.automation_definitions order by created_at, id`,
-  );
-  // Both counts are cast in the statement, so each row is read as it comes.
-  const versions = await tx.query<RegistryVersion>(
-    `select id, definition_id as "definitionId", number, content_digest as "contentDigest",
-            content_size::float8 as "contentSize", modes, released_by_actor_id as "releasedBy",
-            to_char(released_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "releasedAt"
-       from public.definition_versions order by definition_id, number`,
-  );
-  const activations = await tx.query<RegistryActivation>(
-    `select a.id, a.definition_id as "definitionId", a.version_id as "versionId",
-            v.number as "versionNumber", a.mode, a.every_minutes as "everyMinutes",
-            a.event_kind as "eventKind", a.enabled, a.changed_by_actor_id as "changedBy",
-            to_char(a.changed_at at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"') as "changedAt",
-            a.revision::float8 as revision
-       from public.activations a
-       join public.definition_versions v on v.id = a.version_id
-      order by a.definition_id, a.id`,
-  );
-  return { definitions, versions, activations };
+  const [registry] = await tx.query<Registry>(REGISTRY);
+  if (registry === undefined) throw new Error('the registry statement returned no row');
+  return registry;
 }
