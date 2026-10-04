@@ -13,7 +13,9 @@
 //    SHA-256 alone, and, with room under `email.send`'s one ceiling, the
 //    attempt is recorded `asked` against it. A refusal writes nothing.
 // 2. Send, through custody, the adapter's message: the address the invitation
-//    names and one link, the enrolment page carrying the token.
+//    names and one link, the enrolment page carrying the token. A sender that
+//    paused past the fence since its ask (`lapsed`) calls nothing and records
+//    `failed`, evidence `expired`, as the inbox send does.
 // 3. Record what came back as the attempt's next observation, read as the
 //    inbox send reads it; an answer holding anything token-shaped is
 //    malformed. Nothing returned or written holds a token.
@@ -44,7 +46,7 @@ import type { ModelOperation } from '../../core-connectors/src/index.ts';
 import { observed, sendRoute, type Routed } from './broker-email-route.ts';
 import type { MailSettings } from './broker-email.ts';
 import type { Broker } from './broker-types.ts';
-import { roomFor, type DeliverRefusal } from './email-class.ts';
+import { lapsed, readClocks, roomFor, type DeliverRefusal, type Reading } from './email-class.ts';
 
 /** The acts an invitation's send answers, one email each. */
 export const INVITATION_SEND_ACTS: readonly string[] = ['invitation.create', 'invitation.resend'];
@@ -76,6 +78,8 @@ interface Asked {
   readonly tokenId: string;
   readonly to: string;
   readonly token: string;
+  /** The host's clocks just before the `asked` attempt was written: the fence counts from here. */
+  readonly reserved: Reading;
 }
 
 /**
@@ -98,9 +102,10 @@ async function recordAttempt(
 }
 
 /**
- * Whether the invitation's lifetime is still running, judged by a statement of its own once its
- * lock is held: a send that waited for the lock is judged when it got it, never when its
- * transaction began, and never by a lock statement's own reading taken before the wait.
+ * Whether the invitation's lifetime is still running, judged by a statement of its own after each
+ * lock the send waits on (the invitation's row, then the email limit): a send that waited is
+ * judged when it got the lock, never when its transaction began, and never by a lock statement's
+ * own reading taken before the wait.
  */
 async function liveNow(tx: TenantQuery, invitationId: string): Promise<boolean> {
   const [row] = await tx.query<{ live: boolean }>(
@@ -165,6 +170,7 @@ async function ask(
   const act = await pendingAct(tx, invitationId, hookId);
   if (typeof act === 'string') return act;
   if (!(await roomFor(tx, operation)())) return 'EMAIL_AT_CEILING';
+  if (!(await liveNow(tx, invitationId))) return 'INVITATION_NOT_PENDING';
   if (hookId !== undefined && !(await claimHookMessage(tx, hookId))) return 'REPLAYED';
   const token = randomBytes(32).toString('base64url');
   const [minted] = await tx.query<{ id: string }>(
@@ -172,7 +178,8 @@ async function ask(
      values ($1, gen_random_uuid(), $2, $3, $4) returning id`,
     [tx.businessId, invitationId, createHash('sha256').update(token).digest('hex'), act.expires],
   );
-  const asked = { invitationId, tokenId: minted?.id ?? '', to: act.address, token };
+  const reserved = readClocks();
+  const asked = { invitationId, tokenId: minted?.id ?? '', to: act.address, token, reserved };
   const evidence = hookId === undefined ? null : `hook:${hookId}`;
   await recordAttempt(tx, asked, { state: 'asked', evidence });
   return asked;
@@ -189,17 +196,21 @@ async function deliver(
   const { mail, asked } = sent;
   const link = new URL(`${ENROL_PATH}${asked.token}`, mail.appOrigin).href;
   const built = adapter.build({ to: asked.to, from: mail.from, address: link });
-  const outcome = await broker.custody.dispatch(route.credentialRef, {
-    destination: operation.destination,
-    path: built.path,
-    method: built.method,
-    body: built.body,
-    timeoutMs: operation.timeoutMs,
-    maxResponseBytes: operation.maxResponseBytes,
-  });
+  const read = lapsed(asked.reserved)
+    ? ({ state: 'failed', evidence: 'expired' } as const)
+    : observed(
+        await broker.custody.dispatch(route.credentialRef, {
+          destination: operation.destination,
+          path: built.path,
+          method: built.method,
+          body: built.body,
+          timeoutMs: operation.timeoutMs,
+          maxResponseBytes: operation.maxResponseBytes,
+        }),
+        operation,
+      );
   // An answer is evidence about the message, never a place a link's token is kept: this
   // send's, an earlier send's or any other business's, all of one shape.
-  const read = observed(outcome, operation);
   const seen = TOKEN_SHAPED.test(read.evidence)
     ? ({ state: 'failed', evidence: 'malformed' } as const)
     : read;
