@@ -91,9 +91,10 @@ async function recordAttempt(
 }
 
 /**
- * Whether the invitation's lifetime is still running, judged by a statement of its own once its
- * lock is held: a send that waited for the lock is judged when it got it, never when its
- * transaction began, and never by a lock statement's own reading taken before the wait.
+ * Whether the invitation's lifetime is still running, judged by a statement of its own after each
+ * lock the send waits on (the invitation's row, then the email limit): a send that waited is
+ * judged when it got the lock, never when its transaction began, and never by a lock statement's
+ * own reading taken before the wait.
  */
 async function liveNow(tx: TenantQuery, invitationId: string): Promise<boolean> {
   const [row] = await tx.query<{ live: boolean }>(
@@ -129,6 +130,7 @@ async function ask(
   );
   if ((tally?.sends ?? 0) >= (tally?.acts ?? 0)) return 'NO_SEND_ACT';
   if (!(await roomFor(tx, operation)())) return 'EMAIL_AT_CEILING';
+  if (!(await liveNow(tx, invitationId))) return 'INVITATION_NOT_PENDING';
   const token = randomBytes(32).toString('base64url');
   const [minted] = await tx.query<{ id: string }>(
     `insert into enrolment_tokens (business_id, id, invitation_id, token_hash, expires_at)
