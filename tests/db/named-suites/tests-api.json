@@ -1,6 +1,7 @@
 {
   "comment": [
-    "SOLOW-G G1 names cancelled-unknown-hold-story (Sol OW-108.2: a cancellation never overrides an unresolved unknown hold in the run story, through the real task read)."
+    "SOLOW-G G1 names cancelled-unknown-hold-story (Sol OW-108.2: a cancellation never overrides an unresolved unknown hold in the run story, through the real task read).",
+    "CAT-API-1 names unknown-key-credential-door (catalogue #764: a not-live credential at a business key nobody holds answers as at a held one, past the door's count, through the real API and database)."
   ],
   "invariant": [
     "tests/api/agent-bare-handback-replay.test.ts",
@@ -138,6 +139,7 @@
     "tests/api/surface-operations.test.ts",
     "tests/api/t2c1-rejected-decision-crash-seam.test.ts",
     "tests/api/t2c2-worker.test.ts",
+    "tests/api/unknown-key-credential-door.test.ts",
     "tests/api/unstorable-command-bodies.test.ts"
   ]
 }
