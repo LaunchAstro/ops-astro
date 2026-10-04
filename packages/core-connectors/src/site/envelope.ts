@@ -52,8 +52,10 @@ const WORD_CHARACTER = /[\p{L}\p{M}\p{N}_]/u;
 export function wordOffsets(text: string, word: string): number[] {
   const found: number[] = [];
   for (let at = text.indexOf(word); at >= 0; at = text.indexOf(word, at + 1)) {
-    const left = at === 0 ? '' : text.slice(at - 1, at);
-    const right = text.slice(at + word.length, at + word.length + 1);
+    // Whole characters, never one code unit: half a surrogate pair is no letter.
+    const left = Array.from(text.slice(Math.max(0, at - 2), at)).at(-1) ?? '';
+    const next = text.codePointAt(at + word.length);
+    const right = next === undefined ? '' : String.fromCodePoint(next);
     if (!WORD_CHARACTER.test(left) && !WORD_CHARACTER.test(right)) found.push(at);
   }
   return found;
@@ -113,16 +115,22 @@ function expressionEnd(source: string, open: number): number {
   return source.length;
 }
 
-/** Whether `offset` is in body copy: not frontmatter, a tag, a comment, an expression, a script or a style. */
+/**
+ * Whether `offset` is in body copy: not frontmatter, a tag, a comment, an
+ * expression, a script or a style. The scan starts past the frontmatter, so
+ * nothing in its code carries over into the body.
+ */
 function inTextNode(source: string, offset: number): boolean {
+  let start = 0;
   if (source.startsWith('---\n')) {
     const close = source.indexOf('\n---', 4);
     if (close < 0 || offset <= close + 4) return false;
+    start = close + 4;
   }
   let state: 'text' | 'tag' | 'comment' | 'raw' = 'text';
   let quote = '';
   let rawClose = '';
-  for (let at = 0; at < offset; at += 1) {
+  for (let at = start; at < offset; at += 1) {
     const rest = source.slice(at);
     const character = source.charAt(at);
     if (state === 'comment') {
