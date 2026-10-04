@@ -261,6 +261,10 @@ export function suitesToFiles(root: string): void {
 }
 
 async function main(argv: readonly string[]): Promise<void> {
+  if (argv[0] === 'kept') {
+    console.log('named-suites: kept: not checked yet.');
+    return;
+  }
   if (argv[0] !== 'split' || argv.length > 2 || (argv.length === 2 && argv[1] !== '--check')) {
     throw new Error('usage: node scripts/named-suites.ts split [--check]');
   }
