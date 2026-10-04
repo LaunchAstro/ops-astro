@@ -6,7 +6,7 @@
 // The task page draws a gate twice: the gate card under the proposals and the
 // Agent pane's gate box. `SCOPE_NOT_GRANTED` is about the reader, not the
 // version, so whichever view was refused, neither may ask again on the
-// reader's behalf. Sol's proof (OWT-08.2) refuses the task page's control and
+// reader's behalf. The first case refuses the task page's control and
 // presses the pane's; the second case refuses the pane's and presses the
 // task page's.
 
@@ -25,7 +25,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-it('Sol proof, criterion 7: every approval control stays closed after a refused decision', async () => {
+it('a decision refused from the task page closes every approval control, the Agent pane too', async () => {
   const client = taskServer(
     { state: 'pending', expired: false },
     { '/task/decide': refused('SCOPE_NOT_GRANTED', 403) },
