@@ -20,18 +20,20 @@
 // comment and takes no connections. Anything else under its name, a builder
 // that stopped half way, is dropped and built again. Builders take an
 // advisory lock, so two runs on one server build it once between them. An
-// advisory lock is held within one database, so every builder reads whether
-// the template is finished, and takes the lock, in `postgres`, whichever
-// database it is configured for.
+// advisory lock is held within one database, so every builder takes it in
+// `postgres`, whichever database it is configured for.
 //
-// The build's own statements go through the database beside the configured
-// one (`besideUrl`): scripts/db-conformance.mjs reads the configured
-// database's transaction counter either side of each named suite, and the
-// template is not the suite's work. Only a run configured for `postgres`
-// itself reads and locks there. Beside `postgres` is template1, which a plain
-// `create database` copies and will not copy while anyone else is connected,
-// so the connection beside is opened only under the lock, for the short
-// statements before and after the migrations, and closed while they run.
+// Everything else goes through the database beside the configured one
+// (`besideUrl`): scripts/db-conformance.mjs reads the configured database's
+// transaction counter either side of each named suite, and the template is
+// not the suite's work. That includes reading whether the template is
+// finished (pg_database is shared), so finding it touches nothing measured.
+// Only a build takes the lock, and the runner builds the template before its
+// first counter read, so a run configured for `postgres` does not count it.
+// Beside `postgres` is template1, which a plain `create database` copies and
+// will not copy while anyone else stays connected past five seconds, so the
+// connection beside is opened only for short statements: the read, and under
+// the lock those before and after the migrations, never while they run.
 // `OPS_ASTRO_DB_TEMPLATE=off` turns it all off, and every fresh database
 // migrates from empty as before.
 
@@ -128,10 +130,19 @@ function quoted(name: string): string {
   return `"${name}"`;
 }
 
-/** The migration result a finished template carries, or undefined for anything less. */
-function finished(
-  row: { connections: boolean; comment: string | null } | undefined,
-): MigrationOutcome | undefined {
+/**
+ * The migration result the finished template `name` carries, or undefined for
+ * anything less. pg_database is a shared catalogue, so any database answers.
+ */
+async function finishedIn(
+  server: ReturnType<typeof connectAsAdmin>,
+  name: string,
+): Promise<MigrationOutcome | undefined> {
+  const [row] = await server.execute<{ connections: boolean; comment: string | null }>(
+    `select datallowconn connections, shobj_description(oid, 'pg_database') comment
+       from pg_database where datname = $1`,
+    [name],
+  );
   if (row === undefined || row.connections || row.comment === null) return undefined;
   try {
     const { migration } = JSON.parse(row.comment) as { migration?: MigrationOutcome };
@@ -165,25 +176,14 @@ export function ensureMigratedTemplate(
 }
 
 async function build(serverUrl: string, name: string): Promise<MigratedTemplate> {
-  // pg_database is a shared catalogue, so the lock's connection reads it too.
+  const ready = await beside(serverUrl, async (server) => await finishedIn(server, name));
+  if (ready !== undefined) return { name, migration: ready };
   const lock = connectAsAdmin(lockUrl(serverUrl), { source: 'harness' });
-  const read = async () =>
-    finished(
-      (
-        await lock.execute<{ connections: boolean; comment: string | null }>(
-          `select datallowconn connections, shobj_description(oid, 'pg_database') comment
-             from pg_database where datname = $1`,
-          [name],
-        )
-      )[0],
-    );
   try {
-    const ready = await read();
-    if (ready !== undefined) return { name, migration: ready };
     await lock.execute(LOCK);
     try {
       // Another builder may have finished while this one waited.
-      const now = await read();
+      const now = await finishedIn(lock, name);
       if (now !== undefined) return { name, migration: now };
       return { name, migration: await buildFromEmpty(serverUrl, name) };
     } finally {
